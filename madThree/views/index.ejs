@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: linear-gradient(to bottom, teal, purple); /* Gradient background */
+      }
+    </style>
+    <title><%= title %></title>
+    <link rel='stylesheet' href='/stylesheets/style.css' />
+  </head>
+  <body>
+    <h1>Welcome to the development of MLL's Version 2</h1>
+    <p>This is a rendered 3D logo for madLad'sLab</p>
+    <a href="https://www.madladslab.com">RETURN TO SITE</a>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    
+    <script>
+      const scene = new THREE.Scene();
+      
+      // Set up the camera
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 2, 10); // Pull the camera farther back on the Z-axis
+
+      // Create a renderer with antialiasing enabled and alpha for transparency
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio); // Set pixel ratio for sharper rendering
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000000, 0); // Set background color to transparent
+      document.body.appendChild(renderer.domElement);
+      
+      // Add lighting
+      const ambientLight = new THREE.AmbientLight(0x404040, 2); // Soft light
+      scene.add(ambientLight);
+      
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+      directionalLight.position.set(1, 1, 1).normalize();
+      scene.add(directionalLight);
+      
+      // Load the GLTF model
+      let model; // Make the model accessible in the scroll event
+      const loader = new THREE.GLTFLoader();
+      loader.load('/threeDModels/beakGreen.glb', function(gltf) {
+        model = gltf.scene;
+        scene.add(model);
+        
+        // Adjust the model's position and scale
+        model.position.set(0, 0, 0); // Keep it centered
+        model.scale.set(0.6, 0.6, 0.6); // Scale the model down
+      }, undefined, function(error) {
+        console.error('An error happened while loading the model', error);
+      });
+
+      // Handle scrollwheel rotation
+      window.addEventListener('wheel', function(event) {
+        if (model) {
+          const delta = event.deltaY * 0.001; // Adjust the sensitivity of the scroll
+          model.rotation.y += delta; // Rotate model around the Y-axis
+        }
+      });
+      
+      // Animation loop
+      const animate = function () {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+      };
+      
+      animate();
+    </script>
+  </body>
+</html>
