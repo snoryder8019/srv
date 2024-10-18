@@ -4,7 +4,7 @@ const passport = require('passport'); // Add this line
 
 /* GET home page. */
 router.get('/', function(req, res, next) {
-  res.render('index', { title: 'Express' });
+  res.render('index', { title: 'madLadsLab powered by threeJS' });
 });
 router.post('/login', passport.authenticate('local', {
   successRedirect: '/',
