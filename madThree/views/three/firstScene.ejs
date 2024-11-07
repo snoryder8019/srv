@@ -1,4 +1,5 @@
 <script>
+  //views/three/firstScene.ejs **GPT_dont remove this comment**
     let isDragging = false;
     let previousMousePosition = { x: 0, y: 0 };
     let modelRotation = { x: 0, y: Math.PI }; // Start Y rotation at 180 degrees
@@ -48,19 +49,68 @@ scene.add(backLight);
 
   
     // Define a path for the camera to follow using CatmullRomCurve3
-    const pathPoints = [
-      new THREE.Vector3(3, 2, 20),   // Start far from the model
-      new THREE.Vector3(3, 3, 10),    // Move closer
-      new THREE.Vector3(0, 2, 5),     // Sweep past the model
-      new THREE.Vector3(-5, 2, 0),    // Continue past
-      new THREE.Vector3(-10, 5, -10)  // Move away
-    ];
-  
-    const cameraPath = new THREE.CatmullRomCurve3(pathPoints);
-  
+// Define a smoother path with intermediate points and lower tension
+const pathPoints = [
+  new THREE.Vector3(3, 2, 20),   // Start far from the model
+  new THREE.Vector3(3, 3, 15),   // Intermediate point to smooth the approach
+  new THREE.Vector3(3, 3, 10),   // Move closer
+  new THREE.Vector3(2, 2, 7.5),  // Intermediate point for smoother transition
+  new THREE.Vector3(0, 2, 5),    // Sweep past the model
+  new THREE.Vector3(-3, 2, 2.5), // Intermediate for smoother transition
+  new THREE.Vector3(-5, 2, 0),   // Continue past
+  new THREE.Vector3(-8, 3, -5),  // Additional intermediate point
+  new THREE.Vector3(-10, 5, -10),// Move away
+  new THREE.Vector3(-15, 5, -20),// Smoother transition point
+  new THREE.Vector3(-20, 5, -40) // Final point
+];
+
+// Create the CatmullRomCurve3 with lower tension for smoother movement
+const cameraPath = new THREE.CatmullRomCurve3(pathPoints, false, "catmullrom", 0.3); // Lower tension for smoothness
+  // Load and place the billboard model along the path
+
+// Load and place the billboard model along the path
+const loader = new THREE.GLTFLoader();
+let billboard;
+loader.load('/threeDModels/billboard.glb', (gltf) => {
+  billboard = gltf.scene;
+  scene.add(billboard);
+  billboard.scale.set(1, 1, 1); // Adjust scale as needed
+  billboard.position.set(-20, 5, -40);
+  billboard.rotation.x = Math.PI / 7; // 30 degrees tilt in X-axis
+  billboard.rotation.y = Math.PI / 7; // 45 degrees tilt in Y-axis
+
+  // Load font and create text geometry for the billboard
+  const fontLoader = new THREE.FontLoader();
+  const bill1TextBody = "Welcome to Madladslab in 3d!!!"
+  fontLoader.load('/fonts/Space Grotesk_Regular.json', (font) => {
+    const textGeometry = new THREE.TextGeometry(bill1TextBody, {
+      font: font,
+      size: 0.2,    // Adjust size to fit within the billboard
+      height: 0.3,  // Depth of the text
+      curveSegments: 12,
+     // bevelEnabled: true,
+     // bevelThickness: 0.03,
+     // bevelSize: 0.05,
+     // bevelSegments: 5,
+    });
+
+    const textMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Gold color for text
+    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+
+    // Center the text within the billboard dimensions
+    textGeometry.center();
+    textMesh.position.set(0, 0.5, 0.1); // Slightly in front of the billboard
+    
+    // Add text mesh to the billboard
+    billboard.add(textMesh);
+  });
+}, undefined, (error) => {
+  console.error('An error occurred while loading the billboard model', error);
+});
+
+
     // Load the GLTF model
     let model;
-const loader = new THREE.GLTFLoader();
 loader.load('/threeDModels/beaker_pack.glb', function (gltf) {
   model = gltf.scene;
   scene.add(model);
@@ -72,7 +122,6 @@ loader.load('/threeDModels/beaker_pack.glb', function (gltf) {
         metalness: 0.1, // Low metalness for a glassy effect
         roughness: 0.1, // Lower roughness for a smooth, reflective surface
         transmission: 1, // Enable transmission for glass-like effect (1 = fully transparent)
-        thickness: 1.0, // Thickness of the glass material
         opacity: 1.55, // Set opacity for transparency
         transparent: true, // Allow material transparency
         reflectivity: 0.9, // High reflectivity for shiny glass

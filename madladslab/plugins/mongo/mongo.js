@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 let db;
 
-export async function connect() {
-  const client = new MongoClient('mongodb+srv://madladslab:pALciemUGdiu1U8v@cluster0.tpmae.mongodb.net/madlaslab?retryWrites=true&w=majority&appName=madladslab');
+export default async function connect() {
+  const client = new MongoClient(`mongodb+srv://${process.env.MON_USER}:${process.env.MON_PASS}@cluster0.tpmae.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`);
   
   try {
     await client.connect();
