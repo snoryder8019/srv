@@ -1,10 +1,10 @@
 import express from 'express';
-import api from '../api/index.js';
+
 const router = express.Router();
 
 /* GET home page. */
 router.get('/', (req, res, next) => {
-  res.render('index', { title: 'Express' });
+    res.json({"message":"sna version 1"})
 });
-router.use('/api', api)
+
 export default router;
