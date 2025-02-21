@@ -4,7 +4,7 @@ import { router as passportRouter } from './passport/localStrat.js';
 const router = express.Router();
 /* GET home page. */
 router.get('/', (req, res, next) => {
-next()
+
 });
 router.use('/', authRouter);
 router.use(passportRouter);
