@@ -1,6 +1,6 @@
 ////plugins/mongo/helpers/models.js **GPT NOTE: DONT REMOVE THIS LINE IN EXAMPLES**
 
-import { getDb } from '../mongo.js';
+import { getDb } from '../../../../plugins/mongo/mongo.js';
 import { ObjectId } from 'mongodb';
 
 export default class ModelHelper {
