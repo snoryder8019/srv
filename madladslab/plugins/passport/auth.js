@@ -70,7 +70,7 @@ authRouter.get('/auth/google/callback', (req, res, next) => {
          // req.flash('success', 'Successfully logged in');
 
           // Redirect to the referring URL or a default route
-          return res.redirect(redirectUrl);
+          return res.redirect('/');
         });
       } else {
         // Handle the case when user is not authenticated
