@@ -30,6 +30,7 @@ export const newUser = async (profile, provider) => {
     lastName: profile.name.familyName,
     password: '',
     isAdmin: false,   
+    isAustins:false,
     notifications: [],
     images: [],
     subscription: 'free',

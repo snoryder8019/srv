@@ -1,24 +1,35 @@
-import { MongoClient } from 'mongodb';
-import dotenv from 'dotenv';
+import { MongoClient } from "mongodb";
+import dotenv from "dotenv";
+
 dotenv.config();
-let db;
 
-export default async function connect() {
-  const client = new MongoClient(`mongodb+srv://${process.env.MON_USER}:${process.env.MON_PASS}@cluster0.tpmae.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`);
-  
-  try {
-    await client.connect();
-    db = client.db('madladslab'); // Make sure to use your database name from the environment variable
-    console.log('Connected to MongoDB');
-  } catch (error) {
-    console.error('Failed to connect to MongoDB:', error);
-    throw new Error('Database connection failed');
-  }
-}
+let _db; // Store the database connection
+let _client; // Store the client connection
 
-export function getDb() {
-  if (!db) {
-    throw new Error('Database not initialized');
+export const connectDB = async () => {
+  if (!_db) {
+    try {
+      _client = new MongoClient(process.env.DB_URL, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+      });
+
+      await _client.connect();
+      _db = _client.db(process.env.DB_NAME);
+      console.log("✅ Connected to MongoDB");
+
+      return _db;
+    } catch (err) {
+      console.error("❌ Error connecting to MongoDB:", err);
+      throw new Error("Database connection failed");
+    }
   }
-  return db;
-}
+  return _db;
+};
+
+export const getDb = () => {
+  if (!_db) {
+    throw new Error("Database not initialized");
+  }
+  return _db;
+};
