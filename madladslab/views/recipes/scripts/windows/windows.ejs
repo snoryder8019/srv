@@ -1,0 +1,118 @@
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('austins windows scripts');
+    });
+  
+    document.addEventListener('click', async (event) => {
+    const divList = ['addFormDiv', 'editFormDiv'];
+
+    if (event.target.id === 'openAddForm' || event.target.id === 'openEditForm') {
+        // Hide all divs first
+        divList.forEach(divId => {
+            const div = document.getElementById(divId);
+            if (div) div.style.display = "none";
+        });
+
+        // Show the correct form
+        const targetDivId = event.target.id === 'openAddForm' ? 'addFormDiv' : 'editFormDiv';
+        const targetDiv = document.getElementById(targetDivId);
+        if (targetDiv) targetDiv.style.display = "block";
+    }
+});
+
+    document.addEventListener('click', async (event) => {
+        if (event.target.id === 'addModelWindow') {
+            const selectedModel = document.getElementById('model-select').value;
+            
+            if (!selectedModel) {
+                alert('Please select a model first.');
+                return;
+            }
+  
+            console.log(`Fetching fields for model: ${selectedModel}`);
+  
+            try {
+                const response = await fetch(`/recipes/fields?model=${selectedModel}`);
+                if (!response.ok) throw new Error('Failed to fetch model fields');
+  
+                const fields = await response.json();
+                renderForm(fields);
+            } catch (error) {
+                console.error('Error fetching model fields:', error);
+            }
+        }
+    });
+  
+    function renderForm(fields) {
+    const formContainer = document.getElementById('addModel');
+    formContainer.innerHTML = '';
+
+    const selectedModel = document.getElementById('model-select').value;
+    if (!selectedModel) {
+        console.error('Model name is missing.');
+        return;
+    }
+
+    const form = document.createElement('form');
+    form.setAttribute('id', 'model-form');
+
+    Object.keys(fields).forEach(key => {
+        const field = fields[key];
+        const label = document.createElement('label');
+        label.textContent = key;
+        const input = document.createElement('input');
+        input.setAttribute('type', field.type || 'text');
+        input.setAttribute('name', key);
+        input.setAttribute('value', field.value || '');
+
+        form.appendChild(label);
+        form.appendChild(input);
+        form.appendChild(document.createElement('br'));
+    });
+
+    const submitBtn = document.createElement('button');
+    submitBtn.setAttribute('type', 'submit');
+    submitBtn.textContent = 'Submit';
+    form.appendChild(submitBtn);
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault(); // Prevent page reload
+
+        const formData = new FormData(form);
+        const jsonData = Object.fromEntries(formData.entries());
+
+        console.log('Submitting:', jsonData);
+
+        try {
+            const response = await fetch(`/api/v1/helpers/${selectedModel}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(jsonData)
+            });
+
+            const result = await response.json();
+            displayStatus(response.ok, result);
+        } catch (error) {
+            console.error('Error submitting form:', error);
+            displayStatus(false, { error: 'Failed to submit data' });
+        }
+    });
+
+    formContainer.appendChild(form);
+}
+function displayStatus(success, response) {
+    const statusDiv = document.getElementById('statusAndError');
+    statusDiv.innerHTML = ''; // Clear previous messages
+    statusDiv.style.padding = "10px";
+    statusDiv.style.marginTop = "10px";
+
+    const message = document.createElement('p');
+    message.textContent = success ? "Success: Document Created!" : `Error: ${response.error || "Unknown error"}`;
+    message.style.color = success ? "lightBlue" : "red";
+
+    statusDiv.appendChild(message);
+}
+
+
+  </script>
+  

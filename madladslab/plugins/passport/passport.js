@@ -144,6 +144,7 @@ passport.deserializeUser(async (id, done) => {
     const db = getDb();
     const users = db.collection('users');
     const user = await users.findOne({ _id: new ObjectId(id) });
+     if (!user) return done(null, false);
     done(null, user);
   } catch (err) {
     done(err);
