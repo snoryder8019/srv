@@ -1,0 +1,56 @@
+<script>
+ document.addEventListener('DOMContentLoaded', () => {
+    console.log(`Search logic loaded`);
+
+    const searchBar = document.getElementById('searchBar');
+    const searchReturn = document.getElementById('searchReturn');
+    const modelSelect = document.querySelector('select');
+
+    searchBar.addEventListener('input', async () => {
+        const query = searchBar.value.trim();
+        const selectedModel = modelSelect.value;
+
+        if (!selectedModel) {
+            console.warn('No model selected.');
+            return;
+        }
+
+        if (query.length < 2) {
+            searchReturn.innerHTML = ""; // Clear results if query is too short
+            return;
+        }
+
+        console.log(`Searching in model: ${selectedModel}, Query: ${query}`);
+
+        try {
+            const response = await fetch(`/api/v1/helpers/${selectedModel}/search?q=${query}`);
+            if (!response.ok) throw new Error('Search request failed');
+
+            const results = await response.json();
+            displayResults(results);
+        } catch (error) {
+            console.error("Error fetching search results:", error);
+            searchReturn.innerHTML = `<p style="color: red;">Error fetching results</p>`;
+        }
+    });
+
+    function displayResults(results) {
+        searchReturn.innerHTML = ""; // Clear previous results
+
+        if (results.length === 0) {
+            searchReturn.innerHTML = "<p>No results found</p>";
+            return;
+        }
+
+        const list = document.createElement("ul");
+        results.forEach(doc => {
+            const listItem = document.createElement("li");
+            listItem.textContent = JSON.stringify(doc); // Display result as JSON
+            list.appendChild(listItem);
+        });
+
+        searchReturn.appendChild(list);
+    }
+});
+
+</script>

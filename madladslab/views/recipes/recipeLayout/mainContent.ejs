@@ -1,47 +1,64 @@
 <div class="contentScroll">
     <div class="contentBox">
-        <div class="contentTitle">Drinks</div>
+        <div class="contentTitle">Search Index</div>
         <div class="contentBody">
-          
-            <input id="recipeSearch" type="text">
-            <div id="lookupReturn"></div>
-            <div class="lookupExample">
-                name: long island
-                type: drink
-                container: collins
-                rim: none
-                ingedients: foreach
-                garnish: foreach
-                directions:
+            <label for="model-select">Select Model:</label>
+            <select id="model-select">
+                <option value="">-- Select a Model --</option>
+                <% models.forEach(model => { %>
+                    <option value="<%= model %>"><%= model %></option>
+                    <% }); %>
+                </select>
+                
+                <label for="searchBar">Search:</label>
+                <input type="text" id="searchBar" placeholder="Type to search..." autocomplete="off">
+                
+                <div id="searchReturn"></div>
             </div>
         </div>
-        </div>
+        <div class="contentBox">
+    <div class="contentTitle">Search All</div>
+    <select id="model-select" onchange="fetchModelItems(this.value)">
+        <option value="">-- Select a Model --</option>
+        <% models.forEach(model => { %>
+            <option value="<%= model %>"><%= model %></option>
+        <% }); %>
+    </select>
+    
+    <div id="searchReturn"></div>
+    
+    <script>
+        function fetchModelItems(modelName) {
+            if (!modelName) return document.getElementById('searchReturn2').innerHTML = '';
+    
+            fetch(`/api/v1/helpers/${modelName}`)
+                .then(res => res.json())
+                .then(data => {
+                    const html = data.map(item => `<pre>${JSON.stringify(item, null, 2)}</pre>`).join('');
+                    document.getElementById('searchReturn2').innerHTML = html;
+                });
+        }
+    </script>
+    
+    <div id="searchReturn2"></div>
+    
+     
+
+</div>
 
 
- 
+
     <div class="contentBox">
-        <div class="contentTitle">NoteBook</div>
-       <div>
-        <select name="" id="noteYear"><option value="">year</option></select>
-        <select name="" id="noteMonth"><option value="">month</option></select>
-        <select name="" id="noteDate"><option value="">date</option></select>
-       </div>
-        <div class="contentBody">
-            <P>"previousday"</P>
-            <div class="addBox">+ note</div>
-            <P>"nextday"</P>
+        <div class="contentTitle">
+<button id="openAddForm">add</button>
+<button id="openEditForm">edit</button>
+
         </div>
-
-    </div>
-
-    <div class="contentBox">
-        <div class="contentTitle">Add - Edit - Delete</div>
-        <div class="contentBody">
-            <div class="addBox">+ recipe</div>
-            <div class="addBox">+ type</div>
-         <div class="addBox">+ ingredient</div>
-         <div class="addBox">+ measuremnt unit</div>
-         <div class="addBox">+ container</div>
+        <div id="addFormDiv" class="contentBody">
+      <%-include('./forms/addForm.ejs')%>
+        </div>
+        <div id="editFormDiv" class="contentBody">
+      <%-include('./forms/editForm.ejs')%>
         </div>
 
     </div>

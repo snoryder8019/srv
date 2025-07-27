@@ -8,6 +8,7 @@ import session from "express-session";
 import MongoStore from 'connect-mongo';
 import { fileURLToPath } from 'url';
 import indexRouter from './routes/index.js'
+import apiRouter from './api/index.js'
 import {connectDB} from './plugins/mongo/mongo.js';
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -36,22 +37,23 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-app.use((req, res, next) => {
-  console.log("Session ID:", req.session.id);
-  console.log("Session User:", req.session.passport);
-  console.log("Request User:", req.user);
-  next();
-});
+// app.use((req, res, next) => {
+//   console.log("Session ID:", req.session.id);
+//   console.log("Session User:", req.session.user);
+//   console.log("Request User:", req.user);
+//   next();
+// });
 
 
 connectDB();
 app.use(logger('dev'));
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/', indexRouter);
+app.use('/',indexRouter);
+app.use('/api',apiRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
