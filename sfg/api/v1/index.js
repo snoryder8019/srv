@@ -1,14 +1,13 @@
 import express from 'express';
-
+import ep from './ep/index.js'
+import helpers from './models/helpers/crud.js'
 const router = express.Router();
-import blogs from './blogs.js'
-import brands from './brands.js'
-import sites from './sites.js'
+
 /* GET home page. */
 router.get('/', (req, res, next) => {
     res.json({"message":"sna version 1"})
 });
-router.use('/blogs',blogs)
-router.use('/brands',brands)
-router.use('/sites',sites)
+router.use('/',ep)
+router.use('/helpers',helpers)
 export default router;
+

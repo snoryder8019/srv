@@ -1,7 +1,6 @@
 import express from "express"
 const router = express.Router()
 import chalk from "chalk"
-import Sites from "../../api/v1/models/Site.js"
 
 async function isAdmin(req, res, next) {
     const user = req.user;
