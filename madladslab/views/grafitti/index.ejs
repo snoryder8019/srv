@@ -1,0 +1,265 @@
+<html>
+<head>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <meta name="facebook-domain-verification" content="834yvsr0tr68eevl291uhwkt4nsd1c" />
+    <link rel="stylesheet" href="/stylesheets/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+    <meta property="og:title" content="madLadsLab.com" />
+
+<meta property="og:description" content="Web Applications, Video, Email, IT" />
+<meta property="og:image" content="https://madladslab.com/images/madTitle.jpg" />
+<meta property="og:url" content="https://madladslab.com" />
+<meta property="og:type" content="website" />
+</head>
+<body>
+    <div class="main">
+        <div class="contentScroll">
+
+
+            <div class="contentBox">
+              <h1>Greeley Grafitti Project</h1>
+                <div><%= user ? user.firstName +' '+user.lastName : 'Guest' %></div>
+                <div>user access: <%= user ? user.isAdmin : 'Guest' %></div>
+          <img style="width:100%" src="https://acmcreativeconcepts.com/images/gp/graffiti.png" alt="">
+            </div>
+<!--------------=====================------------------->
+
+
+<!--------------=====================------------------->
+
+<div class="contentBox scroll">
+  <h2>Potential Location</h2>
+  <h3>COMPARISONS</h3>
+  <div class="scroll">
+   <% (locations || []).forEach(loc => { %>
+  <div style="border:dotted 1px #ccc" class="taskDiv">
+    <% Object.keys(loc).forEach(key => { if (key !== '_id') { %>
+      <div>
+        <span><%= key %>:</span>
+        <span class="dataField">
+          <%= Array.isArray(loc[key]) ? loc[key].join(', ')
+             : (typeof loc[key] === 'object' ? JSON.stringify(loc[key]) : loc[key]) %>
+        </span>
+      </div>
+    <% }}) %>
+    <a href="/grafitti/edit/Location/<%= loc._id %>">Edit</a>
+  </div>
+<% }) %>
+
+    </div>
+  </div>
+  <!--------------=====================------------------->
+  <!--------------=====================------------------->
+  <div class="contentBox scroll">
+    <h2>Potential Task</h2>
+    <h3>COMPARISONS</h3>
+    <div class="scroll">
+      <% 
+      const grouped = {};
+      (tasks || []).forEach(task => {
+        const t = task.type || 'Uncategorized';
+        if (!grouped[t]) grouped[t] = [];
+        grouped[t].push(task);
+      });
+      Object.keys(grouped).forEach(type => { 
+    %>
+      <h4><%= type %></h4>
+      <% grouped[type].forEach(task => { %>
+        <div style="border:dotted 1px #ccc" class="taskDiv">
+          <% Object.keys(task).forEach(key => { if (key !== '_id' && key !=='type' && key !== 'status') { %>
+            <div>
+              <span><%= key %>:</span>
+              <span class="dataField">
+                <%= Array.isArray(task[key]) ? task[key].join(', ')
+                     : (typeof task[key] === 'object' ? JSON.stringify(task[key]) : task[key]) %>
+              </span>
+            </div>
+          <% }}) %>
+
+          <div>
+            <span>Status:</span>
+            <form action="/grafitti/update/Task/<%= task._id %>" method="POST" style="display:inline;">
+              <select name="status" onchange="this.form.submit()">
+                <% ['Pending','In Progress','Completed','On Hold'].forEach(opt => { %>
+                  <option value="<%= opt %>" <%= task.status === opt ? 'selected' : '' %>><%= opt %></option>
+                <% }) %>
+              </select>
+            </form>
+            <a href="/grafitti/edit/Task/<%= task._id %>">Edit</a>
+          </div>
+
+        </div>
+      <% }) %>
+    <% }) %>
+  </div>
+</div>
+
+
+
+
+  <div class="contentBox scroll">
+    <div class="scroll">
+      fundraising
+      40 shares @ 10k
+    </div>
+  </div>
+
+
+
+
+  <div class="contentBox scroll">
+    <div class="scroll">
+
+<h1>Share Promos</h1>
+<h2><a href="/qrs/qr.png?text=https://madladslab.com/grafitti/invite/20-off">20% off coupon</a></h2>
+<h2><a href="/qrs/qr.png?text=https://madladslab.com/grafitti/invite/founders-club-dinner">Founders Club Dinner</a></h2>
+
+
+
+
+      </div>
+  </div>
+
+
+
+
+  <div class="contentBox scroll">
+    <h2>Add new Entry</h2>
+    <div class="scroll">
+    
+      <select class="selectBox" id="modelSelect">
+        <% (models || models || []).forEach(m => { %>
+        <option value="<%= m %>"><%= m %></option>
+        <% }) %>
+      </select>
+      <form class="selectBox" id="dynamicForm" method="POST"></form>
+      
+      
+      
+      <script>
+        const sel  = document.getElementById('modelSelect');
+        const form = document.getElementById('dynamicForm');
+        
+        sel.addEventListener('change', loadFields);
+        document.addEventListener('DOMContentLoaded', loadFields);
+        
+        async function loadFields() {
+          const model = sel?.value;
+          if (!model) return;
+          
+          // set action to your save endpoint
+          form.action = `/api/v1/helpers/${encodeURIComponent(model)}`;
+          
+          const r = await fetch(`/grafitti/fields?model=${encodeURIComponent(model)}`, {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin'
+          });
+          if (!r.ok) return console.error('HTTP', r.status);
+          const fields = await r.json();
+          buildForm(fields);
+        }
+        
+        function buildForm(fields) {
+          form.innerHTML = '';
+          
+          // hidden model name (optional)
+          const hiddenModel = document.createElement('input');
+          hiddenModel.type = 'hidden';
+          hiddenModel.name = '_model';
+          hiddenModel.value = sel.value;
+          form.appendChild(hiddenModel);
+          
+          Object.entries(fields).forEach(([name, cfg]) => {
+            const wrap = document.createElement('div');
+            
+            // label (skip for HIDDEN)
+            if (cfg.type !== 'HIDDEN') {
+              const label = document.createElement('label');
+              label.textContent = name;
+              label.htmlFor = name;
+              wrap.appendChild(label);
+            }
+            
+            let el;
+            switch ((cfg.type || '').toUpperCase()) {
+              case 'HIDDEN':
+                el = document.createElement('input');
+                el.type = 'hidden';
+        el.value = cfg.value ?? '';
+        break;
+        
+        case 'TEXTAREA':
+          el = document.createElement('textarea');
+          el.value = cfg.value ?? '';
+          break;
+          
+          case 'DROPDOWN': // expects cfg.options = [{value,label}] or [string]
+          el = document.createElement('select');
+          (cfg.options || []).forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = (o && typeof o === 'object') ? (o.value ?? '') : String(o ?? '');
+            opt.textContent = (o && typeof o === 'object') ? (o.label ?? opt.value) : String(o ?? '');
+            if ((cfg.value ?? '') === opt.value) opt.selected = true;
+            el.appendChild(opt);
+          });
+          break;
+          
+          case 'BOOLEAN': // render as dropdown per your preference
+          case 'BOOL':
+            el = document.createElement('select');
+            [['true','True'], ['false','False']].forEach(([val,label])=>{
+              const opt = document.createElement('option');
+              opt.value = val; opt.textContent = label;
+              if (String(cfg.value) === val) opt.selected = true;
+              el.appendChild(opt);
+            });
+            break;
+            
+            case 'NUMBER':
+              case 'INT':
+                case 'FLOAT':
+                  el = document.createElement('input');
+                  el.type = 'number';
+                  el.value = cfg.value ?? '';
+                  break;
+                  
+                  case 'DATE':
+                    el = document.createElement('input');
+                    el.type = 'date';
+                    el.value = cfg.value ?? '';
+                    break;
+                    
+                    default:
+                      el = document.createElement('input');
+                      el.type = 'text';
+                      el.value = cfg.value ?? '';
+                    }
+                    
+                    el.name = name;
+                    el.id = name;
+                    wrap.appendChild(el);
+                    form.appendChild(wrap);
+                  });
+                  
+                  // submit button
+                  const submit = document.createElement('button');
+                  submit.type = 'submit';
+                  submit.textContent = 'Save';
+                  form.appendChild(submit);
+                }
+              </script>
+
+
+
+</div>
+</div>
+<!--------------=====================------------------->
+
+
+</div>
+<%-include('../mainContent/footer')%>
+</div>
+</body>
+</html>
+<%-include('../scripts/index.ejs')%>

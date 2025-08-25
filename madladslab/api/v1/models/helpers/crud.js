@@ -13,8 +13,10 @@ router.use(express.json()); // Ensure JSON parsing
 // Utility function to dynamically load a model
 async function loadModel(modelName) {
     try {
-        const modelsDir = path.join(process.cwd(), "api/v1/models/recipes");
+        const modelsDir = path.join(process.cwd(), "api/v1/models/grafitti");
         const modelPath = path.join(modelsDir, `${modelName}.js`);
+        console.log(modelPath)
+        console.log(modelsDir)
 console.log(`modelPath:${modelPath} modelDir:${modelsDir}`)
         if (!fs.existsSync(modelPath)) {
             throw new Error(`Model ${modelName} not found`);
