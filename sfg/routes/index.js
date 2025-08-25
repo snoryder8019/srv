@@ -3,9 +3,11 @@ const router = express.Router();
 import plugins from '../plugins/index.js'
 import recipes from './recipes/index.js'
 import forms from './forms/index.js'
+import signups from "./signups/index.js"
 import admin from "./admin/index.js"
 /* GET home page. */
 
+router.use('/signups', signups)
 router.use('/admin', admin)
 router.use('/recipes', recipes)
 router.use('/', plugins)

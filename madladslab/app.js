@@ -7,6 +7,7 @@ import passport from "passport";
 import session from "express-session";
 import MongoStore from 'connect-mongo';
 import { fileURLToPath } from 'url';
+
 import indexRouter from './routes/index.js'
 import apiRouter from './api/index.js'
 import {connectDB} from './plugins/mongo/mongo.js';
