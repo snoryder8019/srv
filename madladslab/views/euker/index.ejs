@@ -1,0 +1,149 @@
+<!-- views/euker.ejs -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Euker</title>
+  <style>
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .card{border:1px solid #ccc;border-radius:6px;padding:6px 10px;cursor:pointer}
+    .card[disabled]{opacity:.5;cursor:not-allowed}
+    .pill{display:inline-block;padding:2px 8px;border:1px solid #ddd;border-radius:999px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    pre{background:#f6f6f6;padding:8px;border-radius:6px;max-width:100%;overflow:auto}
+    table{border-collapse:collapse}
+    th,td{border:1px solid #ddd;padding:6px 8px}
+  </style>
+</head>
+<body>
+  <h1><%= message %></h1>
+  <p><%= rules %></p>
+
+  <div class="row">
+    <button id="startBtn">Start / Deal</button>
+    <button id="refreshBtn">Refresh</button>
+    <span class="pill">Phase: <span id="phase"><%= gameState.phase %></span></span>
+    <span class="pill">Dealer: <span id="dealer"><%= gameState.players[gameState.dealerIdx] || '-' %></span></span>
+    <span class="pill">Turn: <span id="turn"><%= gameState.players[gameState.turnIdx] || '-' %></span></span>
+    <span class="pill">Upcard: <span id="upcard"><%= gameState.upcard || '-' %></span></span>
+    <span class="pill">Trump: <span id="trump"><%= gameState.trump || '-' %></span></span>
+  </div>
+
+  <!-- Bidding controls -->
+  <div class="grid" style="margin:12px 0">
+    <div>
+      <h3>Round 1 (Upcard Suit)</h3>
+      <div class="row">
+        <button id="orderBtn">Order Up</button>
+        <button id="passBtn">Pass</button>
+      </div>
+      <small>Use when Phase is <code>bidding1</code>.</small>
+    </div>
+    <div>
+      <h3>Round 2 (Other Suit)</h3>
+      <div class="row">
+        <select id="chooseSuit">
+          <option value="H">Hearts</option>
+          <option value="D">Diamonds</option>
+          <option value="C">Clubs</option>
+          <option value="S">Spades</option>
+        </select>
+        <button id="chooseBtn">Choose</button>
+        <button id="dealerChooseBtn" title="Dealer must choose at end of round 2">Dealer Choose</button>
+      </div>
+      <small>Use when Phase is <code>bidding2</code>.</small>
+    </div>
+  </div>
+
+  <!-- Play a specific card (fallback manual) -->
+  <form id="playForm" class="row">
+    <select id="playerInput">
+      <option>North</option><option>East</option><option>South</option><option>West</option>
+    </select>
+    <input type="text" id="cardInput" placeholder="Card (e.g. 9H)">
+    <button type="submit">Play Card</button>
+  </form>
+
+  <pre id="output"></pre>
+
+  <!-- Server-rendered table with clickable cards -->
+  <%- include('table', { gameState }) %>
+
+  <script>
+    const $ = s => document.querySelector(s);
+    const output = $('#output');
+
+    const api = (path, opts={}) =>
+      fetch(path, Object.assign({ headers:{'Content-Type':'application/json'} }, opts))
+      .then(r => r.json());
+
+    // controls
+    $('#startBtn').addEventListener('click', async () => {
+      const data = await api('/euker/start', { method:'POST' });
+      output.textContent = JSON.stringify(data, null, 2);
+      location.reload(); // re-render EJS to update hands/table
+    });
+
+    $('#refreshBtn').addEventListener('click', () => location.reload());
+
+    // bidding round 1
+    $('#orderBtn').addEventListener('click', async () => {
+      const data = await api('/euker/bid', { method:'POST', body: JSON.stringify({ action:'order' }) });
+      output.textContent = JSON.stringify(data, null, 2);
+      location.reload();
+    });
+    $('#passBtn').addEventListener('click', async () => {
+      const data = await api('/euker/bid', { method:'POST', body: JSON.stringify({ action:'pass' }) });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (!data.error) location.reload();
+    });
+
+    // bidding round 2
+    $('#chooseBtn').addEventListener('click', async () => {
+      const suit = $('#chooseSuit').value;
+      const data = await api('/euker/bid', { method:'POST', body: JSON.stringify({ action:'choose', suit }) });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (!data.error) location.reload();
+    });
+    $('#dealerChooseBtn').addEventListener('click', async () => {
+      const suit = $('#chooseSuit').value;
+      const data = await api('/euker/dealer-choose', { method:'POST', body: JSON.stringify({ suit }) });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (!data.error) location.reload();
+    });
+
+    // manual play fallback
+    $('#playForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const card = $('#cardInput').value.trim();
+      const player = $('#playerInput').value;
+      const data = await api('/euker/play', { method:'POST', body: JSON.stringify({ card, player }) });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (!data.error) location.reload();
+    });
+
+    // tap-to-play (delegate)
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.card');
+      if (!btn) return;
+      const player = btn.dataset.player;
+      const card = btn.dataset.card;
+      const data = await api('/euker/play', { method:'POST', body: JSON.stringify({ player, card }) });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (!data.error) btn.setAttribute('disabled','');
+      // optionally refresh to re-render hands/turn/score
+      if (!data.error) location.reload();
+    });
+
+    // quick state peek without reload (optional)
+    async function peek() {
+      const s = await api('/euker/state');
+      $('#phase').textContent = s.gameState.phase || '-';
+      $('#dealer').textContent = (s.gameState.players?.[s.gameState.dealerIdx]) || '-';
+      $('#turn').textContent = (s.gameState.players?.[s.gameState.turnIdx]) || '-';
+      $('#upcard').textContent = s.gameState.upcard || '-';
+      $('#trump').textContent = s.gameState.trump || '-';
+    }
+    peek();
+  </script>
+</body>
+</html>

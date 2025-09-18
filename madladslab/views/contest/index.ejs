@@ -1,0 +1,100 @@
+<!-- ...existing head and scoreboard code... -->
+
+  <!-- Player Controls -->
+  <div id="controls">
+    <% if (!user) { %>
+      <a href="/auth/google"><button id="loginBtn">Login to Join</button></a>
+    <% } else { %>
+      <% if (user.contest === "mgr") { %>
+        <button id="mgrPendingBtn">View Pending Actions</button>
+      <% } %>
+      <button id="joinBtn">Join Contest</button>
+      <% if (user.contest === "player" || user.contest === "mgr") { %>
+        <button data-action="foodRun">Run Food (+1)</button>
+        <button data-action="steal">Steal (+1 / -1)</button>
+        <button data-action="drinkRun">Run Drinks (+1)</button>
+        <button data-action="preBus">Pre-bus Table (+2)</button>
+        <button data-action="mistake">Mistake (-1)</button>
+      <% } %>
+    <% } %>
+  </div>
+
+  <!-- Socket.IO + JS -->
+  <script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io("/contest");
+  const scoreboardEl = document.getElementById("scoreboard");
+  const lbList = document.querySelector("#scoreboard2 .leaderboard ol");
+  let playerId = null;
+
+  function renderTable(data){
+    let html = `<table><thead><tr><th>Player</th><th>Total Points</th><th>Steals</th></tr></thead><tbody>`;
+    data.forEach(r => { html += `<tr><td>${r.playerName || r.playerId}</td><td>${r.totalPoints}</td><td>${r.steals}</td></tr>`; });
+    html += "</tbody></table>";
+    scoreboardEl.innerHTML = html;
+  }
+
+  function renderLeaderboard(data){
+    lbList.innerHTML = "";
+    data.slice(0,10).forEach((r, i) => {
+      const medal = i===0 ? "🥇" : i===1 ? "🥈" : i===2 ? "🥉" : `#${i+1}`;
+      const li = document.createElement("li");
+      li.textContent = `${medal}  ${r.playerName || r.playerId} — ${r.totalPoints} pts (${r.steals} steals)`;
+      lbList.appendChild(li);
+    });
+  }
+
+  socket.on("score:update", data => {
+    renderTable(data);
+    renderLeaderboard(data);
+  });
+
+  document.addEventListener("DOMContentLoaded", function() {
+    <% if (user) { %>
+      // Try to get playerId if already joined
+      (async function() {
+        try {
+          const resp = await fetch("/contest/me");
+          if (resp.ok) {
+            const me = await resp.json();
+            if (me && me._id) playerId = me._id;
+          }
+        } catch (e) {}
+      })();
+
+      document.getElementById("joinBtn").addEventListener("click", async () => {
+        const name = prompt("Enter your name:");
+        if (!name) return;
+        const r = await fetch("/contest/player/join", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name })
+        });
+        const p = await r.json();
+        playerId = p._id;
+        alert("Joined as " + p.name);
+      });
+
+      document.querySelectorAll("button[data-action]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          if (!playerId) {
+            alert("Please join the contest first!");
+            return;
+          }
+          await fetch(`/contest/player/${playerId}/action`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: btn.dataset.action })
+          });
+        });
+      });
+
+      <% if (user.contest === "mgr") { %>
+        document.getElementById("mgrPendingBtn").addEventListener("click", async () => {
+          const r = await fetch("/contest/mgr/pending");
+          const pending = await r.json();
+          alert("Pending actions: " + JSON.stringify(pending, null, 2));
+        });
+      <% } %>
+    <% } %>
+  });
+</script>
+</body>

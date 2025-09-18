@@ -9,10 +9,15 @@ export default class Invite extends ModelHelper{
         type: {type:'text', value:null, editable:true}, //calendar invite , coupon, comp, contest, emailer, likeness, testimony
       link: {type:'text', value:null, editable:true},
       email: {type:'text', value:null, editable:true},
+      confirmed: {type:'boolean', value:null, editable:false},
+      emailConsent: {type:'boolean', value:null, editable:false},
+      likenessConsent: {type:'boolean', value:null, editable:false},
+      marketingConsent: {type:'boolean', value:null, editable:false},
       name:{type:'text', value:null, editable:true},
       phone: {type:'text', value:null, editable:true},
-      regId: {type:'text', value:null, editable:true},
-      regStatus: {type:'text', value:null, editable:true} //notClaimed,Claimed,Redeemed,Voided,Returned
+      regId: {type:'text', value:null, editable:false},
+      expire:{type:'date', value:null, editable:true},
+      inviteStatus: {type:'text', value:null, editable:false} //notClaimed,Claimed,Redeemed,Voided,Returned
     }
   }
 

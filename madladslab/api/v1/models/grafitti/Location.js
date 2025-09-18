@@ -28,6 +28,9 @@ export default class Location extends ModelHelper{
       seatingCap:{type:'number', value:null, editable:true},
       signage:{type:'textarea', value:null, editable:true},
       parkingRatio:{type:'number', value:null, editable:true},
+      notes:{type:'textarea', value:null, editable:true},
+      lat:{type:'number', value:null, editable:true},
+      lng:{type:'number', value:null, editable:true},
       //brand should await new Brands().getAll() and be dropdown options
       //  on dynamic form
       brand:{type:'text', value:null,editable:true  }
