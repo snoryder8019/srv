@@ -31,6 +31,7 @@ export const newUser = async (profile, provider) => {
     password: '',
     isAdmin: false,   
     isAustins:false,
+    contest:'player',
     notifications: [],
     images: [],
     subscription: 'free',

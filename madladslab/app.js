@@ -11,7 +11,11 @@ import { fileURLToPath } from 'url';
 import indexRouter from './routes/index.js'
 import apiRouter from './api/index.js'
 import {connectDB} from './plugins/mongo/mongo.js';
+// /app.js
 const app = express();
+// ...
+app.use(cookieParser(process.env.COOKIE_SECRET || "dev"));
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // view engine setup
