@@ -1,27 +1,85 @@
-<!-- views/table.ejs -->
-<table>
-  <thead>
-    <tr><th>Player</th><th>Hand (tap to play)</th></tr>
-  </thead>
-  <tbody>
-    <% if (gameState && gameState.hands) { %>
-      <% Object.keys(gameState.hands).forEach(p => { %>
-        <tr>
-          <td><%= p %></td>
-          <td>
-            <% (gameState.hands[p] || []).forEach(c => { %>
-              <button class="card" data-player="<%= p %>" data-card="<%= c %>"><%= c %></button>
-            <% }) %>
-            <% if ((gameState.hands[p] || []).length === 0) { %>—<% } %>
-          </td>
-        </tr>
-      <% }) %>
-    <% } %>
-  </tbody>
-</table>
+<!-- views/euker/table.ejs -->
+<div class="game-table-container">
+  <h2>Players & Hands</h2>
+  <table class="game-table">
+    <thead>
+      <tr>
+        <th>Player</th>
+        <th>Hand (tap to play)</th>
+        <th>Cards</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (gameState && gameState.hands) { %>
+        <% Object.keys(gameState.hands).forEach(p => {
+          const isCurrentTurn = gameState.players && gameState.players[gameState.turnIdx] === p;
+          const cardCount = (gameState.hands[p] || []).length;
+        %>
+          <tr class="<%= isCurrentTurn ? 'current-turn' : '' %>">
+            <td class="player-name">
+              <%= p %>
+              <% if (isCurrentTurn) { %><span class="turn-indicator">→</span><% } %>
+            </td>
+            <td class="hand-cards">
+              <% if (cardCount > 0) { %>
+                <% (gameState.hands[p] || []).forEach(c => { %>
+                  <button class="card" data-player="<%= p %>" data-card="<%= c %>"
+                          <%= isCurrentTurn ? '' : 'disabled' %>>
+                    <%= c %>
+                  </button>
+                <% }) %>
+              <% } else { %>
+                <span class="empty-hand">No cards</span>
+              <% } %>
+            </td>
+            <td class="card-count"><%= cardCount %></td>
+          </tr>
+        <% }) %>
+      <% } %>
+    </tbody>
+  </table>
 
-<h3>Score</h3>
-<p>North/South: <%= gameState.score.teamNS %> | East/West: <%= gameState.score.teamEW %></p>
+  <div class="scoreboard">
+    <div class="score-section">
+      <h3>Current Game Score</h3>
+      <div class="score-grid">
+        <div class="team-score team-ns">
+          <span class="team-label">North/South</span>
+          <span class="score-value"><%= gameState.score.teamNS %></span>
+        </div>
+        <div class="team-score team-ew">
+          <span class="team-label">East/West</span>
+          <span class="score-value"><%= gameState.score.teamEW %></span>
+        </div>
+      </div>
+    </div>
 
-<h3>Games Won</h3>
-<p>North/South: <%= gameState.gamesWon.teamNS %> | East/West: <%= gameState.gamesWon.teamEW %></p>
+    <div class="score-section">
+      <h3>Games Won</h3>
+      <div class="score-grid">
+        <div class="team-score team-ns">
+          <span class="team-label">North/South</span>
+          <span class="score-value"><%= gameState.gamesWon.teamNS %></span>
+        </div>
+        <div class="team-score team-ew">
+          <span class="team-label">East/West</span>
+          <span class="score-value"><%= gameState.gamesWon.teamEW %></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <% if (gameState.currentTrick && gameState.currentTrick.length > 0) { %>
+    <div class="current-trick">
+      <h3>Current Trick</h3>
+      <div class="trick-cards">
+        <% gameState.currentTrick.forEach(play => { %>
+          <div class="trick-play">
+            <span class="trick-player"><%= play.player %></span>
+            <span class="trick-card"><%= play.card %></span>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  <% } %>
+</div>
