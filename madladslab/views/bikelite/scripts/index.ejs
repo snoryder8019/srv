@@ -1,0 +1,159 @@
+
+<script>
+  /**
+   * Fullscreen Toggle Handler
+   * Provides cross-browser fullscreen functionality with proper exit handling
+   * and synchronization with native browser controls (ESC key, etc.)
+   */
+  (function() {
+    'use strict';
+
+    // Constants
+    const FLASH_ELEMENT_ID = 'flashbox';
+    const EXPANDED_CLASS = 'expanded';
+    const EXIT_TEXT = 'Tap to exit';
+    const DEFAULT_WIDTH = '300px';
+    const DEFAULT_MIN_HEIGHT = '100%';
+
+    // DOM Elements
+    const flash = document.getElementById(FLASH_ELEMENT_ID);
+    if (!flash) return;
+
+    // Store original element properties
+    const originalState = {
+      html: flash.innerHTML || '',
+      width: flash.style.width || '',
+      minHeight: flash.style.minHeight || ''
+    };
+
+    /**
+     * Request fullscreen mode with cross-browser support
+     * @param {HTMLElement} element - Element to make fullscreen
+     * @returns {Promise<void>}
+     */
+    async function requestFullscreen(element) {
+      try {
+        if (element.requestFullscreen) {
+          return await element.requestFullscreen();
+        }
+        if (element.webkitRequestFullscreen) {
+          return await element.webkitRequestFullscreen();
+        }
+        if (element.mozRequestFullScreen) {
+          return await element.mozRequestFullScreen();
+        }
+        if (element.msRequestFullscreen) {
+          return await element.msRequestFullscreen();
+        }
+      } catch (error) {
+        console.warn('Failed to enter fullscreen:', error);
+      }
+    }
+
+    /**
+     * Exit fullscreen mode with cross-browser support
+     * @returns {Promise<void>}
+     */
+    async function exitFullscreen() {
+      try {
+        const isInFullscreen = document.fullscreenElement ||
+                               document.webkitFullscreenElement ||
+                               document.mozFullScreenElement ||
+                               document.msFullscreenElement;
+
+        if (!isInFullscreen) return;
+
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          await document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+          await document.msExitFullscreen();
+        }
+      } catch (error) {
+        console.warn('Failed to exit fullscreen:', error);
+      }
+    }
+
+    /**
+     * Check if currently in fullscreen mode
+     * @returns {boolean}
+     */
+    function isFullscreen() {
+      return !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+    }
+
+    /**
+     * Enter expanded fullscreen mode
+     * @returns {Promise<void>}
+     */
+    async function enterExpandedMode() {
+      flash.classList.add(EXPANDED_CLASS);
+      await requestFullscreen(flash);
+      flash.innerHTML = `<h1>${EXIT_TEXT}</h1>`;
+      flash.style.width = '100%';
+      flash.style.minHeight = '100vh';
+    }
+
+    /**
+     * Exit expanded fullscreen mode and restore original state
+     * @returns {Promise<void>}
+     */
+    async function exitExpandedMode() {
+      await exitFullscreen();
+      flash.classList.remove(EXPANDED_CLASS);
+      flash.style.width = originalState.width || DEFAULT_WIDTH;
+      flash.style.minHeight = originalState.minHeight || DEFAULT_MIN_HEIGHT;
+      flash.innerHTML = originalState.html;
+    }
+
+    /**
+     * Toggle between normal and expanded fullscreen mode
+     * @returns {Promise<void>}
+     */
+    async function toggleExpandedMode() {
+      if (flash.classList.contains(EXPANDED_CLASS)) {
+        await exitExpandedMode();
+      } else {
+        await enterExpandedMode();
+      }
+    }
+
+    /**
+     * Handle fullscreen state changes triggered by browser controls
+     * Ensures UI remains synchronized when user exits via ESC or browser UI
+     */
+    function handleFullscreenChange() {
+      if (!isFullscreen() && flash.classList.contains(EXPANDED_CLASS)) {
+        // User exited fullscreen by other means - restore UI state
+        flash.classList.remove(EXPANDED_CLASS);
+        flash.style.width = originalState.width || DEFAULT_WIDTH;
+        flash.style.minHeight = originalState.minHeight || DEFAULT_MIN_HEIGHT;
+        flash.innerText = originalState.text;
+      }
+    }
+
+    // Event Listeners
+    flash.addEventListener('click', toggleExpandedMode);
+
+    // Cross-browser fullscreen change events
+    const fullscreenEvents = [
+      'fullscreenchange',
+      'webkitfullscreenchange',
+      'mozfullscreenchange',
+      'MSFullscreenChange'
+    ];
+
+    fullscreenEvents.forEach(eventName => {
+      document.addEventListener(eventName, handleFullscreenChange);
+    });
+
+  })();
+</script>

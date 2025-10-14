@@ -1,100 +1,449 @@
-<!-- ...existing head and scoreboard code... -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Contest - Live Scoreboard</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
 
-  <!-- Player Controls -->
-  <div id="controls">
-    <% if (!user) { %>
-      <a href="/auth/google"><button id="loginBtn">Login to Join</button></a>
-    <% } else { %>
-      <% if (user.contest === "mgr") { %>
-        <button id="mgrPendingBtn">View Pending Actions</button>
-      <% } %>
-      <button id="joinBtn">Join Contest</button>
-      <% if (user.contest === "player" || user.contest === "mgr") { %>
-        <button data-action="foodRun">Run Food (+1)</button>
-        <button data-action="steal">Steal (+1 / -1)</button>
-        <button data-action="drinkRun">Run Drinks (+1)</button>
-        <button data-action="preBus">Pre-bus Table (+2)</button>
-        <button data-action="mistake">Mistake (-1)</button>
-      <% } %>
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+    }
+    header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    header p {
+      font-size: 1.1rem;
+      opacity: 0.95;
+    }
+
+    /* User info bar */
+    .user-info {
+      background: rgba(255,255,255,0.95);
+      padding: 15px 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .user-info .user-name {
+      font-weight: 600;
+      color: #333;
+      font-size: 1.1rem;
+    }
+    .user-info .user-role {
+      display: inline-block;
+      padding: 4px 12px;
+      background: #667eea;
+      color: white;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+    .user-info a {
+      text-decoration: none;
+    }
+
+    /* Controls Section */
+    #controls {
+      background: rgba(255,255,255,0.95);
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    #controls h2 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 1.3rem;
+    }
+    #controls .button-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    button {
+      background: white;
+      border: 2px solid #667eea;
+      color: #667eea;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    button:hover {
+      background: #667eea;
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102,126,234,0.3);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+
+    button#loginBtn, button#joinBtn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+    }
+    button#loginBtn:hover, button#joinBtn:hover {
+      background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+      box-shadow: 0 4px 15px rgba(102,126,234,0.5);
+    }
+
+    button[data-action="foodRun"] { border-color: #10b981; color: #10b981; }
+    button[data-action="foodRun"]:hover { background: #10b981; color: white; }
+
+    button[data-action="steal"] { border-color: #f59e0b; color: #f59e0b; }
+    button[data-action="steal"]:hover { background: #f59e0b; color: white; }
+
+    button[data-action="drinkRun"] { border-color: #06b6d4; color: #06b6d4; }
+    button[data-action="drinkRun"]:hover { background: #06b6d4; color: white; }
+
+    button[data-action="preBus"] { border-color: #8b5cf6; color: #8b5cf6; }
+    button[data-action="preBus"]:hover { background: #8b5cf6; color: white; }
+
+    button[data-action="mistake"] { border-color: #ef4444; color: #ef4444; }
+    button[data-action="mistake"]:hover { background: #ef4444; color: white; }
+
+    button#mgrPendingBtn {
+      border-color: #f97316;
+      color: #f97316;
+    }
+    button#mgrPendingBtn:hover {
+      background: #f97316;
+      color: white;
+    }
+
+    /* Scoreboard Grid */
+    .scoreboards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .scoreboards {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .scoreboard-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .scoreboard-card h2 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 1.5rem;
+      border-bottom: 3px solid #667eea;
+      padding-bottom: 10px;
+    }
+
+    /* Table Styles */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    table thead {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    table th {
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+    table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    table tbody tr:hover {
+      background: #f9fafb;
+    }
+    table tbody tr:nth-child(odd) {
+      background: #fafafa;
+    }
+    table tbody tr:nth-child(odd):hover {
+      background: #f3f4f6;
+    }
+
+    /* Leaderboard Styles */
+    .leaderboard ol {
+      list-style: none;
+      padding: 0;
+    }
+    .leaderboard li {
+      padding: 12px 15px;
+      margin-bottom: 8px;
+      background: #f9fafb;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+    .leaderboard li:hover {
+      background: #f3f4f6;
+      transform: translateX(5px);
+    }
+    .leaderboard li:nth-child(1) {
+      background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+      border-left-color: #ffa500;
+      font-weight: bold;
+    }
+    .leaderboard li:nth-child(2) {
+      background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+      border-left-color: #a8a8a8;
+      font-weight: bold;
+    }
+    .leaderboard li:nth-child(3) {
+      background: linear-gradient(135deg, #cd7f32 0%, #e5a86a 100%);
+      border-left-color: #b8732f;
+      font-weight: bold;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      color: white;
+      margin-top: 30px;
+      opacity: 0.9;
+      font-size: 0.9rem;
+    }
+
+    /* Loading/Status Messages */
+    .status-message {
+      background: #3b82f6;
+      color: white;
+      padding: 10px 15px;
+      border-radius: 8px;
+      margin: 10px 0;
+      text-align: center;
+      display: none;
+    }
+    .status-message.show {
+      display: block;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🏆 Live Contest Scoreboard</h1>
+      <p>Track your performance in real-time</p>
+    </header>
+
+    <!-- User Info Bar -->
+    <% if (user) { %>
+      <%- include('user', { playerId: user._id || null, user: user }) %>
     <% } %>
+
+    <!-- Player Controls -->
+    <div id="controls">
+      <h2>Actions</h2>
+      <div class="status-message" id="statusMsg"></div>
+      <div class="button-grid">
+        <% if (!user) { %>
+          <a href="/auth/google"><button id="loginBtn">Login to Join</button></a>
+        <% } else { %>
+          <% if (user.contest === "mgr") { %>
+            <button id="mgrPendingBtn">View Pending Actions</button>
+          <% } %>
+          <button id="joinBtn">Join Contest</button>
+          <% if (user.contest === "player" || user.contest === "mgr") { %>
+            <button data-action="foodRun">🍔 Run Food (+1)</button>
+            <button data-action="steal">🎯 Steal (+1 / -1)</button>
+            <button data-action="drinkRun">🥤 Run Drinks (+1)</button>
+            <button data-action="preBus">🧹 Pre-bus Table (+2)</button>
+            <button data-action="mistake">❌ Mistake (-1)</button>
+          <% } %>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Scoreboards -->
+    <div class="scoreboards">
+      <div class="scoreboard-card">
+        <h2>Full Scoreboard</h2>
+        <div id="scoreboard">
+          <p style="text-align:center; color:#999; padding:20px;">Loading scores...</p>
+        </div>
+      </div>
+
+      <div class="scoreboard-card" id="scoreboard2">
+        <h2>Top 10 Leaderboard</h2>
+        <div class="leaderboard">
+          <ol>
+            <li>Loading...</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <p>Updates in real-time via Socket.IO</p>
+    </footer>
   </div>
 
   <!-- Socket.IO + JS -->
   <script src="/socket.io/socket.io.js"></script>
-<script>
-  const socket = io("/contest");
-  const scoreboardEl = document.getElementById("scoreboard");
-  const lbList = document.querySelector("#scoreboard2 .leaderboard ol");
-  let playerId = null;
+  <script>
+    const socket = io("/contest");
+    const scoreboardEl = document.getElementById("scoreboard");
+    const lbList = document.querySelector("#scoreboard2 .leaderboard ol");
+    const statusMsg = document.getElementById("statusMsg");
+    let playerId = null;
 
-  function renderTable(data){
-    let html = `<table><thead><tr><th>Player</th><th>Total Points</th><th>Steals</th></tr></thead><tbody>`;
-    data.forEach(r => { html += `<tr><td>${r.playerName || r.playerId}</td><td>${r.totalPoints}</td><td>${r.steals}</td></tr>`; });
-    html += "</tbody></table>";
-    scoreboardEl.innerHTML = html;
-  }
+    function showStatus(message, duration = 3000) {
+      statusMsg.textContent = message;
+      statusMsg.classList.add("show");
+      setTimeout(() => statusMsg.classList.remove("show"), duration);
+    }
 
-  function renderLeaderboard(data){
-    lbList.innerHTML = "";
-    data.slice(0,10).forEach((r, i) => {
-      const medal = i===0 ? "🥇" : i===1 ? "🥈" : i===2 ? "🥉" : `#${i+1}`;
-      const li = document.createElement("li");
-      li.textContent = `${medal}  ${r.playerName || r.playerId} — ${r.totalPoints} pts (${r.steals} steals)`;
-      lbList.appendChild(li);
-    });
-  }
-
-  socket.on("score:update", data => {
-    renderTable(data);
-    renderLeaderboard(data);
-  });
-
-  document.addEventListener("DOMContentLoaded", function() {
-    <% if (user) { %>
-      // Try to get playerId if already joined
-      (async function() {
-        try {
-          const resp = await fetch("/contest/me");
-          if (resp.ok) {
-            const me = await resp.json();
-            if (me && me._id) playerId = me._id;
-          }
-        } catch (e) {}
-      })();
-
-      document.getElementById("joinBtn").addEventListener("click", async () => {
-        const name = prompt("Enter your name:");
-        if (!name) return;
-        const r = await fetch("/contest/player/join", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name })
-        });
-        const p = await r.json();
-        playerId = p._id;
-        alert("Joined as " + p.name);
+    function renderTable(data){
+      if (!data || data.length === 0) {
+        scoreboardEl.innerHTML = '<p style="text-align:center; color:#999; padding:20px;">No players yet. Be the first to join!</p>';
+        return;
+      }
+      let html = `<table><thead><tr><th>Player</th><th>Total Points</th><th>Steals</th></tr></thead><tbody>`;
+      data.forEach(r => {
+        html += `<tr><td>${r.playerName || r.playerId}</td><td><strong>${r.totalPoints}</strong></td><td>${r.steals}</td></tr>`;
       });
+      html += "</tbody></table>";
+      scoreboardEl.innerHTML = html;
+    }
 
-      document.querySelectorAll("button[data-action]").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          if (!playerId) {
-            alert("Please join the contest first!");
-            return;
+    function renderLeaderboard(data){
+      if (!data || data.length === 0) {
+        lbList.innerHTML = '<li style="text-align:center; color:#999;">No players yet</li>';
+        return;
+      }
+      lbList.innerHTML = "";
+      data.slice(0,10).forEach((r, i) => {
+        const medal = i===0 ? "🥇" : i===1 ? "🥈" : i===2 ? "🥉" : `#${i+1}`;
+        const li = document.createElement("li");
+        li.textContent = `${medal}  ${r.playerName || r.playerId} — ${r.totalPoints} pts (${r.steals} steals)`;
+        lbList.appendChild(li);
+      });
+    }
+
+    socket.on("score:update", data => {
+      renderTable(data);
+      renderLeaderboard(data);
+    });
+
+    socket.on("connect", () => {
+      console.log("Connected to contest socket");
+    });
+
+    document.addEventListener("DOMContentLoaded", function() {
+      <% if (user) { %>
+        // Try to get playerId if already joined
+        (async function() {
+          try {
+            const resp = await fetch("/contest/me");
+            if (resp.ok) {
+              const me = await resp.json();
+              if (me && me._id) {
+                playerId = me._id;
+                showStatus("Welcome back!");
+              }
+            }
+          } catch (e) {
+            console.error("Error fetching user info:", e);
           }
-          await fetch(`/contest/player/${playerId}/action`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: btn.dataset.action })
+        })();
+
+        const joinBtn = document.getElementById("joinBtn");
+        if (joinBtn) {
+          joinBtn.addEventListener("click", async () => {
+            const name = prompt("Enter your name:");
+            if (!name) return;
+            try {
+              const r = await fetch("/contest/player/join", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name })
+              });
+              if (!r.ok) throw new Error("Failed to join");
+              const p = await r.json();
+              playerId = p._id;
+              showStatus(`Joined as ${p.name}!`);
+            } catch (e) {
+              showStatus("Error joining contest. Please try again.");
+            }
+          });
+        }
+
+        document.querySelectorAll("button[data-action]").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            if (!playerId) {
+              showStatus("Please join the contest first!");
+              return;
+            }
+            const action = btn.dataset.action;
+            try {
+              const resp = await fetch(`/contest/player/${playerId}/action`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action })
+              });
+              if (!resp.ok) throw new Error("Action failed");
+              showStatus(`Action "${action}" recorded!`);
+            } catch (e) {
+              showStatus("Error recording action. Please try again.");
+            }
           });
         });
-      });
 
-      <% if (user.contest === "mgr") { %>
-        document.getElementById("mgrPendingBtn").addEventListener("click", async () => {
-          const r = await fetch("/contest/mgr/pending");
-          const pending = await r.json();
-          alert("Pending actions: " + JSON.stringify(pending, null, 2));
-        });
+        <% if (user.contest === "mgr") { %>
+          const mgrBtn = document.getElementById("mgrPendingBtn");
+          if (mgrBtn) {
+            mgrBtn.addEventListener("click", async () => {
+              try {
+                const r = await fetch("/contest/mgr/pending");
+                const pending = await r.json();
+                alert("Pending actions:\n" + JSON.stringify(pending, null, 2));
+              } catch (e) {
+                showStatus("Error fetching pending actions.");
+              }
+            });
+          }
+        <% } %>
       <% } %>
-    <% } %>
-  });
-</script>
+    });
+  </script>
 </body>
+</html>

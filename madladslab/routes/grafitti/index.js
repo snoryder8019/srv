@@ -4,12 +4,15 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import fs from 'fs';
 import nodemailer from 'nodemailer';
+import multer from 'multer';
 import Invite from '../../api/v1/models/grafitti/Invite.js';
 
 import generateFormFields from '../../api/v1/models/helpers/fields.js';
 import Location from '../../api/v1/models/grafitti/Location.js';
 import Task from '../../api/v1/models/grafitti/Task.js';
 import Qr from '../../api/v1/models/grafitti/Qr.js';
+import Gencon from '../../api/v1/models/grafitti/Gencon.js';
+import { uploadToLinode } from '../../plugins/aws_sdk/setup.js';
 import { getModelInstance } from '../../api/v1/models/helpers/loader.js';
 
 
@@ -34,7 +37,7 @@ const transporter = nodemailer.createTransport({
     pass: process.env.GMAIL_PASS
   }
 });
-
+const upload = multer(); // For parsing multipart/form-data
 router.get("/", async (req, res) => {
   try {
     const modelsDir = path.join(process.cwd(), "api/v1/models/grafitti");
@@ -43,9 +46,10 @@ router.get("/", async (req, res) => {
       .map(file => path.basename(file, ".js"));
     const user = req.user;
     const locations = await new Location().getAll();
+    const gencons = await new Gencon().getAll();
     const tasks = await new Task().getAll();
     const qrs = await new Qr().getAll();
-    res.render("grafitti", { user, models: modelFiles, locations, tasks, qrs });
+    res.render("grafitti", { user, models: modelFiles, locations, tasks, qrs,gencons });
   } catch (error) {
     console.error(error);
     res.status(500).send("Internal Server Error");
@@ -206,4 +210,23 @@ router.get('/forms/:model', async (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 });
+
+router.post('/image', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    // Generate a unique file name (e.g., with timestamp)
+    const ext = path.extname(req.file.originalname);
+    const newFileKey = `uploads/${Date.now()}_${req.file.originalname}`;
+
+    // Upload buffer to Linode
+    const url = await uploadToLinode(req.file.buffer, newFileKey);
+
+    res.json({ url });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Upload failed' });
+  }
+});
+
 export default router;
