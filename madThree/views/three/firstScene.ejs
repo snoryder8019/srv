@@ -2,15 +2,37 @@
   //views/three/firstScene.ejs **GPT_dont remove this comment**
     let isDragging = false;
     let previousMousePosition = { x: 0, y: 0 };
-    let modelRotation = { x: 0, y: Math.PI }; // Start Y rotation at 180 degrees
+    let cameraRotation = { x: 0, y: 0 }; // Track camera rotation
     let previousTouchPosition = { x: 0, y: 0 }; // For mobile touch events
-    let isFollowingPath = true; // Track if the camera is following the path
+    let isFollowingPath = false; // Camera controlled by drag instead of path
+    let initialPinchDistance = null; // Track pinch distance for zoom
+    let initialCameraZ = null; // Track initial camera Z position for pinch zoom
+
+    // Object selection and rotation
+    let selectedObject = null; // Currently selected object for rotation
+    let objectRotation = { x: 0, y: 0 }; // Track object rotation
+    let raycaster = null; // Will be initialized after THREE is available
+    let mouse = new THREE.Vector2(); // Mouse/touch position for raycasting
+
+    // Keyboard controls for free camera movement
+    const keyState = {
+      w: false, a: false, s: false, d: false,
+      ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+      q: false, e: false // Up/down movement
+    };
+    const cameraSpeed = 0.5; // Movement speed
   
     const scene = new THREE.Scene();
-  
+
+    // Initialize raycaster for object detection
+    raycaster = new THREE.Raycaster();
+
+    // Array to store interactive objects
+    const interactiveObjects = [];
+
     // Set up the camera
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(3, 2, 10); // Initial camera position
+    camera.position.set(0, -20, 50); // Initial camera position ZOOMED WAY BACK for wider view
   
     // Create a renderer with antialiasing enabled and alpha for transparency
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -48,36 +70,155 @@ backLight.position.set(-10, 5, -10); // Light from behind for extra contrast
 scene.add(backLight);
 
   
-    // Define a path for the camera to follow using CatmullRomCurve3
-// Define a smoother path with intermediate points and lower tension
+    // Define a VERTICAL path for the camera to follow using CatmullRomCurve3
+// Camera will travel vertically upward through space, passing by objects
+// Extended path for longer pan duration - ZOOMED WAY BACK for wider view
 const pathPoints = [
-  new THREE.Vector3(3, 2, 20),   // Start far from the model
- // new THREE.Vector3(3, 3, 15),   // Intermediate point to smooth the approach
- // new THREE.Vector3(3, 3, 10),   // Move closer
-  // new THREE.Vector3(2, 2, 7.5),  // Intermediate point for smoother transition
-  // new THREE.Vector3(0, 2, 5),    // Sweep past the model
-  // new THREE.Vector3(-3, 2, 2.5), // Intermediate for smoother transition
-  // new THREE.Vector3(-5, 2, 0),   // Continue past
-  // new THREE.Vector3(-8, 3, -5),  // Additional intermediate point
-  // new THREE.Vector3(-10, 5, -10),// Move away
-  new THREE.Vector3(-15, 5, -20),// Smoother transition point
-  new THREE.Vector3(-20, 5, -40) // Final point
+  new THREE.Vector3(0, -20, 50),   // Start far below, ZOOMED BACK
+  new THREE.Vector3(0, -15, 48),   // Move up slowly
+  new THREE.Vector3(0, -10, 46),   // Continue approach
+  new THREE.Vector3(0, -5, 44),    // Getting closer
+  new THREE.Vector3(0, 0, 42),     // At beaker level
+  new THREE.Vector3(0, 5, 40),     // Move up past beaker
+  new THREE.Vector3(0, 10, 39),    // Continue ascending
+  new THREE.Vector3(0, 15, 38),    // Higher up
+  new THREE.Vector3(0, 20, 37),    // Keep climbing
+  new THREE.Vector3(0, 25, 36),    // Approaching text area
+  new THREE.Vector3(0, 30, 35),    // At text level
+  new THREE.Vector3(0, 35, 34),    // Past text
+  new THREE.Vector3(0, 40, 33),    // Mid-level ascent
+  new THREE.Vector3(0, 50, 32),    // Higher still
+  new THREE.Vector3(0, 60, 31),    // Continue up
+  new THREE.Vector3(0, 70, 30),    // Keep going
+  new THREE.Vector3(0, 80, 29),    // Approaching billboard
+  new THREE.Vector3(0, 90, 28),    // Getting close to billboard
+  new THREE.Vector3(0, 100, 27),   // At billboard level
+  new THREE.Vector3(0, 110, 26),   // Past billboard
+  new THREE.Vector3(0, 120, 25),   // Final ascent
+  new THREE.Vector3(0, 130, 24)    // Final point above everything
 ];
 
-// Create the CatmullRomCurve3 with lower tension for smoother movement
-const cameraPath = new THREE.CatmullRomCurve3(pathPoints, false, "catmullrom", 0.3); // Lower tension for smoothness
+// Create the CatmullRomCurve3 with smooth tension for vertical movement
+const cameraPath = new THREE.CatmullRomCurve3(pathPoints, false, "catmullrom", 0.2); // Smooth tension
+
+// Add stars in random 3D space for motion reference
+const starGeometry = new THREE.BufferGeometry();
+const starCount = 1000; // Number of stars
+const starPositions = new Float32Array(starCount * 3);
+
+for (let i = 0; i < starCount * 3; i += 3) {
+  // Random positions in a large cube around the scene
+  starPositions[i] = (Math.random() - 0.5) * 200;     // X
+  starPositions[i + 1] = (Math.random() - 0.5) * 300; // Y (taller range for vertical path)
+  starPositions[i + 2] = (Math.random() - 0.5) * 200; // Z
+}
+
+starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+
+const starMaterial = new THREE.PointsMaterial({
+  color: 0xFFFFFF,
+  size: 0.3,
+  sizeAttenuation: true,
+  transparent: true,
+  opacity: 0.8
+});
+
+const stars = new THREE.Points(starGeometry, starMaterial);
+scene.add(stars);
+
+// Add floating marker spheres along the vertical path for visual interest
+const markerGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+const markerMaterial = new THREE.MeshStandardMaterial({
+  color: 0x96FFE7,
+  emissive: 0x96FFE7,
+  emissiveIntensity: 0.5,
+  metalness: 0.8,
+  roughness: 0.2
+});
+
+// Create markers at various heights - spread across extended path
+const markerPositions = [
+  { x: -3, y: -10, z: 12 },
+  { x: 3, y: 0, z: 10 },
+  { x: -4, y: 10, z: 8 },
+  { x: 4, y: 20, z: 6 },
+  { x: -3, y: 30, z: 4 },
+  { x: 3, y: 45, z: 2 },
+  { x: -2, y: 60, z: 0 },
+  { x: 2, y: 75, z: -1 },
+  { x: -3, y: 90, z: -2 },
+  { x: 3, y: 105, z: -3 },
+  { x: -2, y: 120, z: -4 }
+];
+
+// Array to hold markers for animation
+const animatedMarkers = [];
+
+markerPositions.forEach(pos => {
+  const marker = new THREE.Mesh(markerGeometry, markerMaterial.clone());
+  marker.position.set(pos.x, pos.y, pos.z);
+  scene.add(marker);
+
+  // Store marker for animation with random offset pivot
+  animatedMarkers.push({
+    mesh: marker,
+    offsetX: (Math.random() - 0.5) * 0.5, // Random offset for off-center rotation
+    offsetZ: (Math.random() - 0.5) * 0.5,
+    rotationSpeed: 0.01 + Math.random() * 0.02 // Random rotation speed
+  });
+});
+
+// Add some torus rings for extra visual flair - spread across extended path
+const torusGeometry = new THREE.TorusGeometry(2, 0.2, 16, 32);
+const torusMaterial = new THREE.MeshStandardMaterial({
+  color: 0xFFDD00,
+  emissive: 0xFFDD00,
+  emissiveIntensity: 0.3,
+  metalness: 0.9,
+  roughness: 0.1
+});
+
+const torusPositions = [
+  { x: 0, y: 5, z: 10, rotX: Math.PI / 2 },
+  { x: 0, y: 25, z: 6, rotX: Math.PI / 2 },
+  { x: 0, y: 50, z: 2, rotX: Math.PI / 2 },
+  { x: 0, y: 75, z: -1, rotX: Math.PI / 2 },
+  { x: 0, y: 100, z: -3, rotX: Math.PI / 2 }
+];
+
+// Array to hold toruses for animation
+const animatedToruses = [];
+
+torusPositions.forEach(pos => {
+  const torus = new THREE.Mesh(torusGeometry, torusMaterial.clone());
+  torus.position.set(pos.x, pos.y, pos.z);
+  torus.rotation.x = pos.rotX;
+  scene.add(torus);
+
+  // Store torus for animation with random offset pivot
+  animatedToruses.push({
+    mesh: torus,
+    offsetX: (Math.random() - 0.5) * 1.5, // Random offset for off-center rotation
+    offsetZ: (Math.random() - 0.5) * 1.5,
+    rotationSpeed: 0.005 + Math.random() * 0.01, // Random rotation speed
+    baseX: pos.x,
+    baseY: pos.y,
+    baseZ: pos.z
+  });
+});
+
   // Load and place the billboard model along the path
 
-// Load and place the billboard model along the path
+// Load and place the billboard model along the vertical path - CLOSER TO CAMERA
 const loader = new THREE.GLTFLoader();
-let billboard;
+let billboard, billboard2; // Second billboard for behind camera
 loader.load('/threeDModels/billboard.glb', (gltf) => {
   billboard = gltf.scene;
   scene.add(billboard);
-  billboard.scale.set(1, 1, 1); // Adjust scale as needed
-  billboard.position.set(-20, 5, -40);
-  billboard.rotation.x = Math.PI / 7; // 30 degrees tilt in X-axis
-  billboard.rotation.y = Math.PI / 7; // 45 degrees tilt in Y-axis
+  billboard.scale.set(1.2, 1.2, 1.2); // Slightly larger for visibility
+  billboard.position.set(0, 100, 20); // CLOSER to camera path (was -3, now 20)
+  billboard.rotation.x = Math.PI / 4; // 45 degrees tilt in X-axis
+  billboard.rotation.y = 0; // Face the camera
 
   // Load font and create text geometry for the billboard
   const fontLoader = new THREE.FontLoader();
@@ -104,13 +245,45 @@ loader.load('/threeDModels/billboard.glb', (gltf) => {
     // Add text mesh to the billboard
     billboard.add(textMesh);
   });
+
+  // Load second billboard BEHIND the camera
+  loader.load('/threeDModels/billboard.glb', (gltf2) => {
+    billboard2 = gltf2.scene;
+    scene.add(billboard2);
+    billboard2.scale.set(1.2, 1.2, 1.2);
+    billboard2.position.set(0, 100, 80); // BEHIND camera (far positive Z)
+    billboard2.rotation.x = Math.PI / 4; // 45 degrees tilt in X-axis
+    billboard2.rotation.y = Math.PI; // Face opposite direction
+
+    // Add text to second billboard
+    const fontLoader2 = new THREE.FontLoader();
+    const bill2TextBody = "Looking back in space!"
+    fontLoader2.load('/fonts/Space Grotesk_Regular.json', (font) => {
+      const textGeometry2 = new THREE.TextGeometry(bill2TextBody, {
+        font: font,
+        size: 0.4,
+        height: 0.3,
+        curveSegments: 12,
+      });
+
+      const textMaterial2 = new THREE.MeshStandardMaterial({ color: 0x000000 });
+      const textMesh2 = new THREE.Mesh(textGeometry2, textMaterial2);
+
+      textGeometry2.center();
+      textMesh2.position.set(0, 0.5, 0.1);
+
+      billboard2.add(textMesh2);
+    });
+  }, undefined, (error) => {
+    console.error('An error occurred while loading the second billboard model', error);
+  });
 }, undefined, (error) => {
   console.error('An error occurred while loading the billboard model', error);
 });
 
 
     // Load the GLTF model
-    let model;
+    let model, model2; // Second model for behind camera
 loader.load('/threeDModels/beaker_pack.glb', function (gltf) {
   model = gltf.scene;
   scene.add(model);
@@ -132,9 +305,19 @@ loader.load('/threeDModels/beaker_pack.glb', function (gltf) {
     }
   });
 
-  model.position.set(0, 0, 0); // Keep it centered
+  model.position.set(0, 0, 30); // CLOSER to camera path (was 0, now 30)
   model.scale.set(0.6, 0.6, 0.6); // Scale the model down
+  model.rotation.x = Math.PI / 4; // 45 degrees tilt in X-axis
   model.rotation.y = Math.PI; // Rotate the model 180 degrees on the Y-axis
+
+  // Store for animation
+  model.userData.lookRotationSpeed = 0.5 + Math.random() * 0.5; // Random speed
+  model.userData.lookRotationAmount = Math.PI / 6; // 30 degrees left/right
+  model.userData.baseRotationY = Math.PI; // Store base rotation
+  model.userData.isInteractive = true; // Mark as interactive
+
+  // Add to interactive objects
+  interactiveObjects.push(model);
 // Create the left meatball (larger eye)
 const meatballLGeometry = new THREE.SphereGeometry(0.5, 32, 32); // Larger size for left eye
 const meatballLMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFFF }); // White meatball (left eye)
@@ -163,20 +346,126 @@ const rightPupil = new THREE.Mesh(pupilGeometry, pupilMaterial);
 rightPupil.position.set(0, 0, -0.38); // Position the pupil slightly in front
 rightMeatball.add(rightPupil); // Attach to the right meatball
 
-
-
 }, undefined, function (error) {
   console.error('An error happened while loading the model', error);
 });
+
+// Load second beaker BEHIND the camera
+loader.load('/threeDModels/beaker_pack.glb', function (gltf) {
+  model2 = gltf.scene;
+  scene.add(model2);
+
+  model2.traverse(function (node) {
+    if (node.isMesh) {
+      node.material = new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        metalness: 0.1,
+        roughness: 0.1,
+        transmission: 1,
+        opacity: 1.55,
+        transparent: true,
+        reflectivity: 0.9,
+        clearcoat: 1,
+        clearcoatRoughness: 0,
+        envMapIntensity: 1,
+      });
+    }
+  });
+
+  model2.position.set(0, 0, 70); // BEHIND camera (far positive Z)
+  model2.scale.set(0.6, 0.6, 0.6);
+  model2.rotation.x = Math.PI / 4; // 45 degrees tilt in X-axis
+  model2.rotation.y = 0; // Face opposite direction
+
+  // Store for animation with different timing
+  model2.userData.lookRotationSpeed = 0.5 + Math.random() * 0.5; // Random speed
+  model2.userData.lookRotationAmount = Math.PI / 6; // 30 degrees left/right
+  model2.userData.phaseOffset = Math.PI; // Offset phase so they don't look same direction
+  model2.userData.baseRotationY = 0; // Store base rotation
+  model2.userData.isInteractive = true; // Mark as interactive
+
+  // Add to interactive objects
+  interactiveObjects.push(model2);
+
+  // Add eyes to second beaker
+  const meatballL2Geometry = new THREE.SphereGeometry(0.5, 32, 32);
+  const meatballL2Material = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
+  const leftMeatball2 = new THREE.Mesh(meatballL2Geometry, meatballL2Material);
+  leftMeatball2.position.set(-5.3, 8.3, -1.7);
+  model2.add(leftMeatball2);
+
+  const meatballR2Geometry = new THREE.SphereGeometry(0.3, 32, 32);
+  const meatballR2Material = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
+  const rightMeatball2 = new THREE.Mesh(meatballR2Geometry, meatballR2Material);
+  rightMeatball2.position.set(-6.2, 8.5, -1.7);
+  model2.add(rightMeatball2);
+
+  const pupil2Geometry = new THREE.SphereGeometry(0.05, 32, 32);
+  const pupil2Material = new THREE.MeshStandardMaterial({ color: 0x000000 });
+
+  const leftPupil2 = new THREE.Mesh(pupil2Geometry, pupil2Material);
+  leftPupil2.position.set(0, 0, -0.5);
+  leftMeatball2.add(leftPupil2);
+
+  const rightPupil2 = new THREE.Mesh(pupil2Geometry, pupil2Material);
+  rightPupil2.position.set(0, 0, -0.38);
+  rightMeatball2.add(rightPupil2);
+
+}, undefined, function (error) {
+  console.error('An error happened while loading the second beaker model', error);
+});
+
+// Add RED EXIT text along the path
+const fontLoader = new THREE.FontLoader();
+let exitText;
+fontLoader.load('/fonts/Space Grotesk_Regular.json', (font) => {
+  const exitTextGeometry = new THREE.TextGeometry('EXIT', {
+    font: font,
+    size: 3,
+    height: 0.5,
+    curveSegments: 12,
+    bevelEnabled: true,
+    bevelThickness: 0.1,
+    bevelSize: 0.1,
+    bevelSegments: 5,
+  });
+
+  const exitTextMaterial = new THREE.MeshStandardMaterial({
+    color: 0xff0000,       // Red color
+    emissive: 0xff0000,    // Red emissive glow
+    emissiveIntensity: 0.5,
+    metalness: 0.3,
+    roughness: 0.4
+  });
+
+  exitText = new THREE.Mesh(exitTextGeometry, exitTextMaterial);
+  exitTextGeometry.center();
+  exitText.position.set(5, 120, 30); // Near the top of the path, off to the side
+  exitText.rotation.x = Math.PI / 6;
+  exitText.rotation.y = -Math.PI / 4; // Angled toward the path
+  scene.add(exitText);
+
+  // Add pulsing animation to exit text
+  exitText.userData.pulseSpeed = 2;
+}, undefined, (error) => {
+  console.error('Error loading font for EXIT text:', error);
+});
+
+let textModel, textModel2; // Second text for behind camera
 loader.load('/threeDModels/textOfMadLadslab.glb', function (gltf) {
   textModel = gltf.scene;
   scene.add(textModel);
 
-  // Adjust text model's position, scale, and rotation as needed
-  textModel.position.set(0, -2, -1.2);  // Position text as needed
-  textModel.scale.set(0.5, 0.5, 0.5);  // Scale down the text
-  textModel.rotation.z = Math.PI / 2.2;   // Rotate 90 degrees on Z-axis
-  textModel.rotation.y = Math.PI / 2.2; // Slight rotation on Y-axis
+  // Adjust text model's position, scale, and rotation for extended vertical path - CLOSER TO CAMERA
+  textModel.position.set(0, 50, 25);  // CLOSER to camera path (was 2, now 25)
+  textModel.scale.set(0.7, 0.7, 0.7);  // Slightly larger for visibility
+  textModel.rotation.x = Math.PI / 4;   // 45 degrees tilt in X-axis
+  textModel.rotation.y = 0; // Face forward
+  textModel.rotation.z = Math.PI / 6;   // Additional tilt for visual interest
+  textModel.userData.isInteractive = true; // Mark as interactive
+
+  // Add to interactive objects
+  interactiveObjects.push(textModel);
 
   // Apply shiny gold material with enhanced properties
   textModel.traverse(function (node) {
@@ -198,125 +487,407 @@ loader.load('/threeDModels/textOfMadLadslab.glb', function (gltf) {
   console.error('An error occurred while loading the text model', error);
 });
 
-  
+// Load second text model BEHIND the camera
+loader.load('/threeDModels/textOfMadLadslab.glb', function (gltf) {
+  textModel2 = gltf.scene;
+  scene.add(textModel2);
+
+  // Position behind camera
+  textModel2.position.set(0, 50, 75);  // BEHIND camera (far positive Z)
+  textModel2.scale.set(0.7, 0.7, 0.7);
+  textModel2.rotation.x = Math.PI / 4;   // 45 degrees tilt in X-axis
+  textModel2.rotation.y = Math.PI; // Face opposite direction
+  textModel2.rotation.z = -Math.PI / 6;   // Opposite tilt for variety
+  textModel2.userData.isInteractive = true; // Mark as interactive
+
+  // Add to interactive objects
+  interactiveObjects.push(textModel2);
+
+  // Apply shiny gold material
+  textModel2.traverse(function (node) {
+    if (node.isMesh) {
+      node.material = new THREE.MeshPhysicalMaterial({
+        color: 0x96fee7,
+        metalness: 1,
+        roughness: 0.05,
+        reflectivity: 1,
+        clearcoat: 1,
+        clearcoatRoughness: 0,
+        emissive: 0x96Fee7,
+        emissiveIntensity: 0.2
+      });
+    }
+  });
+
+}, undefined, function (error) {
+  console.error('An error occurred while loading the second text model', error);
+});
+
+
     const canvas = renderer.domElement;
   
     // Helper function for handling both mouse and touch drag events
     function getTouchOrMousePosition(event) {
       return event.touches ? { x: event.touches[0].clientX, y: event.touches[0].clientY } : { x: event.clientX, y: event.clientY };
     }
+
+    // Helper function to calculate distance between two touch points
+    function getPinchDistance(event) {
+      if (event.touches.length < 2) return null;
+      const dx = event.touches[0].clientX - event.touches[1].clientX;
+      const dy = event.touches[0].clientY - event.touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    // Function to detect object under mouse/touch
+    function detectObject(clientX, clientY) {
+      // Convert screen coordinates to normalized device coordinates (-1 to +1)
+      mouse.x = (clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+      // Update raycaster
+      raycaster.setFromCamera(mouse, camera);
+
+      // Check for intersections with interactive objects
+      const intersects = raycaster.intersectObjects(interactiveObjects, true);
+
+      if (intersects.length > 0) {
+        // Find the top-level object (not child meshes)
+        let object = intersects[0].object;
+        while (object.parent && !interactiveObjects.includes(object)) {
+          object = object.parent;
+        }
+        return object;
+      }
+      return null;
+    }
   
-    // Handle scrollwheel zooming and touch pinch zoom
+    // Handle scrollwheel zooming
     canvas.addEventListener('wheel', function (event) {
       const delta = event.deltaY * 0.01; // Adjust zoom sensitivity
       camera.position.z += delta; // Move the camera in/out on Z-axis
     });
-  
-    // Handle mouse and touch for dragging/rotating the model
+
+    // Handle mouse and touch for dragging/rotating the CAMERA or OBJECT
     canvas.addEventListener('mousedown', function (event) {
       if (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON') return;
+
+      // Check if clicking on an object
+      const clickedObject = detectObject(event.clientX, event.clientY);
+
+      if (clickedObject) {
+        // Select object for rotation
+        selectedObject = clickedObject;
+        objectRotation.x = selectedObject.rotation.x;
+        objectRotation.y = selectedObject.rotation.y;
+        console.log('Selected object:', selectedObject);
+      } else {
+        // Deselect object, rotate camera instead
+        selectedObject = null;
+      }
+
       isDragging = true;
       previousMousePosition = getTouchOrMousePosition(event);
     });
-  
+
     canvas.addEventListener('mousemove', function (event) {
-      if (isDragging && model) {
+      if (isDragging) {
         const currentMousePosition = getTouchOrMousePosition(event);
         const deltaMove = {
           x: currentMousePosition.x - previousMousePosition.x,
           y: currentMousePosition.y - previousMousePosition.y
         };
-  
-        modelRotation.y += deltaMove.x * 0.01;
-        modelRotation.x += deltaMove.y * 0.01;
-  
-        model.rotation.y = modelRotation.y;
-        model.rotation.x = modelRotation.x;
-  
+
+        if (selectedObject) {
+          // Rotate the selected object
+          objectRotation.y += deltaMove.x * 0.01;
+          objectRotation.x += deltaMove.y * 0.01;
+
+          selectedObject.rotation.y = objectRotation.y;
+          selectedObject.rotation.x = objectRotation.x;
+
+          // Disable automatic looking animation for beakers
+          if (selectedObject.userData.isInteractive) {
+            selectedObject.userData.manualControl = true;
+          }
+        } else {
+          // Update camera rotation based on mouse movement
+          cameraRotation.y -= deltaMove.x * 0.005; // Horizontal rotation
+          cameraRotation.x -= deltaMove.y * 0.005; // Vertical rotation
+
+          // Clamp vertical rotation to prevent flipping
+          cameraRotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotation.x));
+
+          // Apply rotation to camera
+          camera.rotation.order = 'YXZ'; // Prevent gimbal lock
+          camera.rotation.y = cameraRotation.y;
+          camera.rotation.x = cameraRotation.x;
+        }
+
         previousMousePosition = currentMousePosition;
       }
     });
-  
+
     canvas.addEventListener('mouseup', function () {
       isDragging = false;
     });
-  
+
     canvas.addEventListener('mouseleave', function () {
       isDragging = false;
     });
-  
-    // Touch support for dragging on mobile
-    canvas.addEventListener('touchstart', function (event) {
-      isDragging = true;
-      previousTouchPosition = getTouchOrMousePosition(event);
+
+    // Double-click to release object manual control
+    canvas.addEventListener('dblclick', function (event) {
+      if (selectedObject && selectedObject.userData.manualControl) {
+        selectedObject.userData.manualControl = false;
+        selectedObject = null;
+        console.log('Released object manual control');
+      }
     });
-  
+
+    // Touch support for dragging camera/object on mobile with pinch zoom
+    canvas.addEventListener('touchstart', function (event) {
+      if (event.touches.length === 2) {
+        // Two fingers - start pinch zoom
+        initialPinchDistance = getPinchDistance(event);
+        initialCameraZ = camera.position.z;
+        isDragging = false; // Disable rotation during pinch
+        selectedObject = null; // Deselect object during pinch
+      } else if (event.touches.length === 1) {
+        // One finger - check for object selection or camera rotation
+        const touch = event.touches[0];
+        const touchedObject = detectObject(touch.clientX, touch.clientY);
+
+        if (touchedObject) {
+          // Select object for rotation
+          selectedObject = touchedObject;
+          objectRotation.x = selectedObject.rotation.x;
+          objectRotation.y = selectedObject.rotation.y;
+          console.log('Selected object:', selectedObject);
+        } else {
+          // Deselect object, rotate camera instead
+          selectedObject = null;
+        }
+
+        isDragging = true;
+        previousTouchPosition = getTouchOrMousePosition(event);
+        initialPinchDistance = null;
+      }
+    });
+
     canvas.addEventListener('touchmove', function (event) {
-      if (isDragging && model) {
+      event.preventDefault(); // Prevent page scrolling
+
+      if (event.touches.length === 2 && initialPinchDistance !== null) {
+        // Two fingers - handle pinch zoom
+        const currentPinchDistance = getPinchDistance(event);
+        if (currentPinchDistance) {
+          const pinchDelta = currentPinchDistance - initialPinchDistance;
+          const zoomSensitivity = 0.05; // Adjust sensitivity
+          camera.position.z = initialCameraZ - (pinchDelta * zoomSensitivity);
+
+          // Clamp zoom to reasonable limits
+          camera.position.z = Math.max(10, Math.min(100, camera.position.z));
+        }
+      } else if (event.touches.length === 1 && isDragging) {
+        // One finger - handle object or camera rotation
         const currentTouchPosition = getTouchOrMousePosition(event);
         const deltaMove = {
           x: currentTouchPosition.x - previousTouchPosition.x,
           y: currentTouchPosition.y - previousTouchPosition.y
         };
-  
-        modelRotation.y += deltaMove.x * 0.01;
-        modelRotation.x += deltaMove.y * 0.01;
-  
-        model.rotation.y = modelRotation.y;
-        model.rotation.x = modelRotation.x;
-  
+
+        if (selectedObject) {
+          // Rotate the selected object
+          objectRotation.y += deltaMove.x * 0.01;
+          objectRotation.x += deltaMove.y * 0.01;
+
+          selectedObject.rotation.y = objectRotation.y;
+          selectedObject.rotation.x = objectRotation.x;
+
+          // Disable automatic looking animation for beakers
+          if (selectedObject.userData.isInteractive) {
+            selectedObject.userData.manualControl = true;
+          }
+        } else {
+          // Update camera rotation based on touch movement
+          cameraRotation.y -= deltaMove.x * 0.005; // Horizontal rotation
+          cameraRotation.x -= deltaMove.y * 0.005; // Vertical rotation
+
+          // Clamp vertical rotation to prevent flipping
+          cameraRotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotation.x));
+
+          // Apply rotation to camera
+          camera.rotation.order = 'YXZ'; // Prevent gimbal lock
+          camera.rotation.y = cameraRotation.y;
+          camera.rotation.x = cameraRotation.x;
+        }
+
         previousTouchPosition = currentTouchPosition;
       }
+    }, { passive: false }); // Allow preventDefault
+
+    canvas.addEventListener('touchend', function (event) {
+      if (event.touches.length === 0) {
+        // All fingers lifted
+        isDragging = false;
+        initialPinchDistance = null;
+        initialCameraZ = null;
+      } else if (event.touches.length === 1) {
+        // One finger remains - restart rotation
+        isDragging = true;
+        previousTouchPosition = getTouchOrMousePosition(event);
+        initialPinchDistance = null;
+      }
     });
-  
-    canvas.addEventListener('touchend', function () {
-      isDragging = false;
+
+    // Double-tap detection for releasing object control
+    let lastTapTime = 0;
+    canvas.addEventListener('touchstart', function (event) {
+      const currentTime = new Date().getTime();
+      const tapGap = currentTime - lastTapTime;
+
+      if (tapGap < 300 && tapGap > 0) {
+        // Double tap detected
+        if (selectedObject && selectedObject.userData.manualControl) {
+          selectedObject.userData.manualControl = false;
+          selectedObject = null;
+          console.log('Released object manual control (double-tap)');
+        }
+      }
+
+      lastTapTime = currentTime;
     });
-  
-    // Handle camera path via slider
+
+    // Keyboard event listeners for camera movement
+    window.addEventListener('keydown', (event) => {
+      const key = event.key.toLowerCase();
+      if (key in keyState || event.key in keyState) {
+        if (key === 'w' || key === 'a' || key === 's' || key === 'd' || key === 'q' || key === 'e') {
+          keyState[key] = true;
+        } else {
+          keyState[event.key] = true;
+        }
+        event.preventDefault();
+      }
+    });
+
+    window.addEventListener('keyup', (event) => {
+      const key = event.key.toLowerCase();
+      if (key in keyState || event.key in keyState) {
+        if (key === 'w' || key === 'a' || key === 's' || key === 'd' || key === 'q' || key === 'e') {
+          keyState[key] = false;
+        } else {
+          keyState[event.key] = false;
+        }
+        event.preventDefault();
+      }
+    });
+
+    // Function to update camera position based on keyboard input
+    function updateCameraMovement() {
+      const forward = new THREE.Vector3(0, 0, -1);
+      const right = new THREE.Vector3(1, 0, 0);
+      const up = new THREE.Vector3(0, 1, 0);
+
+      // Transform directions based on camera rotation
+      forward.applyQuaternion(camera.quaternion);
+      right.applyQuaternion(camera.quaternion);
+
+      // WASD movement
+      if (keyState.w || keyState.ArrowUp) {
+        camera.position.add(forward.multiplyScalar(cameraSpeed));
+      }
+      if (keyState.s || keyState.ArrowDown) {
+        camera.position.add(forward.multiplyScalar(-cameraSpeed));
+      }
+      if (keyState.a || keyState.ArrowLeft) {
+        camera.position.add(right.multiplyScalar(-cameraSpeed));
+      }
+      if (keyState.d || keyState.ArrowRight) {
+        camera.position.add(right.multiplyScalar(cameraSpeed));
+      }
+
+      // Q/E for vertical movement
+      if (keyState.q) {
+        camera.position.add(up.multiplyScalar(-cameraSpeed));
+      }
+      if (keyState.e) {
+        camera.position.add(up.multiplyScalar(cameraSpeed));
+      }
+    }
+
+    // Handle camera path via slider with vertical orientation
     const slider = document.getElementById('slider');
     const sliderValue = document.getElementById('sliderValue');
-  
+
     slider.addEventListener('input', function () {
       const t = slider.value / 100; // Normalize slider value (0-100) to a range of 0-1
       sliderValue.textContent = `${slider.value}%`;
-  
+
       const positionOnPath = cameraPath.getPointAt(t);
       camera.position.copy(positionOnPath);  // Move camera to position on path
-  
-      const lookAtPoint = cameraPath.getPointAt((t + 0.01) % 1);
-      camera.lookAt(lookAtPoint);
-    });
-  
-    // Camera control buttons
-    document.querySelector('.up').addEventListener('click', () => {
-      camera.position.y += 0.5;
-    });
-  
-    document.querySelector('.down').addEventListener('click', () => {
-      camera.position.y -= 0.5;
-    });
-  
-    document.querySelector('.left').addEventListener('click', () => {
-      camera.position.x -= 0.5;
-    });
-  
-    document.querySelector('.right').addEventListener('click', () => {
-      camera.position.x += 0.5;
-    });
-  
-    document.querySelector('.zoomIn').addEventListener('click', () => {
-      camera.position.z -= 0.5;
-    });
-  
-    document.querySelector('.zoomOut').addEventListener('click', () => {
-      camera.position.z += 0.5;
+
+      // Camera angle is now controlled by drag/touch, not by path
+      // Rotation is preserved when moving along the path
     });
   
     // Animation loop
+    let animationTime = 0;
     const animate = function () {
       requestAnimationFrame(animate);
-   
+      animationTime += 0.01;
+
+      // Update camera position based on keyboard input
+      updateCameraMovement();
+
+      // Animate EXIT text pulsing
+      if (exitText) {
+        const pulse = Math.sin(animationTime * exitText.userData.pulseSpeed) * 0.1 + 1;
+        exitText.scale.set(pulse, pulse, pulse);
+      }
+
+      // Animate markers (orbs) with off-center rotation on Y-axis
+      animatedMarkers.forEach(item => {
+        const angle = animationTime * item.rotationSpeed;
+        const centerX = item.mesh.position.x;
+        const centerZ = item.mesh.position.z;
+
+        // Rotate around offset center point
+        item.mesh.position.x = centerX + Math.cos(angle) * item.offsetX - Math.sin(angle) * item.offsetZ;
+        item.mesh.position.z = centerZ + Math.sin(angle) * item.offsetX + Math.cos(angle) * item.offsetZ;
+
+        // Rotate the mesh itself on Y-axis
+        item.mesh.rotation.y += item.rotationSpeed;
+      });
+
+      // Animate toruses with off-center rotation on Y-axis
+      animatedToruses.forEach(item => {
+        const angle = animationTime * item.rotationSpeed;
+
+        // Rotate around offset center point
+        item.mesh.position.x = item.baseX + Math.cos(angle) * item.offsetX - Math.sin(angle) * item.offsetZ;
+        item.mesh.position.z = item.baseZ + Math.sin(angle) * item.offsetX + Math.cos(angle) * item.offsetZ;
+
+        // Rotate the mesh itself on Y-axis
+        item.mesh.rotation.y += item.rotationSpeed;
+      });
+
+      // Animate beakers looking left and right (only if not under manual control)
+      if (model && model.userData.lookRotationSpeed && !model.userData.manualControl) {
+        const baseRotation = Math.PI; // Base 180 degrees
+        const phaseOffset = model.userData.phaseOffset || 0;
+        const lookAngle = Math.sin(animationTime * model.userData.lookRotationSpeed + phaseOffset) * model.userData.lookRotationAmount;
+        model.rotation.y = baseRotation + lookAngle;
+      }
+
+      if (model2 && model2.userData.lookRotationSpeed && !model2.userData.manualControl) {
+        const baseRotation = 0; // Base 0 degrees (facing opposite)
+        const phaseOffset = model2.userData.phaseOffset || 0;
+        const lookAngle = Math.sin(animationTime * model2.userData.lookRotationSpeed + phaseOffset) * model2.userData.lookRotationAmount;
+        model2.rotation.y = baseRotation + lookAngle;
+      }
+
       renderer.render(scene, camera);
     };
   

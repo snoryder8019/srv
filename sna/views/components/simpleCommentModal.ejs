@@ -1,0 +1,394 @@
+<!-- Simple Comment Modal - Self Contained -->
+<style>
+  /* Modal overlay */
+  #simpleCommentModal {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    align-items: center;
+    justify-content: center;
+  }
+
+  #simpleCommentModal.show {
+    display: flex !important;
+  }
+
+  .simple-modal-box {
+    background: white;
+    border-radius: 12px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+
+  .simple-modal-header {
+    padding: 20px;
+    border-bottom: 2px solid #e0e0e0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .simple-modal-header h3 {
+    margin: 0;
+    font-size: 1.3em;
+  }
+
+  .simple-close-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 2em;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 10px;
+  }
+
+  .simple-close-btn:hover {
+    color: #ff6b6b;
+  }
+
+  .simple-modal-body {
+    padding: 20px;
+  }
+
+  .simple-article-info {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 20px;
+  }
+
+  .simple-source-tag {
+    display: inline-block;
+    padding: 4px 12px;
+    background: #667eea;
+    color: white;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .simple-article-title {
+    color: #333;
+    font-size: 1em;
+    margin: 0;
+  }
+
+  .simple-comment-input {
+    width: 100%;
+    min-height: 100px;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 1em;
+    resize: vertical;
+    margin-bottom: 15px;
+  }
+
+  .simple-comment-input:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+
+  .simple-btn-group {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+
+  .simple-btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .simple-btn-post {
+    background: #667eea;
+    color: white;
+  }
+
+  .simple-btn-post:hover {
+    background: #5568d3;
+    transform: translateY(-2px);
+  }
+
+  .simple-btn-cancel {
+    background: #e0e0e0;
+    color: #666;
+  }
+
+  .simple-btn-cancel:hover {
+    background: #d0d0d0;
+  }
+
+  .simple-login-msg {
+    text-align: center;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    color: white;
+  }
+
+  .simple-login-msg h4 {
+    margin-bottom: 10px;
+  }
+
+  .simple-login-btn {
+    display: inline-block;
+    padding: 12px 30px;
+    background: white;
+    color: #667eea;
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+    margin-top: 15px;
+    transition: all 0.3s;
+  }
+
+  .simple-login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  }
+
+  .simple-comments-list {
+    margin-top: 30px;
+  }
+
+  .simple-comment-item {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    border-left: 3px solid #667eea;
+  }
+
+  .simple-comment-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 0.9em;
+  }
+
+  .simple-comment-author {
+    font-weight: 600;
+    color: #667eea;
+  }
+
+  .simple-comment-date {
+    color: #999;
+  }
+
+  .simple-comment-text {
+    color: #333;
+    line-height: 1.6;
+  }
+
+  .simple-no-comments {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+    font-style: italic;
+  }
+
+  .simple-comment-count-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #f0f0f0;
+    border-radius: 20px;
+    font-size: 0.85em;
+    margin-top: 10px;
+  }
+</style>
+
+<!-- Modal HTML -->
+<div id="simpleCommentModal" onclick="if(event.target === this) closeSimpleModal()">
+  <div class="simple-modal-box">
+    <div class="simple-modal-header">
+      <h3>💬 Comments</h3>
+      <button class="simple-close-btn" onclick="closeSimpleModal()">&times;</button>
+    </div>
+    <div class="simple-modal-body">
+      <div class="simple-article-info" id="simpleArticleInfo">
+        <!-- Article info populated by JS -->
+      </div>
+
+      <!-- Show login message or comment form based on auth -->
+      <div id="simpleAuthCheck">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Comments list -->
+      <div class="simple-comments-list">
+        <div id="simpleCommentsList">
+          <div class="simple-no-comments">Loading comments...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let simpleCurrentArticle = { url: '', title: '', source: '' };
+  const simpleIsLoggedIn = <%= typeof user !== 'undefined' && user ? 'true' : 'false' %>;
+  const simpleCurrentUser = <%= typeof user !== 'undefined' && user ? JSON.stringify({ email: user.email || '', name: user.displayName || user.name || user.email || 'User' }) : 'null' %>;
+
+  function openSimpleCommentModal(url, title, source) {
+    console.log('Opening modal for:', title);
+    simpleCurrentArticle = { url, title, source };
+
+    // Set article info
+    document.getElementById('simpleArticleInfo').innerHTML = `
+      <span class="simple-source-tag">${source}</span>
+      <h4 class="simple-article-title">${title}</h4>
+    `;
+
+    // Show login or comment form
+    const authCheckDiv = document.getElementById('simpleAuthCheck');
+    if (simpleIsLoggedIn) {
+      authCheckDiv.innerHTML = `
+        <textarea id="simpleCommentInput" class="simple-comment-input" placeholder="Share your thoughts on this article..."></textarea>
+        <div class="simple-btn-group">
+          <button class="simple-btn simple-btn-cancel" onclick="document.getElementById('simpleCommentInput').value=''">Clear</button>
+          <button class="simple-btn simple-btn-post" onclick="postSimpleComment()">Post Comment</button>
+        </div>
+      `;
+    } else {
+      authCheckDiv.innerHTML = `
+        <div class="simple-login-msg">
+          <h4>Join the Conversation!</h4>
+          <p>Login to share your thoughts on this article</p>
+          <a href="/auth/google" class="simple-login-btn">Login with Google</a>
+        </div>
+      `;
+    }
+
+    // Load existing comments
+    loadSimpleComments(url);
+
+    // Show modal
+    document.getElementById('simpleCommentModal').classList.add('show');
+  }
+
+  function closeSimpleModal() {
+    document.getElementById('simpleCommentModal').classList.remove('show');
+    const input = document.getElementById('simpleCommentInput');
+    if (input) input.value = '';
+  }
+
+  async function loadSimpleComments(articleUrl) {
+    try {
+      const encodedUrl = encodeURIComponent(articleUrl);
+      const response = await fetch(`/api/v1/comments/${encodedUrl}`);
+      const data = await response.json();
+
+      const commentsDiv = document.getElementById('simpleCommentsList');
+
+      if (data.success && data.data && data.data.length > 0) {
+        commentsDiv.innerHTML = data.data.map(c => `
+          <div class="simple-comment-item">
+            <div class="simple-comment-header">
+              <span class="simple-comment-author">${escapeHtml(c.userName || 'Anonymous')}</span>
+              <span class="simple-comment-date">${new Date(c.createdAt).toLocaleString()}</span>
+            </div>
+            <div class="simple-comment-text">${escapeHtml(c.commentText)}</div>
+          </div>
+        `).join('');
+      } else {
+        commentsDiv.innerHTML = '<div class="simple-no-comments">No comments yet. Be the first to share your thoughts!</div>';
+      }
+
+      // Update count on bubble
+      updateSimpleCommentCount(articleUrl, data.count || 0);
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      document.getElementById('simpleCommentsList').innerHTML = '<div class="simple-no-comments">Error loading comments</div>';
+    }
+  }
+
+  async function postSimpleComment() {
+    const input = document.getElementById('simpleCommentInput');
+    const commentText = input.value.trim();
+
+    if (!commentText) {
+      alert('Please enter a comment');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/v1/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          articleUrl: simpleCurrentArticle.url,
+          articleTitle: simpleCurrentArticle.title,
+          articleSource: simpleCurrentArticle.source,
+          commentText: commentText
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        input.value = '';
+        await loadSimpleComments(simpleCurrentArticle.url);
+        alert('Comment posted successfully!');
+      } else {
+        alert('Error posting comment: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      alert('Error posting comment. Please try again.');
+    }
+  }
+
+  function updateSimpleCommentCount(url, count) {
+    const countElements = document.querySelectorAll(`[data-simple-article-url="${url}"] .simple-comment-count`);
+    countElements.forEach(el => {
+      el.textContent = count;
+    });
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Load counts on page load
+  document.addEventListener('DOMContentLoaded', async () => {
+    const bubbles = document.querySelectorAll('[data-simple-article-url]');
+    for (const bubble of bubbles) {
+      const url = bubble.getAttribute('data-simple-article-url');
+      if (url) {
+        try {
+          const encodedUrl = encodeURIComponent(url);
+          const response = await fetch(`/api/v1/comments/${encodedUrl}`);
+          const data = await response.json();
+          if (data.success) {
+            updateSimpleCommentCount(url, data.count);
+          }
+        } catch (error) {
+          console.error('Error loading count for', url, error);
+        }
+      }
+    }
+  });
+</script>
