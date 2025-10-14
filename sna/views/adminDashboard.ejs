@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SNA Admin Panel</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #f5f7fa;
+      color: #333;
+    }
+
+    /* Header */
+    .admin-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 40px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .admin-header h1 {
+      font-size: 2em;
+      margin-bottom: 5px;
+    }
+
+    .admin-header .user-info {
+      font-size: 0.9em;
+      opacity: 0.9;
+    }
+
+    .admin-nav {
+      background: white;
+      padding: 15px 40px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .admin-nav a {
+      color: #667eea;
+      text-decoration: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      transition: all 0.3s;
+      font-weight: 600;
+    }
+
+    .admin-nav a:hover, .admin-nav a.active {
+      background: #667eea;
+      color: white;
+    }
+
+    /* Main Container */
+    .admin-container {
+      max-width: 1400px;
+      margin: 40px auto;
+      padding: 0 40px;
+    }
+
+    /* Dashboard Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: all 0.3s;
+      border-left: 4px solid #667eea;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+    }
+
+    .stat-card h3 {
+      color: #666;
+      font-size: 0.9em;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+    }
+
+    .stat-card .stat-value {
+      font-size: 2.5em;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 5px;
+    }
+
+    .stat-card .stat-label {
+      color: #999;
+      font-size: 0.85em;
+    }
+
+    /* Content Sections */
+    .admin-section {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+    }
+
+    .admin-section h2 {
+      color: #333;
+      font-size: 1.8em;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    /* Models Management */
+    .models-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .model-card {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      border: 2px solid #e0e0e0;
+      transition: all 0.3s;
+    }
+
+    .model-card:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+    }
+
+    .model-card h3 {
+      color: #667eea;
+      font-size: 1.3em;
+      margin-bottom: 15px;
+    }
+
+    .model-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+      text-decoration: none;
+      display: inline-block;
+      text-align: center;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+    }
+
+    .btn-success {
+      background: #51cf66;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #40c057;
+    }
+
+    .btn-warning {
+      background: #ffd43b;
+      color: #333;
+    }
+
+    .btn-warning:hover {
+      background: #fcc419;
+    }
+
+    .btn-danger {
+      background: #ff6b6b;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #fa5252;
+    }
+
+    .btn-small {
+      padding: 8px 16px;
+      font-size: 0.9em;
+    }
+
+    /* News Management */
+    .news-sources {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .source-badge {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+      border: 2px solid #e0e0e0;
+      transition: all 0.3s;
+    }
+
+    .source-badge:hover {
+      border-color: #667eea;
+      transform: scale(1.05);
+    }
+
+    .source-badge h4 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+
+    .source-badge .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.85em;
+      font-weight: 600;
+    }
+
+    .status.active {
+      background: #d3f9d8;
+      color: #2b8a3e;
+    }
+
+    .status.inactive {
+      background: #ffe3e3;
+      color: #c92a2a;
+    }
+
+    /* Quick Actions */
+    .quick-actions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .quick-action {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 25px;
+      border-radius: 10px;
+      text-align: center;
+      text-decoration: none;
+      transition: all 0.3s;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .quick-action:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .quick-action .icon {
+      font-size: 2em;
+      margin-bottom: 10px;
+    }
+
+    .quick-action .label {
+      font-weight: 600;
+      font-size: 1.1em;
+    }
+
+    /* Table Styles */
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    .admin-table th {
+      background: #f8f9fa;
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      color: #666;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    .admin-table td {
+      padding: 12px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .admin-table tr:hover {
+      background: #f8f9fa;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .admin-container, .admin-header, .admin-nav {
+        padding: 15px 20px;
+      }
+
+      .stats-grid, .models-grid, .news-sources, .quick-actions {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="admin-header">
+    <h1>SNA Admin Panel</h1>
+    <p class="user-info">
+      Logged in as: <strong><%= user.email || user.username || 'Admin' %></strong>
+    </p>
+  </header>
+
+  <!-- Navigation -->
+  <nav class="admin-nav">
+    <a href="/admin" class="active">Dashboard</a>
+    <a href="/admin/models">Models</a>
+    <a href="/admin/news">News Management</a>
+    <a href="/admin/users">Users</a>
+    <a href="/admin/settings">Settings</a>
+    <a href="/">Back to Site</a>
+  </nav>
+
+  <!-- Main Container -->
+  <div class="admin-container">
+
+    <!-- Dashboard Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>Total Models</h3>
+        <div class="stat-value"><%= Object.keys(models || {}).length %></div>
+        <div class="stat-label">Database Models</div>
+      </div>
+
+      <div class="stat-card" style="border-left-color: #51cf66;">
+        <h3>News Sources</h3>
+        <div class="stat-value" style="color: #51cf66;">5</div>
+        <div class="stat-label">Active Sources</div>
+      </div>
+
+      <div class="stat-card" style="border-left-color: #ffd43b;">
+        <h3>API Endpoints</h3>
+        <div class="stat-value" style="color: #ffd43b;">12+</div>
+        <div class="stat-label">Available Endpoints</div>
+      </div>
+
+      <div class="stat-card" style="border-left-color: #ff6b6b;">
+        <h3>System Status</h3>
+        <div class="stat-value" style="color: #51cf66; font-size: 1.5em;">Online</div>
+        <div class="stat-label">All Systems Operational</div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <section class="admin-section">
+      <h2>Quick Actions</h2>
+      <div class="quick-actions">
+        <a href="/admin/models/add" class="quick-action">
+          <div class="icon">+</div>
+          <div class="label">Add Model</div>
+        </a>
+        <a href="/admin/news/refresh" class="quick-action" style="background: linear-gradient(135deg, #51cf66 0%, #37b24d 100%);">
+          <div class="icon">↻</div>
+          <div class="label">Refresh News</div>
+        </a>
+        <a href="/api/v1/news" target="_blank" class="quick-action" style="background: linear-gradient(135deg, #ffd43b 0%, #fab005 100%);">
+          <div class="icon">⚡</div>
+          <div class="label">View API</div>
+        </a>
+        <a href="/admin/logs" class="quick-action" style="background: linear-gradient(135deg, #ff6b6b 0%, #f03e3e 100%);">
+          <div class="icon">📊</div>
+          <div class="label">View Logs</div>
+        </a>
+      </div>
+    </section>
+
+    <!-- Models Management -->
+    <section class="admin-section">
+      <h2>Database Models</h2>
+      <% if (models && Object.keys(models).length > 0) { %>
+        <div class="models-grid">
+          <% Object.entries(models).forEach(([key, model]) => { %>
+            <div class="model-card">
+              <h3><%= key %></h3>
+              <% if (model.modelFields) { %>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">
+                  Fields: <%= Object.keys(model.modelFields).join(', ') %>
+                </p>
+              <% } %>
+              <div class="model-actions">
+                <button class="btn btn-success btn-small" onclick="addModel('<%= key %>')">Add</button>
+                <button class="btn btn-warning btn-small" onclick="editModel('<%= key %>')">Edit</button>
+                <button class="btn btn-danger btn-small" onclick="deleteModel('<%= key %>')">Delete</button>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <p style="text-align: center; color: #999; padding: 40px;">No models found.</p>
+      <% } %>
+    </section>
+
+    <!-- News Sources Management -->
+    <section class="admin-section">
+      <h2>News Sources</h2>
+      <div class="news-sources">
+        <div class="source-badge">
+          <h4>CNN</h4>
+          <span class="status active">Active</span>
+          <p style="margin-top: 10px;">
+            <a href="/api/v1/news/cnn" target="_blank" style="color: #667eea; text-decoration: none; font-size: 0.85em;">View API</a>
+          </p>
+        </div>
+        <div class="source-badge">
+          <h4>Fox News</h4>
+          <span class="status active">Active</span>
+          <p style="margin-top: 10px;">
+            <a href="/api/v1/news/fox" target="_blank" style="color: #667eea; text-decoration: none; font-size: 0.85em;">View API</a>
+          </p>
+        </div>
+        <div class="source-badge">
+          <h4>BBC</h4>
+          <span class="status active">Active</span>
+          <p style="margin-top: 10px;">
+            <a href="/api/v1/news/bbc" target="_blank" style="color: #667eea; text-decoration: none; font-size: 0.85em;">View API</a>
+          </p>
+        </div>
+        <div class="source-badge">
+          <h4>AP News</h4>
+          <span class="status active">Active</span>
+          <p style="margin-top: 10px;">
+            <a href="/api/v1/news/ap" target="_blank" style="color: #667eea; text-decoration: none; font-size: 0.85em;">View API</a>
+          </p>
+        </div>
+        <div class="source-badge">
+          <h4>Reuters</h4>
+          <span class="status active">Active</span>
+          <p style="margin-top: 10px;">
+            <a href="/api/v1/news/reuters" target="_blank" style="color: #667eea; text-decoration: none; font-size: 0.85em;">View API</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recent Activity -->
+    <section class="admin-section">
+      <h2>Recent Activity</h2>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Resource</th>
+            <th>Status</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>News Scrape</td>
+            <td>All Sources</td>
+            <td><span class="status active">Success</span></td>
+            <td>Just now</td>
+          </tr>
+          <tr>
+            <td>Admin Login</td>
+            <td><%= user.email || 'Admin' %></td>
+            <td><span class="status active">Success</span></td>
+            <td>< 1 min ago</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+  </div>
+
+  <%- include('./scriptsAdmin/dashboard.ejs') %>
+</body>
+</html>

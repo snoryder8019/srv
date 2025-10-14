@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>News Management - SNA Admin</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #f5f7fa;
+      color: #333;
+    }
+
+    .admin-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 40px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .admin-header h1 {
+      font-size: 2em;
+      margin-bottom: 5px;
+    }
+
+    .admin-nav {
+      background: white;
+      padding: 15px 40px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .admin-nav a {
+      color: #667eea;
+      text-decoration: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      transition: all 0.3s;
+      font-weight: 600;
+    }
+
+    .admin-nav a:hover, .admin-nav a.active {
+      background: #667eea;
+      color: white;
+    }
+
+    .admin-container {
+      max-width: 1400px;
+      margin: 40px auto;
+      padding: 0 40px;
+    }
+
+    .admin-section {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+    }
+
+    .admin-section h2 {
+      color: #333;
+      font-size: 1.8em;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .news-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .news-source-card {
+      background: #f8f9fa;
+      padding: 25px;
+      border-radius: 10px;
+      border: 2px solid #e0e0e0;
+      transition: all 0.3s;
+    }
+
+    .news-source-card:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+    }
+
+    .news-source-card h3 {
+      color: #667eea;
+      font-size: 1.5em;
+      margin-bottom: 15px;
+    }
+
+    .news-source-card .info {
+      display: grid;
+      gap: 10px;
+      margin: 15px 0;
+    }
+
+    .news-source-card .info-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .news-source-card .info-item label {
+      color: #666;
+      font-weight: 600;
+    }
+
+    .news-source-card .info-item value {
+      color: #333;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 0.85em;
+      font-weight: 600;
+    }
+
+    .status-badge.active {
+      background: #d3f9d8;
+      color: #2b8a3e;
+    }
+
+    .status-badge.error {
+      background: #ffe3e3;
+      color: #c92a2a;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+      text-decoration: none;
+      display: inline-block;
+      text-align: center;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .btn-success {
+      background: #51cf66;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #40c057;
+    }
+
+    .btn-secondary {
+      background: #adb5bd;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #868e96;
+    }
+
+    .loading-indicator {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: #667eea;
+      font-size: 1.1em;
+    }
+
+    .loading-indicator.active {
+      display: block;
+    }
+
+    @media (max-width: 768px) {
+      .news-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="admin-header">
+    <h1>News Management</h1>
+    <p>Manage news sources and scraping operations</p>
+  </header>
+
+  <nav class="admin-nav">
+    <a href="/admin">Dashboard</a>
+    <a href="/admin/models">Models</a>
+    <a href="/admin/news" class="active">News Management</a>
+    <a href="/admin/users">Users</a>
+    <a href="/admin/settings">Settings</a>
+    <a href="/">Back to Site</a>
+  </nav>
+
+  <div class="admin-container">
+    <section class="admin-section">
+      <h2>News Sources Configuration</h2>
+
+      <div class="loading-indicator" id="loadingIndicator">
+        Loading news data...
+      </div>
+
+      <div class="news-grid">
+        <!-- CNN -->
+        <div class="news-source-card" data-source="cnn">
+          <h3>CNN</h3>
+          <div class="info">
+            <div class="info-item">
+              <label>Status:</label>
+              <span class="status-badge active" id="cnn-status">Active</span>
+            </div>
+            <div class="info-item">
+              <label>URL:</label>
+              <span>https://www.cnn.com</span>
+            </div>
+            <div class="info-item">
+              <label>Articles:</label>
+              <span id="cnn-count">-</span>
+            </div>
+            <div class="info-item">
+              <label>Last Updated:</label>
+              <span id="cnn-updated">Never</span>
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="testSource('cnn')">Test</button>
+            <button class="btn btn-success" onclick="refreshSource('cnn')">Refresh</button>
+            <a href="/api/v1/news/cnn" target="_blank" class="btn btn-secondary">View API</a>
+          </div>
+        </div>
+
+        <!-- Fox News -->
+        <div class="news-source-card" data-source="fox">
+          <h3>Fox News</h3>
+          <div class="info">
+            <div class="info-item">
+              <label>Status:</label>
+              <span class="status-badge active" id="fox-status">Active</span>
+            </div>
+            <div class="info-item">
+              <label>URL:</label>
+              <span>https://www.foxnews.com</span>
+            </div>
+            <div class="info-item">
+              <label>Articles:</label>
+              <span id="fox-count">-</span>
+            </div>
+            <div class="info-item">
+              <label>Last Updated:</label>
+              <span id="fox-updated">Never</span>
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="testSource('fox')">Test</button>
+            <button class="btn btn-success" onclick="refreshSource('fox')">Refresh</button>
+            <a href="/api/v1/news/fox" target="_blank" class="btn btn-secondary">View API</a>
+          </div>
+        </div>
+
+        <!-- BBC -->
+        <div class="news-source-card" data-source="bbc">
+          <h3>BBC News</h3>
+          <div class="info">
+            <div class="info-item">
+              <label>Status:</label>
+              <span class="status-badge active" id="bbc-status">Active</span>
+            </div>
+            <div class="info-item">
+              <label>URL:</label>
+              <span>https://www.bbc.com/news</span>
+            </div>
+            <div class="info-item">
+              <label>Articles:</label>
+              <span id="bbc-count">-</span>
+            </div>
+            <div class="info-item">
+              <label>Last Updated:</label>
+              <span id="bbc-updated">Never</span>
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="testSource('bbc')">Test</button>
+            <button class="btn btn-success" onclick="refreshSource('bbc')">Refresh</button>
+            <a href="/api/v1/news/bbc" target="_blank" class="btn btn-secondary">View API</a>
+          </div>
+        </div>
+
+        <!-- AP News -->
+        <div class="news-source-card" data-source="ap">
+          <h3>AP News</h3>
+          <div class="info">
+            <div class="info-item">
+              <label>Status:</label>
+              <span class="status-badge active" id="ap-status">Active</span>
+            </div>
+            <div class="info-item">
+              <label>URL:</label>
+              <span>https://apnews.com</span>
+            </div>
+            <div class="info-item">
+              <label>Articles:</label>
+              <span id="ap-count">-</span>
+            </div>
+            <div class="info-item">
+              <label>Last Updated:</label>
+              <span id="ap-updated">Never</span>
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="testSource('ap')">Test</button>
+            <button class="btn btn-success" onclick="refreshSource('ap')">Refresh</button>
+            <a href="/api/v1/news/ap" target="_blank" class="btn btn-secondary">View API</a>
+          </div>
+        </div>
+
+        <!-- Reuters -->
+        <div class="news-source-card" data-source="reuters">
+          <h3>Reuters</h3>
+          <div class="info">
+            <div class="info-item">
+              <label>Status:</label>
+              <span class="status-badge active" id="reuters-status">Active</span>
+            </div>
+            <div class="info-item">
+              <label>URL:</label>
+              <span>https://www.reuters.com</span>
+            </div>
+            <div class="info-item">
+              <label>Articles:</label>
+              <span id="reuters-count">-</span>
+            </div>
+            <div class="info-item">
+              <label>Last Updated:</label>
+              <span id="reuters-updated">Never</span>
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="testSource('reuters')">Test</button>
+            <button class="btn btn-success" onclick="refreshSource('reuters')">Refresh</button>
+            <a href="/api/v1/news/reuters" target="_blank" class="btn btn-secondary">View API</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Load news data on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadAllNewsData();
+    });
+
+    async function loadAllNewsData() {
+      const sources = ['cnn', 'fox', 'bbc', 'ap', 'reuters'];
+
+      for (const source of sources) {
+        try {
+          const response = await fetch(`/api/v1/news/${source}`);
+          const result = await response.json();
+
+          if (result.success && result.data) {
+            updateSourceUI(source, result.data.length, 'active');
+          }
+        } catch (error) {
+          console.error(`Error loading ${source}:`, error);
+          updateSourceUI(source, 0, 'error');
+        }
+      }
+    }
+
+    function updateSourceUI(source, count, status) {
+      const countEl = document.getElementById(`${source}-count`);
+      const statusEl = document.getElementById(`${source}-status`);
+      const updatedEl = document.getElementById(`${source}-updated`);
+
+      if (countEl) countEl.textContent = count;
+      if (updatedEl) updatedEl.textContent = new Date().toLocaleTimeString();
+
+      if (statusEl) {
+        statusEl.className = `status-badge ${status}`;
+        statusEl.textContent = status === 'active' ? 'Active' : 'Error';
+      }
+    }
+
+    async function testSource(source) {
+      console.log('Testing source:', source);
+
+      const loadingIndicator = document.getElementById('loadingIndicator');
+      loadingIndicator.classList.add('active');
+
+      try {
+        const response = await fetch(`/api/v1/news/${source}`);
+        const result = await response.json();
+
+        if (result.success) {
+          alert(`${source.toUpperCase()} test successful!\nArticles found: ${result.data.length}`);
+          updateSourceUI(source, result.data.length, 'active');
+        } else {
+          alert(`${source.toUpperCase()} test failed: ${result.error}`);
+          updateSourceUI(source, 0, 'error');
+        }
+      } catch (error) {
+        alert(`${source.toUpperCase()} test failed: ${error.message}`);
+        updateSourceUI(source, 0, 'error');
+      } finally {
+        loadingIndicator.classList.remove('active');
+      }
+    }
+
+    async function refreshSource(source) {
+      console.log('Refreshing source:', source);
+
+      const loadingIndicator = document.getElementById('loadingIndicator');
+      loadingIndicator.classList.add('active');
+
+      try {
+        const response = await fetch(`/api/v1/news/${source}`);
+        const result = await response.json();
+
+        if (result.success) {
+          updateSourceUI(source, result.data.length, 'active');
+          alert(`${source.toUpperCase()} refreshed successfully!\nArticles: ${result.data.length}`);
+        } else {
+          updateSourceUI(source, 0, 'error');
+          alert(`Failed to refresh ${source.toUpperCase()}`);
+        }
+      } catch (error) {
+        updateSourceUI(source, 0, 'error');
+        alert(`Error refreshing ${source.toUpperCase()}: ${error.message}`);
+      } finally {
+        loadingIndicator.classList.remove('active');
+      }
+    }
+  </script>
+</body>
+</html>

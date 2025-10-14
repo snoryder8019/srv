@@ -1,0 +1,467 @@
+<style>
+  /* Comment Bubble Styles */
+  .comment-bubble-container {
+    margin-top: 15px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .comment-bubble {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 15px;
+    background: #f0f0f0;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 0.9em;
+    color: #666;
+  }
+
+  .comment-bubble:hover {
+    background: #667eea;
+    color: white;
+    transform: scale(1.05);
+  }
+
+  .comment-bubble svg {
+    transition: stroke 0.3s;
+  }
+
+  .comment-bubble:hover svg {
+    stroke: white;
+  }
+
+  .comment-count {
+    font-weight: 600;
+  }
+
+  /* Comment Modal */
+  .comment-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.6);
+    animation: fadeIn 0.3s;
+  }
+
+  .comment-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .comment-modal-content {
+    background: white;
+    border-radius: 12px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    animation: slideUp 0.3s;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(50px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .comment-modal-header {
+    padding: 20px;
+    border-bottom: 2px solid #f0f0f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .comment-modal-header h3 {
+    color: #667eea;
+    margin: 0;
+    font-size: 1.3em;
+  }
+
+  .close-modal {
+    background: none;
+    border: none;
+    font-size: 1.5em;
+    cursor: pointer;
+    color: #999;
+    transition: color 0.3s;
+    padding: 5px 10px;
+  }
+
+  .close-modal:hover {
+    color: #ff6b6b;
+  }
+
+  .comment-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .article-info {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 20px;
+  }
+
+  .article-info h4 {
+    color: #333;
+    margin-bottom: 5px;
+    font-size: 1em;
+  }
+
+  .article-info .source-tag {
+    display: inline-block;
+    padding: 3px 10px;
+    background: #667eea;
+    color: white;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+  }
+
+  /* Login Prompt */
+  .login-prompt {
+    text-align: center;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    color: white;
+  }
+
+  .login-prompt h4 {
+    margin-bottom: 15px;
+    font-size: 1.2em;
+  }
+
+  .login-prompt p {
+    margin-bottom: 20px;
+    opacity: 0.9;
+  }
+
+  .login-btn {
+    padding: 12px 30px;
+    background: white;
+    color: #667eea;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    display: inline-block;
+  }
+
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+  }
+
+  /* Comment Form */
+  .comment-form {
+    margin-bottom: 20px;
+  }
+
+  .comment-form textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.95em;
+    resize: vertical;
+    transition: border-color 0.3s;
+  }
+
+  .comment-form textarea:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+
+  .comment-form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+    justify-content: flex-end;
+  }
+
+  .btn-submit, .btn-cancel {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .btn-submit {
+    background: #667eea;
+    color: white;
+  }
+
+  .btn-submit:hover {
+    background: #5568d3;
+  }
+
+  .btn-cancel {
+    background: #e0e0e0;
+    color: #666;
+  }
+
+  .btn-cancel:hover {
+    background: #d0d0d0;
+  }
+
+  /* Comments List */
+  .comments-list {
+    margin-top: 20px;
+  }
+
+  .comment-item {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    border-left: 3px solid #667eea;
+  }
+
+  .comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .comment-author {
+    font-weight: 600;
+    color: #667eea;
+  }
+
+  .comment-date {
+    font-size: 0.85em;
+    color: #999;
+  }
+
+  .comment-text {
+    color: #333;
+    line-height: 1.6;
+  }
+
+  .no-comments {
+    text-align: center;
+    padding: 40px 20px;
+    color: #999;
+    font-style: italic;
+  }
+</style>
+
+<!-- Comment Modal -->
+<div id="commentModal" class="comment-modal">
+  <div class="comment-modal-content">
+    <div class="comment-modal-header">
+      <h3>Comments</h3>
+      <button class="close-modal" onclick="closeCommentModal()">&times;</button>
+    </div>
+    <div class="comment-modal-body">
+      <div class="article-info" id="articleInfo"></div>
+
+      <!-- Login Prompt (shown if not logged in) -->
+      <div id="loginPrompt" class="login-prompt" style="display: none;">
+        <h4>Join the Conversation!</h4>
+        <p>Login to share your thoughts on this article</p>
+        <a href="/auth/google" class="login-btn">Login with Google</a>
+      </div>
+
+      <!-- Comment Form (shown if logged in) -->
+      <div id="commentForm" class="comment-form" style="display: none;">
+        <textarea id="commentText" placeholder="Share your thoughts on this article..."></textarea>
+        <div class="comment-form-actions">
+          <button class="btn-cancel" onclick="document.getElementById('commentText').value = ''">Clear</button>
+          <button class="btn-submit" onclick="submitComment()">Post Comment</button>
+        </div>
+      </div>
+
+      <!-- Comments List -->
+      <div class="comments-list">
+        <div id="commentsList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentArticle = {
+    url: '',
+    title: '',
+    source: ''
+  };
+
+  // Check if user is logged in (server-side variable)
+  const isLoggedIn = <%= typeof user !== 'undefined' && user ? 'true' : 'false' %>;
+  const currentUser = <%= typeof user !== 'undefined' && user ? JSON.stringify({ email: user.email || 'User', name: user.displayName || user.name || user.email }) : 'null' %>;
+
+  // Load comment counts on page load
+  document.addEventListener('DOMContentLoaded', async () => {
+    const commentBubbles = document.querySelectorAll('.comment-bubble');
+
+    for (const bubble of commentBubbles) {
+      const articleUrl = bubble.getAttribute('data-article-url');
+      if (articleUrl) {
+        await loadCommentCount(articleUrl);
+      }
+    }
+  });
+
+  async function loadCommentCount(articleUrl) {
+    try {
+      const encodedUrl = encodeURIComponent(articleUrl);
+      const response = await fetch(`/api/v1/comments/${encodedUrl}`);
+      const data = await response.json();
+
+      if (data.success) {
+        const countElement = document.querySelector(`.comment-count[data-url="${articleUrl}"]`);
+        if (countElement) {
+          countElement.textContent = data.count;
+        }
+      }
+    } catch (error) {
+      console.error('Error loading comment count:', error);
+    }
+  }
+
+  function openCommentModal(url, title, source) {
+    currentArticle = { url, title, source };
+
+    // Set article info
+    document.getElementById('articleInfo').innerHTML = `
+      <span class="source-tag">${source}</span>
+      <h4>${title}</h4>
+    `;
+
+    // Show/hide login prompt or comment form
+    if (isLoggedIn) {
+      document.getElementById('loginPrompt').style.display = 'none';
+      document.getElementById('commentForm').style.display = 'block';
+    } else {
+      document.getElementById('loginPrompt').style.display = 'block';
+      document.getElementById('commentForm').style.display = 'none';
+    }
+
+    // Load comments
+    loadComments(url);
+
+    // Show modal
+    document.getElementById('commentModal').classList.add('active');
+  }
+
+  function closeCommentModal() {
+    document.getElementById('commentModal').classList.remove('active');
+    document.getElementById('commentText').value = '';
+  }
+
+  async function loadComments(articleUrl) {
+    try {
+      const encodedUrl = encodeURIComponent(articleUrl);
+      const response = await fetch(`/api/v1/comments/${encodedUrl}`);
+      const data = await response.json();
+
+      const commentsList = document.getElementById('commentsList');
+
+      if (data.success && data.data.length > 0) {
+        commentsList.innerHTML = data.data.map(comment => `
+          <div class="comment-item">
+            <div class="comment-header">
+              <span class="comment-author">${comment.userName}</span>
+              <span class="comment-date">${new Date(comment.createdAt).toLocaleString()}</span>
+            </div>
+            <div class="comment-text">${escapeHtml(comment.commentText)}</div>
+          </div>
+        `).join('');
+      } else {
+        commentsList.innerHTML = '<div class="no-comments">No comments yet. Be the first to share your thoughts!</div>';
+      }
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      document.getElementById('commentsList').innerHTML = '<div class="no-comments">Error loading comments</div>';
+    }
+  }
+
+  async function submitComment() {
+    const commentText = document.getElementById('commentText').value.trim();
+
+    if (!commentText) {
+      alert('Please enter a comment');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/v1/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          articleUrl: currentArticle.url,
+          articleTitle: currentArticle.title,
+          articleSource: currentArticle.source,
+          commentText: commentText
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Clear form
+        document.getElementById('commentText').value = '';
+
+        // Reload comments
+        await loadComments(currentArticle.url);
+
+        // Update comment count
+        await loadCommentCount(currentArticle.url);
+      } else {
+        alert('Error posting comment: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Error submitting comment:', error);
+      alert('Error posting comment');
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Close modal when clicking outside
+  document.getElementById('commentModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'commentModal') {
+      closeCommentModal();
+    }
+  });
+</script>

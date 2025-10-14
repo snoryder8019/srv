@@ -28,10 +28,66 @@ fs.readdirSync(modelsDir).forEach(file => {
     }
 });
 
+// Main admin dashboard route
 router.get('/', isAdmin, async (req, res) => {
     try {
         const user = req.user;
+        res.render("adminDashboard", { user, models });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// Legacy admin route (keep for backwards compatibility)
+router.get('/legacy', isAdmin, async (req, res) => {
+    try {
+        const user = req.user;
         res.render("admin", { user, models });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// News management route
+router.get('/news', isAdmin, async (req, res) => {
+    try {
+        const user = req.user;
+        res.render("adminNews", { user });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// Models management route
+router.get('/models', isAdmin, async (req, res) => {
+    try {
+        const user = req.user;
+        res.render("adminModels", { user, models });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// Users management route (placeholder)
+router.get('/users', isAdmin, async (req, res) => {
+    try {
+        const user = req.user;
+        res.render("adminDashboard", { user, models });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// Settings route (placeholder)
+router.get('/settings', isAdmin, async (req, res) => {
+    try {
+        const user = req.user;
+        res.render("adminDashboard", { user, models });
     } catch (error) {
         console.error(error);
         res.status(500).send('Internal Server Error');
