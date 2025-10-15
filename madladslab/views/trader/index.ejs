@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - Coinbase Trader Bot</title>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 16px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #333;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .list-item {
+            background: #f5f5f5;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        .list-item strong {
+            color: #667eea;
+        }
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+            font-style: italic;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .status-active { background: #4caf50; color: white; }
+        .status-inactive { background: #999; color: white; }
+        .status-pending { background: #ff9800; color: white; }
+        .status-completed { background: #4caf50; color: white; }
+        .status-failed { background: #f44336; color: white; }
+        .trade-buy { color: #4caf50; font-weight: bold; }
+        .trade-sell { color: #f44336; font-weight: bold; }
+        .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .user-info {
+            background: white;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Coinbase Trader Bot</h1>
+
+        <div class="user-info">
+            <strong>User:</strong> <%= user ? user.firstName + ' ' + user.lastName : 'Guest' %>
+            <% if (user && user.email) { %> | <strong>Email:</strong> <%= user.email %><% } %>
+        </div>
+
+        <div class="warning">
+            ⚠️ <strong>Security Notice:</strong> This is a trading bot interface. Your API keys will be stored encrypted. Never share your API keys with anyone. Start with small amounts for testing.
+        </div>
+
+        <!-- API Keys Section -->
+        <div class="card">
+            <h2>🔑 API Keys</h2>
+            <% if (apiKeys && apiKeys.length > 0) { %>
+                <% apiKeys.forEach(key => { %>
+                    <div class="list-item">
+                        <strong><%= key.name %></strong> - <%= key.exchange %>
+                        <span class="status-badge <%= key.isActive ? 'status-active' : 'status-inactive' %>">
+                            <%= key.isActive ? 'Active' : 'Inactive' %>
+                        </span>
+                        <div style="margin-top: 8px; font-size: 0.9rem; color: #666;">
+                            API Key: <%= key.apiKey.substring(0, 10) %>***
+                        </div>
+                        <div class="actions">
+                            <button class="btn btn-success" onclick="testApiKey('<%= key._id %>')">Test</button>
+                            <button class="btn btn-danger" onclick="deleteApiKey('<%= key._id %>')">Delete</button>
+                        </div>
+                    </div>
+                <% }) %>
+            <% } else { %>
+                <div class="empty-state">No API keys configured yet. Add one below to get started.</div>
+            <% } %>
+
+            <h3 style="margin-top: 24px; margin-bottom: 12px;">Add New API Key</h3>
+            <form id="addApiKeyForm">
+                <div class="form-group">
+                    <label>Name:</label>
+                    <input type="text" name="name" placeholder="My Coinbase Key" required>
+                </div>
+                <div class="form-group">
+                    <label>Exchange:</label>
+                    <select name="exchange" required>
+                        <option value="Coinbase">Coinbase</option>
+                        <option value="Coinbase Pro">Coinbase Pro</option>
+                        <option value="Binance">Binance</option>
+                        <option value="Kraken">Kraken</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>API Key:</label>
+                    <input type="text" name="apiKey" placeholder="Your API Key" required>
+                </div>
+                <div class="form-group">
+                    <label>API Secret:</label>
+                    <input type="password" name="apiSecret" placeholder="Your API Secret" required>
+                </div>
+                <button type="submit" class="btn">Add API Key</button>
+            </form>
+        </div>
+
+        <div class="grid">
+            <!-- Strategies Section -->
+            <div class="card">
+                <h2>📊 Trading Strategies</h2>
+                <% if (strategies && strategies.length > 0) { %>
+                    <% strategies.forEach(strategy => { %>
+                        <div class="list-item">
+                            <strong><%= strategy.name %></strong>
+                            <span class="status-badge <%= strategy.isActive ? 'status-active' : 'status-inactive' %>">
+                                <%= strategy.isActive ? 'Active' : 'Inactive' %>
+                            </span>
+                            <div style="margin-top: 8px; font-size: 0.9rem; color: #666;">
+                                Type: <%= strategy.strategyType %> | Pair: <%= strategy.pair %>
+                            </div>
+                            <div class="actions">
+                                <button class="btn <%= strategy.isActive ? 'btn-danger' : 'btn-success' %>"
+                                        onclick="toggleStrategy('<%= strategy._id %>')">
+                                    <%= strategy.isActive ? 'Deactivate' : 'Activate' %>
+                                </button>
+                            </div>
+                        </div>
+                    <% }) %>
+                <% } else { %>
+                    <div class="empty-state">No strategies created yet.</div>
+                <% } %>
+            </div>
+
+            <!-- Recent Trades Section -->
+            <div class="card">
+                <h2>💹 Recent Trades</h2>
+                <% if (trades && trades.length > 0) { %>
+                    <% trades.slice(0, 10).forEach(trade => { %>
+                        <div class="list-item">
+                            <span class="<%= trade.side === 'buy' ? 'trade-buy' : 'trade-sell' %>">
+                                <%= trade.side.toUpperCase() %>
+                            </span>
+                            <%= trade.pair %> - <%= trade.amount %>
+                            <span class="status-badge status-<%= trade.status %>">
+                                <%= trade.status %>
+                            </span>
+                            <div style="margin-top: 8px; font-size: 0.9rem; color: #666;">
+                                Price: $<%= trade.price %> | Total: $<%= trade.total %>
+                            </div>
+                        </div>
+                    <% }) %>
+                <% } else { %>
+                    <div class="empty-state">No trades executed yet.</div>
+                <% } %>
+            </div>
+        </div>
+
+        <!-- Quick Trade Section -->
+        <div class="card">
+            <h2>⚡ Quick Trade</h2>
+            <form id="quickTradeForm" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <div class="form-group">
+                    <label>API Key:</label>
+                    <select name="apiKeyId" required>
+                        <option value="">Select API Key</option>
+                        <% if (apiKeys && apiKeys.length > 0) { %>
+                            <% apiKeys.filter(k => k.isActive).forEach(key => { %>
+                                <option value="<%= key._id %>"><%= key.name %></option>
+                            <% }) %>
+                        <% } %>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Pair:</label>
+                    <input type="text" name="pair" placeholder="BTC-USD" required>
+                </div>
+                <div class="form-group">
+                    <label>Side:</label>
+                    <select name="side" required>
+                        <option value="buy">Buy</option>
+                        <option value="sell">Sell</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Amount:</label>
+                    <input type="number" name="amount" step="0.00000001" placeholder="0.001" required>
+                </div>
+                <div class="form-group">
+                    <label>Price (optional):</label>
+                    <input type="number" name="price" step="0.01" placeholder="Market price">
+                </div>
+                <div class="form-group" style="display: flex; align-items: flex-end;">
+                    <button type="submit" class="btn" style="width: 100%;">Execute Trade</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Add API Key
+        document.getElementById('addApiKeyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData);
+
+            try {
+                const response = await fetch('/trader/api-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('API key added successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to add API key'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        });
+
+        // Test API Key
+        async function testApiKey(id) {
+            try {
+                const response = await fetch(`/trader/api-keys/${id}/test`, { method: 'POST' });
+                const result = await response.json();
+                alert(result.message || 'Test completed');
+            } catch (error) {
+                alert('Error testing API key: ' + error.message);
+            }
+        }
+
+        // Delete API Key
+        async function deleteApiKey(id) {
+            if (!confirm('Are you sure you want to delete this API key?')) return;
+
+            try {
+                const response = await fetch(`/trader/api-keys/${id}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (result.success) {
+                    alert('API key deleted successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to delete API key'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        // Toggle Strategy
+        async function toggleStrategy(id) {
+            try {
+                const response = await fetch(`/trader/strategies/${id}/toggle`, { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    alert('Strategy ' + (result.isActive ? 'activated' : 'deactivated'));
+                    location.reload();
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to toggle strategy'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        // Quick Trade
+        document.getElementById('quickTradeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!confirm('Are you sure you want to execute this trade?')) return;
+
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData);
+
+            try {
+                const response = await fetch('/trader/trade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('Trade executed! ' + result.message);
+                    location.reload();
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to execute trade'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>

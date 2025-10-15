@@ -8,6 +8,7 @@ import bikelite from "./bikelite/index.js"
 import contest from "./contest/index.js"
 import euker from "./euker/index.js"
 import grafitti from "./grafitti/index.js"
+import trader from "./trader/index.js"
 /* GET home page. */
 
 router.use('/admin', admin)
@@ -17,6 +18,7 @@ router.use('/bikelite', bikelite)
 router.use('/contest', contest)
 router.use('/euker', euker)
 router.use('/grafitti', grafitti)
+router.use('/trader', trader)
 router.use('/', plugins)
 
 router.get('/', function(req, res, next) {
