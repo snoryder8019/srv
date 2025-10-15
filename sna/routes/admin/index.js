@@ -28,22 +28,24 @@ fs.readdirSync(modelsDir).forEach(file => {
     }
 });
 
-// Main admin dashboard route
+// Main admin route - renders admin.ejs with full functionality
 router.get('/', isAdmin, async (req, res) => {
     try {
         const user = req.user;
-        res.render("adminDashboard", { user, models });
+        // Wait for all models to be loaded
+        await new Promise(resolve => setTimeout(resolve, 100));
+        res.render("admin", { user, models });
     } catch (error) {
         console.error(error);
         res.status(500).send('Internal Server Error');
     }
 });
 
-// Legacy admin route (keep for backwards compatibility)
-router.get('/legacy', isAdmin, async (req, res) => {
+// Dashboard route (alternative view)
+router.get('/dashboard', isAdmin, async (req, res) => {
     try {
         const user = req.user;
-        res.render("admin", { user, models });
+        res.render("adminDashboard", { user, models });
     } catch (error) {
         console.error(error);
         res.status(500).send('Internal Server Error');

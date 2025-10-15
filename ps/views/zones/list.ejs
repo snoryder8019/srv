@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title><%= title %></title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #0a0a0a;
+      color: #e0e0e0;
+    }
+    h1 {
+      color: #4a9eff;
+      border-bottom: 2px solid #4a9eff;
+      padding-bottom: 10px;
+    }
+    .zones-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 20px;
+      margin-top: 30px;
+    }
+    .zone-card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .zone-card:hover {
+      transform: translateY(-5px);
+      border-color: #4a9eff;
+    }
+    .zone-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 15px;
+    }
+    .zone-name {
+      font-size: 1.5em;
+      font-weight: bold;
+      color: #4a9eff;
+      margin: 0;
+    }
+    .zone-type {
+      background: #2a4a6a;
+      color: #a0d0ff;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 0.85em;
+      text-transform: uppercase;
+    }
+    .zone-description {
+      color: #b0b0b0;
+      line-height: 1.5;
+      margin: 15px 0;
+    }
+    .zone-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .info-item {
+      background: #252525;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    .info-label {
+      font-size: 0.8em;
+      color: #888;
+      text-transform: uppercase;
+    }
+    .info-value {
+      font-weight: bold;
+      color: #e0e0e0;
+      margin-top: 5px;
+    }
+    .zone-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 15px;
+    }
+    .tag {
+      background: #2a2a2a;
+      color: #4a9eff;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.85em;
+      border: 1px solid #444;
+    }
+    .zone-actions {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 0.9em;
+      transition: background 0.2s;
+    }
+    .btn-primary {
+      background: #4a9eff;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #3a8eef;
+    }
+    .btn-secondary {
+      background: #2a2a2a;
+      color: #e0e0e0;
+      border: 1px solid #444;
+    }
+    .btn-secondary:hover {
+      background: #3a3a3a;
+    }
+    .no-zones {
+      text-align: center;
+      padding: 40px;
+      color: #888;
+      font-size: 1.2em;
+    }
+    .zone-coordinates {
+      font-family: monospace;
+      color: #6ac66a;
+    }
+  </style>
+</head>
+<body>
+  <h1><%= title %></h1>
+
+  <% if (zones && zones.length > 0) { %>
+    <div class="zones-grid">
+      <% zones.forEach(zone => { %>
+        <div class="zone-card">
+          <div class="zone-header">
+            <h2 class="zone-name"><%= zone.displayName || zone.zoneName %></h2>
+            <% if (zone.type) { %>
+              <span class="zone-type"><%= zone.type %></span>
+            <% } %>
+          </div>
+
+          <% if (zone.description) { %>
+            <p class="zone-description"><%= zone.description %></p>
+          <% } %>
+
+          <div class="zone-info">
+            <% if (zone.difficulty) { %>
+              <div class="info-item">
+                <div class="info-label">Difficulty</div>
+                <div class="info-value"><%= zone.difficulty %></div>
+              </div>
+            <% } %>
+
+            <% if (zone.status) { %>
+              <div class="info-item">
+                <div class="info-label">Status</div>
+                <div class="info-value"><%= zone.status %></div>
+              </div>
+            <% } %>
+
+            <% if (zone.safetyLevel) { %>
+              <div class="info-item">
+                <div class="info-label">Safety Level</div>
+                <div class="info-value"><%= zone.safetyLevel %></div>
+              </div>
+            <% } %>
+
+            <% if (zone.coordinates) { %>
+              <div class="info-item">
+                <div class="info-label">Coordinates</div>
+                <div class="info-value zone-coordinates">
+                  x:<%= zone.coordinates.x %> y:<%= zone.coordinates.y %> z:<%= zone.coordinates.z %>
+                </div>
+              </div>
+            <% } %>
+          </div>
+
+          <% if (zone.environment) { %>
+            <div class="info-item" style="margin: 10px 0;">
+              <div class="info-label">Environment</div>
+              <div class="info-value">
+                <% if (zone.environment.temperature !== undefined) { %>
+                  Temp: <%= zone.environment.temperature %>°C |
+                <% } %>
+                <% if (zone.environment.humidity !== undefined) { %>
+                  Humidity: <%= zone.environment.humidity %>% |
+                <% } %>
+                <% if (zone.environment.atmosphere) { %>
+                  <%= zone.environment.atmosphere %>
+                <% } %>
+              </div>
+            </div>
+          <% } %>
+
+          <% if (zone.resources && zone.resources.length > 0) { %>
+            <div class="info-item" style="margin: 10px 0;">
+              <div class="info-label">Resources (<%= zone.resources.length %>)</div>
+              <div class="info-value">
+                <% zone.resources.slice(0, 3).forEach((resource, idx) => { %>
+                  <%= resource.name %><%= idx < Math.min(zone.resources.length, 3) - 1 ? ', ' : '' %>
+                <% }); %>
+                <% if (zone.resources.length > 3) { %>
+                  + <%= zone.resources.length - 3 %> more
+                <% } %>
+              </div>
+            </div>
+          <% } %>
+
+          <% if (zone.tags && zone.tags.length > 0) { %>
+            <div class="zone-tags">
+              <% zone.tags.forEach(tag => { %>
+                <span class="tag"><%= tag %></span>
+              <% }); %>
+            </div>
+          <% } %>
+
+          <div class="zone-actions">
+            <a href="/zones/<%= zone.zoneName %>" class="btn btn-primary">View Details</a>
+            <a href="/zones/<%= zone.zoneName %>/spatial" class="btn btn-secondary">3D View</a>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  <% } else { %>
+    <div class="no-zones">
+      No zones found. Start exploring to discover new zones!
+    </div>
+  <% } %>
+</body>
+</html>

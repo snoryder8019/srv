@@ -1,0 +1,54 @@
+import express from 'express';
+import { getDb } from '../../plugins/mongo/mongo.js';
+
+const router = express.Router();
+
+// Get all zones
+router.get('/', async (req, res) => {
+  try {
+    const db = getDb();
+    const zones = await db.collection('zones').find({}).toArray();
+
+    res.render('zones/list', {
+      title: 'Planetary Zones',
+      zones,
+      user: req.user
+    });
+  } catch (err) {
+    console.error('Error fetching zones:', err);
+    res.status(500).json({ error: 'Failed to fetch zones' });
+  }
+});
+
+// Get zone detail
+router.get('/:zoneName', async (req, res) => {
+  try {
+    const db = getDb();
+    const zone = await db.collection('zones')
+      .findOne({ zoneName: req.params.zoneName });
+
+    if (!zone) {
+      return res.status(404).json({ error: 'Zone not found' });
+    }
+
+    res.render('zones/detail', {
+      title: zone.zoneName,
+      zone,
+      user: req.user
+    });
+  } catch (err) {
+    console.error('Error fetching zone:', err);
+    res.status(500).json({ error: 'Failed to fetch zone' });
+  }
+});
+
+// 3D spatial zone viewer
+router.get('/:zoneName/spatial', (req, res) => {
+  res.render('zones/spatial', {
+    title: 'Spatial Zone - ' + req.params.zoneName,
+    zoneName: req.params.zoneName,
+    user: req.user
+  });
+});
+
+export default router;
