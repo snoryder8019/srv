@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      padding: 1rem 2rem;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 1.8rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .nav-links a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      transition: background 0.3s;
+    }
+
+    .nav-links a:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .profile-header {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    .profile-header h2 {
+      color: #333;
+      margin-bottom: 1rem;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin: 2rem 0;
+    }
+
+    .stat-box {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 1.5rem;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .stat-box h3 {
+      font-size: 0.9rem;
+      opacity: 0.9;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-box p {
+      font-size: 2rem;
+      font-weight: 700;
+    }
+
+    .badges-section, .history-section {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .badges-section h3, .history-section h3 {
+      color: #333;
+      margin-bottom: 1.5rem;
+    }
+
+    .badges-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 1rem;
+    }
+
+    .badge {
+      background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+      padding: 1rem;
+      border-radius: 8px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .badge-icon {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .badge-name {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .checkin-list {
+      list-style: none;
+    }
+
+    .checkin-item {
+      padding: 1rem;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .checkin-item:last-child {
+      border-bottom: none;
+    }
+
+    .checkin-info h4 {
+      color: #667eea;
+      margin-bottom: 0.25rem;
+    }
+
+    .checkin-info small {
+      color: #666;
+    }
+
+    .checkin-points {
+      background: #10b981;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🍺 Life Behind Bars</h1>
+    <nav class="nav-links">
+      <a href="/lbb">Map</a>
+      <a href="/lbb/rewards">Rewards</a>
+      <a href="/lbb/leaderboard">Leaderboard</a>
+    </nav>
+  </div>
+
+  <div class="container">
+    <div class="profile-header">
+      <h2><%= user.name || user.email %></h2>
+      <p>Level <%= profile.level %></p>
+
+      <div class="stats-grid">
+        <div class="stat-box">
+          <h3>Total Points</h3>
+          <p><%= profile.totalPoints %></p>
+        </div>
+        <div class="stat-box">
+          <h3>Check-ins</h3>
+          <p><%= profile.totalCheckIns %></p>
+        </div>
+        <div class="stat-box">
+          <h3>Current Streak</h3>
+          <p><%= profile.stats.currentStreak %></p>
+        </div>
+        <div class="stat-box">
+          <h3>Longest Streak</h3>
+          <p><%= profile.stats.longestStreak %></p>
+        </div>
+        <div class="stat-box">
+          <h3>Unique Locations</h3>
+          <p><%= profile.stats.uniqueLocations %></p>
+        </div>
+      </div>
+    </div>
+
+    <% if (profile.badges && profile.badges.length > 0) { %>
+      <div class="badges-section">
+        <h3>Badges</h3>
+        <div class="badges-grid">
+          <% profile.badges.forEach(function(badge) { %>
+            <div class="badge">
+              <div class="badge-icon">🏆</div>
+              <div class="badge-name"><%= badge.name %></div>
+            </div>
+          <% }); %>
+        </div>
+      </div>
+    <% } %>
+
+    <div class="history-section">
+      <h3>Recent Check-ins</h3>
+      <ul class="checkin-list">
+        <% if (checkIns && checkIns.length > 0) { %>
+          <% checkIns.forEach(function(checkin) { %>
+            <li class="checkin-item">
+              <div class="checkin-info">
+                <h4><%= checkin.locationId?.name || 'Unknown Location' %></h4>
+                <small><%= new Date(checkin.createdAt).toLocaleString() %></small>
+                <% if (checkin.isFirstVisit) { %>
+                  <br><small style="color: #10b981;">🎉 First Visit!</small>
+                <% } %>
+              </div>
+              <div class="checkin-points">
+                +<%= checkin.points + checkin.bonusPoints %> pts
+              </div>
+            </li>
+          <% }); %>
+        <% } else { %>
+          <li class="checkin-item">
+            <p>No check-ins yet. Start exploring!</p>
+          </li>
+        <% } %>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

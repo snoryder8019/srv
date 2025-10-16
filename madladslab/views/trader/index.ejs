@@ -356,14 +356,6 @@
                 </div>
             </div>
 
-            <!-- API Performance -->
-            <div class="card">
-                <h2>📡 API Performance</h2>
-                <div class="stat-item">
-                    <span class="stat-label">Status</span>
-                    <span class="stat-value" id="apiStatus">Checking...</span>
-                </div>
-            </div>
         </div>
 
         <!-- API Keys -->
@@ -418,11 +410,29 @@
                 <% if (strategies && strategies.length > 0) { %>
                     <% strategies.forEach(strategy => { %>
                         <div class="list-item">
-                            <strong><%= strategy.name %></strong>
-                            <span class="status-badge <%= strategy.isActive ? 'status-active' : 'status-inactive' %>">
-                                <%= strategy.isActive ? 'ACTIVE' : 'INACTIVE' %>
-                            </span>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <strong><%= strategy.name %></strong>
+                                <div style="display: flex; gap: 8px;">
+                                    <span class="status-badge <%= strategy.isActive ? 'status-active' : 'status-inactive' %>">
+                                        <%= strategy.isActive ? 'ACTIVE' : 'INACTIVE' %>
+                                    </span>
+                                    <% if (strategy.isRunning) { %>
+                                        <span class="status-badge" style="background: #00ff41; color: #0a0e27;">🤖 RUNNING</span>
+                                    <% } %>
+                                </div>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 8px;">
+                                <%= strategy.pair %> | $<%= strategy.tradeAmount %>/trade | Check: <%= strategy.checkInterval %>s
+                                <% if (strategy.totalRuns > 0) { %>
+                                    <br>Runs: <%= strategy.totalRuns %> | Success: <%= strategy.successfulTrades %> | Failed: <%= strategy.failedTrades %>
+                                <% } %>
+                            </div>
                             <div class="actions">
+                                <% if (strategy.isRunning) { %>
+                                    <button class="btn btn-danger btn-small" onclick="stopStrategyMonitor('<%= strategy._id %>')">⏹ Stop</button>
+                                <% } else { %>
+                                    <button class="btn btn-success btn-small" onclick="startStrategyMonitor('<%= strategy._id %>')">▶ Start</button>
+                                <% } %>
                                 <button class="btn btn-small" onclick="showEditStrategyModal('<%= strategy._id %>')">Edit</button>
                                 <button class="btn btn-danger btn-small" onclick="deleteStrategy('<%= strategy._id %>')">Delete</button>
                             </div>
@@ -472,13 +482,58 @@
                     <input type="text" name="name" required>
                 </div>
                 <div class="form-group">
+                    <label>Strategy Type:</label>
+                    <select name="strategyType" required>
+                        <option value="Manual">Manual</option>
+                        <option value="DCA">DCA (Dollar Cost Average)</option>
+                        <option value="Grid">Grid Trading</option>
+                        <option value="Momentum">Momentum</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Trading Pair:</label>
                     <input type="text" name="pair" value="BTC-USD" required>
                 </div>
                 <div class="form-group">
+                    <label>API Key:</label>
+                    <select name="apiKeyId" required>
+                        <option value="">Select API Key</option>
+                        <% if (apiKeys && apiKeys.length > 0) { %>
+                            <% apiKeys.filter(k => k.isActive).forEach(key => { %>
+                                <option value="<%= key._id %>"><%= key.name %></option>
+                            <% }) %>
+                        <% } %>
+                    </select>
+                </div>
+
+                <h3 style="margin: 16px 0 8px 0; color: #00ff41; font-size: 0.9rem;">BOT PARAMETERS</h3>
+                <div class="form-group">
+                    <label>Trade Amount (USD per trade):</label>
+                    <input type="number" name="tradeAmount" value="10" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Max Concurrent Trades:</label>
+                    <input type="number" name="maxTrades" value="10" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label>Check Interval (seconds):</label>
+                    <input type="number" name="checkInterval" value="60" min="10" required>
+                </div>
+
+                <h3 style="margin: 16px 0 8px 0; color: #00ff41; font-size: 0.9rem;">RISK MANAGEMENT</h3>
+                <div class="form-group">
                     <label>Max Investment ($):</label>
                     <input type="number" name="maxInvestment" value="100" step="0.01" required>
                 </div>
+                <div class="form-group">
+                    <label>Stop Loss (%):</label>
+                    <input type="number" name="stopLoss" step="0.1" placeholder="e.g., 5">
+                </div>
+                <div class="form-group">
+                    <label>Take Profit (%):</label>
+                    <input type="number" name="takeProfit" step="0.1" placeholder="e.g., 10">
+                </div>
+
                 <button type="submit" class="btn">Create Strategy</button>
             </form>
         </div>
@@ -501,10 +556,35 @@
                     <label>Trading Pair:</label>
                     <input type="text" id="editStrategyPair" name="pair" required>
                 </div>
+
+                <h3 style="margin: 16px 0 8px 0; color: #00ff41; font-size: 0.9rem;">BOT PARAMETERS</h3>
+                <div class="form-group">
+                    <label>Trade Amount (USD):</label>
+                    <input type="number" id="editTradeAmount" name="tradeAmount" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Max Trades:</label>
+                    <input type="number" id="editMaxTrades" name="maxTrades" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label>Check Interval (seconds):</label>
+                    <input type="number" id="editCheckInterval" name="checkInterval" min="10" required>
+                </div>
+
+                <h3 style="margin: 16px 0 8px 0; color: #00ff41; font-size: 0.9rem;">RISK MANAGEMENT</h3>
                 <div class="form-group">
                     <label>Max Investment ($):</label>
                     <input type="number" id="editStrategyMaxInvestment" name="maxInvestment" step="0.01" required>
                 </div>
+                <div class="form-group">
+                    <label>Stop Loss (%):</label>
+                    <input type="number" id="editStopLoss" name="stopLoss" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Take Profit (%):</label>
+                    <input type="number" id="editTakeProfit" name="takeProfit" step="0.1">
+                </div>
+
                 <button type="submit" class="btn">Save Changes</button>
             </form>
         </div>
@@ -665,6 +745,11 @@
             document.getElementById('editStrategyName').value = strategy.name || '';
             document.getElementById('editStrategyPair').value = strategy.pair || '';
             document.getElementById('editStrategyMaxInvestment').value = strategy.maxInvestment || '';
+            document.getElementById('editTradeAmount').value = strategy.tradeAmount || 10;
+            document.getElementById('editMaxTrades').value = strategy.maxTrades || 10;
+            document.getElementById('editCheckInterval').value = strategy.checkInterval || 60;
+            document.getElementById('editStopLoss').value = strategy.stopLoss || '';
+            document.getElementById('editTakeProfit').value = strategy.takeProfit || '';
 
             document.getElementById('editStrategyModal').classList.add('active');
         }
@@ -729,6 +814,38 @@
                 if (result.success) {
                     alert('Strategy deleted!');
                     location.reload();
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function startStrategyMonitor(id) {
+            try {
+                const response = await fetch(`/trader/strategies/${id}/start-monitor`, { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    alert('Strategy monitor started!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to start monitor'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function stopStrategyMonitor(id) {
+            if (!confirm('Stop strategy monitor?')) return;
+
+            try {
+                const response = await fetch(`/trader/strategies/${id}/stop-monitor`, { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    alert('Strategy monitor stopped!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to stop monitor'));
                 }
             } catch (error) {
                 alert('Error: ' + error.message);

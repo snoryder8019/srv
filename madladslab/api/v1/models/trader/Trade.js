@@ -17,6 +17,7 @@ export default class Trade extends ModelHelper {
     fee: { type: 'number', value: 0, editable: false },
     status: { type: 'dropdown', options: ['pending', 'completed', 'failed', 'cancelled'], value: 'pending', editable: true },
     orderId: { type: 'text', value: null, editable: false },
+    strategyId: { type: 'text', value: null, editable: false }, // Track which strategy created this trade
     notes: { type: 'text', value: null, editable: true },
     executedAt: { type: 'date', value: null, editable: false },
     createdAt: { type: 'date', value: null, editable: false }

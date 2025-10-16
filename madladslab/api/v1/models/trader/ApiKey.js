@@ -12,6 +12,7 @@ export default class ApiKey extends ModelHelper {
     exchange: { type: 'dropdown', options: ['Coinbase', 'Coinbase Pro', 'Binance', 'Kraken'], value: 'Coinbase', editable: true },
     apiKey: { type: 'text', value: null, editable: true },
     apiSecret: { type: 'hidden', value: null, editable: true }, // Hidden for security
+    apiPassphrase: { type: 'hidden', value: null, editable: true }, // Required for Coinbase Pro
     isActive: { type: 'boolean', value: true, editable: true },
     lastUsed: { type: 'date', value: null, editable: false },
     createdAt: { type: 'date', value: null, editable: false }
