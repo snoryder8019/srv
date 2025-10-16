@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      padding: 1rem 2rem;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 1.8rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .nav-links a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      transition: background 0.3s;
+    }
+
+    .nav-links a:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .leaderboard {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    .leaderboard-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .leaderboard-header h2 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .leaderboard-list {
+      list-style: none;
+    }
+
+    .leaderboard-item {
+      display: flex;
+      align-items: center;
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid #eee;
+      transition: background 0.3s;
+    }
+
+    .leaderboard-item:hover {
+      background: #f9fafb;
+    }
+
+    .leaderboard-item:last-child {
+      border-bottom: none;
+    }
+
+    .rank {
+      font-size: 1.5rem;
+      font-weight: 700;
+      width: 60px;
+      text-align: center;
+    }
+
+    .rank.top1 { color: #ffd700; }
+    .rank.top2 { color: #c0c0c0; }
+    .rank.top3 { color: #cd7f32; }
+
+    .user-info {
+      flex: 1;
+      margin-left: 1rem;
+    }
+
+    .user-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .user-stats {
+      font-size: 0.9rem;
+      color: #666;
+      margin-top: 0.25rem;
+    }
+
+    .points {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #667eea;
+    }
+
+    .trophy {
+      font-size: 2rem;
+      margin-right: 0.5rem;
+    }
+
+    .empty-state {
+      padding: 3rem;
+      text-align: center;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🍺 Life Behind Bars</h1>
+    <nav class="nav-links">
+      <a href="/lbb">Map</a>
+      <% if (user) { %>
+        <a href="/lbb/profile">Profile</a>
+        <a href="/lbb/rewards">Rewards</a>
+      <% } else { %>
+        <a href="/auth">Login</a>
+      <% } %>
+    </nav>
+  </div>
+
+  <div class="container">
+    <div class="leaderboard">
+      <div class="leaderboard-header">
+        <h2>🏆 Leaderboard</h2>
+        <p>Top players in Life Behind Bars</p>
+      </div>
+
+      <ul class="leaderboard-list">
+        <% if (leaderboard && leaderboard.length > 0) { %>
+          <% leaderboard.forEach(function(entry, index) { %>
+            <li class="leaderboard-item">
+              <% if (index === 0) { %>
+                <span class="trophy">🥇</span>
+              <% } else if (index === 1) { %>
+                <span class="trophy">🥈</span>
+              <% } else if (index === 2) { %>
+                <span class="trophy">🥉</span>
+              <% } else { %>
+                <span class="rank <%= index < 3 ? 'top' + (index + 1) : '' %>"><%= index + 1 %></span>
+              <% } %>
+
+              <div class="user-info">
+                <div class="user-name">
+                  <%= entry.userId?.name || entry.userId?.email || 'Anonymous' %>
+                </div>
+                <div class="user-stats">
+                  Level <%= entry.level %> • <%= entry.totalCheckIns %> check-ins
+                </div>
+              </div>
+
+              <div class="points">
+                <%= entry.totalPoints %>
+              </div>
+            </li>
+          <% }); %>
+        <% } else { %>
+          <li class="empty-state">
+            <p>No players yet. Be the first to check in!</p>
+          </li>
+        <% } %>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

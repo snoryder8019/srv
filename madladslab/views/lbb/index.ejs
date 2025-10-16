@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      padding: 1rem 2rem;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.5rem 1rem;
+      border-radius: 25px;
+    }
+
+    .points-badge {
+      background: #ffd700;
+      color: #333;
+      padding: 0.25rem 0.75rem;
+      border-radius: 15px;
+      font-weight: 600;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .nav-links a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      transition: background 0.3s;
+    }
+
+    .nav-links a:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 968px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .sidebar {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      height: fit-content;
+    }
+
+    .sidebar h2 {
+      margin-bottom: 1rem;
+      color: #333;
+    }
+
+    .stat-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .stat-card h3 {
+      font-size: 0.9rem;
+      opacity: 0.9;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-card p {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .recent-checkins {
+      margin-top: 1.5rem;
+    }
+
+    .checkin-item {
+      padding: 0.75rem;
+      border-bottom: 1px solid #eee;
+      font-size: 0.9rem;
+    }
+
+    .checkin-item:last-child {
+      border-bottom: none;
+    }
+
+    .checkin-item strong {
+      color: #667eea;
+    }
+
+    .map-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    #map {
+      width: 100%;
+      height: 600px;
+    }
+
+    .map-controls {
+      padding: 1rem;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      transition: transform 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .location-popup {
+      min-width: 200px;
+    }
+
+    .location-popup h3 {
+      margin-bottom: 0.5rem;
+      color: #333;
+    }
+
+    .location-popup p {
+      margin: 0.25rem 0;
+      font-size: 0.9rem;
+    }
+
+    .checkin-btn {
+      margin-top: 0.75rem;
+      width: 100%;
+      background: #10b981;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #666;
+    }
+
+    .alert {
+      position: fixed;
+      top: 100px;
+      right: 20px;
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      color: white;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      z-index: 10000;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    .alert.success {
+      background: #10b981;
+    }
+
+    .alert.error {
+      background: #ef4444;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .login-prompt {
+      text-align: center;
+      padding: 3rem;
+      background: white;
+      border-radius: 12px;
+      margin: 2rem;
+    }
+
+    .login-prompt h2 {
+      margin-bottom: 1rem;
+      color: #333;
+    }
+
+    .login-prompt a {
+      display: inline-block;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🍺 Life Behind Bars</h1>
+    <div class="header-right">
+      <% if (user) { %>
+        <% if (profile) { %>
+          <div class="user-info">
+            <span>Level <%= profile.level %></span>
+            <span class="points-badge"><%= profile.totalPoints %> pts</span>
+          </div>
+        <% } %>
+        <nav class="nav-links">
+          <a href="/lbb/profile">Profile</a>
+          <a href="/lbb/rewards">Rewards</a>
+          <a href="/lbb/leaderboard">Leaderboard</a>
+        </nav>
+      <% } else { %>
+        <a href="/auth" class="btn">Login</a>
+      <% } %>
+    </div>
+  </div>
+
+  <% if (user) { %>
+    <div class="container">
+      <div class="sidebar">
+        <h2>Your Stats</h2>
+        <% if (profile) { %>
+          <div class="stat-card">
+            <h3>Total Points</h3>
+            <p><%= profile.totalPoints %></p>
+          </div>
+          <div class="stat-card">
+            <h3>Check-ins</h3>
+            <p><%= profile.totalCheckIns %></p>
+          </div>
+          <div class="stat-card">
+            <h3>Current Streak</h3>
+            <p><%= profile.stats.currentStreak %> days</p>
+          </div>
+          <div class="stat-card">
+            <h3>Unique Locations</h3>
+            <p><%= profile.stats.uniqueLocations %></p>
+          </div>
+
+          <% if (recentCheckIns && recentCheckIns.length > 0) { %>
+            <div class="recent-checkins">
+              <h3>Recent Check-ins</h3>
+              <% recentCheckIns.forEach(function(checkin) { %>
+                <div class="checkin-item">
+                  <strong><%= checkin.locationId?.name || 'Unknown' %></strong><br>
+                  <small><%= new Date(checkin.createdAt).toLocaleDateString() %></small>
+                </div>
+              <% }); %>
+            </div>
+          <% } %>
+        <% } %>
+      </div>
+
+      <div class="map-container">
+        <div class="map-controls">
+          <h2>Find Nearby Bars & Lounges</h2>
+          <button id="findNearby" class="btn">Find My Location</button>
+        </div>
+        <div id="map"></div>
+      </div>
+    </div>
+  <% } else { %>
+    <div class="login-prompt">
+      <h2>Welcome to Life Behind Bars!</h2>
+      <p>Check in to bars and lounges, earn points, and unlock rewards.</p>
+      <a href="/auth" class="btn">Get Started</a>
+    </div>
+  <% } %>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    <% if (user) { %>
+      let map;
+      let userMarker;
+      let locationMarkers = [];
+
+      function initMap() {
+        // Initialize map
+        map = L.map('map').setView([39.8283, -98.5795], 4); // Center of USA
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+      }
+
+      function showAlert(message, type = 'success') {
+        const alert = document.createElement('div');
+        alert.className = `alert ${type}`;
+        alert.textContent = message;
+        document.body.appendChild(alert);
+
+        setTimeout(() => {
+          alert.remove();
+        }, 4000);
+      }
+
+      function findNearbyLocations(lat, lng) {
+        fetch(`/lbb/api/locations/nearby?latitude=${lat}&longitude=${lng}&maxDistance=10000`)
+          .then(res => res.json())
+          .then(locations => {
+            // Clear existing markers
+            locationMarkers.forEach(marker => marker.remove());
+            locationMarkers = [];
+
+            // Add markers for each location
+            locations.forEach(location => {
+              const marker = L.marker([
+                location.coordinates.coordinates[1],
+                location.coordinates.coordinates[0]
+              ]).addTo(map);
+
+              const popupContent = `
+                <div class="location-popup">
+                  <h3>${location.name}</h3>
+                  <p><strong>Type:</strong> ${location.type}</p>
+                  ${location.description ? `<p>${location.description}</p>` : ''}
+                  <button class="btn checkin-btn" onclick="checkIn('${location._id}')">
+                    Check In
+                  </button>
+                </div>
+              `;
+
+              marker.bindPopup(popupContent);
+              locationMarkers.push(marker);
+            });
+
+            if (locations.length === 0) {
+              showAlert('No locations found nearby. Try a different area!', 'error');
+            }
+          })
+          .catch(err => {
+            console.error('Error fetching locations:', err);
+            showAlert('Error loading locations', 'error');
+          });
+      }
+
+      function getUserLocation() {
+        if (!navigator.geolocation) {
+          showAlert('Geolocation not supported by your browser', 'error');
+          return;
+        }
+
+        document.getElementById('findNearby').disabled = true;
+        document.getElementById('findNearby').textContent = 'Finding...';
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+
+            // Update map view
+            map.setView([lat, lng], 13);
+
+            // Add/update user marker
+            if (userMarker) {
+              userMarker.setLatLng([lat, lng]);
+            } else {
+              userMarker = L.marker([lat, lng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                  iconSize: [25, 41],
+                  iconAnchor: [12, 41],
+                  popupAnchor: [1, -34],
+                  shadowSize: [41, 41]
+                })
+              }).addTo(map);
+              userMarker.bindPopup('You are here!');
+            }
+
+            // Find nearby locations
+            findNearbyLocations(lat, lng);
+
+            document.getElementById('findNearby').disabled = false;
+            document.getElementById('findNearby').textContent = 'Refresh Location';
+          },
+          (error) => {
+            console.error('Geolocation error:', error);
+            showAlert('Could not get your location', 'error');
+            document.getElementById('findNearby').disabled = false;
+            document.getElementById('findNearby').textContent = 'Find My Location';
+          }
+        );
+      }
+
+      function checkIn(locationId) {
+        if (!navigator.geolocation) {
+          showAlert('Geolocation required for check-in', 'error');
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            fetch('/lbb/api/checkin', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                locationId,
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+              })
+            })
+              .then(res => res.json())
+              .then(data => {
+                if (data.success) {
+                  showAlert(data.message, 'success');
+                  // Reload page to update stats
+                  setTimeout(() => location.reload(), 2000);
+                } else {
+                  showAlert(data.error || 'Check-in failed', 'error');
+                }
+              })
+              .catch(err => {
+                console.error('Check-in error:', err);
+                showAlert('Error checking in', 'error');
+              });
+          },
+          (error) => {
+            showAlert('Could not get your location for check-in', 'error');
+          }
+        );
+      }
+
+      // Initialize map on load
+      document.addEventListener('DOMContentLoaded', () => {
+        initMap();
+      });
+
+      // Find nearby button
+      document.getElementById('findNearby').addEventListener('click', getUserLocation);
+    <% } %>
+  </script>
+</body>
+</html>

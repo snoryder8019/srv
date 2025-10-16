@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      padding: 1rem 2rem;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 1.8rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .nav-links a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      transition: background 0.3s;
+    }
+
+    .nav-links a:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .points-banner {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .points-banner h2 {
+      color: #333;
+      margin-bottom: 0.5rem;
+    }
+
+    .points-display {
+      font-size: 3rem;
+      font-weight: 700;
+      color: #667eea;
+    }
+
+    .rewards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .reward-card {
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      transition: transform 0.3s;
+    }
+
+    .reward-card:hover {
+      transform: translateY(-4px);
+    }
+
+    .reward-image {
+      width: 100%;
+      height: 200px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 4rem;
+    }
+
+    .reward-content {
+      padding: 1.5rem;
+    }
+
+    .reward-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #333;
+      margin-bottom: 0.5rem;
+    }
+
+    .reward-description {
+      color: #666;
+      margin-bottom: 1rem;
+      line-height: 1.5;
+    }
+
+    .reward-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #eee;
+    }
+
+    .reward-cost {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #667eea;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .reward-type {
+      display: inline-block;
+      background: #f3f4f6;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      color: #666;
+      margin-bottom: 0.5rem;
+    }
+
+    .empty-state {
+      background: white;
+      border-radius: 12px;
+      padding: 3rem;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .alert {
+      position: fixed;
+      top: 100px;
+      right: 20px;
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      color: white;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      z-index: 10000;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    .alert.success { background: #10b981; }
+    .alert.error { background: #ef4444; }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🍺 Life Behind Bars</h1>
+    <nav class="nav-links">
+      <a href="/lbb">Map</a>
+      <a href="/lbb/profile">Profile</a>
+      <a href="/lbb/leaderboard">Leaderboard</a>
+    </nav>
+  </div>
+
+  <div class="container">
+    <div class="points-banner">
+      <h2>Your Available Points</h2>
+      <div class="points-display"><%= profile.totalPoints %></div>
+    </div>
+
+    <% if (availableRewards && availableRewards.length > 0) { %>
+      <div class="rewards-grid">
+        <% availableRewards.forEach(function(reward) { %>
+          <div class="reward-card">
+            <div class="reward-image">
+              <% if (reward.type === 'discount') { %>🎫
+              <% } else if (reward.type === 'free_item') { %>🎁
+              <% } else if (reward.type === 'special_access') { %>🌟
+              <% } else if (reward.type === 'points_multiplier') { %>✨
+              <% } else if (reward.type === 'badge') { %>🏆
+              <% } else { %>🎉
+              <% } %>
+            </div>
+            <div class="reward-content">
+              <span class="reward-type"><%= reward.type.replace('_', ' ') %></span>
+              <h3 class="reward-title"><%= reward.title %></h3>
+              <p class="reward-description"><%= reward.description || reward.value %></p>
+
+              <div class="reward-footer">
+                <span class="reward-cost"><%= reward.pointsCost %> pts</span>
+                <button
+                  class="btn"
+                  onclick="redeemReward('<%= reward._id %>', <%= reward.pointsCost %>)"
+                  <%= profile.totalPoints < reward.pointsCost ? 'disabled' : '' %>
+                >
+                  <%= profile.totalPoints < reward.pointsCost ? 'Not Enough Points' : 'Redeem' %>
+                </button>
+              </div>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    <% } else { %>
+      <div class="empty-state">
+        <h2>No Rewards Available</h2>
+        <p>Check back later or earn more points to unlock rewards!</p>
+      </div>
+    <% } %>
+  </div>
+
+  <script>
+    function showAlert(message, type = 'success') {
+      const alert = document.createElement('div');
+      alert.className = `alert ${type}`;
+      alert.textContent = message;
+      document.body.appendChild(alert);
+
+      setTimeout(() => {
+        alert.remove();
+      }, 4000);
+    }
+
+    function redeemReward(rewardId, cost) {
+      if (!confirm(`Redeem this reward for ${cost} points?`)) {
+        return;
+      }
+
+      fetch(`/lbb/api/rewards/${rewardId}/redeem`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            showAlert(`Reward redeemed! Code: ${data.code}`, 'success');
+            setTimeout(() => location.reload(), 2000);
+          } else {
+            showAlert(data.error || 'Failed to redeem reward', 'error');
+          }
+        })
+        .catch(err => {
+          console.error('Redemption error:', err);
+          showAlert('Error redeeming reward', 'error');
+        });
+    }
+  </script>
+</body>
+</html>
