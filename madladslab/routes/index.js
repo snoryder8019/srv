@@ -11,6 +11,7 @@ import grafitti from "./grafitti/index.js"
 import trader from "./trader/index.js"
 import lbb from "./lbb/index.js"
 import claudeTalk from "./claudeTalk/index.js"
+import payments from "./payments/index.js"
 /* GET home page. */
 
 router.use('/admin', admin)
@@ -23,6 +24,7 @@ router.use('/grafitti', grafitti)
 router.use('/trader', trader)
 router.use('/lbb', lbb)
 router.use('/claudeTalk', claudeTalk)
+router.use('/payments', payments)
 router.use('/', plugins)
 
 router.get('/', function(req, res, next) {

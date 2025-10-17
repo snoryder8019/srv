@@ -44,7 +44,7 @@
 
       <!-- Sites List -->
       <div class="content-section">
-        <h2>All Sites (<%= sites.length %>)</h2>
+        <h2>All Sites (<%= sites ? sites.length : 0 %>)</h2>
         <div class="table-container">
           <% if (sites && sites.length > 0) { %>
             <table class="admin-table">
@@ -59,29 +59,33 @@
               </thead>
               <tbody>
                 <% sites.forEach((site, index) => { %>
-                  <tr>
-                    <td><strong><%= site.siteName %></strong></td>
+                  <tr data-site-id="<%= site._id %>">
+                    <td><strong><%= site.siteName || 'Unnamed Site' %></strong></td>
                     <td>
-                      <a href="<%= site.siteUrl %>" target="_blank" rel="noopener noreferrer">
-                        <%= site.siteUrl %>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display: inline; vertical-align: middle;">
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                          <polyline points="15 3 21 3 21 9"></polyline>
-                          <line x1="10" y1="14" x2="21" y2="3"></line>
-                        </svg>
-                      </a>
+                      <% if (site.siteUrl) { %>
+                        <a href="<%= site.siteUrl %>" target="_blank" rel="noopener noreferrer">
+                          <%= site.siteUrl %>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display: inline; vertical-align: middle;">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                          </svg>
+                        </a>
+                      <% } else { %>
+                        <span style="color: #888;">No URL</span>
+                      <% } %>
                     </td>
                     <td><span class="status-badge status-active">Active</span></td>
                     <td><%= site.createdAt ? new Date(site.createdAt).toLocaleDateString() : 'N/A' %></td>
                     <td>
                       <div class="action-buttons">
-                        <button class="btn-icon" title="Edit">
+                        <button class="btn-icon btn-edit" title="Edit" data-site-id="<%= site._id %>" data-site-name="<%= site.siteName || '' %>" data-site-url="<%= site.siteUrl || '' %>">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                           </svg>
                         </button>
-                        <button class="btn-icon btn-danger" title="Delete">
+                        <button class="btn-icon btn-danger btn-delete" title="Delete" data-site-id="<%= site._id %>" data-site-name="<%= site.siteName || 'this site' %>">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                             <polyline points="3 6 5 6 21 6"></polyline>
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -345,6 +349,82 @@
       margin-top: 1rem;
     }
 
+    /* Modal Styles */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 2000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-content {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 2rem;
+      max-width: 500px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-header h2 {
+      margin: 0;
+      color: #fff;
+      font-size: 1.5rem;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 2rem;
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .modal-close:hover {
+      background: rgba(255, 0, 0, 0.1);
+      color: #ff4444;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: flex-end;
+      margin-top: 1.5rem;
+    }
+
+    .btn-secondary {
+      background: #2a2a2a;
+      color: #e0e0e0;
+    }
+
+    .btn-secondary:hover {
+      background: #3a3a3a;
+      transform: translateY(-1px);
+    }
+
     @media (max-width: 768px) {
       .admin-main {
         margin-left: 0;
@@ -354,8 +434,45 @@
       .form-row {
         grid-template-columns: 1fr;
       }
+
+      .modal-content {
+        padding: 1.5rem;
+      }
+
+      .modal-actions {
+        flex-direction: column;
+      }
+
+      .modal-actions .btn {
+        width: 100%;
+      }
     }
   </style>
+
+  <!-- Edit Site Modal -->
+  <div id="editModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Edit Site</h2>
+        <button class="modal-close" onclick="closeEditModal()">&times;</button>
+      </div>
+      <form id="editForm" method="POST" action="/admin/update-site">
+        <input type="hidden" id="editSiteId" name="siteId" />
+        <div class="form-group">
+          <label for="editSiteName">Site Name</label>
+          <input type="text" id="editSiteName" name="siteName" required />
+        </div>
+        <div class="form-group">
+          <label for="editSiteUrl">Site URL</label>
+          <input type="url" id="editSiteUrl" name="siteUrl" required />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script>
     // Parse URL parameters for success/error messages
@@ -368,6 +485,56 @@
       setTimeout(() => {
         window.history.replaceState({}, document.title, window.location.pathname);
       }, 3000);
+    }
+
+    // Edit functionality
+    document.querySelectorAll('.btn-edit').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const siteId = this.dataset.siteId;
+        const siteName = this.dataset.siteName;
+        const siteUrl = this.dataset.siteUrl;
+
+        document.getElementById('editSiteId').value = siteId;
+        document.getElementById('editSiteName').value = siteName;
+        document.getElementById('editSiteUrl').value = siteUrl;
+        document.getElementById('editModal').style.display = 'flex';
+      });
+    });
+
+    function closeEditModal() {
+      document.getElementById('editModal').style.display = 'none';
+    }
+
+    // Delete functionality
+    document.querySelectorAll('.btn-delete').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const siteId = this.dataset.siteId;
+        const siteName = this.dataset.siteName;
+
+        if (confirm(`Are you sure you want to delete "${siteName}"? This action cannot be undone.`)) {
+          // Create a form and submit it
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = '/admin/delete-site';
+
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'siteId';
+          input.value = siteId;
+
+          form.appendChild(input);
+          document.body.appendChild(form);
+          form.submit();
+        }
+      });
+    });
+
+    // Close modal on outside click
+    window.onclick = function(event) {
+      const modal = document.getElementById('editModal');
+      if (event.target === modal) {
+        closeEditModal();
+      }
     }
   </script>
 </body>

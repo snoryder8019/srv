@@ -6,8 +6,9 @@ export default class Site extends ModelHelper{
   constructor(siteData){
     super('sites');
     this.modelFields ={
-      siteName: {type:'text', value:null, editable:null},
-      siteUrl: {type:'text', value:null, editable:null}
+      siteName: {type:'text', value:null, editable:true},
+      siteUrl: {type:'text', value:null, editable:true},
+      createdAt: {type:'date', value:null, editable:false}
     }
   }
 }

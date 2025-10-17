@@ -50,15 +50,24 @@ router.get('/sites', isAdmin, async (req, res) => {
     try {
         const user = req.user;
         const siteModel = new Sites();
-        const sites = await siteModel.getAll() || [];
+        let sites = [];
+
+        try {
+            sites = await siteModel.getAll() || [];
+        } catch (dbError) {
+            console.error('Database error fetching sites:', dbError);
+            // Continue with empty array if database fails
+        }
 
         res.render("admin/sites", {
             user: user,
             sites: sites,
-            currentPage: 'sites'
+            currentPage: 'sites',
+            success: req.query.success,
+            error: req.query.error
         });
     } catch (error) {
-        console.error(error);
+        console.error('Error rendering sites page:', error);
         res.status(500).send('Internal Server Error');
     }
 });
@@ -99,12 +108,58 @@ router.post('/create-site', isAdmin, async (req, res) => {
         const { siteName, siteUrl } = req.body;
 
         const siteModel = new Sites();
-        await siteModel.create({ siteName, siteUrl });
+        await siteModel.create({ siteName, siteUrl, createdAt: new Date() });
 
         res.redirect('/admin/sites?success=Site created successfully');
     } catch (error) {
-        console.error(error);
+        console.error('Error creating site:', error);
         res.redirect('/admin/sites?error=Failed to create site');
+    }
+});
+
+// Update site endpoint
+router.post('/update-site', isAdmin, async (req, res) => {
+    try {
+        const { siteId, siteName, siteUrl } = req.body;
+
+        if (!siteId) {
+            return res.redirect('/admin/sites?error=Site ID is required');
+        }
+
+        const siteModel = new Sites();
+        const updated = await siteModel.updateById(siteId, { siteName, siteUrl });
+
+        if (updated) {
+            res.redirect('/admin/sites?success=Site updated successfully');
+        } else {
+            res.redirect('/admin/sites?error=Site not found');
+        }
+    } catch (error) {
+        console.error('Error updating site:', error);
+        res.redirect('/admin/sites?error=Failed to update site');
+    }
+});
+
+// Delete site endpoint
+router.post('/delete-site', isAdmin, async (req, res) => {
+    try {
+        const { siteId } = req.body;
+
+        if (!siteId) {
+            return res.redirect('/admin/sites?error=Site ID is required');
+        }
+
+        const siteModel = new Sites();
+        const deleted = await siteModel.deleteById(siteId);
+
+        if (deleted) {
+            res.redirect('/admin/sites?success=Site deleted successfully');
+        } else {
+            res.redirect('/admin/sites?error=Site not found');
+        }
+    } catch (error) {
+        console.error('Error deleting site:', error);
+        res.redirect('/admin/sites?error=Failed to delete site');
     }
 });
 
