@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta property="og:title" content="<%= pageTitle %> - madLadsLab" />
+    <title><%= pageTitle %> - madLadsLab</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #00ff00;
+            text-decoration: none;
+            padding: 1rem 2rem;
+            transition: all 0.3s;
+        }
+
+        .back-link:hover {
+            color: #00cc00;
+            transform: translateX(-5px);
+        }
+
+        .method-header {
+            text-align: center;
+            padding: 2rem;
+            background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+            border-bottom: 2px solid #2a2a2a;
+        }
+
+        .method-icon {
+            font-size: 5rem;
+            margin-bottom: 1rem;
+        }
+
+        .method-header h1 {
+            font-size: 2.5rem;
+            color: #ffffff;
+            margin-bottom: 0.5rem;
+        }
+
+        .method-header p {
+            color: #888;
+            font-size: 1.1rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .info-card {
+            background: #1a1a1a;
+            border: 2px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .info-card.crypto {
+            border-color: #f59e0b;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.1);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 1rem 0;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #888;
+            font-weight: 600;
+        }
+
+        .info-value {
+            color: #00ff00;
+            font-weight: 500;
+            text-align: right;
+        }
+
+        .info-card.crypto .info-value {
+            color: #f59e0b;
+        }
+
+        .address-section {
+            background: #0a0a0a;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .address-label {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .address-display {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+            color: #fff;
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        .copy-button {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #000;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            transition: all 0.3s;
+            font-size: 1rem;
+        }
+
+        .copy-button:hover {
+            background: linear-gradient(135deg, #d97706, #b45309);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        }
+
+        .copy-button.copied {
+            background: linear-gradient(135deg, #00ff00, #00cc00);
+        }
+
+        .qr-section {
+            text-align: center;
+            padding: 2rem;
+            background: #fff;
+            border-radius: 12px;
+            margin-top: 2rem;
+        }
+
+        #qrcode {
+            display: inline-block;
+            padding: 1rem;
+            background: #fff;
+            border-radius: 8px;
+        }
+
+        .qr-caption {
+            margin-top: 1rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .warning-box {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 2rem;
+            color: #f59e0b;
+        }
+
+        .warning-box h3 {
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+
+        .warning-box ul {
+            margin-left: 1.5rem;
+            font-size: 0.9rem;
+        }
+
+        .warning-box li {
+            margin-bottom: 0.25rem;
+        }
+
+        .external-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: linear-gradient(135deg, #00ff00, #00cc00);
+            color: #000;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin-top: 1.5rem;
+            width: 100%;
+            justify-content: center;
+            font-size: 1.1rem;
+        }
+
+        .external-link:hover {
+            background: linear-gradient(135deg, #00cc00, #00aa00);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 255, 0, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .method-header h1 {
+                font-size: 2rem;
+            }
+
+            .method-icon {
+                font-size: 4rem;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="/payments" class="back-link">← Back to Payment Options</a>
+
+    <div class="method-header">
+        <div class="method-icon"><%= method.icon %></div>
+        <h1><%= method.name %></h1>
+        <p><%= method.description %></p>
+    </div>
+
+    <div class="container">
+        <% if (type === 'crypto') { %>
+            <!-- Crypto Payment Details -->
+            <div class="info-card crypto">
+                <h2 style="margin-bottom: 1.5rem; color: #fff;">Payment Details</h2>
+
+                <div class="info-row">
+                    <span class="info-label">Currency:</span>
+                    <span class="info-value"><%= method.name %> (<%= method.symbol %>)</span>
+                </div>
+
+                <div class="info-row">
+                    <span class="info-label">Network:</span>
+                    <span class="info-value"><%= method.network %></span>
+                </div>
+
+                <% if (method.address) { %>
+                <div class="address-section">
+                    <div class="address-label">Wallet Address</div>
+                    <div class="address-display" id="address"><%= method.address %></div>
+                    <button class="copy-button" onclick="copyAddress()">
+                        📋 Copy Address
+                    </button>
+                </div>
+
+                <% if (method.qrCode) { %>
+                <div class="qr-section">
+                    <div id="qrcode"></div>
+                    <p class="qr-caption">Scan with your <%= method.name %> wallet</p>
+                </div>
+                <% } %>
+
+                <div class="warning-box">
+                    <h3>⚠️ Important Notes:</h3>
+                    <ul>
+                        <li>Only send <%= method.symbol %> to this address</li>
+                        <li>Verify the network is <strong><%= method.network %></strong></li>
+                        <li>Transactions are final and cannot be reversed</li>
+                        <li>Allow time for network confirmations</li>
+                    </ul>
+                </div>
+                <% } else { %>
+                <div style="text-align: center; padding: 2rem; color: #888;">
+                    <p>Address not configured yet. Please contact support for payment instructions.</p>
+                </div>
+                <% } %>
+            </div>
+
+        <% } else { %>
+            <!-- Fiat Payment Details -->
+            <div class="info-card">
+                <h2 style="margin-bottom: 1.5rem; color: #fff;">Payment Details</h2>
+
+                <div class="info-row">
+                    <span class="info-label">Method:</span>
+                    <span class="info-value"><%= method.name %></span>
+                </div>
+
+                <% if (method.fees) { %>
+                <div class="info-row">
+                    <span class="info-label">Fees:</span>
+                    <span class="info-value"><%= method.fees %></span>
+                </div>
+                <% } %>
+
+                <% if (method.link && method.link !== '#') { %>
+                <a href="<%= method.link %>" class="external-link" target="_blank" rel="noopener noreferrer">
+                    Proceed to <%= method.name %> →
+                </a>
+                <% } else if (method.info) { %>
+                <div style="margin-top: 2rem; padding: 1.5rem; background: #0a0a0a; border-radius: 8px;">
+                    <p style="color: #00ff00; font-size: 1.1rem;"><%= method.info %></p>
+                </div>
+                <% } %>
+            </div>
+        <% } %>
+    </div>
+
+    <%-include('../mainContent/adminNav.ejs')%>
+
+    <% if (type === 'crypto' && method.address && method.qrCode) { %>
+    <script>
+        // Generate QR code
+        const address = '<%= method.address %>';
+        if (address) {
+            QRCode.toCanvas(document.getElementById('qrcode'), address, {
+                width: 256,
+                margin: 2,
+                color: {
+                    dark: '#000000',
+                    light: '#ffffff'
+                }
+            }, function (error) {
+                if (error) console.error(error);
+            });
+        }
+
+        // Copy address function
+        function copyAddress() {
+            const addressText = document.getElementById('address').textContent;
+            navigator.clipboard.writeText(addressText).then(() => {
+                const btn = document.querySelector('.copy-button');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '✓ Copied!';
+                btn.classList.add('copied');
+
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy address. Please copy manually.');
+            });
+        }
+    </script>
+    <% } %>
+</body>
+</html>

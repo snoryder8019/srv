@@ -47,19 +47,23 @@ export default class ModelHelper {
   }
   processData(data) {
     const processedData = {};
-    const ModelClass = this.constructor; // Get the actual model class
     console.log("Processing data:", data); // Debug incoming data
-    console.log("Model Fields:", ModelClass.modelFields); // Debug model fields
+    console.log("Model Fields:", this.modelFields); // Debug model fields
 
-    if (!ModelClass.modelFields) {
-        console.error("Error: modelFields is undefined in", ModelClass.name);
-        return {}; // Return empty to prevent crashes
+    if (!this.modelFields || Object.keys(this.modelFields).length === 0) {
+        console.warn("Warning: modelFields is empty, returning data as-is");
+        return data; // Return data as-is if no model fields defined
     }
 
-    for (const key in ModelClass.modelFields) {
+    for (const key in this.modelFields) {
         if (data[key] !== undefined) {
-            processedData[key] = this.castValue(data[key], ModelClass.modelFields[key].type);
+            processedData[key] = this.castValue(data[key], this.modelFields[key].type);
         }
+    }
+
+    // Include createdAt if provided and not in modelFields
+    if (data.createdAt && !this.modelFields.createdAt) {
+        processedData.createdAt = data.createdAt;
     }
 
     console.log("Processed data ready for DB:", processedData); // Debug processed data
