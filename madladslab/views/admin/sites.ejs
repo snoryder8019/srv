@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Sites Management - madLadsLab Admin</title>
+</head>
+<body>
+  <%-include('../mainContent/adminHeader.ejs')%>
+
+  <div class="admin-container">
+    <%-include('../mainContent/adminSidebar.ejs')%>
+
+    <main class="admin-main">
+      <div class="admin-header">
+        <h1>Sites Management</h1>
+        <p class="admin-subtitle">Manage all your sites and monitoring</p>
+      </div>
+
+      <% if (typeof success !== 'undefined' && success) { %>
+        <div class="alert alert-success"><%= success %></div>
+      <% } %>
+      <% if (typeof error !== 'undefined' && error) { %>
+        <div class="alert alert-error"><%= error %></div>
+      <% } %>
+
+      <!-- Add New Site -->
+      <div class="content-section">
+        <h2>Add New Site</h2>
+        <form method="POST" action="/admin/create-site" class="admin-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="siteName">Site Name</label>
+              <input type="text" id="siteName" name="siteName" required placeholder="e.g., My Portfolio" />
+            </div>
+            <div class="form-group">
+              <label for="siteUrl">Site URL</label>
+              <input type="url" id="siteUrl" name="siteUrl" required placeholder="https://example.com" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Add Site</button>
+        </form>
+      </div>
+
+      <!-- Sites List -->
+      <div class="content-section">
+        <h2>All Sites (<%= sites.length %>)</h2>
+        <div class="table-container">
+          <% if (sites && sites.length > 0) { %>
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Site Name</th>
+                  <th>URL</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% sites.forEach((site, index) => { %>
+                  <tr>
+                    <td><strong><%= site.siteName %></strong></td>
+                    <td>
+                      <a href="<%= site.siteUrl %>" target="_blank" rel="noopener noreferrer">
+                        <%= site.siteUrl %>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display: inline; vertical-align: middle;">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                          <polyline points="15 3 21 3 21 9"></polyline>
+                          <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                      </a>
+                    </td>
+                    <td><span class="status-badge status-active">Active</span></td>
+                    <td><%= site.createdAt ? new Date(site.createdAt).toLocaleDateString() : 'N/A' %></td>
+                    <td>
+                      <div class="action-buttons">
+                        <button class="btn-icon" title="Edit">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                          </svg>
+                        </button>
+                        <button class="btn-icon btn-danger" title="Delete">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          <% } else { %>
+            <div class="empty-state">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin-bottom: 1rem; opacity: 0.3;">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+              <p>No sites added yet. Create your first site above to get started!</p>
+            </div>
+          <% } %>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      line-height: 1.6;
+    }
+
+    .admin-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .admin-main {
+      flex: 1;
+      padding: 2rem;
+      margin-left: 250px;
+      margin-top: 60px;
+    }
+
+    .admin-header {
+      margin-bottom: 2rem;
+    }
+
+    .admin-header h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 0.5rem;
+    }
+
+    .admin-subtitle {
+      color: #888;
+      font-size: 1rem;
+    }
+
+    .alert {
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+    }
+
+    .alert-success {
+      background: rgba(0, 255, 0, 0.1);
+      border: 1px solid rgba(0, 255, 0, 0.3);
+      color: #00ff00;
+    }
+
+    .alert-error {
+      background: rgba(255, 0, 0, 0.1);
+      border: 1px solid rgba(255, 0, 0, 0.3);
+      color: #ff4444;
+    }
+
+    .content-section {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .content-section h2 {
+      font-size: 1.5rem;
+      color: #fff;
+      margin-bottom: 1.5rem;
+    }
+
+    .admin-form {
+      max-width: 100%;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form-group label {
+      color: #888;
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      background: #0a0a0a;
+      border: 1px solid #2a2a2a;
+      color: #e0e0e0;
+      padding: 0.75rem;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #00ff00;
+      box-shadow: 0 0 0 3px rgba(0, 255, 0, 0.1);
+    }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-primary {
+      background: #00ff00;
+      color: #0a0a0a;
+    }
+
+    .btn-primary:hover {
+      background: #00cc00;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 255, 0, 0.3);
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .admin-table th {
+      background: #0a0a0a;
+      color: #888;
+      text-align: left;
+      padding: 0.75rem;
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid #2a2a2a;
+    }
+
+    .admin-table td {
+      padding: 1rem 0.75rem;
+      border-bottom: 1px solid #2a2a2a;
+      color: #e0e0e0;
+    }
+
+    .admin-table tr:hover {
+      background: rgba(0, 255, 0, 0.05);
+    }
+
+    .admin-table a {
+      color: #00ff00;
+      text-decoration: none;
+    }
+
+    .admin-table a:hover {
+      text-decoration: underline;
+    }
+
+    .status-badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .status-active {
+      background: rgba(0, 255, 0, 0.2);
+      color: #00ff00;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn-icon {
+      background: rgba(0, 255, 0, 0.1);
+      border: 1px solid rgba(0, 255, 0, 0.3);
+      color: #00ff00;
+      padding: 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-icon:hover {
+      background: rgba(0, 255, 0, 0.2);
+      border-color: #00ff00;
+    }
+
+    .btn-danger {
+      background: rgba(255, 0, 0, 0.1);
+      border-color: rgba(255, 0, 0, 0.3);
+      color: #ff4444;
+    }
+
+    .btn-danger:hover {
+      background: rgba(255, 0, 0, 0.2);
+      border-color: #ff4444;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 2rem;
+      color: #888;
+    }
+
+    .empty-state p {
+      margin-top: 1rem;
+    }
+
+    @media (max-width: 768px) {
+      .admin-main {
+        margin-left: 0;
+        padding: 1rem;
+      }
+
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <script>
+    // Parse URL parameters for success/error messages
+    const urlParams = new URLSearchParams(window.location.search);
+    const success = urlParams.get('success');
+    const error = urlParams.get('error');
+
+    if (success || error) {
+      // Clean URL after showing message
+      setTimeout(() => {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

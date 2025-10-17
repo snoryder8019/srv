@@ -7,7 +7,9 @@ import crypto from 'crypto';
 
 // Middleware to ensure user is authenticated (adjust based on your auth)
 function requireAuth(req, res, next) {
-  if (!req.user) {
+  if (!req.user.isAdmin
+    
+  ) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   next();
@@ -824,140 +826,101 @@ async function executeStrategy(strategy, apiKey, dryRun, userId) {
 // ===== ANALYTICS =====
 
 // Get account balances
+// routes/coinbase.js
+import jwt from "jsonwebtoken";
+
+function buildRestJWT({ keyName, keySecret, method, host, path }) {
+  const now = Math.floor(Date.now() / 1000);
+  return jwt.sign(
+    {
+      iss: process.env.CB_TRADER,
+      sub: process.env.CB_TRADER_SEC,
+      iat: now,
+      exp: now + 110,
+      // Coinbase REST JWTs: include formatted URI
+      uri: `${method.toUpperCase()} ${host}${path}`
+    },
+    keySecret,
+    { algorithm: "ES256", header: { kid: keyName } }
+  );
+}
+
 router.get('/balances', requireAuth, async (req, res) => {
   try {
     const userId = req.user._id.toString();
-
-    // Get user's active API keys
     const apiKeyModel = new ApiKey();
     const apiKeys = await apiKeyModel.getAll({ userId, isActive: true });
+    if (!apiKeys?.length) return res.json({ success:true, data:{ balances:[], totalUSD:0 } });
 
-    if (!apiKeys || apiKeys.length === 0) {
-      return res.json({
-        success: true,
-        data: {
-          balances: [],
-          totalUSD: 0
-        }
-      });
+    const { keyName, keySecret } = apiKeys[0]; // store these in your model
+    const host = 'api.coinbase.com';
+    const acctPath = '/api/v3/brokerage/accounts?limit=250';
+    const token = buildRestJWT({ keyName, keySecret, method:'GET', host, path:acctPath });
+
+    // 1) Accounts (balances)
+    const acctRes = await fetch(`https://${host}${acctPath}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!acctRes.ok) {
+      return res.json({ success:true, data:{ balances:[], totalUSD:0, error:'Coinbase v3 auth failed' } });
     }
+    const acctJson = await acctRes.json();
+    const accounts = acctJson?.accounts || [];
 
-    // Use the first active API key
-    const apiKey = apiKeys[0];
-
-    try {
-      // Fetch accounts from Coinbase Exchange API
-      const accountsResponse = await fetch('https://api.exchange.coinbase.com/accounts', {
-        headers: {
-          'CB-ACCESS-KEY': apiKey.apiKey,
-          'CB-ACCESS-SIGN': '', // TODO: Need to implement signature
-          'CB-ACCESS-TIMESTAMP': Date.now() / 1000,
-          'CB-ACCESS-PASSPHRASE': '' // TODO: Need passphrase if using Coinbase Pro
-        }
+    // 2) Prices in one shot via best_bid_ask
+    const nonUSD = [...new Set(accounts.map(a => a.currency).filter(c => !['USD','USDC','USDT'].includes(c)))];
+    let priceMap = {};
+    if (nonUSD.length) {
+      const q = nonUSD.map(c => `${c}-USD`).join(',');
+      const pricePath = `/api/v3/brokerage/best_bid_ask?product_ids=${encodeURIComponent(q)}`;
+      const priceJwt = buildRestJWT({ keyName, keySecret, method:'GET', host, path:pricePath });
+      const priceRes = await fetch(`https://${host}${pricePath}`, {
+        headers: { Authorization: `Bearer ${priceJwt}` }
       });
-
-      if (!accountsResponse.ok) {
-        console.error('Coinbase API error:', accountsResponse.status);
-        // Fall back to mock data if API fails
-        return res.json({
-          success: true,
-          data: {
-            balances: [],
-            totalUSD: 0,
-            error: 'Unable to fetch from Coinbase API - check API key configuration'
-          }
-        });
+      if (priceRes.ok) {
+        const { pricebooks=[] } = await priceRes.json();
+        // use mid = (bid+ask)/2
+        for (const p of pricebooks) {
+          const bid = parseFloat(p.bids?.[0]?.price || '0');
+          const ask = parseFloat(p.asks?.[0]?.price || '0');
+          const cur = p.product_id.split('-')[0];
+          priceMap[cur] = (bid && ask) ? (bid+ask)/2 : (bid || ask || 0);
+        }
       }
-
-      const accounts = await accountsResponse.json();
-
-      // Get current market prices
-      const priceMap = {};
-      const currencies = [...new Set(accounts.map(a => a.currency).filter(c => c !== 'USD'))];
-
-      // Fetch current prices for each currency
-      await Promise.all(currencies.map(async (currency) => {
-        try {
-          const tickerRes = await fetch(`https://api.exchange.coinbase.com/products/${currency}-USD/ticker`);
-          if (tickerRes.ok) {
-            const ticker = await tickerRes.json();
-            priceMap[currency] = parseFloat(ticker.price) || 0;
-          }
-        } catch (err) {
-          console.error(`Error fetching price for ${currency}:`, err.message);
-          priceMap[currency] = 0;
-        }
-      }));
-
-      // Map currency codes to full names
-      const currencyNames = {
-        'USD': 'US Dollar',
-        'BTC': 'Bitcoin',
-        'ETH': 'Ethereum',
-        'SOL': 'Solana',
-        'BNB': 'BNB',
-        'XRP': 'Ripple',
-        'ADA': 'Cardano',
-        'DOGE': 'Dogecoin',
-        'MATIC': 'Polygon',
-        'LTC': 'Litecoin',
-        'USDC': 'USD Coin',
-        'USDT': 'Tether'
-      };
-
-      // Format balances
-      const balances = accounts.map(account => {
-        const available = parseFloat(account.available) || 0;
-        const hold = parseFloat(account.hold) || 0;
-        const currency = account.currency;
-
-        // Calculate USD value
-        let usdValue = 0;
-        if (currency === 'USD' || currency === 'USDC' || currency === 'USDT') {
-          usdValue = available;
-        } else {
-          usdValue = available * (priceMap[currency] || 0);
-        }
-
-        return {
-          currency: currency,
-          currencyName: currencyNames[currency] || currency,
-          available: available,
-          hold: hold,
-          usdValue: usdValue
-        };
-      }).filter(bal => bal.available > 0.00000001); // Only show non-zero balances
-
-      // Calculate total USD value
-      const totalUSD = balances.reduce((sum, bal) => sum + (bal.usdValue || 0), 0);
-
-      res.json({
-        success: true,
-        data: {
-          balances,
-          totalUSD
-        }
-      });
-
-    } catch (apiError) {
-      console.error('Coinbase API integration error:', apiError);
-
-      // Return empty balances if API integration fails
-      res.json({
-        success: true,
-        data: {
-          balances: [],
-          totalUSD: 0,
-          error: 'API integration error - check credentials'
-        }
-      });
     }
 
-  } catch (error) {
-    console.error('Get balances error:', error);
-    res.status(500).json({ error: 'Failed to get balances' });
+    const nameMap = {
+      USD:'US Dollar', BTC:'Bitcoin', ETH:'Ethereum', SOL:'Solana', BNB:'BNB',
+      XRP:'Ripple', ADA:'Cardano', DOGE:'Dogecoin', MATIC:'Polygon',
+      LTC:'Litecoin', USDC:'USD Coin', USDT:'Tether'
+    };
+
+    const balances = accounts.map(a => {
+      const available = parseFloat(a.available_balance?.value || '0');
+      const hold = parseFloat(a.hold?.value || '0');
+      const cur = a.currency;
+      const usdValue =
+        (cur === 'USD' || cur === 'USDC' || cur === 'USDT')
+          ? available
+          : available * (priceMap[cur] || 0);
+      return {
+        currency: cur,
+        currencyName: nameMap[cur] || cur,
+        available,
+        hold,
+        usdValue
+      };
+    }).filter(b => b.available > 1e-8);
+
+    const totalUSD = balances.reduce((s,b)=>s+(b.usdValue||0),0);
+
+    res.json({ success:true, data:{ balances, totalUSD } });
+  } catch (e) {
+    console.error('Get balances error:', e);
+    res.status(500).json({ error:'Failed to get balances' });
   }
 });
+
 
 // Get portfolio summary
 router.get('/portfolio', requireAuth, async (req, res) => {
