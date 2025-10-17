@@ -1,23 +1,18 @@
 import express from 'express';
 import { getDb } from '../../plugins/mongo/mongo.js';
+import galacticStateRouter from './galacticState.js';
 
 const router = express.Router();
 
-// Get galactic state
-router.get('/galactic-state', async (req, res) => {
-  try {
-    const db = getDb();
-    const galacticState = await db.collection('galacticState').findOne({});
+// Mount galactic state sub-routes
+router.use('/', galacticStateRouter);
 
-    res.render('universe/galactic-state', {
-      title: 'Galactic State',
-      galacticState,
-      user: req.user
-    });
-  } catch (err) {
-    console.error('Error fetching galactic state:', err);
-    res.status(500).json({ error: 'Failed to fetch galactic state' });
-  }
+// Get galactic state view
+router.get('/galactic-state', async (req, res) => {
+  res.render('universe/galacticState', {
+    title: 'Galactic State',
+    user: req.user
+  });
 });
 
 // Get species information

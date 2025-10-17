@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Galactic State - Stringborn Universe</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    body {
+      background: #000;
+      color: #0f0;
+      font-family: 'Courier New', monospace;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .galactic-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #0f0;
+      padding-bottom: 10px;
+    }
+
+    .header h1 {
+      margin: 0;
+      color: #0ff;
+      text-shadow: 0 0 10px #0ff;
+    }
+
+    .controls {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      padding: 15px;
+      background: #111;
+      border: 1px solid #0f0;
+      border-radius: 5px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .control-group label {
+      font-size: 12px;
+      color: #0ff;
+    }
+
+    .control-group input,
+    .control-group select {
+      background: #000;
+      color: #0f0;
+      border: 1px solid #0f0;
+      padding: 5px 10px;
+      font-family: 'Courier New', monospace;
+      border-radius: 3px;
+    }
+
+    .control-group button {
+      background: #003300;
+      color: #0f0;
+      border: 1px solid #0f0;
+      padding: 8px 15px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      border-radius: 3px;
+      transition: all 0.2s;
+    }
+
+    .control-group button:hover {
+      background: #0f0;
+      color: #000;
+      box-shadow: 0 0 10px #0f0;
+    }
+
+    .map-container {
+      background: #000;
+      border: 2px solid #0f0;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+      position: relative;
+    }
+
+    .map-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    #asciiMap {
+      white-space: pre;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      line-height: 1.2;
+      color: #0f0;
+      overflow-x: auto;
+      text-shadow: 0 0 5px #0f0;
+      position: relative;
+      z-index: 1;
+    }
+
+    #canvasOverlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0.8;
+    }
+
+    .status-container {
+      background: #111;
+      border: 1px solid #0f0;
+      padding: 15px;
+      border-radius: 5px;
+    }
+
+    .status-container h3 {
+      margin-top: 0;
+      color: #0ff;
+    }
+
+    .zone-info {
+      margin: 10px 0;
+      padding: 10px;
+      background: #001a00;
+      border-left: 3px solid #0f0;
+    }
+
+    .zone-info strong {
+      color: #0ff;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .stat-box {
+      background: #001a00;
+      border: 1px solid #0f0;
+      padding: 10px;
+      border-radius: 3px;
+    }
+
+    .stat-label {
+      color: #0ff;
+      font-size: 12px;
+    }
+
+    .stat-value {
+      color: #0f0;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .auto-refresh {
+      color: #ff0;
+      font-size: 12px;
+      margin-left: auto;
+    }
+
+    .legend {
+      display: flex;
+      gap: 20px;
+      margin-top: 15px;
+      padding: 10px;
+      background: #001a00;
+      border-radius: 3px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-symbol {
+      font-size: 16px;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .updating {
+      animation: pulse 1s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="galactic-container">
+    <div class="header">
+      <h1>◈ GALACTIC STATE MONITOR ◈</h1>
+      <p>1000×1000 Coordinate Space | Real-Time Zone Tracking</p>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>Center X</label>
+        <input type="number" id="centerX" value="500" min="0" max="1000">
+      </div>
+
+      <div class="control-group">
+        <label>Center Y</label>
+        <input type="number" id="centerY" value="500" min="0" max="1000">
+      </div>
+
+      <div class="control-group">
+        <label>Scale</label>
+        <input type="number" id="scale" value="25" min="5" max="100" step="5">
+      </div>
+
+      <div class="control-group">
+        <label>Refresh Rate (ms)</label>
+        <input type="number" id="refreshRate" value="500" min="100" max="5000" step="100">
+      </div>
+
+      <div class="control-group">
+        <label>&nbsp;</label>
+        <button onclick="updateMap()">Update Now</button>
+      </div>
+
+      <div class="control-group">
+        <label>&nbsp;</label>
+        <button onclick="resetZones()">Reset Zones</button>
+      </div>
+
+      <div class="control-group">
+        <label>&nbsp;</label>
+        <button onclick="toggleAutoRefresh()" id="toggleBtn">Pause Auto-Refresh</button>
+      </div>
+
+      <div class="auto-refresh">
+        <span id="autoRefreshStatus">Auto-refresh: ON</span>
+      </div>
+    </div>
+
+    <div class="map-container">
+      <div class="map-wrapper">
+        <div id="asciiMap" class="updating">Loading galactic state...</div>
+        <canvas id="canvasOverlay"></canvas>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item">
+        <span class="legend-symbol">●</span>
+        <span>Alpha Zone</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-symbol">◆</span>
+        <span>Beta Zone</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-symbol">■</span>
+        <span>Gamma Zone</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-symbol">★</span>
+        <span>Delta Zone</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-symbol">·</span>
+        <span>Empty Space</span>
+      </div>
+    </div>
+
+    <div class="status-container">
+      <h3>Zone Telemetry</h3>
+      <div id="zoneStatus"></div>
+
+      <div class="stats">
+        <div class="stat-box">
+          <div class="stat-label">Last Update</div>
+          <div class="stat-value" id="lastUpdate">--</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Active Zones</div>
+          <div class="stat-value" id="activeZones">4</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Space Dimensions</div>
+          <div class="stat-value">1000×1000</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 20px; text-align: center;">
+      <a href="/" style="color: #0ff; text-decoration: none;">← Back to Home</a>
+    </div>
+  </div>
+
+  <script>
+    let autoRefreshInterval = null;
+    let autoRefreshEnabled = true;
+    let canvas, ctx;
+    let currentZoneData = null;
+
+    // Initialize canvas
+    function initCanvas() {
+      canvas = document.getElementById('canvasOverlay');
+      ctx = canvas.getContext('2d');
+      resizeCanvas();
+    }
+
+    // Resize canvas to match ASCII map
+    function resizeCanvas() {
+      const asciiMap = document.getElementById('asciiMap');
+      canvas.width = asciiMap.offsetWidth;
+      canvas.height = asciiMap.offsetHeight;
+    }
+
+    // Draw on canvas overlay
+    function drawCanvas(zones) {
+      if (!ctx || !zones) return;
+
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const centerX = parseFloat(document.getElementById('centerX').value);
+      const centerY = parseFloat(document.getElementById('centerY').value);
+      const scale = parseFloat(document.getElementById('scale').value);
+
+      // Calculate viewport bounds (same as server-side)
+      const VIEW_WIDTH = 80;
+      const VIEW_HEIGHT = 40;
+      const SPACE_WIDTH = 1000;
+      const SPACE_HEIGHT = 1000;
+
+      const viewPortWidth = (VIEW_WIDTH / 2) * scale;
+      const viewPortHeight = (VIEW_HEIGHT / 2) * scale;
+
+      const minX = centerX - viewPortWidth;
+      const maxX = centerX + viewPortWidth;
+      const minY = centerY - viewPortHeight;
+      const maxY = centerY + viewPortHeight;
+
+      // Calculate character dimensions
+      const charWidth = canvas.width / (VIEW_WIDTH + 2); // +2 for borders
+      const charHeight = canvas.height / (VIEW_HEIGHT + 2);
+
+      zones.forEach(zone => {
+        // Convert world coordinates to screen coordinates
+        const screenX = ((zone.x - minX) / (maxX - minX)) * VIEW_WIDTH;
+        const screenY = ((zone.y - minY) / (maxY - minY)) * VIEW_HEIGHT;
+
+        // Check if zone is visible
+        if (screenX >= 0 && screenX < VIEW_WIDTH && screenY >= 0 && screenY < VIEW_HEIGHT) {
+          // Convert to canvas pixels (+1 for border offset)
+          const canvasX = (screenX + 1) * charWidth;
+          const canvasY = (screenY + 1) * charHeight;
+
+          // Draw glow effect around zone
+          const gradient = ctx.createRadialGradient(canvasX, canvasY, 0, canvasX, canvasY, 30);
+
+          // Different colors for different zones
+          let color;
+          switch(zone.id) {
+            case 1: color = 'rgba(0, 255, 255, 0.5)'; break; // Cyan for Alpha
+            case 2: color = 'rgba(255, 0, 255, 0.5)'; break; // Magenta for Beta
+            case 3: color = 'rgba(255, 255, 0, 0.5)'; break; // Yellow for Gamma
+            case 4: color = 'rgba(255, 128, 0, 0.5)'; break; // Orange for Delta
+            default: color = 'rgba(0, 255, 0, 0.5)';
+          }
+
+          gradient.addColorStop(0, color);
+          gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+          ctx.fillStyle = gradient;
+          ctx.fillRect(canvasX - 30, canvasY - 30, 60, 60);
+
+          // Draw velocity vector
+          ctx.strokeStyle = color.replace('0.5', '0.8');
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(canvasX, canvasY);
+
+          // Scale velocity for visualization
+          const velScale = 5;
+          const endX = canvasX + (zone.vx * velScale);
+          const endY = canvasY + (zone.vy * velScale);
+
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+
+          // Draw arrow head
+          const angle = Math.atan2(zone.vy, zone.vx);
+          ctx.beginPath();
+          ctx.moveTo(endX, endY);
+          ctx.lineTo(
+            endX - 8 * Math.cos(angle - Math.PI / 6),
+            endY - 8 * Math.sin(angle - Math.PI / 6)
+          );
+          ctx.moveTo(endX, endY);
+          ctx.lineTo(
+            endX - 8 * Math.cos(angle + Math.PI / 6),
+            endY - 8 * Math.sin(angle + Math.PI / 6)
+          );
+          ctx.stroke();
+
+          // Draw pulsing ring around zone
+          const pulseRadius = 15 + Math.sin(Date.now() / 200) * 3;
+          ctx.strokeStyle = color.replace('0.5', '0.6');
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(canvasX, canvasY, pulseRadius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      });
+    }
+
+    // Update the ASCII map
+    async function updateMap() {
+      const centerX = document.getElementById('centerX').value;
+      const centerY = document.getElementById('centerY').value;
+      const scale = document.getElementById('scale').value;
+
+      try {
+        const response = await fetch(`/universe/map?x=${centerX}&y=${centerY}&scale=${scale}`);
+        const text = await response.text();
+        document.getElementById('asciiMap').textContent = text;
+
+        // Update status and get zone data
+        await updateStatus();
+
+        // Resize canvas after ASCII map changes
+        resizeCanvas();
+
+        // Draw canvas overlay
+        if (currentZoneData) {
+          drawCanvas(currentZoneData.zones);
+        }
+
+        // Update timestamp
+        const now = new Date();
+        document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+      } catch (error) {
+        console.error('Error updating map:', error);
+        document.getElementById('asciiMap').textContent = 'Error loading map. Please try again.';
+      }
+    }
+
+    // Update zone status
+    async function updateStatus() {
+      try {
+        const response = await fetch('/universe/state');
+        const data = await response.json();
+
+        // Store zone data for canvas drawing
+        currentZoneData = data;
+
+        let statusHTML = '';
+        data.zones.forEach(zone => {
+          statusHTML += `
+            <div class="zone-info">
+              <strong>${zone.symbol} ${zone.name}</strong> (ID: ${zone.id})<br>
+              Position: (${Math.floor(zone.x)}, ${Math.floor(zone.y)}) |
+              Velocity: (${zone.vx.toFixed(2)}, ${zone.vy.toFixed(2)})
+            </div>
+          `;
+        });
+
+        document.getElementById('zoneStatus').innerHTML = statusHTML;
+        document.getElementById('activeZones').textContent = data.zones.length;
+      } catch (error) {
+        console.error('Error updating status:', error);
+      }
+    }
+
+    // Reset zones to initial positions
+    async function resetZones() {
+      try {
+        const response = await fetch('/universe/reset', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+          updateMap();
+        }
+      } catch (error) {
+        console.error('Error resetting zones:', error);
+      }
+    }
+
+    // Toggle auto-refresh
+    function toggleAutoRefresh() {
+      autoRefreshEnabled = !autoRefreshEnabled;
+
+      if (autoRefreshEnabled) {
+        startAutoRefresh();
+        document.getElementById('toggleBtn').textContent = 'Pause Auto-Refresh';
+        document.getElementById('autoRefreshStatus').textContent = 'Auto-refresh: ON';
+      } else {
+        stopAutoRefresh();
+        document.getElementById('toggleBtn').textContent = 'Resume Auto-Refresh';
+        document.getElementById('autoRefreshStatus').textContent = 'Auto-refresh: OFF';
+      }
+    }
+
+    // Start auto-refresh
+    function startAutoRefresh() {
+      stopAutoRefresh(); // Clear any existing interval
+      const rate = parseInt(document.getElementById('refreshRate').value);
+      autoRefreshInterval = setInterval(updateMap, rate);
+    }
+
+    // Stop auto-refresh
+    function stopAutoRefresh() {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+      }
+    }
+
+    // Update refresh rate
+    document.getElementById('refreshRate').addEventListener('change', function() {
+      if (autoRefreshEnabled) {
+        startAutoRefresh();
+      }
+    });
+
+    // Animation loop for smooth canvas updates
+    function animateCanvas() {
+      if (currentZoneData && autoRefreshEnabled) {
+        drawCanvas(currentZoneData.zones);
+      }
+      requestAnimationFrame(animateCanvas);
+    }
+
+    // Initial load
+    window.addEventListener('load', function() {
+      initCanvas();
+      updateMap();
+      startAutoRefresh();
+      animateCanvas();
+    });
+
+    // Resize canvas when window resizes
+    window.addEventListener('resize', resizeCanvas);
+  </script>
+</body>
+</html>
