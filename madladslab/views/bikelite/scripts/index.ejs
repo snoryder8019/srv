@@ -1,35 +1,17 @@
 
 <script>
   /**
-   * Fullscreen Toggle Handler
-   * Provides cross-browser fullscreen functionality with proper exit handling
-   * and synchronization with native browser controls (ESC key, etc.)
+   * Halloween Bikelite - Dual Module Handler
+   * Module 1: Strobe Light with Color Selector
+   * Module 2: Scrolling Chevron Pattern
    */
   (function() {
     'use strict';
 
-    // Constants
-    const FLASH_ELEMENT_ID = 'flashbox';
-    const EXPANDED_CLASS = 'expanded';
-    const EXIT_TEXT = 'Tap to exit';
-    const DEFAULT_WIDTH = '300px';
-    const DEFAULT_MIN_HEIGHT = '100%';
-
-    // DOM Elements
-    const flash = document.getElementById(FLASH_ELEMENT_ID);
-    if (!flash) return;
-
-    // Store original element properties
-    const originalState = {
-      html: flash.innerHTML || '',
-      width: flash.style.width || '',
-      minHeight: flash.style.minHeight || ''
-    };
+    // ==================== SHARED UTILITIES ====================
 
     /**
      * Request fullscreen mode with cross-browser support
-     * @param {HTMLElement} element - Element to make fullscreen
-     * @returns {Promise<void>}
      */
     async function requestFullscreen(element) {
       try {
@@ -52,7 +34,6 @@
 
     /**
      * Exit fullscreen mode with cross-browser support
-     * @returns {Promise<void>}
      */
     async function exitFullscreen() {
       try {
@@ -79,7 +60,6 @@
 
     /**
      * Check if currently in fullscreen mode
-     * @returns {boolean}
      */
     function isFullscreen() {
       return !!(
@@ -90,70 +70,188 @@
       );
     }
 
-    /**
-     * Enter expanded fullscreen mode
-     * @returns {Promise<void>}
-     */
-    async function enterExpandedMode() {
-      flash.classList.add(EXPANDED_CLASS);
-      await requestFullscreen(flash);
-      flash.innerHTML = `<h1>${EXIT_TEXT}</h1>`;
-      flash.style.width = '100%';
-      flash.style.minHeight = '100vh';
-    }
+    // ==================== MODULE 1: STROBE LIGHT ====================
 
-    /**
-     * Exit expanded fullscreen mode and restore original state
-     * @returns {Promise<void>}
-     */
-    async function exitExpandedMode() {
-      await exitFullscreen();
-      flash.classList.remove(EXPANDED_CLASS);
-      flash.style.width = originalState.width || DEFAULT_WIDTH;
-      flash.style.minHeight = originalState.minHeight || DEFAULT_MIN_HEIGHT;
-      flash.innerHTML = originalState.html;
-    }
+    const flashbox = document.getElementById('flashbox');
+    const colorButtons = document.querySelectorAll('.color-btn');
+    let selectedColor = '#ff6600'; // Default Halloween orange
 
-    /**
-     * Toggle between normal and expanded fullscreen mode
-     * @returns {Promise<void>}
-     */
-    async function toggleExpandedMode() {
-      if (flash.classList.contains(EXPANDED_CLASS)) {
-        await exitExpandedMode();
-      } else {
-        await enterExpandedMode();
+    if (flashbox && colorButtons.length) {
+      const flashOriginalState = {
+        html: flashbox.innerHTML || ''
+      };
+
+      // Color selector handler
+      colorButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation(); // Prevent flashbox click
+
+          // Remove active class from all buttons
+          colorButtons.forEach(b => b.classList.remove('active'));
+
+          // Add active class to clicked button
+          btn.classList.add('active');
+
+          // Update selected color
+          selectedColor = btn.getAttribute('data-color');
+
+          // Update flashbox border color
+          flashbox.style.borderColor = selectedColor;
+
+          // If in expanded mode, update animation color
+          if (flashbox.classList.contains('expanded')) {
+            updateStrobeColor(selectedColor);
+          }
+        });
+      });
+
+      // Create dynamic strobe animation
+      function updateStrobeColor(color) {
+        // Remove existing style if any
+        const existingStyle = document.getElementById('dynamic-strobe-style');
+        if (existingStyle) {
+          existingStyle.remove();
+        }
+
+        // Create new style element
+        const style = document.createElement('style');
+        style.id = 'dynamic-strobe-style';
+        style.textContent = `
+          @keyframes strobeFlash {
+            0% { background-color: #000; }
+            5% { background-color: ${color}; }
+            10% { background-color: #000; }
+            15% { background-color: ${color}; }
+            20% { background-color: #000; }
+            25% { background-color: ${color}; }
+            30% { background-color: #000; }
+            50% { background-color: ${color}; }
+            100% { background-color: #000; }
+          }
+          #flashbox.expanded {
+            animation: strobeFlash 1.5s infinite;
+          }
+        `;
+        document.head.appendChild(style);
       }
-    }
 
-    /**
-     * Handle fullscreen state changes triggered by browser controls
-     * Ensures UI remains synchronized when user exits via ESC or browser UI
-     */
-    function handleFullscreenChange() {
-      if (!isFullscreen() && flash.classList.contains(EXPANDED_CLASS)) {
-        // User exited fullscreen by other means - restore UI state
-        flash.classList.remove(EXPANDED_CLASS);
-        flash.style.width = originalState.width || DEFAULT_WIDTH;
-        flash.style.minHeight = originalState.minHeight || DEFAULT_MIN_HEIGHT;
-        flash.innerText = originalState.text;
+      // Flashbox toggle handler
+      async function toggleFlashbox() {
+        if (flashbox.classList.contains('expanded')) {
+          // Exit mode
+          await exitFullscreen();
+          flashbox.classList.remove('expanded');
+          flashbox.innerHTML = flashOriginalState.html;
+          flashbox.style.animation = '';
+
+          // Remove dynamic style
+          const existingStyle = document.getElementById('dynamic-strobe-style');
+          if (existingStyle) {
+            existingStyle.remove();
+          }
+        } else {
+          // Enter mode
+          flashbox.classList.add('expanded');
+          await requestFullscreen(flashbox);
+          flashbox.innerHTML = `<h2 style="color: ${selectedColor};">Tap to Exit</h2>`;
+          updateStrobeColor(selectedColor);
+        }
       }
+
+      // Handle fullscreen exit via ESC
+      function handleFlashFullscreenChange() {
+        if (!isFullscreen() && flashbox.classList.contains('expanded')) {
+          flashbox.classList.remove('expanded');
+          flashbox.innerHTML = flashOriginalState.html;
+          flashbox.style.animation = '';
+
+          const existingStyle = document.getElementById('dynamic-strobe-style');
+          if (existingStyle) {
+            existingStyle.remove();
+          }
+        }
+      }
+
+      flashbox.addEventListener('click', toggleFlashbox);
+
+      const fullscreenEvents = [
+        'fullscreenchange',
+        'webkitfullscreenchange',
+        'mozfullscreenchange',
+        'MSFullscreenChange'
+      ];
+
+      fullscreenEvents.forEach(eventName => {
+        document.addEventListener(eventName, handleFlashFullscreenChange);
+      });
     }
 
-    // Event Listeners
-    flash.addEventListener('click', toggleExpandedMode);
+    // ==================== MODULE 2: CHEVRON SCROLL ====================
 
-    // Cross-browser fullscreen change events
-    const fullscreenEvents = [
-      'fullscreenchange',
-      'webkitfullscreenchange',
-      'mozfullscreenchange',
-      'MSFullscreenChange'
-    ];
+    const chevronbox = document.getElementById('chevronbox');
 
-    fullscreenEvents.forEach(eventName => {
-      document.addEventListener(eventName, handleFullscreenChange);
-    });
+    if (chevronbox) {
+      const chevronOriginalState = {
+        html: chevronbox.innerHTML || ''
+      };
+
+      // Chevron toggle handler
+      async function toggleChevronbox() {
+        if (chevronbox.classList.contains('expanded')) {
+          // Exit mode
+          await exitFullscreen();
+          chevronbox.classList.remove('expanded');
+          chevronbox.innerHTML = chevronOriginalState.html;
+        } else {
+          // Enter mode
+          chevronbox.classList.add('expanded');
+          await requestFullscreen(chevronbox);
+
+          // Create chevron pattern
+          const container = document.createElement('div');
+          container.className = 'chevron-container';
+
+          // Create two sets of chevrons for seamless scroll
+          for (let set = 0; set < 2; set++) {
+            const pattern = document.createElement('div');
+            pattern.className = 'chevron-pattern';
+
+            // Create 5 chevrons per set
+            for (let i = 0; i < 5; i++) {
+              const chevron = document.createElement('div');
+              chevron.className = 'chevron';
+              chevron.style.color = selectedColor; // Use selected color
+              pattern.appendChild(chevron);
+            }
+
+            container.appendChild(pattern);
+          }
+
+          chevronbox.appendChild(container);
+        }
+      }
+
+      // Handle fullscreen exit via ESC
+      function handleChevronFullscreenChange() {
+        if (!isFullscreen() && chevronbox.classList.contains('expanded')) {
+          chevronbox.classList.remove('expanded');
+          chevronbox.innerHTML = chevronOriginalState.html;
+        }
+      }
+
+      chevronbox.addEventListener('click', toggleChevronbox);
+
+      const fullscreenEvents = [
+        'fullscreenchange',
+        'webkitfullscreenchange',
+        'mozfullscreenchange',
+        'MSFullscreenChange'
+      ];
+
+      fullscreenEvents.forEach(eventName => {
+        document.addEventListener(eventName, handleChevronFullscreenChange);
+      });
+    }
 
   })();
 </script>

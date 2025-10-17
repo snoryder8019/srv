@@ -63,10 +63,12 @@ function rankValue(card, leadSuit) {
 }
 
 router.get('/', (req,res)=> {
+  const user = req.user;
   res.render('euker', {
     message: 'Euker — NS vs EW. First to 10 points wins a game.',
     rules: 'Round 1: order up upcard suit. Round 2: choose other suit (dealer must decide by end). Round 3: play — Right bower > Left bower > A…',
-    gameState: gs
+    gameState: gs,
+    user: user
   });
 });
 

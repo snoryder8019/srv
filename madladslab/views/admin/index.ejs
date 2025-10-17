@@ -1,64 +1,420 @@
 <!DOCTYPE html>
 <html>
 <head>
- <head>
     <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
     <meta name="facebook-domain-verification" content="834yvsr0tr68eevl291uhwkt4nsd1c" />
     <link rel="stylesheet" href="/stylesheets/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-
-    <meta property="og:title" content="madLadsLab.com" />
-
-<meta property="og:description" content="Web Applications, Video, Email, IT" />
-<meta property="og:image" content="https://madladslab.com/images/madTitle.jpg" />
-<meta property="og:url" content="https://madladslab.com" />
-<meta property="og:type" content="website" />
-</head>
+    <meta property="og:title" content="madLadsLab Admin" />
+    <meta property="og:description" content="Web Applications, Video, Email, IT" />
+    <meta property="og:image" content="https://madladslab.com/images/madTitle.jpg" />
+    <meta property="og:url" content="https://madladslab.com" />
+    <meta property="og:type" content="website" />
+    <title>Admin Dashboard - madLadsLab</title>
 </head>
 <body>
-  <h1>Welcome, <%= user.name %></h1>
+  <%-include('../mainContent/adminHeader.ejs')%>
 
-  <section>
-    <h2>User Info</h2>
-    <p>Email: <%= user.email %></p>
-    <p>Role: <%= user.role %></p>
-  </section>
+  <div class="admin-container">
+    <%-include('../mainContent/adminSidebar.ejs')%>
 
-  <section>
-    <h2>Sites Status</h2>
-    <!-- placeholder -->
-    <p>No site data available.</p>
+    <main class="admin-main">
+      <div class="admin-header">
+        <h1>Dashboard</h1>
+        <p class="admin-subtitle">Welcome back, <%= user.name %></p>
+      </div>
 
-    <h3>add site</h3>
-    
-    <form method="POST" action="/api/v1/helpers/sites/create">
-      <label>Site Name</label>
-      <input type="text" name="siteName" required />
-      <label>Site URL</label>
-      <input type="text" name="siteUrl" required />
-      <button type="submit">Add Site</button>
-  </section>
+      <div class="dashboard-grid">
+        <!-- User Info Card -->
+        <div class="dashboard-card">
+          <div class="card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+          </div>
+          <div class="card-content">
+            <h3>User Profile</h3>
+            <p class="card-label">Email:</p>
+            <p class="card-value"><%= user.email %></p>
+            <p class="card-label">Role:</p>
+            <p class="card-value"><%= user.role %></p>
+          </div>
+        </div>
 
-  <section>
-    <h2>Directory Breakdown</h2>
-    <!-- placeholder -->
-    <p>No directory data available.</p>
-  </section>
+        <!-- Sites Summary Card -->
+        <div class="dashboard-card">
+          <div class="card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+          </div>
+          <div class="card-content">
+            <h3>Sites</h3>
+            <p class="card-stat"><%= sites.length %></p>
+            <p class="card-description">Total sites managed</p>
+            <a href="/admin/sites" class="card-link">Manage Sites →</a>
+          </div>
+        </div>
 
-  <section>
-    <h2>Analytics</h2>
-    <!-- placeholder -->
-    <p>No analytics available.</p>
-  </section>
+        <!-- Applications Card -->
+        <div class="dashboard-card">
+          <div class="card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+          </div>
+          <div class="card-content">
+            <h3>Applications</h3>
+            <p class="card-stat"><%= directories.length %></p>
+            <p class="card-description">Active applications</p>
+          </div>
+        </div>
 
-  <section>
-    <h2>Settings</h2>
-    <!-- placeholder -->
-    <form method="POST" action="/admin/settings">
-      <label>Example Setting</label>
-      <input type="text" name="exampleSetting" value="default" />
-      <button type="submit">Update</button>
-    </form>
-  </section>
+        <!-- Quick Actions Card -->
+        <div class="dashboard-card">
+          <div class="card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </div>
+          <div class="card-content">
+            <h3>Quick Actions</h3>
+            <div class="quick-actions">
+              <a href="/admin/sites" class="action-btn">Add Site</a>
+              <a href="/admin/analytics" class="action-btn">View Analytics</a>
+              <a href="/admin/settings" class="action-btn">Settings</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Sites -->
+      <div class="content-section">
+        <h2>Recent Sites</h2>
+        <div class="table-container">
+          <% if (sites && sites.length > 0) { %>
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Site Name</th>
+                  <th>URL</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% sites.slice(0, 5).forEach(site => { %>
+                  <tr>
+                    <td><%= site.siteName %></td>
+                    <td><a href="<%= site.siteUrl %>" target="_blank"><%= site.siteUrl %></a></td>
+                    <td><span class="status-badge status-active">Active</span></td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          <% } else { %>
+            <p class="empty-state">No sites available. <a href="/admin/sites">Add your first site</a></p>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- Applications Directory -->
+      <div class="content-section">
+        <h2>Application Modules</h2>
+        <div class="app-grid">
+          <% directories.forEach(dir => { %>
+            <a href="/<%= dir %>" class="app-card">
+              <div class="app-icon"><%= dir.charAt(0).toUpperCase() %></div>
+              <div class="app-name"><%= dir %></div>
+            </a>
+          <% }); %>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      line-height: 1.6;
+    }
+
+    .admin-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .admin-main {
+      flex: 1;
+      padding: 2rem;
+      margin-left: 250px;
+      margin-top: 60px;
+    }
+
+    .admin-header {
+      margin-bottom: 2rem;
+    }
+
+    .admin-header h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 0.5rem;
+    }
+
+    .admin-subtitle {
+      color: #888;
+      font-size: 1rem;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .dashboard-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 1.5rem;
+      transition: all 0.3s ease;
+    }
+
+    .dashboard-card:hover {
+      border-color: #00ff00;
+      box-shadow: 0 4px 12px rgba(0, 255, 0, 0.1);
+    }
+
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      background: rgba(0, 255, 0, 0.1);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1rem;
+      color: #00ff00;
+    }
+
+    .card-content h3 {
+      font-size: 1.1rem;
+      color: #fff;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-label {
+      font-size: 0.85rem;
+      color: #888;
+      margin-top: 0.75rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .card-value {
+      font-size: 0.95rem;
+      color: #e0e0e0;
+    }
+
+    .card-stat {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #00ff00;
+      margin: 0.5rem 0;
+    }
+
+    .card-description {
+      color: #888;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+
+    .card-link {
+      color: #00ff00;
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+
+    .card-link:hover {
+      color: #00cc00;
+    }
+
+    .quick-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .action-btn {
+      background: rgba(0, 255, 0, 0.1);
+      border: 1px solid rgba(0, 255, 0, 0.3);
+      color: #00ff00;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      text-decoration: none;
+      text-align: center;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+
+    .action-btn:hover {
+      background: rgba(0, 255, 0, 0.2);
+      border-color: #00ff00;
+    }
+
+    .content-section {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .content-section h2 {
+      font-size: 1.5rem;
+      color: #fff;
+      margin-bottom: 1.5rem;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .admin-table th {
+      background: #0a0a0a;
+      color: #888;
+      text-align: left;
+      padding: 0.75rem;
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid #2a2a2a;
+    }
+
+    .admin-table td {
+      padding: 1rem 0.75rem;
+      border-bottom: 1px solid #2a2a2a;
+      color: #e0e0e0;
+    }
+
+    .admin-table tr:hover {
+      background: rgba(0, 255, 0, 0.05);
+    }
+
+    .admin-table a {
+      color: #00ff00;
+      text-decoration: none;
+    }
+
+    .admin-table a:hover {
+      text-decoration: underline;
+    }
+
+    .status-badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .status-active {
+      background: rgba(0, 255, 0, 0.2);
+      color: #00ff00;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: #888;
+    }
+
+    .empty-state a {
+      color: #00ff00;
+      text-decoration: none;
+    }
+
+    .empty-state a:hover {
+      text-decoration: underline;
+    }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 1rem;
+    }
+
+    .app-card {
+      background: #0a0a0a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 1.5rem 1rem;
+      text-align: center;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .app-card:hover {
+      border-color: #00ff00;
+      background: rgba(0, 255, 0, 0.05);
+    }
+
+    .app-icon {
+      width: 48px;
+      height: 48px;
+      background: rgba(0, 255, 0, 0.1);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #00ff00;
+    }
+
+    .app-name {
+      color: #e0e0e0;
+      font-size: 0.9rem;
+      text-transform: capitalize;
+    }
+
+    @media (max-width: 768px) {
+      .admin-main {
+        margin-left: 0;
+        margin-top: 60px;
+        padding: 1rem;
+      }
+
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </body>
 </html>
