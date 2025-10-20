@@ -10,7 +10,11 @@ import {
   getLeaderboard,
   getAvailableRewards,
   redeemReward,
-  getLocationStats
+  getLocationStats,
+  getActiveCheckIns,
+  updateCheckInStatuses,
+  getUserActiveCheckIn,
+  checkOutFromLocation
 } from "../../api/v1/ep/lbb.js";
 
 const router = express.Router();
@@ -39,16 +43,19 @@ router.get("/", async (req, res) => {
     const user = req.user || null;
     let profile = null;
     let recentCheckIns = [];
+    let activeCheckIn = null;
 
     if (user) {
       profile = await getUserProfile(user._id);
       recentCheckIns = await getUserCheckIns(user._id, 5);
+      activeCheckIn = await getUserActiveCheckIn(user._id);
     }
 
     res.render("lbb/index", {
       user,
       profile,
       recentCheckIns,
+      activeCheckIn,
       title: "Life Behind Bars"
     });
   } catch (error) {
@@ -158,8 +165,8 @@ router.get("/api/locations/:id", async (req, res) => {
   }
 });
 
-// Create location (admin only)
-router.post("/api/locations", requireAuth, requireAdmin, async (req, res) => {
+// Create location (authenticated users can create)
+router.post("/api/locations", requireAuth, async (req, res) => {
   try {
     const location = await createLocation({
       ...req.body,
@@ -175,7 +182,7 @@ router.post("/api/locations", requireAuth, requireAdmin, async (req, res) => {
 // Check in to location
 router.post("/api/checkin", requireAuth, async (req, res) => {
   try {
-    const { locationId, longitude, latitude } = req.body;
+    const { locationId, longitude, latitude, role } = req.body;
 
     if (!locationId || !longitude || !latitude) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -185,7 +192,8 @@ router.post("/api/checkin", requireAuth, async (req, res) => {
       req.user._id,
       locationId,
       parseFloat(longitude),
-      parseFloat(latitude)
+      parseFloat(latitude),
+      role || 'guest'
     );
 
     res.json({
@@ -270,6 +278,62 @@ router.get("/api/locations/:id/stats", requireAuth, requireAdmin, async (req, re
   } catch (error) {
     console.error("Error fetching location stats:", error);
     res.status(500).json({ error: "Error fetching stats" });
+  }
+});
+
+// Get active check-ins
+router.get("/api/active-checkins", async (req, res) => {
+  try {
+    const locationId = req.query.locationId || null;
+    const activeCheckIns = await getActiveCheckIns(locationId);
+    res.json(activeCheckIns);
+  } catch (error) {
+    console.error("Error fetching active check-ins:", error);
+    res.status(500).json({ error: "Error fetching active check-ins" });
+  }
+});
+
+// Update check-in statuses (can be called manually or by cron)
+router.post("/api/update-statuses", async (req, res) => {
+  try {
+    const result = await updateCheckInStatuses();
+    res.json(result);
+  } catch (error) {
+    console.error("Error updating statuses:", error);
+    res.status(500).json({ error: "Error updating statuses" });
+  }
+});
+
+// Get user's active check-in
+router.get("/api/active-checkin", requireAuth, async (req, res) => {
+  try {
+    const activeCheckIn = await getUserActiveCheckIn(req.user._id);
+    res.json(activeCheckIn);
+  } catch (error) {
+    console.error("Error fetching active check-in:", error);
+    res.status(500).json({ error: "Error fetching active check-in" });
+  }
+});
+
+// Check out from location
+router.post("/api/checkout", requireAuth, async (req, res) => {
+  try {
+    const { checkInId } = req.body;
+
+    if (!checkInId) {
+      return res.status(400).json({ error: "Check-in ID required" });
+    }
+
+    const checkIn = await checkOutFromLocation(req.user._id, checkInId);
+
+    res.json({
+      success: true,
+      message: "Checked out successfully!",
+      checkIn
+    });
+  } catch (error) {
+    console.error("Error checking out:", error);
+    res.status(400).json({ error: error.message });
   }
 });
 

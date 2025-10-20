@@ -47,12 +47,25 @@ export async function getLocationById(locationId) {
 
 // Create location
 export async function createLocation(data) {
-  const location = new Location(data);
+  // Format coordinates properly for MongoDB GeoJSON
+  const locationData = {
+    ...data,
+    coordinates: {
+      type: 'Point',
+      coordinates: [data.longitude, data.latitude] // [lng, lat]
+    }
+  };
+
+  // Remove the separate lat/lng fields
+  delete locationData.latitude;
+  delete locationData.longitude;
+
+  const location = new Location(locationData);
   return await location.save();
 }
 
 // Check in to a location
-export async function checkInToLocation(userId, locationId, userLongitude, userLatitude) {
+export async function checkInToLocation(userId, locationId, userLongitude, userLatitude, role = 'guest') {
   const location = await Location.findById(locationId);
   if (!location) {
     throw new Error("Location not found");
@@ -70,18 +83,15 @@ export async function checkInToLocation(userId, locationId, userLongitude, userL
     throw new Error(`You must be within ${location.checkInRadius}m to check in`);
   }
 
-  // Check if user already checked in today
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const existingCheckIn = await CheckIn.findOne({
+  // Check if user has an active check-in (doingTime or onParole)
+  const activeCheckIn = await CheckIn.findOne({
     userId,
     locationId,
-    createdAt: { $gte: today }
+    shiftStatus: { $in: ['doingTime', 'onParole'] }
   });
 
-  if (existingCheckIn) {
-    throw new Error("You've already checked in here today");
+  if (activeCheckIn) {
+    throw new Error("You already have an active check-in at this location");
   }
 
   // Check if this is first visit
@@ -109,7 +119,10 @@ export async function checkInToLocation(userId, locationId, userLongitude, userL
     isFirstVisit,
     sharedLocation: true,
     verificationMethod: 'gps',
-    status: 'verified'
+    status: 'verified',
+    role,
+    shiftStatus: 'doingTime',
+    statusUpdatedAt: new Date()
   });
 
   await checkIn.save();
@@ -199,9 +212,9 @@ export async function getUserCheckIns(userId, limit = 20) {
 export async function getLeaderboard(limit = 10, type = 'points') {
   const sortField = type === 'points' ? 'totalPoints' : 'totalCheckIns';
   return await UserProfile.find()
-    .populate('userId', 'name email')
     .sort({ [sortField]: -1 })
-    .limit(limit);
+    .limit(limit)
+    .lean();
 }
 
 // Get available rewards for user
@@ -295,4 +308,113 @@ export async function getLocationStats(locationId) {
     totalCheckIns,
     uniqueUsers: uniqueUsers.length
   };
+}
+
+// Get active check-ins for a location
+export async function getActiveCheckIns(locationId = null) {
+  let query = {};
+
+  if (locationId) {
+    query.locationId = locationId;
+  }
+
+  const checkIns = await CheckIn.find(query)
+    .populate('locationId', 'name')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // Categorize by status
+  const result = {
+    doingTime: [],
+    onParole: [],
+    canRep: []
+  };
+
+  checkIns.forEach(checkIn => {
+    // Create a simple user object (userId is just an ObjectId, not a full User model)
+    if (!checkIn.userId) {
+      checkIn.userId = { _id: 'Anonymous', name: 'Anonymous' };
+    } else if (typeof checkIn.userId === 'string' || checkIn.userId._id) {
+      // If userId is just an ID, create a simple user object
+      checkIn.userId = {
+        _id: checkIn.userId._id || checkIn.userId,
+        name: 'User'
+      };
+    }
+
+    if (checkIn.shiftStatus === 'doingTime') {
+      result.doingTime.push(checkIn);
+    } else if (checkIn.shiftStatus === 'onParole') {
+      result.onParole.push(checkIn);
+    } else if (checkIn.shiftStatus === 'canRep') {
+      result.canRep.push(checkIn);
+    }
+  });
+
+  return result;
+}
+
+// Update check-in statuses based on time
+export async function updateCheckInStatuses() {
+  const now = new Date();
+
+  // Update doingTime -> onParole (after 4 hours)
+  const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+  await CheckIn.updateMany(
+    {
+      shiftStatus: 'doingTime',
+      statusUpdatedAt: { $lte: fourHoursAgo }
+    },
+    {
+      $set: {
+        shiftStatus: 'onParole',
+        statusUpdatedAt: now
+      }
+    }
+  );
+
+  // Update onParole -> canRep (after 2 more hours, 6 hours total)
+  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+  await CheckIn.updateMany(
+    {
+      shiftStatus: 'onParole',
+      statusUpdatedAt: { $lte: twoHoursAgo }
+    },
+    {
+      $set: {
+        shiftStatus: 'canRep',
+        statusUpdatedAt: now
+      }
+    }
+  );
+
+  return { success: true, updatedAt: now };
+}
+
+// Get user's current active check-in
+export async function getUserActiveCheckIn(userId) {
+  return await CheckIn.findOne({
+    userId,
+    shiftStatus: { $in: ['doingTime', 'onParole'] }
+  }).populate('locationId', 'name type');
+}
+
+// Check out from location
+export async function checkOutFromLocation(userId, checkInId) {
+  const checkIn = await CheckIn.findOne({
+    _id: checkInId,
+    userId,
+    shiftStatus: { $in: ['doingTime', 'onParole'] }
+  });
+
+  if (!checkIn) {
+    throw new Error("No active check-in found");
+  }
+
+  // Update to canRep status (checked out)
+  checkIn.shiftStatus = 'canRep';
+  checkIn.statusUpdatedAt = new Date();
+  await checkIn.save();
+
+  return checkIn;
 }

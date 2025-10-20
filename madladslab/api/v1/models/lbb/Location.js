@@ -8,7 +8,7 @@ const locationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['bar', 'lounge', 'club', 'pub', 'other'],
+    enum: ['bar', 'lounge', 'restaurant', 'club', 'pub', 'brewery', 'cafe', 'other'],
     default: 'bar'
   },
   address: {

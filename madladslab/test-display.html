@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Socket.IO Display Test</title>
+</head>
+<body>
+  <h1>Socket.IO Display Connection Test</h1>
+  <div id="status">Loading...</div>
+  <div id="log"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const log = (msg) => {
+      console.log(msg);
+      const div = document.createElement('div');
+      div.textContent = new Date().toISOString() + ' - ' + msg;
+      document.getElementById('log').appendChild(div);
+    };
+
+    log('Starting connection...');
+
+    const socket = io('/claudeTalk-display');
+
+    log('Socket object created');
+
+    socket.on('connect', () => {
+      log('✅ CONNECTED!');
+      document.getElementById('status').textContent = 'CONNECTED!';
+      document.getElementById('status').style.color = 'green';
+    });
+
+    socket.on('connect_error', (error) => {
+      log('❌ Connection error: ' + error.message);
+      document.getElementById('status').textContent = 'ERROR: ' + error.message;
+      document.getElementById('status').style.color = 'red';
+    });
+
+    socket.on('disconnect', (reason) => {
+      log('⚠️ Disconnected: ' + reason);
+      document.getElementById('status').textContent = 'Disconnected: ' + reason;
+      document.getElementById('status').style.color = 'orange';
+    });
+
+    socket.on('update', (data) => {
+      log('📨 Received update: ' + JSON.stringify(data));
+    });
+  </script>
+</body>
+</html>

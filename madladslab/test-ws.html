@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebSocket Test</title>
+</head>
+<body>
+  <h1>WebSocket Connection Test</h1>
+  <div id="status">Connecting...</div>
+  <div id="messages"></div>
+
+  <script>
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = protocol + '//' + window.location.host + '/claudeTalk/ws';
+
+    console.log('Connecting to:', wsUrl);
+    document.getElementById('status').textContent = 'Connecting to: ' + wsUrl;
+
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('WebSocket CONNECTED!');
+      document.getElementById('status').textContent = 'CONNECTED!';
+      document.getElementById('status').style.color = 'green';
+    };
+
+    ws.onmessage = (event) => {
+      console.log('Received:', event.data);
+      const div = document.createElement('div');
+      div.textContent = 'Received: ' + event.data;
+      document.getElementById('messages').appendChild(div);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket ERROR:', error);
+      document.getElementById('status').textContent = 'ERROR: ' + error;
+      document.getElementById('status').style.color = 'red';
+    };
+
+    ws.onclose = (event) => {
+      console.log('WebSocket CLOSED:', event.code, event.reason);
+      document.getElementById('status').textContent = 'CLOSED: ' + event.code + ' - ' + event.reason;
+      document.getElementById('status').style.color = 'orange';
+    };
+  </script>
+</body>
+</html>

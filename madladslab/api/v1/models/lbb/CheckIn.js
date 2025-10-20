@@ -48,6 +48,20 @@ const checkInSchema = new mongoose.Schema({
     type: String,
     enum: ['verified', 'pending', 'rejected'],
     default: 'verified'
+  },
+  role: {
+    type: String,
+    enum: ['bartending', 'serving', 'hosting', 'managing', 'cooking', 'dishwashing', 'guest'],
+    default: 'guest'
+  },
+  shiftStatus: {
+    type: String,
+    enum: ['doingTime', 'onParole', 'canRep'],
+    default: 'doingTime'
+  },
+  statusUpdatedAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true

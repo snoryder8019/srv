@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      padding: 1rem 2rem;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .header a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .generator-container {
+      background: white;
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .generator-container h2 {
+      margin-bottom: 1.5rem;
+      color: #333;
+      text-align: center;
+    }
+
+    .form-section {
+      max-width: 500px;
+      margin: 0 auto 2rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #374151;
+      font-weight: 600;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 0.75rem;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      transition: transform 0.2s, box-shadow 0.2s;
+      width: 100%;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .qr-display {
+      display: none;
+      text-align: center;
+      padding: 2rem;
+      background: #f9fafb;
+      border-radius: 12px;
+      margin-top: 2rem;
+    }
+
+    .qr-display.active {
+      display: block;
+    }
+
+    .qr-display h3 {
+      color: #333;
+      margin-bottom: 1rem;
+    }
+
+    #qrCanvas {
+      max-width: 400px;
+      width: 100%;
+      height: auto;
+      border: 4px solid #667eea;
+      border-radius: 12px;
+      background: white;
+      padding: 1rem;
+    }
+
+    .qr-info {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: white;
+      border-radius: 8px;
+      text-align: left;
+    }
+
+    .qr-info div {
+      margin-bottom: 0.5rem;
+      color: #666;
+    }
+
+    .qr-info strong {
+      color: #333;
+    }
+
+    .expiry-timer {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #ef4444;
+      margin-top: 1rem;
+    }
+
+    .alert {
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    .alert.success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 2px solid #10b981;
+    }
+
+    .alert.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 2px solid #ef4444;
+    }
+
+    .alert.warning {
+      background: #fef3c7;
+      color: #92400e;
+      border: 2px solid #f59e0b;
+    }
+
+    .quick-amounts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .quick-amount-btn {
+      padding: 0.5rem;
+      border: 2px solid #e5e7eb;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      color: #667eea;
+      transition: all 0.2s;
+    }
+
+    .quick-amount-btn:hover {
+      border-color: #667eea;
+      background: #f3f4f6;
+    }
+
+    .instructions {
+      background: #dbeafe;
+      border-left: 4px solid #3b82f6;
+      padding: 1.5rem;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+    }
+
+    .instructions h3 {
+      color: #1e40af;
+      margin-bottom: 0.75rem;
+    }
+
+    .instructions ol {
+      margin-left: 1.5rem;
+      color: #1e40af;
+    }
+
+    .instructions li {
+      margin-bottom: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🏪 Generate QR Code</h1>
+    <a href="/gpc/admin">← Back to Admin</a>
+  </div>
+
+  <div class="container">
+    <div class="generator-container">
+      <h2>Generate Customer QR Code</h2>
+
+      <div class="instructions">
+        <h3>Cashier Instructions:</h3>
+        <ol>
+          <li>Enter the purchase amount from the customer's transaction</li>
+          <li>Click "Generate QR Code"</li>
+          <li>Customer scans the QR code with their phone</li>
+          <li>Customer receives GPC instantly!</li>
+        </ol>
+      </div>
+
+      <div id="alertContainer"></div>
+
+      <div class="form-section">
+        <form id="generateForm">
+          <div class="form-group">
+            <label for="purchaseAmount">Purchase Amount ($) *</label>
+            <input
+              type="number"
+              id="purchaseAmount"
+              step="0.01"
+              min="0.01"
+              placeholder="0.00"
+              required
+              autofocus
+            >
+            <div class="quick-amounts">
+              <button type="button" class="quick-amount-btn" onclick="setAmount(10)">$10</button>
+              <button type="button" class="quick-amount-btn" onclick="setAmount(20)">$20</button>
+              <button type="button" class="quick-amount-btn" onclick="setAmount(30)">$30</button>
+              <button type="button" class="quick-amount-btn" onclick="setAmount(50)">$50</button>
+              <button type="button" class="quick-amount-btn" onclick="setAmount(100)">$100</button>
+            </div>
+          </div>
+
+          <div class="form-group" id="gpcPreview" style="display: none;">
+            <label>GPC to be Awarded:</label>
+            <div style="font-size: 1.5rem; font-weight: 700; color: #10b981; text-align: center;">
+              <span id="gpcAmount">0</span> GPC
+            </div>
+          </div>
+
+          <button type="submit" class="btn">Generate QR Code</button>
+        </form>
+      </div>
+
+      <div id="qrDisplay" class="qr-display">
+        <h3>Customer Scan This QR Code:</h3>
+        <canvas id="qrCanvas"></canvas>
+
+        <div class="qr-info" id="qrInfo"></div>
+
+        <div class="expiry-timer" id="expiryTimer"></div>
+
+        <button class="btn" onclick="resetForm()" style="margin-top: 1rem;">Generate New Code</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let expiryInterval;
+    let conversionRate = 10; // Default, will be loaded from config
+
+    // Load config
+    fetch('/gpc/api/config')
+      .then(res => res.json())
+      .then(data => {
+        conversionRate = data.config.conversionRate;
+      })
+      .catch(err => console.error('Error loading config:', err));
+
+    function showAlert(message, type = 'success') {
+      const alertContainer = document.getElementById('alertContainer');
+      const alert = document.createElement('div');
+      alert.className = `alert ${type}`;
+      alert.textContent = message;
+      alertContainer.appendChild(alert);
+
+      setTimeout(() => {
+        alert.remove();
+      }, 5000);
+    }
+
+    function setAmount(amount) {
+      document.getElementById('purchaseAmount').value = amount.toFixed(2);
+      updateGPCPreview();
+    }
+
+    function updateGPCPreview() {
+      const amount = parseFloat(document.getElementById('purchaseAmount').value) || 0;
+      const gpc = Math.floor(amount * conversionRate);
+
+      if (amount > 0) {
+        document.getElementById('gpcPreview').style.display = 'block';
+        document.getElementById('gpcAmount').textContent = gpc;
+      } else {
+        document.getElementById('gpcPreview').style.display = 'none';
+      }
+    }
+
+    function startExpiryTimer(expiresAt) {
+      clearInterval(expiryInterval);
+
+      expiryInterval = setInterval(() => {
+        const now = Date.now();
+        const remaining = expiresAt - now;
+
+        if (remaining <= 0) {
+          clearInterval(expiryInterval);
+          document.getElementById('expiryTimer').innerHTML = '❌ Code Expired - Generate New Code';
+          showAlert('QR code has expired. Please generate a new one.', 'warning');
+        } else {
+          const minutes = Math.floor(remaining / 60000);
+          const seconds = Math.floor((remaining % 60000) / 1000);
+          document.getElementById('expiryTimer').innerHTML =
+            `⏱ Expires in: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+      }, 1000);
+    }
+
+    function resetForm() {
+      document.getElementById('generateForm').reset();
+      document.getElementById('qrDisplay').classList.remove('active');
+      document.getElementById('gpcPreview').style.display = 'none';
+      clearInterval(expiryInterval);
+    }
+
+    // Update GPC preview when amount changes
+    document.getElementById('purchaseAmount').addEventListener('input', updateGPCPreview);
+
+    // Handle form submission
+    document.getElementById('generateForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const purchaseAmount = parseFloat(document.getElementById('purchaseAmount').value);
+
+      if (!purchaseAmount || purchaseAmount <= 0) {
+        showAlert('Please enter a valid purchase amount', 'error');
+        return;
+      }
+
+      showAlert('Generating QR code...', 'success');
+
+      fetch('/gpc/api/qr/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          purchaseAmount,
+          locationId: null // Can be set if you have location tracking
+        })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            // Generate QR code
+            const canvas = document.getElementById('qrCanvas');
+            QRCode.toCanvas(canvas, data.qrCode, {
+              width: 400,
+              margin: 2,
+              color: {
+                dark: '#667eea',
+                light: '#ffffff'
+              }
+            }, function (error) {
+              if (error) {
+                console.error('QR generation error:', error);
+                showAlert('Error generating QR code', 'error');
+              } else {
+                // Show QR display
+                document.getElementById('qrDisplay').classList.add('active');
+
+                // Update info
+                const gpcAmount = Math.floor(purchaseAmount * conversionRate);
+                document.getElementById('qrInfo').innerHTML = `
+                  <div><strong>Purchase Amount:</strong> $${purchaseAmount.toFixed(2)}</div>
+                  <div><strong>GPC to Award:</strong> ${gpcAmount} GPC</div>
+                  <div><strong>Generated:</strong> ${new Date().toLocaleTimeString()}</div>
+                  <div style="margin-top: 1rem; color: #999; font-size: 0.9rem;">
+                    This QR code is valid for 5 minutes and can only be used once.
+                  </div>
+                `;
+
+                // Start expiry timer
+                startExpiryTimer(data.qrData.expiresAt);
+
+                showAlert('QR code generated! Customer can scan now.', 'success');
+              }
+            });
+          } else {
+            showAlert(data.error || 'Failed to generate QR code', 'error');
+          }
+        })
+        .catch(err => {
+          console.error('Error generating QR:', err);
+          showAlert('Error generating QR code', 'error');
+        });
+    });
+
+    // Clean up interval on page unload
+    window.addEventListener('beforeunload', () => {
+      clearInterval(expiryInterval);
+    });
+  </script>
+
+  <%-include('../mainContent/adminNav.ejs')%>
+</body>
+</html>

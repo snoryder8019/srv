@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .setup-container {
+      background: white;
+      border-radius: 16px;
+      padding: 3rem;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .setup-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .setup-header h1 {
+      color: #333;
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .setup-header p {
+      color: #6b7280;
+      font-size: 1rem;
+    }
+
+    .welcome-message {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 1.5rem;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    .welcome-message h2 {
+      font-size: 1.3rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .welcome-message p {
+      font-size: 0.95rem;
+      opacity: 0.95;
+    }
+
+    .admin-badge {
+      display: inline-block;
+      background: #fbbf24;
+      color: #78350f;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-weight: 700;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #374151;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 0.875rem;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .form-group .hint {
+      color: #6b7280;
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 1rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .btn-submit:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-submit:active {
+      transform: translateY(0);
+    }
+
+    .error-message {
+      background: #fee2e2;
+      border: 2px solid #ef4444;
+      color: #991b1b;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      display: none;
+    }
+
+    .info-box {
+      background: #dbeafe;
+      border-left: 4px solid #3b82f6;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      color: #1e40af;
+    }
+  </style>
+</head>
+<body>
+  <div class="setup-container">
+    <div class="setup-header">
+      <h1>Back Office Setup</h1>
+      <p>Complete your employee profile</p>
+    </div>
+
+    <div class="welcome-message">
+      <h2>Welcome, <%= user.displayName || user.email %>!</h2>
+      <p>Let's get you set up in the back office system.</p>
+      <% if (canBeAdmin) { %>
+        <div class="admin-badge">
+          You'll be the first admin!
+        </div>
+      <% } %>
+    </div>
+
+    <% if (canBeAdmin) { %>
+      <div class="info-box">
+        <strong>First User Benefits:</strong><br>
+        As the first user, you'll be granted administrator access with full system permissions.
+      </div>
+    <% } else { %>
+      <div class="info-box">
+        <strong>Getting Started:</strong><br>
+        Fill out your position and department. You'll start as staff. Contact an admin to request manager privileges.
+      </div>
+    <% } %>
+
+    <div class="error-message" id="errorMessage"></div>
+
+    <form id="setupForm" action="/backOffice/setup" method="POST">
+      <div class="form-group">
+        <label for="position">Position *</label>
+        <input
+          type="text"
+          id="position"
+          name="position"
+          placeholder="e.g., Bartender, Server, Chef"
+          required
+        >
+        <div class="hint">Your job title or role</div>
+      </div>
+
+      <div class="form-group">
+        <label for="department">Department *</label>
+        <select id="department" name="department" required>
+          <option value="">Select Department</option>
+          <option value="kitchen">Kitchen</option>
+          <option value="bar">Bar</option>
+          <option value="floor">Floor (Servers/Hosts)</option>
+          <option value="management">Management</option>
+          <option value="other">Other</option>
+        </select>
+        <div class="hint">Where you primarily work</div>
+      </div>
+
+      <button type="submit" class="btn-submit">
+        <% if (canBeAdmin) { %>
+          Create Admin Account
+        <% } else { %>
+          Complete Setup
+        <% } %>
+      </button>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('setupForm');
+    const errorMessage = document.getElementById('errorMessage');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Hide previous errors
+      errorMessage.style.display = 'none';
+
+      const formData = {
+        position: document.getElementById('position').value,
+        department: document.getElementById('department').value
+      };
+
+      try {
+        const response = await fetch('/backOffice/setup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (response.redirected) {
+          // Success - redirect to dashboard
+          window.location.href = response.url;
+        } else {
+          const data = await response.json();
+          if (data.error) {
+            errorMessage.textContent = data.error;
+            errorMessage.style.display = 'block';
+          }
+        }
+      } catch (error) {
+        errorMessage.textContent = 'Error setting up account. Please try again.';
+        errorMessage.style.display = 'block';
+        console.error('Setup error:', error);
+      }
+    });
+  </script>
+
+  <%-include('../mainContent/adminNav.ejs')%>
+</body>
+</html>

@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      padding: 1rem 2rem;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .nav {
+      display: flex;
+      gap: 1.5rem;
+    }
+
+    .nav a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      transition: background 0.3s;
+    }
+
+    .nav a:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .page-title {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .page-title h2 {
+      color: #333;
+      margin-bottom: 0.5rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      background: white;
+      border-radius: 12px 12px 0 0;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .tab {
+      flex: 1;
+      padding: 1rem 1.5rem;
+      background: #f3f4f6;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #6b7280;
+      transition: all 0.3s;
+    }
+
+    .tab.active {
+      background: white;
+      color: #667eea;
+      border-bottom: 3px solid #667eea;
+    }
+
+    .tab:hover {
+      background: #e5e7eb;
+    }
+
+    .tab-content {
+      display: none;
+      background: white;
+      padding: 2rem;
+      border-radius: 0 0 12px 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #374151;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.875rem;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .form-group .hint {
+      color: #6b7280;
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+
+    .btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 0.875rem 1.5rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: transform 0.2s;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      background: #6b7280;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+    }
+
+    .btn-small {
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+    }
+
+    .image-upload-area {
+      border: 2px dashed #d1d5db;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      background: #f9fafb;
+    }
+
+    .image-upload-area:hover {
+      border-color: #667eea;
+      background: #f3f4f6;
+    }
+
+    .image-upload-area.dragging {
+      border-color: #667eea;
+      background: #ede9fe;
+    }
+
+    .image-preview {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .image-preview-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid #e5e7eb;
+    }
+
+    .image-preview-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .image-preview-item .remove-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      font-size: 1.2rem;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ingredient-list, .instruction-list {
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .ingredient-item, .instruction-item {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr auto;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      align-items: center;
+    }
+
+    .instruction-item {
+      grid-template-columns: auto 1fr auto;
+    }
+
+    .ingredient-item input,
+    .instruction-item input,
+    .instruction-item textarea {
+      padding: 0.5rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+
+    .instruction-item textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    .recipes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+
+    .recipe-card {
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      transition: transform 0.2s;
+    }
+
+    .recipe-card:hover {
+      transform: translateY(-4px);
+    }
+
+    .recipe-image {
+      width: 100%;
+      height: 200px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 3rem;
+    }
+
+    .recipe-content {
+      padding: 1.5rem;
+    }
+
+    .recipe-title {
+      color: #333;
+      font-size: 1.2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .recipe-category {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 0.25rem 0.75rem;
+      border-radius: 15px;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    .category-kitchen {
+      background: #f59e0b;
+    }
+
+    .category-bar {
+      background: #8b5cf6;
+    }
+
+    .recipe-description {
+      color: #6b7280;
+      margin-bottom: 1rem;
+      line-height: 1.5;
+    }
+
+    .recipe-meta {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e5e7eb;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+
+    .allergen-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .allergen-tag {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 0.2rem 0.5rem;
+      border-radius: 8px;
+      font-size: 0.75rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #6b7280;
+      padding: 3rem;
+      background: white;
+      border-radius: 12px;
+    }
+
+    .filter-bar {
+      background: white;
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .filter-bar label {
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .filter-bar select {
+      padding: 0.5rem 1rem;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    .checkbox-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 0.5rem;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      width: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Recipes & Menu</h1>
+    <nav class="nav">
+      <a href="/backOffice">Dashboard</a>
+      <a href="/backOffice/training">Training</a>
+      <a href="/backOffice/recipes">Recipes</a>
+      <a href="/backOffice/tasks">Tasks</a>
+      <a href="/backOffice/feed">Feed</a>
+    </nav>
+  </div>
+
+  <div class="container">
+    <div class="page-title">
+      <div>
+        <h2>Recipes & Menu Management</h2>
+        <p>Create, manage, and organize your recipes and menu items</p>
+      </div>
+      <% if (employee.role === 'manager' || employee.role === 'admin') { %>
+        <button class="btn" onclick="showTab('create')">+ Create Recipe</button>
+      <% } %>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('browse')">Browse Recipes</button>
+      <% if (employee.role === 'manager' || employee.role === 'admin') { %>
+        <button class="tab" onclick="showTab('create')">Create Recipe</button>
+        <button class="tab" onclick="showTab('item')">Quick Item</button>
+      <% } %>
+    </div>
+
+    <!-- BROWSE TAB -->
+    <div id="browse-tab" class="tab-content active">
+      <div class="filter-bar">
+        <label for="categoryFilter">Category:</label>
+        <select id="categoryFilter" onchange="filterRecipes()">
+          <option value="">All</option>
+          <option value="kitchen">Kitchen</option>
+          <option value="bar">Bar</option>
+        </select>
+
+        <label for="subcategoryFilter">Type:</label>
+        <select id="subcategoryFilter" onchange="filterRecipes()">
+          <option value="">All Types</option>
+          <!-- Kitchen -->
+          <option value="appetizer">Appetizer</option>
+          <option value="soup">Soup</option>
+          <option value="salad">Salad</option>
+          <option value="entree">Entree</option>
+          <option value="side">Side</option>
+          <option value="dessert">Dessert</option>
+          <!-- Bar -->
+          <option value="cocktail">Cocktail</option>
+          <option value="mocktail">Mocktail</option>
+          <option value="beer">Beer</option>
+          <option value="wine">Wine</option>
+          <option value="spirit">Spirit</option>
+          <option value="coffee">Coffee/Tea</option>
+        </select>
+      </div>
+
+      <% if (recipes && recipes.length > 0) { %>
+        <div class="recipes-grid">
+          <% recipes.forEach(function(recipe) { %>
+            <div class="recipe-card" data-category="<%= recipe.category %>" data-subcategory="<%= recipe.subcategory || '' %>">
+              <div class="recipe-image">
+                <% if (recipe.imageUrls && recipe.imageUrls.length > 0) { %>
+                  <img src="<%= recipe.imageUrls[0] %>" alt="<%= recipe.name %>" style="width: 100%; height: 100%; object-fit: cover;">
+                <% } else { %>
+                  <%= recipe.category === 'bar' ? '🍹' : '🍽️' %>
+                <% } %>
+              </div>
+
+              <div class="recipe-content">
+                <h3 class="recipe-title"><%= recipe.name %></h3>
+                <span class="recipe-category category-<%= recipe.category %>">
+                  <%= recipe.category %><% if (recipe.subcategory) { %> - <%= recipe.subcategory %><% } %>
+                </span>
+
+                <p class="recipe-description">
+                  <%= recipe.description %>
+                </p>
+
+                <% if (recipe.allergens && recipe.allergens.length > 0) { %>
+                  <div class="allergen-tags">
+                    <% recipe.allergens.forEach(function(allergen) { %>
+                      <span class="allergen-tag"><%= allergen %></span>
+                    <% }); %>
+                  </div>
+                <% } %>
+
+                <div class="recipe-meta">
+                  <% if (recipe.price) { %>
+                    <span>$<%= recipe.price.toFixed(2) %></span>
+                  <% } %>
+                  <% if (recipe.prepTime || recipe.cookTime) { %>
+                    <span><%= (recipe.prepTime || 0) + (recipe.cookTime || 0) %> min</span>
+                  <% } %>
+                  <% if (recipe.servings) { %>
+                    <span><%= recipe.servings %> servings</span>
+                  <% } %>
+                </div>
+
+                <button class="btn" style="margin-top: 1rem; width: 100%;" onclick="viewRecipe('<%= recipe._id %>')">
+                  View Details
+                </button>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+      <% } else { %>
+        <div class="empty-state">
+          <h3>No recipes found</h3>
+          <p>Start by creating your first recipe!</p>
+        </div>
+      <% } %>
+    </div>
+
+    <!-- CREATE RECIPE TAB -->
+    <% if (employee.role === 'manager' || employee.role === 'admin') { %>
+    <div id="create-tab" class="tab-content">
+      <h3 style="margin-bottom: 1.5rem; color: #333;">Create New Recipe</h3>
+
+      <form id="recipeForm" enctype="multipart/form-data">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="recipeName">Recipe Name *</label>
+            <input type="text" id="recipeName" name="name" required>
+          </div>
+
+          <div class="form-group">
+            <label for="recipeCategory">Category *</label>
+            <select id="recipeCategory" name="category" required onchange="updateSubcategories()">
+              <option value="">Select Category</option>
+              <option value="kitchen">Kitchen (Food)</option>
+              <option value="bar">Bar (Beverage)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="recipeSubcategory">Type/Subcategory</label>
+            <select id="recipeSubcategory" name="subcategory">
+              <option value="">Select type first</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="recipeVisibility">Visibility</label>
+            <select id="recipeVisibility" name="visibility">
+              <option value="full">Full Recipe (Kitchen/Bar Staff)</option>
+              <option value="menu-only">Menu Only (Servers)</option>
+            </select>
+            <div class="hint">Full shows complete recipe, Menu Only shows just description</div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="recipeDescription">Description *</label>
+          <textarea id="recipeDescription" name="description" required></textarea>
+          <div class="hint">What customers/staff see on the menu</div>
+        </div>
+
+        <div class="form-group">
+          <label for="recipeMenuDescription">Menu Description (Optional)</label>
+          <textarea id="recipeMenuDescription" name="menuDescription"></textarea>
+          <div class="hint">Alternative description for servers/guests if different from recipe description</div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="recipePrepTime">Prep Time (minutes)</label>
+            <input type="number" id="recipePrepTime" name="prepTime" min="0">
+          </div>
+
+          <div class="form-group">
+            <label for="recipeCookTime">Cook Time (minutes)</label>
+            <input type="number" id="recipeCookTime" name="cookTime" min="0">
+          </div>
+
+          <div class="form-group">
+            <label for="recipeServings">Servings/Portions</label>
+            <input type="number" id="recipeServings" name="servings" min="1">
+          </div>
+
+          <div class="form-group">
+            <label for="recipePrice">Menu Price ($)</label>
+            <input type="number" id="recipePrice" name="price" step="0.01" min="0">
+          </div>
+        </div>
+
+        <!-- Images Upload -->
+        <div class="form-group">
+          <label>Recipe Images</label>
+          <div class="image-upload-area" id="imageUploadArea">
+            <p style="font-size: 3rem; margin-bottom: 0.5rem;">📸</p>
+            <p style="color: #6b7280;">Click or drag images here to upload</p>
+            <p style="color: #9ca3af; font-size: 0.85rem; margin-top: 0.5rem;">Supports: JPG, PNG, WebP, GIF (Max 10MB each)</p>
+            <input type="file" id="imageInput" accept="image/*" multiple style="display: none;">
+          </div>
+          <div id="imagePreview" class="image-preview"></div>
+        </div>
+
+        <!-- Ingredients -->
+        <div class="form-group">
+          <label>Ingredients</label>
+          <div id="ingredientsList" class="ingredient-list">
+            <div class="ingredient-item">
+              <input type="text" placeholder="Ingredient name *" class="ingredient-name" required>
+              <input type="text" placeholder="Quantity" class="ingredient-quantity">
+              <select class="ingredient-unit">
+                <option value="">Unit</option>
+                <option value="oz">oz</option>
+                <option value="ml">ml</option>
+                <option value="cup">cup</option>
+                <option value="tbsp">tbsp</option>
+                <option value="tsp">tsp</option>
+                <option value="lb">lb</option>
+                <option value="kg">kg</option>
+                <option value="g">g</option>
+                <option value="each">each</option>
+                <option value="dash">dash</option>
+                <option value="splash">splash</option>
+                <option value="pinch">pinch</option>
+              </select>
+              <button type="button" class="btn btn-danger btn-small" onclick="removeIngredient(this)">×</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-small" onclick="addIngredient()">+ Add Ingredient</button>
+        </div>
+
+        <!-- Instructions -->
+        <div class="form-group">
+          <label>Preparation Instructions</label>
+          <div id="instructionsList" class="instruction-list">
+            <div class="instruction-item">
+              <span style="font-weight: 600; color: #6b7280;">1.</span>
+              <textarea placeholder="Instruction step *" class="instruction-text" required></textarea>
+              <button type="button" class="btn btn-danger btn-small" onclick="removeInstruction(this)">×</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-small" onclick="addInstruction()">+ Add Step</button>
+        </div>
+
+        <!-- Allergens -->
+        <div class="form-group">
+          <label>Allergens</label>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" name="allergens" value="dairy"> Dairy
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="allergens" value="eggs"> Eggs
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="allergens" value="fish"> Fish
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="allergens" value="shellfish"> Shellfish
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="allergens" value="nuts"> Tree Nuts
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="allergens" value="peanuts"> Peanuts
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="allergens" value="wheat"> Wheat/Gluten
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="allergens" value="soy"> Soy
+            </label>
+          </div>
+        </div>
+
+        <!-- Dietary Info -->
+        <div class="form-group">
+          <label>Dietary Information</label>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" name="dietaryInfo" value="vegetarian"> Vegetarian
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="dietaryInfo" value="vegan"> Vegan
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="dietaryInfo" value="gluten-free"> Gluten-Free
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="dietaryInfo" value="dairy-free"> Dairy-Free
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="dietaryInfo" value="keto"> Keto
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="dietaryInfo" value="low-carb"> Low-Carb
+            </label>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+          <button type="submit" class="btn">Create Recipe</button>
+          <button type="button" class="btn btn-secondary" onclick="resetForm()">Reset Form</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- QUICK ITEM TAB -->
+    <div id="item-tab" class="tab-content">
+      <h3 style="margin-bottom: 1.5rem; color: #333;">Quick Menu Item</h3>
+      <p style="color: #6b7280; margin-bottom: 1.5rem;">For simple items that don't need full recipes (e.g., retail wine bottles, canned beers, simple sides)</p>
+
+      <form id="quickItemForm" enctype="multipart/form-data">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="itemName">Item Name *</label>
+            <input type="text" id="itemName" name="name" required>
+          </div>
+
+          <div class="form-group">
+            <label for="itemCategory">Category *</label>
+            <select id="itemCategory" name="category" required onchange="updateItemSubcategories()">
+              <option value="">Select Category</option>
+              <option value="kitchen">Kitchen (Food)</option>
+              <option value="bar">Bar (Beverage)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="itemSubcategory">Type *</label>
+            <select id="itemSubcategory" name="subcategory" required>
+              <option value="">Select category first</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="itemPrice">Price ($) *</label>
+            <input type="number" id="itemPrice" name="price" step="0.01" min="0" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="itemDescription">Description *</label>
+          <textarea id="itemDescription" name="description" required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Item Image</label>
+          <div class="image-upload-area" id="itemImageUploadArea">
+            <p style="font-size: 3rem; margin-bottom: 0.5rem;">📸</p>
+            <p style="color: #6b7280;">Click or drag image here</p>
+            <input type="file" id="itemImageInput" accept="image/*" style="display: none;">
+          </div>
+          <div id="itemImagePreview" class="image-preview"></div>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+          <button type="submit" class="btn">Create Item</button>
+          <button type="button" class="btn btn-secondary" onclick="resetItemForm()">Reset</button>
+        </div>
+      </form>
+    </div>
+    <% } %>
+  </div>
+
+  <script>
+    // Category/Subcategory mappings
+    const subcategories = {
+      kitchen: [
+        'appetizer',
+        'soup',
+        'salad',
+        'entree',
+        'side',
+        'dessert',
+        'sauce',
+        'other'
+      ],
+      bar: [
+        'cocktail',
+        'mocktail',
+        'beer',
+        'wine',
+        'spirit',
+        'coffee',
+        'tea',
+        'juice',
+        'soda',
+        'other'
+      ]
+    };
+
+    // Tab switching
+    function showTab(tabName) {
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      event.target.classList.add('active');
+      document.getElementById(tabName + '-tab').classList.add('active');
+    }
+
+    // Update subcategories based on category selection
+    function updateSubcategories() {
+      const category = document.getElementById('recipeCategory').value;
+      const subcategorySelect = document.getElementById('recipeSubcategory');
+
+      subcategorySelect.innerHTML = '<option value="">Select type</option>';
+
+      if (category && subcategories[category]) {
+        subcategories[category].forEach(sub => {
+          const option = document.createElement('option');
+          option.value = sub;
+          option.textContent = sub.charAt(0).toUpperCase() + sub.slice(1);
+          subcategorySelect.appendChild(option);
+        });
+      }
+    }
+
+    function updateItemSubcategories() {
+      const category = document.getElementById('itemCategory').value;
+      const subcategorySelect = document.getElementById('itemSubcategory');
+
+      subcategorySelect.innerHTML = '<option value="">Select type</option>';
+
+      if (category && subcategories[category]) {
+        subcategories[category].forEach(sub => {
+          const option = document.createElement('option');
+          option.value = sub;
+          option.textContent = sub.charAt(0).toUpperCase() + sub.slice(1);
+          subcategorySelect.appendChild(option);
+        });
+      }
+    }
+
+    // Image upload handling
+    const uploadedImages = [];
+    const imageUploadArea = document.getElementById('imageUploadArea');
+    const imageInput = document.getElementById('imageInput');
+    const imagePreview = document.getElementById('imagePreview');
+
+    imageUploadArea?.addEventListener('click', () => imageInput?.click());
+
+    imageUploadArea?.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      imageUploadArea.classList.add('dragging');
+    });
+
+    imageUploadArea?.addEventListener('dragleave', () => {
+      imageUploadArea.classList.remove('dragging');
+    });
+
+    imageUploadArea?.addEventListener('drop', (e) => {
+      e.preventDefault();
+      imageUploadArea.classList.remove('dragging');
+      handleFiles(e.dataTransfer.files);
+    });
+
+    imageInput?.addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+    });
+
+    async function handleFiles(files) {
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('folder', 'recipes');
+
+        try {
+          const response = await fetch('/backOffice/api/upload', {
+            method: 'POST',
+            body: formData
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            uploadedImages.push(data.url);
+            displayImagePreview(data.url);
+          } else {
+            alert('Error uploading image: ' + (data.error || 'Unknown error'));
+          }
+        } catch (error) {
+          alert('Error uploading image: ' + error.message);
+        }
+      }
+    }
+
+    function displayImagePreview(url) {
+      const item = document.createElement('div');
+      item.className = 'image-preview-item';
+      item.innerHTML = `
+        <img src="${url}" alt="Recipe image">
+        <button class="remove-btn" onclick="removeImage('${url}')">&times;</button>
+      `;
+      imagePreview.appendChild(item);
+    }
+
+    function removeImage(url) {
+      const index = uploadedImages.indexOf(url);
+      if (index > -1) {
+        uploadedImages.splice(index, 1);
+      }
+      renderImagePreview();
+    }
+
+    function renderImagePreview() {
+      imagePreview.innerHTML = '';
+      uploadedImages.forEach(url => displayImagePreview(url));
+    }
+
+    // Ingredients
+    function addIngredient() {
+      const list = document.getElementById('ingredientsList');
+      const item = document.createElement('div');
+      item.className = 'ingredient-item';
+      item.innerHTML = `
+        <input type="text" placeholder="Ingredient name *" class="ingredient-name" required>
+        <input type="text" placeholder="Quantity" class="ingredient-quantity">
+        <select class="ingredient-unit">
+          <option value="">Unit</option>
+          <option value="oz">oz</option>
+          <option value="ml">ml</option>
+          <option value="cup">cup</option>
+          <option value="tbsp">tbsp</option>
+          <option value="tsp">tsp</option>
+          <option value="lb">lb</option>
+          <option value="kg">kg</option>
+          <option value="g">g</option>
+          <option value="each">each</option>
+          <option value="dash">dash</option>
+          <option value="splash">splash</option>
+          <option value="pinch">pinch</option>
+        </select>
+        <button type="button" class="btn btn-danger btn-small" onclick="removeIngredient(this)">×</button>
+      `;
+      list.appendChild(item);
+    }
+
+    function removeIngredient(btn) {
+      if (document.querySelectorAll('.ingredient-item').length > 1) {
+        btn.parentElement.remove();
+      }
+    }
+
+    // Instructions
+    function addInstruction() {
+      const list = document.getElementById('instructionsList');
+      const stepNumber = list.children.length + 1;
+      const item = document.createElement('div');
+      item.className = 'instruction-item';
+      item.innerHTML = `
+        <span style="font-weight: 600; color: #6b7280;">${stepNumber}.</span>
+        <textarea placeholder="Instruction step *" class="instruction-text" required></textarea>
+        <button type="button" class="btn btn-danger btn-small" onclick="removeInstruction(this)">×</button>
+      `;
+      list.appendChild(item);
+    }
+
+    function removeInstruction(btn) {
+      if (document.querySelectorAll('.instruction-item').length > 1) {
+        btn.parentElement.remove();
+        renumberInstructions();
+      }
+    }
+
+    function renumberInstructions() {
+      const items = document.querySelectorAll('.instruction-item');
+      items.forEach((item, index) => {
+        item.querySelector('span').textContent = (index + 1) + '.';
+      });
+    }
+
+    // Form submission
+    document.getElementById('recipeForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(e.target);
+
+      // Build recipe object
+      const recipe = {
+        name: formData.get('name'),
+        category: formData.get('category'),
+        subcategory: formData.get('subcategory'),
+        description: formData.get('description'),
+        menuDescription: formData.get('menuDescription'),
+        visibility: formData.get('visibility'),
+        prepTime: parseInt(formData.get('prepTime')) || 0,
+        cookTime: parseInt(formData.get('cookTime')) || 0,
+        servings: parseInt(formData.get('servings')) || 0,
+        price: parseFloat(formData.get('price')) || 0,
+        imageUrls: uploadedImages,
+        allergens: Array.from(document.querySelectorAll('input[name="allergens"]:checked')).map(cb => cb.value),
+        dietaryInfo: Array.from(document.querySelectorAll('input[name="dietaryInfo"]:checked')).map(cb => cb.value),
+        ingredients: [],
+        instructions: []
+      };
+
+      // Collect ingredients
+      document.querySelectorAll('.ingredient-item').forEach(item => {
+        const name = item.querySelector('.ingredient-name').value;
+        if (name) {
+          recipe.ingredients.push({
+            name: name,
+            quantity: item.querySelector('.ingredient-quantity').value,
+            unit: item.querySelector('.ingredient-unit').value
+          });
+        }
+      });
+
+      // Collect instructions
+      document.querySelectorAll('.instruction-item').forEach((item, index) => {
+        const text = item.querySelector('.instruction-text').value;
+        if (text) {
+          recipe.instructions.push({
+            step: index + 1,
+            description: text
+          });
+        }
+      });
+
+      try {
+        const response = await fetch('/backOffice/api/recipes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(recipe)
+        });
+
+        if (response.ok) {
+          alert('Recipe created successfully!');
+          window.location.reload();
+        } else {
+          const error = await response.json();
+          alert('Error creating recipe: ' + (error.error || 'Unknown error'));
+        }
+      } catch (error) {
+        alert('Error creating recipe: ' + error.message);
+      }
+    });
+
+    // Quick item form
+    const itemUploadedImages = [];
+    const itemImageUploadArea = document.getElementById('itemImageUploadArea');
+    const itemImageInput = document.getElementById('itemImageInput');
+    const itemImagePreview = document.getElementById('itemImagePreview');
+
+    itemImageUploadArea?.addEventListener('click', () => itemImageInput?.click());
+
+    itemImageInput?.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('folder', 'recipes');
+
+      try {
+        const response = await fetch('/backOffice/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          itemUploadedImages[0] = data.url;
+          itemImagePreview.innerHTML = `
+            <div class="image-preview-item">
+              <img src="${data.url}" alt="Item image">
+              <button class="remove-btn" onclick="itemUploadedImages.length = 0; itemImagePreview.innerHTML = ''">&times;</button>
+            </div>
+          `;
+        }
+      } catch (error) {
+        alert('Error uploading image: ' + error.message);
+      }
+    });
+
+    document.getElementById('quickItemForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(e.target);
+
+      const item = {
+        name: formData.get('name'),
+        category: formData.get('category'),
+        subcategory: formData.get('subcategory'),
+        description: formData.get('description'),
+        price: parseFloat(formData.get('price')),
+        imageUrls: itemUploadedImages,
+        ingredients: [],
+        instructions: [],
+        visibility: 'menu-only'
+      };
+
+      try {
+        const response = await fetch('/backOffice/api/recipes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item)
+        });
+
+        if (response.ok) {
+          alert('Item created successfully!');
+          window.location.reload();
+        } else {
+          const error = await response.json();
+          alert('Error creating item: ' + (error.error || 'Unknown error'));
+        }
+      } catch (error) {
+        alert('Error creating item: ' + error.message);
+      }
+    });
+
+    function resetForm() {
+      document.getElementById('recipeForm').reset();
+      uploadedImages.length = 0;
+      imagePreview.innerHTML = '';
+    }
+
+    function resetItemForm() {
+      document.getElementById('quickItemForm').reset();
+      itemUploadedImages.length = 0;
+      itemImagePreview.innerHTML = '';
+    }
+
+    function viewRecipe(id) {
+      // Navigate to recipe detail view
+      window.location.href = '/backOffice/api/recipes/' + id;
+    }
+
+    function filterRecipes() {
+      const category = document.getElementById('categoryFilter').value;
+      const subcategory = document.getElementById('subcategoryFilter').value;
+
+      document.querySelectorAll('.recipe-card').forEach(card => {
+        const cardCategory = card.dataset.category;
+        const cardSubcategory = card.dataset.subcategory;
+
+        const categoryMatch = !category || cardCategory === category;
+        const subcategoryMatch = !subcategory || cardSubcategory === subcategory;
+
+        card.style.display = (categoryMatch && subcategoryMatch) ? 'block' : 'none';
+      });
+    }
+  </script>
+
+  <%-include('../mainContent/adminNav.ejs')%>
+</body>
+</html>

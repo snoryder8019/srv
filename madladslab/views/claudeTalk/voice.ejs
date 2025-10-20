@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Control - Claude Talk</title>
+  <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      overflow-x: hidden;
+      max-width: 100%;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      color: white;
+    }
+
+    .header {
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+
+    .header h2 {
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .nav-link {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      transition: all 0.3s;
+      font-size: 0.9rem;
+    }
+
+    .nav-link:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      text-align: center;
+      padding: 2rem;
+      max-width: 600px;
+    }
+
+    h1 {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .status {
+      font-size: 1.5rem;
+      margin: 2rem 0;
+      min-height: 3rem;
+      opacity: 0.9;
+    }
+
+    .mic-button {
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      border: none;
+      background: white;
+      font-size: 5rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      margin: 2rem 0;
+    }
+
+    .mic-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 15px 50px rgba(0, 0, 0, 0.4);
+    }
+
+    .mic-button:active {
+      transform: scale(0.95);
+    }
+
+    .mic-button.recording {
+      background: #ef4444;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 10px 40px rgba(239, 68, 68, 0.4);
+      }
+      50% {
+        transform: scale(1.1);
+        box-shadow: 0 15px 60px rgba(239, 68, 68, 0.6);
+      }
+    }
+
+    .instructions {
+      font-size: 1.2rem;
+      opacity: 0.8;
+      margin-top: 2rem;
+      line-height: 1.8;
+    }
+
+    .display-link {
+      margin-top: 3rem;
+      padding-top: 2rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .display-link a {
+      color: white;
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 1rem 2rem;
+      border-radius: 10px;
+      display: inline-block;
+      transition: all 0.3s;
+    }
+
+    .display-link a:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .transcript {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1.5rem;
+      border-radius: 15px;
+      margin: 1rem 0;
+      min-height: 100px;
+      font-size: 1.3rem;
+      line-height: 1.6;
+    }
+
+    /* Mobile Responsive Styles */
+    @media (max-width: 768px) {
+      .header {
+        padding: 0.75rem 1rem;
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+      }
+
+      .header h2 {
+        font-size: 1.2rem;
+        text-align: center;
+      }
+
+      .nav-links {
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .nav-link {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8rem;
+      }
+
+      .container {
+        padding: 1rem;
+        max-width: 100%;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      .status {
+        font-size: 1.2rem;
+        margin: 1rem 0;
+      }
+
+      .mic-button {
+        width: 150px;
+        height: 150px;
+        font-size: 4rem;
+      }
+
+      .instructions {
+        font-size: 1rem;
+        margin-top: 1.5rem;
+      }
+
+      .transcript {
+        font-size: 1.1rem;
+        padding: 1rem;
+      }
+
+      .display-link {
+        margin-top: 2rem;
+        padding-top: 1.5rem;
+      }
+
+      .display-link a {
+        padding: 0.8rem 1.5rem;
+        font-size: 0.9rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      .mic-button {
+        width: 120px;
+        height: 120px;
+        font-size: 3rem;
+      }
+
+      .status {
+        font-size: 1rem;
+      }
+
+      .instructions {
+        font-size: 0.9rem;
+      }
+
+      .transcript {
+        font-size: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>🤖 Claude Talk - Voice Control</h2>
+    <div class="nav-links">
+      <a href="/claudeTalk/voice" class="nav-link">🎤 Voice</a>
+      <a href="/claudeTalk" class="nav-link">💬 Chat</a>
+      <a href="/" class="nav-link">Home</a>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <div class="container">
+    <h1>🎤 Voice Control</h1>
+
+    <div class="status" id="status">Click the microphone to speak</div>
+
+    <button class="mic-button" id="micBtn" onclick="toggleVoice()">
+      🎤
+    </button>
+
+    <div class="transcript" id="transcript">
+      Your speech will appear here...
+    </div>
+
+    <div class="instructions">
+      <strong>How it works:</strong><br>
+      1. Click the microphone<br>
+      2. Speak your command<br>
+      3. Click again to stop<br>
+      4. Watch your Roku display for results!
+    </div>
+
+    <div class="display-link">
+      <p style="margin-bottom: 1rem;">Open display on your Roku/TV:</p>
+      <a href="http://104.237.138.28/claudeTalk/display" target="_blank">📺 Open Display</a>
+    </div>
+  </div>
+  </div>
+
+  <script>
+    let recognition = null;
+    let isRecording = false;
+
+    // Check for Web Speech API support
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+    } else {
+      document.getElementById('status').textContent = 'Voice recognition not supported in this browser';
+      document.getElementById('micBtn').disabled = true;
+    }
+
+    function toggleVoice() {
+      const micBtn = document.getElementById('micBtn');
+      const statusDiv = document.getElementById('status');
+      const transcriptDiv = document.getElementById('transcript');
+
+      if (!recognition) {
+        alert('Speech recognition not supported. Please use Chrome, Edge, or Safari.');
+        return;
+      }
+
+      if (isRecording) {
+        // Stop recording
+        recognition.stop();
+        micBtn.classList.remove('recording');
+        micBtn.textContent = '🎤';
+        statusDiv.textContent = 'Processing...';
+        isRecording = false;
+      } else {
+        // Start recording
+        isRecording = true;
+        micBtn.classList.add('recording');
+        micBtn.textContent = '⏹️';
+        statusDiv.textContent = '🎤 Listening... Speak now!';
+        transcriptDiv.textContent = 'Listening...';
+
+        recognition.onresult = async (event) => {
+          const transcript = event.results[0][0].transcript;
+          console.log('Recognized:', transcript);
+
+          transcriptDiv.textContent = 'You said: "' + transcript + '"';
+          statusDiv.textContent = 'Sending to Claude...';
+
+          micBtn.classList.remove('recording');
+          micBtn.textContent = '🎤';
+          isRecording = false;
+
+          // Send to server
+          try {
+            const formData = new FormData();
+            formData.append('transcript', transcript);
+            formData.append('sessionId', 'voice-control');
+
+            // Dummy audio file to satisfy multer
+            const dummyBlob = new Blob([''], { type: 'audio/webm' });
+            formData.append('audio', dummyBlob, 'dummy.webm');
+
+            const response = await fetch('/claudeTalk/voice', {
+              method: 'POST',
+              body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+              statusDiv.textContent = '✅ Sent to display! Check your Roku.';
+              setTimeout(() => {
+                statusDiv.textContent = 'Click the microphone to speak';
+                transcriptDiv.textContent = 'Ready for next command...';
+              }, 3000);
+            } else {
+              statusDiv.textContent = '❌ Error: ' + (data.error || 'Failed');
+              transcriptDiv.textContent = 'Error occurred. Try again.';
+            }
+          } catch (error) {
+            console.error('Error:', error);
+            statusDiv.textContent = '❌ Connection error';
+            transcriptDiv.textContent = 'Failed to send. Check connection.';
+          }
+        };
+
+        recognition.onerror = (event) => {
+          console.error('Recognition error:', event.error);
+          micBtn.classList.remove('recording');
+          micBtn.textContent = '🎤';
+          isRecording = false;
+
+          if (event.error === 'no-speech') {
+            statusDiv.textContent = 'No speech detected. Try again.';
+            transcriptDiv.textContent = 'No speech detected.';
+          } else {
+            statusDiv.textContent = 'Error: ' + event.error;
+            transcriptDiv.textContent = 'Recognition error.';
+          }
+
+          setTimeout(() => {
+            statusDiv.textContent = 'Click the microphone to speak';
+          }, 3000);
+        };
+
+        recognition.onend = () => {
+          micBtn.classList.remove('recording');
+          micBtn.textContent = '🎤';
+          isRecording = false;
+        };
+
+        recognition.start();
+      }
+    }
+  </script>
+</body>
+</html>
