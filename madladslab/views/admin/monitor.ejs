@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>System Monitor - madLadsLab Admin</title>
+</head>
+<body>
+  <%-include('../mainContent/adminHeader.ejs')%>
+
+  <div class="admin-container">
+    <%-include('../mainContent/adminSidebar.ejs')%>
+
+    <main class="admin-main">
+      <div class="admin-header">
+        <h1>🖥️ System Monitor</h1>
+        <p class="admin-subtitle">Real-time status of all /srv applications</p>
+        <button class="refresh-btn" onclick="refreshAll()">🔄 Refresh All</button>
+      </div>
+
+      <!-- System Stats -->
+      <div class="system-stats">
+        <div class="stat-card">
+          <div class="stat-icon cpu">💻</div>
+          <div class="stat-content">
+            <p class="stat-label">CPU Usage</p>
+            <p class="stat-value" id="systemCpu">Loading...</p>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon memory">🧠</div>
+          <div class="stat-content">
+            <p class="stat-label">Memory</p>
+            <p class="stat-value" id="systemMemory">Loading...</p>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon disk">💾</div>
+          <div class="stat-content">
+            <p class="stat-label">Disk Usage</p>
+            <p class="stat-value" id="systemDisk">Loading...</p>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon uptime">⏱️</div>
+          <div class="stat-content">
+            <p class="stat-label">Uptime</p>
+            <p class="stat-value" id="systemUptime">Loading...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Apps Grid -->
+      <div class="apps-section">
+        <h2>Applications (/srv)</h2>
+        <div id="appsGrid" class="apps-grid">
+          <div class="loading-placeholder">Loading applications...</div>
+        </div>
+      </div>
+
+      <!-- Logs Modal -->
+      <div id="logsModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="logsTitle">App Logs</h3>
+            <button class="modal-close" onclick="closeLogs()">&times;</button>
+          </div>
+          <div class="modal-body">
+            <pre id="logsContent" class="logs-content">Loading logs...</pre>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      line-height: 1.6;
+    }
+
+    .admin-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .admin-main {
+      flex: 1;
+      padding: 2rem;
+      margin-left: 250px;
+      margin-top: 60px;
+    }
+
+    .admin-header {
+      margin-bottom: 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .admin-header h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .admin-subtitle {
+      color: #888;
+      font-size: 1rem;
+      width: 100%;
+    }
+
+    .refresh-btn {
+      padding: 0.6rem 1.5rem;
+      border: 1px solid #00ff88;
+      background: #1a3a1a;
+      color: #00ff88;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .refresh-btn:hover {
+      background: #00ff88;
+      color: #000;
+    }
+
+    /* System Stats */
+    .system-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 1.5rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .stat-icon {
+      font-size: 2.5rem;
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+
+    .stat-icon.cpu { background: rgba(0, 255, 136, 0.1); }
+    .stat-icon.memory { background: rgba(0, 170, 255, 0.1); }
+    .stat-icon.disk { background: rgba(255, 149, 0, 0.1); }
+    .stat-icon.uptime { background: rgba(255, 55, 95, 0.1); }
+
+    .stat-content {
+      flex: 1;
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* Apps Section */
+    .apps-section {
+      margin-bottom: 2rem;
+    }
+
+    .apps-section h2 {
+      font-size: 1.5rem;
+      color: #fff;
+      margin-bottom: 1.5rem;
+    }
+
+    .apps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .app-card {
+      background: #1a1a1a;
+      border: 2px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 1.5rem;
+      transition: all 0.3s;
+      position: relative;
+    }
+
+    .app-card.healthy {
+      border-color: #00ff88;
+    }
+
+    .app-card.unhealthy {
+      border-color: #ff9500;
+    }
+
+    .app-card.stopped {
+      border-color: #ff375f;
+    }
+
+    .app-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1rem;
+    }
+
+    .app-title {
+      flex: 1;
+    }
+
+    .app-name {
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 0.25rem;
+    }
+
+    .app-domain {
+      font-size: 0.85rem;
+      color: #888;
+      font-family: 'Courier New', monospace;
+    }
+
+    .status-badge {
+      padding: 0.4rem 0.8rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-badge.healthy {
+      background: rgba(0, 255, 136, 0.2);
+      color: #00ff88;
+    }
+
+    .status-badge.unhealthy {
+      background: rgba(255, 149, 0, 0.2);
+      color: #ff9500;
+    }
+
+    .status-badge.stopped {
+      background: rgba(255, 55, 95, 0.2);
+      color: #ff375f;
+    }
+
+    .app-info {
+      margin: 1rem 0;
+      font-size: 0.85rem;
+      color: #aaa;
+    }
+
+    .app-info-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      background: #0a0a0a;
+      border-radius: 4px;
+    }
+
+    .info-label {
+      color: #666;
+    }
+
+    .info-value {
+      color: #e0e0e0;
+      font-weight: 500;
+    }
+
+    .app-resources {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin: 1rem 0;
+    }
+
+    .resource-item {
+      background: #0a0a0a;
+      padding: 0.5rem;
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .resource-label {
+      font-size: 0.7rem;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 0.25rem;
+    }
+
+    .resource-value {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #00ff88;
+    }
+
+    .app-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .action-btn {
+      flex: 1;
+      padding: 0.6rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .action-btn.restart {
+      background: #ff9500;
+      color: #000;
+    }
+
+    .action-btn.restart:hover {
+      background: #ffaa00;
+    }
+
+    .action-btn.logs {
+      background: #0088ff;
+      color: #fff;
+    }
+
+    .action-btn.logs:hover {
+      background: #0099ff;
+    }
+
+    .action-btn.visit {
+      background: #00ff88;
+      color: #000;
+    }
+
+    .action-btn.visit:hover {
+      background: #00ffaa;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 10000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(5px);
+    }
+
+    .modal.show {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-content {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 900px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      padding: 1.5rem;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h3 {
+      color: #fff;
+      font-size: 1.5rem;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 2rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    .modal-body {
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+
+    .logs-content {
+      background: #0a0a0a;
+      padding: 1rem;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: #00ff88;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      max-height: 60vh;
+    }
+
+    .loading-placeholder {
+      text-align: center;
+      padding: 3rem;
+      color: #666;
+      font-size: 1.1rem;
+    }
+
+    @media (max-width: 768px) {
+      .admin-main {
+        margin-left: 0;
+        padding: 1rem;
+      }
+
+      .system-stats {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .apps-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <script>
+    let refreshInterval = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadSystemStats();
+      loadApps();
+
+      // Auto-refresh every 10 seconds
+      refreshInterval = setInterval(() => {
+        loadSystemStats();
+        loadApps();
+      }, 10000);
+    });
+
+    async function loadSystemStats() {
+      try {
+        const res = await fetch('/admin/monitor/api/system');
+        const data = await res.json();
+
+        if (data.success) {
+          document.getElementById('systemCpu').textContent = data.stats.cpu.toFixed(1) + '%';
+          document.getElementById('systemMemory').textContent = data.stats.memory.toFixed(1) + '%';
+          document.getElementById('systemDisk').textContent = data.stats.disk + '%';
+          document.getElementById('systemUptime').textContent = data.stats.uptime;
+        }
+      } catch (error) {
+        console.error('Failed to load system stats:', error);
+      }
+    }
+
+    async function loadApps() {
+      try {
+        const res = await fetch('/admin/monitor/api/apps');
+        const data = await res.json();
+
+        if (data.success) {
+          renderApps(data.apps);
+        }
+      } catch (error) {
+        console.error('Failed to load apps:', error);
+      }
+    }
+
+    function renderApps(apps) {
+      const grid = document.getElementById('appsGrid');
+
+      grid.innerHTML = apps.map(app => {
+        const statusClass = app.status || 'stopped';
+        const resources = app.resources || {};
+
+        return `
+          <div class="app-card ${statusClass}">
+            <div class="app-header">
+              <div class="app-title">
+                <div class="app-name">${app.appName}</div>
+                <div class="app-domain">${app.domain || 'N/A'}</div>
+              </div>
+              <span class="status-badge ${statusClass}">${statusClass}</span>
+            </div>
+
+            <div class="app-info">
+              <div class="app-info-row">
+                <span class="info-label">Port</span>
+                <span class="info-value">${app.port || 'N/A'}</span>
+              </div>
+              <div class="app-info-row">
+                <span class="info-label">Response Time</span>
+                <span class="info-value">${app.health?.responseTime ? app.health.responseTime + 'ms' : 'N/A'}</span>
+              </div>
+              ${app.info?.version ? `
+              <div class="app-info-row">
+                <span class="info-label">Version</span>
+                <span class="info-value">${app.info.version}</span>
+              </div>` : ''}
+            </div>
+
+            ${resources.available ? `
+            <div class="app-resources">
+              <div class="resource-item">
+                <div class="resource-label">CPU</div>
+                <div class="resource-value">${resources.cpu?.toFixed(1)}%</div>
+              </div>
+              <div class="resource-item">
+                <div class="resource-label">Memory</div>
+                <div class="resource-value">${resources.memoryMB} MB</div>
+              </div>
+            </div>` : ''}
+
+            <div class="app-actions">
+              <button class="action-btn restart" onclick="restartApp('${app.appName}')">
+                🔄 Restart
+              </button>
+              <button class="action-btn logs" onclick="showLogs('${app.appName}')">
+                📋 Logs
+              </button>
+              ${app.domain && app.domain !== 'localhost' ? `
+              <button class="action-btn visit" onclick="window.open('http://${app.domain}', '_blank')">
+                🌐 Visit
+              </button>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function restartApp(appName) {
+      if (!confirm(`Are you sure you want to restart ${appName}?`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/admin/monitor/api/restart/${appName}`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          alert(`${appName} restarted successfully!`);
+          setTimeout(() => loadApps(), 3000);
+        } else {
+          alert(`Failed to restart ${appName}: ${data.error}`);
+        }
+      } catch (error) {
+        alert('Restart failed: ' + error.message);
+      }
+    }
+
+    async function showLogs(appName) {
+      const modal = document.getElementById('logsModal');
+      const title = document.getElementById('logsTitle');
+      const content = document.getElementById('logsContent');
+
+      title.textContent = `${appName} - Logs`;
+      content.textContent = 'Loading logs...';
+      modal.classList.add('show');
+
+      try {
+        const res = await fetch(`/admin/monitor/api/logs/${appName}?lines=100`);
+        const data = await res.json();
+
+        if (data.success) {
+          content.textContent = data.logs;
+        } else {
+          content.textContent = `Error loading logs: ${data.error}`;
+        }
+      } catch (error) {
+        content.textContent = 'Failed to load logs: ' + error.message;
+      }
+    }
+
+    function closeLogs() {
+      document.getElementById('logsModal').classList.remove('show');
+    }
+
+    function refreshAll() {
+      loadSystemStats();
+      loadApps();
+
+      // Visual feedback
+      const btn = event.target;
+      const originalText = btn.textContent;
+      btn.textContent = '⟳ Refreshing...';
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }, 1000);
+    }
+
+    // Close modal on background click
+    document.getElementById('logsModal').addEventListener('click', (e) => {
+      if (e.target.id === 'logsModal') {
+        closeLogs();
+      }
+    });
+  </script>
+
+  <%-include('../mainContent/adminNav.ejs')%>
+</body>
+</html>

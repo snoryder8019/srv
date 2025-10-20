@@ -3,6 +3,14 @@ import { getDb } from '../../plugins/mongo/mongo.js';
 
 const router = express.Router();
 
+// Planetary exploration game (must come before /:zoneName to avoid being caught)
+router.get('/explore/planetary', (req, res) => {
+  res.render('zones/index', {
+    title: 'Planetary Exploration',
+    user: req.user
+  });
+});
+
 // Get all zones
 router.get('/', async (req, res) => {
   try {
@@ -20,7 +28,16 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get zone detail
+// 3D spatial zone viewer (specific routes before generic ones)
+router.get('/:zoneName/spatial', (req, res) => {
+  res.render('zones/spatial', {
+    title: 'Spatial Zone - ' + req.params.zoneName,
+    zoneName: req.params.zoneName,
+    user: req.user
+  });
+});
+
+// Get zone detail (generic param route comes last)
 router.get('/:zoneName', async (req, res) => {
   try {
     const db = getDb();
@@ -40,15 +57,6 @@ router.get('/:zoneName', async (req, res) => {
     console.error('Error fetching zone:', err);
     res.status(500).json({ error: 'Failed to fetch zone' });
   }
-});
-
-// 3D spatial zone viewer
-router.get('/:zoneName/spatial', (req, res) => {
-  res.render('zones/spatial', {
-    title: 'Spatial Zone - ' + req.params.zoneName,
-    zoneName: req.params.zoneName,
-    user: req.user
-  });
 });
 
 export default router;
