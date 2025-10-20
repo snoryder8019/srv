@@ -191,12 +191,13 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
     // Update wavelength visualization
     updateWaveform(response.sentiment);
 
-    // Broadcast to all Roku displays
+    // Broadcast to all Roku displays with tool execution results
     broadcastToRoku({
       type: 'response',
       text: response.text,
       transcript: transcript,
       waveform: currentWaveform,
+      toolExecutions: response.toolExecutions || [],
       sessionId
     });
 
@@ -204,7 +205,8 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
       success: true,
       transcript,
       response: response.text,
-      sentiment: response.sentiment
+      sentiment: response.sentiment,
+      toolExecutions: response.toolExecutions || []
     });
   } catch (error) {
     console.error('Voice processing error:', error);
@@ -359,6 +361,39 @@ router.get('/display', (_req, res) => {
       max-height: 50vh;
       overflow-y: auto;
     }
+    .tool-results {
+      margin-top: 1.5rem;
+      font-size: 1.2rem;
+      border-top: 2px solid #444;
+      padding-top: 1rem;
+    }
+    .tool-execution {
+      background: rgba(0, 255, 136, 0.1);
+      border-left: 4px solid #00FF88;
+      padding: 1rem;
+      margin: 0.5rem 0;
+      border-radius: 4px;
+    }
+    .tool-name {
+      color: #00FF88;
+      font-weight: bold;
+      font-size: 1.3rem;
+      margin-bottom: 0.5rem;
+    }
+    .tool-result {
+      font-family: 'Courier New', monospace;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 0.8rem;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-size: 1rem;
+      overflow-x: auto;
+    }
+    .tool-error {
+      background: rgba(255, 68, 68, 0.1);
+      border-left: 4px solid #FF4444;
+      color: #FF8888;
+    }
     #status {
       position: absolute;
       top: 1rem;
@@ -455,6 +490,39 @@ router.get('/display', (_req, res) => {
       debugLog('🔄 Reconnecting... attempt ' + attemptNumber);
     });
 
+    function formatToolResult(result) {
+      if (typeof result === 'string') {
+        return result;
+      }
+      return JSON.stringify(result, null, 2);
+    }
+
+    function renderToolExecutions(toolExecutions) {
+      if (!toolExecutions || toolExecutions.length === 0) {
+        return '';
+      }
+
+      let html = '<div class="tool-results"><div style="color: #888; margin-bottom: 0.5rem;">🔧 Actions Performed:</div>';
+
+      toolExecutions.forEach(exec => {
+        const isError = exec.result && exec.result.success === false;
+        const errorClass = isError ? ' tool-error' : '';
+
+        html += '<div class="tool-execution' + errorClass + '">';
+        html += '<div class="tool-name">▸ ' + exec.tool + '</div>';
+
+        if (exec.input && Object.keys(exec.input).length > 0) {
+          html += '<div style="font-size: 0.9rem; color: #AAA; margin-bottom: 0.5rem;">Input: ' + JSON.stringify(exec.input) + '</div>';
+        }
+
+        html += '<div class="tool-result">' + formatToolResult(exec.result) + '</div>';
+        html += '</div>';
+      });
+
+      html += '</div>';
+      return html;
+    }
+
     socket.on('update', (data) => {
       console.log('Received:', data);
 
@@ -463,12 +531,23 @@ router.get('/display', (_req, res) => {
       } else if (data.type === 'response') {
         waveform = data.waveform || waveform;
 
+        // Build response HTML
+        let responseHtml = '';
+
         // Show transcript if available
         if (data.transcript) {
-          contentDiv.innerHTML = '<div style="font-size: 1.5rem; color: #888; margin-bottom: 1rem;">You said: ' + data.transcript + '</div>' + data.text;
-        } else {
-          contentDiv.textContent = data.text || '';
+          responseHtml += '<div style="font-size: 1.5rem; color: #888; margin-bottom: 1rem;">You said: ' + data.transcript + '</div>';
         }
+
+        // Show Claude's response
+        responseHtml += '<div style="font-size: 2.5rem;">' + (data.text || '') + '</div>';
+
+        // Show tool executions if any
+        if (data.toolExecutions && data.toolExecutions.length > 0) {
+          responseHtml += renderToolExecutions(data.toolExecutions);
+        }
+
+        contentDiv.innerHTML = responseHtml;
 
         statusDiv.textContent = 'Speaking';
         statusDiv.className = 'speaking';
@@ -564,68 +643,48 @@ async function processWithClaude(userInput, sessionId = 'default') {
     content: userInput
   });
 
-  // Call Claude API with MCP tools
+  // Merge display control tools with VM tools
+  const displayTools = [
+    {
+      name: 'get_current_time',
+      description: 'Get the current date and time',
+      input_schema: {
+        type: 'object',
+        properties: {}
+      }
+    },
+    {
+      name: 'set_roku_display_mode',
+      description: 'Change the visual mode of the Roku display',
+      input_schema: {
+        type: 'object',
+        properties: {
+          mode: {
+            type: 'string',
+            enum: ['calm', 'energetic', 'alert'],
+            description: 'Display mode: calm (slow wave), energetic (fast wave), alert (pulsing)'
+          }
+        },
+        required: ['mode']
+      }
+    }
+  ];
+
+  // Combine with VM tools for full capability
+  const allTools = [...tools, ...displayTools];
+
+  // Call Claude API with full MCP tools
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
     messages: history,
-    tools: [
-      {
-        name: 'get_current_time',
-        description: 'Get the current date and time',
-        input_schema: {
-          type: 'object',
-          properties: {}
-        }
-      },
-      {
-        name: 'get_weather',
-        description: 'Get weather information (simulated)',
-        input_schema: {
-          type: 'object',
-          properties: {
-            location: {
-              type: 'string',
-              description: 'City name or location'
-            }
-          },
-          required: ['location']
-        }
-      },
-      {
-        name: 'search_web',
-        description: 'Search the web for information (simulated)',
-        input_schema: {
-          type: 'object',
-          properties: {
-            query: {
-              type: 'string',
-              description: 'Search query'
-            }
-          },
-          required: ['query']
-        }
-      },
-      {
-        name: 'set_roku_display_mode',
-        description: 'Change the visual mode of the Roku display',
-        input_schema: {
-          type: 'object',
-          properties: {
-            mode: {
-              type: 'string',
-              enum: ['calm', 'energetic', 'alert'],
-              description: 'Display mode: calm (slow wave), energetic (fast wave), alert (pulsing)'
-            }
-          },
-          required: ['mode']
-        }
-      }
-    ]
+    tools: allTools,
+    system: "You are a helpful AI voice assistant with full system control capabilities. You can read/write files, execute commands, manage services, and control the display. When users ask you to do something, use the available tools to accomplish it. Always explain what you're doing and provide clear, concise responses suitable for voice output."
   });
 
   // Check if response contains tool use
   const hasToolUse = response.content.some(block => block.type === 'tool_use');
+  const toolExecutions = [];
 
   if (hasToolUse) {
     // Add assistant's tool use to history
@@ -639,10 +698,18 @@ async function processWithClaude(userInput, sessionId = 'default') {
     for (const content of response.content) {
       if (content.type === 'tool_use') {
         const toolResult = await executeToolCall(content.name, content.input);
+
+        // Track tool executions for display
+        toolExecutions.push({
+          tool: content.name,
+          input: content.input,
+          result: toolResult
+        });
+
         toolResultsContent.push({
           type: 'tool_result',
           tool_use_id: content.id,
-          content: toolResult
+          content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
         });
       }
     }
@@ -681,7 +748,8 @@ async function processWithClaude(userInput, sessionId = 'default') {
 
     return {
       text: finalText,
-      sentiment: analyzeSentiment(finalText)
+      sentiment: analyzeSentiment(finalText),
+      toolExecutions: toolExecutions
     };
   } else {
     // No tool use, simple text response
@@ -705,7 +773,8 @@ async function processWithClaude(userInput, sessionId = 'default') {
 
     return {
       text: finalText,
-      sentiment: analyzeSentiment(finalText)
+      sentiment: analyzeSentiment(finalText),
+      toolExecutions: []
     };
   }
 }
@@ -714,48 +783,49 @@ async function processWithClaude(userInput, sessionId = 'default') {
 async function executeToolCall(toolName, input) {
   console.log('Executing tool:', toolName, 'with input:', input);
 
-  switch (toolName) {
-    case 'get_current_time':
-      const now = new Date();
-      return now.toLocaleString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        timeZoneName: 'short'
-      });
+  // Handle display-specific tools
+  if (toolName === 'get_current_time') {
+    const now = new Date();
+    return now.toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short'
+    });
+  }
 
-    case 'get_weather':
-      // Simulated weather data
-      return `Weather in ${input.location}: 72°F, Partly Cloudy, Humidity 65%, Wind 8mph`;
+  if (toolName === 'set_roku_display_mode') {
+    // Change display mode and broadcast
+    const modeSettings = {
+      calm: { frequency: 200, amplitude: 0.3, color: '#4A90E2' },
+      energetic: { frequency: 800, amplitude: 0.8, color: '#FF6B6B' },
+      alert: { frequency: 600, amplitude: 0.9, color: '#FFA500' }
+    };
 
-    case 'search_web':
-      // Simulated search result
-      return `Found information about "${input.query}": This is a simulated search result. In production, this would return real web search data.`;
+    currentWaveform = modeSettings[input.mode] || currentWaveform;
 
-    case 'set_roku_display_mode':
-      // Change display mode and broadcast
-      const modeSettings = {
-        calm: { frequency: 200, amplitude: 0.3, color: '#4A90E2' },
-        energetic: { frequency: 800, amplitude: 0.8, color: '#FF6B6B' },
-        alert: { frequency: 600, amplitude: 0.9, color: '#FFA500' }
-      };
+    broadcastToRoku({
+      type: 'mode_change',
+      mode: input.mode,
+      waveform: currentWaveform
+    });
 
-      currentWaveform = modeSettings[input.mode] || currentWaveform;
+    return `Display mode set to ${input.mode}`;
+  }
 
-      broadcastToRoku({
-        type: 'mode_change',
-        mode: input.mode,
-        waveform: currentWaveform
-      });
-
-      return `Display mode set to ${input.mode}`;
-
-    default:
-      return 'Tool not implemented';
+  // Handle VM tools (from vmTools.js)
+  try {
+    const result = await executeTool(toolName, input);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
   }
 }
 

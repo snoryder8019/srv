@@ -12,6 +12,8 @@ import indexRouter from './routes/index.js'
 import apiRouter from './api/index.js'
 import {connectDB} from './plugins/mongo/mongo.js';
 import {connectDB as connectMongoose} from './plugins/mongo/db.js';
+import { trackPageView, trackApiCall, trackError } from './middleware/analytics.js';
+
 // /app.js
 const app = express();
 // ...
@@ -59,6 +61,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Analytics middleware (track page views and API calls)
+app.use(trackPageView);
+app.use(trackApiCall);
+
 app.use('/',indexRouter);
 app.use('/api',apiRouter);
 
@@ -68,7 +74,8 @@ app.use(function(req, res, next) {
 });
 
 // error handler
-// error handler
+app.use(trackError); // Track errors in analytics
+
 app.use(function(err, req, res, next) {
   // set locals, only providing error in development
   res.locals.message = err.message;

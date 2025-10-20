@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planetary Exploration - Zones</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Courier New', monospace;
+      background: #0a0a0a;
+      color: #00ff88;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Header UI */
+    #header {
+      background: rgba(0, 0, 0, 0.9);
+      border-bottom: 2px solid #00ff88;
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #header h1 {
+      font-size: 1.5rem;
+      text-shadow: 0 0 10px #00ff88;
+    }
+
+    #stats {
+      display: flex;
+      gap: 2rem;
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      color: #888;
+    }
+
+    .stat-value {
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+
+    /* Main Game Area */
+    #game-container {
+      flex: 1;
+      position: relative;
+      background: #000;
+    }
+
+    #game-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* Action Bar */
+    #action-bar {
+      background: rgba(0, 0, 0, 0.95);
+      border-top: 2px solid #00ff88;
+      padding: 1rem;
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+    }
+
+    .action-slot {
+      width: 60px;
+      height: 60px;
+      border: 2px solid #00ff88;
+      background: rgba(0, 255, 136, 0.1);
+      position: relative;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+
+    .action-slot:hover {
+      background: rgba(0, 255, 136, 0.3);
+      box-shadow: 0 0 15px #00ff88;
+    }
+
+    .action-slot.active {
+      background: rgba(0, 255, 136, 0.5);
+      box-shadow: 0 0 20px #00ff88;
+      border-color: #fff;
+    }
+
+    .action-slot .number {
+      position: absolute;
+      top: 2px;
+      left: 4px;
+      font-size: 0.7rem;
+      color: #888;
+    }
+
+    .action-slot .item-icon {
+      font-size: 1.8rem;
+    }
+
+    /* Info Panel */
+    #info-panel {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: rgba(0, 0, 0, 0.9);
+      border: 2px solid #00ff88;
+      padding: 1rem;
+      min-width: 200px;
+      font-size: 0.9rem;
+    }
+
+    #info-panel h3 {
+      margin-bottom: 0.5rem;
+      border-bottom: 1px solid #00ff88;
+      padding-bottom: 0.3rem;
+    }
+
+    #info-panel .info-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 0.3rem 0;
+    }
+
+    /* Controls Help */
+    #controls {
+      position: absolute;
+      bottom: 100px;
+      left: 1rem;
+      background: rgba(0, 0, 0, 0.9);
+      border: 2px solid #00ff88;
+      padding: 1rem;
+      font-size: 0.8rem;
+    }
+
+    #controls h4 {
+      margin-bottom: 0.5rem;
+    }
+
+    #controls .control-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin: 0.2rem 0;
+    }
+
+    .key {
+      background: rgba(0, 255, 136, 0.2);
+      border: 1px solid #00ff88;
+      padding: 0.2rem 0.5rem;
+      border-radius: 3px;
+      font-weight: bold;
+    }
+
+    /* Mini Map */
+    #minimap {
+      position: absolute;
+      top: 1rem;
+      left: 1rem;
+      width: 150px;
+      height: 150px;
+      border: 2px solid #00ff88;
+      background: rgba(0, 0, 0, 0.9);
+    }
+
+    #minimap-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Loading */
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 2rem;
+      text-align: center;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Tooltips */
+    .tooltip {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.95);
+      border: 1px solid #00ff88;
+      padding: 0.5rem;
+      font-size: 0.8rem;
+      pointer-events: none;
+      z-index: 1000;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div id="header">
+    <h1>>ê PLANETARY EXPLORATION</h1>
+    <div id="stats">
+      <div class="stat">
+        <span class="stat-label">OXYGEN</span>
+        <span class="stat-value" id="oxygen">100%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">ENERGY</span>
+        <span class="stat-value" id="energy">100%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">RESOURCES</span>
+        <span class="stat-value" id="resources">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">COORDINATES</span>
+        <span class="stat-value" id="coords">0, 0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Canvas -->
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+    <div id="loading">INITIALIZING PLANETARY SCAN...</div>
+
+    <!-- Mini Map -->
+    <div id="minimap">
+      <canvas id="minimap-canvas"></canvas>
+    </div>
+
+    <!-- Info Panel -->
+    <div id="info-panel">
+      <h3>SECTOR INFO</h3>
+      <div class="info-row">
+        <span>Biome:</span>
+        <span id="biome">Rocky Plains</span>
+      </div>
+      <div class="info-row">
+        <span>Temperature:</span>
+        <span id="temperature">-20∞C</span>
+      </div>
+      <div class="info-row">
+        <span>Radiation:</span>
+        <span id="radiation">Low</span>
+      </div>
+      <div class="info-row">
+        <span>Discoveries:</span>
+        <span id="discoveries">0</span>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div id="controls">
+      <h4>CONTROLS</h4>
+      <div class="control-row">
+        <span class="key">W/A/S/D</span>
+        <span>Move</span>
+      </div>
+      <div class="control-row">
+        <span class="key">1-9</span>
+        <span>Actions</span>
+      </div>
+      <div class="control-row">
+        <span class="key">SPACE</span>
+        <span>Interact</span>
+      </div>
+      <div class="control-row">
+        <span class="key">E</span>
+        <span>Scan</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Bar -->
+  <div id="action-bar">
+    <div class="action-slot active" data-slot="1">
+      <span class="number">1</span>
+      <span class="item-icon">=</span>
+    </div>
+    <div class="action-slot" data-slot="2">
+      <span class="number">2</span>
+      <span class="item-icon">œ</span>
+    </div>
+    <div class="action-slot" data-slot="3">
+      <span class="number">3</span>
+      <span class="item-icon">=+</span>
+    </div>
+    <div class="action-slot" data-slot="4">
+      <span class="number">4</span>
+      <span class="item-icon">=‡</span>
+    </div>
+    <div class="action-slot" data-slot="5">
+      <span class="number">5</span>
+      <span class="item-icon">=ä</span>
+    </div>
+    <div class="action-slot" data-slot="6">
+      <span class="number">6</span>
+      <span class="item-icon">>Í</span>
+    </div>
+    <div class="action-slot" data-slot="7">
+      <span class="number">7</span>
+      <span class="item-icon">=·</span>
+    </div>
+    <div class="action-slot" data-slot="8">
+      <span class="number">8</span>
+      <span class="item-icon">=Ä</span>
+    </div>
+    <div class="action-slot" data-slot="9">
+      <span class="number">9</span>
+      <span class="item-icon">=˙</span>
+    </div>
+  </div>
+
+  <script>
+    // Game State
+    const game = {
+      canvas: null,
+      ctx: null,
+      minimapCanvas: null,
+      minimapCtx: null,
+      width: 0,
+      height: 0,
+      player: {
+        x: 0,
+        y: 0,
+        size: 16,
+        speed: 3,
+        color: '#00ff88',
+        facing: 0 // 0: up, 1: right, 2: down, 3: left
+      },
+      camera: {
+        x: 0,
+        y: 0
+      },
+      world: {
+        width: 2000,
+        height: 2000,
+        tileSize: 32
+      },
+      keys: {},
+      activeSlot: 1,
+      resources: 0,
+      oxygen: 100,
+      energy: 100,
+      discoveries: 0,
+      terrain: [],
+      objects: [],
+      lastTime: 0,
+      deltaTime: 0
+    };
+
+    // Terrain Types
+    const TERRAIN = {
+      ROCK: { color: '#333', name: 'Rock' },
+      SAND: { color: '#d4a574', name: 'Sand' },
+      ICE: { color: '#a8d8ff', name: 'Ice' },
+      CRYSTAL: { color: '#ff00ff', name: 'Crystal' },
+      METAL: { color: '#888', name: 'Metal' },
+      ALIEN: { color: '#00ff00', name: 'Alien Flora' }
+    };
+
+    // Initialize
+    function init() {
+      game.canvas = document.getElementById('game-canvas');
+      game.ctx = game.canvas.getContext('2d');
+      game.minimapCanvas = document.getElementById('minimap-canvas');
+      game.minimapCtx = game.minimapCanvas.getContext('2d');
+
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      // Initialize player at center
+      game.player.x = game.world.width / 2;
+      game.player.y = game.world.height / 2;
+
+      // Generate terrain
+      generateTerrain();
+
+      // Setup controls
+      setupControls();
+
+      // Hide loading
+      document.getElementById('loading').style.display = 'none';
+
+      // Start game loop
+      requestAnimationFrame(gameLoop);
+    }
+
+    function resizeCanvas() {
+      const container = document.getElementById('game-container');
+      game.canvas.width = container.clientWidth;
+      game.canvas.height = container.clientHeight;
+      game.width = game.canvas.width;
+      game.height = game.canvas.height;
+    }
+
+    function generateTerrain() {
+      const tiles = (game.world.width / game.world.tileSize) * (game.world.height / game.world.tileSize);
+
+      for (let i = 0; i < tiles; i++) {
+        const x = (i % (game.world.width / game.world.tileSize)) * game.world.tileSize;
+        const y = Math.floor(i / (game.world.width / game.world.tileSize)) * game.world.tileSize;
+
+        // Noise-based terrain generation
+        const noise = Math.sin(x * 0.01) * Math.cos(y * 0.01);
+        let type = TERRAIN.ROCK;
+
+        if (noise > 0.5) type = TERRAIN.CRYSTAL;
+        else if (noise > 0.3) type = TERRAIN.METAL;
+        else if (noise > 0) type = TERRAIN.SAND;
+        else if (noise > -0.3) type = TERRAIN.ICE;
+        else if (noise > -0.6) type = TERRAIN.ROCK;
+        else type = TERRAIN.ALIEN;
+
+        game.terrain.push({ x, y, type });
+      }
+
+      // Generate resource nodes
+      for (let i = 0; i < 50; i++) {
+        game.objects.push({
+          x: Math.random() * game.world.width,
+          y: Math.random() * game.world.height,
+          type: 'resource',
+          icon: '=é',
+          collected: false
+        });
+      }
+
+      // Generate alien structures
+      for (let i = 0; i < 10; i++) {
+        game.objects.push({
+          x: Math.random() * game.world.width,
+          y: Math.random() * game.world.height,
+          type: 'structure',
+          icon: '<€',
+          discovered: false
+        });
+      }
+    }
+
+    function setupControls() {
+      // Keyboard controls
+      window.addEventListener('keydown', (e) => {
+        game.keys[e.key.toLowerCase()] = true;
+
+        // Number keys for action bar
+        if (e.key >= '1' && e.key <= '9') {
+          selectSlot(parseInt(e.key));
+        }
+
+        // Action keys
+        if (e.key === ' ') {
+          e.preventDefault();
+          interact();
+        }
+        if (e.key.toLowerCase() === 'e') {
+          scan();
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        game.keys[e.key.toLowerCase()] = false;
+      });
+
+      // Action bar clicks
+      document.querySelectorAll('.action-slot').forEach(slot => {
+        slot.addEventListener('click', () => {
+          selectSlot(parseInt(slot.dataset.slot));
+        });
+      });
+    }
+
+    function selectSlot(num) {
+      game.activeSlot = num;
+      document.querySelectorAll('.action-slot').forEach(slot => {
+        slot.classList.remove('active');
+      });
+      document.querySelector(`[data-slot="${num}"]`).classList.add('active');
+    }
+
+    function interact() {
+      // Check for nearby objects
+      game.objects.forEach(obj => {
+        const dist = Math.hypot(obj.x - game.player.x, obj.y - game.player.y);
+        if (dist < 50) {
+          if (obj.type === 'resource' && !obj.collected) {
+            obj.collected = true;
+            game.resources += 10;
+            updateStats();
+            showMessage('Collected resource! +10');
+          } else if (obj.type === 'structure' && !obj.discovered) {
+            obj.discovered = true;
+            game.discoveries++;
+            updateStats();
+            showMessage('Discovered alien structure!');
+          }
+        }
+      });
+    }
+
+    function scan() {
+      showMessage('Scanning area...');
+      // Highlight nearby resources
+      setTimeout(() => {
+        showMessage('Scan complete!');
+      }, 1000);
+    }
+
+    function showMessage(text) {
+      const msg = document.createElement('div');
+      msg.textContent = text;
+      msg.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 255, 136, 0.9);
+        color: #000;
+        padding: 1rem 2rem;
+        border-radius: 5px;
+        font-weight: bold;
+        z-index: 10000;
+      `;
+      document.body.appendChild(msg);
+      setTimeout(() => msg.remove(), 2000);
+    }
+
+    function updateStats() {
+      document.getElementById('oxygen').textContent = Math.floor(game.oxygen) + '%';
+      document.getElementById('energy').textContent = Math.floor(game.energy) + '%';
+      document.getElementById('resources').textContent = game.resources;
+      document.getElementById('discoveries').textContent = game.discoveries;
+      document.getElementById('coords').textContent =
+        `${Math.floor(game.player.x)}, ${Math.floor(game.player.y)}`;
+    }
+
+    function updatePlayer(dt) {
+      let moved = false;
+
+      // WASD movement
+      if (game.keys['w']) {
+        game.player.y -= game.player.speed;
+        game.player.facing = 0;
+        moved = true;
+      }
+      if (game.keys['s']) {
+        game.player.y += game.player.speed;
+        game.player.facing = 2;
+        moved = true;
+      }
+      if (game.keys['a']) {
+        game.player.x -= game.player.speed;
+        game.player.facing = 3;
+        moved = true;
+      }
+      if (game.keys['d']) {
+        game.player.x += game.player.speed;
+        game.player.facing = 1;
+        moved = true;
+      }
+
+      // Boundary check
+      game.player.x = Math.max(0, Math.min(game.world.width, game.player.x));
+      game.player.y = Math.max(0, Math.min(game.world.height, game.player.y));
+
+      // Deplete oxygen/energy slowly when moving
+      if (moved) {
+        game.oxygen = Math.max(0, game.oxygen - 0.01);
+        game.energy = Math.max(0, game.energy - 0.02);
+      } else {
+        // Regenerate when idle
+        game.energy = Math.min(100, game.energy + 0.05);
+      }
+
+      // Camera follows player
+      game.camera.x = game.player.x - game.width / 2;
+      game.camera.y = game.player.y - game.height / 2;
+
+      updateStats();
+    }
+
+    function render() {
+      const ctx = game.ctx;
+
+      // Clear
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, game.width, game.height);
+
+      // Draw terrain
+      game.terrain.forEach(tile => {
+        const screenX = tile.x - game.camera.x;
+        const screenY = tile.y - game.camera.y;
+
+        if (screenX > -game.world.tileSize && screenX < game.width &&
+            screenY > -game.world.tileSize && screenY < game.height) {
+          ctx.fillStyle = tile.type.color;
+          ctx.fillRect(screenX, screenY, game.world.tileSize, game.world.tileSize);
+
+          // Grid
+          ctx.strokeStyle = 'rgba(0, 255, 136, 0.1)';
+          ctx.strokeRect(screenX, screenY, game.world.tileSize, game.world.tileSize);
+        }
+      });
+
+      // Draw objects
+      ctx.font = '20px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      game.objects.forEach(obj => {
+        if (obj.type === 'resource' && obj.collected) return;
+        if (obj.type === 'structure' && obj.discovered) {
+          ctx.globalAlpha = 0.5;
+        }
+
+        const screenX = obj.x - game.camera.x;
+        const screenY = obj.y - game.camera.y;
+
+        if (screenX > -50 && screenX < game.width + 50 &&
+            screenY > -50 && screenY < game.height + 50) {
+          ctx.fillText(obj.icon, screenX, screenY);
+        }
+
+        ctx.globalAlpha = 1;
+      });
+
+      // Draw player
+      const playerScreenX = game.player.x - game.camera.x;
+      const playerScreenY = game.player.y - game.camera.y;
+
+      // Player body
+      ctx.fillStyle = game.player.color;
+      ctx.beginPath();
+      ctx.arc(playerScreenX, playerScreenY, game.player.size, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Direction indicator
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const dirX = playerScreenX + Math.cos((game.player.facing * 90 - 90) * Math.PI / 180) * game.player.size;
+      const dirY = playerScreenY + Math.sin((game.player.facing * 90 - 90) * Math.PI / 180) * game.player.size;
+      ctx.moveTo(playerScreenX, playerScreenY);
+      ctx.lineTo(dirX, dirY);
+      ctx.stroke();
+
+      // Render minimap
+      renderMinimap();
+    }
+
+    function renderMinimap() {
+      const ctx = game.minimapCtx;
+      const scale = 150 / game.world.width;
+
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, 150, 150);
+
+      // Draw world bounds
+      ctx.strokeStyle = '#00ff88';
+      ctx.strokeRect(0, 0, 150, 150);
+
+      // Draw player
+      ctx.fillStyle = '#00ff88';
+      ctx.fillRect(
+        game.player.x * scale - 2,
+        game.player.y * scale - 2,
+        4, 4
+      );
+
+      // Draw discovered objects
+      ctx.fillStyle = '#ff00ff';
+      game.objects.forEach(obj => {
+        if (obj.discovered || obj.collected) {
+          ctx.fillRect(obj.x * scale - 1, obj.y * scale - 1, 2, 2);
+        }
+      });
+    }
+
+    function gameLoop(timestamp) {
+      game.deltaTime = timestamp - game.lastTime;
+      game.lastTime = timestamp;
+
+      updatePlayer(game.deltaTime);
+      render();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start game when page loads
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>
