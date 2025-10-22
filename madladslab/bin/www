@@ -10,6 +10,7 @@ const logger =debug('app:server');
 import http from 'http';
 import initSockets from '../plugins/socket/index.js';
 import { setupWebSocket } from '../routes/claudeTalk/index.js';
+import { startMonitoring } from '../lib/serviceMonitorDaemon.js';
 
 /**
  * Get port from environment and store in Express.
@@ -36,6 +37,14 @@ setupWebSocket(io);
 server.listen(port);
 server.on('error', onError);
 server.on('listening', onListening);
+
+/**
+ * Start service monitoring daemon
+ */
+if (process.env.ENABLE_SERVICE_MONITOR !== 'false') {
+  startMonitoring();
+  logger('Service monitoring daemon started');
+}
 
 /**
  * Normalize a port into a number, string, or false.

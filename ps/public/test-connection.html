@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Game State Connection Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1f2937;
+      color: #d1d5db;
+    }
+    .log {
+      background: #111827;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+    .info { color: #3b82f6; }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 Game State Service Connection Test</h1>
+
+  <div>
+    <button onclick="testConnection()">Test Connection</button>
+    <button onclick="clearLog()">Clear Log</button>
+  </div>
+
+  <div class="log" id="log">
+    <p class="info">Click "Test Connection" to verify the game state service...</p>
+  </div>
+
+  <script>
+    const GAME_STATE_URL = 'https://svc.madladslab.com';
+
+    function log(message, type = 'info') {
+      const logEl = document.getElementById('log');
+      const p = document.createElement('p');
+      p.className = type;
+      p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logEl.appendChild(p);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('log').innerHTML = '<p class="info">Log cleared.</p>';
+    }
+
+    async function testConnection() {
+      log('Starting connection test...', 'info');
+      log(`Target URL: ${GAME_STATE_URL}/api/state`, 'info');
+
+      try {
+        // Test 1: Health check
+        log('Test 1: Checking service health...', 'info');
+        const healthResponse = await fetch(`${GAME_STATE_URL}/health`);
+        log(`Health response status: ${healthResponse.status}`, healthResponse.ok ? 'success' : 'error');
+
+        if (healthResponse.ok) {
+          const healthData = await healthResponse.json();
+          log(`Health data: ${JSON.stringify(healthData)}`, 'success');
+        }
+
+        // Test 2: Get game state
+        log('Test 2: Fetching game state...', 'info');
+        const stateResponse = await fetch(`${GAME_STATE_URL}/api/state`);
+        log(`State response status: ${stateResponse.status}`, stateResponse.ok ? 'success' : 'error');
+
+        if (stateResponse.ok) {
+          const stateData = await stateResponse.json();
+          log(`State success: ${stateData.success}`, 'success');
+          log(`Has state object: ${!!stateData.state}`, 'success');
+
+          if (stateData.state) {
+            log(`Has galactic: ${!!stateData.state.galactic}`, 'success');
+            log(`Has factions: ${!!stateData.state.factions}`, 'success');
+            log(`Has resources: ${!!stateData.state.resources}`, 'success');
+
+            if (stateData.state.galactic) {
+              log(`Galactic data: Cycle ${stateData.state.galactic.cycle}, Year ${stateData.state.galactic.year}`, 'success');
+              log(`Dominant Faction: ${stateData.state.galactic.dominantFaction}`, 'success');
+            }
+          }
+        }
+
+        // Test 3: Events
+        log('Test 3: Fetching events...', 'info');
+        const eventsResponse = await fetch(`${GAME_STATE_URL}/api/state/events`);
+        log(`Events response status: ${eventsResponse.status}`, eventsResponse.ok ? 'success' : 'error');
+
+        if (eventsResponse.ok) {
+          const eventsData = await eventsResponse.json();
+          log(`Events count: ${eventsData.events?.length || 0}`, 'success');
+        }
+
+        log('✓ All tests completed!', 'success');
+
+      } catch (error) {
+        log(`ERROR: ${error.message}`, 'error');
+        log(`Error stack: ${error.stack}`, 'error');
+      }
+    }
+
+    // Auto-run test on load
+    window.addEventListener('load', () => {
+      log('Page loaded. Ready to test.', 'info');
+      setTimeout(testConnection, 1000);
+    });
+  </script>
+</body>
+</html>

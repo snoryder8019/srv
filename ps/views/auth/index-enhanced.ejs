@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/landing.css">
+  <link rel="stylesheet" href="/stylesheets/auth-enhanced.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="landing-page auth-page">
+  <%- include('../partials/header', { user: null }) %>
+
+  <!-- Stars Background (same as landing) -->
+  <div class="stars-background"></div>
+
+  <main class="auth-container">
+    <div class="auth-content">
+      <% if (user && characters && characters.length > 0) { %>
+        <!-- Character Selection View -->
+        <div class="character-selection-view">
+          <div class="selection-header">
+            <div class="welcome-badge">
+              <span class="badge-glow">👋</span>
+              <span>Welcome Back, <%= user.username %></span>
+            </div>
+            <h1 class="selection-title">
+              <span class="gradient-text">Choose Your</span>
+              <span class="hero-subtitle">Character</span>
+            </h1>
+            <p class="selection-description">
+              Select a character to continue your journey, or create a new one to expand your adventures.
+            </p>
+          </div>
+
+          <div class="characters-grid">
+            <% characters.forEach(function(character) { %>
+              <div class="character-card" data-character-id="<%= character._id %>">
+                <div class="character-card-header">
+                  <div class="character-avatar">
+                    <span class="avatar-emoji"><%= character.race === 'human' ? '👤' : character.race === 'alien' ? '👽' : character.race === 'robot' ? '🤖' : '⭐' %></span>
+                  </div>
+                  <div class="character-badge class-<%= character.class ? character.class.toLowerCase() : 'default' %>">
+                    <%= character.class || 'Adventurer' %>
+                  </div>
+                </div>
+                <div class="character-card-body">
+                  <h3 class="character-name"><%= character.name %></h3>
+                  <div class="character-info">
+                    <span class="info-item">
+                      <span class="info-icon">⭐</span>
+                      <span>Level <%= character.level || 1 %></span>
+                    </span>
+                    <span class="info-item">
+                      <span class="info-icon">🧬</span>
+                      <span><%= character.race || 'Unknown' %></span>
+                    </span>
+                  </div>
+                  <% if (character.stats) { %>
+                    <div class="character-stats-mini">
+                      <div class="stat-mini">
+                        <span class="stat-label">HP</span>
+                        <div class="stat-bar">
+                          <div class="stat-bar-fill hp" style="width: <%= ((character.stats.health || 100) / (character.stats.maxHealth || 100)) * 100 %>%"></div>
+                        </div>
+                      </div>
+                      <div class="stat-mini">
+                        <span class="stat-label">EN</span>
+                        <div class="stat-bar">
+                          <div class="stat-bar-fill energy" style="width: <%= ((character.stats.energy || 100) / (character.stats.maxEnergy || 100)) * 100 %>%"></div>
+                        </div>
+                      </div>
+                    </div>
+                  <% } %>
+                </div>
+                <button class="btn btn-primary btn-full select-character-btn" onclick="selectCharacter('<%= character._id %>')">
+                  <span>Enter Universe</span>
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/>
+                  </svg>
+                </button>
+              </div>
+            <% }); %>
+
+            <!-- Create New Character Card -->
+            <a href="/characters/create" class="character-card character-card-create">
+              <div class="create-card-icon">✨</div>
+              <h3 class="create-card-title">Create New Character</h3>
+              <p class="create-card-description">Begin a fresh adventure</p>
+            </a>
+          </div>
+
+          <div class="selection-footer">
+            <a href="/menu" class="link-secondary">← Back to Menu</a>
+            <form action="/auth/logout" method="POST" style="display: inline;" onsubmit="handleLogout(event)">
+              <button type="submit" class="link-secondary">Logout</button>
+            </form>
+          </div>
+        </div>
+      <% } else if (user) { %>
+        <!-- Logged in but no characters -->
+        <div class="no-characters-view">
+          <div class="welcome-badge">
+            <span class="badge-glow">👋</span>
+            <span>Welcome, <%= user.username %></span>
+          </div>
+          <h1 class="auth-title">
+            <span class="gradient-text">Ready to Begin?</span>
+            <span class="hero-subtitle">Create Your First Character</span>
+          </h1>
+          <p class="auth-description">
+            You don't have any characters yet. Start your adventure by creating your first character!
+          </p>
+          <div class="cta-buttons">
+            <a href="/characters/create" class="btn btn-primary btn-large">
+              <span>Create Character</span>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/>
+              </svg>
+            </a>
+            <a href="/menu" class="btn btn-secondary btn-large">Back to Menu</a>
+          </div>
+        </div>
+      <% } else { %>
+        <!-- Not logged in - show login/register -->
+        <!-- Welcome Section -->
+        <div class="auth-welcome">
+          <div class="welcome-badge">
+            <span class="badge-glow">🌌</span>
+            <span>Join the Universe</span>
+          </div>
+          <h1 class="auth-title">
+            <span class="gradient-text">Welcome to</span>
+            <span class="hero-subtitle">Stringborn Universe</span>
+          </h1>
+          <p class="auth-description">
+            Create your account and start building your own sci-fi adventure. Join thousands of creators shaping a living universe.
+          </p>
+          <div class="auth-features">
+            <div class="feature-badge">
+              <span class="badge-icon">⚔️</span>
+              <span>Create Characters</span>
+            </div>
+            <div class="feature-badge">
+              <span class="badge-icon">🎨</span>
+              <span>Build Assets</span>
+            </div>
+            <div class="feature-badge">
+              <span class="badge-icon">🌍</span>
+              <span>Explore Worlds</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Auth Forms -->
+      <div class="auth-forms">
+        <!-- Login Form -->
+        <div class="form-card" id="loginCard">
+          <div class="form-header">
+            <h2>Welcome Back</h2>
+            <p>Login to continue your journey</p>
+          </div>
+          <form id="loginForm">
+            <div class="form-group">
+              <label for="loginEmail">
+                <span class="label-icon">📧</span>
+                Email Address
+              </label>
+              <input type="email" id="loginEmail" name="email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+              <label for="loginPassword">
+                <span class="label-icon">🔒</span>
+                Password
+              </label>
+              <input type="password" id="loginPassword" name="password" required placeholder="Enter your password">
+            </div>
+            <button type="submit" class="btn btn-primary btn-large btn-full">
+              <span>Login to Universe</span>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/>
+              </svg>
+            </button>
+          </form>
+          <div class="form-footer">
+            <p>Don't have an account? <a href="#" onclick="switchToRegister(event)" class="form-link">Register here</a></p>
+          </div>
+        </div>
+
+        <!-- Register Form -->
+        <div class="form-card" id="registerCard" style="display: none;">
+          <div class="form-header">
+            <h2>Create Account</h2>
+            <p>Start your adventure today</p>
+          </div>
+          <form id="registerForm">
+            <div class="form-group">
+              <label for="registerUsername">
+                <span class="label-icon">👤</span>
+                Username
+              </label>
+              <input type="text" id="registerUsername" name="username" required placeholder="Choose your username">
+            </div>
+            <div class="form-group">
+              <label for="registerEmail">
+                <span class="label-icon">📧</span>
+                Email Address
+              </label>
+              <input type="email" id="registerEmail" name="email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+              <label for="registerPassword">
+                <span class="label-icon">🔒</span>
+                Password
+              </label>
+              <input type="password" id="registerPassword" name="password" required placeholder="Create a strong password">
+            </div>
+            <button type="submit" class="btn btn-primary btn-large btn-full">
+              <span>Create Account</span>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/>
+              </svg>
+            </button>
+          </form>
+          <div class="form-footer">
+            <p>Already have an account? <a href="#" onclick="switchToLogin(event)" class="form-link">Login here</a></p>
+          </div>
+        </div>
+      </div>
+      <% } %>
+    </div>
+
+    <!-- Floating Orbs Background -->
+    <div class="auth-background">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+  </main>
+
+  <%- include('../partials/footer') %>
+  <script src="/javascripts/auth.js"></script>
+  <script>
+    function switchToRegister(e) {
+      e.preventDefault();
+      document.getElementById('loginCard').style.display = 'none';
+      document.getElementById('registerCard').style.display = 'block';
+    }
+
+    function switchToLogin(e) {
+      e.preventDefault();
+      document.getElementById('registerCard').style.display = 'none';
+      document.getElementById('loginCard').style.display = 'block';
+    }
+
+    // Character selection function
+    async function selectCharacter(characterId) {
+      try {
+        const response = await fetch('/api/v1/characters/select', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ characterId })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Redirect to menu or character page
+          window.location.href = '/menu';
+        } else {
+          alert('Failed to select character: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Error selecting character:', error);
+        alert('Failed to select character. Please try again.');
+      }
+    }
+
+    // Logout handler
+    async function handleLogout(e) {
+      e.preventDefault();
+
+      try {
+        const response = await fetch('/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Redirect to auth page
+          window.location.href = '/auth';
+        } else {
+          alert('Failed to logout: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Error logging out:', error);
+        alert('Failed to logout. Please try again.');
+      }
+    }
+
+    // Add stagger animation to character cards
+    document.addEventListener('DOMContentLoaded', function() {
+      const cards = document.querySelectorAll('.character-card');
+      cards.forEach((card, index) => {
+        card.style.setProperty('--index', index);
+      });
+    });
+  </script>
+</body>
+</html>

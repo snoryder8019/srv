@@ -7,10 +7,18 @@ const router = express.Router();
 // Mount galactic state sub-routes
 router.use('/', galacticStateRouter);
 
-// Get galactic state view
+// Get galactic state view (streaming version)
 router.get('/galactic-state', async (req, res) => {
-  res.render('universe/galacticState', {
-    title: 'Galactic State',
+  res.render('universe/galacticState-stream', {
+    title: 'Galactic State - Live',
+    user: req.user
+  });
+});
+
+// Get galactic map view (2D visualization)
+router.get('/galactic-map', async (req, res) => {
+  res.render('universe/galactic-map', {
+    title: 'Galactic Territory Map',
     user: req.user
   });
 });

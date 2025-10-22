@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/asset-builder.css">
+</head>
+<body>
+  <%- include('../partials/header', { user: user, character: character }) %>
+
+  <!-- DEBUG: Server-side user check -->
+  <% if (typeof user !== 'undefined' && user) { %>
+    <div style="background: green; color: white; padding: 10px; text-align: center;">
+      ✓ SERVER SEES USER: <%= user.username %> (ID: <%= user._id %>)
+    </div>
+  <% } else { %>
+    <div style="background: red; color: white; padding: 10px; text-align: center;">
+      ✗ SERVER DOES NOT SEE USER
+    </div>
+  <% } %>
+
+  <div class="voting-container">
+    <div class="voting-header">
+      <h1>Community Voting & Collaboration</h1>
+      <p>Vote for your favorite assets and suggest improvements!</p>
+    </div>
+
+    <div id="alertContainer"></div>
+
+    <div class="voting-filters">
+      <button class="filter-btn active" data-type="all">All Assets</button>
+      <button class="filter-btn" data-type="item">Items</button>
+      <button class="filter-btn" data-type="character">Characters</button>
+      <button class="filter-btn" data-type="orbital">Orbitals</button>
+      <button class="filter-btn" data-type="galaxy">Galaxies</button>
+      <button class="filter-btn" data-type="anomaly">Anomalies</button>
+      <button class="filter-btn" data-type="zone">Zones</button>
+    </div>
+
+    <div class="voting-grid" id="votingGrid">
+      <p>Loading assets...</p>
+    </div>
+  </div>
+
+  <!-- Asset Detail Modal -->
+  <div id="assetModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal()">&times;</span>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script>
+    // Pass user data from server to client
+    window.currentUser = <%= typeof user !== 'undefined' && user ? JSON.stringify({ _id: user._id, username: user.username }) : 'null' %>;
+    console.log('=== VOTING PAGE AUTH DEBUG ===');
+    console.log('User session data:', window.currentUser);
+    console.log('typeof user:', typeof window.currentUser);
+    
+    if (!window.currentUser) {
+      console.error('❌ window.currentUser is NULL - authentication failed');
+    } else {
+      console.log('✅ Authentication OK!');
+      console.log('User ID:', window.currentUser._id);
+      console.log('Username:', window.currentUser.username);
+    }
+  </script>
+  <script src="/javascripts/voting-enhanced.js"></script>
+</body>
+</html>

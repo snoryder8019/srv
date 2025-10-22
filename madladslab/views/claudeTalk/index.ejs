@@ -404,20 +404,93 @@
       background: #8b5cf6;
       color: white;
       border: none;
-      padding: 0.5rem 1rem;
+      padding: 0.75rem 1.25rem;
       border-radius: 8px;
       cursor: pointer;
-      font-size: 0.9rem;
+      font-size: 1rem;
+      font-weight: 600;
       transition: all 0.3s;
+      box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
     }
 
     .btn-roku:hover {
       background: #7c3aed;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.5);
     }
 
     .btn-roku:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+      transform: none;
+    }
+
+    .roku-panel {
+      background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      color: white;
+    }
+
+    .roku-panel h3 {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .roku-buttons {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .roku-url {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-top: 1rem;
+      font-family: monospace;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .btn-copy {
+      background: rgba(255, 255, 255, 0.3);
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.3s;
+    }
+
+    .btn-copy:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .roku-instructions {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 1rem;
+      border-radius: 8px;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .roku-instructions ol {
+      margin-left: 1.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .roku-instructions li {
+      margin-bottom: 0.5rem;
     }
 
     .token-usage {
@@ -490,8 +563,45 @@
         min-width: auto !important;
       }
 
+      .roku-panel {
+        padding: 1rem;
+      }
+
+      .roku-panel h3 {
+        font-size: 1.1rem;
+      }
+
+      .roku-buttons {
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .btn-roku {
+        width: 100%;
+        padding: 0.75rem;
+      }
+
+      .roku-url {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+      }
+
+      .roku-url span {
+        font-size: 0.9rem;
+        word-break: break-all;
+      }
+
+      .btn-copy {
+        width: 100%;
+      }
+
+      .roku-instructions {
+        font-size: 0.85rem;
+      }
+
       .chat-container {
-        height: calc(100vh - 300px);
+        height: calc(100vh - 450px);
         min-height: 400px;
       }
 
@@ -518,6 +628,7 @@
       }
     }
   </style>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
   <div class="header">
@@ -551,11 +662,29 @@
           <option value="claude-opus-4-20250514">Claude Opus 4</option>
         </select>
       </div>
-      <div class="control-group">
-        <label>Roku Display:</label>
-        <button class="btn-roku" onclick="showDisplayUrl()">📱 Get URL</button>
-        <button class="btn-roku" onclick="showQRCode()">📷 Show QR</button>
-        <button class="btn-roku" onclick="discoverRokus()" style="display:none;">🔍 Find Rokus</button>
+    </div>
+
+    <!-- Enhanced Roku Display Panel -->
+    <div class="roku-panel">
+      <h3>📺 Roku Display & Cast</h3>
+      <div class="roku-buttons">
+        <button class="btn-roku" onclick="openDisplayInNewTab()">🚀 Open Display</button>
+        <button class="btn-roku" onclick="showQRCode()">📷 QR Code</button>
+        <button class="btn-roku" onclick="copyDisplayUrl()">📋 Copy URL</button>
+        <button class="btn-roku" onclick="showVideoControls()">🎬 Send Video</button>
+      </div>
+      <div class="roku-url">
+        <span id="displayUrl">http://104.237.138.28/claudeTalk/display</span>
+        <button class="btn-copy" onclick="copyDisplayUrl()">Copy</button>
+      </div>
+      <div class="roku-instructions">
+        <strong>How to use:</strong>
+        <ol>
+          <li><strong>Voice Display:</strong> Click "Open Display" and cast to your Roku/TV</li>
+          <li><strong>Video Cast:</strong> Click "Send Video" to play YouTube, Vimeo, or Twitch</li>
+          <li><strong>Google Cast:</strong> Use the Cast button (📺) on the display page to cast to Chromecast</li>
+          <li><strong>Roku Browser:</strong> Or enter the URL directly in your Roku browser app</li>
+        </ol>
       </div>
     </div>
 
@@ -913,46 +1042,33 @@
     }
 
     // Display URL and QR code functions
-    function showDisplayUrl() {
+    function openDisplayInNewTab() {
+      const displayUrl = 'http://104.237.138.28/claudeTalk/display';
+      window.open(displayUrl, '_blank', 'noopener,noreferrer');
+
+      // Show confirmation message
+      addMessage('assistant', '🚀 Display opened in a new tab! You can now cast this to your Roku or view it on any device.');
+    }
+
+    function copyDisplayUrl() {
       const displayUrl = 'http://104.237.138.28/claudeTalk/display';
 
-      const message = `
-<strong>📺 Roku Display URL:</strong><br><br>
-Open this URL on your Roku browser:<br>
-<code style="background:#f0f0f0; padding:8px; display:block; margin:8px 0; font-size:1.2em;">
-${displayUrl}
-</code><br>
-<strong>Steps:</strong><br>
-1. Open a web browser app on your Roku<br>
-2. Type or paste the URL above<br>
-3. The display will load automatically!<br><br>
-Or click "Show QR" to scan with your phone and send to Roku.
-      `;
-
-      // Show in chat
-      const messagesContainer = document.getElementById('messagesContainer');
-      const welcome = messagesContainer.querySelector('.welcome-message');
-      if (welcome) welcome.remove();
-
-      const messageDiv = document.createElement('div');
-      messageDiv.className = 'message assistant';
-
-      const avatar = document.createElement('div');
-      avatar.className = 'message-avatar';
-      avatar.textContent = '🤖';
-
-      const contentDiv = document.createElement('div');
-      contentDiv.className = 'message-content';
-      contentDiv.innerHTML = message;
-
-      messageDiv.appendChild(avatar);
-      messageDiv.appendChild(contentDiv);
-      messagesContainer.appendChild(messageDiv);
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
-
-      // Copy to clipboard
       navigator.clipboard.writeText(displayUrl).then(() => {
-        console.log('URL copied to clipboard');
+        // Visual feedback
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        btn.style.background = 'rgba(0, 255, 136, 0.4)';
+
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.background = '';
+        }, 2000);
+
+        addMessage('assistant', '📋 Display URL copied to clipboard! Paste it in your Roku browser.');
+      }).catch(err => {
+        console.error('Copy failed:', err);
+        addMessage('assistant', '❌ Failed to copy URL. Please copy manually: http://104.237.138.28/claudeTalk/display');
       });
     }
 
@@ -960,17 +1076,22 @@ Or click "Show QR" to scan with your phone and send to Roku.
       const displayUrl = 'http://104.237.138.28/claudeTalk/display';
 
       // Use a QR code API
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(displayUrl)}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(displayUrl)}`;
 
       const message = `
-<strong>📷 Scan this QR Code:</strong><br><br>
-<img src="${qrUrl}" alt="QR Code" style="border: 4px solid #fff; border-radius: 12px;"><br><br>
-<strong>How to use:</strong><br>
-1. Scan with your phone's camera<br>
-2. Open the link on your phone<br>
-3. Cast/send to your Roku TV<br><br>
-<strong>Or manually enter on Roku:</strong><br>
-<code style="background:#f0f0f0; padding:4px;">${displayUrl}</code>
+<div style="text-align: center; padding: 1rem;">
+  <strong style="font-size: 1.3em;">📷 Scan QR Code for Roku Display</strong><br><br>
+  <img src="${qrUrl}" alt="QR Code" style="border: 4px solid #8b5cf6; border-radius: 12px; max-width: 100%; height: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.2);"><br><br>
+  <div style="background: rgba(139, 92, 246, 0.1); padding: 1rem; border-radius: 8px; margin-top: 1rem; text-align: left;">
+    <strong>📱 Quick Steps:</strong><br>
+    1. Scan this QR code with your phone camera<br>
+    2. Open the link on your phone<br>
+    3. You can view it on your phone or cast to your Roku/TV<br><br>
+    <strong>💻 Direct Roku Access:</strong><br>
+    Open a browser on your Roku and enter:<br>
+    <code style="background:#8b5cf6; color:white; padding:8px; display:inline-block; margin-top:8px; border-radius:4px; font-size:1.1em;">${displayUrl}</code>
+  </div>
+</div>
       `;
 
       const messagesContainer = document.getElementById('messagesContainer');
@@ -979,6 +1100,7 @@ Or click "Show QR" to scan with your phone and send to Roku.
 
       const messageDiv = document.createElement('div');
       messageDiv.className = 'message assistant';
+      messageDiv.style.maxWidth = '600px';
 
       const avatar = document.createElement('div');
       avatar.className = 'message-avatar';
@@ -1021,6 +1143,66 @@ Or click "Show QR" to scan with your phone and send to Roku.
         addMessage('assistant', 'Discovery failed. Since the server is remote, use "Get URL" to manually access the display on your Roku browser.');
         btn.textContent = '🔍 Find Rokus';
         btn.disabled = false;
+      }
+    }
+
+    // Video Controls
+    function showVideoControls() {
+      console.log('showVideoControls called');
+
+      // Check if io is available
+      if (typeof io === 'undefined') {
+        alert('Socket.IO not loaded. Please refresh the page.');
+        return;
+      }
+
+      const videoUrl = prompt('Enter video URL to send to display:\n\nSupported sites:\n• YouTube (youtube.com, youtu.be)\n• Vimeo (vimeo.com)\n• Twitch (twitch.tv)\n• Direct video files (.mp4, .webm, .ogg)');
+
+      if (videoUrl && videoUrl.trim()) {
+        console.log('Sending video:', videoUrl);
+        sendVideoToDisplay(videoUrl.trim());
+      } else if (videoUrl !== null) {
+        alert('Please enter a valid URL');
+      }
+    }
+
+    function sendVideoToDisplay(url) {
+      console.log('sendVideoToDisplay called with:', url);
+
+      try {
+        // Show loading message
+        addMessage('assistant', '📡 Connecting to display...');
+
+        // Connect to socket to send video command
+        const serverUrl = 'http://104.237.138.28:3000';
+        const socket = io(serverUrl + '/claudeTalk-display', {
+          transports: ['websocket', 'polling'],
+          reconnection: false,
+          timeout: 5000
+        });
+
+        socket.on('connect', () => {
+          console.log('Connected to display socket');
+          socket.emit('load_video', { url: url });
+
+          addMessage('assistant', '🎬 Video sent to display!\\n\\nURL: ' + url + '\\n\\nMake sure the display page is open to see the video.');
+
+          // Disconnect after sending
+          setTimeout(() => socket.disconnect(), 1000);
+        });
+
+        socket.on('connect_error', (error) => {
+          console.error('Socket connection error:', error);
+          addMessage('assistant', '❌ Failed to connect to display. Error: ' + error.message);
+        });
+
+        socket.on('connect_timeout', () => {
+          console.error('Socket connection timeout');
+          addMessage('assistant', '❌ Connection timeout. Make sure the server is running.');
+        });
+      } catch (error) {
+        console.error('Error in sendVideoToDisplay:', error);
+        addMessage('assistant', '❌ Error: ' + error.message);
       }
     }
 

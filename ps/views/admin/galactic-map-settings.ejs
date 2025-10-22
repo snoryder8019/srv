@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    .settings-container {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background: rgba(10, 14, 26, 0.95);
+      border-radius: 1rem;
+      border: 1px solid rgba(102, 126, 234, 0.3);
+    }
+
+    .settings-header {
+      margin-bottom: 2rem;
+    }
+
+    .settings-header h1 {
+      color: #ffffff;
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .settings-header p {
+      color: #9ca3af;
+      font-family: monospace;
+    }
+
+    .setting-group {
+      margin-bottom: 2rem;
+      padding: 1.5rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 0.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .setting-group h3 {
+      color: #667eea;
+      font-size: 1.2rem;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-family: monospace;
+    }
+
+    .setting-group p {
+      color: #9ca3af;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      font-family: monospace;
+    }
+
+    .slider-container {
+      margin: 1rem 0;
+    }
+
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      color: #d1d5db;
+      font-family: monospace;
+    }
+
+    .slider-value {
+      color: #667eea;
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #667eea;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #667eea;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+    }
+
+    input[type="range"]:hover::-webkit-slider-thumb {
+      background: #8094f0;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .btn {
+      padding: 0.75rem 2rem;
+      border-radius: 0.5rem;
+      font-family: monospace;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: #8094f0;
+      box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .status-message {
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+      font-family: monospace;
+      display: none;
+    }
+
+    .status-message.success {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid #10b981;
+      color: #10b981;
+    }
+
+    .status-message.error {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid #ef4444;
+      color: #ef4444;
+    }
+
+    .current-values {
+      background: rgba(102, 126, 234, 0.1);
+      padding: 1rem;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(102, 126, 234, 0.3);
+      margin-bottom: 1rem;
+    }
+
+    .current-values h4 {
+      color: #667eea;
+      margin-bottom: 0.5rem;
+      font-family: monospace;
+    }
+
+    /* Toggle Switch Styles */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.2);
+      transition: 0.3s;
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+      background-color: #667eea;
+      border-color: #667eea;
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(26px);
+    }
+
+    .toggle-slider:hover {
+      box-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
+    }
+
+    .current-values p {
+      color: #d1d5db;
+      margin: 0.25rem 0;
+      font-family: monospace;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="settings-container">
+    <div class="settings-header">
+      <h1>🌌 Galactic Map Settings</h1>
+      <p>Configure movement speed and grid settings for the galactic space map</p>
+    </div>
+
+    <div id="statusMessage" class="status-message"></div>
+
+    <div class="current-values">
+      <h4>Current Settings</h4>
+      <p>Movement Speed: <span id="currentSpeed">Loading...</span></p>
+      <p>Grid Size: <span id="currentGrid">Loading...</span></p>
+      <p>Last Updated: <span id="lastUpdated">Loading...</span></p>
+    </div>
+
+    <form id="settingsForm">
+      <div class="setting-group">
+        <h3>⚡ Movement Speed</h3>
+        <p>Control how fast galaxies and orbitals move across the map (anomalies remain stationary)</p>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Speed Multiplier</span>
+            <span class="slider-value" id="speedValue">0.1x</span>
+          </div>
+          <input
+            type="range"
+            id="movementSpeed"
+            name="movementSpeed"
+            min="0"
+            max="2"
+            step="0.01"
+            value="0.1"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>0x (Frozen)</span>
+            <span>0.5x (Slow)</span>
+            <span>1.0x (Normal)</span>
+            <span>2.0x (Fast)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3>⊞ Grid Size</h3>
+        <p>Set the recommended grid size for the overall map visualization</p>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Grid Cell Size</span>
+            <span class="slider-value" id="gridValue">100px</span>
+          </div>
+          <input
+            type="range"
+            id="gridSize"
+            name="gridSize"
+            min="50"
+            max="500"
+            step="25"
+            value="100"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>50px (Fine)</span>
+            <span>275px (Medium)</span>
+            <span>500px (Coarse)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3>🔄 Edge Gravity Strength</h3>
+        <p>How strongly objects are pushed away from map edges</p>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Repulsion Force</span>
+            <span class="slider-value" id="edgeGravityValue">0.15</span>
+          </div>
+          <input
+            type="range"
+            id="edgeGravityStrength"
+            name="edgeGravityStrength"
+            min="0"
+            max="1"
+            step="0.01"
+            value="0.15"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>0 (None)</span>
+            <span>0.5 (Medium)</span>
+            <span>1.0 (Strong)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3>📏 Edge Gravity Distance</h3>
+        <p>Distance from edge where repulsion force begins</p>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Activation Distance</span>
+            <span class="slider-value" id="edgeDistanceValue">400</span>
+          </div>
+          <input
+            type="range"
+            id="edgeGravityDistance"
+            name="edgeGravityDistance"
+            min="100"
+            max="1000"
+            step="50"
+            value="400"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>100 units</span>
+            <span>550 units</span>
+            <span>1000 units</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3>⚡ Static Charge Buildup</h3>
+        <p>How fast static charge accumulates when touching edges</p>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Charge Rate</span>
+            <span class="slider-value" id="staticChargeValue">0.02</span>
+          </div>
+          <input
+            type="range"
+            id="staticChargeBuildup"
+            name="staticChargeBuildup"
+            min="0"
+            max="0.1"
+            step="0.001"
+            value="0.02"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>0 (Off)</span>
+            <span>0.05</span>
+            <span>0.1 (Fast)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3>🎯 Static Gravity Threshold</h3>
+        <p>Charge level that triggers strong pushback from edges</p>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Trigger Threshold</span>
+            <span class="slider-value" id="staticThresholdValue">1.0</span>
+          </div>
+          <input
+            type="range"
+            id="staticGravityThreshold"
+            name="staticGravityThreshold"
+            min="0.1"
+            max="5"
+            step="0.1"
+            value="1.0"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>0.1 (Quick)</span>
+            <span>2.5</span>
+            <span>5.0 (Slow)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3>🚀 Max Velocity</h3>
+        <p>Maximum speed objects can reach</p>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Speed Cap</span>
+            <span class="slider-value" id="maxVelocityValue">8</span>
+          </div>
+          <input
+            type="range"
+            id="maxVelocity"
+            name="maxVelocity"
+            min="1"
+            max="20"
+            step="1"
+            value="8"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>1 (Slow)</span>
+            <span>10</span>
+            <span>20 (Fast)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3>🌊 Damping</h3>
+        <p>Friction/energy loss per frame (closer to 1 = less friction)</p>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Damping Factor</span>
+            <span class="slider-value" id="dampingValue">0.999</span>
+          </div>
+          <input
+            type="range"
+            id="damping"
+            name="damping"
+            min="0.9"
+            max="1"
+            step="0.001"
+            value="0.999"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>0.9 (High Friction)</span>
+            <span>0.95</span>
+            <span>1.0 (No Friction)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3>🌀 Brown Noise Oscillation</h3>
+        <p>Random oscillating forces that add natural turbulence to object movement</p>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Enable Brown Noise</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="brownNoiseEnabled" name="brownNoiseEnabled" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Noise Strength</span>
+            <span class="slider-value" id="brownNoiseStrengthValue">0.05</span>
+          </div>
+          <input
+            type="range"
+            id="brownNoiseStrength"
+            name="brownNoiseStrength"
+            min="0"
+            max="1"
+            step="0.01"
+            value="0.05"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>0 (Off)</span>
+            <span>0.5</span>
+            <span>1.0 (Chaotic)</span>
+          </div>
+        </div>
+
+        <div class="slider-container">
+          <div class="slider-label">
+            <span>Oscillation Frequency</span>
+            <span class="slider-value" id="brownNoiseFrequencyValue">0.5 Hz</span>
+          </div>
+          <input
+            type="range"
+            id="brownNoiseFrequency"
+            name="brownNoiseFrequency"
+            min="0.01"
+            max="5"
+            step="0.01"
+            value="0.5"
+          >
+          <div style="display: flex; justify-content: space-between; color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; font-family: monospace;">
+            <span>0.01 (Very Slow)</span>
+            <span>2.5</span>
+            <span>5.0 (Rapid)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button type="submit" class="btn btn-primary">💾 Save Settings</button>
+        <button type="button" class="btn btn-secondary" id="resetBtn">🔄 Reset to Default</button>
+      </div>
+    </form>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script>
+    const speedSlider = document.getElementById('movementSpeed');
+    const gridSlider = document.getElementById('gridSize');
+    const edgeGravitySlider = document.getElementById('edgeGravityStrength');
+    const edgeDistanceSlider = document.getElementById('edgeGravityDistance');
+    const staticChargeSlider = document.getElementById('staticChargeBuildup');
+    const staticThresholdSlider = document.getElementById('staticGravityThreshold');
+    const maxVelocitySlider = document.getElementById('maxVelocity');
+    const dampingSlider = document.getElementById('damping');
+    const brownNoiseStrengthSlider = document.getElementById('brownNoiseStrength');
+    const brownNoiseFrequencySlider = document.getElementById('brownNoiseFrequency');
+    const brownNoiseEnabledCheckbox = document.getElementById('brownNoiseEnabled');
+
+    const speedValue = document.getElementById('speedValue');
+    const gridValue = document.getElementById('gridValue');
+    const edgeGravityValue = document.getElementById('edgeGravityValue');
+    const edgeDistanceValue = document.getElementById('edgeDistanceValue');
+    const staticChargeValue = document.getElementById('staticChargeValue');
+    const staticThresholdValue = document.getElementById('staticThresholdValue');
+    const maxVelocityValue = document.getElementById('maxVelocityValue');
+    const dampingValue = document.getElementById('dampingValue');
+    const brownNoiseStrengthValue = document.getElementById('brownNoiseStrengthValue');
+    const brownNoiseFrequencyValue = document.getElementById('brownNoiseFrequencyValue');
+
+    const form = document.getElementById('settingsForm');
+    const resetBtn = document.getElementById('resetBtn');
+    const statusMessage = document.getElementById('statusMessage');
+
+    // Update displayed values when sliders change
+    speedSlider.addEventListener('input', (e) => {
+      speedValue.textContent = `${parseFloat(e.target.value).toFixed(2)}x`;
+    });
+
+    gridSlider.addEventListener('input', (e) => {
+      gridValue.textContent = `${e.target.value}px`;
+    });
+
+    edgeGravitySlider.addEventListener('input', (e) => {
+      edgeGravityValue.textContent = parseFloat(e.target.value).toFixed(2);
+    });
+
+    edgeDistanceSlider.addEventListener('input', (e) => {
+      edgeDistanceValue.textContent = e.target.value;
+    });
+
+    staticChargeSlider.addEventListener('input', (e) => {
+      staticChargeValue.textContent = parseFloat(e.target.value).toFixed(3);
+    });
+
+    staticThresholdSlider.addEventListener('input', (e) => {
+      staticThresholdValue.textContent = parseFloat(e.target.value).toFixed(1);
+    });
+
+    maxVelocitySlider.addEventListener('input', (e) => {
+      maxVelocityValue.textContent = e.target.value;
+    });
+
+    dampingSlider.addEventListener('input', (e) => {
+      dampingValue.textContent = parseFloat(e.target.value).toFixed(3);
+    });
+
+    brownNoiseStrengthSlider.addEventListener('input', (e) => {
+      brownNoiseStrengthValue.textContent = parseFloat(e.target.value).toFixed(2);
+    });
+
+    brownNoiseFrequencySlider.addEventListener('input', (e) => {
+      brownNoiseFrequencyValue.textContent = `${parseFloat(e.target.value).toFixed(2)} Hz`;
+    });
+
+    // Load current settings
+    async function loadSettings() {
+      try {
+        const response = await fetch('/admin/api/galactic-map/settings');
+        const data = await response.json();
+
+        if (data.success) {
+          const s = data.settings;
+
+          speedSlider.value = s.movementSpeed || 0.1;
+          speedValue.textContent = `${parseFloat(s.movementSpeed || 0.1).toFixed(2)}x`;
+
+          gridSlider.value = s.gridSize || 100;
+          gridValue.textContent = `${s.gridSize || 100}px`;
+
+          edgeGravitySlider.value = s.edgeGravityStrength || 0.15;
+          edgeGravityValue.textContent = parseFloat(s.edgeGravityStrength || 0.15).toFixed(2);
+
+          edgeDistanceSlider.value = s.edgeGravityDistance || 400;
+          edgeDistanceValue.textContent = s.edgeGravityDistance || 400;
+
+          staticChargeSlider.value = s.staticChargeBuildup || 0.02;
+          staticChargeValue.textContent = parseFloat(s.staticChargeBuildup || 0.02).toFixed(3);
+
+          staticThresholdSlider.value = s.staticGravityThreshold || 1.0;
+          staticThresholdValue.textContent = parseFloat(s.staticGravityThreshold || 1.0).toFixed(1);
+
+          maxVelocitySlider.value = s.maxVelocity || 8;
+          maxVelocityValue.textContent = s.maxVelocity || 8;
+
+          dampingSlider.value = s.damping || 0.999;
+          dampingValue.textContent = parseFloat(s.damping || 0.999).toFixed(3);
+
+          brownNoiseStrengthSlider.value = s.brownNoiseStrength || 0.05;
+          brownNoiseStrengthValue.textContent = parseFloat(s.brownNoiseStrength || 0.05).toFixed(2);
+
+          brownNoiseFrequencySlider.value = s.brownNoiseFrequency || 0.5;
+          brownNoiseFrequencyValue.textContent = `${parseFloat(s.brownNoiseFrequency || 0.5).toFixed(2)} Hz`;
+
+          brownNoiseEnabledCheckbox.checked = s.brownNoiseEnabled !== undefined ? s.brownNoiseEnabled : true;
+
+          document.getElementById('currentSpeed').textContent = `${parseFloat(s.movementSpeed || 0.1).toFixed(2)}x`;
+          document.getElementById('currentGrid').textContent = `${s.gridSize || 100}px`;
+          document.getElementById('lastUpdated').textContent = s.updatedAt ? new Date(s.updatedAt).toLocaleString() : 'Never';
+        }
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        showMessage('Failed to load current settings', 'error');
+      }
+    }
+
+    // Save settings
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const settings = {
+        movementSpeed: parseFloat(speedSlider.value),
+        gridSize: parseInt(gridSlider.value),
+        edgeGravityStrength: parseFloat(edgeGravitySlider.value),
+        edgeGravityDistance: parseInt(edgeDistanceSlider.value),
+        staticChargeBuildup: parseFloat(staticChargeSlider.value),
+        staticGravityThreshold: parseFloat(staticThresholdSlider.value),
+        maxVelocity: parseInt(maxVelocitySlider.value),
+        damping: parseFloat(dampingSlider.value),
+        brownNoiseStrength: parseFloat(brownNoiseStrengthSlider.value),
+        brownNoiseFrequency: parseFloat(brownNoiseFrequencySlider.value),
+        brownNoiseEnabled: brownNoiseEnabledCheckbox.checked
+      };
+
+      try {
+        const response = await fetch('/admin/api/galactic-map/settings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(settings)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showMessage('Settings saved successfully! Changes will apply to all connected maps.', 'success');
+          loadSettings();
+        } else {
+          showMessage(data.error || 'Failed to save settings', 'error');
+        }
+      } catch (error) {
+        console.error('Error saving settings:', error);
+        showMessage('Failed to save settings', 'error');
+      }
+    });
+
+    // Reset to defaults
+    resetBtn.addEventListener('click', () => {
+      speedSlider.value = 0.1;
+      gridSlider.value = 100;
+      edgeGravitySlider.value = 0.15;
+      edgeDistanceSlider.value = 400;
+      staticChargeSlider.value = 0.02;
+      staticThresholdSlider.value = 1.0;
+      maxVelocitySlider.value = 8;
+      dampingSlider.value = 0.999;
+
+      speedValue.textContent = '0.10x';
+      gridValue.textContent = '100px';
+      edgeGravityValue.textContent = '0.15';
+      edgeDistanceValue.textContent = '400';
+      staticChargeValue.textContent = '0.020';
+      staticThresholdValue.textContent = '1.0';
+      maxVelocityValue.textContent = '8';
+      dampingValue.textContent = '0.999';
+    });
+
+    // Show status message
+    function showMessage(message, type) {
+      statusMessage.textContent = message;
+      statusMessage.className = `status-message ${type}`;
+      statusMessage.style.display = 'block';
+
+      setTimeout(() => {
+        statusMessage.style.display = 'none';
+      }, 5000);
+    }
+
+    // Load settings on page load
+    loadSettings();
+
+    // Refresh settings every 10 seconds
+    setInterval(loadSettings, 10000);
+  </script>
+</body>
+</html>

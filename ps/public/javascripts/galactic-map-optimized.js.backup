@@ -1,0 +1,1386 @@
+/**
+ * Optimized Galactic Map Renderer
+ * Reduced clutter, proper drag, 4 main factions, asset-driven updates
+ */
+
+class GalacticMap {
+  constructor(canvasId, width = 5000, height = 5000) {
+    this.canvas = document.getElementById(canvasId);
+    this.ctx = this.canvas.getContext('2d');
+    this.width = width;
+    this.height = height;
+    this.scale = 0.3; // Start zoomed out to see larger grid
+    this.offsetX = 0;
+    this.offsetY = 0;
+
+    // Set canvas dimensions
+    this.canvas.width = this.canvas.offsetWidth;
+    this.canvas.height = this.canvas.offsetHeight;
+
+    // Dragging state
+    this.isDragging = false;
+    this.dragStartX = 0;
+    this.dragStartY = 0;
+    this.lastOffsetX = 0;
+    this.lastOffsetY = 0;
+    this.dragThreshold = 10; // Pixels moved before considered a drag
+
+    // Touch/pinch state
+    this.touches = [];
+    this.lastPinchDistance = 0;
+    this.touchStartTime = 0;
+    this.touchStartPos = { x: 0, y: 0 };
+
+    // Faction centers and zones
+    this.factionCenters = [];
+    this.publishedAssets = []; // Assets that appear as zones
+    this.stars = [];
+
+    // Characters
+    this.characters = []; // All characters in galactic space
+    this.currentCharacter = null; // Selected character for this session
+    this.hoveredCharacter = null;
+
+    // Mouse interaction
+    this.hoveredAsset = null;
+    this.selectedAsset = null;
+
+    // Only 4 main factions (excluding Independent Systems)
+    this.mainFactions = [
+      'Silicate Consortium',
+      'Lantern Collective',
+      'Devan Empire',
+      'Human Federation'
+    ];
+
+    // Colors for factions
+    this.factionColors = {
+      'Silicate Consortium': '#667eea',
+      'Lantern Collective': '#f59e0b',
+      'Devan Empire': '#ef4444',
+      'Human Federation': '#10b981'
+    };
+
+    // Performance settings
+    this.showGrid = false;
+    this.showConnections = true; // Show travel routes by default
+    this.fps = 30; // Lower frame rate
+    this.lastFrameTime = 0;
+
+    // Admin-controlled settings
+    this.movementSpeed = 0.1; // Default to very slow (0.1x)
+    this.gridSize = 100;
+
+    // Spatial service integration
+    this.spatialServiceUrl = 'https://svc.madladslab.com';
+    this.travelConnections = [];
+    this.maxTravelDistance = 300; // Maximum distance for travel routes
+
+    this.initStarfield();
+    this.setupEventListeners();
+  }
+
+  /**
+   * Initialize starfield background (reduced count)
+   */
+  initStarfield() {
+    const starCount = 750; // More stars for larger grid (5000x5000)
+    const starChars = ['·', '•', '*', '+'];
+
+    for (let i = 0; i < starCount; i++) {
+      this.stars.push({
+        x: Math.random() * this.width,
+        y: Math.random() * this.height,
+        size: Math.random() * 1.5 + 0.5,
+        char: starChars[Math.floor(Math.random() * starChars.length)],
+        brightness: Math.random() * 0.4 + 0.3,
+        twinkleSpeed: Math.random() * 0.01 + 0.005
+      });
+    }
+  }
+
+  /**
+   * Setup mouse and touch event listeners
+   */
+  setupEventListeners() {
+    // Mouse events
+    this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+    this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+    this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+    this.canvas.addEventListener('mouseleave', (e) => this.handleMouseUp(e));
+    this.canvas.addEventListener('click', (e) => this.handleClick(e));
+    this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
+
+    // Touch events
+    this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+    this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
+    this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: false });
+
+    // Resize
+    window.addEventListener('resize', () => this.handleResize());
+  }
+
+  /**
+   * Handle mouse down - start dragging
+   */
+  handleMouseDown(e) {
+    this.isDragging = true;
+    const rect = this.canvas.getBoundingClientRect();
+    this.dragStartX = e.clientX - rect.left;
+    this.dragStartY = e.clientY - rect.top;
+    this.lastOffsetX = this.offsetX;
+    this.lastOffsetY = this.offsetY;
+    this.canvas.style.cursor = 'grabbing';
+  }
+
+  /**
+   * Handle mouse move - drag or hover
+   */
+  handleMouseMove(e) {
+    const rect = this.canvas.getBoundingClientRect();
+
+    if (this.isDragging) {
+      // Update pan offset
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
+      this.offsetX = this.lastOffsetX + (currentX - this.dragStartX);
+      this.offsetY = this.lastOffsetY + (currentY - this.dragStartY);
+    } else {
+      // Check hover
+      const x = (e.clientX - rect.left - this.offsetX) / this.scale;
+      const y = (e.clientY - rect.top - this.offsetY) / this.scale;
+      this.hoveredAsset = this.getAssetAt(x, y);
+      this.canvas.style.cursor = this.hoveredAsset ? 'pointer' : 'grab';
+    }
+  }
+
+  /**
+   * Handle mouse up - end dragging
+   */
+  handleMouseUp(e) {
+    this.isDragging = false;
+    this.canvas.style.cursor = 'grab';
+  }
+
+  /**
+   * Handle click for selection
+   */
+  handleClick(e) {
+    if (!this.isDragging) {
+      // Get all assets at click position
+      const rect = this.canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left - this.offsetX) / this.scale;
+      const y = (e.clientY - rect.top - this.offsetY) / this.scale;
+
+      const assets = this.getAssetsAt(x, y);
+
+      if (assets && assets.length > 0) {
+        this.selectedAsset = assets[0];
+        // Pass assets array and screen coordinates for menu positioning
+        this.onAssetSelect?.(assets, e.clientX, e.clientY);
+      }
+    }
+  }
+
+  /**
+   * Handle mouse wheel for zoom
+   */
+  handleWheel(e) {
+    e.preventDefault();
+
+    // Get mouse position relative to canvas
+    const rect = this.canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Get world position before zoom
+    const worldX = (mouseX - this.offsetX) / this.scale;
+    const worldY = (mouseY - this.offsetY) / this.scale;
+
+    // Apply zoom
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const oldScale = this.scale;
+    this.scale *= delta;
+    this.scale = Math.max(0.1, Math.min(5, this.scale)); // Allow 0.1x to 5x zoom for larger grid
+
+    // Adjust offset to keep world position under mouse
+    this.offsetX = mouseX - worldX * this.scale;
+    this.offsetY = mouseY - worldY * this.scale;
+
+    // Update last offsets for dragging
+    this.lastOffsetX = this.offsetX;
+    this.lastOffsetY = this.offsetY;
+  }
+
+  /**
+   * Handle touch start - begin drag or pinch
+   */
+  handleTouchStart(e) {
+    e.preventDefault();
+    this.touches = Array.from(e.touches);
+
+    if (this.touches.length === 1) {
+      // Single touch - track start position for tap detection
+      const touch = this.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      this.touchStartTime = Date.now();
+      this.touchStartPos = {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
+      };
+      this.dragStartX = touch.clientX - rect.left;
+      this.dragStartY = touch.clientY - rect.top;
+      this.lastOffsetX = this.offsetX;
+      this.lastOffsetY = this.offsetY;
+      // Don't set isDragging yet - wait for movement
+    } else if (this.touches.length === 2) {
+      // Two fingers - prepare for pinch
+      this.lastPinchDistance = this.getPinchDistance();
+      this.isDragging = false;
+    }
+  }
+
+  /**
+   * Handle touch move - drag or pinch zoom
+   */
+  handleTouchMove(e) {
+    e.preventDefault();
+    this.touches = Array.from(e.touches);
+
+    if (this.touches.length === 1) {
+      // Single touch - check if moved enough to be a drag
+      const touch = this.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      const currentX = touch.clientX - rect.left;
+      const currentY = touch.clientY - rect.top;
+
+      // Calculate distance moved
+      const dx = currentX - this.touchStartPos.x;
+      const dy = currentY - this.touchStartPos.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      // If moved more than threshold, it's a drag
+      if (distance > this.dragThreshold) {
+        this.isDragging = true;
+      }
+
+      if (this.isDragging) {
+        this.offsetX = this.lastOffsetX + (currentX - this.dragStartX);
+        this.offsetY = this.lastOffsetY + (currentY - this.dragStartY);
+      }
+    } else if (this.touches.length === 2) {
+      // Pinch zoom - anchor to center of pinch
+      const currentDistance = this.getPinchDistance();
+
+      if (this.lastPinchDistance > 0) {
+        // Get center point of pinch
+        const rect = this.canvas.getBoundingClientRect();
+        const centerX = ((this.touches[0].clientX + this.touches[1].clientX) / 2) - rect.left;
+        const centerY = ((this.touches[0].clientY + this.touches[1].clientY) / 2) - rect.top;
+
+        // Get world position before zoom
+        const worldX = (centerX - this.offsetX) / this.scale;
+        const worldY = (centerY - this.offsetY) / this.scale;
+
+        // Apply zoom
+        const delta = currentDistance / this.lastPinchDistance;
+        this.scale *= delta;
+        this.scale = Math.max(0.1, Math.min(5, this.scale));
+
+        // Adjust offset to keep world position under pinch center
+        this.offsetX = centerX - worldX * this.scale;
+        this.offsetY = centerY - worldY * this.scale;
+
+        // Update last offsets
+        this.lastOffsetX = this.offsetX;
+        this.lastOffsetY = this.offsetY;
+      }
+
+      this.lastPinchDistance = currentDistance;
+      this.isDragging = false;
+    }
+  }
+
+  /**
+   * Handle touch end - check for tap or end drag
+   */
+  handleTouchEnd(e) {
+    e.preventDefault();
+
+    const lastTouch = e.changedTouches[0];
+    const touchDuration = Date.now() - this.touchStartTime;
+
+    // Check for tap (not dragging and quick touch)
+    if (!this.isDragging && touchDuration < 300 && lastTouch) {
+      const rect = this.canvas.getBoundingClientRect();
+      const canvasX = lastTouch.clientX - rect.left;
+      const canvasY = lastTouch.clientY - rect.top;
+
+      // Transform to world coordinates
+      const worldX = (canvasX - this.offsetX) / this.scale;
+      const worldY = (canvasY - this.offsetY) / this.scale;
+
+      // Get all assets at tap position
+      const assets = this.getAssetsAt(worldX, worldY);
+
+      if (assets && assets.length > 0) {
+        this.selectedAsset = assets[0];
+        console.log(`✓ Asset(s) tapped: ${assets.map(a => a.title).join(', ')} (${assets.length} total)`);
+        // Call the selection callback with screen coordinates
+        if (this.onAssetSelect) {
+          this.onAssetSelect(assets, lastTouch.clientX, lastTouch.clientY);
+        }
+      } else {
+        console.log('✗ No asset at tap location:', Math.round(worldX), Math.round(worldY));
+      }
+    }
+
+    this.touches = Array.from(e.touches);
+    if (this.touches.length === 0) {
+      this.isDragging = false;
+      this.lastPinchDistance = 0;
+    }
+  }
+
+  /**
+   * Get distance between two touch points (for pinch zoom)
+   */
+  getPinchDistance() {
+    if (this.touches.length < 2) return 0;
+
+    const dx = this.touches[0].clientX - this.touches[1].clientX;
+    const dy = this.touches[0].clientY - this.touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /**
+   * Handle canvas resize
+   */
+  handleResize() {
+    this.canvas.width = this.canvas.offsetWidth;
+    this.canvas.height = this.canvas.offsetHeight;
+  }
+
+  /**
+   * Get asset at coordinates (returns first match)
+   */
+  getAssetAt(x, y) {
+    for (let i = this.publishedAssets.length - 1; i >= 0; i--) {
+      const asset = this.publishedAssets[i];
+      const dx = x - asset.x;
+      const dy = y - asset.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < asset.radius) {
+        return asset;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Get ALL assets at coordinates (for overlapping detection)
+   */
+  getAssetsAt(x, y) {
+    const matches = [];
+
+    for (let i = this.publishedAssets.length - 1; i >= 0; i--) {
+      const asset = this.publishedAssets[i];
+      const dx = x - asset.x;
+      const dy = y - asset.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < asset.radius) {
+        matches.push(asset);
+      }
+    }
+
+    return matches;
+  }
+
+  /**
+   * Update faction centers from game state (4 factions only)
+   */
+  updateFactionCenters(factions) {
+    this.factionCenters = [];
+
+    this.mainFactions.forEach((name, index) => {
+      const faction = factions[name];
+      if (!faction) return;
+
+      // Position in corners/center pattern
+      const positions = [
+        { x: this.width * 0.25, y: this.height * 0.25 }, // Top-left
+        { x: this.width * 0.75, y: this.height * 0.25 }, // Top-right
+        { x: this.width * 0.25, y: this.height * 0.75 }, // Bottom-left
+        { x: this.width * 0.75, y: this.height * 0.75 }  // Bottom-right
+      ];
+
+      const pos = positions[index];
+
+      this.factionCenters.push({
+        name: name,
+        x: pos.x,
+        y: pos.y,
+        power: faction.power,
+        territory: faction.territory,
+        influence: faction.influence,
+        radius: 30 + (faction.power / 100) * 20,
+        color: this.factionColors[name]
+      });
+    });
+  }
+
+  /**
+   * Load published assets from API
+   */
+  async loadPublishedAssets() {
+    try {
+      const response = await fetch('/api/v1/assets/approved/list');
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data.success && data.assets) {
+        await this.updatePublishedAssets(data.assets);
+      }
+    } catch (error) {
+      console.error('Error loading published assets:', error);
+    }
+  }
+
+  /**
+   * Load admin settings for map
+   */
+  async loadSettings() {
+    try {
+      const response = await fetch('/admin/api/galactic-map/settings');
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data.success && data.settings) {
+        this.movementSpeed = data.settings.movementSpeed || 0.1;
+        this.gridSize = data.settings.gridSize || 100;
+      }
+    } catch (error) {
+      console.error('Error loading map settings:', error);
+    }
+  }
+
+  /**
+   * Load spatial positions from game state service
+   */
+  async loadSpatialPositions() {
+    try {
+      const response = await fetch(`${this.spatialServiceUrl}/api/spatial/assets`);
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      if (data.success && data.assets) {
+        return data.assets;
+      }
+    } catch (error) {
+      console.error('Error loading spatial positions:', error);
+    }
+    return null;
+  }
+
+  /**
+   * Save spatial positions to game state service
+   */
+  async saveSpatialPositions() {
+    try {
+      const assets = this.publishedAssets.map(asset => ({
+        _id: asset._id,
+        title: asset.title,
+        assetType: asset.assetType,
+        x: asset.x,
+        y: asset.y,
+        vx: asset.vx,
+        vy: asset.vy,
+        radius: asset.radius,
+        isStationary: asset.isStationary
+      }));
+
+      const response = await fetch(`${this.spatialServiceUrl}/api/spatial/assets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assets })
+      });
+
+      if (!response.ok) {
+        console.warn('Failed to save spatial positions');
+      }
+    } catch (error) {
+      console.error('Error saving spatial positions:', error);
+    }
+  }
+
+  /**
+   * Generate local travel connections based on actual asset positions
+   */
+  async loadTravelConnections() {
+    // Generate travel routes based on actual orbital and hub positions
+    this.travelConnections = this.generateTravelRoutes();
+  }
+
+  /**
+   * Generate travel routes between nearby assets
+   */
+  generateTravelRoutes() {
+    const connections = [];
+    const assets = this.publishedAssets;
+
+    // Get hubs and orbitals
+    const hubs = assets.filter(a => a.hubData?.isStartingLocation);
+    const orbitals = assets.filter(a => a.assetType === 'orbital');
+    const galaxies = assets.filter(a => a.assetType === 'galaxy');
+    const anomalies = assets.filter(a => a.assetType === 'anomaly' && !a.hubData?.isStartingLocation);
+
+    // Helper to calculate distance
+    const distance = (a, b) => {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    // 1. Connect each hub to nearest 2-3 orbitals (BLUE - established routes)
+    hubs.forEach(hub => {
+      const nearbyOrbitals = orbitals
+        .map(orbital => ({ orbital, dist: distance(hub, orbital) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 3); // Connect to 3 nearest orbitals
+
+      nearbyOrbitals.forEach(({ orbital, dist }) => {
+        connections.push({
+          from: { x: hub.x, y: hub.y },
+          to: { x: orbital.x, y: orbital.y },
+          status: 'active',
+          stability: 0.9,
+          type: 'hub-orbital',
+          distance: dist
+        });
+      });
+    });
+
+    // 2. Connect orbitals to nearby orbitals (GREEN - safe routes)
+    orbitals.forEach((orbital, i) => {
+      const nearbyOrbitals = orbitals
+        .filter((other, j) => j > i) // Avoid duplicates
+        .map(other => ({ other, dist: distance(orbital, other) }))
+        .filter(({ dist }) => dist < 1500) // Only connect if within range
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 2); // Connect to 2 nearest
+
+      nearbyOrbitals.forEach(({ other, dist }) => {
+        connections.push({
+          from: { x: orbital.x, y: orbital.y },
+          to: { x: other.x, y: other.y },
+          status: 'active',
+          stability: 0.8,
+          type: 'orbital-orbital',
+          distance: dist
+        });
+      });
+    });
+
+    // 3. Connect some orbitals to nearby galaxies (YELLOW - dynamic routes)
+    orbitals.forEach(orbital => {
+      const nearbyGalaxies = galaxies
+        .map(galaxy => ({ galaxy, dist: distance(orbital, galaxy) }))
+        .filter(({ dist }) => dist < 1000)
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 1); // Connect to 1 nearby galaxy
+
+      nearbyGalaxies.forEach(({ galaxy, dist }) => {
+        connections.push({
+          from: { x: orbital.x, y: orbital.y },
+          to: { x: galaxy.x, y: galaxy.y },
+          status: 'warning',
+          stability: 0.6,
+          type: 'orbital-galaxy',
+          distance: dist
+        });
+      });
+    });
+
+    // 4. Connect anomalies to nearest orbital (RED - dangerous routes)
+    anomalies.forEach(anomaly => {
+      const nearest = orbitals
+        .map(orbital => ({ orbital, dist: distance(anomaly, orbital) }))
+        .filter(({ dist }) => dist < 1200)
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 1);
+
+      nearest.forEach(({ orbital, dist }) => {
+        connections.push({
+          from: { x: orbital.x, y: orbital.y },
+          to: { x: anomaly.x, y: anomaly.y },
+          status: 'warning',
+          stability: 0.4,
+          type: 'orbital-anomaly',
+          distance: dist
+        });
+      });
+    });
+
+    console.log(`Generated ${connections.length} travel routes`);
+    return connections;
+  }
+
+  /**
+   * Update published assets display - only galaxy, orbital, anomaly
+   * PERPETUAL: Maintains existing positions, only adds new assets
+   */
+  async updatePublishedAssets(assets) {
+    // Filter to only show galaxy, orbital, and anomaly types
+    const validTypes = ['galaxy', 'orbital', 'anomaly'];
+    const filteredAssets = assets.filter(asset =>
+      validTypes.includes(asset.assetType)
+    );
+
+    // Count space hubs
+    const hubCount = filteredAssets.filter(a => a.hubData?.isStartingLocation).length;
+    console.log(`Loading ${filteredAssets.length} assets (${hubCount} space hubs)`);
+
+    // Try to load existing positions from spatial service
+    const spatialAssets = await this.loadSpatialPositions();
+    const spatialMap = new Map();
+    if (spatialAssets) {
+      spatialAssets.forEach(sa => spatialMap.set(sa._id, sa));
+    }
+
+    // Create a map of current assets to check what's new
+    const currentAssetIds = new Set(this.publishedAssets.map(a => a._id));
+    const newAssetList = [];
+
+    filteredAssets.forEach((asset, index) => {
+      // Check if asset already exists in our current list
+      const existingAsset = this.publishedAssets.find(a => a._id === asset._id);
+
+      if (existingAsset) {
+        // KEEP EXISTING POSITION - just update metadata
+        const isHub = asset.hubData?.isStartingLocation;
+        newAssetList.push({
+          ...existingAsset,
+          title: asset.title,
+          description: asset.description,
+          votes: asset.votes,
+          radius: isHub ? 50 : (8 + (asset.votes || 0) * 0.15), // DECREASED: was 10 + 0.3
+          color: this.getFactionColorForAsset(asset)
+        });
+      } else {
+        // Check if we have saved position in SVC
+        const savedPosition = spatialMap.get(asset._id);
+
+        if (savedPosition) {
+          // Restore from SVC (perpetual!)
+          const isHub = asset.hubData?.isStartingLocation;
+          newAssetList.push({
+            ...asset,
+            x: savedPosition.x,
+            y: savedPosition.y,
+            vx: savedPosition.vx,
+            vy: savedPosition.vy,
+            radius: isHub ? 50 : (8 + (asset.votes || 0) * 0.15), // DECREASED
+            color: this.getFactionColorForAsset(asset),
+            mass: 1 + (asset.votes || 0) * 0.1,
+            isStationary: savedPosition.isStationary
+          });
+        } else {
+          // Completely new asset - generate initial position
+          let x, y, vx, vy, assetRadius, isStationary;
+
+          // Check if this is a space hub with fixed location
+          if (asset.hubData?.location) {
+            // SPACE HUB - use fixed corner location
+            x = asset.hubData.location.x;
+            y = asset.hubData.location.y;
+            vx = 0;
+            vy = 0;
+            assetRadius = 50; // Larger for hubs
+            isStationary = true;
+          } else if (asset.initialPosition) {
+            // Asset with predefined position from database
+            x = asset.initialPosition.x;
+            y = asset.initialPosition.y;
+
+            // Anomalies are stationary, galaxies and orbitals move
+            isStationary = asset.assetType === 'anomaly';
+
+            if (isStationary) {
+              vx = 0;
+              vy = 0;
+            } else {
+              // Calculate initial velocity for trajectory
+              const velocityMagnitude = Math.random() * 0.04 + 0.01;
+              const velocityAngle = Math.random() * Math.PI * 2;
+              vx = Math.cos(velocityAngle) * velocityMagnitude;
+              vy = Math.sin(velocityAngle) * velocityMagnitude;
+            }
+
+            assetRadius = 8 + (asset.votes || 0) * 0.15;
+          } else {
+            // Regular asset - generate random position
+            const angle = (index / filteredAssets.length) * Math.PI * 2;
+            const radius = 100 + Math.random() * 300;
+            const centerX = this.width / 2;
+            const centerY = this.height / 2;
+
+            // Anomalies are stationary, galaxies and orbitals move
+            isStationary = asset.assetType === 'anomaly';
+
+            // Calculate initial velocity for trajectory (0 for anomalies)
+            const velocityMagnitude = isStationary ? 0 : (Math.random() * 0.04 + 0.01);
+            const velocityAngle = Math.random() * Math.PI * 2;
+
+            x = centerX + Math.cos(angle) * radius;
+            y = centerY + Math.sin(angle) * radius;
+            vx = Math.cos(velocityAngle) * velocityMagnitude;
+            vy = Math.sin(velocityAngle) * velocityMagnitude;
+            assetRadius = 8 + (asset.votes || 0) * 0.15; // DECREASED: was 10 + 0.3
+          }
+
+          newAssetList.push({
+            ...asset,
+            x,
+            y,
+            radius: assetRadius,
+            color: this.getFactionColorForAsset(asset),
+            vx,
+            vy,
+            mass: 1 + (asset.votes || 0) * 0.1,
+            isStationary: isStationary
+          });
+        }
+      }
+    });
+
+    this.publishedAssets = newAssetList;
+
+    // Save positions after update
+    await this.saveSpatialPositions();
+    // Load travel connections
+    await this.loadTravelConnections();
+  }
+
+  /**
+   * Get faction color for an asset
+   */
+  getFactionColorForAsset(asset) {
+    // Could be based on asset creator's faction, or random
+    const factionIndex = asset.userId ? asset.userId.charCodeAt(0) % 4 : 0;
+    return this.factionColors[this.mainFactions[factionIndex]] || '#667eea';
+  }
+
+  /**
+   * Update physics for assets - trajectory and movement
+   */
+  updatePhysics() {
+    // Track if we need to save (every 60 frames = ~2 seconds at 30fps)
+    if (!this.physicsTicks) this.physicsTicks = 0;
+    this.physicsTicks++;
+
+    this.publishedAssets.forEach(asset => {
+      // Skip stationary assets (anomalies)
+      if (asset.isStationary) return;
+
+      // Apply movement speed multiplier
+      const speedMultiplier = this.movementSpeed;
+
+      // Update position based on velocity
+      asset.x += asset.vx * speedMultiplier;
+      asset.y += asset.vy * speedMultiplier;
+
+      // Bounce off edges
+      if (asset.x - asset.radius < 0 || asset.x + asset.radius > this.width) {
+        asset.vx *= -1;
+        asset.x = Math.max(asset.radius, Math.min(this.width - asset.radius, asset.x));
+      }
+
+      if (asset.y - asset.radius < 0 || asset.y + asset.radius > this.height) {
+        asset.vy *= -1;
+        asset.y = Math.max(asset.radius, Math.min(this.height - asset.radius, asset.y));
+      }
+
+      // Apply slight gravity/attraction towards center
+      const centerX = this.width / 2;
+      const centerY = this.height / 2;
+      const dx = centerX - asset.x;
+      const dy = centerY - asset.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist > 100) {
+        const force = 0.01 * speedMultiplier;
+        asset.vx += (dx / dist) * force;
+        asset.vy += (dy / dist) * force;
+      }
+
+      // Apply damping to prevent infinite acceleration
+      asset.vx *= 0.999;
+      asset.vy *= 0.999;
+
+      // Cap maximum velocity
+      const maxVel = 2;
+      const vel = Math.sqrt(asset.vx * asset.vx + asset.vy * asset.vy);
+      if (vel > maxVel) {
+        asset.vx = (asset.vx / vel) * maxVel;
+        asset.vy = (asset.vy / vel) * maxVel;
+      }
+    });
+
+    // Save positions every 60 frames (~2 seconds)
+    if (this.physicsTicks >= 60) {
+      this.physicsTicks = 0;
+      this.saveSpatialPositions(); // Async, fire and forget
+      this.loadTravelConnections(); // Update connections
+    }
+  }
+
+  /**
+   * Render the entire map (throttled to target FPS)
+   */
+  render(timestamp = 0) {
+    // Throttle to target FPS
+    const elapsed = timestamp - this.lastFrameTime;
+    const targetInterval = 1000 / this.fps;
+
+    if (elapsed < targetInterval) return;
+
+    this.lastFrameTime = timestamp;
+
+    // Update physics
+    this.updatePhysics();
+
+    const ctx = this.ctx;
+
+    // Clear canvas
+    ctx.fillStyle = '#0a0e1a';
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Save context
+    ctx.save();
+
+    // Apply transformations
+    ctx.translate(this.offsetX, this.offsetY);
+    ctx.scale(this.scale, this.scale);
+
+    // Draw ASCII starfield (static, no twinkling for performance)
+    this.renderStarfield();
+
+    // Draw grid (optional)
+    if (this.showGrid) {
+      this.renderGrid();
+    }
+
+    // Draw faction influence zones
+    this.renderInfluenceZones();
+
+    // Draw published assets
+    this.renderPublishedAssets();
+
+    // Draw faction centers
+    this.renderFactionCenters();
+
+    // Draw connections (optional)
+    if (this.showConnections) {
+      this.renderConnections();
+    }
+
+    // Draw current character
+    if (this.currentCharacter && this.currentCharacter.location) {
+      this.renderCharacter(this.currentCharacter);
+    }
+
+    // Restore context
+    ctx.restore();
+
+    // Draw UI overlays
+    this.renderUI();
+  }
+
+  /**
+   * Render starfield background (simplified)
+   */
+  renderStarfield() {
+    const ctx = this.ctx;
+
+    this.stars.forEach(star => {
+      ctx.fillStyle = `rgba(255, 255, 255, ${star.brightness})`;
+      ctx.font = `${star.size * 8}px monospace`;
+      ctx.fillText(star.char, star.x, star.y);
+    });
+  }
+
+  /**
+   * Render grid
+   */
+  renderGrid() {
+    const ctx = this.ctx;
+    const gridSize = this.gridSize; // Use admin-controlled grid size
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+
+    for (let x = 0; x <= this.width; x += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, this.height);
+      ctx.stroke();
+    }
+
+    for (let y = 0; y <= this.height; y += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(this.width, y);
+      ctx.stroke();
+    }
+
+    ctx.setLineDash([]);
+  }
+
+  /**
+   * Render faction influence zones
+   */
+  renderInfluenceZones() {
+    const ctx = this.ctx;
+
+    this.factionCenters.forEach(center => {
+      const influenceRadius = center.radius * 4;
+
+      const gradient = ctx.createRadialGradient(
+        center.x, center.y, 0,
+        center.x, center.y, influenceRadius
+      );
+
+      gradient.addColorStop(0, `${center.color}30`);
+      gradient.addColorStop(0.5, `${center.color}15`);
+      gradient.addColorStop(1, `${center.color}00`);
+
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, influenceRadius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  /**
+   * Render published assets
+   */
+  renderPublishedAssets() {
+    const ctx = this.ctx;
+
+    this.publishedAssets.forEach(asset => {
+      const isHovered = this.hoveredAsset === asset;
+      const isSelected = this.selectedAsset === asset;
+      const isSpaceHub = asset.hubData?.isStartingLocation;
+
+      if (isSpaceHub) {
+        // Special rendering for space hubs
+        this.renderSpaceHub(asset, isHovered, isSelected);
+      } else {
+        // Regular asset rendering
+        ctx.fillStyle = asset.color + (isSelected ? 'ff' : '80');
+        ctx.strokeStyle = asset.color;
+        ctx.lineWidth = isHovered || isSelected ? 3 : 1;
+
+        ctx.beginPath();
+        ctx.arc(asset.x, asset.y, asset.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw pulse effect for selected
+        if (isSelected) {
+          ctx.strokeStyle = asset.color + '40';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(asset.x, asset.y, asset.radius + 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    });
+  }
+
+  /**
+   * Render space hub with special styling
+   */
+  renderSpaceHub(hub, isHovered, isSelected) {
+    const ctx = this.ctx;
+    const radius = 50; // Larger radius for hubs
+    const color = hub.hubData?.color || hub.color || '#667eea';
+
+    // Outer rotating ring
+    const time = Date.now() / 1000;
+    ctx.save();
+    ctx.translate(hub.x, hub.y);
+    ctx.rotate(time * 0.2);
+
+    // Outer glow
+    const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius * 2);
+    glowGradient.addColorStop(0, color + '40');
+    glowGradient.addColorStop(1, color + '00');
+    ctx.fillStyle = glowGradient;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rotating ring segments
+    ctx.strokeStyle = color + '60';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 8; i++) {
+      const angle1 = (Math.PI * 2 / 8) * i;
+      const angle2 = angle1 + Math.PI / 12;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * 1.3, angle1, angle2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // Main hub circle
+    const mainGradient = ctx.createRadialGradient(
+      hub.x, hub.y, 0,
+      hub.x, hub.y, radius
+    );
+    mainGradient.addColorStop(0, color + 'ff');
+    mainGradient.addColorStop(0.7, color + 'cc');
+    mainGradient.addColorStop(1, color + '80');
+
+    ctx.fillStyle = mainGradient;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = isHovered || isSelected ? 4 : 2;
+
+    ctx.beginPath();
+    ctx.arc(hub.x, hub.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Hub icon
+    const icon = hub.hubData?.icon || '✦';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    ctx.shadowBlur = 8;
+    ctx.fillText(icon, hub.x, hub.y);
+    ctx.shadowBlur = 0;
+
+    // Hub name label
+    ctx.font = 'bold 16px monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    ctx.shadowBlur = 6;
+    ctx.fillText(hub.title, hub.x, hub.y + radius + 30);
+
+    // String domain subtitle
+    ctx.font = '12px monospace';
+    ctx.fillStyle = color;
+    ctx.fillText(hub.hubData?.stringDomain || '', hub.x, hub.y + radius + 50);
+    ctx.shadowBlur = 0;
+
+    // Pulse effect when selected
+    if (isSelected) {
+      ctx.strokeStyle = color + '60';
+      ctx.lineWidth = 2;
+      const pulseRadius = radius + 10 + Math.sin(time * 3) * 5;
+      ctx.beginPath();
+      ctx.arc(hub.x, hub.y, pulseRadius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Hover glow
+    if (isHovered) {
+      ctx.strokeStyle = '#ffffff80';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(hub.x, hub.y, radius + 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Render faction centers
+   */
+  renderFactionCenters() {
+    const ctx = this.ctx;
+
+    this.factionCenters.forEach(center => {
+      // Outer glow
+      const glowGradient = ctx.createRadialGradient(
+        center.x, center.y, 0,
+        center.x, center.y, center.radius * 1.5
+      );
+      glowGradient.addColorStop(0, `${center.color}ff`);
+      glowGradient.addColorStop(1, `${center.color}00`);
+
+      ctx.fillStyle = glowGradient;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, center.radius * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Main circle
+      ctx.fillStyle = center.color;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, center.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // ASCII symbol
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 24px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★', center.x, center.y);
+
+      // Label
+      ctx.font = 'bold 14px monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowBlur = 4;
+      ctx.fillText(center.name, center.x, center.y + center.radius + 20);
+      ctx.shadowBlur = 0;
+    });
+  }
+
+  /**
+   * Render travel connections with dynamic color coding
+   * RED = about to break (high distance/low stability)
+   * GREEN = stable connection
+   * BLUE = future/planned connection
+   */
+  renderConnections() {
+    if (this.travelConnections.length === 0) return;
+
+    const ctx = this.ctx;
+
+    this.travelConnections.forEach(conn => {
+      // Determine color based on status and stability
+      let color, glowColor, lineWidth, alpha, dashPattern;
+
+      if (conn.status === 'future') {
+        // BLUE - Future/Planned connections
+        const blueIntensity = Math.floor(100 + (conn.stability * 155));
+        color = `rgb(30, 144, ${blueIntensity})`;
+        glowColor = `rgba(30, 144, 255, ${conn.stability * 0.5})`;
+        lineWidth = 1 + conn.stability;
+        alpha = 0.3 + (conn.stability * 0.2);
+        dashPattern = [10, 10]; // Longer dashes for future
+      } else if (conn.status === 'warning') {
+        // RED-YELLOW gradient based on stability
+        // stability 0.8-0.6 = yellow-orange
+        // stability 0.6-0.2 = orange-red
+        if (conn.stability > 0.5) {
+          // Yellow to Orange
+          const orangeRatio = (0.8 - conn.stability) / 0.3;
+          const red = 255;
+          const green = Math.floor(200 - (orangeRatio * 100));
+          color = `rgb(${red}, ${green}, 0)`;
+          glowColor = `rgba(${red}, ${green}, 0, 0.4)`;
+        } else {
+          // Orange to Red
+          const redRatio = (0.5 - conn.stability) / 0.3;
+          const red = 255;
+          const green = Math.floor(100 - (redRatio * 100));
+          color = `rgb(${red}, ${green}, 0)`;
+          glowColor = `rgba(255, 0, 0, ${0.5 - conn.stability})`;
+        }
+        lineWidth = 2 + (1 - conn.stability) * 2; // Thicker when more unstable
+        alpha = 0.5 + (1 - conn.stability) * 0.3;
+        dashPattern = [5, 5];
+      } else {
+        // GREEN - Stable connections
+        const greenIntensity = Math.floor(150 + (conn.stability * 105));
+        color = `rgb(16, ${greenIntensity}, 129)`;
+        glowColor = `rgba(16, 185, 129, ${conn.stability * 0.4})`;
+        lineWidth = 2 + (conn.stability * 1.5);
+        alpha = 0.6 + (conn.stability * 0.2);
+        dashPattern = [3, 3]; // Tight dashes for stable
+      }
+
+      // Draw glow effect
+      ctx.save();
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = glowColor;
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = lineWidth + 2;
+      ctx.setLineDash(dashPattern);
+
+      ctx.beginPath();
+      ctx.moveTo(conn.fromX, conn.fromY);
+      ctx.lineTo(conn.toX, conn.toY);
+      ctx.stroke();
+      ctx.restore();
+
+      // Draw main line
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.setLineDash(dashPattern);
+
+      ctx.beginPath();
+      ctx.moveTo(conn.fromX, conn.fromY);
+      ctx.lineTo(conn.toX, conn.toY);
+      ctx.stroke();
+
+      // Draw midpoint marker with status color
+      const midX = (conn.fromX + conn.toX) / 2;
+      const midY = (conn.fromY + conn.toY) / 2;
+
+      ctx.shadowBlur = 5;
+      ctx.shadowColor = glowColor;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = alpha + 0.2;
+      ctx.beginPath();
+      ctx.arc(midX, midY, 2 + lineWidth * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Add animated pulse for unstable connections
+      if (conn.status === 'warning' && conn.stability < 0.4) {
+        const pulseSize = 4 + Math.sin(Date.now() / 200) * 2;
+        ctx.globalAlpha = (1 - conn.stability) * 0.3;
+        ctx.beginPath();
+        ctx.arc(midX, midY, pulseSize, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    });
+
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+
+  /**
+   * Render UI overlays
+   */
+  renderUI() {
+    const ctx = this.ctx;
+
+    // Zoom level
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(10, this.canvas.height - 30, 120, 20);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px monospace';
+    ctx.fillText(`Zoom: ${(this.scale * 100).toFixed(0)}% | Assets: ${this.publishedAssets.length}`, 15, this.canvas.height - 15);
+
+    // Hovered asset info
+    if (this.hoveredAsset) {
+      this.renderAssetTooltip(this.hoveredAsset);
+    }
+  }
+
+  /**
+   * Render asset tooltip
+   */
+  renderAssetTooltip(asset) {
+    const ctx = this.ctx;
+    const padding = 10;
+    const lineHeight = 16;
+
+    const lines = [
+      `${asset.title || 'Asset'}`,
+      `Type: ${asset.assetType || 'unknown'}`,
+      `Votes: ${asset.votes || 0}`
+    ];
+
+    const maxWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
+    const boxWidth = maxWidth + padding * 2;
+    const boxHeight = lines.length * lineHeight + padding * 2;
+
+    const x = Math.min(this.canvas.width - boxWidth - 10, this.canvas.width - 220);
+    const y = 10;
+
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    ctx.fillRect(x, y, boxWidth, boxHeight);
+
+    // Border
+    ctx.strokeStyle = asset.color || '#667eea';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, boxWidth, boxHeight);
+
+    // Text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px monospace';
+    lines.forEach((line, index) => {
+      ctx.fillText(line, x + padding, y + padding + (index + 1) * lineHeight);
+    });
+  }
+
+  /**
+   * Animation loop (throttled)
+   */
+  animate(timestamp) {
+    this.render(timestamp);
+    requestAnimationFrame((ts) => this.animate(ts));
+  }
+
+  /**
+   * Render character on map
+   */
+  renderCharacter(character) {
+    const ctx = this.ctx;
+    const x = character.location.x;
+    const y = character.location.y;
+
+    // Character marker - ship icon
+    const size = 15;
+
+    // Draw ship triangle pointing up
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Glow effect
+    ctx.shadowColor = '#00ff00';
+    ctx.shadowBlur = 15;
+
+    // Ship body
+    ctx.fillStyle = '#00ff00';
+    ctx.beginPath();
+    ctx.moveTo(0, -size);
+    ctx.lineTo(-size * 0.6, size * 0.6);
+    ctx.lineTo(0, size * 0.3);
+    ctx.lineTo(size * 0.6, size * 0.6);
+    ctx.closePath();
+    ctx.fill();
+
+    // Ship outline
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+
+    // Name label
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(character.name, 0, size + 25);
+
+    ctx.restore();
+  }
+
+  /**
+   * Start animation
+   */
+  start() {
+    console.log('Galactic Map Starting - Size:', this.width, 'x', this.height);
+    this.animate(0);
+    // Load published assets
+    this.loadPublishedAssets();
+    // Load admin settings
+    this.loadSettings();
+    // Refresh assets every 30 seconds
+    setInterval(() => this.loadPublishedAssets(), 30000);
+    // Refresh settings every 5 seconds
+    setInterval(() => this.loadSettings(), 5000);
+  }
+}
+
+export default GalacticMap;

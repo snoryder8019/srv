@@ -443,4 +443,44 @@ router.post('/monitor/api/restart/:appName', isAdmin, async (req, res) => {
     }
 });
 
+// Service Monitor API - Get service history
+router.get('/monitor/api/history/:serviceName', isAdmin, async (req, res) => {
+    try {
+        const ServiceMonitorLog = (await import('../../api/v1/models/ServiceMonitorLog.js')).default;
+        const model = new ServiceMonitorLog();
+        const limit = parseInt(req.query.limit) || 100;
+        const history = await model.getServiceHistory(req.params.serviceName, limit);
+        res.json({ success: true, history });
+    } catch (error) {
+        console.error('History error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Service Monitor API - Get downtime statistics
+router.get('/monitor/api/stats/:serviceName', isAdmin, async (req, res) => {
+    try {
+        const ServiceMonitorLog = (await import('../../api/v1/models/ServiceMonitorLog.js')).default;
+        const model = new ServiceMonitorLog();
+        const days = parseInt(req.query.days) || 7;
+        const stats = await model.getDowntimeStats(req.params.serviceName, days);
+        res.json({ success: true, stats });
+    } catch (error) {
+        console.error('Stats error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Service Monitor API - Get current monitoring state
+router.get('/monitor/api/daemon/status', isAdmin, async (req, res) => {
+    try {
+        const { getServiceStates } = await import('../../lib/serviceMonitorDaemon.js');
+        const states = getServiceStates();
+        res.json({ success: true, states, running: true });
+    } catch (error) {
+        console.error('Daemon status error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 export default router

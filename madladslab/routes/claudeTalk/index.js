@@ -341,6 +341,8 @@ router.get('/display', (_req, res) => {
 <head>
   <title>Claude Voice Assistant Display</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Google Cast SDK -->
+  <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -403,6 +405,72 @@ router.get('/display', (_req, res) => {
       border: 2px solid #00FF88;
       border-radius: 8px;
       font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    #castButton {
+      position: absolute;
+      top: 1rem;
+      right: 12rem;
+      width: 50px;
+      height: 50px;
+      cursor: pointer;
+      background: rgba(139, 92, 246, 0.3);
+      border: 2px solid #8b5cf6;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      transition: all 0.3s;
+    }
+    #castButton:hover {
+      background: rgba(139, 92, 246, 0.5);
+      transform: scale(1.05);
+    }
+    #castButton.casting {
+      background: rgba(0, 255, 136, 0.3);
+      border-color: #00FF88;
+    }
+    #videoContainer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: none;
+      background: #000;
+      z-index: 1000;
+    }
+    #videoContainer.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #videoFrame {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    #closeVideo {
+      position: absolute;
+      top: 2rem;
+      right: 2rem;
+      padding: 1rem 2rem;
+      background: rgba(255, 68, 68, 0.8);
+      border: none;
+      color: white;
+      font-size: 1.2rem;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      z-index: 1001;
+      transition: all 0.3s;
+    }
+    #closeVideo:hover {
+      background: rgba(255, 68, 68, 1);
+      transform: scale(1.05);
     }
     #debug {
       position: absolute;
@@ -428,9 +496,16 @@ router.get('/display', (_req, res) => {
 </head>
 <body>
   <div id="status">Initializing...</div>
+  <div id="castButton" title="Cast to Chromecast/Roku">📺</div>
   <canvas id="waveform"></canvas>
   <div id="content">Waiting for voice input...</div>
   <div id="debug">Debug log:<br></div>
+
+  <!-- Video Container for embedded content -->
+  <div id="videoContainer">
+    <button id="closeVideo">✕ Close</button>
+    <iframe id="videoFrame" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
@@ -623,6 +698,136 @@ router.get('/display', (_req, res) => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight * 0.4;
     });
+
+    // Google Cast Integration
+    let castSession = null;
+    const castButton = document.getElementById('castButton');
+    const videoContainer = document.getElementById('videoContainer');
+    const videoFrame = document.getElementById('videoFrame');
+    const closeVideoBtn = document.getElementById('closeVideo');
+
+    // Initialize Cast API
+    window['__onGCastApiAvailable'] = function(isAvailable) {
+      if (isAvailable) {
+        debugLog('✅ Google Cast API available');
+        initializeCastApi();
+      } else {
+        debugLog('❌ Google Cast API not available');
+      }
+    };
+
+    function initializeCastApi() {
+      const applicationID = chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID;
+      const sessionRequest = new chrome.cast.SessionRequest(applicationID);
+      const apiConfig = new chrome.cast.ApiConfig(sessionRequest,
+        sessionListener,
+        receiverListener);
+
+      chrome.cast.initialize(apiConfig, onInitSuccess, onError);
+    }
+
+    function onInitSuccess() {
+      debugLog('Cast initialized successfully');
+    }
+
+    function onError(error) {
+      debugLog('Cast error: ' + error);
+    }
+
+    function sessionListener(session) {
+      debugLog('New cast session: ' + session.sessionId);
+      castSession = session;
+      castButton.classList.add('casting');
+    }
+
+    function receiverListener(availability) {
+      debugLog('Cast receiver ' + (availability === 'available' ? 'available' : 'unavailable'));
+    }
+
+    // Cast button click handler
+    castButton.addEventListener('click', () => {
+      if (castSession) {
+        castSession.stop(() => {
+          castSession = null;
+          castButton.classList.remove('casting');
+          debugLog('Cast session stopped');
+        }, onError);
+      } else {
+        chrome.cast.requestSession((session) => {
+          castSession = session;
+          castButton.classList.add('casting');
+          debugLog('Cast session started');
+        }, onError);
+      }
+    });
+
+    // Video embedding functions - supports YouTube, Vimeo, Twitch, etc.
+    function loadVideo(url) {
+      debugLog('Loading video: ' + url);
+
+      let embedUrl = '';
+
+      // YouTube
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        const videoId = extractYouTubeId(url);
+        if (videoId) {
+          embedUrl = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1';
+        }
+      }
+      // Vimeo
+      else if (url.includes('vimeo.com')) {
+        const videoId = url.split('/').pop().split('?')[0];
+        embedUrl = 'https://player.vimeo.com/video/' + videoId + '?autoplay=1';
+      }
+      // Twitch
+      else if (url.includes('twitch.tv')) {
+        const channel = url.split('/').pop();
+        embedUrl = 'https://player.twitch.tv/?channel=' + channel + '&parent=' + window.location.hostname;
+      }
+      // Direct video URL
+      else if (url.match(/\\.(mp4|webm|ogg)$/i)) {
+        videoFrame.srcdoc = '<video controls autoplay style="width:100%;height:100%;"><source src="' + url + '"></video>';
+        videoContainer.classList.add('active');
+        return;
+      }
+
+      if (embedUrl) {
+        videoFrame.src = embedUrl;
+        videoContainer.classList.add('active');
+      } else {
+        debugLog('⚠️ Unsupported video URL');
+        contentDiv.innerHTML = '<div style="color: #FF8800;">⚠️ Unsupported video URL. Supported: YouTube, Vimeo, Twitch, direct MP4/WebM</div>';
+      }
+    }
+
+    function extractYouTubeId(url) {
+      const patterns = [
+        /youtube\\.com\\/watch\\?v=([^&]+)/,
+        /youtu\\.be\\/([^?]+)/,
+        /youtube\\.com\\/embed\\/([^?]+)/
+      ];
+
+      for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) return match[1];
+      }
+      return null;
+    }
+
+    closeVideoBtn.addEventListener('click', () => {
+      videoContainer.classList.remove('active');
+      videoFrame.src = '';
+      videoFrame.srcdoc = '';
+    });
+
+    // Listen for video load commands from socket
+    socket.on('load_video', (data) => {
+      debugLog('Received video load command: ' + data.url);
+      loadVideo(data.url);
+    });
+
+    // Expose loadVideo globally for manual testing
+    window.loadVideo = loadVideo;
   </script>
 </body>
 </html>
@@ -1096,6 +1301,16 @@ export function setupWebSocket(io) {
     socket.emit('update', {
       type: 'init',
       waveform: currentWaveform
+    });
+
+    // Handle video load requests
+    socket.on('load_video', (data) => {
+      console.log('📺 Video load request received:', data.url);
+      // Broadcast to all connected displays
+      displayNamespace.emit('load_video', {
+        url: data.url,
+        timestamp: new Date().toISOString()
+      });
     });
 
     socket.on('disconnect', () => {

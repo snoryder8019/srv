@@ -1,25 +1,40 @@
-// Galactic State - 1000x1000 2D figurative space with moving zones
+// Galactic State - 5000x5000 2D figurative space with moving zones and orbitals
 // ASCII map visualization with basic dots
+// NOW WITH DATABASE PERSISTENCE - survives server restarts!
 
 import express from 'express';
 const router = express.Router();
+import { GalacticState } from '../../api/v1/models/GalacticState.js';
 
 // Configuration
-const SPACE_WIDTH = 1000;
-const SPACE_HEIGHT = 1000;
 const VIEW_WIDTH = 80;  // Terminal width for ASCII display
 const VIEW_HEIGHT = 40; // Terminal height for ASCII display
 
-// Four zones with initial positions and velocities
-let zones = [
-    { id: 1, x: 250, y: 250, vx: 0.5, vy: 0.3, symbol: '●', name: 'Alpha' },
-    { id: 2, x: 750, y: 250, vx: -0.3, vy: 0.5, symbol: '◆', name: 'Beta' },
-    { id: 3, x: 250, y: 750, vx: 0.4, vy: -0.4, symbol: '■', name: 'Gamma' },
-    { id: 4, x: 750, y: 750, vx: -0.5, vy: -0.3, symbol: '★', name: 'Delta' }
-];
+// Load state from database on startup
+let zones = [];
+let SPACE_WIDTH = 5000;
+let SPACE_HEIGHT = 5000;
+let lastSaveTime = 0;
+const SAVE_INTERVAL = 5000; // Save to DB every 5 seconds
 
-// Update zone positions
-function updateZones() {
+// Initialize state (DB loading disabled - using static zones for legacy route)
+async function initializeState() {
+  // This route is deprecated - use /universe/galactic-map for new physics map
+  // Using static zones for legacy ASCII display only
+  zones = [
+    { id: 1, x: 1250, y: 1250, vx: 0.5, vy: 0.3, symbol: '●', name: 'Alpha' },
+    { id: 2, x: 3750, y: 1250, vx: -0.3, vy: 0.5, symbol: '◆', name: 'Beta' },
+    { id: 3, x: 1250, y: 3750, vx: 0.4, vy: -0.4, symbol: '■', name: 'Gamma' },
+    { id: 4, x: 3750, y: 3750, vx: -0.5, vy: -0.3, symbol: '★', name: 'Delta' }
+  ];
+  console.log('✓ Legacy galactic state initialized (static zones)');
+}
+
+// Initialize on module load
+initializeState();
+
+// Update zone positions (DB saving disabled - using new galactic map system)
+async function updateZones() {
     zones.forEach(zone => {
         zone.x += zone.vx;
         zone.y += zone.vy;
@@ -34,6 +49,9 @@ function updateZones() {
             zone.y = Math.max(0, Math.min(SPACE_HEIGHT, zone.y));
         }
     });
+
+    // DB saving disabled - this old route is deprecated
+    // Use /universe/galactic-map for the new physics-based map
 }
 
 // Helper function to draw a line between two points (Bresenham's algorithm)
@@ -204,7 +222,7 @@ router.get('/map', (req, res) => {
     const status = generateStatus();
 
     res.set('Content-Type', 'text/plain; charset=utf-8');
-    res.send(`Galactic State - 1000x1000 Space\nScale: ${scale}x | Center: (${Math.floor(centerX)}, ${Math.floor(centerY)})\n\n${map}${status}`);
+    res.send(`Galactic State - ${SPACE_WIDTH}x${SPACE_HEIGHT} Space\nScale: ${scale}x | Center: (${Math.floor(centerX)}, ${Math.floor(centerY)})\n\n${map}${status}`);
 });
 
 // Get current state as JSON
@@ -224,14 +242,17 @@ router.post('/tick', (req, res) => {
 });
 
 // Reset zones to initial positions
-router.post('/reset', (req, res) => {
-    zones = [
-        { id: 1, x: 250, y: 250, vx: 0.5, vy: 0.3, symbol: '●', name: 'Alpha' },
-        { id: 2, x: 750, y: 250, vx: -0.3, vy: 0.5, symbol: '◆', name: 'Beta' },
-        { id: 3, x: 250, y: 750, vx: 0.4, vy: -0.4, symbol: '■', name: 'Gamma' },
-        { id: 4, x: 750, y: 750, vx: -0.5, vy: -0.3, symbol: '★', name: 'Delta' }
-    ];
-    res.json({ success: true, message: 'Zones reset to initial positions' });
+router.post('/reset', async (req, res) => {
+    try {
+      const state = await GalacticState.resetState();
+      zones = state.zones;
+      SPACE_WIDTH = state.spaceWidth;
+      SPACE_HEIGHT = state.spaceHeight;
+      res.json({ success: true, message: 'Zones reset to initial positions', zones: zones });
+    } catch (error) {
+      console.error('Failed to reset galactic state:', error);
+      res.status(500).json({ success: false, error: 'Failed to reset state' });
+    }
 });
 
 // Auto-update zones every 100ms

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/asset-builder.css">
+  <style>
+    .help-link {
+      color: #3b82f6;
+      text-decoration: none;
+      margin-left: 0.5rem;
+      display: inline-flex;
+      align-items: center;
+      transition: color 0.2s;
+    }
+    .help-link:hover {
+      color: #2563eb;
+    }
+    .help-link svg {
+      width: 16px;
+      height: 16px;
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="asset-builder-container">
+    <h1>Asset Builder</h1>
+    <p>Create powerful game assets with stats, lore, and community collaboration!</p>
+
+    <div id="alertContainer"></div>
+
+    <!-- Asset Builder Form -->
+    <div class="asset-form" id="assetForm">
+      <form id="builderForm" enctype="multipart/form-data">
+
+        <!-- Basic Info -->
+        <div class="form-section">
+          <h3>Basic Information</h3>
+
+          <div class="form-group">
+            <label for="title">Asset Title *</label>
+            <input type="text" id="title" name="title" required placeholder="Enter a unique name">
+          </div>
+
+          <div class="form-group">
+            <label for="description">Short Description *</label>
+            <textarea id="description" name="description" required placeholder="Brief description (1-2 sentences)"></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="assetType">Asset Type *</label>
+              <select id="assetType" name="assetType" required>
+                <option value="">Select Type</option>
+                <option value="character">Character/NPC</option>
+                <option value="item">Item</option>
+                <option value="weapon">Weapon</option>
+                <option value="armor">Armor</option>
+                <option value="ship">Ship/Vehicle</option>
+                <option value="module">Ship Module</option>
+                <option value="ammo">Ammunition</option>
+                <option value="consumable">Consumable</option>
+                <option value="environment">Environment/Zone</option>
+                <option value="object">Object (Pixel-Built)</option>
+                <option value="structure">Structure/Building</option>
+                <option value="quest">Quest/Mission</option>
+                <option value="ability">Ability/Skill</option>
+                <option value="species">Species</option>
+                <option value="faction">Faction</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="rarity">Rarity</label>
+              <select id="rarity" name="rarity">
+                <option value="">Select Rarity</option>
+                <option value="common">Common</option>
+                <option value="uncommon">Uncommon</option>
+                <option value="rare">Rare</option>
+                <option value="epic">Epic</option>
+                <option value="legendary">Legendary</option>
+                <option value="mythic">Mythic</option>
+                <option value="unique">Unique</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="tags">Tags (comma-separated)</label>
+            <input type="text" id="tags" name="tags" placeholder="e.g., sci-fi, laser, energy">
+          </div>
+        </div>
+
+        <!-- Type-Specific Fields (dynamically populated) -->
+        <div id="typeSpecificFields"></div>
+
+        <!-- Lore & Story -->
+        <div class="form-section">
+          <h3>Lore & Story</h3>
+
+          <div class="form-group">
+            <label for="lore">Lore/History</label>
+            <textarea id="lore" name="lore" rows="4" placeholder="Tell the story behind this asset..."></textarea>
+            <small>Background history, origins, significance in the universe</small>
+          </div>
+
+          <div class="form-group">
+            <label for="backstory">Backstory</label>
+            <textarea id="backstory" name="backstory" rows="3" placeholder="Who created it? Where did it come from?"></textarea>
+            <small>Creator, manufacturer, or origin story</small>
+          </div>
+
+          <div class="form-group">
+            <label for="flavor">Flavor Text</label>
+            <textarea id="flavor" name="flavor" rows="2" placeholder="A memorable quote or description..."></textarea>
+            <small>Atmospheric text that appears in-game</small>
+          </div>
+        </div>
+
+        <!-- Stats & Attributes -->
+        <div class="form-section">
+          <h3>Stats & Attributes</h3>
+          <p>These stats will stack to characters when equipped/used</p>
+
+          <div class="stats-grid">
+            <!-- Combat Stats -->
+            <div class="stat-group">
+              <h4>Combat Stats</h4>
+              <div class="form-group">
+                <label for="stat_damage">Damage</label>
+                <input type="number" id="stat_damage" name="stat_damage" min="0" step="1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_defense">Defense</label>
+                <input type="number" id="stat_defense" name="stat_defense" min="0" step="1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_accuracy">Accuracy</label>
+                <input type="number" id="stat_accuracy" name="stat_accuracy" min="0" step="0.1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_critChance">Crit Chance (%)</label>
+                <input type="number" id="stat_critChance" name="stat_critChance" min="0" max="100" step="1" placeholder="0">
+              </div>
+            </div>
+
+            <!-- Physical Stats -->
+            <div class="stat-group">
+              <h4>Physical Stats</h4>
+              <div class="form-group">
+                <label for="stat_health">Health</label>
+                <input type="number" id="stat_health" name="stat_health" min="0" step="1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_energy">Energy</label>
+                <input type="number" id="stat_energy" name="stat_energy" min="0" step="1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_speed">Speed</label>
+                <input type="number" id="stat_speed" name="stat_speed" min="0" step="0.1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_weight">Weight</label>
+                <input type="number" id="stat_weight" name="stat_weight" min="0" step="0.1" placeholder="0">
+              </div>
+            </div>
+
+            <!-- Resource Stats -->
+            <div class="stat-group">
+              <h4>Resource Stats</h4>
+              <div class="form-group">
+                <label for="stat_value">Value (Credits)</label>
+                <input type="number" id="stat_value" name="stat_value" min="0" step="1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_durability">Durability</label>
+                <input type="number" id="stat_durability" name="stat_durability" min="0" step="1" placeholder="100">
+              </div>
+              <div class="form-group">
+                <label for="stackable">Stackable</label>
+                <select id="stackable" name="stackable">
+                  <option value="false">No</option>
+                  <option value="true">Yes</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="maxStack">Max Stack</label>
+                <input type="number" id="maxStack" name="maxStack" min="1" value="1" placeholder="1">
+              </div>
+            </div>
+
+            <!-- Special Stats -->
+            <div class="stat-group">
+              <h4>Special Stats</h4>
+              <div class="form-group">
+                <label for="stat_range">Range</label>
+                <input type="number" id="stat_range" name="stat_range" min="0" step="0.1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_fireRate">Fire Rate</label>
+                <input type="number" id="stat_fireRate" name="stat_fireRate" min="0" step="0.1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_capacity">Capacity</label>
+                <input type="number" id="stat_capacity" name="stat_capacity" min="0" step="1" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label for="stat_level">Required Level</label>
+                <input type="number" id="stat_level" name="stat_level" min="1" step="1" placeholder="1">
+              </div>
+            </div>
+          </div>
+
+          <!-- Effects -->
+          <div class="form-group">
+            <label for="effects">
+              Special Effects (one per line)
+              <a href="/help/asset-json-guide#effects" target="_blank" class="help-link" title="View JSON format guide">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: text-bottom;">
+                  <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zM8 7a1 1 0 0 0-1 1v3a1 1 0 0 0 2 0V8a1 1 0 0 0-1-1zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/>
+                </svg>
+              </a>
+            </label>
+            <textarea id="effects" name="effects" rows="3" placeholder="e.g.,&#10;+10% Movement Speed&#10;Regenerate 5 HP per second&#10;Immune to poison"></textarea>
+            <small>Additional buffs, debuffs, or special abilities</small>
+          </div>
+        </div>
+
+        <!-- Pixel Editor -->
+        <div class="form-section">
+          <h3>Pixel Art Editor</h3>
+          <p>Create pixel art for your asset. Supports animations with multiple frames!</p>
+          <div id="pixelEditorContainer"></div>
+        </div>
+
+        <!-- Image Uploads -->
+        <div class="form-section">
+          <h3>Image Uploads</h3>
+          <p>Upload images for your asset (fullscreen and index card are required):</p>
+
+          <div class="file-upload-section">
+            <!-- Pixel Art Upload -->
+            <div class="file-upload-box">
+              <h4>Pixel Art</h4>
+              <p class="file-info">Alternative to pixel editor<br>Max 10MB</p>
+              <input type="file" id="pixelArtFile" name="pixelArt" accept="image/*">
+              <label for="pixelArtFile" class="file-upload-label">
+                Choose File
+              </label>
+              <div id="pixelArtPreview"></div>
+            </div>
+
+            <!-- Fullscreen Artwork -->
+            <div class="file-upload-box">
+              <h4>Fullscreen Artwork *</h4>
+              <p class="file-info">Main display image<br>Max 10MB</p>
+              <input type="file" id="fullscreenFile" name="fullscreen" accept="image/*" required>
+              <label for="fullscreenFile" class="file-upload-label">
+                Choose File
+              </label>
+              <div id="fullscreenPreview"></div>
+            </div>
+
+            <!-- Index Card Artwork -->
+            <div class="file-upload-box">
+              <h4>Index Card *</h4>
+              <p class="file-info">Thumbnail/card image<br>Max 10MB</p>
+              <input type="file" id="indexCardFile" name="indexCard" accept="image/*" required>
+              <label for="indexCardFile" class="file-upload-label">
+                Choose File
+              </label>
+              <div id="indexCardPreview"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Form Actions -->
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="resetBtn">
+            Reset Form
+          </button>
+          <button type="button" class="btn btn-secondary" id="saveDraftBtn">
+            Save as Draft
+          </button>
+          <button type="button" class="btn btn-success" id="submitBtn">
+            Submit for Approval
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- My Assets List -->
+    <div class="form-section" style="margin-top: 3rem;">
+      <h2>My Assets</h2>
+      <div class="asset-list" id="assetList">
+        <p>Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script src="/javascripts/pixel-editor.js"></script>
+  <script src="/javascripts/asset-builder-enhanced.js"></script>
+</body>
+</html>

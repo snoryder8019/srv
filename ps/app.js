@@ -14,6 +14,7 @@ dotenv.config();
 import indexRouter from './routes/index.js';
 import apiRouter from './api/index.js';
 import { connectDB } from './plugins/mongo/mongo.js';
+import { loadActiveCharacter } from './middlewares/characterSession.js';
 
 const app = express();
 
@@ -41,7 +42,8 @@ app.use(
     cookie: {
       secure: process.env.NODE_ENV === 'production',
       httpOnly: true,
-      sameSite: 'strict'
+      sameSite: 'lax',
+      maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
     },
   })
 );
@@ -49,6 +51,9 @@ app.use(
 // Initialize Passport & Session Middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Load active character middleware (must be after passport)
+app.use(loadActiveCharacter);
 
 // Connect to database
 connectDB();
@@ -58,6 +63,7 @@ app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/', indexRouter);

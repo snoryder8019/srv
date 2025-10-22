@@ -3,14 +3,29 @@
     <div class="nav-brand">
       <a href="/">Stringborn Universe</a>
     </div>
-    <ul class="nav-links">
-      <li><a href="/zones">Zones</a></li>
-      <li><a href="/universe/species">Species</a></li>
+
+    <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="Toggle menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+
+    <ul class="nav-links" id="navLinks">
+      <li><a href="/menu" class="btn btn-small">Main Menu</a></li>
       <% if (user) { %>
-        <li><a href="/characters">My Characters</a></li>
-        <li><a href="/universe/galactic-state">Galactic State</a></li>
+        <% if (typeof character !== 'undefined' && character) { %>
+          <li class="character-info">
+            <span class="character-name"><%= character.name %></span>
+            <span class="character-level">Lvl <%= character.level %></span>
+          </li>
+        <% } %>
+        <li><a href="/profile" class="btn btn-small">Profile</a></li>
+        <li><a href="/assets/voting" class="btn btn-small">Vote</a></li>
+        <% if (user.isAdmin) { %>
+          <li><a href="/admin" class="btn btn-small" style="background: #00ff9f; color: #000;">Admin</a></li>
+        <% } %>
         <li class="user-menu">
-          <span>Welcome, <%= user.username %></span>
+          <span class="user-name">@<%= user.username %></span>
           <button onclick="logout()" class="btn btn-small">Logout</button>
         </li>
       <% } else { %>
@@ -18,4 +33,192 @@
       <% } %>
     </ul>
   </nav>
+
+  <style>
+    /* Ensure nav-links shows on desktop */
+    .nav-links {
+      display: flex;
+      list-style: none;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    /* Mobile menu toggle button */
+    .mobile-menu-toggle {
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      z-index: 1001;
+    }
+
+    .mobile-menu-toggle span {
+      width: 25px;
+      height: 3px;
+      background: #00ff9f;
+      transition: all 0.3s;
+      border-radius: 2px;
+    }
+
+    .mobile-menu-toggle.active span:nth-child(1) {
+      transform: rotate(45deg) translate(5px, 5px);
+    }
+
+    .mobile-menu-toggle.active span:nth-child(2) {
+      opacity: 0;
+    }
+
+    .mobile-menu-toggle.active span:nth-child(3) {
+      transform: rotate(-45deg) translate(7px, -6px);
+    }
+
+    /* Mobile responsive styles */
+    @media (max-width: 768px) {
+      .navbar {
+        padding: 1rem;
+        position: relative;
+      }
+
+      .mobile-menu-toggle {
+        display: flex;
+        z-index: 1001;
+      }
+
+      .nav-links {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: rgba(10, 10, 26, 0.98);
+        backdrop-filter: blur(10px);
+        flex-direction: column;
+        gap: 0;
+        padding-top: 70px;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        border-bottom: 1px solid rgba(0, 255, 159, 0.2);
+        z-index: 1000;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+
+      .nav-links.active {
+        max-height: 100vh;
+        overflow-y: auto;
+      }
+
+      .nav-links li {
+        width: 100%;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .nav-links li:last-child {
+        border-bottom: none;
+      }
+
+      .nav-links a,
+      .nav-links .btn {
+        width: 100%;
+        text-align: center;
+        display: block;
+      }
+
+      .character-info {
+        display: flex;
+        justify-content: space-between;
+        padding: 1rem;
+        background: rgba(0, 255, 159, 0.05);
+      }
+
+      .user-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 1rem !important;
+      }
+
+      .user-name {
+        color: #00ff9f;
+        font-weight: bold;
+        text-align: center;
+      }
+
+      .nav-brand a {
+        font-size: 1.2rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .nav-brand a {
+        font-size: 1rem;
+      }
+
+      .navbar {
+        padding: 0.75rem;
+      }
+
+      .btn-small {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+      }
+    }
+
+    /* Ensure desktop navigation works */
+    @media (min-width: 769px) {
+      .mobile-menu-toggle {
+        display: none !important;
+      }
+
+      .nav-links {
+        position: static !important;
+        display: flex !important;
+        flex-direction: row !important;
+        max-height: none !important;
+        overflow: visible !important;
+        background: transparent !important;
+        padding: 0 !important;
+        gap: 2rem !important;
+      }
+
+      .nav-links li {
+        width: auto !important;
+        padding: 0 !important;
+        border-bottom: none !important;
+      }
+
+      .user-menu {
+        flex-direction: row !important;
+        gap: 1rem !important;
+        align-items: center;
+      }
+    }
+  </style>
+
+  <script>
+    function toggleMobileMenu() {
+      const navLinks = document.getElementById('navLinks');
+      const toggle = document.querySelector('.mobile-menu-toggle');
+      navLinks.classList.toggle('active');
+      toggle.classList.toggle('active');
+    }
+
+    // Close mobile menu when clicking a link
+    document.addEventListener('DOMContentLoaded', () => {
+      const links = document.querySelectorAll('.nav-links a');
+      links.forEach(link => {
+        link.addEventListener('click', () => {
+          const navLinks = document.getElementById('navLinks');
+          const toggle = document.querySelector('.mobile-menu-toggle');
+          if (navLinks.classList.contains('active')) {
+            navLinks.classList.remove('active');
+            toggle.classList.remove('active');
+          }
+        });
+      });
+    });
+  </script>
 </header>

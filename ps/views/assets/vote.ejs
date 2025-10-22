@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Community Voting</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/asset-builder.css">
+</head>
+<body>
+  <%- include('../partials/header', { user: user, character: character }) %>
+
+  <div class="voting-container">
+    <div class="voting-header">
+      <h1>Community Voting</h1>
+      <p>Vote for your favorite community-created assets!</p>
+      <% if (user) { %>
+        <p style="color: #10b981;">✓ Logged in as: <%= user.username %></p>
+      <% } else { %>
+        <p style="color: #ef4444;">Please <a href="/auth">login</a> to vote</p>
+      <% } %>
+    </div>
+
+    <% if (user && user.isAdmin) { %>
+      <!-- Admin Status Filter -->
+      <div class="voting-filters" style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 2px solid #e5e7eb;">
+        <h3 style="margin: 0 0 0.75rem 0; font-size: 0.875rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">Status</h3>
+        <button class="filter-btn status-filter active" data-status="submitted">Submitted for Voting</button>
+        <button class="filter-btn status-filter" data-status="approved">Approved Assets</button>
+        <button class="filter-btn status-filter" data-status="all">All Statuses</button>
+      </div>
+    <% } %>
+
+    <!-- Type Filter -->
+    <div class="voting-filters">
+      <h3 style="margin: 0 0 0.75rem 0; font-size: 0.875rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">Asset Type</h3>
+      <button class="filter-btn type-filter active" data-type="all">All Types</button>
+      <button class="filter-btn type-filter" data-type="item">Items</button>
+      <button class="filter-btn type-filter" data-type="character">Characters</button>
+      <button class="filter-btn type-filter" data-type="orbital">Orbitals</button>
+      <button class="filter-btn type-filter" data-type="galaxy">Galaxies</button>
+      <button class="filter-btn type-filter" data-type="anomaly">Anomalies</button>
+      <button class="filter-btn type-filter" data-type="zone">Zones</button>
+      <button class="filter-btn type-filter" data-type="planet">Planets</button>
+      <button class="filter-btn type-filter" data-type="environment">Environments</button>
+    </div>
+
+    <div id="alertContainer"></div>
+    <div class="voting-grid" id="votingGrid">
+      <p>Loading assets...</p>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <!-- PASS USER DATA TO JAVASCRIPT -->
+  <script>
+    <% if (user) { %>
+      window.USER_ID = "<%= user._id %>";
+      window.USERNAME = "<%= user.username %>";
+      window.IS_ADMIN = <%= user.isAdmin ? 'true' : 'false' %>;
+    <% } else { %>
+      window.USER_ID = null;
+      window.USERNAME = null;
+      window.IS_ADMIN = false;
+    <% } %>
+  </script>
+
+  <!-- LOAD VOTING SCRIPT -->
+  <script src="/javascripts/vote.js"></script>
+  <script src="/javascripts/suggestions.js"></script>
+</body>
+</html>

@@ -2,6 +2,7 @@ import express from 'express';
 import charactersRouter from './characters/index.js';
 import zonesRouter from './zones/index.js';
 import universeRouter from './universe/index.js';
+import assetsRouter from './assets/index.js';
 
 const router = express.Router();
 
@@ -12,7 +13,8 @@ router.get('/', (req, res) => {
     endpoints: {
       characters: '/api/v1/characters',
       zones: '/api/v1/zones',
-      universe: '/api/v1/universe'
+      universe: '/api/v1/universe',
+      assets: '/api/v1/assets'
     }
   });
 });
@@ -21,5 +23,6 @@ router.get('/', (req, res) => {
 router.use('/characters', charactersRouter);
 router.use('/zones', zonesRouter);
 router.use('/universe', universeRouter);
+router.use('/assets', assetsRouter);
 
 export default router;

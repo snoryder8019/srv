@@ -14,10 +14,12 @@ let transporter = null;
 function getTransporter() {
   if (!transporter) {
     transporter = nodemailer.createTransport({
-      service: 'Gmail',
+      host: 'smtp.zoho.com',
+      port: 465,
+      secure: true, // use SSL
       auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_PASS,
+        user: process.env.ZOHO_USER,
+        pass: process.env.ZOHO_PASS,
       },
     });
   }
@@ -62,7 +64,7 @@ export const sendDynamicEmail = async (to, emailType, user, dynamicLink) => {
     .replace('{emailheader}', emailHeaderUrl);
 
   const mailOptions = {
-    from: process.env.GMAIL_USER,
+    from: process.env.ZOHO_USER,
     to: to,
     subject: settings.subject,
     html: htmlTemplate,
@@ -133,16 +135,18 @@ export const emailOutGeneral = async (req, res) => {
 
     // Create nodemailer transporter
     const transporter = nodemailer.createTransport({
-      service: 'Gmail', // Update with your email service provider
+      host: 'smtp.zoho.com',
+      port: 465,
+      secure: true, // use SSL
       auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_PASS,
+        user: process.env.ZOHO_USER,
+        pass: process.env.ZOHO_PASS,
       },
     });
 
     // Set mail options
     const mailOptions = {
-      from: process.env.GMAIL_USER, // Sender's email address
+      from: process.env.ZOHO_USER, // Sender's email address
       to: to, // Recipient's email address
       subject: 'Message from madLadsLab', // Email subject
       html: htmlTemplate, // Email content

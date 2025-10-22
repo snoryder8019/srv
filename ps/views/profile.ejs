@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    .profile-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .profile-header {
+      background: rgba(0, 255, 159, 0.05);
+      border: 1px solid #00ff9f;
+      border-radius: 8px;
+      padding: 30px;
+      margin-bottom: 30px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .profile-avatar {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00ff9f, #00cc7f);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      font-weight: bold;
+      color: #000;
+    }
+
+    .profile-info h1 {
+      margin: 0 0 10px 0;
+      color: #00ff9f;
+    }
+
+    .profile-info p {
+      margin: 5px 0;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: rgba(0, 255, 159, 0.05);
+      border: 1px solid #00ff9f;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .stat-card h3 {
+      margin: 0 0 10px 0;
+      color: #00ff9f;
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      font-size: 36px;
+      font-weight: bold;
+      color: #fff;
+      margin: 0;
+    }
+
+    .achievements-section {
+      background: rgba(0, 255, 159, 0.05);
+      border: 1px solid #00ff9f;
+      border-radius: 8px;
+      padding: 30px;
+      margin-bottom: 30px;
+    }
+
+    .achievements-section h2 {
+      margin: 0 0 20px 0;
+      color: #00ff9f;
+    }
+
+    .achievements-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 15px;
+    }
+
+    .achievement-card {
+      background: rgba(0, 255, 159, 0.1);
+      border: 2px solid #00ff9f;
+      border-radius: 8px;
+      padding: 20px;
+      position: relative;
+      transition: all 0.3s;
+    }
+
+    .achievement-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0, 255, 159, 0.2);
+    }
+
+    .achievement-card.locked {
+      background: rgba(128, 128, 128, 0.1);
+      border-color: #666;
+      opacity: 0.5;
+    }
+
+    .achievement-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+
+    .achievement-name {
+      font-size: 18px;
+      font-weight: bold;
+      color: #00ff9f;
+      margin: 0 0 5px 0;
+    }
+
+    .achievement-card.locked .achievement-name {
+      color: #666;
+    }
+
+    .achievement-description {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.7);
+      margin: 0;
+    }
+
+    .achievement-date {
+      font-size: 12px;
+      color: rgba(0, 255, 159, 0.6);
+      margin-top: 10px;
+    }
+
+    .progress-section {
+      background: rgba(0, 255, 159, 0.05);
+      border: 1px solid #00ff9f;
+      border-radius: 8px;
+      padding: 30px;
+    }
+
+    .progress-section h2 {
+      margin: 0 0 20px 0;
+      color: #00ff9f;
+    }
+
+    .progress-bar-container {
+      margin-bottom: 20px;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .progress-bar {
+      height: 20px;
+      background: rgba(0, 255, 159, 0.1);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #00ff9f;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00ff9f, #00cc7f);
+      transition: width 0.5s ease;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+  </style>
+</head>
+<body>
+  <%- include('partials/header', { user: user }) %>
+
+  <div class="profile-container">
+    <div class="profile-header">
+      <div class="profile-avatar">
+        <%= user.username.charAt(0).toUpperCase() %>
+      </div>
+      <div class="profile-info">
+        <h1><%= user.username %></h1>
+        <p>Member since <%= new Date(user.createdAt).toLocaleDateString() %></p>
+        <% if (user.lastActive) { %>
+          <p>Last active: <%= new Date(user.lastActive).toLocaleDateString() %></p>
+        <% } %>
+      </div>
+    </div>
+
+    <div id="loading" class="loading">
+      Loading your stats...
+    </div>
+
+    <div id="profile-content" style="display: none;">
+      <!-- Stats Grid -->
+      <div class="stats-grid" id="statsGrid">
+        <!-- Stats will be loaded here -->
+      </div>
+
+      <!-- Achievements Section -->
+      <div class="achievements-section">
+        <h2>Achievements (<span id="achievementCount">0</span>)</h2>
+        <div class="achievements-grid" id="achievementsGrid">
+          <!-- Achievements will be loaded here -->
+        </div>
+      </div>
+
+      <!-- Progress Section -->
+      <div class="progress-section">
+        <h2>Progress Towards Next Achievements</h2>
+        <div id="progressBars">
+          <!-- Progress bars will be loaded here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('partials/footer') %>
+
+  <script>
+    // Achievement definitions (matching server-side)
+    const allAchievements = [
+      { id: 'first_asset', name: 'First Steps', description: 'Created your first asset', icon: '🎨', requirement: 1, stat: 'assetsCreated' },
+      { id: 'asset_creator_5', name: 'Creative Mind', description: 'Created 5 assets', icon: '✨', requirement: 5, stat: 'assetsCreated' },
+      { id: 'asset_creator_10', name: 'Master Creator', description: 'Created 10 assets', icon: '🏆', requirement: 10, stat: 'assetsCreated' },
+      { id: 'asset_creator_25', name: 'Creative Genius', description: 'Created 25 assets', icon: '👑', requirement: 25, stat: 'assetsCreated' },
+      { id: 'first_submission', name: 'Contributor', description: 'Submitted your first asset', icon: '📤', requirement: 1, stat: 'assetsSubmitted' },
+      { id: 'prolific_contributor', name: 'Prolific Contributor', description: 'Submitted 10 assets', icon: '🌟', requirement: 10, stat: 'assetsSubmitted' },
+      { id: 'first_vote', name: 'Community Member', description: 'Cast your first vote', icon: '👍', requirement: 1, stat: 'votesCast' },
+      { id: 'voter_25', name: 'Active Voter', description: 'Cast 25 votes', icon: '🗳️', requirement: 25, stat: 'votesCast' },
+      { id: 'voter_100', name: 'Democracy Champion', description: 'Cast 100 votes', icon: '🏛️', requirement: 100, stat: 'votesCast' },
+      { id: 'first_suggestion', name: 'Helpful Hand', description: 'Made your first suggestion', icon: '💡', requirement: 1, stat: 'suggestionsMade' },
+      { id: 'suggestions_10', name: 'Collaborative Spirit', description: 'Made 10 suggestions', icon: '🤝', requirement: 10, stat: 'suggestionsMade' },
+      { id: 'first_character', name: 'Character Builder', description: 'Created your first character', icon: '🧙', requirement: 1, stat: 'charactersCreated' },
+      { id: 'character_master', name: 'Character Master', description: 'Created 5 characters', icon: '⚔️', requirement: 5, stat: 'charactersCreated' },
+      { id: 'explorer', name: 'Explorer', description: 'Visited 5 different zones', icon: '🗺️', requirement: 5, stat: 'zonesVisited' },
+      { id: 'galactic_tourist', name: 'Galactic Tourist', description: 'Visited 20 different zones', icon: '🚀', requirement: 20, stat: 'zonesVisited' }
+    ];
+
+    async function loadProfile() {
+      const loading = document.getElementById('loading');
+      const content = document.getElementById('profile-content');
+
+      try {
+        const response = await fetch('/api/v1/profile/analytics');
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to load profile');
+        }
+
+        renderProfile(data.analytics);
+
+        loading.style.display = 'none';
+        content.style.display = 'block';
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        loading.textContent = 'Error loading profile data';
+      }
+    }
+
+    function renderProfile(analytics) {
+      const stats = analytics.user.stats || {};
+
+      // Render stats
+      const statsGrid = document.getElementById('statsGrid');
+      statsGrid.innerHTML = `
+        <div class="stat-card">
+          <h3>Assets Created</h3>
+          <p class="stat-value">${stats.assetsCreated || 0}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Assets Submitted</h3>
+          <p class="stat-value">${stats.assetsSubmitted || 0}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Votes Cast</h3>
+          <p class="stat-value">${stats.votesCast || 0}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Suggestions Made</h3>
+          <p class="stat-value">${stats.suggestionsMade || 0}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Characters</h3>
+          <p class="stat-value">${stats.charactersCreated || 0}</p>
+        </div>
+        <div class="stat-card">
+          <h3>Zones Visited</h3>
+          <p class="stat-value">${stats.zonesVisited || 0}</p>
+        </div>
+      `;
+
+      // Render achievements
+      const userAchievements = analytics.user.achievements || [];
+      const achievementsGrid = document.getElementById('achievementsGrid');
+
+      achievementsGrid.innerHTML = allAchievements.map(achievement => {
+        const unlocked = userAchievements.find(a => a.id === achievement.id);
+        const isLocked = !unlocked;
+
+        return `
+          <div class="achievement-card ${isLocked ? 'locked' : ''}">
+            <div class="achievement-icon">${isLocked ? '🔒' : achievement.icon}</div>
+            <h3 class="achievement-name">${achievement.name}</h3>
+            <p class="achievement-description">${achievement.description}</p>
+            ${unlocked ? `<p class="achievement-date">Unlocked: ${new Date(unlocked.unlockedAt).toLocaleDateString()}</p>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('achievementCount').textContent = userAchievements.length;
+
+      // Render progress bars for next achievements
+      const progressBars = document.getElementById('progressBars');
+      const nextAchievements = allAchievements.filter(achievement => {
+        const unlocked = userAchievements.find(a => a.id === achievement.id);
+        return !unlocked && achievement.requirement;
+      });
+
+      progressBars.innerHTML = nextAchievements.slice(0, 5).map(achievement => {
+        const currentValue = stats[achievement.stat] || 0;
+        const percentage = Math.min(100, (currentValue / achievement.requirement) * 100);
+
+        return `
+          <div class="progress-bar-container">
+            <div class="progress-label">
+              <span>${achievement.name}</span>
+              <span>${currentValue} / ${achievement.requirement}</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${percentage}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Load profile on page load
+    loadProfile();
+  </script>
+</body>
+</html>

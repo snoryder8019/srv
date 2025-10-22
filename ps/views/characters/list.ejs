@@ -5,32 +5,126 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= title %></title>
   <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/characters.css">
 </head>
 <body>
   <%- include('../partials/header', { user: user }) %>
 
-  <main class="container">
+  <main class="container characters-container">
     <h1><%= title %></h1>
+    <p class="subtitle">Choose a character to explore the galaxy (Max 3 slots)</p>
 
-    <a href="/characters/create" class="btn btn-primary">Create New Character</a>
+    <div class="character-slots">
+      <%
+        const MAX_CHARACTERS = 3;
+        for (let i = 0; i < MAX_CHARACTERS; i++) {
+          const character = characters[i];
+      %>
+        <div class="character-slot <%= character ? 'filled' : 'empty' %>">
+          <% if (character) { %>
+            <!-- Filled Slot -->
+            <div class="character-card">
+              <div class="character-header">
+                <h3><%= character.name %></h3>
+                <span class="character-level">Lvl <%= character.level %></span>
+              </div>
 
-    <div class="characters-grid">
-      <% if (characters.length === 0) { %>
-        <p>You don't have any characters yet. Create one to get started!</p>
-      <% } else { %>
-        <% characters.forEach(character => { %>
-          <div class="character-card">
-            <h3><%= character.name %></h3>
-            <p>Species: <%= character.species %></p>
-            <p>Level: <%= character.level %></p>
-            <p>Class: <%= character.primaryClass %></p>
-            <a href="/characters/<%= character._id %>" class="btn btn-small">View Details</a>
-          </div>
-        <% }) %>
+              <div class="character-info">
+                <div class="info-row">
+                  <span class="label">Species:</span>
+                  <span class="value"><%= character.species || 'Unknown' %></span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Class:</span>
+                  <span class="value"><%= character.primaryClass || 'None' %></span>
+                </div>
+                <div class="info-row">
+                  <span class="label">String:</span>
+                  <span class="value string-domain"><%= character.stringDomain || 'None' %></span>
+                </div>
+                <% if (character.homeHub) { %>
+                  <div class="info-row home-hub">
+                    <span class="label">Home Hub:</span>
+                    <span class="value"><%= character.homeHub.name %></span>
+                  </div>
+                <% } %>
+                <% if (character.location) { %>
+                  <div class="info-row location">
+                    <span class="label">Location:</span>
+                    <span class="value">
+                      <%= character.location.type === 'galactic' ? 'Galactic Space' : character.location.type %>
+                      <% if (character.location.type === 'galactic') { %>
+                        (X: <%= Math.round(character.location.x) %>, Y: <%= Math.round(character.location.y) %>)
+                      <% } %>
+                    </span>
+                  </div>
+                  <% if (character.navigation && character.navigation.isInTransit) { %>
+                    <div class="info-row transit">
+                      <span class="label">Status:</span>
+                      <span class="value status-transit">In Transit</span>
+                    </div>
+                  <% } %>
+                <% } %>
+              </div>
+
+              <div class="character-actions">
+                <a href="/universe/galactic-map?character=<%= character._id %>" class="btn btn-primary">
+                  Enter Galaxy
+                </a>
+                <a href="/characters/<%= character._id %>" class="btn btn-secondary">
+                  View Details
+                </a>
+                <button class="btn btn-danger btn-small" onclick="deleteCharacter('<%= character._id %>', '<%= character.name %>')">
+                  Delete
+                </button>
+              </div>
+            </div>
+          <% } else { %>
+            <!-- Empty Slot -->
+            <div class="empty-slot-content">
+              <div class="slot-icon">+</div>
+              <p>Empty Slot</p>
+              <a href="/characters/create" class="btn btn-create">Create Character</a>
+            </div>
+          <% } %>
+        </div>
       <% } %>
+    </div>
+
+    <div class="character-stats">
+      <p>Characters: <strong><%= characters.length %> / <%= MAX_CHARACTERS %></strong></p>
     </div>
   </main>
 
   <%- include('../partials/footer') %>
+
+  <script>
+    async function deleteCharacter(id, name) {
+      if (!confirm(`Are you sure you want to delete ${name}? This action cannot be undone.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/v1/characters/${id}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          alert(`${name} has been deleted.`);
+          window.location.reload();
+        } else {
+          alert('Failed to delete character: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Error deleting character:', error);
+        alert('Failed to delete character. Please try again.');
+      }
+    }
+  </script>
 </body>
 </html>

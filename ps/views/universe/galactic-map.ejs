@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/galactic-map.css">
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="map-container">
+    <!-- Main Canvas Map -->
+    <div class="map-canvas-wrapper">
+      <canvas id="galacticMap"></canvas>
+    </div>
+
+    <!-- Map Controls -->
+    <div class="map-controls">
+      <!-- Zoom Controls -->
+      <div class="control-group zoom-controls">
+        <button id="zoomInBtn" class="control-btn zoom-btn" title="Zoom In">+</button>
+        <button id="zoomOutBtn" class="control-btn zoom-btn" title="Zoom Out">−</button>
+        <button id="resetViewBtn" class="control-btn zoom-btn" title="Reset View">⟲</button>
+      </div>
+
+      <!-- View Controls -->
+      <div class="control-group">
+        <button id="toggleGridBtn" class="control-btn" title="Toggle Grid">⊞</button>
+        <button id="toggleRoutesBtn" class="control-btn" title="Toggle Travel Routes" style="background: rgba(102, 126, 234, 0.3);">🛤️</button>
+      </div>
+    </div>
+
+    <!-- Selection Menu for Overlapping Assets -->
+    <div class="asset-selection-menu" id="assetSelectionMenu" style="display: none;">
+      <div class="selection-menu-header">
+        <h3>Select Asset</h3>
+        <button class="close-menu-btn" onclick="closeSelectionMenu()">✕</button>
+      </div>
+      <div class="selection-menu-list" id="assetSelectionList">
+        <!-- Populated by JavaScript -->
+      </div>
+    </div>
+
+    <!-- Side Panel - Info Pane (Hidden by default, shows on asset click) -->
+    <div class="side-panel" id="infoPane">
+      <div class="panel-section">
+        <div id="assetInfo"></div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script type="module">
+    import GalacticMap from '/javascripts/galactic-map-optimized.js';
+
+    let map = null;
+
+    // Initialize map
+    document.addEventListener('DOMContentLoaded', async () => {
+      map = new GalacticMap('galacticMap', 5000, 5000); // Match actual map size
+
+      // Expose map globally for console access
+      window.galacticMap = map;
+
+      // Get URL parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const characterId = urlParams.get('character');
+      const randomize = urlParams.get('randomize');
+
+      if (characterId) {
+        console.log('Loading character:', characterId);
+        try {
+          // Load character from API
+          const response = await fetch(`/api/v1/characters/${characterId}`);
+          const data = await response.json();
+          if (data.character) {
+            map.currentCharacter = data.character;
+            console.log('Character loaded:', data.character.name, 'at', data.character.location);
+
+            // Center view on character
+            if (data.character.location) {
+              map.offsetX = -data.character.location.x * map.scale + map.canvas.width / 2;
+              map.offsetY = -data.character.location.y * map.scale + map.canvas.height / 2;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load character:', error);
+        }
+      }
+
+      // Set asset selection callback - now handles multiple overlapping assets
+      map.onAssetSelect = (assetOrAssets, x, y) => {
+        // Check if we received an array of assets (multiple overlapping)
+        if (Array.isArray(assetOrAssets) && assetOrAssets.length > 1) {
+          showAssetSelectionMenu(assetOrAssets, x, y);
+        } else {
+          // Single asset
+          const asset = Array.isArray(assetOrAssets) ? assetOrAssets[0] : assetOrAssets;
+          window.displayAssetInfo(asset);
+          window.closeSelectionMenu();
+        }
+      };
+
+      // Check if randomize parameter is set
+      if (randomize === 'true' || randomize === '1') {
+        console.log('🎲 Randomization requested via URL parameter');
+        await map.randomizeAllPositions();
+        // Remove randomize parameter from URL
+        urlParams.delete('randomize');
+        const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+        window.history.replaceState({}, '', newUrl);
+      }
+
+      // Start map animation
+      map.start();
+
+      // Setup controls
+      setupControls();
+
+      // Close info pane when clicking/touching outside
+      const closeInfoPaneOutside = (e) => {
+        const infoPane = document.getElementById('infoPane');
+        const controlsPanel = document.querySelector('.controls-panel');
+        const canvas = document.getElementById('galacticMap');
+
+        // Don't close if pane is not visible
+        if (!infoPane.classList.contains('visible')) return;
+
+        // Don't close if clicking on the info pane itself
+        if (infoPane.contains(e.target)) return;
+
+        // Don't close if clicking controls
+        if (controlsPanel && controlsPanel.contains(e.target)) return;
+
+        // Don't close if clicking canvas (canvas handles asset selection)
+        if (canvas && e.target === canvas) return;
+
+        // Close the info pane for clicks outside these areas
+        infoPane.classList.remove('visible');
+      };
+
+      // Add both click and touch listeners
+      document.addEventListener('click', closeInfoPaneOutside);
+      document.addEventListener('touchend', closeInfoPaneOutside);
+    });
+
+    /**
+     * Setup map controls
+     */
+    function setupControls() {
+      // Zoom In
+      document.getElementById('zoomInBtn').addEventListener('click', () => {
+        map.scale = Math.min(map.scale * 1.2, 5); // Max 5x zoom for larger grid
+      });
+
+      // Zoom Out
+      document.getElementById('zoomOutBtn').addEventListener('click', () => {
+        map.scale = Math.max(map.scale / 1.2, 0.1); // Min 0.1x zoom for larger grid
+      });
+
+      // Reset View
+      document.getElementById('resetViewBtn').addEventListener('click', () => {
+        map.scale = 0.3; // Reset to default zoom for 5000x5000 grid
+        map.offsetX = 0;
+        map.offsetY = 0;
+      });
+
+      // Toggle Grid
+      document.getElementById('toggleGridBtn').addEventListener('click', (e) => {
+        map.showGrid = !map.showGrid;
+        e.target.style.background = map.showGrid ?
+          'rgba(102, 126, 234, 0.3)' :
+          'rgba(255, 255, 255, 0.1)';
+      });
+
+      // Toggle Travel Routes
+      document.getElementById('toggleRoutesBtn').addEventListener('click', (e) => {
+        map.showConnections = !map.showConnections;
+        e.target.style.background = map.showConnections ?
+          'rgba(102, 126, 234, 0.3)' :
+          'rgba(255, 255, 255, 0.1)';
+      });
+    }
+
+    /**
+     * Display asset info in hovering pane
+     */
+    window.displayAssetInfo = function(asset) {
+      console.log('Displaying asset info for:', asset.title);
+
+      const infoPane = document.getElementById('infoPane');
+      const info = document.getElementById('assetInfo');
+
+      // Show the pane
+      infoPane.classList.add('visible');
+
+      // Get icon based on asset type
+      let icon = '🌌';
+      if (asset.assetType === 'galaxy') icon = '🌌';
+      else if (asset.assetType === 'orbital') icon = '🛰️';
+      else if (asset.assetType === 'anomaly') icon = '✨';
+      if (asset.hubData?.isStartingLocation) icon = '⭐';
+
+      // Build position info
+      const positionHTML = `
+        <div class="info-section">
+          <h4>📍 Position & Physics</h4>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">X:</span>
+              <span class="info-value">${Math.round(asset.x || 0)}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Y:</span>
+              <span class="info-value">${Math.round(asset.y || 0)}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Velocity X:</span>
+              <span class="info-value">${(asset.vx || 0).toFixed(3)}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Velocity Y:</span>
+              <span class="info-value">${(asset.vy || 0).toFixed(3)}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Radius:</span>
+              <span class="info-value">${Math.round(asset.radius || 10)}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Mass:</span>
+              <span class="info-value">${(asset.mass || 1).toFixed(2)}</span>
+            </div>
+            ${asset.staticCharge !== undefined ? `
+              <div class="info-item">
+                <span class="info-label">Static Charge:</span>
+                <span class="info-value">${asset.staticCharge.toFixed(2)}</span>
+              </div>
+            ` : ''}
+            <div class="info-item">
+              <span class="info-label">Motion:</span>
+              <span class="info-value">${asset.isStationary ? '🔴 Stationary' : '🟢 Moving'}</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Build stats HTML
+      let statsHTML = '';
+      if (asset.stats && Object.keys(asset.stats).length > 0) {
+        statsHTML = `
+          <div class="info-section">
+            <h4>📊 Statistics</h4>
+            <div class="info-grid">
+              ${Object.entries(asset.stats).map(([key, value]) => `
+                <div class="info-item">
+                  <span class="info-label">${key}:</span>
+                  <span class="info-value">${value}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // Build effects HTML
+      let effectsHTML = '';
+      if (asset.effects && asset.effects.length > 0) {
+        effectsHTML = `
+          <div class="info-section">
+            <h4>✨ Effects</h4>
+            <div class="effects-list">
+              ${asset.effects.map(effect => `
+                <div class="effect-item">
+                  <strong>${effect.type}</strong>
+                  ${effect.description ? `<p>${effect.description}</p>` : ''}
+                  ${effect.value ? `<span class="effect-value">Value: ${effect.value}</span>` : ''}
+                  ${effect.stringDomain ? `<span class="effect-tag">${effect.stringDomain}</span>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // Build lore section
+      let loreHTML = '';
+      if (asset.lore || asset.backstory || asset.flavor) {
+        loreHTML = `
+          <div class="info-section">
+            <h4>📖 Lore</h4>
+            ${asset.lore ? `<p class="lore-text">${asset.lore}</p>` : ''}
+            ${asset.backstory ? `<p class="lore-text">${asset.backstory}</p>` : ''}
+            ${asset.flavor ? `<p class="flavor-text">${asset.flavor}</p>` : ''}
+          </div>
+        `;
+      }
+
+      // Build hub data section
+      let hubHTML = '';
+      if (asset.hubData) {
+        hubHTML = `
+          <div class="info-section">
+            <h4>🏠 Hub Information</h4>
+            <div class="info-grid">
+              ${asset.hubData.stringDomain ? `
+                <div class="info-item full-width">
+                  <span class="info-label">String Domain:</span>
+                  <span class="info-value string-domain">${asset.hubData.stringDomain}</span>
+                </div>
+              ` : ''}
+              ${asset.hubData.isStartingLocation ? `
+                <div class="info-item full-width">
+                  <span class="badge badge-hub">⭐ Starting Location</span>
+                </div>
+              ` : ''}
+              ${asset.hubData.primarySpecies ? `
+                <div class="info-item">
+                  <span class="info-label">Species:</span>
+                  <span class="info-value">${asset.hubData.primarySpecies}</span>
+                </div>
+              ` : ''}
+              ${asset.hubData.spawnRadius ? `
+                <div class="info-item">
+                  <span class="info-label">Spawn Radius:</span>
+                  <span class="info-value">${asset.hubData.spawnRadius}</span>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }
+
+      // Check if asset is connected to player's current location via travel chain
+      let isConnected = false;
+      let distance = null;
+      let travelPath = [];
+      let hopCount = 0;
+
+      if (map.currentCharacter && map.currentCharacter.location) {
+        const charX = map.currentCharacter.location.x;
+        const charY = map.currentCharacter.location.y;
+        const assetX = asset.x;
+        const assetY = asset.y;
+
+        // Calculate direct distance
+        distance = Math.sqrt(Math.pow(assetX - charX, 2) + Math.pow(assetY - charY, 2));
+
+        // Find if there's a connected path using BFS (breadth-first search)
+        const result = window.findTravelPath(map.publishedAssets, charX, charY, asset._id);
+        isConnected = result.connected;
+        travelPath = result.path;
+        hopCount = result.hops;
+      }
+
+      info.innerHTML = `
+        <div class="zone-detail">
+          <div class="asset-header">
+            <div class="asset-icon-large">${icon}</div>
+            <div class="asset-title-section">
+              <h2 class="asset-title">${asset.title}</h2>
+              <div class="asset-badges">
+                <span class="badge badge-${asset.assetType}">${asset.assetType}</span>
+                ${asset.subType ? `<span class="badge badge-subtype">${asset.subType}</span>` : ''}
+                ${asset.rarity ? `<span class="badge badge-${asset.rarity}">${asset.rarity}</span>` : ''}
+              </div>
+            </div>
+          </div>
+
+          ${map.currentCharacter ? (isConnected ? `
+            <div class="travel-action-bar">
+              <button class="travel-btn" onclick="window.travelToAsset('${asset._id}', '${asset.title}', ${asset.x}, ${asset.y})">
+                <span class="travel-icon">🚀</span>
+                <span class="travel-text">Travel Here</span>
+                <span class="travel-distance">${hopCount > 0 ? hopCount + ' hop' + (hopCount > 1 ? 's' : '') : Math.round(distance) + ' units'}</span>
+              </button>
+              ${hopCount > 0 ? `
+                <div class="travel-path-info">
+                  <span class="path-label">Route:</span>
+                  <span class="path-route">
+                    ${travelPath.map((p, i) =>
+                      i === 0 ? '📍 ' + p.title :
+                      i === travelPath.length - 1 ? '🎯 ' + p.title :
+                      '→ ' + p.title
+                    ).join(' ')}
+                  </span>
+                </div>
+              ` : ''}
+            </div>
+          ` : `
+            <div class="travel-action-bar disabled">
+              <div class="travel-unavailable">
+                <span class="travel-icon">🔒</span>
+                <span class="travel-text">Not Connected</span>
+                <span class="travel-distance">${Math.round(distance)} units away</span>
+              </div>
+              <div class="travel-hint">
+                No travel route found. Assets must be within 800 units of each other to form a connected chain.
+              </div>
+            </div>
+          `) : ''}
+
+          <div class="asset-meta-bar">
+            <div class="meta-item">
+              <span class="meta-icon">⭐</span>
+              <span class="meta-value">${asset.votes || 0} votes</span>
+            </div>
+            ${asset.category ? `
+              <div class="meta-item">
+                <span class="meta-icon">📂</span>
+                <span class="meta-value">${asset.category}</span>
+              </div>
+            ` : ''}
+            ${asset.createdAt ? `
+              <div class="meta-item">
+                <span class="meta-icon">📅</span>
+                <span class="meta-value">${new Date(asset.createdAt).toLocaleDateString()}</span>
+              </div>
+            ` : ''}
+          </div>
+
+          ${asset.description ? `
+            <div class="info-section">
+              <p class="asset-description">${asset.description}</p>
+            </div>
+          ` : ''}
+
+          ${positionHTML}
+          ${hubHTML}
+          ${statsHTML}
+          ${effectsHTML}
+          ${loreHTML}
+
+          ${asset.tags && asset.tags.length > 0 ? `
+            <div class="info-section">
+              <h4>🏷️ Tags</h4>
+              <div class="tags-container">
+                ${asset.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          ${asset.userId ? `
+            <div class="info-section">
+              <div class="creator-info">
+                <span class="info-label">Created by:</span>
+                <span class="info-value">${asset.userId === 'system' ? '🤖 System' : asset.userId}</span>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    /**
+     * Find travel path through connected assets using BFS
+     * @param {Array} assets - All published assets
+     * @param {number} startX - Starting X position
+     * @param {number} startY - Starting Y position
+     * @param {string} targetId - Target asset ID
+     * @returns {Object} - { connected: boolean, path: Array, hops: number }
+     */
+    window.findTravelPath = function(assets, startX, startY, targetId) {
+      const MAX_CONNECTION_DISTANCE = 800;
+
+      // Find asset closest to start position (current character location)
+      let startAsset = null;
+      let minDist = Infinity;
+      assets.forEach(a => {
+        const d = Math.sqrt(Math.pow(a.x - startX, 2) + Math.pow(a.y - startY, 2));
+        if (d < minDist) {
+          minDist = d;
+          startAsset = a;
+        }
+      });
+
+      if (!startAsset) return { connected: false, path: [], hops: 0 };
+
+      // If we're already at the target
+      if (startAsset._id === targetId) {
+        return { connected: true, path: [startAsset], hops: 0 };
+      }
+
+      // BFS to find shortest path
+      const queue = [{ asset: startAsset, path: [startAsset] }];
+      const visited = new Set([startAsset._id]);
+      let foundPath = null;
+
+      while (queue.length > 0 && !foundPath) {
+        const { asset: current, path } = queue.shift();
+
+        // Find all connected assets (within 800 units)
+        for (const neighbor of assets) {
+          if (visited.has(neighbor._id)) continue;
+
+          const dist = Math.sqrt(
+            Math.pow(neighbor.x - current.x, 2) +
+            Math.pow(neighbor.y - current.y, 2)
+          );
+
+          if (dist < MAX_CONNECTION_DISTANCE) {
+            const newPath = [...path, neighbor];
+            visited.add(neighbor._id);
+
+            // Found the target!
+            if (neighbor._id === targetId) {
+              foundPath = newPath;
+              break;
+            }
+
+            queue.push({ asset: neighbor, path: newPath });
+          }
+        }
+      }
+
+      if (foundPath) {
+        return {
+          connected: true,
+          path: foundPath,
+          hops: foundPath.length - 1
+        };
+      }
+
+      return { connected: false, path: [], hops: 0 };
+    };
+
+    /**
+     * Handle travel to asset
+     */
+    window.travelToAsset = async function(assetId, assetTitle, assetX, assetY) {
+      console.log('Traveling to:', assetTitle);
+
+      if (!map.currentCharacter) {
+        alert('No character selected for travel');
+        return;
+      }
+
+      // Find the travel path using BFS
+      const result = window.findTravelPath(
+        map.publishedAssets,
+        map.currentCharacter.location.x,
+        map.currentCharacter.location.y,
+        assetId
+      );
+
+      if (!result.connected || result.path.length === 0) {
+        alert('Cannot travel - no connected path to destination');
+        return;
+      }
+
+      // Start animated travel along the path
+      console.log(`🚀 Starting animated travel: ${result.path.length} waypoints, ${result.hops} hops`);
+
+      // Pass the path (excluding starting position), final coordinates, and zone name
+      const travelPath = result.path.slice(1); // Remove current location from path
+      map.startTravelAnimation(travelPath, assetX, assetY, assetTitle);
+
+      // Close info pane
+      document.getElementById('infoPane').classList.remove('visible');
+
+      // Show travel started notification
+      window.showTravelNotification(`🚀 Traveling to ${assetTitle} (${result.hops} hop${result.hops > 1 ? 's' : ''})...`);
+    };
+
+    /**
+     * Show travel notification (global function accessible to map class)
+     */
+    window.showTravelNotification = function(message) {
+      const notification = document.createElement('div');
+      notification.className = 'travel-notification';
+      notification.textContent = message;
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        notification.classList.add('show');
+      }, 10);
+
+      setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => notification.remove(), 300);
+      }, 3000);
+    };
+
+    /**
+     * Show selection menu for overlapping assets
+     */
+    function showAssetSelectionMenu(assets, x, y) {
+      const menu = document.getElementById('assetSelectionMenu');
+      const list = document.getElementById('assetSelectionList');
+
+      // Get icon for asset type
+      const getIcon = (asset) => {
+        if (asset.assetType === 'galaxy') return '🌌';
+        if (asset.assetType === 'orbital') return '🛰️';
+        if (asset.assetType === 'anomaly') return '✨';
+        if (asset.hubData?.isStartingLocation) return '✦';
+        return '⭐';
+      };
+
+      // Build list items
+      list.innerHTML = assets.map((asset, index) => `
+        <div class="selection-menu-item" onclick="window.selectAssetFromMenu(${index})">
+          <span class="asset-icon">${getIcon(asset)}</span>
+          <div class="asset-details">
+            <div class="asset-title">${asset.title}</div>
+            <div class="asset-type">${asset.assetType}${asset.subType ? ` - ${asset.subType}` : ''}</div>
+          </div>
+          <div class="asset-votes">⭐ ${asset.votes || 0}</div>
+        </div>
+      `).join('');
+
+      // Store assets for selection
+      window.currentOverlappingAssets = assets;
+
+      // Position menu near click (or center if off-screen)
+      const rect = map.canvas.getBoundingClientRect();
+      let menuX = x || rect.width / 2;
+      let menuY = y || rect.height / 2;
+
+      // Keep menu on screen
+      if (menuX + 300 > window.innerWidth) menuX = window.innerWidth - 320;
+      if (menuY + 400 > window.innerHeight) menuY = window.innerHeight - 420;
+
+      menu.style.left = menuX + 'px';
+      menu.style.top = menuY + 'px';
+      menu.style.display = 'block';
+    }
+
+    /**
+     * Select asset from menu
+     */
+    window.selectAssetFromMenu = function(index) {
+      console.log('selectAssetFromMenu called with index:', index);
+      console.log('currentOverlappingAssets:', window.currentOverlappingAssets);
+      
+      if (!window.currentOverlappingAssets) {
+        console.error('No currentOverlappingAssets array found');
+        return;
+      }
+      
+      const asset = window.currentOverlappingAssets[index];
+      if (!asset) {
+        console.error('No asset found at index:', index);
+        return;
+      }
+      
+      console.log('Selected asset:', asset.title);
+      
+      try {
+        if (typeof window.displayAssetInfo === 'function') {
+          window.displayAssetInfo(asset);
+          window.closeSelectionMenu();
+        } else {
+          console.error('displayAssetInfo is not a function');
+        }
+      } catch (error) {
+        console.error('Error displaying asset info:', error);
+      }
+    };
+
+    /**
+     * Close selection menu
+     */
+    window.closeSelectionMenu = function() {
+      const menu = document.getElementById('assetSelectionMenu');
+      menu.style.display = 'none';
+      window.currentOverlappingAssets = null;
+    };
+  </script>
+</body>
+</html>

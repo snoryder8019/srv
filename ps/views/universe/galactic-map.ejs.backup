@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/galactic-map.css">
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="map-container">
+    <div class="map-header">
+      <h1>🌌 Galactic Space Map</h1>
+    </div>
+
+    <!-- Main Canvas Map -->
+    <div class="map-canvas-wrapper">
+      <canvas id="galacticMap"></canvas>
+    </div>
+
+    <!-- Map Controls -->
+    <div class="map-controls">
+      <!-- Zoom Controls -->
+      <div class="control-group zoom-controls">
+        <button id="zoomInBtn" class="control-btn zoom-btn" title="Zoom In">+</button>
+        <button id="zoomOutBtn" class="control-btn zoom-btn" title="Zoom Out">−</button>
+        <button id="resetViewBtn" class="control-btn zoom-btn" title="Reset View">⟲</button>
+      </div>
+
+      <!-- View Controls -->
+      <div class="control-group">
+        <button id="toggleGridBtn" class="control-btn" title="Toggle Grid">⊞</button>
+        <button id="toggleRoutesBtn" class="control-btn" title="Toggle Travel Routes" style="background: rgba(102, 126, 234, 0.3);">🛤️</button>
+      </div>
+    </div>
+
+    <!-- Selection Menu for Overlapping Assets -->
+    <div class="asset-selection-menu" id="assetSelectionMenu" style="display: none;">
+      <div class="selection-menu-header">
+        <h3>Select Asset</h3>
+        <button class="close-menu-btn" onclick="closeSelectionMenu()">✕</button>
+      </div>
+      <div class="selection-menu-list" id="assetSelectionList">
+        <!-- Populated by JavaScript -->
+      </div>
+    </div>
+
+    <!-- Side Panel - Info Pane (Hidden by default, shows on asset click) -->
+    <div class="side-panel" id="infoPane">
+      <div class="panel-section">
+        <div id="assetInfo"></div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script type="module">
+    import GalacticMap from '/javascripts/galactic-map-optimized.js';
+
+    let map = null;
+
+    // Initialize map
+    document.addEventListener('DOMContentLoaded', async () => {
+      map = new GalacticMap('galacticMap', 5000, 5000); // Match actual map size
+
+      // Get character ID from URL parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      const characterId = urlParams.get('character');
+
+      if (characterId) {
+        console.log('Loading character:', characterId);
+        try {
+          // Load character from API
+          const response = await fetch(`/api/v1/characters/${characterId}`);
+          const data = await response.json();
+          if (data.character) {
+            map.currentCharacter = data.character;
+            console.log('Character loaded:', data.character.name, 'at', data.character.location);
+
+            // Center view on character
+            if (data.character.location) {
+              map.offsetX = -data.character.location.x * map.scale + map.canvas.width / 2;
+              map.offsetY = -data.character.location.y * map.scale + map.canvas.height / 2;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load character:', error);
+        }
+      }
+
+      // Set asset selection callback - now handles multiple overlapping assets
+      map.onAssetSelect = (assetOrAssets, x, y) => {
+        // Check if we received an array of assets (multiple overlapping)
+        if (Array.isArray(assetOrAssets) && assetOrAssets.length > 1) {
+          showAssetSelectionMenu(assetOrAssets, x, y);
+        } else {
+          // Single asset
+          const asset = Array.isArray(assetOrAssets) ? assetOrAssets[0] : assetOrAssets;
+          window.displayAssetInfo(asset);
+          window.closeSelectionMenu();
+        }
+      };
+
+      // Start map animation
+      map.start();
+
+      // Setup controls
+      setupControls();
+
+      // Close info pane when clicking/touching outside
+      const closeInfoPaneOutside = (e) => {
+        const infoPane = document.getElementById('infoPane');
+        const controlsPanel = document.querySelector('.controls-panel');
+        const canvas = document.getElementById('galacticMap');
+
+        // Don't close if pane is not visible
+        if (!infoPane.classList.contains('visible')) return;
+
+        // Don't close if clicking on the info pane itself
+        if (infoPane.contains(e.target)) return;
+
+        // Don't close if clicking controls
+        if (controlsPanel && controlsPanel.contains(e.target)) return;
+
+        // Don't close if clicking canvas (canvas handles asset selection)
+        if (canvas && e.target === canvas) return;
+
+        // Close the info pane for clicks outside these areas
+        infoPane.classList.remove('visible');
+      };
+
+      // Add both click and touch listeners
+      document.addEventListener('click', closeInfoPaneOutside);
+      document.addEventListener('touchend', closeInfoPaneOutside);
+    });
+
+    /**
+     * Setup map controls
+     */
+    function setupControls() {
+      // Zoom In
+      document.getElementById('zoomInBtn').addEventListener('click', () => {
+        map.scale = Math.min(map.scale * 1.2, 5); // Max 5x zoom for larger grid
+      });
+
+      // Zoom Out
+      document.getElementById('zoomOutBtn').addEventListener('click', () => {
+        map.scale = Math.max(map.scale / 1.2, 0.1); // Min 0.1x zoom for larger grid
+      });
+
+      // Reset View
+      document.getElementById('resetViewBtn').addEventListener('click', () => {
+        map.scale = 0.3; // Reset to default zoom for 5000x5000 grid
+        map.offsetX = 0;
+        map.offsetY = 0;
+      });
+
+      // Toggle Grid
+      document.getElementById('toggleGridBtn').addEventListener('click', (e) => {
+        map.showGrid = !map.showGrid;
+        e.target.style.background = map.showGrid ?
+          'rgba(102, 126, 234, 0.3)' :
+          'rgba(255, 255, 255, 0.1)';
+      });
+
+      // Toggle Travel Routes
+      document.getElementById('toggleRoutesBtn').addEventListener('click', (e) => {
+        map.showConnections = !map.showConnections;
+        e.target.style.background = map.showConnections ?
+          'rgba(102, 126, 234, 0.3)' :
+          'rgba(255, 255, 255, 0.1)';
+      });
+    }
+
+    /**
+     * Display asset info in hovering pane
+     */
+    window.displayAssetInfo = function(asset) {
+      console.log('Displaying asset info for:', asset.title);
+
+      const infoPane = document.getElementById('infoPane');
+      const info = document.getElementById('assetInfo');
+
+      // Show the pane
+      infoPane.classList.add('visible');
+
+      // Build stats HTML
+      let statsHTML = '';
+      if (asset.stats) {
+        statsHTML = '<div class="zone-stats">' +
+          Object.entries(asset.stats).map(([key, value]) =>
+            `<div><strong>${key}:</strong> ${value}</div>`
+          ).join('') +
+          '</div>';
+      }
+
+      // Get icon based on asset type
+      let icon = '🌌';
+      if (asset.assetType === 'galaxy') icon = '🌌';
+      else if (asset.assetType === 'orbital') icon = '🛰️';
+      else if (asset.assetType === 'anomaly') icon = '✨';
+
+      info.innerHTML = `
+        <div class="zone-detail">
+          <div style="font-size: 2rem; text-align: center; margin-bottom: 0.5rem;">${icon}</div>
+          <strong>${asset.title}</strong>
+          <div class="zone-meta">
+            <span>Type: ${asset.assetType}</span>
+            <span>Rarity: ${asset.rarity || 'common'}</span>
+          </div>
+          <div class="zone-meta">
+            <span>SubType: ${asset.subType || 'N/A'}</span>
+            <span>Votes: ⭐ ${asset.votes || 0}</span>
+          </div>
+          <p style="color: #9ca3af; margin: 0.5rem 0;">${asset.description || 'No description available'}</p>
+          ${statsHTML}
+          ${asset.tags && asset.tags.length > 0 ? `
+            <div class="zone-meta" style="margin-top: 0.5rem;">
+              <span style="color: #6b7280;">Tags: ${asset.tags.join(', ')}</span>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    /**
+     * Show selection menu for overlapping assets
+     */
+    function showAssetSelectionMenu(assets, x, y) {
+      const menu = document.getElementById('assetSelectionMenu');
+      const list = document.getElementById('assetSelectionList');
+
+      // Get icon for asset type
+      const getIcon = (asset) => {
+        if (asset.assetType === 'galaxy') return '🌌';
+        if (asset.assetType === 'orbital') return '🛰️';
+        if (asset.assetType === 'anomaly') return '✨';
+        if (asset.hubData?.isStartingLocation) return '✦';
+        return '⭐';
+      };
+
+      // Build list items
+      list.innerHTML = assets.map((asset, index) => `
+        <div class="selection-menu-item" onclick="selectAssetFromMenu(${index})">
+          <span class="asset-icon">${getIcon(asset)}</span>
+          <div class="asset-details">
+            <div class="asset-title">${asset.title}</div>
+            <div class="asset-type">${asset.assetType}${asset.subType ? ` - ${asset.subType}` : ''}</div>
+          </div>
+          <div class="asset-votes">⭐ ${asset.votes || 0}</div>
+        </div>
+      `).join('');
+
+      // Store assets for selection
+      window.currentOverlappingAssets = assets;
+
+      // Position menu near click (or center if off-screen)
+      const rect = map.canvas.getBoundingClientRect();
+      let menuX = x || rect.width / 2;
+      let menuY = y || rect.height / 2;
+
+      // Keep menu on screen
+      if (menuX + 300 > window.innerWidth) menuX = window.innerWidth - 320;
+      if (menuY + 400 > window.innerHeight) menuY = window.innerHeight - 420;
+
+      menu.style.left = menuX + 'px';
+      menu.style.top = menuY + 'px';
+      menu.style.display = 'block';
+    }
+
+    /**
+     * Select asset from menu
+     */
+    window.selectAssetFromMenu = function(index) {
+      console.log('Selecting asset from menu, index:', index);
+      if (window.currentOverlappingAssets && window.currentOverlappingAssets[index]) {
+        window.displayAssetInfo(window.currentOverlappingAssets[index]);
+        window.closeSelectionMenu();
+      }
+    };
+
+    /**
+     * Close selection menu
+     */
+    window.closeSelectionMenu = function() {
+      const menu = document.getElementById('assetSelectionMenu');
+      menu.style.display = 'none';
+      window.currentOverlappingAssets = null;
+    };
+  </script>
+</body>
+</html>

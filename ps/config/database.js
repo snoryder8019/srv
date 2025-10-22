@@ -22,7 +22,9 @@ export const collections = {
   talentTrees: 'talentTrees',
   galacticState: 'galacticState',
   planetaryState: 'planetaryState',
-  sessions: 'sessions'
+  sessions: 'sessions',
+  assets: 'assets',
+  userActions: 'userActions'
 };
 
 export default {

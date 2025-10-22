@@ -1,4 +1,7 @@
 import express from 'express';
+import { Asset } from '../../api/v1/models/Asset.js';
+import { UserAnalytics } from '../../api/v1/models/UserAnalytics.js';
+
 const router = express.Router();
 
 // Middleware to check if user is admin
@@ -24,10 +27,26 @@ router.get('/', isAdmin, function(req, res, next) {
   });
 });
 
+// User management page
+router.get('/users', isAdmin, function(req, res, next) {
+  res.render('admin/users', {
+    title: 'User Management',
+    user: req.user
+  });
+});
+
 // Asset generation page
 router.get('/generate', isAdmin, function(req, res, next) {
   res.render('admin/generate', {
     title: 'Generate Assets',
+    user: req.user
+  });
+});
+
+// Asset approval page
+router.get('/assets', isAdmin, function(req, res, next) {
+  res.render('admin/assets', {
+    title: 'Asset Approvals',
     user: req.user
   });
 });
@@ -90,6 +109,380 @@ router.post('/api/generate', isAdmin, async function(req, res, next) {
       error: 'Failed to generate asset'
     });
   }
+});
+
+// Admin API: Get pending assets
+router.get('/api/assets/pending', isAdmin, async function(req, res, next) {
+  try {
+    const assets = await Asset.findByStatus('pending');
+    res.json({ success: true, assets });
+  } catch (error) {
+    console.error('Error fetching pending assets:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin API: Get asset statistics
+router.get('/api/assets/stats', isAdmin, async function(req, res, next) {
+  try {
+    const stats = await Asset.getStats();
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Error fetching asset stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin API: Approve asset
+router.post('/api/assets/:id/approve', isAdmin, async function(req, res, next) {
+  try {
+    const { adminNotes } = req.body;
+    await Asset.approve(req.params.id, req.user._id, adminNotes);
+    res.json({ success: true, message: 'Asset approved' });
+  } catch (error) {
+    console.error('Error approving asset:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin API: Reject asset
+router.post('/api/assets/:id/reject', isAdmin, async function(req, res, next) {
+  try {
+    const { adminNotes } = req.body;
+
+    if (!adminNotes) {
+      return res.status(400).json({
+        success: false,
+        error: 'Admin notes required for rejection'
+      });
+    }
+
+    await Asset.reject(req.params.id, req.user._id, adminNotes);
+    res.json({ success: true, message: 'Asset rejected' });
+  } catch (error) {
+    console.error('Error rejecting asset:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Game State Controls page
+router.get('/game-state', isAdmin, function(req, res, next) {
+  res.render('admin/game-state-controls', {
+    title: 'Game State Controls',
+    user: req.user
+  });
+});
+
+// Galactic Map Settings page
+router.get('/galactic-map-settings', isAdmin, function(req, res, next) {
+  res.render('admin/galactic-map-settings', {
+    title: 'Galactic Map Settings',
+    user: req.user
+  });
+});
+
+// Orbital Systems Monitor page
+router.get('/monitor/orbital-systems', isAdmin, async function(req, res, next) {
+  try {
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const db = getDb();
+
+    // Get orbital counts
+    const orbitalCount = await db.collection('assets').countDocuments({
+      assetType: 'orbital',
+      status: 'approved'
+    });
+
+    const planetCount = await db.collection('assets').countDocuments({
+      assetType: 'planet',
+      status: 'approved'
+    });
+
+    const zoneCount = await db.collection('zones').countDocuments({});
+
+    res.render('admin/orbital-monitor', {
+      title: 'Orbital Systems Monitor',
+      user: req.user,
+      stats: {
+        orbitals: orbitalCount,
+        planets: planetCount,
+        zones: zoneCount
+      }
+    });
+  } catch (error) {
+    console.error('Error loading orbital monitor:', error);
+    res.status(500).send('Error loading orbital monitor');
+  }
+});
+
+// In-memory storage for galactic map settings (could be moved to DB later)
+let galacticMapSettings = {
+  movementSpeed: 0.1, // Default to very slow
+  gridSize: 100,
+  edgeGravityStrength: 0.15,
+  edgeGravityDistance: 400,
+  staticChargeBuildup: 0.02,
+  staticGravityThreshold: 1.0,
+  maxVelocity: 8,
+  damping: 0.999,
+  brownNoiseStrength: 0.05, // Brown noise force magnitude
+  brownNoiseFrequency: 0.5, // Oscillation speed (cycles per second)
+  brownNoiseEnabled: true,
+  updatedAt: new Date(),
+  updatedBy: null
+};
+
+// API: Get galactic map settings
+router.get('/api/galactic-map/settings', function(req, res, next) {
+  res.json({ success: true, settings: galacticMapSettings });
+});
+
+// API: Update galactic map settings
+router.post('/api/galactic-map/settings', isAdmin, function(req, res, next) {
+  try {
+    const {
+      movementSpeed,
+      gridSize,
+      edgeGravityStrength,
+      edgeGravityDistance,
+      staticChargeBuildup,
+      staticGravityThreshold,
+      maxVelocity,
+      damping,
+      brownNoiseStrength,
+      brownNoiseFrequency,
+      brownNoiseEnabled
+    } = req.body;
+
+    if (movementSpeed !== undefined) {
+      if (typeof movementSpeed !== 'number' || movementSpeed < 0 || movementSpeed > 10) {
+        return res.status(400).json({
+          success: false,
+          error: 'Movement speed must be a number between 0 and 10'
+        });
+      }
+      galacticMapSettings.movementSpeed = movementSpeed;
+    }
+
+    if (gridSize !== undefined) {
+      if (typeof gridSize !== 'number' || gridSize < 25 || gridSize > 1000) {
+        return res.status(400).json({
+          success: false,
+          error: 'Grid size must be a number between 25 and 1000'
+        });
+      }
+      galacticMapSettings.gridSize = gridSize;
+    }
+
+    if (edgeGravityStrength !== undefined) {
+      if (typeof edgeGravityStrength !== 'number' || edgeGravityStrength < 0 || edgeGravityStrength > 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'Edge gravity strength must be between 0 and 1'
+        });
+      }
+      galacticMapSettings.edgeGravityStrength = edgeGravityStrength;
+    }
+
+    if (edgeGravityDistance !== undefined) {
+      if (typeof edgeGravityDistance !== 'number' || edgeGravityDistance < 100 || edgeGravityDistance > 1000) {
+        return res.status(400).json({
+          success: false,
+          error: 'Edge gravity distance must be between 100 and 1000'
+        });
+      }
+      galacticMapSettings.edgeGravityDistance = edgeGravityDistance;
+    }
+
+    if (staticChargeBuildup !== undefined) {
+      if (typeof staticChargeBuildup !== 'number' || staticChargeBuildup < 0 || staticChargeBuildup > 0.1) {
+        return res.status(400).json({
+          success: false,
+          error: 'Static charge buildup must be between 0 and 0.1'
+        });
+      }
+      galacticMapSettings.staticChargeBuildup = staticChargeBuildup;
+    }
+
+    if (staticGravityThreshold !== undefined) {
+      if (typeof staticGravityThreshold !== 'number' || staticGravityThreshold < 0.1 || staticGravityThreshold > 5) {
+        return res.status(400).json({
+          success: false,
+          error: 'Static gravity threshold must be between 0.1 and 5'
+        });
+      }
+      galacticMapSettings.staticGravityThreshold = staticGravityThreshold;
+    }
+
+    if (maxVelocity !== undefined) {
+      if (typeof maxVelocity !== 'number' || maxVelocity < 1 || maxVelocity > 20) {
+        return res.status(400).json({
+          success: false,
+          error: 'Max velocity must be between 1 and 20'
+        });
+      }
+      galacticMapSettings.maxVelocity = maxVelocity;
+    }
+
+    if (damping !== undefined) {
+      if (typeof damping !== 'number' || damping < 0.9 || damping > 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'Damping must be between 0.9 and 1'
+        });
+      }
+      galacticMapSettings.damping = damping;
+    }
+
+    if (brownNoiseStrength !== undefined) {
+      if (typeof brownNoiseStrength !== 'number' || brownNoiseStrength < 0 || brownNoiseStrength > 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'Brown noise strength must be between 0 and 1'
+        });
+      }
+      galacticMapSettings.brownNoiseStrength = brownNoiseStrength;
+    }
+
+    if (brownNoiseFrequency !== undefined) {
+      if (typeof brownNoiseFrequency !== 'number' || brownNoiseFrequency < 0.01 || brownNoiseFrequency > 5) {
+        return res.status(400).json({
+          success: false,
+          error: 'Brown noise frequency must be between 0.01 and 5 Hz'
+        });
+      }
+      galacticMapSettings.brownNoiseFrequency = brownNoiseFrequency;
+    }
+
+    if (brownNoiseEnabled !== undefined) {
+      if (typeof brownNoiseEnabled !== 'boolean') {
+        return res.status(400).json({
+          success: false,
+          error: 'Brown noise enabled must be a boolean'
+        });
+      }
+      galacticMapSettings.brownNoiseEnabled = brownNoiseEnabled;
+    }
+
+    galacticMapSettings.updatedAt = new Date();
+    galacticMapSettings.updatedBy = req.user._id;
+
+    res.json({
+      success: true,
+      message: 'Galactic map settings updated',
+      settings: galacticMapSettings
+    });
+  } catch (error) {
+    console.error('Error updating galactic map settings:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Randomize galactic map positions
+router.post('/api/galactic-map/randomize', async function(req, res, next) {
+  try {
+    // Call game-state-service to clear spatial data
+    const svcUrl = process.env.GAME_STATE_SERVICE_URL || 'https://svc.madladslab.com';
+    const response = await fetch(`${svcUrl}/api/spatial/assets`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to clear spatial data');
+    }
+
+    res.json({
+      success: true,
+      message: 'Spatial data cleared - reload galactic map to see randomized positions'
+    });
+  } catch (error) {
+    console.error('Error randomizing galactic map:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Get platform analytics
+router.get('/api/analytics', isAdmin, async function(req, res, next) {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const analytics = await UserAnalytics.getPlatformAnalytics(days);
+
+    res.json({
+      success: true,
+      analytics
+    });
+  } catch (error) {
+    console.error('Error fetching analytics:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Get user-specific analytics
+router.get('/api/analytics/user/:userId', isAdmin, async function(req, res, next) {
+  try {
+    const analytics = await UserAnalytics.getUserAnalytics(req.params.userId);
+
+    res.json({
+      success: true,
+      analytics
+    });
+  } catch (error) {
+    console.error('Error fetching user analytics:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Track user action (can be called from client-side)
+router.post('/api/track-action', async function(req, res, next) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { actionType, metadata } = req.body;
+
+    if (!actionType) {
+      return res.status(400).json({ success: false, error: 'Action type required' });
+    }
+
+    await UserAnalytics.trackAction(req.user._id, actionType, metadata || {});
+
+    res.json({ success: true, message: 'Action tracked' });
+  } catch (error) {
+    console.error('Error tracking action:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Get all users (admin only)
+router.get('/api/users', isAdmin, async function(req, res, next) {
+  try {
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const { collections } = await import('../../config/database.js');
+    const db = getDb();
+
+    const users = await db.collection(collections.users)
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      users
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// User analytics detail page
+router.get('/analytics/user/:userId', isAdmin, function(req, res, next) {
+  res.render('admin/user-analytics', {
+    title: 'User Analytics',
+    user: req.user,
+    userId: req.params.userId
+  });
 });
 
 export default router;

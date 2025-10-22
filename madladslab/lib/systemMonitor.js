@@ -13,15 +13,16 @@ const execAsync = promisify(exec);
 
 // Configuration for each app
 const APP_CONFIG = {
-  madladslab: { port: 3000, path: '/srv/madladslab', domain: 'madladslab.com' },
-  madThree: { port: 3003, path: '/srv/madThree', domain: 'three.madladslab.com' },
-  ps: { port: 3399, path: '/srv/ps', domain: 'ps.madladslab.com' },
-  sfg: { port: 3002, path: '/srv/sfg', domain: 'sfg.madladslab.com' },
-  sna: { port: 3005, path: '/srv/sna', domain: 'somenewsarticle.com' },
-  twww: { port: 3006, path: '/srv/twww', domain: 'theworldwidewallet.com' },
-  acm: { port: 3004, path: '/srv/acm', domain: 'acmcreativeconcepts.com' },
-  w2MongoClient: { port: 3007, path: '/srv/w2MongoClient', domain: 'localhost' },
-  nocometalworkz: { port: 3008, path: '/srv/nocometalworkz', domain: 'nocometalworkz.com' }
+  madladslab: { port: 3000, path: '/srv/madladslab', domain: 'madladslab.com', session: 'madladslab' },
+  ps: { port: 3399, path: '/srv/ps', domain: 'ps.madladslab.com', session: 'ps' },
+  'game-state': { port: 3500, path: '/srv/game-state-service', domain: 'svc.madladslab.com', session: 'game-state' },
+  acm: { port: 3001, path: '/srv/acm', domain: 'acmcreativeconcepts.com', session: 'acm' },
+  nocometalworkz: { port: 3002, path: '/srv/nocometalworkz', domain: 'nocometalworkz.com', session: 'nocometalworkz' },
+  sfg: { port: 3003, path: '/srv/sfg', domain: 'sfg.madladslab.com', session: 'sfg' },
+  sna: { port: 3004, path: '/srv/sna', domain: 'somenewsarticle.com', session: 'sna' },
+  twww: { port: 3005, path: '/srv/twww', domain: 'theworldwidewallet.com', session: 'twww' },
+  w2portal: { port: 3006, path: '/srv/w2MongoClient', domain: 'localhost', session: 'w2portal' },
+  madThree: { port: 3007, path: '/srv/madThree', domain: 'three.madladslab.com', session: 'madThree' }
 };
 
 /**
@@ -94,7 +95,8 @@ export async function getAppStatus(appName) {
  */
 async function checkTmuxSession(appName) {
   try {
-    const sessionName = `${appName}_session`;
+    const config = APP_CONFIG[appName];
+    const sessionName = config ? config.session : appName;
     const { stdout } = await execAsync(`tmux list-sessions 2>&1 | grep "^${sessionName}:" || echo "not found"`);
 
     if (stdout.includes('not found')) {
@@ -171,7 +173,8 @@ async function checkHealth(port) {
  */
 async function getResourceUsage(appName) {
   try {
-    const sessionName = `${appName}_session`;
+    const config = APP_CONFIG[appName];
+    const sessionName = config ? config.session : appName;
 
     // Get PID from tmux session
     const { stdout: pidOutput } = await execAsync(
@@ -288,7 +291,7 @@ export async function restartApp(appName) {
     throw new Error(`Unknown app: ${appName}`);
   }
 
-  const sessionName = `${appName}_session`;
+  const sessionName = config.session;
 
   try {
     // Kill existing session
@@ -298,7 +301,7 @@ export async function restartApp(appName) {
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Start new session
-    await execAsync(`tmux new-session -d -s ${sessionName} -c ${config.path} "npm run dev"`);
+    await execAsync(`tmux new-session -d -s ${sessionName} -c ${config.path} "PORT=${config.port} npm start"`);
 
     // Wait for startup
     await new Promise(resolve => setTimeout(resolve, 3000));
@@ -326,7 +329,7 @@ export async function getAppLogs(appName, lines = 50) {
     throw new Error(`Unknown app: ${appName}`);
   }
 
-  const sessionName = `${appName}_session`;
+  const sessionName = config.session;
 
   try {
     const { stdout } = await execAsync(`tmux capture-pane -t ${sessionName} -p | tail -${lines}`);

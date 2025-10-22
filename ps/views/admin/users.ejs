@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    .users-panel {
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .panel-header {
+      margin-bottom: 30px;
+    }
+
+    .panel-header h1 {
+      margin: 0 0 10px 0;
+      color: #00ff9f;
+    }
+
+    .dashboard-nav {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+
+    .dashboard-nav a {
+      padding: 10px 20px;
+      background: rgba(0, 255, 159, 0.1);
+      border: 1px solid #00ff9f;
+      color: #00ff9f;
+      text-decoration: none;
+      border-radius: 4px;
+      transition: all 0.3s;
+    }
+
+    .dashboard-nav a:hover,
+    .dashboard-nav a.active {
+      background: rgba(0, 255, 159, 0.2);
+    }
+
+    .search-filter {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 10px;
+      background: rgba(0, 255, 159, 0.05);
+      border: 1px solid #00ff9f;
+      color: #fff;
+      border-radius: 4px;
+    }
+
+    .filter-select {
+      padding: 10px;
+      background: rgba(0, 255, 159, 0.05);
+      border: 1px solid #00ff9f;
+      color: #fff;
+      border-radius: 4px;
+    }
+
+    .users-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(0, 255, 159, 0.05);
+      border: 1px solid #00ff9f;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .users-table th {
+      background: rgba(0, 255, 159, 0.2);
+      padding: 15px;
+      text-align: left;
+      color: #00ff9f;
+      font-weight: bold;
+      border-bottom: 1px solid #00ff9f;
+    }
+
+    .users-table td {
+      padding: 15px;
+      border-bottom: 1px solid rgba(0, 255, 159, 0.1);
+      color: #fff;
+    }
+
+    .users-table tr:hover {
+      background: rgba(0, 255, 159, 0.1);
+    }
+
+    .user-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00ff9f, #00cc7f);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #000;
+      margin-right: 10px;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+    }
+
+    .user-details {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .username {
+      font-weight: bold;
+      color: #00ff9f;
+    }
+
+    .user-email {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .badge-admin {
+      background: #00ff9f;
+      color: #000;
+    }
+
+    .badge-active {
+      background: rgba(0, 255, 0, 0.2);
+      color: #00ff00;
+      border: 1px solid #00ff00;
+    }
+
+    .badge-inactive {
+      background: rgba(128, 128, 128, 0.2);
+      color: #888;
+      border: 1px solid #888;
+    }
+
+    .action-btn {
+      padding: 6px 12px;
+      background: rgba(0, 255, 159, 0.1);
+      border: 1px solid #00ff9f;
+      color: #00ff9f;
+      border-radius: 4px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      margin-right: 5px;
+      font-size: 12px;
+    }
+
+    .action-btn:hover {
+      background: rgba(0, 255, 159, 0.2);
+    }
+
+    .stats-mini {
+      display: flex;
+      gap: 15px;
+      font-size: 12px;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-label {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .stat-value {
+      color: #00ff9f;
+      font-weight: bold;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .pagination button {
+      padding: 8px 16px;
+      background: rgba(0, 255, 159, 0.1);
+      border: 1px solid #00ff9f;
+      color: #00ff9f;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .pagination button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .pagination button.active {
+      background: #00ff9f;
+      color: #000;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: #1a1a1a;
+      border: 2px solid #00ff9f;
+      border-radius: 8px;
+      padding: 30px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-header h2 {
+      margin: 0;
+      color: #00ff9f;
+    }
+
+    .close-modal {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="users-panel">
+    <div class="panel-header">
+      <h1>User Management</h1>
+      <p>View and manage platform users</p>
+    </div>
+
+    <div class="dashboard-nav">
+      <a href="/admin">Dashboard</a>
+      <a href="/admin/users" class="active">Users</a>
+      <a href="/admin/assets">Asset Approvals</a>
+      <a href="/admin/generate">Generate Assets</a>
+      <a href="/admin/game-state">Game State</a>
+      <a href="/admin/galactic-map-settings">Galactic Map</a>
+      <a href="/admin/monitor/orbital-systems">Orbital Monitor</a>
+    </div>
+
+    <div class="search-filter">
+      <input type="text" id="searchInput" class="search-input" placeholder="Search by username or email...">
+      <select id="filterSelect" class="filter-select">
+        <option value="all">All Users</option>
+        <option value="active">Active (Last 7 days)</option>
+        <option value="inactive">Inactive (30+ days)</option>
+        <option value="admin">Admins</option>
+        <option value="new">New (Last 7 days)</option>
+      </select>
+    </div>
+
+    <div id="loading" class="loading">
+      Loading users...
+    </div>
+
+    <div id="usersContent" style="display: none;">
+      <table class="users-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Status</th>
+            <th>Statistics</th>
+            <th>Joined</th>
+            <th>Last Active</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="usersTableBody">
+          <!-- Users will be loaded here -->
+        </tbody>
+      </table>
+
+      <div class="pagination" id="pagination">
+        <!-- Pagination will be loaded here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- User Details Modal -->
+  <div id="userModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>User Details</h2>
+        <button class="close-modal" onclick="closeUserModal()">&times;</button>
+      </div>
+      <div id="userModalContent">
+        <!-- User details will be loaded here -->
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script>
+    let allUsers = [];
+    let filteredUsers = [];
+    let currentPage = 1;
+    const usersPerPage = 20;
+
+    // Search input
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      filterUsers();
+    });
+
+    // Filter select
+    document.getElementById('filterSelect').addEventListener('change', (e) => {
+      filterUsers();
+    });
+
+    async function loadUsers() {
+      const loading = document.getElementById('loading');
+      const content = document.getElementById('usersContent');
+
+      try {
+        const response = await fetch('/admin/api/users');
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to load users');
+        }
+
+        allUsers = data.users;
+        filterUsers();
+
+        loading.style.display = 'none';
+        content.style.display = 'block';
+      } catch (error) {
+        console.error('Error loading users:', error);
+        loading.textContent = 'Error loading users: ' + error.message;
+      }
+    }
+
+    function filterUsers() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+      const filter = document.getElementById('filterSelect').value;
+      const now = new Date();
+
+      filteredUsers = allUsers.filter(user => {
+        // Search filter
+        const matchesSearch = !searchTerm ||
+          user.username.toLowerCase().includes(searchTerm) ||
+          (user.email && user.email.toLowerCase().includes(searchTerm));
+
+        if (!matchesSearch) return false;
+
+        // Status filter
+        if (filter === 'all') return true;
+
+        const lastActive = user.lastActive ? new Date(user.lastActive) : new Date(user.createdAt);
+        const daysSinceActive = (now - lastActive) / (1000 * 60 * 60 * 24);
+
+        if (filter === 'active') return daysSinceActive <= 7;
+        if (filter === 'inactive') return daysSinceActive >= 30;
+        if (filter === 'admin') return user.isAdmin === true;
+
+        if (filter === 'new') {
+          const daysSinceCreated = (now - new Date(user.createdAt)) / (1000 * 60 * 60 * 24);
+          return daysSinceCreated <= 7;
+        }
+
+        return true;
+      });
+
+      currentPage = 1;
+      renderUsers();
+    }
+
+    function renderUsers() {
+      const tbody = document.getElementById('usersTableBody');
+      const start = (currentPage - 1) * usersPerPage;
+      const end = start + usersPerPage;
+      const pageUsers = filteredUsers.slice(start, end);
+
+      tbody.innerHTML = pageUsers.map(user => {
+        const stats = user.stats || {};
+        const lastActive = user.lastActive ? new Date(user.lastActive) : new Date(user.createdAt);
+        const daysSinceActive = Math.floor((new Date() - lastActive) / (1000 * 60 * 60 * 24));
+        const isActive = daysSinceActive <= 7;
+
+        return `
+          <tr>
+            <td>
+              <div class="user-info">
+                <div class="user-avatar">${user.username.charAt(0).toUpperCase()}</div>
+                <div class="user-details">
+                  <span class="username">${user.username}</span>
+                  <span class="user-email">${user.email || 'No email'}</span>
+                </div>
+              </div>
+            </td>
+            <td>
+              ${user.isAdmin ? '<span class="badge badge-admin">ADMIN</span> ' : ''}
+              <span class="badge ${isActive ? 'badge-active' : 'badge-inactive'}">
+                ${isActive ? 'Active' : 'Inactive'}
+              </span>
+            </td>
+            <td>
+              <div class="stats-mini">
+                <div class="stat-item">
+                  <span class="stat-label">Assets</span>
+                  <span class="stat-value">${stats.assetsCreated || 0}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Votes</span>
+                  <span class="stat-value">${stats.votesCast || 0}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Achievements</span>
+                  <span class="stat-value">${(user.achievements || []).length}</span>
+                </div>
+              </div>
+            </td>
+            <td>${new Date(user.createdAt).toLocaleDateString()}</td>
+            <td>
+              ${lastActive.toLocaleDateString()}
+              <br><small style="color: rgba(255,255,255,0.5);">(${daysSinceActive} days ago)</small>
+            </td>
+            <td>
+              <a href="/profile?user=${user._id}" class="action-btn" target="_blank">Profile</a>
+              <button class="action-btn" onclick="viewUserDetails('${user._id}')">Details</button>
+              <a href="/admin/analytics/user/${user._id}" class="action-btn">Analytics</a>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      renderPagination();
+    }
+
+    function renderPagination() {
+      const pagination = document.getElementById('pagination');
+      const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+
+      if (totalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+      }
+
+      let html = '';
+
+      html += `<button ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})">Previous</button>`;
+
+      for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+          html += `<button class="${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
+        } else if (i === currentPage - 3 || i === currentPage + 3) {
+          html += `<span>...</span>`;
+        }
+      }
+
+      html += `<button ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})">Next</button>`;
+
+      pagination.innerHTML = html;
+    }
+
+    function changePage(page) {
+      currentPage = page;
+      renderUsers();
+      window.scrollTo(0, 0);
+    }
+
+    async function viewUserDetails(userId) {
+      const modal = document.getElementById('userModal');
+      const content = document.getElementById('userModalContent');
+
+      content.innerHTML = '<div class="loading">Loading user details...</div>';
+      modal.classList.add('show');
+
+      try {
+        const response = await fetch(`/admin/api/analytics/user/${userId}`);
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to load user details');
+        }
+
+        const user = data.analytics.user;
+        const stats = user.stats || {};
+        const achievements = user.achievements || [];
+
+        content.innerHTML = `
+          <h3>${user.username}</h3>
+          <p><strong>Email:</strong> ${user.email || 'N/A'}</p>
+          <p><strong>Joined:</strong> ${new Date(user.createdAt).toLocaleDateString()}</p>
+          <p><strong>Last Active:</strong> ${user.lastActive ? new Date(user.lastActive).toLocaleDateString() : 'Never'}</p>
+
+          <h4 style="color: #00ff9f; margin-top: 20px;">Statistics</h4>
+          <div class="stats-mini" style="flex-wrap: wrap;">
+            <div class="stat-item">
+              <span class="stat-label">Assets Created</span>
+              <span class="stat-value">${stats.assetsCreated || 0}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Assets Submitted</span>
+              <span class="stat-value">${stats.assetsSubmitted || 0}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Votes Cast</span>
+              <span class="stat-value">${stats.votesCast || 0}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Suggestions Made</span>
+              <span class="stat-value">${stats.suggestionsMade || 0}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Characters Created</span>
+              <span class="stat-value">${stats.charactersCreated || 0}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Total Actions</span>
+              <span class="stat-value">${stats.totalActions || 0}</span>
+            </div>
+          </div>
+
+          <h4 style="color: #00ff9f; margin-top: 20px;">Achievements (${achievements.length})</h4>
+          <ul style="list-style: none; padding: 0;">
+            ${achievements.map(a => `
+              <li style="padding: 8px; border-bottom: 1px solid rgba(0,255,159,0.1);">
+                <strong>${a.name}</strong> - ${a.description}
+                <br><small style="color: rgba(255,255,255,0.5);">Unlocked: ${new Date(a.unlockedAt).toLocaleDateString()}</small>
+              </li>
+            `).join('')}
+          </ul>
+
+          ${achievements.length === 0 ? '<p style="color: rgba(255,255,255,0.5);">No achievements yet</p>' : ''}
+        `;
+      } catch (error) {
+        console.error('Error loading user details:', error);
+        content.innerHTML = `<p style="color: #ff0000;">Error: ${error.message}</p>`;
+      }
+    }
+
+    function closeUserModal() {
+      document.getElementById('userModal').classList.remove('show');
+    }
+
+    // Close modal on outside click
+    document.getElementById('userModal').addEventListener('click', (e) => {
+      if (e.target.id === 'userModal') {
+        closeUserModal();
+      }
+    });
+
+    // Load users on page load
+    loadUsers();
+  </script>
+</body>
+</html>
