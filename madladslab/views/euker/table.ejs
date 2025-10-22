@@ -1,85 +1,773 @@
-<!-- views/euker/table.ejs -->
-<div class="game-table-container">
-  <h2>Players & Hands</h2>
-  <table class="game-table">
-    <thead>
-      <tr>
-        <th>Player</th>
-        <th>Hand (tap to play)</th>
-        <th>Cards</th>
-      </tr>
-    </thead>
-    <tbody>
-      <% if (gameState && gameState.hands) { %>
-        <% Object.keys(gameState.hands).forEach(p => {
-          const isCurrentTurn = gameState.players && gameState.players[gameState.turnIdx] === p;
-          const cardCount = (gameState.hands[p] || []).length;
-        %>
-          <tr class="<%= isCurrentTurn ? 'current-turn' : '' %>">
-            <td class="player-name">
-              <%= p %>
-              <% if (isCurrentTurn) { %><span class="turn-indicator">→</span><% } %>
-            </td>
-            <td class="hand-cards">
-              <% if (cardCount > 0) { %>
-                <% (gameState.hands[p] || []).forEach(c => { %>
-                  <button class="card" data-player="<%= p %>" data-card="<%= c %>"
-                          <%= isCurrentTurn ? '' : 'disabled' %>>
-                    <%= c %>
-                  </button>
-                <% }) %>
-              <% } else { %>
-                <span class="empty-hand">No cards</span>
-              <% } %>
-            </td>
-            <td class="card-count"><%= cardCount %></td>
-          </tr>
-        <% }) %>
-      <% } %>
-    </tbody>
-  </table>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Euker - <%= table.name %></title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+      min-height: 100vh;
+    }
 
-  <div class="scoreboard">
-    <div class="score-section">
-      <h3>Current Game Score</h3>
-      <div class="score-grid">
-        <div class="team-score team-ns">
-          <span class="team-label">North/South</span>
-          <span class="score-value"><%= gameState.score.teamNS %></span>
-        </div>
-        <div class="team-score team-ew">
-          <span class="team-label">East/West</span>
-          <span class="score-value"><%= gameState.score.teamEW %></span>
-        </div>
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: white;
+      padding: 20px 30px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      color: #333;
+    }
+
+    .nav-buttons {
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    button:hover:not([disabled]) {
+      background: #2563eb;
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.danger {
+      background: #ef4444;
+    }
+
+    button.danger:hover:not([disabled]) {
+      background: #dc2626;
+    }
+
+    button.success {
+      background: #10b981;
+    }
+
+    button.success:hover:not([disabled]) {
+      background: #059669;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 350px;
+      gap: 20px;
+    }
+
+    .game-area {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    h2, h3 {
+      margin: 0 0 16px 0;
+      color: #333;
+    }
+
+    .game-status {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .status-item {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .status-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #666;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .status-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #3b82f6;
+    }
+
+    /* Players Table */
+    .players-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .players-table th,
+    .players-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .players-table th {
+      background: #f8f9fa;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #666;
+    }
+
+    .players-table tr.active {
+      background: #fef3c7;
+    }
+
+    .player-name {
+      font-weight: 600;
+      color: #333;
+    }
+
+    .ready-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .ready-badge.ready {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .ready-badge.not-ready {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    /* Hand Cards */
+    .hand-section {
+      margin-top: 24px;
+    }
+
+    .cards-grid {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      background: linear-gradient(145deg, #ffffff, #f0f4ff);
+      border: 2px solid #3b82f6;
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-weight: bold;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .card:hover:not([disabled]) {
+      background: linear-gradient(145deg, #e0e7ff, #ffffff);
+      border-color: #2563eb;
+      transform: translateY(-3px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .card[disabled] {
+      opacity: 0.4;
+      cursor: not-allowed;
+      border-color: #d1d5db;
+    }
+
+    /* Trick Display */
+    .trick-display {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin: 20px 0;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 12px;
+    }
+
+    .trick-card {
+      text-align: center;
+      padding: 16px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .trick-position {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .trick-card-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #3b82f6;
+    }
+
+    /* Scores */
+    .scores-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .score-card {
+      background: #f8f9fa;
+      padding: 16px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .score-card.ns {
+      border-left: 4px solid #3b82f6;
+    }
+
+    .score-card.ew {
+      border-left: 4px solid #ef4444;
+    }
+
+    .score-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .score-value {
+      font-size: 32px;
+      font-weight: bold;
+    }
+
+    .score-card.ns .score-value {
+      color: #3b82f6;
+    }
+
+    .score-card.ew .score-value {
+      color: #ef4444;
+    }
+
+    /* Bidding Controls */
+    .bidding-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    /* Log */
+    .game-log {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .log-entry {
+      padding: 8px 12px;
+      margin-bottom: 4px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    .log-entry:nth-child(odd) {
+      background: #f1f3f5;
+    }
+
+    .log-timestamp {
+      font-size: 11px;
+      color: #999;
+      margin-right: 8px;
+    }
+
+    .empty-seat {
+      color: #999;
+      font-style: italic;
+    }
+
+    .seat-controls {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1>🃏 <%= table.name %></h1>
+      </div>
+      <div class="nav-buttons">
+        <button onclick="location.href='/euker'">Back to Lobby</button>
+        <button onclick="location.reload()">Refresh</button>
+        <% if (user && table.createdBy && table.createdBy.toString() === user._id.toString()) { %>
+          <button class="danger" onclick="deleteTable()">Delete Table</button>
+        <% } %>
       </div>
     </div>
 
-    <div class="score-section">
-      <h3>Games Won</h3>
-      <div class="score-grid">
-        <div class="team-score team-ns">
-          <span class="team-label">North/South</span>
-          <span class="score-value"><%= gameState.gamesWon.teamNS %></span>
+    <div class="main-grid">
+      <div class="game-area">
+        <h2>Game Table</h2>
+
+        <div class="game-status">
+          <div class="status-item">
+            <div class="status-label">Phase</div>
+            <div class="status-value" id="phase"><%= gameState.phase %></div>
+          </div>
+          <div class="status-item">
+            <div class="status-label">Trump</div>
+            <div class="status-value" id="trump"><%= gameState.trump || '-' %></div>
+          </div>
+          <div class="status-item">
+            <div class="status-label">Upcard</div>
+            <div class="status-value" id="upcard"><%= gameState.upcard || '-' %></div>
+          </div>
+          <div class="status-item">
+            <div class="status-label">Current Turn</div>
+            <div class="status-value" id="turn"><%= positions[gameState.turnIdx] %></div>
+          </div>
         </div>
-        <div class="team-score team-ew">
-          <span class="team-label">East/West</span>
-          <span class="score-value"><%= gameState.gamesWon.teamEW %></span>
+
+        <!-- Players at Table -->
+        <table class="players-table">
+          <thead>
+            <tr>
+              <th>Position</th>
+              <th>Player</th>
+              <th>Status</th>
+              <th>Cards</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% positions.forEach((pos, idx) => {
+              const seat = table.seats[pos];
+              const isCurrentTurn = idx === gameState.turnIdx;
+              const cardCount = (gameState.hands[pos] || []).length;
+            %>
+              <tr class="<%= isCurrentTurn ? 'active' : '' %>">
+                <td><strong><%= pos %></strong></td>
+                <td>
+                  <% if (seat.user) { %>
+                    <span class="player-name">
+                      <%= seat.user.displayName || seat.user.email.split('@')[0] %>
+                    </span>
+                  <% } else { %>
+                    <span class="empty-seat">Empty</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (seat.user) { %>
+                    <span class="ready-badge <%= seat.isReady ? 'ready' : 'not-ready' %>">
+                      <%= seat.isReady ? 'Ready' : 'Not Ready' %>
+                    </span>
+                  <% } else { %>
+                    -
+                  <% } %>
+                </td>
+                <td><%= cardCount %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+
+        <!-- Seat Controls (if not seated) -->
+        <% if (!playerPosition && user) { %>
+          <div class="seat-controls">
+            <% positions.forEach(pos => { %>
+              <% if (!table.seats[pos].user) { %>
+                <button onclick="joinSeat('<%= pos %>')">Join as <%= pos %></button>
+              <% } %>
+            <% }) %>
+          </div>
+        <% } %>
+
+        <!-- Bot Controls -->
+        <% if (user) { %>
+          <div style="margin-top: 12px; padding: 12px; background: #fef3c7; border-radius: 8px;">
+            <strong>🤖 Bot Controls:</strong>
+            <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
+              <button onclick="addBot('easy')">Add Easy Bot</button>
+              <button onclick="addBot('medium')">Add Medium Bot</button>
+              <button onclick="addBot('hard')">Add Hard Bot</button>
+              <button onclick="fillWithBots()">Fill All Seats</button>
+              <% if (playerPosition) {
+                positions.forEach(pos => {
+                  if (table.seats[pos].user) {
+                    const playerName = table.seats[pos].user.displayName || '';
+                    const isBot = playerName.includes('🤖') || playerName.includes('Bot');
+                    if (isBot) { %>
+                      <button class="danger" onclick="removeBot('<%= pos %>')">Remove <%= pos %> Bot</button>
+                    <% }
+                  }
+                });
+              } %>
+            </div>
+          </div>
+        <% } %>
+
+        <!-- Debug Info -->
+        <% if (user) { %>
+          <div style="margin-top: 12px; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 11px;">
+            <strong>DEBUG:</strong> user._id = <%= user._id %> | playerPosition = <%= playerPosition || 'NULL' %><br>
+            <% positions.forEach(pos => { %>
+              <%= pos %>: <%= table.seats[pos].user ? (table.seats[pos].user._id || 'NO _ID') : 'empty' %> |
+            <% }) %>
+          </div>
+        <% } else { %>
+          <div style="margin-top: 12px; padding: 8px; background: #f8d7da; border-radius: 4px; font-size: 11px;">
+            DEBUG: NO USER LOGGED IN
+          </div>
+        <% } %>
+
+        <!-- Player Controls (if seated) -->
+        <% if (playerPosition) { %>
+          <div style="margin-top: 20px; padding: 16px; background: #e0e7ff; border-radius: 8px;">
+            <strong>You are seated as: <%= playerPosition %></strong>
+            <div style="margin-top: 12px; display: flex; gap: 8px;">
+              <button class="<%= table.seats[playerPosition].isReady ? 'danger' : 'success' %>"
+                      onclick="toggleReady()">
+                <%= table.seats[playerPosition].isReady ? 'Not Ready' : 'Ready Up' %>
+              </button>
+              <button class="danger" onclick="leaveSeat()">Leave Table</button>
+              <%
+                // Check if all 4 players are ready
+                const allReady = positions.every(pos => table.seats[pos].user && table.seats[pos].isReady);
+                const allSeated = positions.every(pos => table.seats[pos].user);
+              %>
+              <% if (allSeated && allReady && gameState.phase === 'idle') { %>
+                <button onclick="startGame()">Start Game</button>
+              <% } %>
+            </div>
+          </div>
+        <% } %>
+
+        <!-- Current Trick -->
+        <% if (gameState.table && gameState.table.length > 0) { %>
+          <h3 style="margin-top: 30px;">Current Trick</h3>
+          <div class="trick-display">
+            <% gameState.table.forEach(play => { %>
+              <div class="trick-card">
+                <div class="trick-position"><%= play.player %></div>
+                <div class="trick-card-value"><%= play.card %></div>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+
+        <!-- Your Hand -->
+        <% if (playerPosition && gameState.hands[playerPosition]) { %>
+          <div class="hand-section">
+            <h3>Your Hand (<%= playerPosition %>)</h3>
+            <div class="cards-grid">
+              <% gameState.hands[playerPosition].forEach(card => {
+                const isYourTurn = positions[gameState.turnIdx] === playerPosition;
+                const canPlay = isYourTurn && gameState.phase === 'play';
+              %>
+                <button class="card"
+                        data-card="<%= card %>"
+                        onclick="playCard('<%= card %>')"
+                        <%= !canPlay ? 'disabled' : '' %>>
+                  <%= card %>
+                </button>
+              <% }) %>
+            </div>
+          </div>
+
+          <!-- Bidding Controls -->
+          <% if (positions[gameState.turnIdx] === playerPosition && (gameState.phase === 'bidding1' || gameState.phase === 'bidding2')) { %>
+            <div style="margin-top: 20px; padding: 16px; background: #fef3c7; border-radius: 8px;">
+              <h3>Your Turn to Bid</h3>
+              <% if (gameState.phase === 'bidding1') { %>
+                <p>Order up <strong><%= gameState.upcard %></strong>?</p>
+                <div class="bidding-controls">
+                  <button onclick="bid('order')">Order Up</button>
+                  <button onclick="bid('pass')">Pass</button>
+                </div>
+              <% } else if (gameState.phase === 'bidding2') { %>
+                <p>Choose a suit (not <%= gameState.upcard.slice(-1) %>)</p>
+                <div class="bidding-controls">
+                  <% ['H', 'D', 'C', 'S'].forEach(suit => { %>
+                    <% if (suit !== gameState.upcard.slice(-1)) { %>
+                      <button onclick="chooseSuit('<%= suit %>')">
+                        <%= suit === 'H' ? '♥' : suit === 'D' ? '♦' : suit === 'C' ? '♣' : '♠' %>
+                        <%= suit %>
+                      </button>
+                    <% } %>
+                  <% }) %>
+                  <button onclick="bid('pass')">Pass</button>
+                </div>
+              <% } %>
+            </div>
+          <% } %>
+        <% } %>
+      </div>
+
+      <div class="sidebar">
+        <!-- Scores -->
+        <div class="panel">
+          <h3>Score</h3>
+          <div class="scores-grid">
+            <div class="score-card ns">
+              <div class="score-label">North/South</div>
+              <div class="score-value"><%= gameState.score.teamNS %></div>
+              <% if (gameState.trickCount) { %>
+                <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                  Tricks: <%= gameState.trickCount.teamNS %>
+                </div>
+              <% } %>
+            </div>
+            <div class="score-card ew">
+              <div class="score-label">East/West</div>
+              <div class="score-value"><%= gameState.score.teamEW %></div>
+              <% if (gameState.trickCount) { %>
+                <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                  Tricks: <%= gameState.trickCount.teamEW %>
+                </div>
+              <% } %>
+            </div>
+          </div>
+
+          <h3 style="margin-top: 24px;">Games Won</h3>
+          <div class="scores-grid">
+            <div class="score-card ns">
+              <div class="score-label">North/South</div>
+              <div class="score-value"><%= gameState.gamesWon.teamNS %></div>
+            </div>
+            <div class="score-card ew">
+              <div class="score-label">East/West</div>
+              <div class="score-value"><%= gameState.gamesWon.teamEW %></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Game Log -->
+        <div class="panel">
+          <h3>Game Log</h3>
+          <div class="game-log">
+            <% if (table.log && table.log.length > 0) { %>
+              <% table.log.slice().reverse().slice(0, 20).forEach(entry => { %>
+                <div class="log-entry">
+                  <span class="log-timestamp">
+                    <%= new Date(entry.timestamp).toLocaleTimeString() %>
+                  </span>
+                  <%= entry.message %>
+                </div>
+              <% }) %>
+            <% } else { %>
+              <div class="empty-seat">No activity yet</div>
+            <% } %>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <% if (gameState.currentTrick && gameState.currentTrick.length > 0) { %>
-    <div class="current-trick">
-      <h3>Current Trick</h3>
-      <div class="trick-cards">
-        <% gameState.currentTrick.forEach(play => { %>
-          <div class="trick-play">
-            <span class="trick-player"><%= play.player %></span>
-            <span class="trick-card"><%= play.card %></span>
-          </div>
-        <% }) %>
-      </div>
-    </div>
-  <% } %>
-</div>
+  <pre id="output" style="background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 8px; margin-top: 20px; max-width: 1400px; margin-left: auto; margin-right: auto;"></pre>
+
+  <script>
+    const tableId = '<%= table._id %>';
+    const output = document.getElementById('output');
+
+    const api = (path, opts = {}) =>
+      fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts))
+      .then(r => r.json());
+
+    async function joinSeat(position) {
+      const data = await api(`/euker/tables/${tableId}/join`, {
+        method: 'POST',
+        body: JSON.stringify({ position })
+      });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) location.reload();
+    }
+
+    async function leaveSeat() {
+      if (!confirm('Are you sure you want to leave this table?')) return;
+      const data = await api(`/euker/tables/${tableId}/leave`, { method: 'POST' });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) location.href = '/euker';
+    }
+
+    async function deleteTable() {
+      if (!confirm('Are you sure you want to delete this table? This cannot be undone!')) return;
+      const data = await api(`/euker/tables/${tableId}/delete`, { method: 'POST' });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) {
+        alert('Table deleted successfully');
+        location.href = '/euker';
+      } else {
+        alert(data.error || 'Failed to delete table');
+      }
+    }
+
+    async function toggleReady() {
+      const data = await api(`/euker/tables/${tableId}/ready`, { method: 'POST' });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) location.reload();
+    }
+
+    async function startGame() {
+      const data = await api(`/euker/tables/${tableId}/start`, { method: 'POST' });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) {
+        location.reload();
+        setTimeout(checkForBotTurn, 1000);
+      }
+    }
+
+    async function bid(action) {
+      const data = await api(`/euker/tables/${tableId}/bid`, {
+        method: 'POST',
+        body: JSON.stringify({ action })
+      });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) {
+        location.reload();
+        setTimeout(checkForBotTurn, 1000);
+      }
+    }
+
+    async function chooseSuit(suit) {
+      const data = await api(`/euker/tables/${tableId}/bid`, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'choose', suit })
+      });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) {
+        location.reload();
+        setTimeout(checkForBotTurn, 1000);
+      }
+    }
+
+    async function playCard(card) {
+      const data = await api(`/euker/tables/${tableId}/play`, {
+        method: 'POST',
+        body: JSON.stringify({ card })
+      });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) {
+        location.reload();
+        // After reload, trigger bot moves
+        setTimeout(checkForBotTurn, 1000);
+      }
+    }
+
+    // Bot management functions
+    async function addBot(difficulty) {
+      const data = await api(`/euker/tables/${tableId}/add-bot`, {
+        method: 'POST',
+        body: JSON.stringify({ difficulty })
+      });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) location.reload();
+    }
+
+    async function removeBot(position) {
+      const data = await api(`/euker/tables/${tableId}/remove-bot/${position}`, {
+        method: 'POST'
+      });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) location.reload();
+    }
+
+    async function fillWithBots() {
+      const data = await api(`/euker/tables/${tableId}/fill-with-bots`, {
+        method: 'POST'
+      });
+      output.textContent = JSON.stringify(data, null, 2);
+      if (data.success) location.reload();
+    }
+
+    // Check if it's a bot's turn and trigger their move
+    async function checkForBotTurn() {
+      try {
+        const stateRes = await api(`/euker/tables/${tableId}/state`);
+        if (!stateRes.success) return;
+
+        const table = stateRes.table;
+        const positions = ['North', 'East', 'South', 'West'];
+        const currentTurnPos = positions[table.gameState.turnIdx];
+        const seat = table.seats[currentTurnPos];
+
+        if (!seat || !seat.user) return;
+
+        // Check if current player is a bot
+        const playerName = seat.user.displayName || '';
+        const isBot = playerName.includes('🤖') || playerName.includes('Bot');
+
+        if (isBot && table.gameState.phase !== 'idle') {
+          // Wait a bit for realism, then make bot move
+          setTimeout(async () => {
+            const moveRes = await api(`/euker/tables/${tableId}/bot-move/${currentTurnPos}`, {
+              method: 'POST'
+            });
+            output.textContent = JSON.stringify(moveRes, null, 2);
+
+            if (moveRes.success) {
+              // Reload and check for next bot
+              location.reload();
+            }
+          }, 1500); // 1.5 second delay for bot moves
+        }
+      } catch (error) {
+        console.error('Bot check error:', error);
+      }
+    }
+
+    // Auto-check for bot turns on load
+    setTimeout(checkForBotTurn, 1000);
+
+    // Auto-refresh every 10 seconds (increased from 5 to let bots play)
+    setTimeout(() => location.reload(), 10000);
+  </script>
+
+  <%-include('../mainContent/adminNav.ejs')%>
+</body>
+</html>
