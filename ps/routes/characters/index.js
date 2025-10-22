@@ -116,4 +116,42 @@ async function syncCharacterToGameState(character) {
   }
 }
 
+// Ship inventory page
+router.get('/:id/ship', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.redirect('/auth');
+    }
+
+    const character = await Character.findById(req.params.id);
+
+    if (!character) {
+      return res.status(404).render('error', {
+        message: 'Character not found',
+        user: req.user
+      });
+    }
+
+    // Verify ownership
+    if (character.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).render('error', {
+        message: 'You do not own this character',
+        user: req.user
+      });
+    }
+
+    res.render('characters/ship', {
+      title: `${character.name}'s Ship`,
+      character,
+      user: req.user
+    });
+  } catch (err) {
+    console.error('Error loading ship inventory:', err);
+    res.status(500).render('error', {
+      message: 'Failed to load ship inventory',
+      user: req.user
+    });
+  }
+});
+
 export default router;

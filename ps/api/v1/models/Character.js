@@ -71,6 +71,42 @@ export class Character {
 
       enchantments: [],
 
+      // Ship Status
+      activeInShip: true, // Whether character is actively piloting ship
+
+      // Ship Inventory
+      ship: {
+        name: 'Basic Hauler',
+        class: 'frigate',
+        hull: {
+          maxHP: 1000,
+          currentHP: 1000,
+          armor: 50
+        },
+        capacitor: {
+          max: 500,
+          current: 500,
+          rechargeRate: 10
+        },
+        fittings: {
+          highSlots: [null, null, null], // Weapons, mining lasers
+          midSlots: [null, null, null, null], // Shield, prop mods, tackle
+          lowSlots: [null, null, null, null], // Armor, damage mods, power
+          rigSlots: [null, null] // Permanent modifications
+        },
+        cargoHold: {
+          capacity: 1000, // m³
+          items: []
+        },
+        stats: {
+          maxSpeed: 100,
+          agility: 50,
+          scanResolution: 100,
+          targetingRange: 5000,
+          maxTargets: 3
+        }
+      },
+
       // Talent Tree
       talents: {
         availablePoints: 0,

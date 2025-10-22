@@ -513,6 +513,253 @@ router.post('/:id/unequip', async (req, res) => {
   }
 });
 
+// ===== SHIP INVENTORY ENDPOINTS =====
+
+// Get ship inventory
+router.get('/:id/ship', async (req, res) => {
+  try {
+    const character = await Character.findById(req.params.id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    res.json({ ship: character.ship || {} });
+  } catch (err) {
+    console.error('Error fetching ship inventory:', err);
+    res.status(500).json({ error: 'Failed to fetch ship inventory' });
+  }
+});
+
+// Update ship fitting (equip module to slot)
+router.post('/:id/ship/fit', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { slotType, slotIndex, module } = req.body;
+    const { ObjectId } = await import('mongodb');
+    const db = getDb();
+
+    // Verify ownership
+    const character = await db.collection('characters').findOne({
+      _id: new ObjectId(req.params.id),
+      userId: req.user._id.toString()
+    });
+
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found or not authorized' });
+    }
+
+    // Validate slot type
+    const validSlotTypes = ['highSlots', 'midSlots', 'lowSlots', 'rigSlots'];
+    if (!validSlotTypes.includes(slotType)) {
+      return res.status(400).json({ error: 'Invalid slot type' });
+    }
+
+    const updateField = `ship.fittings.${slotType}.${slotIndex}`;
+    const result = await db.collection('characters').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      {
+        $set: {
+          [updateField]: module,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(500).json({ error: 'Failed to update fitting' });
+    }
+
+    res.json({ success: true, message: 'Module fitted successfully' });
+  } catch (err) {
+    console.error('Error updating ship fitting:', err);
+    res.status(500).json({ error: 'Failed to update fitting' });
+  }
+});
+
+// Add item to cargo hold
+router.post('/:id/ship/cargo/add', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { item } = req.body;
+    const { ObjectId } = await import('mongodb');
+    const db = getDb();
+
+    // Verify ownership
+    const character = await db.collection('characters').findOne({
+      _id: new ObjectId(req.params.id),
+      userId: req.user._id.toString()
+    });
+
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found or not authorized' });
+    }
+
+    // Check cargo capacity
+    const currentCargo = character.ship?.cargoHold?.items || [];
+    const currentVolume = currentCargo.reduce((sum, i) => sum + (i.volume || 0) * (i.quantity || 1), 0);
+    const itemVolume = (item.volume || 0) * (item.quantity || 1);
+    const cargoCapacity = character.ship?.cargoHold?.capacity || 1000;
+
+    if (currentVolume + itemVolume > cargoCapacity) {
+      return res.status(400).json({ error: 'Insufficient cargo space' });
+    }
+
+    const result = await db.collection('characters').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      {
+        $push: { 'ship.cargoHold.items': item },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(500).json({ error: 'Failed to add item to cargo' });
+    }
+
+    res.json({ success: true, message: 'Item added to cargo hold' });
+  } catch (err) {
+    console.error('Error adding to cargo:', err);
+    res.status(500).json({ error: 'Failed to add item to cargo' });
+  }
+});
+
+// Remove item from cargo hold
+router.post('/:id/ship/cargo/remove', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { itemId } = req.body;
+    const { ObjectId } = await import('mongodb');
+    const db = getDb();
+
+    // Verify ownership
+    const character = await db.collection('characters').findOne({
+      _id: new ObjectId(req.params.id),
+      userId: req.user._id.toString()
+    });
+
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found or not authorized' });
+    }
+
+    const result = await db.collection('characters').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      {
+        $pull: { 'ship.cargoHold.items': { id: itemId } },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(500).json({ error: 'Failed to remove item from cargo' });
+    }
+
+    res.json({ success: true, message: 'Item removed from cargo hold' });
+  } catch (err) {
+    console.error('Error removing from cargo:', err);
+    res.status(500).json({ error: 'Failed to remove item from cargo' });
+  }
+});
+
+// Update ship stats/name
+router.put('/:id/ship', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { name, hull, capacitor } = req.body;
+    const { ObjectId } = await import('mongodb');
+    const db = getDb();
+
+    // Verify ownership
+    const character = await db.collection('characters').findOne({
+      _id: new ObjectId(req.params.id),
+      userId: req.user._id.toString()
+    });
+
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found or not authorized' });
+    }
+
+    const updateFields = {};
+    if (name) updateFields['ship.name'] = name;
+    if (hull) updateFields['ship.hull'] = hull;
+    if (capacitor) updateFields['ship.capacitor'] = capacitor;
+    updateFields.updatedAt = new Date();
+
+    const result = await db.collection('characters').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: updateFields }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(500).json({ error: 'Failed to update ship' });
+    }
+
+    res.json({ success: true, message: 'Ship updated successfully' });
+  } catch (err) {
+    console.error('Error updating ship:', err);
+    res.status(500).json({ error: 'Failed to update ship' });
+  }
+});
+
+// Toggle ship active/inactive status
+router.post('/:id/ship/toggle-active', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { ObjectId } = await import('mongodb');
+    const db = getDb();
+
+    // Verify ownership
+    const character = await db.collection('characters').findOne({
+      _id: new ObjectId(req.params.id),
+      userId: req.user._id.toString()
+    });
+
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found or not authorized' });
+    }
+
+    // Toggle the activeInShip status
+    const newStatus = !character.activeInShip;
+
+    const result = await db.collection('characters').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      {
+        $set: {
+          activeInShip: newStatus,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(500).json({ error: 'Failed to toggle ship status' });
+    }
+
+    res.json({
+      success: true,
+      activeInShip: newStatus,
+      message: newStatus ? 'Character is now piloting ship' : 'Character has left ship'
+    });
+  } catch (err) {
+    console.error('Error toggling ship status:', err);
+    res.status(500).json({ error: 'Failed to toggle ship status' });
+  }
+});
+
 export default router;
 
 // Set active character (cookie-based session)

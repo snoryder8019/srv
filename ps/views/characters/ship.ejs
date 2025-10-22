@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/character-detail.css">
+  <style>
+    .ship-container {
+      max-width: 1400px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .ship-header {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+      border: 1px solid rgba(102, 126, 234, 0.3);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .ship-name {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 0.5rem;
+    }
+
+    .ship-class {
+      color: #a0aec0;
+      font-size: 1.1rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .ship-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .stat-box {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .stat-label {
+      color: #a0aec0;
+      font-size: 0.85rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      color: #fff;
+      font-size: 1.3rem;
+      font-weight: bold;
+    }
+
+    .stat-bar {
+      background: rgba(0, 0, 0, 0.5);
+      height: 8px;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+      overflow: hidden;
+    }
+
+    .stat-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      transition: width 0.3s ease;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: #a0aec0;
+      padding: 1rem 2rem;
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border-bottom: 3px solid transparent;
+    }
+
+    .tab-btn:hover {
+      color: #fff;
+    }
+
+    .tab-btn.active {
+      color: #667eea;
+      border-bottom-color: #667eea;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Fittings Layout */
+    .fittings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+    }
+
+    .slot-group {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(102, 126, 234, 0.3);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    .slot-group-header {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .slot {
+      background: rgba(0, 0, 0, 0.5);
+      border: 2px dashed rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+      min-height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .slot:hover {
+      border-color: #667eea;
+      background: rgba(102, 126, 234, 0.1);
+    }
+
+    .slot.filled {
+      border-style: solid;
+      border-color: #667eea;
+      background: rgba(102, 126, 234, 0.2);
+    }
+
+    .slot-empty {
+      color: #718096;
+      font-size: 0.9rem;
+    }
+
+    .module {
+      width: 100%;
+    }
+
+    .module-name {
+      font-weight: bold;
+      color: #fff;
+      margin-bottom: 0.25rem;
+    }
+
+    .module-stats {
+      font-size: 0.85rem;
+      color: #a0aec0;
+    }
+
+    /* Cargo Hold */
+    .cargo-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding: 1.5rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      border: 1px solid rgba(102, 126, 234, 0.3);
+    }
+
+    .cargo-capacity {
+      font-size: 1.2rem;
+      color: #667eea;
+    }
+
+    .cargo-bar {
+      flex: 1;
+      max-width: 400px;
+      margin: 0 2rem;
+    }
+
+    .cargo-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+
+    .cargo-item {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+
+    .cargo-item:hover {
+      border-color: #667eea;
+      background: rgba(102, 126, 234, 0.1);
+    }
+
+    .cargo-item-info h4 {
+      color: #fff;
+      margin-bottom: 0.25rem;
+    }
+
+    .cargo-item-info p {
+      color: #a0aec0;
+      font-size: 0.85rem;
+    }
+
+    .cargo-item-actions button {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #f87171;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .cargo-item-actions button:hover {
+      background: rgba(239, 68, 68, 0.3);
+    }
+
+    .empty-cargo {
+      text-align: center;
+      padding: 3rem;
+      color: #718096;
+      font-size: 1.1rem;
+    }
+
+    .back-btn {
+      display: inline-block;
+      margin-bottom: 1rem;
+      padding: 0.75rem 1.5rem;
+      background: rgba(102, 126, 234, 0.2);
+      border: 1px solid #667eea;
+      color: #667eea;
+      text-decoration: none;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .back-btn:hover {
+      background: rgba(102, 126, 234, 0.3);
+      transform: translateX(-5px);
+    }
+
+    .ship-status-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+      padding: 1rem 1.5rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+      border: 2px solid;
+    }
+
+    .ship-status-toggle.active {
+      border-color: rgba(16, 185, 129, 0.5);
+      background: rgba(16, 185, 129, 0.1);
+    }
+
+    .ship-status-toggle.inactive {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .status-info {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .status-badge {
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+    }
+
+    .status-badge.active {
+      background: rgba(16, 185, 129, 0.2);
+      color: #10b981;
+      border: 1px solid #10b981;
+    }
+
+    .status-badge.inactive {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid #ef4444;
+    }
+
+    .toggle-btn {
+      padding: 0.75rem 2rem;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 1rem;
+    }
+
+    .toggle-btn.board {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+    }
+
+    .toggle-btn.board:hover {
+      background: linear-gradient(135deg, #059669, #047857);
+      transform: scale(1.05);
+    }
+
+    .toggle-btn.leave {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+    }
+
+    .toggle-btn.leave:hover {
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="ship-container">
+    <a href="/characters" class="back-btn">← Back to Characters</a>
+
+    <!-- Ship Status Toggle -->
+    <div class="ship-status-toggle <%= character.activeInShip ? 'active' : 'inactive' %>">
+      <div class="status-info">
+        <div class="status-badge <%= character.activeInShip ? 'active' : 'inactive' %>">
+          <%= character.activeInShip ? '✓ Active In Ship' : '✗ Not In Ship' %>
+        </div>
+        <div>
+          <%= character.activeInShip ? 'You are currently piloting this ship' : 'You have left the ship' %>
+        </div>
+      </div>
+      <button
+        class="toggle-btn <%= character.activeInShip ? 'leave' : 'board' %>"
+        onclick="toggleShipStatus()">
+        <%= character.activeInShip ? 'Leave Ship' : 'Board Ship' %>
+      </button>
+    </div>
+
+    <!-- Ship Header -->
+    <div class="ship-header">
+      <div class="ship-name"><%= character.ship?.name || 'Unknown Ship' %></div>
+      <div class="ship-class"><%= character.ship?.class || 'Unknown Class' %></div>
+
+      <div class="ship-stats">
+        <!-- Hull -->
+        <div class="stat-box">
+          <div class="stat-label">Hull Integrity</div>
+          <div class="stat-value">
+            <%= character.ship?.hull?.currentHP || 0 %> / <%= character.ship?.hull?.maxHP || 1000 %>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-fill" style="width: <%= ((character.ship?.hull?.currentHP || 0) / (character.ship?.hull?.maxHP || 1000)) * 100 %>%"></div>
+          </div>
+        </div>
+
+        <!-- Capacitor -->
+        <div class="stat-box">
+          <div class="stat-label">Capacitor</div>
+          <div class="stat-value">
+            <%= character.ship?.capacitor?.current || 0 %> / <%= character.ship?.capacitor?.max || 500 %>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-fill" style="width: <%= ((character.ship?.capacitor?.current || 0) / (character.ship?.capacitor?.max || 500)) * 100 %>%"></div>
+          </div>
+        </div>
+
+        <!-- Speed -->
+        <div class="stat-box">
+          <div class="stat-label">Max Speed</div>
+          <div class="stat-value"><%= character.ship?.stats?.maxSpeed || 0 %> m/s</div>
+        </div>
+
+        <!-- Armor -->
+        <div class="stat-box">
+          <div class="stat-label">Armor</div>
+          <div class="stat-value"><%= character.ship?.hull?.armor || 0 %></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('fittings')">⚙️ Fittings</button>
+      <button class="tab-btn" onclick="switchTab('cargo')">📦 Cargo Hold</button>
+      <button class="tab-btn" onclick="switchTab('stats')">📊 Ship Stats</button>
+    </div>
+
+    <!-- Fittings Tab -->
+    <div id="fittings-tab" class="tab-content active">
+      <div class="fittings-grid">
+        <!-- High Slots -->
+        <div class="slot-group">
+          <div class="slot-group-header">🔴 High Slots (Weapons/Utility)</div>
+          <% (character.ship?.fittings?.highSlots || [null, null, null]).forEach((module, index) => { %>
+            <div class="slot <%= module ? 'filled' : '' %>" data-slot-type="highSlots" data-slot-index="<%= index %>">
+              <% if (module) { %>
+                <div class="module">
+                  <div class="module-name"><%= module.name %></div>
+                  <div class="module-stats"><%= module.stats || '' %></div>
+                </div>
+              <% } else { %>
+                <div class="slot-empty">Empty High Slot</div>
+              <% } %>
+            </div>
+          <% }); %>
+        </div>
+
+        <!-- Mid Slots -->
+        <div class="slot-group">
+          <div class="slot-group-header">🟡 Mid Slots (Shield/Propulsion)</div>
+          <% (character.ship?.fittings?.midSlots || [null, null, null, null]).forEach((module, index) => { %>
+            <div class="slot <%= module ? 'filled' : '' %>" data-slot-type="midSlots" data-slot-index="<%= index %>">
+              <% if (module) { %>
+                <div class="module">
+                  <div class="module-name"><%= module.name %></div>
+                  <div class="module-stats"><%= module.stats || '' %></div>
+                </div>
+              <% } else { %>
+                <div class="slot-empty">Empty Mid Slot</div>
+              <% } %>
+            </div>
+          <% }); %>
+        </div>
+
+        <!-- Low Slots -->
+        <div class="slot-group">
+          <div class="slot-group-header">🟢 Low Slots (Armor/Engineering)</div>
+          <% (character.ship?.fittings?.lowSlots || [null, null, null, null]).forEach((module, index) => { %>
+            <div class="slot <%= module ? 'filled' : '' %>" data-slot-type="lowSlots" data-slot-index="<%= index %>">
+              <% if (module) { %>
+                <div class="module">
+                  <div class="module-name"><%= module.name %></div>
+                  <div class="module-stats"><%= module.stats || '' %></div>
+                </div>
+              <% } else { %>
+                <div class="slot-empty">Empty Low Slot</div>
+              <% } %>
+            </div>
+          <% }); %>
+        </div>
+
+        <!-- Rig Slots -->
+        <div class="slot-group">
+          <div class="slot-group-header">⚪ Rig Slots (Permanent Mods)</div>
+          <% (character.ship?.fittings?.rigSlots || [null, null]).forEach((module, index) => { %>
+            <div class="slot <%= module ? 'filled' : '' %>" data-slot-type="rigSlots" data-slot-index="<%= index %>">
+              <% if (module) { %>
+                <div class="module">
+                  <div class="module-name"><%= module.name %></div>
+                  <div class="module-stats"><%= module.stats || '' %></div>
+                </div>
+              <% } else { %>
+                <div class="slot-empty">Empty Rig Slot</div>
+              <% } %>
+            </div>
+          <% }); %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cargo Hold Tab -->
+    <div id="cargo-tab" class="tab-content">
+      <%
+        const cargoItems = character.ship?.cargoHold?.items || [];
+        const cargoCapacity = character.ship?.cargoHold?.capacity || 1000;
+        const currentVolume = cargoItems.reduce((sum, item) => sum + (item.volume || 0) * (item.quantity || 1), 0);
+      %>
+      <div class="cargo-header">
+        <div class="cargo-capacity">
+          <strong><%= currentVolume.toFixed(1) %> m³</strong> / <%= cargoCapacity %> m³
+        </div>
+        <div class="cargo-bar">
+          <div class="stat-bar">
+            <div class="stat-bar-fill" style="width: <%= (currentVolume / cargoCapacity) * 100 %>%"></div>
+          </div>
+        </div>
+        <div>
+          <%= Math.floor((currentVolume / cargoCapacity) * 100) %>% Full
+        </div>
+      </div>
+
+      <div class="cargo-items">
+        <% if (cargoItems.length === 0) { %>
+          <div class="empty-cargo">
+            📦 Your cargo hold is empty
+          </div>
+        <% } else { %>
+          <% cargoItems.forEach(item => { %>
+            <div class="cargo-item">
+              <div class="cargo-item-info">
+                <h4><%= item.name %></h4>
+                <p>Qty: <%= item.quantity || 1 %> | Volume: <%= (item.volume || 0) * (item.quantity || 1) %> m³</p>
+              </div>
+              <div class="cargo-item-actions">
+                <button onclick="removeFromCargo('<%= item.id %>')">Remove</button>
+              </div>
+            </div>
+          <% }); %>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Stats Tab -->
+    <div id="stats-tab" class="tab-content">
+      <div class="fittings-grid">
+        <div class="stat-box">
+          <div class="stat-label">Max Speed</div>
+          <div class="stat-value"><%= character.ship?.stats?.maxSpeed || 0 %> m/s</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Agility</div>
+          <div class="stat-value"><%= character.ship?.stats?.agility || 0 %></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Scan Resolution</div>
+          <div class="stat-value"><%= character.ship?.stats?.scanResolution || 0 %></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Targeting Range</div>
+          <div class="stat-value"><%= character.ship?.stats?.targetingRange || 0 %> m</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Max Targets</div>
+          <div class="stat-value"><%= character.ship?.stats?.maxTargets || 0 %></div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Cargo Capacity</div>
+          <div class="stat-value"><%= character.ship?.cargoHold?.capacity || 0 %> m³</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script>
+    function switchTab(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+
+      // Show selected tab
+      document.getElementById(`${tabName}-tab`).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    async function toggleShipStatus() {
+      try {
+        const response = await fetch(`/api/v1/characters/<%= character._id %>/ship/toggle-active`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          location.reload();
+        } else {
+          alert('Failed to toggle ship status: ' + data.error);
+        }
+      } catch (error) {
+        console.error('Error toggling ship status:', error);
+        alert('Failed to toggle ship status');
+      }
+    }
+
+    async function removeFromCargo(itemId) {
+      if (!confirm('Remove this item from cargo?')) return;
+
+      try {
+        const response = await fetch(`/api/v1/characters/<%= character._id %>/ship/cargo/remove`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ itemId })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          location.reload();
+        } else {
+          alert('Failed to remove item: ' + data.error);
+        }
+      } catch (error) {
+        console.error('Error removing item:', error);
+        alert('Failed to remove item from cargo');
+      }
+    }
+
+    // Slot click handler (for future module fitting UI)
+    document.querySelectorAll('.slot').forEach(slot => {
+      slot.addEventListener('click', function() {
+        const slotType = this.dataset.slotType;
+        const slotIndex = this.dataset.slotIndex;
+        alert(`Fitting UI coming soon!\nSlot: ${slotType}[${slotIndex}]`);
+      });
+    });
+  </script>
+</body>
+</html>
