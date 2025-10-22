@@ -201,8 +201,23 @@ router.post('/:id/location', async (req, res) => {
     if (!character) {
       return res.status(404).json({ error: 'Character not found' });
     }
+
+    // Debug logging
+    console.log('=== Location Update Authorization Check ===');
+    console.log('Character userId:', character.userId, 'type:', typeof character.userId);
+    console.log('Request user._id:', req.user._id, 'type:', typeof req.user._id);
+    console.log('Request user._id.toString():', req.user._id.toString());
+    console.log('Match result:', character.userId === req.user._id.toString());
+    console.log('==========================================');
+
     if (character.userId !== req.user._id.toString()) {
-      return res.status(403).json({ error: 'Not authorized' });
+      return res.status(403).json({
+        error: 'Not authorized',
+        debug: {
+          characterUserId: character.userId,
+          requestUserId: req.user._id.toString()
+        }
+      });
     }
 
     const success = await Character.updateLocation(req.params.id, {

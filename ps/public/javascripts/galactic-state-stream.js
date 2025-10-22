@@ -477,3 +477,70 @@ window.addEventListener('beforeunload', () => {
     clearInterval(eventPollingInterval);
   }
 });
+
+/**
+ * Update convergence and separation metrics
+ */
+function updateConvergenceSeparation() {
+  // Calculate convergence based on faction proximity and alliances
+  // This is a simulated calculation - in production would come from game state
+  const convergenceLevel = Math.floor(Math.random() * 40) + 30; // 30-70%
+  const separationLevel = Math.floor(Math.random() * 40) + 20; // 20-60%
+
+  // Update meters
+  const convergenceFill = document.getElementById('convergenceFill');
+  const separationFill = document.getElementById('separationFill');
+  const convergenceLevelText = document.getElementById('convergenceLevel');
+  const separationLevelText = document.getElementById('separationLevel');
+
+  if (convergenceFill) {
+    convergenceFill.style.width = convergenceLevel + '%';
+  }
+  if (separationFill) {
+    separationFill.style.width = separationLevel + '%';
+  }
+  if (convergenceLevelText) {
+    convergenceLevelText.textContent = convergenceLevel + '%';
+  }
+  if (separationLevelText) {
+    separationLevelText.textContent = separationLevel + '%';
+  }
+
+  // Update individual convergence strengths
+  const strengths = ['Low', 'Medium', 'High', 'Critical'];
+
+  const territorialConv = document.getElementById('territorialConvergence');
+  const allianceConv = document.getElementById('allianceConvergence');
+  const energyConv = document.getElementById('energyConvergence');
+
+  if (territorialConv) {
+    territorialConv.textContent = strengths[Math.floor(Math.random() * 3)];
+  }
+  if (allianceConv) {
+    allianceConv.textContent = strengths[Math.floor(Math.random() * 3)];
+  }
+  if (energyConv) {
+    energyConv.textContent = strengths[Math.floor(Math.random() * 4)];
+  }
+
+  // Update separation intensities
+  const territorialSep = document.getElementById('territorialSeparation');
+  const ideologicalSep = document.getElementById('ideologicalSeparation');
+  const anomalySep = document.getElementById('anomalySeparation');
+
+  if (territorialSep) {
+    territorialSep.textContent = strengths[Math.floor(Math.random() * 3)];
+  }
+  if (ideologicalSep) {
+    ideologicalSep.textContent = strengths[Math.floor(Math.random() * 4)];
+  }
+  if (anomalySep) {
+    anomalySep.textContent = strengths[Math.floor(Math.random() * 3)];
+  }
+}
+
+// Update convergence/separation on page load and periodically
+document.addEventListener('DOMContentLoaded', () => {
+  updateConvergenceSeparation();
+  setInterval(updateConvergenceSeparation, 10000); // Update every 10 seconds
+});

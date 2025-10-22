@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <script>
+    // Curated Hubble images from ESA
+    const HUBBLE_IMAGES = {
+      galaxies: [
+        'https://cdn.esahubble.org/archives/images/screen/heic1501a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic1509a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic0602a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic1107a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic0715a.jpg',
+      ],
+      nebulae: [
+        'https://cdn.esahubble.org/archives/images/screen/heic0506a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic1501b.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic0916a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/opo9544a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic0702a.jpg',
+      ],
+      planets: [
+        'https://cdn.esahubble.org/archives/images/screen/opo0328a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic1410a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic1905a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic0917a.jpg',
+        'https://cdn.esahubble.org/archives/images/screen/heic1118a.jpg',
+      ]
+    };
+
+    // Get Hubble image based on asset type
+    function getHubbleImage(assetType, seed) {
+      let imageArray;
+      switch (assetType) {
+        case 'galaxy':
+          imageArray = HUBBLE_IMAGES.galaxies;
+          break;
+        case 'anomaly':
+          imageArray = HUBBLE_IMAGES.nebulae;
+          break;
+        case 'planet':
+          imageArray = HUBBLE_IMAGES.planets;
+          break;
+        default:
+          imageArray = [...HUBBLE_IMAGES.galaxies, ...HUBBLE_IMAGES.nebulae];
+      }
+      // Use seed to get consistent image per asset
+      const index = Math.abs(seed.split('').reduce((a,c)=>a+c.charCodeAt(0),0)) % imageArray.length;
+      return imageArray[index];
+    }
+
+    // Define handleSpaceImageError function before any images load
+    function handleSpaceImageError(event) {
+      // Fallback SVG placeholder
+      event.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcz4KICAgIDxyYWRpYWxHcmFkaWVudCBpZD0ic3BhY2VHcmFkaWVudCI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMxYTFhMmU7c3RvcC1vcGFjaXR5OjEiIC8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6IzBhMGExYTtzdG9wLW9wYWNpdHk6MSIgLz4KICAgIDwvcmFkaWFsR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiBmaWxsPSJ1cmwoI3NwYWNlR3JhZGllbnQpIi8+CiAgPGNpcmNsZSBjeD0iMTAwIiBjeT0iMTAwIiByPSIyIiBmaWxsPSJ3aGl0ZSIgb3BhY2l0eT0iMC44Ii8+CiAgPGNpcmNsZSBjeD0iMzAwIiBjeT0iMjAwIiByPSIxIiBmaWxsPSJ3aGl0ZSIgb3BhY2l0eT0iMC42Ii8+CiAgPGNpcmNsZSBjeD0iNjAwIiBjeT0iMTUwIiByPSIxLjUiIGZpbGw9IndoaXRlIiBvcGFjaXR5PSIwLjciLz4KICA8Y2lyY2xlIGN4PSI0NTAiIGN5PSI0MDAiIHI9IjEiIGZpbGw9IndoaXRlIiBvcGFjaXR5PSIwLjUiLz4KICA8Y2lyY2xlIGN4PSI3MDAiIGN5PSI1MDAiIHI9IjIiIGZpbGw9IndoaXRlIiBvcGFjaXR5PSIwLjkiLz4KICA8dGV4dCB4PSI0MDAiIHk9IjMwMCIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSIyNCIgZmlsbD0iIzhhNGZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgb3BhY2l0eT0iMC41Ij5TdHJpbmdib3JuIFVuaXZlcnNlPC90ZXh0Pgo8L3N2Zz4=';
+      event.target.onerror = null; // Prevent infinite loop
+    }
+  </script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2a 100%);
+      color: #e0e0e0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+    }
+
+    .tome-container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .tome-header {
+      text-align: center;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, rgba(138, 79, 255, 0.1), rgba(74, 158, 255, 0.1));
+      border-radius: 16px;
+      margin-bottom: 30px;
+      border: 2px solid rgba(138, 79, 255, 0.3);
+    }
+
+    .tome-title {
+      font-size: 3.5em;
+      font-weight: bold;
+      background: linear-gradient(135deg, #8a4fff 0%, #4a9eff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0;
+      text-shadow: 0 0 40px rgba(138, 79, 255, 0.5);
+    }
+
+    .tome-subtitle {
+      color: #b0b0c0;
+      font-size: 1.2em;
+      margin-top: 10px;
+      font-style: italic;
+    }
+
+    /* Tab Navigation */
+    .tab-nav {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding: 0 20px;
+    }
+
+    .tab-button {
+      background: rgba(42, 42, 74, 0.5);
+      border: 2px solid rgba(138, 79, 255, 0.3);
+      color: #b0b0c0;
+      padding: 15px 30px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 1.1em;
+      font-weight: bold;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tab-button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(138, 79, 255, 0.2), transparent);
+      transition: left 0.5s;
+    }
+
+    .tab-button:hover::before {
+      left: 100%;
+    }
+
+    .tab-button:hover {
+      border-color: #8a4fff;
+      color: #fff;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(138, 79, 255, 0.3);
+    }
+
+    .tab-button.active {
+      background: linear-gradient(135deg, #8a4fff 0%, #4a9eff 100%);
+      border-color: #8a4fff;
+      color: #fff;
+      box-shadow: 0 5px 30px rgba(138, 79, 255, 0.5);
+    }
+
+    .tab-icon {
+      font-size: 1.3em;
+      margin-right: 8px;
+    }
+
+    /* Tab Content */
+    .tab-content {
+      display: none;
+      animation: fadeIn 0.5s ease-in-out;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Story Section */
+    .story-section {
+      background: rgba(20, 20, 40, 0.6);
+      border-radius: 16px;
+      padding: 40px;
+      border: 2px solid rgba(138, 79, 255, 0.2);
+      margin-bottom: 30px;
+    }
+
+    .story-chapter {
+      margin-bottom: 40px;
+    }
+
+    .chapter-title {
+      font-size: 2em;
+      color: #8a4fff;
+      margin-bottom: 20px;
+      border-bottom: 2px solid rgba(138, 79, 255, 0.3);
+      padding-bottom: 10px;
+    }
+
+    .chapter-content {
+      line-height: 1.8;
+      color: #d0d0e0;
+      font-size: 1.1em;
+    }
+
+    .chapter-content p {
+      margin-bottom: 20px;
+    }
+
+    /* Characters Log */
+    .characters-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 25px;
+    }
+
+    .character-card {
+      background: linear-gradient(145deg, #1a1a2e 0%, #16162a 100%);
+      border: 2px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 25px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .character-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, #8a4fff, #4a9eff);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .character-card:hover {
+      transform: translateY(-8px);
+      border-color: #8a4fff;
+      box-shadow: 0 10px 30px rgba(138, 79, 255, 0.3);
+    }
+
+    .character-card:hover::before {
+      opacity: 1;
+    }
+
+    .character-name {
+      font-size: 1.8em;
+      color: #8a4fff;
+      margin-bottom: 10px;
+    }
+
+    .character-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .stat-item {
+      background: rgba(42, 42, 74, 0.5);
+      padding: 10px;
+      border-radius: 8px;
+    }
+
+    .stat-label {
+      font-size: 0.8em;
+      color: #9090b0;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      font-size: 1.1em;
+      color: #e0e0ff;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+
+    /* Monsters Log */
+    .monsters-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 25px;
+    }
+
+    .monster-card {
+      background: linear-gradient(145deg, #2a1a1a 0%, #1a2a2a 100%);
+      border: 2px solid #4a2a2a;
+      border-radius: 12px;
+      padding: 25px;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .monster-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, #ff4a4a, #ffa94a);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .monster-card:hover {
+      transform: translateY(-8px);
+      border-color: #ff4a4a;
+      box-shadow: 0 10px 30px rgba(255, 74, 74, 0.3);
+    }
+
+    .monster-card:hover::before {
+      opacity: 1;
+    }
+
+    .monster-name {
+      font-size: 1.8em;
+      color: #ff6a6a;
+      margin-bottom: 10px;
+    }
+
+    .monster-threat {
+      background: rgba(255, 74, 74, 0.2);
+      border: 1px solid rgba(255, 74, 74, 0.4);
+      color: #ff6a6a;
+      padding: 5px 12px;
+      border-radius: 6px;
+      display: inline-block;
+      font-size: 0.9em;
+      margin-bottom: 15px;
+    }
+
+    /* Social Connections */
+    .connections-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+
+    .connection-card {
+      background: linear-gradient(145deg, #1a2a1a 0%, #162a2a 100%);
+      border: 2px solid #2a4a4a;
+      border-radius: 12px;
+      padding: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .connection-card:hover {
+      transform: translateY(-5px);
+      border-color: #4ac06a;
+      box-shadow: 0 10px 30px rgba(74, 192, 106, 0.3);
+    }
+
+    .connection-user {
+      font-size: 1.4em;
+      color: #4ac06a;
+      margin-bottom: 10px;
+    }
+
+    .connection-status {
+      color: #6ac66a;
+      font-size: 0.9em;
+    }
+
+    .connection-status.online {
+      color: #4ac06a;
+    }
+
+    .connection-status.offline {
+      color: #888;
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 60px 20px;
+      color: #888;
+      font-size: 1.3em;
+    }
+
+    /* Species Archive (preserved from original) */
+    .species-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 25px;
+    }
+
+    .species-card {
+      background: linear-gradient(145deg, #1a1a2e 0%, #16162a 100%);
+      border: 2px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 25px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .species-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, #8a4fff, #4a9eff);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .species-card:hover {
+      transform: translateY(-8px);
+      border-color: #8a4fff;
+      box-shadow: 0 10px 30px rgba(138, 79, 255, 0.3);
+    }
+
+    .species-card:hover::before {
+      opacity: 1;
+    }
+
+    .species-name {
+      font-size: 1.8em;
+      color: #8a4fff;
+      margin-bottom: 10px;
+    }
+
+    .species-description {
+      color: #b0b0c0;
+      line-height: 1.6;
+      margin: 15px 0;
+      font-style: italic;
+    }
+
+    /* Asset Image Styles */
+    .asset-image {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      border: 2px solid rgba(138, 79, 255, 0.2);
+      transition: all 0.3s ease;
+    }
+
+    .species-card:hover .asset-image,
+    .character-card:hover .asset-image,
+    .monster-card:hover .asset-image {
+      border-color: rgba(138, 79, 255, 0.6);
+      transform: scale(1.02);
+      box-shadow: 0 5px 20px rgba(138, 79, 255, 0.3);
+    }
+
+    .asset-image-loading {
+      background: linear-gradient(90deg, #1a1a2e 25%, #2a2a4a 50%, #1a1a2e 75%);
+      background-size: 200% 100%;
+      animation: shimmer 2s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .tome-title {
+        font-size: 2.5em;
+      }
+
+      .tab-nav {
+        flex-direction: column;
+      }
+
+      .tab-button {
+        width: 100%;
+      }
+
+      .characters-grid,
+      .monsters-grid,
+      .connections-grid,
+      .species-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .asset-image {
+        height: 150px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="tome-container">
+    <div class="tome-header">
+      <h1 class="tome-title">📖 The Tome</h1>
+      <p class="tome-subtitle">Chronicles of the Stringborn Universe</p>
+    </div>
+
+    <div class="tab-nav">
+      <button class="tab-button active" onclick="switchTab('story')">
+        <span class="tab-icon">📜</span>Story
+      </button>
+      <button class="tab-button" onclick="switchTab('characters')">
+        <span class="tab-icon">⚔️</span>Characters
+      </button>
+      <button class="tab-button" onclick="switchTab('archive')">
+        <span class="tab-icon">🗂️</span>Archive
+      </button>
+      <button class="tab-button" onclick="switchTab('species')">
+        <span class="tab-icon">👽</span>Species
+      </button>
+      <button class="tab-button" onclick="switchTab('creators')">
+        <span class="tab-icon">⭐</span>Creators
+      </button>
+      <button class="tab-button" onclick="switchTab('connections')">
+        <span class="tab-icon">🤝</span>Connections
+      </button>
+    </div>
+
+    <!-- Story Tab -->
+    <div id="story-tab" class="tab-content active">
+      <div class="story-section">
+        <div class="story-chapter">
+          <h2 class="chapter-title">Chapter I: The Beginning</h2>
+          <div class="chapter-content">
+            <p>
+              In the vast expanse of the cosmos, where stars are born and die in the blink of eternity,
+              the Stringborn Universe emerged from the void. Not through random chance, but through
+              convergence—the cosmic force that binds all things together.
+            </p>
+            <p>
+              Four great species arose, each shaped by the unique energies of their homeworlds. The
+              technologically advanced, the mystically attuned, the physically dominant, and the
+              socially interconnected. Each believed themselves to be alone, until the first
+              Contact—a moment that would reshape the universe forever.
+            </p>
+            <p>
+              Now, as factions rise and fall, as territories converge and separate, the fate of the
+              galaxy hangs in delicate balance. Heroes emerge from unlikely places, monsters lurk in
+              forgotten corners, and ancient secrets wait to be discovered.
+            </p>
+          </div>
+        </div>
+
+        <div class="story-chapter">
+          <h2 class="chapter-title">Chapter II: The Convergence</h2>
+          <div class="chapter-content">
+            <p>
+              The phenomenon known as Convergence is not merely a political concept, but a fundamental
+              force of the universe itself. When territories, ideologies, or destinies align, they
+              create points of immense power and opportunity.
+            </p>
+            <p>
+              But convergence has its opposite: Separation. The cosmic force that drives things apart,
+              creating rifts, conflicts, and isolation. The eternal dance between these two forces
+              shapes every aspect of life in the Stringborn Universe.
+            </p>
+          </div>
+        </div>
+
+        <div class="story-chapter">
+          <h2 class="chapter-title">Chapter III: Your Story</h2>
+          <div class="chapter-content">
+            <p>
+              You are not just an observer in this grand narrative. You are a participant, a force
+              of convergence or separation in your own right. Every choice you make, every alliance
+              you forge, every journey you undertake—all of it weaves into the living tapestry of
+              the universe.
+            </p>
+            <p>
+              The Tome records your deeds, your discoveries, your connections. It is both history
+              and prophecy, past and future, memory and possibility. Your chapter is being written
+              even now.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Characters Tab -->
+    <div id="characters-tab" class="tab-content">
+      <% if (user && characters && characters.length > 0) { %>
+        <div class="characters-grid">
+          <% characters.forEach(character => { %>
+            <div class="character-card">
+              <h3 class="character-name"><%= character.name %></h3>
+              <div class="character-stats">
+                <div class="stat-item">
+                  <div class="stat-label">Species</div>
+                  <div class="stat-value"><%= character.species || 'Unknown' %></div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">Level</div>
+                  <div class="stat-value"><%= character.level || 1 %></div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">Faction</div>
+                  <div class="stat-value"><%= character.faction || 'Independent' %></div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">Location</div>
+                  <div class="stat-value">
+                    <%= character.location && character.location.zone ? character.location.zone : 'Unknown' %>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+      <% } else { %>
+        <div class="no-data">
+          <% if (user) { %>
+            No characters yet. Create your first character to begin your journey!
+          <% } else { %>
+            Login to see your characters
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+
+    <!-- Archive Tab - Categorized Approved Assets -->
+    <div id="archive-tab" class="tab-content">
+      <div class="story-section">
+        <h2 class="chapter-title">🗂️ Universal Archive</h2>
+        <p class="chapter-content" style="margin-bottom: 30px;">
+          A comprehensive catalog of all approved discoveries, creations, and phenomena across the Stringborn Universe.
+          Each entry has been verified and documented for posterity.
+        </p>
+
+        <!-- Galaxies -->
+        <% if (categorizedAssets.galaxies && categorizedAssets.galaxies.length > 0) { %>
+          <div style="margin-bottom: 40px;">
+            <h3 class="convergence-title"><span class="convergence-icon">🌌</span>Galaxies (<%= categorizedAssets.galaxies.length %>)</h3>
+            <div class="species-grid">
+              <% categorizedAssets.galaxies.forEach(asset => { %>
+                <div class="species-card">
+                  <img class="asset-image asset-image-loading"
+                       src="https://source.unsplash.com/800x600/?galaxy,space,nebula&sig=<%= encodeURIComponent(asset.title) %>"
+                       alt="<%= asset.title %>"
+                       onerror="handleSpaceImageError(event)"
+                       onload="this.classList.remove('asset-image-loading')">
+                  <h3 class="species-name"><%= asset.title %></h3>
+                  <% if (asset.description) { %>
+                    <p class="species-description"><%= asset.description %></p>
+                  <% } %>
+                  <div class="character-stats">
+                    <div class="stat-item">
+                      <div class="stat-label">Votes</div>
+                      <div class="stat-value"><%= asset.votes || 0 %></div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Creator</div>
+                      <div class="stat-value"><%= asset.userId || 'System' %></div>
+                    </div>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+
+        <!-- Planets -->
+        <% if (categorizedAssets.planets && categorizedAssets.planets.length > 0) { %>
+          <div style="margin-bottom: 40px;">
+            <h3 class="convergence-title"><span class="convergence-icon">🪐</span>Planets (<%= categorizedAssets.planets.length %>)</h3>
+            <div class="species-grid">
+              <% categorizedAssets.planets.forEach(asset => { %>
+                <div class="species-card">
+                  <img class="asset-image asset-image-loading"
+                       src="https://source.unsplash.com/800x600/?planet,space,astronomy&sig=<%= encodeURIComponent(asset.title) %>"
+                       alt="<%= asset.title %>"
+                       onerror="handleSpaceImageError(event)"
+                       onload="this.classList.remove('asset-image-loading')">
+                  <h3 class="species-name"><%= asset.title %></h3>
+                  <% if (asset.description) { %>
+                    <p class="species-description"><%= asset.description %></p>
+                  <% } %>
+                  <div class="character-stats">
+                    <div class="stat-item">
+                      <div class="stat-label">Votes</div>
+                      <div class="stat-value"><%= asset.votes || 0 %></div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Type</div>
+                      <div class="stat-value">Planet</div>
+                    </div>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+
+        <!-- Orbital Stations -->
+        <% if (categorizedAssets.orbitals && categorizedAssets.orbitals.length > 0) { %>
+          <div style="margin-bottom: 40px;">
+            <h3 class="convergence-title"><span class="convergence-icon">🛰️</span>Orbital Stations (<%= categorizedAssets.orbitals.length %>)</h3>
+            <div class="species-grid">
+              <% categorizedAssets.orbitals.forEach(asset => { %>
+                <div class="species-card">
+                  <img class="asset-image asset-image-loading"
+                       src="https://source.unsplash.com/800x600/?space-station,satellite,orbit&sig=<%= encodeURIComponent(asset.title) %>"
+                       alt="<%= asset.title %>"
+                       onerror="handleSpaceImageError(event)"
+                       onload="this.classList.remove('asset-image-loading')">
+                  <h3 class="species-name"><%= asset.title %></h3>
+                  <% if (asset.description) { %>
+                    <p class="species-description"><%= asset.description %></p>
+                  <% } %>
+                  <div class="character-stats">
+                    <div class="stat-item">
+                      <div class="stat-label">Votes</div>
+                      <div class="stat-value"><%= asset.votes || 0 %></div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Type</div>
+                      <div class="stat-value">Orbital</div>
+                    </div>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+
+        <!-- Anomalies -->
+        <% if (categorizedAssets.anomalies && categorizedAssets.anomalies.length > 0) { %>
+          <div style="margin-bottom: 40px;">
+            <h3 class="separation-title"><span class="separation-icon">✨</span>Anomalies & Phenomena (<%= categorizedAssets.anomalies.length %>)</h3>
+            <div class="monsters-grid">
+              <% categorizedAssets.anomalies.forEach(asset => { %>
+                <div class="monster-card">
+                  <img class="asset-image asset-image-loading"
+                       src="https://source.unsplash.com/800x600/?nebula,cosmic,space-phenomenon&sig=<%= encodeURIComponent(asset.title) %>"
+                       alt="<%= asset.title %>"
+                       onerror="handleSpaceImageError(event)"
+                       onload="this.classList.remove('asset-image-loading')">
+                  <h3 class="monster-name"><%= asset.title %></h3>
+                  <% if (asset.description) { %>
+                    <p class="species-description"><%= asset.description %></p>
+                  <% } %>
+                  <div class="character-stats">
+                    <div class="stat-item">
+                      <div class="stat-label">Votes</div>
+                      <div class="stat-value"><%= asset.votes || 0 %></div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Type</div>
+                      <div class="stat-value">Anomaly</div>
+                    </div>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+
+        <!-- Items & Weapons -->
+        <% if ((categorizedAssets.items && categorizedAssets.items.length > 0) || (categorizedAssets.weapons && categorizedAssets.weapons.length > 0)) { %>
+          <div style="margin-bottom: 40px;">
+            <h3 class="convergence-title"><span class="convergence-icon">⚔️</span>Items & Equipment (<%= (categorizedAssets.items?.length || 0) + (categorizedAssets.weapons?.length || 0) %>)</h3>
+            <div class="species-grid">
+              <% [...(categorizedAssets.items || []), ...(categorizedAssets.weapons || [])].forEach(asset => { %>
+                <div class="species-card">
+                  <h3 class="species-name"><%= asset.title %></h3>
+                  <% if (asset.description) { %>
+                    <p class="species-description"><%= asset.description %></p>
+                  <% } %>
+                  <div class="character-stats">
+                    <div class="stat-item">
+                      <div class="stat-label">Votes</div>
+                      <div class="stat-value"><%= asset.votes || 0 %></div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Type</div>
+                      <div class="stat-value"><%= asset.assetType %></div>
+                    </div>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+
+        <!-- Characters -->
+        <% if (categorizedAssets.characters && categorizedAssets.characters.length > 0) { %>
+          <div style="margin-bottom: 40px;">
+            <h3 class="convergence-title"><span class="convergence-icon">👤</span>Notable Characters (<%= categorizedAssets.characters.length %>)</h3>
+            <div class="characters-grid">
+              <% categorizedAssets.characters.forEach(asset => { %>
+                <div class="character-card">
+                  <h3 class="character-name"><%= asset.title %></h3>
+                  <% if (asset.description) { %>
+                    <p class="species-description"><%= asset.description %></p>
+                  <% } %>
+                  <div class="character-stats">
+                    <div class="stat-item">
+                      <div class="stat-label">Votes</div>
+                      <div class="stat-value"><%= asset.votes || 0 %></div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Type</div>
+                      <div class="stat-value">Character</div>
+                    </div>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+
+        <!-- Environments -->
+        <% if (categorizedAssets.environments && categorizedAssets.environments.length > 0) { %>
+          <div style="margin-bottom: 40px;">
+            <h3 class="convergence-title"><span class="convergence-icon">🏞️</span>Environments (<%= categorizedAssets.environments.length %>)</h3>
+            <div class="species-grid">
+              <% categorizedAssets.environments.forEach(asset => { %>
+                <div class="species-card">
+                  <h3 class="species-name"><%= asset.title %></h3>
+                  <% if (asset.description) { %>
+                    <p class="species-description"><%= asset.description %></p>
+                  <% } %>
+                  <div class="character-stats">
+                    <div class="stat-item">
+                      <div class="stat-label">Votes</div>
+                      <div class="stat-value"><%= asset.votes || 0 %></div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Type</div>
+                      <div class="stat-value">Environment</div>
+                    </div>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Species Tab -->
+    <div id="species-tab" class="tab-content">
+      <% if (species && species.length > 0) { %>
+        <div class="species-grid">
+          <% species.forEach(specie => { %>
+            <div class="species-card">
+              <h3 class="species-name"><%= specie.name || specie.species %></h3>
+              <% if (specie.description) { %>
+                <p class="species-description"><%= specie.description %></p>
+              <% } %>
+              <div class="character-stats">
+                <% if (specie.homeworld) { %>
+                  <div class="stat-item">
+                    <div class="stat-label">Homeworld</div>
+                    <div class="stat-value"><%= specie.homeworld %></div>
+                  </div>
+                <% } %>
+                <% if (specie.population) { %>
+                  <div class="stat-item">
+                    <div class="stat-label">Population</div>
+                    <div class="stat-value"><%= specie.population %></div>
+                  </div>
+                <% } %>
+                <% if (specie.lifespan) { %>
+                  <div class="stat-item">
+                    <div class="stat-label">Lifespan</div>
+                    <div class="stat-value"><%= specie.lifespan %> years</div>
+                  </div>
+                <% } %>
+                <% if (specie.intelligence) { %>
+                  <div class="stat-item">
+                    <div class="stat-label">Intelligence</div>
+                    <div class="stat-value"><%= specie.intelligence %></div>
+                  </div>
+                <% } %>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+      <% } else { %>
+        <div class="no-data">
+          No species data available. Begin cataloging the diverse life forms of the universe!
+        </div>
+      <% } %>
+    </div>
+
+    <!-- Featured Creators Tab -->
+    <div id="creators-tab" class="tab-content">
+      <div class="story-section">
+        <h2 class="chapter-title">⭐ Featured Creators</h2>
+        <p class="chapter-content" style="margin-bottom: 30px;">
+          Celebrating the talented creators who have contributed the most to the Stringborn Universe.
+          These visionaries have brought countless worlds, characters, and phenomena into existence.
+        </p>
+
+        <% if (featuredCreators && featuredCreators.length > 0) { %>
+          <div class="characters-grid">
+            <% featuredCreators.forEach((creator, index) => { %>
+              <div class="character-card" style="position: relative;">
+                <% if (index === 0) { %>
+                  <div style="position: absolute; top: 10px; right: 10px; background: linear-gradient(135deg, #ffd700, #ffa500); color: #000; padding: 5px 12px; border-radius: 20px; font-size: 0.8em; font-weight: bold;">
+                    🏆 Top Creator
+                  </div>
+                <% } %>
+                <h3 class="character-name">@<%= creator.username %></h3>
+                <div class="character-stats">
+                  <div class="stat-item">
+                    <div class="stat-label">Approved Assets</div>
+                    <div class="stat-value"><%= creator.assetCount %></div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">Total Votes</div>
+                    <div class="stat-value"><%= creator.votes %></div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">Avg Votes/Asset</div>
+                    <div class="stat-value"><%= (creator.votes / creator.assetCount).toFixed(1) %></div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">Rank</div>
+                    <div class="stat-value">#<%= index + 1 %></div>
+                  </div>
+                </div>
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(138, 79, 255, 0.3);">
+                  <div style="font-size: 0.9em; color: #9090b0; margin-bottom: 10px;">Recent Creations:</div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <% creator.assets.slice(0, 3).forEach(asset => { %>
+                      <span style="background: rgba(138, 79, 255, 0.15); color: #b090ff; padding: 5px 10px; border-radius: 12px; font-size: 0.85em; border: 1px solid rgba(138, 79, 255, 0.3);">
+                        <%= asset.title.length > 20 ? asset.title.substring(0, 20) + '...' : asset.title %>
+                      </span>
+                    <% }); %>
+                  </div>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <div class="no-data">
+            No featured creators yet. Be the first to create and submit approved assets!
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Connections Tab -->
+    <div id="connections-tab" class="tab-content">
+      <% if (user) { %>
+        <div class="connections-grid">
+          <!-- Placeholder for social connections -->
+          <div class="no-data">
+            Social connections system coming soon! Connect with other players, form alliances,
+            and build your network across the galaxy.
+          </div>
+        </div>
+      <% } else { %>
+        <div class="no-data">
+          Login to see and manage your social connections
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script src="/javascripts/space-images.js"></script>
+  <script>
+    function switchTab(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+
+      // Deactivate all buttons
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+
+      // Show selected tab
+      document.getElementById(tabName + '-tab').classList.add('active');
+
+      // Activate selected button
+      event.target.closest('.tab-button').classList.add('active');
+    }
+  </script>
+</body>
+</html>

@@ -54,7 +54,7 @@
   <%- include('../partials/footer') %>
 
   <script type="module">
-    import GalacticMap from '/javascripts/galactic-map-optimized.js';
+    import GalacticMap from '/javascripts/galactic-map-optimized.js?v=1.2';
 
     let map = null;
 
@@ -67,8 +67,14 @@
 
       // Get URL parameters
       const urlParams = new URLSearchParams(window.location.search);
-      const characterId = urlParams.get('character');
+      let characterId = urlParams.get('character');
       const randomize = urlParams.get('randomize');
+
+      // If no character in URL, check localStorage
+      if (!characterId) {
+        characterId = localStorage.getItem('selectedCharacterId');
+        console.log('No character in URL, checking localStorage:', characterId);
+      }
 
       if (characterId) {
         console.log('Loading character:', characterId);
@@ -80,6 +86,9 @@
             map.currentCharacter = data.character;
             console.log('Character loaded:', data.character.name, 'at', data.character.location);
 
+            // Save to localStorage for persistence across navigation
+            localStorage.setItem('selectedCharacterId', characterId);
+
             // Center view on character
             if (data.character.location) {
               map.offsetX = -data.character.location.x * map.scale + map.canvas.width / 2;
@@ -88,6 +97,8 @@
           }
         } catch (error) {
           console.error('Failed to load character:', error);
+          // Clear invalid character from localStorage
+          localStorage.removeItem('selectedCharacterId');
         }
       }
 

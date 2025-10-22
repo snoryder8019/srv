@@ -1591,13 +1591,18 @@ class GalacticMap {
 
     console.log(`✅ Travel complete: ${this.travelFinalDestination.zone}`);
 
-    // Update server
+    // Update server using the dedicated location endpoint
     try {
-      await fetch(`/api/v1/characters/${this.currentCharacter._id}`, {
-        method: 'PUT',
+      await fetch(`/api/v1/characters/${this.currentCharacter._id}/location`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Include cookies for authentication
         body: JSON.stringify({
-          location: this.currentCharacter.location
+          x: this.currentCharacter.location.x,
+          y: this.currentCharacter.location.y,
+          type: this.currentCharacter.location.type,
+          zone: this.currentCharacter.location.zone,
+          assetId: this.travelFinalDestination.assetId
         })
       });
 
