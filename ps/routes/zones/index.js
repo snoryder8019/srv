@@ -38,6 +38,7 @@ router.get('/:zoneName/spatial', (req, res) => {
 });
 
 // Get zone detail (generic param route comes last)
+// Redirects to planetary explorer with zone context
 router.get('/:zoneName', async (req, res) => {
   try {
     const db = getDb();
@@ -48,11 +49,8 @@ router.get('/:zoneName', async (req, res) => {
       return res.status(404).json({ error: 'Zone not found' });
     }
 
-    res.render('zones/detail', {
-      title: zone.zoneName,
-      zone,
-      user: req.user
-    });
+    // Redirect to planetary explorer with zone parameter
+    res.redirect(`/zones/explore/planetary?zone=${req.params.zoneName}`);
   } catch (err) {
     console.error('Error fetching zone:', err);
     res.status(500).json({ error: 'Failed to fetch zone' });

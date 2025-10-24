@@ -8,6 +8,7 @@ import adminRouter from './admin/index.js';
 import assetsRouter from './assets/index.js';
 import profileRouter from './profile.js';
 import { Character } from '../api/v1/models/Character.js';
+import { requireAuth, requireCharacter } from '../middlewares/authGates.js';
 
 // Plugin routes (auth, health checks, etc.)
 router.use('/', plugins);
@@ -32,13 +33,17 @@ router.get('/api/v1/profile/analytics', async function(req, res, next) {
   }
 });
 
-// Feature routes
-router.use('/characters', charactersRouter);
-router.use('/zones', zonesRouter);
-router.use('/universe', universeRouter);
+// Feature routes - protected by character requirement
+router.use('/zones', requireCharacter, zonesRouter);
+router.use('/universe', requireCharacter, universeRouter);
+router.use('/assets', requireCharacter, assetsRouter);
+router.use('/profile', requireAuth, profileRouter);
+
+// Characters route requires auth but not active character (needed for creation)
+router.use('/characters', requireAuth, charactersRouter);
+
+// Admin routes (keep existing protection)
 router.use('/admin', adminRouter);
-router.use('/assets', assetsRouter);
-router.use('/profile', profileRouter);
 
 // Help pages
 router.get('/help/asset-json-guide', function(req, res, next) {
@@ -64,9 +69,7 @@ router.get('/auth', async function(req, res, next) {
 
     // If user is logged in, fetch their characters
     if (req.user) {
-      characters = await Character.find({ owner: req.user._id })
-        .select('name level class race stats equipped')
-        .lean();
+      characters = await Character.findByUserId(req.user._id);
     }
 
     res.render('auth/index-enhanced', {
@@ -106,11 +109,45 @@ router.post('/auth/logout', function(req, res, next) {
 });
 
 // Menu page
-router.get('/menu', function(req, res, next) {
+router.get('/menu', requireCharacter, function(req, res, next) {
   res.render('menu-enhanced', {
     title: 'Main Menu',
     user: req.user,
     character: res.locals.character
+  });
+});
+
+// Welcome page (first-time user onboarding)
+router.get('/welcome', requireAuth, function(req, res, next) {
+  // If already completed welcome, redirect to next step
+  if (req.user.hasCompletedWelcome) {
+    if (!req.user.hasCompletedIntro) {
+      return res.redirect('/intro');
+    }
+    return res.redirect('/auth');
+  }
+
+  res.render('onboarding/welcome', {
+    title: 'Welcome to Stringborn',
+    user: req.user
+  });
+});
+
+// Intro page (tutorial/intro after welcome)
+router.get('/intro', requireAuth, function(req, res, next) {
+  // Must complete welcome first
+  if (!req.user.hasCompletedWelcome) {
+    return res.redirect('/welcome');
+  }
+
+  // If already completed intro, redirect to character selection
+  if (req.user.hasCompletedIntro) {
+    return res.redirect('/auth');
+  }
+
+  res.render('onboarding/intro', {
+    title: 'Introduction to Stringborn',
+    user: req.user
   });
 });
 

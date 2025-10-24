@@ -382,23 +382,27 @@ router.delete('/:id', isAuthenticated, async (req, res) => {
 
 /**
  * POST /api/v1/assets/:id/vote
- * Vote for an asset
+ * Vote for an asset (upvote or downvote)
+ * Body: { voteType: 1 (upvote) or -1 (downvote) }
  */
 router.post('/:id/vote', isAuthenticated, async (req, res) => {
   try {
-    await Asset.addVote(req.params.id, req.user._id);
+    const voteType = req.body.voteType === -1 ? -1 : 1; // Default to upvote
+    await Asset.addVote(req.params.id, req.user._id, voteType);
 
     const asset = await Asset.findById(req.params.id);
 
     // Track vote
-    trackVote(req.user._id, req.params.id, 'add').catch(err => {
+    trackVote(req.user._id, req.params.id, voteType === 1 ? 'upvote' : 'downvote').catch(err => {
       console.error('Error tracking vote:', err);
     });
 
     res.json({
       success: true,
-      message: 'Vote added',
-      votes: asset.votes
+      message: voteType === 1 ? 'Upvoted' : 'Downvoted',
+      votes: asset.votes,
+      upvotes: asset.upvotes || 0,
+      downvotes: asset.downvotes || 0
     });
   } catch (error) {
     console.error('Error adding vote:', error);

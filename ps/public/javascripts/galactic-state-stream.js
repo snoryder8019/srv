@@ -8,6 +8,13 @@ const GAME_STATE_URL = 'https://svc.madladslab.com';
 let pollingInterval = null;
 let eventPollingInterval = null;
 
+// Global filter state
+let currentPlanetStatusFilter = 'all';
+let currentZoneTypeFilter = 'all';
+let cachedOrbitals = [];
+let cachedPlanets = [];
+let cachedExplorableZones = [];
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
   // Use polling instead of SSE
@@ -17,10 +24,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Fetch orbital systems and zones
   fetchOrbitalSystems();
   fetchZones();
+  fetchExplorableZones();
+
+  // Setup status filter buttons
+  setupPlanetStatusFilters();
+  setupZoneTypeFilters();
 
   // Refresh orbital/zones every 30 seconds
   setInterval(fetchOrbitalSystems, 30000);
   setInterval(fetchZones, 30000);
+  setInterval(fetchExplorableZones, 30000);
 });
 
 /**
@@ -298,71 +311,132 @@ function formatNumber(num) {
  */
 async function fetchOrbitalSystems() {
   try {
-    const response = await fetch('/api/v1/assets/approved/list?limit=100');
+    // Fetch both approved and submitted assets
+    const [approvedResponse, submittedResponse] = await Promise.all([
+      fetch('/api/v1/assets/approved/list?limit=100'),
+      fetch('/api/v1/assets/community?limit=100')
+    ]);
 
-    if (!response.ok) return;
+    let allAssets = [];
 
-    const data = await response.json();
-
-    if (data.success && data.assets) {
-      const orbitals = data.assets.filter(a => a.assetType === 'orbital');
-      const planets = data.assets.filter(a => a.assetType === 'planet');
-
-      displayOrbitalSystems(orbitals, planets);
+    if (approvedResponse.ok) {
+      const approvedData = await approvedResponse.json();
+      if (approvedData.success && approvedData.assets) {
+        allAssets = allAssets.concat(approvedData.assets);
+      }
     }
+
+    if (submittedResponse.ok) {
+      const submittedData = await submittedResponse.json();
+      if (submittedData.success && submittedData.assets) {
+        allAssets = allAssets.concat(submittedData.assets);
+      }
+    }
+
+    // Cache the data
+    cachedOrbitals = allAssets.filter(a => a.assetType === 'orbital');
+    cachedPlanets = allAssets.filter(a => a.assetType === 'planet');
+
+    // Display with current filter
+    displayFilteredOrbitalSystems();
+
   } catch (error) {
     console.error('Error fetching orbital systems:', error);
   }
 }
 
 /**
- * Display orbital systems
+ * Display planetary systems with their orbiting orbitals
  */
 function displayOrbitalSystems(orbitals, planets) {
   const container = document.getElementById('orbitalSystems');
 
-  if (!orbitals || orbitals.length === 0) {
-    container.innerHTML = '<p class="no-data">No orbital bodies found</p>';
+  if (!planets || planets.length === 0) {
+    container.innerHTML = '<p class="no-data">No planetary systems found</p>';
     return;
   }
 
-  container.innerHTML = orbitals.map(orbital => {
-    const orbitalPlanets = planets.filter(p => p.orbitalId === orbital._id);
+  container.innerHTML = planets.map(planet => {
+    // Find orbitals that orbit this planet
+    const planetOrbitals = orbitals.filter(o => o.planetId === planet._id);
+
+    // Calculate vote display
+    const netVotes = planet.votes || 0;
+    const upvotes = planet.upvotes || 0;
+    const downvotes = planet.downvotes || 0;
+    const statusBadge = planet.status === 'approved'
+      ? '<span style="background: #10b981; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem;">✅ LIVE</span>'
+      : '<span style="background: #f59e0b; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem;">🚧 IN DEV</span>';
+
+    // Check if user has voted
+    const hasVoted = window.USER_ID && planet.voters && planet.voters.some(v => v.userId === window.USER_ID);
 
     return `
       <div class="orbital-card">
         <div class="orbital-header">
-          <h3>🛰️ ${orbital.title}</h3>
-          <span class="orbital-type">${orbital.subType || 'Orbital Station'}</span>
+          <h3>${getPlanetIcon(planet.subType)} ${planet.title}${statusBadge}</h3>
+          <span class="orbital-type">${(planet.subType || 'planet').replace('_', ' ')}</span>
         </div>
-        <p class="orbital-description">${orbital.description || ''}</p>
+        <p class="orbital-description">${planet.description || ''}</p>
 
-        ${orbitalPlanets.length > 0 ? `
+        ${planet.stats ? `
+          <div class="planet-stats-display">
+            ${planet.stats.temperature !== undefined ? `<span>🌡️ ${planet.stats.temperature}°C</span>` : ''}
+            ${planet.stats.gravity !== undefined ? `<span>⚖️ ${planet.stats.gravity}g</span>` : ''}
+            ${planet.stats.atmosphere !== undefined ? `<span>💨 ${planet.stats.atmosphere}</span>` : ''}
+            ${planet.stats.resources !== undefined ? `<span>💎 ${planet.stats.resources} resources</span>` : ''}
+          </div>
+        ` : ''}
+
+        ${planetOrbitals.length > 0 ? `
           <div class="planets-list">
-            <h4>Orbiting Planets (${orbitalPlanets.length})</h4>
-            ${orbitalPlanets.map(planet => `
+            <h4>Orbiting Stations (${planetOrbitals.length})</h4>
+            ${planetOrbitals.map(orbital => {
+              const orbitalNetVotes = orbital.votes || 0;
+              const orbitalUpvotes = orbital.upvotes || 0;
+              const orbitalDownvotes = orbital.downvotes || 0;
+              const orbitalHasVoted = window.USER_ID && orbital.voters && orbital.voters.some(v => v.userId === window.USER_ID);
+              const orbitalStatusBadge = orbital.status === 'approved'
+                ? '<span style="background: #10b981; color: white; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600; margin-left: 0.25rem;">✅</span>'
+                : '<span style="background: #f59e0b; color: white; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600; margin-left: 0.25rem;">🚧</span>';
+
+              return `
               <div class="planet-item">
-                <div class="planet-icon">${getPlanetIcon(planet.subType)}</div>
+                <div class="planet-icon">🛰️</div>
                 <div class="planet-info">
-                  <div class="planet-name">${planet.title}</div>
-                  <div class="planet-type">${(planet.subType || '').replace('_', ' ')}</div>
-                  ${planet.stats ? `
+                  <div class="planet-name">${orbital.title}${orbitalStatusBadge}</div>
+                  <div class="planet-type">${(orbital.subType || 'orbital').replace('-', ' ')}</div>
+                  ${orbital.stats ? `
                     <div class="planet-stats">
-                      ${planet.stats.temperature !== undefined ? `<span>🌡️ ${planet.stats.temperature}°C</span>` : ''}
-                      ${planet.stats.gravity !== undefined ? `<span>⚖️ ${planet.stats.gravity}g</span>` : ''}
-                      ${planet.stats.resources !== undefined ? `<span>💎 ${planet.stats.resources} resources</span>` : ''}
+                      ${orbital.stats.capacity ? `<span>👥 ${orbital.stats.capacity} capacity</span>` : ''}
+                      ${orbital.stats.dockingBays ? `<span>🚀 ${orbital.stats.dockingBays} bays</span>` : ''}
+                      ${orbital.stats.defenseRating ? `<span>🛡️ ${orbital.stats.defenseRating} defense</span>` : ''}
                     </div>
                   ` : ''}
+                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+                    <span style="color: ${orbitalNetVotes >= 0 ? '#10b981' : '#ef4444'}; font-weight: 600; font-size: 0.875rem;">
+                      ${orbitalNetVotes >= 0 ? '▲' : '▼'} ${Math.abs(orbitalNetVotes)}
+                      <span style="font-size: 0.7rem; color: #888;">(${orbitalUpvotes}↑ ${orbitalDownvotes}↓)</span>
+                    </span>
+                    ${createVoteButtons(orbital._id, orbitalHasVoted, 'small')}
+                  </div>
                 </div>
-                <a href="/zones/${planet.zoneName}" class="explore-btn">Explore</a>
+                ${orbital.zoneName ? `<a href="/zones/${orbital.zoneName}" class="explore-btn">Explore</a>` : ''}
               </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
-        ` : '<p class="no-planets">No planets discovered yet</p>'}
+        ` : '<p class="no-planets">No orbital stations in orbit</p>'}
 
         <div class="orbital-footer">
-          <span class="votes">👍 ${orbital.votes || 0} votes</span>
-          ${orbital.initialPosition ? `<span class="location">📍 (${orbital.initialPosition.x}, ${orbital.initialPosition.y})</span>` : ''}
+          <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <span style="color: ${netVotes >= 0 ? '#10b981' : '#ef4444'}; font-weight: 600;">
+              ${netVotes >= 0 ? '▲' : '▼'} ${Math.abs(netVotes)} votes
+              <span style="font-size: 0.75rem; color: #888;">(${upvotes}↑ ${downvotes}↓)</span>
+            </span>
+            ${createVoteButtons(planet._id, hasVoted)}
+            ${planet.zoneName ? `<a href="/zones/${planet.zoneName}" class="explore-btn" data-planet-type="${planet.subType || 'planet'}">Visit Planet</a>` : ''}
+          </div>
         </div>
       </div>
     `;
@@ -381,6 +455,97 @@ function getPlanetIcon(type) {
     'ocean_world': '🌊'
   };
   return icons[type] || '🌑';
+}
+
+/**
+ * Create vote buttons for an asset
+ */
+function createVoteButtons(assetId, hasVoted, size = 'normal') {
+  if (!window.USER_ID) {
+    return '';
+  }
+
+  const buttonStyle = size === 'small'
+    ? 'padding: 0.25rem 0.5rem; font-size: 0.75rem;'
+    : 'padding: 0.5rem 1rem; font-size: 0.875rem;';
+
+  if (hasVoted) {
+    return `<div style="display: flex; gap: 0.25rem; opacity: 0.5;">
+      <button disabled style="${buttonStyle} background: #10b981; color: white; border: none; border-radius: 4px; cursor: not-allowed;">▲ Voted</button>
+      <button disabled style="${buttonStyle} background: #ef4444; color: white; border: none; border-radius: 4px; cursor: not-allowed;">▼</button>
+    </div>`;
+  }
+
+  return `<div style="display: flex; gap: 0.25rem;">
+    <button onclick="voteOnAsset('${assetId}', 1)" style="${buttonStyle} background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">▲</button>
+    <button onclick="voteOnAsset('${assetId}', -1)" style="${buttonStyle} background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">▼</button>
+  </div>`;
+}
+
+/**
+ * Vote on an asset (planet or orbital)
+ */
+async function voteOnAsset(assetId, voteType) {
+  if (!window.USER_ID) {
+    alert('Please log in to vote');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/v1/assets/${assetId}/vote`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        userId: window.USER_ID,
+        voteType: voteType
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to vote');
+    }
+
+    // Show success message
+    const voteLabel = voteType === 1 ? 'Upvoted' : 'Downvoted';
+    showNotification(`${voteLabel} successfully!`, 'success');
+
+    // Reload the galactic state to show updated votes
+    location.reload();
+
+  } catch (error) {
+    console.error('Error voting:', error);
+    alert(error.message || 'Failed to vote. Please try again.');
+  }
+}
+
+/**
+ * Show notification message
+ */
+function showNotification(message, type = 'info') {
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    background: ${type === 'success' ? '#10b981' : '#ef4444'};
+    color: white;
+    border-radius: 8px;
+    font-weight: 600;
+    z-index: 10000;
+    animation: slideIn 0.3s ease-out;
+  `;
+  notification.textContent = message;
+  document.body.appendChild(notification);
+
+  setTimeout(() => {
+    notification.remove();
+  }, 3000);
 }
 
 /**
@@ -544,3 +709,234 @@ document.addEventListener('DOMContentLoaded', () => {
   updateConvergenceSeparation();
   setInterval(updateConvergenceSeparation, 10000); // Update every 10 seconds
 });
+
+/**
+ * Setup planet status filter buttons
+ */
+function setupPlanetStatusFilters() {
+  const filterButtons = document.querySelectorAll('.planet-status-filter');
+
+  filterButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      // Update active state
+      filterButtons.forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
+
+      // Update filter and redisplay
+      currentPlanetStatusFilter = button.dataset.status;
+      displayFilteredOrbitalSystems();
+    });
+  });
+}
+
+/**
+ * Display orbital systems with current filter applied
+ */
+function displayFilteredOrbitalSystems() {
+  let filteredPlanets = cachedPlanets;
+  let filteredOrbitals = cachedOrbitals;
+
+  // Apply status filter
+  if (currentPlanetStatusFilter !== 'all') {
+    filteredPlanets = filteredPlanets.filter(p => p.status === currentPlanetStatusFilter);
+    filteredOrbitals = filteredOrbitals.filter(o => o.status === currentPlanetStatusFilter);
+  }
+
+  displayOrbitalSystems(filteredOrbitals, filteredPlanets);
+}
+
+/**
+ * Fetch all explorable zones from assets
+ */
+async function fetchExplorableZones() {
+  try {
+    // Fetch both approved and submitted assets that have zoneName
+    const [approvedResponse, submittedResponse] = await Promise.all([
+      fetch('/api/v1/assets/approved/list?limit=200'),
+      fetch('/api/v1/assets/community?limit=200')
+    ]);
+
+    let allZones = [];
+
+    if (approvedResponse.ok) {
+      const approvedData = await approvedResponse.json();
+      if (approvedData.success && approvedData.assets) {
+        allZones = allZones.concat(
+          approvedData.assets.filter(asset => asset.zoneName)
+        );
+      }
+    }
+
+    if (submittedResponse.ok) {
+      const submittedData = await submittedResponse.json();
+      if (submittedData.success && submittedData.assets) {
+        allZones = allZones.concat(
+          submittedData.assets.filter(asset => asset.zoneName)
+        );
+      }
+    }
+
+    // Cache the zones
+    cachedExplorableZones = allZones;
+
+    // Display with current filter
+    displayFilteredExplorableZones();
+
+  } catch (error) {
+    console.error('Error fetching explorable zones:', error);
+  }
+}
+
+/**
+ * Setup zone type filter buttons
+ */
+function setupZoneTypeFilters() {
+  const filterButtons = document.querySelectorAll('.zone-type-filter');
+
+  filterButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      // Update active state
+      filterButtons.forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
+
+      // Update filter and redisplay
+      currentZoneTypeFilter = button.dataset.zoneType;
+      displayFilteredExplorableZones();
+    });
+  });
+}
+
+/**
+ * Display explorable zones with current filter applied
+ */
+function displayFilteredExplorableZones() {
+  let filteredZones = cachedExplorableZones;
+
+  // Apply zone type filter
+  if (currentZoneTypeFilter !== 'all') {
+    filteredZones = filteredZones.filter(z => z.assetType === currentZoneTypeFilter);
+  }
+
+  displayExplorableZones(filteredZones);
+}
+
+/**
+ * Display explorable zones in grid
+ */
+function displayExplorableZones(zones) {
+  const container = document.getElementById('explorableZonesGrid');
+
+  if (!zones || zones.length === 0) {
+    container.innerHTML = '<p style="color: #888; text-align: center; padding: 2rem; grid-column: 1/-1;">No explorable zones found</p>';
+    return;
+  }
+
+  container.innerHTML = zones.map(zone => {
+    const netVotes = zone.votes || 0;
+    const upvotes = zone.upvotes || 0;
+    const downvotes = zone.downvotes || 0;
+    const statusBadge = zone.status === 'approved'
+      ? '<span style="background: #10b981; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">✅ LIVE</span>'
+      : '<span style="background: #f59e0b; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">🚧 IN DEV</span>';
+
+    const icon = getZoneIcon(zone.assetType, zone.subType);
+    const zoneLink = zone.zoneName ? `/zones/${zone.zoneName}` : `/zones/explore/planetary?asset=${zone._id}`;
+
+    return `
+      <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 1.5rem; transition: all 0.3s;">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span style="font-size: 2rem;">${icon}</span>
+            <div>
+              <h3 style="margin: 0; font-size: 1.125rem; color: white;">${zone.title}</h3>
+              <span style="color: #888; font-size: 0.875rem;">${getAssetTypeLabel(zone.assetType)}</span>
+            </div>
+          </div>
+          ${statusBadge}
+        </div>
+
+        <p style="color: #ccc; font-size: 0.875rem; margin-bottom: 1rem; line-height: 1.5;">${zone.description || 'No description available'}</p>
+
+        ${zone.stats ? `
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-bottom: 1rem; padding: 0.75rem; background: rgba(0, 0, 0, 0.2); border-radius: 8px;">
+            ${zone.stats.temperature !== undefined ? `<div style="font-size: 0.75rem;"><span style="color: #888;">🌡️</span> ${zone.stats.temperature}°C</div>` : ''}
+            ${zone.stats.gravity !== undefined ? `<div style="font-size: 0.75rem;"><span style="color: #888;">⚖️</span> ${zone.stats.gravity}g</div>` : ''}
+            ${zone.stats.atmosphere !== undefined ? `<div style="font-size: 0.75rem;"><span style="color: #888;">💨</span> ${zone.stats.atmosphere}</div>` : ''}
+            ${zone.stats.capacity !== undefined ? `<div style="font-size: 0.75rem;"><span style="color: #888;">👥</span> ${zone.stats.capacity}</div>` : ''}
+            ${zone.stats.dockingBays !== undefined ? `<div style="font-size: 0.75rem;"><span style="color: #888;">🚀</span> ${zone.stats.dockingBays} bays</div>` : ''}
+            ${zone.stats.defenseRating !== undefined ? `<div style="font-size: 0.75rem;"><span style="color: #888;">🛡️</span> ${zone.stats.defenseRating}</div>` : ''}
+          </div>
+        ` : ''}
+
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="color: ${netVotes >= 0 ? '#10b981' : '#ef4444'}; font-weight: 600; font-size: 0.875rem;">
+              ${netVotes >= 0 ? '▲' : '▼'} ${Math.abs(netVotes)}
+              <span style="font-size: 0.7rem; color: #888;">(${upvotes}↑ ${downvotes}↓)</span>
+            </span>
+          </div>
+          <a href="${zoneLink}" style="padding: 0.5rem 1rem; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 0.875rem; transition: all 0.2s;">
+            Explore →
+          </a>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
+ * Get zone icon based on asset type and subtype
+ */
+function getZoneIcon(assetType, subType) {
+  if (assetType === 'planet') {
+    const planetIcons = {
+      'terrestrial': '🌍',
+      'gas_giant': '🪐',
+      'ice_world': '❄️',
+      'volcanic': '🌋',
+      'ocean_world': '🌊',
+      'desert': '🏜️',
+      'jungle': '🌴',
+      'barren': '🌑'
+    };
+    return planetIcons[subType] || '🌑';
+  }
+
+  if (assetType === 'orbital') {
+    const orbitalIcons = {
+      'trading-station': '🏪',
+      'military-station': '⚔️',
+      'research-station': '🔬',
+      'mining-station': '⛏️',
+      'habitat-station': '🏘️',
+      'refueling-station': '⛽',
+      'shipyard': '🏭',
+      'satellite': '🛰️'
+    };
+    return orbitalIcons[subType] || '🛰️';
+  }
+
+  const typeIcons = {
+    'environment': '🌌',
+    'zone': '📍',
+    'structure': '🏗️',
+    'ship': '🚀'
+  };
+
+  return typeIcons[assetType] || '📍';
+}
+
+/**
+ * Get readable label for asset type
+ */
+function getAssetTypeLabel(assetType) {
+  const labels = {
+    'planet': 'Planet',
+    'orbital': 'Orbital Station',
+    'environment': 'Environment',
+    'zone': 'Zone',
+    'structure': 'Structure',
+    'ship': 'Ship'
+  };
+  return labels[assetType] || assetType.charAt(0).toUpperCase() + assetType.slice(1);
+}

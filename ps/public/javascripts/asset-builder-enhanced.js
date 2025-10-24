@@ -202,6 +202,97 @@ function handleAssetTypeChange(e) {
         </div>
       `;
       break;
+
+    case 'planet':
+      fieldsHTML += `
+        <div class="form-group">
+          <label for="subType">Planet Type *</label>
+          <select id="subType" name="subType" required>
+            <option value="">Select Planet Type</option>
+            <option value="terrestrial">🌍 Terrestrial</option>
+            <option value="gas_giant">🪐 Gas Giant</option>
+            <option value="ice_world">❄️ Ice World</option>
+            <option value="volcanic">🌋 Volcanic</option>
+            <option value="ocean_world">🌊 Ocean World</option>
+            <option value="desert">🏜️ Desert</option>
+            <option value="jungle">🌴 Jungle</option>
+            <option value="barren">🌑 Barren</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="stat_temperature">Temperature (°C)</label>
+            <input type="number" id="stat_temperature" name="stat_temperature" placeholder="e.g., 22, -120, 450">
+          </div>
+          <div class="form-group">
+            <label for="stat_gravity">Gravity (g)</label>
+            <input type="number" id="stat_gravity" name="stat_gravity" step="0.1" placeholder="e.g., 1.0, 0.38, 2.5">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="stat_atmosphere">Atmosphere</label>
+          <input type="text" id="stat_atmosphere" name="stat_atmosphere" placeholder="e.g., Breathable, Toxic, Thin CO2, None">
+        </div>
+        <div class="form-group">
+          <label for="stat_resources">Available Resources (number)</label>
+          <input type="number" id="stat_resources" name="stat_resources" placeholder="e.g., 5, 10, 0">
+          <small>Number of unique resource types available on this planet</small>
+        </div>
+        <div class="form-group">
+          <label for="climate">Climate Description</label>
+          <input type="text" id="climate" name="climate" placeholder="e.g., Arid, Tropical, Frozen, Volcanic">
+        </div>
+        <div class="form-group">
+          <label for="zoneName">Zone Name (optional)</label>
+          <input type="text" id="zoneName" name="zoneName" placeholder="e.g., alpha-centauri-b">
+          <small>Zone identifier for planetary explorer integration</small>
+        </div>
+      `;
+      break;
+
+    case 'orbital':
+      fieldsHTML += `
+        <div class="form-group">
+          <label for="subType">Orbital Type *</label>
+          <select id="subType" name="subType" required>
+            <option value="">Select Orbital Type</option>
+            <option value="trading-station">🏪 Trading Station</option>
+            <option value="military-station">⚔️ Military Station</option>
+            <option value="research-station">🔬 Research Station</option>
+            <option value="mining-station">⛏️ Mining Station</option>
+            <option value="habitat-station">🏘️ Habitat Station</option>
+            <option value="refueling-station">⛽ Refueling Station</option>
+            <option value="shipyard">🏭 Shipyard</option>
+            <option value="satellite">🛰️ Satellite</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="stat_capacity">Population Capacity</label>
+            <input type="number" id="stat_capacity" name="stat_capacity" placeholder="e.g., 5000, 10000">
+          </div>
+          <div class="form-group">
+            <label for="stat_dockingBays">Docking Bays</label>
+            <input type="number" id="stat_dockingBays" name="stat_dockingBays" placeholder="e.g., 10, 25, 50">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="stat_defenseRating">Defense Rating</label>
+          <input type="number" id="stat_defenseRating" name="stat_defenseRating" placeholder="e.g., 100, 500, 1000">
+          <small>Military defense capability of the station</small>
+        </div>
+        <div class="form-group">
+          <label for="planetId">Orbits Planet (ID)</label>
+          <input type="text" id="planetId" name="planetId" placeholder="Planet asset ID (leave empty if not orbiting)">
+          <small>Leave empty for now - will be linked to planets after creation</small>
+        </div>
+        <div class="form-group">
+          <label for="zoneName">Zone Name (optional)</label>
+          <input type="text" id="zoneName" name="zoneName" placeholder="e.g., trading-post-sigma">
+          <small>Zone identifier for orbital explorer integration</small>
+        </div>
+      `;
+      break;
   }
 
   fieldsHTML += '</div>';
@@ -209,6 +300,17 @@ function handleAssetTypeChange(e) {
 
   // Add event listeners for conditional fields
   setupConditionalFields(assetType);
+
+  // Show/hide terrain mapper for explorable zones
+  const terrainMapperSection = document.getElementById('terrainMapperSection');
+  if (terrainMapperSection) {
+    if (assetType === 'planet' || assetType === 'orbital' || assetType === 'environment') {
+      terrainMapperSection.style.display = 'block';
+      initTerrainMapper();
+    } else {
+      terrainMapperSection.style.display = 'none';
+    }
+  }
 }
 
 /**
@@ -238,13 +340,23 @@ function collectStats() {
     'damage', 'defense', 'accuracy', 'critChance',
     'health', 'energy', 'speed', 'weight',
     'value', 'durability', 'range', 'fireRate',
-    'capacity', 'level'
+    'capacity', 'level', 'dockingBays', 'defenseRating',
+    'temperature', 'resources'
   ];
 
   statFields.forEach(field => {
     const value = document.getElementById(`stat_${field}`)?.value;
     if (value && value !== '' && value !== '0') {
       stats[field] = parseFloat(value);
+    }
+  });
+
+  // Collect string stat fields (for planets/orbitals)
+  const stringStatFields = ['gravity', 'atmosphere'];
+  stringStatFields.forEach(field => {
+    const value = document.getElementById(`stat_${field}`)?.value;
+    if (value && value !== '') {
+      stats[field] = value.trim();
     }
   });
 
@@ -677,4 +789,248 @@ function resetForm() {
   pixelEditor.clear();
   currentAssetId = null;
   showAlert('Form reset', 'info');
+}
+
+// Terrain Mapper Variables
+let terrainCanvas = null;
+let terrainCtx = null;
+let terrainMapSize = 64;
+let terrainPixelSize = 8;
+let currentTerrain = 'walkable';
+let isDrawingTerrain = false;
+let terrainGrid = [];
+
+const terrainColors = {
+  'walkable': '#10b981',
+  'obstacle': '#6b7280',
+  'water': '#3b82f6',
+  'hazard': '#ef4444',
+  'interactive': '#f59e0b',
+  'spawn': '#8b5cf6'
+};
+
+/**
+ * Initialize terrain mapper
+ */
+function initTerrainMapper() {
+  terrainCanvas = document.getElementById('terrainCanvas');
+  if (!terrainCanvas) return;
+
+  terrainCtx = terrainCanvas.getContext('2d');
+
+  // Initialize grid
+  initTerrainGrid();
+
+  // Set canvas size
+  updateCanvasSize();
+
+  // Setup event listeners
+  setupTerrainMapperEvents();
+
+  // Render initial state
+  renderTerrainMap();
+}
+
+/**
+ * Initialize terrain grid
+ */
+function initTerrainGrid() {
+  terrainGrid = [];
+  for (let y = 0; y < terrainMapSize; y++) {
+    terrainGrid[y] = [];
+    for (let x = 0; x < terrainMapSize; x++) {
+      terrainGrid[y][x] = 'walkable'; // Default terrain
+    }
+  }
+}
+
+/**
+ * Update canvas size based on map size
+ */
+function updateCanvasSize() {
+  const containerWidth = document.getElementById('terrainMapperContainer').offsetWidth - 32;
+  const maxSize = Math.min(containerWidth, 800);
+  terrainPixelSize = Math.floor(maxSize / terrainMapSize);
+
+  terrainCanvas.width = terrainMapSize * terrainPixelSize;
+  terrainCanvas.height = terrainMapSize * terrainPixelSize;
+}
+
+/**
+ * Setup terrain mapper event listeners
+ */
+function setupTerrainMapperEvents() {
+  // Terrain type selection
+  const terrainTypes = document.querySelectorAll('.terrain-type');
+  terrainTypes.forEach(type => {
+    type.addEventListener('click', () => {
+      terrainTypes.forEach(t => {
+        t.style.border = 'none';
+        t.classList.remove('active');
+      });
+      type.style.border = '3px solid white';
+      type.classList.add('active');
+      currentTerrain = type.dataset.terrain;
+    });
+  });
+
+  // Map size change
+  const mapSizeSelect = document.getElementById('terrainMapSize');
+  if (mapSizeSelect) {
+    mapSizeSelect.addEventListener('change', (e) => {
+      terrainMapSize = parseInt(e.target.value);
+      initTerrainGrid();
+      updateCanvasSize();
+      renderTerrainMap();
+    });
+  }
+
+  // Canvas drawing
+  terrainCanvas.addEventListener('mousedown', (e) => {
+    isDrawingTerrain = true;
+    drawTerrain(e);
+  });
+
+  terrainCanvas.addEventListener('mousemove', (e) => {
+    if (isDrawingTerrain) {
+      drawTerrain(e);
+    }
+  });
+
+  terrainCanvas.addEventListener('mouseup', () => {
+    isDrawingTerrain = false;
+  });
+
+  terrainCanvas.addEventListener('mouseleave', () => {
+    isDrawingTerrain = false;
+  });
+
+  // Touch events for mobile
+  terrainCanvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    isDrawingTerrain = true;
+    const touch = e.touches[0];
+    const rect = terrainCanvas.getBoundingClientRect();
+    const mouseEvent = {
+      offsetX: touch.clientX - rect.left,
+      offsetY: touch.clientY - rect.top
+    };
+    drawTerrain(mouseEvent);
+  });
+
+  terrainCanvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (isDrawingTerrain) {
+      const touch = e.touches[0];
+      const rect = terrainCanvas.getBoundingClientRect();
+      const mouseEvent = {
+        offsetX: touch.clientX - rect.left,
+        offsetY: touch.clientY - rect.top
+      };
+      drawTerrain(mouseEvent);
+    }
+  });
+
+  terrainCanvas.addEventListener('touchend', () => {
+    isDrawingTerrain = false;
+  });
+
+  // Clear button
+  const clearBtn = document.getElementById('clearTerrainBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (confirm('Clear entire terrain map?')) {
+        initTerrainGrid();
+        renderTerrainMap();
+      }
+    });
+  }
+
+  // Export button
+  const exportBtn = document.getElementById('exportTerrainBtn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      exportTerrainData();
+    });
+  }
+}
+
+/**
+ * Draw terrain at cursor position
+ */
+function drawTerrain(e) {
+  const rect = terrainCanvas.getBoundingClientRect();
+  const x = Math.floor((e.offsetX || (e.clientX - rect.left)) / terrainPixelSize);
+  const y = Math.floor((e.offsetY || (e.clientY - rect.top)) / terrainPixelSize);
+
+  if (x >= 0 && x < terrainMapSize && y >= 0 && y < terrainMapSize) {
+    terrainGrid[y][x] = currentTerrain;
+    renderTerrainMap();
+  }
+}
+
+/**
+ * Render the terrain map
+ */
+function renderTerrainMap() {
+  if (!terrainCtx) return;
+
+  // Clear canvas
+  terrainCtx.fillStyle = '#1a1a1a';
+  terrainCtx.fillRect(0, 0, terrainCanvas.width, terrainCanvas.height);
+
+  // Draw terrain grid
+  for (let y = 0; y < terrainMapSize; y++) {
+    for (let x = 0; x < terrainMapSize; x++) {
+      const terrain = terrainGrid[y][x];
+      terrainCtx.fillStyle = terrainColors[terrain] || '#10b981';
+      terrainCtx.fillRect(
+        x * terrainPixelSize,
+        y * terrainPixelSize,
+        terrainPixelSize,
+        terrainPixelSize
+      );
+    }
+  }
+
+  // Draw grid lines
+  terrainCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  terrainCtx.lineWidth = 1;
+  for (let i = 0; i <= terrainMapSize; i++) {
+    terrainCtx.beginPath();
+    terrainCtx.moveTo(i * terrainPixelSize, 0);
+    terrainCtx.lineTo(i * terrainPixelSize, terrainCanvas.height);
+    terrainCtx.stroke();
+
+    terrainCtx.beginPath();
+    terrainCtx.moveTo(0, i * terrainPixelSize);
+    terrainCtx.lineTo(terrainCanvas.width, i * terrainPixelSize);
+    terrainCtx.stroke();
+  }
+}
+
+/**
+ * Export terrain data
+ */
+function exportTerrainData() {
+  const terrainData = {
+    size: terrainMapSize,
+    grid: terrainGrid,
+    metadata: {
+      created: new Date().toISOString(),
+      terrainTypes: Object.keys(terrainColors)
+    }
+  };
+
+  // Store in hidden field
+  document.getElementById('terrainData').value = JSON.stringify(terrainData);
+
+  // Show preview
+  const previewDiv = document.getElementById('terrainPreview');
+  const displayPre = document.getElementById('terrainDataDisplay');
+
+  previewDiv.style.display = 'block';
+  displayPre.textContent = JSON.stringify(terrainData, null, 2);
+
+  showAlert('Terrain data exported successfully! It will be saved with your asset.', 'success');
 }

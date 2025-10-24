@@ -6,6 +6,11 @@
   <title><%= title %></title>
   <link rel="stylesheet" href="/stylesheets/style.css">
   <link rel="stylesheet" href="/stylesheets/galactic-map.css">
+  <% if (user && user.userRole === 'tester') { %>
+  <link rel="stylesheet" href="/stylesheets/tester-toolbar.css">
+  <link rel="stylesheet" href="/stylesheets/global-chat.css">
+  <link rel="stylesheet" href="/stylesheets/ship-info-pane.css">
+  <% } %>
 </head>
 <body>
   <%- include('../partials/header', { user: user }) %>
@@ -30,7 +35,74 @@
         <button id="toggleGridBtn" class="control-btn" title="Toggle Grid">⊞</button>
         <button id="toggleRoutesBtn" class="control-btn" title="Toggle Travel Routes" style="background: rgba(102, 126, 234, 0.3);">🛤️</button>
       </div>
+
+      <% if (user && user.isAdmin) { %>
+      <!-- Admin Control Toggle -->
+      <div class="control-group">
+        <button id="toggleAdminBtn" class="control-btn" title="Toggle Admin Controls">⚙️</button>
+      </div>
+      <% } %>
     </div>
+
+    <% if (user && user.isAdmin) { %>
+    <!-- Admin Controls Panel -->
+    <div class="controls-panel" id="adminControlsPanel" style="display: none;">
+      <div class="controls-header">
+        <h3>⚙️ State Manager Controls</h3>
+        <button class="close-controls-btn" onclick="toggleAdminPanel()">✕</button>
+      </div>
+      <div class="controls-content">
+        <div class="control-section">
+          <label for="movementSpeedSlider">
+            Movement Speed: <span id="movementSpeedValue">0.1</span>x
+          </label>
+          <input type="range" id="movementSpeedSlider" min="0" max="5" step="0.1" value="0.1">
+          <div class="speed-presets">
+            <button onclick="setMovementSpeed(0)" class="preset-btn">Pause</button>
+            <button onclick="setMovementSpeed(0.1)" class="preset-btn">0.1x</button>
+            <button onclick="setMovementSpeed(0.5)" class="preset-btn">0.5x</button>
+            <button onclick="setMovementSpeed(1)" class="preset-btn">1x</button>
+            <button onclick="setMovementSpeed(2)" class="preset-btn">2x</button>
+            <button onclick="setMovementSpeed(5)" class="preset-btn">5x</button>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <label for="gridSizeSlider">
+            Grid Size: <span id="gridSizeValue">100</span>
+          </label>
+          <input type="range" id="gridSizeSlider" min="50" max="500" step="50" value="100">
+        </div>
+
+        <div class="control-section">
+          <label for="edgeGravitySlider">
+            Edge Gravity: <span id="edgeGravityValue">0.15</span>
+          </label>
+          <input type="range" id="edgeGravitySlider" min="0" max="1" step="0.05" value="0.15">
+        </div>
+
+        <div class="control-section">
+          <label for="brownNoiseSlider">
+            Brown Noise: <span id="brownNoiseValue">0.05</span>
+          </label>
+          <input type="range" id="brownNoiseSlider" min="0" max="0.5" step="0.01" value="0.05">
+          <label class="checkbox-label">
+            <input type="checkbox" id="brownNoiseEnabled" checked>
+            Enable Brown Noise
+          </label>
+        </div>
+
+        <div class="control-section">
+          <button id="saveSettingsBtn" class="save-btn">💾 Save Settings</button>
+          <button id="resetSettingsBtn" class="reset-btn">🔄 Reset to Default</button>
+        </div>
+
+        <div class="control-section">
+          <div class="settings-status" id="settingsStatus"></div>
+        </div>
+      </div>
+    </div>
+    <% } %>
 
     <!-- Selection Menu for Overlapping Assets -->
     <div class="asset-selection-menu" id="assetSelectionMenu" style="display: none;">
@@ -52,6 +124,13 @@
   </div>
 
   <%- include('../partials/footer') %>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <% if (user && user.userRole === 'tester') { %>
+  <script src="/javascripts/tester-toolbar.js"></script>
+  <script src="/javascripts/global-chat.js"></script>
+  <script src="/javascripts/ship-info-pane.js"></script>
+  <% } %>
 
   <script type="module">
     import GalacticMap from '/javascripts/galactic-map-optimized.js?v=1.2';
@@ -131,6 +210,113 @@
       // Setup controls
       setupControls();
 
+      <% if (user && user.userRole === 'tester') { %>
+      // Initialize Socket.IO for testers
+      const socket = io();
+
+      // Initialize tester components
+      const userObj = {
+        _id: '<%= user._id %>',
+        id: '<%= user._id %>',
+        username: '<%= user.username %>',
+        userRole: '<%= user.userRole %>'
+      };
+
+      // Wait for Socket.IO to connect before initializing components
+      socket.on('connect', () => {
+        console.log('✅ Socket.IO connected:', socket.id);
+
+        const characterObj = map.currentCharacter;
+
+        // Initialize tester toolbar
+        if (typeof TesterToolbar !== 'undefined') {
+          window.testerToolbar = new TesterToolbar(userObj, characterObj);
+
+          // Connect toolbar to Socket.IO and map for real-time updates
+          window.testerToolbar.connectSocket(socket);
+          window.testerToolbar.connectMap(map);
+        }
+
+        // Initialize global chat
+        if (typeof initGlobalChat !== 'undefined') {
+          window.globalChat = initGlobalChat(socket, userObj, characterObj);
+        }
+
+        // Initialize ship info pane
+        if (typeof ShipInfoPane !== 'undefined') {
+          window.shipInfoPane = new ShipInfoPane(socket);
+        }
+
+        // Emit character join event to Socket.IO
+        if (characterObj && characterObj.location) {
+          console.log('📡 Emitting characterJoin:', characterObj.name, characterObj.location);
+          socket.emit('characterJoin', {
+            characterId: characterObj._id,
+            characterName: characterObj.name,
+            userId: userObj._id,
+            location: characterObj.location,
+            assetId: characterObj.location.assetId || null,
+            stringDomain: characterObj.stringDomain || 'Time String'
+          });
+        } else {
+          console.warn('⚠️ Character or location missing:', characterObj);
+        }
+      });
+
+      // Listen for other players' location updates
+      socket.on('onlinePlayers', (players) => {
+        console.log('📡 Received online players:', players.length, players);
+
+        // Update map with all online players
+        map.characters = players.map(p => ({
+          characterId: p.characterId,
+          name: p.characterName,
+          location: p.location,
+          stringDomain: p.stringDomain || 'Time String'
+        }));
+
+        console.log('✅ Map characters updated:', map.characters.length, map.characters);
+      });
+
+      // Listen for player joins
+      socket.on('characterJoined', (data) => {
+        console.log('👤 Player joined:', data.characterName);
+
+        // Add to characters array
+        if (!map.characters) map.characters = [];
+        map.characters.push({
+          characterId: data.characterId,
+          name: data.characterName,
+          location: data.location,
+          stringDomain: data.stringDomain || 'Time String'
+        });
+      });
+
+      // Listen for player leaves
+      socket.on('characterLeft', (data) => {
+        console.log('👤 Player left:', data.characterName);
+
+        // Remove from characters array
+        if (map.characters) {
+          map.characters = map.characters.filter(c => c.characterId !== data.characterId);
+        }
+      });
+
+      // Listen for location updates
+      socket.on('characterLocationUpdate', (data) => {
+        console.log('📍 Character moved:', data.characterName, data.location);
+
+        // Update character in array
+        if (map.characters) {
+          const char = map.characters.find(c => c.characterId === data.characterId);
+          if (char) {
+            char.location = data.location;
+          }
+        }
+      });
+      <% } %>
+
+
       // Close info pane when clicking/touching outside
       const closeInfoPaneOutside = (e) => {
         const infoPane = document.getElementById('infoPane');
@@ -194,7 +380,234 @@
           'rgba(102, 126, 234, 0.3)' :
           'rgba(255, 255, 255, 0.1)';
       });
+
+      <% if (user && user.isAdmin) { %>
+      // Toggle Admin Panel
+      const toggleAdminBtn = document.getElementById('toggleAdminBtn');
+      if (toggleAdminBtn) {
+        toggleAdminBtn.addEventListener('click', () => {
+          toggleAdminPanel();
+        });
+      }
+
+      // Load admin settings on page load
+      loadAdminSettings();
+
+      // Setup admin control handlers
+      setupAdminControls();
+      <% } %>
     }
+
+    <% if (user && user.isAdmin) { %>
+    /**
+     * Toggle admin control panel
+     */
+    window.toggleAdminPanel = function() {
+      const panel = document.getElementById('adminControlsPanel');
+      const btn = document.getElementById('toggleAdminBtn');
+      if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        if (btn) btn.style.background = 'rgba(102, 126, 234, 0.3)';
+      } else {
+        panel.style.display = 'none';
+        if (btn) btn.style.background = 'rgba(255, 255, 255, 0.1)';
+      }
+    };
+
+    /**
+     * Load admin settings from server
+     */
+    async function loadAdminSettings() {
+      try {
+        const response = await fetch('/admin/api/galactic-map/settings');
+        if (!response.ok) {
+          console.error('Failed to load admin settings');
+          return;
+        }
+
+        const data = await response.json();
+        if (data.success && data.settings) {
+          const s = data.settings;
+
+          // Update sliders and values
+          document.getElementById('movementSpeedSlider').value = s.movementSpeed || 0.1;
+          document.getElementById('movementSpeedValue').textContent = s.movementSpeed || 0.1;
+
+          document.getElementById('gridSizeSlider').value = s.gridSize || 100;
+          document.getElementById('gridSizeValue').textContent = s.gridSize || 100;
+
+          document.getElementById('edgeGravitySlider').value = s.edgeGravityStrength || 0.15;
+          document.getElementById('edgeGravityValue').textContent = s.edgeGravityStrength || 0.15;
+
+          document.getElementById('brownNoiseSlider').value = s.brownNoiseStrength || 0.05;
+          document.getElementById('brownNoiseValue').textContent = s.brownNoiseStrength || 0.05;
+
+          document.getElementById('brownNoiseEnabled').checked = s.brownNoiseEnabled !== false;
+
+          // Apply settings to map immediately
+          if (map) {
+            map.movementSpeed = s.movementSpeed || 0.1;
+            map.gridSize = s.gridSize || 100;
+            map.edgeGravityStrength = s.edgeGravityStrength || 0.15;
+            map.edgeGravityDistance = s.edgeGravityDistance || 400;
+            map.brownNoiseStrength = s.brownNoiseStrength || 0.05;
+            map.brownNoiseEnabled = s.brownNoiseEnabled !== false;
+            map.damping = s.damping || 0.999;
+            map.maxVelocity = s.maxVelocity || 8;
+          }
+        }
+      } catch (error) {
+        console.error('Error loading admin settings:', error);
+      }
+    }
+
+    /**
+     * Setup admin control handlers
+     */
+    function setupAdminControls() {
+      // Movement speed slider
+      const movementSlider = document.getElementById('movementSpeedSlider');
+      const movementValue = document.getElementById('movementSpeedValue');
+      movementSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        movementValue.textContent = value.toFixed(1);
+        if (map) map.movementSpeed = value;
+      });
+
+      // Grid size slider
+      const gridSlider = document.getElementById('gridSizeSlider');
+      const gridValue = document.getElementById('gridSizeValue');
+      gridSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        gridValue.textContent = value;
+        if (map) map.gridSize = value;
+      });
+
+      // Edge gravity slider
+      const gravitySlider = document.getElementById('edgeGravitySlider');
+      const gravityValue = document.getElementById('edgeGravityValue');
+      gravitySlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        gravityValue.textContent = value.toFixed(2);
+        if (map) map.edgeGravityStrength = value;
+      });
+
+      // Brown noise slider
+      const noiseSlider = document.getElementById('brownNoiseSlider');
+      const noiseValue = document.getElementById('brownNoiseValue');
+      noiseSlider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        noiseValue.textContent = value.toFixed(2);
+        if (map) map.brownNoiseStrength = value;
+      });
+
+      // Brown noise enabled checkbox
+      const noiseEnabled = document.getElementById('brownNoiseEnabled');
+      noiseEnabled.addEventListener('change', (e) => {
+        if (map) map.brownNoiseEnabled = e.target.checked;
+      });
+
+      // Save settings button
+      document.getElementById('saveSettingsBtn').addEventListener('click', saveAdminSettings);
+
+      // Reset settings button
+      document.getElementById('resetSettingsBtn').addEventListener('click', resetAdminSettings);
+    }
+
+    /**
+     * Set movement speed (for preset buttons)
+     */
+    window.setMovementSpeed = function(speed) {
+      const slider = document.getElementById('movementSpeedSlider');
+      const value = document.getElementById('movementSpeedValue');
+      slider.value = speed;
+      value.textContent = speed.toFixed(1);
+      if (map) map.movementSpeed = speed;
+    };
+
+    /**
+     * Save admin settings to server
+     */
+    async function saveAdminSettings() {
+      const status = document.getElementById('settingsStatus');
+      status.textContent = 'Saving...';
+      status.className = 'settings-status saving';
+
+      const settings = {
+        movementSpeed: parseFloat(document.getElementById('movementSpeedSlider').value),
+        gridSize: parseInt(document.getElementById('gridSizeSlider').value),
+        edgeGravityStrength: parseFloat(document.getElementById('edgeGravitySlider').value),
+        brownNoiseStrength: parseFloat(document.getElementById('brownNoiseSlider').value),
+        brownNoiseEnabled: document.getElementById('brownNoiseEnabled').checked
+      };
+
+      try {
+        const response = await fetch('/admin/api/galactic-map/settings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(settings)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          status.textContent = '✓ Settings saved successfully!';
+          status.className = 'settings-status success';
+          setTimeout(() => {
+            status.textContent = '';
+            status.className = 'settings-status';
+          }, 3000);
+        } else {
+          status.textContent = '✗ Failed to save settings: ' + (data.error || 'Unknown error');
+          status.className = 'settings-status error';
+        }
+      } catch (error) {
+        console.error('Error saving settings:', error);
+        status.textContent = '✗ Error saving settings: ' + error.message;
+        status.className = 'settings-status error';
+      }
+    }
+
+    /**
+     * Reset settings to default
+     */
+    async function resetAdminSettings() {
+      if (!confirm('Reset all settings to default values?')) return;
+
+      const defaults = {
+        movementSpeed: 1.0,
+        gridSize: 100,
+        edgeGravityStrength: 0.15,
+        brownNoiseStrength: 0.05,
+        brownNoiseEnabled: true
+      };
+
+      // Update UI
+      document.getElementById('movementSpeedSlider').value = defaults.movementSpeed;
+      document.getElementById('movementSpeedValue').textContent = defaults.movementSpeed;
+      document.getElementById('gridSizeSlider').value = defaults.gridSize;
+      document.getElementById('gridSizeValue').textContent = defaults.gridSize;
+      document.getElementById('edgeGravitySlider').value = defaults.edgeGravityStrength;
+      document.getElementById('edgeGravityValue').textContent = defaults.edgeGravityStrength;
+      document.getElementById('brownNoiseSlider').value = defaults.brownNoiseStrength;
+      document.getElementById('brownNoiseValue').textContent = defaults.brownNoiseStrength;
+      document.getElementById('brownNoiseEnabled').checked = defaults.brownNoiseEnabled;
+
+      // Apply to map
+      if (map) {
+        map.movementSpeed = defaults.movementSpeed;
+        map.gridSize = defaults.gridSize;
+        map.edgeGravityStrength = defaults.edgeGravityStrength;
+        map.brownNoiseStrength = defaults.brownNoiseStrength;
+        map.brownNoiseEnabled = defaults.brownNoiseEnabled;
+      }
+
+      // Save to server
+      await saveAdminSettings();
+    }
+    <% } %>
 
     /**
      * Display asset info in hovering pane

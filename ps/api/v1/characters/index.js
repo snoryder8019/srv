@@ -317,6 +317,116 @@ router.get('/:id/nearby', async (req, res) => {
   }
 });
 
+// ===== ASSET-BASED LOCATION ENDPOINTS =====
+
+// Dock at an asset
+router.post('/:id/dock', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { assetId } = req.body;
+    if (!assetId) {
+      return res.status(400).json({ error: 'assetId is required' });
+    }
+
+    // Verify ownership
+    const character = await Character.findById(req.params.id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    if (character.userId !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const result = await Character.dockAtAsset(req.params.id, assetId);
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (err) {
+    console.error('Error docking at asset:', err);
+    res.status(500).json({ error: 'Failed to dock at asset' });
+  }
+});
+
+// Undock from current asset
+router.post('/:id/undock', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Verify ownership
+    const character = await Character.findById(req.params.id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    if (character.userId !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const success = await Character.undock(req.params.id);
+
+    if (success) {
+      res.json({ success: true, message: 'Undocked successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to undock' });
+    }
+  } catch (err) {
+    console.error('Error undocking:', err);
+    res.status(500).json({ error: 'Failed to undock' });
+  }
+});
+
+// Navigate to asset
+router.post('/:id/navigate-to-asset', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { assetId } = req.body;
+    if (!assetId) {
+      return res.status(400).json({ error: 'assetId is required' });
+    }
+
+    // Verify ownership
+    const character = await Character.findById(req.params.id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    if (character.userId !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const result = await Character.navigateToAsset(req.params.id, assetId);
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (err) {
+    console.error('Error navigating to asset:', err);
+    res.status(500).json({ error: 'Failed to navigate to asset' });
+  }
+});
+
+// Get characters at specific asset
+router.get('/at-asset/:assetId', async (req, res) => {
+  try {
+    const characters = await Character.getCharactersAtAsset(req.params.assetId);
+    res.json({ characters });
+  } catch (err) {
+    console.error('Error fetching characters at asset:', err);
+    res.status(500).json({ error: 'Failed to fetch characters at asset' });
+  }
+});
+
 // ===== TALENT TREE ENDPOINTS =====
 
 // Update character talents

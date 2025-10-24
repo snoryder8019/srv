@@ -18,7 +18,7 @@ export class Asset {
       description: assetData.description,
       assetType: assetData.assetType,
       subType: assetData.subType || null,
-      status: 'draft',
+      status: 'submitted', // Auto-submit for community voting
 
       // Images
       images: {
@@ -292,7 +292,7 @@ export class Asset {
   /**
    * Add vote to asset
    */
-  static async addVote(assetId, userId) {
+  static async addVote(assetId, userId, voteType = 1) {
     const db = getDb();
     const asset = await this.findById(assetId);
 
@@ -300,20 +300,34 @@ export class Asset {
       throw new Error('Asset not found');
     }
 
-    if (asset.status !== 'approved') {
-      throw new Error('Asset not approved for voting');
+    // All assets can be voted on (submitted or approved)
+    if (!['submitted', 'approved'].includes(asset.status)) {
+      throw new Error('Asset not available for voting');
     }
 
     // Check if user already voted
-    if (asset.voters.some(voterId => voterId.toString() === userId.toString())) {
+    const existingVote = asset.voters.find(v => v.userId?.toString() === userId.toString());
+    if (existingVote) {
       throw new Error('Already voted');
     }
+
+    // voteType: 1 for upvote, -1 for downvote
+    const voteValue = voteType === -1 ? -1 : 1;
 
     const result = await db.collection(collections.assets).updateOne(
       { _id: new ObjectId(assetId) },
       {
-        $inc: { votes: 1 },
-        $push: { voters: new ObjectId(userId) },
+        $inc: {
+          votes: voteValue,
+          ...(voteValue === 1 ? { upvotes: 1 } : { downvotes: 1 })
+        },
+        $push: {
+          voters: {
+            userId: new ObjectId(userId),
+            voteType: voteValue,
+            votedAt: new Date()
+          }
+        },
         $set: { updatedAt: new Date() }
       }
     );

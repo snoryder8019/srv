@@ -107,25 +107,29 @@ function createAssetCard(asset) {
     }
   }
 
-  let voteCount = 0;
-  if (Array.isArray(asset.votes)) {
-    voteCount = asset.votes.length;
-  } else if (asset.votes) {
-    voteCount = asset.votes;
-  }
+  let netVotes = asset.votes || 0;
+  let upvotes = asset.upvotes || 0;
+  let downvotes = asset.downvotes || 0;
 
   const assetName = asset.name || asset.title || 'Untitled';
   const assetType = asset.type || asset.assetType || 'unknown';
+  const statusBadge = asset.status === 'approved' ? '<span style="background: #10b981; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">✅ LIVE</span>' : '<span style="background: #f59e0b; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">🚧 IN DEV</span>';
 
   return `
     <div class="asset-card">
       <img class="asset-card-image" src="${imageUrl}" alt="${assetName}">
       <div class="asset-card-content">
-        <h3 class="asset-card-title">${assetName}</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <h3 class="asset-card-title" style="margin: 0;">${assetName}</h3>
+          ${statusBadge}
+        </div>
         <p class="asset-card-description">${asset.description || 'No description'}</p>
         <div class="asset-card-meta">
           <span class="asset-type-badge">${assetType}</span>
-          <span class="vote-count">${voteCount} vote${voteCount !== 1 ? 's' : ''}</span>
+          <span class="vote-count" style="color: ${netVotes >= 0 ? '#10b981' : '#ef4444'};">
+            ${netVotes >= 0 ? '▲' : '▼'} ${Math.abs(netVotes)}
+            <span style="font-size: 0.75rem; color: #888;">(${upvotes}↑ ${downvotes}↓)</span>
+          </span>
         </div>
         <p style="color: #888; font-size: 0.875rem; margin: 0.5rem 0;">By: ${asset.creatorUsername || 'System'}</p>
         <div class="asset-card-actions">
@@ -239,23 +243,29 @@ function createVoteButton(assetId, hasVoted) {
   }
 
   if (hasVoted) {
-    return '<button class="btn" disabled style="width: 100%; background: #6b7280; color: white; cursor: not-allowed;">✓ Voted</button>';
+    return '<div style="display: flex; gap: 0.5rem; opacity: 0.5;"><button class="btn" disabled style="flex: 1; background: #10b981; cursor: not-allowed;">▲ Voted</button><button class="btn" disabled style="flex: 1; background: #ef4444; cursor: not-allowed;">▼</button></div>';
   }
 
-  return `<button class="btn btn-primary" onclick="vote('${assetId}')" style="width: 100%;">Vote</button>`;
+  return `<div style="display: flex; gap: 0.5rem;">
+    <button class="btn btn-primary" onclick="vote('${assetId}', 1)" style="flex: 1; background: #10b981;">▲ Upvote</button>
+    <button class="btn btn-secondary" onclick="vote('${assetId}', -1)" style="flex: 1; background: #ef4444; color: white;">▼ Downvote</button>
+  </div>`;
 }
 
 /**
  * Submit a vote for an asset
+ * @param {string} assetId - Asset ID
+ * @param {number} voteType - 1 for upvote, -1 for downvote
  */
-async function vote(assetId) {
+async function vote(assetId, voteType = 1) {
   if (!window.USER_ID) {
     showAlert('Please log in to vote', 'error');
     return;
   }
 
   try {
-    console.log(`Voting for asset ${assetId} as user ${window.USER_ID}`);
+    const voteLabel = voteType === 1 ? 'Upvoting' : 'Downvoting';
+    console.log(`${voteLabel} asset ${assetId} as user ${window.USER_ID}`);
 
     const response = await fetch(`/api/v1/assets/${assetId}/vote`, {
       method: 'POST',
@@ -264,7 +274,8 @@ async function vote(assetId) {
       },
       credentials: 'same-origin',
       body: JSON.stringify({
-        userId: window.USER_ID
+        userId: window.USER_ID,
+        voteType: voteType
       })
     });
 
@@ -275,7 +286,7 @@ async function vote(assetId) {
     }
 
     console.log('Vote successful:', data);
-    showAlert('Vote recorded successfully!', 'success');
+    showAlert(data.message || 'Vote recorded successfully!', 'success');
 
     await loadAssets();
 
@@ -286,21 +297,20 @@ async function vote(assetId) {
 }
 
 /**
- * Setup filter button click handlers
+ * Setup filter button and dropdown handlers
  */
 function setupFilterButtons() {
-  const typeFilterButtons = document.querySelectorAll('.type-filter');
-  const statusFilterButtons = document.querySelectorAll('.status-filter');
-
-  typeFilterButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      typeFilterButtons.forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-      currentTypeFilter = button.dataset.type;
+  // Handle dropdown type filter
+  const typeFilterDropdown = document.getElementById('assetTypeFilter');
+  if (typeFilterDropdown) {
+    typeFilterDropdown.addEventListener('change', (e) => {
+      currentTypeFilter = e.target.value;
       displayAssets();
     });
-  });
+  }
 
+  // Handle status filter buttons
+  const statusFilterButtons = document.querySelectorAll('.status-filter');
   statusFilterButtons.forEach(button => {
     button.addEventListener('click', () => {
       statusFilterButtons.forEach(btn => btn.classList.remove('active'));

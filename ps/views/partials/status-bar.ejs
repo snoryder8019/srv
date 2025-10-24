@@ -1,0 +1,307 @@
+<!-- Admin/Debug Status Bar CSS -->
+<link rel="stylesheet" href="/stylesheets/status-bar.css">
+
+<!-- Admin/Debug Status Bar -->
+<div id="admin-status-bar" class="admin-status-bar" style="display: none;">
+  <div class="status-bar-content">
+    <!-- Compact mode (default) -->
+    <div class="status-compact">
+      <div class="status-services">
+        <span class="status-label">Services:</span>
+        <span id="services-indicators"></span>
+      </div>
+
+      <div class="status-resources">
+        <span class="status-item">
+          <span class="status-label">CPU:</span>
+          <span id="cpu-value" class="status-value">--%</span>
+        </span>
+        <span class="status-item">
+          <span class="status-label">MEM:</span>
+          <span id="mem-value" class="status-value">--%</span>
+        </span>
+      </div>
+
+      <div class="status-actions">
+        <button id="status-expand-btn" class="status-btn" title="Expand details">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M6 3L9 6L6 9M3 6H9"/>
+          </svg>
+        </button>
+        <button id="debug-toggle-btn" class="status-btn" title="Toggle debug mode">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M6 1C3.24 1 1 3.24 1 6s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 8.5l-3-3h6l-3 3z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Expanded mode -->
+    <div class="status-expanded" style="display: none;">
+      <div class="status-section">
+        <h4>Services Status</h4>
+        <div id="services-detailed"></div>
+      </div>
+
+      <div class="status-section">
+        <h4>System Resources</h4>
+        <div class="status-details">
+          <div class="detail-row">
+            <span class="detail-label">CPU Usage:</span>
+            <span id="cpu-detail" class="detail-value">--% (-- cores)</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Memory Usage:</span>
+            <span id="mem-detail" class="detail-value">--% (-- MB / -- MB)</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Uptime:</span>
+            <span id="uptime-detail" class="detail-value">--</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Hostname:</span>
+            <span id="hostname-detail" class="detail-value">--</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-actions-expanded">
+        <button id="status-collapse-btn" class="status-btn" title="Collapse details">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M6 9L3 6L6 3M9 6H3"/>
+          </svg>
+        </button>
+        <button id="refresh-status-btn" class="status-btn" title="Refresh status">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M10 6c0-2.21-1.79-4-4-4-1.11 0-2.11.45-2.83 1.17L2 4.34V1H1v4h4V4H3.66l1.17-1.17C5.37 2.3 6.14 2 7 2c1.65 0 3 1.35 3 3s-1.35 3-3 3v1c2.21 0 4-1.79 4-4z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug overlay indicator -->
+  <div id="debug-mode-indicator" class="debug-indicator" style="display: none;">
+    <span>DEBUG MODE</span>
+  </div>
+</div>
+
+<script>
+(function() {
+  const statusBar = document.getElementById('admin-status-bar');
+  const compactView = statusBar.querySelector('.status-compact');
+  const expandedView = statusBar.querySelector('.status-expanded');
+  const expandBtn = document.getElementById('status-expand-btn');
+  const collapseBtn = document.getElementById('status-collapse-btn');
+  const debugToggleBtn = document.getElementById('debug-toggle-btn');
+  const debugIndicator = document.getElementById('debug-mode-indicator');
+  const refreshBtn = document.getElementById('refresh-status-btn');
+
+  let debugMode = false;
+  let updateInterval = null;
+  let isExpanded = false;
+
+  // Check if user is admin (via user object in page)
+  <% if (typeof user !== 'undefined' && user && user.isAdmin) { %>
+    statusBar.style.display = 'block';
+    startMonitoring();
+  <% } %>
+
+  // Toggle expanded view
+  expandBtn.addEventListener('click', () => {
+    isExpanded = true;
+    compactView.style.display = 'none';
+    expandedView.style.display = 'flex';
+    updateStatus();
+  });
+
+  collapseBtn.addEventListener('click', () => {
+    isExpanded = false;
+    expandedView.style.display = 'none';
+    compactView.style.display = 'flex';
+  });
+
+  // Toggle debug mode
+  debugToggleBtn.addEventListener('click', () => {
+    debugMode = !debugMode;
+    debugIndicator.style.display = debugMode ? 'block' : 'none';
+    debugToggleBtn.classList.toggle('active', debugMode);
+
+    // Trigger debug mode on page
+    if (window.toggleDebugMode) {
+      window.toggleDebugMode(debugMode);
+    }
+
+    // Log to console
+    console.log(`[Status Bar] Debug mode ${debugMode ? 'ENABLED' : 'DISABLED'}`);
+
+    // Dispatch custom event for pages to listen to
+    window.dispatchEvent(new CustomEvent('debugModeChange', { detail: { enabled: debugMode } }));
+  });
+
+  // Refresh status
+  refreshBtn.addEventListener('click', () => {
+    refreshBtn.classList.add('spinning');
+    updateStatus().finally(() => {
+      setTimeout(() => refreshBtn.classList.remove('spinning'), 500);
+    });
+  });
+
+  // Fetch and update status
+  async function updateStatus() {
+    try {
+      const response = await fetch('/admin/api/monitor/status');
+      const data = await response.json();
+
+      if (data.success) {
+        // Update compact view
+        updateCompactView(data);
+
+        // Update expanded view if open
+        if (isExpanded) {
+          updateExpandedView(data);
+        }
+      }
+    } catch (error) {
+      console.error('[Status Bar] Error fetching status:', error);
+    }
+  }
+
+  function updateCompactView(data) {
+    // Update CPU and Memory
+    const cpuValue = document.getElementById('cpu-value');
+    const memValue = document.getElementById('mem-value');
+
+    cpuValue.textContent = `${data.system.cpuUsagePercent}%`;
+    memValue.textContent = `${data.system.memUsagePercent}%`;
+
+    // Color code based on usage
+    cpuValue.className = 'status-value ' + getUsageClass(data.system.cpuUsagePercent);
+    memValue.className = 'status-value ' + getUsageClass(data.system.memUsagePercent);
+
+    // Update services indicators
+    const servicesIndicators = document.getElementById('services-indicators');
+    servicesIndicators.innerHTML = data.services.map(svc => {
+      const statusClass = svc.status; // 'healthy', 'degraded', or 'down'
+      return `<span class="service-indicator ${statusClass}" title="${svc.name}: ${svc.status}">●</span>`;
+    }).join(' ');
+  }
+
+  function updateExpandedView(data) {
+    // Update detailed system info
+    document.getElementById('cpu-detail').textContent =
+      `${data.system.cpuUsagePercent}% (${data.system.cpuCount} cores)`;
+    document.getElementById('mem-detail').textContent =
+      `${data.system.memUsagePercent}% (${data.system.memUsedMB} MB / ${data.system.memTotalMB} MB)`;
+    document.getElementById('uptime-detail').textContent = formatUptime(data.system.uptime);
+    document.getElementById('hostname-detail').textContent = data.system.hostname;
+
+    // Update services detailed view
+    const servicesDetailed = document.getElementById('services-detailed');
+    servicesDetailed.innerHTML = data.services.map(svc => {
+      const statusClass = svc.status; // 'healthy', 'degraded', or 'down'
+      const statusIcon = svc.status === 'healthy' ? '✓' : (svc.status === 'degraded' ? '⚠' : '✗');
+
+      // Map service names to restart identifiers
+      const serviceIdMap = {
+        'madladslab': 'madladslab',
+        'acm': 'acm',
+        'sfg': 'sfg',
+        'Game State': 'game-state',
+        'ps': 'ps'
+      };
+
+      const serviceId = serviceIdMap[svc.name];
+      const showRestart = serviceId && svc.name !== 'MongoDB';
+
+      return `
+        <div class="service-row ${statusClass}">
+          <span class="service-icon">${statusIcon}</span>
+          <span class="service-name">${svc.name}</span>
+          <span class="service-status">${svc.status}</span>
+          ${svc.port ? `<span class="service-port">:${svc.port}</span>` : ''}
+          ${showRestart ? `<button class="service-restart-btn" data-service="${serviceId}" title="Restart ${svc.name}">↻</button>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    // Add restart button event listeners
+    document.querySelectorAll('.service-restart-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const serviceId = e.target.dataset.service;
+        await restartService(serviceId, e.target);
+      });
+    });
+  }
+
+  async function restartService(serviceId, button) {
+    if (!confirm(`Are you sure you want to restart ${serviceId}?`)) {
+      return;
+    }
+
+    button.disabled = true;
+    button.classList.add('spinning');
+    button.textContent = '⏳';
+
+    try {
+      const response = await fetch(`/admin/api/monitor/restart/${serviceId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        button.textContent = '✓';
+        button.classList.remove('spinning');
+        setTimeout(() => {
+          button.textContent = '↻';
+          button.disabled = false;
+          updateStatus();
+        }, 2000);
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error) {
+      console.error('[Status Bar] Error restarting service:', error);
+      button.textContent = '✗';
+      button.classList.remove('spinning');
+      alert(`Failed to restart ${serviceId}: ${error.message}`);
+      setTimeout(() => {
+        button.textContent = '↻';
+        button.disabled = false;
+      }, 2000);
+    }
+  }
+
+  function getUsageClass(percent) {
+    if (percent >= 90) return 'critical';
+    if (percent >= 75) return 'warning';
+    return 'normal';
+  }
+
+  function formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  }
+
+  function startMonitoring() {
+    updateStatus();
+    updateInterval = setInterval(updateStatus, 5000); // Update every 5 seconds
+  }
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    if (updateInterval) {
+      clearInterval(updateInterval);
+    }
+  });
+})();
+</script>

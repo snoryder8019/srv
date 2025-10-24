@@ -23,7 +23,9 @@ authRouter.post('/login', (req, res, next) => {
         user: {
           id: user._id,
           email: user.email,
-          username: user.username
+          username: user.username,
+          hasCompletedWelcome: user.hasCompletedWelcome || false,
+          hasCompletedIntro: user.hasCompletedIntro || false
         }
       });
     });
@@ -52,7 +54,10 @@ authRouter.post('/register', async (req, res) => {
       email,
       username,
       password: hashedPassword,
+      userRole: 'tester', // Default new users to tester
       createdAt: new Date(),
+      hasCompletedWelcome: false,
+      hasCompletedIntro: false,
     };
 
     const result = await db.collection('users').insertOne(newUser);
@@ -89,11 +94,63 @@ authRouter.get('/status', (req, res) => {
       user: {
         id: req.user._id,
         email: req.user.email,
-        username: req.user.username
+        username: req.user.username,
+        hasCompletedWelcome: req.user.hasCompletedWelcome || false,
+        hasCompletedIntro: req.user.hasCompletedIntro || false
       }
     });
   } else {
     res.json({ authenticated: false });
+  }
+});
+
+// Mark welcome as completed
+authRouter.post('/complete-welcome', async (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  try {
+    const db = getDb();
+    const { ObjectId } = await import('mongodb');
+
+    await db.collection('users').updateOne(
+      { _id: new ObjectId(req.user._id) },
+      { $set: { hasCompletedWelcome: true } }
+    );
+
+    // Update the session user object
+    req.user.hasCompletedWelcome = true;
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error completing welcome:', err);
+    res.status(500).json({ error: 'Failed to update welcome status' });
+  }
+});
+
+// Mark intro as completed
+authRouter.post('/complete-intro', async (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  try {
+    const db = getDb();
+    const { ObjectId } = await import('mongodb');
+
+    await db.collection('users').updateOne(
+      { _id: new ObjectId(req.user._id) },
+      { $set: { hasCompletedIntro: true } }
+    );
+
+    // Update the session user object
+    req.user.hasCompletedIntro = true;
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error completing intro:', err);
+    res.status(500).json({ error: 'Failed to update intro status' });
   }
 });
 

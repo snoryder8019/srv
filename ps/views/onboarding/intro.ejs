@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    .intro-container {
+      max-width: 900px;
+      margin: 4rem auto;
+      padding: 2rem;
+    }
+
+    .intro-container h1 {
+      font-size: 2.5rem;
+      margin-bottom: 2rem;
+      text-align: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .intro-section {
+      margin: 3rem 0;
+      padding: 2rem;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      border-left: 4px solid #667eea;
+    }
+
+    .intro-section h2 {
+      font-size: 1.5rem;
+      margin: 0 0 1rem 0;
+      color: #667eea;
+    }
+
+    .intro-section p {
+      line-height: 1.8;
+      margin: 1rem 0;
+      opacity: 0.9;
+    }
+
+    .intro-section ul {
+      margin: 1rem 0;
+      padding-left: 1.5rem;
+    }
+
+    .intro-section li {
+      margin: 0.5rem 0;
+      line-height: 1.6;
+    }
+
+    .intro-actions {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 3rem;
+    }
+
+    .intro-btn {
+      padding: 1rem 2.5rem;
+      font-size: 1.1rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .intro-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+    }
+
+    .intro-btn:active {
+      transform: translateY(0);
+    }
+
+    .skip-btn {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .skip-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      box-shadow: 0 5px 20px rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="intro-container">
+    <h1>How to Play Stringborn</h1>
+
+    <div class="intro-section">
+      <h2>1. Create Your Character</h2>
+      <p>
+        Every journey begins with a character. Choose your species, assign your stats,
+        and customize your appearance. Your character is your avatar in the Stringborn universe.
+      </p>
+      <ul>
+        <li>Select from multiple species, each with unique traits</li>
+        <li>Distribute stat points across Strength, Intelligence, Agility, Faith, and Tech</li>
+        <li>You can create up to 3 characters per account</li>
+      </ul>
+    </div>
+
+    <div class="intro-section">
+      <h2>2. Navigate the Universe</h2>
+      <p>
+        The Stringborn universe is vast and procedurally generated. Travel between zones,
+        explore planets, and discover hidden anomalies.
+      </p>
+      <ul>
+        <li>Use the galactic map to plan your route</li>
+        <li>Travel consumes time and resources</li>
+        <li>Different zones offer different challenges and rewards</li>
+      </ul>
+    </div>
+
+    <div class="intro-section">
+      <h2>3. Build & Create</h2>
+      <p>
+        The Asset Builder lets you create custom content that becomes part of the universe.
+        Design ships, planets, items, and more.
+      </p>
+      <ul>
+        <li>Submit your creations for community voting</li>
+        <li>Approved assets are added to the game</li>
+        <li>Earn recognition and rewards for quality content</li>
+      </ul>
+    </div>
+
+    <div class="intro-section">
+      <h2>4. Participate in Democracy</h2>
+      <p>
+        The Stringborn community votes on new content, features, and governance decisions.
+        Your voice matters in shaping the future of the universe.
+      </p>
+      <ul>
+        <li>Vote on pending assets in the voting queue</li>
+        <li>Participate in community discussions</li>
+        <li>Help decide what content enters the game</li>
+      </ul>
+    </div>
+
+    <div class="intro-actions">
+      <button class="intro-btn" onclick="completeIntro()">
+        Continue to Character Selection
+      </button>
+    </div>
+  </div>
+
+  <script>
+    async function completeIntro() {
+      try {
+        // Mark intro as completed
+        const response = await fetch('/complete-intro', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // Check if user has any characters
+          const charactersResponse = await fetch('/api/v1/characters');
+          const charactersData = await charactersResponse.json();
+
+          if (charactersData.characters && charactersData.characters.length > 0) {
+            // User has characters, send to selection screen
+            window.location.href = '/auth';
+          } else {
+            // No characters, send to creation
+            window.location.href = '/characters/create';
+          }
+        } else {
+          alert('Failed to complete intro. Please try again.');
+        }
+      } catch (err) {
+        console.error('Error completing intro:', err);
+        alert('An error occurred. Please try again.');
+      }
+    }
+  </script>
+</body>
+</html>

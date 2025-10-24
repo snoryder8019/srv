@@ -41,10 +41,10 @@
               <div class="character-card" data-character-id="<%= character._id %>">
                 <div class="character-card-header">
                   <div class="character-avatar">
-                    <span class="avatar-emoji"><%= character.race === 'human' ? '👤' : character.race === 'alien' ? '👽' : character.race === 'robot' ? '🤖' : '⭐' %></span>
+                    <span class="avatar-emoji"><%= character.species === 'human' ? '👤' : character.species === 'alien' ? '👽' : character.species === 'robot' ? '🤖' : '⭐' %></span>
                   </div>
-                  <div class="character-badge class-<%= character.class ? character.class.toLowerCase() : 'default' %>">
-                    <%= character.class || 'Adventurer' %>
+                  <div class="character-badge class-<%= character.primaryClass ? character.primaryClass.toLowerCase() : 'default' %>">
+                    <%= character.primaryClass || 'Adventurer' %>
                   </div>
                 </div>
                 <div class="character-card-body">
@@ -56,21 +56,21 @@
                     </span>
                     <span class="info-item">
                       <span class="info-icon">🧬</span>
-                      <span><%= character.race || 'Unknown' %></span>
+                      <span><%= character.species || character.stringDomain || 'Unknown' %></span>
                     </span>
                   </div>
                   <% if (character.stats) { %>
                     <div class="character-stats-mini">
                       <div class="stat-mini">
-                        <span class="stat-label">HP</span>
+                        <span class="stat-label">STR</span>
                         <div class="stat-bar">
-                          <div class="stat-bar-fill hp" style="width: <%= ((character.stats.health || 100) / (character.stats.maxHealth || 100)) * 100 %>%"></div>
+                          <div class="stat-bar-fill hp" style="width: <%= Math.min(((character.stats.strength || 0) / 10) * 100, 100) %>%"></div>
                         </div>
                       </div>
                       <div class="stat-mini">
-                        <span class="stat-label">EN</span>
+                        <span class="stat-label">INT</span>
                         <div class="stat-bar">
-                          <div class="stat-bar-fill energy" style="width: <%= ((character.stats.energy || 100) / (character.stats.maxEnergy || 100)) * 100 %>%"></div>
+                          <div class="stat-bar-fill energy" style="width: <%= Math.min(((character.stats.intelligence || 0) / 10) * 100, 100) %>%"></div>
                         </div>
                       </div>
                     </div>
@@ -259,12 +259,11 @@
     // Character selection function
     async function selectCharacter(characterId) {
       try {
-        const response = await fetch('/api/v1/characters/select', {
+        const response = await fetch(`/api/v1/characters/${characterId}/set-active`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ characterId })
+          }
         });
 
         const data = await response.json();

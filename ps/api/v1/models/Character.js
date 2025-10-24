@@ -239,6 +239,150 @@ export class Character {
   }
 
   /**
+   * Dock character at an asset (location-based positioning)
+   */
+  static async dockAtAsset(characterId, assetId) {
+    const db = getDb();
+    const { Asset } = await import('./Asset.js');
+
+    // Get the asset to dock at
+    const asset = await Asset.findById(assetId);
+    if (!asset) return { success: false, error: 'Asset not found' };
+
+    // Get asset position (from initialPosition or hubData)
+    let assetX, assetY;
+    if (asset.hubData && asset.hubData.location) {
+      assetX = asset.hubData.location.x;
+      assetY = asset.hubData.location.y;
+    } else if (asset.initialPosition) {
+      assetX = asset.initialPosition.x;
+      assetY = asset.initialPosition.y;
+    } else {
+      return { success: false, error: 'Asset has no position data' };
+    }
+
+    // Update character location to asset position and dock
+    const result = await db.collection(collections.characters).updateOne(
+      { _id: new ObjectId(characterId) },
+      {
+        $set: {
+          'location.x': assetX,
+          'location.y': assetY,
+          'location.vx': 0,
+          'location.vy': 0,
+          'location.assetId': assetId,
+          'location.lastUpdated': new Date(),
+          'navigation.destination': null,
+          'navigation.isInTransit': false,
+          'navigation.eta': null,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    return {
+      success: result.modifiedCount > 0,
+      asset: {
+        _id: asset._id,
+        title: asset.title,
+        assetType: asset.assetType,
+        x: assetX,
+        y: assetY
+      }
+    };
+  }
+
+  /**
+   * Undock from current asset (enter open space)
+   */
+  static async undock(characterId) {
+    const db = getDb();
+    const result = await db.collection(collections.characters).updateOne(
+      { _id: new ObjectId(characterId) },
+      {
+        $set: {
+          'location.assetId': null,
+          'location.lastUpdated': new Date(),
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    return result.modifiedCount > 0;
+  }
+
+  /**
+   * Navigate to an asset (travel to and dock)
+   */
+  static async navigateToAsset(characterId, assetId) {
+    const db = getDb();
+    const { Asset } = await import('./Asset.js');
+
+    const character = await this.findById(characterId);
+    const asset = await Asset.findById(assetId);
+
+    if (!character || !asset) return { success: false, error: 'Character or asset not found' };
+
+    // Get asset position
+    let assetX, assetY;
+    if (asset.hubData && asset.hubData.location) {
+      assetX = asset.hubData.location.x;
+      assetY = asset.hubData.location.y;
+    } else if (asset.initialPosition) {
+      assetX = asset.initialPosition.x;
+      assetY = asset.initialPosition.y;
+    } else {
+      return { success: false, error: 'Asset has no position data' };
+    }
+
+    // Calculate travel time
+    const dx = assetX - character.location.x;
+    const dy = assetY - character.location.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const eta = distance / character.navigation.travelSpeed;
+
+    // Set navigation with asset as destination
+    const result = await db.collection(collections.characters).updateOne(
+      { _id: new ObjectId(characterId) },
+      {
+        $set: {
+          'navigation.destination': {
+            x: assetX,
+            y: assetY,
+            assetId: assetId,
+            assetName: asset.title
+          },
+          'navigation.isInTransit': true,
+          'navigation.eta': new Date(Date.now() + eta * 1000),
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    return {
+      success: result.modifiedCount > 0,
+      eta: eta,
+      distance: distance,
+      destination: {
+        assetId: assetId,
+        assetName: asset.title,
+        x: assetX,
+        y: assetY
+      }
+    };
+  }
+
+  /**
+   * Get all characters at a specific asset
+   */
+  static async getCharactersAtAsset(assetId) {
+    const db = getDb();
+    return await db.collection(collections.characters)
+      .find({ 'location.assetId': assetId })
+      .toArray();
+  }
+
+  /**
    * Get all characters in galactic view (for map display)
    */
   static async getGalacticCharacters() {

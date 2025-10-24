@@ -1,6 +1,8 @@
 import express from 'express';
 import { Asset } from '../../api/v1/models/Asset.js';
 import { UserAnalytics } from '../../api/v1/models/UserAnalytics.js';
+import os from 'os';
+import axios from 'axios';
 
 const router = express.Router();
 
@@ -483,6 +485,193 @@ router.get('/analytics/user/:userId', isAdmin, function(req, res, next) {
     user: req.user,
     userId: req.params.userId
   });
+});
+
+// API: Restart a service
+router.post('/api/monitor/restart/:service', isAdmin, async function(req, res) {
+  const { service } = req.params;
+
+  const serviceMap = {
+    'madladslab': { dir: '/srv/madladslab', port: 3000, session: 'madladslab_session' },
+    'acm': { dir: '/srv/acm', port: 3002, session: 'acm_session' },
+    'sfg': { dir: '/srv/sfg', port: 3003, session: 'sfg_session' },
+    'ps': { dir: '/srv/ps', port: 3399, session: 'ps_session' },
+    'game-state': { dir: '/srv/game-state-service', port: 3500, session: 'game_state_session' }
+  };
+
+  if (!serviceMap[service]) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid service name'
+    });
+  }
+
+  try {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execPromise = promisify(exec);
+
+    const svc = serviceMap[service];
+
+    // Kill existing tmux session
+    try {
+      await execPromise(`tmux kill-session -t ${svc.session}`);
+    } catch (err) {
+      // Session might not exist, that's okay
+    }
+
+    // Start new tmux session with npm run dev
+    await execPromise(
+      `tmux new-session -d -s ${svc.session} -c ${svc.dir} "npm run dev"`
+    );
+
+    // Wait a moment for the service to start
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    res.json({
+      success: true,
+      message: `Service ${service} restarted successfully`,
+      service: svc
+    });
+  } catch (error) {
+    console.error(`Error restarting service ${service}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: System monitor status bar (lightweight - no auth required for admins to see it)
+router.get('/api/monitor/status', async function(req, res) {
+  try {
+    // System metrics
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+    const memUsagePercent = ((usedMem / totalMem) * 100).toFixed(1);
+
+    // CPU usage - simple calculation
+    const cpus = os.cpus();
+    let totalIdle = 0;
+    let totalTick = 0;
+
+    cpus.forEach(cpu => {
+      for (const type in cpu.times) {
+        totalTick += cpu.times[type];
+      }
+      totalIdle += cpu.times.idle;
+    });
+
+    const cpuUsagePercent = (100 - (totalIdle / totalTick) * 100).toFixed(1);
+
+    // Service health checks
+    const services = [];
+
+    // Check game-state-service
+    try {
+      const svcUrl = process.env.GAME_STATE_SERVICE_URL || 'https://svc.madladslab.com';
+      const svcResponse = await axios.get(`${svcUrl}/health`, { timeout: 2000 });
+      services.push({
+        name: 'Game State',
+        status: svcResponse.status === 200 ? 'healthy' : 'degraded',
+        url: svcUrl
+      });
+    } catch (error) {
+      services.push({
+        name: 'Game State',
+        status: 'down',
+        url: process.env.GAME_STATE_SERVICE_URL || 'https://svc.madladslab.com'
+      });
+    }
+
+    // Check MongoDB
+    try {
+      const { getDb } = await import('../../plugins/mongo/mongo.js');
+      const db = getDb();
+      await db.admin().ping();
+      services.push({
+        name: 'MongoDB',
+        status: 'healthy'
+      });
+    } catch (error) {
+      services.push({
+        name: 'MongoDB',
+        status: 'down'
+      });
+    }
+
+    // Check other services if configured
+    const otherServices = [
+      { name: 'madladslab', port: 3000 },
+      { name: 'acm', port: 3002 },
+      { name: 'sfg', port: 3003 }
+    ];
+
+    for (const svc of otherServices) {
+      try {
+        // Try /health first, fallback to root path
+        let response;
+        let status = 'down';
+
+        try {
+          response = await axios.get(`http://localhost:${svc.port}/health`, {
+            timeout: 1000,
+            validateStatus: () => true // Accept any status code
+          });
+          status = response.status === 200 ? 'healthy' : 'degraded';
+        } catch (err) {
+          // If /health doesn't exist, try root path
+          try {
+            response = await axios.get(`http://localhost:${svc.port}/`, {
+              timeout: 1000,
+              validateStatus: () => true // Accept any status code
+            });
+            // If we get ANY response, service is at least responding
+            status = response.status === 200 ? 'healthy' : 'degraded';
+          } catch (innerErr) {
+            // Service is truly down
+            status = 'down';
+          }
+        }
+
+        services.push({
+          name: svc.name,
+          status: status,
+          port: svc.port
+        });
+      } catch (error) {
+        services.push({
+          name: svc.name,
+          status: 'down',
+          port: svc.port
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      system: {
+        memUsagePercent: parseFloat(memUsagePercent),
+        memUsedMB: Math.round(usedMem / 1024 / 1024),
+        memTotalMB: Math.round(totalMem / 1024 / 1024),
+        cpuUsagePercent: parseFloat(cpuUsagePercent),
+        cpuCount: cpus.length,
+        uptime: os.uptime(),
+        platform: os.platform(),
+        hostname: os.hostname()
+      },
+      services,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error fetching system status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch system status',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 export default router;

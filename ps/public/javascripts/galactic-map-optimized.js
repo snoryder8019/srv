@@ -859,10 +859,8 @@ class GalacticMap {
         asset.vy += pushY;
       }
 
-      // STATIC CHARGE BUILD-UP when touching edge
+      // BOUNCE OFF EDGES (keeping edge bounce, removing static charge)
       if (nowTouchingEdge) {
-        asset.staticCharge = Math.min(STATIC_GRAVITY_THRESHOLD, asset.staticCharge + STATIC_CHARGE_BUILDUP);
-
         // Bounce off edges with energy loss
         if (distToLeft <= 0 || distToRight <= 0) {
           asset.vx *= -0.8;
@@ -872,39 +870,10 @@ class GalacticMap {
           asset.vy *= -0.8;
           asset.y = Math.max(asset.radius, Math.min(this.height - asset.radius, asset.y));
         }
-      } else {
-        // STATIC DISCHARGE when not touching
-        asset.staticCharge = Math.max(0, asset.staticCharge - STATIC_DISCHARGE_RATE);
       }
 
-      // STATIC GRAVITY - Once charge reaches threshold, push AWAY from edges strongly
-      if (asset.staticCharge >= STATIC_GRAVITY_THRESHOLD) {
-        // Calculate direction away from all nearby edges
-        let pushX = 0;
-        let pushY = 0;
-        const staticForce = 0.5 * speedMultiplier; // Strong push
-
-        if (distToLeft < EDGE_GRAVITY_DISTANCE) {
-          pushX += staticForce;
-        }
-        if (distToRight < EDGE_GRAVITY_DISTANCE) {
-          pushX -= staticForce;
-        }
-        if (distToTop < EDGE_GRAVITY_DISTANCE) {
-          pushY += staticForce;
-        }
-        if (distToBottom < EDGE_GRAVITY_DISTANCE) {
-          pushY -= staticForce;
-        }
-
-        asset.vx += pushX;
-        asset.vy += pushY;
-
-        // Reset charge after applying force
-        asset.staticCharge = 0;
-      }
-
-      // Update touching state
+      // DISABLED: Static charge system (causes clumping at walls)
+      asset.staticCharge = 0;
       asset.touchingEdge = nowTouchingEdge;
 
       // BROWN NOISE OSCILLATION - Add natural turbulence
@@ -927,6 +896,31 @@ class GalacticMap {
         asset.vx += brownNoiseX * this.brownNoiseStrength * speedMultiplier;
         asset.vy += brownNoiseY * this.brownNoiseStrength * speedMultiplier;
       }
+
+      // ANOMALY REPULSION - Anomalies scatter nearby assets
+      // Find nearby anomalies and apply repulsion force
+      const ANOMALY_REPULSION_DISTANCE = 300; // How far anomalies affect assets
+      const ANOMALY_REPULSION_STRENGTH = 0.8; // How strong the scatter effect is
+
+      this.publishedAssets.forEach(otherAsset => {
+        // Only anomalies create repulsion fields
+        if (otherAsset.assetType !== 'anomaly') return;
+        if (otherAsset._id === asset._id) return; // Skip self
+
+        const dx = asset.x - otherAsset.x;
+        const dy = asset.y - otherAsset.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // If within repulsion range, push away
+        if (distance < ANOMALY_REPULSION_DISTANCE && distance > 0) {
+          const proximity = 1 - (distance / ANOMALY_REPULSION_DISTANCE);
+          const force = proximity * proximity * ANOMALY_REPULSION_STRENGTH * speedMultiplier;
+
+          // Normalize direction and apply force
+          asset.vx += (dx / distance) * force;
+          asset.vy += (dy / distance) * force;
+        }
+      });
 
       // Apply damping to prevent infinite acceleration (admin-controlled)
       const dampingValue = this.damping || 0.999;
@@ -1004,9 +998,26 @@ class GalacticMap {
       this.renderConnections();
     }
 
-    // Draw current character
+    // Draw all online characters
+    if (this.characters && this.characters.length > 0) {
+      this.characters.forEach(character => {
+        if (character && character.location) {
+          // Compare characterId from socket data with _id from current character
+          const isCurrentPlayer = character.characterId === this.currentCharacter?._id ||
+                                 character.characterId === this.currentCharacter?.characterId;
+          this.renderCharacter(character, isCurrentPlayer);
+        }
+      });
+    }
+
+    // Draw current character (if not already in characters array)
     if (this.currentCharacter && this.currentCharacter.location) {
-      this.renderCharacter(this.currentCharacter);
+      // Check both _id and characterId for compatibility
+      const currentId = this.currentCharacter._id || this.currentCharacter.characterId;
+      const alreadyRendered = this.characters.some(c => c.characterId === currentId);
+      if (!alreadyRendered) {
+        this.renderCharacter(this.currentCharacter, true);
+      }
     }
 
     // Draw travel animation overlay (before restoring context for proper positioning)
@@ -1286,29 +1297,31 @@ class GalacticMap {
 
       if (conn.status === 'converging') {
         // BLUE - Objects getting closer (future paths near)
-        const intensity = Math.max(0.5, conn.stability);
+        const intensity = Math.max(0, Math.min(1, conn.stability || 0.5));
         const blueValue = Math.floor(180 + (intensity * 75)); // 180-255
         color = `rgb(30, 144, ${blueValue})`;
         glowColor = `rgba(30, 144, 255, ${intensity * 0.6})`;
-        lineWidth = 2 + intensity * 2;
+        lineWidth = Math.max(1, 2 + intensity * 2);
         alpha = 0.5 + (intensity * 0.3);
         dashPattern = [8, 8]; // Converging dashes
       } else if (conn.status === 'breaking') {
         // RED - Link BREAKING (approaching max distance threshold)
-        const breakIntensity = 1 - conn.stability; // Higher = closer to breaking
+        const stability = Math.max(0, Math.min(1, conn.stability || 0));
+        const breakIntensity = 1 - stability; // Higher = closer to breaking
         const greenValue = Math.floor(Math.max(0, 100 - (breakIntensity * 100))); // 100 -> 0
         color = `rgb(255, ${greenValue}, 0)`;
         glowColor = `rgba(255, ${greenValue}, 0, ${0.5 + breakIntensity * 0.4})`;
-        lineWidth = 2 + breakIntensity * 4; // Much thicker when about to break
+        lineWidth = Math.max(1, 2 + breakIntensity * 4); // Much thicker when about to break
         alpha = 0.7 + (breakIntensity * 0.3); // More visible when critical
         dashPattern = [6, 6]; // Broken/warning dashes
       } else {
         // GREEN - Stable distance (parallel trajectories)
-        const greenIntensity = Math.floor(150 + (conn.stability * 105));
+        const stability = Math.max(0, Math.min(1, conn.stability || 0.5));
+        const greenIntensity = Math.floor(150 + (stability * 105));
         color = `rgb(16, ${greenIntensity}, 129)`;
-        glowColor = `rgba(16, 185, 129, ${conn.stability * 0.4})`;
-        lineWidth = 2 + (conn.stability * 1.5);
-        alpha = 0.6 + (conn.stability * 0.2);
+        glowColor = `rgba(16, 185, 129, ${stability * 0.4})`;
+        lineWidth = Math.max(1, 2 + (stability * 1.5));
+        alpha = 0.6 + (stability * 0.2);
         dashPattern = [4, 4]; // Stable dashes
       }
 
@@ -1347,7 +1360,8 @@ class GalacticMap {
       ctx.fillStyle = color;
       ctx.globalAlpha = alpha + 0.2;
       ctx.beginPath();
-      ctx.arc(midX, midY, 2 + lineWidth * 0.5, 0, Math.PI * 2);
+      const markerRadius = Math.max(1, 2 + lineWidth * 0.5); // Ensure positive radius
+      ctx.arc(midX, midY, markerRadius, 0, Math.PI * 2);
       ctx.fill();
 
       // Add animated pulse for breaking connections (links about to snap)
@@ -1458,7 +1472,7 @@ class GalacticMap {
   /**
    * Render character on map
    */
-  renderCharacter(character) {
+  renderCharacter(character, isCurrentPlayer = false) {
     const ctx = this.ctx;
     const x = character.location.x;
     const y = character.location.y;
@@ -1470,12 +1484,29 @@ class GalacticMap {
     ctx.save();
     ctx.translate(x, y);
 
+    // Different colors for current player vs others
+    let shipColor, glowColor;
+    if (isCurrentPlayer) {
+      shipColor = '#00ff00'; // Green for current player
+      glowColor = '#00ff00';
+    } else {
+      // Color based on String Domain
+      const stringColors = {
+        'Time String': '#3b82f6',    // Blue
+        'Tech String': '#8b5cf6',    // Purple
+        'Faith String': '#eab308',   // Yellow
+        'War String': '#ef4444'      // Red
+      };
+      shipColor = stringColors[character.stringDomain] || '#6366f1'; // Default purple
+      glowColor = shipColor;
+    }
+
     // Glow effect
-    ctx.shadowColor = '#00ff00';
+    ctx.shadowColor = glowColor;
     ctx.shadowBlur = 15;
 
     // Ship body
-    ctx.fillStyle = '#00ff00';
+    ctx.fillStyle = shipColor;
     ctx.beginPath();
     ctx.moveTo(0, -size);
     ctx.lineTo(-size * 0.6, size * 0.6);
@@ -1492,7 +1523,7 @@ class GalacticMap {
     ctx.shadowBlur = 0;
 
     // Name label
-    ctx.font = 'bold 14px monospace';
+    ctx.font = isCurrentPlayer ? 'bold 14px monospace' : '12px monospace';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
