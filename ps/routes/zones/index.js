@@ -4,10 +4,28 @@ import { getDb } from '../../plugins/mongo/mongo.js';
 const router = express.Router();
 
 // Planetary exploration game (must come before /:zoneName to avoid being caught)
-router.get('/explore/planetary', (req, res) => {
+router.get('/explore/planetary', async (req, res) => {
+  const planetId = req.query.asset;
+
+  // Get planet data if planetId provided
+  let planet = null;
+  if (planetId) {
+    try {
+      const db = getDb();
+      const { ObjectId } = await import('mongodb');
+      planet = await db.collection('assets').findOne({
+        _id: new ObjectId(planetId)
+      });
+    } catch (err) {
+      console.error('Error fetching planet:', err);
+    }
+  }
+
   res.render('zones/index', {
-    title: 'Planetary Exploration',
-    user: req.user
+    title: planet ? `Exploring ${planet.title}` : 'Planetary Exploration',
+    user: req.user,
+    planet: planet,
+    planetId: planetId
   });
 });
 

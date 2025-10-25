@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> - Stringborn Universe</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    .control-panel {
+      display: flex;
+      height: calc(100vh - 60px);
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Sidebar with script categories */
+    .control-sidebar {
+      width: 280px;
+      background: #111;
+      border-right: 2px solid #333;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .category {
+      margin-bottom: 8px;
+    }
+
+    .category-header {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-left: 3px solid #4ade80;
+      padding: 8px 10px;
+      font-weight: bold;
+      color: #4ade80;
+      cursor: pointer;
+      font-size: 0.85em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s;
+    }
+
+    .category-header:hover {
+      background: #222;
+      border-left-color: #6ee7b7;
+    }
+
+    .category-header.collapsed {
+      border-left-color: #888;
+      color: #888;
+    }
+
+    .category-toggle {
+      font-size: 0.7em;
+    }
+
+    .category-scripts {
+      max-height: 1000px;
+      overflow: hidden;
+      transition: max-height 0.3s ease-in-out;
+    }
+
+    .category-scripts.collapsed {
+      max-height: 0;
+    }
+
+    .script-button {
+      display: block;
+      width: 100%;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-left: 2px solid #3b82f6;
+      color: #e0e0e0;
+      padding: 6px 10px;
+      margin: 4px 0;
+      text-align: left;
+      cursor: pointer;
+      font-size: 0.75em;
+      transition: all 0.2s;
+    }
+
+    .script-button:hover {
+      background: #222;
+      border-left-color: #60a5fa;
+      color: #fff;
+    }
+
+    .script-button.active {
+      background: #1e3a5f;
+      border-left-color: #3b82f6;
+      color: #60a5fa;
+    }
+
+    .script-button.confirm-required {
+      border-left-color: #f59e0b;
+    }
+
+    .script-button.confirm-required:hover {
+      border-left-color: #fbbf24;
+    }
+
+    .script-desc {
+      font-size: 0.85em;
+      color: #888;
+      margin-top: 2px;
+    }
+
+    /* Main content area */
+    .control-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #0a0a0a;
+    }
+
+    .content-header {
+      background: #111;
+      border-bottom: 2px solid #333;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .content-title {
+      font-size: 1.1em;
+      font-weight: bold;
+      color: #4ade80;
+    }
+
+    .execution-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .control-btn {
+      background: #1a1a1a;
+      border: 1px solid #4ade80;
+      color: #4ade80;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85em;
+      font-family: 'Courier New', monospace;
+      transition: all 0.2s;
+    }
+
+    .control-btn:hover {
+      background: #4ade80;
+      color: #000;
+    }
+
+    .control-btn.danger {
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    .control-btn.danger:hover {
+      background: #ef4444;
+      color: #fff;
+    }
+
+    .control-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .control-btn:disabled:hover {
+      background: #1a1a1a;
+      color: #4ade80;
+    }
+
+    /* Script details panel */
+    .script-details {
+      background: #0f0f0f;
+      border-bottom: 2px solid #333;
+      padding: 12px 16px;
+      display: none;
+    }
+
+    .script-details.active {
+      display: block;
+    }
+
+    .script-info {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .info-item {
+      display: flex;
+      gap: 8px;
+    }
+
+    .info-label {
+      color: #888;
+      font-size: 0.85em;
+    }
+
+    .info-value {
+      color: #4ade80;
+      font-size: 0.85em;
+    }
+
+    .script-input {
+      margin-top: 8px;
+    }
+
+    .script-input input {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      padding: 6px 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+      width: 300px;
+    }
+
+    /* Output terminal */
+    .output-terminal {
+      flex: 1;
+      background: #000;
+      color: #0f0;
+      padding: 16px;
+      overflow-y: auto;
+      font-size: 0.85em;
+      line-height: 1.6;
+      font-family: 'Courier New', monospace;
+    }
+
+    .output-line {
+      margin: 2px 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .output-error {
+      color: #ef4444;
+    }
+
+    .output-success {
+      color: #4ade80;
+    }
+
+    .output-warning {
+      color: #f59e0b;
+    }
+
+    .output-info {
+      color: #60a5fa;
+    }
+
+    .output-prompt {
+      color: #888;
+    }
+
+    /* Status bar */
+    .status-bar {
+      background: #111;
+      border-top: 2px solid #333;
+      padding: 8px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75em;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4ade80;
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.executing {
+      background: #f59e0b;
+      animation: blink 0.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+
+    /* Empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #666;
+      text-align: center;
+    }
+
+    .empty-state-icon {
+      font-size: 3em;
+      margin-bottom: 16px;
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #0a0a0a;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 5px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .control-sidebar {
+        width: 100%;
+        max-height: 300px;
+      }
+
+      .control-panel {
+        flex-direction: column;
+      }
+
+      .script-input input {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="control-panel">
+    <!-- Sidebar with script categories -->
+    <div class="control-sidebar">
+      <div id="categoriesContainer">
+        <div style="text-align: center; padding: 20px; color: #888;">
+          Loading scripts...
+        </div>
+      </div>
+    </div>
+
+    <!-- Main content area -->
+    <div class="control-content">
+      <!-- Header with execute button -->
+      <div class="content-header">
+        <div class="content-title" id="scriptTitle">Script Control Panel</div>
+        <div class="execution-controls">
+          <button class="control-btn" id="clearBtn" style="display: none;">Clear Output</button>
+          <button class="control-btn danger" id="executeBtn" disabled>Execute Script</button>
+        </div>
+      </div>
+
+      <!-- Script details panel -->
+      <div class="script-details" id="scriptDetails">
+        <div class="script-info" id="scriptInfo"></div>
+        <div class="script-input" id="scriptInput" style="display: none;">
+          <label class="info-label">
+            <span id="inputLabel">Input:</span>
+            <input type="text" id="scriptInputField" placeholder="Enter value...">
+          </label>
+        </div>
+      </div>
+
+      <!-- Output terminal -->
+      <div class="output-terminal" id="outputTerminal">
+        <div class="empty-state">
+          <div class="empty-state-icon">⚡</div>
+          <div>Select a script from the sidebar to begin</div>
+          <div style="margin-top: 8px; font-size: 0.9em; color: #555;">
+            Database checks, seeding scripts, and maintenance tools
+          </div>
+        </div>
+      </div>
+
+      <!-- Status bar -->
+      <div class="status-bar">
+        <div class="status-indicator">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="statusText">Ready</span>
+        </div>
+        <div id="scriptCount">0 scripts loaded</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentScript = null;
+    let isExecuting = false;
+    let categories = {};
+
+    // Load script categories
+    async function loadCategories() {
+      try {
+        const response = await fetch('/admin/scripts/categories');
+        const data = await response.json();
+
+        if (data.success) {
+          categories = data.categories;
+          renderCategories();
+        }
+      } catch (error) {
+        console.error('Failed to load script categories:', error);
+        document.getElementById('categoriesContainer').innerHTML = `
+          <div style="text-align: center; padding: 20px; color: #ef4444;">
+            Failed to load scripts
+          </div>
+        `;
+      }
+    }
+
+    // Render script categories
+    function renderCategories() {
+      const container = document.getElementById('categoriesContainer');
+      let totalScripts = 0;
+
+      const html = Object.entries(categories).map(([category, scripts]) => {
+        totalScripts += scripts.length;
+        return `
+          <div class="category">
+            <div class="category-header" onclick="toggleCategory('${category}')">
+              <span>${category}</span>
+              <span class="category-toggle">▼</span>
+            </div>
+            <div class="category-scripts" id="category-${category.replace(/\s+/g, '-')}">
+              ${scripts.map(script => `
+                <button class="script-button ${script.confirm ? 'confirm-required' : ''}"
+                        onclick="selectScript('${category}', '${script.file}')">
+                  ${script.name}
+                  <div class="script-desc">${script.description}</div>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = html;
+      document.getElementById('scriptCount').textContent = `${totalScripts} scripts loaded`;
+    }
+
+    // Toggle category collapse
+    function toggleCategory(category) {
+      const containerId = `category-${category.replace(/\s+/g, '-')}`;
+      const container = document.getElementById(containerId);
+      const header = container.previousElementSibling;
+
+      container.classList.toggle('collapsed');
+      header.classList.toggle('collapsed');
+    }
+
+    // Select a script
+    function selectScript(category, scriptFile) {
+      if (isExecuting) {
+        alert('Please wait for the current script to finish executing');
+        return;
+      }
+
+      // Find script config
+      const script = categories[category].find(s => s.file === scriptFile);
+      if (!script) return;
+
+      // Update UI
+      document.querySelectorAll('.script-button').forEach(btn => btn.classList.remove('active'));
+      event.target.closest('.script-button').classList.add('active');
+
+      currentScript = script;
+
+      // Update header
+      document.getElementById('scriptTitle').textContent = script.name;
+
+      // Show script details
+      const detailsPanel = document.getElementById('scriptDetails');
+      detailsPanel.classList.add('active');
+
+      // Build info panel
+      const infoHtml = `
+        <div class="info-item">
+          <span class="info-label">Category:</span>
+          <span class="info-value">${category}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">File:</span>
+          <span class="info-value">${script.file}</span>
+        </div>
+        ${script.confirm ? `
+          <div class="info-item">
+            <span class="info-label">⚠️ Requires Confirmation</span>
+          </div>
+        ` : ''}
+      `;
+      document.getElementById('scriptInfo').innerHTML = infoHtml;
+
+      // Show input field if needed
+      const inputContainer = document.getElementById('scriptInput');
+      if (script.requiresInput) {
+        inputContainer.style.display = 'block';
+        document.getElementById('inputLabel').textContent = `${script.requiresInput}:`;
+        document.getElementById('scriptInputField').placeholder = `Enter ${script.requiresInput}...`;
+      } else {
+        inputContainer.style.display = 'none';
+      }
+
+      // Enable execute button
+      document.getElementById('executeBtn').disabled = false;
+      document.getElementById('clearBtn').style.display = 'inline-block';
+
+      // Clear output
+      const terminal = document.getElementById('outputTerminal');
+      terminal.innerHTML = `
+        <div class="output-line output-info">Selected: ${script.name}</div>
+        <div class="output-line output-prompt">${script.description}</div>
+        <div class="output-line output-prompt">Ready to execute...</div>
+      `;
+    }
+
+    // Execute selected script
+    async function executeScript() {
+      if (!currentScript || isExecuting) return;
+
+      // Confirm for destructive operations
+      if (currentScript.confirm) {
+        const confirmed = confirm(
+          `⚠️ WARNING: This operation may modify or delete data.\n\n` +
+          `Script: ${currentScript.name}\n` +
+          `Description: ${currentScript.description}\n\n` +
+          `Are you sure you want to continue?`
+        );
+        if (!confirmed) return;
+      }
+
+      isExecuting = true;
+      document.getElementById('executeBtn').disabled = true;
+      document.getElementById('statusDot').classList.add('executing');
+      document.getElementById('statusText').textContent = 'Executing...';
+
+      const terminal = document.getElementById('outputTerminal');
+      terminal.innerHTML = '<div class="output-line output-info">Executing script...</div>';
+
+      // Get input if needed
+      const args = [];
+      if (currentScript.requiresInput) {
+        const inputValue = document.getElementById('scriptInputField').value.trim();
+        if (!inputValue) {
+          alert(`Please provide ${currentScript.requiresInput}`);
+          isExecuting = false;
+          document.getElementById('executeBtn').disabled = false;
+          document.getElementById('statusDot').classList.remove('executing');
+          document.getElementById('statusText').textContent = 'Ready';
+          return;
+        }
+        args.push(inputValue);
+      }
+
+      try {
+        const response = await fetch('/admin/scripts/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            scriptFile: currentScript.file,
+            args: args
+          })
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value);
+          appendOutput(text);
+        }
+
+        terminal.innerHTML += '<div class="output-line output-success">✓ Execution completed</div>';
+
+      } catch (error) {
+        terminal.innerHTML += `<div class="output-line output-error">✗ Error: ${error.message}</div>`;
+      } finally {
+        isExecuting = false;
+        document.getElementById('executeBtn').disabled = false;
+        document.getElementById('statusDot').classList.remove('executing');
+        document.getElementById('statusText').textContent = 'Ready';
+      }
+    }
+
+    // Append output to terminal
+    function appendOutput(text) {
+      const terminal = document.getElementById('outputTerminal');
+      const lines = text.split('\n');
+
+      lines.forEach(line => {
+        if (!line.trim()) return;
+
+        let className = 'output-line';
+        if (line.includes('ERROR') || line.includes('✗') || line.includes('❌')) {
+          className += ' output-error';
+        } else if (line.includes('✓') || line.includes('✅')) {
+          className += ' output-success';
+        } else if (line.includes('⚠️') || line.includes('WARNING')) {
+          className += ' output-warning';
+        } else if (line.includes('🔍') || line.includes('📊') || line.includes('ℹ️')) {
+          className += ' output-info';
+        }
+
+        const div = document.createElement('div');
+        div.className = className;
+        div.textContent = line;
+        terminal.appendChild(div);
+      });
+
+      // Auto-scroll to bottom
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    // Clear output
+    function clearOutput() {
+      const terminal = document.getElementById('outputTerminal');
+      terminal.innerHTML = '<div class="output-line output-prompt">Output cleared</div>';
+    }
+
+    // Event listeners
+    document.getElementById('executeBtn').addEventListener('click', executeScript);
+    document.getElementById('clearBtn').addEventListener('click', clearOutput);
+
+    // Load categories on page load
+    loadCategories();
+  </script>
+</body>
+</html>

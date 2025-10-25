@@ -134,12 +134,21 @@ function createAssetCard(asset) {
         <p style="color: #888; font-size: 0.875rem; margin: 0.5rem 0;">By: ${asset.creatorUsername || 'System'}</p>
         <div class="asset-card-actions">
           ${createVoteButton(asset._id, hasVoted)}
+          ${createViewSuggestionsButton(asset._id, assetName)}
           ${createSuggestButton(asset._id, assetName)}
           ${createAdminButtons(asset)}
         </div>
       </div>
     </div>
   `;
+}
+
+/**
+ * Create view suggestions button HTML
+ */
+function createViewSuggestionsButton(assetId, assetName) {
+  const suggestionCount = 0; // We'll update this when we load assets
+  return '<button class="btn btn-secondary" onclick="viewSuggestions(\'' + assetId + '\', \'' + assetName.replace(/'/g, "\\'") + '\')" style="width: 100%; margin-top: 0.5rem; background: #8b5cf6; color: white;">📋 View Suggestions</button>';
 }
 
 /**
@@ -336,4 +345,183 @@ function showAlert(message, type) {
   setTimeout(() => {
     alert.remove();
   }, 3000);
+}
+
+/**
+ * View all suggestions for an asset
+ */
+async function viewSuggestions(assetId, assetName) {
+  try {
+    const response = await fetch(`/api/v1/assets/${assetId}/suggestions`, {
+      credentials: 'same-origin'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to load suggestions');
+    }
+
+    const data = await response.json();
+    const suggestions = data.suggestions || [];
+
+    // Create modal
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'suggestionsViewModal';
+
+    let suggestionsHTML = '';
+
+    if (suggestions.length === 0) {
+      suggestionsHTML = '<p style="text-align: center; padding: 2rem; color: #888;">No suggestions yet for this asset.</p>';
+    } else {
+      suggestionsHTML = suggestions.map((suggestion, index) => {
+        const createdDate = new Date(suggestion.createdAt).toLocaleDateString();
+        const isCreator = window.USER_ID && suggestion.userId === window.USER_ID;
+        const hasUpvoted = window.USER_ID && suggestion.upvotes && suggestion.upvotes.includes(window.USER_ID);
+
+        let fieldChangesHTML = '';
+        if (suggestion.fieldChanges && Object.keys(suggestion.fieldChanges).length > 0) {
+          fieldChangesHTML = '<div style="margin-top: 0.5rem;"><strong>Proposed Changes:</strong><ul style="margin: 0.5rem 0; padding-left: 1.5rem;">';
+          for (const [field, value] of Object.entries(suggestion.fieldChanges)) {
+            fieldChangesHTML += `<li><strong>${field}:</strong> ${value}</li>`;
+          }
+          fieldChangesHTML += '</ul></div>';
+        }
+
+        let imagesHTML = '';
+        if (suggestion.images && Object.keys(suggestion.images).length > 0) {
+          imagesHTML = '<div style="margin-top: 0.5rem;"><strong>Proposed Images:</strong><div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 0.5rem; margin-top: 0.5rem;">';
+          for (const [type, url] of Object.entries(suggestion.images)) {
+            if (url) {
+              imagesHTML += `<div><img src="${url}" alt="${type}" style="width: 100%; border-radius: 4px; border: 1px solid #ddd;"><p style="font-size: 0.75rem; text-align: center; margin: 0.25rem 0;">${type}</p></div>`;
+            }
+          }
+          imagesHTML += '</div></div>';
+        }
+
+        const applyButton = window.IS_ADMIN ?
+          `<button class="btn btn-primary" onclick="applySuggestion('${assetId}', '${suggestion._id}')" style="margin-top: 0.5rem;">✓ Apply Changes</button>` : '';
+
+        return `
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+              <div>
+                <strong style="color: #6b7280;">Suggestion #${index + 1}</strong>
+                <p style="margin: 0.25rem 0; font-size: 0.875rem; color: #888;">By ${suggestion.username || 'Unknown'} on ${createdDate}</p>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <button onclick="upvoteSuggestion('${assetId}', '${suggestion._id}')"
+                        class="btn-icon ${hasUpvoted ? 'upvoted' : ''}"
+                        style="background: ${hasUpvoted ? '#10b981' : '#e5e7eb'}; color: ${hasUpvoted ? 'white' : '#6b7280'}; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;">
+                  ▲ ${suggestion.upvoteCount || 0}
+                </button>
+              </div>
+            </div>
+            <p style="margin: 0.5rem 0;">${suggestion.text || 'No description provided'}</p>
+            ${fieldChangesHTML}
+            ${imagesHTML}
+            ${applyButton}
+          </div>
+        `;
+      }).join('');
+    }
+
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-header">
+          <h2>Suggestions for "${assetName}"</h2>
+          <p style="margin: 0.5rem 0; color: #888;">${suggestions.length} suggestion(s)</p>
+          <button class="modal-close" onclick="closeSuggestionsViewModal()">&times;</button>
+        </div>
+        <div style="padding: 1rem;">
+          ${suggestionsHTML}
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeSuggestionsViewModal()">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+  } catch (error) {
+    console.error('Error loading suggestions:', error);
+    alert('Failed to load suggestions. Please try again.');
+  }
+}
+
+/**
+ * Close suggestions view modal
+ */
+function closeSuggestionsViewModal() {
+  const modal = document.getElementById('suggestionsViewModal');
+  if (modal) {
+    modal.remove();
+  }
+}
+
+/**
+ * Upvote a suggestion
+ */
+async function upvoteSuggestion(assetId, suggestionId) {
+  if (!window.USER_ID) {
+    alert('Please log in to upvote suggestions');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/v1/assets/${assetId}/suggestions/${suggestionId}/upvote`, {
+      method: 'POST',
+      credentials: 'same-origin'
+    });
+
+    if (response.ok) {
+      // Reload suggestions modal
+      const modal = document.getElementById('suggestionsViewModal');
+      if (modal) {
+        modal.remove();
+      }
+
+      // Get asset name from the button that was clicked
+      const assetName = document.querySelector(`button[onclick*="${assetId}"]`)?.textContent || 'Asset';
+      viewSuggestions(assetId, assetName);
+    } else {
+      const data = await response.json();
+      alert(data.error || 'Failed to upvote suggestion');
+    }
+  } catch (error) {
+    console.error('Error upvoting suggestion:', error);
+    alert('Failed to upvote suggestion');
+  }
+}
+
+/**
+ * Apply a suggestion to the asset (Admin only)
+ */
+async function applySuggestion(assetId, suggestionId) {
+  if (!window.IS_ADMIN) {
+    alert('Only admins can apply suggestions');
+    return;
+  }
+
+  if (!confirm('Apply this suggestion to the asset? This will update the asset with the proposed changes.')) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/v1/assets/${assetId}/suggestions/${suggestionId}/approve`, {
+      method: 'POST',
+      credentials: 'same-origin'
+    });
+
+    if (response.ok) {
+      alert('Suggestion applied successfully!');
+      closeSuggestionsViewModal();
+      loadAssets(); // Reload assets to show updated data
+    } else {
+      const data = await response.json();
+      alert(data.error || 'Failed to apply suggestion');
+    }
+  } catch (error) {
+    console.error('Error applying suggestion:', error);
+    alert('Failed to apply suggestion');
+  }
 }

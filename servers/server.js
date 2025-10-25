@@ -124,8 +124,11 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files with security restrictions
+app.use(express.static(path.join(__dirname, 'public'), {
+  dotfiles: 'deny', // Deny requests to dotfiles
+  index: false // Don't serve directory listings
+}));
 
 // Auth middleware - check if user is logged in and is admin
 const requireAdmin = (req, res, next) => {
@@ -368,23 +371,60 @@ app.get('/api/services/:serviceId/logs', requireAdmin, async (req, res) => {
 async function checkServiceHealth(service) {
   try {
     let response;
+
+    // Try /health endpoint first
     try {
       response = await axios.get(`http://localhost:${service.port}/health`, {
         timeout: 1000,
-        validateStatus: () => true
+        validateStatus: (status) => status >= 200 && status < 500 // Accept 2xx, 3xx, 4xx
       });
+
+      if (response.status === 200) {
+        return {
+          status: 'healthy',
+          statusCode: response.status,
+          responding: true
+        };
+      }
     } catch (err) {
-      response = await axios.get(`http://localhost:${service.port}/`, {
-        timeout: 1000,
-        validateStatus: () => true
-      });
+      // /health endpoint doesn't exist or server is down, try root
     }
 
-    return {
-      status: response.status === 200 ? 'healthy' : 'degraded',
-      statusCode: response.status,
-      responding: true
-    };
+    // Try root endpoint
+    try {
+      response = await axios.get(`http://localhost:${service.port}/`, {
+        timeout: 1000,
+        validateStatus: (status) => status >= 200 && status < 500 // Accept 2xx, 3xx, 4xx
+      });
+
+      if (response.status === 200) {
+        return {
+          status: 'healthy',
+          statusCode: response.status,
+          responding: true
+        };
+      } else if (response.status === 404) {
+        // Server is responding but no route - consider it degraded
+        return {
+          status: 'degraded',
+          statusCode: response.status,
+          responding: true
+        };
+      } else {
+        return {
+          status: 'degraded',
+          statusCode: response.status,
+          responding: true
+        };
+      }
+    } catch (err) {
+      // Connection failed
+      return {
+        status: 'down',
+        statusCode: null,
+        responding: false
+      };
+    }
   } catch (error) {
     return {
       status: 'down',
@@ -403,10 +443,19 @@ async function checkTmuxSession(sessionName) {
   }
 }
 
-// Serve frontend (catch-all for HTML5 routing)
-// Note: This must be last route
-app.use((req, res) => {
+// Explicitly block sensitive files
+app.get(/\.(env|git|ssh)/, (req, res) => {
+  res.status(403).json({ error: 'Forbidden' });
+});
+
+// Serve frontend only for GET requests to root or known frontend routes
+app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// 404 handler for all other routes
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
 });
 
 app.listen(PORT, () => {

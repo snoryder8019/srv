@@ -12,28 +12,51 @@ export async function loadActiveCharacter(req, res, next) {
   try {
     // Initialize character as null
     res.locals.character = null;
-    
+
     // Check if user is logged in
     if (!req.user) {
       return next();
     }
-    
+
     // Check for active character in cookie
     const activeCharacterId = req.cookies.activeCharacterId;
-    
+
     if (activeCharacterId) {
       // Load character from database
       const character = await Character.findById(activeCharacterId);
-      
+
       // Verify character belongs to logged-in user
       if (character && character.userId.toString() === req.user._id.toString()) {
+        // Populate location asset name if character has a location
+        if (character.location && character.location.assetId) {
+          try {
+            const { getDb } = await import('../plugins/mongo/mongo.js');
+            const { ObjectId } = await import('mongodb');
+            const db = getDb();
+
+            const asset = await db.collection('assets').findOne(
+              { _id: new ObjectId(character.location.assetId) },
+              { projection: { title: 1, assetType: 1 } }
+            );
+
+            if (asset) {
+              character.locationAsset = {
+                title: asset.title,
+                type: asset.assetType
+              };
+            }
+          } catch (err) {
+            console.error('Error fetching location asset:', err);
+          }
+        }
+
         res.locals.character = character;
       } else {
         // Invalid character ID in cookie, clear it
         res.clearCookie('activeCharacterId');
       }
     }
-    
+
     next();
   } catch (error) {
     console.error('Error loading active character:', error);

@@ -11,6 +11,15 @@
   <link rel="stylesheet" href="/stylesheets/global-chat.css">
   <link rel="stylesheet" href="/stylesheets/ship-info-pane.css">
   <% } %>
+  <style>
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .sync-connected { background: #4ade80 !important; border-color: #4ade80 !important; }
+    .sync-error { background: #ef4444 !important; border-color: #ef4444 !important; box-shadow: 0 0 8px #ef4444 !important; }
+    .sync-warning { background: #f59e0b !important; border-color: #f59e0b !important; box-shadow: 0 0 8px #f59e0b !important; }
+  </style>
 </head>
 <body>
   <%- include('../partials/header', { user: user }) %>
@@ -20,6 +29,22 @@
     <div class="map-canvas-wrapper">
       <canvas id="galacticMap"></canvas>
     </div>
+
+    <!-- Minimal Sync Indicator (bottom-right corner) -->
+    <div id="syncIndicator" style="position: fixed; bottom: 10px; right: 10px; z-index: 150; background: rgba(0, 0, 0, 0.75); border: 1px solid rgba(74, 222, 128, 0.4); border-radius: 3px; padding: 4px 8px; display: flex; align-items: center; gap: 6px; font-family: 'Courier New', monospace; font-size: 0.7em; backdrop-filter: blur(5px); opacity: 0.85; transition: opacity 0.2s;">
+      <div id="syncStatus" style="width: 6px; height: 6px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 6px #4ade80;"></div>
+      <div id="syncDetails" style="color: #aaa; white-space: nowrap; font-size: 0.95em;">Loading...</div>
+      <div id="mapDetails" style="color: #777; font-size: 0.9em; border-left: 1px solid rgba(74, 222, 128, 0.3); padding-left: 6px;">--</div>
+      <button id="syncRefreshBtn" style="background: transparent; border: none; color: #4ade80; padding: 0; cursor: pointer; font-size: 1em; opacity: 0.6; transition: opacity 0.2s;" title="Refresh" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">⟳</button>
+    </div>
+
+    <style>
+      /* Hover effect for sync indicator */
+      #syncIndicator:hover {
+        opacity: 1 !important;
+        border-color: rgba(74, 222, 128, 0.7);
+      }
+    </style>
 
     <!-- Map Controls -->
     <div class="map-controls">
@@ -137,12 +162,38 @@
 
     let map = null;
 
+    // Parse galaxies data from server
+    const galaxiesData = <%- galaxies %>;
+    console.log('📡 Loaded galaxies from database:', galaxiesData);
+
     // Initialize map
     document.addEventListener('DOMContentLoaded', async () => {
       map = new GalacticMap('galacticMap', 5000, 5000); // Match actual map size
 
       // Expose map globally for console access
       window.galacticMap = map;
+
+      // Load galaxies as static points on the map
+      if (galaxiesData && galaxiesData.length > 0) {
+        console.log('🌌 Adding', galaxiesData.length, 'galaxies to map');
+
+        // Transform galaxies to map asset format
+        const galaxyAssets = galaxiesData.map(galaxy => ({
+          ...galaxy,
+          x: galaxy.coordinates?.x || Math.random() * 5000,
+          y: galaxy.coordinates?.y || Math.random() * 5000,
+          vx: 0, // Galaxies are stationary
+          vy: 0,
+          radius: 30, // Larger size for galaxies
+          mass: 10,
+          isStationary: true,
+          assetType: 'galaxy'
+        }));
+
+        // Add galaxies to the map's published assets
+        map.publishedAssets = [...(map.publishedAssets || []), ...galaxyAssets];
+        console.log('✅ Galaxies added to map:', map.publishedAssets.length, 'total assets');
+      }
 
       // Get URL parameters
       const urlParams = new URLSearchParams(window.location.search);
@@ -207,8 +258,32 @@
       // Start map animation
       map.start();
 
+      // Save character position before page unload
+      window.addEventListener('beforeunload', () => {
+        if (map && map.currentCharacter) {
+          // Use sendBeacon for reliable async save during page unload
+          const data = JSON.stringify({
+            x: map.currentCharacter.location.x,
+            y: map.currentCharacter.location.y,
+            type: map.currentCharacter.location.type || 'galactic',
+            zone: map.currentCharacter.location.zone,
+            assetId: map.currentCharacter.location.assetId
+          });
+
+          navigator.sendBeacon(
+            `/api/v1/characters/${map.currentCharacter._id}/location`,
+            new Blob([data], { type: 'application/json' })
+          );
+
+          console.log('📍 Character position saved on page unload');
+        }
+      });
+
       // Setup controls
       setupControls();
+
+      // Setup sync indicator
+      setupSyncIndicator();
 
       <% if (user && user.userRole === 'tester') { %>
       // Initialize Socket.IO for testers
@@ -793,7 +868,89 @@
             </div>
           </div>
 
-          ${map.currentCharacter ? (isConnected ? `
+          ${asset.assetType === 'galaxy' ? (
+            // For galaxies: Check if character is at this location
+            map.currentCharacter && distance < 50 ? `
+              <div class="travel-action-bar">
+                <button class="travel-btn explore-btn" onclick="window.location.href='/universe/galaxy/${asset._id}'">
+                  <span class="travel-icon">🌌</span>
+                  <span class="travel-text">Explore Galaxy</span>
+                  <span class="travel-distance">Enter ${asset.title}</span>
+                </button>
+              </div>
+            ` : map.currentCharacter && isConnected ? `
+              <div class="travel-action-bar">
+                <button class="travel-btn" onclick="window.travelToAsset('${asset._id}', '${asset.title}', ${asset.x}, ${asset.y})">
+                  <span class="travel-icon">🚀</span>
+                  <span class="travel-text">Travel to Galaxy</span>
+                  <span class="travel-distance">${hopCount > 0 ? hopCount + ' hop' + (hopCount > 1 ? 's' : '') : Math.round(distance) + ' units'}</span>
+                </button>
+                ${hopCount > 0 ? `
+                  <div class="travel-path-info">
+                    <span class="path-label">Route:</span>
+                    <span class="path-route">
+                      ${travelPath.map((p, i) =>
+                        i === 0 ? '📍 ' + p.title :
+                        i === travelPath.length - 1 ? '🎯 ' + p.title :
+                        '→ ' + p.title
+                      ).join(' ')}
+                    </span>
+                  </div>
+                ` : ''}
+              </div>
+              <div class="exploration-hint">
+                <span class="hint-icon">ℹ️</span>
+                <span class="hint-text">Travel here first to explore this galaxy</span>
+              </div>
+            ` : `
+              <div class="travel-action-bar disabled">
+                <div class="travel-unavailable">
+                  <span class="travel-icon">🔒</span>
+                  <span class="travel-text">Not Connected</span>
+                  <span class="travel-distance">${Math.round(distance || 0)} units away</span>
+                </div>
+                <div class="travel-hint">
+                  No travel route found. Assets must be within 800 units of each other to form a connected chain.
+                </div>
+              </div>
+            `
+          ) : (['orbital', 'planet', 'anomaly'].includes(asset.assetType) && map.currentCharacter && distance < 50) ? `
+            <div class="travel-action-bar">
+              <button class="travel-btn explore-btn" onclick="window.location.href='/zones/explore/planetary?asset=${asset._id}'">
+                <span class="travel-icon">🪐</span>
+                <span class="travel-text">Explore Area</span>
+                <span class="travel-distance">Land on ${asset.title}</span>
+              </button>
+            </div>
+            <div class="exploration-hint">
+              <span class="hint-icon">🎮</span>
+              <span class="hint-text">Land and explore this location on foot</span>
+            </div>
+          ` : (['orbital', 'planet', 'anomaly'].includes(asset.assetType) && map.currentCharacter && isConnected) ? `
+            <div class="travel-action-bar">
+              <button class="travel-btn" onclick="window.travelToAsset('${asset._id}', '${asset.title}', ${asset.x}, ${asset.y})">
+                <span class="travel-icon">🚀</span>
+                <span class="travel-text">Travel to Location</span>
+                <span class="travel-distance">${hopCount > 0 ? hopCount + ' hop' + (hopCount > 1 ? 's' : '') : Math.round(distance) + ' units'}</span>
+              </button>
+              ${hopCount > 0 ? `
+                <div class="travel-path-info">
+                  <span class="path-label">Route:</span>
+                  <span class="path-route">
+                    ${travelPath.map((p, i) =>
+                      i === 0 ? '📍 ' + p.title :
+                      i === travelPath.length - 1 ? '🎯 ' + p.title :
+                      '→ ' + p.title
+                    ).join(' ')}
+                  </span>
+                </div>
+              ` : ''}
+            </div>
+            <div class="exploration-hint">
+              <span class="hint-icon">ℹ️</span>
+              <span class="hint-text">Travel here first to explore this area</span>
+            </div>
+          ` : map.currentCharacter ? (isConnected ? `
             <div class="travel-action-bar">
               <button class="travel-btn" onclick="window.travelToAsset('${asset._id}', '${asset.title}', ${asset.x}, ${asset.y})">
                 <span class="travel-icon">🚀</span>
@@ -977,9 +1134,11 @@
       // Start animated travel along the path
       console.log(`🚀 Starting animated travel: ${result.path.length} waypoints, ${result.hops} hops`);
 
-      // Pass the path (excluding starting position), final coordinates, and zone name
-      const travelPath = result.path.slice(1); // Remove current location from path
-      map.startTravelAnimation(travelPath, assetX, assetY, assetTitle);
+      // Remove current location from path (we're already there)
+      // For a single jump, this leaves us with just [destination]
+      const travelPath = result.path.slice(1);
+
+      map.startTravelAnimation(travelPath, assetX, assetY, assetTitle, assetId);
 
       // Close info pane
       document.getElementById('infoPane').classList.remove('visible');
@@ -1092,6 +1251,94 @@
       menu.style.display = 'none';
       window.currentOverlappingAssets = null;
     };
+
+    /**
+     * Setup sync indicator
+     */
+    function setupSyncIndicator() {
+      const syncStatus = document.getElementById('syncStatus');
+      const syncDetails = document.getElementById('syncDetails');
+      const mapDetails = document.getElementById('mapDetails');
+      const syncRefreshBtn = document.getElementById('syncRefreshBtn');
+      const syncIndicator = document.getElementById('syncIndicator');
+
+      // Update map loading status
+      window.updateMapStatus = function(status, details) {
+        if (status === 'loading') {
+          syncStatus.style.background = '#f59e0b';
+          syncStatus.style.boxShadow = '0 0 8px #f59e0b';
+          mapDetails.textContent = details || 'Loading assets...';
+          mapDetails.style.color = '#f59e0b';
+        } else if (status === 'loaded') {
+          syncStatus.style.background = '#4ade80';
+          syncStatus.style.boxShadow = '0 0 8px #4ade80';
+          mapDetails.textContent = details || 'Positions loaded from DB';
+          mapDetails.style.color = '#4ade80';
+        } else if (status === 'error') {
+          syncStatus.style.background = '#ef4444';
+          syncStatus.style.boxShadow = '0 0 8px #ef4444';
+          mapDetails.textContent = details || 'Error loading positions';
+          mapDetails.style.color = '#ef4444';
+        }
+      };
+
+      // Check sync status
+      async function checkSync() {
+        try {
+          const response = await fetch('/api/v1/characters/check', {
+            credentials: 'same-origin'
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to check sync');
+          }
+
+          const data = await response.json();
+
+          // Update indicator based on sync status
+          if (data.gameState.status === 'connected' && data.sync.inSync) {
+            syncStatus.className = 'sync-connected';
+            syncDetails.textContent = `✓ Game State Synced (${data.local.count} chars)`;
+            syncDetails.style.color = '#4ade80';
+          } else if (data.gameState.status === 'connected' && !data.sync.inSync) {
+            syncStatus.className = 'sync-warning';
+            syncDetails.textContent = `⚠ Out of Sync (${data.sync.issues.length} issues)`;
+            syncDetails.style.color = '#f59e0b';
+            console.warn('Sync issues:', data.sync.issues);
+          } else {
+            syncStatus.className = 'sync-error';
+            syncDetails.textContent = `✗ Game State ${data.gameState.status}`;
+            syncDetails.style.color = '#ef4444';
+          }
+
+        } catch (error) {
+          console.error('Sync check error:', error);
+          syncStatus.className = 'sync-error';
+          syncDetails.textContent = '✗ Connection Error';
+          syncDetails.style.color = '#ef4444';
+        }
+      }
+
+      // Initial check
+      checkSync();
+
+      // Check every 30 seconds
+      setInterval(checkSync, 30000);
+
+      // Refresh button
+      syncRefreshBtn.addEventListener('click', () => {
+        syncDetails.textContent = 'Checking...';
+        syncDetails.style.color = '#888';
+        mapDetails.textContent = 'Refreshing...';
+        mapDetails.style.color = '#888';
+        checkSync();
+
+        // Also reload map assets
+        if (window.map && window.map.loadPublishedAssets) {
+          window.map.loadPublishedAssets();
+        }
+      });
+    }
   </script>
 </body>
 </html>

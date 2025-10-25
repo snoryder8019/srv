@@ -18,7 +18,7 @@ function openSuggestionModal(assetId, assetName) {
     '<div class="modal-header">' +
       '<h2>Suggest Improvements</h2>' +
       '<p>Asset: <strong>' + assetName + '</strong></p>' +
-      '<button class="modal-close" onclick="closeSuggestionModal()">&times;</button>' +
+      '<button class="modal-close" type="button">&times;</button>' +
     '</div>' +
     '<form id="suggestionForm" enctype="multipart/form-data">' +
       '<input type="hidden" name="assetId" value="' + assetId + '">' +
@@ -34,11 +34,43 @@ function openSuggestionModal(assetId, assetName) {
           '<div class="field-change-row">' +
             '<select name="fieldName" class="field-name-select">' +
               '<option value="">Select Field</option>' +
-              '<option value="title">Title</option>' +
-              '<option value="description">Description</option>' +
-              '<option value="lore">Lore</option>' +
-              '<option value="backstory">Backstory</option>' +
-              '<option value="flavor">Flavor Text</option>' +
+              '<optgroup label="Basic Info">' +
+                '<option value="title">Title</option>' +
+                '<option value="description">Description</option>' +
+                '<option value="assetType">Asset Type</option>' +
+                '<option value="rarity">Rarity</option>' +
+                '<option value="tags">Tags</option>' +
+              '</optgroup>' +
+              '<optgroup label="Lore & Story">' +
+                '<option value="lore">Lore/History</option>' +
+                '<option value="backstory">Backstory</option>' +
+                '<option value="flavor">Flavor Text</option>' +
+              '</optgroup>' +
+              '<optgroup label="Stats">' +
+                '<option value="stats.damage">Damage</option>' +
+                '<option value="stats.defense">Defense</option>' +
+                '<option value="stats.health">Health</option>' +
+                '<option value="stats.energy">Energy</option>' +
+                '<option value="stats.speed">Speed</option>' +
+                '<option value="stats.accuracy">Accuracy</option>' +
+                '<option value="stats.critChance">Crit Chance</option>' +
+                '<option value="stats.range">Range</option>' +
+                '<option value="stats.value">Value (Credits)</option>' +
+                '<option value="stats.weight">Weight</option>' +
+                '<option value="stats.durability">Durability</option>' +
+              '</optgroup>' +
+              '<optgroup label="Item Properties">' +
+                '<option value="stackable">Stackable</option>' +
+                '<option value="maxStack">Max Stack</option>' +
+                '<option value="tradeable">Tradeable</option>' +
+              '</optgroup>' +
+              '<optgroup label="Location">' +
+                '<option value="parentGalaxy">Parent Galaxy</option>' +
+                '<option value="parentStar">Parent Star</option>' +
+                '<option value="coordinates.x">X Coordinate</option>' +
+                '<option value="coordinates.y">Y Coordinate</option>' +
+                '<option value="coordinates.z">Z Coordinate</option>' +
+              '</optgroup>' +
             '</select>' +
             '<input type="text" name="fieldValue" placeholder="New value" class="field-value-input">' +
           '</div>' +
@@ -76,7 +108,21 @@ function openSuggestionModal(assetId, assetName) {
 
   document.body.appendChild(modal);
 
+  // Add event listeners
   document.getElementById('suggestionForm').addEventListener('submit', submitSuggestion);
+
+  // Add click handler for X button
+  const closeButton = modal.querySelector('.modal-close');
+  if (closeButton) {
+    closeButton.addEventListener('click', closeSuggestionModal);
+  }
+
+  // Close modal when clicking outside
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) {
+      closeSuggestionModal();
+    }
+  });
 }
 
 function closeSuggestionModal() {
@@ -92,11 +138,43 @@ function addFieldChange() {
   newRow.className = 'field-change-row';
   newRow.innerHTML = '<select name="fieldName" class="field-name-select">' +
       '<option value="">Select Field</option>' +
-      '<option value="title">Title</option>' +
-      '<option value="description">Description</option>' +
-      '<option value="lore">Lore</option>' +
-      '<option value="backstory">Backstory</option>' +
-      '<option value="flavor">Flavor Text</option>' +
+      '<optgroup label="Basic Info">' +
+        '<option value="title">Title</option>' +
+        '<option value="description">Description</option>' +
+        '<option value="assetType">Asset Type</option>' +
+        '<option value="rarity">Rarity</option>' +
+        '<option value="tags">Tags</option>' +
+      '</optgroup>' +
+      '<optgroup label="Lore & Story">' +
+        '<option value="lore">Lore/History</option>' +
+        '<option value="backstory">Backstory</option>' +
+        '<option value="flavor">Flavor Text</option>' +
+      '</optgroup>' +
+      '<optgroup label="Stats">' +
+        '<option value="stats.damage">Damage</option>' +
+        '<option value="stats.defense">Defense</option>' +
+        '<option value="stats.health">Health</option>' +
+        '<option value="stats.energy">Energy</option>' +
+        '<option value="stats.speed">Speed</option>' +
+        '<option value="stats.accuracy">Accuracy</option>' +
+        '<option value="stats.critChance">Crit Chance</option>' +
+        '<option value="stats.range">Range</option>' +
+        '<option value="stats.value">Value (Credits)</option>' +
+        '<option value="stats.weight">Weight</option>' +
+        '<option value="stats.durability">Durability</option>' +
+      '</optgroup>' +
+      '<optgroup label="Item Properties">' +
+        '<option value="stackable">Stackable</option>' +
+        '<option value="maxStack">Max Stack</option>' +
+        '<option value="tradeable">Tradeable</option>' +
+      '</optgroup>' +
+      '<optgroup label="Location">' +
+        '<option value="parentGalaxy">Parent Galaxy</option>' +
+        '<option value="parentStar">Parent Star</option>' +
+        '<option value="coordinates.x">X Coordinate</option>' +
+        '<option value="coordinates.y">Y Coordinate</option>' +
+        '<option value="coordinates.z">Z Coordinate</option>' +
+      '</optgroup>' +
     '</select>' +
     '<input type="text" name="fieldValue" placeholder="New value" class="field-value-input">' +
     '<button type="button" class="btn-remove" onclick="this.parentElement.remove()">&times;</button>';

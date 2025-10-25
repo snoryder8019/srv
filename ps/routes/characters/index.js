@@ -15,11 +15,33 @@ router.get('/', async (req, res) => {
     }
 
     const db = getDb();
+    const { ObjectId } = await import('mongodb');
     const characters = await db.collection('characters')
       .find({ userId: req.user._id.toString() })
       .toArray();
 
-    res.render('characters/list', {
+    // Populate location asset names for each character
+    for (const character of characters) {
+      if (character.location && character.location.assetId) {
+        try {
+          const asset = await db.collection('assets').findOne(
+            { _id: new ObjectId(character.location.assetId) },
+            { projection: { title: 1, assetType: 1 } }
+          );
+
+          if (asset) {
+            character.locationAsset = {
+              title: asset.title,
+              type: asset.assetType
+            };
+          }
+        } catch (err) {
+          console.error('Error fetching location asset:', err);
+        }
+      }
+    }
+
+    res.render('auth/index-enhanced', {
       title: 'My Characters',
       characters,
       user: req.user
@@ -40,7 +62,7 @@ router.get('/create', async (req, res) => {
     // Check character count
     const characters = await Character.findByUserId(req.user._id);
     if (characters.length >= MAX_CHARACTERS) {
-      return res.render('characters/list', {
+      return res.render('auth/index-enhanced', {
         title: 'My Characters',
         characters,
         user: req.user,
@@ -70,6 +92,21 @@ router.get('/:id', async (req, res) => {
 
     if (!character) {
       return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Initialize equipped if it doesn't exist
+    if (!character.equipped) {
+      character.equipped = {
+        head: null,
+        chest: null,
+        legs: null,
+        feet: null,
+        hands: null,
+        weapon: null,
+        offhand: null,
+        trinket1: null,
+        trinket2: null
+      };
     }
 
     res.render('characters/detail-enhanced', {

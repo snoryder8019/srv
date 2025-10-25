@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/galactic-map.css">
+  <% if (user && user.userRole === 'tester') { %>
+  <link rel="stylesheet" href="/stylesheets/tester-toolbar.css">
+  <% } %>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="map-container">
+    <!-- Breadcrumb Navigation -->
+    <div class="breadcrumb-nav">
+      <a href="/universe/galactic-map" class="breadcrumb-link">🌌 Galactic Map</a>
+      <span class="breadcrumb-separator">→</span>
+      <span class="breadcrumb-current" id="galaxyName">Loading...</span>
+    </div>
+
+    <!-- Main Canvas Map -->
+    <div class="map-canvas-wrapper">
+      <canvas id="galaxyMap"></canvas>
+    </div>
+
+    <!-- Map Controls -->
+    <div class="map-controls">
+      <!-- Zoom Controls -->
+      <div class="control-group zoom-controls">
+        <button id="zoomInBtn" class="control-btn zoom-btn" title="Zoom In">+</button>
+        <button id="zoomOutBtn" class="control-btn zoom-btn" title="Zoom Out">−</button>
+        <button id="resetViewBtn" class="control-btn zoom-btn" title="Reset View">⟲</button>
+      </div>
+
+      <!-- View Controls -->
+      <div class="control-group">
+        <button id="toggleGridBtn" class="control-btn" title="Toggle Grid">⊞</button>
+        <button id="backToGalacticBtn" class="control-btn" title="Back to Galactic Map" onclick="window.location.href='/universe/galactic-map'">⬅️</button>
+      </div>
+    </div>
+
+    <!-- Side Panel - Info Pane -->
+    <div class="side-panel" id="infoPane">
+      <div class="panel-section">
+        <div id="assetInfo"></div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <% if (user && user.userRole === 'tester') { %>
+  <script src="/javascripts/tester-toolbar.js"></script>
+  <% } %>
+
+  <script type="module">
+    // Parse data from server
+    const galaxyData = <%- galaxy %>;
+    const starsData = <%- stars %>;
+
+    console.log('🌌 Galaxy:', galaxyData);
+    console.log('⭐ Stars:', starsData);
+
+    // Simple canvas-based star map renderer
+    class GalaxyMap {
+      constructor(canvasId, width = 2000, height = 2000) {
+        this.canvas = document.getElementById(canvasId);
+        this.ctx = this.canvas.getContext('2d');
+        this.width = width;
+        this.height = height;
+        this.scale = 1;
+        this.offsetX = 0;
+        this.offsetY = 0;
+
+        // Set canvas dimensions to match container
+        const rect = this.canvas.getBoundingClientRect();
+        this.canvas.width = rect.width || window.innerWidth;
+        this.canvas.height = rect.height || window.innerHeight - 60;
+
+        // Dragging state
+        this.isDragging = false;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.lastOffsetX = 0;
+        this.lastOffsetY = 0;
+        this.dragThreshold = 10; // Pixels moved before considered a drag
+
+        // Touch/pinch state
+        this.touches = [];
+        this.lastPinchDistance = 0;
+        this.touchStartTime = 0;
+        this.touchStartPos = { x: 0, y: 0 };
+
+        this.stars = [];
+        this.backgroundStars = [];
+        this.hoveredStar = null;
+        this.selectedStar = null;
+        this.showGrid = false;
+
+        this.initBackgroundStars();
+        this.setupEventListeners();
+      }
+
+      initBackgroundStars() {
+        // Create background stars for visual effect
+        const starCount = 300;
+        const starChars = ['·', '•', '*', '+'];
+
+        for (let i = 0; i < starCount; i++) {
+          this.backgroundStars.push({
+            x: Math.random() * this.width,
+            y: Math.random() * this.height,
+            size: Math.random() * 1.5 + 0.5,
+            char: starChars[Math.floor(Math.random() * starChars.length)],
+            brightness: Math.random() * 0.3 + 0.3
+          });
+        }
+      }
+
+      setupEventListeners() {
+        // Mouse events
+        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+        this.canvas.addEventListener('mouseleave', (e) => this.handleMouseUp(e));
+        this.canvas.addEventListener('click', (e) => this.handleClick(e));
+        this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
+
+        // Touch events for mobile
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: false });
+
+        window.addEventListener('resize', () => this.handleResize());
+
+        // Zoom buttons
+        document.getElementById('zoomInBtn')?.addEventListener('click', () => {
+          this.scale *= 1.2;
+          this.scale = Math.min(3, this.scale);
+          this.render();
+        });
+
+        document.getElementById('zoomOutBtn')?.addEventListener('click', () => {
+          this.scale *= 0.8;
+          this.scale = Math.max(0.3, this.scale);
+          this.render();
+        });
+
+        document.getElementById('resetViewBtn')?.addEventListener('click', () => {
+          this.scale = 1;
+          this.offsetX = 0;
+          this.offsetY = 0;
+          this.render();
+        });
+
+        // Grid toggle
+        document.getElementById('toggleGridBtn')?.addEventListener('click', () => {
+          this.showGrid = !this.showGrid;
+          this.render();
+        });
+      }
+
+      handleMouseDown(e) {
+        this.isDragging = true;
+        const rect = this.canvas.getBoundingClientRect();
+        this.dragStartX = e.clientX - rect.left;
+        this.dragStartY = e.clientY - rect.top;
+        this.lastOffsetX = this.offsetX;
+        this.lastOffsetY = this.offsetY;
+        this.canvas.style.cursor = 'grabbing';
+      }
+
+      handleMouseMove(e) {
+        if (this.isDragging) {
+          // Dragging - pan the view
+          const rect = this.canvas.getBoundingClientRect();
+          const currentX = e.clientX - rect.left;
+          const currentY = e.clientY - rect.top;
+          this.offsetX = this.lastOffsetX + (currentX - this.dragStartX);
+          this.offsetY = this.lastOffsetY + (currentY - this.dragStartY);
+          this.render();
+          return;
+        }
+
+        // Hovering - check for star hover
+        const rect = this.canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left - this.offsetX) / this.scale;
+        const y = (e.clientY - rect.top - this.offsetY) / this.scale;
+
+        this.hoveredStar = this.getStarAt(x, y);
+        this.canvas.style.cursor = this.hoveredStar ? 'pointer' : 'grab';
+        this.render();
+      }
+
+      handleMouseUp(e) {
+        this.isDragging = false;
+        this.canvas.style.cursor = this.hoveredStar ? 'pointer' : 'grab';
+      }
+
+      handleClick(e) {
+        if (this.hoveredStar) {
+          this.selectedStar = this.hoveredStar;
+          this.displayStarInfo(this.hoveredStar);
+        }
+      }
+
+      handleWheel(e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        this.scale *= delta;
+        this.scale = Math.max(0.3, Math.min(3, this.scale));
+        this.render();
+      }
+
+      handleResize() {
+        const rect = this.canvas.getBoundingClientRect();
+        this.canvas.width = rect.width;
+        this.canvas.height = rect.height;
+
+        // Recenter view after resize
+        this.offsetX = this.canvas.width / 2 - (this.width / 2) * this.scale;
+        this.offsetY = this.canvas.height / 2 - (this.height / 2) * this.scale;
+
+        this.render();
+      }
+
+      handleTouchStart(e) {
+        e.preventDefault();
+        this.touches = Array.from(e.touches);
+
+        if (this.touches.length === 1) {
+          // Single touch - track start position for tap detection
+          const touch = this.touches[0];
+          const rect = this.canvas.getBoundingClientRect();
+          this.touchStartTime = Date.now();
+          this.touchStartPos = {
+            x: touch.clientX - rect.left,
+            y: touch.clientY - rect.top
+          };
+          this.dragStartX = touch.clientX - rect.left;
+          this.dragStartY = touch.clientY - rect.top;
+          this.lastOffsetX = this.offsetX;
+          this.lastOffsetY = this.offsetY;
+          // Don't set isDragging yet - wait for movement
+        } else if (this.touches.length === 2) {
+          // Two fingers - prepare for pinch
+          this.lastPinchDistance = this.getPinchDistance();
+          this.isDragging = false;
+        }
+      }
+
+      handleTouchMove(e) {
+        e.preventDefault();
+        this.touches = Array.from(e.touches);
+
+        if (this.touches.length === 1) {
+          // Single touch - check if moved enough to be a drag
+          const touch = this.touches[0];
+          const rect = this.canvas.getBoundingClientRect();
+          const currentX = touch.clientX - rect.left;
+          const currentY = touch.clientY - rect.top;
+
+          // Calculate distance moved
+          const dx = currentX - this.touchStartPos.x;
+          const dy = currentY - this.touchStartPos.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          // If moved more than threshold, it's a drag
+          if (distance > this.dragThreshold) {
+            this.isDragging = true;
+          }
+
+          if (this.isDragging) {
+            this.offsetX = this.lastOffsetX + (currentX - this.dragStartX);
+            this.offsetY = this.lastOffsetY + (currentY - this.dragStartY);
+            this.render();
+          }
+        } else if (this.touches.length === 2) {
+          // Pinch zoom - anchor to center of pinch
+          const currentDistance = this.getPinchDistance();
+
+          if (this.lastPinchDistance > 0) {
+            // Get center point of pinch
+            const rect = this.canvas.getBoundingClientRect();
+            const centerX = ((this.touches[0].clientX + this.touches[1].clientX) / 2) - rect.left;
+            const centerY = ((this.touches[0].clientY + this.touches[1].clientY) / 2) - rect.top;
+
+            // Get world position before zoom
+            const worldX = (centerX - this.offsetX) / this.scale;
+            const worldY = (centerY - this.offsetY) / this.scale;
+
+            // Apply zoom
+            const delta = currentDistance / this.lastPinchDistance;
+            this.scale *= delta;
+            this.scale = Math.max(0.3, Math.min(3, this.scale));
+
+            // Adjust offset to keep world position under pinch center
+            this.offsetX = centerX - worldX * this.scale;
+            this.offsetY = centerY - worldY * this.scale;
+
+            // Update last offsets
+            this.lastOffsetX = this.offsetX;
+            this.lastOffsetY = this.offsetY;
+
+            this.render();
+          }
+
+          this.lastPinchDistance = currentDistance;
+          this.isDragging = false;
+        }
+      }
+
+      handleTouchEnd(e) {
+        e.preventDefault();
+
+        const lastTouch = e.changedTouches[0];
+
+        // Check if this was a quick tap (not a drag or long press)
+        const touchDuration = Date.now() - this.touchStartTime;
+        const rect = this.canvas.getBoundingClientRect();
+        const endX = lastTouch.clientX - rect.left;
+        const endY = lastTouch.clientY - rect.top;
+        const dx = endX - this.touchStartPos.x;
+        const dy = endY - this.touchStartPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // If tap was quick and didn't move much, treat as selection tap
+        if (touchDuration < 500 && distance < this.dragThreshold && !this.isDragging) {
+          const worldX = (endX - this.offsetX) / this.scale;
+          const worldY = (endY - this.offsetY) / this.scale;
+
+          const star = this.getStarAt(worldX, worldY);
+          if (star) {
+            this.selectedStar = star;
+            this.displayStarInfo(star);
+            this.render();
+          }
+        }
+
+        this.touches = Array.from(e.touches);
+        if (this.touches.length === 0) {
+          this.isDragging = false;
+          this.lastPinchDistance = 0;
+        }
+      }
+
+      getPinchDistance() {
+        if (this.touches.length < 2) return 0;
+
+        const dx = this.touches[0].clientX - this.touches[1].clientX;
+        const dy = this.touches[0].clientY - this.touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      getStarAt(x, y) {
+        for (let i = this.stars.length - 1; i >= 0; i--) {
+          const star = this.stars[i];
+          const dx = x - star.x;
+          const dy = y - star.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance < (star.radius || 15)) {
+            return star;
+          }
+        }
+        return null;
+      }
+
+      loadStars(stars) {
+        this.stars = stars.map(star => ({
+          ...star,
+          x: star.coordinates?.x || Math.random() * this.width,
+          y: star.coordinates?.y || Math.random() * this.height,
+          radius: 15,
+          color: this.getStarColor(star.starType)
+        }));
+
+        // Center view
+        this.offsetX = this.canvas.width / 2 - (this.width / 2) * this.scale;
+        this.offsetY = this.canvas.height / 2 - (this.height / 2) * this.scale;
+
+        this.render();
+      }
+
+      getStarColor(starType) {
+        const colors = {
+          'red dwarf': '#ff4444',
+          'yellow star': '#ffff44',
+          'blue giant': '#4488ff',
+          'white dwarf': '#ffffff',
+          'neutron star': '#88ffff',
+          'black hole': '#220022'
+        };
+        return colors[starType?.toLowerCase()] || '#ffff88';
+      }
+
+      drawSpiralGalaxy(ctx) {
+        const centerX = this.width / 2;
+        const centerY = this.height / 2;
+
+        // Draw galactic core
+        const coreGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 100);
+        coreGradient.addColorStop(0, 'rgba(255, 200, 100, 0.8)');
+        coreGradient.addColorStop(0.5, 'rgba(200, 150, 255, 0.4)');
+        coreGradient.addColorStop(1, 'rgba(100, 100, 200, 0)');
+
+        ctx.fillStyle = coreGradient;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 100, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw spiral arms
+        const numArms = 3;
+        const armWidth = 40;
+        const turns = 2.5;
+
+        for (let arm = 0; arm < numArms; arm++) {
+          const armAngleOffset = (arm / numArms) * Math.PI * 2;
+
+          ctx.strokeStyle = `rgba(138, 79, 255, 0.15)`;
+          ctx.lineWidth = armWidth;
+          ctx.beginPath();
+
+          for (let t = 0; t <= 1; t += 0.01) {
+            const angle = armAngleOffset + t * turns * Math.PI * 2;
+            const radius = 100 + t * 800;
+            const x = centerX + Math.cos(angle) * radius;
+            const y = centerY + Math.sin(angle) * radius;
+
+            if (t === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+
+          ctx.stroke();
+
+          // Add glow to spiral arms
+          ctx.strokeStyle = `rgba(200, 150, 255, 0.08)`;
+          ctx.lineWidth = armWidth * 2;
+          ctx.stroke();
+        }
+
+        // Draw elliptical travel path (outer edge)
+        ctx.strokeStyle = 'rgba(74, 158, 255, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, 900, 900, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      drawGrid(ctx) {
+        const gridSize = 100;
+        ctx.strokeStyle = 'rgba(102, 126, 234, 0.2)';
+        ctx.lineWidth = 1;
+
+        // Vertical lines
+        for (let x = 0; x <= this.width; x += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, this.height);
+          ctx.stroke();
+        }
+
+        // Horizontal lines
+        for (let y = 0; y <= this.height; y += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(this.width, y);
+          ctx.stroke();
+        }
+      }
+
+      render() {
+        const ctx = this.ctx;
+
+        // Clear canvas
+        ctx.fillStyle = '#0a0a1a';
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        ctx.save();
+        ctx.translate(this.offsetX, this.offsetY);
+        ctx.scale(this.scale, this.scale);
+
+        // Draw background stars
+        this.backgroundStars.forEach(star => {
+          ctx.fillStyle = `rgba(255, 255, 255, ${star.brightness})`;
+          ctx.fillRect(star.x, star.y, star.size, star.size);
+        });
+
+        // Draw grid if enabled
+        if (this.showGrid) {
+          this.drawGrid(ctx);
+        }
+
+        // Draw spiral galaxy structure
+        this.drawSpiralGalaxy(ctx);
+
+        // Draw stars
+        this.stars.forEach(star => {
+          const isHovered = this.hoveredStar === star;
+          const isSelected = this.selectedStar === star;
+
+          // Glow effect for hovered/selected stars
+          if (isHovered || isSelected) {
+            const gradient = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, star.radius * 2);
+            gradient.addColorStop(0, star.color + 'aa');
+            gradient.addColorStop(1, star.color + '00');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(star.x, star.y, star.radius * 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Draw star
+          ctx.fillStyle = star.color;
+          ctx.beginPath();
+          ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Star highlight
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+          ctx.beginPath();
+          ctx.arc(star.x - star.radius * 0.3, star.y - star.radius * 0.3, star.radius * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw label
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '12px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(star.title, star.x, star.y + star.radius + 15);
+        });
+
+        ctx.restore();
+      }
+
+      displayStarInfo(star) {
+        const infoPane = document.getElementById('infoPane');
+        const info = document.getElementById('assetInfo');
+
+        infoPane.classList.add('visible');
+
+        const planetCount = star.planetCount || 0;
+
+        info.innerHTML = `
+          <div class="zone-detail">
+            <div class="asset-header">
+              <div class="asset-icon-large">⭐</div>
+              <div class="asset-title-section">
+                <h2 class="asset-title">${star.title}</h2>
+                <div class="asset-badges">
+                  <span class="badge badge-star">Star</span>
+                  ${star.starType ? `<span class="badge badge-subtype">${star.starType}</span>` : ''}
+                </div>
+              </div>
+            </div>
+
+            <div class="travel-action-bar">
+              <button class="travel-btn explore-btn" onclick="window.location.href='/universe/star-system/${star._id}'">
+                <span class="travel-icon">🪐</span>
+                <span class="travel-text">Explore Star System</span>
+                <span class="travel-distance">${planetCount} planet${planetCount !== 1 ? 's' : ''}</span>
+              </button>
+            </div>
+
+            ${star.description ? `
+              <div class="info-section">
+                <p class="asset-description">${star.description}</p>
+              </div>
+            ` : ''}
+
+            <div class="info-section">
+              <h4>⭐ Star Properties</h4>
+              <div class="info-grid">
+                ${star.starType ? `
+                  <div class="info-item">
+                    <span class="info-label">Type:</span>
+                    <span class="info-value">${star.starType}</span>
+                  </div>
+                ` : ''}
+                ${star.luminosity ? `
+                  <div class="info-item">
+                    <span class="info-label">Luminosity:</span>
+                    <span class="info-value">${star.luminosity}x</span>
+                  </div>
+                ` : ''}
+                ${star.temperature ? `
+                  <div class="info-item">
+                    <span class="info-label">Temperature:</span>
+                    <span class="info-value">${star.temperature}K</span>
+                  </div>
+                ` : ''}
+                <div class="info-item">
+                  <span class="info-label">Planets:</span>
+                  <span class="info-value">${planetCount}</span>
+                </div>
+              </div>
+            </div>
+
+            ${star.lore ? `
+              <div class="info-section">
+                <h4>📖 Lore</h4>
+                <p class="lore-text">${star.lore}</p>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+    }
+
+    // Initialize map
+    document.addEventListener('DOMContentLoaded', () => {
+      // Update breadcrumb
+      document.getElementById('galaxyName').textContent = galaxyData.title;
+
+      // Create map
+      const map = new GalaxyMap('galaxyMap', 2000, 2000);
+      window.galaxyMap = map;
+
+      <% if (user && user.userRole === 'tester') { %>
+      // Initialize tester toolbar
+      const userData = <%- JSON.stringify(user) %>;
+      const testerToolbar = new TesterToolbar(userData, null);
+
+      // Update location in tester toolbar
+      const updateLocation = () => {
+        const locElement = document.getElementById('quick-location');
+        if (locElement) {
+          locElement.textContent = galaxyData.title || 'Galaxy Map';
+        }
+      };
+      updateLocation();
+
+      // FPS counter
+      let lastTime = performance.now();
+      let frames = 0;
+      const updateFPS = () => {
+        frames++;
+        const now = performance.now();
+        if (now >= lastTime + 1000) {
+          const fps = Math.round((frames * 1000) / (now - lastTime));
+          const fpsElement = document.getElementById('quick-fps');
+          if (fpsElement) {
+            fpsElement.textContent = fps;
+          }
+          frames = 0;
+          lastTime = now;
+        }
+        requestAnimationFrame(updateFPS);
+      };
+      updateFPS();
+      <% } %>
+
+
+      // Load stars
+      if (starsData && starsData.length > 0) {
+        map.loadStars(starsData);
+        console.log('✅ Loaded', starsData.length, 'stars');
+      } else {
+        console.log('⚠️ No stars found in this galaxy');
+
+        // Show message
+        const info = document.getElementById('assetInfo');
+        const infoPane = document.getElementById('infoPane');
+        infoPane.classList.add('visible');
+        info.innerHTML = `
+          <div class="zone-detail">
+            <div class="asset-header">
+              <div class="asset-icon-large">🌌</div>
+              <div class="asset-title-section">
+                <h2 class="asset-title">${galaxyData.title}</h2>
+              </div>
+            </div>
+            <div class="info-section">
+              <p class="asset-description">This galaxy has no stars yet. Create star systems to populate this galaxy!</p>
+            </div>
+            <div class="travel-action-bar">
+              <button class="travel-btn" onclick="window.location.href='/universe/galactic-map'">
+                <span class="travel-icon">⬅️</span>
+                <span class="travel-text">Back to Galactic Map</span>
+              </button>
+            </div>
+          </div>
+        `;
+      }
+    });
+  </script>
+
+  <style>
+    /* Galaxy Map Canvas */
+    #galaxyMap {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+
+    #galaxyMap:active {
+      cursor: grabbing;
+    }
+
+    .map-canvas-wrapper {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      height: calc(100vh - 60px);
+    }
+
+    /* Breadcrumb Navigation */
+    .breadcrumb-nav {
+      position: absolute;
+      top: 80px;
+      left: 20px;
+      z-index: 100;
+      background: rgba(20, 20, 40, 0.9);
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: 2px solid rgba(138, 79, 255, 0.3);
+      font-family: 'Orbitron', monospace;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+      .breadcrumb-nav {
+        top: 70px;
+        left: 10px;
+        right: 10px;
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        flex-wrap: wrap;
+      }
+
+      .map-canvas-wrapper {
+        height: calc(100vh - 60px);
+      }
+
+      .side-panel {
+        width: calc(100% - 20px);
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        max-height: 40vh;
+      }
+
+      .map-controls {
+        top: auto;
+        bottom: 10px;
+        right: 10px;
+      }
+    }
+
+    .breadcrumb-link {
+      color: #8a4fff;
+      text-decoration: none;
+      transition: all 0.3s;
+    }
+
+    .breadcrumb-link:hover {
+      color: #4a9eff;
+      text-shadow: 0 0 10px rgba(138, 79, 255, 0.5);
+    }
+
+    .breadcrumb-separator {
+      color: #666;
+    }
+
+    .breadcrumb-current {
+      color: #fff;
+      font-weight: bold;
+    }
+
+    .explore-btn {
+      background: linear-gradient(135deg, #8a4fff 0%, #4a9eff 100%);
+    }
+
+    .explore-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(138, 79, 255, 0.5);
+    }
+  </style>
+</body>
+</html>

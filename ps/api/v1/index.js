@@ -4,6 +4,8 @@ import zonesRouter from './zones/index.js';
 import universeRouter from './universe/index.js';
 import assetsRouter from './assets/index.js';
 import ticketsRouter from './tickets/index.js';
+import planetGenerationRouter from './routes/planet-generation.js';
+import inventoryRouter from './inventory/index.js';
 
 const router = express.Router();
 
@@ -16,7 +18,8 @@ router.get('/', (req, res) => {
       zones: '/api/v1/zones',
       universe: '/api/v1/universe',
       assets: '/api/v1/assets',
-      tickets: '/api/v1/tickets'
+      tickets: '/api/v1/tickets',
+      planetGeneration: '/api/v1/planet-generation'
     }
   });
 });
@@ -27,5 +30,7 @@ router.use('/zones', zonesRouter);
 router.use('/universe', universeRouter);
 router.use('/assets', assetsRouter);
 router.use('/tickets', ticketsRouter);
+router.use('/planet-generation', planetGenerationRouter);
+router.use('/', inventoryRouter); // Inventory routes handle their own /characters/:id/inventory paths
 
 export default router;

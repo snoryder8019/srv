@@ -1,5 +1,6 @@
 import express from 'express';
 import { getDb } from '../../../plugins/mongo/mongo.js';
+import Asset from '../models/Asset.js';
 
 const router = express.Router();
 
@@ -80,6 +81,133 @@ router.get('/events', async (req, res) => {
   } catch (err) {
     console.error('Error fetching events:', err);
     res.status(500).json({ error: 'Failed to fetch events' });
+  }
+});
+
+// ============ HIERARCHY NAVIGATION ENDPOINTS ============
+
+// Get all galaxies
+router.get('/galaxies', async (req, res) => {
+  try {
+    const galaxies = await Asset.getGalaxies();
+
+    // Enrich with star counts
+    const enrichedGalaxies = await Promise.all(
+      galaxies.map(async (galaxy) => {
+        const starCount = await Asset.getChildrenCount(galaxy._id, 'galaxy');
+        return {
+          ...galaxy,
+          starCount
+        };
+      })
+    );
+
+    res.json({ galaxies: enrichedGalaxies });
+  } catch (err) {
+    console.error('Error fetching galaxies:', err);
+    res.status(500).json({ error: 'Failed to fetch galaxies' });
+  }
+});
+
+// Get specific galaxy details
+router.get('/galaxies/:id', async (req, res) => {
+  try {
+    const galaxy = await Asset.findById(req.params.id);
+
+    if (!galaxy) {
+      return res.status(404).json({ error: 'Galaxy not found' });
+    }
+
+    if (galaxy.assetType !== 'galaxy') {
+      return res.status(400).json({ error: 'Asset is not a galaxy' });
+    }
+
+    const starCount = await Asset.getChildrenCount(galaxy._id, 'galaxy');
+
+    res.json({
+      galaxy: {
+        ...galaxy,
+        starCount
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching galaxy:', err);
+    res.status(500).json({ error: 'Failed to fetch galaxy' });
+  }
+});
+
+// Get all stars in a galaxy
+router.get('/galaxies/:id/stars', async (req, res) => {
+  try {
+    const stars = await Asset.getStarsInGalaxy(req.params.id);
+
+    // Enrich with planet counts
+    const enrichedStars = await Promise.all(
+      stars.map(async (star) => {
+        const planetCount = await Asset.getChildrenCount(star._id, 'star');
+        return {
+          ...star,
+          planetCount
+        };
+      })
+    );
+
+    res.json({ success: true, stars: enrichedStars });
+  } catch (err) {
+    console.error('Error fetching stars:', err);
+    res.status(500).json({ error: 'Failed to fetch stars' });
+  }
+});
+
+// Get specific star system details
+router.get('/stars/:id', async (req, res) => {
+  try {
+    const star = await Asset.findById(req.params.id);
+
+    if (!star) {
+      return res.status(404).json({ error: 'Star not found' });
+    }
+
+    if (star.assetType !== 'star') {
+      return res.status(400).json({ error: 'Asset is not a star' });
+    }
+
+    const planetCount = await Asset.getChildrenCount(star._id, 'star');
+    const hierarchyPath = await Asset.getHierarchyPath(star._id);
+
+    res.json({
+      star: {
+        ...star,
+        planetCount
+      },
+      hierarchy: hierarchyPath
+    });
+  } catch (err) {
+    console.error('Error fetching star:', err);
+    res.status(500).json({ error: 'Failed to fetch star' });
+  }
+});
+
+// Get all planetary bodies in a star system
+router.get('/stars/:id/bodies', async (req, res) => {
+  try {
+    const bodies = await Asset.getBodiesInStarSystem(req.params.id);
+
+    res.json({ bodies });
+  } catch (err) {
+    console.error('Error fetching planetary bodies:', err);
+    res.status(500).json({ error: 'Failed to fetch planetary bodies' });
+  }
+});
+
+// Get hierarchy path for any asset
+router.get('/assets/:id/hierarchy', async (req, res) => {
+  try {
+    const path = await Asset.getHierarchyPath(req.params.id);
+    res.json({ hierarchy: path });
+  } catch (err) {
+    console.error('Error fetching hierarchy:', err);
+    res.status(500).json({ error: 'Failed to fetch hierarchy path' });
   }
 });
 

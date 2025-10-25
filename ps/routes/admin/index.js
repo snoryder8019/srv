@@ -3,6 +3,7 @@ import { Asset } from '../../api/v1/models/Asset.js';
 import { UserAnalytics } from '../../api/v1/models/UserAnalytics.js';
 import os from 'os';
 import axios from 'axios';
+import scriptsRouter from './scripts.js';
 
 const router = express.Router();
 
@@ -672,6 +673,17 @@ router.get('/api/monitor/status', async function(req, res) {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Mount scripts router
+router.use('/scripts', scriptsRouter);
+
+// Script control panel page
+router.get('/control-panel', isAdmin, function(req, res, next) {
+  res.render('admin/control-panel', {
+    title: 'Script Control Panel',
+    user: req.user
+  });
 });
 
 export default router;

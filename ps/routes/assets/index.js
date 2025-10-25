@@ -4,6 +4,7 @@
  */
 import express from 'express';
 import { isAuthenticated } from '../../utilities/helpers.js';
+import { getDb } from '../../plugins/mongo/mongo.js';
 
 const router = express.Router();
 
@@ -11,11 +12,37 @@ const router = express.Router();
  * GET /assets
  * Asset builder page (authenticated users only)
  */
-router.get('/', isAuthenticated, (req, res) => {
-  res.render('assets/builder-enhanced', {
-    title: 'Asset Builder',
-    user: req.user
-  });
+router.get('/', isAuthenticated, async (req, res) => {
+  try {
+    const db = getDb();
+
+    // Fetch all galaxies (both published and unpublished for linking)
+    const galaxies = await db.collection('assets')
+      .find({ assetType: 'galaxy' })
+      .sort({ title: 1 })
+      .toArray();
+
+    // Fetch all stars (both published and unpublished for linking)
+    const stars = await db.collection('assets')
+      .find({ assetType: 'star' })
+      .sort({ title: 1 })
+      .toArray();
+
+    res.render('assets/builder-enhanced', {
+      title: 'Asset Builder',
+      user: req.user,
+      galaxies: galaxies || [],
+      stars: stars || []
+    });
+  } catch (error) {
+    console.error('Error loading asset builder:', error);
+    res.render('assets/builder-enhanced', {
+      title: 'Asset Builder',
+      user: req.user,
+      galaxies: [],
+      stars: []
+    });
+  }
 });
 
 /**

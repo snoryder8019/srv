@@ -99,6 +99,109 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Check character sync with game state service
+// IMPORTANT: This must come BEFORE /:id route to avoid matching /check as an ID
+router.get('/check', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const db = getDb();
+
+    // Get user's characters
+    const characters = await db.collection('characters')
+      .find({ userId: req.user._id.toString() })
+      .toArray();
+
+    // Check game state service status
+    let gameStateStatus = 'disconnected';
+    let gameStateCharacters = [];
+
+    try {
+      // Check if game state service is reachable
+      const healthResponse = await fetch(`${GAME_STATE_URL}/health`, {
+        timeout: 2000
+      });
+
+      if (healthResponse.ok) {
+        gameStateStatus = 'connected';
+
+        // Try to get characters from game state
+        try {
+          const charsResponse = await fetch(`${GAME_STATE_URL}/api/characters`, {
+            timeout: 2000
+          });
+
+          if (charsResponse.ok) {
+            const allChars = await charsResponse.json();
+            // Filter to current user's characters
+            gameStateCharacters = allChars.filter(c => c.userId === req.user._id.toString());
+          }
+        } catch (err) {
+          console.log('Could not fetch characters from game state:', err.message);
+          // Service is connected but characters endpoint may not exist yet
+        }
+      } else {
+        gameStateStatus = 'error';
+      }
+    } catch (error) {
+      console.error('Game state service unreachable:', error.message);
+      gameStateStatus = 'unreachable';
+    }
+
+    // Compare and identify sync issues
+    const localCharacterIds = characters.map(c => c._id.toString());
+    const gameStateCharacterIds = gameStateCharacters.map(c => c._id ? c._id.toString() : c._id);
+
+    const missingInGameState = localCharacterIds.filter(id => !gameStateCharacterIds.includes(id));
+    const extraInGameState = gameStateCharacterIds.filter(id => !localCharacterIds.includes(id));
+
+    const syncStatus = {
+      local: {
+        count: characters.length,
+        characters: characters.map(c => ({
+          _id: c._id,
+          name: c.name,
+          level: c.level,
+          activeInShip: c.activeInShip || false
+        }))
+      },
+      gameState: {
+        status: gameStateStatus,
+        count: gameStateCharacters.length,
+        characters: gameStateCharacters.map(c => ({
+          _id: c._id,
+          name: c.name,
+          level: c.level || 1
+        }))
+      },
+      sync: {
+        inSync: missingInGameState.length === 0 && extraInGameState.length === 0,
+        missingInGameState: missingInGameState.length,
+        extraInGameState: extraInGameState.length,
+        issues: [
+          ...missingInGameState.map(id => ({
+            type: 'missing_in_game_state',
+            characterId: id,
+            message: 'Character exists locally but not in game state service'
+          })),
+          ...extraInGameState.map(id => ({
+            type: 'extra_in_game_state',
+            characterId: id,
+            message: 'Character exists in game state but not locally'
+          }))
+        ]
+      }
+    };
+
+    res.json(syncStatus);
+  } catch (err) {
+    console.error('Error checking character sync:', err);
+    res.status(500).json({ error: 'Failed to check sync status' });
+  }
+});
+
 // Get single character
 router.get('/:id', async (req, res) => {
   try {
@@ -898,7 +1001,7 @@ router.post('/:id/set-active', async (req, res) => {
       sameSite: 'lax'
     });
 
-    res.json({ 
+    res.json({
       success: true,
       message: 'Active character set',
       character: {

@@ -453,15 +453,35 @@ class GalacticMap {
    */
   async loadPublishedAssets() {
     try {
-      const response = await fetch('/api/v1/assets/approved/list');
-      if (!response.ok) return;
+      // Update status indicator
+      if (window.updateMapStatus) {
+        window.updateMapStatus('loading', 'Loading asset positions...');
+      }
+
+      const response = await fetch('/api/v1/assets/approved/list?limit=1000');
+      if (!response.ok) {
+        if (window.updateMapStatus) {
+          window.updateMapStatus('error', 'Failed to load assets');
+        }
+        return;
+      }
 
       const data = await response.json();
       if (data.success && data.assets) {
         await this.updatePublishedAssets(data.assets);
+
+        // Count how many assets loaded from DB coordinates
+        const dbCoordsCount = data.assets.filter(a => a.coordinates && (a.coordinates.x !== 0 || a.coordinates.y !== 0)).length;
+
+        if (window.updateMapStatus) {
+          window.updateMapStatus('loaded', `${data.assets.length} assets loaded (${dbCoordsCount} from DB)`);
+        }
       }
     } catch (error) {
       console.error('Error loading published assets:', error);
+      if (window.updateMapStatus) {
+        window.updateMapStatus('error', 'Connection error');
+      }
     }
   }
 
@@ -642,12 +662,12 @@ class GalacticMap {
   }
 
   /**
-   * Update published assets display - only galaxy, orbital, anomaly
+   * Update published assets display - galaxy, star, orbital, anomaly
    * PERPETUAL: Maintains existing positions, only adds new assets
    */
   async updatePublishedAssets(assets, forceRandomize = false) {
-    // Filter to only show galaxy, orbital, and anomaly types
-    const validTypes = ['galaxy', 'orbital', 'anomaly'];
+    // Filter to only show galaxy, star, orbital, and anomaly types
+    const validTypes = ['galaxy', 'star', 'orbital', 'anomaly'];
     const filteredAssets = assets.filter(asset =>
       validTypes.includes(asset.assetType)
     );
@@ -714,7 +734,7 @@ class GalacticMap {
             assetRadius = 50; // Larger for hubs
             isStationary = true;
           } else if (asset.initialPosition) {
-            // Asset with predefined position from database
+            // Asset with predefined position from database (legacy field)
             x = asset.initialPosition.x;
             y = asset.initialPosition.y;
 
@@ -732,6 +752,18 @@ class GalacticMap {
               vy = Math.sin(velocityAngle) * velocityMagnitude;
             }
 
+            assetRadius = 8 + (asset.votes || 0) * 0.15;
+          } else if (asset.coordinates && (asset.coordinates.x !== 0 || asset.coordinates.y !== 0)) {
+            // Asset with coordinates from database (standard field)
+            x = asset.coordinates.x;
+            y = asset.coordinates.y;
+
+            // Galaxies and stars are STATIONARY - they should NOT drift
+            // Only anomalies/orbitals with special properties should move
+            isStationary = true;
+
+            vx = 0;
+            vy = 0;
             assetRadius = 8 + (asset.votes || 0) * 0.15;
           } else {
             // Regular asset - generate fully random position across entire map
@@ -1536,9 +1568,9 @@ class GalacticMap {
   /**
    * Start travel animation along a path
    */
-  startTravelAnimation(path, finalX, finalY, finalZone) {
-    if (path.length < 2) {
-      console.warn('Travel path too short');
+  startTravelAnimation(path, finalX, finalY, finalZone, finalAssetId) {
+    if (path.length < 1) {
+      console.warn('Travel path too short - no waypoints');
       return;
     }
 
@@ -1562,10 +1594,11 @@ class GalacticMap {
     this.travelFinalDestination = {
       x: finalX,
       y: finalY,
-      zone: finalZone
+      zone: finalZone,
+      assetId: finalAssetId
     };
 
-    console.log(`🚀 Starting travel: ${path.length} waypoints`);
+    console.log(`🚀 Starting travel: ${path.length} waypoints to asset ${finalAssetId}`);
   }
 
   /**
@@ -1619,8 +1652,9 @@ class GalacticMap {
     this.currentCharacter.location.x = this.travelFinalDestination.x;
     this.currentCharacter.location.y = this.travelFinalDestination.y;
     this.currentCharacter.location.zone = this.travelFinalDestination.zone;
+    this.currentCharacter.location.assetId = this.travelFinalDestination.assetId;
 
-    console.log(`✅ Travel complete: ${this.travelFinalDestination.zone}`);
+    console.log(`✅ Travel complete: ${this.travelFinalDestination.zone} (assetId: ${this.travelFinalDestination.assetId})`);
 
     // Update server using the dedicated location endpoint
     try {
@@ -1792,7 +1826,7 @@ class GalacticMap {
 
     // Force reload assets with randomization
     try {
-      const response = await fetch('/api/v1/assets/approved/list');
+      const response = await fetch('/api/v1/assets/approved/list?limit=1000');
       if (!response.ok) return;
 
       const data = await response.json();
@@ -1802,6 +1836,36 @@ class GalacticMap {
       }
     } catch (error) {
       console.error('Error randomizing positions:', error);
+    }
+  }
+
+  /**
+   * Save current character position to database
+   */
+  async saveCharacterPosition() {
+    if (!this.currentCharacter || !this.currentCharacter._id || !this.currentCharacter.location) {
+      return;
+    }
+
+    try {
+      await fetch(`/api/v1/characters/${this.currentCharacter._id}/location`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          x: this.currentCharacter.location.x,
+          y: this.currentCharacter.location.y,
+          type: this.currentCharacter.location.type || 'galactic',
+          zone: this.currentCharacter.location.zone,
+          assetId: this.currentCharacter.location.assetId
+        })
+      });
+      console.log('✅ Character position autosaved:', {
+        x: Math.round(this.currentCharacter.location.x),
+        y: Math.round(this.currentCharacter.location.y)
+      });
+    } catch (error) {
+      console.error('Failed to autosave character position:', error);
     }
   }
 
@@ -1819,6 +1883,8 @@ class GalacticMap {
     setInterval(() => this.loadPublishedAssets(), 30000);
     // Refresh settings every 5 seconds
     setInterval(() => this.loadSettings(), 5000);
+    // Autosave character position every 10 seconds
+    setInterval(() => this.saveCharacterPosition(), 10000);
   }
 }
 

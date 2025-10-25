@@ -1,0 +1,1676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/tester-toolbar.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #star-system-container {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* Breadcrumb Navigation */
+    .breadcrumb-nav {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+      background: rgba(20, 20, 40, 0.9);
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: 2px solid rgba(138, 79, 255, 0.3);
+      font-family: 'Orbitron', monospace;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .breadcrumb-link {
+      color: #8a4fff;
+      text-decoration: none;
+      transition: all 0.3s;
+    }
+
+    .breadcrumb-link:hover {
+      color: #4a9eff;
+      text-shadow: 0 0 10px rgba(138, 79, 255, 0.5);
+    }
+
+    .breadcrumb-separator {
+      color: #666;
+    }
+
+    .breadcrumb-current {
+      color: #fff;
+      font-weight: bold;
+    }
+
+    /* Info Panel - Super Thin Green Text Profile */
+    .info-panel {
+      position: absolute;
+      top: 100px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.15);
+      backdrop-filter: blur(2px);
+      border: none;
+      border-radius: 0;
+      padding: 3px 6px;
+      font-family: 'Courier New', monospace;
+      color: #00ff88;
+      z-index: 100;
+      font-size: 0.55em;
+      line-height: 1.2;
+      font-weight: 300;
+    }
+
+    .info-panel h2 {
+      margin: 0 0 2px 0;
+      color: #00ff88;
+      font-size: 0.9em;
+      font-weight: 300;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Controls */
+    .controls-panel {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(20, 20, 40, 0.95);
+      border: 2px solid rgba(138, 79, 255, 0.3);
+      border-radius: 12px;
+      padding: 15px 25px;
+      font-family: 'Segoe UI', sans-serif;
+      color: #b0b0c0;
+      z-index: 100;
+      text-align: center;
+      font-size: 0.9em;
+    }
+
+    .controls-panel strong {
+      color: #8a4fff;
+    }
+
+    /* Loading indicator */
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #8a4fff;
+      font-size: 1.5em;
+      font-family: 'Orbitron', monospace;
+      z-index: 50;
+    }
+
+    /* Mobile Responsive Styles */
+    @media (max-width: 768px) {
+      /* Info Panel - Compact mobile view */
+      .info-panel {
+        top: 60px;
+        right: 10px;
+        left: auto;
+        max-width: calc(100vw - 20px);
+        font-size: 0.6em;
+        padding: 6px 8px;
+      }
+
+      .info-panel h2 {
+        font-size: 0.75em;
+        margin-bottom: 2px;
+      }
+
+      /* HUD Panel - Stack vertically on mobile */
+      #hudPanel {
+        bottom: 10px !important;
+        left: 10px !important;
+        right: 10px !important;
+        max-width: calc(100vw - 20px);
+      }
+
+      /* HUD Grid - Single column on mobile */
+      #hudPanel > div {
+        grid-template-columns: 1fr !important;
+        gap: 8px !important;
+      }
+
+      /* HUD Modules - Smaller on mobile */
+      #hudPanel > div > div {
+        padding: 8px 10px !important;
+        font-size: 0.85em !important;
+      }
+
+      /* Controls Panel - Compact */
+      .controls-panel {
+        bottom: 10px;
+        left: 10px;
+        right: 10px;
+        transform: none;
+        padding: 10px 15px;
+        font-size: 0.75em;
+      }
+
+      /* Planetary Explorer Button - Smaller on mobile */
+      #explorerButton button {
+        padding: 15px 25px !important;
+        font-size: 0.9em !important;
+      }
+
+      /* Planet Interface Panel - Fit screen */
+      #planetInterface {
+        min-width: auto !important;
+        max-width: calc(100vw - 40px) !important;
+        padding: 16px 20px !important;
+        font-size: 0.85em !important;
+      }
+
+      /* Breadcrumb - Smaller text */
+      .breadcrumb-nav {
+        font-size: 0.75em;
+        padding: 8px 10px;
+        top: 60px !important;
+      }
+
+      /* Back button - Compact on mobile */
+      div[style*="top: 20px; left: 20px"] a {
+        font-size: 0.75em !important;
+        padding: 8px 12px !important;
+      }
+    }
+
+    @media (max-width: 480px) {
+      /* Extra small phones - even more compact */
+      .info-panel {
+        font-size: 0.55em;
+        padding: 4px 6px;
+      }
+
+      #hudPanel {
+        font-size: 0.75em;
+      }
+
+      #hudPanel > div > div {
+        padding: 6px 8px !important;
+      }
+
+      #explorerButton button {
+        padding: 12px 20px !important;
+        font-size: 0.8em !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <!-- Back Button -->
+  <div style="position: absolute; top: 20px; left: 20px; z-index: 101;">
+    <a href="/universe/galactic-map" style="
+      display: inline-block;
+      background: rgba(20, 20, 40, 0.95);
+      border: 2px solid rgba(138, 79, 255, 0.4);
+      border-radius: 8px;
+      padding: 10px 18px;
+      color: #8a4fff;
+      text-decoration: none;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.9em;
+      font-weight: bold;
+      transition: all 0.3s;
+      cursor: pointer;
+    " onmouseover="this.style.borderColor='rgba(138, 79, 255, 0.8)'; this.style.boxShadow='0 0 15px rgba(138, 79, 255, 0.5)'" onmouseout="this.style.borderColor='rgba(138, 79, 255, 0.4)'; this.style.boxShadow='none'">
+      ← BACK TO GALAXY MAP
+    </a>
+  </div>
+
+  <!-- Breadcrumb -->
+  <div class="breadcrumb-nav" style="top: 70px;">
+    <a href="/universe/galactic-map" class="breadcrumb-link">🌌 Galactic Map</a>
+    <span class="breadcrumb-separator">→</span>
+    <a href="#" id="galaxyLink" class="breadcrumb-link">Galaxy</a>
+    <span class="breadcrumb-separator">→</span>
+    <span class="breadcrumb-current" id="starName">Loading...</span>
+  </div>
+
+  <!-- Info Panel -->
+  <div class="info-panel" id="infoPanel">
+    <h2 id="starTitle">Star System</h2>
+    <div id="starInfo"></div>
+  </div>
+
+  <!-- Planetary Explorer Button (hidden by default) -->
+  <div id="explorerButton" style="display: none; position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); z-index: 150;">
+    <button onclick="enterPlanetaryExplorer()" style="
+      background: linear-gradient(135deg, rgba(138, 79, 255, 0.9), rgba(74, 158, 255, 0.9));
+      border: 3px solid rgba(0, 255, 136, 0.8);
+      color: #fff;
+      padding: 20px 40px;
+      border-radius: 10px;
+      font-family: 'Orbitron', monospace;
+      font-size: 1.2em;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 0 30px rgba(138, 79, 255, 0.8), inset 0 0 20px rgba(255, 255, 255, 0.1);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      animation: pulse 2s infinite;
+      transition: all 0.3s;
+    " onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+      🌍 ENTER PLANETARY EXPLORER
+    </button>
+  </div>
+
+  <!-- Modular HUD Control Panel -->
+  <div id="hudPanel" style="position: absolute; bottom: 20px; left: 20px; font-family: 'Orbitron', monospace; z-index: 100; font-size: 0.75em;">
+    <!-- Main Control Grid -->
+    <div style="display: grid; grid-template-columns: auto auto; gap: 6px;">
+
+      <!-- SHIP SYSTEMS MODULE -->
+      <div style="background: rgba(5, 10, 20, 0.7); backdrop-filter: blur(3px); border: 1px solid rgba(138, 79, 255, 0.3); border-radius: 3px; padding: 4px 6px;">
+        <div style="color: #8a4fff; font-size: 0.6em; font-weight: bold; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(138, 79, 255, 0.2); padding-bottom: 2px;">
+          ▸ SHIP
+        </div>
+
+        <!-- Shields -->
+        <div style="margin-bottom: 3px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 1px;">
+            <span style="color: #00d4ff; font-size: 0.55em;">SHD</span>
+            <span id="shieldsValue" style="color: #00d4ff; font-size: 0.55em; font-weight: bold;">100</span>
+          </div>
+          <div style="width: 100%; height: 3px; background: rgba(0, 0, 0, 0.5); border-radius: 2px; overflow: hidden;">
+            <div id="shieldsBar" style="width: 100%; height: 100%; background: #00d4ff; transition: width 0.3s;"></div>
+          </div>
+        </div>
+
+        <!-- Armor -->
+        <div style="margin-bottom: 3px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 1px;">
+            <span style="color: #ffa500; font-size: 0.55em;">ARM</span>
+            <span id="armorValue" style="color: #ffa500; font-size: 0.55em; font-weight: bold;">100</span>
+          </div>
+          <div style="width: 100%; height: 3px; background: rgba(0, 0, 0, 0.5); border-radius: 2px; overflow: hidden;">
+            <div id="armorBar" style="width: 100%; height: 100%; background: #ffa500; transition: width 0.3s;"></div>
+          </div>
+        </div>
+
+        <!-- Hull -->
+        <div style="margin-bottom: 0;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 1px;">
+            <span style="color: #ff4444; font-size: 0.55em;">HUL</span>
+            <span id="hullValue" style="color: #ff4444; font-size: 0.55em; font-weight: bold;">100</span>
+          </div>
+          <div style="width: 100%; height: 3px; background: rgba(0, 0, 0, 0.5); border-radius: 2px; overflow: hidden;">
+            <div id="hullBar" style="width: 100%; height: 100%; background: #ff4444; transition: width 0.3s;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NAVIGATION MODULE -->
+      <div style="background: rgba(5, 10, 20, 0.7); backdrop-filter: blur(3px); border: 1px solid rgba(74, 158, 255, 0.3); border-radius: 3px; padding: 4px 6px;">
+        <div style="color: #4a9eff; font-size: 0.6em; font-weight: bold; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(74, 158, 255, 0.2); padding-bottom: 2px;">
+          ▸ NAV
+        </div>
+
+        <!-- Speed -->
+        <div style="margin-bottom: 3px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 1px;">
+            <span style="color: #00ffff; font-size: 0.55em;">VEL</span>
+            <span id="speedDisplay" style="color: #00ffff; font-size: 0.55em; font-weight: bold;">0.10x</span>
+          </div>
+          <div style="width: 100%; height: 3px; background: rgba(0, 0, 0, 0.5); border-radius: 2px; overflow: hidden;">
+            <div id="velocityBar" style="width: 20%; height: 100%; background: #00ffff; transition: width 0.3s;"></div>
+          </div>
+        </div>
+
+        <!-- Thrust -->
+        <div style="margin-bottom: 3px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 1px;">
+            <span style="color: #8a4fff; font-size: 0.55em;">THR</span>
+            <span id="thrustValue" style="color: #8a4fff; font-size: 0.55em; font-weight: bold;">20%</span>
+          </div>
+          <div style="width: 100%; height: 3px; background: rgba(0, 0, 0, 0.5); border-radius: 2px; overflow: hidden;">
+            <div id="thrustBar" style="width: 20%; height: 100%; background: #8a4fff; transition: width 0.3s;"></div>
+          </div>
+        </div>
+
+        <!-- Status Indicator -->
+        <div style="display: flex; align-items: center; gap: 4px; margin-top: 3px; padding-top: 2px; border-top: 1px solid rgba(74, 158, 255, 0.2);">
+          <div id="navStatusDot" style="width: 4px; height: 4px; border-radius: 50%; background: #00ff00; box-shadow: 0 0 4px #00ff00;"></div>
+          <span id="navStatus" style="color: #00ff00; font-size: 0.5em;">READY</span>
+        </div>
+      </div>
+
+      <!-- STATS MODULE -->
+      <div style="background: rgba(5, 10, 20, 0.7); backdrop-filter: blur(3px); border: 1px solid rgba(0, 255, 136, 0.3); border-radius: 3px; padding: 4px 6px;">
+        <div style="color: #00ff88; font-size: 0.6em; font-weight: bold; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(0, 255, 136, 0.2); padding-bottom: 2px;">
+          ▸ SYS
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; font-size: 0.5em;">
+          <div>
+            <div style="color: #00ff88;">POS</div>
+            <div id="shipPosX" style="color: #00ff88; font-weight: bold;">X: 0</div>
+            <div id="shipPosZ" style="color: #00ff88; font-weight: bold;">Z: 0</div>
+          </div>
+          <div>
+            <div style="color: #00ff88;">TGT</div>
+            <div id="targetInfo" style="color: #00ff88; font-weight: bold;">NONE</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONTROLS MODULE -->
+      <div style="background: rgba(5, 10, 20, 0.7); backdrop-filter: blur(3px); border: 1px solid rgba(0, 255, 136, 0.3); border-radius: 3px; padding: 4px 6px;">
+        <div style="color: #00ff88; font-size: 0.6em; font-weight: bold; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(0, 255, 136, 0.2); padding-bottom: 2px;">
+          ▸ CTL
+        </div>
+
+        <div style="font-size: 0.5em; line-height: 1.4; color: #aaa;">
+          <div><span style="color: #00ffff;">W/S</span> SPD <span style="color: #00ffff;">CLK</span> TGT</div>
+          <div><span style="color: #00ffff;">DRG</span> ROT <span style="color: #00ffff;">SPC</span> STP</div>
+          <div><span style="color: #00ffff;">SFT</span> HYP 8x</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Planet Interface Panel (Hidden by default) -->
+  <div id="planetInterface" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: linear-gradient(135deg, rgba(5, 10, 20, 0.98), rgba(15, 20, 35, 0.98)); backdrop-filter: blur(15px); border: 2px solid rgba(138, 79, 255, 0.6); border-radius: 12px; padding: 24px 28px; font-family: 'Orbitron', monospace; z-index: 200; min-width: 400px; box-shadow: 0 0 40px rgba(138, 79, 255, 0.4), inset 0 0 30px rgba(138, 79, 255, 0.1);">
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid rgba(138, 79, 255, 0.4); padding-bottom: 12px;">
+      <div style="color: #8a4fff; font-size: 1.1em; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">
+        🌍 <span id="planetInterfaceTitle">PLANET</span>
+      </div>
+      <button onclick="closePlanetInterface()" style="background: rgba(255, 68, 68, 0.2); border: 1px solid rgba(255, 68, 68, 0.5); color: #ff4444; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-family: 'Orbitron', monospace; font-size: 0.7em; font-weight: bold;">
+        ✕ CLOSE
+      </button>
+    </div>
+
+    <!-- Planet Info Grid -->
+    <div id="planetInterfaceInfo" style="margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.75em;">
+      <!-- Will be populated dynamically -->
+    </div>
+
+    <!-- Action Buttons -->
+    <div style="display: flex; gap: 10px; margin-top: 20px;">
+      <button id="orbitButton" onclick="orbitSelectedPlanet()" style="flex: 1; background: linear-gradient(135deg, rgba(138, 79, 255, 0.3), rgba(74, 158, 255, 0.3)); border: 1px solid rgba(138, 79, 255, 0.6); color: #8a4fff; padding: 12px; border-radius: 6px; cursor: pointer; font-family: 'Orbitron', monospace; font-size: 0.75em; font-weight: bold; transition: all 0.3s;">
+        🛸 ENTER ORBIT
+      </button>
+      <button onclick="setTrajectoryToPlanet()" style="flex: 1; background: linear-gradient(135deg, rgba(0, 212, 255, 0.3), rgba(0, 255, 136, 0.3)); border: 1px solid rgba(0, 212, 255, 0.6); color: #00d4ff; padding: 12px; border-radius: 6px; cursor: pointer; font-family: 'Orbitron', monospace; font-size: 0.75em; font-weight: bold; transition: all 0.3s;">
+        ➜ SET COURSE
+      </button>
+    </div>
+  </div>
+
+  <style>
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    @keyframes hyperFlash {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    #hudPanel button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 15px rgba(138, 79, 255, 0.6);
+    }
+
+    #planetInterface button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(138, 79, 255, 0.5);
+    }
+  </style>
+
+  <!-- Loading -->
+  <div class="loading" id="loading">Loading Star System...</div>
+
+  <!-- 3D Container -->
+  <div id="star-system-container"></div>
+
+  <script>
+    // Parse star data from server
+    const starData = <%- star %>;
+    const bodiesData = <%- bodies %>;
+    const hierarchyData = <%- hierarchy %>;
+
+    console.log('⭐ Star:', starData);
+    console.log('🪐 Bodies:', bodiesData);
+    console.log('📍 Hierarchy:', hierarchyData);
+
+    // Update breadcrumb
+    document.getElementById('starName').textContent = starData.title;
+    document.getElementById('starTitle').textContent = starData.title;
+
+    if (hierarchyData.galaxy) {
+      const galaxyLink = document.getElementById('galaxyLink');
+      galaxyLink.textContent = hierarchyData.galaxy.title;
+      galaxyLink.href = `/universe/galaxy/${hierarchyData.galaxy._id}`;
+    }
+
+    // Three.js Scene Setup
+    let scene, camera, renderer, controls;
+    let star, planets = [];
+    let selectedPlanet = null;
+    let ship = null;
+    let shipVelocity = new THREE.Vector3();
+    let shipTarget = null;
+    let isThirdPerson = true;
+    let shipSpeed = 0.1; // Base speed multiplier (starts at 0.1x)
+    let maxSpeed = 0.3; // Max speed capped at 0.3
+    let shipAcceleration = 0.3;
+    let turnSmoothing = 0.05; // Lower = smoother elliptical turns
+    let isOrbiting = false;
+    let orbitTarget = null;
+    let orbitRadius = 0;
+    let orbitAngle = 0;
+
+    // Ship status
+    let shipShields = 100;
+    let shipArmor = 100;
+    let shipHull = 100;
+
+    // Hyper jump state
+    let isHyperJumping = false;
+    let hyperJumpMultiplier = 8; // 8x speed boost
+    let normalShipSpeed = shipSpeed;
+
+    // Mouse drag state for camera rotation around ship
+    let isDragging = false;
+    let previousMousePosition = { x: 0, y: 0 };
+    let cameraAngle = { theta: 0, phi: Math.PI / 4 }; // Spherical coordinates
+    let cameraDistance = 50; // Closer default for smaller ship scale
+
+    // Touch/tap detection
+    let lastTapTime = 0;
+    let tapCount = 0;
+
+    function init() {
+      // Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      // Camera with larger far plane for 10x scale
+      camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        50000
+      );
+      camera.position.set(0, 500, 1000);
+      camera.lookAt(0, 0, 0);
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.getElementById('star-system-container').appendChild(renderer.domElement);
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+      scene.add(ambientLight);
+
+      const pointLight = new THREE.PointLight(0xffffff, 2, 20000);
+      pointLight.position.set(0, 0, 0);
+      scene.add(pointLight);
+
+      // Create the star
+      createStar();
+
+      // Create planets
+      if (bodiesData && bodiesData.length > 0) {
+        bodiesData.forEach(createPlanet);
+      }
+
+      // Create player ship
+      createShip();
+
+      // Add starfield background
+      createStarfield();
+
+      // Touch controls for trajectory and camera
+      setupTouchControls();
+
+      // Keyboard controls for speed
+      setupKeyboardControls();
+
+      // Initialize ship status display
+      updateShipStatus();
+
+      // Handle window resize
+      window.addEventListener('resize', onWindowResize);
+
+      // Hide loading
+      document.getElementById('loading').style.display = 'none';
+
+      // Start animation
+      animate();
+    }
+
+    function createStar() {
+      const starColor = getStarColor(starData.starType);
+      const starGeometry = new THREE.SphereGeometry(50, 32, 32);
+      const starMaterial = new THREE.MeshBasicMaterial({ color: starColor });
+      star = new THREE.Mesh(starGeometry, starMaterial);
+
+      // Add glow
+      const glowGeometry = new THREE.SphereGeometry(70, 32, 32);
+      const glowMaterial = new THREE.MeshBasicMaterial({
+        color: starColor,
+        transparent: true,
+        opacity: 0.3
+      });
+      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      star.add(glow);
+
+      scene.add(star);
+
+      // Update info panel
+      updateStarInfo();
+    }
+
+    function createPlanet(body, index) {
+      // Much larger orbital radii - multiply by 10x for better scale perception
+      const radius = body.orbital?.radius ? body.orbital.radius * 10 : (2000 + index * 1500);
+      const angle = body.orbital?.angle || (index * Math.PI * 2 / bodiesData.length);
+      const size = body.radius || (10 + Math.random() * 20);
+
+      // Planet mesh
+      const geometry = new THREE.SphereGeometry(size, 32, 32);
+      const material = new THREE.MeshStandardMaterial({
+        color: getPlanetColor(body.assetType),
+        roughness: 0.7,
+        metalness: 0.3
+      });
+      const planetMesh = new THREE.Mesh(geometry, material);
+
+      // Position on orbital path
+      planetMesh.position.x = Math.cos(angle) * radius;
+      planetMesh.position.z = Math.sin(angle) * radius;
+
+      // Store body data with astronomical creep speeds
+      // Real orbital speeds: closer planets orbit faster (Kepler's laws)
+      // Using extremely slow speeds for astronomical realism
+      const baseSpeed = 0.00001; // Very slow base speed
+      const speedMultiplier = 1 / Math.sqrt(radius); // Closer = faster (simplified Kepler)
+
+      planetMesh.userData = {
+        body: body,
+        orbitalRadius: radius,
+        orbitalAngle: angle,
+        orbitalSpeed: body.orbital?.speed ? body.orbital.speed * 0.0001 : baseSpeed * speedMultiplier
+      };
+
+      planets.push(planetMesh);
+      scene.add(planetMesh);
+
+      // Draw orbital path
+      drawOrbit(radius);
+    }
+
+    function drawOrbit(radius) {
+      const curve = new THREE.EllipseCurve(
+        0, 0,
+        radius, radius,
+        0, 2 * Math.PI,
+        false,
+        0
+      );
+
+      const points = curve.getPoints(100);
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({
+        color: 0x4a9eff,
+        transparent: true,
+        opacity: 0.3
+      });
+
+      const orbit = new THREE.Line(geometry, material);
+      orbit.rotation.x = Math.PI / 2;
+      scene.add(orbit);
+    }
+
+    function createShip() {
+      // Create a much smaller spaceship for better scale
+      const shipGeometry = new THREE.Group();
+      const shipScale = 0.15; // Much smaller ship (was 0.4)
+
+      // Main body (cockpit)
+      const bodyGeometry = new THREE.ConeGeometry(8 * shipScale, 25 * shipScale, 4);
+      const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x4a9eff,
+        metalness: 0.8,
+        roughness: 0.2,
+        emissive: 0x2266ff,
+        emissiveIntensity: 0.3
+      });
+      const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+      body.rotation.x = -Math.PI / 2; // Point forward
+      shipGeometry.add(body);
+
+      // Wings
+      const wingGeometry = new THREE.BoxGeometry(30 * shipScale, 1 * shipScale, 10 * shipScale);
+      const wingMaterial = new THREE.MeshStandardMaterial({
+        color: 0x667eea,
+        metalness: 0.6,
+        roughness: 0.3
+      });
+      const wings = new THREE.Mesh(wingGeometry, wingMaterial);
+      wings.position.z = -5 * shipScale;
+      shipGeometry.add(wings);
+
+      // Engine glow
+      const engineGeometry = new THREE.SphereGeometry(3 * shipScale, 16, 16);
+      const engineMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.8
+      });
+      const engineLeft = new THREE.Mesh(engineGeometry, engineMaterial);
+      engineLeft.position.set(-10 * shipScale, 0, -10 * shipScale);
+      shipGeometry.add(engineLeft);
+
+      const engineRight = engineLeft.clone();
+      engineRight.position.set(10 * shipScale, 0, -10 * shipScale);
+      shipGeometry.add(engineRight);
+
+      // Position ship farther out in larger orbit (10x scale)
+      ship = shipGeometry;
+      ship.position.set(3000, 0, 0);
+      ship.lookAt(0, 0, 0);
+      scene.add(ship);
+
+      // Setup third-person camera
+      updateThirdPersonCamera();
+    }
+
+    function setupTouchControls() {
+      // Double tap for trajectory
+      renderer.domElement.addEventListener('touchend', handleDoubleTap);
+      renderer.domElement.addEventListener('dblclick', handleDoubleClick);
+
+      // Mouse drag for camera rotation around ship
+      renderer.domElement.addEventListener('mousedown', handleMouseDown);
+      renderer.domElement.addEventListener('mousemove', handleMouseMove);
+      renderer.domElement.addEventListener('mouseup', handleMouseUp);
+      renderer.domElement.addEventListener('mouseleave', handleMouseUp);
+
+      // Mouse wheel for zoom
+      renderer.domElement.addEventListener('wheel', handleMouseWheel);
+
+      // Touch drag for camera rotation
+      renderer.domElement.addEventListener('touchstart', handleTouchStart);
+      renderer.domElement.addEventListener('touchmove', handleTouchDrag);
+    }
+
+    let clickStartTime = 0;
+    let clickStartPos = { x: 0, y: 0 };
+
+    function handleMouseDown(event) {
+      isDragging = true;
+      clickStartTime = Date.now();
+      clickStartPos = { x: event.clientX, y: event.clientY };
+      previousMousePosition = {
+        x: event.clientX,
+        y: event.clientY
+      };
+    }
+
+    function handleMouseMove(event) {
+      if (!isDragging) return;
+
+      const deltaX = event.clientX - previousMousePosition.x;
+      const deltaY = event.clientY - previousMousePosition.y;
+
+      // Update spherical camera angles
+      cameraAngle.theta -= deltaX * 0.005;
+      cameraAngle.phi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraAngle.phi + deltaY * 0.005));
+
+      previousMousePosition = {
+        x: event.clientX,
+        y: event.clientY
+      };
+    }
+
+    function handleMouseUp(event) {
+      const clickDuration = Date.now() - clickStartTime;
+      const dx = event.clientX - clickStartPos.x;
+      const dy = event.clientY - clickStartPos.y;
+      const dragDistance = Math.sqrt(dx * dx + dy * dy);
+
+      // If click was quick and didn't move much, check for planet selection
+      if (clickDuration < 300 && dragDistance < 10) {
+        checkPlanetClick(event.clientX, event.clientY);
+      }
+
+      isDragging = false;
+    }
+
+    function checkPlanetClick(clientX, clientY) {
+      const mouse = new THREE.Vector2();
+      mouse.x = (clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      // Increase threshold for easier clicking on planets
+      raycaster.params.Points = { threshold: 50 };
+      raycaster.params.Line = { threshold: 50 };
+
+      const intersects = raycaster.intersectObjects(planets);
+
+      if (intersects.length > 0) {
+        selectPlanet(intersects[0].object);
+        return;
+      }
+
+      // If no direct hit, try proximity detection
+      let closestPlanet = null;
+      let closestDistance = 100; // Max click distance in pixels
+
+      planets.forEach(planet => {
+        const planetPos = planet.position.clone();
+        planetPos.project(camera);
+
+        const screenX = (planetPos.x * 0.5 + 0.5) * window.innerWidth;
+        const screenY = (planetPos.y * -0.5 + 0.5) * window.innerHeight;
+
+        const distance = Math.sqrt(
+          Math.pow(screenX - clientX, 2) +
+          Math.pow(screenY - clientY, 2)
+        );
+
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestPlanet = planet;
+        }
+      });
+
+      if (closestPlanet) {
+        selectPlanet(closestPlanet);
+      }
+    }
+
+    function handleMouseWheel(event) {
+      event.preventDefault();
+      cameraDistance += event.deltaY * 0.8;
+      cameraDistance = Math.max(10, Math.min(3000, cameraDistance)); // Min 10 for tight zoom
+    }
+
+    let touchStartPos = { x: 0, y: 0 };
+    let isTouchDragging = false;
+
+    function handleTouchStart(event) {
+      if (event.touches.length === 1) {
+        touchStartPos = {
+          x: event.touches[0].clientX,
+          y: event.touches[0].clientY
+        };
+        previousMousePosition = touchStartPos;
+      }
+    }
+
+    function handleTouchDrag(event) {
+      if (event.touches.length === 1) {
+        const deltaX = event.touches[0].clientX - previousMousePosition.x;
+        const deltaY = event.touches[0].clientY - previousMousePosition.y;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+        if (distance > 5) {
+          isTouchDragging = true;
+          cameraAngle.theta -= deltaX * 0.005;
+          cameraAngle.phi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraAngle.phi + deltaY * 0.005));
+        }
+
+        previousMousePosition = {
+          x: event.touches[0].clientX,
+          y: event.touches[0].clientY
+        };
+      }
+    }
+
+    function setupKeyboardControls() {
+      document.addEventListener('keydown', (event) => {
+        console.log('Key pressed:', event.key);
+
+        switch(event.key) {
+          case 'w':
+          case 'W':
+          case 'ArrowUp':
+            event.preventDefault();
+            // Increase speed
+            shipSpeed = Math.min(maxSpeed, shipSpeed + 0.05);
+            console.log('Speed increased to:', shipSpeed);
+            updateShipStatus();
+            break;
+          case 's':
+          case 'S':
+          case 'ArrowDown':
+            event.preventDefault();
+            // Decrease speed
+            shipSpeed = Math.max(0.05, shipSpeed - 0.05);
+            console.log('Speed decreased to:', shipSpeed);
+            updateShipStatus();
+            break;
+          case ' ':
+            event.preventDefault();
+            // Spacebar - stop/cancel orbit
+            console.log('Emergency stop!');
+            shipTarget = null;
+            shipVelocity.set(0, 0, 0);
+            if (isOrbiting) {
+              window.stopOrbit();
+            }
+            break;
+          case 'Shift':
+            event.preventDefault();
+            // Activate hyper jump (4x speed) on hold
+            if (!isHyperJumping) {
+              isHyperJumping = true;
+              normalShipSpeed = shipSpeed;
+              shipSpeed = shipSpeed * hyperJumpMultiplier;
+              console.log('🚀 HYPER JUMP ACTIVATED!', shipSpeed);
+              updateHyperJumpVisuals(true);
+              updateShipStatus();
+            }
+            break;
+        }
+      });
+
+      // Keyup listener for hyper jump release
+      document.addEventListener('keyup', (event) => {
+        if (event.key === 'Shift' && isHyperJumping) {
+          event.preventDefault();
+          // Deactivate hyper jump
+          isHyperJumping = false;
+          shipSpeed = normalShipSpeed;
+          console.log('🛑 Hyper jump deactivated', shipSpeed);
+          updateHyperJumpVisuals(false);
+          updateShipStatus();
+        }
+      });
+
+      console.log('✅ Keyboard controls initialized');
+    }
+
+    function updateSpeedDisplay() {
+      const speedElement = document.getElementById('speedDisplay');
+      if (speedElement) {
+        speedElement.textContent = shipSpeed.toFixed(2) + 'x';
+      }
+    }
+
+    function updateShipStatus() {
+      // Update speed display
+      updateSpeedDisplay();
+
+      // Update velocity bar (0.05 to 0.3 range = 0% to 100%)
+      const velocityPercent = ((shipSpeed - 0.05) / (maxSpeed - 0.05)) * 100;
+      const velocityBar = document.getElementById('velocityBar');
+      if (velocityBar) {
+        velocityBar.style.width = velocityPercent + '%';
+      }
+
+      // Update thrust bar (0.05 to 0.3 range = 0% to 100%)
+      const thrustPercent = ((shipSpeed - 0.05) / (maxSpeed - 0.05)) * 100;
+      const thrustBar = document.getElementById('thrustBar');
+      const thrustValue = document.getElementById('thrustValue');
+      if (thrustBar && thrustValue) {
+        thrustBar.style.width = thrustPercent + '%';
+        thrustValue.textContent = Math.round(thrustPercent) + '%';
+      }
+
+      // Update HP bars
+      const shieldsBar = document.getElementById('shieldsBar');
+      const shieldsValue = document.getElementById('shieldsValue');
+      if (shieldsBar && shieldsValue) {
+        shieldsBar.style.width = shipShields + '%';
+        shieldsValue.textContent = shipShields;
+      }
+
+      const armorBar = document.getElementById('armorBar');
+      const armorValue = document.getElementById('armorValue');
+      if (armorBar && armorValue) {
+        armorBar.style.width = shipArmor + '%';
+        armorValue.textContent = shipArmor;
+      }
+
+      const hullBar = document.getElementById('hullBar');
+      const hullValue = document.getElementById('hullValue');
+      if (hullBar && hullValue) {
+        hullBar.style.width = shipHull + '%';
+        hullValue.textContent = shipHull;
+      }
+
+      // Update position stats
+      if (ship) {
+        const posX = document.getElementById('shipPosX');
+        const posZ = document.getElementById('shipPosZ');
+        if (posX) posX.textContent = 'X: ' + Math.round(ship.position.x);
+        if (posZ) posZ.textContent = 'Z: ' + Math.round(ship.position.z);
+      }
+
+      // Update nav status
+      const navStatus = document.getElementById('navStatus');
+      const navStatusDot = document.getElementById('navStatusDot');
+      if (navStatus && navStatusDot) {
+        if (isOrbiting) {
+          navStatus.textContent = 'ORBITING';
+          navStatusDot.style.background = '#ffaa00';
+          navStatusDot.style.boxShadow = '0 0 8px #ffaa00';
+        } else if (shipTarget) {
+          navStatus.textContent = 'TRAVELING';
+          navStatusDot.style.background = '#00ffff';
+          navStatusDot.style.boxShadow = '0 0 8px #00ffff';
+        } else {
+          navStatus.textContent = 'READY';
+          navStatusDot.style.background = '#00ff00';
+          navStatusDot.style.boxShadow = '0 0 8px #00ff00';
+        }
+      }
+
+      // Update target info
+      const targetInfo = document.getElementById('targetInfo');
+      if (targetInfo) {
+        if (isOrbiting && orbitTarget) {
+          targetInfo.textContent = orbitTarget.userData.body.title || 'PLANET';
+        } else if (shipTarget) {
+          targetInfo.textContent = 'WAYPOINT';
+        } else {
+          targetInfo.textContent = 'NONE';
+        }
+      }
+
+      // Update tester toolbar debug info
+      updateDebugInfo();
+    }
+
+    function updateDebugInfo() {
+      // Update location
+      const locationEl = document.getElementById('quick-location');
+      if (locationEl && ship) {
+        locationEl.textContent = `${Math.round(ship.position.x)}, ${Math.round(ship.position.z)}`;
+      }
+
+      // Update FPS
+      const fpsEl = document.getElementById('quick-fps');
+      if (fpsEl) {
+        if (!window.fpsLastTime) window.fpsLastTime = performance.now();
+        if (!window.fpsFrames) window.fpsFrames = 0;
+
+        window.fpsFrames++;
+        const now = performance.now();
+        if (now >= window.fpsLastTime + 1000) {
+          fpsEl.textContent = window.fpsFrames;
+          window.fpsFrames = 0;
+          window.fpsLastTime = now;
+        }
+      }
+    }
+
+    function updateHyperJumpVisuals(active) {
+      const navStatus = document.getElementById('navStatus');
+      const navStatusDot = document.getElementById('navStatusDot');
+      const speedDisplay = document.getElementById('speedDisplay');
+
+      if (active) {
+        // Hyper jump activated - cyan pulsing
+        if (navStatus) navStatus.textContent = 'HYPER JUMP';
+        if (navStatusDot) {
+          navStatusDot.style.background = '#00ffff';
+          navStatusDot.style.boxShadow = '0 0 20px #00ffff';
+          navStatusDot.style.animation = 'pulse 0.5s infinite';
+        }
+        if (speedDisplay) {
+          speedDisplay.style.color = '#00ffff';
+          speedDisplay.style.textShadow = '0 0 10px #00ffff';
+          speedDisplay.style.animation = 'pulse 0.5s infinite';
+        }
+
+        // Add screen flash effect
+        const flash = document.createElement('div');
+        flash.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: radial-gradient(circle, rgba(0, 255, 255, 0.2) 0%, transparent 70%);
+          pointer-events: none;
+          z-index: 9999;
+          animation: hyperFlash 0.3s ease-out;
+        `;
+        flash.id = 'hyper-flash';
+        document.body.appendChild(flash);
+      } else {
+        // Hyper jump deactivated - restore normal
+        if (speedDisplay) {
+          speedDisplay.style.color = '#00ffff';
+          speedDisplay.style.textShadow = 'none';
+          speedDisplay.style.animation = 'none';
+        }
+
+        // Remove flash effect
+        const flash = document.getElementById('hyper-flash');
+        if (flash) flash.remove();
+
+        // Restore normal nav status (will be updated by updateShipStatus)
+      }
+    }
+
+    function handleDoubleTap(event) {
+      if (isTouchDragging) {
+        isTouchDragging = false;
+        return; // Don't trigger trajectory if was dragging
+      }
+
+      // Break orbit if currently orbiting
+      if (isOrbiting) {
+        window.stopOrbit();
+        console.log('🛑 Orbit broken by double-tap');
+        return;
+      }
+
+      const currentTime = Date.now();
+      const tapGap = currentTime - lastTapTime;
+
+      if (tapGap < 300 && tapGap > 0) {
+        // Double tap detected
+        tapCount = 2;
+        setShipTrajectory(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
+      } else {
+        tapCount = 1;
+      }
+
+      lastTapTime = currentTime;
+    }
+
+    function handleDoubleClick(event) {
+      // Break orbit if currently orbiting
+      if (isOrbiting) {
+        window.stopOrbit();
+        console.log('🛑 Orbit broken by double-click');
+        return;
+      }
+
+      setShipTrajectory(event.clientX, event.clientY);
+    }
+
+    function setShipTrajectory(clientX, clientY) {
+      // Raycast from click position
+      const mouse = new THREE.Vector2();
+      mouse.x = (clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      // Check intersection with planets
+      const intersects = raycaster.intersectObjects(planets);
+
+      if (intersects.length > 0) {
+        // Set trajectory to planet
+        shipTarget = intersects[0].object.position.clone();
+        console.log('🚀 Setting trajectory to:', intersects[0].object.userData.body.title);
+
+        // Show trajectory indicator
+        showTrajectoryLine(ship.position, shipTarget, false);
+      } else {
+        // Set trajectory to infinite point in space
+        const direction = raycaster.ray.direction.clone();
+        shipTarget = ship.position.clone().add(direction.multiplyScalar(10000)); // Infinite trajectory
+        console.log('🚀 Setting trajectory to infinite space in direction:', direction);
+
+        showTrajectoryLine(ship.position, shipTarget, true);
+      }
+    }
+
+    function showTrajectoryLine(start, end, isInfinite) {
+      // Remove old trajectory line
+      const oldLine = scene.getObjectByName('trajectoryLine');
+      if (oldLine) scene.remove(oldLine);
+
+      // Create new trajectory line
+      let visualEnd = end.clone();
+      if (isInfinite) {
+        // For infinite trajectories, show a long line in the direction
+        const direction = new THREE.Vector3().subVectors(end, start).normalize();
+        visualEnd = start.clone().add(direction.multiplyScalar(5000));
+      }
+
+      const points = [start.clone(), visualEnd];
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineDashedMaterial({
+        color: isInfinite ? 0x00ffff : 0xffaa00, // Cyan for infinite, orange for planet
+        dashSize: 20,
+        gapSize: 10,
+        transparent: true,
+        opacity: 0.6
+      });
+
+      const line = new THREE.Line(geometry, material);
+      line.computeLineDistances();
+      line.name = 'trajectoryLine';
+      scene.add(line);
+
+      // Fade out after 5 seconds
+      setTimeout(() => {
+        scene.remove(line);
+      }, 5000);
+    }
+
+    function updateShipMovement() {
+      if (!ship) return;
+
+      // Handle orbiting mode
+      if (isOrbiting && orbitTarget) {
+        updateOrbit();
+        return;
+      }
+
+      // Handle trajectory mode
+      if (!shipTarget) return;
+
+      // Calculate direction to target
+      const direction = new THREE.Vector3().subVectors(shipTarget, ship.position);
+      const distance = direction.length();
+
+      // If close to target (planet), slow down and stop
+      if (distance < 50) {
+        shipTarget = null;
+        shipVelocity.multiplyScalar(0.85); // Deceleration
+        if (shipVelocity.length() < 0.1) {
+          shipVelocity.set(0, 0, 0);
+        }
+        return;
+      }
+
+      // Accelerate towards target using DESIGNATED ship speed (not max!)
+      direction.normalize();
+      const targetVelocity = direction.clone().multiplyScalar(shipSpeed); // Use shipSpeed directly
+
+      // Smoothly interpolate velocity for elliptical turning (not hard turns)
+      shipVelocity.lerp(targetVelocity, shipAcceleration);
+
+      // Apply velocity
+      ship.position.add(shipVelocity);
+
+      // Smoothly rotate ship to face direction of travel using SLERP
+      if (shipVelocity.length() > 0.1) {
+        const lookTarget = ship.position.clone().add(shipVelocity.clone().normalize());
+
+        // Calculate target rotation
+        const targetQuaternion = new THREE.Quaternion();
+        const matrix = new THREE.Matrix4();
+        matrix.lookAt(ship.position, lookTarget, new THREE.Vector3(0, 1, 0));
+        targetQuaternion.setFromRotationMatrix(matrix);
+
+        // Smoothly interpolate rotation (elliptical turning)
+        ship.quaternion.slerp(targetQuaternion, turnSmoothing);
+      }
+
+      // Camera update is now handled in animate() loop
+    }
+
+    function updateOrbit() {
+      if (!orbitTarget) return;
+
+      // Circular orbit around planet
+      orbitAngle += 0.002 * shipSpeed; // Orbit speed based on ship speed
+
+      const x = orbitTarget.position.x + Math.cos(orbitAngle) * orbitRadius;
+      const z = orbitTarget.position.z + Math.sin(orbitAngle) * orbitRadius;
+      const y = orbitTarget.position.y;
+
+      ship.position.set(x, y, z);
+
+      // Look at planet while orbiting
+      ship.lookAt(orbitTarget.position);
+
+      // Keep velocity at orbital speed
+      const tangent = new THREE.Vector3(-Math.sin(orbitAngle), 0, Math.cos(orbitAngle));
+      shipVelocity.copy(tangent.multiplyScalar(0.002 * shipSpeed * orbitRadius));
+    }
+
+    function checkPlanetaryExplorerProximity() {
+      // Hide button if not orbiting
+      if (!isOrbiting || !orbitTarget) {
+        hidePlanetaryExplorerButton();
+        return;
+      }
+
+      const planetRadius = orbitTarget.geometry.parameters.radius || 20;
+      const distanceToPlanet = ship.position.distanceTo(orbitTarget.position);
+
+      // Show button only if in low orbit (within 2x planet radius)
+      // This ensures button appears when close and disappears when far
+      if (distanceToPlanet < planetRadius * 2) {
+        showPlanetaryExplorerButton();
+      } else {
+        hidePlanetaryExplorerButton();
+      }
+    }
+
+    let currentExplorerPlanet = null;
+
+    function showPlanetaryExplorerButton() {
+      const button = document.getElementById('explorerButton');
+      if (button && button.style.display === 'none') {
+        currentExplorerPlanet = orbitTarget;
+        button.style.display = 'block';
+        console.log('🌍 Planetary explorer available!');
+      }
+    }
+
+    function hidePlanetaryExplorerButton() {
+      const button = document.getElementById('explorerButton');
+      if (button && button.style.display !== 'none') {
+        button.style.display = 'none';
+        currentExplorerPlanet = null;
+      }
+    }
+
+    function enterPlanetaryExplorer() {
+      if (currentExplorerPlanet && currentExplorerPlanet.userData.body) {
+        const planetId = currentExplorerPlanet.userData.body._id;
+        console.log('🚀 Entering planetary explorer for:', currentExplorerPlanet.userData.body.title);
+        window.location.href = `/zones/explore/planetary?asset=${planetId}`;
+      }
+    }
+
+    function updateThirdPersonCamera() {
+      if (!ship || !isThirdPerson) return;
+
+      // Use spherical coordinates for camera position (anchored to ship)
+      const x = ship.position.x + cameraDistance * Math.sin(cameraAngle.phi) * Math.cos(cameraAngle.theta);
+      const y = ship.position.y + cameraDistance * Math.cos(cameraAngle.phi);
+      const z = ship.position.z + cameraDistance * Math.sin(cameraAngle.phi) * Math.sin(cameraAngle.theta);
+
+      // Smoothly move camera to new position
+      camera.position.lerp(new THREE.Vector3(x, y, z), 0.1);
+
+      // Always look at ship
+      camera.lookAt(ship.position);
+    }
+
+    // Global reference for animated particles
+    let motionParticles = null;
+    let particleVelocities = [];
+
+    function createStarfield() {
+      // Create cube of background stars (static, distant)
+      const cubeSize = 40000; // Large cube containing everything
+      const starsPerFace = 400; // Fewer stars, less clutter
+      const starfieldVertices = [];
+      const starfieldColors = [];
+
+      // Generate stars on each face of the cube
+      for (let face = 0; face < 6; face++) {
+        for (let i = 0; i < starsPerFace; i++) {
+          const u = Math.random();
+          const v = Math.random();
+          const half = cubeSize / 2;
+
+          let x, y, z;
+          const brightness = 0.5 + Math.random() * 0.5; // Dimmer stars
+
+          switch(face) {
+            case 0: // Front face (Z+)
+              x = (u - 0.5) * cubeSize;
+              y = (v - 0.5) * cubeSize;
+              z = half;
+              break;
+            case 1: // Back face (Z-)
+              x = (u - 0.5) * cubeSize;
+              y = (v - 0.5) * cubeSize;
+              z = -half;
+              break;
+            case 2: // Right face (X+)
+              x = half;
+              y = (v - 0.5) * cubeSize;
+              z = (u - 0.5) * cubeSize;
+              break;
+            case 3: // Left face (X-)
+              x = -half;
+              y = (v - 0.5) * cubeSize;
+              z = (u - 0.5) * cubeSize;
+              break;
+            case 4: // Top face (Y+)
+              x = (u - 0.5) * cubeSize;
+              y = half;
+              z = (v - 0.5) * cubeSize;
+              break;
+            case 5: // Bottom face (Y-)
+              x = (u - 0.5) * cubeSize;
+              y = -half;
+              z = (v - 0.5) * cubeSize;
+              break;
+          }
+
+          starfieldVertices.push(x, y, z);
+          starfieldColors.push(brightness, brightness, brightness * 0.95);
+        }
+      }
+
+      const starfieldGeometry = new THREE.BufferGeometry();
+      starfieldGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starfieldVertices, 3));
+      starfieldGeometry.setAttribute('color', new THREE.Float32BufferAttribute(starfieldColors, 3));
+
+      const starfieldMaterial = new THREE.PointsMaterial({
+        size: 2,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8
+      });
+
+      const starfield = new THREE.Points(starfieldGeometry, starfieldMaterial);
+      scene.add(starfield);
+
+      // Create motion particles (animated dust/nebula particles)
+      createMotionParticles();
+    }
+
+    function createMotionParticles() {
+      const particleCount = 500; // Subtle motion particles
+      const particleGeometry = new THREE.BufferGeometry();
+      const particleVertices = [];
+      const particleColors = [];
+      particleVelocities = [];
+
+      const spread = 15000; // Spread around the system
+
+      for (let i = 0; i < particleCount; i++) {
+        // Random position within system
+        const x = (Math.random() - 0.5) * spread;
+        const y = (Math.random() - 0.5) * spread;
+        const z = (Math.random() - 0.5) * spread;
+
+        particleVertices.push(x, y, z);
+
+        // Random velocity for slow drift
+        particleVelocities.push({
+          x: (Math.random() - 0.5) * 0.5,
+          y: (Math.random() - 0.5) * 0.5,
+          z: (Math.random() - 0.5) * 0.5
+        });
+
+        // Subtle colors (cyan, purple, white tints)
+        const colorType = Math.random();
+        if (colorType < 0.3) {
+          particleColors.push(0.5, 0.8, 1.0); // Cyan tint
+        } else if (colorType < 0.6) {
+          particleColors.push(0.8, 0.5, 1.0); // Purple tint
+        } else {
+          particleColors.push(0.9, 0.9, 1.0); // White tint
+        }
+      }
+
+      particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(particleVertices, 3));
+      particleGeometry.setAttribute('color', new THREE.Float32BufferAttribute(particleColors, 3));
+
+      const particleMaterial = new THREE.PointsMaterial({
+        size: 3,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.4,
+        blending: THREE.AdditiveBlending
+      });
+
+      motionParticles = new THREE.Points(particleGeometry, particleMaterial);
+      scene.add(motionParticles);
+    }
+
+    function updateMotionParticles() {
+      if (!motionParticles) return;
+
+      const positions = motionParticles.geometry.attributes.position.array;
+      const spread = 15000;
+
+      for (let i = 0; i < particleVelocities.length; i++) {
+        const idx = i * 3;
+
+        // Update position
+        positions[idx] += particleVelocities[i].x;
+        positions[idx + 1] += particleVelocities[i].y;
+        positions[idx + 2] += particleVelocities[i].z;
+
+        // Wrap around if particle goes too far
+        if (Math.abs(positions[idx]) > spread / 2) {
+          positions[idx] = -positions[idx] * 0.9;
+        }
+        if (Math.abs(positions[idx + 1]) > spread / 2) {
+          positions[idx + 1] = -positions[idx + 1] * 0.9;
+        }
+        if (Math.abs(positions[idx + 2]) > spread / 2) {
+          positions[idx + 2] = -positions[idx + 2] * 0.9;
+        }
+      }
+
+      motionParticles.geometry.attributes.position.needsUpdate = true;
+    }
+
+    function getStarColor(starType) {
+      const colors = {
+        'red dwarf': 0xff4444,
+        'yellow star': 0xffff44,
+        'blue giant': 0x4488ff,
+        'white dwarf': 0xffffff,
+        'neutron star': 0x88ffff,
+        'black hole': 0x220022
+      };
+      return colors[starType?.toLowerCase()] || 0xffff88;
+    }
+
+    function getPlanetColor(assetType) {
+      if (assetType === 'planet') return 0x4488ff;
+      if (assetType === 'orbital') return 0x888888;
+      if (assetType === 'anomaly') return 0xff44ff;
+      return 0x44ff44;
+    }
+
+    function updateStarInfo() {
+      const infoDiv = document.getElementById('starInfo');
+      infoDiv.innerHTML = `
+        Type ${starData.starType || 'Unknown'}<br>
+        Luminosity ${starData.luminosity || 1}x<br>
+        Temp ${starData.temperature || '?'}K<br>
+        Bodies ${bodiesData.length}
+      `;
+    }
+
+    // Planet clicking functionality integrated into double-click handler
+
+    function selectPlanet(planetMesh) {
+      selectedPlanet = planetMesh;
+      const body = planetMesh.userData.body;
+
+      console.log('Selected planet:', body.title);
+
+      // Open the new planet interface
+      openPlanetInterface(planetMesh);
+    }
+
+    window.explorePlanet = function(planetId) {
+      window.location.href = `/zones/explore/planetary?asset=${planetId}`;
+    };
+
+    window.startOrbit = function(planetUuid) {
+      // Find the planet mesh by UUID
+      const planet = planets.find(p => p.uuid === planetUuid);
+      if (!planet) return;
+
+      console.log('🌍 Starting orbit around:', planet.userData.body.title);
+
+      // Cancel any existing trajectory
+      shipTarget = null;
+
+      // Set orbit parameters
+      isOrbiting = true;
+      orbitTarget = planet;
+
+      // Calculate low orbit radius (just above planet surface)
+      const planetRadius = planet.geometry.parameters.radius || 20;
+      orbitRadius = planetRadius * 1.5; // Low orbit at 1.5x planet radius (close to surface)
+
+      // Calculate starting angle based on ship position
+      const dx = ship.position.x - planet.position.x;
+      const dz = ship.position.z - planet.position.z;
+      orbitAngle = Math.atan2(dz, dx);
+
+      // Show orbit status
+      const orbitStatus = document.getElementById('orbitStatus');
+      if (orbitStatus) {
+        orbitStatus.style.display = 'block';
+        orbitStatus.textContent = `🌍 ORBITING ${planet.userData.body.title}`;
+      }
+
+      console.log('Orbit radius:', orbitRadius, 'Starting angle:', orbitAngle);
+    };
+
+    window.stopOrbit = function() {
+      isOrbiting = false;
+      orbitTarget = null;
+
+      const orbitStatus = document.getElementById('orbitStatus');
+      if (orbitStatus) {
+        orbitStatus.style.display = 'none';
+      }
+
+      console.log('❌ Stopped orbiting');
+    };
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Update ship movement
+      updateShipMovement();
+
+      // Always update camera position (even when not moving)
+      updateThirdPersonCamera();
+
+      // Update HUD continuously
+      updateShipStatus();
+
+      // Check planetary explorer button visibility
+      checkPlanetaryExplorerProximity();
+
+      // Update motion particles
+      updateMotionParticles();
+
+      // Rotate star (slower rotation)
+      if (star) {
+        star.rotation.y += 0.0005;
+      }
+
+      // Orbit planets
+      planets.forEach(planet => {
+        const userData = planet.userData;
+        userData.orbitalAngle += userData.orbitalSpeed;
+
+        planet.position.x = Math.cos(userData.orbitalAngle) * userData.orbitalRadius;
+        planet.position.z = Math.sin(userData.orbitalAngle) * userData.orbitalRadius;
+
+        // Rotate planet
+        planet.rotation.y += 0.01;
+      });
+
+      renderer.render(scene, camera);
+    }
+
+    // Planet Interface Functions
+    let selectedPlanetForInterface = null;
+
+    function openPlanetInterface(planetMesh) {
+      selectedPlanetForInterface = planetMesh;
+      const body = planetMesh.userData.body;
+
+      // Update title
+      document.getElementById('planetInterfaceTitle').textContent = body.title || 'PLANET';
+
+      // Update info grid
+      const infoGrid = document.getElementById('planetInterfaceInfo');
+      infoGrid.innerHTML = `
+        <div>
+          <div style="color: #888; font-size: 0.65em; margin-bottom: 4px;">TYPE</div>
+          <div style="color: #fff; font-weight: bold;">${body.assetType || 'Unknown'}</div>
+        </div>
+        <div>
+          <div style="color: #888; font-size: 0.65em; margin-bottom: 4px;">ORBITAL RADIUS</div>
+          <div style="color: #00ffff; font-weight: bold;">${Math.round(planetMesh.userData.orbitalRadius)} AU</div>
+        </div>
+        <div>
+          <div style="color: #888; font-size: 0.65em; margin-bottom: 4px;">DISTANCE FROM SHIP</div>
+          <div style="color: #ffaa00; font-weight: bold;">${Math.round(ship.position.distanceTo(planetMesh.position))} units</div>
+        </div>
+        <div>
+          <div style="color: #888; font-size: 0.65em; margin-bottom: 4px;">ORBITAL SPEED</div>
+          <div style="color: #8a4fff; font-weight: bold;">${(planetMesh.userData.orbitalSpeed * 1000000).toFixed(2)}e-6 rad/s</div>
+        </div>
+      `;
+
+      // Show interface
+      document.getElementById('planetInterface').style.display = 'block';
+    }
+
+    function closePlanetInterface() {
+      document.getElementById('planetInterface').style.display = 'none';
+      selectedPlanetForInterface = null;
+    }
+
+    function orbitSelectedPlanet() {
+      if (!selectedPlanetForInterface) return;
+
+      // Use existing orbit functionality
+      window.startOrbit(selectedPlanetForInterface.uuid);
+      closePlanetInterface();
+    }
+
+    function setTrajectoryToPlanet() {
+      if (!selectedPlanetForInterface) return;
+
+      // Set trajectory to planet
+      shipTarget = selectedPlanetForInterface.position.clone();
+      closePlanetInterface();
+    }
+
+    // Initialize on load
+    init();
+  </script>
+
+  <!-- Tester Toolbar for Admin/Tester Debugging -->
+  <% if (user && (user.userRole === 'tester' || user.userRole === 'admin')) { %>
+  <script src="/javascripts/tester-toolbar.js"></script>
+  <script>
+    // Initialize tester toolbar
+    if (typeof TesterToolbar !== 'undefined') {
+      window.testerToolbar = new TesterToolbar(
+        <%- JSON.stringify(user) %>,
+        null // No character in star system view
+      );
+
+      console.log('✅ Tester toolbar initialized');
+    }
+  </script>
+  <% } %>
+</body>
+</html>

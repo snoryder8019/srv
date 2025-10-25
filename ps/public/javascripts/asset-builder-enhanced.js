@@ -28,6 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Setup asset type change handler
   document.getElementById('assetType').addEventListener('change', handleAssetTypeChange);
 
+  // Setup galaxy and star system handlers
+  setupLocationHierarchy();
+
   // Load user's assets
   loadAssets();
 });
@@ -1033,4 +1036,78 @@ function exportTerrainData() {
   displayPre.textContent = JSON.stringify(terrainData, null, 2);
 
   showAlert('Terrain data exported successfully! It will be saved with your asset.', 'success');
+}
+
+/**
+ * Setup Location Hierarchy (Galaxy -> Star System)
+ */
+function setupLocationHierarchy() {
+  const parentGalaxySelect = document.getElementById('parentGalaxy');
+  const parentStarSelect = document.getElementById('parentStar');
+  const coordinatesRow = document.getElementById('coordinatesRow');
+
+  if (!parentGalaxySelect || !parentStarSelect) return;
+
+  // Handle galaxy selection
+  parentGalaxySelect.addEventListener('change', async (e) => {
+    const galaxyId = e.target.value;
+
+    // Handle "Create New Galaxy" option
+    if (galaxyId === '__CREATE_NEW__') {
+      const galaxyName = prompt('Enter new galaxy name:');
+      if (galaxyName) {
+        showAlert('Galaxy creation feature coming soon! For now, use the asset builder to create a galaxy asset first.', 'info');
+        parentGalaxySelect.value = '';
+      } else {
+        parentGalaxySelect.value = '';
+      }
+      return;
+    }
+
+    // Reset star system dropdown
+    parentStarSelect.innerHTML = '<option value="">Loading stars...</option>';
+    parentStarSelect.disabled = true;
+
+    if (!galaxyId) {
+      parentStarSelect.innerHTML = '<option value="">Select a galaxy first</option>';
+      coordinatesRow.style.display = 'none';
+      return;
+    }
+
+    try {
+      // Fetch stars for this galaxy
+      const response = await fetch(`/api/v1/universe/galaxies/${galaxyId}/stars`);
+      const data = await response.json();
+
+      if (data.success && data.stars) {
+        // Populate star dropdown
+        parentStarSelect.innerHTML = '<option value="">None (Place in galaxy)</option>';
+
+        data.stars.forEach(star => {
+          const option = document.createElement('option');
+          option.value = star._id;
+          option.textContent = star.title || star.name;
+          parentStarSelect.appendChild(option);
+        });
+
+        parentStarSelect.disabled = false;
+        coordinatesRow.style.display = 'flex';
+        showAlert(`Found ${data.stars.length} star systems in this galaxy`, 'success');
+      } else {
+        parentStarSelect.innerHTML = '<option value="">No stars found in this galaxy</option>';
+        coordinatesRow.style.display = 'flex';
+      }
+    } catch (error) {
+      console.error('Error fetching stars:', error);
+      parentStarSelect.innerHTML = '<option value="">Error loading stars</option>';
+      showAlert('Failed to load star systems', 'error');
+    }
+  });
+
+  // Handle star selection
+  parentStarSelect.addEventListener('change', (e) => {
+    if (e.target.value) {
+      coordinatesRow.style.display = 'flex';
+    }
+  });
 }

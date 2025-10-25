@@ -59,6 +59,34 @@ export class Asset {
       isInteractive: assetData.isInteractive || false,
       interactionType: assetData.interactionType || null,
 
+      // HIERARCHY: Support for multi-level universe navigation
+      parentGalaxy: assetData.parentGalaxy ? new ObjectId(assetData.parentGalaxy) : null,
+      parentStar: assetData.parentStar ? new ObjectId(assetData.parentStar) : null,
+
+      // Position in parent container (for spatial placement)
+      coordinates: {
+        x: assetData.coordinates?.x || 0,
+        y: assetData.coordinates?.y || 0,
+        z: assetData.coordinates?.z || 0
+      },
+
+      // Orbital mechanics (for planets/moons orbiting stars)
+      orbital: assetData.orbital ? {
+        radius: assetData.orbital.radius || 0,
+        speed: assetData.orbital.speed || 0,
+        angle: assetData.orbital.angle || 0,
+        clockwise: assetData.orbital.clockwise !== false
+      } : null,
+
+      // Galaxy-specific properties
+      galaxyType: assetData.galaxyType || null, // spiral, elliptical, irregular, etc.
+      starCount: assetData.starCount || 0,
+
+      // Star-specific properties
+      starType: assetData.starType || null, // red dwarf, yellow star, blue giant, etc.
+      luminosity: assetData.luminosity || 1,
+      temperature: assetData.temperature || null,
+
       // Metadata
       tags: assetData.tags || [],
       category: assetData.category || null,
@@ -570,6 +598,112 @@ export class Asset {
       acc[item._id] = item.count;
       return acc;
     }, {});
+  }
+
+  // ============ HIERARCHY METHODS ============
+
+  /**
+   * Get all galaxies (approved assets of type 'galaxy')
+   */
+  static async getGalaxies(options = {}) {
+    const db = getDb();
+    const query = {
+      assetType: 'galaxy',
+      status: 'approved',
+      ...options.additionalFilters
+    };
+
+    return await db.collection(collections.assets)
+      .find(query)
+      .sort({ createdAt: -1 })
+      .toArray();
+  }
+
+  /**
+   * Get all stars in a specific galaxy
+   */
+  static async getStarsInGalaxy(galaxyId) {
+    const db = getDb();
+    return await db.collection(collections.assets)
+      .find({
+        assetType: 'star',
+        status: 'approved',
+        parentGalaxy: new ObjectId(galaxyId)
+      })
+      .sort({ 'coordinates.x': 1 })
+      .toArray();
+  }
+
+  /**
+   * Get all planetary bodies in a star system
+   */
+  static async getBodiesInStarSystem(starId) {
+    const db = getDb();
+    return await db.collection(collections.assets)
+      .find({
+        assetType: { $in: ['planet', 'orbital', 'anomaly'] },
+        status: 'approved',
+        parentStar: new ObjectId(starId)
+      })
+      .sort({ 'orbital.radius': 1 }) // Sort by orbital distance
+      .toArray();
+  }
+
+  /**
+   * Get full hierarchy path for an asset (galaxy -> star -> planet)
+   */
+  static async getHierarchyPath(assetId) {
+    const db = getDb();
+    const asset = await this.findById(assetId);
+
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    const path = {
+      current: asset,
+      star: null,
+      galaxy: null
+    };
+
+    // Get parent star if exists
+    if (asset.parentStar) {
+      path.star = await db.collection(collections.assets).findOne({
+        _id: asset.parentStar
+      });
+    }
+
+    // Get parent galaxy if exists
+    if (asset.parentGalaxy) {
+      path.galaxy = await db.collection(collections.assets).findOne({
+        _id: asset.parentGalaxy
+      });
+    } else if (path.star && path.star.parentGalaxy) {
+      // If asset is directly under star, get galaxy from star
+      path.galaxy = await db.collection(collections.assets).findOne({
+        _id: path.star.parentGalaxy
+      });
+    }
+
+    return path;
+  }
+
+  /**
+   * Get children count for a celestial body
+   */
+  static async getChildrenCount(parentId, parentType) {
+    const db = getDb();
+    const query = { status: 'approved' };
+
+    if (parentType === 'galaxy') {
+      query.parentGalaxy = new ObjectId(parentId);
+      query.assetType = 'star';
+    } else if (parentType === 'star') {
+      query.parentStar = new ObjectId(parentId);
+      query.assetType = { $in: ['planet', 'orbital', 'anomaly'] };
+    }
+
+    return await db.collection(collections.assets).countDocuments(query);
   }
 }
 

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/stylesheets/style.css">
   <link rel="stylesheet" href="/stylesheets/landing.css">
   <link rel="stylesheet" href="/stylesheets/auth-enhanced.css">
+  <link rel="stylesheet" href="/stylesheets/inventory-modal.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -59,6 +60,37 @@
                       <span><%= character.species || character.stringDomain || 'Unknown' %></span>
                     </span>
                   </div>
+
+                  <!-- Location -->
+                  <% if (character.locationAsset) { %>
+                    <div class="character-location">
+                      <span class="location-icon">📍</span>
+                      <span class="location-name"><%= character.locationAsset.title %></span>
+                    </div>
+                  <% } else if (character.navigation && character.navigation.isInTransit) { %>
+                    <div class="character-location in-transit">
+                      <span class="location-icon">🚀</span>
+                      <span class="location-name">In Transit</span>
+                    </div>
+                  <% } else if (character.location) { %>
+                    <div class="character-location">
+                      <span class="location-icon">📍</span>
+                      <span class="location-name">Galactic Space</span>
+                    </div>
+                  <% } %>
+
+                  <!-- Ship Status -->
+                  <% if (character.ship) { %>
+                    <div class="character-ship-info">
+                      <span class="ship-icon">🚀</span>
+                      <span class="ship-name"><%= character.ship.name || 'Basic Hauler' %></span>
+                      <span class="ship-status <%= character.activeInShip ? 'active' : 'docked' %>">
+                        <%= character.activeInShip ? '✓ Active' : '⚓ Docked' %>
+                      </span>
+                    </div>
+                  <% } %>
+
+                  <!-- Stats -->
                   <% if (character.stats) { %>
                     <div class="character-stats-mini">
                       <div class="stat-mini">
@@ -66,13 +98,37 @@
                         <div class="stat-bar">
                           <div class="stat-bar-fill hp" style="width: <%= Math.min(((character.stats.strength || 0) / 10) * 100, 100) %>%"></div>
                         </div>
+                        <span class="stat-value"><%= character.stats.strength || 0 %></span>
                       </div>
                       <div class="stat-mini">
                         <span class="stat-label">INT</span>
                         <div class="stat-bar">
                           <div class="stat-bar-fill energy" style="width: <%= Math.min(((character.stats.intelligence || 0) / 10) * 100, 100) %>%"></div>
                         </div>
+                        <span class="stat-value"><%= character.stats.intelligence || 0 %></span>
                       </div>
+                      <div class="stat-mini">
+                        <span class="stat-label">AGI</span>
+                        <div class="stat-bar">
+                          <div class="stat-bar-fill" style="width: <%= Math.min(((character.stats.agility || 0) / 10) * 100, 100) %>%"></div>
+                        </div>
+                        <span class="stat-value"><%= character.stats.agility || 0 %></span>
+                      </div>
+                      <div class="stat-mini">
+                        <span class="stat-label">TECH</span>
+                        <div class="stat-bar">
+                          <div class="stat-bar-fill tech" style="width: <%= Math.min(((character.stats.tech || 0) / 10) * 100, 100) %>%"></div>
+                        </div>
+                        <span class="stat-value"><%= character.stats.tech || 0 %></span>
+                      </div>
+                    </div>
+                  <% } %>
+
+                  <!-- Home Hub -->
+                  <% if (character.homeHub) { %>
+                    <div class="character-home-hub">
+                      <span class="home-icon">🏠</span>
+                      <span class="home-name"><%= character.homeHub.name %></span>
                     </div>
                   <% } %>
                 </div>
@@ -243,6 +299,7 @@
 
   <%- include('../partials/footer') %>
   <script src="/javascripts/auth.js"></script>
+  <script src="/javascripts/inventory-modal.js"></script>
   <script>
     function switchToRegister(e) {
       e.preventDefault();

@@ -437,6 +437,34 @@ router.delete('/:id/vote', isAuthenticated, async (req, res) => {
 });
 
 /**
+ * GET /api/v1/assets/:id/suggestions
+ * Get all suggestions for an asset
+ */
+router.get('/:id/suggestions', async (req, res) => {
+  try {
+    const asset = await Asset.findById(req.params.id);
+
+    if (!asset) {
+      return res.status(404).json({ success: false, error: 'Asset not found' });
+    }
+
+    const suggestions = asset.suggestions || [];
+
+    res.json({
+      success: true,
+      suggestions: suggestions.map(s => ({
+        ...s,
+        upvotes: s.upvotes || [],
+        upvoteCount: (s.upvotes || []).length
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching suggestions:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/v1/assets/:id/suggestions
  * Add a suggestion to an asset (with field changes and images)
  */
