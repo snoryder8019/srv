@@ -109,6 +109,42 @@ router.get('/:id', async (req, res) => {
       };
     }
 
+    // Populate equipped items with full item details
+    if (character.equipped) {
+      for (const [slot, equipped] of Object.entries(character.equipped)) {
+        if (equipped && equipped.itemId) {
+          try {
+            const item = await db.collection('items').findOne({
+              _id: new ObjectId(equipped.itemId)
+            });
+            if (item) {
+              character.equipped[slot].itemDetails = item;
+            }
+          } catch (err) {
+            console.error(`Error fetching item for slot ${slot}:`, err);
+          }
+        }
+      }
+    }
+
+    // Populate location asset if available
+    if (character.location && character.location.assetId) {
+      try {
+        const asset = await db.collection('assets').findOne(
+          { _id: new ObjectId(character.location.assetId) },
+          { projection: { title: 1, assetType: 1 } }
+        );
+        if (asset) {
+          character.locationAsset = {
+            title: asset.title,
+            type: asset.assetType
+          };
+        }
+      } catch (err) {
+        console.error('Error fetching location asset:', err);
+      }
+    }
+
     res.render('characters/detail-enhanced', {
       title: character.name,
       character,
@@ -153,7 +189,7 @@ async function syncCharacterToGameState(character) {
   }
 }
 
-// Ship inventory page
+// Ship inventory page - DEPRECATED: Redirects to inventory modal
 router.get('/:id/ship', async (req, res) => {
   try {
     if (!req.user) {
@@ -177,11 +213,9 @@ router.get('/:id/ship', async (req, res) => {
       });
     }
 
-    res.render('characters/ship', {
-      title: `${character.name}'s Ship`,
-      character,
-      user: req.user
-    });
+    // Redirect to character detail page with instruction to open ship inventory
+    // The character detail page can detect the ?openInventory=ship query param
+    res.redirect(`/characters/${req.params.id}?openInventory=ship`);
   } catch (err) {
     console.error('Error loading ship inventory:', err);
     res.status(500).render('error', {

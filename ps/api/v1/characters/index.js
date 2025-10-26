@@ -134,9 +134,13 @@ router.get('/check', async (req, res) => {
           });
 
           if (charsResponse.ok) {
-            const allChars = await charsResponse.json();
-            // Filter to current user's characters
-            gameStateCharacters = allChars.filter(c => c.userId === req.user._id.toString());
+            const responseData = await charsResponse.json();
+            // Game state service returns {success, characters, timestamp}
+            const allChars = responseData.characters || responseData;
+            // Filter to current user's characters (only if it's an array)
+            if (Array.isArray(allChars)) {
+              gameStateCharacters = allChars.filter(c => c.userId === req.user._id.toString());
+            }
           }
         } catch (err) {
           console.log('Could not fetch characters from game state:', err.message);
@@ -1013,5 +1017,108 @@ router.post('/:id/set-active', async (req, res) => {
   } catch (err) {
     console.error('Error setting active character:', err);
     res.status(500).json({ error: 'Failed to set active character' });
+  }
+});
+
+// Teleport character to predefined location (for testers/admins)
+router.post('/:id/teleport', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { locationName, x, y } = req.body;
+
+    // Verify ownership or admin/tester status
+    const character = await Character.findById(req.params.id);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    const isOwner = character.userId === req.user._id.toString();
+    const isTesterOrAdmin = req.user.isTester === true || req.user.isAdmin === true;
+
+    if (!isOwner && !isTesterOrAdmin) {
+      return res.status(403).json({ error: 'Not authorized to teleport this character' });
+    }
+
+    // Get location from config or use custom coordinates
+    let targetLocation;
+    if (locationName) {
+      const { getLocation } = await import('../../../config/starting-locations.js');
+      const location = getLocation(locationName);
+      if (!location) {
+        return res.status(400).json({ error: 'Invalid location name' });
+      }
+      targetLocation = {
+        type: location.type || 'galactic',
+        x: location.x,
+        y: location.y,
+        vx: 0,
+        vy: 0
+      };
+    } else if (x !== undefined && y !== undefined) {
+      targetLocation = {
+        type: 'galactic',
+        x: parseFloat(x),
+        y: parseFloat(y),
+        vx: 0,
+        vy: 0
+      };
+    } else {
+      return res.status(400).json({ error: 'Either locationName or x,y coordinates required' });
+    }
+
+    // Update character location
+    await Character.updateLocation(req.params.id, targetLocation);
+
+    // Sync to game state service
+    try {
+      await fetch(`${GAME_STATE_URL}/api/characters/${req.params.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _id: character._id.toString(),
+          userId: character.userId,
+          name: character.name,
+          level: character.level || 1,
+          location: targetLocation,
+          navigation: character.navigation || {}
+        })
+      });
+    } catch (syncError) {
+      console.error('Failed to sync teleport to game state:', syncError);
+      // Don't fail teleport if sync fails
+    }
+
+    res.json({
+      success: true,
+      message: `Teleported to ${locationName || `(${x}, ${y})`}`,
+      location: targetLocation
+    });
+  } catch (err) {
+    console.error('Error teleporting character:', err);
+    res.status(500).json({ error: 'Failed to teleport character' });
+  }
+});
+
+// Get available teleport locations
+router.get('/teleport/locations', async (req, res) => {
+  try {
+    const { STARTING_LOCATIONS } = await import('../../../config/starting-locations.js');
+
+    const locations = Object.entries(STARTING_LOCATIONS).map(([name, loc]) => ({
+      name,
+      x: loc.x,
+      y: loc.y,
+      description: loc.description,
+      faction: loc.faction,
+      icon: loc.icon
+    }));
+
+    res.json({ success: true, locations });
+  } catch (err) {
+    console.error('Error getting teleport locations:', err);
+    res.status(500).json({ error: 'Failed to get teleport locations' });
   }
 });

@@ -53,6 +53,20 @@ router.get('/help/asset-json-guide', function(req, res, next) {
   });
 });
 
+router.get('/help/developer-letter', function(req, res, next) {
+  res.render('help/developer-letter', {
+    title: 'Developer Letter - v0.4',
+    user: req.user
+  });
+});
+
+router.get('/help/patch-notes', function(req, res, next) {
+  res.render('help/patch-notes', {
+    title: 'Patch Notes - v0.4',
+    user: req.user
+  });
+});
+
 // Home page
 router.get('/', function(req, res, next) {
   res.render('index-sales', {

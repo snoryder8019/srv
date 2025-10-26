@@ -36,7 +36,7 @@ class InventoryModal {
               🎒 Backpack
             </button>
             <button class="inventory-tab" data-tab="ship">
-              🚀 Ship Cargo
+              🚀 Ship
             </button>
             <button class="inventory-tab" data-tab="storehouse">
               🏪 Storehouse
@@ -45,10 +45,12 @@ class InventoryModal {
 
           <!-- Content Area -->
           <div class="inventory-body">
-            <!-- Left: Equipment Paper Doll -->
-            <div class="equipment-panel">
-              <h3>Equipment</h3>
-              <div class="equipment-slots">
+            <!-- Left Panel: Equipment or Ship Fittings -->
+            <div class="equipment-panel" id="leftPanel">
+              <h3 id="leftPanelTitle">Equipment</h3>
+
+              <!-- Character Equipment (shown on backpack tab) -->
+              <div id="characterEquipment" class="equipment-slots">
                 <div class="equipment-slot" data-slot="head">
                   <div class="slot-label">Head</div>
                   <div class="slot-content" id="slot-head">
@@ -84,6 +86,51 @@ class InventoryModal {
                   <div class="slot-content" id="slot-feet">
                     <span class="slot-empty">Empty</span>
                   </div>
+                </div>
+              </div>
+
+              <!-- Ship Fittings (shown on ship tab) -->
+              <div id="shipFittings" class="ship-fittings" style="display: none;">
+                <!-- High Slots -->
+                <div class="fitting-section">
+                  <h4>🔴 High Slots</h4>
+                  <div id="highSlots" class="fitting-slots"></div>
+                </div>
+                <!-- Mid Slots -->
+                <div class="fitting-section">
+                  <h4>🟡 Mid Slots</h4>
+                  <div id="midSlots" class="fitting-slots"></div>
+                </div>
+                <!-- Low Slots -->
+                <div class="fitting-section">
+                  <h4>🟢 Low Slots</h4>
+                  <div id="lowSlots" class="fitting-slots"></div>
+                </div>
+                <!-- Rig Slots -->
+                <div class="fitting-section">
+                  <h4>⚪ Rig Slots</h4>
+                  <div id="rigSlots" class="fitting-slots"></div>
+                </div>
+              </div>
+
+              <!-- Storehouse Locations (shown on storehouse tab) -->
+              <div id="storehouseLocations" class="storehouse-locations" style="display: none;">
+                <div class="location-info" id="currentLocationInfo">
+                  <h4>📍 Current Location</h4>
+                  <div class="current-location-display">
+                    <span id="currentLocationName">Loading...</span>
+                  </div>
+                </div>
+
+                <div class="location-section">
+                  <h4>🏪 Available Storage</h4>
+                  <div id="storageLocationsList" class="storage-locations-list">
+                    <!-- Storage locations will be populated here -->
+                  </div>
+                </div>
+
+                <div class="location-help">
+                  <p>💡 Tip: Store items at stations and hubs for safekeeping. Access your items when you return to the same location.</p>
                 </div>
               </div>
             </div>
@@ -165,13 +212,41 @@ class InventoryModal {
       }
     });
 
-    // Update panel title
+    // Update panel title and left panel
     const titles = {
       backpack: 'Backpack',
       ship: 'Ship Cargo',
       storehouse: 'Storehouse'
     };
+    const leftPanelTitles = {
+      backpack: 'Equipment',
+      ship: 'Ship Fittings',
+      storehouse: 'Storage Locations'
+    };
+
     document.getElementById('inventoryPanelTitle').textContent = titles[tab];
+    document.getElementById('leftPanelTitle').textContent = leftPanelTitles[tab];
+
+    // Show/hide appropriate left panel content
+    const characterEquipment = document.getElementById('characterEquipment');
+    const shipFittings = document.getElementById('shipFittings');
+    const storehouseLocations = document.getElementById('storehouseLocations');
+
+    if (tab === 'ship') {
+      characterEquipment.style.display = 'none';
+      shipFittings.style.display = 'block';
+      storehouseLocations.style.display = 'none';
+      this.renderShipFittings();
+    } else if (tab === 'storehouse') {
+      characterEquipment.style.display = 'none';
+      shipFittings.style.display = 'none';
+      storehouseLocations.style.display = 'block';
+      this.renderStorehouseLocations();
+    } else {
+      characterEquipment.style.display = 'grid';
+      shipFittings.style.display = 'none';
+      storehouseLocations.style.display = 'none';
+    }
 
     // Render appropriate content
     this.renderInventoryPanel();
@@ -185,21 +260,62 @@ class InventoryModal {
     grid.style.display = 'none';
 
     try {
-      const response = await fetch(`/api/v1/characters/${this.characterId}/inventory`, {
+      // Load character inventory (backpack + equipment)
+      const invResponse = await fetch(`/api/v1/characters/${this.characterId}/inventory`, {
         credentials: 'include'
       });
 
-      if (!response.ok) {
+      if (!invResponse.ok) {
         throw new Error('Failed to load inventory');
       }
 
-      this.inventory = await response.json();
+      this.inventory = await invResponse.json();
+
+      // Always load ship data
+      const shipResponse = await fetch(`/api/v1/characters/${this.characterId}/ship/cargo`, {
+        credentials: 'include'
+      });
+
+      if (shipResponse.ok) {
+        this.inventory.ship = await shipResponse.json();
+      }
+
+      // Load ship fittings
+      const fittingsResponse = await fetch(`/api/v1/characters/${this.characterId}/ship/fittings`, {
+        credentials: 'include'
+      });
+
+      if (fittingsResponse.ok) {
+        this.inventory.fittings = await fittingsResponse.json();
+      }
+
+      // Load character location data for storehouse
+      const characterResponse = await fetch(`/api/v1/characters/${this.characterId}`, {
+        credentials: 'include'
+      });
+
+      if (characterResponse.ok) {
+        const data = await characterResponse.json();
+        const characterData = data.character || data;
+        this.characterLocation = characterData.location;
+        this.characterHomeHub = characterData.homeHub;
+      }
 
       loading.style.display = 'none';
       grid.style.display = 'grid';
 
       this.renderEquipment();
       this.renderInventoryPanel();
+
+      // Render ship fittings if we're on the ship tab
+      if (this.activeTab === 'ship') {
+        this.renderShipFittings();
+      }
+
+      // Render storehouse locations if we're on the storehouse tab
+      if (this.activeTab === 'storehouse') {
+        this.renderStorehouseLocations();
+      }
 
     } catch (error) {
       console.error('Error loading inventory:', error);
@@ -267,6 +383,9 @@ class InventoryModal {
                   Equip
                 </button>
               ` : ''}
+              <button class="item-action-btn" onclick="window.inventoryModal.transferToShip('${item.itemId}', ${item.quantity})">
+                Ship →
+              </button>
               <button class="item-action-btn danger" onclick="window.inventoryModal.removeItem('${item.itemId}')">
                 Drop
               </button>
@@ -276,8 +395,49 @@ class InventoryModal {
       }).join('');
 
     } else if (this.activeTab === 'ship') {
-      grid.innerHTML = '<div class="inventory-empty-message">Ship cargo coming soon</div>';
-      capacityEl.textContent = '0/200';
+      // Load ship cargo if not already loaded
+      if (!this.inventory.ship) {
+        this.loadInventory();
+        return;
+      }
+
+      const items = this.inventory.ship.cargo.items || [];
+      const capacity = this.inventory.ship.cargo.capacity || 200;
+      const usedSpace = this.inventory.ship.cargo.usedSpace || 0;
+
+      capacityEl.textContent = `${usedSpace.toFixed(1)}/${capacity} m³`;
+
+      if (items.length === 0) {
+        grid.innerHTML = '<div class="inventory-empty-message">Ship cargo is empty</div>';
+        return;
+      }
+
+      grid.innerHTML = items.map(item => {
+        if (!item.itemDetails) return '';
+
+        return `
+          <div class="inventory-item" data-item-id="${item.itemId}">
+            <div class="item-icon">${this.getItemIcon(item.itemDetails)}</div>
+            <div class="item-info">
+              <div class="item-name">${item.itemDetails.name}</div>
+              ${item.quantity > 1 ? `<div class="item-quantity">x${item.quantity}</div>` : ''}
+              <div class="item-volume">${(item.itemDetails.volume || 1) * item.quantity} m³</div>
+            </div>
+            <div class="item-rarity ${item.itemDetails.rarity}">${item.itemDetails.rarity}</div>
+            <div class="item-actions">
+              <button class="item-action-btn" onclick="window.inventoryModal.transferToBackpack('${item.itemId}', ${item.quantity})">
+                ← Backpack
+              </button>
+              ${item.itemDetails.itemType === 'module' ? `
+                <button class="item-action-btn" onclick="window.inventoryModal.showFittingsModal('${item.itemId}')">
+                  Install
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
     } else if (this.activeTab === 'storehouse') {
       grid.innerHTML = '<div class="inventory-empty-message">Storehouse coming soon</div>';
       capacityEl.textContent = '0/1000';
@@ -377,6 +537,275 @@ class InventoryModal {
       console.error('Error removing item:', error);
       alert('Failed to remove item. Please try again.');
     }
+  }
+
+  async transferToShip(itemId, maxQuantity) {
+    const quantity = prompt(`How many to transfer to ship? (Max: ${maxQuantity})`, Math.min(maxQuantity, 1));
+
+    if (!quantity || isNaN(quantity) || quantity <= 0) return;
+
+    try {
+      const response = await fetch(`/api/v1/characters/${this.characterId}/ship/cargo/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          itemId,
+          quantity: parseInt(quantity),
+          direction: 'toShip'
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to transfer item');
+      }
+
+      // Reload inventory
+      await this.loadInventory();
+
+    } catch (error) {
+      console.error('Error transferring to ship:', error);
+      alert(error.message || 'Failed to transfer item to ship. Please try again.');
+    }
+  }
+
+  async transferToBackpack(itemId, maxQuantity) {
+    const quantity = prompt(`How many to transfer to backpack? (Max: ${maxQuantity})`, Math.min(maxQuantity, 1));
+
+    if (!quantity || isNaN(quantity) || quantity <= 0) return;
+
+    try {
+      const response = await fetch(`/api/v1/characters/${this.characterId}/ship/cargo/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          itemId,
+          quantity: parseInt(quantity),
+          direction: 'toBackpack'
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to transfer item');
+      }
+
+      // Reload inventory
+      await this.loadInventory();
+
+    } catch (error) {
+      console.error('Error transferring to backpack:', error);
+      alert(error.message || 'Failed to transfer item to backpack. Please try again.');
+    }
+  }
+
+  renderShipFittings() {
+    if (!this.inventory.fittings) return;
+
+    const slotTypes = [
+      { key: 'highSlots', containerId: 'highSlots', label: 'High Slot' },
+      { key: 'midSlots', containerId: 'midSlots', label: 'Mid Slot' },
+      { key: 'lowSlots', containerId: 'lowSlots', label: 'Low Slot' },
+      { key: 'rigSlots', containerId: 'rigSlots', label: 'Rig Slot' }
+    ];
+
+    slotTypes.forEach(({ key, containerId, label }) => {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      const slots = this.inventory.fittings[key] || [];
+
+      container.innerHTML = slots.map((fitting, index) => {
+        if (fitting && fitting.itemDetails) {
+          return `
+            <div class="fitting-slot filled" data-slot-type="${key}" data-slot-index="${index}">
+              <div class="fitting-item">
+                <div class="fitting-icon">🔧</div>
+                <div class="fitting-info">
+                  <div class="fitting-name">${fitting.itemDetails.name}</div>
+                  <div class="fitting-stats">${fitting.itemDetails.description || ''}</div>
+                </div>
+                <button class="fitting-action-btn" onclick="window.inventoryModal.uninstallModule('${key}', ${index})">
+                  Uninstall
+                </button>
+              </div>
+            </div>
+          `;
+        } else {
+          return `
+            <div class="fitting-slot empty" data-slot-type="${key}" data-slot-index="${index}">
+              <span class="slot-empty">Empty ${label}</span>
+            </div>
+          `;
+        }
+      }).join('');
+    });
+  }
+
+  showFittingsModal(itemId) {
+    // Show a modal to select fitting slot
+    const slotTypes = ['highSlots', 'midSlots', 'lowSlots', 'rigSlots'];
+    const slotLabels = ['High Slots (Weapons/Utility)', 'Mid Slots (Shield/Propulsion)', 'Low Slots (Armor/Engineering)', 'Rig Slots (Permanent Mods)'];
+
+    const slotType = prompt(`Select slot type:\n${slotLabels.map((l, i) => `${i + 1}. ${l}`).join('\n')}`);
+
+    if (!slotType || slotType < 1 || slotType > 4) return;
+
+    const selectedSlotType = slotTypes[slotType - 1];
+    const maxSlots = this.inventory.fittings[selectedSlotType]?.length || 3;
+
+    const slotIndex = prompt(`Select slot index (0-${maxSlots - 1}):`);
+
+    if (slotIndex === null || isNaN(slotIndex)) return;
+
+    this.installModule(itemId, selectedSlotType, parseInt(slotIndex));
+  }
+
+  async installModule(itemId, slotType, slotIndex) {
+    try {
+      const response = await fetch(`/api/v1/characters/${this.characterId}/ship/fittings/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ itemId, slotType, slotIndex })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to install module');
+      }
+
+      const result = await response.json();
+      alert(result.message);
+
+      // Reload inventory
+      await this.loadInventory();
+
+    } catch (error) {
+      console.error('Error installing module:', error);
+      alert(error.message || 'Failed to install module. Please try again.');
+    }
+  }
+
+  async uninstallModule(slotType, slotIndex) {
+    try {
+      const response = await fetch(`/api/v1/characters/${this.characterId}/ship/fittings/uninstall`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ slotType, slotIndex })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to uninstall module');
+      }
+
+      const result = await response.json();
+      alert(result.message);
+
+      // Reload inventory
+      await this.loadInventory();
+
+    } catch (error) {
+      console.error('Error uninstalling module:', error);
+      alert(error.message || 'Failed to uninstall module. Please try again.');
+    }
+  }
+
+  renderStorehouseLocations() {
+    const currentLocationName = document.getElementById('currentLocationName');
+    const storageLocationsList = document.getElementById('storageLocationsList');
+
+    // Display current location
+    if (this.characterLocation) {
+      const locationText = this.characterLocation.zone || 'Deep Space';
+      currentLocationName.textContent = locationText;
+    } else {
+      currentLocationName.textContent = 'Unknown Location';
+    }
+
+    // Define available storage locations
+    const storageLocations = [
+      {
+        id: 'home-hub',
+        name: this.characterHomeHub?.name || 'Home Hub',
+        icon: '🏠',
+        type: 'Hub',
+        description: 'Your home station',
+        isAvailable: true,
+        isCurrent: this.characterLocation?.zone === this.characterHomeHub?.name
+      },
+      {
+        id: 'temporal-nexus',
+        name: 'Temporal Nexus Station',
+        icon: '⧗',
+        type: 'Hub',
+        description: 'Time String hub',
+        isAvailable: this.characterLocation?.zone === 'Temporal Nexus Station',
+        isCurrent: this.characterLocation?.zone === 'Temporal Nexus Station'
+      },
+      {
+        id: 'quantum-forge',
+        name: 'Quantum Forge Complex',
+        icon: '⚙',
+        type: 'Hub',
+        description: 'Tech String hub',
+        isAvailable: this.characterLocation?.zone === 'Quantum Forge Complex',
+        isCurrent: this.characterLocation?.zone === 'Quantum Forge Complex'
+      },
+      {
+        id: 'celestial-sanctum',
+        name: 'Celestial Sanctum',
+        icon: '✦',
+        type: 'Hub',
+        description: 'Faith String hub',
+        isAvailable: this.characterLocation?.zone === 'Celestial Sanctum',
+        isCurrent: this.characterLocation?.zone === 'Celestial Sanctum'
+      },
+      {
+        id: 'crimson-bastion',
+        name: 'Crimson Bastion',
+        icon: '⚔',
+        type: 'Hub',
+        description: 'War String hub',
+        isAvailable: this.characterLocation?.zone === 'Crimson Bastion',
+        isCurrent: this.characterLocation?.zone === 'Crimson Bastion'
+      }
+    ];
+
+    // Render storage locations
+    storageLocationsList.innerHTML = storageLocations.map(location => {
+      const statusClass = location.isCurrent ? 'current' : (location.isAvailable ? 'available' : 'unavailable');
+      const statusText = location.isCurrent ? '📍 You are here' : (location.isAvailable ? '✓ Available' : '🔒 Not at location');
+
+      return `
+        <div class="storage-location ${statusClass}" data-location-id="${location.id}">
+          <div class="location-header">
+            <span class="location-icon">${location.icon}</span>
+            <div class="location-details">
+              <div class="location-name">${location.name}</div>
+              <div class="location-type">${location.type}</div>
+            </div>
+          </div>
+          <div class="location-description">${location.description}</div>
+          <div class="location-status ${statusClass}">${statusText}</div>
+          ${location.isAvailable && !location.isCurrent ? `
+            <button class="location-action-btn" onclick="window.inventoryModal.selectStorageLocation('${location.id}')">
+              View Storage
+            </button>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  selectStorageLocation(locationId) {
+    console.log('Selected storage location:', locationId);
+    // TODO: Load storehouse items for this location
+    alert(`Storage location selected: ${locationId}\nStorehouse functionality coming soon!`);
   }
 }
 

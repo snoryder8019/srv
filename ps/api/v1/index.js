@@ -6,6 +6,7 @@ import assetsRouter from './assets/index.js';
 import ticketsRouter from './tickets/index.js';
 import planetGenerationRouter from './routes/planet-generation.js';
 import inventoryRouter from './inventory/index.js';
+import shipRouter from './inventory/ship.js';
 
 const router = express.Router();
 
@@ -32,5 +33,6 @@ router.use('/assets', assetsRouter);
 router.use('/tickets', ticketsRouter);
 router.use('/planet-generation', planetGenerationRouter);
 router.use('/', inventoryRouter); // Inventory routes handle their own /characters/:id/inventory paths
+router.use('/', shipRouter); // Ship routes handle their own /characters/:id/ship paths
 
 export default router;

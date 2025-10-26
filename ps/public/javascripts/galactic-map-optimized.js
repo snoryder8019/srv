@@ -3,6 +3,8 @@
  * Reduced clutter, proper drag, 4 main factions, asset-driven updates
  */
 
+import { applyScatterSystem } from '/javascripts/scatter-repulsion.js';
+
 class GalacticMap {
   constructor(canvasId, width = 5000, height = 5000) {
     this.canvas = document.getElementById(canvasId);
@@ -662,12 +664,20 @@ class GalacticMap {
   }
 
   /**
-   * Update published assets display - galaxy, star, orbital, anomaly
+   * Update published assets display - INTERGALACTIC SCALE ONLY
+   * Shows: galaxies, anomalies, orbitals (space stations), ships, structures
+   * Hides: stars (stellar scale), planets/moons (planetary scale)
    * PERPETUAL: Maintains existing positions, only adds new assets
    */
   async updatePublishedAssets(assets, forceRandomize = false) {
-    // Filter to only show galaxy, star, orbital, and anomaly types
-    const validTypes = ['galaxy', 'star', 'orbital', 'anomaly'];
+    // Filter to only show INTERGALACTIC scale assets
+    // - galaxy: Massive galactic structures
+    // - anomaly: Large spatial anomalies (wormholes, rifts, etc)
+    // - orbital: Space stations, outposts, platforms
+    // - ship: Starships (intergalactic vessels)
+    // - structure: Large space structures
+    // EXCLUDED: star (stellar scale), planet/moon (planetary scale)
+    const validTypes = ['galaxy', 'anomaly', 'orbital', 'ship', 'structure'];
     const filteredAssets = assets.filter(asset =>
       validTypes.includes(asset.assetType)
     );
@@ -681,6 +691,9 @@ class GalacticMap {
     const spatialMap = new Map();
     if (spatialAssets && !forceRandomize) {
       spatialAssets.forEach(sa => spatialMap.set(sa._id, sa));
+      console.log(`📍 Loaded ${spatialMap.size} saved positions from spatial service`);
+    } else {
+      console.log('📍 No saved positions found, will generate new ones');
     }
 
     // Create a map of current assets to check what's new
@@ -708,6 +721,7 @@ class GalacticMap {
 
         if (savedPosition) {
           // Restore from SVC (perpetual!)
+          console.log(`  ✓ Loaded ${asset.title} from cache at (${Math.round(savedPosition.x)}, ${Math.round(savedPosition.y)})`);
           const isHub = asset.hubData?.isStartingLocation;
           newAssetList.push({
             ...asset,
@@ -758,9 +772,9 @@ class GalacticMap {
             x = asset.coordinates.x;
             y = asset.coordinates.y;
 
-            // Galaxies and stars are STATIONARY - they should NOT drift
-            // Only anomalies/orbitals with special properties should move
-            isStationary = true;
+            // Galaxies and large structures are STATIONARY - they should NOT drift
+            // Space stations (orbitals) and ships may drift slowly
+            isStationary = ['galaxy', 'anomaly', 'structure'].includes(asset.assetType);
 
             vx = 0;
             vy = 0;
@@ -771,6 +785,7 @@ class GalacticMap {
             const padding = 200;
             x = padding + Math.random() * (this.width - padding * 2);
             y = padding + Math.random() * (this.height - padding * 2);
+            console.log(`  ⚠️ NEW RANDOM for ${asset.title} at (${Math.round(x)}, ${Math.round(y)}) - not in cache!`);
 
             // Anomalies are stationary, galaxies and orbitals move
             isStationary = asset.assetType === 'anomaly';
@@ -907,6 +922,15 @@ class GalacticMap {
       // DISABLED: Static charge system (causes clumping at walls)
       asset.staticCharge = 0;
       asset.touchingEdge = nowTouchingEdge;
+
+      // SCATTER REPULSION SYSTEM - Prevent northwest drift with 15% stronger forces
+      applyScatterSystem(
+        asset,
+        this.width,
+        this.height,
+        EDGE_GRAVITY_STRENGTH,
+        speedMultiplier
+      );
 
       // BROWN NOISE OSCILLATION - Add natural turbulence
       if (this.brownNoiseEnabled && this.brownNoiseStrength > 0) {

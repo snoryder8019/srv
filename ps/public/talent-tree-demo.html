@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cosmic Talent Tree Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #0f172a;
+      color: white;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 2rem;
+      padding: 2rem;
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      border-radius: 12px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.5rem;
+    }
+
+    .talent-tree-card {
+      background: linear-gradient(135deg, #0a0e27 0%, #1e293b 100%);
+      border: 2px solid #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    .talent-tree-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #334155;
+    }
+
+    .talent-tree-header h2 {
+      font-size: 1.75rem;
+      color: #e2e8f0;
+    }
+
+    .talent-points {
+      text-align: center;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
+    }
+
+    .points-available {
+      display: block;
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+
+    .points-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.9;
+    }
+
+    .talent-tree-canvas-container {
+      width: 100%;
+      min-height: 700px;
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #0a0e27;
+    }
+
+    #talentTreeCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .talent-actions {
+      margin-top: 1.5rem;
+      text-align: center;
+    }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary {
+      background: linear-gradient(135deg, #475569, #334155);
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: linear-gradient(135deg, #64748b, #475569);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .instructions {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-top: 1rem;
+      font-size: 0.875rem;
+      color: #cbd5e1;
+    }
+
+    .instructions h3 {
+      color: #e2e8f0;
+      margin-bottom: 0.5rem;
+    }
+
+    .instructions ul {
+      list-style: none;
+      padding-left: 1rem;
+    }
+
+    .instructions li {
+      margin: 0.25rem 0;
+      padding-left: 1.5rem;
+      position: relative;
+    }
+
+    .instructions li::before {
+      content: "→";
+      position: absolute;
+      left: 0;
+      color: #60a5fa;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Cosmic Talent Tree</h1>
+      <p>Space-themed character progression with animated connections and fog of war</p>
+    </div>
+
+    <div class="talent-tree-card">
+      <div class="talent-tree-header">
+        <h2>Talent Tree</h2>
+        <div class="talent-points">
+          <span class="points-available" id="talentPoints">10</span>
+          <span class="points-label">Points Available</span>
+        </div>
+      </div>
+
+      <div class="talent-tree-canvas-container">
+        <canvas id="talentTreeCanvas"></canvas>
+      </div>
+
+      <div class="talent-actions">
+        <button class="btn btn-secondary" id="resetTalents">Reset Talents</button>
+      </div>
+
+      <div class="instructions">
+        <h3>Features:</h3>
+        <ul>
+          <li><strong>4 Talent Trees:</strong> Combat (Red), Tech (Blue), Faith (Purple), Agility (Green)</li>
+          <li><strong>5 Talents per Tree:</strong> Each tree has talents across 3 tiers</li>
+          <li><strong>Animated Connections:</strong> Energy pulses flow along connection lines</li>
+          <li><strong>Fog of War:</strong> Locked talents are obscured with animated fog effects</li>
+          <li><strong>Space Theme:</strong> Starfield background with nebula gradients</li>
+          <li><strong>Interactive:</strong> Hover over talents to see tooltips, click to select</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Mock character data for demo
+    window.CHARACTER_DATA = {
+      _id: 'demo-character',
+      name: 'Demo Character',
+      level: 10,
+      talents: {
+        availablePoints: 10,
+        spent: {},
+        unlocked: []
+      }
+    };
+    window.CHARACTER_ID = 'demo-character';
+  </script>
+  <script src="/javascripts/talent-tree-canvas.js"></script>
+</body>
+</html>

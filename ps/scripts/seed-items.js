@@ -1,7 +1,4 @@
-import { MongoClient } from 'mongodb';
-
-const DB_URL = process.env.DB_URL || 'mongodb://localhost:27017';
-const DB_NAME = 'projectStringborne';
+import { connectDB, closeDB } from '../plugins/mongo/mongo.js';
 
 const INITIAL_ITEMS = [
   // === CONSUMABLES ===
@@ -257,13 +254,9 @@ const INITIAL_ITEMS = [
 ];
 
 async function seedItems() {
-  const client = new MongoClient(DB_URL);
-
   try {
-    await client.connect();
+    const db = await connectDB();
     console.log('✅ Connected to MongoDB');
-
-    const db = client.db(DB_NAME);
 
     // Check if items already exist
     const existingCount = await db.collection('items').countDocuments();
@@ -324,7 +317,7 @@ async function seedItems() {
   } catch (error) {
     console.error('❌ Error seeding items:', error);
   } finally {
-    await client.close();
+    await closeDB();
   }
 }
 

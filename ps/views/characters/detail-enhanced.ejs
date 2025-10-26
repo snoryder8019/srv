@@ -6,9 +6,65 @@
   <title><%= title %> - Character</title>
   <link rel="stylesheet" href="/stylesheets/style.css">
   <link rel="stylesheet" href="/stylesheets/character-detail.css">
+  <link rel="stylesheet" href="/stylesheets/inventory-modal.css">
 </head>
 <body>
   <%- include('../partials/header', { user: user }) %>
+
+  <%
+  // Helper function to get item icon based on type/category
+  function getItemIcon(item) {
+    if (!item) return '📦';
+
+    const iconMap = {
+      // Weapons
+      'energy_weapon': '⚡',
+      'ballistic_weapon': '🔫',
+      'melee_weapon': '⚔️',
+
+      // Armor/Equipment
+      'helmet': '⛑️',
+      'armor': '🛡️',
+      'boots': '👢',
+      'gloves': '🧤',
+      'pants': '👖',
+
+      // Consumables
+      'consumable': '💊',
+      'health': '❤️',
+      'energy': '⚡',
+
+      // Modules
+      'shield': '🛡️',
+      'engine': '🚀',
+      'weapon_module': '⚔️',
+
+      // Resources
+      'ore': '⛏️',
+      'scrap': '🔩',
+      'component': '⚙️',
+
+      // Trade goods
+      'trade_good': '📦',
+      'luxury': '💎',
+      'common_goods': '📦'
+    };
+
+    return iconMap[item.category] || iconMap[item.itemType] || '📦';
+  }
+
+  // Helper function to get rarity class
+  function getRarityClass(rarity) {
+    const rarityMap = {
+      'common': 'rarity-common',
+      'uncommon': 'rarity-uncommon',
+      'rare': 'rarity-rare',
+      'legendary': 'rarity-legendary',
+      'exotic': 'rarity-exotic'
+    };
+    return rarityMap[rarity] || 'rarity-common';
+  }
+  %>
 
   <main class="character-container">
     <div class="character-header">
@@ -41,129 +97,6 @@
             <div class="info-item">
               <span class="info-label">Home Planet:</span>
               <span class="info-value"><%= character.homePlanet %></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Equipment Window -->
-        <div class="card equipment-card">
-          <h2>Equipment</h2>
-          <div class="equipment-grid">
-            <!-- Head -->
-            <div class="equipment-slot" data-slot="head">
-              <div class="slot-icon">⛑️</div>
-              <div class="slot-label">Head</div>
-              <div class="slot-item" id="slot-head">
-                <% if (character.equipped.head) { %>
-                  <%= character.equipped.head.name %>
-                <% } else { %>
-                  <span class="empty-slot">Empty</span>
-                <% } %>
-              </div>
-            </div>
-
-            <!-- Chest -->
-            <div class="equipment-slot" data-slot="chest">
-              <div class="slot-icon">🛡️</div>
-              <div class="slot-label">Chest</div>
-              <div class="slot-item" id="slot-chest">
-                <% if (character.equipped.chest) { %>
-                  <%= character.equipped.chest.name %>
-                <% } else { %>
-                  <span class="empty-slot">Empty</span>
-                <% } %>
-              </div>
-            </div>
-
-            <!-- Legs -->
-            <div class="equipment-slot" data-slot="legs">
-              <div class="slot-icon">👖</div>
-              <div class="slot-label">Legs</div>
-              <div class="slot-item" id="slot-legs">
-                <% if (character.equipped.legs) { %>
-                  <%= character.equipped.legs.name %>
-                <% } else { %>
-                  <span class="empty-slot">Empty</span>
-                <% } %>
-              </div>
-            </div>
-
-            <!-- Feet -->
-            <div class="equipment-slot" data-slot="feet">
-              <div class="slot-icon">👢</div>
-              <div class="slot-label">Feet</div>
-              <div class="slot-item" id="slot-feet">
-                <% if (character.equipped.feet) { %>
-                  <%= character.equipped.feet.name %>
-                <% } else { %>
-                  <span class="empty-slot">Empty</span>
-                <% } %>
-              </div>
-            </div>
-
-            <!-- Hands -->
-            <div class="equipment-slot" data-slot="hands">
-              <div class="slot-icon">🧤</div>
-              <div class="slot-label">Hands</div>
-              <div class="slot-item" id="slot-hands">
-                <% if (character.equipped.hands) { %>
-                  <%= character.equipped.hands.name %>
-                <% } else { %>
-                  <span class="empty-slot">Empty</span>
-                <% } %>
-              </div>
-            </div>
-
-            <!-- Weapon -->
-            <div class="equipment-slot weapon-slot" data-slot="weapon">
-              <div class="slot-icon">⚔️</div>
-              <div class="slot-label">Weapon</div>
-              <div class="slot-item" id="slot-weapon">
-                <% if (character.equipped.weapon) { %>
-                  <%= character.equipped.weapon.name %>
-                <% } else { %>
-                  <span class="empty-slot">Empty</span>
-                <% } %>
-              </div>
-            </div>
-
-            <!-- Off-hand -->
-            <div class="equipment-slot" data-slot="offhand">
-              <div class="slot-icon">🪓</div>
-              <div class="slot-label">Off-hand</div>
-              <div class="slot-item" id="slot-offhand">
-                <% if (character.equipped.offhand) { %>
-                  <%= character.equipped.offhand.name %>
-                <% } else { %>
-                  <span class="empty-slot">Empty</span>
-                <% } %>
-              </div>
-            </div>
-
-            <!-- Trinket 1 -->
-            <div class="equipment-slot trinket-slot" data-slot="trinket1">
-              <div class="slot-icon">💎</div>
-              <div class="slot-label">Trinket 1</div>
-              <div class="slot-item" id="slot-trinket1">
-                <% if (character.equipped.trinket1) { %>
-                  <%= character.equipped.trinket1.name %>
-                <% } else { %>
-                  <span class="empty-slot">Empty</span>
-                <% } %>
-              </div>
-            </div>
-
-            <!-- Trinket 2 -->
-            <div class="equipment-slot trinket-slot" data-slot="trinket2">
-              <div class="slot-icon">💎</div>
-              <div class="slot-label">Trinket 2</div>
-              <div class="slot-item" id="slot-trinket2">
-                <% if (character.equipped.trinket2) { %>
-                  <%= character.equipped.trinket2.name %>
-                <% } else { %>
-                  <span class="empty-slot">Empty</span>
-                <% } %>
-              </div>
             </div>
           </div>
         </div>
@@ -215,103 +148,15 @@
       <div class="right-column">
         <div class="card talent-tree-card">
           <div class="talent-tree-header">
-            <h2>Talent Tree</h2>
+            <h2>Cosmic Talent Tree</h2>
             <div class="talent-points">
               <span class="points-available" id="talentPoints"><%= character.talents?.availablePoints || 0 %></span>
               <span class="points-label">Points Available</span>
             </div>
           </div>
 
-          <div class="talent-tree" id="talentTree">
-            <!-- Tier 1 -->
-            <div class="talent-tier" data-tier="1">
-              <div class="tier-label">Tier 1</div>
-              <div class="talents-row">
-                <div class="talent-node" data-talent="strength_boost_1">
-                  <div class="talent-icon">💪</div>
-                  <div class="talent-name">Strength I</div>
-                  <div class="talent-rank">
-                    <span class="current-rank">0</span>/<span class="max-rank">5</span>
-                  </div>
-                  <div class="talent-description">+2 Strength per rank</div>
-                </div>
-
-                <div class="talent-node" data-talent="intelligence_boost_1">
-                  <div class="talent-icon">🧠</div>
-                  <div class="talent-name">Intelligence I</div>
-                  <div class="talent-rank">
-                    <span class="current-rank">0</span>/<span class="max-rank">5</span>
-                  </div>
-                  <div class="talent-description">+2 Intelligence per rank</div>
-                </div>
-
-                <div class="talent-node" data-talent="agility_boost_1">
-                  <div class="talent-icon">🏃</div>
-                  <div class="talent-name">Agility I</div>
-                  <div class="talent-rank">
-                    <span class="current-rank">0</span>/<span class="max-rank">5</span>
-                  </div>
-                  <div class="talent-description">+2 Agility per rank</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tier 2 -->
-            <div class="talent-tier" data-tier="2">
-              <div class="tier-label">Tier 2 <span class="tier-requirement">(Requires 5 points in Tier 1)</span></div>
-              <div class="talents-row">
-                <div class="talent-node locked" data-talent="combat_mastery" data-requires="5">
-                  <div class="talent-icon">⚔️</div>
-                  <div class="talent-name">Combat Mastery</div>
-                  <div class="talent-rank">
-                    <span class="current-rank">0</span>/<span class="max-rank">3</span>
-                  </div>
-                  <div class="talent-description">+5% damage per rank</div>
-                </div>
-
-                <div class="talent-node locked" data-talent="tech_affinity" data-requires="5">
-                  <div class="talent-icon">⚙️</div>
-                  <div class="talent-name">Tech Affinity</div>
-                  <div class="talent-rank">
-                    <span class="current-rank">0</span>/<span class="max-rank">3</span>
-                  </div>
-                  <div class="talent-description">+3 Tech per rank</div>
-                </div>
-
-                <div class="talent-node locked" data-talent="faith_power" data-requires="5">
-                  <div class="talent-icon">✨</div>
-                  <div class="talent-name">Faith Power</div>
-                  <div class="talent-rank">
-                    <span class="current-rank">0</span>/<span class="max-rank">3</span>
-                  </div>
-                  <div class="talent-description">+3 Faith per rank</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tier 3 -->
-            <div class="talent-tier" data-tier="3">
-              <div class="tier-label">Tier 3 <span class="tier-requirement">(Requires 10 points in Tiers 1-2)</span></div>
-              <div class="talents-row">
-                <div class="talent-node ultimate locked" data-talent="berserker_rage" data-requires="10">
-                  <div class="talent-icon">😡</div>
-                  <div class="talent-name">Berserker Rage</div>
-                  <div class="talent-rank">
-                    <span class="current-rank">0</span>/<span class="max-rank">1</span>
-                  </div>
-                  <div class="talent-description">Gain +50% damage and +25% speed for 10 seconds. Cooldown: 60s</div>
-                </div>
-
-                <div class="talent-node ultimate locked" data-talent="tactical_mind" data-requires="10">
-                  <div class="talent-icon">🎯</div>
-                  <div class="talent-name">Tactical Mind</div>
-                  <div class="talent-rank">
-                    <span class="current-rank">0</span>/<span class="max-rank">1</span>
-                  </div>
-                  <div class="talent-description">All abilities cost 25% less energy and have 15% reduced cooldown</div>
-                </div>
-              </div>
-            </div>
+          <div class="talent-tree-canvas-container">
+            <canvas id="talentTreeCanvas"></canvas>
           </div>
 
           <div class="talent-actions">
@@ -322,6 +167,9 @@
     </div>
 
     <div class="character-actions">
+      <button class="btn btn-primary" onclick="window.inventoryModal.open(window.CHARACTER_ID)">
+        Open Inventory
+      </button>
       <a href="/characters" class="btn btn-secondary">Back to Characters</a>
     </div>
   </main>
@@ -332,7 +180,29 @@
   <script>
     window.CHARACTER_ID = "<%= character._id %>";
     window.CHARACTER_DATA = <%- JSON.stringify(character) %>;
+
+    // Auto-open inventory modal if query param is present
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const openInventory = urlParams.get('openInventory');
+
+      if (openInventory && window.inventoryModal) {
+        // Wait a bit for the modal to initialize
+        setTimeout(() => {
+          window.inventoryModal.open(window.CHARACTER_ID);
+
+          // Switch to the requested tab
+          if (openInventory === 'ship') {
+            window.inventoryModal.switchTab('ship');
+          } else if (openInventory === 'storehouse') {
+            window.inventoryModal.switchTab('storehouse');
+          }
+        }, 100);
+      }
+    });
   </script>
+  <script src="/javascripts/inventory-modal.js"></script>
+  <script src="/javascripts/talent-tree-canvas.js"></script>
   <script src="/javascripts/character-detail.js"></script>
 </body>
 </html>

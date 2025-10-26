@@ -142,6 +142,54 @@ class TesterToolbar {
           </div>
         </div>
         <div class="debug-section">
+          <h4>View Sync</h4>
+          <!-- Sync Indicator (moved from bottom-right corner) -->
+          <div id="syncIndicator" style="background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(74, 222, 128, 0.4); border-radius: 3px; padding: 6px 8px; display: flex; align-items: center; gap: 8px; font-family: 'Courier New', monospace; font-size: 0.75em; margin-bottom: 8px;">
+            <div id="syncStatus" style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 8px #4ade80;"></div>
+            <div id="syncDetails" style="color: #00ff00; white-space: nowrap; flex: 1;">Loading...</div>
+            <div id="mapDetails" style="color: #888; font-size: 0.9em; border-left: 1px solid rgba(74, 222, 128, 0.3); padding-left: 8px;">--</div>
+            <button id="syncRefreshBtn" style="background: transparent; border: none; color: #4ade80; padding: 0; cursor: pointer; font-size: 1.1em; opacity: 0.7; transition: opacity 0.2s;" title="Refresh" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">⟳</button>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">Game State:</span>
+            <span class="debug-value" id="debug-game-state-status">Checking...</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">Map Assets:</span>
+            <span class="debug-value" id="debug-map-assets">--</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">View X:</span>
+            <span class="debug-value" id="debug-view-x">--</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">View Y:</span>
+            <span class="debug-value" id="debug-view-y">--</span>
+          </div>
+          <div class="debug-row">
+            <span class="debug-label">Zoom:</span>
+            <span class="debug-value" id="debug-zoom">--</span>
+          </div>
+          <div class="debug-row">
+            <button class="debug-btn" id="force-sync-btn" title="Force Sync">🔄 Force Sync</button>
+            <button class="debug-btn" id="center-character-btn" title="Center on Character">📍 Center</button>
+          </div>
+        </div>
+        <div class="debug-section">
+          <h4>⚡ Teleport</h4>
+          <div class="debug-row" style="margin-bottom: 8px;">
+            <select id="teleport-location-select" style="background: #1a1a1a; border: 1px solid #4ade80; color: #e0e0e0; padding: 4px 8px; font-family: 'Courier New', monospace; font-size: 0.85em; width: 100%; border-radius: 3px;">
+              <option value="">Loading locations...</option>
+            </select>
+          </div>
+          <div class="debug-row">
+            <button class="debug-btn" id="teleport-btn" style="width: 100%; padding: 6px 12px; background: #1a1a1a; border: 1px solid #f59e0b; color: #f59e0b; cursor: pointer; border-radius: 3px; font-family: 'Courier New', monospace; transition: all 0.2s;">
+              🚀 Teleport Character
+            </button>
+          </div>
+          <div id="teleport-status" style="margin-top: 4px; font-size: 0.75em; color: #888; display: none;"></div>
+        </div>
+        <div class="debug-section">
           <h4>Performance</h4>
           <div class="debug-row">
             <span class="debug-label">FPS:</span>
@@ -194,6 +242,24 @@ class TesterToolbar {
         }
       }
     });
+
+    // Force sync button
+    document.getElementById('force-sync-btn')?.addEventListener('click', () => {
+      this.forceSyncView();
+    });
+
+    // Center on character button
+    document.getElementById('center-character-btn')?.addEventListener('click', () => {
+      this.centerOnCharacter();
+    });
+
+    // Teleport button
+    document.getElementById('teleport-btn')?.addEventListener('click', () => {
+      this.teleportCharacter();
+    });
+
+    // Load teleport locations
+    this.loadTeleportLocations();
   }
 
   updateDebugInfo(data) {
@@ -209,7 +275,8 @@ class TesterToolbar {
     if (data.socketStatus !== undefined) {
       const statusEl = document.getElementById('debug-socket-status');
       statusEl.textContent = data.socketStatus ? 'Connected' : 'Disconnected';
-      statusEl.style.color = data.socketStatus ? '#10b981' : '#ef4444';
+      statusEl.style.color = data.socketStatus ? '#00ff00' : '#ff0000';
+      statusEl.style.textShadow = data.socketStatus ? '0 0 5px rgba(0, 255, 0, 0.5)' : '0 0 5px rgba(255, 0, 0, 0.5)';
     }
 
     if (data.playerCount !== undefined) {
@@ -263,11 +330,11 @@ class TesterToolbar {
       modal.id = 'ticket-modal';
       modal.className = 'ticket-modal';
       modal.innerHTML = `
-        <div class="ticket-modal-overlay" onclick="testerToolbar.closeTicketModal()"></div>
+        <div class="ticket-modal-overlay" onclick="window.testerToolbar?.closeTicketModal()"></div>
         <div class="ticket-modal-content">
           <div class="ticket-modal-header">
             <h3>Create Bug Report / Feedback</h3>
-            <button class="ticket-modal-close" onclick="testerToolbar.closeTicketModal()">&times;</button>
+            <button class="ticket-modal-close" onclick="window.testerToolbar?.closeTicketModal()">&times;</button>
           </div>
           <div class="ticket-modal-body">
             <form id="ticket-form">
@@ -304,7 +371,7 @@ class TesterToolbar {
                 </label>
               </div>
               <div class="form-actions">
-                <button type="button" class="btn btn-secondary" onclick="testerToolbar.closeTicketModal()">Cancel</button>
+                <button type="button" class="btn btn-secondary" onclick="window.testerToolbar?.closeTicketModal()">Cancel</button>
                 <button type="submit" class="btn btn-primary">Submit Ticket</button>
               </div>
             </form>
@@ -425,6 +492,9 @@ class TesterToolbar {
 
     // Start FPS monitor
     this.startFPSMonitor();
+
+    // Start sync monitor
+    this.startSyncMonitor();
   }
 
   /**
@@ -510,6 +580,264 @@ class TesterToolbar {
         }
       });
     }, 3000);
+  }
+
+  /**
+   * Start monitoring view sync status
+   */
+  startSyncMonitor() {
+    if (!this.map) return;
+
+    setInterval(() => {
+      // Update map asset count
+      const mapAssetsEl = document.getElementById('debug-map-assets');
+      if (mapAssetsEl && this.map.publishedAssets) {
+        mapAssetsEl.textContent = this.map.publishedAssets.length;
+      }
+
+      // Update view position
+      const viewXEl = document.getElementById('debug-view-x');
+      const viewYEl = document.getElementById('debug-view-y');
+      const zoomEl = document.getElementById('debug-zoom');
+
+      if (viewXEl && this.map.offsetX !== undefined) {
+        viewXEl.textContent = Math.round(this.map.offsetX);
+      }
+      if (viewYEl && this.map.offsetY !== undefined) {
+        viewYEl.textContent = Math.round(this.map.offsetY);
+      }
+      if (zoomEl && this.map.scale !== undefined) {
+        zoomEl.textContent = `${(this.map.scale * 100).toFixed(0)}%`;
+      }
+    }, 500);
+
+    // Check game state sync
+    this.checkGameStateSync();
+    setInterval(() => this.checkGameStateSync(), 10000);
+  }
+
+  /**
+   * Check game state synchronization
+   */
+  async checkGameStateSync() {
+    const statusEl = document.getElementById('debug-game-state-status');
+    if (!statusEl) return;
+
+    try {
+      const response = await fetch('/api/v1/characters/check', {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        statusEl.textContent = 'Error';
+        statusEl.style.color = '#ef4444';
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.gameState && data.gameState.status === 'connected') {
+        if (data.sync && data.sync.inSync) {
+          statusEl.textContent = '✓ Synced';
+          statusEl.style.color = '#00ff00';
+          statusEl.style.textShadow = '0 0 5px rgba(0, 255, 0, 0.5)';
+        } else {
+          statusEl.textContent = '⚠ Out of Sync';
+          statusEl.style.color = '#ffff00';
+          statusEl.style.textShadow = '0 0 5px rgba(255, 255, 0, 0.5)';
+          console.warn('Sync issues:', data.sync?.issues);
+        }
+      } else {
+        statusEl.textContent = `${data.gameState?.status || 'Disconnected'}`;
+        statusEl.style.color = '#ff0000';
+        statusEl.style.textShadow = '0 0 5px rgba(255, 0, 0, 0.5)';
+      }
+    } catch (error) {
+      console.error('Sync check failed:', error);
+      statusEl.textContent = 'Check Failed';
+      statusEl.style.color = '#ff0000';
+      statusEl.style.textShadow = '0 0 5px rgba(255, 0, 0, 0.5)';
+    }
+  }
+
+  /**
+   * Force sync view with game state
+   */
+  async forceSyncView() {
+    const btn = document.getElementById('force-sync-btn');
+    if (!btn) return;
+
+    const originalText = btn.textContent;
+    btn.textContent = '🔄 Syncing...';
+    btn.disabled = true;
+
+    try {
+      // Reload map assets
+      if (this.map && this.map.loadPublishedAssets) {
+        await this.map.loadPublishedAssets();
+      }
+
+      // Reload travel connections
+      if (this.map && this.map.loadTravelConnections) {
+        await this.map.loadTravelConnections();
+      }
+
+      // Check sync status
+      await this.checkGameStateSync();
+
+      this.showNotification('View synced successfully', 'success');
+    } catch (error) {
+      console.error('Force sync failed:', error);
+      this.showNotification('Sync failed: ' + error.message, 'error');
+    } finally {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+  }
+
+  /**
+   * Center view on current character
+   */
+  centerOnCharacter() {
+    if (!this.map || !this.map.currentCharacter || !this.map.currentCharacter.location) {
+      this.showNotification('No character location to center on', 'error');
+      return;
+    }
+
+    const char = this.map.currentCharacter;
+
+    // Center view on character
+    this.map.offsetX = -char.location.x * this.map.scale + this.map.canvas.width / 2;
+    this.map.offsetY = -char.location.y * this.map.scale + this.map.canvas.height / 2;
+
+    // Zoom to comfortable level
+    this.map.scale = Math.max(0.5, this.map.scale);
+
+    // Update offsets after zoom
+    this.map.offsetX = -char.location.x * this.map.scale + this.map.canvas.width / 2;
+    this.map.offsetY = -char.location.y * this.map.scale + this.map.canvas.height / 2;
+
+    console.log(`📍 Centered on ${char.name} at (${Math.round(char.location.x)}, ${Math.round(char.location.y)})`);
+    this.showNotification(`Centered on ${char.name}`, 'success');
+  }
+
+  async loadTeleportLocations() {
+    try {
+      const response = await fetch('/api/v1/characters/teleport/locations');
+      const data = await response.json();
+
+      if (data.success && data.locations) {
+        const select = document.getElementById('teleport-location-select');
+        if (!select) return;
+
+        select.innerHTML = '<option value="">-- Select Location --</option>';
+
+        data.locations.forEach(loc => {
+          const option = document.createElement('option');
+          option.value = loc.name;
+          option.textContent = `${loc.icon || '📍'} ${loc.name} (${Math.round(loc.x)}, ${Math.round(loc.y)})`;
+          option.dataset.x = loc.x;
+          option.dataset.y = loc.y;
+          option.dataset.description = loc.description;
+          select.appendChild(option);
+        });
+
+        console.log(`🚀 Loaded ${data.locations.length} teleport locations`);
+      }
+    } catch (err) {
+      console.error('Failed to load teleport locations:', err);
+      const select = document.getElementById('teleport-location-select');
+      if (select) {
+        select.innerHTML = '<option value="">Error loading locations</option>';
+      }
+    }
+  }
+
+  async teleportCharacter() {
+    const select = document.getElementById('teleport-location-select');
+    const statusDiv = document.getElementById('teleport-status');
+    const btn = document.getElementById('teleport-btn');
+
+    if (!select || !this.character) return;
+
+    const locationName = select.value;
+    if (!locationName) {
+      this.showTeleportStatus('Please select a location', 'error');
+      return;
+    }
+
+    const selectedOption = select.options[select.selectedIndex];
+    const description = selectedOption.dataset.description || locationName;
+
+    // Confirm teleport
+    if (!confirm(`Teleport ${this.character.name} to ${locationName}?\n\n${description}`)) {
+      return;
+    }
+
+    try {
+      btn.disabled = true;
+      btn.textContent = '⏳ Teleporting...';
+      this.showTeleportStatus('Teleporting...', 'info');
+
+      const response = await fetch(`/api/v1/characters/${this.character._id}/teleport`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ locationName })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        this.showTeleportStatus(`✅ ${data.message}`, 'success');
+        this.showNotification(`Teleported to ${locationName}`, 'success');
+
+        // Update character location in memory
+        if (this.character && data.location) {
+          this.character.location = data.location;
+        }
+
+        // Reload the page after short delay to sync map
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+
+        console.log(`🚀 Teleported to ${locationName}:`, data.location);
+      } else {
+        throw new Error(data.error || 'Teleport failed');
+      }
+    } catch (err) {
+      console.error('Teleport error:', err);
+      this.showTeleportStatus(`❌ ${err.message}`, 'error');
+      this.showNotification(`Teleport failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🚀 Teleport Character';
+    }
+  }
+
+  showTeleportStatus(message, type = 'info') {
+    const statusDiv = document.getElementById('teleport-status');
+    if (!statusDiv) return;
+
+    statusDiv.style.display = 'block';
+    statusDiv.textContent = message;
+
+    // Color based on type
+    const colors = {
+      success: '#4ade80',
+      error: '#ef4444',
+      info: '#60a5fa',
+      warning: '#f59e0b'
+    };
+    statusDiv.style.color = colors[type] || colors.info;
+
+    // Auto-hide after 5 seconds for success/error
+    if (type === 'success' || type === 'error') {
+      setTimeout(() => {
+        statusDiv.style.display = 'none';
+      }, 5000);
+    }
   }
 }
 

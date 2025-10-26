@@ -30,21 +30,9 @@
       <canvas id="galacticMap"></canvas>
     </div>
 
-    <!-- Minimal Sync Indicator (bottom-right corner) -->
-    <div id="syncIndicator" style="position: fixed; bottom: 10px; right: 10px; z-index: 150; background: rgba(0, 0, 0, 0.75); border: 1px solid rgba(74, 222, 128, 0.4); border-radius: 3px; padding: 4px 8px; display: flex; align-items: center; gap: 6px; font-family: 'Courier New', monospace; font-size: 0.7em; backdrop-filter: blur(5px); opacity: 0.85; transition: opacity 0.2s;">
-      <div id="syncStatus" style="width: 6px; height: 6px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 6px #4ade80;"></div>
-      <div id="syncDetails" style="color: #aaa; white-space: nowrap; font-size: 0.95em;">Loading...</div>
-      <div id="mapDetails" style="color: #777; font-size: 0.9em; border-left: 1px solid rgba(74, 222, 128, 0.3); padding-left: 6px;">--</div>
-      <button id="syncRefreshBtn" style="background: transparent; border: none; color: #4ade80; padding: 0; cursor: pointer; font-size: 1em; opacity: 0.6; transition: opacity 0.2s;" title="Refresh" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">⟳</button>
-    </div>
+    <!-- Sync Indicator moved inside Tester Debug Panel -->
 
-    <style>
-      /* Hover effect for sync indicator */
-      #syncIndicator:hover {
-        opacity: 1 !important;
-        border-color: rgba(74, 222, 128, 0.7);
-      }
-    </style>
+    <!-- Sync indicator styles moved to tester-toolbar.js inline styles -->
 
     <!-- Map Controls -->
     <div class="map-controls">
@@ -53,6 +41,9 @@
         <button id="zoomInBtn" class="control-btn zoom-btn" title="Zoom In">+</button>
         <button id="zoomOutBtn" class="control-btn zoom-btn" title="Zoom Out">−</button>
         <button id="resetViewBtn" class="control-btn zoom-btn" title="Reset View">⟲</button>
+        <% if (user) { %>
+        <button id="goToMeBtn" class="control-btn zoom-btn" title="Go to My Character">📍</button>
+        <% } %>
       </div>
 
       <!-- View Controls -->
@@ -73,10 +64,15 @@
     <!-- Admin Controls Panel -->
     <div class="controls-panel" id="adminControlsPanel" style="display: none;">
       <div class="controls-header">
-        <h3>⚙️ State Manager Controls</h3>
+        <h3>⚙️ Admin Controls</h3>
         <button class="close-controls-btn" onclick="toggleAdminPanel()">✕</button>
       </div>
       <div class="controls-content">
+        <!-- State Manager Section -->
+        <div class="control-section-header">
+          <h4>🔧 State Manager</h4>
+        </div>
+
         <div class="control-section">
           <label for="movementSpeedSlider">
             Movement Speed: <span id="movementSpeedValue">0.1</span>x
@@ -124,6 +120,41 @@
 
         <div class="control-section">
           <div class="settings-status" id="settingsStatus"></div>
+        </div>
+
+        <!-- Debugger Section -->
+        <div class="control-section-header">
+          <h4>🐛 Debugger</h4>
+        </div>
+
+        <div class="control-section">
+          <div class="debug-info-panel">
+            <div class="debug-item">
+              <span class="debug-label">Game State Sync:</span>
+              <span class="debug-value" id="debugGameStateSync">Checking...</span>
+            </div>
+            <div class="debug-item">
+              <span class="debug-label">Assets Loaded:</span>
+              <span class="debug-value" id="debugAssetsCount">0</span>
+            </div>
+            <div class="debug-item">
+              <span class="debug-label">Characters Online:</span>
+              <span class="debug-value" id="debugCharactersCount">0</span>
+            </div>
+            <div class="debug-item">
+              <span class="debug-label">Physics FPS:</span>
+              <span class="debug-value" id="debugFPS">30</span>
+            </div>
+            <div class="debug-item">
+              <span class="debug-label">Travel Routes:</span>
+              <span class="debug-value" id="debugRoutesCount">0</span>
+            </div>
+            <div class="debug-item">
+              <span class="debug-label">Last Sync:</span>
+              <span class="debug-value" id="debugLastSync">Never</span>
+            </div>
+          </div>
+          <button id="forceStateSync" class="preset-btn" style="width: 100%; margin-top: 0.5rem;">🔄 Force State Sync</button>
         </div>
       </div>
     </div>
@@ -229,7 +260,106 @@
           console.error('Failed to load character:', error);
           // Clear invalid character from localStorage
           localStorage.removeItem('selectedCharacterId');
+          // Show helpful message
+          showNoCharacterMessage();
         }
+      } else {
+        // No character found - show helpful message
+        showNoCharacterMessage();
+      }
+
+      /**
+       * Show message when no character is found
+       */
+      function showNoCharacterMessage() {
+        <% if (user) { %>
+        // User is logged in but has no character
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: rgba(17, 24, 39, 0.95);
+          border: 2px solid #667eea;
+          border-radius: 12px;
+          padding: 2rem;
+          max-width: 500px;
+          z-index: 10000;
+          text-align: center;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        `;
+        notification.innerHTML = `
+          <div style="font-size: 3rem; margin-bottom: 1rem;">🚀</div>
+          <h2 style="margin: 0 0 1rem 0; color: #ffffff; font-size: 1.5rem;">No Character Found</h2>
+          <p style="margin: 0 0 1.5rem 0; color: #d1d5db; line-height: 1.6;">
+            You need to create a character before exploring the galactic map.
+          </p>
+          <div style="display: flex; gap: 1rem; justify-content: center;">
+            <a href="/characters/create" style="
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #667eea, #764ba2);
+              color: white;
+              text-decoration: none;
+              border-radius: 0.5rem;
+              font-weight: 600;
+              transition: transform 0.2s;
+            " onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+              Create Character
+            </a>
+            <a href="/characters" style="
+              padding: 0.75rem 1.5rem;
+              background: rgba(255, 255, 255, 0.1);
+              color: white;
+              text-decoration: none;
+              border-radius: 0.5rem;
+              font-weight: 600;
+              border: 1px solid rgba(255, 255, 255, 0.2);
+              transition: transform 0.2s;
+            " onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+              My Characters
+            </a>
+          </div>
+        `;
+        document.body.appendChild(notification);
+        <% } else { %>
+        // User is not logged in
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: rgba(17, 24, 39, 0.95);
+          border: 2px solid #667eea;
+          border-radius: 12px;
+          padding: 2rem;
+          max-width: 500px;
+          z-index: 10000;
+          text-align: center;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        `;
+        notification.innerHTML = `
+          <div style="font-size: 3rem; margin-bottom: 1rem;">🔐</div>
+          <h2 style="margin: 0 0 1rem 0; color: #ffffff; font-size: 1.5rem;">Login Required</h2>
+          <p style="margin: 0 0 1.5rem 0; color: #d1d5db; line-height: 1.6;">
+            Please log in to create a character and explore the galactic map.
+          </p>
+          <a href="/auth" style="
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: transform 0.2s;
+          " onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            Login / Register
+          </a>
+        `;
+        document.body.appendChild(notification);
+        <% } %>
       }
 
       // Set asset selection callback - now handles multiple overlapping assets
@@ -282,12 +412,19 @@
       // Setup controls
       setupControls();
 
-      // Setup sync indicator
+      <% if (user && user.userRole === 'tester') { %>
+      // Setup sync indicator (only for testers - elements are in tester toolbar)
       setupSyncIndicator();
+      <% } %>
 
       <% if (user && user.userRole === 'tester') { %>
       // Initialize Socket.IO for testers
-      const socket = io();
+      const socket = io({
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: 10
+      });
 
       // Initialize tester components
       const userObj = {
@@ -297,19 +434,49 @@
         userRole: '<%= user.userRole %>'
       };
 
-      // Wait for Socket.IO to connect before initializing components
+      // Handle connection errors
+      socket.on('connect_error', (error) => {
+        console.error('❌ Socket.IO connection error:', error);
+        console.log('Retrying connection...');
+      });
+
+      socket.on('disconnect', (reason) => {
+        console.warn('⚠️ Socket.IO disconnected:', reason);
+        if (window.testerToolbar) {
+          window.testerToolbar.updateDebugInfo({ socketStatus: false });
+        }
+      });
+
+      socket.on('reconnect', (attemptNumber) => {
+        console.log('🔄 Socket.IO reconnected after', attemptNumber, 'attempts');
+        if (window.testerToolbar) {
+          window.testerToolbar.updateDebugInfo({ socketStatus: true });
+        }
+      });
+
+      socket.on('reconnect_failed', () => {
+        console.error('❌ Socket.IO reconnection failed after all attempts');
+      });
+
+      // Initialize tester toolbar immediately (don't wait for socket)
+      if (typeof TesterToolbar !== 'undefined') {
+        // Character might not be loaded yet, pass map's currentCharacter (might be undefined)
+        window.testerToolbar = new TesterToolbar(userObj, map.currentCharacter);
+        // Connect to map for real-time updates
+        window.testerToolbar.connectMap(map);
+      }
+
+      // Wait for Socket.IO to connect before connecting socket to components
       socket.on('connect', () => {
         console.log('✅ Socket.IO connected:', socket.id);
 
+        // Get current character from map
         const characterObj = map.currentCharacter;
 
-        // Initialize tester toolbar
-        if (typeof TesterToolbar !== 'undefined') {
-          window.testerToolbar = new TesterToolbar(userObj, characterObj);
-
-          // Connect toolbar to Socket.IO and map for real-time updates
+        // Connect tester toolbar to socket once connected
+        if (window.testerToolbar) {
           window.testerToolbar.connectSocket(socket);
-          window.testerToolbar.connectMap(map);
+          window.testerToolbar.updateDebugInfo({ socketStatus: true });
         }
 
         // Initialize global chat
@@ -439,6 +606,31 @@
         map.offsetX = 0;
         map.offsetY = 0;
       });
+
+      <% if (user) { %>
+      // Go to Me - Center on current character
+      const goToMeBtn = document.getElementById('goToMeBtn');
+      if (goToMeBtn) {
+        goToMeBtn.addEventListener('click', () => {
+          if (map.currentCharacter && map.currentCharacter.location) {
+            // Center view on character's position
+            map.offsetX = -map.currentCharacter.location.x * map.scale + map.canvas.width / 2;
+            map.offsetY = -map.currentCharacter.location.y * map.scale + map.canvas.height / 2;
+
+            // Optional: Add a zoom level for better visibility
+            map.scale = Math.max(0.5, map.scale);
+
+            // Update offsets after zoom
+            map.offsetX = -map.currentCharacter.location.x * map.scale + map.canvas.width / 2;
+            map.offsetY = -map.currentCharacter.location.y * map.scale + map.canvas.height / 2;
+
+            console.log('📍 Centered on character:', map.currentCharacter.name);
+          } else {
+            alert('No character location found');
+          }
+        });
+      }
+      <% } %>
 
       // Toggle Grid
       document.getElementById('toggleGridBtn').addEventListener('click', (e) => {
@@ -1253,6 +1445,79 @@
     };
 
     /**
+     * Update debugger values
+     */
+    function updateDebugger() {
+      if (!document.getElementById('debugGameStateSync')) return; // Only run if admin panel exists
+
+      // Update assets count
+      const assetsCount = map.publishedAssets ? map.publishedAssets.length : 0;
+      document.getElementById('debugAssetsCount').textContent = assetsCount;
+
+      // Update characters count
+      const charactersCount = map.characters ? map.characters.length : 0;
+      document.getElementById('debugCharactersCount').textContent = charactersCount;
+
+      // Update FPS
+      document.getElementById('debugFPS').textContent = map.fps || 30;
+
+      // Update travel routes count
+      const routesCount = map.travelConnections ? map.travelConnections.length : 0;
+      document.getElementById('debugRoutesCount').textContent = routesCount;
+
+      // Update last sync time
+      const now = new Date();
+      document.getElementById('debugLastSync').textContent = now.toLocaleTimeString();
+    }
+
+    <% if (user && user.isAdmin) { %>
+    /**
+     * Force state sync with game state service
+     */
+    async function forceStateSync() {
+      const button = document.getElementById('forceStateSync');
+      const syncStatus = document.getElementById('debugGameStateSync');
+
+      button.disabled = true;
+      button.textContent = '🔄 Syncing...';
+      syncStatus.textContent = 'Syncing...';
+      syncStatus.className = 'debug-value warning';
+
+      try {
+        // Force reload assets
+        await map.loadPublishedAssets();
+
+        // Force reload travel connections
+        await map.loadTravelConnections();
+
+        syncStatus.textContent = 'Synced ✓';
+        syncStatus.className = 'debug-value';
+
+        // Update debugger
+        updateDebugger();
+
+        console.log('✅ Forced state sync complete');
+      } catch (error) {
+        console.error('Failed to sync:', error);
+        syncStatus.textContent = 'Error ✗';
+        syncStatus.className = 'debug-value error';
+      } finally {
+        button.disabled = false;
+        button.textContent = '🔄 Force State Sync';
+      }
+    }
+
+    // Setup force sync button
+    const forceSyncBtn = document.getElementById('forceStateSync');
+    if (forceSyncBtn) {
+      forceSyncBtn.addEventListener('click', forceStateSync);
+    }
+
+    // Update debugger every 2 seconds
+    setInterval(updateDebugger, 2000);
+    <% } %>
+
+    /**
      * Setup sync indicator
      */
     function setupSyncIndicator() {
@@ -1262,8 +1527,19 @@
       const syncRefreshBtn = document.getElementById('syncRefreshBtn');
       const syncIndicator = document.getElementById('syncIndicator');
 
+      // If elements don't exist, this user is not a tester - return early
+      if (!syncStatus || !syncDetails || !mapDetails || !syncRefreshBtn) {
+        console.log('Sync indicator elements not found - user is not a tester');
+        // Still define window.updateMapStatus as a no-op for compatibility
+        window.updateMapStatus = function() {};
+        return;
+      }
+
       // Update map loading status
       window.updateMapStatus = function(status, details) {
+        // Check if elements exist (they only exist for tester users)
+        if (!syncStatus || !mapDetails) return;
+
         if (status === 'loading') {
           syncStatus.style.background = '#f59e0b';
           syncStatus.style.boxShadow = '0 0 8px #f59e0b';
@@ -1295,27 +1571,69 @@
 
           const data = await response.json();
 
+          // Check if elements exist before updating
+          if (!syncStatus || !syncDetails) return;
+
           // Update indicator based on sync status
           if (data.gameState.status === 'connected' && data.sync.inSync) {
             syncStatus.className = 'sync-connected';
             syncDetails.textContent = `✓ Game State Synced (${data.local.count} chars)`;
             syncDetails.style.color = '#4ade80';
+
+            <% if (user && user.isAdmin) { %>
+            // Update debugger
+            const debugGameStateSync = document.getElementById('debugGameStateSync');
+            if (debugGameStateSync) {
+              debugGameStateSync.textContent = 'Connected ✓';
+              debugGameStateSync.className = 'debug-value';
+            }
+            <% } %>
           } else if (data.gameState.status === 'connected' && !data.sync.inSync) {
             syncStatus.className = 'sync-warning';
             syncDetails.textContent = `⚠ Out of Sync (${data.sync.issues.length} issues)`;
             syncDetails.style.color = '#f59e0b';
             console.warn('Sync issues:', data.sync.issues);
+
+            <% if (user && user.isAdmin) { %>
+            // Update debugger
+            const debugGameStateSync = document.getElementById('debugGameStateSync');
+            if (debugGameStateSync) {
+              debugGameStateSync.textContent = `Out of Sync (${data.sync.issues.length} issues)`;
+              debugGameStateSync.className = 'debug-value warning';
+            }
+            <% } %>
           } else {
             syncStatus.className = 'sync-error';
             syncDetails.textContent = `✗ Game State ${data.gameState.status}`;
             syncDetails.style.color = '#ef4444';
+
+            <% if (user && user.isAdmin) { %>
+            // Update debugger
+            const debugGameStateSync = document.getElementById('debugGameStateSync');
+            if (debugGameStateSync) {
+              debugGameStateSync.textContent = `${data.gameState.status} ✗`;
+              debugGameStateSync.className = 'debug-value error';
+            }
+            <% } %>
           }
 
         } catch (error) {
           console.error('Sync check error:', error);
+          // Check if elements exist before updating
+          if (!syncStatus || !syncDetails) return;
+
           syncStatus.className = 'sync-error';
           syncDetails.textContent = '✗ Connection Error';
           syncDetails.style.color = '#ef4444';
+
+          <% if (user && user.isAdmin) { %>
+          // Update debugger
+          const debugGameStateSync = document.getElementById('debugGameStateSync');
+          if (debugGameStateSync) {
+            debugGameStateSync.textContent = 'Connection Error ✗';
+            debugGameStateSync.className = 'debug-value error';
+          }
+          <% } %>
         }
       }
 
@@ -1326,18 +1644,24 @@
       setInterval(checkSync, 30000);
 
       // Refresh button
-      syncRefreshBtn.addEventListener('click', () => {
-        syncDetails.textContent = 'Checking...';
-        syncDetails.style.color = '#888';
-        mapDetails.textContent = 'Refreshing...';
-        mapDetails.style.color = '#888';
-        checkSync();
+      if (syncRefreshBtn) {
+        syncRefreshBtn.addEventListener('click', () => {
+          if (syncDetails) {
+            syncDetails.textContent = 'Checking...';
+            syncDetails.style.color = '#888';
+          }
+          if (mapDetails) {
+            mapDetails.textContent = 'Refreshing...';
+            mapDetails.style.color = '#888';
+          }
+          checkSync();
 
-        // Also reload map assets
-        if (window.map && window.map.loadPublishedAssets) {
-          window.map.loadPublishedAssets();
-        }
-      });
+          // Also reload map assets
+          if (window.map && window.map.loadPublishedAssets) {
+            window.map.loadPublishedAssets();
+          }
+        });
+      }
     }
   </script>
 </body>

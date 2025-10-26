@@ -382,21 +382,63 @@ router.post('/api/galactic-map/settings', isAdmin, function(req, res, next) {
 });
 
 // API: Randomize galactic map positions
-router.post('/api/galactic-map/randomize', async function(req, res, next) {
+router.post('/api/galactic-map/randomize', isAdmin, async function(req, res, next) {
   try {
-    // Call game-state-service to clear spatial data
-    const svcUrl = process.env.GAME_STATE_SERVICE_URL || 'https://svc.madladslab.com';
-    const response = await fetch(`${svcUrl}/api/spatial/assets`, {
-      method: 'DELETE'
-    });
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const db = getDb();
 
-    if (!response.ok) {
-      throw new Error('Failed to clear spatial data');
+    // 1. Clear spatial service cache
+    const svcUrl = process.env.GAME_STATE_SERVICE_URL || 'https://svc.madladslab.com';
+    try {
+      await fetch(`${svcUrl}/api/spatial/assets`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.warn('Could not clear spatial service:', err.message);
+    }
+
+    // 2. Reset asset coordinates in database (set to null to force regeneration)
+    const assetResult = await db.collection('assets').updateMany(
+      { status: 'approved' },
+      {
+        $unset: {
+          'coordinates': '',
+          'initialPosition': ''
+        }
+      }
+    );
+
+    // 3. Reset all character locations to random positions
+    const mapWidth = 5000;
+    const mapHeight = 5000;
+    const padding = 200;
+
+    const characters = await db.collection('characters').find({}).toArray();
+    let characterUpdateCount = 0;
+
+    for (const char of characters) {
+      const newLocation = {
+        type: 'galactic',
+        x: padding + Math.random() * (mapWidth - padding * 2),
+        y: padding + Math.random() * (mapHeight - padding * 2)
+      };
+
+      await db.collection('characters').updateOne(
+        { _id: char._id },
+        { $set: { location: newLocation } }
+      );
+
+      characterUpdateCount++;
     }
 
     res.json({
       success: true,
-      message: 'Spatial data cleared - reload galactic map to see randomized positions'
+      message: 'Galactic map reset complete',
+      details: {
+        assetsReset: assetResult.modifiedCount,
+        charactersReset: characterUpdateCount,
+        spatialCacheCleared: true
+      }
     });
   } catch (error) {
     console.error('Error randomizing galactic map:', error);

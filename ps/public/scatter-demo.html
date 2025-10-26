@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scatter Repulsion System Demo</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #0a0e1a;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+
+    .demo-container {
+      display: flex;
+      gap: 20px;
+      height: calc(100vh - 40px);
+    }
+
+    .canvas-wrapper {
+      flex: 1;
+      background: #000;
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .controls {
+      width: 300px;
+      background: rgba(0, 0, 0, 0.8);
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .control-section {
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(102, 126, 234, 0.3);
+    }
+
+    .control-section:last-child {
+      border-bottom: none;
+    }
+
+    h2 {
+      margin: 0 0 15px 0;
+      font-size: 1.2em;
+      color: #667eea;
+    }
+
+    h3 {
+      margin: 10px 0;
+      font-size: 1em;
+      color: #f59e0b;
+    }
+
+    label {
+      display: block;
+      margin: 10px 0 5px 0;
+      font-size: 0.9em;
+      color: #aaa;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      margin: 5px 0;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border: none;
+      border-radius: 5px;
+      color: white;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .value-display {
+      display: inline-block;
+      color: #10b981;
+      font-weight: bold;
+    }
+
+    .stats {
+      background: rgba(16, 185, 129, 0.1);
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 10px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 5px 0;
+      font-size: 0.85em;
+    }
+
+    .legend {
+      margin-top: 10px;
+      padding: 10px;
+      background: rgba(102, 126, 234, 0.1);
+      border-radius: 5px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin: 5px 0;
+      font-size: 0.85em;
+    }
+
+    .legend-color {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      margin-right: 10px;
+      border: 2px solid white;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <div class="canvas-wrapper">
+      <canvas id="demoCanvas"></canvas>
+    </div>
+
+    <div class="controls">
+      <h2>Scatter Repulsion Demo</h2>
+
+      <div class="control-section">
+        <h3>Particle Count</h3>
+        <label>
+          Particles: <span class="value-display" id="particleCountValue">50</span>
+        </label>
+        <input type="range" id="particleCount" min="10" max="200" value="50">
+        <button id="resetBtn">Reset Simulation</button>
+      </div>
+
+      <div class="control-section">
+        <h3>Physics Settings</h3>
+        <label>
+          Edge Gravity: <span class="value-display" id="edgeGravityValue">0.15</span>
+        </label>
+        <input type="range" id="edgeGravity" min="0" max="1" step="0.05" value="0.15">
+
+        <label>
+          Movement Speed: <span class="value-display" id="movementSpeedValue">1.0</span>x
+        </label>
+        <input type="range" id="movementSpeed" min="0" max="5" step="0.1" value="1.0">
+      </div>
+
+      <div class="control-section">
+        <h3>Scatter System</h3>
+        <label>
+          <input type="checkbox" id="scatterEnabled" checked> Enable Scatter Repulsion
+        </label>
+        <button id="toggleVisualization">Toggle Repulsion Zones</button>
+      </div>
+
+      <div class="stats">
+        <h3>Distribution Stats</h3>
+        <div class="stat-row">
+          <span>Northwest:</span>
+          <span class="value-display" id="statNW">0</span>
+        </div>
+        <div class="stat-row">
+          <span>Northeast:</span>
+          <span class="value-display" id="statNE">0</span>
+        </div>
+        <div class="stat-row">
+          <span>Southwest:</span>
+          <span class="value-display" id="statSW">0</span>
+        </div>
+        <div class="stat-row">
+          <span>Southeast:</span>
+          <span class="value-display" id="statSE">0</span>
+        </div>
+      </div>
+
+      <div class="legend">
+        <h3>Legend</h3>
+        <div class="legend-item">
+          <div class="legend-color" style="background: #3b82f6;"></div>
+          <span>Moving Particles</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: rgba(239, 68, 68, 0.3); border-color: #ef4444;"></div>
+          <span>Repulsion Zones</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { applyScatterSystem } from '/javascripts/scatter-repulsion.js';
+
+    const canvas = document.getElementById('demoCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let particles = [];
+    let showRepulsionZones = false;
+
+    // Settings
+    let settings = {
+      particleCount: 50,
+      edgeGravity: 0.15,
+      movementSpeed: 1.0,
+      scatterEnabled: true,
+      mapWidth: 1000,
+      mapHeight: 800
+    };
+
+    // Resize canvas
+    function resizeCanvas() {
+      const wrapper = canvas.parentElement;
+      canvas.width = wrapper.clientWidth;
+      canvas.height = wrapper.clientHeight;
+      settings.mapWidth = canvas.width;
+      settings.mapHeight = canvas.height;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Initialize particles
+    function initParticles() {
+      particles = [];
+      for (let i = 0; i < settings.particleCount; i++) {
+        particles.push({
+          x: Math.random() * settings.mapWidth,
+          y: Math.random() * settings.mapHeight,
+          vx: (Math.random() - 0.5) * 0.5,
+          vy: (Math.random() - 0.5) * 0.5,
+          radius: 5,
+          color: '#3b82f6'
+        });
+      }
+    }
+
+    // Update physics
+    function updatePhysics() {
+      const EDGE_GRAVITY_DISTANCE = 400;
+      const EDGE_GRAVITY_STRENGTH = settings.edgeGravity;
+      const speedMultiplier = settings.movementSpeed;
+
+      particles.forEach(particle => {
+        // Apply velocity
+        particle.x += particle.vx * speedMultiplier;
+        particle.y += particle.vy * speedMultiplier;
+
+        // Edge distances
+        const distToLeft = particle.x - particle.radius;
+        const distToRight = settings.mapWidth - (particle.x + particle.radius);
+        const distToTop = particle.y - particle.radius;
+        const distToBottom = settings.mapHeight - (particle.y + particle.radius);
+        const minDistToEdge = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+
+        // Edge repulsion (original system)
+        if (minDistToEdge < EDGE_GRAVITY_DISTANCE && minDistToEdge > 0) {
+          let pushX = 0;
+          let pushY = 0;
+
+          if (distToLeft < EDGE_GRAVITY_DISTANCE) {
+            const proximity = 1 - (distToLeft / EDGE_GRAVITY_DISTANCE);
+            pushX += proximity * EDGE_GRAVITY_STRENGTH * speedMultiplier;
+          }
+          if (distToRight < EDGE_GRAVITY_DISTANCE) {
+            const proximity = 1 - (distToRight / EDGE_GRAVITY_DISTANCE);
+            pushX -= proximity * EDGE_GRAVITY_STRENGTH * speedMultiplier;
+          }
+          if (distToTop < EDGE_GRAVITY_DISTANCE) {
+            const proximity = 1 - (distToTop / EDGE_GRAVITY_DISTANCE);
+            pushY += proximity * EDGE_GRAVITY_STRENGTH * speedMultiplier;
+          }
+          if (distToBottom < EDGE_GRAVITY_DISTANCE) {
+            const proximity = 1 - (distToBottom / EDGE_GRAVITY_DISTANCE);
+            pushY -= proximity * EDGE_GRAVITY_STRENGTH * speedMultiplier;
+          }
+
+          particle.vx += pushX;
+          particle.vy += pushY;
+        }
+
+        // Edge bounce
+        if (minDistToEdge <= 0) {
+          if (distToLeft <= 0 || distToRight <= 0) {
+            particle.vx *= -0.8;
+            particle.x = Math.max(particle.radius, Math.min(settings.mapWidth - particle.radius, particle.x));
+          }
+          if (distToTop <= 0 || distToBottom <= 0) {
+            particle.vy *= -0.8;
+            particle.y = Math.max(particle.radius, Math.min(settings.mapHeight - particle.radius, particle.y));
+          }
+        }
+
+        // Apply scatter system (15% stronger)
+        if (settings.scatterEnabled) {
+          applyScatterSystem(
+            particle,
+            settings.mapWidth,
+            settings.mapHeight,
+            EDGE_GRAVITY_STRENGTH,
+            speedMultiplier
+          );
+        }
+
+        // Damping
+        particle.vx *= 0.999;
+        particle.vy *= 0.999;
+
+        // Max velocity
+        const vel = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
+        if (vel > 8) {
+          particle.vx = (particle.vx / vel) * 8;
+          particle.vy = (particle.vy / vel) * 8;
+        }
+      });
+    }
+
+    // Update stats
+    function updateStats() {
+      const centerX = settings.mapWidth / 2;
+      const centerY = settings.mapHeight / 2;
+
+      let nw = 0, ne = 0, sw = 0, se = 0;
+
+      particles.forEach(p => {
+        if (p.x < centerX && p.y < centerY) nw++;
+        else if (p.x >= centerX && p.y < centerY) ne++;
+        else if (p.x < centerX && p.y >= centerY) sw++;
+        else se++;
+      });
+
+      document.getElementById('statNW').textContent = nw;
+      document.getElementById('statNE').textContent = ne;
+      document.getElementById('statSW').textContent = sw;
+      document.getElementById('statSE').textContent = se;
+    }
+
+    // Render
+    function render() {
+      ctx.fillStyle = '#0a0e1a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw quadrant lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(settings.mapWidth / 2, 0);
+      ctx.lineTo(settings.mapWidth / 2, settings.mapHeight);
+      ctx.moveTo(0, settings.mapHeight / 2);
+      ctx.lineTo(settings.mapWidth, settings.mapHeight / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Draw repulsion zones if enabled
+      if (showRepulsionZones) {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.1)';
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
+        ctx.lineWidth = 2;
+
+        // Northwest corner zones
+        const zones = [
+          { x: settings.mapWidth * 0.15, y: settings.mapHeight * 0.15, r: 1000 },
+          { x: settings.mapWidth * 0.25, y: settings.mapHeight * 0.05, r: 800 },
+          { x: settings.mapWidth * 0.05, y: settings.mapHeight * 0.25, r: 800 },
+          { x: settings.mapWidth * 0.20, y: settings.mapHeight * 0.20, r: 900 }
+        ];
+
+        zones.forEach(zone => {
+          ctx.beginPath();
+          ctx.arc(zone.x, zone.y, zone.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Center marker
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.arc(zone.x, zone.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // Draw particles
+      particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+    }
+
+    // Animation loop
+    function animate() {
+      updatePhysics();
+      render();
+      updateStats();
+      requestAnimationFrame(animate);
+    }
+
+    // Event listeners
+    document.getElementById('particleCount').addEventListener('input', (e) => {
+      settings.particleCount = parseInt(e.target.value);
+      document.getElementById('particleCountValue').textContent = settings.particleCount;
+    });
+
+    document.getElementById('edgeGravity').addEventListener('input', (e) => {
+      settings.edgeGravity = parseFloat(e.target.value);
+      document.getElementById('edgeGravityValue').textContent = settings.edgeGravity.toFixed(2);
+    });
+
+    document.getElementById('movementSpeed').addEventListener('input', (e) => {
+      settings.movementSpeed = parseFloat(e.target.value);
+      document.getElementById('movementSpeedValue').textContent = settings.movementSpeed.toFixed(1);
+    });
+
+    document.getElementById('scatterEnabled').addEventListener('change', (e) => {
+      settings.scatterEnabled = e.target.checked;
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      initParticles();
+    });
+
+    document.getElementById('toggleVisualization').addEventListener('click', () => {
+      showRepulsionZones = !showRepulsionZones;
+    });
+
+    // Initialize and start
+    initParticles();
+    animate();
+  </script>
+</body>
+</html>

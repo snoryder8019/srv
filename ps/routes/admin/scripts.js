@@ -62,7 +62,10 @@ const SCRIPT_CATEGORIES = {
   'Database Maintenance': [
     { name: 'Cleanup Space', file: 'cleanup-space.js', description: 'Free up MongoDB storage', confirm: true },
     { name: 'Reset Planet Generation', file: 'reset-planet-generation.js', description: 'Clear planet chunks', confirm: true },
-    { name: 'Reset Galactic Map', file: 'reset-galactic-map.js', description: 'Clear all positions', confirm: true },
+    { name: 'Reset Galactic Map', file: 'reset-galactic-map.js', description: 'Reset positions & sync game state', confirm: true },
+    { name: 'Full Galaxy Reset', file: 'full-galaxy-reset.js', description: 'Complete galaxy & character reset', confirm: true },
+    { name: 'Sync Characters to Game State', file: 'sync-characters-to-game-state.js', description: 'Sync all characters to game state service' },
+    { name: 'Verify Reset', file: 'verify-reset.js', description: 'Check character sync status' },
     { name: 'Reset All Characters', file: 'reset-all-characters.js', description: 'Reset character data', confirm: true }
   ],
   'Verification': [

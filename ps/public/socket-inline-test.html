@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Inline Socket Test</title>
+  <style>body{background:#000;color:#0f0;font-family:monospace;padding:20px;}pre{background:#111;padding:10px;border:1px solid #0f0;}</style>
+</head>
+<body>
+  <h1>Socket.IO Inline Test</h1>
+  <h2>Status: <span id="status">Testing...</span></h2>
+  <pre id="log"></pre>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const log = (msg) => {
+      const el = document.getElementById('log');
+      el.textContent += new Date().toISOString() + ' - ' + msg + '\n';
+      console.log(msg);
+    };
+
+    const updateStatus = (msg) => {
+      document.getElementById('status').textContent = msg;
+    };
+
+    log('Starting Socket.IO test...');
+    log('Socket.IO library loaded: ' + (typeof io !== 'undefined'));
+
+    if (typeof io === 'undefined') {
+      log('ERROR: Socket.IO library not loaded!');
+      updateStatus('ERROR - Library Missing');
+    } else {
+      log('Creating socket connection...');
+      
+      const socket = io({
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5
+      });
+
+      socket.on('connect', () => {
+        log('SUCCESS: Connected! Socket ID: ' + socket.id);
+        updateStatus('✅ CONNECTED');
+        
+        // Test ping
+        socket.emit('ping', Date.now());
+      });
+
+      socket.on('pong', (timestamp) => {
+        const latency = Date.now() - timestamp;
+        log('SUCCESS: Ping/Pong worked! Latency: ' + latency + 'ms');
+      });
+
+      socket.on('connect_error', (err) => {
+        log('ERROR: Connection failed - ' + err.message);
+        updateStatus('❌ ERROR');
+      });
+
+      socket.on('disconnect', (reason) => {
+        log('WARN: Disconnected - ' + reason);
+        updateStatus('⚠️  DISCONNECTED');
+      });
+
+      socket.on('reconnect', (attempt) => {
+        log('SUCCESS: Reconnected after ' + attempt + ' attempts');
+        updateStatus('✅ RECONNECTED');
+      });
+
+      socket.on('reconnect_failed', () => {
+        log('ERROR: All reconnection attempts failed');
+        updateStatus('❌ FAILED');
+      });
+    }
+  </script>
+</body>
+</html>

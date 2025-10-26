@@ -33,6 +33,7 @@ router.get('/characters/:id/inventory', async (req, res) => {
         const item = await Item.findById(invItem.itemId);
         return {
           ...invItem,
+          itemId: invItem.itemId.toString(), // Ensure itemId is a string for frontend
           itemDetails: item
         };
       })
@@ -47,6 +48,7 @@ router.get('/characters/:id/inventory', async (req, res) => {
         const item = await Item.findById(equippedItem.itemId);
         equippedDetails[slot] = {
           ...equippedItem,
+          itemId: equippedItem.itemId.toString(), // Ensure itemId is a string for frontend
           itemDetails: item
         };
       } else {
