@@ -297,48 +297,91 @@ router.get('/galactic/all', async (req, res) => {
 // Update character location
 router.post('/:id/location', async (req, res) => {
   try {
+    // Check authentication
     if (!req.user) {
+      console.error('[LOCATION] Authentication failed - no req.user');
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
     const { x, y, vx, vy, type, zone, assetId } = req.body;
+    console.log('[LOCATION] Update request:', {
+      characterId: req.params.id,
+      userId: req.user._id?.toString(),
+      position: { x, y }
+    });
 
-    // Verify ownership
-    const character = await Character.findById(req.params.id);
-    if (!character) {
-      return res.status(404).json({ error: 'Character not found' });
-    }
-
-    // Debug logging
-    console.log('=== Location Update Authorization Check ===');
-    console.log('Character userId:', character.userId, 'type:', typeof character.userId);
-    console.log('Request user._id:', req.user._id, 'type:', typeof req.user._id);
-    console.log('Request user._id.toString():', req.user._id.toString());
-    console.log('Match result:', character.userId === req.user._id.toString());
-    console.log('==========================================');
-
-    if (character.userId !== req.user._id.toString()) {
-      return res.status(403).json({
-        error: 'Not authorized',
-        debug: {
-          characterUserId: character.userId,
-          requestUserId: req.user._id.toString()
-        }
+    // Verify ownership - with detailed error handling
+    let character;
+    try {
+      character = await Character.findById(req.params.id);
+    } catch (findError) {
+      console.error('[LOCATION] Character.findById error:', findError);
+      return res.status(500).json({
+        error: 'Database error finding character',
+        details: findError.message
       });
     }
 
-    const success = await Character.updateLocation(req.params.id, {
-      x, y, vx, vy, type, zone, assetId
-    });
+    if (!character) {
+      console.error('[LOCATION] Character not found:', req.params.id);
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Authorization check with safe string conversion
+    let characterUserId, requestUserId;
+    try {
+      characterUserId = character.userId?.toString() || character.userId;
+      requestUserId = req.user._id?.toString() || req.user._id;
+
+      console.log('[LOCATION] Authorization check:', {
+        characterUserId,
+        requestUserId,
+        match: characterUserId === requestUserId
+      });
+    } catch (authError) {
+      console.error('[LOCATION] Authorization check error:', authError);
+      return res.status(500).json({
+        error: 'Authorization check failed',
+        details: authError.message
+      });
+    }
+
+    if (characterUserId !== requestUserId) {
+      console.error('[LOCATION] Authorization failed:', { characterUserId, requestUserId });
+      return res.status(403).json({
+        error: 'Not authorized',
+        debug: { characterUserId, requestUserId }
+      });
+    }
+
+    // Update location with detailed error handling
+    let success;
+    try {
+      success = await Character.updateLocation(req.params.id, {
+        x, y, vx, vy, type, zone, assetId
+      });
+    } catch (updateError) {
+      console.error('[LOCATION] Character.updateLocation error:', updateError);
+      return res.status(500).json({
+        error: 'Database error updating location',
+        details: updateError.message
+      });
+    }
 
     if (!success) {
+      console.error('[LOCATION] Update returned false');
       return res.status(500).json({ error: 'Failed to update location' });
     }
 
+    console.log('[LOCATION] Update successful');
     res.json({ success: true, message: 'Location updated' });
   } catch (err) {
-    console.error('Error updating character location:', err);
-    res.status(500).json({ error: 'Failed to update location' });
+    console.error('[LOCATION] Unexpected error:', err);
+    res.status(500).json({
+      error: 'Failed to update location',
+      details: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 });
 

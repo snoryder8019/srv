@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background: #0a0a1a;
+      color: #e0e0e0;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    .tome-layout {
+      display: flex;
+      min-height: 100vh;
+      padding-top: 60px; /* Account for header */
+    }
+
+    /* Left Sidebar Navigation */
+    .tome-sidebar {
+      width: 240px;
+      background: rgba(15, 15, 30, 0.95);
+      border-right: 1px solid rgba(138, 79, 255, 0.2);
+      position: fixed;
+      left: 0;
+      top: 60px;
+      bottom: 0;
+      overflow-y: auto;
+      z-index: 100;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      border-bottom: 1px solid rgba(138, 79, 255, 0.2);
+    }
+
+    .sidebar-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.5em;
+      background: linear-gradient(135deg, #8a4fff 0%, #4a9eff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin: 0;
+    }
+
+    .sidebar-subtitle {
+      font-size: 0.75em;
+      color: #6a6a8a;
+      margin-top: 5px;
+    }
+
+    .nav-menu {
+      padding: 10px 0;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 20px;
+      color: #b0b0c0;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border-left: 3px solid transparent;
+      user-select: none;
+    }
+
+    .nav-item:hover {
+      background: rgba(138, 79, 255, 0.1);
+      color: #fff;
+    }
+
+    .nav-item.active {
+      background: rgba(138, 79, 255, 0.15);
+      color: #8a4fff;
+      border-left-color: #8a4fff;
+    }
+
+    .nav-icon {
+      font-size: 1.2em;
+      margin-right: 12px;
+      width: 20px;
+      text-align: center;
+    }
+
+    .nav-label {
+      flex: 1;
+      font-size: 0.95em;
+    }
+
+    .nav-count {
+      font-size: 0.85em;
+      color: #6a6a8a;
+      background: rgba(138, 79, 255, 0.1);
+      padding: 2px 8px;
+      border-radius: 10px;
+      min-width: 20px;
+      text-align: center;
+    }
+
+    /* Main Content Area */
+    .tome-main {
+      flex: 1;
+      margin-left: 240px;
+      padding: 30px 40px;
+      max-width: 1200px;
+    }
+
+    .content-header {
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(138, 79, 255, 0.2);
+    }
+
+    .content-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2em;
+      color: #8a4fff;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .content-description {
+      color: #9090b0;
+      font-size: 0.95em;
+      line-height: 1.6;
+    }
+
+    /* Tab Content */
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Slim List View */
+    .asset-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .asset-item {
+      background: rgba(20, 20, 40, 0.4);
+      border: 1px solid rgba(138, 79, 255, 0.1);
+      padding: 15px 20px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .asset-item:hover {
+      background: rgba(138, 79, 255, 0.1);
+      border-color: rgba(138, 79, 255, 0.3);
+      transform: translateX(5px);
+    }
+
+    .asset-icon {
+      font-size: 1.5em;
+      width: 30px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .asset-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .asset-title {
+      font-weight: 600;
+      color: #e0e0ff;
+      margin: 0 0 5px 0;
+      font-size: 1.05em;
+    }
+
+    .asset-description {
+      color: #8a8aaa;
+      font-size: 0.9em;
+      margin: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .asset-meta {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .meta-item {
+      font-size: 0.85em;
+      color: #6a6a8a;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .meta-icon {
+      font-size: 1em;
+    }
+
+    .asset-type-badge {
+      background: rgba(138, 79, 255, 0.2);
+      color: #a78bfa;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 0.8em;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Story Sections */
+    .story-section {
+      background: rgba(20, 20, 40, 0.4);
+      border: 1px solid rgba(138, 79, 255, 0.2);
+      border-radius: 8px;
+      padding: 30px;
+      margin-bottom: 30px;
+    }
+
+    .chapter-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.5em;
+      color: #8a4fff;
+      margin: 0 0 20px 0;
+      padding-bottom: 15px;
+      border-bottom: 1px solid rgba(138, 79, 255, 0.2);
+    }
+
+    .chapter-content {
+      line-height: 1.8;
+      color: #d0d0e0;
+    }
+
+    .chapter-content p {
+      margin-bottom: 15px;
+    }
+
+    /* Character Grid (Slim) */
+    .character-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 15px;
+    }
+
+    .character-card {
+      background: rgba(20, 20, 40, 0.4);
+      border: 1px solid rgba(138, 79, 255, 0.2);
+      border-radius: 6px;
+      padding: 20px;
+      transition: all 0.2s ease;
+    }
+
+    .character-card:hover {
+      border-color: #8a4fff;
+      transform: translateY(-2px);
+    }
+
+    .character-name {
+      font-size: 1.3em;
+      color: #8a4fff;
+      margin: 0 0 15px 0;
+    }
+
+    .character-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .stat-item {
+      background: rgba(42, 42, 74, 0.3);
+      padding: 8px;
+      border-radius: 4px;
+    }
+
+    .stat-label {
+      font-size: 0.75em;
+      color: #7a7a9a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 1em;
+      color: #e0e0ff;
+      font-weight: 600;
+      margin-top: 3px;
+    }
+
+    /* Empty State */
+    .no-data {
+      text-align: center;
+      padding: 60px 20px;
+      color: #6a6a8a;
+      font-size: 1.1em;
+    }
+
+    /* Category Header */
+    .category-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(138, 79, 255, 0.1);
+    }
+
+    .category-icon {
+      font-size: 1.5em;
+    }
+
+    .category-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.3em;
+      color: #8a4fff;
+      margin: 0;
+    }
+
+    .category-count {
+      color: #6a6a8a;
+      font-size: 0.9em;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .tome-sidebar {
+        transform: translateX(-240px);
+        transition: transform 0.3s ease;
+      }
+
+      .tome-sidebar.mobile-open {
+        transform: translateX(0);
+      }
+
+      .tome-main {
+        margin-left: 0;
+        padding: 20px;
+      }
+
+      .character-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .asset-item {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .asset-meta {
+        width: 100%;
+        justify-content: space-between;
+      }
+    }
+
+    /* Scrollbar */
+    .tome-sidebar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .tome-sidebar::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .tome-sidebar::-webkit-scrollbar-thumb {
+      background: rgba(138, 79, 255, 0.3);
+      border-radius: 3px;
+    }
+
+    .tome-sidebar::-webkit-scrollbar-thumb:hover {
+      background: rgba(138, 79, 255, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="tome-layout">
+    <!-- Left Sidebar Navigation -->
+    <aside class="tome-sidebar">
+      <div class="sidebar-header">
+        <h1 class="sidebar-title">The Tome</h1>
+        <p class="sidebar-subtitle">Universal Archive</p>
+      </div>
+
+      <nav class="nav-menu">
+        <div class="nav-item active" onclick="switchTab('story')">
+          <span class="nav-icon">📜</span>
+          <span class="nav-label">Story</span>
+        </div>
+
+        <div class="nav-item" onclick="switchTab('lorearcs')">
+          <span class="nav-icon">🎬</span>
+          <span class="nav-label">Lore Arcs</span>
+          <span class="nav-count"><%= loreArcs ? loreArcs.length : 0 %></span>
+        </div>
+
+        <div class="nav-item" onclick="switchTab('characters')">
+          <span class="nav-icon">⚔️</span>
+          <span class="nav-label">Characters</span>
+          <span class="nav-count"><%= characters ? characters.length : 0 %></span>
+        </div>
+
+        <div class="nav-item" onclick="switchTab('galaxies')">
+          <span class="nav-icon">🌌</span>
+          <span class="nav-label">Galaxies</span>
+          <span class="nav-count"><%= categorizedAssets.galaxies ? categorizedAssets.galaxies.length : 0 %></span>
+        </div>
+
+        <div class="nav-item" onclick="switchTab('planets')">
+          <span class="nav-icon">🪐</span>
+          <span class="nav-label">Planets</span>
+          <span class="nav-count"><%= categorizedAssets.planets ? categorizedAssets.planets.length : 0 %></span>
+        </div>
+
+        <div class="nav-item" onclick="switchTab('orbitals')">
+          <span class="nav-icon">🛰️</span>
+          <span class="nav-label">Orbitals</span>
+          <span class="nav-count"><%= categorizedAssets.orbitals ? categorizedAssets.orbitals.length : 0 %></span>
+        </div>
+
+        <div class="nav-item" onclick="switchTab('anomalies')">
+          <span class="nav-icon">✨</span>
+          <span class="nav-label">Anomalies</span>
+          <span class="nav-count"><%= categorizedAssets.anomalies ? categorizedAssets.anomalies.length : 0 %></span>
+        </div>
+
+        <div class="nav-item" onclick="switchTab('items')">
+          <span class="nav-icon">📦</span>
+          <span class="nav-label">Items</span>
+          <span class="nav-count"><%= (categorizedAssets.items?.length || 0) + (categorizedAssets.weapons?.length || 0) %></span>
+        </div>
+
+        <div class="nav-item" onclick="switchTab('species')">
+          <span class="nav-icon">👽</span>
+          <span class="nav-label">Species</span>
+          <span class="nav-count"><%= species ? species.length : 0 %></span>
+        </div>
+
+        <div class="nav-item" onclick="switchTab('creators')">
+          <span class="nav-icon">⭐</span>
+          <span class="nav-label">Creators</span>
+          <span class="nav-count"><%= featuredCreators ? featuredCreators.length : 0 %></span>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="tome-main">
+
+      <!-- Story Tab -->
+      <div id="story-tab" class="tab-content active">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>📜</span>
+            The Story of Stringborn
+          </h2>
+          <p class="content-description">Chronicles of the universe and its convergence</p>
+        </div>
+
+        <div class="story-section">
+          <h3 class="chapter-title">Chapter I: The Beginning</h3>
+          <div class="chapter-content">
+            <p>
+              In the vast expanse of the cosmos, where stars are born and die in the blink of eternity,
+              the Stringborn Universe emerged from the void. Not through random chance, but through
+              convergence—the cosmic force that binds all things together.
+            </p>
+            <p>
+              Four great species arose, each shaped by the unique energies of their homeworlds. The
+              technologically advanced, the mystically attuned, the physically dominant, and the
+              socially interconnected. Each believed themselves to be alone, until the first
+              Contact—a moment that would reshape the universe forever.
+            </p>
+          </div>
+        </div>
+
+        <div class="story-section">
+          <h3 class="chapter-title">Chapter II: The Convergence</h3>
+          <div class="chapter-content">
+            <p>
+              The phenomenon known as Convergence is not merely a political concept, but a fundamental
+              force of the universe itself. When territories, ideologies, or destinies align, they
+              create points of immense power and opportunity.
+            </p>
+          </div>
+        </div>
+
+        <div class="story-section">
+          <h3 class="chapter-title">Chapter III: Your Story</h3>
+          <div class="chapter-content">
+            <p>
+              You are not just an observer in this grand narrative. You are a participant, a force
+              of convergence or separation in your own right. Every choice you make, every alliance
+              you forge, every journey you undertake—all of it weaves into the living tapestry of
+              the universe.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lore Arcs Tab -->
+      <div id="lorearcs-tab" class="tab-content">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>🎬</span>
+            Lore Arcs
+          </h2>
+          <p class="content-description">Epic narratives and storylines across the universe</p>
+        </div>
+
+        <% if (loreArcs && loreArcs.length > 0) { %>
+          <% loreArcs.forEach(arc => { %>
+            <div class="story-section">
+              <h3 class="chapter-title"><%= arc.title %></h3>
+              <div class="chapter-content">
+                <p><em><%= arc.narrative_alignment %></em></p>
+              </div>
+            </div>
+          <% }); %>
+        <% } else { %>
+          <div class="no-data">No lore arcs available yet</div>
+        <% } %>
+      </div>
+
+      <!-- Characters Tab -->
+      <div id="characters-tab" class="tab-content">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>⚔️</span>
+            Your Characters
+          </h2>
+          <p class="content-description">Your personal roster of heroes and adventurers</p>
+        </div>
+
+        <% if (user && characters && characters.length > 0) { %>
+          <div class="character-grid">
+            <% characters.forEach(character => { %>
+              <div class="character-card">
+                <h3 class="character-name"><%= character.name %></h3>
+                <div class="character-stats">
+                  <div class="stat-item">
+                    <div class="stat-label">Species</div>
+                    <div class="stat-value"><%= character.species || 'Unknown' %></div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">Level</div>
+                    <div class="stat-value"><%= character.level || 1 %></div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">Faction</div>
+                    <div class="stat-value"><%= character.faction || 'Independent' %></div>
+                  </div>
+                  <div class="stat-item">
+                    <div class="stat-label">Location</div>
+                    <div class="stat-value">
+                      <%= character.location && character.location.zone ? character.location.zone : 'Unknown' %>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <div class="no-data">
+            <% if (user) { %>
+              No characters yet. Create your first character to begin!
+            <% } else { %>
+              Login to see your characters
+            <% } %>
+          </div>
+        <% } %>
+      </div>
+
+      <!-- Galaxies Tab -->
+      <div id="galaxies-tab" class="tab-content">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>🌌</span>
+            Galaxies
+          </h2>
+          <p class="content-description">Vast spiral systems containing billions of stars</p>
+        </div>
+
+        <% if (categorizedAssets.galaxies && categorizedAssets.galaxies.length > 0) { %>
+          <div class="asset-list">
+            <% categorizedAssets.galaxies.forEach(asset => { %>
+              <div class="asset-item">
+                <span class="asset-icon">🌌</span>
+                <div class="asset-info">
+                  <h3 class="asset-title"><%= asset.title %></h3>
+                  <p class="asset-description"><%= asset.description || 'No description' %></p>
+                </div>
+                <div class="asset-meta">
+                  <span class="meta-item">
+                    <span class="meta-icon">👍</span>
+                    <%= asset.votes || 0 %>
+                  </span>
+                  <span class="asset-type-badge">Galaxy</span>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <div class="no-data">No galaxies cataloged yet</div>
+        <% } %>
+      </div>
+
+      <!-- Planets Tab -->
+      <div id="planets-tab" class="tab-content">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>🪐</span>
+            Planets
+          </h2>
+          <p class="content-description">Worlds across the universe ready for exploration</p>
+        </div>
+
+        <% if (categorizedAssets.planets && categorizedAssets.planets.length > 0) { %>
+          <div class="asset-list">
+            <% categorizedAssets.planets.forEach(asset => { %>
+              <div class="asset-item">
+                <span class="asset-icon">🪐</span>
+                <div class="asset-info">
+                  <h3 class="asset-title"><%= asset.title %></h3>
+                  <p class="asset-description"><%= asset.description || 'No description' %></p>
+                </div>
+                <div class="asset-meta">
+                  <span class="meta-item">
+                    <span class="meta-icon">👍</span>
+                    <%= asset.votes || 0 %>
+                  </span>
+                  <span class="asset-type-badge">Planet</span>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <div class="no-data">No planets cataloged yet</div>
+        <% } %>
+      </div>
+
+      <!-- Orbitals Tab -->
+      <div id="orbitals-tab" class="tab-content">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>🛰️</span>
+            Orbital Stations
+          </h2>
+          <p class="content-description">Space stations and orbital facilities</p>
+        </div>
+
+        <% if (categorizedAssets.orbitals && categorizedAssets.orbitals.length > 0) { %>
+          <div class="asset-list">
+            <% categorizedAssets.orbitals.forEach(asset => { %>
+              <div class="asset-item">
+                <span class="asset-icon">🛰️</span>
+                <div class="asset-info">
+                  <h3 class="asset-title"><%= asset.title %></h3>
+                  <p class="asset-description"><%= asset.description || 'No description' %></p>
+                </div>
+                <div class="asset-meta">
+                  <span class="meta-item">
+                    <span class="meta-icon">👍</span>
+                    <%= asset.votes || 0 %>
+                  </span>
+                  <span class="asset-type-badge">Orbital</span>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <div class="no-data">No orbital stations cataloged yet</div>
+        <% } %>
+      </div>
+
+      <!-- Anomalies Tab -->
+      <div id="anomalies-tab" class="tab-content">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>✨</span>
+            Anomalies & Phenomena
+          </h2>
+          <p class="content-description">Strange cosmic events and unexplained phenomena</p>
+        </div>
+
+        <% if (categorizedAssets.anomalies && categorizedAssets.anomalies.length > 0) { %>
+          <div class="asset-list">
+            <% categorizedAssets.anomalies.forEach(asset => { %>
+              <div class="asset-item">
+                <span class="asset-icon">✨</span>
+                <div class="asset-info">
+                  <h3 class="asset-title"><%= asset.title %></h3>
+                  <p class="asset-description"><%= asset.description || 'No description' %></p>
+                </div>
+                <div class="asset-meta">
+                  <span class="meta-item">
+                    <span class="meta-icon">👍</span>
+                    <%= asset.votes || 0 %>
+                  </span>
+                  <span class="asset-type-badge">Anomaly</span>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <div class="no-data">No anomalies cataloged yet</div>
+        <% } %>
+      </div>
+
+      <!-- Items Tab -->
+      <div id="items-tab" class="tab-content">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>📦</span>
+            Items & Equipment
+          </h2>
+          <p class="content-description">Weapons, tools, and equipment across the universe</p>
+        </div>
+
+        <% if ((categorizedAssets.items && categorizedAssets.items.length > 0) || (categorizedAssets.weapons && categorizedAssets.weapons.length > 0)) { %>
+          <div class="asset-list">
+            <% [...(categorizedAssets.items || []), ...(categorizedAssets.weapons || [])].forEach(asset => { %>
+              <div class="asset-item">
+                <span class="asset-icon"><%= asset.assetType === 'weapon' ? '⚔️' : '📦' %></span>
+                <div class="asset-info">
+                  <h3 class="asset-title"><%= asset.title %></h3>
+                  <p class="asset-description"><%= asset.description || 'No description' %></p>
+                </div>
+                <div class="asset-meta">
+                  <span class="meta-item">
+                    <span class="meta-icon">👍</span>
+                    <%= asset.votes || 0 %>
+                  </span>
+                  <span class="asset-type-badge"><%= asset.assetType %></span>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <div class="no-data">No items cataloged yet</div>
+        <% } %>
+      </div>
+
+      <!-- Species Tab -->
+      <div id="species-tab" class="tab-content">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>👽</span>
+            Species
+          </h2>
+          <p class="content-description">Diverse life forms across the Stringborn universe</p>
+        </div>
+
+        <% if (species && species.length > 0) { %>
+          <div class="asset-list">
+            <% species.forEach(specie => { %>
+              <div class="asset-item">
+                <span class="asset-icon">👽</span>
+                <div class="asset-info">
+                  <h3 class="asset-title"><%= specie.name || specie.species %></h3>
+                  <p class="asset-description"><%= specie.description || 'No description' %></p>
+                </div>
+                <div class="asset-meta">
+                  <% if (specie.homeworld) { %>
+                    <span class="meta-item">
+                      <span class="meta-icon">🌍</span>
+                      <%= specie.homeworld %>
+                    </span>
+                  <% } %>
+                  <span class="asset-type-badge">Species</span>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <div class="no-data">No species cataloged yet</div>
+        <% } %>
+      </div>
+
+      <!-- Creators Tab -->
+      <div id="creators-tab" class="tab-content">
+        <div class="content-header">
+          <h2 class="content-title">
+            <span>⭐</span>
+            Featured Creators
+          </h2>
+          <p class="content-description">Top contributors to the Stringborn universe</p>
+        </div>
+
+        <% if (featuredCreators && featuredCreators.length > 0) { %>
+          <div class="asset-list">
+            <% featuredCreators.forEach((creator, index) => { %>
+              <div class="asset-item">
+                <span class="asset-icon"><%= index === 0 ? '🏆' : '⭐' %></span>
+                <div class="asset-info">
+                  <h3 class="asset-title">@<%= creator.username %></h3>
+                  <p class="asset-description">
+                    <%= creator.assetCount %> approved assets, <%= creator.votes %> total votes
+                  </p>
+                </div>
+                <div class="asset-meta">
+                  <span class="meta-item">
+                    Rank #<%= index + 1 %>
+                  </span>
+                  <span class="asset-type-badge">Creator</span>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <div class="no-data">No creators yet</div>
+        <% } %>
+      </div>
+
+    </main>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script>
+    function switchTab(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+
+      // Deactivate all nav items
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+      });
+
+      // Show selected tab
+      const selectedTab = document.getElementById(tabName + '-tab');
+      if (selectedTab) {
+        selectedTab.classList.add('active');
+      }
+
+      // Activate selected nav item
+      event.target.closest('.nav-item').classList.add('active');
+    }
+  </script>
+</body>
+</html>

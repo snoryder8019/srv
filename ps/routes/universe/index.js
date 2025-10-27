@@ -227,7 +227,7 @@ router.get('/tome', async (req, res) => {
       loreArcs = [];
     }
 
-    res.render('universe/tome', {
+    res.render('universe/tome-slim', {
       title: 'The Tome',
       species,
       characters,

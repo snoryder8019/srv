@@ -39,6 +39,7 @@ const SCRIPT_CATEGORIES = {
     { name: 'Seed Quantum Singularity', file: 'seed-quantum-singularity.js', description: 'Create Quantum Singularity galaxy' }
   ],
   'Asset Management': [
+    { name: 'Sync Assets to Tome', file: 'sync-assets-to-tome.js', description: 'Update Tome archive with all approved assets' },
     { name: 'Create Field Test Assets', file: 'seed-field-test-assets.js', description: 'Create starter equipment' },
     { name: 'Equip All Characters', file: 'equip-all-characters.js', description: 'Give field test gear to all characters' },
     { name: 'Publish Galaxies & Stars', file: 'publish-galaxies-stars.js', description: 'Make galaxies/stars visible' },

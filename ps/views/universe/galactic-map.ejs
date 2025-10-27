@@ -30,12 +30,23 @@
       <canvas id="galacticMap"></canvas>
     </div>
 
+    <!-- Project Title -->
+    <div class="project-title-overlay">
+      <h1 class="project-title">Project Stringborne</h1>
+      <div class="project-subtitle">Galactic Map</div>
+    </div>
+
     <!-- Sync Indicator moved inside Tester Debug Panel -->
 
     <!-- Sync indicator styles moved to tester-toolbar.js inline styles -->
 
     <!-- Map Controls -->
     <div class="map-controls">
+      <!-- Menu Toggle -->
+      <div class="control-group">
+        <button id="toggleMenuBtn" class="control-btn menu-btn" title="Toggle Menu">☰</button>
+      </div>
+
       <!-- Zoom Controls -->
       <div class="control-group zoom-controls">
         <button id="zoomInBtn" class="control-btn zoom-btn" title="Zoom In">+</button>
@@ -58,6 +69,91 @@
         <button id="toggleAdminBtn" class="control-btn" title="Toggle Admin Controls">⚙️</button>
       </div>
       <% } %>
+    </div>
+
+    <!-- Overlay Menu System -->
+    <div class="overlay-menu" id="overlayMenu">
+      <div class="overlay-menu-header">
+        <h2 class="overlay-menu-title">Navigation Hub</h2>
+        <button class="overlay-menu-close" onclick="toggleOverlayMenu()">✕</button>
+      </div>
+
+      <nav class="overlay-menu-nav">
+        <div class="overlay-menu-item" onclick="openPWAModal('charactersModal')">
+          <span class="menu-item-icon">⚔️</span>
+          <span class="menu-item-label">Characters</span>
+          <span class="menu-item-arrow">›</span>
+        </div>
+
+        <div class="overlay-menu-item" onclick="openPWAModal('tomeModal')">
+          <span class="menu-item-icon">📖</span>
+          <span class="menu-item-label">The Tome</span>
+          <span class="menu-item-arrow">›</span>
+        </div>
+
+        <div class="overlay-menu-item" onclick="openPWAModal('workshopModal')">
+          <span class="menu-item-icon">🎨</span>
+          <span class="menu-item-label">Asset Workshop</span>
+          <span class="menu-item-arrow">›</span>
+        </div>
+
+        <div class="overlay-menu-item" onclick="openPWAModal('votingModal')">
+          <span class="menu-item-icon">🗳️</span>
+          <span class="menu-item-label">Asset Governance</span>
+          <span class="menu-item-arrow">›</span>
+        </div>
+
+        <!-- Inventory removed - API endpoint, needs proper view page
+        <div class="overlay-menu-item" onclick="openPWAModal('inventoryModal')">
+          <span class="menu-item-icon">🎒</span>
+          <span class="menu-item-label">Inventory</span>
+          <span class="menu-item-arrow">›</span>
+        </div>
+        -->
+
+        <div class="overlay-menu-item" onclick="openPWAModal('profileModal')">
+          <span class="menu-item-icon">📊</span>
+          <span class="menu-item-label">Profile</span>
+          <span class="menu-item-arrow">›</span>
+        </div>
+
+        <div class="overlay-menu-divider"></div>
+
+        <a href="/menu" class="overlay-menu-item">
+          <span class="menu-item-icon">🏠</span>
+          <span class="menu-item-label">Exit to Menu</span>
+          <span class="menu-item-arrow">›</span>
+        </a>
+
+        <% if (user && user.isAdmin) { %>
+        <div class="overlay-menu-divider"></div>
+        <div class="overlay-menu-section-title">Admin</div>
+
+        <div class="overlay-menu-item admin-item" onclick="openPWAModal('adminModal')">
+          <span class="menu-item-icon">⚙️</span>
+          <span class="menu-item-label">Admin Dashboard</span>
+          <span class="menu-item-arrow">›</span>
+        </div>
+        <% } %>
+      </nav>
+    </div>
+
+    <!-- Overlay backdrop -->
+    <div class="overlay-backdrop" id="overlayBackdrop" onclick="toggleOverlayMenu()"></div>
+
+    <!-- PWA Modal Container -->
+    <div class="pwa-modal" id="pwaModalContainer">
+      <div class="pwa-modal-header">
+        <button class="pwa-modal-back" onclick="closePWAModal()">← Back</button>
+        <h2 class="pwa-modal-title" id="pwaModalTitle">Loading...</h2>
+        <button class="pwa-modal-close" onclick="closePWAModal()">✕</button>
+      </div>
+      <div class="pwa-modal-content" id="pwaModalContent">
+        <div class="pwa-modal-loading">
+          <div class="loading-spinner"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
     </div>
 
     <% if (user && user.isAdmin) { %>
@@ -173,6 +269,7 @@
 
     <!-- Side Panel - Info Pane (Hidden by default, shows on asset click) -->
     <div class="side-panel" id="infoPane">
+      <button class="panel-close-btn" onclick="document.getElementById('infoPane').classList.remove('visible')">✕</button>
       <div class="panel-section">
         <div id="assetInfo"></div>
       </div>
@@ -663,6 +760,217 @@
       // Setup admin control handlers
       setupAdminControls();
       <% } %>
+    }
+
+    /**
+     * Toggle Overlay Menu
+     */
+    window.toggleOverlayMenu = function() {
+      const menu = document.getElementById('overlayMenu');
+      const backdrop = document.getElementById('overlayBackdrop');
+      const btn = document.getElementById('toggleMenuBtn');
+
+      const isActive = menu.classList.contains('active');
+
+      if (isActive) {
+        menu.classList.remove('active');
+        backdrop.classList.remove('active');
+        if (btn) btn.classList.remove('active');
+      } else {
+        menu.classList.add('active');
+        backdrop.classList.add('active');
+        if (btn) btn.classList.add('active');
+      }
+    };
+
+    // Add menu toggle button listener
+    document.addEventListener('DOMContentLoaded', () => {
+      const toggleMenuBtn = document.getElementById('toggleMenuBtn');
+      if (toggleMenuBtn) {
+        toggleMenuBtn.addEventListener('click', toggleOverlayMenu);
+      }
+
+      // Close menu on ESC key
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          const modal = document.getElementById('pwaModalContainer');
+          if (modal && modal.classList.contains('active')) {
+            closePWAModal();
+            return;
+          }
+
+          const menu = document.getElementById('overlayMenu');
+          if (menu && menu.classList.contains('active')) {
+            toggleOverlayMenu();
+          }
+        }
+      });
+    });
+
+    /**
+     * PWA Modal System - Opens content in full-screen modal over the map
+     */
+    const modalRoutes = {
+      charactersModal: { url: '/characters', title: 'Characters' },
+      tomeModal: { url: '/universe/tome', title: 'The Tome' },
+      workshopModal: { url: '/assets', title: 'Asset Workshop' },
+      votingModal: { url: '/assets/voting', title: 'Asset Governance' },
+      // inventoryModal: { url: '/api/v1/inventory/character', title: 'Inventory' }, // API endpoint, not a page
+      profileModal: { url: '/profile', title: 'Profile' },
+      adminModal: { url: '/admin', title: 'Admin Dashboard' }
+    };
+
+    window.openPWAModal = async function(modalId) {
+      const modal = document.getElementById('pwaModalContainer');
+      const titleEl = document.getElementById('pwaModalTitle');
+      const contentEl = document.getElementById('pwaModalContent');
+
+      const route = modalRoutes[modalId];
+      if (!route) {
+        console.error('Unknown modal:', modalId);
+        return;
+      }
+
+      // Close overlay menu if open
+      toggleOverlayMenu();
+
+      // Show modal with loading state
+      modal.classList.add('active');
+      titleEl.textContent = route.title;
+      contentEl.innerHTML = '<div class="pwa-modal-loading"><div class="loading-spinner"></div><p>Loading...</p></div>';
+
+      try {
+        // Fetch content
+        const response = await fetch(route.url);
+        if (!response.ok) throw new Error('Failed to load content');
+
+        const html = await response.text();
+
+        // Extract body content (strip header/footer)
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const main = doc.querySelector('main') || doc.querySelector('.container') || doc.body;
+
+        // Inject content
+        contentEl.innerHTML = main.innerHTML;
+
+        // Execute any scripts in the loaded content
+        const scripts = contentEl.querySelectorAll('script');
+        scripts.forEach(script => {
+          const newScript = document.createElement('script');
+          if (script.src) {
+            newScript.src = script.src;
+          } else {
+            newScript.textContent = script.textContent;
+          }
+          document.body.appendChild(newScript);
+        });
+
+        // Initialize modal functionality for nested modals after a short delay
+        setTimeout(() => {
+          initializeNestedModals();
+        }, 100);
+
+      } catch (error) {
+        console.error('Error loading modal content:', error);
+        contentEl.innerHTML = `
+          <div class="pwa-modal-error">
+            <div class="error-icon">⚠️</div>
+            <h3>Failed to Load</h3>
+            <p>Unable to load ${route.title}. Please try again.</p>
+            <button class="btn btn-primary" onclick="openPWAModal('${modalId}')">Retry</button>
+          </div>
+        `;
+      }
+    };
+
+    window.closePWAModal = function() {
+      const modal = document.getElementById('pwaModalContainer');
+
+      // Add closing animation class
+      modal.classList.add('closing');
+      modal.classList.remove('active');
+
+      // Wait for closing animation to complete
+      setTimeout(() => {
+        modal.classList.remove('closing');
+        // Clear content
+        document.getElementById('pwaModalContent').innerHTML = '<div class="pwa-modal-loading"><div class="loading-spinner"></div><p>Loading...</p></div>';
+      }, 400); // Match hudShutdown animation duration
+    };
+
+    /**
+     * Open a nested modal by ID
+     */
+    window.openNestedModal = function(modalId) {
+      const modal = document.getElementById(modalId) || document.querySelector(`[data-modal-id="${modalId}"]`);
+
+      if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+
+        // Create backdrop if it doesn't exist
+        let backdrop = modal.previousElementSibling;
+        if (!backdrop || !backdrop.classList.contains('modal-backdrop')) {
+          backdrop = document.createElement('div');
+          backdrop.className = 'modal-backdrop';
+          backdrop.addEventListener('click', () => window.closeNestedModal(modal));
+          modal.parentNode.insertBefore(backdrop, modal);
+        }
+        backdrop.style.display = 'block';
+      } else {
+        console.error('Modal not found:', modalId);
+      }
+    };
+
+    /**
+     * Close a nested modal
+     */
+    window.closeNestedModal = function(modal) {
+      if (!modal) return;
+
+      modal.style.display = 'none';
+      modal.classList.remove('active');
+
+      // Remove backdrop
+      const backdrop = modal.previousElementSibling;
+      if (backdrop && backdrop.classList.contains('modal-backdrop')) {
+        backdrop.style.display = 'none';
+      }
+    };
+
+    /**
+     * Initialize nested modal functionality
+     * This makes modals work within the PWA modal content
+     */
+    function initializeNestedModals() {
+      try {
+        const contentEl = document.getElementById('pwaModalContent');
+        if (!contentEl) return;
+
+        // Setup close buttons for all modals in content
+        const closeButtons = contentEl.querySelectorAll('.modal-close, .close-modal, [data-dismiss="modal"]');
+        closeButtons.forEach(btn => {
+          btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const modal = this.closest('.modal');
+            if (modal) window.closeNestedModal(modal);
+          });
+        });
+
+        // Click outside to close
+        const modals = contentEl.querySelectorAll('.modal');
+        modals.forEach(modal => {
+          modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+              window.closeNestedModal(this);
+            }
+          });
+        });
+      } catch (error) {
+        console.error('Error initializing nested modals:', error);
+      }
     }
 
     <% if (user && user.isAdmin) { %>
