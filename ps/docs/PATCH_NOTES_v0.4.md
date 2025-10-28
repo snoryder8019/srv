@@ -1,203 +1,136 @@
-# Patch Notes - v0.4.0 "Foundation Arc"
+# Patch Notes - v0.4.4 "Unified Interface Arc"
 
-**Release Date:** October 26, 2025
-**Build Version:** 0.4.0
+**Release Date:** October 28, 2025
+**Build Version:** 0.4.4
 
 ---
 
 ## Overview
 
-The v0.4 "Foundation Arc" update establishes the core systems for the Stringborn Universe. This is our first major public-facing release, bringing together months of infrastructure development into a cohesive, playable experience.
+The v0.4.4 update introduces a unified sidebar interface system across all 3D map views, bringing consistent navigation controls and a sleek floating HUD system for object interaction. This update focuses on improving the user experience for space navigation and establishing a cohesive UI/UX pattern for future features.
 
 ---
 
 ## New Features
 
-### Galactic Map System
-- **Live Territory Navigator**: Real-time visualization of faction-controlled zones
-- **Player Position Streaming**: See other players moving across the galaxy via websockets
-- **Scatter Repulsion Algorithm**: Natural character positioning preventing overlap
-- **Quick Start Teleport**: Admin/tester feature for rapid galaxy exploration
-- **Map Persistence**: Character positions and map state survive server restarts
-- **Optimized Rendering**: Efficient canvas rendering supporting hundreds of entities
-- **Character-Linked Navigation**: Deep links to galactic map with character selection
+### Unified Sidebar System
+- **Consistent Interface**: Unified sidebar design implemented across galactic-map-3d and system-map-3d views
+- **Quick Access Toolbar**: 5-button toolbar for rapid access to common functions
+- **Collapsible Sections**: Organized controls into logical groups (Map Controls, Layers, Admin/Debug, Legend, Selected Asset)
+- **Map Controls**: Integrated zoom in/out buttons with smooth camera transitions
+- **Asset Selector Dropdown**: Context-aware object selection based on current map view
+  - Galactic Map: Anomalies and Galaxies only (galactic-scale objects)
+  - System Map: Planets and Stations/Orbitals (system-scale objects)
+- **Clean Visual Design**: Terminal-style aesthetic with green accents matching game theme
 
-### Character Management
-- **Character Creation Flow**: Multi-step process with species, faction, and name selection
-- **Talent Tree System**: Canvas-based skill progression interface (visual demo available)
-- **Equipment Loadouts**: Equip items, weapons, and gear to characters
-- **Character Detail View**: Comprehensive stats, inventory, and progression tracking
-- **Multi-Character Support**: Create and manage multiple characters per account
-- **Character-Scoped Sessions**: Active character persists across sessions via localStorage
+### Floating HUD System
+- **3D Object Interaction**: Selecting objects from dropdown displays sleek floating HUD in THREE.js scene
+- **Screen-Space Positioning**: HUD automatically positioned next to selected object with smart offset
+- **Connection Lines**: Visual canvas-based line connecting HUD to selected object
+- **Dynamic Content**: HUD shows object-specific information:
+  - Object title (uppercase terminal style)
+  - Asset type (PLANET, STATION, ANOMALY, GALAXY, etc.)
+  - 3D coordinates in space
+- **Contextual Piloting Options**: Buttons change based on selected object type
+  - **Planets**: TRAVEL TO PLANET, ENTER ORBIT, LAND ON SURFACE
+  - **Stations/Orbitals**: TRAVEL TO STATION, DOCK AT STATION
+- **Smooth Animations**: Fade-in entrance with CSS transitions
+- **Camera Integration**: Works with both combat camera and map camera systems
 
-### Asset Workshop
-- **Integrated Pixel Editor**: Built-in canvas tool for sprite creation
-- **Asset Submission Pipeline**: Upload and submit custom content to the community
-- **Asset Type System**: Support for items, characters, environments, and more
-- **Scale Variants**: Automatic generation of 1x, 2x, 4x asset scales
-- **My Assets Library**: Personal gallery of submitted creations
-- **Community Asset Gallery**: Browse all player-created content
-
-### Voting & Governance
-- **Democratic Asset Approval**: Community voting determines what enters the universe
-- **Asset Review Interface**: Detailed view of submissions with voting controls
-- **Vote Tracking**: See voting history and your participation
-- **Approval Threshold System**: Assets require community consensus to be approved
-- **Transparent Governance**: All votes and decisions are visible to players
-
-### Inventory System
-- **Dual Storage Model**: Separate character and ship inventories
-- **Item Management**: Add, remove, and transfer items between storage locations
-- **Equipment System**: Equip/unequip items to character loadouts
-- **Item Metadata**: Rich item data including rarity, stats, and descriptions
-- **Inventory Modal UI**: Clean, accessible interface for item management
-- **Admin Item Seeding**: Development tools for testing inventory features
-
-### Admin & Developer Tools
-- **Tester Toolbar**: In-game terminal with realtime socket monitoring
-- **Telemetry Console**: User behavior analytics and engagement metrics
-- **Content Moderation Queue**: Review and approve player submissions
-- **Simulation Controls**: Runtime parameter tuning for game state
-- **Map Configuration Panel**: Adjust traversal velocity, grid resolution, render distance
-- **Asset Generator**: Procedural entity creation and batch configuration
-- **Script Control Panel**: Database management and admin automation tools
-- **User Administration**: Account management and permissions
+### UI/UX Improvements
+- **Removed Legacy Controls**: Old menu bars and standalone buttons replaced with unified sidebar
+- **Consistent Styling**: Matching visual design across all 3D navigation views
+- **Improved Organization**: Grouped related controls into collapsible sections
+- **Better Visual Hierarchy**: Clear z-index layering (Sidebar: 1000, HUD: 9999, Canvas: 9998)
+- **Terminal Aesthetic**: Monospace fonts, green borders, dark backgrounds throughout
 
 ---
 
 ## Technical Improvements
 
-### Real-Time Synchronization
-- **Socket.io Integration**: Robust websocket infrastructure for live updates
-- **Connection Resilience**: Automatic reconnection with exponential backoff
-- **Event Broadcasting**: Efficient server-to-client state synchronization
-- **Room-Based Channels**: Scoped socket communication for different game areas
-- **Socket Debugging Tools**: Built-in monitoring via tester toolbar
+### Frontend Architecture
+- **Inline Script Handlers**: Guaranteed execution of sidebar functions via inline scripts in EJS templates
+- **Global Function Scope**: All handler functions properly exposed on window object for reliable access
+- **Smart Asset Filtering**: Dropdown population intelligently filters by map context
+- **Vector Projection**: 3D-to-2D screen coordinate transformation for HUD positioning
+- **Canvas Rendering**: Efficient connection line drawing using Canvas API
+- **State Management**: Integration with existing `window.galacticMap` state objects
 
-### Database & State Management
-- **Character-Game State Sync**: Automated synchronization between character and game state collections
-- **Galaxy Reset Scripts**: Clean reset tools for development and testing
-- **Starting Location System**: Configurable spawn points per faction
-- **Persistent Sessions**: Character selection survives browser refresh
-- **Data Validation**: Schema enforcement for all database operations
+### Code Organization
+- **Modular Functions**: Clear separation of concerns (populate selectors, show/hide HUD, handle selections)
+- **Event Handling**: Proper event listener management for dropdown changes
+- **Asset Lookup**: Efficient Map-based asset retrieval from `planets` and `assets` Maps
+- **Error Handling**: Fallback logic for camera selection and asset mesh retrieval
 
-### UI/UX Enhancements
-- **Layered Interface System**: Proper z-indexing for modals, toolbars, and overlays
-- **Responsive Modals**: Inventory and character modals with clean animations
-- **Terminal Theme Styling**: Developer toolbar with monospace, tech aesthetic
-- **Sync Indicators**: Visual feedback for connection and sync status
-- **Enhanced Landing Page**: Polished sales/info page for new visitors
-- **Menu Navigator**: Centralized hub for all game systems
-- **Auth Flow**: Streamlined login/register with character selection
-
-### Performance Optimizations
-- **Efficient Map Rendering**: Optimized canvas drawing for large entity counts
-- **Lazy Loading**: Deferred loading of non-critical resources
-- **Debounced Updates**: Throttled position updates to reduce socket traffic
-- **Memory Management**: Proper cleanup of event listeners and intervals
-- **Client-Side Caching**: LocalStorage for character selection and preferences
+### Files Modified
+- `/srv/ps/views/universe/galactic-map-3d.ejs`: Added unified sidebar (lines 429-565), asset selector (695-756), and event handlers
+- `/srv/ps/views/universe/system-map-3d.ejs`: Added floating HUD HTML (289-302), `showFloatingHUD()` function (1383-1555), piloting action functions (1573-1591)
+- `/srv/ps/public/javascripts/system-map-3d.js`: Fixed function call to `populateSystemObjectSelector()` (line 750)
+- `/srv/ps/public/javascripts/galactic-map-3d.js`: Added asset selector population call (lines 1304-1309)
 
 ---
 
 ## Bug Fixes
 
 ### Critical Fixes
-- **Socket Connection Stability**: Resolved issues with connection drops and failed reconnections
-- **Character-Game State Desync**: Fixed discrepancies between character positions and game state
-- **UI Layering Conflicts**: Corrected z-index issues causing overlapping interface elements
-- **Map Position Persistence**: Character positions now properly save/restore across sessions
-- **Inventory Duplication**: Eliminated edge cases causing duplicate items
+- **Map Controls Not Working**: Fixed zoom buttons in unified sidebar with proper onclick handlers
+- **Dropdown Not Populating**: Added missing function calls after asset loading
+- **Function Name Mismatch**: Corrected `populatePlanetSelector()` to `populateSystemObjectSelector()` in system-map-3d.js
 
 ### General Fixes
-- **Scatter Algorithm Edge Cases**: Prevented characters from spawning off-screen
-- **Modal Close Handlers**: Fixed issues with modals not properly closing
-- **Auth Session Persistence**: Resolved logout/login state inconsistencies
-- **Asset Upload Validation**: Improved error handling for malformed submissions
-- **Vote Counting Accuracy**: Corrected vote tallying logic
+- **Asset Selector Organization**: Grouped objects by type with optgroups for better readability
+- **Camera Focus**: Improved camera positioning when selecting objects
+- **HUD Positioning**: Fine-tuned offset calculations for optimal HUD placement
 
 ---
 
 ## Known Issues
 
 ### Current Limitations
-- **Mobile Support**: Interface not yet optimized for mobile/tablet devices
-- **Browser Compatibility**: Best performance on Chrome/Chromium; Firefox/Safari may have rendering quirks
-- **Scale Testing**: System has not been tested with 100+ concurrent users
-- **Incomplete Features**: Some UI elements are placeholders for upcoming functionality
-
-### In Development
-- **Planetary Exploration System**: Complete overhaul in progress (v0.4.1)
-  - Sprite-based rendering system with atlas support
-  - Procedural terrain generation (DB-efficient, no chunk storage)
-  - Object placement system (spaceships, buildings, resources)
-  - Linode Object Storage integration for assets
-  - Player modification tracking instead of full chunk storage
-- **Zone Exploration**: Zone entry and discovery mechanics planned for v0.5
-- **Combat System**: Attack, defense, and skill mechanics in design phase
-- **Economy**: Trading, markets, and currency systems coming soon
-- **Faction Warfare**: Territory conquest and PvP systems planned
-- **Lore Database**: Tome/encyclopedia system partially implemented
+- **Piloting Actions Not Implemented**: Travel, Orbit, Land, and Dock buttons show placeholder alerts (ready for future implementation)
+- **HUD Position Updates**: Floating HUD doesn't update position if camera moves after selection (requires manual re-selection)
+- **Mobile Touch Support**: Sidebar and HUD not yet optimized for mobile touch interactions
 
 ---
 
 ## Breaking Changes
 
-⚠️ **Database Reset Required**: This update includes a full galaxy reset. All character positions and game state have been wiped. Character data (names, equipment, progression) is preserved.
-
-⚠️ **Deprecated Views**: Old EJS templates have been moved to `.deprecated_views/` in favor of enhanced versions.
+⚠️ **Legacy Controls Removed**: Old standalone zoom buttons and menu bars have been removed from galactic-map-3d. All controls are now in the unified sidebar.
 
 ---
 
 ## Migration Guide
 
-### For Existing Players
-1. **Re-select your character** on the `/auth` page after logging in
-2. **Your character will spawn** at a default starting location based on faction
-3. **Inventory items are preserved**, but you may need to re-equip them
-4. **Submitted assets remain intact**, no re-upload needed
+### For Players
+- **New Sidebar Location**: All map controls are now in the left sidebar
+- **Object Selection**: Use the dropdown in "Map Controls" section to select and view objects
+- **Piloting Options**: Select planets/stations to see available piloting actions (coming soon)
 
 ### For Developers
-1. **New environment variables** may be required (see `.env.example`)
-2. **Database indexes** should be rebuilt after update
-3. **Socket event handlers** have new signatures; check documentation
-4. **Asset upload endpoints** now require authentication
-
----
-
-## Credits
-
-**Core Development Team:**
-- System Architecture & Backend
-- Real-Time Infrastructure
-- UI/UX Design
-- Database Engineering
-
-**Special Thanks:**
-- Early testers and bug reporters
-- Community members providing feedback
-- Asset creators submitting content
+- **Function Renaming**: `populatePlanetSelector()` is now `populateSystemObjectSelector()`
+- **Sidebar Pattern**: Use the unified sidebar structure from galactic-map-3d.ejs as template for new views
+- **HUD Integration**: `window.showFloatingHUD(asset)` is globally available for displaying object info
 
 ---
 
 ## Next Steps
 
-### v0.4.1 Update (In Progress)
-- **Planetary System Overhaul**:
-  - Sprite atlas rendering (5x5 grid, 80x80px tiles)
-  - Linode Object Storage for asset delivery
-  - Procedural-only terrain (no chunk storage)
-  - Player-placed objects (spaceships, buildings, defenses)
-  - Asset builder UI for sprite pack creation
-
-### v0.5 Roadmap Preview
-- **NPC & Enemy System**: Biome-based spawns, AI behavior, combat
-- **Resource Collection & Mining**: Harvest materials, craft items
-- **Quest System**: Dynamic missions and objectives
-- **Zone Exploration**: Enter and discover unique environments
-- **Combat System**: PvE and PvP combat mechanics
-- **Enhanced Social**: Guilds, parties, and messaging
-- **Mobile Optimization**: Responsive interface for all devices
-- **Performance**: Scalability improvements for larger player counts
+### v0.4.5 Roadmap Preview
+- **Implement Piloting Actions**:
+  - Travel system with path visualization
+  - Orbital mechanics for planet orbits
+  - Landing sequences and planet surface transitions
+  - Station docking procedures
+- **HUD Enhancements**:
+  - Real-time position updates following selected object
+  - Additional object stats (population, resources, faction control)
+  - Ship status indicators
+  - Distance and ETA calculations
+- **Unified Sidebar Expansion**:
+  - Layer toggles for different object types
+  - Filter controls for dropdown
+  - Quick travel bookmarks
+  - Recently visited objects history
 
 ---
 
@@ -211,4 +144,4 @@ The v0.4 "Foundation Arc" update establishes the core systems for the Stringborn
 
 **Thank you for playing Stringborn Universe!**
 
-*This is just the beginning of our journey together.*
+*The universe is vast, but now easier to navigate.*
