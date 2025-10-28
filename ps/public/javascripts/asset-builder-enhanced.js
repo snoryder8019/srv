@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupFilePreview('fullscreenFile', 'fullscreenPreview');
   setupFilePreview('indexCardFile', 'indexCardPreview');
 
+  // Setup 3D model/texture upload handlers
+  setup3DFileHandlers();
+
   // Setup form handlers
   document.getElementById('resetBtn').addEventListener('click', resetForm);
   document.getElementById('saveDraftBtn').addEventListener('click', saveDraft);
@@ -1110,4 +1113,114 @@ function setupLocationHierarchy() {
       coordinatesRow.style.display = 'flex';
     }
   });
+}
+
+/**
+ * Setup 3D model and texture file upload handlers
+ */
+function setup3DFileHandlers() {
+  // GLTF Model Upload
+  const gltfFile = document.getElementById('gltfFile');
+  if (gltfFile) {
+    gltfFile.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // Show preview container
+      const preview = document.getElementById('gltfPreview');
+      const infoDiv = document.getElementById('gltfInfo');
+      preview.style.display = 'block';
+
+      // Create blob URL
+      const url = URL.createObjectURL(file);
+
+      try {
+        // Initialize viewer if needed
+        const viewer = initGLTFViewer();
+
+        // Load model
+        infoDiv.innerHTML = '<p style="color: #8a4fff;">Loading model...</p>';
+        await viewer.loadGLTF(url);
+
+        // Show model info
+        const info = viewer.getModelInfo();
+        infoDiv.innerHTML = `
+          <div style="background: rgba(138, 79, 255, 0.1); padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
+            <p style="color: #8a4fff; font-weight: bold; margin: 0;">Model Info:</p>
+            <p style="color: #aaa; margin: 0.25rem 0; font-size: 0.9rem;">
+              Meshes: ${info.meshCount} | Vertices: ${info.vertices.toLocaleString()} | Triangles: ${info.triangles.toLocaleString()}
+            </p>
+            <p style="color: #00ff88; margin: 0.25rem 0; font-size: 0.85rem;">
+              ✓ File: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)
+            </p>
+          </div>
+        `;
+      } catch (error) {
+        infoDiv.innerHTML = `<p style="color: #ff4f4f;">Error loading model: ${error.message}</p>`;
+        console.error('GLTF load error:', error);
+      }
+    });
+  }
+
+  // Planet Texture Upload
+  const planetTextureFile = document.getElementById('planetTextureFile');
+  if (planetTextureFile) {
+    planetTextureFile.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const preview = document.getElementById('planetTexturePreview');
+      preview.style.display = 'block';
+
+      const url = URL.createObjectURL(file);
+
+      try {
+        // Initialize planet viewer
+        const viewer = initPlanetViewer();
+
+        // Load planet texture
+        await viewer.loadPlanet(url);
+
+        console.log('Planet texture loaded:', file.name);
+      } catch (error) {
+        console.error('Planet texture load error:', error);
+      }
+    });
+  }
+
+  // Normal Map Preview (simple image preview)
+  const normalMapFile = document.getElementById('normalMapFile');
+  if (normalMapFile) {
+    normalMapFile.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const preview = document.getElementById('normalMapPreview');
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        preview.innerHTML = `<img src="${e.target.result}" style="max-width: 200px; margin-top: 0.5rem; border-radius: 4px;">`;
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Roughness Map Preview
+  const roughnessMapFile = document.getElementById('roughnessMapFile');
+  if (roughnessMapFile) {
+    roughnessMapFile.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const preview = document.getElementById('roughnessMapPreview');
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        preview.innerHTML = `<img src="${e.target.result}" style="max-width: 200px; margin-top: 0.5rem; border-radius: 4px;">`;
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
 }

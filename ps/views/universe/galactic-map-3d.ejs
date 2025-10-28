@@ -1,0 +1,1824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> - 3D View</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/galactic-map.css">
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+      background: #000;
+    }
+
+    /* Critical Info Pane Styles - Inline to ensure they always load */
+    #infoPaneBackdrop.visible {
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+
+    #infoPane.visible,
+    .side-panel.visible {
+      right: 10px !important;
+      transform: scale(1) !important;
+      border-color: rgba(138, 79, 255, 0.6) !important;
+      box-shadow: -5px 0 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(138, 79, 255, 0.3), 0 0 60px rgba(138, 79, 255, 0.5) !important;
+    }
+
+    /* Button styles within info pane */
+    #infoPane button,
+    #infoPane .travel-btn,
+    #assetInfo button {
+      font-family: 'Orbitron', monospace !important;
+      background: linear-gradient(135deg, rgba(138, 79, 255, 0.2), rgba(74, 158, 255, 0.2)) !important;
+      border: 1px solid rgba(138, 79, 255, 0.4) !important;
+      color: #8a4fff !important;
+      padding: 10px 15px !important;
+      border-radius: 6px !important;
+      cursor: pointer !important;
+      transition: all 0.3s ease !important;
+      font-size: 0.9em !important;
+      width: 100% !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+    }
+
+    #infoPane button:hover,
+    #infoPane .travel-btn:hover,
+    #assetInfo button:hover {
+      background: linear-gradient(135deg, rgba(138, 79, 255, 0.3), rgba(74, 158, 255, 0.3)) !important;
+      border-color: #8a4fff !important;
+      box-shadow: 0 0 15px rgba(138, 79, 255, 0.4) !important;
+      transform: translateY(-1px) !important;
+    }
+
+    #infoPane .explore-btn {
+      background: linear-gradient(135deg, rgba(0, 255, 159, 0.2), rgba(0, 200, 130, 0.2)) !important;
+      border-color: rgba(0, 255, 159, 0.4) !important;
+      color: #00ff9f !important;
+    }
+
+    #infoPane .explore-btn:hover {
+      background: linear-gradient(135deg, rgba(0, 255, 159, 0.3), rgba(0, 200, 130, 0.3)) !important;
+      border-color: #00ff9f !important;
+      box-shadow: 0 0 15px rgba(0, 255, 159, 0.4) !important;
+    }
+
+    #infoPane .panel-close-btn {
+      width: 32px !important;
+      height: 32px !important;
+      padding: 0 !important;
+      border-radius: 50% !important;
+    }
+
+    #infoPane .panel-close-btn:hover {
+      background: rgba(138, 79, 255, 0.3) !important;
+      transform: scale(1.1) !important;
+    }
+
+    /* Text styling in info pane */
+    #assetInfo h2,
+    #assetInfo h3,
+    #assetInfo h4 {
+      color: #8a4fff !important;
+      font-family: 'Orbitron', monospace !important;
+    }
+
+    #assetInfo p,
+    #assetInfo span,
+    #assetInfo div {
+      color: #e0e0ff !important;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      #infoPane.visible,
+      .side-panel.visible {
+        bottom: 0 !important;
+        right: auto !important;
+        left: 0 !important;
+        width: 100vw !important;
+        top: auto !important;
+      }
+
+      #infoPane,
+      .side-panel {
+        top: auto !important;
+        right: auto !important;
+        left: 0 !important;
+        bottom: -100% !important;
+        width: 100vw !important;
+        max-height: 60vh !important;
+        border-radius: 12px 12px 0 0 !important;
+      }
+    }
+
+    #mapContainer {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    /* Info Overlay */
+    .info-overlay {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 20, 40, 0.9);
+      border: 2px solid #00ffaa;
+      border-radius: 8px;
+      padding: 15px 20px;
+      color: #00ffaa;
+      font-size: 14px;
+      z-index: 100;
+      min-width: 250px;
+      backdrop-filter: blur(10px);
+    }
+
+    .info-overlay h2 {
+      margin: 0 0 10px 0;
+      font-size: 18px;
+      color: #ffaa00;
+      text-shadow: 0 0 10px #ffaa00;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 5px 0;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(0, 255, 170, 0.2);
+    }
+
+    .info-label {
+      color: #66ccff;
+    }
+
+    .info-value {
+      color: #ffffff;
+      font-weight: bold;
+    }
+
+    /* Control Instructions */
+    .controls-overlay {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 20, 40, 0.9);
+      border: 2px solid #4488ff;
+      border-radius: 8px;
+      padding: 15px 20px;
+      color: #4488ff;
+      font-size: 12px;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+
+    .controls-overlay h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #ffaa00;
+    }
+
+    .controls-overlay p {
+      margin: 5px 0;
+      color: #aaccff;
+    }
+
+    .controls-overlay kbd {
+      background: rgba(100, 150, 255, 0.3);
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid #4488ff;
+      color: #ffffff;
+    }
+
+    /* Selected Asset Panel */
+    .selected-panel {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 20, 40, 0.95);
+      border: 2px solid #ff6600;
+      border-radius: 8px;
+      padding: 15px 20px;
+      color: #ffffff;
+      font-size: 13px;
+      z-index: 100;
+      min-width: 300px;
+      max-width: 400px;
+      display: none;
+      backdrop-filter: blur(10px);
+    }
+
+    .selected-panel.visible {
+      display: block;
+    }
+
+    .selected-panel h2 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      color: #ff6600;
+      text-shadow: 0 0 10px #ff6600;
+    }
+
+    .selected-panel .asset-type {
+      display: inline-block;
+      background: rgba(255, 102, 0, 0.3);
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      border: 1px solid #ff6600;
+    }
+
+    /* Toggle Button */
+    .view-toggle {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(138, 79, 255, 0.9);
+      border: 2px solid #8a4fff;
+      border-radius: 20px;
+      padding: 10px 20px;
+      color: #ffffff;
+      font-size: 14px;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.3s;
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+    }
+
+    .view-toggle:hover {
+      background: rgba(138, 79, 255, 1);
+      box-shadow: 0 0 20px rgba(138, 79, 255, 0.8);
+      transform: translateX(-50%) scale(1.05);
+    }
+
+    /* Navigation Breadcrumb */
+    .nav-breadcrumb {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 20, 40, 0.9);
+      border: 2px solid #00ffaa;
+      border-radius: 8px;
+      padding: 12px 18px;
+      color: #00ffaa;
+      font-size: 14px;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .back-button {
+      background: rgba(255, 100, 100, 0.8);
+      border: 2px solid #ff6644;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.3s;
+      font-size: 13px;
+    }
+
+    .back-button:hover {
+      background: rgba(255, 100, 100, 1);
+      box-shadow: 0 0 15px rgba(255, 100, 100, 0.6);
+      transform: scale(1.05);
+    }
+
+    .back-button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* Legend */
+    .legend {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0, 20, 40, 0.9);
+      border: 2px solid #00ffaa;
+      border-radius: 8px;
+      padding: 15px;
+      color: #ffffff;
+      font-size: 12px;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+
+    .legend h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #ffaa00;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin: 5px 0;
+    }
+
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      margin-right: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <!-- Main Map Container -->
+  <div id="mapContainer"></div>
+
+  <!-- Floating HUD Info (appears next to hovered stars) -->
+  <div id="floatingHUD" style="
+    position: fixed;
+    display: none;
+    z-index: 9999;
+    pointer-events: none;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    min-width: 200px;
+    max-width: 280px;
+  ">
+    <div style="
+      background: rgba(0, 0, 0, 0.95);
+      border: 1px solid #00ff00;
+      border-radius: 4px;
+      padding: 12px;
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.3),
+                  inset 0 0 20px rgba(0, 255, 0, 0.05);
+    ">
+      <div style="color: #00ff00; font-weight: bold; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;" id="hudTitle">
+        [STAR]
+      </div>
+      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 4px;" id="hudType">
+        TYPE: UNKNOWN
+      </div>
+      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 4px;" id="hudCoords">
+        COORDS: [0, 0, 0]
+      </div>
+      <div style="color: #00ff00; opacity: 0.9; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0, 255, 0, 0.3);">
+        <div style="margin-bottom: 3px;" id="hudPlanets">
+          🪐 PLANETS: 0
+        </div>
+        <div style="margin-bottom: 3px;" id="hudStations">
+          🚉 STATIONS: 0
+        </div>
+        <div id="hudTotal">
+          📊 TOTAL ASSETS: 0
+        </div>
+      </div>
+      <div style="color: #00ff00; opacity: 0.7; font-size: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0, 255, 0, 0.2);">
+        &gt; CLICK TO EXPLORE
+      </div>
+    </div>
+  </div>
+
+  <!-- HUD Connection Line Canvas -->
+  <canvas id="hudLineCanvas" style="
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9998;
+    display: none;
+  "></canvas>
+
+  <!-- Breadcrumb Navigation -->
+  <div id="breadcrumbNav" style="
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid #00ff00;
+    border-radius: 20px;
+    padding: 8px 20px;
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+  ">
+    <span style="color: #666; margin-right: 5px;">[NAV]</span>
+    <span id="breadcrumbUniverse" class="breadcrumb-item active" style="color: #00ff00; cursor: pointer; padding: 4px 10px; border-radius: 10px; transition: all 0.2s;">
+      UNIVERSE
+    </span>
+  </div>
+
+  <!-- Unified Left Sidebar -->
+  <div id="unifiedSidebar" class="zen-hideable" style="position: fixed; left: 0; top: 60px; height: calc(100vh - 60px); width: 320px; background: rgba(10, 10, 26, 0.95); backdrop-filter: blur(20px); border-right: 2px solid rgba(138, 79, 255, 0.3); z-index: 1000; display: flex; flex-direction: column; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(0);">
+
+    <!-- Quick Access Toolbar (Always Visible) -->
+    <div class="quick-access-toolbar" style="padding: 15px; display: flex; gap: 10px; border-bottom: 2px solid rgba(138, 79, 255, 0.3); flex-wrap: wrap; justify-content: center;">
+      <button id="toggleSidebarBtn" class="quick-btn" onclick="handleSidebarToggle()" style="background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 8px; padding: 10px; color: #ffffff; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Collapse Sidebar">«</button>
+      <button id="toggleMenuBtn" class="quick-btn" onclick="handleMenuToggle()" style="background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 8px; padding: 10px; color: #ffffff; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Navigation Menu">☰</button>
+      <button id="zenModeBtn" class="quick-btn" onclick="handleZenToggle()" style="background: rgba(100, 200, 255, 0.9); border: 2px solid #64c8ff; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Zen Mode">👁️</button>
+      <button id="locateMeBtn" class="quick-btn" onclick="handleLocatePlayer()" style="background: rgba(0, 255, 0, 0.9); border: 2px solid #00ff00; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Locate My Character">📍</button>
+      <button id="resetViewBtn" class="quick-btn" onclick="handleResetView()" style="background: rgba(255, 170, 0, 0.9); border: 2px solid #ffaa00; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Reset View">⟲</button>
+    </div>
+
+    <!-- Scrollable Content Area -->
+    <div class="sidebar-content" style="flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px;">
+
+      <!-- Map Controls Section -->
+      <div class="sidebar-section" style="margin-bottom: 15px;">
+        <div class="section-header" onclick="toggleSidebarSection('mapControls')" style="background: rgba(0, 170, 255, 0.2); border: 2px solid #00aaff; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;">
+          <span style="color: #00aaff; font-family: 'Orbitron', monospace; font-weight: bold; font-size: 14px;">🗺️ MAP CONTROLS</span>
+          <span id="mapControlsArrow" style="color: #00aaff; font-size: 14px; transition: transform 0.3s;">▼</span>
+        </div>
+        <div id="mapControlsContent" class="section-content" style="padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #00aaff; border-top: none; border-radius: 0 0 8px 8px; display: flex; flex-direction: column; gap: 10px;">
+          <!-- Zoom Controls -->
+          <div style="display: flex; gap: 8px; justify-content: space-between;">
+            <button id="zoomInBtnSidebar" class="control-btn" onclick="handleZoomIn()" style="flex: 1; background: rgba(0, 255, 170, 0.9); border: 2px solid #00ffaa; border-radius: 6px; padding: 10px; color: #000; font-size: 18px; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Zoom In">+</button>
+            <button id="zoomOutBtnSidebar" class="control-btn" onclick="handleZoomOut()" style="flex: 1; background: rgba(0, 255, 170, 0.9); border: 2px solid #00ffaa; border-radius: 6px; padding: 10px; color: #000; font-size: 18px; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Zoom Out">−</button>
+          </div>
+          <!-- Asset Selector -->
+          <select id="assetSelector" class="control-select" style="background: rgba(0, 255, 170, 0.9); border: 2px solid #00ffaa; border-radius: 6px; padding: 10px; color: #000; font-size: 12px; cursor: pointer; transition: all 0.3s; width: 100%; font-family: 'Courier New', monospace;" title="View Asset">
+            <option value="">🌌 Select Asset to View</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Layer Controls Section -->
+      <div class="sidebar-section" style="margin-bottom: 15px;">
+        <div class="section-header" onclick="toggleSidebarSection('layerControls')" style="background: rgba(0, 255, 255, 0.2); border: 2px solid #00ffff; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;">
+          <span style="color: #00ffff; font-family: 'Orbitron', monospace; font-weight: bold; font-size: 14px;">👁️ LAYERS</span>
+          <span id="layerControlsArrow" style="color: #00ffff; font-size: 14px; transition: transform 0.3s;">▼</span>
+        </div>
+        <div id="layerControlsContent" class="section-content" style="padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #00ffff; border-top: none; border-radius: 0 0 8px 8px; display: flex; flex-direction: column; gap: 8px;">
+          <button id="toggleOrbitsBtn" class="control-btn" style="background: rgba(0, 255, 255, 0.9); border: 2px solid #00ffff; border-radius: 6px; padding: 10px; color: #000; font-size: 14px; cursor: pointer; transition: all 0.3s; font-family: 'Courier New', monospace;" title="Toggle Orbital Paths">🌀 Orbital Paths</button>
+          <button id="toggleVelocityBtn" class="control-btn" style="background: rgba(0, 255, 255, 0.9); border: 2px solid #00ffff; border-radius: 6px; padding: 10px; color: #000; font-size: 14px; cursor: pointer; transition: all 0.3s; font-family: 'Courier New', monospace;" title="Toggle Velocity Arrows">➤ Velocity Arrows</button>
+          <button id="toggleConnectionsBtn" class="control-btn" style="background: rgba(0, 255, 255, 0.9); border: 2px solid #00ffff; border-radius: 6px; padding: 10px; color: #000; font-size: 14px; cursor: pointer; transition: all 0.3s; font-family: 'Courier New', monospace;" title="Toggle Connections">⚡ Connections</button>
+        </div>
+      </div>
+
+      <% if (user && (user.isAdmin || user.userRole === 'tester')) { %>
+      <!-- Debug/Admin Section -->
+      <div class="sidebar-section" style="margin-bottom: 15px;">
+        <div class="section-header" onclick="toggleSidebarSection('debugAdmin')" style="background: rgba(138, 79, 255, 0.2); border: 2px solid #8a4fff; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;">
+          <span style="color: #8a4fff; font-family: 'Orbitron', monospace; font-weight: bold; font-size: 14px;">🔧 <%= user.isAdmin ? 'ADMIN' : 'DEBUG' %></span>
+          <span id="debugAdminArrow" style="color: #8a4fff; font-size: 14px; transition: transform 0.3s;">▶</span>
+        </div>
+        <div id="debugAdminContent" class="section-content" style="display: none; padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #8a4fff; border-top: none; border-radius: 0 0 8px 8px; flex-direction: column; gap: 8px;">
+          <% if (user.isAdmin) { %>
+          <button onclick="window.location.href='/admin'" style="background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 6px; padding: 10px; color: #ffffff; font-size: 12px; cursor: pointer; transition: all 0.3s; font-family: 'Orbitron', monospace;">Admin Dashboard</button>
+          <% } %>
+          <button onclick="console.log(window.galacticMap)" style="background: rgba(138, 79, 255, 0.7); border: 2px solid #8a4fff; border-radius: 6px; padding: 10px; color: #ffffff; font-size: 11px; cursor: pointer; transition: all 0.3s; font-family: 'Courier New', monospace;">Log Map Data</button>
+          <button onclick="console.log(window.currentCharacter)" style="background: rgba(138, 79, 255, 0.7); border: 2px solid #8a4fff; border-radius: 6px; padding: 10px; color: #ffffff; font-size: 11px; cursor: pointer; transition: all 0.3s; font-family: 'Courier New', monospace;">Log Character Data</button>
+        </div>
+      </div>
+      <% } %>
+
+      <!-- Legend Section -->
+      <div class="sidebar-section" style="margin-bottom: 15px;">
+        <div class="section-header" onclick="toggleSidebarSection('legend')" style="background: rgba(0, 255, 170, 0.2); border: 2px solid #00ffaa; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;">
+          <span style="color: #00ffaa; font-family: 'Orbitron', monospace; font-weight: bold; font-size: 14px;">📖 LEGEND</span>
+          <span id="legendArrow" style="color: #00ffaa; font-size: 14px; transition: transform 0.3s;">▶</span>
+        </div>
+        <div id="legendContent" class="section-content" style="display: none; padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #00ffaa; border-top: none; border-radius: 0 0 8px 8px; font-family: 'Courier New', monospace; color: #e0e0ff; font-size: 11px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <div style="width: 12px; height: 12px; background: #bb88ff; border-radius: 2px;"></div>
+            <span>Galaxies</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <div style="width: 12px; height: 12px; background: #ffff00; border-radius: 2px;"></div>
+            <span>Stars</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <div style="width: 12px; height: 12px; background: #00ff88; border-radius: 2px;"></div>
+            <span>Planets</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <div style="width: 12px; height: 12px; background: #ff6600; border-radius: 2px;"></div>
+            <span>Stations</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <div style="width: 12px; height: 12px; background: #00aaff; border-radius: 2px;"></div>
+            <span>Ships</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <div style="width: 12px; height: 12px; background: #00ffff; border: 2px solid #00ffff; background: transparent; border-radius: 2px;"></div>
+            <span>Zones</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 12px; height: 12px; background: #ff00ff; border-radius: 2px;"></div>
+            <span>Anomalies</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selected Asset Section -->
+      <div class="sidebar-section" style="margin-bottom: 15px;">
+        <div class="section-header" onclick="toggleSidebarSection('selectedAsset')" style="background: rgba(255, 102, 0, 0.2); border: 2px solid #ff6600; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;">
+          <span style="color: #ff6600; font-family: 'Orbitron', monospace; font-weight: bold; font-size: 14px;">🎯 SELECTED</span>
+          <span id="selectedAssetArrow" style="color: #ff6600; font-size: 14px; transition: transform 0.3s;">▶</span>
+        </div>
+        <div id="selectedAssetContent" class="section-content" style="display: none; padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #ff6600; border-top: none; border-radius: 0 0 8px 8px; font-family: 'Orbitron', monospace; color: #e0e0ff; font-size: 11px;">
+          <div id="selectedAssetInfo" style="text-align: center; color: #888; padding: 20px 0;">
+            Click an asset to view details
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Collapsed Sidebar Toggle (Shown when sidebar is hidden) -->
+  <button id="showSidebarBtn" class="zen-hideable" onclick="handleSidebarToggle()" style="position: fixed; left: -60px; top: 50%; transform: translateY(-50%); background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 0 8px 8px 0; padding: 15px 10px; color: #ffffff; font-size: 20px; cursor: pointer; transition: all 0.3s; z-index: 999; display: none; pointer-events: auto;" title="Show Sidebar">»</button>
+
+  <!-- Inline Script: Define sidebar functions IMMEDIATELY -->
+  <script>
+    // CRITICAL: Define these functions BEFORE any onclick handlers try to use them
+
+    // Section toggle function
+    window.toggleSidebarSection = function(sectionName) {
+      const content = document.getElementById(sectionName + 'Content');
+      const arrow = document.getElementById(sectionName + 'Arrow');
+
+      if (!content || !arrow) {
+        console.warn('⚠️ Section elements not found:', sectionName);
+        return;
+      }
+
+      const isHidden = content.style.display === 'none';
+
+      if (isHidden) {
+        // Show section - use flex for certain sections, block for others
+        if (sectionName === 'mapControls' || sectionName === 'layerControls' || sectionName === 'debugAdmin') {
+          content.style.display = 'flex';
+        } else {
+          content.style.display = 'block';
+        }
+        arrow.textContent = '▼';
+        arrow.style.transform = 'rotate(0deg)';
+      } else {
+        // Hide section
+        content.style.display = 'none';
+        arrow.textContent = '▶';
+        arrow.style.transform = 'rotate(-90deg)';
+      }
+
+      console.log(`✅ Toggled ${sectionName}: ${isHidden ? 'shown' : 'hidden'}`);
+    };
+
+    // Quick access toolbar handlers
+    let sidebarVisible = true;
+    let zenModeActive = false;
+
+    window.handleSidebarToggle = function() {
+      console.log('⬅️ Sidebar toggle clicked');
+      const sidebar = document.getElementById('unifiedSidebar');
+      const showBtn = document.getElementById('showSidebarBtn');
+      const toggleBtn = document.getElementById('toggleSidebarBtn');
+
+      sidebarVisible = !sidebarVisible;
+
+      if (sidebarVisible) {
+        sidebar.style.transform = 'translateX(0)';
+        showBtn.style.left = '-60px';
+        showBtn.style.display = 'none';
+        toggleBtn.textContent = '«';
+        toggleBtn.title = 'Collapse Sidebar';
+      } else {
+        sidebar.style.transform = 'translateX(-320px)';
+        showBtn.style.left = '0';
+        showBtn.style.display = 'flex';
+        toggleBtn.textContent = '»';
+        toggleBtn.title = 'Expand Sidebar';
+      }
+    };
+
+    window.handleMenuToggle = function() {
+      console.log('🍔 Menu button clicked');
+      if (window.toggleOverlayMenu) {
+        window.toggleOverlayMenu();
+      } else {
+        console.warn('toggleOverlayMenu not available yet');
+      }
+    };
+
+    window.handleZenToggle = function() {
+      console.log('👁️ Zen mode clicked');
+      zenModeActive = !zenModeActive;
+      const zenBtn = document.getElementById('zenModeBtn');
+      const hideables = document.querySelectorAll('.zen-hideable');
+
+      if (zenModeActive) {
+        hideables.forEach(el => {
+          el.style.opacity = '0';
+          el.style.pointerEvents = 'none';
+        });
+        zenBtn.style.background = 'rgba(255, 100, 100, 0.9)';
+        zenBtn.style.borderColor = '#ff6464';
+        zenBtn.textContent = '🚫';
+        zenBtn.title = 'Exit Zen Mode';
+      } else {
+        hideables.forEach(el => {
+          el.style.opacity = '1';
+          el.style.pointerEvents = 'auto';
+        });
+        zenBtn.style.background = 'rgba(100, 200, 255, 0.9)';
+        zenBtn.style.borderColor = '#64c8ff';
+        zenBtn.textContent = '👁️';
+        zenBtn.title = 'Zen Mode';
+      }
+    };
+
+    window.handleLocatePlayer = function() {
+      console.log('📍 Locate player clicked');
+      // This will be connected to the existing locateMeBtn handler later
+      const btn = document.getElementById('locateMeBtn');
+      if (btn) {
+        btn.click();
+      }
+    };
+
+    window.handleResetView = function() {
+      console.log('⟲ Reset view clicked');
+      if (window.galacticMap) {
+        window.galacticMap.camera.zoom = 1;
+        const center = window.galacticMap.universeCenter;
+        window.galacticMap.camera.position.set(
+          center.x,
+          center.y + 3000,
+          center.z + 2000
+        );
+        if (window.galacticMap.controls) {
+          window.galacticMap.controls.target.copy(center);
+        }
+        window.galacticMap.camera.updateProjectionMatrix();
+        if (window.galacticMap.controls) {
+          window.galacticMap.controls.update();
+        }
+      }
+    };
+
+    window.handleZoomIn = function() {
+      console.log('🔍 Zoom in clicked');
+      if (window.galacticMap) {
+        window.galacticMap.camera.zoom *= 1.2;
+        window.galacticMap.camera.updateProjectionMatrix();
+        console.log('Zoom level:', window.galacticMap.camera.zoom);
+      }
+    };
+
+    window.handleZoomOut = function() {
+      console.log('🔍 Zoom out clicked');
+      if (window.galacticMap) {
+        window.galacticMap.camera.zoom /= 1.2;
+        window.galacticMap.camera.updateProjectionMatrix();
+        console.log('Zoom level:', window.galacticMap.camera.zoom);
+      }
+    };
+
+    // Populate asset selector with ONLY anomalies and galaxies (galactic map level)
+    window.populateAssetSelector = function() {
+      console.log('📋 Populating asset selector (galactic map - anomalies & galaxies only)...');
+      const selector = document.getElementById('assetSelector');
+
+      if (!selector || !window.galacticMap || !window.galacticMap.allAssets) {
+        console.warn('⚠️ Asset selector or galactic map not ready');
+        return;
+      }
+
+      // Clear existing options except the first one
+      selector.innerHTML = '<option value="">🌌 Select Galactic Object</option>';
+
+      // Only show galactic-level objects: anomalies and galaxies
+      const anomalies = [];
+      const galaxies = [];
+
+      window.galacticMap.allAssets.forEach(asset => {
+        const item = {
+          id: asset._id,
+          title: asset.title,
+          type: asset.assetType,
+          coordinates: asset.coordinates || asset.localCoordinates
+        };
+
+        if (asset.assetType === 'anomaly') {
+          anomalies.push(item);
+        } else if (asset.assetType === 'galaxy') {
+          galaxies.push(item);
+        }
+      });
+
+      // Add anomalies first
+      if (anomalies.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = '🌀 Anomalies';
+        anomalies.forEach(item => {
+          const option = document.createElement('option');
+          option.value = item.id;
+          option.textContent = `🌀 ${item.title}`;
+          option.dataset.type = item.type;
+          group.appendChild(option);
+        });
+        selector.appendChild(group);
+      }
+
+      // Add galaxies
+      if (galaxies.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = '🌌 Galaxies';
+        galaxies.forEach(item => {
+          const option = document.createElement('option');
+          option.value = item.id;
+          option.textContent = `🌌 ${item.title}`;
+          option.dataset.type = item.type;
+          group.appendChild(option);
+        });
+        selector.appendChild(group);
+      }
+
+      console.log(`✅ Asset selector populated: ${anomalies.length} anomalies, ${galaxies.length} galaxies`);
+    };
+
+    console.log('✅ All sidebar functions defined globally');
+  </script>
+
+
+  <!-- Info Pane Backdrop (dimmed overlay) -->
+  <div id="infoPaneBackdrop" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 9998; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;"></div>
+
+  <!-- Side Panel - Info Pane (Hidden by default, shows on asset click) -->
+  <div class="side-panel" id="infoPane" style="position: fixed; top: 60px; right: -340px; width: 320px; max-height: calc(100vh - 70px); background: rgba(10, 10, 26, 0.98); backdrop-filter: blur(20px); border: 2px solid rgba(138, 79, 255, 0); border-radius: 8px; box-shadow: -5px 0 40px rgba(0, 0, 0, 0); z-index: 9999; transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s ease, box-shadow 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; overflow: hidden; transform: scale(0.9);">
+    <button class="panel-close-btn" onclick="window.closeInfoPane()" style="position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; background: rgba(138, 79, 255, 0.2); border: 1px solid rgba(138, 79, 255, 0.4); border-radius: 50%; color: #8a4fff; font-size: 1.2em; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s ease; font-family: 'Orbitron', monospace;">✕</button>
+    <div class="panel-section" style="flex: 1; overflow-y: auto; padding: 12px; padding-top: 40px; position: relative; z-index: 3;">
+      <div id="assetInfo" style="font-family: 'Orbitron', monospace; color: #e0e0ff;"></div>
+    </div>
+  </div>
+
+
+  <!-- Overlay Menu System -->
+  <div class="overlay-menu" id="overlayMenu" style="position: fixed; top: 0; right: -400px; width: 360px; height: 100vh; background: rgba(10, 10, 26, 0.98); backdrop-filter: blur(20px); border-left: 2px solid rgba(138, 79, 255, 0.4); z-index: 10000; transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; overflow-y: auto;">
+    <div class="overlay-menu-header" style="padding: 20px; border-bottom: 1px solid rgba(138, 79, 255, 0.3); display: flex; justify-content: space-between; align-items: center;">
+      <h2 class="overlay-menu-title" style="margin: 0; color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 20px;">Navigation Hub</h2>
+      <button class="overlay-menu-close" onclick="toggleOverlayMenu()" style="background: rgba(138, 79, 255, 0.2); border: 1px solid rgba(138, 79, 255, 0.4); border-radius: 50%; color: #8a4fff; width: 32px; height: 32px; font-size: 18px; cursor: pointer; transition: all 0.2s;">✕</button>
+    </div>
+
+    <nav class="overlay-menu-nav" style="flex: 1; padding: 10px 0;">
+      <div class="overlay-menu-item" onclick="window.location.href='/characters'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">⚔️</span>
+        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Characters</span>
+        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
+      </div>
+
+      <div class="overlay-menu-item" onclick="window.location.href='/universe/tome'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">📖</span>
+        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">The Tome</span>
+        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
+      </div>
+
+      <div class="overlay-menu-item" onclick="window.location.href='/assets'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🎨</span>
+        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Asset Workshop</span>
+        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
+      </div>
+
+      <div class="overlay-menu-item" onclick="window.location.href='/assets/voting'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🗳️</span>
+        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Asset Governance</span>
+        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
+      </div>
+
+      <div class="overlay-menu-item" onclick="window.location.href='/profile'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">📊</span>
+        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Profile</span>
+        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
+      </div>
+
+      <div class="overlay-menu-divider" style="height: 1px; background: rgba(138, 79, 255, 0.3); margin: 10px 20px;"></div>
+
+      <div class="overlay-menu-item" onclick="window.location.href='/menu'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🏠</span>
+        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Exit to Menu</span>
+        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
+      </div>
+
+      <% if (user && user.isAdmin) { %>
+      <div class="overlay-menu-divider" style="height: 1px; background: rgba(138, 79, 255, 0.3); margin: 10px 20px;"></div>
+      <div class="overlay-menu-section-title" style="padding: 15px 20px; color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Admin</div>
+
+      <div class="overlay-menu-item admin-item" onclick="window.location.href='/admin'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">⚙️</span>
+        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Admin Dashboard</span>
+        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
+      </div>
+      <% } %>
+    </nav>
+  </div>
+
+  <!-- Overlay backdrop for menu -->
+  <div class="overlay-backdrop" id="overlayBackdrop" onclick="toggleOverlayMenu()" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 9999; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;"></div>
+
+  <!-- Socket.IO for real-time player updates -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Three.js Library (ES Module) -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <!-- 3D Galactic Map Script -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // Make THREE available globally for the script
+    window.THREE = THREE;
+    window.OrbitControls = OrbitControls;
+  </script>
+
+  <script src="/javascripts/galactic-map-3d.js?v=2.0"></script>
+
+  <script>
+    /**
+     * Close info pane helper function
+     */
+    window.closeInfoPane = function() {
+      const infoPane = document.getElementById('infoPane');
+      const backdrop = document.getElementById('infoPaneBackdrop');
+
+      // Remove visible class
+      infoPane.classList.remove('visible');
+      backdrop.classList.remove('visible');
+
+      // Apply inline styles for hiding (fallback if CSS doesn't work)
+      infoPane.style.right = '-340px';
+      infoPane.style.transform = 'scale(0.9)';
+      infoPane.style.borderColor = 'rgba(138, 79, 255, 0)';
+      infoPane.style.boxShadow = '-5px 0 40px rgba(0, 0, 0, 0)';
+
+      backdrop.style.opacity = '0';
+      backdrop.style.pointerEvents = 'none';
+    };
+
+    /**
+     * Show floating HUD next to star
+     */
+    window.showFloatingHUD = function(asset) {
+      const hud = document.getElementById('floatingHUD');
+      const canvas = document.getElementById('hudLineCanvas');
+
+      // Get star position in 3D space
+      const starObject = window.galacticMap?.assets?.get(asset._id);
+      if (!starObject || !starObject.mesh) return;
+
+      const starPos = starObject.mesh.position.clone();
+
+      // Project 3D position to 2D screen coordinates
+      const vector = starPos.clone();
+      vector.project(window.galacticMap.camera);
+
+      const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+
+      // Position HUD offset to the right and slightly up from star
+      const offsetX = 100;
+      const offsetY = -50;
+
+      hud.style.left = (x + offsetX) + 'px';
+      hud.style.top = (y + offsetY) + 'px';
+      hud.style.display = 'block';
+
+      // Animate HUD entrance
+      hud.style.opacity = '0';
+      hud.style.transform = 'translateX(-20px) scale(0.9)';
+      hud.style.transition = 'all 0.2s ease-out';
+
+      setTimeout(() => {
+        hud.style.opacity = '1';
+        hud.style.transform = 'translateX(0) scale(1)';
+      }, 10);
+
+      // Update HUD content
+      document.getElementById('hudTitle').textContent = `[${asset.title.toUpperCase()}]`;
+      document.getElementById('hudType').textContent = `TYPE: ${asset.assetType.toUpperCase()}`;
+
+      const coords = asset.localCoordinates || asset.coordinates;
+      document.getElementById('hudCoords').textContent =
+        `COORDS: [${Math.floor(coords.x)}, ${Math.floor(coords.y)}, ${Math.floor(coords.z)}]`;
+
+      // Count assets within this star system
+      const allAssets = window.galacticMap?.allAssets || [];
+      const systemAssets = allAssets.filter(a => a.parentStar === asset._id);
+
+      const planetCount = systemAssets.filter(a => a.assetType === 'planet').length;
+      const stationCount = systemAssets.filter(a => a.assetType === 'station' || a.assetType === 'orbital').length;
+      const totalCount = systemAssets.length;
+
+      document.getElementById('hudPlanets').textContent = `🪐 PLANETS: ${planetCount}`;
+      document.getElementById('hudStations').textContent = `🚉 STATIONS: ${stationCount}`;
+      document.getElementById('hudTotal').textContent = `📊 TOTAL ASSETS: ${totalCount}`;
+
+      // Draw connection line
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      canvas.style.display = 'block';
+
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw line from star to HUD
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + offsetX, y + offsetY + 20); // Connect to middle of HUD
+      ctx.stroke();
+
+      // Draw dot at star position
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    };
+
+    /**
+     * Hide floating HUD
+     */
+    window.hideFloatingHUD = function() {
+      const hud = document.getElementById('floatingHUD');
+      const canvas = document.getElementById('hudLineCanvas');
+
+      hud.style.display = 'none';
+      canvas.style.display = 'none';
+
+      // Clear canvas
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+
+    /**
+     * Display asset info in modal pane (same as 2D map)
+     */
+    window.displayAssetInfo = function(assetData) {
+      console.log('Displaying asset info for:', assetData.title);
+
+      const infoPane = document.getElementById('infoPane');
+      const backdrop = document.getElementById('infoPaneBackdrop');
+      const info = document.getElementById('assetInfo');
+
+      // Show the pane and backdrop with class
+      infoPane.classList.add('visible');
+      backdrop.classList.add('visible');
+
+      // Apply inline styles for visibility (fallback if CSS doesn't work)
+      infoPane.style.right = '10px';
+      infoPane.style.transform = 'scale(1)';
+      infoPane.style.borderColor = 'rgba(138, 79, 255, 0.6)';
+      infoPane.style.boxShadow = '-5px 0 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(138, 79, 255, 0.3), 0 0 60px rgba(138, 79, 255, 0.5)';
+
+      backdrop.style.opacity = '1';
+      backdrop.style.pointerEvents = 'auto';
+
+      // Get icon based on asset type
+      let icon = '🌌';
+      if (assetData.type === 'galaxy') icon = '🌌';
+      else if (assetData.type === 'star') icon = '⭐';
+      else if (assetData.type === 'planet') icon = '🪐';
+      else if (assetData.type === 'orbital') icon = '🛰️';
+      else if (assetData.type === 'station') icon = '🚉';
+      else if (assetData.type === 'zone') icon = '✨';
+      else if (assetData.type === 'anomaly') icon = '🌀';
+
+      // Build position info
+      const coords = assetData.data?.coordinates || {};
+      const positionHTML = `
+        <div class="info-section">
+          <h4>📍 Position</h4>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">X:</span>
+              <span class="info-value">${Math.round(coords.x || 0)}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Y:</span>
+              <span class="info-value">${Math.round(coords.y || 0)}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Z:</span>
+              <span class="info-value">${Math.round(coords.z || 0)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Build stats HTML
+      let statsHTML = '';
+      if (assetData.data?.stats && Object.keys(assetData.data.stats).length > 0) {
+        statsHTML = `
+          <div class="info-section">
+            <h4>📊 Statistics</h4>
+            <div class="info-grid">
+              ${Object.entries(assetData.data.stats).map(([key, value]) => `
+                <div class="info-item">
+                  <span class="info-label">${key}:</span>
+                  <span class="info-value">${value}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // Action button based on type
+      let actionHTML = '';
+      if (assetData.type === 'star' && assetData.data?._id) {
+        actionHTML = `
+          <div class="travel-action-bar">
+            <button class="travel-btn explore-btn" onclick="window.location.href='/universe/system-map-3d?star=${assetData.data._id}'">
+              <span class="travel-icon">🔭</span>
+              <span class="travel-text">Explore System</span>
+              <span class="travel-distance">Enter ${assetData.title}</span>
+            </button>
+          </div>
+        `;
+      } else if (assetData.type === 'galaxy' && assetData.data?._id) {
+        // Escape single quotes in title for onclick attribute
+        const escapedTitle = String(assetData.title).replace(/'/g, "\\'");
+        actionHTML = `
+          <div class="travel-action-bar">
+            <button class="travel-btn" onclick="travelToLocation(${coords.x || 0}, ${coords.y || 0}, ${coords.z || 0}, '${escapedTitle}')">
+              <span class="travel-icon">🚀</span>
+              <span class="travel-text">Travel to Galaxy</span>
+              <span class="travel-distance">${assetData.title}</span>
+            </button>
+            <button class="travel-btn" onclick="window.galacticMap.showGalaxyLevel('${assetData.data._id}'); window.closeInfoPane();" style="margin-top: 10px;">
+              <span class="travel-icon">🌌</span>
+              <span class="travel-text">Enter Galaxy</span>
+              <span class="travel-distance">View Stars Inside</span>
+            </button>
+          </div>
+        `;
+      } else if (assetData.type === 'anomaly' && assetData.data?._id) {
+        // Escape single quotes in title for onclick attribute
+        const escapedTitle = String(assetData.title).replace(/'/g, "\\'");
+        actionHTML = `
+          <div class="travel-action-bar">
+            <button class="travel-btn" onclick="travelToLocation(${coords.x || 0}, ${coords.y || 0}, ${coords.z || 0}, '${escapedTitle}')">
+              <span class="travel-icon">🚀</span>
+              <span class="travel-text">Travel to Anomaly</span>
+              <span class="travel-distance">${assetData.title}</span>
+            </button>
+          </div>
+        `;
+      }
+
+      info.innerHTML = `
+        <div class="zone-detail">
+          <div class="asset-header">
+            <div class="asset-icon-large">${icon}</div>
+            <div class="asset-title-section">
+              <h2 class="asset-title">${assetData.title}</h2>
+              <div class="asset-badges">
+                <span class="badge badge-${assetData.type}">${assetData.type}</span>
+              </div>
+            </div>
+          </div>
+
+          ${actionHTML}
+
+          ${assetData.data?.description ? `
+            <div class="info-section">
+              <p class="asset-description">${assetData.data.description}</p>
+            </div>
+          ` : ''}
+
+          ${positionHTML}
+          ${statsHTML}
+        </div>
+      `;
+    };
+
+    // Update UI based on map state - use info pane AND sidebar
+    window.addEventListener('assetSelected', (e) => {
+      const assetData = e.detail;
+
+      // Update sidebar selected asset section
+      const selectedAssetInfo = document.getElementById('selectedAssetInfo');
+      const selectedAssetContent = document.getElementById('selectedAssetContent');
+      const selectedAssetArrow = document.getElementById('selectedAssetArrow');
+
+      if (selectedAssetInfo) {
+        let html = `
+          <h2 style="margin: 0 0 8px 0; font-size: 14px; color: #ff6600;">${assetData.title || 'Unknown Asset'}</h2>
+          <span style="display: inline-block; padding: 2px 8px; background: rgba(255, 102, 0, 0.2); border: 1px solid #ff6600; border-radius: 3px; font-size: 10px; margin-bottom: 10px; color: #ff6600; text-transform: uppercase;">${assetData.type || 'unknown'}</span>
+        `;
+
+        if (assetData.data?.coordinates) {
+          const { x, y, z } = assetData.data.coordinates;
+          html += `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+              <span style="color: #888;">Position:</span>
+              <span style="color: #00ddff; font-weight: bold;">${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}</span>
+            </div>
+          `;
+        }
+
+        selectedAssetInfo.innerHTML = html;
+
+        // Auto-expand the section
+        if (selectedAssetContent.style.display === 'none') {
+          selectedAssetContent.style.display = 'block';
+          selectedAssetArrow.textContent = '▼';
+          selectedAssetArrow.style.transform = 'rotate(0deg)';
+        }
+
+        console.log('✅ Asset selected in sidebar:', assetData.title);
+      }
+
+      // If clicking a star, go directly to system explorer
+      if (assetData.type === 'star' && assetData.data?._id) {
+        console.log(`🔭 Navigating to system explorer for star: ${assetData.title}`);
+        window.location.href = `/universe/system-map-3d?star=${assetData.data._id}`;
+        return;
+      }
+
+      // For other assets, show info pane
+      window.displayAssetInfo(assetData);
+    });
+
+    window.addEventListener('assetDeselected', () => {
+      // Reset sidebar selected asset section
+      const selectedAssetInfo = document.getElementById('selectedAssetInfo');
+      if (selectedAssetInfo) {
+        selectedAssetInfo.innerHTML = '<div style="text-align: center; color: #888; padding: 20px 0;">Click an asset to view details</div>';
+      }
+
+      window.closeInfoPane();
+    });
+
+    // Hover events - show floating HUD next to star in galaxy view
+    window.addEventListener('assetHovered', (e) => {
+      const asset = e.detail.asset;
+      window.showFloatingHUD(asset);
+    });
+
+    window.addEventListener('assetHoverEnd', () => {
+      window.hideFloatingHUD();
+    });
+
+    // Clicking backdrop closes the info pane
+    const backdrop = document.getElementById('infoPaneBackdrop');
+    if (backdrop) {
+      backdrop.addEventListener('click', () => window.closeInfoPane());
+    }
+
+
+    // ESC to deselect
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && window.galacticMap) {
+        window.galacticMap.deselectObject();
+      }
+    });
+
+    // Wire up control buttons
+    document.getElementById('zoomInBtn').addEventListener('click', () => {
+      if (window.galacticMap) {
+        window.galacticMap.camera.zoom *= 1.2;
+        window.galacticMap.camera.updateProjectionMatrix();
+      }
+    });
+
+    document.getElementById('zoomOutBtn').addEventListener('click', () => {
+      if (window.galacticMap) {
+        window.galacticMap.camera.zoom /= 1.2;
+        window.galacticMap.camera.updateProjectionMatrix();
+      }
+    });
+
+    // Locate Me button - focus on player character
+    document.getElementById('locateMeBtn').addEventListener('click', () => {
+      if (!window.currentCharacter || !window.currentCharacter.location) {
+        alert('No character location available. Make sure you have an active character.');
+        return;
+      }
+
+      if (!window.galacticMap) {
+        return;
+      }
+
+      const location = window.currentCharacter.location;
+      const playerPos = new THREE.Vector3(
+        location.x || 0,
+        location.y || 0,
+        location.z || 0
+      );
+
+      console.log(`📍 Locating player at (${playerPos.x}, ${playerPos.y}, ${playerPos.z})`);
+
+      // Focus camera on player with appropriate zoom
+      window.galacticMap.focusCameraOn(playerPos, 1500);
+
+      // Show notification
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 255, 0, 0.2);
+        border: 1px solid #00ff00;
+        border-radius: 8px;
+        padding: 10px 20px;
+        color: #00ff00;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        z-index: 10000;
+        box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+      `;
+      notification.textContent = `📍 Located: ${window.currentCharacter.name}`;
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        if (notification.parentNode) {
+          document.body.removeChild(notification);
+        }
+      }, 2000);
+    });
+
+    // Menu toggle function
+    window.toggleOverlayMenu = function() {
+      const menu = document.getElementById('overlayMenu');
+      const backdrop = document.getElementById('overlayBackdrop');
+
+      const isOpen = menu.style.right === '0px';
+
+      if (isOpen) {
+        menu.style.right = '-400px';
+        backdrop.style.opacity = '0';
+        backdrop.style.pointerEvents = 'none';
+      } else {
+        menu.style.right = '0px';
+        backdrop.style.opacity = '1';
+        backdrop.style.pointerEvents = 'auto';
+      }
+    };
+
+    // Layer visibility controls
+    let orbitsVisible = true;
+    let velocityVisible = true;
+    let connectionsVisible = true;
+
+    document.getElementById('toggleOrbitsBtn').addEventListener('click', () => {
+      orbitsVisible = !orbitsVisible;
+      if (window.galacticMap && window.galacticMap.scene) {
+        // Find all orbital path objects
+        window.galacticMap.scene.traverse((obj) => {
+          if (obj.userData && obj.userData.isOrbitalPath) {
+            obj.visible = orbitsVisible;
+          }
+        });
+      }
+      const btn = document.getElementById('toggleOrbitsBtn');
+      btn.style.opacity = orbitsVisible ? '1.0' : '0.5';
+      console.log(`Orbital paths ${orbitsVisible ? 'shown' : 'hidden'}`);
+    });
+
+    document.getElementById('toggleVelocityBtn').addEventListener('click', () => {
+      velocityVisible = !velocityVisible;
+      if (window.galacticMap && window.galacticMap.scene) {
+        // Find all velocity arrow objects
+        window.galacticMap.scene.traverse((obj) => {
+          if (obj.userData && obj.userData.isVelocityArrow) {
+            obj.visible = velocityVisible;
+          }
+        });
+      }
+      const btn = document.getElementById('toggleVelocityBtn');
+      btn.style.opacity = velocityVisible ? '1.0' : '0.5';
+      console.log(`Velocity arrows ${velocityVisible ? 'shown' : 'hidden'}`);
+    });
+
+    document.getElementById('toggleConnectionsBtn').addEventListener('click', () => {
+      connectionsVisible = !connectionsVisible;
+      if (window.galacticMap && window.galacticMap.connectionsGroup) {
+        window.galacticMap.connectionsGroup.visible = connectionsVisible;
+      }
+      const btn = document.getElementById('toggleConnectionsBtn');
+      btn.style.opacity = connectionsVisible ? '1.0' : '0.5';
+      console.log(`Connections ${connectionsVisible ? 'shown' : 'hidden'}`);
+    });
+
+    // Asset selector - view selected galaxy/anomaly with floating HUD
+    const assetSelectorElement = document.getElementById('assetSelector');
+    if (assetSelectorElement) {
+      assetSelectorElement.addEventListener('change', (e) => {
+        const assetId = e.target.value;
+        if (!assetId || !window.galacticMap) return;
+
+        console.log('🔍 Asset selected from sidebar:', assetId);
+
+        // Find the asset in the scene
+        const assetObject = window.galacticMap.assets.get(assetId);
+        if (assetObject && assetObject.mesh) {
+          const assetPos = assetObject.mesh.position;
+          const assetData = assetObject.mesh.userData;
+
+          console.log(`📍 Focusing on ${assetData.title} at (${assetPos.x}, ${assetPos.y}, ${assetPos.z})`);
+
+          // Focus camera on the asset
+          window.galacticMap.camera.position.set(
+            assetPos.x,
+            assetPos.y + 1000,
+            assetPos.z + 500
+          );
+
+          if (window.galacticMap.controls) {
+            window.galacticMap.controls.target.copy(assetPos);
+            window.galacticMap.controls.update();
+          }
+
+          // Select the object (highlights it)
+          window.galacticMap.selectObject(assetObject.mesh);
+
+          // Show the sleek floating HUD instead of info pane
+          // Find the asset in allAssets to get full data
+          const fullAssetData = window.galacticMap.allAssets.find(a => a._id === assetId);
+          if (fullAssetData && window.showFloatingHUD) {
+            window.showFloatingHUD(fullAssetData);
+          }
+
+          // Update sidebar selected section
+          window.dispatchEvent(new CustomEvent('assetSelected', {
+            detail: {
+              title: assetData.title,
+              type: assetData.type,
+              data: {
+                _id: assetData.id,
+                coordinates: assetPos
+              }
+            }
+          }));
+        } else {
+          console.warn('⚠️ Asset not found in scene:', assetId);
+        }
+
+        // Reset selector
+        e.target.value = '';
+      });
+      console.log('✅ Asset selector event listener attached');
+    }
+
+    // ========================================
+    // Socket.IO Setup for Real-Time Players
+    // ========================================
+    <% if (user) { %>
+    // Initialize Socket.IO
+    const socket = io({
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 10
+    });
+
+    const userObj = {
+      _id: '<%= user._id %>',
+      id: '<%= user._id %>',
+      username: '<%= user.username %>',
+      userRole: '<%= user.userRole %>'
+    };
+
+    // Handle Socket.IO connection events
+    socket.on('connect_error', (error) => {
+      console.error('❌ Socket.IO connection error:', error);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('⚠️ Socket.IO disconnected:', reason);
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 Socket.IO reconnected after', attemptNumber, 'attempts');
+    });
+
+    // Load current character and emit join event
+    socket.on('connect', async () => {
+      console.log('✅ Socket.IO connected:', socket.id);
+
+      try {
+        // Fetch current character
+        const response = await fetch('/api/v1/characters/current');
+        const data = await response.json();
+
+        if (data.success && data.character) {
+          const character = data.character;
+          console.log('📍 Current character loaded:', character.name, 'at', character.location);
+
+          // Store character globally
+          window.currentCharacter = character;
+
+          // Add player character to 3D map
+          if (window.galacticMap && character.location) {
+            window.galacticMap.addPlayerCharacter(character);
+          }
+
+          // Emit character join event
+          if (character.location) {
+            socket.emit('characterJoin', {
+              characterId: character._id,
+              characterName: character.name,
+              userId: userObj._id,
+              location: character.location,
+              assetId: character.location.assetId || null,
+              stringDomain: character.stringDomain || 'Time String'
+            });
+          }
+        } else {
+          console.log('⚠️ No active character found');
+        }
+      } catch (error) {
+        console.error('❌ Error loading character:', error);
+      }
+    });
+
+    // Listen for other players' updates
+    socket.on('onlinePlayers', (players) => {
+      console.log('📡 Received online players:', players.length);
+
+      if (window.galacticMap) {
+        // Update all online players on the map
+        players.forEach(player => {
+          if (player.characterId !== window.currentCharacter?._id && player.location) {
+            window.galacticMap.updatePlayerPosition(player.characterId, player.location, player.characterName);
+          }
+        });
+      }
+    });
+
+    // Listen for individual player position updates
+    socket.on('playerMoved', (data) => {
+      console.log('📡 Player moved:', data.characterName, 'to', data.location);
+
+      if (window.galacticMap && data.characterId !== window.currentCharacter?._id) {
+        window.galacticMap.updatePlayerPosition(data.characterId, data.location, data.characterName);
+      }
+    });
+
+    // Store socket globally for other components
+    window.socket = socket;
+    <% } %>
+
+    // ========================================
+    // Travel Function
+    // ========================================
+    window.travelToLocation = async function(x, y, z, destinationName) {
+      if (!window.currentCharacter) {
+        alert('No active character. Please select a character first.');
+        return;
+      }
+
+      const characterId = window.currentCharacter._id;
+      const startPos = window.currentCharacter.location || { x: 0, y: 0, z: 0 };
+      const endPos = { x, y, z };
+
+      console.log(`🚀 Traveling to ${destinationName} at (${x}, ${y}, ${z})`);
+
+      // Close info pane
+      window.closeInfoPane();
+
+      // Show travel progress UI - Terminal HUD style
+      const progressDiv = document.createElement('div');
+      progressDiv.id = 'travelProgress';
+      progressDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.85);
+        border: 1px solid #00ff00;
+        border-left: 4px solid #00ff00;
+        font-family: 'Courier New', monospace;
+        padding: 15px 20px;
+        z-index: 10000;
+        min-width: 350px;
+        box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        backdrop-filter: blur(5px);
+      `;
+      progressDiv.innerHTML = `
+        <div style="color: #00ff00; font-size: 11px; margin-bottom: 8px; opacity: 0.7;">
+          [NAVIGATION SYSTEM]
+        </div>
+        <div style="color: #00ff00; font-size: 14px; margin-bottom: 12px; font-weight: bold;">
+          > DESTINATION: ${destinationName}
+        </div>
+        <div style="color: #888; font-size: 12px; margin-bottom: 5px;">
+          STATUS: <span style="color: #ffaa00;">IN_TRANSIT</span>
+        </div>
+        <div style="display: flex; align-items: center; margin: 10px 0;">
+          <span style="color: #888; font-size: 12px; margin-right: 10px;">PROGRESS:</span>
+          <div style="flex: 1; background: #111; border: 1px solid #00ff00; height: 18px; position: relative; overflow: hidden;">
+            <div id="travelProgressBar" style="
+              background: #00ff00;
+              height: 100%;
+              width: 0%;
+              transition: width 0.1s linear;
+              box-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+            "></div>
+          </div>
+          <span id="travelProgressText" style="color: #00ff00; font-size: 12px; margin-left: 10px; min-width: 45px;">
+            0%
+          </span>
+        </div>
+        <div style="color: #666; font-size: 11px; margin-top: 8px;">
+          ETA: <span id="travelETA" style="color: #888;">15.0s</span>
+        </div>
+      `;
+      document.body.appendChild(progressDiv);
+
+      const progressBar = document.getElementById('travelProgressBar');
+      const progressText = document.getElementById('travelProgressText');
+      const etaText = document.getElementById('travelETA');
+
+      try {
+        // Start animated travel
+        window.galacticMap.animateTravel(
+          characterId,
+          startPos,
+          endPos,
+          window.currentCharacter.name,
+          // On progress callback
+          (posData) => {
+            const percent = Math.round(posData.progress * 100);
+            progressBar.style.width = percent + '%';
+            progressText.textContent = percent + '%';
+
+            // Update ETA countdown
+            const remainingTime = 15 * (1 - posData.progress);
+            etaText.textContent = remainingTime.toFixed(1) + 's';
+
+            // Emit position updates to Socket.IO every 500ms
+            if (window.socket && Date.now() % 500 < 100) {
+              window.socket.emit('playerMove', {
+                characterId: characterId,
+                characterName: window.currentCharacter.name,
+                location: { x: posData.x, y: posData.y, z: posData.z, type: 'galactic' }
+              });
+            }
+          },
+          // On complete callback
+          async () => {
+            // Update character location in database
+            const response = await fetch(`/api/v1/characters/${characterId}/location`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                x: x,
+                y: y,
+                z: z,
+                type: 'galactic'
+              })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+              console.log(`✅ Traveled to ${destinationName}`);
+
+              // Update local character position
+              window.currentCharacter.location = { x, y, z, type: 'galactic' };
+
+              // Final position emit to Socket.IO
+              if (window.socket) {
+                window.socket.emit('playerMove', {
+                  characterId: characterId,
+                  characterName: window.currentCharacter.name,
+                  location: { x, y, z, type: 'galactic' }
+                });
+              }
+
+              // Remove progress UI
+              if (progressDiv && progressDiv.parentNode) {
+                document.body.removeChild(progressDiv);
+              }
+
+              // Remove any existing success notifications
+              const existingSuccess = document.getElementById('arrivalNotification');
+              if (existingSuccess && existingSuccess.parentNode) {
+                document.body.removeChild(existingSuccess);
+              }
+
+              // Find the destination object
+              const destinationObject = window.galacticMap.findObjectAtPosition({ x, y, z }, 100);
+
+              if (destinationObject) {
+                // Create dramatic arrival effect with spiral zoom
+                window.galacticMap.createArrivalEffect(destinationObject, () => {
+                  // After spiral effect, select the object to show info pane
+                  window.galacticMap.selectObject(destinationObject);
+                });
+              }
+
+              // Show success message - bottom-left terminal style
+              const successDiv = document.createElement('div');
+              successDiv.id = 'arrivalNotification';
+              successDiv.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                background: rgba(0, 0, 0, 0.85);
+                border: 1px solid #00ff00;
+                border-left: 4px solid #00ff00;
+                font-family: 'Courier New', monospace;
+                padding: 15px 20px;
+                color: #00ff00;
+                z-index: 10000;
+                box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+                backdrop-filter: blur(5px);
+                min-width: 300px;
+              `;
+
+              // Safely escape destination name
+              const safeDestName = String(destinationName).replace(/[<>&"']/g, (c) => {
+                return {'<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;', "'":"&#39;"}[c];
+              });
+
+              successDiv.innerHTML = `
+                <div style="color: #00ff00; font-size: 11px; margin-bottom: 5px; opacity: 0.7;">
+                  [NAVIGATION SYSTEM]
+                </div>
+                <div style="color: #00ff00; font-size: 13px;">
+                  > ARRIVAL CONFIRMED
+                </div>
+                <div style="color: #888; font-size: 12px; margin-top: 5px;">
+                  LOCATION: ${safeDestName}
+                </div>
+              `;
+              document.body.appendChild(successDiv);
+
+              setTimeout(() => {
+                if (successDiv && successDiv.parentNode) {
+                  document.body.removeChild(successDiv);
+                }
+              }, 3000);
+            } else {
+              document.body.removeChild(progressDiv);
+              alert('Failed to save travel location: ' + (data.error || 'Unknown error'));
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Error traveling:', error);
+        document.body.removeChild(progressDiv);
+        alert('Failed to travel. Check console for details.');
+      }
+    };
+
+    // ========================================
+    // Breadcrumb Navigation System
+    // ========================================
+    window.updateBreadcrumb = function(level, galaxyName, starName) {
+      const breadcrumb = document.getElementById('breadcrumbNav');
+
+      // Clear current breadcrumb (except [NAV] label)
+      breadcrumb.innerHTML = '<span style="color: #666; margin-right: 5px;">[NAV]</span>';
+
+      const separator = '<span style="color: #444; margin: 0 5px;">></span>';
+
+      // Universe level (always present)
+      const universeSpan = document.createElement('span');
+      universeSpan.className = 'breadcrumb-item';
+      universeSpan.textContent = 'UNIVERSE';
+      universeSpan.style.cssText = `
+        color: ${level === 'universe' ? '#00ff00' : '#888'};
+        cursor: pointer;
+        padding: 4px 10px;
+        border-radius: 10px;
+        transition: all 0.2s;
+        ${level === 'universe' ? 'background: rgba(0, 255, 0, 0.1);' : ''}
+      `;
+      universeSpan.onclick = () => {
+        window.galacticMap.showUniverseLevel();
+        window.updateBreadcrumb('universe');
+      };
+      universeSpan.onmouseenter = function() {
+        if (level !== 'universe') this.style.background = 'rgba(136, 136, 136, 0.1)';
+      };
+      universeSpan.onmouseleave = function() {
+        if (level !== 'universe') this.style.background = 'transparent';
+      };
+      breadcrumb.appendChild(universeSpan);
+
+      // Galaxy level
+      if (level === 'galaxy' || level === 'system') {
+        breadcrumb.innerHTML += separator;
+
+        const galaxySpan = document.createElement('span');
+        galaxySpan.className = 'breadcrumb-item';
+        galaxySpan.textContent = galaxyName || 'GALAXY';
+        galaxySpan.style.cssText = `
+          color: ${level === 'galaxy' ? '#00ff00' : '#888'};
+          cursor: pointer;
+          padding: 4px 10px;
+          border-radius: 10px;
+          transition: all 0.2s;
+          ${level === 'galaxy' ? 'background: rgba(0, 255, 0, 0.1);' : ''}
+        `;
+        galaxySpan.onclick = () => {
+          if (window.galacticMap.selectedGalaxyId) {
+            window.galacticMap.showGalaxyLevel(window.galacticMap.selectedGalaxyId);
+            window.updateBreadcrumb('galaxy', galaxyName);
+          }
+        };
+        galaxySpan.onmouseenter = function() {
+          if (level !== 'galaxy') this.style.background = 'rgba(136, 136, 136, 0.1)';
+        };
+        galaxySpan.onmouseleave = function() {
+          if (level !== 'galaxy') this.style.background = 'transparent';
+        };
+        breadcrumb.appendChild(galaxySpan);
+      }
+
+      // Star system level
+      if (level === 'system') {
+        breadcrumb.innerHTML += separator;
+
+        const systemSpan = document.createElement('span');
+        systemSpan.className = 'breadcrumb-item';
+        systemSpan.textContent = starName || 'SYSTEM';
+        systemSpan.style.cssText = `
+          color: #00ff00;
+          padding: 4px 10px;
+          border-radius: 10px;
+          background: rgba(0, 255, 0, 0.1);
+        `;
+        breadcrumb.appendChild(systemSpan);
+      }
+    };
+
+    // Override showGalaxyLevel to update breadcrumb
+    const originalShowGalaxyLevel = window.galacticMap?.showGalaxyLevel?.bind(window.galacticMap);
+    if (originalShowGalaxyLevel) {
+      window.galacticMap.showGalaxyLevel = function(galaxyId) {
+        originalShowGalaxyLevel(galaxyId);
+
+        // Get galaxy name
+        const galaxy = this.allAssets?.find(a => a._id === galaxyId);
+        const galaxyName = galaxy?.title || 'GALAXY';
+
+        window.updateBreadcrumb('galaxy', galaxyName);
+      };
+    }
+
+    // Override showSystemLevel to update breadcrumb
+    const originalShowSystemLevel = window.galacticMap?.showSystemLevel?.bind(window.galacticMap);
+    if (originalShowSystemLevel) {
+      window.galacticMap.showSystemLevel = function(starId) {
+        originalShowSystemLevel(starId);
+
+        // Get star and galaxy names
+        const star = this.allAssets?.find(a => a._id === starId);
+        const starName = star?.title || 'SYSTEM';
+
+        const galaxy = this.allAssets?.find(a => a._id === this.selectedGalaxyId);
+        const galaxyName = galaxy?.title || 'GALAXY';
+
+        window.updateBreadcrumb('system', galaxyName, starName);
+      };
+    }
+
+    // Override showUniverseLevel to update breadcrumb
+    const originalShowUniverseLevel = window.galacticMap?.showUniverseLevel?.bind(window.galacticMap);
+    if (originalShowUniverseLevel) {
+      window.galacticMap.showUniverseLevel = function() {
+        originalShowUniverseLevel();
+        window.updateBreadcrumb('universe');
+      };
+    }
+
+    // Initialize breadcrumb
+    window.updateBreadcrumb('universe');
+  </script>
+</body>
+</html>

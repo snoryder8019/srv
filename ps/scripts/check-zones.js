@@ -1,39 +1,33 @@
-/**
- * Check existing zones in database
- */
-import { MongoClient } from 'mongodb';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
-const MONGODB_URI = process.env.DB_URL;
-const DB_NAME = process.env.DB_NAME;
+import { connectDB, getDb } from '../plugins/mongo/mongo.js';
 
 async function checkZones() {
-  const client = new MongoClient(MONGODB_URI);
+  await connectDB();
+  const db = getDb();
 
-  try {
-    await client.connect();
-    const db = client.db(DB_NAME);
+  console.log('\n=== Checking Zones ===\n');
+  
+  const zones = await db.collection('assets').find({ assetType: 'zone' }).toArray();
+  
+  console.log('Total zones:', zones.length);
+  zones.forEach(zone => {
+    console.log('\nZone:', zone.title);
+    console.log('  Coordinates:', zone.coordinates);
+    console.log('  Stats:', zone.stats);
+    console.log('  Status:', zone.status);
+  });
 
-    const zones = await db.collection('zones').find({}).toArray();
-
-    console.log('\n=== EXISTING ZONES ===');
-    console.log(`Total: ${zones.length}\n`);
-
-    zones.forEach(z => {
-      console.log(`- ${z.zoneName || z.displayName}`);
-      if (z.type) console.log(`  Type: ${z.type}`);
-      if (z.orbitalBodyId) console.log(`  Orbital: ${z.orbitalBodyId}`);
-    });
-
-  } catch (error) {
-    console.error('Error:', error);
-    process.exit(1);
-  } finally {
-    await client.close();
-    process.exit(0);
+  console.log('\n=== Non-Galactic Asset Types ===\n');
+  
+  const nonGalactic = ['weapon', 'armor', 'consumable', 'item', 'module', 'character', 'structure', 'environment'];
+  
+  for (const type of nonGalactic) {
+    const count = await db.collection('assets').countDocuments({ assetType: type });
+    if (count > 0) {
+      console.log(type + ': ' + count);
+    }
   }
+
+  process.exit(0);
 }
 
 checkZones();

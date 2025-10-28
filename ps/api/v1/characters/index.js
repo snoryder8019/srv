@@ -26,6 +26,38 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get current active character
+router.get('/current', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const activeCharacterId = req.cookies.activeCharacterId;
+
+    if (!activeCharacterId) {
+      return res.json({ success: false, message: 'No active character selected' });
+    }
+
+    const db = getDb();
+    const { ObjectId } = await import('mongodb');
+
+    const character = await db.collection('characters').findOne({
+      _id: new ObjectId(activeCharacterId),
+      userId: req.user._id.toString()
+    });
+
+    if (!character) {
+      return res.json({ success: false, message: 'Character not found or unauthorized' });
+    }
+
+    res.json({ success: true, character });
+  } catch (err) {
+    console.error('Error fetching current character:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch current character' });
+  }
+});
+
 // Create new character
 router.post('/', async (req, res) => {
   try {
@@ -253,6 +285,59 @@ router.put('/:id', async (req, res) => {
   } catch (err) {
     console.error('Error updating character:', err);
     res.status(500).json({ error: 'Failed to update character' });
+  }
+});
+
+// Update character location (for travel)
+router.put('/:id/location', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const { x, y, z, type, assetId, zone } = req.body;
+
+    if (x === undefined || y === undefined) {
+      return res.status(400).json({ success: false, error: 'X and Y coordinates required' });
+    }
+
+    const db = getDb();
+    const { ObjectId } = await import('mongodb');
+
+    // Build location object
+    const location = {
+      x: parseFloat(x),
+      y: parseFloat(y),
+      z: z !== undefined ? parseFloat(z) : 0,
+      type: type || 'galactic'
+    };
+
+    if (assetId) location.assetId = assetId;
+    if (zone) location.zone = zone;
+
+    // Update character location
+    const result = await db.collection('characters').updateOne(
+      {
+        _id: new ObjectId(req.params.id),
+        userId: req.user._id.toString()
+      },
+      { $set: { location } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, error: 'Character not found or unauthorized' });
+    }
+
+    console.log(`📍 Character ${req.params.id} moved to (${x}, ${y}, ${z})`);
+
+    res.json({
+      success: true,
+      message: 'Location updated',
+      location
+    });
+  } catch (err) {
+    console.error('Error updating character location:', err);
+    res.status(500).json({ success: false, error: 'Failed to update location' });
   }
 });
 

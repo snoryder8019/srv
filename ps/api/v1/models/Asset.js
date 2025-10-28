@@ -650,6 +650,27 @@ export class Asset {
   }
 
   /**
+   * Get assets by multiple types (for physics/gravity calculations)
+   */
+  static async getByTypes(types = []) {
+    const db = getDb();
+    return await db.collection(collections.assets)
+      .find({
+        assetType: { $in: types },
+        status: 'approved',
+        coordinates: { $exists: true }
+      })
+      .project({
+        _id: 1,
+        title: 1,
+        assetType: 1,
+        coordinates: 1,
+        stats: 1
+      })
+      .toArray();
+  }
+
+  /**
    * Get full hierarchy path for an asset (galaxy -> star -> planet)
    */
   static async getHierarchyPath(assetId) {

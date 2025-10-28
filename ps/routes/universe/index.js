@@ -21,30 +21,144 @@ router.get('/galactic-state', async (req, res) => {
   });
 });
 
-// Get galactic map view (2D visualization) - Shows all galaxies
+// Redirect 2D galactic map to 3D (2D removed)
 router.get('/galactic-map', async (req, res) => {
+  res.redirect('/universe/galactic-map-3d');
+});
+
+// Get 3D galactic map view (Three.js visualization) - Shows all assets in 3D space
+router.get('/galactic-map-3d', async (req, res) => {
   try {
-    const db = getDb();
-
-    // Fetch all approved galaxies from assets
-    const galaxies = await db.collection('assets')
-      .find({
-        assetType: 'galaxy',
-        status: 'approved'
-      })
-      .toArray();
-
-    res.render('universe/galactic-map', {
+    res.render('universe/galactic-map-3d', {
       title: 'Galactic Territory Map',
-      user: req.user,
-      galaxies: JSON.stringify(galaxies) // Pass as JSON for frontend
+      user: req.user
     });
   } catch (err) {
-    console.error('Error loading galactic map:', err);
-    res.render('universe/galactic-map', {
-      title: 'Galactic Territory Map',
+    console.error('Error loading 3D galactic map:', err);
+    res.status(500).render('errors/error', {
+      title: 'Error',
       user: req.user,
-      galaxies: JSON.stringify([])
+      error: { status: 500, message: 'Failed to load 3D galactic map' }
+    });
+  }
+});
+
+// System map 3D view - Shows ALL orbital bodies with 3D coordinates
+router.get('/system-map-3d', async (req, res) => {
+  try {
+    res.render('universe/system-map-3d', {
+      title: 'System Map - All Orbital Bodies',
+      user: req.user
+    });
+  } catch (err) {
+    console.error('Error loading 3D system map:', err);
+    res.status(500).render('errors/error', {
+      title: 'Error',
+      user: req.user,
+      error: { status: 500, message: 'Failed to load 3D system map' }
+    });
+  }
+});
+
+// System map 3D view for specific star - Auto-seeds planets if needed
+router.get('/system-map-3d/:starId', async (req, res) => {
+  try {
+    const db = getDb();
+    const { ObjectId } = await import('mongodb');
+    const starId = req.params.starId;
+
+    // Get the star
+    const star = await db.collection('assets').findOne({
+      _id: new ObjectId(starId)
+    });
+
+    if (!star) {
+      return res.status(404).render('errors/error', {
+        title: 'Star Not Found',
+        user: req.user,
+        error: { status: 404, message: 'Star system not found' }
+      });
+    }
+
+    // Check if this star has planets
+    const planets = await db.collection('assets').find({
+      parentId: new ObjectId(starId),
+      assetType: 'planet'
+    }).toArray();
+
+    // If no planets exist, seed them
+    if (planets.length === 0) {
+      console.log(`⚠️ Star ${star.title} has no planets. Seeding planets...`);
+
+      // Import physics for orbital calculations
+      const { Physics3D } = await import('../../api/v1/physics/physics3d.js');
+      const physics = new Physics3D();
+
+      const planetTypes = [
+        { suffix: 'I', type: 'rocky', color: '#AA6644', size: 20, mass: 20 },
+        { suffix: 'II', type: 'gas giant', color: '#6688FF', size: 40, mass: 50 }
+      ];
+
+      const newPlanets = [];
+      for (let i = 0; i < 2; i++) {
+        const planetType = planetTypes[i];
+        const orbitRadius = 80 + (i * 60); // 80, 140
+
+        // Calculate orbital position relative to star
+        const orbitData = physics.setCircularOrbit(
+          { position: { x: 0, y: 0, z: 0 }, mass: planetType.mass },
+          { position: star.coordinates, mass: star.mass || 500 },
+          orbitRadius,
+          Math.random() * 0.3 // Random inclination
+        );
+
+        const planet = {
+          title: `${star.title} ${planetType.suffix}`,
+          assetType: 'planet',
+          description: `A ${planetType.type} orbiting ${star.title}`,
+          coordinates: orbitData.position,
+          velocity: orbitData.velocity,
+          mass: planetType.mass,
+          radius: planetType.size,
+          parentId: new ObjectId(starId),
+          parentType: 'star',
+          orbitRadius: orbitRadius,
+          planetData: {
+            type: planetType.type,
+            atmosphere: planetType.type === 'gas giant',
+            landable: planetType.type === 'rocky'
+          },
+          renderData: {
+            color: planetType.color,
+            size: planetType.size,
+            type: planetType.type
+          },
+          status: 'approved',
+          userId: req.user?._id || null,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        const result = await db.collection('assets').insertOne(planet);
+        newPlanets.push({ ...planet, _id: result.insertedId });
+        console.log(`  ✓ Created planet: ${planet.title}`);
+      }
+
+      console.log(`✅ Seeded ${newPlanets.length} planets for ${star.title}`);
+    }
+
+    // Render the system map with the star ID in the query string
+    res.render('universe/system-map-3d', {
+      title: `${star.title} - System Map`,
+      user: req.user,
+      starId: starId
+    });
+  } catch (err) {
+    console.error('Error loading 3D system map:', err);
+    res.status(500).render('errors/error', {
+      title: 'Error',
+      user: req.user,
+      error: { status: 500, message: 'Failed to load 3D system map' }
     });
   }
 });
@@ -241,7 +355,15 @@ router.get('/tome', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch tome data' });
   }
 });
-router.get('create')
+// Sprite Atlas Creator
+router.get('/sprite-creator', (req, res) => {
+  res.render('universe/sprite-creator', {
+    title: 'Sprite Atlas Creator',
+    user: req.user,
+    character: res.locals.character
+  });
+});
+
 // Planetary handoff system
 router.get('/planetary-grid', (req, res) => {
   res.render('universe/planetary-grid', {

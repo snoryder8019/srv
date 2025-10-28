@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sprite Atlas Creator - Stringborn Universe</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    .sprite-creator-container {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background: rgba(20, 20, 40, 0.95);
+      border-radius: 12px;
+      border: 2px solid #8a4fff;
+    }
+
+    .creator-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .creator-header h1 {
+      color: #8a4fff;
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .creator-header p {
+      color: #aaa;
+      font-size: 1.1rem;
+    }
+
+    .creator-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .creator-section {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1.5rem;
+      border-radius: 8px;
+      border: 1px solid #444;
+    }
+
+    .creator-section h2 {
+      color: #8a4fff;
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid #8a4fff;
+      padding-bottom: 0.5rem;
+    }
+
+    .canvas-container {
+      position: relative;
+      width: 400px;
+      height: 400px;
+      margin: 1rem auto;
+      border: 2px solid #8a4fff;
+      background: #000;
+      cursor: crosshair;
+    }
+
+    #spriteCanvas {
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .grid-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      color: #8a4fff;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 1rem;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .tile-item {
+      background: rgba(0, 0, 0, 0.5);
+      border: 2px solid #444;
+      padding: 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .tile-item:hover {
+      border-color: #8a4fff;
+      background: rgba(138, 79, 255, 0.1);
+    }
+
+    .tile-item.selected {
+      border-color: #00ff88;
+      background: rgba(0, 255, 136, 0.2);
+    }
+
+    .tile-item .tile-index {
+      color: #8a4fff;
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+
+    .tile-item .tile-category {
+      color: #aaa;
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+    }
+
+    .file-upload-zone {
+      border: 2px dashed #8a4fff;
+      padding: 2rem;
+      text-align: center;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 1rem;
+    }
+
+    .file-upload-zone:hover {
+      background: rgba(138, 79, 255, 0.1);
+      border-color: #00ff88;
+    }
+
+    .file-upload-zone.dragover {
+      background: rgba(0, 255, 136, 0.2);
+      border-color: #00ff88;
+    }
+
+    .upload-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .btn {
+      padding: 0.75rem 2rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #8a4fff 0%, #00ff88 100%);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(138, 79, 255, 0.5);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 1px solid #444;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 2rem;
+    }
+
+    .alert {
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    .alert.success {
+      background: rgba(0, 255, 136, 0.2);
+      border: 1px solid #00ff88;
+      color: #00ff88;
+    }
+
+    .alert.error {
+      background: rgba(255, 79, 79, 0.2);
+      border: 1px solid #ff4f4f;
+      color: #ff4f4f;
+    }
+
+    .spec-info {
+      background: rgba(138, 79, 255, 0.1);
+      border: 1px solid #8a4fff;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+
+    .spec-info h3 {
+      color: #8a4fff;
+      margin-bottom: 0.5rem;
+    }
+
+    .spec-info ul {
+      color: #aaa;
+      padding-left: 1.5rem;
+    }
+
+    .spec-info li {
+      margin-bottom: 0.25rem;
+    }
+
+    .planet-type-selector {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+
+    .planet-type-card {
+      background: rgba(0, 0, 0, 0.5);
+      border: 2px solid #444;
+      padding: 1rem;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .planet-type-card:hover {
+      border-color: #8a4fff;
+      transform: translateY(-2px);
+    }
+
+    .planet-type-card.selected {
+      border-color: #00ff88;
+      background: rgba(0, 255, 136, 0.1);
+    }
+
+    .planet-type-card .type-icon {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .planet-type-card .type-name {
+      color: #fff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <div class="sprite-creator-container">
+    <div class="creator-header">
+      <h1>🎨 World Sprite Builder</h1>
+      <p>Create 2D sprite atlases for planetary environments, monsters, and terrain</p>
+    </div>
+
+    <div class="alert success" id="successAlert"></div>
+    <div class="alert error" id="errorAlert"></div>
+
+    <div class="creator-grid">
+      <!-- Left Column: Canvas & Upload -->
+      <div class="creator-section">
+        <h2>1. Create Sprite Atlas</h2>
+
+        <div class="spec-info">
+          <h3>Specifications:</h3>
+          <ul>
+            <li>Size: 80×80 pixels (5×5 grid)</li>
+            <li>Format: PNG with transparency</li>
+            <li>Tile Size: 16×16 pixels each</li>
+            <li>Max File Size: 50KB</li>
+          </ul>
+        </div>
+
+        <!-- Mode Tabs -->
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+          <button class="btn btn-secondary" id="drawModeBtn" onclick="switchMode('draw')" style="flex: 1;">🎨 Draw</button>
+          <button class="btn btn-secondary" id="uploadModeBtn" onclick="switchMode('upload')" style="flex: 1;">📤 Upload</button>
+        </div>
+
+        <!-- Draw Mode -->
+        <div id="drawMode" style="display: block;">
+          <div id="pixelEditorContainer"></div>
+        </div>
+
+        <!-- Upload Mode -->
+        <div id="uploadMode" style="display: none;">
+          <div class="file-upload-zone" id="uploadZone">
+            <div class="upload-icon">📤</div>
+            <p>Drag & drop your 80×80 PNG here</p>
+            <p style="color: #aaa; font-size: 0.9rem;">or click to browse</p>
+            <input type="file" id="fileInput" accept="image/png" style="display: none;">
+          </div>
+        </div>
+
+        <!-- Preview Canvas -->
+        <div style="margin-top: 1rem;">
+          <p style="color: #aaa; font-size: 0.9rem; margin-bottom: 0.5rem; text-align: center;">
+            📋 Click a tile to copy, then click another to paste
+          </p>
+          <div class="canvas-container">
+            <canvas id="spriteCanvas" width="80" height="80"></canvas>
+            <canvas class="grid-overlay" id="gridCanvas" width="400" height="400"></canvas>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+          <button class="btn btn-secondary" onclick="updatePreview()" style="flex: 1;">🔄 Update Preview</button>
+          <button class="btn btn-secondary" onclick="clearCanvas()" style="flex: 1;">🗑️ Clear Canvas</button>
+          <button class="btn btn-secondary" onclick="cancelCopy()" style="flex: 1;">❌ Cancel Copy</button>
+        </div>
+      </div>
+
+      <!-- Right Column: Metadata & Configuration -->
+      <div class="creator-section">
+        <h2>2. Configure Atlas</h2>
+
+        <form id="atlasForm">
+          <div class="form-group">
+            <label for="atlasName">Atlas Name *</label>
+            <input type="text" id="atlasName" placeholder="e.g., Forest Terrain Pack" required>
+          </div>
+
+          <div class="form-group">
+            <label>Planet Type / Biome *</label>
+            <div class="planet-type-selector" id="planetTypeSelector">
+              <!-- Planet types will be generated here -->
+            </div>
+            <input type="hidden" id="selectedPlanetType" required>
+          </div>
+
+          <div class="form-group">
+            <label for="packType">Pack Type *</label>
+            <select id="packType" required>
+              <option value="terrain">Terrain Pack</option>
+              <option value="monsters">Monster Pack</option>
+              <option value="npcs">NPC Pack</option>
+              <option value="buildings">Building Pack</option>
+              <option value="dungeon">Dungeon Pack</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" placeholder="Describe your sprite pack..."></textarea>
+          </div>
+
+          <h3 style="color: #8a4fff; margin-top: 2rem;">3. Tile Categories</h3>
+          <div id="packTypeInfo" style="background: rgba(138, 79, 255, 0.1); border: 1px solid #8a4fff; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+            <p style="color: #8a4fff; font-weight: bold; margin: 0 0 0.5rem 0;">Current Rules: Terrain Pack</p>
+            <p style="color: #aaa; font-size: 0.9rem; margin: 0;">Each row follows specific naming and animation rules for rendering.</p>
+          </div>
+
+          <div class="tile-grid" id="tileGrid">
+            <!-- Tiles will be generated here -->
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn btn-secondary" onclick="window.history.back()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAtlas()">🚀 Upload Sprite Atlas</button>
+    </div>
+  </div>
+
+  <script src="/javascripts/pixel-editor.js"></script>
+  <script src="/javascripts/sprite-loader.js"></script>
+  <script>
+    const canvas = document.getElementById('spriteCanvas');
+    const ctx = canvas.getContext('2d');
+    const gridCanvas = document.getElementById('gridCanvas');
+    const gridCtx = gridCanvas.getContext('2d');
+
+    let uploadedImage = null;
+    let tileManifest = [];
+    let pixelEditor = null;
+    let currentMode = 'draw';
+    let copiedTileData = null;
+    let selectedTileX = -1;
+    let selectedTileY = -1;
+
+    // Planet types from existing system
+    const PLANET_TYPES = [
+      { type: 'forest', name: 'Forest', icon: '🌲', biome: 'temperate' },
+      { type: 'desert', name: 'Desert', icon: '🏜️', biome: 'desert' },
+      { type: 'ocean', name: 'Ocean', icon: '🌊', biome: 'ocean' },
+      { type: 'volcanic', name: 'Volcanic', icon: '🌋', biome: 'volcanic' },
+      { type: 'ice', name: 'Ice', icon: '❄️', biome: 'frozen' },
+      { type: 'grassland', name: 'Grassland', icon: '🌾', biome: 'grassland' },
+      { type: 'tundra', name: 'Tundra', icon: '🏔️', biome: 'tundra' },
+      { type: 'swamp', name: 'Swamp', icon: '🐊', biome: 'swamp' },
+    ];
+
+    // Tile categories by row (as per spec) - varies by pack type
+    const PACK_TYPE_RULES = {
+      terrain: {
+        name: 'Terrain Pack',
+        rows: [
+          { name: 'Ground Texture', desc: 'Base terrain tiles (grass, sand, dirt, water)', tiles: ['Primary', 'Light', 'Dark', 'Transition', 'Special'] },
+          { name: 'Environment Object', desc: 'Static objects (trees, rocks, bushes)', tiles: ['Small', 'Medium', 'Large', 'Special 1', 'Special 2'] },
+          { name: 'Monster Animation', desc: 'Creature 5-frame animation', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Attack', 'Hit/Death'] },
+          { name: 'Aerial Effect', desc: 'Clouds and weather effects', tiles: ['Cloud 1', 'Cloud 2', 'Cloud 3', 'Weather 1', 'Weather 2'] },
+          { name: 'Resource Nodes', desc: 'Harvestable resources', tiles: ['Ore 1', 'Ore 2', 'Ore 3', 'Plant 1', 'Plant 2'] }
+        ]
+      },
+      monsters: {
+        name: 'Monster Pack',
+        rows: [
+          { name: 'Monster 1 Animation', desc: 'First creature 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Attack', 'Hit/Death'] },
+          { name: 'Monster 2 Animation', desc: 'Second creature 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Attack', 'Hit/Death'] },
+          { name: 'Monster 3 Animation', desc: 'Third creature 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Attack', 'Hit/Death'] },
+          { name: 'Monster 4 Animation', desc: 'Fourth creature 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Attack', 'Hit/Death'] },
+          { name: 'Monster 5 Animation', desc: 'Fifth creature 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Attack', 'Hit/Death'] }
+        ]
+      },
+      npcs: {
+        name: 'NPC Pack',
+        rows: [
+          { name: 'NPC 1 Animation', desc: 'First character 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Action', 'Talk'] },
+          { name: 'NPC 2 Animation', desc: 'Second character 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Action', 'Talk'] },
+          { name: 'NPC 3 Animation', desc: 'Third character 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Action', 'Talk'] },
+          { name: 'NPC 4 Animation', desc: 'Fourth character 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Action', 'Talk'] },
+          { name: 'NPC 5 Animation', desc: 'Fifth character 5-frame cycle', tiles: ['Idle', 'Walk 1', 'Walk 2', 'Action', 'Talk'] }
+        ]
+      },
+      buildings: {
+        name: 'Building Pack',
+        rows: [
+          { name: 'Hull/Floor Tiles', desc: 'Base structure tiles', tiles: ['Floor 1', 'Floor 2', 'Floor 3', 'Wall', 'Window'] },
+          { name: 'Exterior Components', desc: 'Outside parts', tiles: ['Thruster', 'Wing', 'Cockpit', 'Airlock', 'Antenna'] },
+          { name: 'Interior Objects', desc: 'Inside furniture', tiles: ['Console', 'Seat', 'Door', 'Panel', 'Storage'] },
+          { name: 'UI Elements', desc: 'Placement indicators', tiles: ['Select', 'Valid', 'Invalid', 'Cursor', 'Highlight'] },
+          { name: 'Damage States', desc: 'Broken/damaged versions', tiles: ['Broken 1', 'Broken 2', 'Sparking', 'Fire', 'Destroyed'] }
+        ]
+      },
+      dungeon: {
+        name: 'Dungeon Pack',
+        rows: [
+          { name: 'Floor Tiles', desc: 'Dungeon floor variations', tiles: ['Stone', 'Tile', 'Dirt', 'Cracked', 'Special'] },
+          { name: 'Wall Tiles', desc: 'Dungeon walls', tiles: ['Wall 1', 'Wall 2', 'Wall 3', 'Door', 'Window'] },
+          { name: 'Objects', desc: 'Dungeon furniture', tiles: ['Chest', 'Barrel', 'Torch', 'Table', 'Rubble'] },
+          { name: 'Traps & Hazards', desc: 'Dangerous tiles', tiles: ['Spike', 'Pit', 'Fire', 'Poison', 'Magic'] },
+          { name: 'Collectibles', desc: 'Items and rewards', tiles: ['Coin', 'Gem', 'Potion', 'Key', 'Scroll'] }
+        ]
+      }
+    };
+
+    // Mode switching
+    function switchMode(mode) {
+      currentMode = mode;
+
+      if (mode === 'draw') {
+        document.getElementById('drawMode').style.display = 'block';
+        document.getElementById('uploadMode').style.display = 'none';
+        document.getElementById('drawModeBtn').style.opacity = '1';
+        document.getElementById('uploadModeBtn').style.opacity = '0.5';
+
+        // Initialize pixel editor if not already done
+        if (!pixelEditor) {
+          pixelEditor = new PixelEditor('pixelEditorContainer', {
+            gridSize: 80,
+            pixelSize: 5,
+            defaultColor: '#000000'
+          });
+
+          // Hook into export to update preview canvas
+          const originalExport = pixelEditor.exportToPNG;
+          pixelEditor.exportToPNG = function() {
+            const exported = originalExport.call(this);
+            updatePreviewFromEditor();
+            return exported;
+          };
+        }
+      } else {
+        document.getElementById('drawMode').style.display = 'none';
+        document.getElementById('uploadMode').style.display = 'block';
+        document.getElementById('drawModeBtn').style.opacity = '0.5';
+        document.getElementById('uploadModeBtn').style.opacity = '1';
+      }
+    }
+
+    // Update preview canvas from pixel editor
+    function updatePreviewFromEditor() {
+      if (pixelEditor && pixelEditor.canvas) {
+        ctx.clearRect(0, 0, 80, 80);
+        ctx.drawImage(pixelEditor.canvas, 0, 0, 80, 80);
+      }
+    }
+
+    // Initialize
+    function init() {
+      drawGrid();
+      generatePlanetTypes();
+      generateTileGrid('terrain'); // Default to terrain
+      setupUploadZone();
+      switchMode('draw'); // Start in draw mode
+
+      // Add pack type change listener
+      const packTypeSelect = document.getElementById('packType');
+      packTypeSelect.addEventListener('change', (e) => {
+        const packType = e.target.value;
+        generateTileGrid(packType);
+        showSuccess(`Tile grid updated for ${PACK_TYPE_RULES[packType].name}`);
+      });
+    }
+
+    // Draw 5×5 grid overlay
+    function drawGrid() {
+      gridCtx.clearRect(0, 0, 400, 400);
+      gridCtx.strokeStyle = '#8a4fff';
+      gridCtx.lineWidth = 1;
+
+      for (let i = 0; i <= 5; i++) {
+        // Vertical lines
+        gridCtx.beginPath();
+        gridCtx.moveTo(i * 80, 0);
+        gridCtx.lineTo(i * 80, 400);
+        gridCtx.stroke();
+
+        // Horizontal lines
+        gridCtx.beginPath();
+        gridCtx.moveTo(0, i * 80);
+        gridCtx.lineTo(400, i * 80);
+        gridCtx.stroke();
+      }
+    }
+
+    // Generate planet type cards
+    function generatePlanetTypes() {
+      const container = document.getElementById('planetTypeSelector');
+      container.innerHTML = PLANET_TYPES.map(type => `
+        <div class="planet-type-card" onclick="selectPlanetType('${type.type}')">
+          <div class="type-icon">${type.icon}</div>
+          <div class="type-name">${type.name}</div>
+        </div>
+      `).join('');
+    }
+
+    // Select planet type
+    function selectPlanetType(type) {
+      document.querySelectorAll('.planet-type-card').forEach(card => card.classList.remove('selected'));
+      event.target.closest('.planet-type-card').classList.add('selected');
+      document.getElementById('selectedPlanetType').value = type;
+    }
+
+    // Generate tile grid based on pack type
+    function generateTileGrid(packType = 'terrain') {
+      const container = document.getElementById('tileGrid');
+      const rules = PACK_TYPE_RULES[packType] || PACK_TYPE_RULES.terrain;
+      tileManifest = [];
+      container.innerHTML = '';
+
+      // Update pack type info box
+      const infoBox = document.getElementById('packTypeInfo');
+      infoBox.innerHTML = `
+        <p style="color: #8a4fff; font-weight: bold; margin: 0 0 0.5rem 0;">Current Rules: ${rules.name}</p>
+        <p style="color: #aaa; font-size: 0.9rem; margin: 0;">
+          ${rules.rows.map((r, i) => `Row ${i}: ${r.name}`).join(' • ')}
+        </p>
+      `;
+
+      for (let i = 0; i < 25; i++) {
+        const row = Math.floor(i / 5);
+        const col = i % 5;
+        const rowRule = rules.rows[row];
+        const tileName = rowRule.tiles[col];
+
+        tileManifest.push({
+          index: i,
+          row,
+          col,
+          name: tileName.toLowerCase().replace(/\s+/g, '_'),
+          displayName: tileName,
+          category: rowRule.name.toLowerCase().replace(/\s+/g, '_'),
+          categoryDisplay: rowRule.name,
+          description: rowRule.desc,
+          tags: [],
+        });
+
+        const tileDiv = document.createElement('div');
+        tileDiv.className = 'tile-item';
+        tileDiv.innerHTML = `
+          <div class="tile-index">${i}: ${tileName}</div>
+          <div class="tile-category">${rowRule.name}</div>
+        `;
+        tileDiv.onclick = () => editTile(i);
+        tileDiv.title = `${rowRule.desc}`;
+        container.appendChild(tileDiv);
+      }
+    }
+
+    // Setup upload zone
+    function setupUploadZone() {
+      const zone = document.getElementById('uploadZone');
+      const fileInput = document.getElementById('fileInput');
+
+      zone.onclick = () => fileInput.click();
+
+      fileInput.onchange = (e) => {
+        if (e.target.files.length > 0) {
+          handleFileUpload(e.target.files[0]);
+        }
+      };
+
+      zone.ondragover = (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+      };
+
+      zone.ondragleave = () => {
+        zone.classList.remove('dragover');
+      };
+
+      zone.ondrop = (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+          handleFileUpload(e.dataTransfer.files[0]);
+        }
+      };
+    }
+
+    // Handle file upload
+    function handleFileUpload(file) {
+      if (!file.type.startsWith('image/png')) {
+        showError('Only PNG files are allowed');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          if (img.width !== 80 || img.height !== 80) {
+            showError('Image must be exactly 80×80 pixels');
+            return;
+          }
+
+          uploadedImage = img;
+          ctx.clearRect(0, 0, 80, 80);
+          ctx.drawImage(img, 0, 0);
+          showSuccess('Image loaded successfully!');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Edit tile (simple name prompt for now)
+    function editTile(index) {
+      const tile = tileManifest[index];
+      const newName = prompt(`Name for Tile ${index}:`, tile.name);
+      if (newName) {
+        tile.name = newName;
+      }
+    }
+
+    // Clear canvas
+    function clearCanvas() {
+      if (currentMode === 'draw' && pixelEditor) {
+        pixelEditor.clearCanvas();
+      }
+      ctx.clearRect(0, 0, 80, 80);
+      uploadedImage = null;
+    }
+
+    // Update preview from pixel editor manually
+    function updatePreview() {
+      if (currentMode === 'draw') {
+        updatePreviewFromEditor();
+        showSuccess('Preview updated!');
+      }
+    }
+
+    // Submit atlas
+    async function submitAtlas() {
+      const name = document.getElementById('atlasName').value;
+      const planetType = document.getElementById('selectedPlanetType').value;
+      const packType = document.getElementById('packType').value;
+      const description = document.getElementById('description').value;
+
+      if (!name || !planetType) {
+        showError('Please fill in all required fields');
+        return;
+      }
+
+      // Determine which canvas to use based on current mode
+      let blob;
+
+      if (currentMode === 'draw') {
+        // Use pixel editor - export directly to 80×80 blob
+        if (!pixelEditor || !pixelEditor.canvas) {
+          showError('Please draw something in the pixel editor first');
+          return;
+        }
+        // Get blob from pixel editor (already exports as 80×80 with transparency)
+        blob = await pixelEditor.exportToBlob();
+
+        // Also update preview canvas
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 80;
+        tempCanvas.height = 80;
+        const tempCtx = tempCanvas.getContext('2d');
+        const pixelData = pixelEditor.getData();
+        for (let y = 0; y < 80; y++) {
+          for (let x = 0; x < 80; x++) {
+            if (pixelData.pixels[y][x] !== 'transparent') {
+              tempCtx.fillStyle = pixelData.pixels[y][x];
+              tempCtx.fillRect(x, y, 1, 1);
+            }
+          }
+        }
+        ctx.clearRect(0, 0, 80, 80);
+        ctx.drawImage(tempCanvas, 0, 0);
+      } else {
+        // Use uploaded image canvas
+        if (!uploadedImage) {
+          showError('Please upload a sprite atlas image');
+          return;
+        }
+        blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      }
+
+      // Submit the blob
+      const formData = new FormData();
+      formData.append('atlasImage', blob, 'atlas.png');
+      formData.append('manifest', JSON.stringify({
+        name,
+        planetType,
+        packType,
+        description,
+        tiles: tileManifest,
+      }));
+
+      try {
+        const response = await fetch('/api/v1/sprite-atlases', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showSuccess('Sprite atlas uploaded successfully! Redirecting...');
+          setTimeout(() => {
+            window.location.href = '/universe/galactic-map';
+          }, 2000);
+        } else {
+          showError(data.error || 'Failed to upload atlas');
+        }
+      } catch (error) {
+        showError('Network error: ' + error.message);
+      }
+    }
+
+    // Show alerts
+    function showSuccess(message) {
+      const alert = document.getElementById('successAlert');
+      alert.textContent = message;
+      alert.style.display = 'block';
+      setTimeout(() => alert.style.display = 'none', 5000);
+    }
+
+    function showError(message) {
+      const alert = document.getElementById('errorAlert');
+      alert.textContent = message;
+      alert.style.display = 'block';
+      setTimeout(() => alert.style.display = 'none', 5000);
+    }
+
+    // Copy/Paste tile functionality
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      // Calculate which 16×16 tile was clicked (0-4 for x and y)
+      const tileX = Math.floor(x / 16);
+      const tileY = Math.floor(y / 16);
+
+      if (tileX < 0 || tileX >= 5 || tileY < 0 || tileY >= 5) return;
+
+      if (!copiedTileData) {
+        // First click - copy the tile
+        copyTile(tileX, tileY);
+        selectedTileX = tileX;
+        selectedTileY = tileY;
+        highlightTile(tileX, tileY);
+        showSuccess(`Copied tile (${tileX}, ${tileY}). Click another tile to paste.`);
+      } else {
+        // Second click - paste to the tile
+        pasteTile(tileX, tileY);
+        showSuccess(`Pasted to tile (${tileX}, ${tileY})`);
+        copiedTileData = null;
+        selectedTileX = -1;
+        selectedTileY = -1;
+        drawGrid(); // Remove highlight
+      }
+    });
+
+    function copyTile(tileX, tileY) {
+      if (!pixelEditor) return;
+
+      const pixelData = pixelEditor.getData();
+      copiedTileData = [];
+
+      // Copy 16×16 pixels starting from tile position
+      const startX = tileX * 16;
+      const startY = tileY * 16;
+
+      for (let y = 0; y < 16; y++) {
+        copiedTileData[y] = [];
+        for (let x = 0; x < 16; x++) {
+          const sourceY = startY + y;
+          const sourceX = startX + x;
+          if (sourceY < pixelData.pixels.length && sourceX < pixelData.pixels[0].length) {
+            copiedTileData[y][x] = pixelData.pixels[sourceY][sourceX];
+          } else {
+            copiedTileData[y][x] = 'transparent';
+          }
+        }
+      }
+    }
+
+    function pasteTile(tileX, tileY) {
+      if (!pixelEditor || !copiedTileData) return;
+
+      const startX = tileX * 16;
+      const startY = tileY * 16;
+
+      // Paste 16×16 pixels to pixel editor
+      for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 16; x++) {
+          const destY = startY + y;
+          const destX = startX + x;
+          if (destY < 80 && destX < 80) {
+            pixelEditor.pixelData[destY][destX] = copiedTileData[y][x];
+          }
+        }
+      }
+
+      // Re-render the pixel editor
+      pixelEditor.render();
+
+      // Update preview
+      updatePreviewFromEditor();
+    }
+
+    function highlightTile(tileX, tileY) {
+      // Redraw grid with highlight
+      drawGrid();
+
+      // Draw highlight rectangle
+      gridCtx.strokeStyle = '#00ff88';
+      gridCtx.lineWidth = 3;
+      gridCtx.strokeRect(tileX * 80, tileY * 80, 80, 80);
+    }
+
+    function cancelCopy() {
+      copiedTileData = null;
+      selectedTileX = -1;
+      selectedTileY = -1;
+      drawGrid(); // Remove highlight
+      showSuccess('Copy cancelled');
+    }
+
+    // Initialize on load
+    init();
+  </script>
+</body>
+</html>

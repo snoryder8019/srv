@@ -7,6 +7,8 @@ import ticketsRouter from './tickets/index.js';
 import planetGenerationRouter from './routes/planet-generation.js';
 import inventoryRouter from './inventory/index.js';
 import shipRouter from './inventory/ship.js';
+import spriteAtlasesRouter from './routes/sprite-atlases.js';
+import stateManagerRouter from './routes/state-manager.js';
 
 const router = express.Router();
 
@@ -20,7 +22,8 @@ router.get('/', (req, res) => {
       universe: '/api/v1/universe',
       assets: '/api/v1/assets',
       tickets: '/api/v1/tickets',
-      planetGeneration: '/api/v1/planet-generation'
+      planetGeneration: '/api/v1/planet-generation',
+      stateManager: '/api/v1/state'
     }
   });
 });
@@ -32,6 +35,8 @@ router.use('/universe', universeRouter);
 router.use('/assets', assetsRouter);
 router.use('/tickets', ticketsRouter);
 router.use('/planet-generation', planetGenerationRouter);
+router.use('/sprite-atlases', spriteAtlasesRouter);
+router.use('/state', stateManagerRouter); // State manager for game state and physics
 router.use('/', inventoryRouter); // Inventory routes handle their own /characters/:id/inventory paths
 router.use('/', shipRouter); // Ship routes handle their own /characters/:id/ship paths
 

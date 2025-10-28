@@ -6,6 +6,7 @@ import { getDb } from '../../../plugins/mongo/mongo.js';
 import { collections } from '../../../config/database.js';
 import { ObjectId } from 'mongodb';
 import { getHubByString, getSpawnPosition } from '../../../config/spaceHubs.js';
+import { Physics3D, Vector3D } from '../physics/physics3d.js';
 
 export class Character {
   /**
@@ -119,8 +120,10 @@ export class Character {
         type: 'galactic',
         x: spawnLocation.x,
         y: spawnLocation.y,
+        z: spawnLocation.z || 0, // 3D coordinate for galactic map
         vx: 0,
         vy: 0,
+        vz: 0, // Z-axis velocity
         zone: homeHub.name,
         assetId: null,
         lastUpdated: new Date()
@@ -170,8 +173,10 @@ export class Character {
     const updateData = {
       'location.x': locationData.x,
       'location.y': locationData.y,
+      'location.z': locationData.z ?? 0, // 3D coordinate
       'location.vx': locationData.vx ?? 0,
       'location.vy': locationData.vy ?? 0,
+      'location.vz': locationData.vz ?? 0, // Z-axis velocity
       'location.lastUpdated': new Date(),
       updatedAt: new Date()
     };
@@ -198,7 +203,8 @@ export class Character {
 
     const dx = destination.x - character.location.x;
     const dy = destination.y - character.location.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+    const dz = (destination.z || 0) - (character.location.z || 0); // 3D distance
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz); // 3D distance formula
     const eta = distance / character.navigation.travelSpeed;
 
     const result = await db.collection(collections.characters).updateOne(
@@ -446,6 +452,240 @@ export class Character {
     });
 
     return result.deletedCount > 0;
+  }
+
+  /**
+   * ========================================
+   * 3D PHYSICS METHODS
+   * ========================================
+   */
+
+  /**
+   * Apply thrust to character in a direction (3D)
+   * Updates velocity based on ship thrust capabilities
+   *
+   * @param {String} characterId - Character ID
+   * @param {Object} direction - Direction vector {x, y, z} (will be normalized)
+   * @param {Number} power - Thrust power 0-1 (default 1.0)
+   * @returns {Object} - Updated velocity
+   */
+  static async applyThrust(characterId, direction, power = 1.0) {
+    const character = await this.findById(characterId);
+    if (!character) return null;
+
+    const physics = new Physics3D();
+
+    // Create ship object with current state
+    const ship = {
+      position: {
+        x: character.location.x,
+        y: character.location.y,
+        z: character.location.z || 0
+      },
+      velocity: {
+        x: character.location.vx || 0,
+        y: character.location.vy || 0,
+        z: character.location.vz || 0
+      },
+      mass: character.ship?.stats?.mass || 100,
+      stats: {
+        maxThrust: character.ship?.stats?.maxThrust || 10
+      }
+    };
+
+    // Calculate thrust force
+    const directionVector = new Vector3D(direction.x, direction.y, direction.z);
+    const thrustForce = physics.calculateThrust(ship, directionVector, power);
+
+    // Apply force to update velocity
+    const newVelocity = physics.updateVelocity(ship, [thrustForce]);
+
+    // Update character in database
+    await this.updateLocation(characterId, {
+      x: character.location.x,
+      y: character.location.y,
+      z: character.location.z || 0,
+      vx: newVelocity.x,
+      vy: newVelocity.y,
+      vz: newVelocity.z
+    });
+
+    return {
+      vx: newVelocity.x,
+      vy: newVelocity.y,
+      vz: newVelocity.z
+    };
+  }
+
+  /**
+   * Apply gravity from nearby celestial bodies
+   * Calculates gravitational pull from planets/stars
+   *
+   * @param {String} characterId - Character ID
+   * @param {Array<Object>} celestialBodies - Array of bodies with {position: {x,y,z}, mass}
+   * @returns {Object} - Updated position and velocity
+   */
+  static async applyGravity(characterId, celestialBodies = []) {
+    const character = await this.findById(characterId);
+    if (!character) return null;
+
+    const physics = new Physics3D();
+
+    // Create ship object
+    const ship = {
+      position: {
+        x: character.location.x,
+        y: character.location.y,
+        z: character.location.z || 0
+      },
+      velocity: {
+        x: character.location.vx || 0,
+        y: character.location.vy || 0,
+        z: character.location.vz || 0
+      },
+      mass: character.ship?.stats?.mass || 100
+    };
+
+    // Calculate gravitational forces from all celestial bodies
+    const forces = [];
+    celestialBodies.forEach(body => {
+      const gravityForce = physics.calculateGravity(ship, body);
+      forces.push(gravityForce);
+    });
+
+    // Update position and velocity
+    const updated = physics.update(ship, forces);
+
+    // Save to database
+    await this.updateLocation(characterId, {
+      x: updated.position.x,
+      y: updated.position.y,
+      z: updated.position.z,
+      vx: updated.velocity.x,
+      vy: updated.velocity.y,
+      vz: updated.velocity.z
+    });
+
+    return updated;
+  }
+
+  /**
+   * Update physics for character (called by state manager tick)
+   * Applies all forces and updates position/velocity
+   *
+   * @param {String} characterId - Character ID
+   * @param {Array<Object>} nearbyBodies - Nearby celestial bodies for gravity
+   * @returns {Object} - Updated state
+   */
+  static async updatePhysics(characterId, nearbyBodies = []) {
+    const character = await this.findById(characterId);
+    if (!character) return null;
+
+    const physics = new Physics3D();
+
+    // Create ship object
+    const ship = {
+      position: {
+        x: character.location.x,
+        y: character.location.y,
+        z: character.location.z || 0
+      },
+      velocity: {
+        x: character.location.vx || 0,
+        y: character.location.vy || 0,
+        vz: character.location.vz || 0
+      },
+      mass: character.ship?.stats?.mass || 100
+    };
+
+    // Collect all forces
+    const forces = [];
+
+    // Add gravity from nearby bodies
+    nearbyBodies.forEach(body => {
+      const gravityForce = physics.calculateGravity(ship, body);
+      forces.push(gravityForce);
+    });
+
+    // If character is thrusting (has active navigation), add thrust force
+    if (character.navigation.isInTransit && character.navigation.destination) {
+      const dest = character.navigation.destination;
+      const direction = new Vector3D(
+        dest.x - character.location.x,
+        dest.y - character.location.y,
+        (dest.z || 0) - (character.location.z || 0)
+      );
+
+      const thrustForce = physics.calculateThrust(ship, direction, 1.0);
+      forces.push(thrustForce);
+    }
+
+    // Update physics
+    const updated = physics.update(ship, forces);
+
+    // Save to database
+    await this.updateLocation(characterId, {
+      x: updated.position.x,
+      y: updated.position.y,
+      z: updated.position.z,
+      vx: updated.velocity.x,
+      vy: updated.velocity.y,
+      vz: updated.velocity.z
+    });
+
+    return updated;
+  }
+
+  /**
+   * Set character in orbit around a celestial body
+   *
+   * @param {String} characterId - Character ID
+   * @param {Object} centralBody - Body to orbit {position: {x,y,z}, mass}
+   * @param {Number} radius - Orbit radius
+   * @param {Number} inclination - Orbit inclination (radians, default 0)
+   * @returns {Object} - New orbital position and velocity
+   */
+  static async setOrbit(characterId, centralBody, radius, inclination = 0) {
+    const character = await this.findById(characterId);
+    if (!character) return null;
+
+    const physics = new Physics3D();
+
+    const orbitingBody = {
+      position: {
+        x: character.location.x,
+        y: character.location.y,
+        z: character.location.z || 0
+      }
+    };
+
+    const orbit = physics.setCircularOrbit(orbitingBody, centralBody, radius, inclination);
+
+    // Update character location
+    await this.updateLocation(characterId, {
+      x: orbit.position.x,
+      y: orbit.position.y,
+      z: orbit.position.z,
+      vx: orbit.velocity.x,
+      vy: orbit.velocity.y,
+      vz: orbit.velocity.z
+    });
+
+    return orbit;
+  }
+
+  /**
+   * Stop all movement (kill velocity)
+   *
+   * @param {String} characterId - Character ID
+   * @returns {Boolean} - Success
+   */
+  static async stopMovement(characterId) {
+    return await this.updateLocation(characterId, {
+      vx: 0,
+      vy: 0,
+      vz: 0
+    });
   }
 }
 

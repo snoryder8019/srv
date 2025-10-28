@@ -126,6 +126,12 @@ The v0.4 "Foundation Arc" update establishes the core systems for the Stringborn
 - **Incomplete Features**: Some UI elements are placeholders for upcoming functionality
 
 ### In Development
+- **Planetary Exploration System**: Complete overhaul in progress (v0.4.1)
+  - Sprite-based rendering system with atlas support
+  - Procedural terrain generation (DB-efficient, no chunk storage)
+  - Object placement system (spaceships, buildings, resources)
+  - Linode Object Storage integration for assets
+  - Player modification tracking instead of full chunk storage
 - **Zone Exploration**: Zone entry and discovery mechanics planned for v0.5
 - **Combat System**: Attack, defense, and skill mechanics in design phase
 - **Economy**: Trading, markets, and currency systems coming soon
@@ -175,7 +181,18 @@ The v0.4 "Foundation Arc" update establishes the core systems for the Stringborn
 
 ## Next Steps
 
+### v0.4.1 Update (In Progress)
+- **Planetary System Overhaul**:
+  - Sprite atlas rendering (5x5 grid, 80x80px tiles)
+  - Linode Object Storage for asset delivery
+  - Procedural-only terrain (no chunk storage)
+  - Player-placed objects (spaceships, buildings, defenses)
+  - Asset builder UI for sprite pack creation
+
 ### v0.5 Roadmap Preview
+- **NPC & Enemy System**: Biome-based spawns, AI behavior, combat
+- **Resource Collection & Mining**: Harvest materials, craft items
+- **Quest System**: Dynamic missions and objectives
 - **Zone Exploration**: Enter and discover unique environments
 - **Combat System**: PvE and PvP combat mechanics
 - **Enhanced Social**: Guilds, parties, and messaging

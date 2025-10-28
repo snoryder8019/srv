@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sprite Atlas Creator - Stringborn Universe</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    .sprite-creator-container {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background: rgba(20, 20, 40, 0.95);
+      border-radius: 12px;
+      border: 2px solid #8a4fff;
+    }
+
+    .creator-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .creator-header h1 {
+      color: #8a4fff;
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .creator-header p {
+      color: #aaa;
+      font-size: 1.1rem;
+    }
+
+    .creator-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .creator-section {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1.5rem;
+      border-radius: 8px;
+      border: 1px solid #444;
+    }
+
+    .creator-section h2 {
+      color: #8a4fff;
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid #8a4fff;
+      padding-bottom: 0.5rem;
+    }
+
+    .canvas-container {
+      position: relative;
+      width: 400px;
+      height: 400px;
+      margin: 1rem auto;
+      border: 2px solid #8a4fff;
+      background: #000;
+      cursor: crosshair;
+    }
+
+    #spriteCanvas {
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .grid-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      color: #8a4fff;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 1rem;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .tile-item {
+      background: rgba(0, 0, 0, 0.5);
+      border: 2px solid #444;
+      padding: 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .tile-item:hover {
+      border-color: #8a4fff;
+      background: rgba(138, 79, 255, 0.1);
+    }
+
+    .tile-item.selected {
+      border-color: #00ff88;
+      background: rgba(0, 255, 136, 0.2);
+    }
+
+    .tile-item .tile-index {
+      color: #8a4fff;
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+
+    .tile-item .tile-category {
+      color: #aaa;
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+    }
+
+    .file-upload-zone {
+      border: 2px dashed #8a4fff;
+      padding: 2rem;
+      text-align: center;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 1rem;
+    }
+
+    .file-upload-zone:hover {
+      background: rgba(138, 79, 255, 0.1);
+      border-color: #00ff88;
+    }
+
+    .file-upload-zone.dragover {
+      background: rgba(0, 255, 136, 0.2);
+      border-color: #00ff88;
+    }
+
+    .upload-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .btn {
+      padding: 0.75rem 2rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #8a4fff 0%, #00ff88 100%);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(138, 79, 255, 0.5);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 1px solid #444;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 2rem;
+    }
+
+    .alert {
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    .alert.success {
+      background: rgba(0, 255, 136, 0.2);
+      border: 1px solid #00ff88;
+      color: #00ff88;
+    }
+
+    .alert.error {
+      background: rgba(255, 79, 79, 0.2);
+      border: 1px solid #ff4f4f;
+      color: #ff4f4f;
+    }
+
+    .spec-info {
+      background: rgba(138, 79, 255, 0.1);
+      border: 1px solid #8a4fff;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+
+    .spec-info h3 {
+      color: #8a4fff;
+      margin-bottom: 0.5rem;
+    }
+
+    .spec-info ul {
+      color: #aaa;
+      padding-left: 1.5rem;
+    }
+
+    .spec-info li {
+      margin-bottom: 0.25rem;
+    }
+
+    .planet-type-selector {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+
+    .planet-type-card {
+      background: rgba(0, 0, 0, 0.5);
+      border: 2px solid #444;
+      padding: 1rem;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .planet-type-card:hover {
+      border-color: #8a4fff;
+      transform: translateY(-2px);
+    }
+
+    .planet-type-card.selected {
+      border-color: #00ff88;
+      background: rgba(0, 255, 136, 0.1);
+    }
+
+    .planet-type-card .type-icon {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .planet-type-card .type-name {
+      color: #fff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <div class="sprite-creator-container">
+    <div class="creator-header">
+      <h1>🎨 Sprite Atlas Creator</h1>
+      <p>Create custom sprite packs for planetary environments</p>
+    </div>
+
+    <div class="alert success" id="successAlert"></div>
+    <div class="alert error" id="errorAlert"></div>
+
+    <div class="creator-grid">
+      <!-- Left Column: Canvas & Upload -->
+      <div class="creator-section">
+        <h2>1. Upload Sprite Atlas</h2>
+
+        <div class="spec-info">
+          <h3>Specifications:</h3>
+          <ul>
+            <li>Size: 80×80 pixels (5×5 grid)</li>
+            <li>Format: PNG with transparency</li>
+            <li>Tile Size: 16×16 pixels each</li>
+            <li>Max File Size: 50KB</li>
+          </ul>
+        </div>
+
+        <div class="file-upload-zone" id="uploadZone">
+          <div class="upload-icon">📤</div>
+          <p>Drag & drop your 80×80 PNG here</p>
+          <p style="color: #aaa; font-size: 0.9rem;">or click to browse</p>
+          <input type="file" id="fileInput" accept="image/png" style="display: none;">
+        </div>
+
+        <div class="canvas-container">
+          <canvas id="spriteCanvas" width="80" height="80"></canvas>
+          <canvas class="grid-overlay" id="gridCanvas" width="400" height="400"></canvas>
+        </div>
+
+        <button class="btn btn-secondary" onclick="clearCanvas()" style="width: 100%;">Clear Canvas</button>
+      </div>
+
+      <!-- Right Column: Metadata & Configuration -->
+      <div class="creator-section">
+        <h2>2. Configure Atlas</h2>
+
+        <form id="atlasForm">
+          <div class="form-group">
+            <label for="atlasName">Atlas Name *</label>
+            <input type="text" id="atlasName" placeholder="e.g., Forest Terrain Pack" required>
+          </div>
+
+          <div class="form-group">
+            <label>Planet Type / Biome *</label>
+            <div class="planet-type-selector" id="planetTypeSelector">
+              <!-- Planet types will be generated here -->
+            </div>
+            <input type="hidden" id="selectedPlanetType" required>
+          </div>
+
+          <div class="form-group">
+            <label for="packType">Pack Type *</label>
+            <select id="packType" required>
+              <option value="terrain">Terrain Pack</option>
+              <option value="monsters">Monster Pack</option>
+              <option value="npcs">NPC Pack</option>
+              <option value="buildings">Building Pack</option>
+              <option value="dungeon">Dungeon Pack</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" placeholder="Describe your sprite pack..."></textarea>
+          </div>
+
+          <h3 style="color: #8a4fff; margin-top: 2rem;">3. Tile Categories</h3>
+          <p style="color: #aaa; margin-bottom: 1rem;">Click tiles to assign categories (follows 5×5 grid rules)</p>
+
+          <div class="tile-grid" id="tileGrid">
+            <!-- Tiles will be generated here -->
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button class="btn btn-secondary" onclick="window.history.back()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAtlas()">🚀 Upload Sprite Atlas</button>
+    </div>
+  </div>
+
+  <script src="/javascripts/sprite-loader.js"></script>
+  <script>
+    const canvas = document.getElementById('spriteCanvas');
+    const ctx = canvas.getContext('2d');
+    const gridCanvas = document.getElementById('gridCanvas');
+    const gridCtx = gridCanvas.getContext('2d');
+
+    let uploadedImage = null;
+    let tileManifest = [];
+
+    // Planet types from existing system
+    const PLANET_TYPES = [
+      { type: 'forest', name: 'Forest', icon: '🌲', biome: 'temperate' },
+      { type: 'desert', name: 'Desert', icon: '🏜️', biome: 'desert' },
+      { type: 'ocean', name: 'Ocean', icon: '🌊', biome: 'ocean' },
+      { type: 'volcanic', name: 'Volcanic', icon: '🌋', biome: 'volcanic' },
+      { type: 'ice', name: 'Ice', icon: '❄️', biome: 'frozen' },
+      { type: 'grassland', name: 'Grassland', icon: '🌾', biome: 'grassland' },
+      { type: 'tundra', name: 'Tundra', icon: '🏔️', biome: 'tundra' },
+      { type: 'swamp', name: 'Swamp', icon: '🐊', biome: 'swamp' },
+    ];
+
+    // Tile categories by row (as per spec)
+    const ROW_CATEGORIES = [
+      'Ground Texture',
+      'Environment Object',
+      'Monster/NPC Animation',
+      'Aerial Effect',
+      'Custom/Reserved'
+    ];
+
+    // Initialize
+    function init() {
+      drawGrid();
+      generatePlanetTypes();
+      generateTileGrid();
+      setupUploadZone();
+    }
+
+    // Draw 5×5 grid overlay
+    function drawGrid() {
+      gridCtx.clearRect(0, 0, 400, 400);
+      gridCtx.strokeStyle = '#8a4fff';
+      gridCtx.lineWidth = 1;
+
+      for (let i = 0; i <= 5; i++) {
+        // Vertical lines
+        gridCtx.beginPath();
+        gridCtx.moveTo(i * 80, 0);
+        gridCtx.lineTo(i * 80, 400);
+        gridCtx.stroke();
+
+        // Horizontal lines
+        gridCtx.beginPath();
+        gridCtx.moveTo(0, i * 80);
+        gridCtx.lineTo(400, i * 80);
+        gridCtx.stroke();
+      }
+    }
+
+    // Generate planet type cards
+    function generatePlanetTypes() {
+      const container = document.getElementById('planetTypeSelector');
+      container.innerHTML = PLANET_TYPES.map(type => `
+        <div class="planet-type-card" onclick="selectPlanetType('${type.type}')">
+          <div class="type-icon">${type.icon}</div>
+          <div class="type-name">${type.name}</div>
+        </div>
+      `).join('');
+    }
+
+    // Select planet type
+    function selectPlanetType(type) {
+      document.querySelectorAll('.planet-type-card').forEach(card => card.classList.remove('selected'));
+      event.target.closest('.planet-type-card').classList.add('selected');
+      document.getElementById('selectedPlanetType').value = type;
+    }
+
+    // Generate tile grid
+    function generateTileGrid() {
+      const container = document.getElementById('tileGrid');
+      tileManifest = [];
+
+      for (let i = 0; i < 25; i++) {
+        const row = Math.floor(i / 5);
+        const col = i % 5;
+        const category = ROW_CATEGORIES[row];
+
+        tileManifest.push({
+          index: i,
+          row,
+          col,
+          name: `tile_${i}`,
+          category: category.toLowerCase().replace(/\s+/g, '_'),
+          tags: [],
+        });
+
+        const tileDiv = document.createElement('div');
+        tileDiv.className = 'tile-item';
+        tileDiv.innerHTML = `
+          <div class="tile-index">Tile ${i}</div>
+          <div class="tile-category">${category}</div>
+        `;
+        tileDiv.onclick = () => editTile(i);
+        container.appendChild(tileDiv);
+      }
+    }
+
+    // Setup upload zone
+    function setupUploadZone() {
+      const zone = document.getElementById('uploadZone');
+      const fileInput = document.getElementById('fileInput');
+
+      zone.onclick = () => fileInput.click();
+
+      fileInput.onchange = (e) => {
+        if (e.target.files.length > 0) {
+          handleFileUpload(e.target.files[0]);
+        }
+      };
+
+      zone.ondragover = (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+      };
+
+      zone.ondragleave = () => {
+        zone.classList.remove('dragover');
+      };
+
+      zone.ondrop = (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+          handleFileUpload(e.dataTransfer.files[0]);
+        }
+      };
+    }
+
+    // Handle file upload
+    function handleFileUpload(file) {
+      if (!file.type.startsWith('image/png')) {
+        showError('Only PNG files are allowed');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          if (img.width !== 80 || img.height !== 80) {
+            showError('Image must be exactly 80×80 pixels');
+            return;
+          }
+
+          uploadedImage = img;
+          ctx.clearRect(0, 0, 80, 80);
+          ctx.drawImage(img, 0, 0);
+          showSuccess('Image loaded successfully!');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Edit tile (simple name prompt for now)
+    function editTile(index) {
+      const tile = tileManifest[index];
+      const newName = prompt(`Name for Tile ${index}:`, tile.name);
+      if (newName) {
+        tile.name = newName;
+      }
+    }
+
+    // Clear canvas
+    function clearCanvas() {
+      ctx.clearRect(0, 0, 80, 80);
+      uploadedImage = null;
+    }
+
+    // Submit atlas
+    async function submitAtlas() {
+      if (!uploadedImage) {
+        showError('Please upload a sprite atlas image');
+        return;
+      }
+
+      const name = document.getElementById('atlasName').value;
+      const planetType = document.getElementById('selectedPlanetType').value;
+      const packType = document.getElementById('packType').value;
+      const description = document.getElementById('description').value;
+
+      if (!name || !planetType) {
+        showError('Please fill in all required fields');
+        return;
+      }
+
+      // Convert canvas to blob
+      canvas.toBlob(async (blob) => {
+        const formData = new FormData();
+        formData.append('atlasImage', blob, 'atlas.png');
+        formData.append('manifest', JSON.stringify({
+          name,
+          planetType,
+          packType,
+          description,
+          tiles: tileManifest,
+        }));
+
+        try {
+          const response = await fetch('/api/v1/sprite-atlases', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            showSuccess('Sprite atlas uploaded successfully! Redirecting...');
+            setTimeout(() => {
+              window.location.href = '/universe/galactic-map';
+            }, 2000);
+          } else {
+            showError(data.error || 'Failed to upload atlas');
+          }
+        } catch (error) {
+          showError('Network error: ' + error.message);
+        }
+      }, 'image/png');
+    }
+
+    // Show alerts
+    function showSuccess(message) {
+      const alert = document.getElementById('successAlert');
+      alert.textContent = message;
+      alert.style.display = 'block';
+      setTimeout(() => alert.style.display = 'none', 5000);
+    }
+
+    function showError(message) {
+      const alert = document.getElementById('errorAlert');
+      alert.textContent = message;
+      alert.style.display = 'block';
+      setTimeout(() => alert.style.display = 'none', 5000);
+    }
+
+    // Initialize on load
+    init();
+  </script>
+</body>
+</html>

@@ -19,6 +19,115 @@
     .sync-connected { background: #4ade80 !important; border-color: #4ade80 !important; }
     .sync-error { background: #ef4444 !important; border-color: #ef4444 !important; box-shadow: 0 0 8px #ef4444 !important; }
     .sync-warning { background: #f59e0b !important; border-color: #f59e0b !important; box-shadow: 0 0 8px #f59e0b !important; }
+
+    .view-toggle-btn:hover {
+      background: rgba(138, 79, 255, 1) !important;
+      box-shadow: 0 0 20px rgba(138, 79, 255, 0.8) !important;
+      transform: translateX(-50%) scale(1.05) !important;
+    }
+
+    /* Critical Info Pane Styles - Inline to ensure they always load */
+    #infoPaneBackdrop.visible {
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+
+    #infoPane.visible,
+    .side-panel.visible {
+      right: 10px !important;
+      transform: scale(1) !important;
+      border-color: rgba(138, 79, 255, 0.6) !important;
+      box-shadow: -5px 0 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(138, 79, 255, 0.3), 0 0 60px rgba(138, 79, 255, 0.5) !important;
+    }
+
+    /* Button styles within info pane */
+    #infoPane button,
+    #infoPane .travel-btn,
+    #assetInfo button {
+      font-family: 'Orbitron', monospace !important;
+      background: linear-gradient(135deg, rgba(138, 79, 255, 0.2), rgba(74, 158, 255, 0.2)) !important;
+      border: 1px solid rgba(138, 79, 255, 0.4) !important;
+      color: #8a4fff !important;
+      padding: 10px 15px !important;
+      border-radius: 6px !important;
+      cursor: pointer !important;
+      transition: all 0.3s ease !important;
+      font-size: 0.9em !important;
+      width: 100% !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+    }
+
+    #infoPane button:hover,
+    #infoPane .travel-btn:hover,
+    #assetInfo button:hover {
+      background: linear-gradient(135deg, rgba(138, 79, 255, 0.3), rgba(74, 158, 255, 0.3)) !important;
+      border-color: #8a4fff !important;
+      box-shadow: 0 0 15px rgba(138, 79, 255, 0.4) !important;
+      transform: translateY(-1px) !important;
+    }
+
+    #infoPane .explore-btn {
+      background: linear-gradient(135deg, rgba(0, 255, 159, 0.2), rgba(0, 200, 130, 0.2)) !important;
+      border-color: rgba(0, 255, 159, 0.4) !important;
+      color: #00ff9f !important;
+    }
+
+    #infoPane .explore-btn:hover {
+      background: linear-gradient(135deg, rgba(0, 255, 159, 0.3), rgba(0, 200, 130, 0.3)) !important;
+      border-color: #00ff9f !important;
+      box-shadow: 0 0 15px rgba(0, 255, 159, 0.4) !important;
+    }
+
+    #infoPane .panel-close-btn {
+      width: 32px !important;
+      height: 32px !important;
+      padding: 0 !important;
+      border-radius: 50% !important;
+    }
+
+    #infoPane .panel-close-btn:hover {
+      background: rgba(138, 79, 255, 0.3) !important;
+      transform: scale(1.1) !important;
+    }
+
+    /* Text styling in info pane */
+    #assetInfo h2,
+    #assetInfo h3,
+    #assetInfo h4 {
+      color: #8a4fff !important;
+      font-family: 'Orbitron', monospace !important;
+    }
+
+    #assetInfo p,
+    #assetInfo span,
+    #assetInfo div {
+      color: #e0e0ff !important;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      #infoPane.visible,
+      .side-panel.visible {
+        bottom: 0 !important;
+        right: auto !important;
+        left: 0 !important;
+        width: 100vw !important;
+        top: auto !important;
+      }
+
+      #infoPane,
+      .side-panel {
+        top: auto !important;
+        right: auto !important;
+        left: 0 !important;
+        bottom: -100% !important;
+        width: 100vw !important;
+        max-height: 60vh !important;
+        border-radius: 12px 12px 0 0 !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -35,6 +144,11 @@
       <h1 class="project-title">Project Stringborne</h1>
       <div class="project-subtitle">Galactic Map</div>
     </div>
+
+    <!-- 3D View Toggle -->
+    <a href="/universe/galactic-map-3d" class="view-toggle-btn" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 20px; padding: 10px 20px; color: #ffffff; font-size: 14px; cursor: pointer; z-index: 100; transition: all 0.3s; text-decoration: none; backdrop-filter: blur(10px);">
+      Switch to 3D View →
+    </a>
 
     <!-- Sync Indicator moved inside Tester Debug Panel -->
 
@@ -267,11 +381,14 @@
       </div>
     </div>
 
+    <!-- Info Pane Backdrop (dimmed overlay) -->
+    <div id="infoPaneBackdrop" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 9998; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;"></div>
+
     <!-- Side Panel - Info Pane (Hidden by default, shows on asset click) -->
-    <div class="side-panel" id="infoPane">
-      <button class="panel-close-btn" onclick="document.getElementById('infoPane').classList.remove('visible')">✕</button>
-      <div class="panel-section">
-        <div id="assetInfo"></div>
+    <div class="side-panel" id="infoPane" style="position: fixed; top: 60px; right: -340px; width: 320px; max-height: calc(100vh - 70px); background: rgba(10, 10, 26, 0.98); backdrop-filter: blur(20px); border: 2px solid rgba(138, 79, 255, 0); border-radius: 8px; box-shadow: -5px 0 40px rgba(0, 0, 0, 0); z-index: 9999; transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s ease, box-shadow 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; overflow: hidden; transform: scale(0.9);">
+      <button class="panel-close-btn" onclick="window.closeInfoPane()" style="position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; background: rgba(138, 79, 255, 0.2); border: 1px solid rgba(138, 79, 255, 0.4); border-radius: 50%; color: #8a4fff; font-size: 1.2em; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s ease; font-family: 'Orbitron', monospace;">✕</button>
+      <div class="panel-section" style="flex: 1; overflow-y: auto; padding: 12px; padding-top: 40px; position: relative; z-index: 3;">
+        <div id="assetInfo" style="font-family: 'Orbitron', monospace; color: #e0e0ff;"></div>
       </div>
     </div>
   </div>
@@ -659,6 +776,7 @@
       // Close info pane when clicking/touching outside
       const closeInfoPaneOutside = (e) => {
         const infoPane = document.getElementById('infoPane');
+        const backdrop = document.getElementById('infoPaneBackdrop');
         const controlsPanel = document.querySelector('.controls-panel');
         const canvas = document.getElementById('galacticMap');
 
@@ -675,12 +793,19 @@
         if (canvas && e.target === canvas) return;
 
         // Close the info pane for clicks outside these areas
-        infoPane.classList.remove('visible');
+        window.closeInfoPane();
       };
 
       // Add both click and touch listeners
       document.addEventListener('click', closeInfoPaneOutside);
       document.addEventListener('touchend', closeInfoPaneOutside);
+
+      // Clicking backdrop closes the info pane
+      const backdrop = document.getElementById('infoPaneBackdrop');
+      if (backdrop) {
+        backdrop.addEventListener('click', () => window.closeInfoPane());
+        backdrop.addEventListener('touchend', () => window.closeInfoPane());
+      }
     });
 
     /**
@@ -1185,16 +1310,48 @@
     <% } %>
 
     /**
+     * Close info pane helper function
+     */
+    window.closeInfoPane = function() {
+      const infoPane = document.getElementById('infoPane');
+      const backdrop = document.getElementById('infoPaneBackdrop');
+
+      // Remove visible class
+      infoPane.classList.remove('visible');
+      backdrop.classList.remove('visible');
+
+      // Apply inline styles for hiding (fallback if CSS doesn't work)
+      infoPane.style.right = '-340px';
+      infoPane.style.transform = 'scale(0.9)';
+      infoPane.style.borderColor = 'rgba(138, 79, 255, 0)';
+      infoPane.style.boxShadow = '-5px 0 40px rgba(0, 0, 0, 0)';
+
+      backdrop.style.opacity = '0';
+      backdrop.style.pointerEvents = 'none';
+    };
+
+    /**
      * Display asset info in hovering pane
      */
     window.displayAssetInfo = function(asset) {
       console.log('Displaying asset info for:', asset.title);
 
       const infoPane = document.getElementById('infoPane');
+      const backdrop = document.getElementById('infoPaneBackdrop');
       const info = document.getElementById('assetInfo');
 
-      // Show the pane
+      // Show the pane and backdrop with class
       infoPane.classList.add('visible');
+      backdrop.classList.add('visible');
+
+      // Apply inline styles for visibility (fallback if CSS doesn't work)
+      infoPane.style.right = '10px';
+      infoPane.style.transform = 'scale(1)';
+      infoPane.style.borderColor = 'rgba(138, 79, 255, 0.6)';
+      infoPane.style.boxShadow = '-5px 0 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(138, 79, 255, 0.3), 0 0 60px rgba(138, 79, 255, 0.5)';
+
+      backdrop.style.opacity = '1';
+      backdrop.style.pointerEvents = 'auto';
 
       // Get icon based on asset type
       let icon = '🌌';
