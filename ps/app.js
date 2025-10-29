@@ -15,6 +15,7 @@ import indexRouter from './routes/index.js';
 import apiRouter from './api/index.js';
 import { connectDB } from './plugins/mongo/mongo.js';
 import { loadActiveCharacter } from './middlewares/characterSession.js';
+import { initializeCronJobs } from './plugins/cron/index.js';
 
 const app = express();
 
@@ -37,7 +38,10 @@ app.use(
     saveUninitialized: false,
     store: MongoStore.create({
       mongoUrl: process.env.DB_URL,
-      collectionName: 'sessions'
+      collectionName: 'sessions',
+      touchAfter: 3600, // Only update session once per hour (reduces writes by ~95%)
+      ttl: 7 * 24 * 60 * 60, // 7 days - matches cookie maxAge
+      autoRemove: 'native' // Use MongoDB TTL index for automatic cleanup
     }),
     cookie: {
       secure: process.env.NODE_ENV === 'production',
@@ -57,6 +61,9 @@ app.use(loadActiveCharacter);
 
 // Connect to database
 connectDB();
+
+// Initialize cron jobs
+initializeCronJobs();
 
 // Middleware
 app.use(logger('dev'));

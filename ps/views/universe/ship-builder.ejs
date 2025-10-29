@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> - Stringborn Universe</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+
+  <!-- Three.js and extensions -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2a 100%);
+      color: #e0e0ff;
+      font-family: 'Orbitron', monospace;
+      min-height: 100vh;
+    }
+
+    .ship-builder-container {
+      max-width: 1400px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background: rgba(10, 10, 26, 0.95);
+      border-radius: 12px;
+      border: 2px solid #8a4fff;
+      box-shadow: 0 0 40px rgba(138, 79, 255, 0.3);
+    }
+
+    .builder-header {
+      text-align: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 2px solid #8a4fff;
+    }
+
+    .builder-header h1 {
+      color: #8a4fff;
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+      text-shadow: 0 0 20px rgba(138, 79, 255, 0.5);
+    }
+
+    .builder-header p {
+      color: #aaa;
+      font-size: 1.1rem;
+      font-family: 'Courier New', monospace;
+    }
+
+    .builder-grid {
+      display: grid;
+      grid-template-columns: 350px 1fr 350px;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .builder-panel {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 1.5rem;
+      border-radius: 8px;
+      border: 1px solid #444;
+      backdrop-filter: blur(10px);
+    }
+
+    .builder-panel h2 {
+      color: #00d4ff;
+      font-size: 1.3rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid #00d4ff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .builder-panel h3 {
+      color: #8a4fff;
+      font-size: 1.1rem;
+      margin: 1.5rem 0 0.75rem 0;
+      font-weight: bold;
+    }
+
+    /* Component Selection */
+    .component-category {
+      margin-bottom: 1.5rem;
+    }
+
+    .component-category h3 {
+      color: #ffaa00;
+      font-size: 1rem;
+      margin-bottom: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .component-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .component-item {
+      background: rgba(0, 212, 255, 0.1);
+      border: 1px solid rgba(0, 212, 255, 0.3);
+      border-radius: 6px;
+      padding: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+    }
+
+    .component-item:hover {
+      background: rgba(0, 212, 255, 0.2);
+      border-color: #00d4ff;
+      transform: translateX(5px);
+    }
+
+    .component-item.selected {
+      background: rgba(138, 79, 255, 0.3);
+      border-color: #8a4fff;
+      box-shadow: 0 0 15px rgba(138, 79, 255, 0.4);
+    }
+
+    .component-item .name {
+      color: #00ffaa;
+      font-weight: bold;
+      margin-bottom: 0.25rem;
+    }
+
+    .component-item .stats {
+      color: #aaa;
+      font-size: 0.8rem;
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .component-item .stat {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    /* Canvas Preview */
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      margin: 1rem 0;
+      border: 2px solid #8a4fff;
+      background: #0a0a1a;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    #shipCanvas3D {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #pixelCanvas {
+      display: none;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .canvas-controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .canvas-btn {
+      flex: 1;
+      min-width: 100px;
+      background: rgba(138, 79, 255, 0.2);
+      border: 1px solid #8a4fff;
+      color: #8a4fff;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+
+    .canvas-btn:hover {
+      background: rgba(138, 79, 255, 0.4);
+      box-shadow: 0 0 10px rgba(138, 79, 255, 0.4);
+    }
+
+    .canvas-btn.active {
+      background: rgba(138, 79, 255, 0.6);
+      border-color: #8a4fff;
+    }
+
+    /* Ship Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .stat-box {
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 1rem;
+    }
+
+    .stat-box .label {
+      color: #00ffaa;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+      font-family: 'Courier New', monospace;
+    }
+
+    .stat-box .value {
+      color: #fff;
+      font-size: 1.5rem;
+      font-weight: bold;
+      font-family: 'Orbitron', monospace;
+    }
+
+    .stat-box .unit {
+      color: #aaa;
+      font-size: 0.9rem;
+      margin-left: 0.3rem;
+    }
+
+    .stat-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .stat-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00ff00, #ffaa00, #ff0000);
+      transition: width 0.3s;
+    }
+
+    /* Form Elements */
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      color: #8a4fff;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #e0e0ff;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #8a4fff;
+      box-shadow: 0 0 10px rgba(138, 79, 255, 0.3);
+    }
+
+    /* Color Palette */
+    .color-palette {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .color-swatch {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .color-swatch:hover {
+      transform: scale(1.1);
+      border-color: #fff;
+    }
+
+    .color-swatch.selected {
+      border-color: #8a4fff;
+      box-shadow: 0 0 10px rgba(138, 79, 255, 0.6);
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+      display: flex;
+      gap: 1rem;
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 2px solid #444;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 1rem 2rem;
+      border-radius: 8px;
+      font-family: 'Orbitron', monospace;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: 2px solid;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, rgba(138, 79, 255, 0.3), rgba(74, 158, 255, 0.3));
+      border-color: #8a4fff;
+      color: #8a4fff;
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, rgba(138, 79, 255, 0.5), rgba(74, 158, 255, 0.5));
+      box-shadow: 0 0 20px rgba(138, 79, 255, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, rgba(0, 255, 170, 0.3), rgba(0, 200, 130, 0.3));
+      border-color: #00ffaa;
+      color: #00ffaa;
+    }
+
+    .btn-success:hover {
+      background: linear-gradient(135deg, rgba(0, 255, 170, 0.5), rgba(0, 200, 130, 0.5));
+      box-shadow: 0 0 20px rgba(0, 255, 170, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      background: rgba(100, 100, 120, 0.2);
+      border-color: #666;
+      color: #aaa;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(100, 100, 120, 0.4);
+      border-color: #888;
+      color: #fff;
+    }
+
+    /* Responsive */
+    @media (max-width: 1200px) {
+      .builder-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .ship-builder-container {
+        padding: 1rem;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .action-buttons {
+        flex-direction: column;
+      }
+    }
+
+    /* Loading Animation */
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #8a4fff;
+      font-size: 1.2rem;
+    }
+
+    .loading::after {
+      content: '...';
+      animation: dots 1.5s infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60%, 100% { content: '...'; }
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="ship-builder-container">
+    <div class="builder-header">
+      <h1>🚀 Universal Ship Builder</h1>
+      <p>Design your custom starship with modular components and visual editing</p>
+    </div>
+
+    <div class="builder-grid">
+      <!-- Left Panel: Components -->
+      <div class="builder-panel">
+        <h2>⚙️ Components</h2>
+
+        <!-- Hull Selection -->
+        <div class="component-category">
+          <h3>Hull Class</h3>
+          <div class="component-list" id="hullList">
+            <div class="component-item" data-component="hull" data-id="fighter">
+              <div class="name">Fighter</div>
+              <div class="stats">
+                <span class="stat">HP: 100</span>
+                <span class="stat">Mass: 50t</span>
+              </div>
+            </div>
+            <div class="component-item" data-component="hull" data-id="corvette">
+              <div class="name">Corvette</div>
+              <div class="stats">
+                <span class="stat">HP: 250</span>
+                <span class="stat">Mass: 150t</span>
+              </div>
+            </div>
+            <div class="component-item" data-component="hull" data-id="frigate">
+              <div class="name">Frigate</div>
+              <div class="stats">
+                <span class="stat">HP: 500</span>
+                <span class="stat">Mass: 400t</span>
+              </div>
+            </div>
+            <div class="component-item" data-component="hull" data-id="cruiser">
+              <div class="name">Cruiser</div>
+              <div class="stats">
+                <span class="stat">HP: 1000</span>
+                <span class="stat">Mass: 800t</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Engine Selection -->
+        <div class="component-category">
+          <h3>Engine Type</h3>
+          <div class="component-list" id="engineList">
+            <div class="component-item" data-component="engine" data-id="ion">
+              <div class="name">Ion Drive</div>
+              <div class="stats">
+                <span class="stat">Thrust: 50</span>
+                <span class="stat">Eff: 90%</span>
+              </div>
+            </div>
+            <div class="component-item" data-component="engine" data-id="plasma">
+              <div class="name">Plasma Drive</div>
+              <div class="stats">
+                <span class="stat">Thrust: 120</span>
+                <span class="stat">Eff: 75%</span>
+              </div>
+            </div>
+            <div class="component-item" data-component="engine" data-id="antimatter">
+              <div class="name">Antimatter Drive</div>
+              <div class="stats">
+                <span class="stat">Thrust: 200</span>
+                <span class="stat">Eff: 60%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Weapons Selection -->
+        <div class="component-category">
+          <h3>Weapon Systems</h3>
+          <div class="component-list" id="weaponsList">
+            <div class="component-item" data-component="weapon" data-id="laser">
+              <div class="name">Laser Cannon</div>
+              <div class="stats">
+                <span class="stat">DMG: 25</span>
+                <span class="stat">RoF: 5/s</span>
+              </div>
+            </div>
+            <div class="component-item" data-component="weapon" data-id="railgun">
+              <div class="name">Railgun</div>
+              <div class="stats">
+                <span class="stat">DMG: 100</span>
+                <span class="stat">RoF: 1/s</span>
+              </div>
+            </div>
+            <div class="component-item" data-component="weapon" data-id="missiles">
+              <div class="name">Missile Launcher</div>
+              <div class="stats">
+                <span class="stat">DMG: 150</span>
+                <span class="stat">Ammo: 20</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Panel: Visual Editor -->
+      <div class="builder-panel">
+        <h2>🎨 Visual Design</h2>
+
+        <div class="canvas-container">
+          <div id="shipCanvas3D"></div>
+          <canvas id="pixelCanvas" width="512" height="512"></canvas>
+        </div>
+
+        <div class="canvas-controls">
+          <button class="canvas-btn active" id="view3DBtn">🔮 3D View</button>
+          <button class="canvas-btn" id="viewPixelBtn">🎨 Pixel Art</button>
+          <button class="canvas-btn" id="autoRotateBtn">⟲ Auto Rotate</button>
+          <button class="canvas-btn" id="resetViewBtn">⌖ Reset View</button>
+        </div>
+
+        <!-- Color Palette -->
+        <div class="form-group">
+          <label>Color Palette</label>
+          <div class="color-palette" id="colorPalette">
+            <div class="color-swatch selected" style="background: #ffffff;" data-color="#ffffff"></div>
+            <div class="color-swatch" style="background: #aaaaaa;" data-color="#aaaaaa"></div>
+            <div class="color-swatch" style="background: #555555;" data-color="#555555"></div>
+            <div class="color-swatch" style="background: #000000;" data-color="#000000"></div>
+            <div class="color-swatch" style="background: #ff0000;" data-color="#ff0000"></div>
+            <div class="color-swatch" style="background: #00ff00;" data-color="#00ff00"></div>
+            <div class="color-swatch" style="background: #0000ff;" data-color="#0000ff"></div>
+            <div class="color-swatch" style="background: #ffff00;" data-color="#ffff00"></div>
+            <div class="color-swatch" style="background: #ff00ff;" data-color="#ff00ff"></div>
+            <div class="color-swatch" style="background: #00ffff;" data-color="#00ffff"></div>
+            <div class="color-swatch" style="background: #ff8800;" data-color="#ff8800"></div>
+            <div class="color-swatch" style="background: #8800ff;" data-color="#8800ff"></div>
+            <div class="color-swatch" style="background: #00ff88;" data-color="#00ff88"></div>
+            <div class="color-swatch" style="background: #ff0088;" data-color="#ff0088"></div>
+            <div class="color-swatch" style="background: #88ff00;" data-color="#88ff00"></div>
+            <div class="color-swatch" style="background: #0088ff;" data-color="#0088ff"></div>
+          </div>
+        </div>
+
+        <!-- Ship Metadata -->
+        <div class="form-group">
+          <label>Ship Name</label>
+          <input type="text" id="shipName" placeholder="Enter ship name..." value="Unnamed Vessel">
+        </div>
+
+        <div class="form-group">
+          <label>Ship Class</label>
+          <select id="shipClass">
+            <option value="fighter">Fighter</option>
+            <option value="interceptor">Interceptor</option>
+            <option value="bomber">Bomber</option>
+            <option value="corvette">Corvette</option>
+            <option value="frigate">Frigate</option>
+            <option value="destroyer">Destroyer</option>
+            <option value="cruiser">Cruiser</option>
+            <option value="battleship">Battleship</option>
+            <option value="carrier">Carrier</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="shipDescription" rows="3" placeholder="Describe your ship..."></textarea>
+        </div>
+      </div>
+
+      <!-- Right Panel: Stats & Actions -->
+      <div class="builder-panel">
+        <h2>📊 Ship Statistics</h2>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="label">Hull Points</div>
+            <div class="value" id="statHP">0</div>
+            <div class="stat-bar">
+              <div class="stat-bar-fill" id="statHPBar" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="stat-box">
+            <div class="label">Shield Strength</div>
+            <div class="value" id="statShield">0</div>
+            <div class="stat-bar">
+              <div class="stat-bar-fill" id="statShieldBar" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="stat-box">
+            <div class="label">Speed</div>
+            <div class="value" id="statSpeed">0<span class="unit">m/s</span></div>
+          </div>
+
+          <div class="stat-box">
+            <div class="label">Maneuverability</div>
+            <div class="value" id="statManeuver">0<span class="unit">°/s</span></div>
+          </div>
+
+          <div class="stat-box">
+            <div class="label">Firepower</div>
+            <div class="value" id="statFirepower">0<span class="unit">DPS</span></div>
+          </div>
+
+          <div class="stat-box">
+            <div class="label">Mass</div>
+            <div class="value" id="statMass">0<span class="unit">t</span></div>
+          </div>
+
+          <div class="stat-box">
+            <div class="label">Power Output</div>
+            <div class="value" id="statPower">0<span class="unit">MW</span></div>
+          </div>
+
+          <div class="stat-box">
+            <div class="label">Crew Required</div>
+            <div class="value" id="statCrew">0</div>
+          </div>
+        </div>
+
+        <h3>Component Loadout</h3>
+        <div id="componentSummary" style="background: rgba(0,0,0,0.5); padding: 1rem; border-radius: 6px; margin-top: 0.5rem; font-family: 'Courier New', monospace; font-size: 0.9rem; color: #00ffaa;">
+          <div style="margin-bottom: 0.5rem;">HULL: <span id="summaryHull">Not Selected</span></div>
+          <div style="margin-bottom: 0.5rem;">ENGINE: <span id="summaryEngine">Not Selected</span></div>
+          <div>WEAPON: <span id="summaryWeapon">Not Selected</span></div>
+        </div>
+
+        <div class="action-buttons">
+          <button class="btn btn-secondary" id="resetBtn">Reset</button>
+          <button class="btn btn-primary" id="previewBtn">Preview 3D</button>
+          <button class="btn btn-success" id="saveBtn">Save Ship</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/javascripts/ship-builder-3d.js"></script>
+  <script>
+    // Ship Builder Application
+    let shipBuilder3D = null;
+    let pixelCanvas = null;
+    let pixelCtx = null;
+    let currentView = '3d'; // '3d' or 'pixel'
+    let autoRotateEnabled = true;
+
+    const shipBuilder = {
+      canvas: null,
+      ctx: null,
+      currentColor: '#ffffff',
+      rotation: 0,
+      ship: {
+        name: 'Unnamed Vessel',
+        class: 'fighter',
+        description: '',
+        hull: null,
+        engine: null,
+        weapon: null,
+        pixelData: null,
+        stats: {
+          hp: 0,
+          shield: 0,
+          speed: 0,
+          maneuverability: 0,
+          firepower: 0,
+          mass: 0,
+          power: 0,
+          powerUsed: 0,
+          crew: 0
+        }
+      },
+
+      // Component database
+      components: {
+        hulls: {
+          fighter: { hp: 100, mass: 50, shield: 50, crew: 1, power: 20 },
+          corvette: { hp: 250, mass: 150, shield: 100, crew: 5, power: 50 },
+          frigate: { hp: 500, mass: 400, shield: 200, crew: 20, power: 100 },
+          cruiser: { hp: 1000, mass: 800, shield: 400, crew: 50, power: 200 }
+        },
+        engines: {
+          ion: { thrust: 50, efficiency: 0.9, speed: 100, maneuver: 45 },
+          plasma: { thrust: 120, efficiency: 0.75, speed: 180, maneuver: 30 },
+          antimatter: { thrust: 200, efficiency: 0.6, speed: 300, maneuver: 20 }
+        },
+        weapons: {
+          laser: { damage: 25, rof: 5, dps: 125, power: 10 },
+          railgun: { damage: 100, rof: 1, dps: 100, power: 30 },
+          missiles: { damage: 150, rof: 0.5, dps: 75, power: 5 }
+        }
+      },
+
+      async init() {
+        // Initialize 3D builder
+        shipBuilder3D = new ShipBuilder3D('shipCanvas3D');
+
+        // Initialize pixel canvas (for legacy pixel art mode)
+        pixelCanvas = document.getElementById('pixelCanvas');
+        this.canvas = pixelCanvas;
+        this.ctx = pixelCanvas.getContext('2d');
+        this.ctx.imageSmoothingEnabled = false;
+        this.clearCanvas();
+
+        // Setup event listeners
+        this.setupEventListeners();
+
+        // Listen for stats updates from 3D builder
+        window.addEventListener('shipStatsUpdated', (e) => {
+          this.ship.stats = e.detail.stats;
+          this.updateUI();
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+          if (shipBuilder3D) {
+            shipBuilder3D.onWindowResize();
+          }
+        });
+
+        console.log('✅ Ship Builder initialized');
+      },
+
+      setupEventListeners() {
+        // View switching
+        document.getElementById('view3DBtn').addEventListener('click', () => this.switchTo3D());
+        document.getElementById('viewPixelBtn').addEventListener('click', () => this.switchToPixel());
+        document.getElementById('autoRotateBtn').addEventListener('click', () => this.toggleAutoRotate());
+        document.getElementById('resetViewBtn').addEventListener('click', () => this.resetView());
+
+        // Canvas drawing (for pixel mode)
+        let isDrawing = false;
+        pixelCanvas.addEventListener('mousedown', (e) => { isDrawing = true; this.draw(e); });
+        pixelCanvas.addEventListener('mousemove', (e) => { if (isDrawing) this.draw(e); });
+        pixelCanvas.addEventListener('mouseup', () => { isDrawing = false; });
+        pixelCanvas.addEventListener('mouseleave', () => { isDrawing = false; });
+
+        // Color palette
+        document.querySelectorAll('.color-swatch').forEach(swatch => {
+          swatch.addEventListener('click', () => {
+            document.querySelector('.color-swatch.selected')?.classList.remove('selected');
+            swatch.classList.add('selected');
+            this.currentColor = swatch.dataset.color;
+
+            // Update 3D builder color
+            if (shipBuilder3D && currentView === '3d') {
+              shipBuilder3D.setCustomization({ primaryColor: swatch.dataset.color });
+            }
+          });
+        });
+
+        // Component selection
+        document.querySelectorAll('.component-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const component = item.dataset.component;
+            const id = item.dataset.id;
+
+            // Remove selection from same category
+            document.querySelectorAll(`[data-component="${component}"]`).forEach(el => {
+              el.classList.remove('selected');
+            });
+
+            item.classList.add('selected');
+            this.selectComponent(component, id);
+          });
+        });
+
+        // Metadata
+        document.getElementById('shipName').addEventListener('input', (e) => {
+          this.ship.name = e.target.value;
+        });
+
+        document.getElementById('shipClass').addEventListener('change', (e) => {
+          this.ship.class = e.target.value;
+        });
+
+        document.getElementById('shipDescription').addEventListener('input', (e) => {
+          this.ship.description = e.target.value;
+        });
+
+        // Action buttons
+        document.getElementById('resetBtn').addEventListener('click', () => this.reset());
+        document.getElementById('previewBtn').addEventListener('click', () => this.preview3D());
+        document.getElementById('saveBtn').addEventListener('click', () => this.saveShip());
+      },
+
+      draw(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+
+        const x = Math.floor((e.clientX - rect.left) * scaleX);
+        const y = Math.floor((e.clientY - rect.top) * scaleY);
+
+        // Draw pixel
+        const pixelSize = 8;
+        this.ctx.fillStyle = this.currentColor;
+        this.ctx.fillRect(
+          Math.floor(x / pixelSize) * pixelSize,
+          Math.floor(y / pixelSize) * pixelSize,
+          pixelSize,
+          pixelSize
+        );
+      },
+
+      clearCanvas() {
+        this.ctx.fillStyle = '#000000';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw grid
+        this.ctx.strokeStyle = '#222';
+        this.ctx.lineWidth = 1;
+        const gridSize = 8;
+        for (let x = 0; x < this.canvas.width; x += gridSize) {
+          this.ctx.beginPath();
+          this.ctx.moveTo(x, 0);
+          this.ctx.lineTo(x, this.canvas.height);
+          this.ctx.stroke();
+        }
+        for (let y = 0; y < this.canvas.height; y += gridSize) {
+          this.ctx.beginPath();
+          this.ctx.moveTo(0, y);
+          this.ctx.lineTo(this.canvas.width, y);
+          this.ctx.stroke();
+        }
+      },
+
+      rotate(degrees) {
+        const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+        this.clearCanvas();
+
+        this.ctx.save();
+        this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+        this.ctx.rotate((degrees * Math.PI) / 180);
+        this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
+        this.ctx.putImageData(imageData, 0, 0);
+        this.ctx.restore();
+
+        this.rotation += degrees;
+      },
+
+      async selectComponent(type, id) {
+        this.ship[type] = id;
+
+        // Update 3D builder
+        if (shipBuilder3D) {
+          if (type === 'hull') {
+            await shipBuilder3D.selectHull(id);
+          } else if (type === 'engine') {
+            await shipBuilder3D.selectEngine(id);
+          } else if (type === 'weapon') {
+            await shipBuilder3D.selectWeapon(id);
+          }
+        }
+
+        this.calculateStats();
+        this.updateUI();
+        console.log(`Selected ${type}: ${id}`);
+      },
+
+      switchTo3D() {
+        currentView = '3d';
+        document.getElementById('shipCanvas3D').style.display = 'block';
+        pixelCanvas.style.display = 'none';
+        document.getElementById('view3DBtn').classList.add('active');
+        document.getElementById('viewPixelBtn').classList.remove('active');
+      },
+
+      switchToPixel() {
+        currentView = 'pixel';
+        document.getElementById('shipCanvas3D').style.display = 'none';
+        pixelCanvas.style.display = 'block';
+        document.getElementById('view3DBtn').classList.remove('active');
+        document.getElementById('viewPixelBtn').classList.add('active');
+      },
+
+      toggleAutoRotate() {
+        autoRotateEnabled = !autoRotateEnabled;
+        if (shipBuilder3D) {
+          shipBuilder3D.toggleAutoRotate(autoRotateEnabled);
+        }
+        document.getElementById('autoRotateBtn').classList.toggle('active', autoRotateEnabled);
+      },
+
+      resetView() {
+        if (shipBuilder3D && shipBuilder3D.controls) {
+          shipBuilder3D.controls.reset();
+        }
+      },
+
+      calculateStats() {
+        const stats = this.ship.stats;
+
+        // Reset stats
+        stats.hp = 0;
+        stats.shield = 0;
+        stats.speed = 0;
+        stats.maneuverability = 0;
+        stats.firepower = 0;
+        stats.mass = 0;
+        stats.power = 0;
+        stats.crew = 0;
+
+        // Add hull stats
+        if (this.ship.hull && this.components.hulls[this.ship.hull]) {
+          const hull = this.components.hulls[this.ship.hull];
+          stats.hp = hull.hp;
+          stats.shield = hull.shield;
+          stats.mass += hull.mass;
+          stats.crew = hull.crew;
+          stats.power += hull.power;
+        }
+
+        // Add engine stats
+        if (this.ship.engine && this.components.engines[this.ship.engine]) {
+          const engine = this.components.engines[this.ship.engine];
+          stats.speed = engine.speed;
+          stats.maneuverability = engine.maneuver;
+        }
+
+        // Add weapon stats
+        if (this.ship.weapon && this.components.weapons[this.ship.weapon]) {
+          const weapon = this.components.weapons[this.ship.weapon];
+          stats.firepower = weapon.dps;
+          stats.power += weapon.power;
+        }
+      },
+
+      updateUI() {
+        const stats = this.ship.stats;
+
+        // Update stat displays
+        document.getElementById('statHP').textContent = stats.hp;
+        document.getElementById('statShield').textContent = stats.shield;
+        document.getElementById('statSpeed').textContent = stats.speed;
+        document.getElementById('statManeuver').textContent = stats.maneuverability;
+        document.getElementById('statFirepower').textContent = stats.firepower;
+        document.getElementById('statMass').textContent = stats.mass;
+
+        // Show power usage
+        const powerDisplay = `${stats.powerUsed || 0}/${stats.power || 0}`;
+        document.getElementById('statPower').textContent = powerDisplay;
+
+        // Change color based on power usage
+        const powerElement = document.getElementById('statPower');
+        if (stats.powerUsed > stats.power) {
+          powerElement.style.color = '#ff4444';
+        } else if (stats.powerUsed > stats.power * 0.8) {
+          powerElement.style.color = '#ffaa00';
+        } else {
+          powerElement.style.color = '#fff';
+        }
+
+        document.getElementById('statCrew').textContent = stats.crew;
+
+        // Update stat bars
+        document.getElementById('statHPBar').style.width = Math.min(100, (stats.hp / 1000) * 100) + '%';
+        document.getElementById('statShieldBar').style.width = Math.min(100, (stats.shield / 400) * 100) + '%';
+
+        // Update component summary
+        document.getElementById('summaryHull').textContent = this.ship.hull || 'Not Selected';
+        document.getElementById('summaryEngine').textContent = this.ship.engine || 'Not Selected';
+        document.getElementById('summaryWeapon').textContent = this.ship.weapon || 'Not Selected';
+      },
+
+      reset() {
+        if (!confirm('Reset ship builder? This will clear all progress.')) return;
+
+        this.ship = {
+          name: 'Unnamed Vessel',
+          class: 'fighter',
+          description: '',
+          hull: null,
+          engine: null,
+          weapon: null,
+          pixelData: null,
+          stats: {
+            hp: 0, shield: 0, speed: 0, maneuverability: 0,
+            firepower: 0, mass: 0, power: 0, powerUsed: 0, crew: 0
+          }
+        };
+
+        // Reset 3D builder
+        if (shipBuilder3D) {
+          shipBuilder3D.reset();
+        }
+
+        document.querySelectorAll('.component-item.selected').forEach(el => el.classList.remove('selected'));
+        document.getElementById('shipName').value = 'Unnamed Vessel';
+        document.getElementById('shipClass').value = 'fighter';
+        document.getElementById('shipDescription').value = '';
+
+        this.clearCanvas();
+        this.updateUI();
+
+        console.log('🔄 Ship builder reset');
+      },
+
+      async preview3D() {
+        // Switch to 3D view if not already there
+        if (currentView !== '3d') {
+          this.switchTo3D();
+        }
+
+        // Focus on the ship
+        if (shipBuilder3D && shipBuilder3D.controls) {
+          shipBuilder3D.controls.reset();
+          shipBuilder3D.toggleAutoRotate(true);
+          autoRotateEnabled = true;
+          document.getElementById('autoRotateBtn').classList.add('active');
+        }
+
+        alert('🔮 3D Preview Mode Active!\n\n• Left-click + drag to rotate\n• Right-click + drag to pan\n• Scroll to zoom\n• Auto-rotate is enabled');
+      },
+
+      async saveShip() {
+        // Validate ship
+        if (!this.ship.hull || !this.ship.engine || !this.ship.weapon) {
+          alert('⚠️ Please select Hull, Engine, and Weapon before saving.');
+          return;
+        }
+
+        if (!this.ship.name || this.ship.name.trim() === '') {
+          alert('⚠️ Please enter a ship name.');
+          return;
+        }
+
+        // Check power consumption
+        if (this.ship.stats.powerUsed > this.ship.stats.power) {
+          if (!confirm('⚠️ Warning: Power consumption exceeds power generation!\n\nThis ship configuration may not be functional.\n\nSave anyway?')) {
+            return;
+          }
+        }
+
+        try {
+          // Get ship configuration from 3D builder
+          const ship3DConfig = shipBuilder3D ? shipBuilder3D.exportShipConfig() : null;
+
+          // Get pixel data from canvas
+          this.ship.pixelData = pixelCanvas.toDataURL('image/png');
+
+          // Merge configurations
+          const shipData = {
+            ...this.ship,
+            ...ship3DConfig,
+            name: this.ship.name,
+            class: this.ship.class,
+            description: this.ship.description,
+            timestamp: new Date().toISOString()
+          };
+
+          console.log('💾 Saving ship:', shipData);
+
+          // Try to export as GLTF
+          let gltfData = null;
+          if (shipBuilder3D && typeof THREE.GLTFExporter !== 'undefined') {
+            try {
+              gltfData = await shipBuilder3D.exportGLTF();
+              console.log('✅ GLTF export successful');
+            } catch (error) {
+              console.warn('⚠️ GLTF export failed:', error);
+            }
+          }
+
+          // Send to server API endpoint
+          try {
+            const response = await fetch('/api/v1/ships/save', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(shipData)
+            });
+
+            const result = await response.json();
+            if (result.success) {
+              console.log('✅ Ship saved to server:', result.shipId);
+            } else {
+              console.warn('⚠️ Server save failed:', result.error);
+            }
+          } catch (serverError) {
+            console.warn('⚠️ Could not save to server:', serverError.message);
+          }
+
+          // For now, download as JSON
+          const jsonBlob = new Blob([JSON.stringify(shipData, null, 2)], { type: 'application/json' });
+          const jsonUrl = URL.createObjectURL(jsonBlob);
+          const jsonLink = document.createElement('a');
+          jsonLink.href = jsonUrl;
+          jsonLink.download = `${this.ship.name.replace(/\s+/g, '_')}_config.json`;
+          jsonLink.click();
+          URL.revokeObjectURL(jsonUrl);
+
+          // Download GLTF if available
+          if (gltfData) {
+            const gltfBlob = new Blob([JSON.stringify(gltfData)], { type: 'model/gltf+json' });
+            const gltfUrl = URL.createObjectURL(gltfBlob);
+            const gltfLink = document.createElement('a');
+            gltfLink.href = gltfUrl;
+            gltfLink.download = `${this.ship.name.replace(/\s+/g, '_')}.gltf`;
+            gltfLink.click();
+            URL.revokeObjectURL(gltfUrl);
+          }
+
+          alert(`✅ Ship "${this.ship.name}" saved successfully!\n\n${gltfData ? '• GLTF model exported\n' : ''}• Configuration exported`);
+        } catch (error) {
+          console.error('❌ Error saving ship:', error);
+          alert('❌ Failed to save ship. Check console for details.');
+        }
+      }
+    };
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      shipBuilder.init();
+    });
+  </script>
+
+  <%- include('../partials/footer') %>
+</body>
+</html>

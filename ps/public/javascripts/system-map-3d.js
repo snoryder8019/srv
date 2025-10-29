@@ -47,6 +47,20 @@ class GalacticMap3D {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.container.appendChild(this.renderer.domElement);
 
+    // CSS2D Renderer for text labels (pilot names)
+    if (typeof THREE.CSS2DRenderer !== 'undefined') {
+      this.labelRenderer = new THREE.CSS2DRenderer();
+      this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
+      this.labelRenderer.domElement.style.position = 'absolute';
+      this.labelRenderer.domElement.style.top = '0';
+      this.labelRenderer.domElement.style.pointerEvents = 'none';
+      this.container.appendChild(this.labelRenderer.domElement);
+      console.log('✅ CSS2D Label Renderer initialized for pilot names');
+    } else {
+      console.warn('⚠️ CSS2DRenderer not available - pilot name labels will not be displayed');
+      this.labelRenderer = null;
+    }
+
     // Lighting
     this.ambientLight = new THREE.AmbientLight(0x404060, 1.5); // Soft ambient
     this.scene.add(this.ambientLight);
@@ -65,14 +79,24 @@ class GalacticMap3D {
     this.starfieldGroup = new THREE.Group();
     this.assetsGroup = new THREE.Group();
     this.connectionsGroup = new THREE.Group();
+    this.selectionGroup = new THREE.Group(); // For selection line and effects
     this.scene.add(this.starfieldGroup);
     this.scene.add(this.assetsGroup);
     this.scene.add(this.connectionsGroup);
+    this.scene.add(this.selectionGroup);
 
     // Interaction
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
     this.selectedObject = null;
+    this.selectionLine = null; // Track the selection line
+
+    // Camera lock modes: 'ship', 'planet', 'free'
+    this.cameraLockMode = 'ship'; // Default to ship
+    this.cameraLockTarget = null; // Object to lock camera on
+
+    // Create a simple player ship object for camera tracking
+    this.playerShip = null; // Will be initialized after assets load
 
     // OrbitControls for camera (3D navigation)
     // Wait for OrbitControls to be loaded from module
@@ -207,9 +231,30 @@ class GalacticMap3D {
     let position;
 
     if (assetType === 'star') {
-      // Stars are at the center of their system
-      position = new THREE.Vector3(0, 0, 0);
-      console.log(`✅ Adding ${assetType}: ${title} at CENTER (0, 0, 0)`);
+      // USE REAL STAR COORDINATES - planets are positioned relative to their actual positions
+      if (assetData.coordinates3D && (assetData.coordinates3D.x !== undefined || assetData.coordinates3D.y !== undefined || assetData.coordinates3D.z !== undefined)) {
+        position = new THREE.Vector3(
+          assetData.coordinates3D.x || 0,
+          assetData.coordinates3D.y || 0,
+          assetData.coordinates3D.z || 0
+        );
+        console.log(`✅ Adding ${assetType}: ${title} at 3D coords (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`);
+      } else if (assetData.localCoordinates) {
+        position = new THREE.Vector3(
+          assetData.localCoordinates.x || 0,
+          assetData.localCoordinates.y || 0,
+          assetData.localCoordinates.z || 0
+        );
+        console.log(`✅ Adding ${assetType}: ${title} at local coords (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`);
+      } else {
+        // Fallback to universal coordinates
+        position = new THREE.Vector3(
+          coordinates?.x || 0,
+          coordinates?.y || 0,
+          coordinates?.z || 0
+        );
+        console.log(`✅ Adding ${assetType}: ${title} at universal (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`);
+      }
     } else if (assetData.coordinates3D && (assetData.coordinates3D.x !== undefined || assetData.coordinates3D.y !== undefined || assetData.coordinates3D.z !== undefined)) {
       // USE coordinates3D - this is the proper scattered position!
       position = new THREE.Vector3(
@@ -358,8 +403,18 @@ class GalacticMap3D {
       data: assetData
     };
 
+    // Copy userData to glow so it can also be clicked
+    if (glow) {
+      glow.userData = {
+        id: _id,
+        type: assetType,
+        title: title,
+        data: assetData
+      };
+    }
+
     this.assetsGroup.add(mesh);
-    this.assetsGroup.add(glow);
+    if (glow) this.assetsGroup.add(glow);
     this.assets.set(_id, { mesh, glow });
 
     // Separate tracking by type
@@ -457,17 +512,24 @@ class GalacticMap3D {
    * Handle object selection
    */
   handleClick(event) {
+    console.log('🖱️ Click detected, checking for intersections...');
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
     const intersects = this.raycaster.intersectObjects(this.assetsGroup.children, true);
+    console.log(`Found ${intersects.length} intersections`);
 
     if (intersects.length > 0) {
       const object = intersects[0].object;
+      console.log('Clicked object:', object.userData);
 
       if (object.userData && object.userData.id) {
+        console.log('✅ Valid object clicked, selecting...');
         this.selectObject(object);
+      } else {
+        console.log('⚠️ Object has no valid userData.id');
       }
     } else {
+      console.log('No intersections, deselecting');
       this.deselectObject();
     }
   }
@@ -487,23 +549,79 @@ class GalacticMap3D {
       }
     }
 
+    // Remove old selection line if it exists
+    if (this.selectionLine) {
+      this.selectionGroup.remove(this.selectionLine);
+      this.selectionLine.geometry.dispose();
+      this.selectionLine.material.dispose();
+      this.selectionLine = null;
+    }
+
     // Select new
     this.selectedObject = object;
 
     // Highlight based on material type
     if (object.material.emissive) {
-      object.material.emissive.setHex(0xff6600);
+      object.material.emissive.setHex(0x00d4ff); // Neon blue highlight
     } else if (object.material.wireframe) {
       // For wireframe (zones), increase opacity
       object.material.opacity = 1.0;
     }
 
+    // Create 3D line connector from SHIP to planet (not camera)
+    const objectPos = object.position.clone();
+
+    // Try to get ship position from combat system
+    let shipPos;
+    if (window.shipCombatSystem && window.shipCombatSystem.playerShip && window.shipCombatSystem.playerShip.position) {
+      shipPos = new THREE.Vector3(
+        window.shipCombatSystem.playerShip.position.x,
+        window.shipCombatSystem.playerShip.position.y,
+        window.shipCombatSystem.playerShip.position.z
+      );
+      console.log(`📍 Drawing line from ship at (${shipPos.x.toFixed(1)}, ${shipPos.y.toFixed(1)}, ${shipPos.z.toFixed(1)}) to planet`);
+    } else {
+      // Fallback to camera if ship not available
+      shipPos = this.camera.position.clone();
+      console.log(`📍 Ship not found, drawing line from camera position`);
+    }
+
+    const points = [shipPos, objectPos];
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+
+    // Neon blue glowing line material
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: 0x00d4ff, // Light neon blue
+      transparent: true,
+      opacity: 0.6,
+      linewidth: 2
+    });
+
+    this.selectionLine = new THREE.Line(lineGeometry, lineMaterial);
+    this.selectionGroup.add(this.selectionLine);
+
     // Focus camera on selected object
     this.focusCameraOn(object.position);
 
-    // Emit event for UI to handle
+    // Auto-switch to planet lock mode when planet is selected
+    this.setCameraLockMode('planet');
+
+    // Emit event for UI to handle with proper coordinate structure
     const event = new CustomEvent('assetSelected', {
-      detail: object.userData
+      detail: {
+        title: object.userData.title,
+        type: object.userData.type,
+        data: {
+          _id: object.userData.id,
+          coordinates: {
+            x: object.position.x,
+            y: object.position.y,
+            z: object.position.z
+          },
+          description: object.userData.data?.description,
+          stats: object.userData.data?.stats
+        }
+      }
     });
     window.dispatchEvent(event);
 
@@ -564,8 +682,54 @@ class GalacticMap3D {
       this.selectedObject = null;
     }
 
+    // Remove selection line
+    if (this.selectionLine) {
+      this.selectionGroup.remove(this.selectionLine);
+      this.selectionLine.geometry.dispose();
+      this.selectionLine.material.dispose();
+      this.selectionLine = null;
+    }
+
     const event = new CustomEvent('assetDeselected');
     window.dispatchEvent(event);
+  }
+
+  /**
+   * Set camera lock mode
+   * @param {String} mode - 'ship', 'planet', or 'free'
+   */
+  setCameraLockMode(mode) {
+    console.log(`📷 Switching camera lock to: ${mode}`);
+    this.cameraLockMode = mode;
+
+    if (mode === 'ship') {
+      // Lock to ship
+      this.cameraLockTarget = null;
+
+      // Immediately start transitioning camera to ship
+      if (window.shipCombatSystem && window.shipCombatSystem.playerShip) {
+        const shipPos = window.shipCombatSystem.playerShip.position;
+        console.log(`🚀 Camera locked to ship at (${shipPos.x.toFixed(1)}, ${shipPos.y.toFixed(1)}, ${shipPos.z.toFixed(1)})`);
+
+        // Set orbit target to ship immediately for responsive feel
+        if (this.controls) {
+          this.controls.target.set(shipPos.x, shipPos.y, shipPos.z);
+        }
+      } else {
+        console.log('🚀 Camera locked to ship (ship will load)');
+      }
+    } else if (mode === 'planet' && this.selectedObject) {
+      // Lock to selected planet
+      this.cameraLockTarget = this.selectedObject;
+      console.log(`🪐 Camera locked to planet: ${this.selectedObject.userData.title}`);
+    } else if (mode === 'free') {
+      // Free camera movement
+      this.cameraLockTarget = null;
+      console.log('🆓 Camera in free mode');
+    }
+
+    // Emit event for UI updates
+    window.dispatchEvent(new CustomEvent('cameraLockChanged', { detail: { mode } }));
   }
 
   /**
@@ -583,6 +747,11 @@ class GalacticMap3D {
       this.camera.updateProjectionMatrix();
 
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+      // Update label renderer size too
+      if (this.labelRenderer) {
+        this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
+      }
     });
   }
 
@@ -599,7 +768,58 @@ class GalacticMap3D {
 
     // Update OrbitControls (if available and enabled)
     if (this.controls && this.controls.enabled) {
+      // Handle camera lock modes
+      if (this.cameraLockMode === 'ship' && window.shipCombatSystem && window.shipCombatSystem.playerShip) {
+        // Lock camera orbit target to ship position
+        const shipPos = window.shipCombatSystem.playerShip.position;
+
+        // Smoothly transition camera to orbit the ship
+        const currentTarget = this.controls.target;
+        const distance = currentTarget.distanceTo(shipPos);
+
+        if (distance > 10) {
+          // If far from ship, smoothly interpolate camera and target
+          currentTarget.lerp(shipPos, 0.05); // Smooth transition to ship position
+
+          // Also move camera to maintain relative offset
+          const offset = new THREE.Vector3().subVectors(this.camera.position, currentTarget);
+          const desiredCameraPos = new THREE.Vector3().addVectors(shipPos, offset);
+          this.camera.position.lerp(desiredCameraPos, 0.05);
+        } else {
+          // Close enough, just set target directly
+          this.controls.target.set(shipPos.x, shipPos.y, shipPos.z);
+        }
+      } else if (this.cameraLockMode === 'planet' && this.cameraLockTarget) {
+        // Lock camera orbit target to selected planet
+        const planetPos = this.cameraLockTarget.position;
+        this.controls.target.set(planetPos.x, planetPos.y, planetPos.z);
+      }
+      // 'free' mode doesn't change the target
+
       this.controls.update();
+    }
+
+    // Update selection line position when ship/camera moves
+    if (this.selectionLine && this.selectedObject) {
+      const positions = this.selectionLine.geometry.attributes.position.array;
+      const objectPos = this.selectedObject.position;
+
+      // Use ship position if available, otherwise camera
+      let shipPos;
+      if (window.shipCombatSystem && window.shipCombatSystem.playerShip && window.shipCombatSystem.playerShip.position) {
+        shipPos = window.shipCombatSystem.playerShip.position;
+      } else {
+        shipPos = this.camera.position;
+      }
+
+      positions[0] = shipPos.x;
+      positions[1] = shipPos.y;
+      positions[2] = shipPos.z;
+      positions[3] = objectPos.x;
+      positions[4] = objectPos.y;
+      positions[5] = objectPos.z;
+
+      this.selectionLine.geometry.attributes.position.needsUpdate = true;
     }
 
     // Update zoom level for UI (based on camera zoom)
@@ -624,7 +844,37 @@ class GalacticMap3D {
       }
     });
 
-    this.renderer.render(this.scene, this.camera);
+    // Update combat system if it exists
+    if (window.shipCombatSystem && typeof window.shipCombatSystem.update === 'function') {
+      try {
+        window.shipCombatSystem.update();
+      } catch (error) {
+        console.error('Combat system update error:', error);
+      }
+    }
+
+    // Render with error handling for material issues
+    try {
+      this.renderer.render(this.scene, this.camera);
+
+      // Render CSS2D labels (pilot names) if available
+      if (this.labelRenderer) {
+        this.labelRenderer.render(this.scene, this.camera);
+      }
+    } catch (error) {
+      // Log error once (not every frame)
+      if (!this.renderErrorLogged) {
+        console.error('Render error - hiding ship to prevent crash:', error.message);
+        this.renderErrorLogged = true;
+
+        // Hide the ship mesh which has broken materials
+        if (window.shipCombatSystem && window.shipCombatSystem.shipMesh) {
+          window.shipCombatSystem.shipMesh.visible = false;
+          console.log('🚀 Ship hidden due to material error - will reload on next page load');
+        }
+      }
+      // Skip render this frame but continue animation loop
+    }
   }
 
   /**
@@ -743,8 +993,31 @@ class GalacticMap3D {
       console.log(`   ${with3D} have 3D coordinates (Z != 0)`);
       console.log(`   Filtered out ${data.assets.length - systemAssets.length} bodies from other systems`);
 
+      // Center camera on the star if viewing a specific system
+      if (starId && this.stars.has(starId)) {
+        const starMesh = this.stars.get(starId);
+        const starPos = starMesh.position;
+        console.log(`📍 Centering camera on star at (${starPos.x.toFixed(1)}, ${starPos.y.toFixed(1)}, ${starPos.z.toFixed(1)})`);
+
+        // Position camera above and back from the star
+        this.camera.position.set(
+          starPos.x,
+          starPos.y + 500,
+          starPos.z + 800
+        );
+
+        // Point camera at star
+        if (this.controls) {
+          this.controls.target.set(starPos.x, starPos.y, starPos.z);
+          this.controls.update();
+        }
+      }
+
       // Create colorful neon connections between orbital bodies
       this.createNeonConnections(starId);
+
+      // Initialize player ship for camera tracking
+      this.initializePlayerShip(starId);
 
       // Populate system object selector dropdown if the function exists
       if (window.populateSystemObjectSelector) {
@@ -757,6 +1030,63 @@ class GalacticMap3D {
       console.error('❌ Failed to load assets:', error);
       console.error('Error details:', error.message, error.stack);
     }
+  }
+
+  /**
+   * Initialize combat system for ship controls and physics
+   */
+  initializePlayerShip(starId) {
+    // Only initialize if combat system is available
+    if (!window.SpaceCombatSystem) {
+      console.warn('⚠️ SpaceCombatSystem not loaded, ship controls will not be available');
+      return;
+    }
+
+    console.log('🚀 Initializing combat system for ship...');
+
+    // Initialize combat system WITHOUT disabling OrbitControls
+    // This gives us the full ship model and controls while keeping camera flexibility
+    const combatSystem = new window.SpaceCombatSystem(
+      this.scene,
+      this.camera,
+      this,
+      true // Pass flag to prevent combat system from starting its own animation loop
+    );
+
+    window.shipCombatSystem = combatSystem;
+    window.combatSystem = combatSystem; // Legacy reference
+
+    // Get the star position to place ship at far edge
+    if (starId && this.stars.has(starId)) {
+      const starMesh = this.stars.get(starId);
+      const starPos = starMesh.position;
+
+      // Find the furthest planet to determine scene edge
+      let maxDistance = 1000; // Default minimum distance
+      this.planets.forEach(planet => {
+        const dist = planet.position.distanceTo(starPos);
+        if (dist > maxDistance) {
+          maxDistance = dist;
+        }
+      });
+
+      // Place ship at far edge (beyond furthest planet + buffer)
+      const edgeDistance = maxDistance + 500;
+      combatSystem.playerShip.position.set(
+        starPos.x + edgeDistance,
+        starPos.y,
+        starPos.z + edgeDistance
+      );
+
+      // Update ship mesh position
+      if (combatSystem.shipMesh) {
+        combatSystem.shipMesh.position.copy(combatSystem.playerShip.position);
+      }
+
+      console.log(`🚀 Ship spawned at far edge (${combatSystem.playerShip.position.x.toFixed(1)}, ${combatSystem.playerShip.position.y.toFixed(1)}, ${combatSystem.playerShip.position.z.toFixed(1)}) - ${edgeDistance.toFixed(0)} units from star`);
+    }
+
+    console.log('✅ Combat system initialized - ship controls active');
   }
 
   /**
@@ -1121,50 +1451,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.galacticMap = galacticMap;
 
   // Initialize combat system after a short delay to let the map load
-  setTimeout(() => {
-    if (window.SpaceCombatSystem) {
-      // Stop galacticMap's animate loop - combat system will take over rendering
-      galacticMap.combatModeActive = true;
-      console.log('🎮 Combat mode activated - galacticMap rendering stopped');
-
-      // Disable OrbitControls to prevent conflict with combat camera
-      if (galacticMap.controls) {
-        galacticMap.controls.enabled = false;
-        console.log('🔒 OrbitControls disabled for combat mode');
-      }
-
-      // Switch to perspective camera for combat
-      const aspect = window.innerWidth / window.innerHeight;
-      const perspectiveCamera = new THREE.PerspectiveCamera(
-        75,                    // FOV
-        aspect,                // Aspect ratio
-        0.1,                   // Near clipping plane (reduced for close objects)
-        100000                 // Far clipping plane (increased for massive solar systems)
-      );
-
-      // Position camera to face the star (system center at 0,0,0)
-      // Ship spawns at OUTER EDGE (85000, 0, 85000), camera behind ship looking toward center
-      perspectiveCamera.position.set(85000, 500, 85500); // Behind and above ship spawn at outer edge
-      perspectiveCamera.lookAt(0, 0, 0); // Look at star/system center
-
-      // Disable fog for combat mode - we need to see across the entire solar system
-      galacticMap.scene.fog = null;
-      console.log('🌫️ Fog disabled for combat mode');
-
-      galacticMap.camera = perspectiveCamera;
-
-      combatSystem = new window.SpaceCombatSystem(
-        galacticMap.scene,
-        galacticMap.camera,
-        galacticMap
-      );
-      window.combatSystem = combatSystem;
-      console.log('⚔️ Combat system initialized!');
-      console.log(`📷 Camera positioned at (${perspectiveCamera.position.x}, ${perspectiveCamera.position.y}, ${perspectiveCamera.position.z})`);
-
-      // Spawn test enemy near player at far edge of system
-      const enemyPos = new THREE.Vector3(88000, 0, 85000); // 3000 units from player at outer edge
-      combatSystem.spawnEnemy(enemyPos);
-    }
-  }, 2000);
+  // TEMPORARILY DISABLED to test planet selection HUD
+  // Combat system is now initialized in galacticMap.initializePlayerShip()
+  // called during asset loading (see loadAssets method)
 });

@@ -41,10 +41,16 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Check if session expired
+    const expired = req.query.expired === 'true';
+    const reason = req.query.reason;
+
     res.render('auth/index-enhanced', {
       title: 'My Characters',
       characters,
-      user: req.user
+      user: req.user,
+      expired,
+      reason
     });
   } catch (err) {
     console.error('Error fetching characters:', err);

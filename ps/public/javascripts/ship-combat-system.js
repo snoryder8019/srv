@@ -4,10 +4,11 @@
  */
 
 class SpaceCombatSystem {
-  constructor(scene, camera, galacticMap) {
+  constructor(scene, camera, galacticMap, disableAnimateLoop = false) {
     this.scene = scene;
     this.camera = camera;
     this.galacticMap = galacticMap;
+    this.disableAnimateLoop = disableAnimateLoop;
 
     // Player ship state
     this.playerShip = {
@@ -59,6 +60,8 @@ class SpaceCombatSystem {
 
     // Ship mesh
     this.shipMesh = null;
+    this.shipNameLabel = null; // Character name label
+    this.characterName = null; // Will be set from page
     this.createPlayerShip();
 
     // Target system
@@ -133,7 +136,11 @@ class SpaceCombatSystem {
 
     // Animation
     this.clock = new THREE.Clock();
-    this.animate();
+
+    // Only start animation loop if not disabled (galacticMap will handle updates)
+    if (!this.disableAnimateLoop) {
+      this.animate();
+    }
   }
 
   /**
@@ -283,6 +290,77 @@ class SpaceCombatSystem {
     shipGroup.position.copy(this.playerShip.position);
     this.scene.add(shipGroup);
     this.shipMesh = shipGroup;
+
+    // Create character name label
+    this.createCharacterNameLabel();
+  }
+
+  /**
+   * Create character name label above ship
+   */
+  createCharacterNameLabel() {
+    // Create canvas for label
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 512;
+    canvas.height = 128;
+
+    // Set font - thin terminal style
+    context.font = '24px "Courier New", monospace';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+
+    // Green terminal color
+    context.fillStyle = '#00ff00';
+
+    // Draw text (will be updated later with actual pilot/character name)
+    context.fillText('UNKNOWN PILOT', canvas.width / 2, canvas.height / 2);
+
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    // Create sprite material
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      opacity: 0.9
+    });
+
+    // Create sprite
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(40, 10, 1); // Thin, wide label
+
+    // Store canvas and sprite for updates
+    this.shipNameCanvas = canvas;
+    this.shipNameContext = context;
+    this.shipNameLabel = sprite;
+
+    this.scene.add(sprite);
+  }
+
+  /**
+   * Update character name label text (pilot name)
+   */
+  updateCharacterNameLabel(name) {
+    if (!this.shipNameContext || !this.shipNameCanvas || !this.shipNameLabel) return;
+
+    this.characterName = name;
+
+    // Clear canvas
+    this.shipNameContext.clearRect(0, 0, this.shipNameCanvas.width, this.shipNameCanvas.height);
+
+    // Draw updated text - display pilot name (character name)
+    this.shipNameContext.font = '24px "Courier New", monospace';
+    this.shipNameContext.textAlign = 'center';
+    this.shipNameContext.textBaseline = 'middle';
+    this.shipNameContext.fillStyle = '#00ff00';
+    this.shipNameContext.fillText(name || 'UNKNOWN PILOT', this.shipNameCanvas.width / 2, this.shipNameCanvas.height / 2);
+
+    // Update texture
+    this.shipNameLabel.material.map.needsUpdate = true;
   }
 
   /**
@@ -2176,16 +2254,27 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
       };
     }
 
-    // Find the star (center of system at 0,0,0)
-    const starPosition = new THREE.Vector3(0, 0, 0);
+    // Find the actual star position (not hardcoded origin)
+    let starPosition = new THREE.Vector3(0, 0, 0);
+    let starFound = false;
+
+    if (this.galacticMap && this.galacticMap.stars && this.galacticMap.stars.size > 0) {
+      // Get the first (primary) star in the system
+      const starMesh = Array.from(this.galacticMap.stars.values())[0];
+      if (starMesh && starMesh.position) {
+        starPosition = starMesh.position.clone();
+        starFound = true;
+      }
+    }
 
     // Find furthest planet orbit radius (cached for performance)
-    if (!this.systemBoundary) {
+    if (!this.systemBoundary || !starFound) {
       let maxOrbitRadius = 0;
       if (this.galacticMap && this.galacticMap.assets) {
         this.galacticMap.assets.forEach(asset => {
           if (asset.mesh && asset.mesh.userData.type === 'planet') {
-            const distanceFromStar = asset.mesh.position.length();
+            // Calculate distance from actual star position, not origin
+            const distanceFromStar = asset.mesh.position.distanceTo(starPosition);
             if (distanceFromStar > maxOrbitRadius) {
               maxOrbitRadius = distanceFromStar;
             }
@@ -2199,8 +2288,8 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
       this.systemBoundary = maxOrbitRadius;
     }
 
-    // Calculate distance from star
-    const distanceFromStar = this.playerShip.position.length();
+    // Calculate distance from actual star position
+    const distanceFromStar = this.playerShip.position.distanceTo(starPosition);
 
     // Update pulse cooldown
     if (this.gravityPulse.cooldown > 0) {
@@ -2286,12 +2375,13 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
   }
 
   /**
-   * Main animation loop
+   * Update method (called externally when animation loop is disabled)
    */
-  animate() {
-    requestAnimationFrame(() => this.animate());
-
-    const deltaTime = this.clock.getDelta();
+  update(deltaTime) {
+    // If deltaTime not provided, get it from clock
+    if (deltaTime === undefined) {
+      deltaTime = this.clock.getDelta();
+    }
 
     // Update warp cooldown
     if (this.warpCooldown > 0) {
@@ -2328,7 +2418,8 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
     this.updateThrust(deltaTime);
 
     // Apply star gravity (keeps ships from escaping too far)
-    this.applyStarGravity(deltaTime);
+    // DISABLED per user request
+    // this.applyStarGravity(deltaTime);
 
     // Clear autopilot key after thrust update
     if (this.autopilotActive && this.keys['s']) {
@@ -2349,6 +2440,16 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
         this.playerShip.yaw,
         this.playerShip.roll,
         'YXZ' // Rotation order: Yaw -> Pitch -> Roll
+      );
+    }
+
+    // Update character name label position (above ship)
+    if (this.shipNameLabel) {
+      const labelOffset = 15; // Distance above ship
+      this.shipNameLabel.position.set(
+        this.playerShip.position.x,
+        this.playerShip.position.y + labelOffset,
+        this.playerShip.position.z
       );
     }
 
@@ -2417,6 +2518,16 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
       // Always look at ship
       this.camera.lookAt(this.playerShip.position);
     }
+
+    // Rendering is handled by galacticMap when disableAnimateLoop is true
+  }
+
+  /**
+   * Main animation loop (only used when combat system is standalone)
+   */
+  animate() {
+    requestAnimationFrame(() => this.animate());
+    this.update(); // Call update with automatic deltaTime
 
     // Render the scene
     if (this.galacticMap && this.galacticMap.renderer) {

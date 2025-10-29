@@ -2,6 +2,7 @@ import express from 'express';
 import { getDb } from '../../../plugins/mongo/mongo.js';
 import { Character } from '../models/Character.js';
 import fetch from 'node-fetch';
+import { createActivityToken } from '../../../utilities/activityTokens.js';
 
 const router = express.Router();
 const MAX_CHARACTERS = 3;
@@ -1115,7 +1116,7 @@ router.post('/:id/set-active', async (req, res) => {
     }
 
     const character = await Character.findById(req.params.id);
-    
+
     if (!character) {
       return res.status(404).json({ error: 'Character not found' });
     }
@@ -1125,9 +1126,25 @@ router.post('/:id/set-active', async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    // Set cookie with 30-day expiration
+    // Create activity token (this will invalidate any existing tokens for this character)
+    const tokenResult = await createActivityToken(req.user._id, req.params.id);
+
+    if (!tokenResult.success) {
+      console.error('Failed to create activity token:', tokenResult.error);
+      return res.status(500).json({ error: 'Failed to create activity session' });
+    }
+
+    // Set activity token cookie
+    res.cookie('activityToken', tokenResult.token, {
+      maxAge: 20 * 60 * 1000, // 20 minutes
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+
+    // Set activeCharacterId cookie (match activity token duration)
     res.cookie('activeCharacterId', req.params.id, {
-      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+      maxAge: 20 * 60 * 1000, // 20 minutes
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
@@ -1136,6 +1153,7 @@ router.post('/:id/set-active', async (req, res) => {
     res.json({
       success: true,
       message: 'Active character set',
+      expiresAt: tokenResult.expiresAt,
       character: {
         _id: character._id,
         name: character.name,

@@ -67,6 +67,61 @@ router.get('/help/patch-notes', function(req, res, next) {
   });
 });
 
+router.get('/help/documentation', async function(req, res, next) {
+  try {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { fileURLToPath } = await import('url');
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+
+    // Try to read the docs tree
+    let docsTree = null;
+    try {
+      const treeData = await fs.readFile(
+        path.join(__dirname, '../public/data/docs-tree.json'),
+        'utf-8'
+      );
+      docsTree = JSON.parse(treeData);
+    } catch (error) {
+      console.log('Docs tree not found, will generate on first load');
+    }
+
+    // Get specific doc if requested
+    let docContent = null;
+    let docMeta = null;
+    if (req.query.doc) {
+      try {
+        const docPath = path.join(__dirname, '../zMDREADME', `${req.query.doc}.md`);
+        docContent = await fs.readFile(docPath, 'utf-8');
+        docMeta = {
+          fileName: req.query.doc,
+          title: req.query.doc.replace(/_/g, ' ')
+        };
+      } catch (error) {
+        console.error('Error reading doc:', error);
+      }
+    }
+
+    res.render('help/documentation', {
+      title: 'Documentation',
+      user: req.user,
+      docsTree,
+      docContent,
+      docMeta
+    });
+  } catch (error) {
+    console.error('Error loading documentation:', error);
+    res.status(500).render('error', {
+      title: 'Error',
+      user: req.user,
+      message: 'Failed to load documentation',
+      error: error
+    });
+  }
+});
+
 // Home page
 router.get('/', function(req, res, next) {
   res.render('index-sales', {

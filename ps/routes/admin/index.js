@@ -728,4 +728,232 @@ router.get('/control-panel', isAdmin, function(req, res, next) {
   });
 });
 
+// API: Get cron jobs status
+router.get('/api/cron/status', isAdmin, async function(req, res, next) {
+  try {
+    const { getJobsStatus } = await import('../../plugins/cron/index.js');
+    const jobs = getJobsStatus();
+
+    res.json({
+      success: true,
+      jobs
+    });
+  } catch (error) {
+    console.error('Error fetching cron jobs status:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Manually trigger a cron job
+router.post('/api/cron/trigger/:jobName', isAdmin, async function(req, res, next) {
+  try {
+    const { triggerJob } = await import('../../plugins/cron/index.js');
+    const jobName = decodeURIComponent(req.params.jobName);
+
+    await triggerJob(jobName);
+
+    res.json({
+      success: true,
+      message: `Job "${jobName}" triggered successfully`
+    });
+  } catch (error) {
+    console.error('Error triggering cron job:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Live Dashboard page
+router.get('/live-dashboard', isAdmin, function(req, res, next) {
+  res.render('admin/live-dashboard', {
+    title: 'Live Admin Dashboard',
+    user: req.user
+  });
+});
+
+// API: Run tests
+router.post('/api/tests/run', isAdmin, async function(req, res, next) {
+  try {
+    const { suite } = req.body;
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execPromise = promisify(exec);
+
+    let command = 'node /srv/ps/test/runner.js';
+    if (suite) {
+      command += ` --suite=${suite}`;
+    }
+
+    const { stdout, stderr } = await execPromise(command, {
+      timeout: 60000 // 60 second timeout
+    });
+
+    // Read the latest test results
+    const fs = await import('fs');
+    const path = await import('path');
+    const resultsPath = path.join('/srv/ps/test/results/latest.json');
+
+    let results = {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      duration: 0,
+      suites: []
+    };
+
+    if (fs.existsSync(resultsPath)) {
+      const resultsData = fs.readFileSync(resultsPath, 'utf8');
+      results = JSON.parse(resultsData);
+    }
+
+    res.json({
+      success: true,
+      results,
+      stdout,
+      stderr: stderr || null
+    });
+  } catch (error) {
+    console.error('Error running tests:', error);
+    res.json({
+      success: false,
+      error: error.message,
+      results: {
+        total: 0,
+        passed: 0,
+        failed: 1,
+        duration: 0,
+        suites: []
+      }
+    });
+  }
+});
+
+// API: Get test metrics and history
+router.get('/api/tests/metrics', isAdmin, async function(req, res, next) {
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+    const resultsDir = path.join('/srv/ps/test/results');
+
+    // Read all test result files
+    const files = fs.readdirSync(resultsDir)
+      .filter(f => f.startsWith('test-results-') && f.endsWith('.json'))
+      .sort()
+      .reverse()
+      .slice(0, 20); // Last 20 test runs
+
+    const history = files.map(file => {
+      const data = JSON.parse(fs.readFileSync(path.join(resultsDir, file), 'utf8'));
+      return {
+        timestamp: data.timestamp,
+        total: data.total,
+        passed: data.passed,
+        failed: data.failed,
+        duration: data.duration,
+        suites: data.suites.map(s => ({
+          name: s.name,
+          passed: s.passed,
+          failed: s.failed,
+          duration: s.duration
+        }))
+      };
+    });
+
+    // Read latest results
+    const latestPath = path.join(resultsDir, 'latest.json');
+    const latest = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
+
+    // Calculate metrics
+    const passRate = latest.total > 0 ? ((latest.passed / latest.total) * 100).toFixed(1) : 0;
+    const avgDuration = history.length > 0
+      ? (history.reduce((sum, h) => sum + h.duration, 0) / history.length).toFixed(0)
+      : 0;
+
+    res.json({
+      success: true,
+      latest,
+      history,
+      metrics: {
+        passRate,
+        avgDuration,
+        totalRuns: history.length,
+        trend: calculateTrend(history)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching test metrics:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Helper function to calculate trend
+function calculateTrend(history) {
+  if (history.length < 2) return 'stable';
+
+  const recent = history.slice(0, 5);
+  const older = history.slice(5, 10);
+
+  if (recent.length === 0 || older.length === 0) return 'stable';
+
+  const recentPassRate = recent.reduce((sum, h) => sum + (h.passed / h.total), 0) / recent.length;
+  const olderPassRate = older.reduce((sum, h) => sum + (h.passed / h.total), 0) / older.length;
+
+  if (recentPassRate > olderPassRate + 0.05) return 'improving';
+  if (recentPassRate < olderPassRate - 0.05) return 'declining';
+  return 'stable';
+}
+
+// API: Test database connection
+router.get('/api/tests/database', isAdmin, async function(req, res, next) {
+  try {
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const db = getDb();
+
+    // Simple ping test
+    await db.admin().ping();
+
+    res.json({
+      success: true,
+      message: 'Database connection successful'
+    });
+  } catch (error) {
+    console.error('Database connection test failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: Get database metrics
+router.get('/api/database/metrics', isAdmin, async function(req, res, next) {
+  try {
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const db = getDb();
+
+    const collections = await db.listCollections().toArray();
+    const userCount = await db.collection('users').countDocuments();
+    const characterCount = await db.collection('characters').countDocuments();
+    const assetCount = await db.collection('assets').countDocuments();
+
+    res.json({
+      success: true,
+      metrics: {
+        collections: collections.length,
+        users: userCount,
+        characters: characterCount,
+        assets: assetCount
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching database metrics:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 export default router;

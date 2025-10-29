@@ -6,6 +6,7 @@
   <title>System Map - 3D View</title>
   <link rel="stylesheet" href="/stylesheets/style.css">
   <link rel="stylesheet" href="/stylesheets/galactic-map.css">
+  <link rel="stylesheet" href="/stylesheets/activity-monitor.css">
   <% if (user && user.userRole === 'tester') { %>
   <link rel="stylesheet" href="/stylesheets/tester-toolbar.css">
   <link rel="stylesheet" href="/stylesheets/global-chat.css">
@@ -33,6 +34,14 @@
       height: calc(100vh - 60px);
       position: relative;
       margin-top: 60px;
+      z-index: 1; /* Three.js canvas base layer */
+    }
+
+    #mapContainer canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1 !important; /* Force canvas to stay at base layer */
     }
 
     /* Critical Info Pane Styles */
@@ -45,8 +54,8 @@
     .side-panel.visible {
       right: 10px !important;
       transform: scale(1) !important;
-      border-color: rgba(138, 79, 255, 0.6) !important;
-      box-shadow: -5px 0 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(138, 79, 255, 0.3), 0 0 60px rgba(138, 79, 255, 0.5) !important;
+      border-color: rgba(0, 212, 255, 0.6) !important;
+      box-shadow: -5px 0 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(0, 212, 255, 0.4), 0 0 60px rgba(0, 212, 255, 0.6) !important;
     }
 
     /* Button styles within info pane */
@@ -54,9 +63,9 @@
     #infoPane .travel-btn,
     #assetInfo button {
       font-family: 'Orbitron', monospace !important;
-      background: linear-gradient(135deg, rgba(138, 79, 255, 0.2), rgba(74, 158, 255, 0.2)) !important;
-      border: 1px solid rgba(138, 79, 255, 0.4) !important;
-      color: #8a4fff !important;
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 170, 255, 0.2)) !important;
+      border: 1px solid rgba(0, 212, 255, 0.4) !important;
+      color: #00d4ff !important;
       padding: 10px 15px !important;
       border-radius: 6px !important;
       cursor: pointer !important;
@@ -71,9 +80,9 @@
     #infoPane button:hover,
     #infoPane .travel-btn:hover,
     #assetInfo button:hover {
-      background: linear-gradient(135deg, rgba(138, 79, 255, 0.3), rgba(74, 158, 255, 0.3)) !important;
-      border-color: #8a4fff !important;
-      box-shadow: 0 0 15px rgba(138, 79, 255, 0.4) !important;
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.3), rgba(0, 170, 255, 0.3)) !important;
+      border-color: #00d4ff !important;
+      box-shadow: 0 0 15px rgba(0, 212, 255, 0.5) !important;
       transform: translateY(-1px) !important;
     }
 
@@ -286,14 +295,15 @@
   <!-- Info Pane Backdrop (dimmed overlay) -->
   <div id="infoPaneBackdrop" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 9998; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;"></div>
 
-  <!-- Floating HUD Info (appears next to selected planets/objects with piloting options) -->
-  <div id="floatingHUD" style="position: fixed; display: none; z-index: 9999; pointer-events: auto; font-family: 'Courier New', monospace; font-size: 11px; min-width: 250px; max-width: 320px;">
-    <div style="background: rgba(0, 0, 0, 0.95); border: 1px solid #00ff00; border-radius: 4px; padding: 14px; box-shadow: 0 0 20px rgba(0, 255, 0, 0.3), inset 0 0 20px rgba(0, 255, 0, 0.05);">
-      <div style="color: #00ff00; font-weight: bold; margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;" id="hudTitle">[OBJECT]</div>
-      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 4px; font-size: 10px;" id="hudType">TYPE: UNKNOWN</div>
-      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 4px; font-size: 10px;" id="hudCoords">COORDS: [0, 0, 0]</div>
-      <div style="color: #00ff00; opacity: 0.9; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0, 255, 0, 0.3);" id="hudPilotingOptions">
-        <!-- Piloting options will be dynamically inserted here -->
+  <!-- Floating HUD Info (appears next to hovered objects) -->
+  <div id="floatingHUD" style="position: fixed; display: none; z-index: 9999; pointer-events: none; font-family: 'Courier New', monospace; font-size: 10px; min-width: 180px; max-width: 240px;">
+    <div style="background: rgba(0, 0, 0, 0.95); border: 1px solid #00ff00; border-radius: 3px; padding: 10px; box-shadow: 0 0 15px rgba(0, 255, 0, 0.3), inset 0 0 15px rgba(0, 255, 0, 0.05);">
+      <div style="color: #00ff00; font-weight: bold; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;" id="hudTitle">[OBJECT]</div>
+      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 3px; font-size: 9px;" id="hudType">TYPE: UNKNOWN</div>
+      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 3px; font-size: 9px;" id="hudCoords">COORDS: [0, 0, 0]</div>
+      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 3px; font-size: 9px;" id="hudDistance">DISTANCE: 0 KM</div>
+      <div style="color: #00ff00; opacity: 0.85; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(0, 255, 0, 0.25); font-size: 9px;" id="hudStats">
+        <!-- Object stats will be displayed here -->
       </div>
     </div>
   </div>
@@ -302,8 +312,8 @@
   <canvas id="hudLineCanvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9998; display: none;"></canvas>
 
   <!-- Side Panel - Info Pane (Hidden by default, shows on asset click) -->
-  <div class="side-panel" id="infoPane" style="position: fixed; top: 60px; right: -340px; width: 320px; max-height: calc(100vh - 70px); background: rgba(10, 10, 26, 0.98); backdrop-filter: blur(20px); border: 2px solid rgba(138, 79, 255, 0); border-radius: 8px; box-shadow: -5px 0 40px rgba(0, 0, 0, 0); z-index: 9999; transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s ease, box-shadow 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; overflow: hidden; transform: scale(0.9);">
-    <button class="panel-close-btn" onclick="window.closeInfoPane()" style="position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; background: rgba(138, 79, 255, 0.2); border: 1px solid rgba(138, 79, 255, 0.4); border-radius: 50%; color: #8a4fff; font-size: 1.2em; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s ease; font-family: 'Orbitron', monospace;">✕</button>
+  <div class="side-panel" id="infoPane" style="position: fixed; top: 60px; right: -340px; width: 320px; max-height: calc(100vh - 70px); background: rgba(10, 10, 26, 0.98); backdrop-filter: blur(20px); border: 2px solid rgba(0, 212, 255, 0); border-radius: 8px; box-shadow: -5px 0 40px rgba(0, 0, 0, 0); z-index: 9999; transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s ease, box-shadow 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; overflow: hidden; transform: scale(0.9);">
+    <button class="panel-close-btn" onclick="window.closeInfoPane()" style="position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; background: rgba(0, 212, 255, 0.2); border: 1px solid rgba(0, 212, 255, 0.4); border-radius: 50%; color: #00d4ff; font-size: 1.2em; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s ease; font-family: 'Orbitron', monospace; box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);">✕</button>
     <div class="panel-section" style="flex: 1; overflow-y: auto; padding: 12px; padding-top: 40px; position: relative; z-index: 3;">
       <div id="assetInfo" style="font-family: 'Orbitron', monospace; color: #e0e0ff;"></div>
     </div>
@@ -316,6 +326,8 @@
     <div class="quick-access-toolbar" style="padding: 15px; display: flex; gap: 10px; border-bottom: 2px solid rgba(138, 79, 255, 0.3); flex-wrap: wrap; justify-content: center;">
       <button id="toggleSidebarBtn" class="quick-btn" onclick="handleSidebarToggle()" style="background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 8px; padding: 10px; color: #ffffff; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Collapse Sidebar">«</button>
       <button id="toggleMenuBtn" class="quick-btn" onclick="handleMenuToggle()" style="background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 8px; padding: 10px; color: #ffffff; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Navigation Menu">☰</button>
+      <button id="lockShipBtn" class="quick-btn" onclick="handleCameraLock('ship')" style="background: rgba(0, 212, 255, 0.9); border: 2px solid #00d4ff; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Lock Camera to Ship">🚀</button>
+      <button id="lockPlanetBtn" class="quick-btn" onclick="handleCameraLock('planet')" style="background: rgba(255, 170, 0, 0.5); border: 2px solid #ffaa00; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Lock Camera to Planet">🪐</button>
       <button id="zenModeBtn" class="quick-btn" onclick="handleZenToggle()" style="background: rgba(100, 200, 255, 0.9); border: 2px solid #64c8ff; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Zen Mode">👁️</button>
       <button id="toggleOrbitsBtn" class="quick-btn" onclick="handleOrbitsToggle()" style="background: rgba(0, 255, 255, 0.9); border: 2px solid #00ffff; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Orbital Rings">⭕</button>
       <button id="centerOnPlayerBtn" class="quick-btn" onclick="handleCenterPlayer()" style="background: rgba(0, 170, 255, 0.9); border: 2px solid #00aaff; border-radius: 8px; padding: 10px; color: #fff; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Center on Ship">🎯</button>
@@ -564,6 +576,43 @@
     let sidebarVisible = true;
     let zenModeActive = false;
 
+    /**
+     * Toggle Overlay Menu - Define early so handleMenuToggle can call it
+     */
+    window.toggleOverlayMenu = function() {
+      console.log('🍔 toggleOverlayMenu called');
+      const menu = document.getElementById('overlayMenu');
+      const backdrop = document.getElementById('overlayBackdrop');
+      const btn = document.getElementById('toggleMenuBtn');
+
+      console.log('Menu element:', menu);
+      console.log('Backdrop element:', backdrop);
+      console.log('Button element:', btn);
+
+      const isActive = menu.classList.contains('active');
+      console.log('Is currently active:', isActive);
+
+      if (isActive) {
+        menu.classList.remove('active');
+        backdrop.classList.remove('active');
+        if (btn) btn.classList.remove('active');
+        // Force inline style to closed position
+        menu.style.right = '-400px';
+        backdrop.style.opacity = '0';
+        backdrop.style.pointerEvents = 'none';
+        console.log('✅ Menu closed');
+      } else {
+        menu.classList.add('active');
+        backdrop.classList.add('active');
+        if (btn) btn.classList.add('active');
+        // Force inline style to open position
+        menu.style.right = '0';
+        backdrop.style.opacity = '1';
+        backdrop.style.pointerEvents = 'auto';
+        console.log('✅ Menu opened');
+      }
+    };
+
     window.handleSidebarToggle = function() {
       console.log('⬅️ Sidebar toggle clicked');
       const sidebar = document.getElementById('unifiedSidebar');
@@ -588,12 +637,9 @@
     };
 
     window.handleMenuToggle = function() {
-      console.log('🍔 Menu button clicked');
-      if (window.toggleOverlayMenu) {
-        window.toggleOverlayMenu();
-      } else {
-        console.warn('toggleOverlayMenu not available yet');
-      }
+      console.log('☰ Menu button clicked');
+      // toggleOverlayMenu is defined later in this page - call it when user clicks
+      window.toggleOverlayMenu();
     };
 
     window.handleZenToggle = function() {
@@ -649,6 +695,39 @@
         }
       } else {
         console.warn('galacticMap not available yet');
+      }
+    };
+
+    /**
+     * Handle camera lock toggle
+     */
+    window.handleCameraLock = function(mode) {
+      console.log(`📷 Camera lock requested: ${mode}`);
+      if (!window.galacticMap) {
+        console.error('❌ galacticMap not initialized');
+        return;
+      }
+
+      window.galacticMap.setCameraLockMode(mode);
+
+      // Update button visuals
+      const shipBtn = document.getElementById('lockShipBtn');
+      const planetBtn = document.getElementById('lockPlanetBtn');
+
+      if (mode === 'ship') {
+        shipBtn.style.background = 'rgba(0, 212, 255, 0.9)';
+        shipBtn.style.borderColor = '#00d4ff';
+        shipBtn.style.boxShadow = '0 0 15px rgba(0, 212, 255, 0.6)';
+        planetBtn.style.background = 'rgba(255, 170, 0, 0.5)';
+        planetBtn.style.borderColor = '#ffaa00';
+        planetBtn.style.boxShadow = 'none';
+      } else if (mode === 'planet') {
+        planetBtn.style.background = 'rgba(255, 170, 0, 0.9)';
+        planetBtn.style.borderColor = '#ffaa00';
+        planetBtn.style.boxShadow = '0 0 15px rgba(255, 170, 0, 0.6)';
+        shipBtn.style.background = 'rgba(0, 212, 255, 0.5)';
+        shipBtn.style.borderColor = '#00d4ff';
+        shipBtn.style.boxShadow = 'none';
       }
     };
 
@@ -746,7 +825,164 @@
       console.log(`✅ System object selector populated: ${planets.length} planets, ${stations.length} stations/orbitals`);
     };
 
+    /**
+     * PWA Modal System - Define early so onclick handlers work
+     */
+    const modalRoutes = {
+      charactersModal: { url: '/characters', title: 'Characters' },
+      tomeModal: { url: '/universe/tome', title: 'The Tome' },
+      workshopModal: { url: '/assets', title: 'Asset Workshop' },
+      votingModal: { url: '/assets/voting', title: 'Asset Governance' },
+      profileModal: { url: '/profile', title: 'Profile' },
+      adminModal: { url: '/admin', title: 'Admin Dashboard' }
+    };
+
+    window.openPWAModal = async function(modalId) {
+      const modal = document.getElementById('pwaModalContainer');
+      const titleEl = document.getElementById('pwaModalTitle');
+      const contentEl = document.getElementById('pwaModalContent');
+
+      const route = modalRoutes[modalId];
+      if (!route) {
+        console.error('Unknown modal:', modalId);
+        return;
+      }
+
+      // Close overlay menu if open
+      const menu = document.getElementById('overlayMenu');
+      if (menu && menu.classList.contains('active')) {
+        window.toggleOverlayMenu();
+      }
+
+      // Show modal with loading state
+      modal.classList.add('active');
+      titleEl.textContent = route.title;
+      contentEl.innerHTML = '<div class="pwa-modal-loading"><div class="loading-spinner"></div><p>Loading...</p></div>';
+
+      try {
+        // Fetch content
+        const response = await fetch(route.url);
+        if (!response.ok) throw new Error('Failed to load content');
+
+        const html = await response.text();
+
+        // Extract body content (strip header/footer)
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const main = doc.querySelector('main') || doc.querySelector('.container') || doc.body;
+
+        // Inject content
+        contentEl.innerHTML = main.innerHTML;
+
+        // Execute any scripts in the loaded content
+        const scripts = contentEl.querySelectorAll('script');
+        scripts.forEach(script => {
+          const newScript = document.createElement('script');
+          if (script.src) {
+            newScript.src = script.src;
+          } else {
+            newScript.textContent = script.textContent;
+          }
+          document.body.appendChild(newScript);
+        });
+
+      } catch (error) {
+        console.error('Error loading modal content:', error);
+        contentEl.innerHTML = `
+          <div class="pwa-modal-error">
+            <div class="error-icon">⚠️</div>
+            <h3>Failed to Load</h3>
+            <p>Unable to load ${route.title}. Please try again.</p>
+            <button class="btn btn-primary" onclick="openPWAModal('${modalId}')">Retry</button>
+          </div>
+        `;
+      }
+    };
+
+    window.closePWAModal = function() {
+      const modal = document.getElementById('pwaModalContainer');
+
+      // Add closing animation class
+      modal.classList.add('closing');
+      modal.classList.remove('active');
+
+      // Wait for closing animation to complete
+      setTimeout(() => {
+        modal.classList.remove('closing');
+        // Clear content
+        document.getElementById('pwaModalContent').innerHTML = '<div class="pwa-modal-loading"><div class="loading-spinner"></div><p>Loading...</p></div>';
+      }, 400); // Match hudShutdown animation duration
+    };
+
+    /**
+     * Exit to Menu Confirmation
+     */
+    window.confirmExitToMenu = function() {
+      // Close overlay menu
+      const menu = document.getElementById('overlayMenu');
+      const backdrop = document.getElementById('overlayBackdrop');
+      if (menu && menu.classList.contains('active')) {
+        menu.classList.remove('active');
+        backdrop.classList.remove('active');
+      }
+
+      // Show exit confirmation modal
+      const exitModal = document.getElementById('exitConfirmModal');
+      exitModal.style.display = 'flex';
+    };
+
+    window.cancelExitToMenu = function() {
+      // Hide exit confirmation modal
+      const exitModal = document.getElementById('exitConfirmModal');
+      exitModal.style.display = 'none';
+    };
+
+    window.proceedExitToMenu = function() {
+      // Navigate to main menu
+      window.location.href = '/menu';
+    };
+
+    /**
+     * Confirm navigation away from system map (for non-menu destinations)
+     */
+    let pendingNavigationUrl = null;
+    let pendingNavigationName = null;
+
+    window.confirmNavigateAway = function(url, destinationName) {
+      // Close overlay menu
+      const menu = document.getElementById('overlayMenu');
+      const backdrop = document.getElementById('overlayBackdrop');
+      if (menu && menu.classList.contains('active')) {
+        menu.classList.remove('active');
+        backdrop.classList.remove('active');
+      }
+
+      // Store pending navigation
+      pendingNavigationUrl = url;
+      pendingNavigationName = destinationName;
+
+      // Show generic navigation confirmation modal
+      const navModal = document.getElementById('navigationConfirmModal');
+      const navDestination = document.getElementById('navDestinationName');
+      navDestination.textContent = destinationName || 'this location';
+      navModal.style.display = 'flex';
+    };
+
+    window.cancelNavigateAway = function() {
+      const navModal = document.getElementById('navigationConfirmModal');
+      navModal.style.display = 'none';
+      pendingNavigationUrl = null;
+      pendingNavigationName = null;
+    };
+
+    window.proceedNavigateAway = function() {
+      if (pendingNavigationUrl) {
+        window.location.href = pendingNavigationUrl;
+      }
+    };
+
     console.log('✅ All sidebar functions defined globally');
+    console.log('✅ Navigation functions (openPWAModal, confirmNavigateAway, etc.) defined');
   </script>
 
   <!-- Overlay Menu System -->
@@ -768,7 +1004,7 @@
         <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
       </div>
 
-      <div class="overlay-menu-item" onclick="window.location.href='/universe/galactic-map-3d'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+      <div class="overlay-menu-item" onclick="confirmNavigateAway('/universe/galactic-map-3d', 'Galactic Map')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
         <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🌌</span>
         <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Galactic Map</span>
         <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
@@ -859,6 +1095,30 @@
     </div>
   </div>
 
+  <!-- Navigation Confirmation Modal (for non-menu destinations) -->
+  <div id="navigationConfirmModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(10px); z-index: 20000; display: none; align-items: center; justify-content: center;">
+    <div style="background: rgba(10, 10, 26, 0.98); border: 2px solid #ff6600; border-radius: 12px; padding: 30px 40px; max-width: 500px; box-shadow: 0 0 40px rgba(255, 102, 0, 0.4); animation: modalAppear 0.3s ease;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="font-size: 48px; margin-bottom: 10px;">🚀</div>
+        <h2 style="margin: 0; font-size: 24px; color: #ff6600; font-family: 'Orbitron', monospace; text-shadow: 0 0 10px rgba(255, 102, 0, 0.6);">LEAVE SYSTEM MAP?</h2>
+      </div>
+
+      <p style="color: #e0e0ff; font-size: 16px; text-align: center; margin-bottom: 25px; line-height: 1.6;">
+        You are about to navigate to <strong id="navDestinationName" style="color: #00ffaa;">this location</strong>.<br>
+        Your ship's position will be saved.
+      </p>
+
+      <div style="display: flex; gap: 15px; justify-content: center;">
+        <button onclick="cancelNavigateAway()" style="background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; color: #ffffff; padding: 12px 30px; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.3s; font-family: 'Orbitron', monospace;">
+          ← Stay Here
+        </button>
+        <button onclick="proceedNavigateAway()" style="background: rgba(255, 102, 0, 0.2); border: 2px solid #ff6600; color: #ff6600; padding: 12px 30px; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.3s; font-family: 'Orbitron', monospace;">
+          Navigate Away →
+        </button>
+      </div>
+    </div>
+  </div>
+
   <style>
     @keyframes modalAppear {
       from {
@@ -878,6 +1138,15 @@
 
     #exitConfirmModal button:last-child:hover {
       box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+    }
+
+    #navigationConfirmModal button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(138, 79, 255, 0.4);
+    }
+
+    #navigationConfirmModal button:last-child:hover {
+      box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
     }
   </style>
 
@@ -921,14 +1190,20 @@
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
     // Make THREE available globally for the script
     window.THREE = THREE;
     window.OrbitControls = OrbitControls;
+
+    // Make CSS2D classes available globally for pilot name labels
+    THREE.CSS2DRenderer = CSS2DRenderer;
+    THREE.CSS2DObject = CSS2DObject;
   </script>
 
   <script src="/javascripts/system-map-3d.js?v=<%= Date.now() %>"></script>
   <script src="/javascripts/ship-combat-system.js?v=<%= Date.now() %>"></script>
+  <script src="/javascripts/activity-monitor.js"></script>
 
   <script src="/socket.io/socket.io.js"></script>
   <% if (user && user.userRole === 'tester') { %>
@@ -939,6 +1214,7 @@
 
   <script>
     // toggleSidebarSection is already defined in inline script above (line 516)
+    // Navigation functions (openPWAModal, confirmNavigateAway, etc.) are defined in the early script block
 
     // Update breadcrumb with star name from URL
     document.addEventListener('DOMContentLoaded', () => {
@@ -976,6 +1252,216 @@
       };
       const testerCharacter = <%= character ? JSON.stringify(character) : 'null' %>;
       window.testerToolbar = new TesterToolbar(testerUser, testerCharacter);
+      <% } %>
+
+      // Set pilot name (character name) on ship label
+      <% if (character && character.name) { %>
+      setTimeout(() => {
+        if (window.shipCombatSystem) {
+          // Use character name as pilot name
+          window.shipCombatSystem.updateCharacterNameLabel('<%= character.name %>');
+        }
+      }, 1500); // Increased timeout to ensure ship combat system is loaded
+      <% } %>
+
+      // Initialize Socket.IO for multiplayer pilot tracking
+      const socket = io();
+      window.multiplayerSocket = socket;
+
+      // Track other players' ships in 3D scene
+      window.otherPlayers = new Map(); // characterId -> { mesh, label, data }
+
+      // Listen for connection
+      socket.on('connect', () => {
+        console.log('🔌 Connected to multiplayer server:', socket.id);
+
+        // Announce this character joining the system (if character exists)
+        <% if (character) { %>
+        const joinData = {
+          characterId: '<%= character._id %>',
+          characterName: '<%= character.name %>',
+          userId: '<%= user._id %>',
+          location: <%= character.location ? JSON.stringify(character.location) : 'null' %>,
+          assetId: '<%= character.currentAssetId || "" %>',
+          stringDomain: '<%= character.stringDomain || "Time String" %>'
+        };
+
+        socket.emit('characterJoin', joinData);
+        console.log('📡 Announced character join:', joinData);
+        <% } %>
+      });
+
+      // Handle new character joining
+      socket.on('characterJoined', (data) => {
+        console.log('👥 Character joined system:', data.characterName, data);
+
+        // Skip if this is our own character
+        <% if (character) { %>
+        if (data.characterId === '<%= character._id %>') return;
+        <% } %>
+
+        // Add the new player's ship to the scene
+        if (data.location && window.galacticMap) {
+          addOtherPlayerShip(data);
+        }
+      });
+
+      // Handle character leaving
+      socket.on('characterLeft', (data) => {
+        console.log('👋 Character left system:', data.characterName);
+        removeOtherPlayerShip(data.characterId);
+      });
+
+      // Handle online players list (when we first join)
+      socket.on('onlinePlayers', (playersList) => {
+        console.log('📋 Received online players list:', playersList.length);
+
+        playersList.forEach(player => {
+          // Skip our own character
+          <% if (character) { %>
+          if (player.characterId === '<%= character._id %>') return;
+          <% } %>
+
+          // Add other players to the scene
+          if (player.location) {
+            addOtherPlayerShip(player);
+          }
+        });
+      });
+
+      // Handle character location updates
+      socket.on('characterLocationUpdate', (data) => {
+        console.log('📍 Character location update:', data.characterName);
+
+        // Update the player's position in the scene
+        updateOtherPlayerPosition(data);
+      });
+
+      // Function to add another player's ship to the scene
+      function addOtherPlayerShip(playerData) {
+        const { characterId, characterName, location } = playerData;
+
+        if (!location || !window.galacticMap) return;
+
+        // Check if already exists
+        if (window.otherPlayers.has(characterId)) {
+          console.log('Player already in scene:', characterName);
+          return;
+        }
+
+        // Create ship mesh for other player
+        const geometry = new THREE.SphereGeometry(2, 8, 8);
+        const material = new THREE.MeshBasicMaterial({
+          color: 0x00aaff,
+          transparent: true,
+          opacity: 0.8
+        });
+        const shipMesh = new THREE.Mesh(geometry, material);
+
+        // Set position
+        shipMesh.position.set(
+          location.x || 0,
+          location.y || 0,
+          location.z || 0
+        );
+
+        // Add to scene
+        window.galacticMap.scene.add(shipMesh);
+
+        // Create text label for pilot name (CSS2D)
+        if (typeof THREE.CSS2DObject !== 'undefined') {
+          const labelDiv = document.createElement('div');
+          labelDiv.className = 'pilot-label';
+          labelDiv.textContent = characterName;
+          labelDiv.style.cssText = `
+            color: #00d4ff;
+            font-family: 'Orbitron', 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #00d4ff;
+            white-space: nowrap;
+            pointer-events: none;
+            text-shadow: 0 0 8px rgba(0, 212, 255, 0.8);
+          `;
+
+          const label = new THREE.CSS2DObject(labelDiv);
+          label.position.set(0, 5, 0); // Above the ship
+          shipMesh.add(label);
+
+          // Store reference
+          window.otherPlayers.set(characterId, {
+            mesh: shipMesh,
+            label: label,
+            data: playerData
+          });
+
+          console.log('✅ Added player ship:', characterName, 'at', location);
+        } else {
+          // Fallback: store without label
+          window.otherPlayers.set(characterId, {
+            mesh: shipMesh,
+            label: null,
+            data: playerData
+          });
+          console.log('⚠️ CSS2DObject not available, ship added without label');
+        }
+      }
+
+      // Function to remove other player's ship
+      function removeOtherPlayerShip(characterId) {
+        if (!window.otherPlayers.has(characterId)) return;
+
+        const player = window.otherPlayers.get(characterId);
+
+        // Remove from scene
+        if (player.mesh && window.galacticMap) {
+          window.galacticMap.scene.remove(player.mesh);
+
+          // Dispose geometry and material
+          if (player.mesh.geometry) player.mesh.geometry.dispose();
+          if (player.mesh.material) player.mesh.material.dispose();
+        }
+
+        // Remove from tracking
+        window.otherPlayers.delete(characterId);
+        console.log('🗑️ Removed player ship:', characterId);
+      }
+
+      // Function to update other player position
+      function updateOtherPlayerPosition(data) {
+        const { characterId, location } = data;
+
+        if (!window.otherPlayers.has(characterId) || !location) return;
+
+        const player = window.otherPlayers.get(characterId);
+        if (player.mesh) {
+          // Smoothly interpolate to new position
+          player.mesh.position.lerp(
+            new THREE.Vector3(location.x || 0, location.y || 0, location.z || 0),
+            0.1
+          );
+        }
+      }
+
+      // Periodically broadcast our position (if we have a character)
+      <% if (character) { %>
+      setInterval(() => {
+        if (window.shipCombatSystem && window.shipCombatSystem.playerShip) {
+          const pos = window.shipCombatSystem.playerShip.position;
+          socket.emit('characterLocationUpdate', {
+            characterId: '<%= character._id %>',
+            characterName: '<%= character.name %>',
+            location: {
+              x: pos.x,
+              y: pos.y,
+              z: pos.z
+            }
+          });
+        }
+      }, 2000); // Update every 2 seconds
       <% } %>
     });
 
@@ -1026,6 +1512,15 @@
       }
 
       console.log('✅ Asset selected in sidebar:', title);
+
+      // Also display in the floating info pane with neon blue HUD
+      window.displayAssetInfo({
+        title: title,
+        type: type,
+        coordinates: data?.coordinates || { x: 0, y: 0, z: 0 },
+        description: data?.description,
+        stats: data?.stats
+      });
     });
 
     window.addEventListener('assetDeselected', () => {
@@ -1033,6 +1528,8 @@
       if (selectedAssetInfo) {
         selectedAssetInfo.innerHTML = '<div style="text-align: center; color: #888; padding: 20px 0;">Click an asset to view details</div>';
       }
+      // Close the floating info pane
+      window.closeInfoPane();
       console.log('✅ Asset deselected in sidebar');
     });
 
@@ -1297,74 +1794,63 @@
     // Handle system object selection - shows floating HUD
     const systemObjectSelectorElement = document.getElementById('systemObjectSelector');
     if (systemObjectSelectorElement) {
-      systemObjectSelectorElement.addEventListener('change', (e) => {
-        const objectId = e.target.value;
-        if (!objectId) return;
+      console.log('✅ Found systemObjectSelector element, attaching event listener...');
 
-        console.log('🔍 System object selected from sidebar:', objectId);
+      systemObjectSelectorElement.addEventListener('change', (e) => {
+        console.log('🔔 Dropdown change event fired!');
+        const objectId = e.target.value;
+        console.log('Selected objectId:', objectId);
+
+        if (!objectId) {
+          console.log('❌ No objectId selected, exiting');
+          return;
+        }
+
+        console.log('🔍 System object selected from dropdown:', objectId);
+
+        // Check if galacticMap exists
+        if (!window.galacticMap) {
+          console.error('❌ galacticMap not initialized');
+          e.target.value = '';
+          return;
+        }
+        console.log('✅ galacticMap exists');
 
         // Check planets Map first
         let objectMesh = null;
-        let objectData = null;
 
-        if (window.galacticMap && window.galacticMap.planets) {
+        console.log('Checking planets Map...');
+        if (window.galacticMap.planets) {
+          console.log(`Planets Map has ${window.galacticMap.planets.size} entries`);
           objectMesh = window.galacticMap.planets.get(objectId);
           if (objectMesh) {
-            objectData = objectMesh.userData;
+            console.log('✅ Found in planets Map!');
           }
         }
 
         // If not in planets, check assets Map
-        if (!objectMesh && window.galacticMap && window.galacticMap.assets) {
+        if (!objectMesh && window.galacticMap.assets) {
+          console.log('Not in planets, checking assets Map...');
+          console.log(`Assets Map has ${window.galacticMap.assets.size} entries`);
           const assetObj = window.galacticMap.assets.get(objectId);
           if (assetObj && assetObj.mesh) {
             objectMesh = assetObj.mesh;
-            objectData = objectMesh.userData;
+            console.log('✅ Found in assets Map!');
           }
         }
 
-        if (objectMesh && window.shipCombatSystem && window.shipCombatSystem.camera) {
-          const objectPos = objectMesh.position;
-          console.log(`📍 Viewing ${objectData.title} at (${objectPos.x}, ${objectPos.y}, ${objectPos.z})`);
+        if (objectMesh) {
+          console.log(`✅ Found object in scene: ${objectMesh.userData.title}`);
+          console.log('Object position:', objectMesh.position);
+          console.log('Calling galacticMap.selectObject()...');
 
-          // Move camera to view the object
-          const distance = 5000; // Zoom distance from object
-          window.shipCombatSystem.camera.position.set(
-            objectPos.x,
-            objectPos.y + distance * 0.5,
-            objectPos.z + distance
-          );
-          window.shipCombatSystem.camera.lookAt(objectPos);
-
-          // Show the sleek floating HUD with object info
-          if (window.showFloatingHUD) {
-            // Create asset data object for HUD
-            const assetData = {
-              _id: objectId,
-              title: objectData.title,
-              assetType: objectData.type,
-              coordinates: {
-                x: objectPos.x,
-                y: objectPos.y,
-                z: objectPos.z
-              }
-            };
-            window.showFloatingHUD(assetData);
-          }
-
-          // Update sidebar selected section
-          window.dispatchEvent(new CustomEvent('assetSelected', {
-            detail: {
-              title: objectData.title,
-              type: objectData.type,
-              data: {
-                _id: objectId,
-                coordinates: objectPos
-              }
-            }
-          }));
+          // Use the galacticMap's selectObject method to trigger all the HUD effects
+          window.galacticMap.selectObject(objectMesh);
+          console.log('✅ selectObject() called successfully');
         } else {
-          console.warn('⚠️ Object not found in scene:', objectId);
+          console.error('⚠️ Object not found in scene:', objectId);
+          console.log('Available planet IDs:', Array.from(window.galacticMap.planets?.keys() || []));
+          console.log('Available asset IDs:', Array.from(window.galacticMap.assets?.keys() || []));
         }
 
         // Reset selector
@@ -1430,104 +1916,53 @@
       document.getElementById('hudCoords').textContent =
         `COORDS: [${Math.floor(coords.x)}, ${Math.floor(coords.y)}, ${Math.floor(coords.z)}]`;
 
-      // Build piloting options based on asset type
-      const pilotingOptions = document.getElementById('hudPilotingOptions');
-      let optionsHTML = '';
+      // Calculate distance from ship to object
+      const shipPos = window.shipCombatSystem?.ship?.position;
+      let distance = 0;
+      if (shipPos) {
+        const dx = coords.x - shipPos.x;
+        const dy = coords.y - shipPos.y;
+        const dz = coords.z - shipPos.z;
+        distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      }
+      document.getElementById('hudDistance').textContent = `DISTANCE: ${Math.floor(distance)} KM`;
+
+      // Build stats display based on asset type
+      const statsElement = document.getElementById('hudStats');
+      let statsHTML = '';
 
       if (asset.assetType === 'planet') {
-        optionsHTML = `
-          <div style="margin-bottom: 6px; font-size: 10px; font-weight: bold; color: #00ff00; text-transform: uppercase;">
-            [PILOTING OPTIONS]
-          </div>
-          <button onclick="travelToPlanet('${asset._id}', '${asset.title}')" style="
-            width: 100%;
-            background: rgba(0, 255, 0, 0.2);
-            border: 1px solid #00ff00;
-            color: #00ff00;
-            padding: 8px 12px;
-            margin-bottom: 5px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            transition: all 0.2s;
-          " onmouseover="this.style.background='rgba(0, 255, 0, 0.3)'" onmouseout="this.style.background='rgba(0, 255, 0, 0.2)'">
-            🚀 TRAVEL TO PLANET
-          </button>
-          <button onclick="orbitPlanet('${asset._id}', '${asset.title}')" style="
-            width: 100%;
-            background: rgba(0, 170, 255, 0.2);
-            border: 1px solid #00aaff;
-            color: #00aaff;
-            padding: 8px 12px;
-            margin-bottom: 5px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            transition: all 0.2s;
-          " onmouseover="this.style.background='rgba(0, 170, 255, 0.3)'" onmouseout="this.style.background='rgba(0, 170, 255, 0.2)'">
-            🌀 ENTER ORBIT
-          </button>
-          <button onclick="landOnPlanet('${asset._id}', '${asset.title}')" style="
-            width: 100%;
-            background: rgba(255, 170, 0, 0.2);
-            border: 1px solid #ffaa00;
-            color: #ffaa00;
-            padding: 8px 12px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            transition: all 0.2s;
-          " onmouseover="this.style.background='rgba(255, 170, 0, 0.3)'" onmouseout="this.style.background='rgba(255, 170, 0, 0.2)'">
-            🛬 LAND ON SURFACE
-          </button>
+        const mass = asset.mass || 'UNKNOWN';
+        const radius = asset.radius || 'UNKNOWN';
+        const gravity = asset.gravity || 'UNKNOWN';
+        statsHTML = `
+          <div style="margin-bottom: 2px;">MASS: ${mass}</div>
+          <div style="margin-bottom: 2px;">RADIUS: ${radius} KM</div>
+          <div style="margin-bottom: 2px;">GRAVITY: ${gravity} G</div>
         `;
       } else if (asset.assetType === 'station' || asset.assetType === 'orbital') {
-        optionsHTML = `
-          <div style="margin-bottom: 6px; font-size: 10px; font-weight: bold; color: #00ff00; text-transform: uppercase;">
-            [PILOTING OPTIONS]
-          </div>
-          <button onclick="travelToPlanet('${asset._id}', '${asset.title}')" style="
-            width: 100%;
-            background: rgba(0, 255, 0, 0.2);
-            border: 1px solid #00ff00;
-            color: #00ff00;
-            padding: 8px 12px;
-            margin-bottom: 5px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            transition: all 0.2s;
-          " onmouseover="this.style.background='rgba(0, 255, 0, 0.3)'" onmouseout="this.style.background='rgba(0, 255, 0, 0.2)'">
-            🚀 TRAVEL TO STATION
-          </button>
-          <button onclick="dockAtStation('${asset._id}', '${asset.title}')" style="
-            width: 100%;
-            background: rgba(255, 170, 0, 0.2);
-            border: 1px solid #ffaa00;
-            color: #ffaa00;
-            padding: 8px 12px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            transition: all 0.2s;
-          " onmouseover="this.style.background='rgba(255, 170, 0, 0.3)'" onmouseout="this.style.background='rgba(255, 170, 0, 0.2)'">
-            🔗 DOCK AT STATION
-          </button>
+        const capacity = asset.capacity || 'UNKNOWN';
+        const dockingBays = asset.dockingBays || 'UNKNOWN';
+        statsHTML = `
+          <div style="margin-bottom: 2px;">CAPACITY: ${capacity}</div>
+          <div style="margin-bottom: 2px;">DOCKING BAYS: ${dockingBays}</div>
+          <div style="margin-bottom: 2px;">STATUS: OPERATIONAL</div>
+        `;
+      } else if (asset.assetType === 'star') {
+        const spectralType = asset.spectralType || 'G-TYPE';
+        const temperature = asset.temperature || 'UNKNOWN';
+        statsHTML = `
+          <div style="margin-bottom: 2px;">SPECTRAL: ${spectralType}</div>
+          <div style="margin-bottom: 2px;">TEMP: ${temperature} K</div>
+          <div style="margin-bottom: 2px;">STATUS: ACTIVE</div>
         `;
       } else {
-        optionsHTML = `
-          <div style="font-size: 10px; color: #888; font-style: italic;">
-            &gt; NO PILOTING OPTIONS AVAILABLE
-          </div>
+        statsHTML = `
+          <div style="color: #888; font-style: italic;">NO DATA AVAILABLE</div>
         `;
       }
 
-      pilotingOptions.innerHTML = optionsHTML;
+      statsElement.innerHTML = statsHTML;
 
       // Draw connection line
       canvas.width = window.innerWidth;
@@ -1612,7 +2047,7 @@
     };
 
     /**
-     * Display asset info in hovering pane
+     * Display asset info in hovering pane with neon blue HUD styling
      */
     window.displayAssetInfo = function(assetData) {
       console.log('Displaying asset info for:', assetData);
@@ -1627,8 +2062,8 @@
 
       infoPane.style.right = '10px';
       infoPane.style.transform = 'scale(1)';
-      infoPane.style.borderColor = 'rgba(138, 79, 255, 0.6)';
-      infoPane.style.boxShadow = '-5px 0 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(138, 79, 255, 0.3), 0 0 60px rgba(138, 79, 255, 0.5)';
+      infoPane.style.borderColor = 'rgba(0, 212, 255, 0.6)';
+      infoPane.style.boxShadow = '-5px 0 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(0, 212, 255, 0.4), 0 0 60px rgba(0, 212, 255, 0.6)';
 
       backdrop.style.opacity = '1';
       backdrop.style.pointerEvents = 'auto';
@@ -1641,50 +2076,53 @@
       else if (assetData.type === 'station') icon = '🏗️';
       else if (assetData.type === 'anomaly') icon = '✨';
 
-      // Build HTML
+      // Build HUD-style HTML with neon blue theme
       info.innerHTML = `
-        <div class="zone-detail">
-          <div class="asset-header">
-            <div class="asset-icon-large">${icon}</div>
-            <div class="asset-title-section">
-              <h2 class="asset-title" style="color: #8a4fff; font-size: 20px; margin: 10px 0;">${assetData.title || 'Unknown'}</h2>
-              <div class="asset-badges">
-                <span style="background: rgba(138, 79, 255, 0.2); border: 1px solid #8a4fff; padding: 4px 10px; border-radius: 4px; font-size: 11px; color: #8a4fff;">${assetData.type || 'unknown'}</span>
+        <div class="zone-detail" style="font-family: 'Orbitron', monospace;">
+          <div class="asset-header" style="position: relative; padding: 15px; background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(0, 170, 255, 0.05)); border: 1px solid rgba(0, 212, 255, 0.3); border-radius: 8px; margin-bottom: 15px;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <div class="asset-icon-large" style="font-size: 48px; filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.6));">${icon}</div>
+              <div class="asset-title-section" style="flex: 1;">
+                <h2 class="asset-title" style="color: #00d4ff; font-size: 20px; margin: 0 0 8px 0; text-shadow: 0 0 10px rgba(0, 212, 255, 0.8);">${assetData.title || 'Unknown'}</h2>
+                <div class="asset-badges">
+                  <span style="background: rgba(0, 212, 255, 0.2); border: 1px solid #00d4ff; padding: 4px 10px; border-radius: 4px; font-size: 11px; color: #00d4ff; text-transform: uppercase; box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);">${assetData.type || 'unknown'}</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(138, 79, 255, 0.3);">
-            <h4 style="color: #8a4fff; font-size: 14px; margin-bottom: 10px;">📍 Position</h4>
-            <div style="font-size: 12px; color: #e0e0ff;">
-              <div style="display: flex; justify-content: space-between; margin: 5px 0;">
-                <span>X:</span>
-                <span>${Math.round(assetData.coordinates?.x || 0)}</span>
+          <div style="margin-top: 15px; padding: 12px; background: rgba(0, 212, 255, 0.05); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 6px;">
+            <h4 style="color: #00d4ff; font-size: 13px; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 1px;">📍 3D Coordinates</h4>
+            <div style="font-size: 12px; color: #a0f0ff; font-family: 'Courier New', monospace;">
+              <div style="display: flex; justify-content: space-between; margin: 5px 0; padding: 4px 8px; background: rgba(0, 0, 0, 0.3); border-left: 2px solid #00d4ff;">
+                <span style="color: #00d4ff;">X:</span>
+                <span style="color: #ffffff; font-weight: bold;">${Math.round(assetData.coordinates?.x || 0)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; margin: 5px 0;">
-                <span>Y:</span>
-                <span>${Math.round(assetData.coordinates?.y || 0)}</span>
+              <div style="display: flex; justify-content: space-between; margin: 5px 0; padding: 4px 8px; background: rgba(0, 0, 0, 0.3); border-left: 2px solid #00d4ff;">
+                <span style="color: #00d4ff;">Y:</span>
+                <span style="color: #ffffff; font-weight: bold;">${Math.round(assetData.coordinates?.y || 0)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; margin: 5px 0;">
-                <span>Z:</span>
-                <span>${Math.round(assetData.coordinates?.z || 0)}</span>
+              <div style="display: flex; justify-content: space-between; margin: 5px 0; padding: 4px 8px; background: rgba(0, 0, 0, 0.3); border-left: 2px solid #00d4ff;">
+                <span style="color: #00d4ff;">Z:</span>
+                <span style="color: #ffffff; font-weight: bold;">${Math.round(assetData.coordinates?.z || 0)}</span>
               </div>
             </div>
           </div>
 
           ${assetData.description ? `
-            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(138, 79, 255, 0.3);">
-              <p style="color: #e0e0ff; font-size: 13px; line-height: 1.6;">${assetData.description}</p>
+            <div style="margin-top: 15px; padding: 12px; background: rgba(0, 212, 255, 0.05); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 6px;">
+              <h4 style="color: #00d4ff; font-size: 13px; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 1px;">📋 Description</h4>
+              <p style="color: #e0f0ff; font-size: 13px; line-height: 1.6; margin: 0;">${assetData.description}</p>
             </div>
           ` : ''}
 
           ${assetData.stats ? `
-            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(138, 79, 255, 0.3);">
-              <h4 style="color: #8a4fff; font-size: 14px; margin-bottom: 10px;">📊 Statistics</h4>
+            <div style="margin-top: 15px; padding: 12px; background: rgba(0, 212, 255, 0.05); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 6px;">
+              <h4 style="color: #00d4ff; font-size: 13px; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 1px;">📊 Statistics</h4>
               ${Object.entries(assetData.stats).map(([key, value]) => `
-                <div style="display: flex; justify-content: space-between; margin: 5px 0; font-size: 12px; color: #e0e0ff;">
-                  <span>${key}:</span>
-                  <span>${value}</span>
+                <div style="display: flex; justify-content: space-between; margin: 5px 0; padding: 4px 8px; background: rgba(0, 0, 0, 0.3); border-left: 2px solid #00d4ff; font-size: 12px; font-family: 'Courier New', monospace;">
+                  <span style="color: #00d4ff; text-transform: capitalize;">${key}:</span>
+                  <span style="color: #ffffff; font-weight: bold;">${value}</span>
                 </div>
               `).join('')}
             </div>
@@ -1718,26 +2156,7 @@
       backdrop.addEventListener('click', () => window.closeInfoPane());
     }
 
-    /**
-     * Toggle Overlay Menu
-     */
-    window.toggleOverlayMenu = function() {
-      const menu = document.getElementById('overlayMenu');
-      const backdrop = document.getElementById('overlayBackdrop');
-      const btn = document.getElementById('toggleMenuBtn');
-
-      const isActive = menu.classList.contains('active');
-
-      if (isActive) {
-        menu.classList.remove('active');
-        backdrop.classList.remove('active');
-        if (btn) btn.classList.remove('active');
-      } else {
-        menu.classList.add('active');
-        backdrop.classList.add('active');
-        if (btn) btn.classList.add('active');
-      }
-    };
+    // toggleOverlayMenu is now defined earlier in the script (line 570)
 
     // Close menu/modal/zen mode on ESC key
     document.addEventListener('keydown', (e) => {
@@ -1763,122 +2182,20 @@
       }
     });
 
-    /**
-     * PWA Modal System - Opens content in full-screen modal over the map
-     */
-    const modalRoutes = {
-      charactersModal: { url: '/characters', title: 'Characters' },
-      tomeModal: { url: '/universe/tome', title: 'The Tome' },
-      workshopModal: { url: '/assets', title: 'Asset Workshop' },
-      votingModal: { url: '/assets/voting', title: 'Asset Governance' },
-      profileModal: { url: '/profile', title: 'Profile' },
-      adminModal: { url: '/admin', title: 'Admin Dashboard' }
-    };
+    // Add hover effects to menu items
+    document.querySelectorAll('.overlay-menu-item').forEach(item => {
+      item.addEventListener('mouseenter', function() {
+        this.style.background = 'rgba(138, 79, 255, 0.15)';
+        this.style.transform = 'translateX(5px)';
+      });
 
-    window.openPWAModal = async function(modalId) {
-      const modal = document.getElementById('pwaModalContainer');
-      const titleEl = document.getElementById('pwaModalTitle');
-      const contentEl = document.getElementById('pwaModalContent');
+      item.addEventListener('mouseleave', function() {
+        this.style.background = 'transparent';
+        this.style.transform = 'translateX(0)';
+      });
+    });
 
-      const route = modalRoutes[modalId];
-      if (!route) {
-        console.error('Unknown modal:', modalId);
-        return;
-      }
-
-      // Close overlay menu if open
-      const menu = document.getElementById('overlayMenu');
-      if (menu && menu.classList.contains('active')) {
-        toggleOverlayMenu();
-      }
-
-      // Show modal with loading state
-      modal.classList.add('active');
-      titleEl.textContent = route.title;
-      contentEl.innerHTML = '<div class="pwa-modal-loading"><div class="loading-spinner"></div><p>Loading...</p></div>';
-
-      try {
-        // Fetch content
-        const response = await fetch(route.url);
-        if (!response.ok) throw new Error('Failed to load content');
-
-        const html = await response.text();
-
-        // Extract body content (strip header/footer)
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const main = doc.querySelector('main') || doc.querySelector('.container') || doc.body;
-
-        // Inject content
-        contentEl.innerHTML = main.innerHTML;
-
-        // Execute any scripts in the loaded content
-        const scripts = contentEl.querySelectorAll('script');
-        scripts.forEach(script => {
-          const newScript = document.createElement('script');
-          if (script.src) {
-            newScript.src = script.src;
-          } else {
-            newScript.textContent = script.textContent;
-          }
-          document.body.appendChild(newScript);
-        });
-
-      } catch (error) {
-        console.error('Error loading modal content:', error);
-        contentEl.innerHTML = `
-          <div class="pwa-modal-error">
-            <div class="error-icon">⚠️</div>
-            <h3>Failed to Load</h3>
-            <p>Unable to load ${route.title}. Please try again.</p>
-            <button class="btn btn-primary" onclick="openPWAModal('${modalId}')">Retry</button>
-          </div>
-        `;
-      }
-    };
-
-    window.closePWAModal = function() {
-      const modal = document.getElementById('pwaModalContainer');
-
-      // Add closing animation class
-      modal.classList.add('closing');
-      modal.classList.remove('active');
-
-      // Wait for closing animation to complete
-      setTimeout(() => {
-        modal.classList.remove('closing');
-        // Clear content
-        document.getElementById('pwaModalContent').innerHTML = '<div class="pwa-modal-loading"><div class="loading-spinner"></div><p>Loading...</p></div>';
-      }, 400); // Match hudShutdown animation duration
-    };
-
-    /**
-     * Exit to Menu Confirmation
-     */
-    window.confirmExitToMenu = function() {
-      // Close overlay menu
-      const menu = document.getElementById('overlayMenu');
-      const backdrop = document.getElementById('overlayBackdrop');
-      if (menu && menu.classList.contains('active')) {
-        menu.classList.remove('active');
-        backdrop.classList.remove('active');
-      }
-
-      // Show exit confirmation modal
-      const exitModal = document.getElementById('exitConfirmModal');
-      exitModal.style.display = 'flex';
-    };
-
-    window.cancelExitToMenu = function() {
-      // Hide exit confirmation modal
-      const exitModal = document.getElementById('exitConfirmModal');
-      exitModal.style.display = 'none';
-    };
-
-    window.proceedExitToMenu = function() {
-      // Navigate to main menu
-      window.location.href = '/menu';
-    };
+    console.log('✅ Navigation confirmation system initialized for system map');
   </script>
 </body>
 </html>

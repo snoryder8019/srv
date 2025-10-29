@@ -6,6 +6,7 @@
   <title><%= title %> - 3D View</title>
   <link rel="stylesheet" href="/stylesheets/style.css">
   <link rel="stylesheet" href="/stylesheets/galactic-map.css">
+  <link rel="stylesheet" href="/stylesheets/activity-monitor.css">
   <style>
     body {
       margin: 0;
@@ -262,24 +263,6 @@
       transform: translateX(-50%) scale(1.05);
     }
 
-    /* Navigation Breadcrumb */
-    .nav-breadcrumb {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: rgba(0, 20, 40, 0.9);
-      border: 2px solid #00ffaa;
-      border-radius: 8px;
-      padding: 12px 18px;
-      color: #00ffaa;
-      font-size: 14px;
-      z-index: 100;
-      backdrop-filter: blur(10px);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
     .back-button {
       background: rgba(255, 100, 100, 0.8);
       border: 2px solid #ff6644;
@@ -352,40 +335,40 @@
     z-index: 9999;
     pointer-events: none;
     font-family: 'Courier New', monospace;
-    font-size: 11px;
-    min-width: 200px;
-    max-width: 280px;
+    font-size: 10px;
+    min-width: 180px;
+    max-width: 240px;
   ">
     <div style="
       background: rgba(0, 0, 0, 0.95);
       border: 1px solid #00ff00;
-      border-radius: 4px;
-      padding: 12px;
-      box-shadow: 0 0 20px rgba(0, 255, 0, 0.3),
-                  inset 0 0 20px rgba(0, 255, 0, 0.05);
+      border-radius: 3px;
+      padding: 10px;
+      box-shadow: 0 0 15px rgba(0, 255, 0, 0.3),
+                  inset 0 0 15px rgba(0, 255, 0, 0.05);
     ">
-      <div style="color: #00ff00; font-weight: bold; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;" id="hudTitle">
+      <div style="color: #00ff00; font-weight: bold; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;" id="hudTitle">
         [STAR]
       </div>
-      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 4px;" id="hudType">
+      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 3px; font-size: 9px;" id="hudType">
         TYPE: UNKNOWN
       </div>
-      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 4px;" id="hudCoords">
+      <div style="color: #00ff00; opacity: 0.7; margin-bottom: 3px; font-size: 9px;" id="hudCoords">
         COORDS: [0, 0, 0]
       </div>
-      <div style="color: #00ff00; opacity: 0.9; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0, 255, 0, 0.3);">
-        <div style="margin-bottom: 3px;" id="hudPlanets">
-          🪐 PLANETS: 0
+      <div style="color: #00ff00; opacity: 0.85; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(0, 255, 0, 0.25); font-size: 9px;">
+        <div style="margin-bottom: 2px;" id="hudPlanets">
+          PLANETS: 0
         </div>
-        <div style="margin-bottom: 3px;" id="hudStations">
-          🚉 STATIONS: 0
+        <div style="margin-bottom: 2px;" id="hudStations">
+          STATIONS: 0
+        </div>
+        <div style="margin-bottom: 2px;" id="hudShips">
+          SHIPS: 0
         </div>
         <div id="hudTotal">
-          📊 TOTAL ASSETS: 0
+          TOTAL: 0
         </div>
-      </div>
-      <div style="color: #00ff00; opacity: 0.7; font-size: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0, 255, 0, 0.2);">
-        &gt; CLICK TO EXPLORE
       </div>
     </div>
   </div>
@@ -402,30 +385,6 @@
     display: none;
   "></canvas>
 
-  <!-- Breadcrumb Navigation -->
-  <div id="breadcrumbNav" style="
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 10000;
-    background: rgba(0, 0, 0, 0.85);
-    border: 1px solid #00ff00;
-    border-radius: 20px;
-    padding: 8px 20px;
-    backdrop-filter: blur(5px);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-  ">
-    <span style="color: #666; margin-right: 5px;">[NAV]</span>
-    <span id="breadcrumbUniverse" class="breadcrumb-item active" style="color: #00ff00; cursor: pointer; padding: 4px 10px; border-radius: 10px; transition: all 0.2s;">
-      UNIVERSE
-    </span>
-  </div>
-
   <!-- Unified Left Sidebar -->
   <div id="unifiedSidebar" class="zen-hideable" style="position: fixed; left: 0; top: 60px; height: calc(100vh - 60px); width: 320px; background: rgba(10, 10, 26, 0.95); backdrop-filter: blur(20px); border-right: 2px solid rgba(138, 79, 255, 0.3); z-index: 1000; display: flex; flex-direction: column; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(0);">
 
@@ -440,6 +399,36 @@
 
     <!-- Scrollable Content Area -->
     <div class="sidebar-content" style="flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px;">
+
+      <!-- Navigation Breadcrumb Section -->
+      <div class="sidebar-section" style="margin-bottom: 15px;">
+        <div class="section-header" onclick="toggleSidebarSection('navigation')" style="background: rgba(0, 255, 0, 0.2); border: 2px solid #00ff00; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;">
+          <span style="color: #00ff00; font-family: 'Orbitron', monospace; font-weight: bold; font-size: 14px;">🧭 NAVIGATION</span>
+          <span id="navigationArrow" style="color: #00ff00; font-size: 14px; transition: transform 0.3s;">▼</span>
+        </div>
+        <div id="navigationContent" class="section-content" style="padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #00ff00; border-top: none; border-radius: 0 0 8px 8px; display: flex; flex-direction: column; gap: 8px;">
+          <!-- Breadcrumb Navigation -->
+          <div id="breadcrumbNav" style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            flex-wrap: wrap;
+            padding: 8px;
+            background: rgba(0, 255, 0, 0.05);
+            border-radius: 6px;
+            border: 1px solid rgba(0, 255, 0, 0.2);
+          ">
+            <span style="color: #666; font-size: 10px;">[LOCATION]</span>
+            <span id="breadcrumbUniverse" class="breadcrumb-item active" style="color: #00ff00; cursor: pointer; padding: 3px 8px; border-radius: 6px; transition: all 0.2s; background: rgba(0, 255, 0, 0.1);">
+              UNIVERSE
+            </span>
+          </div>
+          <!-- Quick Navigation Buttons -->
+          <button onclick="if(window.galacticMap) window.galacticMap.showUniverseLevel();" style="background: rgba(0, 255, 0, 0.7); border: 2px solid #00ff00; border-radius: 6px; padding: 8px; color: #000; font-size: 12px; cursor: pointer; transition: all 0.3s; font-family: 'Courier New', monospace; font-weight: bold;" title="Return to Universe View">🌌 Universe View</button>
+        </div>
+      </div>
 
       <!-- Map Controls Section -->
       <div class="sidebar-section" style="margin-bottom: 15px;">
@@ -457,6 +446,19 @@
           <select id="assetSelector" class="control-select" style="background: rgba(0, 255, 170, 0.9); border: 2px solid #00ffaa; border-radius: 6px; padding: 10px; color: #000; font-size: 12px; cursor: pointer; transition: all 0.3s; width: 100%; font-family: 'Courier New', monospace;" title="View Asset">
             <option value="">🌌 Select Asset to View</option>
           </select>
+        </div>
+      </div>
+
+      <!-- Selected Asset Section -->
+      <div class="sidebar-section" style="margin-bottom: 15px;">
+        <div class="section-header" onclick="toggleSidebarSection('selectedAsset')" style="background: rgba(255, 102, 0, 0.2); border: 2px solid #ff6600; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;">
+          <span style="color: #ff6600; font-family: 'Orbitron', monospace; font-weight: bold; font-size: 14px;">🎯 SELECTED</span>
+          <span id="selectedAssetArrow" style="color: #ff6600; font-size: 14px; transition: transform 0.3s;">▶</span>
+        </div>
+        <div id="selectedAssetContent" class="section-content" style="display: none; padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #ff6600; border-top: none; border-radius: 0 0 8px 8px; font-family: 'Orbitron', monospace; color: #e0e0ff; font-size: 11px;">
+          <div id="selectedAssetInfo" style="text-align: center; color: #888; padding: 20px 0;">
+            Click an asset to view details
+          </div>
         </div>
       </div>
 
@@ -528,19 +530,6 @@
         </div>
       </div>
 
-      <!-- Selected Asset Section -->
-      <div class="sidebar-section" style="margin-bottom: 15px;">
-        <div class="section-header" onclick="toggleSidebarSection('selectedAsset')" style="background: rgba(255, 102, 0, 0.2); border: 2px solid #ff6600; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;">
-          <span style="color: #ff6600; font-family: 'Orbitron', monospace; font-weight: bold; font-size: 14px;">🎯 SELECTED</span>
-          <span id="selectedAssetArrow" style="color: #ff6600; font-size: 14px; transition: transform 0.3s;">▶</span>
-        </div>
-        <div id="selectedAssetContent" class="section-content" style="display: none; padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #ff6600; border-top: none; border-radius: 0 0 8px 8px; font-family: 'Orbitron', monospace; color: #e0e0ff; font-size: 11px;">
-          <div id="selectedAssetInfo" style="text-align: center; color: #888; padding: 20px 0;">
-            Click an asset to view details
-          </div>
-        </div>
-      </div>
-
     </div>
   </div>
 
@@ -586,6 +575,27 @@
     let sidebarVisible = true;
     let zenModeActive = false;
 
+    /**
+     * Toggle Overlay Menu - Define early so handleMenuToggle can call it
+     */
+    window.toggleOverlayMenu = function() {
+      const menu = document.getElementById('overlayMenu');
+      const backdrop = document.getElementById('overlayBackdrop');
+      const btn = document.getElementById('toggleMenuBtn');
+
+      const isActive = menu.classList.contains('active');
+
+      if (isActive) {
+        menu.classList.remove('active');
+        backdrop.classList.remove('active');
+        if (btn) btn.classList.remove('active');
+      } else {
+        menu.classList.add('active');
+        backdrop.classList.add('active');
+        if (btn) btn.classList.add('active');
+      }
+    };
+
     window.handleSidebarToggle = function() {
       console.log('⬅️ Sidebar toggle clicked');
       const sidebar = document.getElementById('unifiedSidebar');
@@ -610,12 +620,9 @@
     };
 
     window.handleMenuToggle = function() {
-      console.log('🍔 Menu button clicked');
-      if (window.toggleOverlayMenu) {
-        window.toggleOverlayMenu();
-      } else {
-        console.warn('toggleOverlayMenu not available yet');
-      }
+      console.log('☰ Menu button clicked');
+      // toggleOverlayMenu is defined later in this page - call it when user clicks
+      window.toggleOverlayMenu();
     };
 
     window.handleZenToggle = function() {
@@ -779,31 +786,31 @@
     </div>
 
     <nav class="overlay-menu-nav" style="flex: 1; padding: 10px 0;">
-      <div class="overlay-menu-item" onclick="window.location.href='/characters'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+      <div class="overlay-menu-item" onclick="navigateWithConfirmation('/characters')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
         <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">⚔️</span>
         <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Characters</span>
         <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
       </div>
 
-      <div class="overlay-menu-item" onclick="window.location.href='/universe/tome'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+      <div class="overlay-menu-item" onclick="navigateWithConfirmation('/universe/tome')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
         <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">📖</span>
         <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">The Tome</span>
         <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
       </div>
 
-      <div class="overlay-menu-item" onclick="window.location.href='/assets'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+      <div class="overlay-menu-item" onclick="navigateWithConfirmation('/assets')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
         <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🎨</span>
         <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Asset Workshop</span>
         <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
       </div>
 
-      <div class="overlay-menu-item" onclick="window.location.href='/assets/voting'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+      <div class="overlay-menu-item" onclick="navigateWithConfirmation('/assets/voting')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
         <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🗳️</span>
         <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Asset Governance</span>
         <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
       </div>
 
-      <div class="overlay-menu-item" onclick="window.location.href='/profile'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+      <div class="overlay-menu-item" onclick="navigateWithConfirmation('/profile')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
         <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">📊</span>
         <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Profile</span>
         <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
@@ -811,7 +818,7 @@
 
       <div class="overlay-menu-divider" style="height: 1px; background: rgba(138, 79, 255, 0.3); margin: 10px 20px;"></div>
 
-      <div class="overlay-menu-item" onclick="window.location.href='/menu'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+      <div class="overlay-menu-item" onclick="navigateWithConfirmation('/menu')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
         <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🏠</span>
         <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Exit to Menu</span>
         <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
@@ -821,7 +828,7 @@
       <div class="overlay-menu-divider" style="height: 1px; background: rgba(138, 79, 255, 0.3); margin: 10px 20px;"></div>
       <div class="overlay-menu-section-title" style="padding: 15px 20px; color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Admin</div>
 
-      <div class="overlay-menu-item admin-item" onclick="window.location.href='/admin'" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
+      <div class="overlay-menu-item admin-item" onclick="navigateWithConfirmation('/admin')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
         <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">⚙️</span>
         <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Admin Dashboard</span>
         <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
@@ -832,6 +839,25 @@
 
   <!-- Overlay backdrop for menu -->
   <div class="overlay-backdrop" id="overlayBackdrop" onclick="toggleOverlayMenu()" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 9999; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;"></div>
+
+  <!-- Navigation Confirmation Dialog -->
+  <div id="navigationConfirmDialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px); z-index: 20000; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; display: flex; align-items: center; justify-content: center;">
+    <div style="background: rgba(10, 10, 26, 0.98); border: 2px solid #ff6600; border-radius: 12px; padding: 30px; max-width: 500px; width: 90%; box-shadow: 0 0 40px rgba(255, 102, 0, 0.4);">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="font-size: 48px; margin-bottom: 15px;">⚠️</div>
+        <h2 style="margin: 0 0 10px 0; color: #ff6600; font-family: 'Orbitron', monospace; font-size: 20px;">Leave Galactic Map?</h2>
+        <p style="color: #e0e0ff; font-family: 'Orbitron', monospace; font-size: 14px; margin: 0;">Your current position and progress will be saved, but you'll exit the 3D view.</p>
+      </div>
+      <div style="display: flex; gap: 15px; margin-top: 25px;">
+        <button id="confirmNavigateBtn" style="flex: 1; background: linear-gradient(135deg, rgba(255, 102, 0, 0.3), rgba(255, 68, 0, 0.3)); border: 2px solid #ff6600; border-radius: 8px; padding: 12px 20px; color: #ff6600; font-family: 'Orbitron', monospace; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.3s;">
+          Leave
+        </button>
+        <button id="cancelNavigateBtn" style="flex: 1; background: linear-gradient(135deg, rgba(138, 79, 255, 0.3), rgba(74, 158, 255, 0.3)); border: 2px solid #8a4fff; border-radius: 8px; padding: 12px 20px; color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.3s;">
+          Stay
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Socket.IO for real-time player updates -->
   <script src="/socket.io/socket.io.js"></script>
@@ -857,6 +883,7 @@
   </script>
 
   <script src="/javascripts/galactic-map-3d.js?v=2.0"></script>
+  <script src="/javascripts/activity-monitor.js"></script>
 
   <script>
     /**
@@ -932,11 +959,13 @@
 
       const planetCount = systemAssets.filter(a => a.assetType === 'planet').length;
       const stationCount = systemAssets.filter(a => a.assetType === 'station' || a.assetType === 'orbital').length;
+      const shipCount = systemAssets.filter(a => a.assetType === 'ship').length;
       const totalCount = systemAssets.length;
 
-      document.getElementById('hudPlanets').textContent = `🪐 PLANETS: ${planetCount}`;
-      document.getElementById('hudStations').textContent = `🚉 STATIONS: ${stationCount}`;
-      document.getElementById('hudTotal').textContent = `📊 TOTAL ASSETS: ${totalCount}`;
+      document.getElementById('hudPlanets').textContent = `PLANETS: ${planetCount}`;
+      document.getElementById('hudStations').textContent = `STATIONS: ${stationCount}`;
+      document.getElementById('hudShips').textContent = `SHIPS: ${shipCount}`;
+      document.getElementById('hudTotal').textContent = `TOTAL: ${totalCount}`;
 
       // Draw connection line
       canvas.width = window.innerWidth;
@@ -1267,23 +1296,7 @@
       }, 2000);
     });
 
-    // Menu toggle function
-    window.toggleOverlayMenu = function() {
-      const menu = document.getElementById('overlayMenu');
-      const backdrop = document.getElementById('overlayBackdrop');
-
-      const isOpen = menu.style.right === '0px';
-
-      if (isOpen) {
-        menu.style.right = '-400px';
-        backdrop.style.opacity = '0';
-        backdrop.style.pointerEvents = 'none';
-      } else {
-        menu.style.right = '0px';
-        backdrop.style.opacity = '1';
-        backdrop.style.pointerEvents = 'auto';
-      }
-    };
+    // toggleOverlayMenu is now defined earlier in the script (line 592)
 
     // Layer visibility controls
     let orbitsVisible = true;
@@ -1700,11 +1713,12 @@
     // ========================================
     window.updateBreadcrumb = function(level, galaxyName, starName) {
       const breadcrumb = document.getElementById('breadcrumbNav');
+      if (!breadcrumb) return;
 
-      // Clear current breadcrumb (except [NAV] label)
-      breadcrumb.innerHTML = '<span style="color: #666; margin-right: 5px;">[NAV]</span>';
+      // Clear current breadcrumb (except [LOCATION] label)
+      breadcrumb.innerHTML = '<span style="color: #666; font-size: 10px;">[LOCATION]</span>';
 
-      const separator = '<span style="color: #444; margin: 0 5px;">></span>';
+      const separator = '<span style="color: #444; margin: 0 3px; font-size: 10px;">›</span>';
 
       // Universe level (always present)
       const universeSpan = document.createElement('span');
@@ -1713,14 +1727,16 @@
       universeSpan.style.cssText = `
         color: ${level === 'universe' ? '#00ff00' : '#888'};
         cursor: pointer;
-        padding: 4px 10px;
-        border-radius: 10px;
+        padding: 3px 8px;
+        border-radius: 6px;
         transition: all 0.2s;
+        font-size: 11px;
         ${level === 'universe' ? 'background: rgba(0, 255, 0, 0.1);' : ''}
       `;
       universeSpan.onclick = () => {
-        window.galacticMap.showUniverseLevel();
-        window.updateBreadcrumb('universe');
+        if (window.galacticMap) {
+          window.galacticMap.showUniverseLevel();
+        }
       };
       universeSpan.onmouseenter = function() {
         if (level !== 'universe') this.style.background = 'rgba(136, 136, 136, 0.1)';
@@ -1740,15 +1756,15 @@
         galaxySpan.style.cssText = `
           color: ${level === 'galaxy' ? '#00ff00' : '#888'};
           cursor: pointer;
-          padding: 4px 10px;
-          border-radius: 10px;
+          padding: 3px 8px;
+          border-radius: 6px;
           transition: all 0.2s;
+          font-size: 11px;
           ${level === 'galaxy' ? 'background: rgba(0, 255, 0, 0.1);' : ''}
         `;
         galaxySpan.onclick = () => {
-          if (window.galacticMap.selectedGalaxyId) {
+          if (window.galacticMap && window.galacticMap.selectedGalaxyId) {
             window.galacticMap.showGalaxyLevel(window.galacticMap.selectedGalaxyId);
-            window.updateBreadcrumb('galaxy', galaxyName);
           }
         };
         galaxySpan.onmouseenter = function() {
@@ -1769,9 +1785,10 @@
         systemSpan.textContent = starName || 'SYSTEM';
         systemSpan.style.cssText = `
           color: #00ff00;
-          padding: 4px 10px;
-          border-radius: 10px;
+          padding: 3px 8px;
+          border-radius: 6px;
           background: rgba(0, 255, 0, 0.1);
+          font-size: 11px;
         `;
         breadcrumb.appendChild(systemSpan);
       }
@@ -1818,7 +1835,561 @@
     }
 
     // Initialize breadcrumb
-    window.updateBreadcrumb('universe');
+    setTimeout(() => {
+      window.updateBreadcrumb('universe');
+    }, 100);
+
+    // ========================================
+    // Navigation Confirmation System
+    // ========================================
+    let pendingNavigationUrl = null;
+
+    /**
+     * Navigate with confirmation dialog
+     */
+    window.navigateWithConfirmation = function(url) {
+      pendingNavigationUrl = url;
+      const dialog = document.getElementById('navigationConfirmDialog');
+
+      // Show dialog with animation
+      dialog.style.opacity = '0';
+      dialog.style.pointerEvents = 'auto';
+
+      setTimeout(() => {
+        dialog.style.opacity = '1';
+      }, 10);
+
+      // Close the overlay menu
+      window.toggleOverlayMenu();
+
+      console.log('🔔 Navigation confirmation requested for:', url);
+    };
+
+    /**
+     * Close confirmation dialog
+     */
+    window.closeNavigationDialog = function() {
+      const dialog = document.getElementById('navigationConfirmDialog');
+      dialog.style.opacity = '0';
+
+      setTimeout(() => {
+        dialog.style.pointerEvents = 'none';
+        pendingNavigationUrl = null;
+      }, 300);
+    };
+
+    // Confirm navigation button
+    document.getElementById('confirmNavigateBtn').addEventListener('click', () => {
+      if (pendingNavigationUrl) {
+        console.log('✅ User confirmed navigation to:', pendingNavigationUrl);
+        window.location.href = pendingNavigationUrl;
+      }
+    });
+
+    // Cancel navigation button
+    document.getElementById('cancelNavigateBtn').addEventListener('click', () => {
+      console.log('❌ User cancelled navigation');
+      window.closeNavigationDialog();
+    });
+
+    // ESC key to close dialog
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const dialog = document.getElementById('navigationConfirmDialog');
+        if (dialog.style.pointerEvents === 'auto') {
+          window.closeNavigationDialog();
+        }
+      }
+    });
+
+    // Add hover effects to confirmation buttons
+    const confirmBtn = document.getElementById('confirmNavigateBtn');
+    const cancelBtn = document.getElementById('cancelNavigateBtn');
+
+    confirmBtn.addEventListener('mouseenter', () => {
+      confirmBtn.style.background = 'linear-gradient(135deg, rgba(255, 102, 0, 0.5), rgba(255, 68, 0, 0.5))';
+      confirmBtn.style.transform = 'translateY(-2px)';
+      confirmBtn.style.boxShadow = '0 4px 15px rgba(255, 102, 0, 0.4)';
+    });
+
+    confirmBtn.addEventListener('mouseleave', () => {
+      confirmBtn.style.background = 'linear-gradient(135deg, rgba(255, 102, 0, 0.3), rgba(255, 68, 0, 0.3))';
+      confirmBtn.style.transform = 'translateY(0)';
+      confirmBtn.style.boxShadow = 'none';
+    });
+
+    cancelBtn.addEventListener('mouseenter', () => {
+      cancelBtn.style.background = 'linear-gradient(135deg, rgba(138, 79, 255, 0.5), rgba(74, 158, 255, 0.5))';
+      cancelBtn.style.transform = 'translateY(-2px)';
+      cancelBtn.style.boxShadow = '0 4px 15px rgba(138, 79, 255, 0.4)';
+    });
+
+    cancelBtn.addEventListener('mouseleave', () => {
+      cancelBtn.style.background = 'linear-gradient(135deg, rgba(138, 79, 255, 0.3), rgba(74, 158, 255, 0.3))';
+      cancelBtn.style.transform = 'translateY(0)';
+      cancelBtn.style.boxShadow = 'none';
+    });
+
+    // Add hover effects to menu items
+    document.querySelectorAll('.overlay-menu-item').forEach(item => {
+      item.addEventListener('mouseenter', function() {
+        this.style.background = 'rgba(138, 79, 255, 0.15)';
+        this.style.transform = 'translateX(5px)';
+      });
+
+      item.addEventListener('mouseleave', function() {
+        this.style.background = 'transparent';
+        this.style.transform = 'translateX(0)';
+      });
+    });
+
+    console.log('✅ Navigation confirmation system initialized');
+
+    // ========================================
+    // LIVE UNIVERSE STATE INTEGRATION
+    // ========================================
+
+    /**
+     * Live Universe State Manager
+     * Connects to game-state-service for real-time universe simulation
+     */
+    class LiveUniverseManager {
+      constructor() {
+        this.gameStateUrl = 'http://localhost:3500';
+        this.eventSource = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 10;
+        this.reconnectDelay = 3000;
+        this.isConnected = false;
+
+        // State data
+        this.galacticState = null;
+        this.factions = null;
+        this.events = [];
+        this.resources = null;
+
+        // UI elements
+        this.statusIndicator = null;
+        this.eventFeed = null;
+        this.factionPanel = null;
+
+        this.init();
+      }
+
+      init() {
+        console.log('🌌 Initializing Live Universe Manager...');
+        this.createUI();
+        this.connectToGameState();
+      }
+
+      createUI() {
+        // Create status indicator
+        this.statusIndicator = document.createElement('div');
+        this.statusIndicator.id = 'liveUniverseStatus';
+        this.statusIndicator.style.cssText = `
+          position: fixed;
+          bottom: 20px;
+          left: 20px;
+          background: rgba(0, 0, 0, 0.9);
+          border: 2px solid #ff6600;
+          border-radius: 8px;
+          padding: 10px 15px;
+          color: #ff6600;
+          font-family: 'Courier New', monospace;
+          font-size: 11px;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          backdrop-filter: blur(10px);
+          transition: all 0.3s ease;
+        `;
+        this.statusIndicator.innerHTML = '<span id="statusDot" style="width: 8px; height: 8px; border-radius: 50%; background: #ff6600; animation: pulse 2s infinite;"></span><span id="statusText">Connecting to Universe...</span>';
+        document.body.appendChild(this.statusIndicator);
+
+        // Add pulse animation
+        const style = document.createElement('style');
+        style.textContent = `
+          @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+          }
+          @keyframes slideIn {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+          }
+        `;
+        document.head.appendChild(style);
+
+        // Create live event feed
+        this.eventFeed = document.createElement('div');
+        this.eventFeed.id = 'liveEventFeed';
+        this.eventFeed.style.cssText = `
+          position: fixed;
+          top: 80px;
+          right: 20px;
+          width: 320px;
+          max-height: 400px;
+          background: rgba(0, 0, 0, 0.95);
+          border: 2px solid #00ff9f;
+          border-radius: 8px;
+          padding: 15px;
+          color: #00ff9f;
+          font-family: 'Courier New', monospace;
+          font-size: 10px;
+          z-index: 999;
+          overflow-y: auto;
+          backdrop-filter: blur(10px);
+          box-shadow: 0 0 30px rgba(0, 255, 159, 0.3);
+        `;
+        this.eventFeed.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid rgba(0, 255, 159, 0.3); padding-bottom: 8px;">
+            <h3 style="margin: 0; font-size: 12px; color: #00ff9f;">📡 LIVE EVENTS</h3>
+            <div id="galacticCycle" style="font-size: 10px; color: #00ff9f; opacity: 0.7;">Cycle: ---</div>
+          </div>
+          <div id="eventList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        `;
+        document.body.appendChild(this.eventFeed);
+
+        // Create faction status panel
+        this.factionPanel = document.createElement('div');
+        this.factionPanel.id = 'liveFactionPanel';
+        this.factionPanel.style.cssText = `
+          position: fixed;
+          bottom: 70px;
+          left: 20px;
+          width: 300px;
+          background: rgba(0, 0, 0, 0.95);
+          border: 2px solid #8a4fff;
+          border-radius: 8px;
+          padding: 15px;
+          color: #8a4fff;
+          font-family: 'Courier New', monospace;
+          font-size: 10px;
+          z-index: 999;
+          backdrop-filter: blur(10px);
+          box-shadow: 0 0 30px rgba(138, 79, 255, 0.3);
+        `;
+        this.factionPanel.innerHTML = `
+          <h3 style="margin: 0 0 10px 0; font-size: 12px; color: #8a4fff; border-bottom: 1px solid rgba(138, 79, 255, 0.3); padding-bottom: 5px;">⚔️ FACTION POWER</h3>
+          <div id="factionBars"></div>
+        `;
+        document.body.appendChild(this.factionPanel);
+      }
+
+      connectToGameState() {
+        if (this.eventSource) {
+          this.eventSource.close();
+        }
+
+        console.log('📡 Connecting to Game State Service...');
+        this.updateStatus('Connecting...', '#ff6600');
+
+        try {
+          // Connect to SSE stream
+          this.eventSource = new EventSource(`${this.gameStateUrl}/api/stream/state`);
+
+          this.eventSource.onopen = () => {
+            console.log('✅ Connected to Game State Service');
+            this.isConnected = true;
+            this.reconnectAttempts = 0;
+            this.updateStatus('LIVE', '#00ff00');
+          };
+
+          this.eventSource.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              this.handleStateUpdate(data);
+            } catch (error) {
+              console.error('❌ Error parsing state update:', error);
+            }
+          };
+
+          this.eventSource.onerror = (error) => {
+            console.error('❌ Game State connection error:', error);
+            this.isConnected = false;
+            this.updateStatus('Disconnected', '#ff0000');
+            this.eventSource.close();
+            this.attemptReconnect();
+          };
+
+          // Also connect to event stream
+          this.connectToEventStream();
+
+        } catch (error) {
+          console.error('❌ Failed to connect to Game State Service:', error);
+          this.updateStatus('Error', '#ff0000');
+          this.attemptReconnect();
+        }
+      }
+
+      connectToEventStream() {
+        const eventStream = new EventSource(`${this.gameStateUrl}/api/stream/events`);
+
+        eventStream.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'event' && data.event) {
+              this.addEvent(data.event);
+            } else if (data.type === 'init' && data.events) {
+              this.events = data.events;
+              this.updateEventFeed();
+            }
+          } catch (error) {
+            console.error('❌ Error parsing event:', error);
+          }
+        };
+      }
+
+      attemptReconnect() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          console.error('❌ Max reconnection attempts reached');
+          this.updateStatus('Failed', '#ff0000');
+          return;
+        }
+
+        this.reconnectAttempts++;
+        const delay = this.reconnectDelay * this.reconnectAttempts;
+
+        console.log(`🔄 Reconnecting in ${delay/1000}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        this.updateStatus(`Retry ${this.reconnectAttempts}...`, '#ffaa00');
+
+        setTimeout(() => {
+          this.connectToGameState();
+        }, delay);
+      }
+
+      handleStateUpdate(data) {
+        if (data.type === 'init') {
+          console.log('📦 Received initial state:', data.state);
+          this.galacticState = data.state.galactic;
+          this.factions = data.state.factions;
+          this.resources = data.state.resources;
+          this.events = data.state.events || [];
+
+          this.updateAllUI();
+        } else if (data.type === 'update') {
+          console.log('🔄 Received state update');
+
+          if (data.galactic) this.galacticState = data.galactic;
+          if (data.factions) this.factions = data.factions;
+          if (data.resources) this.resources = data.resources;
+
+          this.updateAllUI();
+        }
+      }
+
+      updateAllUI() {
+        this.updateGalacticInfo();
+        this.updateFactionBars();
+        this.updateEventFeed();
+      }
+
+      updateGalacticInfo() {
+        if (!this.galacticState) return;
+
+        const cycleEl = document.getElementById('galacticCycle');
+        if (cycleEl) {
+          cycleEl.textContent = `Cycle: ${this.galacticState.cycle} | Year: ${this.galacticState.year}`;
+        }
+      }
+
+      updateFactionBars() {
+        if (!this.factions) return;
+
+        const barsContainer = document.getElementById('factionBars');
+        if (!barsContainer) return;
+
+        barsContainer.innerHTML = '';
+
+        // Sort factions by power
+        const sortedFactions = Object.entries(this.factions)
+          .sort((a, b) => b[1].power - a[1].power);
+
+        sortedFactions.forEach(([name, data]) => {
+          const factionEl = document.createElement('div');
+          factionEl.style.marginBottom = '8px';
+
+          const power = Math.round(data.power);
+          const color = this.getFactionColor(name);
+
+          factionEl.innerHTML = `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 9px;">
+              <span style="color: ${color};">${name}</span>
+              <span style="color: #fff; font-weight: bold;">${power}%</span>
+            </div>
+            <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+              <div style="width: ${power}%; height: 100%; background: linear-gradient(90deg, ${color}, ${this.lightenColor(color)}); transition: width 0.5s ease;"></div>
+            </div>
+          `;
+
+          barsContainer.appendChild(factionEl);
+        });
+      }
+
+      updateEventFeed() {
+        const eventList = document.getElementById('eventList');
+        if (!eventList || !this.events) return;
+
+        eventList.innerHTML = '';
+
+        // Show last 5 events
+        const recentEvents = this.events.slice(0, 5);
+
+        recentEvents.forEach((event, index) => {
+          const eventEl = document.createElement('div');
+          eventEl.style.cssText = `
+            padding: 8px;
+            background: rgba(0, 255, 159, 0.05);
+            border-left: 3px solid ${this.getEventColor(event.severity)};
+            border-radius: 4px;
+            font-size: 10px;
+            animation: slideIn 0.3s ease forwards;
+            animation-delay: ${index * 0.1}s;
+            opacity: 0;
+          `;
+
+          const icon = this.getEventIcon(event.type);
+          const time = new Date(event.timestamp).toLocaleTimeString();
+
+          eventEl.innerHTML = `
+            <div style="display: flex; justify-content: between; align-items: start; gap: 8px;">
+              <span style="font-size: 14px;">${icon}</span>
+              <div style="flex: 1;">
+                <div style="color: ${this.getEventColor(event.severity)}; margin-bottom: 3px; font-weight: bold;">
+                  ${event.type.toUpperCase()} [${event.severity.toUpperCase()}]
+                </div>
+                <div style="color: #00ff9f; line-height: 1.4;">${event.message}</div>
+                <div style="color: #00ff9f; opacity: 0.5; font-size: 8px; margin-top: 3px;">${time}</div>
+              </div>
+            </div>
+          `;
+
+          eventList.appendChild(eventEl);
+        });
+      }
+
+      addEvent(event) {
+        this.events.unshift(event);
+        if (this.events.length > 20) {
+          this.events = this.events.slice(0, 20);
+        }
+        this.updateEventFeed();
+
+        // Show toast notification for high severity events
+        if (event.severity === 'high') {
+          this.showToast(event);
+        }
+      }
+
+      showToast(event) {
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+          position: fixed;
+          top: 100px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(255, 0, 0, 0.9);
+          border: 2px solid #ff0000;
+          border-radius: 8px;
+          padding: 15px 20px;
+          color: #fff;
+          font-family: 'Courier New', monospace;
+          font-size: 12px;
+          z-index: 10000;
+          box-shadow: 0 0 30px rgba(255, 0, 0, 0.5);
+          animation: slideIn 0.3s ease;
+        `;
+        toast.innerHTML = `
+          <div style="font-weight: bold; margin-bottom: 5px;">⚠️ ALERT: ${event.type.toUpperCase()}</div>
+          <div>${event.message}</div>
+        `;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateX(-50%) translateY(-20px)';
+          toast.style.transition = 'all 0.3s ease';
+          setTimeout(() => document.body.removeChild(toast), 300);
+        }, 5000);
+      }
+
+      updateStatus(text, color) {
+        const statusText = document.getElementById('statusText');
+        const statusDot = document.getElementById('statusDot');
+
+        if (statusText) statusText.textContent = text;
+        if (statusDot) statusDot.style.background = color;
+        if (this.statusIndicator) this.statusIndicator.style.borderColor = color;
+      }
+
+      getFactionColor(name) {
+        const colors = {
+          'Silicate Consortium': '#8a4fff',
+          'Lantern Collective': '#00ff9f',
+          'Devan Empire': '#ff6600',
+          'Human Federation': '#00aaff',
+          'Independent Systems': '#ffaa00'
+        };
+        return colors[name] || '#ffffff';
+      }
+
+      lightenColor(color) {
+        // Simple color lightening
+        const r = parseInt(color.slice(1,3), 16);
+        const g = parseInt(color.slice(3,5), 16);
+        const b = parseInt(color.slice(5,7), 16);
+        return `rgb(${Math.min(255, r + 40)}, ${Math.min(255, g + 40)}, ${Math.min(255, b + 40)})`;
+      }
+
+      getEventColor(severity) {
+        const colors = {
+          'low': '#00ff9f',
+          'medium': '#ffaa00',
+          'high': '#ff0000'
+        };
+        return colors[severity] || '#ffffff';
+      }
+
+      getEventIcon(type) {
+        const icons = {
+          'discovery': '🔭',
+          'conflict': '⚔️',
+          'economic': '💰',
+          'environmental': '🌪️'
+        };
+        return icons[type] || '📡';
+      }
+
+      disconnect() {
+        if (this.eventSource) {
+          this.eventSource.close();
+          this.isConnected = false;
+          this.updateStatus('Disconnected', '#ff0000');
+        }
+      }
+    }
+
+    // Initialize Live Universe Manager
+    let liveUniverse = null;
+
+    // Wait for map to be ready, then start live universe
+    setTimeout(() => {
+      console.log('🌌 Starting Live Universe Integration...');
+      liveUniverse = new LiveUniverseManager();
+
+      // Store globally for debugging
+      window.liveUniverse = liveUniverse;
+    }, 2000);
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (liveUniverse) {
+        liveUniverse.disconnect();
+      }
+    });
+
+    console.log('✅ Live Universe system loaded');
   </script>
 </body>
 </html>

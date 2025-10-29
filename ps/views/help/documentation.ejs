@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/landing.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    body {
+      background: #0a0e27;
+      color: #e4e4e7;
+      min-height: 100vh;
+    }
+
+    .docs-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 2rem;
+      min-height: calc(100vh - 4rem);
+    }
+
+    /* Sidebar */
+    .docs-sidebar {
+      position: sticky;
+      top: 2rem;
+      height: fit-content;
+      max-height: calc(100vh - 4rem);
+      overflow-y: auto;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(138, 79, 255, 0.3);
+      border-radius: 12px;
+      padding: 1.5rem;
+      backdrop-filter: blur(10px);
+    }
+
+    .docs-sidebar h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.2rem;
+      color: #8a4fff;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(138, 79, 255, 0.3);
+    }
+
+    .docs-category {
+      margin-bottom: 1.5rem;
+    }
+
+    .docs-category h3 {
+      font-size: 0.9rem;
+      color: #00ff9f;
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .docs-category-count {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-left: 0.5rem;
+    }
+
+    .docs-list {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .docs-list li {
+      margin-bottom: 0.5rem;
+    }
+
+    .docs-list a {
+      display: block;
+      padding: 0.5rem 0.75rem;
+      color: #cbd5e1;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: all 0.2s;
+      font-size: 0.85rem;
+    }
+
+    .docs-list a:hover {
+      background: rgba(138, 79, 255, 0.2);
+      color: #8a4fff;
+      transform: translateX(4px);
+    }
+
+    .docs-list a.active {
+      background: rgba(138, 79, 255, 0.3);
+      color: #8a4fff;
+      border-left: 3px solid #8a4fff;
+    }
+
+    /* Content Area */
+    .docs-content {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid rgba(138, 79, 255, 0.2);
+      border-radius: 12px;
+      padding: 2rem;
+      backdrop-filter: blur(10px);
+      min-height: 500px;
+    }
+
+    .docs-header {
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid rgba(138, 79, 255, 0.3);
+    }
+
+    .docs-header h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2.5rem;
+      background: linear-gradient(135deg, #8a4fff 0%, #00ff9f 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.5rem;
+    }
+
+    .docs-meta {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+
+    .docs-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    /* Markdown Content Styling */
+    .docs-body {
+      line-height: 1.8;
+      font-size: 1rem;
+    }
+
+    .docs-body h1,
+    .docs-body h2,
+    .docs-body h3,
+    .docs-body h4,
+    .docs-body h5,
+    .docs-body h6 {
+      font-family: 'Orbitron', sans-serif;
+      color: #8a4fff;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .docs-body h1 { font-size: 2rem; }
+    .docs-body h2 { font-size: 1.75rem; }
+    .docs-body h3 { font-size: 1.5rem; }
+    .docs-body h4 { font-size: 1.25rem; }
+
+    .docs-body p {
+      margin-bottom: 1rem;
+      color: #cbd5e1;
+    }
+
+    .docs-body a {
+      color: #00ff9f;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(0, 255, 159, 0.3);
+      transition: all 0.2s;
+    }
+
+    .docs-body a:hover {
+      border-bottom-color: #00ff9f;
+      color: #00ffaa;
+    }
+
+    .docs-body ul,
+    .docs-body ol {
+      margin-bottom: 1rem;
+      padding-left: 2rem;
+      color: #cbd5e1;
+    }
+
+    .docs-body li {
+      margin-bottom: 0.5rem;
+    }
+
+    .docs-body code {
+      background: rgba(0, 0, 0, 0.5);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+      color: #00ff9f;
+    }
+
+    .docs-body pre {
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid rgba(138, 79, 255, 0.3);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+
+    .docs-body pre code {
+      background: none;
+      padding: 0;
+      color: inherit;
+    }
+
+    .docs-body blockquote {
+      border-left: 4px solid #8a4fff;
+      padding-left: 1rem;
+      margin: 1rem 0;
+      color: #94a3b8;
+      font-style: italic;
+    }
+
+    .docs-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1rem;
+    }
+
+    .docs-body th,
+    .docs-body td {
+      border: 1px solid rgba(138, 79, 255, 0.3);
+      padding: 0.75rem;
+      text-align: left;
+    }
+
+    .docs-body th {
+      background: rgba(138, 79, 255, 0.2);
+      color: #8a4fff;
+      font-weight: 600;
+    }
+
+    .docs-body hr {
+      border: none;
+      border-top: 1px solid rgba(138, 79, 255, 0.3);
+      margin: 2rem 0;
+    }
+
+    /* Welcome Screen */
+    .docs-welcome {
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+
+    .docs-welcome h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 3rem;
+      background: linear-gradient(135deg, #8a4fff 0%, #00ff9f 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+    }
+
+    .docs-welcome p {
+      font-size: 1.2rem;
+      color: #94a3b8;
+      margin-bottom: 2rem;
+    }
+
+    .docs-stats {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-top: 2rem;
+    }
+
+    .docs-stat {
+      text-align: center;
+    }
+
+    .docs-stat-value {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #8a4fff;
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    .docs-stat-label {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Back Button */
+    .back-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: rgba(138, 79, 255, 0.2);
+      border: 1px solid rgba(138, 79, 255, 0.3);
+      color: #8a4fff;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+      margin-bottom: 1rem;
+    }
+
+    .back-button:hover {
+      background: rgba(138, 79, 255, 0.3);
+      transform: translateX(-4px);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .docs-container {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+      }
+
+      .docs-sidebar {
+        position: static;
+        max-height: none;
+      }
+
+      .docs-welcome h1 {
+        font-size: 2rem;
+      }
+
+      .docs-stats {
+        flex-direction: column;
+        gap: 1rem;
+      }
+    }
+
+    /* Scrollbar Styling */
+    .docs-sidebar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .docs-sidebar::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 3px;
+    }
+
+    .docs-sidebar::-webkit-scrollbar-thumb {
+      background: rgba(138, 79, 255, 0.5);
+      border-radius: 3px;
+    }
+
+    .docs-sidebar::-webkit-scrollbar-thumb:hover {
+      background: rgba(138, 79, 255, 0.7);
+    }
+  </style>
+</head>
+<body class="landing-page">
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="docs-container">
+    <!-- Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <h2>Documentation</h2>
+
+      <% if (docsTree && docsTree.categories) { %>
+        <% docsTree.categories.forEach(category => { %>
+          <div class="docs-category">
+            <h3>
+              <%= category.name %>
+              <span class="docs-category-count">(<%= category.count %>)</span>
+            </h3>
+            <ul class="docs-list">
+              <% category.docs.forEach(doc => { %>
+                <li>
+                  <a href="/help/documentation?doc=<%= doc.fileName %>"
+                     class="<%= docMeta && docMeta.fileName === doc.fileName ? 'active' : '' %>">
+                    <%= doc.title %>
+                  </a>
+                </li>
+              <% }); %>
+            </ul>
+          </div>
+        <% }); %>
+      <% } else { %>
+        <p style="color: #94a3b8; font-size: 0.9rem; text-align: center;">
+          Loading documentation index...
+        </p>
+      <% } %>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="docs-content">
+      <a href="/menu" class="back-button">
+        ← Back to Menu
+      </a>
+
+      <% if (docContent) { %>
+        <!-- Specific Document View -->
+        <div class="docs-header">
+          <h1><%= docMeta.title %></h1>
+          <% if (docsTree) { %>
+            <div class="docs-meta">
+              <span class="docs-meta-item">
+                📄 Markdown Document
+              </span>
+              <span class="docs-meta-item">
+                🕒 Last updated: <%= new Date(docsTree.generated).toLocaleDateString() %>
+              </span>
+            </div>
+          <% } %>
+        </div>
+        <div class="docs-body" id="docContent"></div>
+        <script>
+          // Render markdown content
+          const markdownContent = `<%= docContent.replace(/`/g, '\\`').replace(/\$/g, '\\$') %>`;
+          const htmlContent = marked.parse(markdownContent);
+          document.getElementById('docContent').innerHTML = htmlContent;
+
+          // Highlight code blocks
+          document.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightBlock(block);
+          });
+        </script>
+      <% } else { %>
+        <!-- Welcome Screen -->
+        <div class="docs-welcome">
+          <h1>📚 Documentation Hub</h1>
+          <p>
+            Welcome to the Stringborn Universe documentation center.<br>
+            Select a document from the sidebar to get started.
+          </p>
+
+          <% if (docsTree) { %>
+            <div class="docs-stats">
+              <div class="docs-stat">
+                <div class="docs-stat-value"><%= docsTree.totalFiles %></div>
+                <div class="docs-stat-label">Documents</div>
+              </div>
+              <div class="docs-stat">
+                <div class="docs-stat-value"><%= docsTree.categories.length %></div>
+                <div class="docs-stat-label">Categories</div>
+              </div>
+              <div class="docs-stat">
+                <div class="docs-stat-value">
+                  <%= new Date(docsTree.generated).toLocaleDateString() %>
+                </div>
+                <div class="docs-stat-label">Last Updated</div>
+              </div>
+            </div>
+          <% } %>
+
+          <div style="margin-top: 3rem; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;">
+            <h3 style="color: #00ff9f; margin-bottom: 1rem;">Quick Start</h3>
+            <ul style="color: #cbd5e1; line-height: 2;">
+              <li><strong>New to the project?</strong> Start with <a href="/help/documentation?doc=PROJECT_OVERVIEW">Project Overview</a></li>
+              <li><strong>Testing the game?</strong> Check out <a href="/help/documentation?doc=TESTER_QUICK_REFERENCE">Tester Quick Reference</a></li>
+              <li><strong>Building assets?</strong> Read <a href="/help/documentation?doc=ASSET_BUILDER_COMPLETE">Asset Builder Guide</a></li>
+              <li><strong>Exploring the universe?</strong> See <a href="/help/documentation?doc=GALACTIC_MAP_COMPLETE">Galactic Map Guide</a></li>
+            </ul>
+          </div>
+        </div>
+      <% } %>
+    </main>
+  </div>
+
+  <%- include('../partials/footer') %>
+</body>
+</html>

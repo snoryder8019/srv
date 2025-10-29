@@ -9,10 +9,9 @@ let _client; // Store the client connection
 export const connectDB = async () => {
   if (!_db) {
     try {
-      _client = new MongoClient(process.env.DB_URL, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-      });
+      // Remove deprecated options (useNewUrlParser and useUnifiedTopology)
+      // These are default in MongoDB driver 4.0.0+
+      _client = new MongoClient(process.env.DB_URL);
 
       await _client.connect();
       _db = _client.db(process.env.DB_NAME);

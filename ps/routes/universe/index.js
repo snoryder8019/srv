@@ -364,6 +364,15 @@ router.get('/sprite-creator', (req, res) => {
   });
 });
 
+// Ship builder
+router.get('/ship-builder', (req, res) => {
+  res.render('universe/ship-builder', {
+    title: 'Universal Ship Builder',
+    user: req.user,
+    character: res.locals.character
+  });
+});
+
 // Planetary handoff system
 router.get('/planetary-grid', (req, res) => {
   res.render('universe/planetary-grid', {
