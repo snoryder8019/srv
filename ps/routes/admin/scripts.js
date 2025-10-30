@@ -29,6 +29,7 @@ const SCRIPT_CATEGORIES = {
     { name: 'Check Asset Types', file: 'check-asset-types.js', description: 'View asset type distribution' }
   ],
   'Galaxy & Universe': [
+    { name: 'Seed Test Universe', file: 'seed-test-universe.js', description: '🎮 Create test universe (1 anomaly, 1 galaxy, 1 star, 5 planets)', confirm: true },
     { name: 'Seed All Galaxies', file: 'seed-all-galaxies.js', description: 'Create all galaxy systems', confirm: true },
     { name: 'Seed Andromeda', file: 'seed-andromeda.js', description: 'Populate Andromeda Spiral' },
     { name: 'Seed Elysium Cluster', file: 'seed-elysium-cluster.js', description: 'Populate Elysium Cluster' },

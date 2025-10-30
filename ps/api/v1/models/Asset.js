@@ -654,17 +654,27 @@ export class Asset {
    */
   static async getByTypes(types = []) {
     const db = getDb();
+    // Build query - don't require status for galactic objects (galaxy, anomaly)
+    const query = {
+      assetType: { $in: types },
+      coordinates: { $exists: true }
+    };
+
+    // Only filter by status for non-galactic objects
+    const galacticTypes = ['galaxy', 'anomaly'];
+    const hasNonGalactic = types.some(t => !galacticTypes.includes(t));
+    if (hasNonGalactic) {
+      query.status = 'approved';
+    }
+
     return await db.collection(collections.assets)
-      .find({
-        assetType: { $in: types },
-        status: 'approved',
-        coordinates: { $exists: true }
-      })
+      .find(query)
       .project({
         _id: 1,
         title: 1,
         assetType: 1,
         coordinates: 1,
+        physics: 1, // Include physics field
         stats: 1
       })
       .toArray();

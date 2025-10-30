@@ -21,10 +21,30 @@ class GalacticMap3D {
     this.allAssets = []; // Store all loaded assets
     this.hoveredObjectId = null; // Track currently hovered object for info panel
 
-    // Scene setup
+    // Scene setup (MUST be first)
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000814); // Deep space blue-black
     // No fog - clear view of entire universe
+
+    // Physics system for galaxy orbital mechanics (after scene creation)
+    this.physicsEnabled = true;
+    this.physicsTimeStep = 1 / 30; // 2x faster physics simulation
+    this.lastPhysicsUpdate = Date.now();
+
+    // Physics constants
+    this.GRAVITATIONAL_CONSTANT = 50000;
+    this.ANOMALY_CAPTURE_DISTANCE = 800;
+    this.ANOMALY_MASS = 1000000;
+    this.GALAXY_MASS = 100000;
+    this.MAX_VELOCITY = 5;
+
+    // Force visualization
+    this.forceArrows = new Map();
+    this.forceArrowsGroup = new THREE.Group();
+    this.scene.add(this.forceArrowsGroup);
+    this.showForceArrows = true;
+
+    console.log('⚙️ Galaxy orbital physics system initialized');
 
     // Camera setup (orthographic for map-like view)
     const aspect = window.innerWidth / window.innerHeight;
@@ -34,8 +54,8 @@ class GalacticMap3D {
       frustumSize * aspect / 2,
       frustumSize / 2,
       frustumSize / -2,
-      -50000,  // Negative near plane to see objects "behind" camera in Z
-      50000    // Symmetric far plane for full Z coverage
+      -200000,  // Near plane - allow scene assets at any distance
+      200000    // Far plane extended for distant starfield and background
     );
 
     // Universe center (after doubling): X(-4202 to 4190), Y(-2400 to 2207), Z(-4062 to 1769)
@@ -86,8 +106,14 @@ class GalacticMap3D {
 
     // Interaction
     this.raycaster = new THREE.Raycaster();
+    this.raycaster.params.Points.threshold = 15; // Larger threshold for easier clicking on particles
     this.mouse = new THREE.Vector2();
     this.selectedObject = null;
+
+    // Touch control state
+    this.touchStartTime = 0;
+    this.touchMoved = false;
+    this.lastTouchDistance = 0;
 
     // OrbitControls for camera (3D navigation)
     // Wait for OrbitControls to be loaded from module
@@ -116,6 +142,20 @@ class GalacticMap3D {
       console.warn('OrbitControls not loaded yet, using basic controls');
       this.controls = null;
     }
+
+    // DEBUG: Add a test sphere at origin to verify raycasting works
+    const testGeo = new THREE.SphereGeometry(50, 32, 32);
+    const testMat = new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.3
+    });
+    const testSphere = new THREE.Mesh(testGeo, testMat);
+    testSphere.position.set(0, 0, 0);
+    testSphere.userData = { id: 'TEST_SPHERE', type: 'test', title: 'Test Sphere' };
+    this.assetsGroup.add(testSphere);
+    console.log('🔴 Added test sphere at origin for raycaster debugging');
 
     // Camera zoom level for UI
     this.zoomLevel = 1;
@@ -164,43 +204,340 @@ class GalacticMap3D {
    * Stars distributed in a spherical volume for immersive background
    */
   createStarfield() {
-    const layers = [
-      { count: 2000, size: 0.3, radius: 2000, color: 0x4466aa }, // Distant dim stars
-      { count: 1500, size: 0.4, radius: 1500, color: 0x556688 }, // Mid-distance
-      { count: 1000, size: 0.5, radius: 1000, color: 0x778899 }  // Close dim stars
-    ];
+    // Create fluorescent gradient background sphere (outermost layer)
+    const bgGeometry = new THREE.SphereGeometry(190000, 32, 32); // Behind stars
+    const bgMaterial = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      uniforms: {
+        topColor: { value: new THREE.Color(0x0a0015) }, // Deep purple
+        bottomColor: { value: new THREE.Color(0x000000) }, // Black
+        offset: { value: 33 },
+        exponent: { value: 0.6 }
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform float offset;
+        uniform float exponent;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition + offset).y;
+          float t = max(pow(max(h, 0.0), exponent), 0.0);
 
-    layers.forEach(layer => {
-      const geometry = new THREE.BufferGeometry();
-      const positions = [];
+          // Add fluorescent glow effect
+          vec3 midColor = vec3(0.2, 0.05, 0.4); // Purple/magenta fluorescent
+          vec3 color = mix(bottomColor, midColor, t * 0.5);
+          color = mix(color, topColor, t);
 
-      for (let i = 0; i < layer.count; i++) {
-        // Generate random point on/in sphere using spherical coordinates
-        const theta = Math.random() * Math.PI * 2; // Azimuth angle (0 to 2π)
-        const phi = Math.acos((Math.random() * 2) - 1); // Polar angle (0 to π)
-        const r = layer.radius * (0.8 + Math.random() * 0.2); // Radius with slight variation
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `
+    });
+    const bgSphere = new THREE.Mesh(bgGeometry, bgMaterial);
+    this.scene.add(bgSphere);
 
-        // Convert spherical to Cartesian coordinates
-        const x = r * Math.sin(phi) * Math.cos(theta);
-        const y = r * Math.sin(phi) * Math.sin(theta);
-        const z = r * Math.cos(phi);
+    // Stars on the OUTER SURFACE only (skybox style) - far distant edge
+    const starGeometry = new THREE.BufferGeometry();
+    const starPositions = [];
+    const starColors = [];
+    const starCount = 8000;
+
+    for (let i = 0; i < starCount; i++) {
+      // Points ON the sphere surface at maximum radius
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos((Math.random() * 2) - 1);
+      const r = 180000; // Extended to near camera far plane (200k)
+
+      const x = r * Math.sin(phi) * Math.cos(theta);
+      const y = r * Math.sin(phi) * Math.sin(theta);
+      const z = r * Math.cos(phi);
+
+      starPositions.push(x, y, z);
+
+      // Dimmer star colors
+      const colorChoice = Math.random();
+      if (colorChoice < 0.7) {
+        starColors.push(0.6, 0.6, 0.6); // Dim white
+      } else if (colorChoice < 0.9) {
+        starColors.push(0.5, 0.55, 0.6); // Dim blue-white
+      } else {
+        starColors.push(0.6, 0.6, 0.5); // Dim yellow-white
+      }
+    }
+
+    starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+    starGeometry.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
+
+    // Use shader material to enable custom depth clipping for stars only
+    const starMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        cameraPosition: { value: this.camera.position },
+        minDistance: { value: 50000 }, // Don't render stars closer than this
+        pointSize: { value: 1.0 },
+        opacity: { value: 0.2 }
+      },
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      vertexShader: `
+        uniform vec3 cameraPosition;
+        uniform float minDistance;
+        uniform float pointSize;
+        varying vec3 vColor;
+        varying float vDistance;
+
+        attribute vec3 color;
+
+        void main() {
+          vColor = color;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+
+          // Calculate distance from camera to star
+          vDistance = length(position - cameraPosition);
+
+          gl_PointSize = pointSize;
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform float minDistance;
+        uniform float opacity;
+        varying vec3 vColor;
+        varying float vDistance;
+
+        void main() {
+          // Clip stars that are too close to camera
+          if (vDistance < minDistance) {
+            discard;
+          }
+
+          // Circular point shape
+          vec2 center = gl_PointCoord - vec2(0.5);
+          float dist = length(center);
+          if (dist > 0.5) {
+            discard;
+          }
+
+          gl_FragColor = vec4(vColor, opacity);
+        }
+      `
+    });
+
+    const starField = new THREE.Points(starGeometry, starMaterial);
+    this.starField = starField; // Store reference for camera position updates
+    this.scene.add(starField);
+
+    // Floating particles INSIDE the 3D space (dust/debris)
+    this.floatingParticles = [];
+    const particleGeometry = new THREE.BufferGeometry();
+    const particlePositions = [];
+    const particleCount = 500;
+
+    for (let i = 0; i < particleCount; i++) {
+      // Random positions throughout the scene volume
+      const x = (Math.random() - 0.5) * 30000;
+      const y = (Math.random() - 0.5) * 30000;
+      const z = (Math.random() - 0.5) * 30000;
+
+      particlePositions.push(x, y, z);
+
+      // Store particle data for animation
+      this.floatingParticles.push({
+        velocity: {
+          x: (Math.random() - 0.5) * 2,
+          y: (Math.random() - 0.5) * 2,
+          z: (Math.random() - 0.5) * 2
+        }
+      });
+    }
+
+    particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(particlePositions, 3));
+
+    const particleMaterial = new THREE.PointsMaterial({
+      color: 0xaaaacc,
+      size: 4,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.4,
+      blending: THREE.AdditiveBlending
+    });
+
+    this.floatingParticlesMesh = new THREE.Points(particleGeometry, particleMaterial);
+    this.scene.add(this.floatingParticlesMesh);
+
+    // Comet system (spawns every few minutes)
+    this.comets = [];
+    this.lastCometSpawn = Date.now();
+    this.cometSpawnInterval = 120000 + Math.random() * 60000; // 2-3 minutes
+
+    console.log('✨ Created outer surface starfield, floating particles, and comet system');
+  }
+
+  /**
+   * Create galaxy shape particles based on type
+   * @param {THREE.Group} galaxyGroup - Galaxy group to add particles to
+   * @param {Number} size - Base size of galaxy
+   * @param {String} shapeType - Type of galaxy shape ('spiral-3', 'spiral-4', 'spiral-6')
+   * @param {Object} params - Shape parameters {dimension, trim, curvature}
+   */
+  createGalaxyShape(galaxyGroup, size, shapeType, params) {
+    const { dimension, trim, curvature } = params;
+
+    // Clear existing particles (but keep hitbox and core)
+    const toRemove = [];
+    galaxyGroup.children.forEach(child => {
+      if (child.type === 'Points' ||
+          (child.geometry && child.geometry.type === 'SphereGeometry' &&
+           child.material && child.material.opacity < 1 && child.material.color.getHex() === 0xffff88)) {
+        toRemove.push(child);
+      }
+    });
+    toRemove.forEach(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+      galaxyGroup.remove(child);
+    });
+
+    // Parse number of spiral arms from shape type
+    let spiralArms = 6; // Default
+    if (shapeType === 'spiral-3') spiralArms = 3;
+    else if (shapeType === 'spiral-4') spiralArms = 4;
+    else if (shapeType === 'spiral-6') spiralArms = 6;
+
+    console.log(`🌀 Creating galaxy with ${spiralArms} arms`);
+
+    // Create spray-paint effect spiral with particles narrowing toward edges
+    const particleCount = 1200; // More particles for spray effect
+    const positions = [];
+    const colors = [];
+    const sizes = [];
+
+    // Generate particles for each spiral arm with spray-paint effect
+    for (let arm = 0; arm < spiralArms; arm++) {
+      const armOffset = arm * (Math.PI * 2 / spiralArms);
+      const particlesPerArm = Math.floor(particleCount / spiralArms);
+
+      for (let i = 0; i < particlesPerArm; i++) {
+        const t = i / particlesPerArm; // Progress along arm (0 to 1)
+
+        // Apply trim - skip particles in the center
+        if (t < trim) continue;
+
+        // Spiral angle with curvature
+        const angle = t * Math.PI * (6 + curvature * 2) + armOffset;
+        const radius = t * size * 3 * dimension;
+
+        // SPRAY-PAINT EFFECT: Random spread that narrows as we extend from center
+        // Wide spray at center (after trim), narrow spray at edges
+        const sprayWidth = (1 - t) * 0.8 + 0.2; // 1.0 at start, 0.2 at end
+        const spreadAngle = (Math.random() - 0.5) * sprayWidth * 0.4; // Random angular spread
+        const spreadRadius = (Math.random() - 0.5) * size * sprayWidth * 0.3; // Random radial spread
+
+        // Apply spray effect
+        const finalAngle = angle + spreadAngle;
+        const finalRadius = radius + spreadRadius;
+
+        // Position with spray
+        const x = Math.cos(finalAngle) * finalRadius;
+        const z = Math.sin(finalAngle) * finalRadius;
+
+        // Y spread (thickness) - also narrows toward edges
+        const thickness = sprayWidth * 0.15;
+        const y = (Math.random() - 0.5) * size * thickness * dimension;
 
         positions.push(x, y, z);
+
+        // Particle size varies - smaller at edges for taper effect
+        const particleSize = size * 0.12 * (0.5 + sprayWidth * 0.5);
+        sizes.push(particleSize);
+
+        // Colorful particles - mix of blues, purples, pinks, and whites
+        // More white/bright in center, more colorful at edges
+        const colorChoice = Math.random();
+        let particleColor;
+
+        if (t < 0.3) {
+          // Center region - more whites and yellows
+          particleColor = colorChoice < 0.5 ?
+            new THREE.Color(0xffffff) : new THREE.Color(0xffffaa);
+        } else {
+          // Outer regions - colorful
+          if (colorChoice < 0.25) {
+            particleColor = new THREE.Color(0x4488ff); // Blue
+          } else if (colorChoice < 0.5) {
+            particleColor = new THREE.Color(0xff44ff); // Pink/Magenta
+          } else if (colorChoice < 0.75) {
+            particleColor = new THREE.Color(0x8844ff); // Purple
+          } else {
+            particleColor = new THREE.Color(0x88ddff); // Cyan
+          }
+        }
+
+        // Add brightness variation
+        particleColor.multiplyScalar(0.7 + Math.random() * 0.5);
+        colors.push(particleColor.r, particleColor.g, particleColor.b);
       }
+    }
 
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const particleGeometry = new THREE.BufferGeometry();
+    particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    particleGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    // Note: Can't use per-particle size in PointsMaterial easily, so we use average
 
-      const material = new THREE.PointsMaterial({
-        color: layer.color,
-        size: layer.size,
-        sizeAttenuation: false,
-        transparent: true,
-        opacity: 0.25 // Much dimmer - just a subtle background effect
-      });
-
-      const stars = new THREE.Points(geometry, material);
-      this.starfieldGroup.add(stars);
+    const particleMaterial = new THREE.PointsMaterial({
+      size: size * 0.12, // Slightly smaller for spray effect
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8, // Slightly more opaque for better visibility
+      blending: THREE.AdditiveBlending,
+      sizeAttenuation: true
     });
+
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    particles.rotation.x = Math.PI / 2; // Lay flat
+    galaxyGroup.add(particles);
+
+    // Add central bright core - donut center anchor
+    const coreGeometry = new THREE.SphereGeometry(size * 0.3, 16, 16);
+    const coreMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffff88,
+      transparent: true,
+      opacity: 0.6
+    });
+    const core = new THREE.Mesh(coreGeometry, coreMaterial);
+    galaxyGroup.add(core);
+
+    console.log(`✅ Galaxy created: ${positions.length / 3} particles in ${spiralArms} arms`);
+  }
+
+  /**
+   * Update galaxy shape in real-time
+   * @param {String} galaxyId - Galaxy asset ID
+   * @param {String} shapeType - New shape type
+   * @param {Object} params - New parameters
+   */
+  updateGalaxyShape(galaxyId, shapeType, params) {
+    const asset = this.assets.get(galaxyId);
+    if (!asset || asset.mesh.userData.type !== 'galaxy') return;
+
+    // Update stored parameters
+    asset.mesh.userData.galaxyShape = shapeType;
+    asset.mesh.userData.galaxyDimension = params.dimension;
+    asset.mesh.userData.galaxyTrim = params.trim;
+    asset.mesh.userData.galaxyCurvature = params.curvature;
+
+    // Recreate the shape
+    const size = 25; // Galaxy base size
+    this.createGalaxyShape(asset.mesh, size, shapeType, params);
   }
 
   /**
@@ -275,6 +612,7 @@ class GalacticMap3D {
     }
 
     console.log(`✅ Adding ${assetType}: ${title} at (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`);
+    console.log(`   Camera at: (${this.camera.position.x.toFixed(1)}, ${this.camera.position.y.toFixed(1)}, ${this.camera.position.z.toFixed(1)})`);
 
     // Color by asset type
     const colorMap = {
@@ -333,89 +671,37 @@ class GalacticMap3D {
       mesh = new THREE.Group();
       mesh.position.copy(position);
 
-      // Create spiral particle system - reduced density for cleaner look
-      const particleCount = 600; // Reduced from 1000
-      const positions = [];
-      const colors = [];
-      const spiralArms = 3; // Number of spiral arms
+      // Store galaxy shape parameters (can be modified by controls)
+      mesh.userData.galaxyShape = assetData.renderData?.galaxyShape || 'spiral-6'; // Default to 6-cone spiral
+      mesh.userData.galaxyDimension = assetData.renderData?.galaxyDimension || 1.0;
+      mesh.userData.galaxyTrim = assetData.renderData?.galaxyTrim || 0.2;
+      mesh.userData.galaxyCurvature = assetData.renderData?.galaxyCurvature || 2.0;
 
-      // Generate colorful particles in spiral pattern
-      for (let i = 0; i < particleCount; i++) {
-        const t = i / particleCount;
-
-        // Skip particles in the center to reduce clutter (start at 20% radius)
-        if (t < 0.2) continue;
-
-        const angle = t * Math.PI * 8; // 4 full rotations
-        const armOffset = (i % spiralArms) * (Math.PI * 2 / spiralArms);
-        const radius = t * size * 3;
-
-        // Spiral position
-        const x = Math.cos(angle + armOffset) * radius;
-        const z = Math.sin(angle + armOffset) * radius;
-        const y = (Math.random() - 0.5) * size * 0.2; // Reduced vertical spread from 0.3 to 0.2
-
-        positions.push(x, y, z);
-
-        // Colorful particles - mix of blues, purples, pinks, and whites
-        const colorChoice = Math.random();
-        let particleColor;
-        if (colorChoice < 0.25) {
-          particleColor = new THREE.Color(0x4488ff); // Blue
-        } else if (colorChoice < 0.5) {
-          particleColor = new THREE.Color(0xff44ff); // Pink/Magenta
-        } else if (colorChoice < 0.75) {
-          particleColor = new THREE.Color(0x8844ff); // Purple
-        } else {
-          particleColor = new THREE.Color(0xffffff); // White
-        }
-
-        // Add some brightness variation
-        particleColor.multiplyScalar(0.8 + Math.random() * 0.4);
-
-        colors.push(particleColor.r, particleColor.g, particleColor.b);
-      }
-
-      const particleGeometry = new THREE.BufferGeometry();
-      particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      particleGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-      const particleMaterial = new THREE.PointsMaterial({
-        size: size * 0.15, // Reduced from 0.3 to 0.15 - much smaller particles
-        vertexColors: true,
-        transparent: true,
-        opacity: 0.7, // Reduced from 0.8 for more subtle appearance
-        blending: THREE.AdditiveBlending,
-        sizeAttenuation: true
+      // Create galaxy particles based on shape
+      this.createGalaxyShape(mesh, size, mesh.userData.galaxyShape, {
+        dimension: mesh.userData.galaxyDimension,
+        trim: mesh.userData.galaxyTrim,
+        curvature: mesh.userData.galaxyCurvature
       });
 
-      const particles = new THREE.Points(particleGeometry, particleMaterial);
-      particles.rotation.x = Math.PI / 2; // Lay flat
-      mesh.add(particles);
-
-      // Add central bright core - smaller and more subtle
-      const coreGeometry = new THREE.SphereGeometry(size * 0.3, 16, 16); // Reduced from 0.5
-      const coreMaterial = new THREE.MeshBasicMaterial({
-        color: 0xffff88,
-        transparent: true,
-        opacity: 0.6 // Reduced from 0.9 for less brightness
-      });
-      const core = new THREE.Mesh(coreGeometry, coreMaterial);
-      mesh.add(core);
-
-      // Add INVISIBLE HITBOX sphere for easier clicking
-      const hitboxGeometry = new THREE.SphereGeometry(size * 3, 16, 16);
+      // Add VERY VISIBLE HITBOX sphere for easier clicking - MASSIVE SIZE
+      const hitboxGeometry = new THREE.SphereGeometry(size * 10, 16, 16); // DOUBLED to size * 10
       const hitboxMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: 0,
-        depthWrite: false
+        opacity: 0.3, // More visible
+        color: 0x00ff00, // Bright green for debugging
+        depthWrite: false,
+        wireframe: true, // Wireframe for debugging
+        side: THREE.DoubleSide
       });
       const hitbox = new THREE.Mesh(hitboxGeometry, hitboxMaterial);
+      hitbox.name = 'galaxy-hitbox'; // Name for debugging
+      hitbox.userData.isHitbox = true;
       mesh.add(hitbox);
 
-      // Decorative stars removed - only real star assets from database will be shown
+      console.log(`🎯 Created MASSIVE galaxy hitbox for ${title} at (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)}) - radius: ${size * 10}`);
 
-      // Simple glow sphere around entire galaxy
+      // Simple glow sphere around entire galaxy - ADD AS CHILD
       const glowGeometry = new THREE.SphereGeometry(size * 3.5, 16, 16);
       const glowMaterial = new THREE.MeshBasicMaterial({
         color: color,
@@ -424,7 +710,13 @@ class GalacticMap3D {
         side: THREE.BackSide
       });
       glow = new THREE.Mesh(glowGeometry, glowMaterial);
-      glow.position.copy(position);
+      // Don't copy position - glow is child of mesh so it's relative to (0,0,0)
+      mesh.add(glow); // Add glow as child of the galaxy Group
+
+      // Enable slow rotation animation
+      mesh.userData.rotationSpeed = 0.0002; // Very slow rotation
+
+      console.log(`✅ Galaxy Group created with ${mesh.children.length} children`);
 
     } else if (assetType === 'zone') {
       // Zones: Wireframe torus ring for visual distinction
@@ -578,17 +870,41 @@ class GalacticMap3D {
       glow = new THREE.Object3D(); // Empty placeholder
     }
 
-    // Store metadata
+    // Store metadata - preserve existing userData (like galaxyShape params)
     mesh.userData = {
+      ...mesh.userData, // Preserve existing userData
       id: _id,
       type: assetType,
       title: title,
       data: assetData
     };
 
+    // Add physics properties for galaxies
+    if (assetType === 'galaxy') {
+      mesh.userData.velocity = new THREE.Vector3(0, 0, 0); // Current velocity
+      mesh.userData.parentAnomaly = assetData.parentId || null; // Which anomaly it orbits
+      mesh.userData.mass = this.GALAXY_MASS;
+      console.log(`🌌 Galaxy ${title} initialized with physics (parent: ${mesh.userData.parentAnomaly || 'none'})`);
+    }
+
+    // Anomalies are static gravitational anchors
+    if (assetType === 'anomaly') {
+      mesh.userData.mass = this.ANOMALY_MASS;
+      mesh.userData.isStatic = true; // Anomalies don't move
+      console.log(`⚫ Anomaly ${title} initialized as static gravitational anchor`);
+    }
+
     this.assetsGroup.add(mesh);
-    this.assetsGroup.add(glow);
+    // For galaxies, glow is now a child of mesh, so don't add separately
+    if (assetType !== 'galaxy') {
+      this.assetsGroup.add(glow);
+    }
     this.assets.set(_id, { mesh, glow });
+
+    console.log(`📦 Added to scene - assetsGroup now has ${this.assetsGroup.children.length} children`);
+    if (assetType === 'galaxy') {
+      console.log(`🌌 Galaxy mesh has ${mesh.children.length} children:`, mesh.children.map(c => c.name || c.type));
+    }
 
     // Separate tracking by type
     if (assetType === 'star') {
@@ -682,62 +998,256 @@ class GalacticMap3D {
 
   /**
    * Create connection lines for all travelable routes
-   * Connects: anomaly ↔ galaxies AND galaxy ↔ galaxy
+   * Rules:
+   * - Each galaxy connects to its parent anomaly (1 connection per galaxy)
+   * - Each anomaly can have up to 5 galaxy connections
+   * - Each galaxy can have up to 3 connections to other galaxies
    */
   createGalacticConnections() {
-    console.log('🌌 Creating travelable routes (anomaly ↔ galaxies, galaxy ↔ galaxy)...');
+    console.log('🌌 Creating travelable routes with connection limits...');
 
-    // Find the anomaly (center)
-    let anomalyId = null;
-    let anomalyPos = null;
-
+    // Collect all anomalies
+    const anomalies = [];
     for (const [id, asset] of this.assets) {
       if (asset.mesh.userData.type === 'anomaly') {
-        anomalyId = id;
-        anomalyPos = asset.mesh.position.clone();
-        console.log(`  📍 Anomaly found at position:`, anomalyPos);
-        break;
+        anomalies.push({
+          id: id,
+          pos: asset.mesh.position.clone(),
+          title: asset.mesh.userData.title,
+          connectionCount: 0,
+          maxConnections: 5
+        });
       }
     }
 
-    // Collect all galaxies
+    // Collect all galaxies with their parent anomaly info
     const galaxies = [];
     for (const [id, asset] of this.assets) {
       if (asset.mesh.userData.type === 'galaxy') {
         galaxies.push({
           id: id,
           pos: asset.mesh.position.clone(),
-          title: asset.mesh.userData.title
+          title: asset.mesh.userData.title,
+          parentAnomaly: asset.mesh.userData.parentAnomaly || null,
+          mesh: asset.mesh,
+          galaxyConnectionCount: 0,
+          maxGalaxyConnections: 3
         });
       }
     }
 
+    console.log(`  📍 Found ${anomalies.length} anomalies`);
     console.log(`  🌌 Found ${galaxies.length} galaxies`);
 
     let connectionCount = 0;
 
-    // 1. Connect anomaly to all galaxies (if anomaly exists)
-    if (anomalyId && anomalyPos) {
-      for (const galaxy of galaxies) {
-        this.createTravelRoute(anomalyPos, galaxy.pos, 0x00ff88, `Anomaly → ${galaxy.title}`);
-        connectionCount++;
+    // 1. Connect each galaxy to its parent anomaly (if it has one)
+    for (const galaxy of galaxies) {
+      if (!galaxy.parentAnomaly) {
+        console.log(`  ⚠️ Galaxy ${galaxy.title} has no parent anomaly`);
+        continue;
       }
+
+      const parentAnomaly = anomalies.find(a => a.id === galaxy.parentAnomaly);
+      if (!parentAnomaly) {
+        console.log(`  ⚠️ Galaxy ${galaxy.title} parent anomaly ${galaxy.parentAnomaly} not found`);
+        continue;
+      }
+
+      // Check anomaly connection limit
+      if (parentAnomaly.connectionCount >= parentAnomaly.maxConnections) {
+        console.log(`  ⚠️ Anomaly ${parentAnomaly.title} has reached max connections (${parentAnomaly.maxConnections})`);
+        continue;
+      }
+
+      this.createTravelRoute(
+        parentAnomaly.pos,
+        galaxy.pos,
+        0x00ff88,
+        `${parentAnomaly.title} ↔ ${galaxy.title}`
+      );
+      parentAnomaly.connectionCount++;
+      connectionCount++;
+      console.log(`  ✅ Connected ${galaxy.title} to parent ${parentAnomaly.title}`);
     }
 
-    // 2. Connect each galaxy to every other galaxy (full mesh network)
+    // 2. Connect galaxies to each other (limited to 3 connections per galaxy)
+    // Use nearest neighbor approach to create meaningful connections
     for (let i = 0; i < galaxies.length; i++) {
-      for (let j = i + 1; j < galaxies.length; j++) {
+      const galaxy = galaxies[i];
+
+      // Find nearest galaxies and connect up to max limit
+      const distances = galaxies
+        .map((other, idx) => ({
+          index: idx,
+          galaxy: other,
+          distance: galaxy.pos.distanceTo(other.pos)
+        }))
+        .filter(d => d.index !== i) // Exclude self
+        .sort((a, b) => a.distance - b.distance); // Sort by distance
+
+      for (const {galaxy: otherGalaxy} of distances) {
+        // Check if we've hit our connection limit
+        if (galaxy.galaxyConnectionCount >= galaxy.maxGalaxyConnections) {
+          break;
+        }
+
+        // Check if other galaxy has hit its limit
+        if (otherGalaxy.galaxyConnectionCount >= otherGalaxy.maxGalaxyConnections) {
+          continue;
+        }
+
+        // Check if connection already exists (avoid duplicates)
+        const existingConnection = this.findExistingConnection(galaxy.id, otherGalaxy.id);
+        if (existingConnection) {
+          continue;
+        }
+
+        // Create the connection
         this.createTravelRoute(
-          galaxies[i].pos,
-          galaxies[j].pos,
+          galaxy.pos,
+          otherGalaxy.pos,
           0x00aaff,  // Blue for galaxy-to-galaxy
-          `${galaxies[i].title} ↔ ${galaxies[j].title}`
+          `${galaxy.title} ↔ ${otherGalaxy.title}`
         );
+
+        galaxy.galaxyConnectionCount++;
+        otherGalaxy.galaxyConnectionCount++;
         connectionCount++;
       }
     }
 
     console.log(`✅ Created ${connectionCount} travelable routes`);
+    console.log(`   Anomaly connections: ${anomalies.reduce((sum, a) => sum + a.connectionCount, 0)}`);
+    console.log(`   Galaxy-to-galaxy connections: ${galaxies.reduce((sum, g) => sum + g.galaxyConnectionCount, 0) / 2}`);
+  }
+
+  /**
+   * Check if a connection already exists between two objects
+   */
+  findExistingConnection(idA, idB) {
+    // We store connections in userData of line objects
+    for (const child of this.connectionsGroup.children) {
+      if (child.userData.isConnection && child.userData.routeLabel) {
+        const label = child.userData.routeLabel;
+        // Check if both IDs are in the route label (bidirectional check)
+        if ((label.includes(idA) && label.includes(idB)) ||
+            (label.includes(idB) && label.includes(idA))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if player can travel to a given asset based on connections
+   * @param {string} targetAssetId - ID of the destination asset
+   * @param {Object} playerLocation - Current player location {x, y, z}
+   * @returns {boolean} - True if destination is reachable
+   */
+  canTravelToAsset(targetAssetId, playerLocation) {
+    if (!playerLocation) {
+      console.warn('No player location provided');
+      return false;
+    }
+
+    // Get target asset
+    const targetAsset = this.assets.get(targetAssetId);
+    if (!targetAsset) {
+      console.warn(`Target asset ${targetAssetId} not found`);
+      return false;
+    }
+
+    const targetType = targetAsset.mesh.userData.type;
+    const targetPos = targetAsset.mesh.position;
+
+    // Find which asset the player is currently at (within range)
+    const LOCATION_THRESHOLD = 100; // How close to be "at" a location
+    let currentAssetId = null;
+    let currentAssetType = null;
+
+    for (const [id, asset] of this.assets) {
+      const distance = new THREE.Vector3(
+        playerLocation.x,
+        playerLocation.y,
+        playerLocation.z || 0
+      ).distanceTo(asset.mesh.position);
+
+      if (distance < LOCATION_THRESHOLD) {
+        currentAssetId = id;
+        currentAssetType = asset.mesh.userData.type;
+        break;
+      }
+    }
+
+    // If not at any specific location, allow travel to anomalies only
+    if (!currentAssetId) {
+      console.log('Player not at any specific location');
+      return targetType === 'anomaly';
+    }
+
+    // Check if there's a connection between current location and target
+    const hasConnection = this.findExistingConnection(currentAssetId, targetAssetId);
+
+    if (hasConnection) {
+      console.log(`✅ Connection exists from ${currentAssetId} to ${targetAssetId}`);
+      return true;
+    }
+
+    console.log(`⛔ No connection from ${currentAssetId} to ${targetAssetId}`);
+    return false;
+  }
+
+  /**
+   * Get list of connected destinations from current location
+   * @param {Object} playerLocation - Current player location {x, y, z}
+   * @returns {Array} - Array of asset IDs that can be traveled to
+   */
+  getConnectedDestinations(playerLocation) {
+    if (!playerLocation) {
+      return [];
+    }
+
+    // Find current asset
+    const LOCATION_THRESHOLD = 100;
+    let currentAssetId = null;
+
+    for (const [id, asset] of this.assets) {
+      const distance = new THREE.Vector3(
+        playerLocation.x,
+        playerLocation.y,
+        playerLocation.z || 0
+      ).distanceTo(asset.mesh.position);
+
+      if (distance < LOCATION_THRESHOLD) {
+        currentAssetId = id;
+        break;
+      }
+    }
+
+    if (!currentAssetId) {
+      // If not at a location, can only travel to anomalies
+      const anomalies = [];
+      for (const [id, asset] of this.assets) {
+        if (asset.mesh.userData.type === 'anomaly') {
+          anomalies.push(id);
+        }
+      }
+      return anomalies;
+    }
+
+    // Find all connected destinations
+    const connected = [];
+    for (const [id, asset] of this.assets) {
+      if (id === currentAssetId) continue;
+
+      if (this.findExistingConnection(currentAssetId, id)) {
+        connected.push(id);
+      }
+    }
+
+    return connected;
   }
 
   /**
@@ -833,32 +1343,136 @@ class GalacticMap3D {
       }
       mouseDownPos = null;
     });
+
+    // Enhanced touch controls for mobile
+    let touchStartPos = null;
+    let touchStartTime = 0;
+    let controlsWereMoving = false;
+
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        touchStartTime = Date.now();
+        this.touchMoved = false;
+        controlsWereMoving = false;
+
+        // Update mouse position for raycasting
+        this.mouse.x = (e.touches[0].clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(e.touches[0].clientY / window.innerHeight) * 2 + 1;
+
+        console.log('👆 Touch start at:', this.mouse);
+      } else if (e.touches.length === 2) {
+        // Track pinch zoom distance
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        this.lastTouchDistance = Math.sqrt(dx * dx + dy * dy);
+        this.touchMoved = true; // Multi-touch is always movement
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && touchStartPos) {
+        const dist = Math.sqrt(
+          Math.pow(e.touches[0].clientX - touchStartPos.x, 2) +
+          Math.pow(e.touches[0].clientY - touchStartPos.y, 2)
+        );
+        if (dist > 10) {
+          this.touchMoved = true;
+          controlsWereMoving = true;
+        }
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', (e) => {
+      if (e.changedTouches.length === 1 && touchStartPos) {
+        const touchDuration = Date.now() - touchStartTime;
+        const dist = Math.sqrt(
+          Math.pow(e.changedTouches[0].clientX - touchStartPos.x, 2) +
+          Math.pow(e.changedTouches[0].clientY - touchStartPos.y, 2)
+        );
+
+        console.log(`👆 Touch end - Duration: ${touchDuration}ms, Distance: ${dist}px, Moved: ${this.touchMoved}`);
+
+        // Treat as tap if short duration and minimal movement
+        // More lenient thresholds for better mobile UX
+        if (touchDuration < 400 && dist < 20 && !controlsWereMoving) {
+          // Update mouse position and trigger click
+          this.mouse.x = (e.changedTouches[0].clientX / window.innerWidth) * 2 - 1;
+          this.mouse.y = -(e.changedTouches[0].clientY / window.innerHeight) * 2 + 1;
+
+          console.log('✅ Tap detected! Triggering selection...');
+          this.handleClick({ clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY });
+        } else {
+          console.log('❌ Not a tap - treated as drag/pan');
+        }
+      }
+      touchStartPos = null;
+      controlsWereMoving = false;
+    }, { passive: true });
   }
 
   /**
    * Handle object selection
    */
   handleClick(event) {
-    this.raycaster.setFromCamera(this.mouse, this.camera);
-
-    const intersects = this.raycaster.intersectObjects(this.assetsGroup.children, true);
-
-    if (intersects.length > 0) {
-      let object = intersects[0].object;
-
-      // If clicked object doesn't have userData.id, traverse up to find parent that does
-      while (object && (!object.userData || !object.userData.id)) {
-        object = object.parent;
+    try {
+      // Update mouse position from the click event
+      if (event && event.clientX !== undefined && event.clientY !== undefined) {
+        this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
       }
 
-      // If we found a valid object with userData
-      if (object && object.userData && object.userData.id) {
-        this.selectObject(object);
+      console.log('🎯 handleClick called with mouse:', this.mouse);
+
+      if (!this.raycaster || !this.camera || !this.mouse) {
+        console.warn('⚠️ Missing required objects for raycasting');
+        return;
+      }
+
+      this.raycaster.setFromCamera(this.mouse, this.camera);
+
+      // Only raycast against assets group to avoid hitting UI elements or connections
+      if (!this.assetsGroup || !this.assetsGroup.children) {
+        console.warn('⚠️ Assets group not available');
+        return;
+      }
+
+      const intersects = this.raycaster.intersectObjects(this.assetsGroup.children, true);
+      console.log(`🔍 Raycaster found ${intersects.length} intersections`);
+
+      if (intersects.length > 0) {
+        let object = intersects[0].object;
+
+        // If clicked object doesn't have userData.id, traverse up to find parent that does
+        let traverseCount = 0;
+        while (object && (!object.userData || !object.userData.id)) {
+          if (!object.parent || object.parent === this.scene) {
+            // Reached scene root without finding valid object
+            break;
+          }
+          object = object.parent;
+          traverseCount++;
+          if (traverseCount > 10) {
+            console.warn('⚠️ Too many parent traversals, stopping');
+            break;
+          }
+        }
+
+        // If we found a valid object with userData
+        if (object && object.userData && object.userData.id) {
+          console.log('✅ Selected object:', object.userData.title || object.userData.id);
+          this.selectObject(object);
+        } else {
+          console.log('❌ No valid object found with userData.id');
+          this.deselectObject();
+        }
       } else {
+        console.log('❌ No intersections found, deselecting');
         this.deselectObject();
       }
-    } else {
-      this.deselectObject();
+    } catch (error) {
+      console.error('❌ Error in handleClick:', error);
+      // Don't break the application, just log the error
     }
   }
 
@@ -866,65 +1480,88 @@ class GalacticMap3D {
    * Select an object and handle drill-down navigation
    */
   selectObject(object) {
-    // Deselect previous
-    if (this.selectedObject) {
-      // Handle Groups (galaxies, anomalies, stars)
-      if (this.selectedObject.isGroup) {
-        this.selectedObject.traverse((child) => {
-          if (child.material) {
-            if (child.material.emissive) {
-              child.material.emissive.setHex(0x000000);
+    try {
+      if (!object || !object.userData) {
+        console.warn('⚠️ Invalid object for selection');
+        return;
+      }
+
+      // Deselect previous
+      if (this.selectedObject) {
+        try {
+          // Handle Groups (galaxies, anomalies, stars)
+          if (this.selectedObject.isGroup) {
+            this.selectedObject.traverse((child) => {
+              if (child.material) {
+                if (child.material.emissive) {
+                  child.material.emissive.setHex(0x000000);
+                }
+                if (child.material.wireframe && child.material.opacity !== undefined) {
+                  child.material.opacity = Math.min(child.material.opacity, 0.6);
+                }
+              }
+            });
+          } else if (this.selectedObject.material) {
+            // Handle single Meshes
+            if (this.selectedObject.material.emissive) {
+              this.selectedObject.material.emissive.setHex(0x000000);
             }
-            if (child.material.wireframe && child.material.opacity) {
-              child.material.opacity = Math.min(child.material.opacity, 0.6);
+            if (this.selectedObject.material.wireframe) {
+              this.selectedObject.material.opacity = 0.6;
             }
           }
+        } catch (err) {
+          console.warn('⚠️ Error deselecting previous object:', err);
+        }
+      }
+
+      // Select new
+      this.selectedObject = object;
+
+      // Highlight based on material type
+      try {
+        // Handle Groups (galaxies, anomalies, stars)
+        if (object.isGroup) {
+          object.traverse((child) => {
+            if (child.material) {
+              if (child.material.emissive) {
+                child.material.emissive.setHex(0xff6600);
+              } else if (child.material.wireframe) {
+                child.material.opacity = 1.0;
+              }
+            }
+          });
+        } else if (object.material) {
+          // Handle single Meshes
+          if (object.material.emissive) {
+            object.material.emissive.setHex(0xff6600);
+          } else if (object.material.wireframe) {
+            object.material.opacity = 1.0;
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ Error highlighting object:', err);
+      }
+
+      // Focus camera on selected object
+      if (object.position) {
+        this.focusCameraOn(object.position);
+      }
+
+      // Emit event for UI to handle
+      try {
+        const event = new CustomEvent('assetSelected', {
+          detail: object.userData
         });
-      } else if (this.selectedObject.material) {
-        // Handle single Meshes
-        if (this.selectedObject.material.emissive) {
-          this.selectedObject.material.emissive.setHex(0x000000);
-        }
-        if (this.selectedObject.material.wireframe) {
-          this.selectedObject.material.opacity = 0.6;
-        }
+        window.dispatchEvent(event);
+      } catch (err) {
+        console.warn('⚠️ Error dispatching event:', err);
       }
+
+      console.log('✅ Selected:', object.userData.title || object.userData.id);
+    } catch (error) {
+      console.error('❌ Error in selectObject:', error);
     }
-
-    // Select new
-    this.selectedObject = object;
-
-    // Highlight based on material type
-    // Handle Groups (galaxies, anomalies, stars)
-    if (object.isGroup) {
-      object.traverse((child) => {
-        if (child.material) {
-          if (child.material.emissive) {
-            child.material.emissive.setHex(0xff6600);
-          } else if (child.material.wireframe) {
-            child.material.opacity = 1.0;
-          }
-        }
-      });
-    } else if (object.material) {
-      // Handle single Meshes
-      if (object.material.emissive) {
-        object.material.emissive.setHex(0xff6600);
-      } else if (object.material.wireframe) {
-        object.material.opacity = 1.0;
-      }
-    }
-
-    // Focus camera on selected object
-    this.focusCameraOn(object.position);
-
-    // Emit event for UI to handle
-    const event = new CustomEvent('assetSelected', {
-      detail: object.userData
-    });
-    window.dispatchEvent(event);
-
-    console.log('Selected:', object.userData.title);
   }
 
   /**
@@ -1006,19 +1643,20 @@ class GalacticMap3D {
    * Deselect current object
    */
   deselectObject() {
-    if (this.selectedObject) {
-      // Handle Groups (galaxies, anomalies, stars)
-      if (this.selectedObject.isGroup) {
-        this.selectedObject.traverse((child) => {
-          if (child.material) {
-            if (child.material.emissive) {
-              child.material.emissive.setHex(0x000000);
+    try {
+      if (this.selectedObject) {
+        // Handle Groups (galaxies, anomalies, stars)
+        if (this.selectedObject.isGroup) {
+          this.selectedObject.traverse((child) => {
+            if (child.material) {
+              if (child.material.emissive) {
+                child.material.emissive.setHex(0x000000);
+              }
+              if (child.material.wireframe && child.material.opacity !== undefined) {
+                child.material.opacity = Math.min(child.material.opacity, 0.6);
+              }
             }
-            if (child.material.wireframe && child.material.opacity) {
-              child.material.opacity = Math.min(child.material.opacity, 0.6);
-            }
-          }
-        });
+          });
       } else if (this.selectedObject.material) {
         // Handle single Meshes
         if (this.selectedObject.material.emissive) {
@@ -1031,8 +1669,15 @@ class GalacticMap3D {
       this.selectedObject = null;
     }
 
-    const event = new CustomEvent('assetDeselected');
-    window.dispatchEvent(event);
+      try {
+        const event = new CustomEvent('assetDeselected');
+        window.dispatchEvent(event);
+      } catch (err) {
+        console.warn('⚠️ Error dispatching deselect event:', err);
+      }
+    } catch (error) {
+      console.error('❌ Error in deselectObject:', error);
+    }
   }
 
   /**
@@ -1110,10 +1755,192 @@ class GalacticMap3D {
   }
 
   /**
+   * Update galaxy physics - gravitational attraction to anomalies
+   */
+  updatePhysics(deltaTime) {
+    if (!this.physicsEnabled || this.currentLevel !== 'galactic') return;
+
+    // Get all anomalies and galaxies
+    const anomalies = [];
+    const galaxies = [];
+
+    this.assets.forEach((asset, id) => {
+      if (asset.mesh?.userData.type === 'anomaly') {
+        anomalies.push({ id, mesh: asset.mesh });
+      } else if (asset.mesh?.userData.type === 'galaxy') {
+        galaxies.push({ id, mesh: asset.mesh });
+      }
+    });
+
+    if (anomalies.length === 0) return; // No anomalies, no physics
+
+    // Update each galaxy
+    galaxies.forEach(galaxy => {
+      const galaxyPos = galaxy.mesh.position;
+      const galaxyVel = galaxy.mesh.userData.velocity || new THREE.Vector3(0, 0, 0);
+      let totalForce = new THREE.Vector3(0, 0, 0);
+      let nearestAnomaly = null;
+      let nearestDistance = Infinity;
+
+      // Calculate gravitational forces from all anomalies
+      anomalies.forEach(anomaly => {
+        const anomalyPos = anomaly.mesh.position;
+        const direction = new THREE.Vector3().subVectors(anomalyPos, galaxyPos);
+        const distance = direction.length();
+
+        if (distance < 10) return; // Skip if too close (prevents extreme forces)
+
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestAnomaly = anomaly.id;
+        }
+
+        // F = G * (m1 * m2) / r^2
+        const forceMagnitude = this.GRAVITATIONAL_CONSTANT *
+          (this.GALAXY_MASS * this.ANOMALY_MASS) /
+          (distance * distance);
+
+        direction.normalize();
+        const force = direction.multiplyScalar(forceMagnitude);
+        totalForce.add(force);
+      });
+
+      // Check if galaxy should be captured by nearest anomaly
+      if (nearestAnomaly && nearestDistance < this.ANOMALY_CAPTURE_DISTANCE) {
+        if (galaxy.mesh.userData.parentAnomaly !== nearestAnomaly) {
+          console.log(`🎯 Galaxy ${galaxy.mesh.userData.title} captured by anomaly at distance ${nearestDistance.toFixed(1)}`);
+          galaxy.mesh.userData.parentAnomaly = nearestAnomaly;
+
+          // Update database via API
+          this.updateGalaxyParent(galaxy.id, nearestAnomaly);
+        }
+      }
+
+      // Apply force to velocity (F = ma, so a = F/m)
+      const acceleration = totalForce.divideScalar(this.GALAXY_MASS);
+      galaxyVel.add(acceleration.multiplyScalar(deltaTime));
+
+      // Clamp velocity
+      if (galaxyVel.length() > this.MAX_VELOCITY) {
+        galaxyVel.normalize().multiplyScalar(this.MAX_VELOCITY);
+      }
+
+      // Update position
+      const displacement = galaxyVel.clone().multiplyScalar(deltaTime);
+      galaxyPos.add(displacement);
+
+      // Store velocity back
+      galaxy.mesh.userData.velocity = galaxyVel;
+
+      // Update force arrow
+      this.updateForceArrow(galaxy.id, galaxyPos, totalForce);
+
+      // Update stars that belong to this galaxy (they move with it)
+      this.updateStarsForGalaxy(galaxy.id);
+    });
+  }
+
+  /**
+   * Update force visualization arrow for a galaxy
+   */
+  updateForceArrow(galaxyId, position, force) {
+    if (!this.showForceArrows) return;
+
+    const forceMagnitude = force.length();
+    if (forceMagnitude < 0.1) {
+      // Remove arrow if force is negligible
+      const arrow = this.forceArrows.get(galaxyId);
+      if (arrow) {
+        this.forceArrowsGroup.remove(arrow);
+        this.forceArrows.delete(galaxyId);
+      }
+      return;
+    }
+
+    let arrow = this.forceArrows.get(galaxyId);
+
+    if (!arrow) {
+      // Create new arrow
+      const dir = force.clone().normalize();
+      const length = Math.min(forceMagnitude / 50, 300); // Scale for visibility
+      const color = 0x00ffff; // Cyan for force vectors
+
+      arrow = new THREE.ArrowHelper(dir, position, length, color, 30, 20);
+      this.forceArrowsGroup.add(arrow);
+      this.forceArrows.set(galaxyId, arrow);
+    } else {
+      // Update existing arrow
+      const dir = force.clone().normalize();
+      const length = Math.min(forceMagnitude / 50, 300);
+
+      arrow.position.copy(position);
+      arrow.setDirection(dir);
+      arrow.setLength(length, 30, 20);
+    }
+  }
+
+  /**
+   * Update star positions to follow their parent galaxy
+   */
+  updateStarsForGalaxy(galaxyId) {
+    const galaxyAsset = this.assets.get(galaxyId);
+    if (!galaxyAsset || !galaxyAsset.mesh) return;
+
+    const galaxyPosition = galaxyAsset.mesh.position;
+
+    this.assets.forEach((asset, id) => {
+      if (asset.mesh?.userData.type === 'star' && asset.mesh.userData.data?.parentGalaxy === galaxyId) {
+        // Initialize local offset if not set
+        if (!asset.mesh.userData.localOffset) {
+          asset.mesh.userData.localOffset = new THREE.Vector3().subVectors(
+            asset.mesh.position,
+            galaxyPosition
+          );
+        }
+
+        // Stars maintain their local offset from galaxy center
+        const localOffset = asset.mesh.userData.localOffset;
+        asset.mesh.position.copy(galaxyPosition).add(localOffset);
+
+        if (asset.glow && asset.glow.parent !== asset.mesh) {
+          asset.glow.position.copy(asset.mesh.position);
+        }
+      }
+    });
+  }
+
+  /**
+   * Update galaxy parent in database
+   */
+  async updateGalaxyParent(galaxyId, anomalyId) {
+    try {
+      const response = await fetch(`/api/v1/assets/${galaxyId}/parent`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentId: anomalyId })
+      });
+
+      if (response.ok) {
+        console.log(`✅ Updated galaxy ${galaxyId} parent to ${anomalyId} in database`);
+      } else {
+        console.warn(`⚠️ Failed to update galaxy parent: ${response.statusText}`);
+      }
+    } catch (err) {
+      console.error('Failed to update galaxy parent:', err);
+    }
+  }
+
+  /**
    * Animation loop
    */
   animate() {
     requestAnimationFrame(() => this.animate());
+
+    // Update physics for galaxy orbital mechanics
+    const now = Date.now();
+    const deltaTime = Math.min((now - this.lastPhysicsUpdate) / 1000, 0.1); // Cap at 100ms
+    this.lastPhysicsUpdate = now;
+    this.updatePhysics(deltaTime);
 
     // Update OrbitControls (if available)
     if (this.controls) {
@@ -1131,8 +1958,14 @@ class GalacticMap3D {
       stars.rotation.z += 0.0001 * (index + 1);
     });
 
-    // Animate zones and anomalies
+    // Animate zones, anomalies, and galaxies
     this.assets.forEach(asset => {
+      // Animate galaxy rotation around center point
+      if (asset.mesh && asset.mesh.userData.type === 'galaxy') {
+        const rotationSpeed = asset.mesh.userData.rotationSpeed || 0.0002;
+        asset.mesh.rotation.y += rotationSpeed; // Slow rotation around Y axis (vertical)
+      }
+
       // Animate zone rings
       if (asset.mesh && asset.mesh.userData.type === 'zone') {
         asset.mesh.rotation.z += 0.002; // Slow rotation
@@ -1213,7 +2046,139 @@ class GalacticMap3D {
       }
     });
 
+    // Update all connection lines to follow asset positions
+    this.connections.forEach((line, connectionId) => {
+      const [fromId, toId] = connectionId.split('-');
+      const fromAsset = this.assets.get(fromId);
+      const toAsset = this.assets.get(toId);
+
+      if (fromAsset && toAsset && line.geometry && line.geometry.attributes.position) {
+        const positions = line.geometry.attributes.position.array;
+        // Update start point (from asset)
+        positions[0] = fromAsset.mesh.position.x;
+        positions[1] = fromAsset.mesh.position.y;
+        positions[2] = fromAsset.mesh.position.z;
+        // Update end point (to asset)
+        positions[3] = toAsset.mesh.position.x;
+        positions[4] = toAsset.mesh.position.y;
+        positions[5] = toAsset.mesh.position.z;
+        line.geometry.attributes.position.needsUpdate = true;
+      }
+    });
+
+    // Animate floating particles
+    if (this.floatingParticlesMesh && this.floatingParticles) {
+      const positions = this.floatingParticlesMesh.geometry.attributes.position.array;
+      for (let i = 0; i < this.floatingParticles.length; i++) {
+        const particle = this.floatingParticles[i];
+        const idx = i * 3;
+
+        // Update position based on velocity
+        positions[idx] += particle.velocity.x;
+        positions[idx + 1] += particle.velocity.y;
+        positions[idx + 2] += particle.velocity.z;
+
+        // Wrap particles around scene bounds
+        if (Math.abs(positions[idx]) > 15000) particle.velocity.x *= -1;
+        if (Math.abs(positions[idx + 1]) > 15000) particle.velocity.y *= -1;
+        if (Math.abs(positions[idx + 2]) > 15000) particle.velocity.z *= -1;
+      }
+      this.floatingParticlesMesh.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // Spawn and animate comets
+    const currentTime = Date.now();
+    if (currentTime - this.lastCometSpawn > this.cometSpawnInterval) {
+      this.spawnComet();
+      this.lastCometSpawn = currentTime;
+      this.cometSpawnInterval = 120000 + Math.random() * 60000; // Next in 2-3 minutes
+    }
+
+    // Animate existing comets
+    if (this.comets) {
+      for (let i = this.comets.length - 1; i >= 0; i--) {
+        const comet = this.comets[i];
+        comet.position.add(comet.velocity);
+        comet.trail.geometry.attributes.position.needsUpdate = true;
+
+        // Remove comet if too far
+        const dist = comet.position.length();
+        if (dist > 50000) {
+          this.scene.remove(comet.mesh);
+          this.scene.remove(comet.trail);
+          this.comets.splice(i, 1);
+        }
+      }
+    }
+
+    // Update starfield shader camera position for distance-based clipping
+    if (this.starField && this.starField.material.uniforms) {
+      this.starField.material.uniforms.cameraPosition.value.copy(this.camera.position);
+    }
+
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Spawn a comet that flies through the scene
+   */
+  spawnComet() {
+    // Random starting position on outer edge
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos((Math.random() * 2) - 1);
+    const startRadius = 20000;
+
+    const startPos = new THREE.Vector3(
+      startRadius * Math.sin(phi) * Math.cos(theta),
+      startRadius * Math.sin(phi) * Math.sin(theta),
+      startRadius * Math.cos(phi)
+    );
+
+    // Velocity toward center with some randomness
+    const velocity = startPos.clone().normalize().multiplyScalar(-50);
+    velocity.add(new THREE.Vector3(
+      (Math.random() - 0.5) * 30,
+      (Math.random() - 0.5) * 30,
+      (Math.random() - 0.5) * 30
+    ));
+
+    // Comet head
+    const headGeometry = new THREE.SphereGeometry(15, 8, 8);
+    const headMaterial = new THREE.MeshBasicMaterial({
+      color: 0xccffff,
+      transparent: true,
+      opacity: 0.9
+    });
+    const head = new THREE.Mesh(headGeometry, headMaterial);
+    head.position.copy(startPos);
+
+    // Comet trail
+    const trailGeometry = new THREE.BufferGeometry();
+    const trailPositions = [];
+    for (let i = 0; i < 20; i++) {
+      trailPositions.push(startPos.x, startPos.y, startPos.z);
+    }
+    trailGeometry.setAttribute('position', new THREE.Float32BufferAttribute(trailPositions, 3));
+
+    const trailMaterial = new THREE.LineBasicMaterial({
+      color: 0xaaddff,
+      transparent: true,
+      opacity: 0.6,
+      linewidth: 2
+    });
+    const trail = new THREE.Line(trailGeometry, trailMaterial);
+
+    this.scene.add(head);
+    this.scene.add(trail);
+
+    this.comets.push({
+      mesh: head,
+      trail: trail,
+      position: startPos,
+      velocity: velocity
+    });
+
+    console.log('☄️ Comet spawned!');
   }
 
   /**
@@ -1454,7 +2419,8 @@ class GalacticMap3D {
       );
 
       asset.mesh.position.copy(newPos);
-      if (asset.glow) {
+      // Only update glow position if it's not a child (i.e., not a galaxy)
+      if (asset.glow && asset.glow.parent !== asset.mesh) {
         asset.glow.position.copy(newPos);
       }
 
@@ -1477,11 +2443,13 @@ class GalacticMap3D {
         const toAsset = this.assets.get(toId);
 
         if (fromAsset && toAsset) {
+          // Clone positions to create new Vector3 objects
           const points = [
-            fromAsset.mesh.position,
-            toAsset.mesh.position
+            fromAsset.mesh.position.clone(),
+            toAsset.mesh.position.clone()
           ];
           line.geometry.setFromPoints(points);
+          line.geometry.attributes.position.needsUpdate = true;
         }
       }
     });
@@ -1553,7 +2521,13 @@ class GalacticMap3D {
     );
 
     console.log(`   Loading ${galacticAssets.length} universe-level assets`);
+    console.log(`   allAssets array:`, this.allAssets ? `${this.allAssets.length} items` : 'undefined');
+    console.log(`   galacticAssets array:`, galacticAssets.length, 'items');
+
     galacticAssets.forEach(asset => this.addAsset(asset));
+
+    console.log(`   ✅ After adding: assets Map has ${this.assets.size} items`);
+    console.log(`   Scene group has ${this.assetsGroup.children.length} children`);
 
     // Reset camera to universe center
     this.camera.position.set(

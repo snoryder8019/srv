@@ -284,6 +284,170 @@
       margin-right: 10px;
       border: 1px solid rgba(255, 255, 255, 0.3);
     }
+
+    /* Mobile Ship Controls - Hidden by default, shown under 768px */
+    #mobileShipControls {
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      #mobileShipControls {
+        display: flex;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        gap: 15px;
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 90%;
+        max-width: 400px;
+      }
+
+      .mobile-btn-row {
+        display: flex;
+        gap: 10px;
+        width: 100%;
+        justify-content: center;
+      }
+
+      .mobile-ship-btn {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 170, 255, 0.3));
+        border: 2px solid rgba(0, 212, 255, 0.6);
+        color: #00d4ff;
+        font-size: 24px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+        transition: all 0.2s ease;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+        font-family: 'Orbitron', monospace;
+      }
+
+      .mobile-ship-btn:active {
+        transform: scale(0.95);
+        background: linear-gradient(135deg, rgba(0, 212, 255, 0.4), rgba(0, 170, 255, 0.5));
+        box-shadow: 0 0 25px rgba(0, 212, 255, 0.6);
+      }
+
+      .mobile-ship-btn.rear {
+        background: linear-gradient(135deg, rgba(255, 100, 100, 0.2), rgba(255, 80, 80, 0.3));
+        border-color: rgba(255, 100, 100, 0.6);
+        color: #ff6464;
+      }
+
+      .mobile-ship-btn.rear:active {
+        background: linear-gradient(135deg, rgba(255, 100, 100, 0.4), rgba(255, 80, 80, 0.5));
+        box-shadow: 0 0 25px rgba(255, 100, 100, 0.6);
+      }
+
+      /* Hide desktop controls on mobile */
+      .controls-overlay {
+        display: none !important;
+      }
+
+      /* Hamburger menu for mobile */
+      #mobileMenuBtn {
+        display: flex;
+        position: fixed;
+        top: 70px;
+        left: 10px;
+        width: 50px;
+        height: 50px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, rgba(138, 79, 255, 0.2), rgba(138, 79, 255, 0.3));
+        border: 2px solid rgba(138, 79, 255, 0.6);
+        color: #8a4fff;
+        font-size: 24px;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 1001;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 15px rgba(138, 79, 255, 0.3);
+        transition: all 0.3s ease;
+      }
+
+      #mobileMenuBtn:hover {
+        background: linear-gradient(135deg, rgba(138, 79, 255, 0.3), rgba(138, 79, 255, 0.4));
+        box-shadow: 0 0 25px rgba(138, 79, 255, 0.5);
+      }
+    }
+
+    /* Desktop only - hide mobile menu button */
+    @media (min-width: 769px) {
+      #mobileMenuBtn {
+        display: none;
+      }
+    }
+
+    /* Mobile: Hide or adjust sidebars to prevent blocking view */
+    @media (max-width: 768px) {
+      /* Hide unified sidebar by default on mobile */
+      #unifiedSidebar {
+        transform: translateX(-100%) !important;
+        transition: transform 0.3s ease !important;
+      }
+
+      /* Show unified sidebar when active (via hamburger menu) */
+      #unifiedSidebar.mobile-active {
+        transform: translateX(0) !important;
+        z-index: 10000 !important;
+        box-shadow: 5px 0 40px rgba(0, 0, 0, 0.8);
+      }
+
+      /* Show mobile sidebar backdrop when active */
+      #mobileSidebarBackdrop {
+        display: none;
+      }
+
+      /* Make info pane full-width on mobile when visible */
+      #infoPane.visible {
+        right: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: 60vh !important;
+        bottom: 0 !important;
+        top: auto !important;
+        border-radius: 16px 16px 0 0 !important;
+        z-index: 10001 !important;
+      }
+
+      /* Hide info pane by default on mobile */
+      #infoPane:not(.visible) {
+        transform: translateY(100%) !important;
+        right: auto !important;
+      }
+
+      /* Adjust floating HUD position on mobile */
+      #floatingHUD {
+        max-width: calc(100vw - 40px) !important;
+        font-size: 9px !important;
+      }
+
+      /* Hide selected panel on mobile - redundant with info pane */
+      .selected-panel {
+        display: none !important;
+      }
+
+      /* Adjust controls overlay if shown */
+      .info-overlay {
+        max-width: calc(100vw - 40px) !important;
+        font-size: 12px !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -291,6 +455,43 @@
 
   <!-- Main Map Container -->
   <div id="mapContainer"></div>
+
+  <!-- Mobile Hamburger Menu Button -->
+  <div id="mobileMenuBtn" onclick="toggleMobileSidebar()">☰</div>
+
+  <!-- Mobile Sidebar Backdrop -->
+  <div id="mobileSidebarBackdrop" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 9999; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; display: none;"></div>
+
+  <!-- Mobile Ship Controls (bottom center, 6 buttons) -->
+  <div id="mobileShipControls">
+    <!-- Top row: Left/Right thrust -->
+    <div class="mobile-btn-row">
+      <div class="mobile-ship-btn" id="mobileThrustLeft" data-key="ArrowLeft">
+        ←
+      </div>
+      <div class="mobile-ship-btn" id="mobileThrustRight" data-key="ArrowRight">
+        →
+      </div>
+    </div>
+    <!-- Middle row: Forward/Backward thrust -->
+    <div class="mobile-btn-row">
+      <div class="mobile-ship-btn" id="mobileThrustForward" data-key="ArrowUp">
+        ↑
+      </div>
+      <div class="mobile-ship-btn rear" id="mobileThrustBackward" data-key="ArrowDown">
+        ↓
+      </div>
+    </div>
+    <!-- Bottom row: Up/Down thrust -->
+    <div class="mobile-btn-row">
+      <div class="mobile-ship-btn" id="mobileThrustUp" data-key="KeyW">
+        ▲
+      </div>
+      <div class="mobile-ship-btn rear" id="mobileThrustDown" data-key="KeyS">
+        ▼
+      </div>
+    </div>
+  </div>
 
   <!-- Info Pane Backdrop (dimmed overlay) -->
   <div id="infoPaneBackdrop" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 9998; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;"></div>
@@ -641,6 +842,65 @@
       // toggleOverlayMenu is defined later in this page - call it when user clicks
       window.toggleOverlayMenu();
     };
+
+    /**
+     * Toggle Mobile Sidebar (for mobile hamburger menu)
+     */
+    window.toggleMobileSidebar = function() {
+      console.log('📱 toggleMobileSidebar called');
+      const sidebar = document.getElementById('unifiedSidebar');
+      const backdrop = document.getElementById('mobileSidebarBackdrop');
+
+      if (!sidebar) {
+        console.error('❌ Sidebar not found!');
+        return;
+      }
+
+      // Check if on mobile
+      if (window.innerWidth > 768) {
+        // On desktop, use the overlay menu instead
+        window.toggleOverlayMenu();
+        return;
+      }
+
+      // Toggle mobile-active class
+      const isActive = sidebar.classList.contains('mobile-active');
+      console.log(`Sidebar current state: ${isActive ? 'active' : 'inactive'}`);
+
+      if (isActive) {
+        console.log('Closing mobile sidebar...');
+        sidebar.classList.remove('mobile-active');
+        if (backdrop) {
+          backdrop.style.opacity = '0';
+          backdrop.style.pointerEvents = 'none';
+          setTimeout(() => {
+            backdrop.style.display = 'none';
+          }, 300);
+        }
+      } else {
+        console.log('Opening mobile sidebar...');
+        sidebar.classList.add('mobile-active');
+        if (backdrop) {
+          backdrop.style.display = 'block';
+          setTimeout(() => {
+            backdrop.style.opacity = '1';
+            backdrop.style.pointerEvents = 'auto';
+          }, 10);
+        }
+      }
+    };
+
+    // Close mobile sidebar when clicking backdrop
+    document.addEventListener('DOMContentLoaded', () => {
+      const backdrop = document.getElementById('mobileSidebarBackdrop');
+      if (backdrop) {
+        backdrop.addEventListener('click', () => {
+          if (window.innerWidth <= 768) {
+            window.toggleMobileSidebar();
+          }
+        });
+      }
+    });
 
     window.handleZenToggle = function() {
       console.log('👁️ Zen mode clicked');
@@ -1206,6 +1466,8 @@
   <script src="/javascripts/activity-monitor.js"></script>
 
   <script src="/socket.io/socket.io.js"></script>
+  <!-- GameStateMonitor - Centralized coordinate management -->
+  <script src="/javascripts/GameStateMonitor.js"></script>
   <% if (user && user.userRole === 'tester') { %>
   <script src="/javascripts/tester-toolbar.js"></script>
   <script src="/javascripts/global-chat.js"></script>
@@ -1275,8 +1537,49 @@
       socket.on('connect', () => {
         console.log('🔌 Connected to multiplayer server:', socket.id);
 
-        // Announce this character joining the system (if character exists)
         <% if (character) { %>
+        // Initialize GameStateMonitor (CONSUMER view - reads from galactic-map-3d authority)
+        if (window.gameStateMonitor && !window.gameStateMonitor.connected) {
+          window.gameStateMonitor.init(socket, '<%= character._id %>');
+          console.log('🎮 GameStateMonitor connected for system-map-3d (CONSUMER)');
+
+          // Subscribe to GameStateMonitor events
+          window.gameStateMonitor.on('playerPositionUpdate', (playerState) => {
+            if (playerState.characterId !== '<%= character._id %>') {
+              updateOtherPlayerPosition({
+                characterId: playerState.characterId,
+                characterName: playerState.characterName,
+                location: playerState.position
+              });
+            }
+          });
+
+          window.gameStateMonitor.on('playerJoined', (data) => {
+            if (data.characterId !== '<%= character._id %>' && data.location) {
+              addOtherPlayerShip(data);
+            }
+          });
+
+          window.gameStateMonitor.on('playerLeft', (data) => {
+            removeOtherPlayerShip(data.characterId);
+          });
+
+          window.gameStateMonitor.on('stateSync', (data) => {
+            if (data.players) {
+              data.players.forEach(player => {
+                if (player.characterId !== '<%= character._id %>') {
+                  addOtherPlayerShip({
+                    characterId: player.characterId,
+                    characterName: player.characterName,
+                    location: player.position
+                  });
+                }
+              });
+            }
+          });
+        }
+
+        // Announce this character joining the system (if character exists)
         const joinData = {
           characterId: '<%= character._id %>',
           characterName: '<%= character.name %>',
@@ -2196,6 +2499,177 @@
     });
 
     console.log('✅ Navigation confirmation system initialized for system map');
+
+    // ============================================
+    // MOBILE SHIP CONTROLS AND TOUCH GESTURES
+    // ============================================
+
+    // Mobile button controls - simulate keyboard events for ship control
+    function initializeMobileControls() {
+      if (window.innerWidth > 768) return; // Only for mobile
+
+      console.log('📱 Initializing mobile ship controls...');
+
+      const mobileButtons = document.querySelectorAll('.mobile-ship-btn');
+
+      mobileButtons.forEach(btn => {
+        const key = btn.dataset.key;
+
+        // Touch start - simulate key down
+        btn.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          if (window.shipCombatSystem && window.shipCombatSystem.keys) {
+            window.shipCombatSystem.keys[key] = true;
+          }
+        }, { passive: false });
+
+        // Touch end - simulate key up
+        btn.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          if (window.shipCombatSystem && window.shipCombatSystem.keys) {
+            window.shipCombatSystem.keys[key] = false;
+          }
+        }, { passive: false });
+
+        // Also support mouse events for testing
+        btn.addEventListener('mousedown', () => {
+          if (window.shipCombatSystem && window.shipCombatSystem.keys) {
+            window.shipCombatSystem.keys[key] = true;
+          }
+        });
+
+        btn.addEventListener('mouseup', () => {
+          if (window.shipCombatSystem && window.shipCombatSystem.keys) {
+            window.shipCombatSystem.keys[key] = false;
+          }
+        });
+      });
+
+      console.log('✅ Mobile ship controls initialized');
+    }
+
+    // Touch gesture controls for camera and ship
+    function initializeTouchGestures() {
+      if (window.innerWidth > 768) return; // Only for mobile
+
+      console.log('📱 Initializing touch gestures...');
+
+      const canvas = document.querySelector('#mapContainer canvas');
+      if (!canvas) {
+        console.warn('⚠️ Canvas not found for touch gestures');
+        return;
+      }
+
+      let touchState = {
+        touches: [],
+        initialDistance: 0,
+        initialRotation: 0
+      };
+
+      // Helper to get touch distance for pinch-to-zoom
+      function getTouchDistance(touch1, touch2) {
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      // Helper to get angle between two touches
+      function getTouchAngle(touch1, touch2) {
+        return Math.atan2(touch2.clientY - touch1.clientY, touch2.clientX - touch1.clientX);
+      }
+
+      canvas.addEventListener('touchstart', (e) => {
+        touchState.touches = Array.from(e.touches);
+
+        if (e.touches.length === 2) {
+          // Two finger gesture - save initial state for camera orbit
+          touchState.initialDistance = getTouchDistance(e.touches[0], e.touches[1]);
+          touchState.initialRotation = getTouchAngle(e.touches[0], e.touches[1]);
+        }
+      }, { passive: true });
+
+      canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault(); // Prevent scrolling
+
+        if (e.touches.length === 1) {
+          // Single finger drag - rotate ship
+          if (touchState.touches.length === 1 && window.shipCombatSystem && window.shipCombatSystem.playerShip) {
+            const prevTouch = touchState.touches[0];
+            const currTouch = e.touches[0];
+
+            const deltaX = currTouch.clientX - prevTouch.clientX;
+            const deltaY = currTouch.clientY - prevTouch.clientY;
+
+            // Rotate ship based on drag
+            const sensitivity = 0.01;
+            window.shipCombatSystem.playerShip.rotation.y -= deltaX * sensitivity;
+            window.shipCombatSystem.playerShip.rotation.x -= deltaY * sensitivity;
+
+            // Update ship mesh rotation
+            if (window.shipCombatSystem.shipMesh) {
+              window.shipCombatSystem.shipMesh.rotation.copy(window.shipCombatSystem.playerShip.rotation);
+            }
+          }
+        } else if (e.touches.length === 2 && window.galacticMap && window.galacticMap.controls) {
+          // Two finger drag - orbit camera around focus
+          const currDistance = getTouchDistance(e.touches[0], e.touches[1]);
+          const currAngle = getTouchAngle(e.touches[0], e.touches[1]);
+
+          // Calculate center point of both touches
+          const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+          const prevCenterX = (touchState.touches[0].clientX + touchState.touches[1].clientX) / 2;
+          const prevCenterY = (touchState.touches[0].clientY + touchState.touches[1].clientY) / 2;
+
+          const deltaX = centerX - prevCenterX;
+          const deltaY = centerY - prevCenterY;
+
+          // Update orbit controls based on touch movement
+          const controls = window.galacticMap.controls;
+          const camera = window.galacticMap.camera;
+
+          // Rotate camera around target
+          const rotateSensitivity = 0.005;
+          controls.rotateLeft(deltaX * rotateSensitivity);
+          controls.rotateUp(deltaY * rotateSensitivity);
+
+          // Pinch-to-zoom
+          if (touchState.initialDistance > 0) {
+            const zoomDelta = (currDistance - touchState.initialDistance) * 0.01;
+            controls.dollyIn(1 - zoomDelta);
+            touchState.initialDistance = currDistance;
+          }
+        }
+
+        touchState.touches = Array.from(e.touches);
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', (e) => {
+        touchState.touches = Array.from(e.touches);
+
+        if (e.touches.length < 2) {
+          touchState.initialDistance = 0;
+          touchState.initialRotation = 0;
+        }
+      }, { passive: true });
+
+      console.log('✅ Touch gestures initialized');
+    }
+
+    // Initialize on load and on resize
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        initializeMobileControls();
+        initializeTouchGestures();
+      }, 1000); // Wait for ship combat system to load
+    });
+
+    window.addEventListener('resize', () => {
+      // Reinitialize if switching to/from mobile
+      initializeMobileControls();
+      initializeTouchGestures();
+    });
   </script>
 </body>
 </html>

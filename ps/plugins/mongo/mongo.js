@@ -17,6 +17,15 @@ export const connectDB = async () => {
       _db = _client.db(process.env.DB_NAME);
       console.log("✅ Connected to MongoDB: " + process.env.DB_NAME);
 
+      // Start physics service after DB is connected
+      try {
+        const physicsService = (await import('../../services/physics-service.js')).default;
+        physicsService.start();
+        console.log('⚙️ Physics Service started with galactic orbit physics');
+      } catch (err) {
+        console.error('⚠️ Failed to start physics service:', err.message);
+      }
+
       return _db;
     } catch (err) {
       console.error("❌ Error connecting to MongoDB:", err);

@@ -35,7 +35,7 @@ router.get('/api/v1/profile/analytics', async function(req, res, next) {
 
 // Feature routes - protected by character requirement
 router.use('/zones', requireCharacter, zonesRouter);
-router.use('/universe', requireCharacter, universeRouter);
+router.use('/universe', universeRouter); // Allow public access to galactic map
 router.use('/assets', requireCharacter, assetsRouter);
 router.use('/profile', requireAuth, profileRouter);
 

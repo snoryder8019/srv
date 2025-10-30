@@ -9,9 +9,37 @@ import { Asset } from '../api/v1/models/Asset.js';
 class PhysicsService {
   constructor() {
     this.updateInterval = null;
-    this.tickRate = 100; // 100ms = 10 ticks per second
+    this.tickRate = 1000; // 1000ms = 1 tick per second (reduced for performance)
     this.isRunning = false;
     this.gravityRadius = 200; // Units - bodies within this range exert gravity
+    this.io = null; // Socket.IO instance for broadcasting
+
+    // Galactic physics constants
+    this.GRAVITATIONAL_CONSTANT = 1.8; // Calculated for stable orbits at v=15 units/sec
+    this.ANOMALY_CAPTURE_DISTANCE = 15000; // Increased to cover universe scale
+    this.ANOMALY_MASS = 1000000;
+    this.GALAXY_MASS = 100000;
+    this.MAX_VELOCITY = 25; // Allow for orbital velocities up to 25 units/sec
+
+    // Cache for galactic objects (refreshed periodically)
+    this.galacticCache = {
+      anomalies: [],
+      galaxies: [],
+      lastUpdate: 0,
+      updateInterval: 30000 // Refresh every 30 seconds
+    };
+
+    // Database write throttling
+    this.dbWriteCounter = 0;
+    this.dbWriteFrequency = 30; // Write to DB every 30 ticks (30 seconds at 1 tick/sec)
+  }
+
+  /**
+   * Set Socket.IO instance for broadcasting
+   */
+  setIO(io) {
+    this.io = io;
+    console.log('✅ Physics Service connected to Socket.IO');
   }
 
   /**
@@ -44,35 +72,53 @@ class PhysicsService {
   }
 
   /**
-   * Physics tick - update all characters
+   * Physics tick - update all characters and galactic objects
    */
   async tick() {
     try {
       // Get all characters with galactic positions
       const characters = await Character.getGalacticCharacters();
-      
-      if (characters.length === 0) return;
 
       // Get celestial bodies for gravity calculations
       const celestialBodies = await this.getCelestialBodies();
 
       // Update physics for each character
-      for (const character of characters) {
-        try {
-          // Find nearby celestial bodies within gravity radius
-          const nearbyBodies = this.findNearbyBodies(character.location, celestialBodies);
+      if (characters.length > 0) {
+        for (const character of characters) {
+          try {
+            // Find nearby celestial bodies within gravity radius
+            const nearbyBodies = this.findNearbyBodies(character.location, celestialBodies);
 
-          // Update character physics
-          await Character.updatePhysics(character._id.toString(), nearbyBodies);
+            // Update character physics
+            await Character.updatePhysics(character._id.toString(), nearbyBodies);
 
-          // Check if character reached destination
-          if (character.navigation.isInTransit && character.navigation.destination) {
-            await this.checkDestinationReached(character);
+            // Check if character reached destination
+            if (character.navigation.isInTransit && character.navigation.destination) {
+              await this.checkDestinationReached(character);
+            }
+          } catch (error) {
+            console.error('Error updating physics for character ' + character._id + ':', error.message);
           }
-        } catch (error) {
-          console.error('Error updating physics for character ' + character._id + ':', error.message);
         }
       }
+
+      // Update galactic physics (galaxies orbiting anomalies)
+      const updatedGalaxies = await this.updateGalacticPhysics();
+
+      // Broadcast galaxy positions if socket.io is available
+      if (updatedGalaxies.length > 0 && this.io) {
+        this.io.emit('galacticPhysicsUpdate', {
+          galaxies: updatedGalaxies,
+          timestamp: Date.now()
+        });
+
+        // Log sample position for debugging
+        if (updatedGalaxies[0]) {
+          const g = updatedGalaxies[0];
+          console.log(`📡 Broadcast: ${g.id.substring(0,8)} pos:(${g.position.x.toFixed(0)},${g.position.y.toFixed(0)},${g.position.z.toFixed(0)})`);
+        }
+      }
+
     } catch (error) {
       console.error('Physics tick error:', error.message);
     }
@@ -160,13 +206,176 @@ class PhysicsService {
   }
 
   /**
+   * Update galactic physics - galaxies orbit anomalies
+   */
+  async updateGalacticPhysics() {
+    try {
+      const now = Date.now();
+
+      // Load initial data on first run
+      if (this.galacticCache.galaxies.length === 0) {
+        this.galacticCache.anomalies = await Asset.getByTypes(['anomaly']);
+        this.galacticCache.galaxies = await Asset.getByTypes(['galaxy']);
+        this.galacticCache.lastUpdate = now;
+        console.log(`🌌 Loaded ${this.galacticCache.galaxies.length} galaxies and ${this.galacticCache.anomalies.length} anomalies into physics cache`);
+      }
+
+      // Only refresh anomalies periodically (they don't move)
+      // Keep galaxies in memory - they're updated by physics calculations
+      if (now - this.galacticCache.lastUpdate > this.galacticCache.updateInterval) {
+        this.galacticCache.anomalies = await Asset.getByTypes(['anomaly']);
+        this.galacticCache.lastUpdate = now;
+        console.log(`🔄 Refreshed anomaly positions (galaxies stay in cache)`);
+      }
+
+      const anomalies = this.galacticCache.anomalies;
+      const galaxies = this.galacticCache.galaxies;
+
+      if (galaxies.length === 0) return [];
+
+      const deltaTime = this.tickRate / 1000; // Convert to seconds
+      const updatedGalaxies = [];
+      const bulkOps = [];
+
+      // Update each galaxy
+      for (const galaxy of galaxies) {
+        // Initialize physics if not present
+        if (!galaxy.physics) {
+          galaxy.physics = { vx: 0, vy: 0, vz: 0 };
+        }
+
+        let totalForceX = 0;
+        let totalForceY = 0;
+        let totalForceZ = 0;
+
+        // Calculate gravitational force ONLY from parent anomaly
+        // This prevents galaxies from being pulled toward multiple anomalies and converging
+        if (galaxy.parentId) {
+          const parentAnomaly = anomalies.find(a => a._id.toString() === galaxy.parentId.toString());
+
+          if (parentAnomaly) {
+            const dx = parentAnomaly.coordinates.x - galaxy.coordinates.x;
+            const dy = parentAnomaly.coordinates.y - galaxy.coordinates.y;
+            const dz = parentAnomaly.coordinates.z - galaxy.coordinates.z;
+            const distSq = dx*dx + dy*dy + dz*dz;
+            const dist = Math.sqrt(distSq);
+
+            // Gravitational force: F = G * m1 * m2 / r^2
+            const force = (this.GRAVITATIONAL_CONSTANT * this.ANOMALY_MASS * this.GALAXY_MASS) / (distSq + 1);
+
+            // Direction unit vector
+            totalForceX = (dx / dist) * force;
+            totalForceY = (dy / dist) * force;
+            totalForceZ = (dz / dist) * force;
+          }
+        } else {
+          // Fallback: if no parent assigned, use nearest anomaly
+          for (const anomaly of anomalies) {
+            const dx = anomaly.coordinates.x - galaxy.coordinates.x;
+            const dy = anomaly.coordinates.y - galaxy.coordinates.y;
+            const dz = anomaly.coordinates.z - galaxy.coordinates.z;
+            const distSq = dx*dx + dy*dy + dz*dz;
+            const dist = Math.sqrt(distSq);
+
+            // Only apply force if within capture distance
+            if (dist < this.ANOMALY_CAPTURE_DISTANCE) {
+              // Gravitational force: F = G * m1 * m2 / r^2
+              const force = (this.GRAVITATIONAL_CONSTANT * this.ANOMALY_MASS * this.GALAXY_MASS) / (distSq + 1);
+
+              // Direction unit vector
+              const forceX = (dx / dist) * force;
+              const forceY = (dy / dist) * force;
+              const forceZ = (dz / dist) * force;
+
+              totalForceX += forceX;
+              totalForceY += forceY;
+              totalForceZ += forceZ;
+            }
+          }
+        }
+
+        // Apply forces to velocity (F = ma, assuming m = GALAXY_MASS)
+        const accelX = totalForceX / this.GALAXY_MASS;
+        const accelY = totalForceY / this.GALAXY_MASS;
+        const accelZ = totalForceZ / this.GALAXY_MASS;
+
+        galaxy.physics.vx += accelX * deltaTime;
+        galaxy.physics.vy += accelY * deltaTime;
+        galaxy.physics.vz += accelZ * deltaTime;
+
+        // Clamp velocity to max speed
+        const speed = Math.sqrt(
+          galaxy.physics.vx**2 +
+          galaxy.physics.vy**2 +
+          galaxy.physics.vz**2
+        );
+        if (speed > this.MAX_VELOCITY) {
+          const scale = this.MAX_VELOCITY / speed;
+          galaxy.physics.vx *= scale;
+          galaxy.physics.vy *= scale;
+          galaxy.physics.vz *= scale;
+        }
+
+        // Update position based on velocity
+        galaxy.coordinates.x += galaxy.physics.vx * deltaTime;
+        galaxy.coordinates.y += galaxy.physics.vy * deltaTime;
+        galaxy.coordinates.z += galaxy.physics.vz * deltaTime;
+
+        // Prepare bulk update operation
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: galaxy._id },
+            update: {
+              $set: {
+                coordinates: galaxy.coordinates,
+                physics: galaxy.physics,
+                updatedAt: new Date()
+              }
+            }
+          }
+        });
+
+        // Add to broadcast list
+        updatedGalaxies.push({
+          id: galaxy._id.toString(),
+          position: {
+            x: galaxy.coordinates.x,
+            y: galaxy.coordinates.y,
+            z: galaxy.coordinates.z
+          },
+          velocity: {
+            vx: galaxy.physics.vx,
+            vy: galaxy.physics.vy,
+            vz: galaxy.physics.vz
+          }
+        });
+      }
+
+      // Execute database updates only every N ticks to reduce DB load
+      this.dbWriteCounter++;
+      if (this.dbWriteCounter >= this.dbWriteFrequency && bulkOps.length > 0) {
+        const db = (await import('../plugins/mongo/mongo.js')).getDb();
+        const assetsCollection = db.collection('assets');
+        await assetsCollection.bulkWrite(bulkOps, { ordered: false });
+        this.dbWriteCounter = 0;
+      }
+
+      return updatedGalaxies;
+    } catch (error) {
+      console.error('Galactic physics error:', error.message);
+      return [];
+    }
+  }
+
+  /**
    * Get service status
    */
   getStatus() {
     return {
       running: this.isRunning,
       tickRate: this.tickRate,
-      gravityRadius: this.gravityRadius
+      gravityRadius: this.gravityRadius,
+      hasIO: !!this.io
     };
   }
 }

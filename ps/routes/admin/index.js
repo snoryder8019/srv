@@ -4,6 +4,7 @@ import { UserAnalytics } from '../../api/v1/models/UserAnalytics.js';
 import os from 'os';
 import axios from 'axios';
 import scriptsRouter from './scripts.js';
+import { physicsService } from '../../services/physics-service.js';
 
 const router = express.Router();
 
@@ -954,6 +955,421 @@ router.get('/api/database/metrics', isAdmin, async function(req, res, next) {
       error: error.message
     });
   }
+});
+
+// API: Get detailed database usage analysis
+router.get('/api/database/usage', isAdmin, async function(req, res, next) {
+  try {
+    const { analyzeDatabase } = await import('../../scripts/analyze-db-usage.js');
+    const analysis = await analyzeDatabase();
+
+    res.json({
+      success: true,
+      analysis
+    });
+  } catch (error) {
+    console.error('Error analyzing database usage:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: List all MongoDB collections with stats
+router.get('/api/database/collections', isAdmin, async function(req, res, next) {
+  try {
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const db = getDb();
+
+    // Get all collections
+    const collections = await db.listCollections().toArray();
+
+    // Get stats for each collection
+    const collectionData = [];
+
+    for (const collection of collections) {
+      try {
+        const stats = await db.command({ collStats: collection.name });
+        const count = await db.collection(collection.name).countDocuments();
+
+        collectionData.push({
+          name: collection.name,
+          count: count,
+          size: stats.size || 0,
+          storageSize: stats.storageSize || 0,
+          avgObjSize: stats.avgObjSize || 0,
+          indexSize: stats.totalIndexSize || 0,
+          totalSize: (stats.storageSize || 0) + (stats.totalIndexSize || 0),
+          indexes: stats.nindexes || 0
+        });
+      } catch (err) {
+        console.warn(`Could not get stats for ${collection.name}:`, err.message);
+      }
+    }
+
+    // Sort by total size descending
+    collectionData.sort((a, b) => b.totalSize - a.totalSize);
+
+    res.json({
+      success: true,
+      collections: collectionData
+    });
+  } catch (error) {
+    console.error('Error listing collections:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: Get documents from a specific collection
+router.get('/api/database/collections/:name/documents', isAdmin, async function(req, res, next) {
+  try {
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const db = getDb();
+
+    const collectionName = req.params.name;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = parseInt(req.query.skip) || 0;
+
+    // Get documents
+    const documents = await db.collection(collectionName)
+      .find({})
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+
+    // Get total count
+    const total = await db.collection(collectionName).countDocuments();
+
+    res.json({
+      success: true,
+      collection: collectionName,
+      documents: documents,
+      total: total,
+      limit: limit,
+      skip: skip,
+      hasMore: (skip + limit) < total
+    });
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: Drop an empty collection
+router.delete('/api/database/collections/:name', isAdmin, async function(req, res, next) {
+  try {
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const db = getDb();
+
+    const collectionName = req.params.name;
+
+    // Safety check - only allow dropping empty collections
+    const count = await db.collection(collectionName).countDocuments();
+    if (count > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot drop collection "${collectionName}" - it contains ${count} documents. Please empty it first.`
+      });
+    }
+
+    // Drop the collection
+    await db.collection(collectionName).drop();
+
+    res.json({
+      success: true,
+      message: `Collection "${collectionName}" dropped successfully`
+    });
+  } catch (error) {
+    console.error('Error dropping collection:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: Get Linode server metrics (I/O, bandwidth, etc.)
+router.get('/api/linode/metrics', isAdmin, async function(req, res, next) {
+  try {
+    const linodeToken = process.env.LINODE_API_TOKEN;
+
+    if (!linodeToken) {
+      return res.json({
+        success: false,
+        error: 'Linode API token not configured',
+        metrics: null
+      });
+    }
+
+    // Get Linode ID from environment or config
+    const linodeId = process.env.LINODE_ID;
+
+    if (!linodeId) {
+      return res.json({
+        success: false,
+        error: 'Linode ID not configured',
+        metrics: null
+      });
+    }
+
+    // Fetch Linode stats
+    const response = await axios.get(
+      `https://api.linode.com/v4/linode/instances/${linodeId}/stats`,
+      {
+        headers: {
+          'Authorization': `Bearer ${linodeToken}`
+        }
+      }
+    );
+
+    const stats = response.data;
+
+    // Fetch Linode instance details for plan info
+    const instanceResponse = await axios.get(
+      `https://api.linode.com/v4/linode/instances/${linodeId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${linodeToken}`
+        }
+      }
+    );
+
+    const instance = instanceResponse.data;
+
+    // Extract useful metrics
+    const metrics = {
+      io: stats.data.io,
+      netv4: stats.data.netv4,
+      netv6: stats.data.netv6,
+      cpu: stats.data.cpu,
+      disk: stats.data.disk,
+      instance: {
+        type: instance.type,
+        label: instance.label,
+        region: instance.region,
+        specs: instance.specs,
+        status: instance.status
+      }
+    };
+
+    res.json({
+      success: true,
+      metrics
+    });
+  } catch (error) {
+    console.error('Error fetching Linode metrics:', error);
+    res.json({
+      success: false,
+      error: error.message,
+      metrics: null
+    });
+  }
+});
+
+// ===== SIMULATION CONTROL ENDPOINTS =====
+
+// API: Get simulation status
+router.get('/api/simulation/status', isAdmin, async function(req, res, next) {
+  try {
+    const status = physicsService.getStatus();
+
+    // Get database stats
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const db = getDb();
+
+    const assetCount = await db.collection('assets').countDocuments();
+    const characterCount = await db.collection('characters').countDocuments();
+    const galaxyCount = await db.collection('assets').countDocuments({ assetType: 'galaxy' });
+    const starCount = await db.collection('assets').countDocuments({ assetType: 'star' });
+    const planetCount = await db.collection('assets').countDocuments({ assetType: 'planet' });
+    const anomalyCount = await db.collection('assets').countDocuments({ assetType: 'anomaly' });
+
+    res.json({
+      success: true,
+      simulation: {
+        running: status.running,
+        tickRate: status.tickRate,
+        ticksPerSecond: 1000 / status.tickRate,
+        gravityRadius: status.gravityRadius
+      },
+      universe: {
+        totalAssets: assetCount,
+        characters: characterCount,
+        anomalies: anomalyCount,
+        galaxies: galaxyCount,
+        stars: starCount,
+        planets: planetCount
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching simulation status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: Start simulation
+router.post('/api/simulation/start', isAdmin, function(req, res, next) {
+  try {
+    if (physicsService.isRunning) {
+      return res.json({
+        success: false,
+        message: 'Simulation is already running'
+      });
+    }
+
+    physicsService.start();
+
+    res.json({
+      success: true,
+      message: 'Simulation started',
+      status: physicsService.getStatus()
+    });
+  } catch (error) {
+    console.error('Error starting simulation:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: Stop simulation
+router.post('/api/simulation/stop', isAdmin, function(req, res, next) {
+  try {
+    if (!physicsService.isRunning) {
+      return res.json({
+        success: false,
+        message: 'Simulation is not running'
+      });
+    }
+
+    physicsService.stop();
+
+    res.json({
+      success: true,
+      message: 'Simulation stopped',
+      status: physicsService.getStatus()
+    });
+  } catch (error) {
+    console.error('Error stopping simulation:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: Update simulation speed
+router.post('/api/simulation/speed', isAdmin, function(req, res, next) {
+  try {
+    const { tickRate } = req.body;
+
+    if (!tickRate || typeof tickRate !== 'number') {
+      return res.status(400).json({
+        success: false,
+        error: 'tickRate must be a number (milliseconds between ticks)'
+      });
+    }
+
+    if (tickRate < 10 || tickRate > 10000) {
+      return res.status(400).json({
+        success: false,
+        error: 'tickRate must be between 10ms (100 tps) and 10000ms (0.1 tps)'
+      });
+    }
+
+    const wasRunning = physicsService.isRunning;
+
+    // Stop if running
+    if (wasRunning) {
+      physicsService.stop();
+    }
+
+    // Update tick rate
+    physicsService.tickRate = tickRate;
+
+    // Restart if it was running
+    if (wasRunning) {
+      physicsService.start();
+    }
+
+    res.json({
+      success: true,
+      message: 'Simulation speed updated',
+      status: physicsService.getStatus()
+    });
+  } catch (error) {
+    console.error('Error updating simulation speed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API: Reset universe (clear all assets)
+router.post('/api/simulation/reset', isAdmin, async function(req, res, next) {
+  try {
+    const { getDb } = await import('../../plugins/mongo/mongo.js');
+    const db = getDb();
+
+    // Stop simulation first
+    const wasRunning = physicsService.isRunning;
+    if (wasRunning) {
+      physicsService.stop();
+    }
+
+    // Clear all assets (but keep built-in field test items)
+    const result = await db.collection('assets').deleteMany({
+      isBuiltIn: { $ne: true }
+    });
+
+    // Clear characters at galactic positions (keep docked characters)
+    const charResult = await db.collection('characters').updateMany(
+      { 'location.x': { $exists: true } },
+      {
+        $unset: {
+          'location': '',
+          'velocity': '',
+          'navigation': ''
+        }
+      }
+    );
+
+    res.json({
+      success: true,
+      message: 'Universe reset successfully',
+      deleted: {
+        assets: result.deletedCount,
+        charactersReset: charResult.modifiedCount
+      },
+      note: 'Simulation stopped. Start it again when ready.'
+    });
+  } catch (error) {
+    console.error('Error resetting universe:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Simulation control page
+router.get('/simulation', isAdmin, function(req, res, next) {
+  res.render('admin/simulation', {
+    title: 'Simulation Control',
+    user: req.user
+  });
 });
 
 export default router;

@@ -409,19 +409,43 @@ GET    /api/v1/state-manager/character-location
 
 ## 🔮 Future Roadmap
 
-### v0.5.1 Preview (Next Update)
-- **VR Support**: WebXR integration for VR headsets
-- **Multiplayer Combat**: PvP space battles
-- **Advanced Physics**: Atmospheric drag, solar wind, black holes
-- **Procedural Generation**: Infinite universe expansion
-- **Mission System**: Objectives and quest tracking
+### Vision: Community Game Builder Platform
+Stringborn Universe is a **user-driven game creation platform** where the community builds the content, not just plays it.
+
+### v0.5.1 - v0.6.0: Player-Built Worlds
+- **Pixel World Builder**: Players create ship interiors, stations, and dungeons using sprite atlases
+- **Roguelite Planetary Explorer**: Procedurally generated planet surfaces with player-placed content
+- **3D Space Navigation**: Galactic travel with distance-based logistics and connections
+- **Season-Based Gameplay**: Persistent universe resets each season with new opportunities
+
+### Core Pillars
+
+#### 1. Community Creation Tools
+- **Sprite Atlas Builder**: Players design terrain, objects, NPCs, and environments
+- **Dungeon/Station Editor**: Build interiors using pixel-based grid system
+- **Ship Interior Designer**: Create unique ship layouts and rooms
+- **Asset Sharing**: Community marketplace for user-created content
+- **Democratic Voting**: Community approves and curates best creations
+
+#### 2. Persistent Universe Mechanics
+- **Distance-Based Logistics**: Travel times and supply chains matter
+- **Isolation Systems**: Remote pockets can thrive or fail based on logistics
+- **Galactic Connections**: Trade routes emerge based on distance and resources
+- **Empire Building**: Logistics makes or breaks empires
+- **Seasonal Conquest**: Each season, isolated territories can be conquered or championed
+
+#### 3. Dual Gameplay Modes
+- **3D Space Explorer**: Navigate the galaxy, manage ships, establish routes (Third-person/tactical)
+- **2D Roguelite Planetary**: Explore planet surfaces, loot dungeons, combat (Top-down pixel)
+- **Seamless Transition**: Jump from ship to planet surface to station interior
 
 ### Long-Term Goals
-- **Planetary Landing**: Walk on planet surfaces in first-person
-- **Ship Interiors**: Explore your ship in 3D
-- **Space Stations**: Build and manage stations
-- **Economy System**: Trading routes and resource management
-- **Faction Warfare**: Territory control and alliances
+- **Full Builder Suite**: Complete toolset for players to create all game content
+- **Seasonal Empires**: Territory control with seasonal resets and legacy rewards
+- **Player-Run Economy**: Trading routes, supply chains, resource scarcity
+- **Logistics Simulation**: Distance, fuel, cargo capacity all impact strategy
+- **Conquest Mechanics**: Fight for control of isolated resource-rich pockets
+- **Legacy Systems**: Previous season achievements carry forward as bonuses
 
 ---
 

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/stylesheets/style.css">
   <link rel="stylesheet" href="/stylesheets/galactic-map.css">
   <link rel="stylesheet" href="/stylesheets/activity-monitor.css">
+  <link rel="stylesheet" href="/stylesheets/global-chat.css">
   <style>
     body {
       margin: 0;
@@ -95,26 +96,36 @@
       color: #e0e0ff !important;
     }
 
-    /* Mobile responsive */
+    /* Mobile responsive - Info pane slides from bottom */
     @media (max-width: 768px) {
       #infoPane.visible,
       .side-panel.visible {
         bottom: 0 !important;
-        right: auto !important;
+        right: 0 !important;
         left: 0 !important;
         width: 100vw !important;
         top: auto !important;
+        transform: none !important;
+        border-radius: 12px 12px 0 0 !important;
       }
 
       #infoPane,
       .side-panel {
         top: auto !important;
-        right: auto !important;
+        right: 0 !important;
         left: 0 !important;
         bottom: -100% !important;
         width: 100vw !important;
         max-height: 60vh !important;
         border-radius: 12px 12px 0 0 !important;
+      }
+    }
+
+    /* Desktop - Top right positioning */
+    @media (min-width: 769px) {
+      #infoPane.visible {
+        right: 10px !important;
+        transform: scale(1) !important;
       }
     }
 
@@ -385,13 +396,14 @@
     display: none;
   "></canvas>
 
-  <!-- Unified Left Sidebar -->
-  <div id="unifiedSidebar" class="zen-hideable" style="position: fixed; left: 0; top: 60px; height: calc(100vh - 60px); width: 320px; background: rgba(10, 10, 26, 0.95); backdrop-filter: blur(20px); border-right: 2px solid rgba(138, 79, 255, 0.3); z-index: 1000; display: flex; flex-direction: column; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(0);">
+  <!-- Unified Left Sidebar (minimized by default) -->
+  <div id="unifiedSidebar" class="zen-hideable" style="position: fixed; left: 0; top: 60px; height: calc(100vh - 60px); width: 320px; background: rgba(10, 10, 26, 0.95); backdrop-filter: blur(20px); border-right: 2px solid rgba(138, 79, 255, 0.3); z-index: 1000; display: flex; flex-direction: column; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(-320px);">
 
     <!-- Quick Access Toolbar (Always Visible) -->
     <div class="quick-access-toolbar" style="padding: 15px; display: flex; gap: 10px; border-bottom: 2px solid rgba(138, 79, 255, 0.3); flex-wrap: wrap; justify-content: center;">
-      <button id="toggleSidebarBtn" class="quick-btn" onclick="handleSidebarToggle()" style="background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 8px; padding: 10px; color: #ffffff; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Collapse Sidebar">«</button>
+      <button id="toggleSidebarBtn" class="quick-btn" onclick="handleSidebarToggle()" style="background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 8px; padding: 10px; color: #ffffff; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Expand Sidebar">»</button>
       <button id="toggleMenuBtn" class="quick-btn" onclick="handleMenuToggle()" style="background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 8px; padding: 10px; color: #ffffff; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Navigation Menu">☰</button>
+      <button id="toggleChatBtn" class="quick-btn" onclick="handleChatToggle()" style="background: rgba(0, 255, 159, 0.9); border: 2px solid #00ff9f; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Global Chat">💬</button>
       <button id="zenModeBtn" class="quick-btn" onclick="handleZenToggle()" style="background: rgba(100, 200, 255, 0.9); border: 2px solid #64c8ff; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Zen Mode">👁️</button>
       <button id="locateMeBtn" class="quick-btn" onclick="handleLocatePlayer()" style="background: rgba(0, 255, 0, 0.9); border: 2px solid #00ff00; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Locate My Character">📍</button>
       <button id="resetViewBtn" class="quick-btn" onclick="handleResetView()" style="background: rgba(255, 170, 0, 0.9); border: 2px solid #ffaa00; border-radius: 8px; padding: 10px; color: #000; font-size: 18px; cursor: pointer; transition: all 0.3s; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; pointer-events: auto;" title="Reset View">⟲</button>
@@ -458,6 +470,57 @@
         <div id="selectedAssetContent" class="section-content" style="display: none; padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #ff6600; border-top: none; border-radius: 0 0 8px 8px; font-family: 'Orbitron', monospace; color: #e0e0ff; font-size: 11px;">
           <div id="selectedAssetInfo" style="text-align: center; color: #888; padding: 20px 0;">
             Click an asset to view details
+          </div>
+        </div>
+      </div>
+
+      <!-- Galaxy Shape Controls Section -->
+      <div class="sidebar-section" style="margin-bottom: 15px;">
+        <div class="section-header" onclick="toggleSidebarSection('galaxyShape')" style="background: rgba(138, 79, 255, 0.2); border: 2px solid #8a4fff; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s;">
+          <span style="color: #8a4fff; font-family: 'Orbitron', monospace; font-weight: bold; font-size: 14px;">🌀 GALAXY SHAPE</span>
+          <span id="galaxyShapeArrow" style="color: #8a4fff; font-size: 14px; transition: transform 0.3s;">▼</span>
+        </div>
+        <div id="galaxyShapeContent" class="section-content" style="padding: 12px; background: rgba(0, 0, 0, 0.3); border: 2px solid #8a4fff; border-top: none; border-radius: 0 0 8px 8px; display: flex; flex-direction: column; gap: 12px;">
+
+          <!-- Shape Presets -->
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 11px; font-weight: bold;">Shape Presets:</label>
+            <div style="display: flex; gap: 6px;">
+              <button onclick="handleGalaxyShapePreset('spiral-3')" style="flex: 1; background: rgba(138, 79, 255, 0.3); border: 2px solid #8a4fff; border-radius: 6px; padding: 8px; color: #fff; font-size: 11px; cursor: pointer; transition: all 0.3s; font-family: 'Orbitron', monospace;" title="3-Armed Spiral">3-Arm</button>
+              <button onclick="handleGalaxyShapePreset('spiral-4')" style="flex: 1; background: rgba(138, 79, 255, 0.3); border: 2px solid #8a4fff; border-radius: 6px; padding: 8px; color: #fff; font-size: 11px; cursor: pointer; transition: all 0.3s; font-family: 'Orbitron', monospace;" title="4-Armed Spiral">4-Arm</button>
+              <button onclick="handleGalaxyShapePreset('spiral-6')" style="flex: 1; background: rgba(138, 79, 255, 0.5); border: 2px solid #8a4fff; border-radius: 6px; padding: 8px; color: #fff; font-size: 11px; cursor: pointer; transition: all 0.3s; font-family: 'Orbitron', monospace; box-shadow: 0 0 10px rgba(138, 79, 255, 0.5);" title="6-Armed Spiral (Default)">6-Arm</button>
+            </div>
+          </div>
+
+          <!-- Dimension Slider -->
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 11px; display: flex; justify-content: space-between;">
+              <span>Dimension:</span>
+              <span id="dimensionValue" style="color: #fff;">1.0</span>
+            </label>
+            <input type="range" id="dimensionSlider" min="0.5" max="2.0" step="0.1" value="1.0" oninput="handleGalaxyDimensionChange(this.value)" style="width: 100%; accent-color: #8a4fff; cursor: pointer;" title="Adjust galaxy size">
+          </div>
+
+          <!-- Trim Slider -->
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 11px; display: flex; justify-content: space-between;">
+              <span>Trim (Core):</span>
+              <span id="trimValue" style="color: #fff;">0.2</span>
+            </label>
+            <input type="range" id="trimSlider" min="0.0" max="0.5" step="0.05" value="0.2" oninput="handleGalaxyTrimChange(this.value)" style="width: 100%; accent-color: #8a4fff; cursor: pointer;" title="Adjust core trim">
+          </div>
+
+          <!-- Curvature Slider -->
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 11px; display: flex; justify-content: space-between;">
+              <span>Curvature:</span>
+              <span id="curvatureValue" style="color: #fff;">2.0</span>
+            </label>
+            <input type="range" id="curvatureSlider" min="0.5" max="4.0" step="0.5" value="2.0" oninput="handleGalaxyCurvatureChange(this.value)" style="width: 100%; accent-color: #8a4fff; cursor: pointer;" title="Adjust spiral tightness">
+          </div>
+
+          <div style="color: #888; font-family: 'Courier New', monospace; font-size: 10px; padding: 8px; background: rgba(138, 79, 255, 0.1); border-radius: 4px; border: 1px solid rgba(138, 79, 255, 0.3);">
+            <strong style="color: #8a4fff;">Note:</strong> Changes apply to all galaxies in the scene.
           </div>
         </div>
       </div>
@@ -534,7 +597,7 @@
   </div>
 
   <!-- Collapsed Sidebar Toggle (Shown when sidebar is hidden) -->
-  <button id="showSidebarBtn" class="zen-hideable" onclick="handleSidebarToggle()" style="position: fixed; left: -60px; top: 50%; transform: translateY(-50%); background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 0 8px 8px 0; padding: 15px 10px; color: #ffffff; font-size: 20px; cursor: pointer; transition: all 0.3s; z-index: 999; display: none; pointer-events: auto;" title="Show Sidebar">»</button>
+  <button id="showSidebarBtn" class="zen-hideable" onclick="handleSidebarToggle()" style="position: fixed; left: 0; top: 50%; transform: translateY(-50%); background: rgba(138, 79, 255, 0.9); border: 2px solid #8a4fff; border-radius: 0 8px 8px 0; padding: 15px 10px; color: #ffffff; font-size: 20px; cursor: pointer; transition: all 0.3s; z-index: 999; display: flex; pointer-events: auto;" title="Show Sidebar">»</button>
 
   <!-- Inline Script: Define sidebar functions IMMEDIATELY -->
   <script>
@@ -572,7 +635,7 @@
     };
 
     // Quick access toolbar handlers
-    let sidebarVisible = true;
+    let sidebarVisible = false; // Start minimized by default
     let zenModeActive = false;
 
     /**
@@ -681,6 +744,42 @@
       }
     };
 
+    window.handleChatToggle = function() {
+      console.log('💬 Chat toggle clicked');
+      if (window.globalChat) {
+        window.globalChat.toggleChat();
+        console.log('✅ Chat toggled');
+      } else {
+        console.warn('⚠️ Chat not initialized yet. Socket may not be connected.');
+        // Show user-friendly message
+        const notice = document.createElement('div');
+        notice.style.cssText = `
+          position: fixed;
+          top: 80px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(255, 170, 0, 0.95);
+          border: 2px solid #ffaa00;
+          border-radius: 8px;
+          padding: 15px 25px;
+          color: #000;
+          font-family: 'Courier New', monospace;
+          font-size: 14px;
+          z-index: 10000;
+          box-shadow: 0 4px 20px rgba(255, 170, 0, 0.4);
+        `;
+        notice.textContent = '⚠️ Chat loading... Please wait for connection.';
+        document.body.appendChild(notice);
+        setTimeout(() => {
+          if (notice.parentNode) {
+            notice.style.opacity = '0';
+            notice.style.transition = 'opacity 0.3s';
+            setTimeout(() => document.body.removeChild(notice), 300);
+          }
+        }, 3000);
+      }
+    };
+
     window.handleZoomIn = function() {
       console.log('🔍 Zoom in clicked');
       if (window.galacticMap) {
@@ -697,6 +796,75 @@
         window.galacticMap.camera.updateProjectionMatrix();
         console.log('Zoom level:', window.galacticMap.camera.zoom);
       }
+    };
+
+    // Galaxy Shape Control Handlers
+    window.handleGalaxyShapePreset = function(shapeType) {
+      console.log('🌀 Galaxy shape preset clicked:', shapeType);
+      if (!window.galacticMap) return;
+
+      // Get current parameters from sliders
+      const dimension = parseFloat(document.getElementById('dimensionSlider').value);
+      const trim = parseFloat(document.getElementById('trimSlider').value);
+      const curvature = parseFloat(document.getElementById('curvatureSlider').value);
+
+      // Update all galaxies in scene
+      window.galacticMap.assets.forEach((asset, id) => {
+        if (asset.mesh && asset.mesh.userData.type === 'galaxy') {
+          window.galacticMap.updateGalaxyShape(id, shapeType, { dimension, trim, curvature });
+        }
+      });
+
+      console.log(`✅ Updated all galaxies to ${shapeType}`);
+    };
+
+    window.handleGalaxyDimensionChange = function(value) {
+      const dimension = parseFloat(value);
+      document.getElementById('dimensionValue').textContent = dimension.toFixed(1);
+
+      if (!window.galacticMap) return;
+
+      // Get current shape and other params
+      window.galacticMap.assets.forEach((asset, id) => {
+        if (asset.mesh && asset.mesh.userData.type === 'galaxy') {
+          const shape = asset.mesh.userData.galaxyShape || 'spiral-6';
+          const trim = parseFloat(document.getElementById('trimSlider').value);
+          const curvature = parseFloat(document.getElementById('curvatureSlider').value);
+          window.galacticMap.updateGalaxyShape(id, shape, { dimension, trim, curvature });
+        }
+      });
+    };
+
+    window.handleGalaxyTrimChange = function(value) {
+      const trim = parseFloat(value);
+      document.getElementById('trimValue').textContent = trim.toFixed(2);
+
+      if (!window.galacticMap) return;
+
+      window.galacticMap.assets.forEach((asset, id) => {
+        if (asset.mesh && asset.mesh.userData.type === 'galaxy') {
+          const shape = asset.mesh.userData.galaxyShape || 'spiral-6';
+          const dimension = parseFloat(document.getElementById('dimensionSlider').value);
+          const curvature = parseFloat(document.getElementById('curvatureSlider').value);
+          window.galacticMap.updateGalaxyShape(id, shape, { dimension, trim, curvature });
+        }
+      });
+    };
+
+    window.handleGalaxyCurvatureChange = function(value) {
+      const curvature = parseFloat(value);
+      document.getElementById('curvatureValue').textContent = curvature.toFixed(1);
+
+      if (!window.galacticMap) return;
+
+      window.galacticMap.assets.forEach((asset, id) => {
+        if (asset.mesh && asset.mesh.userData.type === 'galaxy') {
+          const shape = asset.mesh.userData.galaxyShape || 'spiral-6';
+          const dimension = parseFloat(document.getElementById('dimensionSlider').value);
+          const trim = parseFloat(document.getElementById('trimSlider').value);
+          window.galacticMap.updateGalaxyShape(id, shape, { dimension, trim, curvature });
+        }
+      });
     };
 
     // Populate asset selector with ONLY anomalies and galaxies (galactic map level)
@@ -769,8 +937,8 @@
   <!-- Info Pane Backdrop (dimmed overlay) -->
   <div id="infoPaneBackdrop" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 9998; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;"></div>
 
-  <!-- Side Panel - Info Pane (Hidden by default, shows on asset click) -->
-  <div class="side-panel" id="infoPane" style="position: fixed; top: 60px; right: -340px; width: 320px; max-height: calc(100vh - 70px); background: rgba(10, 10, 26, 0.98); backdrop-filter: blur(20px); border: 2px solid rgba(138, 79, 255, 0); border-radius: 8px; box-shadow: -5px 0 40px rgba(0, 0, 0, 0); z-index: 9999; transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s ease, box-shadow 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; overflow: hidden; transform: scale(0.9);">
+  <!-- Top-Right Info Panel (Hidden by default, shows on asset click) -->
+  <div class="side-panel" id="infoPane" style="position: fixed; top: 10px; right: -340px; width: 320px; max-height: calc(100vh - 20px); background: rgba(10, 10, 26, 0.98); backdrop-filter: blur(20px); border: 2px solid rgba(138, 79, 255, 0); border-radius: 8px; box-shadow: -5px 0 40px rgba(0, 0, 0, 0); z-index: 9999; transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s ease, box-shadow 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; overflow: hidden; transform: scale(0.9);">
     <button class="panel-close-btn" onclick="window.closeInfoPane()" style="position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; background: rgba(138, 79, 255, 0.2); border: 1px solid rgba(138, 79, 255, 0.4); border-radius: 50%; color: #8a4fff; font-size: 1.2em; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s ease; font-family: 'Orbitron', monospace;">✕</button>
     <div class="panel-section" style="flex: 1; overflow-y: auto; padding: 12px; padding-top: 40px; position: relative; z-index: 3;">
       <div id="assetInfo" style="font-family: 'Orbitron', monospace; color: #e0e0ff;"></div>
@@ -862,6 +1030,9 @@
   <!-- Socket.IO for real-time player updates -->
   <script src="/socket.io/socket.io.js"></script>
 
+  <!-- GameStateMonitor - Centralized coordinate management -->
+  <script src="/javascripts/GameStateMonitor.js"></script>
+
   <!-- Three.js Library (ES Module) -->
   <script type="importmap">
     {
@@ -882,10 +1053,59 @@
     window.OrbitControls = OrbitControls;
   </script>
 
-  <script src="/javascripts/galactic-map-3d.js?v=2.0"></script>
+  <script src="/javascripts/galactic-map-3d.js?v=3.4"></script>
   <script src="/javascripts/activity-monitor.js"></script>
+  <script src="/javascripts/global-chat.js"></script>
 
   <script>
+    // ========================================
+    // CRITICAL: Initialize Galactic Map 3D
+    // ========================================
+    // Wait for THREE.js to be loaded (module loading is async)
+    function initializeGalacticMap() {
+      if (typeof THREE === 'undefined' || typeof GalacticMap3D === 'undefined') {
+        console.log('⏳ Waiting for THREE.js and GalacticMap3D to load...');
+        setTimeout(initializeGalacticMap, 100);
+        return;
+      }
+
+      console.log('🌌 Initializing Galactic Map 3D...');
+      window.galacticMap = new GalacticMap3D('mapContainer');
+
+      // Load and display all assets - use galactic-state endpoint (no auth required)
+      fetch('/api/v1/state/galactic-state')
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            // Combine galaxies and anomalies into allAssets array
+            const allAssets = [...data.galaxies, ...data.anomalies];
+            console.log(`📦 Loaded ${allAssets.length} galactic assets (${data.count.galaxies} galaxies, ${data.count.anomalies} anomalies)`);
+            window.galacticMap.allAssets = allAssets;
+
+            // Display assets at universe level (galaxies and anomalies)
+            window.galacticMap.showUniverseLevel();
+
+            // Populate sidebar asset selector
+            if (window.populateAssetSelector) {
+              setTimeout(() => window.populateAssetSelector(), 100);
+            }
+
+            // Start animation loop
+            window.galacticMap.animate();
+
+            console.log('✅ Galactic Map 3D initialized and assets loaded');
+          } else {
+            console.error('❌ Failed to load assets: Invalid response', data);
+          }
+        })
+        .catch(err => {
+          console.error('❌ Failed to load assets:', err);
+        });
+    }
+
+    // Start initialization check
+    initializeGalacticMap();
+
     /**
      * Close info pane helper function
      */
@@ -897,14 +1117,49 @@
       infoPane.classList.remove('visible');
       backdrop.classList.remove('visible');
 
-      // Apply inline styles for hiding (fallback if CSS doesn't work)
-      infoPane.style.right = '-340px';
-      infoPane.style.transform = 'scale(0.9)';
+      // Check if mobile
+      const isMobile = window.innerWidth <= 768;
+
+      if (isMobile) {
+        // Mobile: slide down from bottom
+        infoPane.style.bottom = '-100%';
+        infoPane.style.right = '0';
+        infoPane.style.left = '0';
+        infoPane.style.top = 'auto';
+        infoPane.style.transform = 'none';
+      } else {
+        // Desktop: slide right
+        infoPane.style.right = '-340px';
+        infoPane.style.bottom = 'auto';
+        infoPane.style.left = 'auto';
+        infoPane.style.top = '10px';
+        infoPane.style.transform = 'scale(0.9)';
+      }
+
       infoPane.style.borderColor = 'rgba(138, 79, 255, 0)';
       infoPane.style.boxShadow = '-5px 0 40px rgba(0, 0, 0, 0)';
 
       backdrop.style.opacity = '0';
       backdrop.style.pointerEvents = 'none';
+
+      // Reset view when closing info pane (back to universe center)
+      if (window.galacticMap) {
+        console.log('🔄 Resetting view to universe center...');
+        window.galacticMap.camera.zoom = 1;
+        const center = window.galacticMap.universeCenter;
+        window.galacticMap.camera.position.set(
+          center.x,
+          center.y + 3000,
+          center.z + 2000
+        );
+        if (window.galacticMap.controls) {
+          window.galacticMap.controls.target.copy(center);
+          window.galacticMap.controls.update();
+        }
+        window.galacticMap.camera.updateProjectionMatrix();
+      }
+
+      console.log('✅ Info pane closed and view reset');
     };
 
     /**
@@ -1008,7 +1263,7 @@
     };
 
     /**
-     * Display asset info in modal pane (same as 2D map)
+     * Display asset info in modal pane - Mobile responsive
      */
     window.displayAssetInfo = function(assetData) {
       console.log('Displaying asset info for:', assetData.title);
@@ -1017,9 +1272,33 @@
       const backdrop = document.getElementById('infoPaneBackdrop');
       const info = document.getElementById('assetInfo');
 
+      // Check if mobile
+      const isMobile = window.innerWidth <= 768;
+
       // Show the pane and backdrop with class
       infoPane.classList.add('visible');
       backdrop.classList.add('visible');
+
+      // Mobile-specific positioning
+      if (isMobile) {
+        console.log('📱 Mobile detected - showing info pane at bottom');
+        infoPane.style.bottom = '0';
+        infoPane.style.right = 'auto';
+        infoPane.style.left = '0';
+        infoPane.style.top = 'auto';
+        infoPane.style.width = '100vw';
+        infoPane.style.maxHeight = '60vh';
+        infoPane.style.transform = 'none';
+      } else {
+        console.log('🖥️ Desktop detected - showing info pane at right');
+        infoPane.style.right = '10px';
+        infoPane.style.bottom = 'auto';
+        infoPane.style.left = 'auto';
+        infoPane.style.top = '60px';
+        infoPane.style.width = '320px';
+        infoPane.style.maxHeight = 'calc(100vh - 70px)';
+        infoPane.style.transform = 'scale(1)';
+      }
 
       // Apply inline styles for visibility (fallback if CSS doesn't work)
       infoPane.style.right = '10px';
@@ -1080,6 +1359,11 @@
         `;
       }
 
+      // Check if player can travel to this location
+      const playerLocation = window.currentCharacter?.location;
+      const canTravel = assetData.data?._id ?
+        window.galacticMap.canTravelToAsset(assetData.data._id, playerLocation) : false;
+
       // Action button based on type
       let actionHTML = '';
       if (assetData.type === 'star' && assetData.data?._id) {
@@ -1095,32 +1379,61 @@
       } else if (assetData.type === 'galaxy' && assetData.data?._id) {
         // Escape single quotes in title for onclick attribute
         const escapedTitle = String(assetData.title).replace(/'/g, "\\'");
-        actionHTML = `
-          <div class="travel-action-bar">
-            <button class="travel-btn" onclick="travelToLocation(${coords.x || 0}, ${coords.y || 0}, ${coords.z || 0}, '${escapedTitle}')">
-              <span class="travel-icon">🚀</span>
-              <span class="travel-text">Travel to Galaxy</span>
-              <span class="travel-distance">${assetData.title}</span>
-            </button>
-            <button class="travel-btn" onclick="window.galacticMap.showGalaxyLevel('${assetData.data._id}'); window.closeInfoPane();" style="margin-top: 10px;">
-              <span class="travel-icon">🌌</span>
-              <span class="travel-text">Enter Galaxy</span>
-              <span class="travel-distance">View Stars Inside</span>
-            </button>
-          </div>
-        `;
+
+        if (canTravel) {
+          actionHTML = `
+            <div class="travel-action-bar">
+              <button class="travel-btn" onclick="window.travelToLocation(${coords.x || 0}, ${coords.y || 0}, ${coords.z || 0}, '${escapedTitle}')">
+                <span class="travel-icon">🚀</span>
+                <span class="travel-text">Travel to Galaxy</span>
+                <span class="travel-distance">${assetData.title}</span>
+              </button>
+              <button class="travel-btn" onclick="window.galacticMap.showGalaxyLevel('${assetData.data._id}'); window.closeInfoPane();" style="margin-top: 10px;">
+                <span class="travel-icon">🌌</span>
+                <span class="travel-text">Enter Galaxy</span>
+                <span class="travel-distance">View Stars Inside</span>
+              </button>
+            </div>
+          `;
+        } else {
+          actionHTML = `
+            <div class="travel-action-bar">
+              <div style="padding: 15px; background: rgba(255, 82, 82, 0.1); border: 1px solid rgba(255, 82, 82, 0.3); border-radius: 6px; color: #ff5252; text-align: center;">
+                <div style="margin-bottom: 8px;">⛔ No Connection Available</div>
+                <div style="font-size: 0.85em; opacity: 0.8;">You must be at a connected location to travel here</div>
+              </div>
+              <button class="travel-btn" onclick="window.galacticMap.showGalaxyLevel('${assetData.data._id}'); window.closeInfoPane();" style="margin-top: 10px;">
+                <span class="travel-icon">🌌</span>
+                <span class="travel-text">Enter Galaxy</span>
+                <span class="travel-distance">View Stars Inside</span>
+              </button>
+            </div>
+          `;
+        }
       } else if (assetData.type === 'anomaly' && assetData.data?._id) {
         // Escape single quotes in title for onclick attribute
         const escapedTitle = String(assetData.title).replace(/'/g, "\\'");
-        actionHTML = `
-          <div class="travel-action-bar">
-            <button class="travel-btn" onclick="travelToLocation(${coords.x || 0}, ${coords.y || 0}, ${coords.z || 0}, '${escapedTitle}')">
-              <span class="travel-icon">🚀</span>
-              <span class="travel-text">Travel to Anomaly</span>
-              <span class="travel-distance">${assetData.title}</span>
-            </button>
-          </div>
-        `;
+
+        if (canTravel) {
+          actionHTML = `
+            <div class="travel-action-bar">
+              <button class="travel-btn" onclick="window.travelToLocation(${coords.x || 0}, ${coords.y || 0}, ${coords.z || 0}, '${escapedTitle}')">
+                <span class="travel-icon">🚀</span>
+                <span class="travel-text">Travel to Anomaly</span>
+                <span class="travel-distance">${assetData.title}</span>
+              </button>
+            </div>
+          `;
+        } else {
+          actionHTML = `
+            <div class="travel-action-bar">
+              <div style="padding: 15px; background: rgba(255, 82, 82, 0.1); border: 1px solid rgba(255, 82, 82, 0.3); border-radius: 6px; color: #ff5252; text-align: center;">
+                <div style="margin-bottom: 8px;">⛔ No Connection Available</div>
+                <div style="font-size: 0.85em; opacity: 0.8;">You must be at a connected location to travel here</div>
+              </div>
+            </div>
+          `;
+        }
       }
 
       info.innerHTML = `
@@ -1149,11 +1462,15 @@
       `;
     };
 
-    // Update UI based on map state - use info pane AND sidebar
+    // Update UI based on map state - use TOP-RIGHT info pane instead of sidebar
     window.addEventListener('assetSelected', (e) => {
       const assetData = e.detail;
 
-      // Update sidebar selected asset section
+      // Show in top-right info pane instead of sidebar
+      console.log('📍 Asset selected event:', assetData);
+      window.displayAssetInfo(assetData);
+
+      // OPTIONAL: Also update sidebar selected asset section (minimized version)
       const selectedAssetInfo = document.getElementById('selectedAssetInfo');
       const selectedAssetContent = document.getElementById('selectedAssetContent');
       const selectedAssetArrow = document.getElementById('selectedAssetArrow');
@@ -1406,13 +1723,31 @@
     // ========================================
     // Socket.IO Setup for Real-Time Players
     // ========================================
+    console.log('🔍 Socket.IO setup section reached! user=' + <%= user ? 'true' : 'false' %>);
     <% if (user) { %>
+    console.log('🔌 Initializing Socket.IO connection (logged in user)...');
+    console.log('🔍 typeof io:', typeof io);
+
     // Initialize Socket.IO
     const socket = io({
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: 10
+    });
+
+    console.log('✅ Socket object created:', socket);
+
+    socket.on('connect', () => {
+      console.log('✅ Socket.IO CONNECTED! ID:', socket.id);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('❌ Socket.IO connection error:', err.message);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('⚠️ Socket.IO disconnected:', reason);
     });
 
     const userObj = {
@@ -1451,6 +1786,18 @@
           // Store character globally
           window.currentCharacter = character;
 
+          // Initialize GameStateMonitor with socket and current character
+          if (window.gameStateMonitor && !window.gameStateMonitor.connected) {
+            window.gameStateMonitor.init(socket, character._id);
+            console.log('🎮 GameStateMonitor initialized for galactic-map-3d (AUTHORITATIVE)');
+          }
+
+          // Initialize Global Chat for all users
+          if (typeof initGlobalChat === 'function' && !window.globalChat) {
+            window.globalChat = initGlobalChat(socket, userObj, character);
+            console.log('💬 Global Chat initialized and available to all users');
+          }
+
           // Add player character to 3D map
           if (window.galacticMap && character.location) {
             window.galacticMap.addPlayerCharacter(character);
@@ -1475,30 +1822,165 @@
       }
     });
 
-    // Listen for other players' updates
+    // GameStateMonitor handles socket events, but keep map updates here for galactic-map-3d (authoritative view)
+    // Subscribe to GameStateMonitor events to update the 3D map
+    if (window.gameStateMonitor) {
+      // Update map when players join
+      window.gameStateMonitor.on('playerJoined', (data) => {
+        if (window.galacticMap && data.location) {
+          window.galacticMap.updatePlayerPosition(data.characterId, data.location, data.characterName);
+        }
+      });
+
+      // Update map when players move
+      window.gameStateMonitor.on('playerPositionUpdate', (data) => {
+        if (window.galacticMap && data.characterId !== window.currentCharacter?._id) {
+          window.galacticMap.updatePlayerPosition(data.characterId, data.position, data.characterName);
+        }
+      });
+
+      // Remove player from map when they leave
+      window.gameStateMonitor.on('playerLeft', (data) => {
+        if (window.galacticMap) {
+          window.galacticMap.removePlayer(data.characterId);
+        }
+      });
+
+      // Sync all players on state sync
+      window.gameStateMonitor.on('stateSync', (data) => {
+        if (window.galacticMap && data.players) {
+          data.players.forEach(player => {
+            if (player.characterId !== window.currentCharacter?._id) {
+              window.galacticMap.updatePlayerPosition(player.characterId, player.position, player.characterName);
+            }
+          });
+        }
+      });
+    }
+
+    // Legacy socket listeners (GameStateMonitor handles the data, these are for backwards compatibility)
     socket.on('onlinePlayers', (players) => {
       console.log('📡 Received online players:', players.length);
-
-      if (window.galacticMap) {
-        // Update all online players on the map
-        players.forEach(player => {
-          if (player.characterId !== window.currentCharacter?._id && player.location) {
-            window.galacticMap.updatePlayerPosition(player.characterId, player.location, player.characterName);
-          }
-        });
-      }
+      // GameStateMonitor will handle this
     });
 
-    // Listen for individual player position updates
     socket.on('playerMoved', (data) => {
-      console.log('📡 Player moved:', data.characterName, 'to', data.location);
+      console.log('📡 Player moved:', data.characterName);
+      // GameStateMonitor will handle this
+    });
 
-      if (window.galacticMap && data.characterId !== window.currentCharacter?._id) {
-        window.galacticMap.updatePlayerPosition(data.characterId, data.location, data.characterName);
+    // Listen for galactic physics updates from server
+    let updateCounter = 0;
+    socket.on('galacticPhysicsUpdate', (data) => {
+      if (!window.galacticMap) {
+        console.warn('⚠️ galacticPhysicsUpdate received but window.galacticMap not ready');
+        return;
       }
+
+      updateCounter++;
+      console.log(`🌌 [${updateCounter}] Received physics update for ${data.galaxies.length} galaxies at ${new Date().toLocaleTimeString()}`);
+      console.log(`   Assets map has ${window.galacticMap.assets.size} items`);
+
+      // Update galaxy positions from server
+      let updatedCount = 0;
+      let notFoundCount = 0;
+
+      data.galaxies.forEach(galaxyData => {
+        const asset = window.galacticMap.assets.get(galaxyData.id);
+        if (asset && asset.mesh) {
+          // Store old position for comparison
+          const oldX = asset.mesh.position.x;
+          const oldY = asset.mesh.position.y;
+          const oldZ = asset.mesh.position.z;
+
+          // Update mesh position
+          asset.mesh.position.set(
+            galaxyData.position.x,
+            galaxyData.position.y,
+            galaxyData.position.z
+          );
+
+          // Mark mesh as needing update
+          asset.mesh.position.needsUpdate = true;
+          if (asset.mesh.geometry) {
+            asset.mesh.geometry.verticesNeedUpdate = true;
+          }
+
+          // Store velocity for interpolation
+          if (!asset.physics) asset.physics = {};
+          asset.physics.vx = galaxyData.velocity.vx || 0;
+          asset.physics.vy = galaxyData.velocity.vy || 0;
+          asset.physics.vz = galaxyData.velocity.vz || 0;
+
+          const moved = Math.abs(oldX - galaxyData.position.x) + Math.abs(oldY - galaxyData.position.y) + Math.abs(oldZ - galaxyData.position.z);
+          updatedCount++;
+          console.log(`   ✅ ${galaxyData.id.substring(0,8)}: (${galaxyData.position.x.toFixed(0)}, ${galaxyData.position.y.toFixed(0)}, ${galaxyData.position.z.toFixed(0)}) moved: ${moved.toFixed(1)}`);
+        } else {
+          notFoundCount++;
+          console.warn(`   ⚠️ Asset ${galaxyData.id} NOT FOUND in assets map!`);
+          console.warn(`      Available IDs:`, Array.from(window.galacticMap.assets.keys()).slice(0, 5));
+        }
+      });
+
+      console.log(`   ✅ Updated ${updatedCount}, ❌ Not found: ${notFoundCount}`);
     });
 
     // Store socket globally for other components
+    window.socket = socket;
+    <% } else { %>
+    // Socket.IO for non-logged-in users (physics updates only)
+    console.log('🔌 Initializing Socket.IO connection (guest mode)...');
+    const socket = io({
+      reconnection: true,
+      reconnectionDelay: 1000
+    });
+
+    socket.on('connect', () => {
+      console.log('✅ Socket.IO connected (guest mode)');
+    });
+
+    socket.on('disconnect', () => {
+      console.log('❌ Socket.IO disconnected');
+    });
+
+    // Listen for galactic physics updates
+    let updateCounter = 0;
+    socket.on('galacticPhysicsUpdate', (data) => {
+      if (!window.galacticMap) {
+        console.warn('⚠️ galacticPhysicsUpdate received but window.galacticMap not ready');
+        return;
+      }
+
+      updateCounter++;
+      console.log(`🌌 [${updateCounter}] Physics update: ${data.galaxies.length} galaxies at ${new Date().toLocaleTimeString()}`);
+      console.log(`   Assets map has ${window.galacticMap.assets.size} items`);
+
+      let updatedCount = 0;
+      let notFoundCount = 0;
+
+      data.galaxies.forEach(galaxyData => {
+        const asset = window.galacticMap.assets.get(galaxyData.id);
+        if (asset && asset.mesh) {
+          const oldX = asset.mesh.position.x;
+
+          asset.mesh.position.set(
+            galaxyData.position.x,
+            galaxyData.position.y,
+            galaxyData.position.z
+          );
+
+          const moved = Math.abs(oldX - galaxyData.position.x);
+          updatedCount++;
+          console.log(`   ✅ ${galaxyData.id.substring(0,8)}: x=${galaxyData.position.x.toFixed(0)} (moved ${moved.toFixed(1)})`);
+        } else {
+          notFoundCount++;
+          console.warn(`   ⚠️ ${galaxyData.id} NOT FOUND!`);
+        }
+      });
+
+      console.log(`   Result: ${updatedCount} updated, ${notFoundCount} not found`);
+    });
+
     window.socket = socket;
     <% } %>
 
@@ -2393,3 +2875,91 @@
   </script>
 </body>
 </html>
+
+<!-- Emergency socket listener - runs independently -->
+<script>
+(function() {
+  console.log('🚨 EMERGENCY SOCKET LISTENER INITIALIZING...');
+
+  // Wait for map object and io to be available
+  function waitForMap(callback, attempts = 0) {
+    if (attempts > 30) {
+      console.error('❌ Gave up waiting for map after 30 attempts');
+      return;
+    }
+
+    if (window.galacticMap && typeof io !== 'undefined') {
+      console.log('✅ Map and Socket.IO available!');
+      console.log('   Map object:', !!window.galacticMap);
+      console.log('   Assets Map exists:', !!window.galacticMap.assets);
+      console.log('   Assets Map type:', window.galacticMap.assets ? window.galacticMap.assets.constructor.name : 'N/A');
+      console.log('   Current assets count:', window.galacticMap.assets ? window.galacticMap.assets.size : 'N/A');
+      console.log('   Scene children:', window.galacticMap.assetsGroup ? window.galacticMap.assetsGroup.children.length : 'N/A');
+      callback();
+    } else {
+      console.log('⏳ Waiting attempt ' + (attempts + 1) + ': map=' + !!window.galacticMap + ', io=' + (typeof io !== 'undefined'));
+      setTimeout(() => waitForMap(callback, attempts + 1), 200);
+    }
+  }
+
+  waitForMap(() => {
+    console.log('🔌 Setting up emergency socket connection...');
+
+    const socket = io();
+
+    socket.on('connect', () => {
+      console.log('✅✅✅ EMERGENCY SOCKET CONNECTED! ID:', socket.id);
+      console.log('   Assets currently in map:', window.galacticMap.assets.size);
+      if (window.galacticMap.assets.size > 0) {
+        console.log('   First 5 asset IDs:', Array.from(window.galacticMap.assets.keys()).slice(0, 5));
+      }
+    });
+
+    socket.on('galacticPhysicsUpdate', (data) => {
+      console.log('🌌🌌🌌 PHYSICS UPDATE RECEIVED! ' + data.galaxies.length + ' galaxies');
+      console.log('   Current assets in map:', window.galacticMap.assets.size);
+      console.log('   Looking for IDs:', data.galaxies.map(g => g.id.substring(0,12)).join(', '));
+
+      if (window.galacticMap.assets.size === 0) {
+        console.warn('   ⚠️ Assets map is empty! Assets may not be loaded yet.');
+        return;
+      }
+
+      let updated = 0;
+      data.galaxies.forEach(g => {
+        const asset = window.galacticMap.assets.get(g.id);
+        if (asset && asset.mesh) {
+          const oldPos = asset.mesh.position.clone();
+          asset.mesh.position.set(g.position.x, g.position.y, g.position.z);
+
+          // Force update flags
+          asset.mesh.updateMatrixWorld(true);
+
+          const distance = oldPos.distanceTo(asset.mesh.position);
+          updated++;
+          console.log('   ✅ ' + g.id.substring(0,8) + ': (' + g.position.x.toFixed(0) + ', ' + g.position.y.toFixed(0) + ', ' + g.position.z.toFixed(0) + ') moved ' + distance.toFixed(1) + ' units');
+        } else {
+          console.warn('   ❌ ' + g.id.substring(0,12) + ' not in map! Available IDs:', Array.from(window.galacticMap.assets.keys()).slice(0, 3).join(', '));
+        }
+      });
+
+      // Update connection lines for all moved assets
+      if (window.galacticMap && window.galacticMap.updateConnectionsForAsset) {
+        data.galaxies.forEach(g => {
+          window.galacticMap.updateConnectionsForAsset(g.id);
+        });
+      }
+
+      // Force a render after updating positions
+      if (window.galacticMap && window.galacticMap.renderer && window.galacticMap.scene && window.galacticMap.camera) {
+        window.galacticMap.renderer.render(window.galacticMap.scene, window.galacticMap.camera);
+      }
+
+      console.log('   Updated ' + updated + '/' + data.galaxies.length + ' positions, updated connections, and forced render.');
+    });
+
+    window.emergencySocket = socket;
+    console.log('✅ Emergency socket listener ready!');
+  });
+})();
+</script>

@@ -204,7 +204,7 @@ class GalacticMap3D {
         size: layer.size,
         sizeAttenuation: false, // Keep constant size regardless of distance
         transparent: true,
-        opacity: 0.4 // Dim the stars for subtle effect
+        opacity: 0.7 // Enhanced visibility for motion orientation
       });
 
       const stars = new THREE.Points(geometry, material);

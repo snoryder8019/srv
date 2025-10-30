@@ -396,6 +396,8 @@
   <%- include('../partials/footer') %>
 
   <script src="/socket.io/socket.io.js"></script>
+  <!-- GameStateMonitor - Centralized coordinate management -->
+  <script src="/javascripts/GameStateMonitor.js"></script>
   <% if (user && user.userRole === 'tester') { %>
   <script src="/javascripts/tester-toolbar.js"></script>
   <script src="/javascripts/global-chat.js"></script>
@@ -686,6 +688,59 @@
 
         // Get current character from map
         const characterObj = map.currentCharacter;
+
+        // Initialize GameStateMonitor (CONSUMER view - reads from galactic-map-3d authority)
+        if (characterObj && window.gameStateMonitor && !window.gameStateMonitor.connected) {
+          window.gameStateMonitor.init(socket, characterObj._id);
+          console.log('🎮 GameStateMonitor connected for galactic-map (CONSUMER)');
+
+          // Subscribe to GameStateMonitor events and update 2D map
+          window.gameStateMonitor.on('playerPositionUpdate', (playerState) => {
+            if (map.characters) {
+              const char = map.characters.find(c => c.characterId === playerState.characterId);
+              if (char) {
+                char.location = playerState.position;
+              } else if (playerState.characterId !== characterObj._id) {
+                // Add new player
+                map.characters.push({
+                  characterId: playerState.characterId,
+                  name: playerState.characterName,
+                  location: playerState.position,
+                  stringDomain: 'Time String'
+                });
+              }
+            }
+          });
+
+          window.gameStateMonitor.on('playerJoined', (data) => {
+            if (data.location && data.characterId !== characterObj._id) {
+              if (!map.characters) map.characters = [];
+              map.characters.push({
+                characterId: data.characterId,
+                name: data.characterName,
+                location: data.location,
+                stringDomain: data.stringDomain || 'Time String'
+              });
+            }
+          });
+
+          window.gameStateMonitor.on('playerLeft', (data) => {
+            if (map.characters) {
+              map.characters = map.characters.filter(c => c.characterId !== data.characterId);
+            }
+          });
+
+          window.gameStateMonitor.on('stateSync', (data) => {
+            if (data.players) {
+              map.characters = data.players.map(p => ({
+                characterId: p.characterId,
+                name: p.characterName,
+                location: p.position,
+                stringDomain: 'Time String'
+              }));
+            }
+          });
+        }
 
         // Connect tester toolbar to socket once connected
         if (window.testerToolbar) {

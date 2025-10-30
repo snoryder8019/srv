@@ -1,6 +1,23 @@
 # Recent Changes Summary
 
-Generated: 2025-10-29T02:15:09.459Z
+Generated: 2025-10-30T05:06:26.790Z
+
+---
+
+## Commit: patch 5.0.1
+
+- **Hash:** `6383b8f`
+- **Author:** Scott
+- **Date:** 10/29/2025
+- **Changes:** 97 files, +19307/-608 lines
+
+### Modified Areas:
+
+**Frontend:** 7 files
+**Backend:** 11 files
+**Views:** 9 files
+**Scripts:** 2 files
+**Documentation:** 25 files
 
 ---
 
@@ -64,23 +81,6 @@ Generated: 2025-10-29T02:15:09.459Z
 **Views:** 16 files
 **Scripts:** 8 files
 **Documentation:** 22 files
-
----
-
-## Commit: nice push
-
-- **Hash:** `3199225`
-- **Author:** Scott
-- **Date:** 10/25/2025
-- **Changes:** 102 files, +16403/-329 lines
-
-### Modified Areas:
-
-**Frontend:** 10 files
-**Backend:** 15 files
-**Views:** 12 files
-**Scripts:** 28 files
-**Documentation:** 30 files
 
 ---
 

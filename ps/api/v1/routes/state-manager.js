@@ -346,6 +346,44 @@ router.get('/map-state-2d', async (req, res) => {
 });
 
 /**
+ * Get galactic state - galaxies and anomalies with physics
+ * Optimized endpoint for real-time physics polling
+ */
+router.get('/galactic-state', async (req, res) => {
+  try {
+    const db = getDb();
+    const assetsCollection = db.collection('assets');
+
+    // Get all galaxies with their current positions and physics
+    const galaxies = await assetsCollection.find({ assetType: 'galaxy' })
+      .project({ _id: 1, title: 1, coordinates: 1, physics: 1, assetType: 1 })
+      .toArray();
+
+    // Get all anomalies
+    const anomalies = await assetsCollection.find({ assetType: 'anomaly' })
+      .project({ _id: 1, title: 1, coordinates: 1, assetType: 1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      galaxies,
+      anomalies,
+      count: {
+        galaxies: galaxies.length,
+        anomalies: anomalies.length
+      },
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.error('Error fetching galactic state:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
  * Get minimal state for 3D map only
  * Returns X,Y,Z coordinates with render data
  */
