@@ -14,12 +14,12 @@ class PhysicsService {
     this.gravityRadius = 200; // Units - bodies within this range exert gravity
     this.io = null; // Socket.IO instance for broadcasting
 
-    // Galactic physics constants
-    this.GRAVITATIONAL_CONSTANT = 1.8; // Calculated for stable orbits at v=15 units/sec
+    // Galactic physics constants - heavily reduced for stable orbits
+    this.GRAVITATIONAL_CONSTANT = 0.05; // Drastically reduced from 1.8 for weaker pull
     this.ANOMALY_CAPTURE_DISTANCE = 15000; // Increased to cover universe scale
     this.ANOMALY_MASS = 1000000;
     this.GALAXY_MASS = 100000;
-    this.MAX_VELOCITY = 25; // Allow for orbital velocities up to 25 units/sec
+    this.MAX_VELOCITY = 15; // Reduced - orbital speeds should be ~1-10 units/sec with lower G
 
     // Cache for galactic objects (refreshed periodically)
     this.galacticCache = {

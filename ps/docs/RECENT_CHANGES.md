@@ -1,6 +1,36 @@
 # Recent Changes Summary
 
-Generated: 2025-10-30T05:06:26.790Z
+Generated: 2025-10-30T07:30:00.025Z
+
+---
+
+## Commit: Update version to 0.5.0 and patch notes for quickshooter release
+
+- **Hash:** `a262632`
+- **Author:** Scott
+- **Date:** 10/30/2025
+- **Changes:** 2 files, +2/-1 lines
+
+### Modified Areas:
+
+**Documentation:** 1 files
+
+---
+
+## Commit: quickshooter
+
+- **Hash:** `98b1047`
+- **Author:** Scott
+- **Date:** 10/30/2025
+- **Changes:** 59 files, +9851/-362 lines
+
+### Modified Areas:
+
+**Frontend:** 4 files
+**Backend:** 7 files
+**Views:** 6 files
+**Scripts:** 6 files
+**Documentation:** 27 files
 
 ---
 
@@ -48,39 +78,6 @@ Generated: 2025-10-30T05:06:26.790Z
 **Views:** 8 files
 **Scripts:** 36 files
 **Documentation:** 21 files
-
----
-
-## Commit: utd
-
-- **Hash:** `d075496`
-- **Author:** Scott
-- **Date:** 10/27/2025
-- **Changes:** 17 files, +15514/-889 lines
-
-### Modified Areas:
-
-**Frontend:** 5 files
-**Backend:** 3 files
-**Views:** 3 files
-**Scripts:** 6 files
-
----
-
-## Commit: 0.4
-
-- **Hash:** `865e5a7`
-- **Author:** Scott
-- **Date:** 10/26/2025
-- **Changes:** 69 files, +10883/-458 lines
-
-### Modified Areas:
-
-**Frontend:** 10 files
-**Backend:** 8 files
-**Views:** 16 files
-**Scripts:** 8 files
-**Documentation:** 22 files
 
 ---
 

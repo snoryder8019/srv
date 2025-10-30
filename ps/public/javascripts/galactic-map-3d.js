@@ -31,12 +31,12 @@ class GalacticMap3D {
     this.physicsTimeStep = 1 / 30; // 2x faster physics simulation
     this.lastPhysicsUpdate = Date.now();
 
-    // Physics constants
-    this.GRAVITATIONAL_CONSTANT = 50000;
+    // Physics constants - reduced gravity for stable orbits
+    this.GRAVITATIONAL_CONSTANT = 5000; // Reduced from 50000 for weaker pull
     this.ANOMALY_CAPTURE_DISTANCE = 800;
     this.ANOMALY_MASS = 1000000;
     this.GALAXY_MASS = 100000;
-    this.MAX_VELOCITY = 5;
+    this.MAX_VELOCITY = 50; // Increased from 5 to allow faster orbital speeds
 
     // Force visualization
     this.forceArrows = new Map();
@@ -667,56 +667,29 @@ class GalacticMap3D {
     let geometry, material, mesh, glow;
 
     if (assetType === 'galaxy') {
-      // Galaxies: Spiral particle system with colorful particles
-      mesh = new THREE.Group();
+      // Galaxies: Simple colorful point
+      geometry = new THREE.SphereGeometry(size, 16, 16);
+      material = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: false,
+        opacity: 1.0
+      });
+
+      mesh = new THREE.Mesh(geometry, material);
       mesh.position.copy(position);
 
-      // Store galaxy shape parameters (can be modified by controls)
-      mesh.userData.galaxyShape = assetData.renderData?.galaxyShape || 'spiral-6'; // Default to 6-cone spiral
-      mesh.userData.galaxyDimension = assetData.renderData?.galaxyDimension || 1.0;
-      mesh.userData.galaxyTrim = assetData.renderData?.galaxyTrim || 0.2;
-      mesh.userData.galaxyCurvature = assetData.renderData?.galaxyCurvature || 2.0;
-
-      // Create galaxy particles based on shape
-      this.createGalaxyShape(mesh, size, mesh.userData.galaxyShape, {
-        dimension: mesh.userData.galaxyDimension,
-        trim: mesh.userData.galaxyTrim,
-        curvature: mesh.userData.galaxyCurvature
-      });
-
-      // Add VERY VISIBLE HITBOX sphere for easier clicking - MASSIVE SIZE
-      const hitboxGeometry = new THREE.SphereGeometry(size * 10, 16, 16); // DOUBLED to size * 10
-      const hitboxMaterial = new THREE.MeshBasicMaterial({
-        transparent: true,
-        opacity: 0.3, // More visible
-        color: 0x00ff00, // Bright green for debugging
-        depthWrite: false,
-        wireframe: true, // Wireframe for debugging
-        side: THREE.DoubleSide
-      });
-      const hitbox = new THREE.Mesh(hitboxGeometry, hitboxMaterial);
-      hitbox.name = 'galaxy-hitbox'; // Name for debugging
-      hitbox.userData.isHitbox = true;
-      mesh.add(hitbox);
-
-      console.log(`🎯 Created MASSIVE galaxy hitbox for ${title} at (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)}) - radius: ${size * 10}`);
-
-      // Simple glow sphere around entire galaxy - ADD AS CHILD
-      const glowGeometry = new THREE.SphereGeometry(size * 3.5, 16, 16);
+      // Simple glow sphere around galaxy
+      const glowGeometry = new THREE.SphereGeometry(size * 2, 16, 16);
       const glowMaterial = new THREE.MeshBasicMaterial({
         color: color,
         transparent: true,
-        opacity: 0.1,
+        opacity: 0.3,
         side: THREE.BackSide
       });
       glow = new THREE.Mesh(glowGeometry, glowMaterial);
-      // Don't copy position - glow is child of mesh so it's relative to (0,0,0)
-      mesh.add(glow); // Add glow as child of the galaxy Group
+      glow.position.copy(position);
 
-      // Enable slow rotation animation
-      mesh.userData.rotationSpeed = 0.0002; // Very slow rotation
-
-      console.log(`✅ Galaxy Group created with ${mesh.children.length} children`);
+      console.log(`✅ Galaxy point created at (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`);
 
     } else if (assetType === 'zone') {
       // Zones: Wireframe torus ring for visual distinction
@@ -745,37 +718,19 @@ class GalacticMap3D {
       glow.rotation.x = Math.PI / 2;
 
     } else if (assetType === 'anomaly') {
-      // Anomaly: Small core sphere with larger hitbox
-      const adjustedSize = size * 2;
-
-      // Create group for anomaly
-      mesh = new THREE.Group();
-      mesh.position.copy(position);
-
-      // Core sphere
-      const coreGeometry = new THREE.SphereGeometry(adjustedSize, 20, 20);
-      const colorObj = new THREE.Color(color);
-      colorObj.multiplyScalar(2.0);
-      const coreMaterial = new THREE.MeshBasicMaterial({
-        color: colorObj,
+      // Anomaly: Simple colorful point
+      geometry = new THREE.SphereGeometry(size, 16, 16);
+      material = new THREE.MeshBasicMaterial({
+        color: color,
         transparent: false,
         opacity: 1.0
       });
-      const core = new THREE.Mesh(coreGeometry, coreMaterial);
-      mesh.add(core);
 
-      // Invisible hitbox for easier clicking
-      const hitboxGeometry = new THREE.SphereGeometry(adjustedSize * 3, 16, 16);
-      const hitboxMaterial = new THREE.MeshBasicMaterial({
-        transparent: true,
-        opacity: 0,
-        depthWrite: false
-      });
-      const hitbox = new THREE.Mesh(hitboxGeometry, hitboxMaterial);
-      mesh.add(hitbox);
+      mesh = new THREE.Mesh(geometry, material);
+      mesh.position.copy(position);
 
-      // Glow sphere for pulsing effect (will be animated)
-      const glowGeometry = new THREE.SphereGeometry(adjustedSize * 2, 20, 20);
+      // Simple glow sphere around anomaly
+      const glowGeometry = new THREE.SphereGeometry(size * 2, 16, 16);
       const glowMaterial = new THREE.MeshBasicMaterial({
         color: color,
         transparent: true,
@@ -785,10 +740,7 @@ class GalacticMap3D {
       glow = new THREE.Mesh(glowGeometry, glowMaterial);
       glow.position.copy(position);
 
-      // Store for pulsing animation
-      glow.userData.isPulsing = true;
-      glow.userData.pulsePhase = Math.random() * Math.PI * 2;
-      glow.userData.baseScale = 2.0;
+      console.log(`✅ Anomaly point created at (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`);
 
     } else if (assetType === 'star') {
       // Stars: Simple sphere with bright glow
@@ -881,7 +833,47 @@ class GalacticMap3D {
 
     // Add physics properties for galaxies
     if (assetType === 'galaxy') {
-      mesh.userData.velocity = new THREE.Vector3(0, 0, 0); // Current velocity
+      // Initialize with orbital velocity perpendicular to nearest anomaly
+      // This allows galaxies to orbit rather than fall straight in
+      let initialVelocity = new THREE.Vector3(0, 0, 0);
+
+      // Find nearest anomaly to calculate orbital velocity
+      const anomalies = Array.from(this.assets.values()).filter(a => a.mesh?.userData.type === 'anomaly');
+      if (anomalies.length > 0) {
+        // Find closest anomaly
+        let nearestAnomaly = null;
+        let minDistance = Infinity;
+
+        anomalies.forEach(anomaly => {
+          const dist = position.distanceTo(anomaly.mesh.position);
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearestAnomaly = anomaly.mesh;
+          }
+        });
+
+        if (nearestAnomaly && minDistance > 10) {
+          // Calculate orbital velocity: v = sqrt(G * M / r)
+          const toAnomaly = new THREE.Vector3().subVectors(nearestAnomaly.position, position);
+          const distance = toAnomaly.length();
+
+          // Orbital speed formula
+          const orbitalSpeed = Math.sqrt(this.GRAVITATIONAL_CONSTANT * this.ANOMALY_MASS / distance);
+
+          // Velocity perpendicular to the line connecting galaxy to anomaly
+          // Use cross product with up vector to get tangent direction
+          const up = new THREE.Vector3(0, 1, 0);
+          const tangent = new THREE.Vector3().crossVectors(toAnomaly, up).normalize();
+
+          // Apply orbital velocity with some randomness (0.7 to 1.3 of ideal)
+          const velocityFactor = 0.7 + Math.random() * 0.6;
+          initialVelocity = tangent.multiplyScalar(orbitalSpeed * velocityFactor);
+
+          console.log(`🌌 Galaxy ${title} initialized with orbital velocity ${orbitalSpeed.toFixed(2)} at distance ${distance.toFixed(1)} from anomaly`);
+        }
+      }
+
+      mesh.userData.velocity = initialVelocity;
       mesh.userData.parentAnomaly = assetData.parentId || null; // Which anomaly it orbits
       mesh.userData.mass = this.GALAXY_MASS;
       console.log(`🌌 Galaxy ${title} initialized with physics (parent: ${mesh.userData.parentAnomaly || 'none'})`);
@@ -1805,16 +1797,8 @@ class GalacticMap3D {
         totalForce.add(force);
       });
 
-      // Check if galaxy should be captured by nearest anomaly
-      if (nearestAnomaly && nearestDistance < this.ANOMALY_CAPTURE_DISTANCE) {
-        if (galaxy.mesh.userData.parentAnomaly !== nearestAnomaly) {
-          console.log(`🎯 Galaxy ${galaxy.mesh.userData.title} captured by anomaly at distance ${nearestDistance.toFixed(1)}`);
-          galaxy.mesh.userData.parentAnomaly = nearestAnomaly;
-
-          // Update database via API
-          this.updateGalaxyParent(galaxy.id, nearestAnomaly);
-        }
-      }
+      // Galaxies orbit freely - no capture logic
+      // They will naturally fall into elliptical orbits around anomalies
 
       // Apply force to velocity (F = ma, so a = F/m)
       const acceleration = totalForce.divideScalar(this.GALAXY_MASS);
@@ -1931,16 +1915,67 @@ class GalacticMap3D {
   }
 
   /**
+   * Handle physics updates from server
+   * Updates galaxy positions based on authoritative server simulation
+   */
+  handleServerPhysicsUpdate(data) {
+    if (!data || !data.galaxies) return;
+
+    data.galaxies.forEach(galaxyUpdate => {
+      const asset = this.assets.get(galaxyUpdate.id);
+      if (!asset || !asset.mesh || asset.mesh.userData.type !== 'galaxy') return;
+
+      const mesh = asset.mesh;
+      const targetPos = galaxyUpdate.position;
+
+      // Smooth interpolation to new position (lerp for smooth movement)
+      // This prevents jumpy movement between server updates
+      const lerpFactor = 0.1; // Adjust for smoothness vs responsiveness
+      mesh.position.x += (targetPos.x - mesh.position.x) * lerpFactor;
+      mesh.position.y += (targetPos.y - mesh.position.y) * lerpFactor;
+      mesh.position.z += (targetPos.z - mesh.position.z) * lerpFactor;
+
+      // Store velocity for debugging/visualization
+      if (galaxyUpdate.velocity) {
+        mesh.userData.velocity = new THREE.Vector3(
+          galaxyUpdate.velocity.vx,
+          galaxyUpdate.velocity.vy,
+          galaxyUpdate.velocity.vz
+        );
+      }
+
+      // Update stars that belong to this galaxy
+      this.updateStarsForGalaxy(galaxyUpdate.id);
+    });
+  }
+
+  /**
+   * Initialize socket connection for physics updates
+   */
+  initializeSocket(socket) {
+    if (!socket) {
+      console.warn('⚠️ No socket provided to GalacticMap3D');
+      return;
+    }
+
+    this.socket = socket;
+
+    // Listen for physics updates from server
+    socket.on('galacticPhysicsUpdate', (data) => {
+      this.handleServerPhysicsUpdate(data);
+    });
+
+    console.log('✅ GalacticMap3D listening for server physics updates');
+  }
+
+  /**
    * Animation loop
    */
   animate() {
     requestAnimationFrame(() => this.animate());
 
-    // Update physics for galaxy orbital mechanics
-    const now = Date.now();
-    const deltaTime = Math.min((now - this.lastPhysicsUpdate) / 1000, 0.1); // Cap at 100ms
-    this.lastPhysicsUpdate = now;
-    this.updatePhysics(deltaTime);
+    // Physics updates now come from server via socket.io
+    // Client only renders what the server tells it
 
     // Update OrbitControls (if available)
     if (this.controls) {

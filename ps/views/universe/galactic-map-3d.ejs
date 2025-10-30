@@ -1072,6 +1072,11 @@
       console.log('🌌 Initializing Galactic Map 3D...');
       window.galacticMap = new GalacticMap3D('mapContainer');
 
+      // Initialize socket connection for physics updates (if socket exists)
+      if (typeof socket !== 'undefined') {
+        window.galacticMap.initializeSocket(socket);
+      }
+
       // Load and display all assets - use galactic-state endpoint (no auth required)
       fetch('/api/v1/state/galactic-state')
         .then(response => response.json())
@@ -1869,61 +1874,8 @@
       // GameStateMonitor will handle this
     });
 
-    // Listen for galactic physics updates from server
-    let updateCounter = 0;
-    socket.on('galacticPhysicsUpdate', (data) => {
-      if (!window.galacticMap) {
-        console.warn('⚠️ galacticPhysicsUpdate received but window.galacticMap not ready');
-        return;
-      }
-
-      updateCounter++;
-      console.log(`🌌 [${updateCounter}] Received physics update for ${data.galaxies.length} galaxies at ${new Date().toLocaleTimeString()}`);
-      console.log(`   Assets map has ${window.galacticMap.assets.size} items`);
-
-      // Update galaxy positions from server
-      let updatedCount = 0;
-      let notFoundCount = 0;
-
-      data.galaxies.forEach(galaxyData => {
-        const asset = window.galacticMap.assets.get(galaxyData.id);
-        if (asset && asset.mesh) {
-          // Store old position for comparison
-          const oldX = asset.mesh.position.x;
-          const oldY = asset.mesh.position.y;
-          const oldZ = asset.mesh.position.z;
-
-          // Update mesh position
-          asset.mesh.position.set(
-            galaxyData.position.x,
-            galaxyData.position.y,
-            galaxyData.position.z
-          );
-
-          // Mark mesh as needing update
-          asset.mesh.position.needsUpdate = true;
-          if (asset.mesh.geometry) {
-            asset.mesh.geometry.verticesNeedUpdate = true;
-          }
-
-          // Store velocity for interpolation
-          if (!asset.physics) asset.physics = {};
-          asset.physics.vx = galaxyData.velocity.vx || 0;
-          asset.physics.vy = galaxyData.velocity.vy || 0;
-          asset.physics.vz = galaxyData.velocity.vz || 0;
-
-          const moved = Math.abs(oldX - galaxyData.position.x) + Math.abs(oldY - galaxyData.position.y) + Math.abs(oldZ - galaxyData.position.z);
-          updatedCount++;
-          console.log(`   ✅ ${galaxyData.id.substring(0,8)}: (${galaxyData.position.x.toFixed(0)}, ${galaxyData.position.y.toFixed(0)}, ${galaxyData.position.z.toFixed(0)}) moved: ${moved.toFixed(1)}`);
-        } else {
-          notFoundCount++;
-          console.warn(`   ⚠️ Asset ${galaxyData.id} NOT FOUND in assets map!`);
-          console.warn(`      Available IDs:`, Array.from(window.galacticMap.assets.keys()).slice(0, 5));
-        }
-      });
-
-      console.log(`   ✅ Updated ${updatedCount}, ❌ Not found: ${notFoundCount}`);
-    });
+    // Note: galacticPhysicsUpdate listener is registered via initializeSocket() above
+    // The centralized handler in GalacticMap3D will manage all physics updates
 
     // Store socket globally for other components
     window.socket = socket;
@@ -1943,43 +1895,12 @@
       console.log('❌ Socket.IO disconnected');
     });
 
-    // Listen for galactic physics updates
-    let updateCounter = 0;
-    socket.on('galacticPhysicsUpdate', (data) => {
-      if (!window.galacticMap) {
-        console.warn('⚠️ galacticPhysicsUpdate received but window.galacticMap not ready');
-        return;
-      }
-
-      updateCounter++;
-      console.log(`🌌 [${updateCounter}] Physics update: ${data.galaxies.length} galaxies at ${new Date().toLocaleTimeString()}`);
-      console.log(`   Assets map has ${window.galacticMap.assets.size} items`);
-
-      let updatedCount = 0;
-      let notFoundCount = 0;
-
-      data.galaxies.forEach(galaxyData => {
-        const asset = window.galacticMap.assets.get(galaxyData.id);
-        if (asset && asset.mesh) {
-          const oldX = asset.mesh.position.x;
-
-          asset.mesh.position.set(
-            galaxyData.position.x,
-            galaxyData.position.y,
-            galaxyData.position.z
-          );
-
-          const moved = Math.abs(oldX - galaxyData.position.x);
-          updatedCount++;
-          console.log(`   ✅ ${galaxyData.id.substring(0,8)}: x=${galaxyData.position.x.toFixed(0)} (moved ${moved.toFixed(1)})`);
-        } else {
-          notFoundCount++;
-          console.warn(`   ⚠️ ${galaxyData.id} NOT FOUND!`);
-        }
-      });
-
-      console.log(`   Result: ${updatedCount} updated, ${notFoundCount} not found`);
-    });
+    // Initialize socket connection for physics updates
+    if (window.galacticMap) {
+      window.galacticMap.initializeSocket(socket);
+    } else {
+      console.warn('⚠️ galacticMap not ready, socket will be initialized later');
+    }
 
     window.socket = socket;
     <% } %>
