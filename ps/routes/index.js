@@ -93,12 +93,37 @@ router.get('/help/documentation', async function(req, res, next) {
     let docMeta = null;
     if (req.query.doc) {
       try {
-        const docPath = path.join(__dirname, '../zMDREADME', `${req.query.doc}.md`);
-        docContent = await fs.readFile(docPath, 'utf-8');
-        docMeta = {
-          fileName: req.query.doc,
-          title: req.query.doc.replace(/_/g, ' ')
+        // Try to find the doc in /docs directory recursively
+        const findDocFile = async (dirPath, fileName) => {
+          const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+          for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry.name);
+
+            if (entry.isDirectory()) {
+              // Skip archive directories
+              if (entry.name === 'archive' || entry.name === '_archive') {
+                continue;
+              }
+              const found = await findDocFile(fullPath, fileName);
+              if (found) return found;
+            } else if (entry.isFile() && entry.name === `${fileName}.md`) {
+              return fullPath;
+            }
+          }
+          return null;
         };
+
+        const docsDir = path.join(__dirname, '../docs');
+        const docPath = await findDocFile(docsDir, req.query.doc);
+
+        if (docPath) {
+          docContent = await fs.readFile(docPath, 'utf-8');
+          docMeta = {
+            fileName: req.query.doc,
+            title: req.query.doc.replace(/_/g, ' ')
+          };
+        }
       } catch (error) {
         console.error('Error reading doc:', error);
       }

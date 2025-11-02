@@ -8,39 +8,57 @@ const __dirname = path.dirname(__filename);
 /**
  * Generate Documentation Tree
  *
- * This script scans the zMDREADME directory and generates a structured
+ * This script scans the docs directory and generates a structured
  * documentation tree with categories, files, and metadata.
  */
 
-const DOCS_DIR = path.join(__dirname, '../zMDREADME');
+const DOCS_DIR = path.join(__dirname, '../docs');
 const OUTPUT_FILE = path.join(__dirname, '../public/data/docs-tree.json');
 
-// Category mappings based on file patterns
+// Category mappings based on subdirectory and file patterns
+const DIRECTORY_CATEGORIES = {
+  'guides': 'Guides & Tutorials',
+  'reference': 'Quick References',
+  'systems': 'Systems & Features',
+  'summaries': 'Implementation Summaries',
+  'architecture': 'Architecture & Scaling',
+  'session-notes': 'Session Notes',
+  'archive': 'Archive'
+};
+
+// Fallback file-based category mappings
 const CATEGORY_MAP = {
   'PROJECT_OVERVIEW': 'Getting Started',
+  'CLAUDE': 'Getting Started',
+  'README': 'Getting Started',
+  'ROADMAP': 'Getting Started',
   'TESTER_QUICK_REFERENCE': 'Quick References',
-  'TESTER_SYSTEM_COMPLETE': 'Systems & Features',
-  'ASSET_BUILDER_COMPLETE': 'Systems & Features',
-  'GALACTIC_MAP_COMPLETE': 'Systems & Features',
-  'LOCATION_SYSTEM_IMPLEMENTATION': 'Systems & Features',
+  'TESTER_SYSTEM_COMPLETE': 'Guides & Tutorials',
+  'ASSET_BUILDER_COMPLETE': 'Guides & Tutorials',
+  'GALACTIC_MAP_COMPLETE': 'Guides & Tutorials',
+  'LOCATION_SYSTEM_IMPLEMENTATION': 'Guides & Tutorials',
   'ANALYTICS_SYSTEM': 'Systems & Features',
   'USER_CHARACTER_REFERENCE': 'Quick References',
   'MENU_SYSTEM': 'Quick References',
   'STATUS_BAR_README': 'Quick References',
-  'DOCUMENTATION_CLEANUP_SUMMARY': 'Meta',
-  'DOCUMENTATION_SYSTEM': 'Systems & Features',
-  'README': 'Getting Started'
+  'TESTING_KEY': 'Quick References',
+  'DOCUMENTATION_SYSTEM': 'Guides & Tutorials',
+  'COORDINATE_SYSTEM': 'Systems & Features'
 };
 
 // Priority order for display
 const CATEGORY_ORDER = [
   'Getting Started',
   'Quick References',
+  'Guides & Tutorials',
   'Systems & Features',
-  'Meta'
+  'Implementation Summaries',
+  'Architecture & Scaling',
+  'Session Notes',
+  'Archive'
 ];
 
-async function extractMetadata(filePath) {
+async function extractMetadata(filePath, relativePath = '') {
   try {
     const content = await fs.readFile(filePath, 'utf-8');
     const lines = content.split('\n');
@@ -68,13 +86,24 @@ async function extractMetadata(filePath) {
     const stats = await fs.stat(filePath);
     const fileName = path.basename(filePath, '.md');
 
+    // Determine category from directory structure first, then fall back to filename
+    let category = 'Other';
+    const dirName = path.basename(path.dirname(filePath));
+
+    if (DIRECTORY_CATEGORIES[dirName]) {
+      category = DIRECTORY_CATEGORIES[dirName];
+    } else if (CATEGORY_MAP[fileName]) {
+      category = CATEGORY_MAP[fileName];
+    }
+
     return {
       fileName,
+      relativePath,
       title: title || fileName.replace(/_/g, ' '),
       description: description || 'Documentation file',
       lastModified: stats.mtime.toISOString(),
       size: stats.size,
-      category: CATEGORY_MAP[fileName] || 'Other'
+      category
     };
   } catch (error) {
     console.error(`Error extracting metadata from ${filePath}:`, error);
@@ -82,19 +111,42 @@ async function extractMetadata(filePath) {
   }
 }
 
+async function scanDirectory(dirPath, basePath = '') {
+  const files = [];
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    const relativePath = path.join(basePath, entry.name);
+
+    if (entry.isDirectory()) {
+      // Skip archive directories unless explicitly needed
+      if (entry.name === 'archive' || entry.name === '_archive') {
+        continue;
+      }
+      // Recursively scan subdirectories
+      const subFiles = await scanDirectory(fullPath, relativePath);
+      files.push(...subFiles);
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      files.push({ fullPath, relativePath });
+    }
+  }
+
+  return files;
+}
+
 async function generateDocsTree() {
   try {
-    console.log('🔍 Scanning documentation directory...');
+    console.log('🔍 Scanning documentation directory recursively...');
 
-    // Read all markdown files
-    const files = await fs.readdir(DOCS_DIR);
-    const mdFiles = files.filter(f => f.endsWith('.md'));
+    // Scan all markdown files recursively
+    const fileEntries = await scanDirectory(DOCS_DIR);
 
-    console.log(`📄 Found ${mdFiles.length} markdown files`);
+    console.log(`📄 Found ${fileEntries.length} markdown files`);
 
     // Extract metadata from each file
-    const docsPromises = mdFiles.map(file =>
-      extractMetadata(path.join(DOCS_DIR, file))
+    const docsPromises = fileEntries.map(({ fullPath, relativePath }) =>
+      extractMetadata(fullPath, relativePath)
     );
     const docs = (await Promise.all(docsPromises)).filter(d => d !== null);
 

@@ -11,6 +11,7 @@ import spriteAtlasesRouter from './routes/sprite-atlases.js';
 import stateManagerRouter from './routes/state-manager.js';
 import activityRouter from './activity/index.js';
 import shipsRouter from './ships/index.js';
+import motdRouter from './routes/motd.js';
 
 const router = express.Router();
 
@@ -27,7 +28,8 @@ router.get('/', (req, res) => {
       planetGeneration: '/api/v1/planet-generation',
       stateManager: '/api/v1/state',
       activity: '/api/v1/activity',
-      ships: '/api/v1/ships'
+      ships: '/api/v1/ships',
+      motd: '/api/v1/motd'
     }
   });
 });
@@ -43,6 +45,7 @@ router.use('/sprite-atlases', spriteAtlasesRouter);
 router.use('/state', stateManagerRouter); // State manager for game state and physics
 router.use('/activity', activityRouter); // Activity token management
 router.use('/ships', shipsRouter); // Ship builder and custom ships
+router.use('/motd', motdRouter); // Message of the Day system
 router.use('/', inventoryRouter); // Inventory routes handle their own /characters/:id/inventory paths
 router.use('/', shipRouter); // Ship routes handle their own /characters/:id/ship paths
 

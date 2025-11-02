@@ -58,6 +58,8 @@ class PixelEditor {
               <option value="32" ${this.gridSize === 32 ? 'selected' : ''}>32x32</option>
               <option value="64" ${this.gridSize === 64 ? 'selected' : ''}>64x64</option>
               <option value="80" ${this.gridSize === 80 ? 'selected' : ''}>80x80</option>
+              <option value="160" ${this.gridSize === 160 ? 'selected' : ''}>160x160</option>
+              <option value="320" ${this.gridSize === 320 ? 'selected' : ''}>320x320</option>
             </select>
           </div>
         </div>
@@ -66,15 +68,25 @@ class PixelEditor {
             <div class="palette-swatch" data-color="${color}" style="width: 20px; height: 20px; background: ${color}; border: 2px solid ${color === this.currentColor ? '#00ff88' : '#444'}; cursor: pointer; border-radius: 2px;" title="${color}"></div>
           `).join('')}
         </div>
-        <canvas id="pixelCanvas"
-                width="${this.gridSize * this.pixelSize}"
-                height="${this.gridSize * this.pixelSize}">
-        </canvas>
+        <div style="position: relative; width: ${this.gridSize * this.pixelSize}px; height: ${this.gridSize * this.pixelSize}px;">
+          <canvas id="pixelCanvas"
+                  width="${this.gridSize * this.pixelSize}"
+                  height="${this.gridSize * this.pixelSize}"
+                  style="position: absolute; top: 0; left: 0;">
+          </canvas>
+          <canvas id="gridOverlay"
+                  width="${this.gridSize * this.pixelSize}"
+                  height="${this.gridSize * this.pixelSize}"
+                  style="position: absolute; top: 0; left: 0; pointer-events: none;">
+          </canvas>
+        </div>
       </div>
     `;
 
     this.canvas = document.getElementById('pixelCanvas');
     this.ctx = this.canvas.getContext('2d');
+    this.gridOverlay = document.getElementById('gridOverlay');
+    this.gridCtx = this.gridOverlay.getContext('2d');
     this.colorPicker = document.getElementById('colorPicker');
     this.drawBtn = document.getElementById('drawBtn');
     this.eraserBtn = document.getElementById('eraserBtn');
@@ -86,6 +98,7 @@ class PixelEditor {
 
     this.attachEventListeners();
     this.render();
+    this.renderGridOverlay();
   }
 
   attachEventListeners() {
@@ -195,10 +208,29 @@ class PixelEditor {
     this.gridSizeSelect.addEventListener('change', (e) => {
       if (confirm('Changing grid size will clear your current work. Continue?')) {
         this.gridSize = parseInt(e.target.value);
+
+        // Adjust pixel size based on grid size to keep canvas display reasonable
+        if (this.gridSize <= 80) {
+          this.pixelSize = 8;
+        } else if (this.gridSize === 160) {
+          this.pixelSize = 4;
+        } else if (this.gridSize === 320) {
+          this.pixelSize = 2;
+        }
+
+        // Update both canvases
         this.canvas.width = this.gridSize * this.pixelSize;
         this.canvas.height = this.gridSize * this.pixelSize;
+        this.gridOverlay.width = this.gridSize * this.pixelSize;
+        this.gridOverlay.height = this.gridSize * this.pixelSize;
+
+        // Update container size
+        this.canvas.parentElement.style.width = `${this.gridSize * this.pixelSize}px`;
+        this.canvas.parentElement.style.height = `${this.gridSize * this.pixelSize}px`;
+
         this.pixelData = this.createEmptyGrid();
         this.render();
+        this.renderGridOverlay();
       } else {
         e.target.value = this.gridSize;
       }
@@ -230,31 +262,6 @@ class PixelEditor {
       this.ctx.fillStyle = this.pixelData[y][x];
       this.ctx.fillRect(px, py, this.pixelSize, this.pixelSize);
     }
-
-    // Redraw fine grid line for this cell
-    this.ctx.strokeStyle = 'rgba(221, 221, 221, 0.3)';
-    this.ctx.lineWidth = 1;
-    this.ctx.strokeRect(px, py, this.pixelSize, this.pixelSize);
-
-    // Redraw sprite tile grid if on boundary
-    if (this.gridSize === 80) {
-      this.ctx.strokeStyle = '#8a4fff';
-      this.ctx.lineWidth = 2;
-
-      // Check if this pixel is on a tile boundary
-      if (x % 16 === 0) {
-        this.ctx.beginPath();
-        this.ctx.moveTo(px, 0);
-        this.ctx.lineTo(px, this.canvas.height);
-        this.ctx.stroke();
-      }
-      if (y % 16 === 0) {
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, py);
-        this.ctx.lineTo(this.canvas.width, py);
-        this.ctx.stroke();
-      }
-    }
   }
 
   render() {
@@ -274,42 +281,46 @@ class PixelEditor {
         }
       }
     }
+  }
+
+  renderGridOverlay() {
+    // Clear grid overlay
+    this.gridCtx.clearRect(0, 0, this.gridOverlay.width, this.gridOverlay.height);
 
     // Draw fine grid lines (light gray, semi-transparent)
-    this.ctx.strokeStyle = 'rgba(221, 221, 221, 0.3)';
-    this.ctx.lineWidth = 1;
+    this.gridCtx.strokeStyle = 'rgba(221, 221, 221, 0.3)';
+    this.gridCtx.lineWidth = 1;
     for (let i = 0; i <= this.gridSize; i++) {
       // Vertical lines
-      this.ctx.beginPath();
-      this.ctx.moveTo(i * this.pixelSize, 0);
-      this.ctx.lineTo(i * this.pixelSize, this.canvas.height);
-      this.ctx.stroke();
+      this.gridCtx.beginPath();
+      this.gridCtx.moveTo(i * this.pixelSize, 0);
+      this.gridCtx.lineTo(i * this.pixelSize, this.gridOverlay.height);
+      this.gridCtx.stroke();
 
       // Horizontal lines
-      this.ctx.beginPath();
-      this.ctx.moveTo(0, i * this.pixelSize);
-      this.ctx.lineTo(this.canvas.width, i * this.pixelSize);
-      this.ctx.stroke();
+      this.gridCtx.beginPath();
+      this.gridCtx.moveTo(0, i * this.pixelSize);
+      this.gridCtx.lineTo(this.gridOverlay.width, i * this.pixelSize);
+      this.gridCtx.stroke();
     }
 
-    // Draw sprite tile grid (5×5 grid for 80×80 canvas = every 16 pixels)
-    if (this.gridSize === 80) {
-      this.ctx.strokeStyle = '#8a4fff';
-      this.ctx.lineWidth = 2;
+    // Draw sprite tile grid (5x5 grid for all canvas sizes)
+    this.gridCtx.strokeStyle = '#8a4fff';
+    this.gridCtx.lineWidth = 2;
 
-      for (let i = 0; i <= 5; i++) {
-        // Vertical lines
-        this.ctx.beginPath();
-        this.ctx.moveTo(i * 16 * this.pixelSize, 0);
-        this.ctx.lineTo(i * 16 * this.pixelSize, this.canvas.height);
-        this.ctx.stroke();
+    const tileSize = this.gridSize / 5;
+    for (let i = 0; i <= 5; i++) {
+      // Vertical lines
+      this.gridCtx.beginPath();
+      this.gridCtx.moveTo(i * tileSize * this.pixelSize, 0);
+      this.gridCtx.lineTo(i * tileSize * this.pixelSize, this.gridOverlay.height);
+      this.gridCtx.stroke();
 
-        // Horizontal lines
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, i * 16 * this.pixelSize);
-        this.ctx.lineTo(this.canvas.width, i * 16 * this.pixelSize);
-        this.ctx.stroke();
-      }
+      // Horizontal lines
+      this.gridCtx.beginPath();
+      this.gridCtx.moveTo(0, i * tileSize * this.pixelSize);
+      this.gridCtx.lineTo(this.gridOverlay.width, i * tileSize * this.pixelSize);
+      this.gridCtx.stroke();
     }
   }
 
@@ -402,9 +413,12 @@ class PixelEditor {
 
       this.canvas.width = this.gridSize * this.pixelSize;
       this.canvas.height = this.gridSize * this.pixelSize;
+      this.gridOverlay.width = this.gridSize * this.pixelSize;
+      this.gridOverlay.height = this.gridSize * this.pixelSize;
       this.gridSizeSelect.value = this.gridSize;
 
       this.render();
+      this.renderGridOverlay();
     }
   }
 }

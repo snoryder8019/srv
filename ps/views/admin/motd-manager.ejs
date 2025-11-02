@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MOTD Manager - Admin</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/admin.css">
+  <style>
+    .admin-container {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 2rem;
+      color: #e0e0e0;
+    }
+
+    .admin-header {
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid rgba(0, 255, 159, 0.3);
+    }
+
+    .admin-header h1 {
+      color: #00ff9f;
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .motd-form {
+      background: rgba(10, 10, 26, 0.8);
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      color: #00ff9f;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .form-group input[type="text"],
+    .form-group textarea {
+      width: 100%;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+    }
+
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #00ff9f;
+      box-shadow: 0 0 10px rgba(0, 255, 159, 0.2);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      accent-color: #00ff9f;
+    }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 4px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-size: 0.9rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, rgba(0, 255, 159, 0.3), rgba(138, 79, 255, 0.3));
+      color: #00ff9f;
+      border: 1px solid rgba(0, 255, 159, 0.4);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, rgba(0, 255, 159, 0.4), rgba(138, 79, 255, 0.4));
+      box-shadow: 0 0 20px rgba(0, 255, 159, 0.3);
+    }
+
+    .btn-danger {
+      background: rgba(255, 107, 107, 0.2);
+      color: #ff6b6b;
+      border: 1px solid rgba(255, 107, 107, 0.4);
+    }
+
+    .btn-danger:hover {
+      background: rgba(255, 107, 107, 0.3);
+      box-shadow: 0 0 20px rgba(255, 107, 107, 0.3);
+    }
+
+    .motd-list {
+      background: rgba(10, 10, 26, 0.8);
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      border-radius: 8px;
+      padding: 2rem;
+    }
+
+    .motd-item {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(0, 255, 159, 0.2);
+      border-radius: 6px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .motd-item.active {
+      border-color: rgba(0, 255, 159, 0.5);
+      background: rgba(0, 255, 159, 0.05);
+    }
+
+    .motd-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 1rem;
+    }
+
+    .motd-item-badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-active {
+      background: rgba(0, 255, 159, 0.2);
+      color: #00ff9f;
+      border: 1px solid rgba(0, 255, 159, 0.4);
+    }
+
+    .badge-inactive {
+      background: rgba(128, 128, 128, 0.2);
+      color: #888;
+      border: 1px solid rgba(128, 128, 128, 0.4);
+    }
+
+    .motd-item-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .motd-item-content {
+      color: #ccc;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .motd-item-meta {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.8rem;
+      color: #888;
+    }
+
+    .success-message {
+      background: rgba(0, 255, 159, 0.1);
+      border: 1px solid rgba(0, 255, 159, 0.3);
+      color: #00ff9f;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+
+    .error-message {
+      background: rgba(255, 107, 107, 0.1);
+      border: 1px solid rgba(255, 107, 107, 0.3);
+      color: #ff6b6b;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="admin-container">
+    <div class="admin-header">
+      <h1>📡 MOTD Manager</h1>
+      <p>Manage daily message of the day broadcasts to all users</p>
+    </div>
+
+    <div id="messageContainer"></div>
+
+    <!-- Create New MOTD Form -->
+    <div class="motd-form">
+      <h2 style="color: #00ff9f; margin-bottom: 1.5rem;">Create New MOTD</h2>
+      <form id="motdForm">
+        <div class="form-group">
+          <label>Welcome Message</label>
+          <input type="text" id="welcomeMessage" name="welcomeMessage"
+                 value="Thank you and welcome to a new day in the Stringborn Universe!" required>
+        </div>
+
+        <div class="form-group">
+          <label>Main Message</label>
+          <textarea id="message" name="message" required
+                    placeholder="Enter the main update message here..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Call-to-Action Text</label>
+          <textarea id="ctaText" name="ctaText" required>We need asset design testers! If you want to make an NPC and write an arc, or create a texture pack in the sprite world builder</textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>CTA Link</label>
+            <input type="text" id="ctaLink" name="ctaLink" value="/menu" required>
+          </div>
+
+          <div class="form-group">
+            <label>CTA Link Text</label>
+            <input type="text" id="ctaLinkText" name="ctaLinkText" value="Visit the Menu" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Priority (higher = shown first)</label>
+            <input type="number" id="priority" name="priority" value="0">
+          </div>
+
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="isActive" name="isActive" checked>
+            <label for="isActive">Active</label>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Create MOTD</button>
+      </form>
+    </div>
+
+    <!-- Existing MOTDs -->
+    <div class="motd-list">
+      <h2 style="color: #00ff9f; margin-bottom: 1.5rem;">Existing MOTDs</h2>
+      <div id="motdListContainer">
+        <p style="color: #888;">Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Load existing MOTDs
+    async function loadMOTDs() {
+      try {
+        const response = await fetch('/api/v1/motd/list');
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to load MOTDs');
+        }
+
+        const container = document.getElementById('motdListContainer');
+
+        if (!data.motds || data.motds.length === 0) {
+          container.innerHTML = '<p style="color: #888;">No MOTDs found. Create your first one above!</p>';
+          return;
+        }
+
+        container.innerHTML = data.motds.map(motd => `
+          <div class="motd-item ${motd.isActive ? 'active' : ''}">
+            <div class="motd-item-header">
+              <div>
+                <span class="motd-item-badge ${motd.isActive ? 'badge-active' : 'badge-inactive'}">
+                  ${motd.isActive ? 'Active' : 'Inactive'}
+                </span>
+                ${motd.priority > 0 ? `<span class="motd-item-badge" style="background: rgba(138, 79, 255, 0.2); color: #8a4fff; border: 1px solid rgba(138, 79, 255, 0.4);">Priority: ${motd.priority}</span>` : ''}
+              </div>
+              <div class="motd-item-actions">
+                <button class="btn btn-danger" onclick="deleteMOTD('${motd._id}')">Delete</button>
+              </div>
+            </div>
+            <div class="motd-item-content">
+              <strong style="color: #00ff9f;">${motd.welcomeMessage}</strong><br>
+              <p style="margin: 0.5rem 0;">${motd.message}</p>
+              <p style="margin: 0.5rem 0; font-style: italic;">${motd.ctaText}</p>
+              <p style="margin: 0.5rem 0;"><a href="${motd.ctaLink}" style="color: #00ff9f;">${motd.ctaLinkText}</a></p>
+            </div>
+            <div class="motd-item-meta">
+              Created: ${new Date(motd.createdAt).toLocaleString()}
+              ${motd.startDate ? ` | Starts: ${new Date(motd.startDate).toLocaleString()}` : ''}
+              ${motd.endDate ? ` | Ends: ${new Date(motd.endDate).toLocaleString()}` : ''}
+            </div>
+          </div>
+        `).join('');
+
+      } catch (error) {
+        console.error('Error loading MOTDs:', error);
+        document.getElementById('motdListContainer').innerHTML =
+          `<p class="error-message">Error loading MOTDs: ${error.message}</p>`;
+      }
+    }
+
+    // Create new MOTD
+    document.getElementById('motdForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = {
+        welcomeMessage: document.getElementById('welcomeMessage').value,
+        message: document.getElementById('message').value,
+        ctaText: document.getElementById('ctaText').value,
+        ctaLink: document.getElementById('ctaLink').value,
+        ctaLinkText: document.getElementById('ctaLinkText').value,
+        priority: parseInt(document.getElementById('priority').value),
+        isActive: document.getElementById('isActive').checked
+      };
+
+      try {
+        const response = await fetch('/api/v1/motd/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to create MOTD');
+        }
+
+        showMessage('MOTD created successfully!', 'success');
+        document.getElementById('motdForm').reset();
+        loadMOTDs();
+
+      } catch (error) {
+        console.error('Error creating MOTD:', error);
+        showMessage('Error creating MOTD: ' + error.message, 'error');
+      }
+    });
+
+    // Delete MOTD
+    async function deleteMOTD(id) {
+      if (!confirm('Are you sure you want to delete this MOTD?')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/v1/motd/${id}`, {
+          method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to delete MOTD');
+        }
+
+        showMessage('MOTD deleted successfully!', 'success');
+        loadMOTDs();
+
+      } catch (error) {
+        console.error('Error deleting MOTD:', error);
+        showMessage('Error deleting MOTD: ' + error.message, 'error');
+      }
+    }
+
+    // Show message
+    function showMessage(message, type) {
+      const container = document.getElementById('messageContainer');
+      const className = type === 'success' ? 'success-message' : 'error-message';
+      container.innerHTML = `<div class="${className}">${message}</div>`;
+      setTimeout(() => {
+        container.innerHTML = '';
+      }, 5000);
+    }
+
+    // Load MOTDs on page load
+    loadMOTDs();
+  </script>
+</body>
+</html>

@@ -1372,4 +1372,12 @@ router.get('/simulation', isAdmin, function(req, res, next) {
   });
 });
 
+// MOTD Manager page
+router.get('/motd', isAdmin, function(req, res, next) {
+  res.render('admin/motd-manager', {
+    title: 'MOTD Manager',
+    user: req.user
+  });
+});
+
 export default router;

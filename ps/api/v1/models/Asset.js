@@ -675,7 +675,9 @@ export class Asset {
         assetType: 1,
         coordinates: 1,
         physics: 1, // Include physics field
-        stats: 1
+        stats: 1,
+        parentId: 1, // Include parent for connections
+        parentType: 1
       })
       .toArray();
   }

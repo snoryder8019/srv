@@ -2,6 +2,7 @@ import express from 'express';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../../../plugins/mongo/mongo.js';
 import { Physics3D, Vector3D } from '../physics/physics3d.js';
+import { physicsService } from '../../../services/physics-service.js';
 
 const router = express.Router();
 const physics = new Physics3D();
@@ -346,7 +347,7 @@ router.get('/map-state-2d', async (req, res) => {
 });
 
 /**
- * Get galactic state - galaxies and anomalies with physics
+ * Get galactic state - galaxies, anomalies, and stars with physics
  * Optimized endpoint for real-time physics polling
  */
 router.get('/galactic-state', async (req, res) => {
@@ -364,13 +365,30 @@ router.get('/galactic-state', async (req, res) => {
       .project({ _id: 1, title: 1, coordinates: 1, assetType: 1 })
       .toArray();
 
+    // Get all stars with local coordinates for galaxy interior views
+    const stars = await assetsCollection.find({ assetType: 'star' })
+      .project({
+        _id: 1,
+        title: 1,
+        coordinates: 1,
+        localCoordinates: 1,
+        parentGalaxy: 1,
+        assetType: 1,
+        starType: 1,
+        color: 1,
+        radius: 1
+      })
+      .toArray();
+
     res.json({
       success: true,
       galaxies,
       anomalies,
+      stars,
       count: {
         galaxies: galaxies.length,
-        anomalies: anomalies.length
+        anomalies: anomalies.length,
+        stars: stars.length
       },
       timestamp: Date.now()
     });
@@ -424,6 +442,85 @@ router.get('/map-state-3d', async (req, res) => {
   } catch (err) {
     console.error('Error fetching 3D map state:', err);
     res.status(500).json({ error: 'Failed to fetch 3D map state' });
+  }
+});
+
+/**
+ * GET /api/v1/state/simulation-speed
+ * Returns current simulation speed and physics status
+ */
+router.get('/simulation-speed', (req, res) => {
+  try {
+    const status = physicsService.getStatus();
+    res.json({
+      success: true,
+      simulationSpeed: status.simulationSpeed,
+      ...status
+    });
+  } catch (error) {
+    console.error('Error getting simulation speed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/v1/state/simulation-speed
+ * Set simulation speed multiplier
+ * Body: { speed: number } (0.1 to 10.0)
+ */
+router.post('/simulation-speed', (req, res) => {
+  try {
+    const { speed } = req.body;
+
+    if (typeof speed !== 'number' || speed < 0.1 || speed > 10) {
+      return res.status(400).json({
+        success: false,
+        error: 'Speed must be a number between 0.1 and 10.0'
+      });
+    }
+
+    const newSpeed = physicsService.setSimulationSpeed(speed);
+
+    res.json({
+      success: true,
+      simulationSpeed: newSpeed,
+      message: `Simulation speed set to ${newSpeed.toFixed(1)}x`
+    });
+  } catch (error) {
+    console.error('Error setting simulation speed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/v1/state/refresh-cache
+ * Force refresh of physics cache (for testing)
+ */
+router.post('/refresh-cache', (req, res) => {
+  try {
+    // Clear the cache to force reload on next tick
+    if (physicsService.galacticCache) {
+      physicsService.galacticCache.galaxies = [];
+      physicsService.galacticCache.anomalies = [];
+      physicsService.galacticCache.lastUpdate = 0;
+    }
+
+    res.json({
+      success: true,
+      message: 'Physics cache cleared, will reload on next tick'
+    });
+  } catch (error) {
+    console.error('Error refreshing cache:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
