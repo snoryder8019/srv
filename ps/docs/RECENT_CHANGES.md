@@ -1,32 +1,29 @@
 # Recent Changes Summary
 
-Generated: 2025-11-01T22:03:43.546Z
+Generated: 2025-11-02T18:08:35.975Z
 
 ---
 
-## Commit: first view 3d galactic map..commit before rules
+## Commit: v8.0.2 - Cinematic Animations & Interaction Fix
 
-- **Hash:** `813b900`
+- **Hash:** `a4eaac9`
 - **Author:** Scott
-- **Date:** 10/30/2025
-- **Changes:** 10 files, +548/-222 lines
+- **Date:** 11/2/2025
+- **Changes:** 3 files, +534/-33 lines
 
 ### Modified Areas:
 
 **Frontend:** 1 files
-**Backend:** 1 files
-**Views:** 1 files
-**Scripts:** 3 files
-**Documentation:** 3 files
+**Documentation:** 2 files
 
 ---
 
-## Commit: Update version to 0.5.0 and patch notes for quickshooter release
+## Commit: Docs: Condense security section in CLAUDE.md to essentials only
 
-- **Hash:** `a262632`
+- **Hash:** `db01b57`
 - **Author:** Scott
-- **Date:** 10/30/2025
-- **Changes:** 2 files, +2/-1 lines
+- **Date:** 11/2/2025
+- **Changes:** 1 files, +11/-169 lines
 
 ### Modified Areas:
 
@@ -34,50 +31,45 @@ Generated: 2025-11-01T22:03:43.546Z
 
 ---
 
-## Commit: quickshooter
+## Commit: Docs: Add security section to CLAUDE.md for .env and Git best practices
 
-- **Hash:** `98b1047`
+- **Hash:** `091d42e`
 - **Author:** Scott
-- **Date:** 10/30/2025
-- **Changes:** 59 files, +9851/-362 lines
+- **Date:** 11/2/2025
 
 ### Modified Areas:
 
-**Frontend:** 4 files
-**Backend:** 7 files
-**Views:** 6 files
-**Scripts:** 6 files
-**Documentation:** 27 files
+**Documentation:** 1 files
 
 ---
 
-## Commit: patch 5.0.1
+## Commit: Security: Remove exposed credentials from documentation
 
-- **Hash:** `6383b8f`
+- **Hash:** `396b2d9`
 - **Author:** Scott
-- **Date:** 10/29/2025
-- **Changes:** 97 files, +19307/-608 lines
+- **Date:** 11/2/2025
+- **Changes:** 6 files, +916/-28 lines
 
 ### Modified Areas:
 
-**Frontend:** 7 files
-**Backend:** 11 files
-**Views:** 9 files
-**Scripts:** 2 files
-**Documentation:** 25 files
+**Documentation:** 6 files
 
 ---
 
-## Commit: patchit
+## Commit: v8.0.1 - 3D Galactic Map Rebuild & Connection System
 
-- **Hash:** `baf236f`
+- **Hash:** `89c84c1`
 - **Author:** Scott
-- **Date:** 10/28/2025
-- **Changes:** 2 files, +301/-154 lines
+- **Date:** 11/2/2025
+- **Changes:** 98 files, +6633/-1527 lines
 
 ### Modified Areas:
 
-**Documentation:** 2 files
+**Frontend:** 2 files
+**Backend:** 9 files
+**Views:** 7 files
+**Scripts:** 8 files
+**Documentation:** 71 files
 
 ---
 

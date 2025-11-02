@@ -51,17 +51,18 @@ class GalacticMap3D {
 
     console.log('⚙️ Galaxy orbital physics system initialized');
 
-    // Camera setup (orthographic for map-like view)
+    // Camera setup (perspective for immersive 3D view with visible starfield)
     const aspect = window.innerWidth / window.innerHeight;
-    const frustumSize = 20000;
-    this.camera = new THREE.OrthographicCamera(
-      frustumSize * aspect / -2,
-      frustumSize * aspect / 2,
-      frustumSize / 2,
-      frustumSize / -2,
-      -500000,  // Near plane - NEGATIVE to prevent clipping in front
-      500000    // Far plane - massive range to prevent any clipping
+    const fov = 75; // Wider field of view for immersive space feel
+    this.camera = new THREE.PerspectiveCamera(
+      fov,       // Field of view
+      aspect,    // Aspect ratio
+      10,        // Near clipping plane - clip anything closer than 10 units
+      450000     // Far clipping plane - just inside starfield cube (400k)
     );
+
+    // Store FOV for reference
+    this.cameraFOV = fov;
 
     // Universe center (after doubling): X(-4202 to 4190), Y(-2400 to 2207), Z(-4062 to 1769)
     // Center point: X=-6, Y=-97, Z=-1146
@@ -84,11 +85,12 @@ class GalacticMap3D {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.container.appendChild(this.renderer.domElement);
 
-    // Lighting
-    this.ambientLight = new THREE.AmbientLight(0x404060, 1.5); // Soft ambient
+    // Lighting - dimmer ambient for better star light contrast
+    this.ambientLight = new THREE.AmbientLight(0x202040, 0.4); // Very dim blue ambient
     this.scene.add(this.ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    // Dim directional light for overall scene visibility
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
     directionalLight.position.set(100, 200, 100);
     this.scene.add(directionalLight);
 
@@ -119,6 +121,8 @@ class GalacticMap3D {
     this.raycaster.params.Points.threshold = 15; // Larger threshold for easier clicking on particles
     this.mouse = new THREE.Vector2();
     this.selectedObject = null;
+    this.selectedStar = null; // Track selected star for camera following and HUD
+    this.followingStar = false; // Whether camera should follow the selected star
 
     // Touch control state
     this.touchStartTime = 0;
@@ -162,7 +166,7 @@ class GalacticMap3D {
   }
 
   init() {
-    // this.createStarfield(); // DISABLED - no background particles
+    this.createFixedStarfieldCube(); // Fixed starfield background
     // this.createTestSpheres(); // Debug helper - disabled
     this.setupControls();
     this.setupEventListeners();
@@ -198,7 +202,86 @@ class GalacticMap3D {
   }
 
   /**
-   * Create 3D starfield sphere surrounding the camera
+   * Create fixed starfield cube - a skybox with stars on the inside faces
+   * Creates the effect of being surrounded by distant stars
+   */
+  createFixedStarfieldCube() {
+    console.log('🌟 Creating fixed starfield cube skybox...');
+
+    // Size of the cube (very large to encompass entire universe)
+    const cubeSize = 400000;
+
+    // Create 6 canvas textures for each face of the cube
+    const createStarfieldTexture = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2048;
+      canvas.height = 2048;
+      const ctx = canvas.getContext('2d');
+
+      // Black background
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Add stars
+      const starCount = 3000; // Dense starfield
+      for (let i = 0; i < starCount; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        const radius = Math.random() * 1.5 + 0.5; // 0.5-2px stars
+        const brightness = Math.random() * 0.5 + 0.5; // 50-100% brightness
+
+        // Variety of star colors (blue-white to yellow-white)
+        const colors = [
+          `rgba(255, 255, 255, ${brightness})`,      // White
+          `rgba(200, 220, 255, ${brightness})`,      // Blue-white
+          `rgba(255, 250, 220, ${brightness})`,      // Yellow-white
+          `rgba(255, 200, 150, ${brightness * 0.8})` // Orange (rare)
+        ];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Add glow to some stars
+        if (Math.random() > 0.85) {
+          ctx.fillStyle = `rgba(255, 255, 255, ${brightness * 0.3})`;
+          ctx.beginPath();
+          ctx.arc(x, y, radius * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      return new THREE.CanvasTexture(canvas);
+    };
+
+    // Create materials for each face (each face gets unique stars)
+    const materials = [
+      new THREE.MeshBasicMaterial({ map: createStarfieldTexture(), side: THREE.BackSide }), // right
+      new THREE.MeshBasicMaterial({ map: createStarfieldTexture(), side: THREE.BackSide }), // left
+      new THREE.MeshBasicMaterial({ map: createStarfieldTexture(), side: THREE.BackSide }), // top
+      new THREE.MeshBasicMaterial({ map: createStarfieldTexture(), side: THREE.BackSide }), // bottom
+      new THREE.MeshBasicMaterial({ map: createStarfieldTexture(), side: THREE.BackSide }), // front
+      new THREE.MeshBasicMaterial({ map: createStarfieldTexture(), side: THREE.BackSide })  // back
+    ];
+
+    // Create cube geometry
+    const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+    const starfieldCube = new THREE.Mesh(geometry, materials);
+
+    // Position at origin (cube surrounds everything)
+    starfieldCube.position.set(0, 0, 0);
+
+    // Add to scene (not to starfieldGroup, this is static background)
+    this.scene.add(starfieldCube);
+    this.starfieldCube = starfieldCube;
+
+    console.log(`✅ Fixed starfield cube created (${cubeSize} units)`);
+  }
+
+  /**
+   * Create 3D starfield sphere surrounding the camera (OLD - replaced by cube)
    * Stars distributed in a spherical volume for immersive background
    */
   createStarfield() {
@@ -554,11 +637,12 @@ class GalacticMap3D {
 
     if (this.currentLevel === 'galaxy' && assetType === 'star' && assetData.localCoordinates) {
       // When viewing galaxy interior, use ONLY local coordinates (centered at origin)
-      // This creates a local coordinate system where the galaxy center is at (0,0,0)
+      // Scale up by 3x to spread out star systems and prevent planetary orbit overlap
+      const GALAXY_INTERIOR_SCALE = 3.0;
       position = new THREE.Vector3(
-        assetData.localCoordinates.x,
-        assetData.localCoordinates.y,
-        assetData.localCoordinates.z || 0
+        assetData.localCoordinates.x * GALAXY_INTERIOR_SCALE,
+        assetData.localCoordinates.y * GALAXY_INTERIOR_SCALE,
+        (assetData.localCoordinates.z || 0) * GALAXY_INTERIOR_SCALE
       );
       console.log(`  ⭐ Adding star "${title}" at local position: (${position.x.toFixed(0)}, ${position.y.toFixed(0)}, ${position.z.toFixed(0)})`);
     } else if (this.currentLevel === 'system' && (assetType === 'planet' || assetType === 'orbital') && assetData.localCoordinates) {
@@ -1582,6 +1666,20 @@ class GalacticMap3D {
         this.focusCameraOn(object.position);
       }
 
+      // If selecting a star in galaxy view, enable camera following
+      if (this.currentLevel === 'galaxy' && object.userData.assetType === 'star') {
+        this.selectedStar = object;
+        this.followingStar = true;
+        console.log('⭐ Following star:', object.userData.title);
+
+        // Show star info modal
+        this.showStarInfoModal(object.userData);
+      } else {
+        this.selectedStar = null;
+        this.followingStar = false;
+        this.hideStarInfoModal();
+      }
+
       // Emit event for UI to handle
       try {
         const event = new CustomEvent('assetSelected', {
@@ -1595,6 +1693,103 @@ class GalacticMap3D {
       console.log('✅ Selected:', object.userData.title || object.userData.id);
     } catch (error) {
       console.error('❌ Error in selectObject:', error);
+    }
+  }
+
+  /**
+   * Show star info modal with system button
+   */
+  showStarInfoModal(starData) {
+    let modal = document.getElementById('star-info-modal');
+    if (!modal) {
+      // Create modal if it doesn't exist
+      modal = document.createElement('div');
+      modal.id = 'star-info-modal';
+      modal.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.9);
+        border: 2px solid #FFD700;
+        border-radius: 10px;
+        padding: 20px;
+        color: #FFD700;
+        font-family: 'Courier New', monospace;
+        z-index: 1000;
+        min-width: 250px;
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+      `;
+      document.body.appendChild(modal);
+    }
+
+    // Count planets for this star
+    const planetCount = this.allAssets ? this.allAssets.filter(a =>
+      a.assetType === 'planet' && a.parentId === starData.id
+    ).length : 0;
+
+    modal.innerHTML = `
+      <h3 style="margin: 0 0 10px 0; color: #FFD700;">⭐ ${starData.title || 'Unknown Star'}</h3>
+      <div style="margin: 10px 0; font-size: 14px;">
+        <div>Type: Star</div>
+        <div>Planets: ${planetCount}</div>
+        <div style="margin-top: 10px; font-size: 12px; color: #AAA;">Camera following star...</div>
+      </div>
+      <button id="view-system-btn" style="
+        width: 100%;
+        padding: 10px;
+        margin-top: 15px;
+        background: linear-gradient(45deg, #FFD700, #FFA500);
+        border: none;
+        border-radius: 5px;
+        color: #000;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 14px;
+      ">
+        🚀 View Solar System
+      </button>
+      <button id="stop-following-btn" style="
+        width: 100%;
+        padding: 8px;
+        margin-top: 10px;
+        background: #444;
+        border: 1px solid #666;
+        border-radius: 5px;
+        color: #FFF;
+        cursor: pointer;
+        font-size: 12px;
+      ">
+        ✋ Stop Following
+      </button>
+    `;
+
+    modal.style.display = 'block';
+
+    // Add button handlers
+    const viewSystemBtn = document.getElementById('view-system-btn');
+    if (viewSystemBtn) {
+      viewSystemBtn.onclick = () => {
+        window.location.href = `/universe/system-map-3d?star=${starData.id}`;
+      };
+    }
+
+    const stopBtn = document.getElementById('stop-following-btn');
+    if (stopBtn) {
+      stopBtn.onclick = () => {
+        this.followingStar = false;
+        this.selectedStar = null;
+        this.hideStarInfoModal();
+      };
+    }
+  }
+
+  /**
+   * Hide star info modal
+   */
+  hideStarInfoModal() {
+    const modal = document.getElementById('star-info-modal');
+    if (modal) {
+      modal.style.display = 'none';
     }
   }
 
@@ -1923,13 +2118,8 @@ class GalacticMap3D {
     window.addEventListener('resize', () => {
       console.log('🔄 Window resized, updating Three.js scene...');
 
-      const aspect = window.innerWidth / window.innerHeight;
-      const frustumSize = 15000; // Match initial frustum size
-
-      this.camera.left = frustumSize * aspect / -2;
-      this.camera.right = frustumSize * aspect / 2;
-      this.camera.top = frustumSize / 2;
-      this.camera.bottom = frustumSize / -2;
+      // Update camera aspect ratio for PerspectiveCamera
+      this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
 
       this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -2271,11 +2461,95 @@ class GalacticMap3D {
       this.controls.update();
     }
 
+    // Constrain camera to stay within starfield cube boundaries
+    this.constrainCamera();
+
     // Update zoom level for UI (based on camera zoom)
     this.zoomLevel = this.camera.zoom;
 
+    // Camera following - track selected star
+    if (this.followingStar && this.selectedStar && this.selectedStar.position) {
+      // Smoothly move camera target to follow the star
+      this.controls.target.lerp(this.selectedStar.position, 0.05);
+      this.controls.update();
+    }
+
     // Hover detection - show info panel on hover in galaxy view
     this.checkHover();
+
+    // Animate star orbits around galaxy center (galaxy-level view only)
+    if (this.currentLevel === 'galaxy') {
+      this.assetsGroup.children.forEach(child => {
+        if (child.userData.assetType === 'star' && child.userData.orbitData) {
+          const orbit = child.userData.orbitData;
+
+          // Update angle based on speed
+          orbit.angle += orbit.speed;
+
+          // Calculate new position on circular orbit around galaxy center
+          child.position.x = orbit.centerX + Math.cos(orbit.angle) * orbit.radius;
+          child.position.z = orbit.centerZ + Math.sin(orbit.angle) * orbit.radius;
+          child.position.y = orbit.centerY + orbit.yOffset;
+
+          // Update associated light, glow, and label positions
+          if (child.userData.light) {
+            child.userData.light.position.copy(child.position);
+          }
+          if (child.userData.glow) {
+            child.userData.glow.position.copy(child.position);
+          }
+        }
+
+        // Update positions of lights, glows, and labels that follow stars
+        if (child.userData.orbitParent) {
+          const parent = child.userData.orbitParent;
+          child.position.copy(parent.position);
+          if (child.isSprite) {
+            child.position.y += 30; // Keep label above star
+          }
+        }
+      });
+    }
+
+    // Animate planet orbits (galaxy-level view only)
+    if (this.currentLevel === 'galaxy' && this.planetOrbits && this.planetOrbits.length > 0) {
+      this.planetOrbits.forEach(orbit => {
+        // Update angle based on speed
+        orbit.angle += orbit.speed;
+
+        // Use parent star's CURRENT position (not cloned position)
+        const center = orbit.parentStar.position;
+
+        // Calculate new position on circular orbit around the moving star
+        orbit.mesh.position.x = center.x + Math.cos(orbit.angle) * orbit.radius;
+        orbit.mesh.position.z = center.z + Math.sin(orbit.angle) * orbit.radius;
+
+        // Apply slight inclination to Y position
+        orbit.mesh.position.y = center.y + Math.sin(orbit.angle) * orbit.radius * orbit.inclination;
+
+        // Real-time lighting update: Rotate planet to show day/night cycle
+        // The MeshStandardMaterial automatically receives lighting from the parent star's PointLight
+        // As the planet orbits AND rotates, different faces are illuminated by the star
+        // This creates a realistic day/night effect visible in real-time
+        orbit.mesh.rotation.y += 0.01; // Slow rotation to show different faces to the star
+      });
+    }
+
+    // Animate star glows in galaxy view (pulsing effect)
+    if (this.currentLevel === 'galaxy') {
+      const time = Date.now() * 0.001; // Convert to seconds
+      this.assetsGroup.children.forEach(child => {
+        if (child.userData.assetType === 'star' && child.userData.glow) {
+          // Gentle pulsing opacity (0.2 to 0.4)
+          const pulseOpacity = 0.3 + Math.sin(time * 2) * 0.1;
+          child.userData.glow.material.opacity = pulseOpacity;
+
+          // Slight scale pulsing (0.95x to 1.05x)
+          const pulseScale = 1.0 + Math.sin(time * 2) * 0.05;
+          child.userData.glow.scale.setScalar(pulseScale);
+        }
+      });
+    }
 
     // Animate starfield (slow parallax)
     this.starfieldGroup.children.forEach((stars, index) => {
@@ -2454,6 +2728,21 @@ class GalacticMap3D {
   }
 
   /**
+   * Constrain camera position to stay within starfield cube boundaries
+   * Prevents camera from leaving the visible universe
+   */
+  constrainCamera() {
+    // Starfield cube size (matches the cube we created)
+    const cubeSize = 400000;
+    const maxDistance = cubeSize / 2 - 5000; // 5000 unit buffer from edge
+
+    // Clamp camera position to cube bounds
+    this.camera.position.x = Math.max(-maxDistance, Math.min(maxDistance, this.camera.position.x));
+    this.camera.position.y = Math.max(-maxDistance, Math.min(maxDistance, this.camera.position.y));
+    this.camera.position.z = Math.max(-maxDistance, Math.min(maxDistance, this.camera.position.z));
+  }
+
+  /**
    * Spawn a comet that flies through the scene
    */
   spawnComet() {
@@ -2522,6 +2811,7 @@ class GalacticMap3D {
   async loadAssets() {
     try {
       console.log('📡 Fetching universe state from State Manager...');
+      console.log('   Current allAssets before fetch:', this.allAssets.length, 'items');
       const response = await fetch('/api/v1/state/map-state-3d');
 
       if (!response.ok) {
@@ -2554,6 +2844,7 @@ class GalacticMap3D {
         renderData: asset.renderData,
         radius: asset.radius,
         parentId: asset.parentId,
+        parentType: asset.parentType, // ADDED: Required for planet filtering
         parentGalaxy: asset.parentGalaxy,
         parentStar: asset.parentStar,
         orbitRadius: asset.orbitRadius,
@@ -3067,85 +3358,83 @@ class GalacticMap3D {
       return assetId === galaxyIdStr;
     });
 
-    if (galaxy) {
-      console.log(`   Found galaxy:`, galaxy.title);
-      this.addAsset(galaxy);
-    } else {
-      console.warn(`   ⚠️ Galaxy not found in allAssets!`);
-      console.log(`   Debug: allAssets has ${this.allAssets.length} items`);
-      if (this.allAssets.length > 0) {
-        console.log(`   First asset _id:`, this.allAssets[0]._id, `(type: ${typeof this.allAssets[0]._id})`);
-      }
+    if (!galaxy) {
+      console.error(`❌ Galaxy ${galaxyIdStr} not found`);
+      return;
     }
 
-    // Debug: Check all stars
-    const allStars = this.allAssets.filter(a => a.assetType === 'star');
-    console.log(`   Total stars in allAssets: ${allStars.length}`);
-    if (allStars.length > 0) {
-      console.log(`   First star parentGalaxy:`, allStars[0].parentGalaxy, `(type: ${typeof allStars[0].parentGalaxy})`);
-      console.log(`   Searching for galaxyId:`, galaxyIdStr, `(type: ${typeof galaxyIdStr})`);
-
-      // Debug: Show a few star parentGalaxy values
-      console.log(`   Sample star parent IDs:`);
-      allStars.slice(0, 5).forEach(s => {
-        console.log(`     ${s.title}: "${s.parentGalaxy}" vs "${galaxyIdStr}" = ${s.parentGalaxy === galaxyIdStr}`);
-      });
-    }
-
-    // Show stars that belong to this galaxy - normalize both IDs to strings for comparison
+    // Count resources before loading
     const stars = this.allAssets.filter(asset => {
       if (asset.assetType !== 'star') return false;
       const parentId = asset.parentGalaxy?.toString() || asset.parentGalaxy;
-      const match = parentId === galaxyIdStr;
-      if (match) {
-        console.log(`   🎯 MATCH FOUND: ${asset.title} parent="${parentId}" galaxy="${galaxyIdStr}"`);
-      }
-      return match;
+      return parentId === galaxyIdStr;
     });
 
-    console.log(`   Found ${stars.length} stars in galaxy`);
-    if (stars.length > 0) {
-      console.log(`   Debug: First star data:`, stars[0]);
-      console.log(`   Galaxy center:`, galaxy.coordinates);
-      stars.forEach(star => {
-        console.log(`   ⭐ Adding star ${star.title}:`, {
-          hasLocalCoords: !!star.localCoordinates,
-          localCoords: star.localCoordinates,
-          parentGalaxy: star.parentGalaxy
-        });
-        this.addAsset(star);
+    const planets = this.allAssets.filter(asset =>
+      asset.assetType === 'planet' &&
+      asset.parentType === 'star' &&
+      asset.parentGalaxy?.toString() === galaxyIdStr
+    );
+
+    // Debug: Check what's in allAssets
+    console.log('🔍 DEBUG allAssets:', {
+      totalAssets: this.allAssets.length,
+      assetTypes: this.allAssets.reduce((acc, a) => {
+        acc[a.assetType] = (acc[a.assetType] || 0) + 1;
+        return acc;
+      }, {})
+    });
+
+    const allPlanets = this.allAssets.filter(a => a.assetType === 'planet');
+    if (allPlanets.length > 0) {
+      const samplePlanet = allPlanets[0];
+      console.log('🪐 Sample planet object:', samplePlanet);
+      console.log('🪐 Sample planet filter check:', {
+        title: samplePlanet.title,
+        assetType: samplePlanet.assetType,
+        parentType: samplePlanet.parentType,
+        parentGalaxy: samplePlanet.parentGalaxy,
+        parentGalaxyToString: samplePlanet.parentGalaxy?.toString(),
+        galaxyIdStr: galaxyIdStr,
+        match: samplePlanet.parentGalaxy?.toString() === galaxyIdStr
       });
-      console.log(`   ✅ All ${stars.length} stars added to scene`);
-      console.log(`   📊 Total assets in scene: ${this.assets.size}`);
-      console.log(`   📊 Assets group children: ${this.assetsGroup.children.length}`);
     } else {
-      console.warn(`   ⚠️ No stars found for this galaxy!`);
+      console.log('🪐 No planets found in allAssets - showing first 3 assets:', this.allAssets.slice(0, 3));
     }
 
-    // Also show zones and anomalies within this galaxy
+    console.log(`\n🌌 Loading Galaxy: "${galaxy.title}" (ID: ${galaxyIdStr})`);
+    console.log(`   └─ ${stars.length} stars`);
+    console.log(`   └─ ${planets.length} planets (total planets in allAssets: ${allPlanets.length})`);
+
+    if (stars.length === 0) {
+      console.warn(`⚠️ No stars found for this galaxy!`);
+      return;
+    }
+
+    this.addAsset(galaxy);
+
+    // Add all stars to scene
+    stars.forEach(star => this.addAsset(star));
+
+    // Load zones and anomalies within this galaxy
     const galacticObjects = this.allAssets.filter(asset =>
       (asset.assetType === 'zone' || asset.assetType === 'anomaly') &&
       asset.parentGalaxy === galaxyId
     );
-    console.log(`   Found ${galacticObjects.length} zones/anomalies in galaxy`);
+    if (galacticObjects.length > 0) {
+      console.log(`🔮 Found ${galacticObjects.length} zones/anomalies`);
+    }
     galacticObjects.forEach(obj => this.addAsset(obj));
-
-    // Focus camera on origin (0,0,0) since we're using local coordinate system
-    // Camera will look at the center of the galaxy interior
-    console.log(`📷 Camera position BEFORE focus: (${this.camera.position.x.toFixed(1)}, ${this.camera.position.y.toFixed(1)}, ${this.camera.position.z.toFixed(1)})`);
-    console.log(`🎯 Controls target BEFORE focus: (${this.controls.target.x.toFixed(1)}, ${this.controls.target.y.toFixed(1)}, ${this.controls.target.z.toFixed(1)})`);
 
     // Wait a frame to ensure all stars are added to the scene before focusing camera
     requestAnimationFrame(() => {
-      console.log(`📊 Stars in map when calculating bounds: ${this.stars.size}`);
-
       // Calculate the actual center of the stars by examining their positions
       let minX = Infinity, maxX = -Infinity;
       let minY = Infinity, maxY = -Infinity;
       let minZ = Infinity, maxZ = -Infinity;
 
       // Use this.stars map to iterate through star meshes
-      this.stars.forEach((mesh, id) => {
+      this.stars.forEach((mesh) => {
         minX = Math.min(minX, mesh.position.x);
         maxX = Math.max(maxX, mesh.position.x);
         minY = Math.min(minY, mesh.position.y);
@@ -3159,37 +3448,46 @@ class GalacticMap3D {
       const centerY = (minY + maxY) / 2;
       const centerZ = (minZ + maxZ) / 2;
 
-      console.log(`📊 Star bounds: X(${minX.toFixed(0)} to ${maxX.toFixed(0)}), Y(${minY.toFixed(0)} to ${maxY.toFixed(0)}), Z(${minZ.toFixed(0)} to ${maxZ.toFixed(0)})`);
-      console.log(`🎯 Calculated star center: (${centerX.toFixed(0)}, ${centerY.toFixed(0)}, ${centerZ.toFixed(0)})`);
-
-      // 🔨 REBUILD: Create minimal working galaxy view
-      console.log(`🔨 REBUILDING galaxy view with minimal approach`);
-
-      // Clear the assets group
+      // Clear the assets group for rebuild
       while(this.assetsGroup.children.length > 0) {
         this.assetsGroup.remove(this.assetsGroup.children[0]);
       }
 
-      // Re-add the parent galaxy as a semi-transparent orb at center
+      // Re-add the parent galaxy as a semi-transparent glowing orb at center
       if (galaxy) {
         const galaxyGeo = new THREE.SphereGeometry(100, 16, 16);
         const galaxyMat = new THREE.MeshBasicMaterial({
-          color: 0x8A4FFF, // Purple for galaxy
+          color: 0x8A4FFF,
           transparent: true,
-          opacity: 0.3,
+          opacity: 0.4, // Slightly more visible
           depthTest: true,
           depthWrite: true
         });
         const galaxyMesh = new THREE.Mesh(galaxyGeo, galaxyMat);
         galaxyMesh.position.set(centerX, centerY, centerZ);
-        galaxyMesh.userData.id = galaxyId; // Required for raycasting
-        galaxyMesh.userData.type = 'galaxy'; // Match standard format
+        galaxyMesh.userData.id = galaxyId;
+        galaxyMesh.userData.type = 'galaxy';
         galaxyMesh.userData.assetType = 'galaxy';
         galaxyMesh.userData.assetId = galaxyId;
         galaxyMesh.userData.title = galaxy.title;
-        galaxyMesh.userData.data = galaxy; // Store full galaxy data
+        galaxyMesh.userData.data = galaxy;
         this.assetsGroup.add(galaxyMesh);
-        console.log(`🌌 Added parent galaxy "${galaxy.title}" as semi-transparent orb at center`);
+
+        // Add gentle glow halo around galaxy center
+        const glowGeo = new THREE.SphereGeometry(150, 16, 16);
+        const glowMat = new THREE.MeshBasicMaterial({
+          color: 0x8A4FFF,
+          transparent: true,
+          opacity: 0.2,
+          depthTest: true,
+          depthWrite: false,
+          side: THREE.BackSide // Render from inside for glow effect
+        });
+        const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+        glowMesh.position.set(centerX, centerY, centerZ);
+        this.assetsGroup.add(glowMesh);
+
+        // Note: No point light at galaxy center - planets only lit by their parent stars
       }
 
       // Add anomalies in this galaxy
@@ -3197,29 +3495,24 @@ class GalacticMap3D {
         asset.assetType === 'anomaly' &&
         asset.parentGalaxy?.toString() === galaxyIdStr
       );
-      console.log(`   Found ${anomaliesInGalaxy.length} anomalies in galaxy`);
       anomaliesInGalaxy.forEach(anomaly => {
         const anomalyGeo = new THREE.SphereGeometry(60, 16, 16);
         const anomalyMat = new THREE.MeshBasicMaterial({
-          color: 0xFF4444, // Red for anomalies
+          color: 0xFF4444,
           depthTest: true,
           depthWrite: true
         });
         const anomalyMesh = new THREE.Mesh(anomalyGeo, anomalyMat);
-
-        // Use local coordinates if available, otherwise offset from galaxy center
         const anomalyPos = anomaly.localCoordinates || anomaly.coordinates || { x: 0, y: 0, z: 0 };
         anomalyMesh.position.set(anomalyPos.x, anomalyPos.y, anomalyPos.z);
-        anomalyMesh.userData.id = anomaly._id; // Required for raycasting
-        anomalyMesh.userData.type = 'anomaly'; // Match standard format
+        anomalyMesh.userData.id = anomaly._id;
+        anomalyMesh.userData.type = 'anomaly';
         anomalyMesh.userData.assetType = 'anomaly';
         anomalyMesh.userData.assetId = anomaly._id;
         anomalyMesh.userData.title = anomaly.title;
-        anomalyMesh.userData.data = anomaly; // Store full anomaly data
+        anomalyMesh.userData.data = anomaly;
         anomalyMesh.frustumCulled = false;
-
         this.assetsGroup.add(anomalyMesh);
-        console.log(`🔴 Added anomaly "${anomaly.title}" at (${anomalyPos.x}, ${anomalyPos.y}, ${anomalyPos.z})`);
       });
 
       // Create stars as simple yellow spheres with labels
@@ -3229,12 +3522,20 @@ class GalacticMap3D {
         const starData = mesh.userData.data || {};
         const starTitle = starData.title || starData.name || `Star ${starsAdded + 1}`;
 
-        // Create simple sphere - radius 500 units
-        const starGeo = new THREE.SphereGeometry(500, 16, 16);
-        const starMat = new THREE.MeshBasicMaterial({
+        // Create simple sphere - radius 6-20 units for better visibility
+        // Variable size based on star index for visual variety
+        const starSize = 6 + (Math.random() * 14); // Random between 6-20 units
+        const starGeo = new THREE.SphereGeometry(starSize, 12, 12); // Medium poly for visible stars
+
+        // Use emissive material so star emits light
+        const starMat = new THREE.MeshStandardMaterial({
           color: 0xFFFF00,
+          emissive: 0xFFFF00,
+          emissiveIntensity: 1.5,
           depthTest: true,
-          depthWrite: true
+          depthWrite: true,
+          roughness: 0.3,
+          metalness: 0.1
         });
 
         const starSphere = new THREE.Mesh(starGeo, starMat);
@@ -3248,10 +3549,20 @@ class GalacticMap3D {
         starSphere.frustumCulled = false;
         starSphere.visible = true;
 
+        // Add point light at star position for realistic illumination
+        // Increased intensity (2→5) and distance (100→500) for stronger lighting
+        const starLight = new THREE.PointLight(0xFFFF88, 5, 500, 2); // Warm yellow light
+        starLight.position.copy(mesh.position);
+        starLight.castShadow = false; // Disable shadows for performance
+        this.assetsGroup.add(starLight);
+
+        // Store light reference for cleanup
+        starSphere.userData.light = starLight;
+
         // Add to assetsGroup so it persists
         this.assetsGroup.add(starSphere);
 
-        // Create text label above star
+        // Create text label above star (scaled for 6-20 unit stars)
         const labelCanvas = document.createElement('canvas');
         const context = labelCanvas.getContext('2d');
         labelCanvas.width = 512;
@@ -3259,7 +3570,7 @@ class GalacticMap3D {
 
         context.fillStyle = 'rgba(0, 0, 0, 0.7)';
         context.fillRect(0, 0, labelCanvas.width, labelCanvas.height);
-        context.font = 'Bold 36px Arial';
+        context.font = 'Bold 32px Arial';
         context.fillStyle = '#FFFF00';
         context.textAlign = 'center';
         context.fillText(starTitle, 256, 80);
@@ -3267,20 +3578,133 @@ class GalacticMap3D {
         const labelTexture = new THREE.CanvasTexture(labelCanvas);
         const labelMaterial = new THREE.SpriteMaterial({ map: labelTexture });
         const label = new THREE.Sprite(labelMaterial);
-        label.scale.set(2000, 500, 1);
+        label.scale.set(200, 50, 1); // Scaled labels for 6-20 unit stars
         label.position.copy(starSphere.position);
-        label.position.y += 800; // Above star
+        label.position.y += 30; // Positioned above star
         label.frustumCulled = false;
         label.raycast = () => {}; // Disable raycasting on label so clicks pass through
 
         // Add label to assetsGroup
         this.assetsGroup.add(label);
 
+        // Add subtle glow halo around star for better visibility
+        const glowGeo = new THREE.SphereGeometry(starSize * 1.5, 12, 12);
+        const glowMat = new THREE.MeshBasicMaterial({
+          color: 0xFFFF88,
+          transparent: true,
+          opacity: 0.3,
+          depthTest: true,
+          depthWrite: false,
+          side: THREE.BackSide // Render from inside for glow effect
+        });
+        const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+        glowMesh.position.copy(starSphere.position);
+        this.assetsGroup.add(glowMesh);
+
+        // Store glow reference for potential animation
+        starSphere.userData.glow = glowMesh;
+
+        // Store star orbit data for animation around galaxy center
+        const starOrbitRadius = Math.sqrt(
+          Math.pow(starSphere.position.x - centerX, 2) +
+          Math.pow(starSphere.position.z - centerZ, 2)
+        );
+        const startAngle = Math.atan2(
+          starSphere.position.z - centerZ,
+          starSphere.position.x - centerX
+        );
+
+        starSphere.userData.orbitData = {
+          centerX: centerX,
+          centerY: centerY,
+          centerZ: centerZ,
+          radius: starOrbitRadius,
+          angle: startAngle,
+          speed: 0.00005 + (Math.random() * 0.00005), // Very slow orbit
+          yOffset: starSphere.position.y - centerY
+        };
+
+        // Also store orbit data for the light and glow
+        if (starLight) starLight.userData.orbitParent = starSphere;
+        if (glowMesh) glowMesh.userData.orbitParent = starSphere;
+        if (label) label.userData.orbitParent = starSphere;
+
         starsAdded++;
-        console.log(`⭐ Star ${starsAdded}: "${starTitle}" pos=(${mesh.position.x.toFixed(0)}, ${mesh.position.y.toFixed(0)}, ${mesh.position.z.toFixed(0)})`);
       });
 
-      console.log(`✅ Added ${starsAdded} stars to assetsGroup with labels`);
+      console.log(`⭐ Rendered ${starsAdded} stars with lighting & glows (orbiting galaxy center)`);
+
+      // Add planets orbiting their parent stars (galaxy-level view)
+      const planetsInGalaxy = this.allAssets.filter(asset =>
+        asset.assetType === 'planet' &&
+        asset.parentType === 'star' &&
+        asset.parentGalaxy?.toString() === galaxyIdStr
+      );
+
+      // Store planet orbital data for animation
+      this.planetOrbits = this.planetOrbits || [];
+      this.planetOrbits.length = 0; // Clear previous orbits
+
+      planetsInGalaxy.forEach(planet => {
+        // Find parent star position
+        const parentStarId = planet.parentId?.toString();
+        const parentStar = this.assetsGroup.children.find(child =>
+          child.userData.assetId?.toString() === parentStarId && child.userData.assetType === 'star'
+        );
+
+        if (parentStar) {
+          // Create planet sphere (6-80 unit radius for high visibility)
+          const planetSize = 6 + (Math.random() * 74); // Random between 6-80 units
+          const planetGeo = new THREE.SphereGeometry(planetSize, 16, 16); // Higher poly for larger planets
+          const planetColor = planet.renderData?.color || '#888888';
+
+          // Use MeshStandardMaterial so planets receive light from stars
+          // Brighter reflection: reduced roughness and increased metalness
+          const planetMat = new THREE.MeshStandardMaterial({
+            color: planetColor,
+            depthTest: true,
+            depthWrite: true,
+            roughness: 0.3, // Smoother surfaces reflect more light (was 0.8)
+            metalness: 0.5, // More metallic for better reflectivity (was 0.2)
+            emissive: 0x000000, // No self-emission (planets don't emit light)
+            emissiveIntensity: 0
+          });
+
+          const planetMesh = new THREE.Mesh(planetGeo, planetMat);
+
+          // Position planet at its orbital distance from parent star
+          // Very wide orbit radius for maximum separation and visibility
+          const orbitRadius = (planet.orbitRadius || 100) * 4.0; // Increased to 4.0 for extremely wide orbits
+          const angle = Math.random() * Math.PI * 2; // Random starting angle
+          planetMesh.position.set(
+            parentStar.position.x + Math.cos(angle) * orbitRadius,
+            parentStar.position.y,
+            parentStar.position.z + Math.sin(angle) * orbitRadius
+          );
+
+          planetMesh.userData.id = planet._id;
+          planetMesh.userData.type = 'planet';
+          planetMesh.userData.assetType = 'planet';
+          planetMesh.userData.assetId = planet._id;
+          planetMesh.userData.title = planet.title;
+          planetMesh.userData.data = planet;
+          planetMesh.frustumCulled = false;
+
+          this.assetsGroup.add(planetMesh);
+
+          // Store orbit data for animation
+          this.planetOrbits.push({
+            mesh: planetMesh,
+            parentStar: parentStar, // Store reference to parent star (not clone!)
+            radius: orbitRadius,
+            speed: 0.001 + (Math.random() * 0.002), // Much faster: 10x faster than before
+            angle: angle,
+            inclination: planet.inclination || 0
+          });
+        }
+      });
+
+      console.log(`🌍 Loaded ${this.planetOrbits.length} orbiting planets (size: 6-80 units, speed: 10x slower)`);
 
       // Calculate final camera position to view all stars
       const spread = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
@@ -3369,10 +3793,8 @@ class GalacticMap3D {
         if (progress < 1) {
           requestAnimationFrame(animateZoomAndExpansion);
         } else {
-          // Animation complete
-          console.log(`✅ Zoom-in and star expansion animation complete`);
-          console.log(`📷 Final camera: pos=(${this.camera.position.x.toFixed(0)}, ${this.camera.position.y.toFixed(0)}, ${this.camera.position.z.toFixed(0)})`);
-          console.log(`📷 Final zoom: ${this.camera.zoom.toFixed(2)}`);
+          // Animation complete - show summary
+          console.log(`✅ Galaxy view loaded successfully`);
 
           // Ensure final state is locked in before re-enabling controls
           this.camera.position.copy(finalCameraPosition);
@@ -3420,15 +3842,19 @@ class GalacticMap3D {
     }
 
     // Show planets and orbitals that orbit this star
+    const starIdStr = starId?.toString();
     const orbitalBodies = this.allAssets.filter(asset =>
       (asset.assetType === 'planet' ||
        asset.assetType === 'orbital' ||
        asset.assetType === 'station') &&
-      asset.parentStar === starId
+      (asset.parentStar?.toString() === starIdStr || asset.parentId?.toString() === starIdStr)
     );
 
     console.log(`   Found ${orbitalBodies.length} orbital bodies in system`);
-    orbitalBodies.forEach(body => this.addAsset(body));
+    orbitalBodies.forEach(body => {
+      console.log(`   🌍 Loading planet: ${body.title}`);
+      this.addAsset(body);
+    });
 
     // Focus camera on star
     if (star && star.coordinates) {

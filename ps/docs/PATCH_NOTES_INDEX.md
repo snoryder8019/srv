@@ -1,11 +1,12 @@
 # Patch Notes Index
 
-Last Updated: 2025-11-01T22:03:43.734Z
+Last Updated: 2025-11-02T18:08:36.122Z
 
 ---
 
 ## Available Versions
 
+- [Version 8.0.2](PATCH_NOTES_v8.0.2.md)
 - [Version 0.5.0](PATCH_NOTES_v0.5.0.md) - v0.5.0 "3D Universe Revolution"
 - [Version 0.4](PATCH_NOTES_v0.4.md) - v0.4.4 "Unified Interface Arc"
 - [Version 0.4.5](PATCH_NOTES_v0.4.5.md) - v0.4.5 "Documentation & Developer Tools"

@@ -1096,21 +1096,41 @@
       // Initialize socket connection for physics updates (socket will be connected later)
       // Socket initialization happens after the map loads in the socket setup section below
 
-      // Load and display all assets - use galactic-state endpoint (no auth required)
-      fetch('/api/v1/state/galactic-state')
+      // Load and display all assets - use map-state-3d endpoint (includes all assets including planets)
+      fetch('/api/v1/state/map-state-3d')
         .then(response => response.json())
         .then(data => {
           if (data.success) {
-            // Combine galaxies, anomalies, and stars into allAssets array
-            const allAssets = [...data.galaxies, ...data.anomalies, ...(data.stars || [])];
-            console.log(`📦 Loaded ${allAssets.length} galactic assets (${data.count.galaxies} galaxies, ${data.count.anomalies} anomalies, ${data.count.stars || 0} stars)`);
-            console.log(`🔗 Loaded ${data.connections?.length || 0} galaxy connections`);
-            window.galacticMap.allAssets = allAssets;
+            // Transform map-state-3d format to legacy format for compatibility
+            const allAssets = data.assets.map(asset => ({
+              _id: asset.id,
+              title: asset.title,
+              assetType: asset.type,
+              coordinates: {
+                x: asset.x,
+                y: asset.y,
+                z: asset.z
+              },
+              renderData: asset.renderData,
+              radius: asset.radius,
+              parentId: asset.parentId,
+              parentType: asset.parentType,
+              parentGalaxy: asset.parentGalaxy,
+              parentStar: asset.parentStar,
+              orbitRadius: asset.orbitRadius,
+              velocity: asset.velocity,
+              localCoordinates: asset.localCoordinates,
+              universalCoordinates: asset.universalCoordinates
+            }));
 
-            // Load connections if available
-            if (data.connections && data.connections.length > 0) {
-              window.galacticMap.updateConnectionsFromServer(data.connections);
-            }
+            // Count asset types for logging
+            const counts = allAssets.reduce((acc, a) => {
+              acc[a.assetType] = (acc[a.assetType] || 0) + 1;
+              return acc;
+            }, {});
+
+            console.log(`📦 Loaded ${allAssets.length} total assets:`, counts);
+            window.galacticMap.allAssets = allAssets;
 
             // Display assets at universe level (galaxies and anomalies)
             window.galacticMap.showUniverseLevel();
@@ -1276,11 +1296,19 @@
         return; // EXIT
       }
 
-      // If clicking a star, go directly to system explorer
+      // If clicking a star in galaxy view, show modal instead of navigating
+      // (The modal has a button to navigate to system-map-3d)
       if (assetData.type === 'star' && assetData.id) {
-        console.log(`🔭 NAVIGATE: Star selected - ${assetData.title}`);
-        window.location.href = `/universe/system-map-3d?star=${assetData.id}`;
-        return; // EXIT
+        if (window.galacticMap?.currentLevel === 'galaxy') {
+          console.log(`⭐ MODAL: Star selected in galaxy view - ${assetData.title} (showing modal)`);
+          // Modal is shown by galactic-map-3d.js, don't navigate here
+          return; // EXIT
+        } else {
+          // For other levels (universe/galactic), navigate directly
+          console.log(`🔭 NAVIGATE: Star selected - ${assetData.title}`);
+          window.location.href = `/universe/system-map-3d?star=${assetData.id}`;
+          return; // EXIT
+        }
       }
 
       // For other assets (anomalies, zones, etc.), just log - no info pane

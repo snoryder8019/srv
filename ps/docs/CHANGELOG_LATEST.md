@@ -1,8 +1,8 @@
-## Latest Changes (11/1/2025)
+## Latest Changes (11/2/2025)
 
-- **first view 3d galactic map..commit before rules** (813b900) - Scott
-- **Update version to 0.5.0 and patch notes for quickshooter release** (a262632) - Scott
-- **quickshooter** (98b1047) - Scott
-- **patch 5.0.1** (6383b8f) - Scott
-- **patchit** (baf236f) - Scott
+- **v8.0.2 - Cinematic Animations & Interaction Fix** (a4eaac9) - Scott
+- **Docs: Condense security section in CLAUDE.md to essentials only** (db01b57) - Scott
+- **Docs: Add security section to CLAUDE.md for .env and Git best practices** (091d42e) - Scott
+- **Security: Remove exposed credentials from documentation** (396b2d9) - Scott
+- **v8.0.1 - 3D Galactic Map Rebuild & Connection System** (89c84c1) - Scott
 
