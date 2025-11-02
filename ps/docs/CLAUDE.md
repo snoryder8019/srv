@@ -498,178 +498,20 @@ ls -la /srv/ps/.env
 
 ---
 
-## 🔒 SECURITY: Environment Variables & Git Best Practices
+## 🔒 SECURITY RULES
 
-### ⚠️ CRITICAL: Never Commit Secrets to Git
+**CRITICAL:** All secrets go in `.env` files (gitignored). NEVER in docs/code/commits.
 
-**ALL sensitive credentials MUST be stored in `.env` files, which are gitignored.**
+**GitHub SSH Setup (Nov 2, 2025):**
+- Key: `~/.ssh/id_ed25519_github`
+- Config: `~/.ssh/config` (GitHub-specific, isolated)
+- Remote uses SSH: `git@github.com:snoryder8019/srv.git`
 
-### Environment Variable Security
-```bash
-# ✅ CORRECT: Secrets in .env (gitignored)
-/srv/ps/.env              # Production secrets
-/srv/game-state/.env      # Game state service secrets
-/srv/madladslab/.env      # Lab service secrets
-
-# ❌ WRONG: Secrets in ANY of these
-- README files
-- Documentation files
-- Configuration examples
-- Code comments
-- Commit messages
-```
-
-### What Must Go in .env Files
-```bash
-# API Keys & Secrets
-GGLAPI=your_google_api_key
-GGLSEC=your_google_oauth_secret
-GGLCID=your_google_client_id
-NEWS_API_KEY=your_news_api_key
-
-# Database Credentials
-DB_URL=mongodb+srv://username:password@cluster.mongodb.net
-DB_NAME=database_name
-MON_USER=username
-MON_PASS=password
-
-# Authentication Secrets
-SESHSEC=your_session_secret
-JWT_SECRET=your_jwt_secret
-
-# Email Credentials
-GMAIL_USER=your_email@gmail.com
-GMAIL_PASS=your_app_password
-```
-
-### Documentation Example Format (Safe)
-When writing examples in documentation, ALWAYS use placeholders:
-
-```bash
-# ✅ SAFE - Use placeholders
-GGLAPI=your_google_api_key_here
-DB_URL=your_mongodb_connection_string_here
-
-# ❌ DANGEROUS - Never include real values
-GGLAPI=AIzaSyD...  # NEVER DO THIS
-```
-
-### GitHub Push Protection
-
-**GitHub will block pushes containing secrets.** If you encounter:
-```
-remote: error: GH013: Repository rule violations found
-remote: - Push cannot contain secrets
-```
-
-**Resolution Steps:**
-1. Remove secrets from affected files
-2. Replace with placeholders (e.g., `your_api_key_here`)
-3. Rewrite git history using `git filter-branch`
-4. Force push cleaned history
-5. **ROTATE ALL EXPOSED CREDENTIALS** (critical!)
-
-### Git History Cleanup (If Secrets Were Committed)
-
-```bash
-# 1. Create cleanup script
-cat > /tmp/fix_secrets.sh << 'SCRIPT'
-#!/bin/bash
-FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --tree-filter '
-for file in path/to/file1.md path/to/file2.md; do
-  if [ -f "$file" ]; then
-    sed -i "s/SECRET_VALUE/placeholder_here/g" "$file"
-  fi
-done
-' --prune-empty -- --all
-SCRIPT
-
-# 2. Run cleanup
-chmod +x /tmp/fix_secrets.sh
-/tmp/fix_secrets.sh
-
-# 3. Clean up refs
-rm -rf .git/refs/original/
-git reflog expire --expire=now --all
-git gc --prune=now
-
-# 4. Force push (WARNING: Rewrites history!)
-git push --force origin main
-```
-
-### Post-Exposure Protocol
-
-**If secrets were exposed in git history (even after cleanup):**
-
-1. **Immediately rotate credentials:**
-   - Generate new Google OAuth credentials
-   - Create new MongoDB user/password
-   - Generate new session secrets
-   - Create new API keys
-   - Update all .env files
-
-2. **Verify .gitignore includes:**
-   ```
-   .env
-   .env.*
-   *.pem
-   *.key
-   credentials.json
-   secrets/
-   ```
-
-3. **Test before committing:**
-   ```bash
-   # Check what will be committed
-   git status
-   git diff --staged
-
-   # Verify no secrets in staged files
-   git diff --staged | grep -i "password\|secret\|api.*key"
-   ```
-
-### SSH Key Management (GitHub)
-
-**Generate GitHub-specific SSH key:**
-```bash
-# Generate key (done on Nov 2, 2025)
-ssh-keygen -t ed25519 -C "github-key-$(whoami)@$(hostname)" -f ~/.ssh/id_ed25519_github
-
-# Configure SSH to use GitHub-specific key
-cat > ~/.ssh/config << 'EOF'
-Host github.com
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/id_ed25519_github
-    IdentitiesOnly yes
-EOF
-
-# Set permissions
-chmod 600 ~/.ssh/config
-
-# Add GitHub's host key
-ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
-
-# Test connection
-ssh -T git@github.com
-
-# Update remote to use SSH
-git remote set-url origin git@github.com:username/repo.git
-```
-
-**Key Benefits:**
-- Isolated from other SSH access
-- No password prompts on push/pull
-- More secure than HTTPS with stored credentials
-
-### Pre-Commit Checklist
-
-Before every commit:
-- [ ] Verify `.env` is gitignored
-- [ ] Check no secrets in staged files
-- [ ] Confirm documentation uses placeholders only
-- [ ] Review `git diff --staged` for sensitive data
-- [ ] Test SSH connection if pushing
+**If GitHub blocks push (secret detected):**
+1. Replace with placeholders in docs (`your_api_key_here`)
+2. Run git filter-branch to clean history
+3. Force push
+4. Rotate all exposed credentials
 
 ---
 
