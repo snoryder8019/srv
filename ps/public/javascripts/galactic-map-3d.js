@@ -679,10 +679,16 @@ class GalacticMap3D {
         opacity: isCurrentGalaxy ? 0.05 : (this.currentLevel === 'galaxy' ? 0.2 : 1.0)
       });
 
-      mesh = new THREE.Mesh(geometry, material);
-      mesh.position.copy(position);
+      // Create a group to hold both the mesh and label together
+      const galaxyGroup = new THREE.Group();
+      galaxyGroup.position.copy(position);
 
-      // Add purple text label above galaxy
+      // Add mesh to group (at local origin)
+      mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(0, 0, 0); // Relative to group
+      galaxyGroup.add(mesh);
+
+      // Add purple text label above galaxy (as child of group)
       const labelCanvas = document.createElement('canvas');
       const context = labelCanvas.getContext('2d');
       labelCanvas.width = 512;
@@ -698,12 +704,15 @@ class GalacticMap3D {
       const labelMaterial = new THREE.SpriteMaterial({ map: labelTexture });
       const label = new THREE.Sprite(labelMaterial);
       label.scale.set(800, 200, 1); // Large readable labels
-      label.position.copy(position);
-      label.position.y += size * 2.0; // Higher above orb
+      label.position.set(0, size * 2.0, 0); // Above mesh, relative to group
       label.frustumCulled = false; // Always render
-      this.assetsGroup.add(label);
+      label.raycast = () => {}; // Disable raycasting on label so clicks pass through
+      galaxyGroup.add(label);
 
-      console.log(`🏷️ Added purple label "${title}" above galaxy at y=${position.y + size * 2.0}`);
+      console.log(`🏷️ Added purple label "${title}" above galaxy at y=${size * 2.0} (relative to galaxy)`);
+
+      // Use the group as the mesh (will be added to scene later)
+      mesh = galaxyGroup;
 
       // No glow
       glow = null;
@@ -758,6 +767,7 @@ class GalacticMap3D {
       label.position.copy(position);
       label.position.y += size * 2.0; // Higher above orb
       label.frustumCulled = false; // Always render
+      label.raycast = () => {}; // Disable raycasting on label so clicks pass through
       this.assetsGroup.add(label);
 
       console.log(`🏷️ Added white label "${title}" above anomaly at y=${position.y + size * 2.0}`);
@@ -802,6 +812,7 @@ class GalacticMap3D {
       label.scale.set(adjustedSize * 4, adjustedSize, 1);
       label.position.copy(position);
       label.position.y += adjustedSize * 1.5;
+      label.raycast = () => {}; // Disable raycasting on label so clicks pass through
       this.assetsGroup.add(label);
 
       // No glow
@@ -849,6 +860,7 @@ class GalacticMap3D {
         label.position.copy(position);
         label.position.y += adjustedSize * 2.0; // Higher above orb
         label.frustumCulled = false; // Always render
+        label.raycast = () => {}; // Disable raycasting on label so clicks pass through
         this.assetsGroup.add(label);
 
         console.log(`🏷️ Added label "${title}" above ${assetType} at y=${position.y + adjustedSize * 2.0}`);
@@ -1718,6 +1730,91 @@ class GalacticMap3D {
     };
 
     animateCamera();
+  }
+
+  /**
+   * Animate zoom-out from galaxy interior back to galactic view
+   * Zooms out along the approach vector - starts tight on galaxy, pulls back hard
+   * @param {THREE.Vector3} galaxyPositionInGalacticSpace - Where the galaxy is in the universe
+   * @param {THREE.Vector3} targetPosition - Final camera position (saved from before zoom-in)
+   * @param {Number} targetZoom - Final zoom level
+   * @param {THREE.Vector3} targetControlsTarget - Final controls target
+   */
+  animateZoomOutFromGalaxy(galaxyPositionInGalacticSpace, targetPosition, targetZoom, targetControlsTarget) {
+    if (!this.controls) return;
+
+    console.log(`🎬 Starting zoom-out animation from galaxy interior`);
+    console.log(`   Galaxy position in galactic space: (${galaxyPositionInGalacticSpace.x.toFixed(1)}, ${galaxyPositionInGalacticSpace.y.toFixed(1)}, ${galaxyPositionInGalacticSpace.z.toFixed(1)})`);
+    console.log(`   Target camera position: (${targetPosition.x.toFixed(1)}, ${targetPosition.y.toFixed(1)}, ${targetPosition.z.toFixed(1)})`);
+
+    // Calculate the zoom vector - direction from galaxy to where camera should end up
+    const zoomVector = new THREE.Vector3()
+      .subVectors(targetPosition, galaxyPositionInGalacticSpace)
+      .normalize();
+
+    // Start camera TIGHT on the galaxy (very close in galactic space)
+    const startDistance = 200; // Very close to galaxy
+    const startPosition = galaxyPositionInGalacticSpace.clone().add(
+      zoomVector.clone().multiplyScalar(startDistance)
+    );
+
+    // Set initial camera state (tight on galaxy)
+    this.camera.position.copy(startPosition);
+    this.camera.zoom = 2.0; // Zoomed in tight
+    this.camera.updateProjectionMatrix();
+
+    // Point camera at galaxy
+    this.controls.target.copy(galaxyPositionInGalacticSpace);
+    this.controls.update();
+
+    console.log(`   Starting camera (tight): (${startPosition.x.toFixed(1)}, ${startPosition.y.toFixed(1)}, ${startPosition.z.toFixed(1)})`);
+    console.log(`   Zoom vector: (${zoomVector.x.toFixed(3)}, ${zoomVector.y.toFixed(3)}, ${zoomVector.z.toFixed(3)})`);
+
+    const animationDuration = 750; // 750ms for snappy feel
+    const animationStart = Date.now();
+
+    // Disable controls during animation
+    const wasEnabled = this.controls.enabled;
+    this.controls.enabled = false;
+
+    const animateZoomOut = () => {
+      const elapsed = Date.now() - animationStart;
+      const progress = Math.min(elapsed / animationDuration, 1);
+
+      // Ease-in with snappy finish - starts slow, accelerates, then quick stop
+      // Using quartic ease-in for smooth acceleration
+      const eased = progress * progress * progress * progress;
+
+      // Animate from tight on galaxy to final saved position (pull back hard along zoom vector)
+      this.camera.position.lerpVectors(startPosition, targetPosition, eased);
+
+      // Animate zoom from tight (2.0) to saved zoom
+      this.camera.zoom = 2.0 + (targetZoom - 2.0) * eased;
+      this.camera.updateProjectionMatrix();
+
+      // Animate controls target from galaxy to saved target
+      this.controls.target.lerpVectors(galaxyPositionInGalacticSpace, targetControlsTarget, eased);
+      this.controls.update();
+
+      // Render frame
+      this.renderer.render(this.scene, this.camera);
+
+      if (progress < 1) {
+        requestAnimationFrame(animateZoomOut);
+      } else {
+        // Animation complete
+        console.log(`✅ Zoom-out animation complete`);
+        console.log(`   Final camera: pos=(${this.camera.position.x.toFixed(0)}, ${this.camera.position.y.toFixed(0)}, ${this.camera.position.z.toFixed(0)})`);
+        console.log(`   Final zoom: ${this.camera.zoom.toFixed(2)}`);
+
+        // Re-enable controls
+        this.controls.enabled = wasEnabled;
+        this.controls.update();
+      }
+    };
+
+    // Start animation
+    animateZoomOut();
   }
 
   /**
@@ -2721,6 +2818,10 @@ class GalacticMap3D {
   showGalacticLevel() {
     console.log('🌌 Showing GALACTIC level - galaxies, zones, anomalies only');
 
+    // Store the previous galaxy center before switching levels (for zoom-out animation)
+    const previousGalaxyCenter = this.controls ? this.controls.target.clone() : new THREE.Vector3(0, 0, 0);
+    const wasInGalaxyView = this.currentLevel === 'galaxy';
+
     this.currentLevel = 'galactic';
     this.selectedGalaxyId = null;
     this.selectedStarId = null;
@@ -2744,13 +2845,25 @@ class GalacticMap3D {
       console.log(`   Restoring zoom: ${this.savedGalacticCameraZoom.toFixed(2)}`);
       console.log(`   Restoring target: (${this.savedGalacticControlsTarget.x.toFixed(1)}, ${this.savedGalacticControlsTarget.y.toFixed(1)}, ${this.savedGalacticControlsTarget.z.toFixed(1)})`);
 
-      // Animate camera back to saved position
-      this.animateCameraToState(
-        this.savedGalacticCameraPosition,
-        this.savedGalacticCameraZoom,
-        this.savedGalacticControlsTarget,
-        1500 // 1.5 second animation
-      );
+      // If returning from galaxy view, do a cinematic zoom-out animation
+      if (wasInGalaxyView) {
+        // Use saved galaxy position in galactic space (where it actually is in the universe)
+        const galaxyPosInGalacticSpace = this.savedGalaxyPositionInGalacticSpace || previousGalaxyCenter;
+        this.animateZoomOutFromGalaxy(
+          galaxyPosInGalacticSpace,
+          this.savedGalacticCameraPosition,
+          this.savedGalacticCameraZoom,
+          this.savedGalacticControlsTarget
+        );
+      } else {
+        // Normal transition - just animate camera to saved position
+        this.animateCameraToState(
+          this.savedGalacticCameraPosition,
+          this.savedGalacticCameraZoom,
+          this.savedGalacticControlsTarget,
+          1500 // 1.5 second animation
+        );
+      }
     } else {
       console.log('📍 No saved camera state, using default universe center view');
       // Default camera position (first time viewing galactic level)
@@ -2813,10 +2926,26 @@ class GalacticMap3D {
 
   /**
    * Show stars within a selected galaxy
+   * First zooms into the galaxy in galactic view, then switches to interior
    */
   showGalaxyLevel(galaxyId) {
     console.log(`⭐ Showing GALAXY level - stars in galaxy ${galaxyId}`);
     console.log(`   GalaxyId type: ${typeof galaxyId}, value:`, galaxyId);
+
+    // Normalize galaxyId to string for comparison
+    const galaxyIdStr = galaxyId?.toString() || galaxyId;
+    console.log(`   Normalized galaxyId: "${galaxyIdStr}" (type: ${typeof galaxyIdStr})`);
+
+    // Get the galaxy object FIRST so we can save its position
+    const galaxy = this.allAssets.find(a => {
+      const assetId = a._id?.toString() || a._id;
+      return assetId === galaxyIdStr;
+    });
+
+    if (!galaxy) {
+      console.warn(`   ⚠️ Galaxy not found in allAssets!`);
+      return;
+    }
 
     // Save current galactic/universe-level camera state before transitioning
     if (this.currentLevel === 'galactic' || this.currentLevel === 'universe') {
@@ -2826,10 +2955,104 @@ class GalacticMap3D {
       if (this.controls) {
         this.savedGalacticControlsTarget = this.controls.target.clone();
       }
+
+      // Save the galaxy's position in galactic space for zoom vector calculation
+      if (galaxy.coordinates) {
+        this.savedGalaxyPositionInGalacticSpace = new THREE.Vector3(
+          galaxy.coordinates.x,
+          galaxy.coordinates.y,
+          galaxy.coordinates.z || 0
+        );
+        console.log(`   Saved galaxy position: (${this.savedGalaxyPositionInGalacticSpace.x.toFixed(1)}, ${this.savedGalaxyPositionInGalacticSpace.y.toFixed(1)}, ${this.savedGalaxyPositionInGalacticSpace.z.toFixed(1)})`);
+      }
+
       console.log(`   Saved position: (${this.savedGalacticCameraPosition.x.toFixed(1)}, ${this.savedGalacticCameraPosition.y.toFixed(1)}, ${this.savedGalacticCameraPosition.z.toFixed(1)})`);
       console.log(`   Saved zoom: ${this.savedGalacticCameraZoom.toFixed(2)}`);
       console.log(`   Saved target: (${this.savedGalacticControlsTarget?.x.toFixed(1)}, ${this.savedGalacticControlsTarget?.y.toFixed(1)}, ${this.savedGalacticControlsTarget?.z.toFixed(1)})`);
+
+      // FIRST: Zoom hard into the galaxy center in galactic view
+      this.zoomIntoGalaxyInGalacticView(galaxy, galaxyId);
+    } else {
+      // Already in a different level, just load galaxy interior directly
+      this.loadGalaxyInterior(galaxyId);
     }
+  }
+
+  /**
+   * Zoom into galaxy center in galactic view before switching to interior
+   */
+  zoomIntoGalaxyInGalacticView(galaxy, galaxyId) {
+    console.log(`🎬 Zooming into galaxy in galactic view...`);
+
+    const galaxyPosition = new THREE.Vector3(
+      galaxy.coordinates.x,
+      galaxy.coordinates.y,
+      galaxy.coordinates.z || 0
+    );
+
+    // Calculate zoom vector from current camera to galaxy
+    const startPosition = this.camera.position.clone();
+    const startZoom = this.camera.zoom;
+    const startTarget = this.controls.target.clone();
+
+    // Target: very close to galaxy center, high zoom
+    const zoomVector = new THREE.Vector3()
+      .subVectors(galaxyPosition, startPosition)
+      .normalize();
+
+    const targetDistance = 100; // Very close to galaxy
+    const targetPosition = galaxyPosition.clone().add(
+      zoomVector.clone().multiplyScalar(-targetDistance)
+    );
+    const targetZoom = 3.0; // Zoomed in tight
+
+    const animationDuration = 750; // 750ms
+    const animationStart = Date.now();
+
+    // Disable controls during animation
+    const wasEnabled = this.controls.enabled;
+    this.controls.enabled = false;
+
+    const animateZoomIn = () => {
+      const elapsed = Date.now() - animationStart;
+      const progress = Math.min(elapsed / animationDuration, 1);
+
+      // Ease-in with snappy finish
+      const eased = progress * progress * progress * progress;
+
+      // Animate camera toward galaxy
+      this.camera.position.lerpVectors(startPosition, targetPosition, eased);
+
+      // Animate zoom
+      this.camera.zoom = startZoom + (targetZoom - startZoom) * eased;
+      this.camera.updateProjectionMatrix();
+
+      // Animate target to galaxy center
+      this.controls.target.lerpVectors(startTarget, galaxyPosition, eased);
+      this.controls.update();
+
+      // Render frame
+      this.renderer.render(this.scene, this.camera);
+
+      if (progress < 1) {
+        requestAnimationFrame(animateZoomIn);
+      } else {
+        // Zoom complete - now load galaxy interior
+        console.log(`✅ Zoom into galaxy complete - loading interior...`);
+        this.controls.enabled = wasEnabled;
+        this.loadGalaxyInterior(galaxyId);
+      }
+    };
+
+    animateZoomIn();
+  }
+
+  /**
+   * Load the galaxy interior view (stars, anomalies, etc.)
+   * Called after zoom-in animation completes
+   */
+  loadGalaxyInterior(galaxyId) {
+    const galaxyIdStr = galaxyId?.toString() || galaxyId;
 
     this.currentLevel = 'galaxy';
     this.selectedGalaxyId = galaxyId;
@@ -2838,11 +3061,7 @@ class GalacticMap3D {
     // Clear current scene
     this.clearAssets();
 
-    // Normalize galaxyId to string for comparison
-    const galaxyIdStr = galaxyId?.toString() || galaxyId;
-    console.log(`   Normalized galaxyId: "${galaxyIdStr}" (type: ${typeof galaxyIdStr})`);
-
-    // Show the parent galaxy
+    // Get galaxy again
     const galaxy = this.allAssets.find(a => {
       const assetId = a._id?.toString() || a._id;
       return assetId === galaxyIdStr;
@@ -2963,9 +3182,12 @@ class GalacticMap3D {
         });
         const galaxyMesh = new THREE.Mesh(galaxyGeo, galaxyMat);
         galaxyMesh.position.set(centerX, centerY, centerZ);
+        galaxyMesh.userData.id = galaxyId; // Required for raycasting
+        galaxyMesh.userData.type = 'galaxy'; // Match standard format
         galaxyMesh.userData.assetType = 'galaxy';
         galaxyMesh.userData.assetId = galaxyId;
         galaxyMesh.userData.title = galaxy.title;
+        galaxyMesh.userData.data = galaxy; // Store full galaxy data
         this.assetsGroup.add(galaxyMesh);
         console.log(`🌌 Added parent galaxy "${galaxy.title}" as semi-transparent orb at center`);
       }
@@ -2988,9 +3210,12 @@ class GalacticMap3D {
         // Use local coordinates if available, otherwise offset from galaxy center
         const anomalyPos = anomaly.localCoordinates || anomaly.coordinates || { x: 0, y: 0, z: 0 };
         anomalyMesh.position.set(anomalyPos.x, anomalyPos.y, anomalyPos.z);
+        anomalyMesh.userData.id = anomaly._id; // Required for raycasting
+        anomalyMesh.userData.type = 'anomaly'; // Match standard format
         anomalyMesh.userData.assetType = 'anomaly';
         anomalyMesh.userData.assetId = anomaly._id;
         anomalyMesh.userData.title = anomaly.title;
+        anomalyMesh.userData.data = anomaly; // Store full anomaly data
         anomalyMesh.frustumCulled = false;
 
         this.assetsGroup.add(anomalyMesh);
@@ -3014,9 +3239,12 @@ class GalacticMap3D {
 
         const starSphere = new THREE.Mesh(starGeo, starMat);
         starSphere.position.copy(mesh.position);
+        starSphere.userData.id = starId; // Required for raycasting
+        starSphere.userData.type = 'star'; // Match standard format
         starSphere.userData.assetType = 'star';
         starSphere.userData.assetId = starId;
         starSphere.userData.title = starTitle;
+        starSphere.userData.data = starData; // Store full star data
         starSphere.frustumCulled = false;
         starSphere.visible = true;
 
@@ -3043,6 +3271,7 @@ class GalacticMap3D {
         label.position.copy(starSphere.position);
         label.position.y += 800; // Above star
         label.frustumCulled = false;
+        label.raycast = () => {}; // Disable raycasting on label so clicks pass through
 
         // Add label to assetsGroup
         this.assetsGroup.add(label);
@@ -3053,29 +3282,119 @@ class GalacticMap3D {
 
       console.log(`✅ Added ${starsAdded} stars to assetsGroup with labels`);
 
-      // Position camera to view all stars
+      // Calculate final camera position to view all stars
       const spread = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
-      const cameraDistance = spread * 1.5;
+      const finalCameraDistance = spread * 1.5;
 
-      this.camera.position.set(centerX, centerY, centerZ + cameraDistance);
+      // Store final star positions and set them all to center initially
+      const starAnimationData = [];
+      this.assetsGroup.children.forEach(child => {
+        if (child.userData.assetType === 'star') {
+          const finalPosition = child.position.clone();
+          starAnimationData.push({
+            mesh: child,
+            finalPosition: finalPosition,
+            startPosition: new THREE.Vector3(centerX, centerY, centerZ)
+          });
+          // Start at center
+          child.position.copy(new THREE.Vector3(centerX, centerY, centerZ));
+        }
+        // Also animate labels
+        if (child.isSprite) {
+          const finalPosition = child.position.clone();
+          starAnimationData.push({
+            mesh: child,
+            finalPosition: finalPosition,
+            startPosition: new THREE.Vector3(centerX, centerY, centerZ + 800) // Offset for labels
+          });
+          // Start at center
+          child.position.copy(new THREE.Vector3(centerX, centerY, centerZ + 800));
+        }
+      });
+
+      // Set initial camera position (far from galaxy center)
+      const startCameraDistance = finalCameraDistance * 3; // Start 3x farther
+      const fixedCameraPosition = new THREE.Vector3(centerX, centerY, centerZ + startCameraDistance);
+      const finalCameraPosition = new THREE.Vector3(centerX, centerY, centerZ + finalCameraDistance);
+
+      this.camera.position.copy(fixedCameraPosition);
       this.camera.lookAt(centerX, centerY, centerZ);
-      this.camera.zoom = 1.0;
+      this.camera.zoom = 0.3; // Start zoomed out
       this.camera.updateProjectionMatrix();
 
-      // Update controls target
+      // Lock controls target to center and disable controls completely
       if (this.controls) {
         this.controls.target.set(centerX, centerY, centerZ);
-        this.controls.enabled = true;
+        this.controls.enabled = false; // Disable during animation
         this.controls.update();
       }
 
-      console.log(`📷 Camera: pos=(${this.camera.position.x.toFixed(0)}, ${this.camera.position.y.toFixed(0)}, ${this.camera.position.z.toFixed(0)})`);
-      console.log(`📷 Looking at: (${centerX.toFixed(0)}, ${centerY.toFixed(0)}, ${centerZ.toFixed(0)})`);
-      console.log(`📐 Star spread: ${spread.toFixed(0)} units, camera distance: ${cameraDistance.toFixed(0)}`);
+      console.log(`🎬 Starting zoom-in animation with star expansion`);
+      console.log(`📷 Camera will move from ${startCameraDistance.toFixed(0)} to ${finalCameraDistance.toFixed(0)} units`);
+      console.log(`⭐ ${starAnimationData.length} objects will expand from center to final positions`);
 
-      // Force render
-      this.renderer.render(this.scene, this.camera);
-      console.log(`🎬 Initial render complete`)
+      // Animate zoom-in and star expansion
+      const animationDuration = 750; // 750ms for snappy feel
+      const animationStart = Date.now();
+
+      const animateZoomAndExpansion = () => {
+        const elapsed = Date.now() - animationStart;
+        const progress = Math.min(elapsed / animationDuration, 1);
+
+        // Ease-in with snappy finish - starts slow, accelerates, then quick stop
+        // Using quartic ease-in for smooth acceleration
+        const eased = progress * progress * progress * progress;
+
+        // Animate camera zoom (move closer) along fixed Z-axis only
+        this.camera.position.lerpVectors(fixedCameraPosition, finalCameraPosition, eased);
+
+        // Keep camera locked on center (no orbit)
+        this.camera.lookAt(centerX, centerY, centerZ);
+
+        // Animate camera zoom level
+        this.camera.zoom = 0.3 + (1.0 - 0.3) * eased;
+        this.camera.updateProjectionMatrix();
+
+        // Animate stars expanding from center to final positions
+        starAnimationData.forEach(({ mesh, startPosition, finalPosition }) => {
+          mesh.position.lerpVectors(startPosition, finalPosition, eased);
+        });
+
+        // Don't update controls during animation to prevent any orbit drift
+        // this.controls.update(); // REMOVED - prevents orbit
+
+        // Render frame
+        this.renderer.render(this.scene, this.camera);
+
+        if (progress < 1) {
+          requestAnimationFrame(animateZoomAndExpansion);
+        } else {
+          // Animation complete
+          console.log(`✅ Zoom-in and star expansion animation complete`);
+          console.log(`📷 Final camera: pos=(${this.camera.position.x.toFixed(0)}, ${this.camera.position.y.toFixed(0)}, ${this.camera.position.z.toFixed(0)})`);
+          console.log(`📷 Final zoom: ${this.camera.zoom.toFixed(2)}`);
+
+          // Ensure final state is locked in before re-enabling controls
+          this.camera.position.copy(finalCameraPosition);
+          this.camera.lookAt(centerX, centerY, centerZ);
+          this.camera.zoom = 1.0;
+          this.camera.updateProjectionMatrix();
+
+          // Re-enable controls and sync them to final camera state
+          if (this.controls) {
+            // Ensure target is locked to center
+            this.controls.target.set(centerX, centerY, centerZ);
+            this.controls.enabled = true;
+            this.controls.update();
+          }
+
+          // Final render to ensure everything is in place
+          this.renderer.render(this.scene, this.camera);
+        }
+      };
+
+      // Start animation
+      animateZoomAndExpansion()
     });
 
     // Show back button UI
