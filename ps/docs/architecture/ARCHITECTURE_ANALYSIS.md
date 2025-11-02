@@ -437,7 +437,7 @@ SESHSEC=your_session_secret_here
 
 # Database
 DB_URL=your_mongodb_connection_string_here
-DB_NAME=projectStringborne
+DB_NAME=your_database_name_here
 
 # Server
 PORT=3399

@@ -180,16 +180,16 @@ SESHSEC=your_session_secret_here
 
 # MongoDB
 DB_URL=your_mongodb_connection_string_here
-DB_NAME=test
-MON_USER=snoryder8019
-MON_PASS=51DUBsqu%40red51
+DB_NAME=your_database_name_here
+MON_USER=your_mongodb_username_here
+MON_PASS=your_mongodb_password_here
 
 # Email (Gmail)
-GMAIL_USER=w2marketing.scott@gmail.com
-GMAIL_PASS=jbkb kvqr yger pkzf
+GMAIL_USER=your_gmail_address_here
+GMAIL_PASS=your_gmail_app_password_here
 
 # NewsAPI.org (fallback)
-NEWS_API_KEY=e703b2a304d248faabfd17156e80fb53
+NEWS_API_KEY=your_news_api_key_here
 
 # Server
 PORT=3010

@@ -96,12 +96,12 @@ Node.js Express (:3600)
 ```env
 PORT=3600
 NODE_ENV=production
-JWT_SECRET=your_secure_jwt_secret_change_this_in_production_2025
+JWT_SECRET=your_secure_jwt_secret_here
 GGLCID=your_google_client_id_here.apps.googleusercontent.com
 GGLSEC=your_google_oauth_secret_here
 GGLAPI=your_google_api_key_here
 DB_URL=your_mongodb_connection_string_here
-DB_NAME=madLadsLab
+DB_NAME=your_database_name_here
 ```
 
 ### Service Management
