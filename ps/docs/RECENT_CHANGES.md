@@ -1,6 +1,34 @@
 # Recent Changes Summary
 
-Generated: 2025-11-03T16:06:51.087Z
+Generated: 2025-11-03T19:42:41.285Z
+
+---
+
+## Commit: commit
+
+- **Hash:** `57d9668`
+- **Author:** Scott
+- **Date:** 11/3/2025
+- **Changes:** 5 files, +5228/-27 lines
+
+### Modified Areas:
+
+**Views:** 3 files
+**Documentation:** 2 files
+
+---
+
+## Commit: v8.0.5 - Loading Spinner & Location Info System
+
+- **Hash:** `1acd985`
+- **Author:** Scott
+- **Date:** 11/3/2025
+- **Changes:** 6 files, +859/-1010 lines
+
+### Modified Areas:
+
+**Views:** 2 files
+**Documentation:** 3 files
 
 ---
 
@@ -45,33 +73,6 @@ Generated: 2025-11-03T16:06:51.087Z
 **Frontend:** 1 files
 **Views:** 1 files
 **Documentation:** 4 files
-
----
-
-## Commit: v8.0.2 - Cinematic Animations & Interaction Fix
-
-- **Hash:** `a4eaac9`
-- **Author:** Scott
-- **Date:** 11/2/2025
-- **Changes:** 3 files, +534/-33 lines
-
-### Modified Areas:
-
-**Frontend:** 1 files
-**Documentation:** 2 files
-
----
-
-## Commit: Docs: Condense security section in CLAUDE.md to essentials only
-
-- **Hash:** `db01b57`
-- **Author:** Scott
-- **Date:** 11/2/2025
-- **Changes:** 1 files, +11/-169 lines
-
-### Modified Areas:
-
-**Documentation:** 1 files
 
 ---
 

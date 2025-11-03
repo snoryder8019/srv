@@ -1047,87 +1047,272 @@
     console.log('✅ All UI functions defined globally');
     console.log('✅ Navigation functions (openPWAModal, confirmNavigateAway, etc.) defined');
     console.log('✅ Loading spinner and location info functions defined');
+
+    // ========================================
+    // TOME OVERLAY SYSTEM
+    // ========================================
+    let tomeData = null;
+    let currentTomeTab = 'species';
+
+    /**
+     * Open Tome Overlay
+     */
+    window.openTomeOverlay = function() {
+      const overlay = document.getElementById('tomeOverlay');
+      if (overlay) {
+        overlay.classList.add('active');
+
+        // Load tome data if not already loaded
+        if (!tomeData) {
+          loadTomeData();
+        } else {
+          renderTomeContent(currentTomeTab);
+        }
+      }
+    };
+
+    /**
+     * Close Tome Overlay
+     */
+    window.closeTomeOverlay = function() {
+      const overlay = document.getElementById('tomeOverlay');
+      if (overlay) {
+        overlay.classList.remove('active');
+      }
+    };
+
+    /**
+     * Load Tome Data from API
+     */
+    async function loadTomeData() {
+      const contentBody = document.getElementById('tomeContentBody');
+
+      try {
+        contentBody.innerHTML = `
+          <div class="terminal-loading">
+            <span class="loading-text">> Accessing universe database...</span>
+            <span class="loading-cursor">_</span>
+          </div>
+        `;
+
+        const response = await fetch('/api/v1/universe/tome-data');
+        const data = await response.json();
+
+        if (data.success) {
+          tomeData = data;
+
+          // Update counts
+          document.getElementById('speciesCount').textContent = data.species?.length || 0;
+          document.getElementById('galaxiesCount').textContent = data.assets?.galaxies?.length || 0;
+          document.getElementById('starsCount').textContent = data.assets?.stars?.length || 0;
+          document.getElementById('planetsCount').textContent = data.assets?.planets?.length || 0;
+          document.getElementById('anomaliesCount').textContent = data.assets?.anomalies?.length || 0;
+          document.getElementById('shipsCount').textContent = data.assets?.ships?.length || 0;
+
+          // Render initial content
+          renderTomeContent(currentTomeTab);
+        } else {
+          contentBody.innerHTML = `
+            <div style="color: #ff0000;">
+              <p>> ERROR: Failed to load tome data</p>
+              <p>> ${data.error || 'Unknown error'}</p>
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('Error loading tome data:', err);
+        contentBody.innerHTML = `
+          <div style="color: #ff0000;">
+            <p>> ERROR: Connection to database failed</p>
+            <p>> ${err.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    /**
+     * Switch Tome Tab
+     */
+    window.switchTomeTab = function(tab) {
+      currentTomeTab = tab;
+
+      // Update active nav item
+      document.querySelectorAll('.tome-nav-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      event.currentTarget.classList.add('active');
+
+      // Update terminal path
+      document.getElementById('currentTomeTab').textContent = tab;
+
+      // Render content
+      renderTomeContent(tab);
+    };
+
+    /**
+     * Render Tome Content
+     */
+    function renderTomeContent(tab) {
+      const contentBody = document.getElementById('tomeContentBody');
+
+      if (!tomeData) {
+        contentBody.innerHTML = `
+          <div class="terminal-loading">
+            <span class="loading-text">> Loading...</span>
+            <span class="loading-cursor">_</span>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+
+      if (tab === 'species') {
+        const species = tomeData.species || [];
+        if (species.length === 0) {
+          html = '<p style="color: #00aa00;">> No species data available</p>';
+        } else {
+          species.forEach(s => {
+            html += `
+              <div class="tome-entry">
+                <div class="tome-entry-header">
+                  <div class="tome-entry-title">${s.name || 'Unknown Species'}</div>
+                  <div class="tome-entry-type">SPECIES</div>
+                </div>
+                <div class="tome-entry-description">${s.description || 'No description available.'}</div>
+                ${s.homeworld ? `<div class="tome-entry-meta"><span>🏠 Homeworld: ${s.homeworld}</span></div>` : ''}
+              </div>
+            `;
+          });
+        }
+      } else {
+        // Handle asset types
+        const assets = tomeData.assets?.[tab] || [];
+        if (assets.length === 0) {
+          html = `<p style="color: #00aa00;">> No ${tab} data available</p>`;
+        } else {
+          assets.forEach(asset => {
+            const coordinates = asset.coordinates || asset.sceneCoordinates || {};
+            html += `
+              <div class="tome-entry">
+                <div class="tome-entry-header">
+                  <div class="tome-entry-title">${asset.title || asset.name || 'Unknown'}</div>
+                  <div class="tome-entry-type">${asset.assetType?.toUpperCase() || tab.toUpperCase()}</div>
+                </div>
+                ${asset.description ? `<div class="tome-entry-description">${asset.description}</div>` : ''}
+                <div class="tome-entry-meta">
+                  ${coordinates.x !== undefined ? `<span>📍 Coords: (${Math.round(coordinates.x)}, ${Math.round(coordinates.y)}, ${Math.round(coordinates.z)})</span>` : ''}
+                  ${asset.mass ? `<span>⚖️ Mass: ${asset.mass}</span>` : ''}
+                  ${asset.radius ? `<span>📏 Radius: ${asset.radius}</span>` : ''}
+                </div>
+              </div>
+            `;
+          });
+        }
+      }
+
+      contentBody.innerHTML = html || '<p style="color: #00aa00;">> No data available</p>';
+    }
+
+    // Close tome on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const overlay = document.getElementById('tomeOverlay');
+        if (overlay && overlay.classList.contains('active')) {
+          closeTomeOverlay();
+        }
+      }
+    });
+
+    console.log('✅ Tome overlay system initialized');
   </script>
 
   <!-- Overlay Menu System -->
-  <div class="overlay-menu" id="overlayMenu" style="position: fixed; top: 0; right: -400px; width: 360px; height: 100vh; background: rgba(10, 10, 26, 0.98); backdrop-filter: blur(20px); border-left: 2px solid rgba(138, 79, 255, 0.4); z-index: 10000; transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; overflow-y: auto;">
-    <div class="overlay-menu-header" style="padding: 20px; border-bottom: 1px solid rgba(138, 79, 255, 0.3); display: flex; justify-content: space-between; align-items: center;">
-      <h2 class="overlay-menu-title" style="margin: 0; color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 20px;">Navigation Hub</h2>
-      <button class="overlay-menu-close" onclick="toggleOverlayMenu()" style="background: rgba(138, 79, 255, 0.2); border: 1px solid rgba(138, 79, 255, 0.4); border-radius: 50%; color: #8a4fff; width: 32px; height: 32px; font-size: 18px; cursor: pointer; transition: all 0.2s;">✕</button>
+  <div class="overlay-menu" id="overlayMenu">
+    <div class="overlay-menu-header">
+      <h2 class="overlay-menu-title">
+        <span class="menu-icon">🚀</span>
+        Navigation Hub
+      </h2>
+      <button class="overlay-menu-close" onclick="toggleOverlayMenu()" aria-label="Close menu">
+        <span>✕</span>
+      </button>
     </div>
 
-    <nav class="overlay-menu-nav" style="flex: 1; padding: 10px 0;">
+    <nav class="overlay-menu-nav">
       <!-- In-Game Section -->
-      <div class="overlay-menu-section-title" style="padding: 15px 20px; color: #00ffaa; font-family: 'Orbitron', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 14px;">🎮</span> IN-GAME
+      <div class="overlay-menu-section">
+        <div class="overlay-menu-section-title">
+          <span class="section-icon">🌌</span>
+          In-Game
+        </div>
+
+        <% if (typeof character !== 'undefined' && character) { %>
+        <button class="overlay-menu-item" onclick="event.preventDefault(); window.openPWAModal && window.openPWAModal('charactersModal'); toggleOverlayMenu();">
+          <span class="menu-item-icon">⚔️</span>
+          <div class="menu-item-content">
+            <span class="menu-item-label">My Character</span>
+            <span class="menu-item-desc">View stats & equipment</span>
+          </div>
+          <span class="menu-item-arrow">›</span>
+        </button>
+
+        <button class="overlay-menu-item" onclick="openInventory(event); toggleOverlayMenu();">
+          <span class="menu-item-icon">🎒</span>
+          <div class="menu-item-content">
+            <span class="menu-item-label">Inventory</span>
+            <span class="menu-item-desc">Manage items & gear</span>
+          </div>
+          <span class="menu-item-arrow">›</span>
+        </button>
+        <% } %>
+
+        <button class="overlay-menu-item" onclick="event.preventDefault(); window.openPWAModal && window.openPWAModal('profileModal'); toggleOverlayMenu();">
+          <span class="menu-item-icon">👤</span>
+          <div class="menu-item-content">
+            <span class="menu-item-label">Profile</span>
+            <span class="menu-item-desc">View your stats</span>
+          </div>
+          <span class="menu-item-arrow">›</span>
+        </button>
+
+        <a href="/universe/galactic-map-3d" class="overlay-menu-item">
+          <span class="menu-item-icon">🌌</span>
+          <div class="menu-item-content">
+            <span class="menu-item-label">Galactic Map</span>
+            <span class="menu-item-desc">View the galaxy</span>
+          </div>
+          <span class="menu-item-arrow">›</span>
+        </a>
+
+        <button class="overlay-menu-item" onclick="event.preventDefault(); window.openTomeOverlay && window.openTomeOverlay(); toggleOverlayMenu();">
+          <span class="menu-item-icon">📖</span>
+          <div class="menu-item-content">
+            <span class="menu-item-label">The Tome</span>
+            <span class="menu-item-desc">Lore database</span>
+          </div>
+          <span class="menu-item-arrow">›</span>
+        </button>
       </div>
 
-      <div class="overlay-menu-item" onclick="openPWAModal('charactersModal')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
-        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">⚔️</span>
-        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Characters</span>
-        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
+      <div class="overlay-menu-divider"></div>
+
+      <!-- Main Menu -->
+      <div class="overlay-menu-section">
+        <div class="overlay-menu-item out-of-game menu-exit-item" onclick="confirmExitToMenu()">
+          <span class="menu-item-icon">🏠</span>
+          <div class="menu-item-content">
+            <span class="menu-item-label">Main Menu</span>
+            <span class="menu-item-desc">Exit to navigation hub</span>
+          </div>
+          <span class="menu-item-badge exit-badge">Exit Game</span>
+        </div>
       </div>
-
-      <div class="overlay-menu-item" onclick="confirmNavigateAway('/universe/galactic-map-3d', 'Galactic Map')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
-        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🌌</span>
-        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Galactic Map</span>
-        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
-      </div>
-
-      <div class="overlay-menu-item" onclick="openPWAModal('tomeModal')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
-        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">📖</span>
-        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">The Tome</span>
-        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
-      </div>
-
-      <div class="overlay-menu-divider" style="height: 1px; background: rgba(138, 79, 255, 0.3); margin: 10px 20px;"></div>
-
-      <!-- Out-of-Game Section -->
-      <div class="overlay-menu-section-title" style="padding: 15px 20px; color: #ffaa00; font-family: 'Orbitron', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 14px;">🛠️</span> OUT-OF-GAME
-      </div>
-
-      <div class="overlay-menu-item" onclick="openPWAModal('workshopModal')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
-        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🎨</span>
-        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Asset Workshop</span>
-        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
-      </div>
-
-      <div class="overlay-menu-item" onclick="openPWAModal('votingModal')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
-        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🗳️</span>
-        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Asset Governance</span>
-        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
-      </div>
-
-      <div class="overlay-menu-item" onclick="openPWAModal('profileModal')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
-        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">📊</span>
-        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Profile</span>
-        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
-      </div>
-
-      <div class="overlay-menu-divider" style="height: 1px; background: rgba(138, 79, 255, 0.3); margin: 10px 20px;"></div>
-
-      <div class="overlay-menu-item" onclick="confirmExitToMenu()" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
-        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">🏠</span>
-        <span class="menu-item-label" style="flex: 1; color: #ff6b6b; font-family: 'Orbitron', monospace;">Exit to Menu</span>
-        <span class="menu-item-arrow" style="color: #ff6b6b; font-size: 18px;">›</span>
-      </div>
-
-      <% if (user && user.isAdmin) { %>
-      <div class="overlay-menu-divider" style="height: 1px; background: rgba(138, 79, 255, 0.3); margin: 10px 20px;"></div>
-      <div class="overlay-menu-section-title" style="padding: 15px 20px; color: #8a4fff; font-family: 'Orbitron', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Admin</div>
-
-      <div class="overlay-menu-item admin-item" onclick="openPWAModal('adminModal')" style="padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid rgba(138, 79, 255, 0.1);">
-        <span class="menu-item-icon" style="font-size: 20px; margin-right: 15px;">⚙️</span>
-        <span class="menu-item-label" style="flex: 1; color: #e0e0ff; font-family: 'Orbitron', monospace;">Admin Dashboard</span>
-        <span class="menu-item-arrow" style="color: #8a4fff; font-size: 18px;">›</span>
-      </div>
-      <% } %>
     </nav>
   </div>
 
   <!-- Overlay Menu Backdrop -->
-  <div class="overlay-backdrop" id="overlayBackdrop" onclick="toggleOverlayMenu()" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 9999; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;"></div>
+  <div class="overlay-backdrop" id="overlayBackdrop" onclick="toggleOverlayMenu()"></div>
 
   <!-- Exit Confirmation Modal -->
   <div id="exitConfirmModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(10px); z-index: 20000; display: none; align-items: center; justify-content: center;">
@@ -1184,6 +1369,292 @@
   </div>
 
   <style>
+    /* Overlay Menu Styling */
+    .overlay-menu {
+      position: fixed;
+      top: 0;
+      right: -420px;
+      width: 380px;
+      height: 100vh;
+      background: linear-gradient(135deg, rgba(10, 10, 26, 0.98) 0%, rgba(26, 26, 52, 0.98) 100%);
+      backdrop-filter: blur(20px);
+      border-left: 2px solid rgba(102, 126, 234, 0.4);
+      box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+      z-index: 10000;
+      transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .overlay-menu.active {
+      right: 0;
+    }
+
+    .overlay-menu-header {
+      padding: 24px;
+      border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    }
+
+    .overlay-menu-title {
+      margin: 0;
+      color: #ffffff;
+      font-family: 'Orbitron', 'Courier New', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+    }
+
+    .menu-icon {
+      font-size: 24px;
+      filter: drop-shadow(0 0 10px rgba(102, 126, 234, 0.8));
+    }
+
+    .overlay-menu-close {
+      background: rgba(255, 107, 107, 0.2);
+      border: 2px solid rgba(255, 107, 107, 0.4);
+      border-radius: 50%;
+      color: #ff6b6b;
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .overlay-menu-close:hover {
+      background: rgba(255, 107, 107, 0.3);
+      border-color: #ff6b6b;
+      transform: rotate(90deg);
+      box-shadow: 0 0 20px rgba(255, 107, 107, 0.5);
+    }
+
+    .overlay-menu-nav {
+      flex: 1;
+      padding: 16px 0;
+    }
+
+    .overlay-menu-section {
+      margin-bottom: 8px;
+    }
+
+    .overlay-menu-section-title {
+      padding: 16px 24px 12px;
+      color: #667eea;
+      font-family: 'Orbitron', 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0.8;
+    }
+
+    .section-icon {
+      font-size: 16px;
+      filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.6));
+    }
+
+    .overlay-menu-item {
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+      text-decoration: none;
+      color: inherit;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .overlay-menu-item::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 0;
+      background: linear-gradient(90deg, rgba(102, 126, 234, 0.15) 0%, transparent 100%);
+      transition: width 0.3s ease;
+    }
+
+    .overlay-menu-item:hover::before {
+      width: 100%;
+    }
+
+    .overlay-menu-item:hover {
+      background: rgba(102, 126, 234, 0.1);
+      transform: translateX(4px);
+    }
+
+    .overlay-menu-item.out-of-game:hover {
+      background: rgba(255, 136, 0, 0.08);
+    }
+
+    .overlay-menu-item.menu-exit-item:hover {
+      background: rgba(255, 68, 0, 0.1);
+    }
+
+    .menu-item-icon {
+      font-size: 24px;
+      min-width: 28px;
+      text-align: center;
+      filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.4));
+      transition: transform 0.3s;
+    }
+
+    .overlay-menu-item:hover .menu-item-icon {
+      transform: scale(1.15) rotate(-5deg);
+    }
+
+    .menu-item-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .menu-item-label {
+      color: #e0e0ff;
+      font-family: 'Orbitron', 'Courier New', monospace;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    .menu-item-desc {
+      color: rgba(255, 255, 255, 0.5);
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      letter-spacing: 0.2px;
+    }
+
+    .menu-item-arrow {
+      color: #667eea;
+      font-size: 20px;
+      transition: transform 0.3s;
+      opacity: 0.6;
+    }
+
+    .overlay-menu-item:hover .menu-item-arrow {
+      transform: translateX(4px);
+      opacity: 1;
+    }
+
+    .menu-item-badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .out-of-game-badge {
+      background: rgba(255, 136, 0, 0.2);
+      border: 1px solid rgba(255, 136, 0, 0.4);
+      color: #ff8800;
+    }
+
+    .exit-badge {
+      background: rgba(255, 68, 0, 0.2);
+      border: 1px solid rgba(255, 68, 0, 0.4);
+      color: #ff4400;
+    }
+
+    .overlay-menu-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.3), transparent);
+      margin: 16px 24px;
+    }
+
+    .overlay-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .overlay-backdrop.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 480px) {
+      .overlay-menu {
+        width: 100%;
+        right: -100%;
+      }
+
+      .overlay-menu-title {
+        font-size: 18px;
+      }
+
+      .menu-item-label {
+        font-size: 14px;
+      }
+
+      .menu-item-desc {
+        font-size: 11px;
+      }
+    }
+
+    /* Admin item styling */
+    .admin-item {
+      border-left: 3px solid rgba(255, 136, 0, 0.3);
+    }
+
+    .admin-item:hover {
+      border-left-color: rgba(255, 136, 0, 0.6);
+      background: rgba(255, 136, 0, 0.08);
+    }
+
+    /* Scrollbar styling */
+    .overlay-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .overlay-menu::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .overlay-menu::-webkit-scrollbar-thumb {
+      background: rgba(102, 126, 234, 0.4);
+      border-radius: 3px;
+    }
+
+    .overlay-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(102, 126, 234, 0.6);
+    }
+
+    /* Modal Animations */
     @keyframes modalAppear {
       from {
         opacity: 0;
@@ -1211,6 +1682,418 @@
 
     #navigationConfirmModal button:last-child:hover {
       box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
+    }
+  </style>
+
+  <!-- Tome Terminal Overlay -->
+  <div id="tomeOverlay" class="tome-overlay">
+    <div class="tome-terminal">
+      <div class="tome-terminal-header">
+        <div class="terminal-title">
+          <span class="terminal-icon">📖</span>
+          <span>THE TOME</span>
+          <span class="terminal-subtitle">// UNIVERSE DATABASE v2.1.4</span>
+        </div>
+        <button class="tome-close" onclick="closeTomeOverlay()" aria-label="Close Tome">
+          <span>✕</span>
+        </button>
+      </div>
+
+      <div class="tome-terminal-body">
+        <!-- Sidebar Navigation -->
+        <div class="tome-nav">
+          <div class="tome-nav-item active" onclick="switchTomeTab('species')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">Species</span>
+            <span class="nav-count" id="speciesCount">0</span>
+          </div>
+          <div class="tome-nav-item" onclick="switchTomeTab('galaxies')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">Galaxies</span>
+            <span class="nav-count" id="galaxiesCount">0</span>
+          </div>
+          <div class="tome-nav-item" onclick="switchTomeTab('stars')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">Stars</span>
+            <span class="nav-count" id="starsCount">0</span>
+          </div>
+          <div class="tome-nav-item" onclick="switchTomeTab('planets')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">Planets</span>
+            <span class="nav-count" id="planetsCount">0</span>
+          </div>
+          <div class="tome-nav-item" onclick="switchTomeTab('anomalies')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">Anomalies</span>
+            <span class="nav-count" id="anomaliesCount">0</span>
+          </div>
+          <div class="tome-nav-item" onclick="switchTomeTab('ships')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">Ships</span>
+            <span class="nav-count" id="shipsCount">0</span>
+          </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="tome-content">
+          <div class="tome-content-header">
+            <div class="terminal-prompt">
+              <span class="prompt-user">root@stringborn</span>
+              <span class="prompt-separator">:</span>
+              <span class="prompt-path">~/tome/<span id="currentTomeTab">species</span></span>
+              <span class="prompt-symbol">$</span>
+              <span class="prompt-cursor">_</span>
+            </div>
+          </div>
+
+          <div class="tome-content-body" id="tomeContentBody">
+            <div class="terminal-loading">
+              <span class="loading-text">> Accessing database...</span>
+              <span class="loading-cursor">_</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    /* Tome Terminal Overlay */
+    .tome-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(2px);
+      z-index: 15000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .tome-overlay.active {
+      display: flex;
+      opacity: 1;
+    }
+
+    .tome-terminal {
+      width: 100%;
+      max-width: 1400px;
+      max-height: 90vh;
+      background: rgba(0, 20, 0, 0.95);
+      border: 2px solid #00ff00;
+      border-radius: 8px;
+      box-shadow: 0 0 60px rgba(0, 255, 0, 0.3), inset 0 0 40px rgba(0, 255, 0, 0.05);
+      display: flex;
+      flex-direction: column;
+      font-family: 'Courier New', monospace;
+      animation: terminalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes terminalSlideIn {
+      from {
+        transform: scale(0.95) translateY(-30px);
+        opacity: 0;
+      }
+      to {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .tome-terminal-header {
+      padding: 16px 20px;
+      background: rgba(0, 40, 0, 0.8);
+      border-bottom: 2px solid #00ff00;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .terminal-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #00ff00;
+      font-size: 18px;
+      font-weight: bold;
+      text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+    }
+
+    .terminal-icon {
+      font-size: 24px;
+      filter: drop-shadow(0 0 10px rgba(0, 255, 0, 0.8));
+    }
+
+    .terminal-subtitle {
+      color: #00aa00;
+      font-size: 12px;
+      font-weight: normal;
+      opacity: 0.7;
+    }
+
+    .tome-close {
+      background: rgba(255, 0, 0, 0.1);
+      border: 2px solid #ff0000;
+      border-radius: 4px;
+      color: #ff0000;
+      width: 36px;
+      height: 36px;
+      font-size: 20px;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tome-close:hover {
+      background: rgba(255, 0, 0, 0.2);
+      box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+      transform: scale(1.1);
+    }
+
+    .tome-terminal-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .tome-nav {
+      width: 220px;
+      background: rgba(0, 30, 0, 0.6);
+      border-right: 1px solid #00ff00;
+      padding: 12px 0;
+      overflow-y: auto;
+    }
+
+    .tome-nav-item {
+      padding: 12px 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #00dd00;
+      border-left: 3px solid transparent;
+      user-select: none;
+    }
+
+    .tome-nav-item:hover {
+      background: rgba(0, 255, 0, 0.1);
+      border-left-color: #00ff00;
+    }
+
+    .tome-nav-item.active {
+      background: rgba(0, 255, 0, 0.15);
+      border-left-color: #00ff00;
+      color: #00ff00;
+      font-weight: bold;
+    }
+
+    .nav-prefix {
+      font-weight: bold;
+      opacity: 0.7;
+    }
+
+    .nav-text {
+      flex: 1;
+      font-size: 14px;
+    }
+
+    .nav-count {
+      background: rgba(0, 255, 0, 0.2);
+      border: 1px solid #00ff00;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      min-width: 24px;
+      text-align: center;
+    }
+
+    .tome-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .tome-content-header {
+      padding: 16px 20px;
+      background: rgba(0, 35, 0, 0.6);
+      border-bottom: 1px solid #00aa00;
+    }
+
+    .terminal-prompt {
+      color: #00ff00;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .prompt-user {
+      color: #00dd00;
+      font-weight: bold;
+    }
+
+    .prompt-separator {
+      color: #00aa00;
+    }
+
+    .prompt-path {
+      color: #00bbff;
+    }
+
+    .prompt-symbol {
+      color: #00ff00;
+      font-weight: bold;
+    }
+
+    .prompt-cursor {
+      animation: cursorBlink 1s steps(2) infinite;
+      color: #00ff00;
+    }
+
+    @keyframes cursorBlink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+
+    .tome-content-body {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      color: #00dd00;
+      line-height: 1.6;
+    }
+
+    .terminal-loading {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #00ff00;
+      font-size: 14px;
+    }
+
+    .loading-cursor {
+      animation: cursorBlink 0.8s steps(2) infinite;
+    }
+
+    .tome-entry {
+      background: rgba(0, 40, 0, 0.4);
+      border: 1px solid #00aa00;
+      border-radius: 4px;
+      padding: 16px;
+      margin-bottom: 16px;
+      transition: all 0.3s;
+    }
+
+    .tome-entry:hover {
+      background: rgba(0, 50, 0, 0.6);
+      border-color: #00ff00;
+      box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
+    }
+
+    .tome-entry-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #00aa00;
+    }
+
+    .tome-entry-title {
+      color: #00ff00;
+      font-size: 16px;
+      font-weight: bold;
+      text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+    }
+
+    .tome-entry-type {
+      color: #00aa00;
+      font-size: 12px;
+      background: rgba(0, 255, 0, 0.1);
+      padding: 3px 8px;
+      border-radius: 3px;
+      border: 1px solid #00aa00;
+    }
+
+    .tome-entry-description {
+      color: #00cc00;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .tome-entry-meta {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: #00aa00;
+    }
+
+    .tome-entry-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Scrollbar styling */
+    .tome-nav::-webkit-scrollbar,
+    .tome-content-body::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .tome-nav::-webkit-scrollbar-track,
+    .tome-content-body::-webkit-scrollbar-track {
+      background: rgba(0, 20, 0, 0.4);
+    }
+
+    .tome-nav::-webkit-scrollbar-thumb,
+    .tome-content-body::-webkit-scrollbar-thumb {
+      background: rgba(0, 255, 0, 0.4);
+      border-radius: 4px;
+    }
+
+    .tome-nav::-webkit-scrollbar-thumb:hover,
+    .tome-content-body::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 255, 0, 0.6);
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      .tome-terminal {
+        max-height: 95vh;
+        border-radius: 0;
+      }
+
+      .tome-nav {
+        width: 160px;
+      }
+
+      .tome-nav-item {
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+
+      .terminal-title {
+        font-size: 14px;
+      }
+
+      .terminal-subtitle {
+        display: none;
+      }
+
+      .tome-content-body {
+        padding: 12px;
+      }
     }
   </style>
 

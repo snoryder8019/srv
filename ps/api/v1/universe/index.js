@@ -211,4 +211,42 @@ router.get('/assets/:id/hierarchy', async (req, res) => {
   }
 });
 
+// Get Tome data (for in-game overlay)
+router.get('/tome-data', async (req, res) => {
+  try {
+    const db = getDb();
+
+    // Fetch data for the tome
+    const [species, approvedAssets] = await Promise.all([
+      db.collection('species').find({}).toArray(),
+      db.collection('assets').find({ status: 'approved' }).toArray()
+    ]);
+
+    // Categorize approved assets
+    const categorizedAssets = {
+      galaxies: approvedAssets.filter(a => a.assetType === 'galaxy'),
+      stars: approvedAssets.filter(a => a.assetType === 'star'),
+      planets: approvedAssets.filter(a => a.assetType === 'planet'),
+      moons: approvedAssets.filter(a => a.assetType === 'moon'),
+      anomalies: approvedAssets.filter(a => a.assetType === 'anomaly'),
+      ships: approvedAssets.filter(a => a.assetType === 'ship'),
+      items: approvedAssets.filter(a => a.assetType === 'item'),
+      weapons: approvedAssets.filter(a => a.assetType === 'weapon')
+    };
+
+    res.json({
+      success: true,
+      species,
+      assets: categorizedAssets,
+      totalAssets: approvedAssets.length
+    });
+  } catch (err) {
+    console.error('Error fetching tome data:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch tome data'
+    });
+  }
+});
+
 export default router;
