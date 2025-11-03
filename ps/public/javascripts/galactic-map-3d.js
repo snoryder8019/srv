@@ -2385,6 +2385,15 @@ class GalacticMap3D {
       this.updateConnectionsFromServer(data.connections);
     }
 
+    // Update character positions (replaces removed charactersUpdate event)
+    if (data.characters && Array.isArray(data.characters)) {
+      data.characters.forEach(char => {
+        if (char.location && char.location.x !== undefined) {
+          this.createCharacterPin(char);
+        }
+      });
+    }
+
     // Store simulation speed for UI
     if (data.simulationSpeed !== undefined) {
       this.simulationSpeed = data.simulationSpeed;
@@ -2395,8 +2404,8 @@ class GalacticMap3D {
    * Update connection visualizations from server data
    */
   updateConnectionsFromServer(connections) {
-    // Only render in galactic/universe view (not in galaxy interior)
-    if (this.currentLevel !== 'galactic' && this.currentLevel !== 'universe') return;
+    // Only render in galactic view (not in galaxy interior)
+    if (this.currentLevel !== 'galactic') return;
 
     // Clear existing connections
     while (this.connectionsGroup.children.length > 0) {
@@ -2477,8 +2486,8 @@ class GalacticMap3D {
    * Shows the galaxy's past orbital path as a tapered purple "pen stripe"
    */
   createGalaxyTrail(galaxyMesh, galaxyId) {
-    // Works in both 'universe' and 'galactic' levels
-    if (this.currentLevel !== 'galactic' && this.currentLevel !== 'universe') return;
+    // Only works in galactic level
+    if (this.currentLevel !== 'galactic') return;
 
     const asset = this.assets.get(galaxyId);
     if (!asset || !galaxyMesh) {
@@ -2710,13 +2719,8 @@ class GalacticMap3D {
       }
     });
 
-    // Listen for multiple character updates
-    socket.on('charactersUpdate', (data) => {
-      console.log(`👥 Received ${data.characters?.length || 0} character updates`);
-      if (data.characters) {
-        data.characters.forEach(char => this.createCharacterPin(char));
-      }
-    });
+    // NOTE: charactersUpdate event removed - character data now comes only via galacticPhysicsUpdate
+    // This eliminates duplicate broadcasts and reduces network traffic
 
     console.log('✅ GalacticMap3D listening for server physics and character updates');
 
@@ -3035,12 +3039,12 @@ class GalacticMap3D {
       }
     }
 
-    // Hide starfield in galaxy/star view, show in universe view
+    // Hide starfield in galaxy/star view, show in galactic view
     if (this.starField) {
-      this.starField.visible = (this.currentLevel === 'universe' || this.currentLevel === 'galactic');
+      this.starField.visible = (this.currentLevel === 'galactic');
     }
     if (this.starfieldGroup) {
-      this.starfieldGroup.visible = (this.currentLevel === 'universe' || this.currentLevel === 'galactic');
+      this.starfieldGroup.visible = (this.currentLevel === 'galactic');
     }
 
     // Update starfield shader camera position for distance-based clipping
@@ -3468,10 +3472,11 @@ class GalacticMap3D {
   }
 
   /**
-   * Show only galactic-level assets (galaxies, zones, anomalies, stars)
+   * Show only galactic-level assets (galaxies, zones, anomalies)
+   * Stars are only shown when drilling into a specific galaxy interior
    */
   showGalacticLevel() {
-    console.log('🌌 Showing GALACTIC level - galaxies, zones, anomalies, and stars');
+    console.log('🌌 Showing GALACTIC level - galaxies, zones, and anomalies only');
 
     // Store the previous galaxy center before switching levels (for zoom-out animation)
     const previousGalaxyCenter = this.controls ? this.controls.target.clone() : new THREE.Vector3(0, 0, 0);
@@ -3489,13 +3494,13 @@ class GalacticMap3D {
     // Clear current scene
     this.clearAssets();
 
-    // Show only top-level galactic objects (including stars)
-    const galacticTypes = ['galaxy', 'zone', 'anomaly', 'nebula', 'star'];
+    // Show only top-level galactic objects (NO stars - stars only shown in galaxy interior)
+    const galacticTypes = ['galaxy', 'zone', 'anomaly', 'nebula'];
     const galacticAssets = this.allAssets.filter(asset =>
       galacticTypes.includes(asset.assetType)
     );
 
-    console.log(`   Found ${galacticAssets.length} galactic-level assets`);
+    console.log(`   Found ${galacticAssets.length} galactic-level assets (galaxies and anomalies only)`);
     galacticAssets.forEach(asset => this.addAsset(asset));
 
     // Create galaxy orbital trails after assets are loaded
@@ -3557,7 +3562,15 @@ class GalacticMap3D {
    * Show universe-level view (all galaxies, stars, zones, anomalies)
    */
   showUniverseLevel() {
-    console.log(`🌍 Showing UNIVERSE level - all galaxies`);
+    // FUTURE FEATURE: Universe level (above galactic)
+    // For now, redirect to galactic level
+    console.log(`🌍 showUniverseLevel called - redirecting to GALACTIC level (universe not yet implemented)`);
+    this.showGalacticLevel();
+    return;
+
+    // TODO: Implement universe level showing multiple galactic clusters
+    /*
+    console.log(`🌍 Showing UNIVERSE level - all galactic clusters`);
 
     this.currentLevel = 'universe';
     this.selectedGalaxyId = null;
@@ -3566,45 +3579,26 @@ class GalacticMap3D {
     // Clear current scene
     this.clearAssets();
 
-    // Reload all galactic-level assets (EXCLUDE stars - only show at galaxy level)
-    const galacticTypes = ['galaxy', 'zone', 'anomaly', 'nebula', 'station', 'ship', 'character'];
-    const galacticAssets = this.allAssets.filter(asset =>
-      galacticTypes.includes(asset.assetType)
+    // Reload all universe-level assets (galactic clusters, dark matter, etc)
+    const universeTypes = ['galacticCluster', 'darkMatter', 'cosmicWeb'];
+    const universeAssets = this.allAssets.filter(asset =>
+      universeTypes.includes(asset.assetType)
     );
 
-    console.log(`   Loading ${galacticAssets.length} universe-level assets`);
-    console.log(`   allAssets array:`, this.allAssets ? `${this.allAssets.length} items` : 'undefined');
-    console.log(`   galacticAssets array:`, galacticAssets.length, 'items');
-
-    galacticAssets.forEach(asset => this.addAsset(asset));
-
-    console.log(`   ✅ After adding: assets Map has ${this.assets.size} items`);
-    console.log(`   Scene group has ${this.assetsGroup.children.length} children`);
-
-    // Create galaxy orbital trails (purple pen stripes) - works in both universe and galactic views
-    console.log(`🔍 Universe/Galactic level - Creating galaxy trails...`);
-    setTimeout(() => {
-      console.log(`⏰ Executing galaxy trail creation...`);
-      let createdCount = 0;
-      Array.from(this.assets.values()).forEach(asset => {
-        if (asset.mesh && asset.mesh.userData.type === 'galaxy') {
-          this.createGalaxyTrail(asset.mesh, asset.mesh.userData.id);
-          createdCount++;
-        }
-      });
-      console.log(`💜 Created ${createdCount} galaxy orbital trails (stored: ${this.galaxyOrbits.length})`);
-    }, 500);
+    console.log(`   Loading ${universeAssets.length} universe-level assets`);
+    universeAssets.forEach(asset => this.addAsset(asset));
 
     // Reset camera to universe center
     this.camera.position.set(
       this.universeCenter.x,
-      this.universeCenter.y + 3000,
-      this.universeCenter.z + 2000
+      this.universeCenter.y + 6000,
+      this.universeCenter.z + 4000
     );
     if (this.controls) {
       this.controls.target.copy(this.universeCenter);
       this.controls.update();
     }
+    */
   }
 
   /**
@@ -3630,8 +3624,8 @@ class GalacticMap3D {
       return;
     }
 
-    // Save current galactic/universe-level camera state before transitioning
-    if (this.currentLevel === 'galactic' || this.currentLevel === 'universe') {
+    // Save current galactic-level camera state before transitioning
+    if (this.currentLevel === 'galactic') {
       console.log(`💾 Saving ${this.currentLevel} camera state before transition...`);
       this.savedGalacticCameraPosition = this.camera.position.clone();
       this.savedGalacticCameraZoom = this.camera.zoom;

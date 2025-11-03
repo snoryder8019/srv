@@ -31,8 +31,8 @@ class PhysicsService {
     this.MIN_ANOMALY_DISTANCE = 1400; // Minimum distance from anomaly center
     this.MAX_ORBIT_RANGE = 8000; // Max distance from anomaly to maintain orbit
 
-    // Universe boundary constraints - keep galaxies within scene bounds
-    this.UNIVERSE_BOUNDS = {
+    // Galactic boundary constraints - keep galaxies within scene bounds
+    this.GALACTIC_BOUNDS = {
       min: { x: -5000, y: -5000, z: -5000 },
       max: { x: 5000, y: 5000, z: 5000 }
     };
@@ -239,26 +239,8 @@ class PhysicsService {
           }
         }
 
-        // Broadcast character positions if there are any characters with galactic positions
-        if (characters.length > 0) {
-          const charactersWithPositions = characters.filter(char =>
-            char.location && (char.location.x !== undefined || char.location.type === 'galactic')
-          );
-
-          if (charactersWithPositions.length > 0) {
-            this.io.emit('charactersUpdate', {
-              characters: charactersWithPositions.map(char => ({
-                _id: char._id,
-                id: char._id.toString(),
-                name: char.name,
-                location: char.location,
-                galacticPosition: char.location,
-                navigation: char.navigation
-              })),
-              timestamp: Date.now()
-            });
-          }
-        }
+        // NOTE: Character positions are already included in galacticPhysicsUpdate above
+        // No need for separate charactersUpdate broadcast (removed duplicate)
       }
 
     } catch (error) {
@@ -1069,8 +1051,8 @@ class PhysicsService {
     // Check each axis
     ['x', 'y', 'z'].forEach(axis => {
       const pos = galaxy.coordinates[axis];
-      const min = this.UNIVERSE_BOUNDS.min[axis];
-      const max = this.UNIVERSE_BOUNDS.max[axis];
+      const min = this.GALACTIC_BOUNDS.min[axis];
+      const max = this.GALACTIC_BOUNDS.max[axis];
 
       // Beyond max boundary
       if (pos > this.BOUNDARY_SOFT_ZONE) {

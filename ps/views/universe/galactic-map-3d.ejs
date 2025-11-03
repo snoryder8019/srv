@@ -580,7 +580,33 @@
         };
       }
 
-      // Override showUniverseLevel to update breadcrumb and location info
+      // Override showGalacticLevel to update breadcrumb and location info
+      const originalShowGalacticLevel = window.galacticMap.showGalacticLevel?.bind(window.galacticMap);
+      if (originalShowGalacticLevel) {
+        window.galacticMap.showGalacticLevel = function() {
+          originalShowGalacticLevel();
+
+          console.log('🌌 showGalacticLevel called - allAssets:', this.allAssets?.length);
+
+          // Count all galaxies, stars, and anomalies at galactic level
+          const galaxiesCount = this.allAssets?.filter(a => a.assetType === 'galaxy').length || 0;
+          const starsCount = this.allAssets?.filter(a => a.assetType === 'star').length || 0;
+          const anomaliesCount = this.allAssets?.filter(a => a.assetType === 'anomaly').length || 0;
+
+          // Build children text
+          const childrenParts = [];
+          if (galaxiesCount > 0) childrenParts.push(`${galaxiesCount} gala${galaxiesCount !== 1 ? 'xies' : 'xy'}`);
+          if (starsCount > 0) childrenParts.push(`${starsCount} star${starsCount !== 1 ? 's' : ''}`);
+          if (anomaliesCount > 0) childrenParts.push(`${anomaliesCount} anomal${anomaliesCount !== 1 ? 'ies' : 'y'}`);
+          const childrenText = childrenParts.join(' • ') || 'No assets loaded';
+
+          console.log('📍 Will update location to: GALACTIC |', childrenText);
+          window.updateBreadcrumb && window.updateBreadcrumb('galactic');
+          window.updateLocationInfo('GALACTIC', childrenText);
+        };
+      }
+
+      // Override showUniverseLevel to update breadcrumb and location info (FUTURE FEATURE)
       const originalShowUniverseLevel = window.galacticMap.showUniverseLevel?.bind(window.galacticMap);
       if (originalShowUniverseLevel) {
         window.galacticMap.showUniverseLevel = function() {
@@ -3102,13 +3128,13 @@
             console.log(`📦 Loaded ${allAssets.length} total assets:`, counts);
             window.galacticMap.allAssets = allAssets;
 
-            // Setup view overrides BEFORE calling showUniverseLevel
+            // Setup view overrides BEFORE calling showGalacticLevel
             if (window.setupViewOverrides) {
               window.setupViewOverrides();
             }
 
-            // Display assets at universe level (galaxies and anomalies)
-            window.galacticMap.showUniverseLevel();
+            // Display assets at galactic level (galaxies and anomalies only, no stars)
+            window.galacticMap.showGalacticLevel();
 
             // Populate sidebar asset selector
             if (window.populateAssetSelector) {
@@ -3969,31 +3995,31 @@
 
       const separator = '<span style="color: #444; margin: 0 3px; font-size: 10px;">›</span>';
 
-      // Universe level (always present)
-      const universeSpan = document.createElement('span');
-      universeSpan.className = 'breadcrumb-item';
-      universeSpan.textContent = 'UNIVERSE';
-      universeSpan.style.cssText = `
-        color: ${level === 'universe' ? '#00ff00' : '#888'};
+      // Galactic level (always present - top level in current implementation)
+      const galacticSpan = document.createElement('span');
+      galacticSpan.className = 'breadcrumb-item';
+      galacticSpan.textContent = 'GALACTIC';
+      galacticSpan.style.cssText = `
+        color: ${level === 'galactic' ? '#00ff00' : '#888'};
         cursor: pointer;
         padding: 3px 8px;
         border-radius: 6px;
         transition: all 0.2s;
         font-size: 11px;
-        ${level === 'universe' ? 'background: rgba(0, 255, 0, 0.1);' : ''}
+        ${level === 'galactic' ? 'background: rgba(0, 255, 0, 0.1);' : ''}
       `;
-      universeSpan.onclick = () => {
+      galacticSpan.onclick = () => {
         if (window.galacticMap) {
-          window.galacticMap.showUniverseLevel();
+          window.galacticMap.showGalacticLevel();
         }
       };
-      universeSpan.onmouseenter = function() {
-        if (level !== 'universe') this.style.background = 'rgba(136, 136, 136, 0.1)';
+      galacticSpan.onmouseenter = function() {
+        if (level !== 'galactic') this.style.background = 'rgba(136, 136, 136, 0.1)';
       };
-      universeSpan.onmouseleave = function() {
-        if (level !== 'universe') this.style.background = 'transparent';
+      galacticSpan.onmouseleave = function() {
+        if (level !== 'galactic') this.style.background = 'transparent';
       };
-      breadcrumb.appendChild(universeSpan);
+      breadcrumb.appendChild(galacticSpan);
 
       // Galaxy level
       if (level === 'galaxy' || level === 'system') {
@@ -4046,7 +4072,7 @@
     // Initialize breadcrumb (deferred to allow DOM to load)
     setTimeout(() => {
       if (window.updateBreadcrumb) {
-        window.updateBreadcrumb('universe');
+        window.updateBreadcrumb('galactic');
       }
     }, 100);
 
