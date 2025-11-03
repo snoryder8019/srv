@@ -93,7 +93,7 @@ label.position.y += adjustedSize * 1.5; // Above orb
 ```
 
 ## Version
-- **Version:** v8.0.1 (with timestamp cache busting)
+- **Version:** v0.8.1 (with timestamp cache busting)
 - **Date:** November 1, 2025
 - **Status:** ✅ Deployed
 - **Service:** Port 3399

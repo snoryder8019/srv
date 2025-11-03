@@ -1,7 +1,7 @@
-# Stringborn Universe - Patch Notes v8.0.2
+# Stringborn Universe - Patch Notes v0.8.2
 
 **Release Date:** November 2, 2025
-**Version:** 8.0.2 - Cinematic Animations & Interaction Fix
+**Version:** 0.8.2 - Cinematic Animations & Interaction Fix
 **Status:** LIVE PRODUCTION
 
 ---

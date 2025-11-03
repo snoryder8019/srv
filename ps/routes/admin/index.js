@@ -732,15 +732,39 @@ router.get('/control-panel', isAdmin, function(req, res, next) {
 // API: Get cron jobs status
 router.get('/api/cron/status', isAdmin, async function(req, res, next) {
   try {
-    const { getJobsStatus } = await import('../../plugins/cron/index.js');
+    const { getJobsStatus, getLatestExecutions } = await import('../../plugins/cron/index.js');
     const jobs = getJobsStatus();
+    const latest = getLatestExecutions();
+
+    // Merge status with latest execution info
+    const jobsWithHistory = jobs.map(job => ({
+      ...job,
+      lastExecution: latest[job.name] || null
+    }));
 
     res.json({
       success: true,
-      jobs
+      jobs: jobsWithHistory
     });
   } catch (error) {
     console.error('Error fetching cron jobs status:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Get cron job execution history
+router.get('/api/cron/history', isAdmin, async function(req, res, next) {
+  try {
+    const { getJobHistory } = await import('../../plugins/cron/index.js');
+    const limit = parseInt(req.query.limit) || 20;
+    const history = getJobHistory(limit);
+
+    res.json({
+      success: true,
+      history
+    });
+  } catch (error) {
+    console.error('Error fetching cron job history:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

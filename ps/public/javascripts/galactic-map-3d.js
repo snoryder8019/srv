@@ -2605,30 +2605,50 @@ class GalacticMap3D {
       return;
     }
 
-    // Create pin mesh (small colored sphere with marker above)
+    // Create character orb with orbital rings
     const pinGroup = new THREE.Group();
 
-    // Base sphere (character location)
-    const baseGeometry = new THREE.SphereGeometry(15, 16, 16);
-    const baseMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffff, // Cyan for players
-      emissive: 0x00ffff,
-      emissiveIntensity: 0.5
+    // Core glowing green orb
+    const orbGeometry = new THREE.SphereGeometry(25, 32, 32);
+    const orbMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ff00, // Bright green
+      transparent: true,
+      opacity: 0.85,
+      emissive: 0x00ff00,
+      emissiveIntensity: 0.6
     });
-    const baseMesh = new THREE.Mesh(baseGeometry, baseMaterial);
-    pinGroup.add(baseMesh);
+    const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+    pinGroup.add(orb);
 
-    // Marker cone above (pointing down at location)
-    const coneGeometry = new THREE.ConeGeometry(10, 30, 8);
-    const coneMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffff00, // Yellow marker
-      emissive: 0xffff00,
-      emissiveIntensity: 0.8
+    // Outer glow sphere
+    const glowGeometry = new THREE.SphereGeometry(35, 32, 32);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ff00,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.BackSide
     });
-    const coneMesh = new THREE.Mesh(coneGeometry, coneMaterial);
-    coneMesh.position.y = 40; // Above the base sphere
-    coneMesh.rotation.x = Math.PI; // Point down
-    pinGroup.add(coneMesh);
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    pinGroup.add(glow);
+
+    // Create 3 orbital rings at different angles
+    const ringColors = [0x00ff00, 0x00dd00, 0x00bb00];
+    const ringAngles = [0, 60, 120]; // Degrees
+
+    for (let i = 0; i < 3; i++) {
+      const ringGeometry = new THREE.TorusGeometry(60, 2, 16, 64);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: ringColors[i],
+        transparent: true,
+        opacity: 0.5,
+        emissive: ringColors[i],
+        emissiveIntensity: 0.3
+      });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.rotation.x = Math.PI / 2; // Make horizontal
+      ring.rotation.z = (ringAngles[i] * Math.PI) / 180;
+      pinGroup.add(ring);
+    }
 
     // Label with character name
     const labelCanvas = document.createElement('canvas');

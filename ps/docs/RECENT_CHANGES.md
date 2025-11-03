@@ -1,6 +1,21 @@
 # Recent Changes Summary
 
-Generated: 2025-11-03T19:42:41.285Z
+Generated: 2025-11-03T22:09:41.688Z
+
+---
+
+## Commit: commit 8.0.6
+
+- **Hash:** `c965686`
+- **Author:** Scott
+- **Date:** 11/3/2025
+- **Changes:** 10 files, +3520/-543 lines
+
+### Modified Areas:
+
+**Backend:** 1 files
+**Views:** 4 files
+**Documentation:** 4 files
 
 ---
 
@@ -18,7 +33,7 @@ Generated: 2025-11-03T19:42:41.285Z
 
 ---
 
-## Commit: v8.0.5 - Loading Spinner & Location Info System
+## Commit: v0.8.5 - Loading Spinner & Location Info System
 
 - **Hash:** `1acd985`
 - **Author:** Scott
@@ -47,7 +62,7 @@ Generated: 2025-11-03T19:42:41.285Z
 
 ---
 
-## Commit: v8.0.4 - Header & Breadcrumb Navigation System
+## Commit: v0.8.4 - Header & Breadcrumb Navigation System
 
 - **Hash:** `f338f02`
 - **Author:** Scott
@@ -58,21 +73,6 @@ Generated: 2025-11-03T19:42:41.285Z
 
 **Frontend:** 2 files
 **Views:** 6 files
-
----
-
-## Commit: v8.0.3 - Real-Time Planet Lighting & Navigation Fix
-
-- **Hash:** `d61b0a1`
-- **Author:** Scott
-- **Date:** 11/2/2025
-- **Changes:** 7 files, +892/-193 lines
-
-### Modified Areas:
-
-**Frontend:** 1 files
-**Views:** 1 files
-**Documentation:** 4 files
 
 ---
 

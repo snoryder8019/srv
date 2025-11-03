@@ -3,7 +3,7 @@
 **Issue:** Cannot push to GitHub from server - credential authentication required
 
 **Current Status:**
-- 15 commits ahead of origin/main (including today's v8.0.1 commit)
+- 15 commits ahead of origin/main (including today's v0.8.1 commit)
 - Remote: https://github.com/snoryder8019/srv.git
 - No SSH keys configured
 - No credential helper configured
@@ -128,7 +128,7 @@ git push origin main
 You have **15 commits** ready to push, including:
 
 **Latest commit (Today):**
-- v8.0.1 - 3D Galactic Map Rebuild & Connection System
+- v0.8.1 - 3D Galactic Map Rebuild & Connection System
 - 98 files changed
 - Major 3D visualization fixes
 - Connection system infrastructure
@@ -195,5 +195,5 @@ ssh -T git@github.com
 ---
 
 **Date:** November 1, 2025
-**Status:** Ready to push v8.0.1 + 14 previous commits
+**Status:** Ready to push v0.8.1 + 14 previous commits
 **Recommendation:** Set up SSH authentication for long-term ease of use

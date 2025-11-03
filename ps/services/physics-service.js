@@ -5,6 +5,7 @@
  */
 import { Character } from '../api/v1/models/Character.js';
 import { Asset } from '../api/v1/models/Asset.js';
+import { getDb } from '../plugins/mongo/mongo.js';
 
 class PhysicsService {
   constructor() {
@@ -167,21 +168,74 @@ class PhysicsService {
       // Update galactic physics (galaxies and stars orbiting)
       const { updatedGalaxies, updatedStars, connections } = await this.updateGalacticPhysics();
 
+      // Update characters that are docked/stationed at galaxies (move with galaxy)
+      if (characters.length > 0 && updatedGalaxies.length > 0) {
+        await this.updateDockedCharacterPositions(characters, updatedGalaxies);
+      }
+
       // Broadcast galaxy, star positions and connections if socket.io is available
       if (this.io) {
         if (updatedGalaxies.length > 0 || updatedStars.length > 0) {
-          this.io.emit('galacticPhysicsUpdate', {
+          // Get list of connected user IDs
+          const connectedUserIds = this.io.getConnectedUserIds ? this.io.getConnectedUserIds() : [];
+
+          // Get characters with positions for rendering
+          // Calculate actual render position from docked galaxy + offset
+          // ONLY include characters whose users are currently connected via Socket.IO
+          const charactersForRendering = characters.filter(char => {
+            const hasLocation = char.location && char.location.type === 'galactic';
+            const isConnected = connectedUserIds.includes(char.userId.toString());
+            return hasLocation && isConnected; // Only show connected players!
+          }).map(char => {
+            let renderX = char.location.x;
+            let renderY = char.location.y;
+            let renderZ = char.location.z;
+            let dockedGalaxyName = null;
+
+            // If character is docked at a galaxy, calculate position from galaxy coords + offset
+            if (char.location.dockedGalaxyId) {
+              const dockedGalaxy = updatedGalaxies.find(g => g.id === char.location.dockedGalaxyId);
+              if (dockedGalaxy) {
+                renderX = dockedGalaxy.position.x + (char.location.offsetX || 0);
+                renderY = dockedGalaxy.position.y + (char.location.offsetY || 0);
+                renderZ = dockedGalaxy.position.z + (char.location.offsetZ || 0);
+                // dockedGalaxyName will be populated from galaxy title
+              }
+            }
+
+            return {
+              _id: char._id,
+              name: char.name,
+              userId: char.userId,
+              dockedGalaxyId: char.location.dockedGalaxyId || null,
+              dockedGalaxyName: dockedGalaxyName,
+              isInTransit: char.navigation?.isInTransit || false,
+              transitFrom: char.navigation?.isInTransit ? char.navigation.from : null,
+              transitTo: char.navigation?.isInTransit ? char.navigation.destination : null,
+              location: {
+                x: renderX,
+                y: renderY,
+                z: renderZ
+              },
+              activeInShip: char.activeInShip
+            };
+          });
+
+          const payload = {
             galaxies: updatedGalaxies,
             stars: updatedStars || [],
             connections: connections,
+            characters: charactersForRendering, // Include characters in main payload
             simulationSpeed: this.simulationSpeed,
             timestamp: Date.now()
-          });
+          };
 
-          // Log sample position for debugging
-          if (updatedGalaxies[0]) {
-            const g = updatedGalaxies[0];
-            console.log(`📡 Broadcast: ${g.id.substring(0,8)} pos:(${g.position.x.toFixed(0)},${g.position.y.toFixed(0)},${g.position.z.toFixed(0)}) | ${updatedStars?.length || 0} stars | ${connections.length} connections`);
+          this.io.emit('galacticPhysicsUpdate', payload);
+
+          // Log broadcast details
+          console.log(`📡 galacticPhysicsUpdate emitted: galaxies=${updatedGalaxies.length}, stars=${updatedStars?.length || 0}, connections=${connections.length}, characters=${charactersForRendering.length}`);
+          if (connections.length > 0) {
+            console.log(`   🔗 Connection: ${connections[0].from.substring(0,8)} <-> ${connections[0].to.substring(0,8)} (${connections[0].state})`);
           }
         }
 
@@ -356,9 +410,10 @@ class PhysicsService {
 
             // Check if galaxy has escaped orbit (too far from anomaly)
             if (dist > this.MAX_ORBIT_RANGE) {
-              // Galaxy has escaped - remove parent binding
+              // Galaxy has escaped - remove parent binding and mark as free-floating
               galaxy.parentId = null;
-              console.log(`🚀 Galaxy "${galaxy.title}" escaped orbit (distance: ${dist.toFixed(0)} > ${this.MAX_ORBIT_RANGE})`);
+              galaxy.escaped = true; // Mark as escaped to prevent re-capture
+              console.log(`🚀 Galaxy "${galaxy.title}" escaped orbit (distance: ${dist.toFixed(0)} > ${this.MAX_ORBIT_RANGE}) - now drifting freely!`);
             } else if (dist < this.MIN_ANOMALY_DISTANCE) {
               // TOO CLOSE to anomaly - strong repulsion to push away
               const repulsionForce = this.GALAXY_REPULSION_STRENGTH * 10; // 10x stronger when too close
@@ -379,8 +434,9 @@ class PhysicsService {
               totalForceZ = (dz / dist) * force;
             }
           }
-        } else {
-          // Fallback: if no parent assigned, use nearest anomaly
+        } else if (!galaxy.escaped) {
+          // Fallback: if no parent assigned AND not escaped, try to capture by nearest anomaly
+          // Escaped galaxies drift freely and are NOT re-captured
           for (const anomaly of anomalies) {
             const dx = anomaly.coordinates.x - galaxy.coordinates.x;
             const dy = anomaly.coordinates.y - galaxy.coordinates.y;
@@ -745,6 +801,87 @@ class PhysicsService {
       }
     }
 
+    // Galaxy-to-Galaxy connections (for travel routes between galaxies)
+    // Connect galaxies that are close to each other
+    const GALAXY_CONNECTION_DISTANCE = 3000; // Max distance for galaxy-galaxy connections
+
+    for (let i = 0; i < galaxies.length; i++) {
+      const galaxy1 = galaxies[i];
+      let connectionsFromThis = 0;
+      const MAX_GALAXY_CONNECTIONS = 3; // Each galaxy can connect to up to 3 nearby galaxies
+
+      for (let j = i + 1; j < galaxies.length && connectionsFromThis < MAX_GALAXY_CONNECTIONS; j++) {
+        const galaxy2 = galaxies[j];
+        const dist = this.calculateDistance(galaxy1.coordinates, galaxy2.coordinates);
+
+        if (dist < GALAXY_CONNECTION_DISTANCE) {
+          const connectionId = `${galaxy1._id}-${galaxy2._id}`;
+          const existingConn = this.connections.get(connectionId);
+
+          // Calculate relative velocity
+          const relativeVel = Math.sqrt(
+            (galaxy1.physics.vx - galaxy2.physics.vx) ** 2 +
+            (galaxy1.physics.vy - galaxy2.physics.vy) ** 2 +
+            (galaxy1.physics.vz - galaxy2.physics.vz) ** 2
+          );
+
+          const daysToChange = this.estimateConnectionChange(dist, relativeVel);
+
+          // Determine state
+          let state = 'stable';
+          let color = 0x00ff00;
+
+          if (!existingConn) {
+            if (daysToChange < this.FORMING_CONNECTION_THRESHOLD) {
+              state = 'forming';
+              color = 0x0088ff;
+            }
+
+            this.connections.set(connectionId, {
+              id: connectionId,
+              fromId: galaxy1._id.toString(),
+              toId: galaxy2._id.toString(),
+              createdAt: this.tickCounter,
+              distance: dist,
+              state: state
+            });
+          } else {
+            const connectionAge = (this.tickCounter - existingConn.createdAt) * this.tickRate / 1000 / 86400 * this.simulationSpeed;
+
+            if (connectionAge < this.STABLE_CONNECTION_THRESHOLD) {
+              state = 'forming';
+              color = 0x0088ff;
+            } else if (dist > GALAXY_CONNECTION_DISTANCE * 0.9) {
+              state = 'breaking';
+              color = 0xff4400;
+            } else {
+              state = 'stable';
+              color = 0x00ff00;
+            }
+
+            existingConn.distance = dist;
+            existingConn.state = state;
+          }
+
+          // Add to active connections
+          activeConnections.push({
+            id: connectionId,
+            from: galaxy1._id.toString(),
+            to: galaxy2._id.toString(),
+            fromPos: { x: galaxy1.coordinates.x, y: galaxy1.coordinates.y, z: galaxy1.coordinates.z },
+            toPos: { x: galaxy2.coordinates.x, y: galaxy2.coordinates.y, z: galaxy2.coordinates.z },
+            distance: dist,
+            state: state,
+            color: color,
+            daysToChange: daysToChange,
+            isPrimary: false
+          });
+
+          connectionsFromThis++;
+        }
+      }
+    }
+
     // Clean up broken connections
     for (const [connId, conn] of this.connections.entries()) {
       const stillActive = activeConnections.some(ac => ac.id === connId);
@@ -997,6 +1134,70 @@ class PhysicsService {
       gravityWells: this.gravityWells.length,
       tickCounter: this.tickCounter
     };
+  }
+
+  /**
+   * Update docked characters - ensure they have a dockedGalaxyId set
+   * Characters not in transit should be attached to nearest galaxy
+   */
+  async updateDockedCharacterPositions(characters, updatedGalaxies) {
+    const db = getDb();
+
+    for (const character of characters) {
+      // Skip characters in transit - they navigate independently
+      if (character.navigation?.isInTransit) continue;
+
+      // If character doesn't have a docked galaxy, find and assign nearest one
+      if (!character.location.dockedGalaxyId) {
+        let nearestGalaxy = null;
+        let minDistance = Infinity;
+
+        for (const galaxyUpdate of updatedGalaxies) {
+          const dx = galaxyUpdate.position.x - character.location.x;
+          const dy = galaxyUpdate.position.y - character.location.y;
+          const dz = galaxyUpdate.position.z - character.location.z;
+          const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestGalaxy = galaxyUpdate;
+          }
+        }
+
+        // Always assign to nearest galaxy, even if far away
+        // Characters in deep space will still be "attached" to nearest galaxy for rendering
+        if (nearestGalaxy) {
+          // Store galaxy ID and relative offset
+          const offsetX = character.location.x - nearestGalaxy.position.x;
+          const offsetY = character.location.y - nearestGalaxy.position.y;
+          const offsetZ = character.location.z - nearestGalaxy.position.z;
+
+          await db.collection('characters').updateOne(
+            { _id: character._id },
+            {
+              $set: {
+                'location.dockedGalaxyId': nearestGalaxy.id,
+                'location.dockedGalaxyName': null, // Will be populated on read
+                'location.offsetX': offsetX,
+                'location.offsetY': offsetY,
+                'location.offsetZ': offsetZ,
+                'location.lastUpdated': new Date()
+              }
+            }
+          );
+
+          // Update in-memory object for this tick
+          character.location.dockedGalaxyId = nearestGalaxy.id;
+          character.location.offsetX = offsetX;
+          character.location.offsetY = offsetY;
+          character.location.offsetZ = offsetZ;
+
+          if (minDistance > 3000) {
+            console.log(`📍 Character "${character.name}" attached to distant galaxy (${minDistance.toFixed(0)} units away)`);
+          }
+        }
+      }
+    }
   }
 
   /**

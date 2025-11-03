@@ -1,6 +1,6 @@
 # Complete Session Summary - November 1, 2025
 
-**Version:** v8.0.0 → v8.0.1
+**Version:** v0.8.0 → v0.8.1
 **Type:** Live Production Development
 **Duration:** Extended session (context continuation)
 **Status:** ✅ Major features implemented, ⚠️ Connection visualization pending
@@ -38,7 +38,7 @@ User reported multiple issues with the 3D galactic map:
 
 ## Solution Approach
 
-### Phase 1: Nuclear Option Test (v7.0.0)
+### Phase 1: Nuclear Option Test (v0.7.0)
 
 **Problem:** After extensive debugging, stars were being created (console confirmed) but NOT rendering.
 
@@ -53,7 +53,7 @@ User reported multiple issues with the 3D galactic map:
 
 ---
 
-### Phase 2: Minimal Rebuild (v8.0.0)
+### Phase 2: Minimal Rebuild (v0.8.0)
 
 **Approach:** Strip everything down to absolute basics and rebuild.
 
@@ -101,7 +101,7 @@ this.camera = new THREE.OrthographicCamera(
 
 ---
 
-### Phase 3: Label System (v8.0.1)
+### Phase 3: Label System (v0.8.1)
 
 #### Implementation
 
@@ -247,7 +247,7 @@ window.GalacticMap3D = GalacticMap3D;
 
 **Cache busting:**
 ```html
-<script src="/javascripts/galactic-map-3d.js?v=8.0.1&t=<%= Date.now() %>"></script>
+<script src="/javascripts/galactic-map-3d.js?v=0.8.1&t=<%= Date.now() %>"></script>
 ```
 
 ### Issue 2: Duplicate Variable Declaration
@@ -288,7 +288,7 @@ const galacticTypes = ['galaxy', 'zone', 'anomaly', ...]; // Removed 'star'
 
 ### Templates
 - **views/universe/galactic-map-3d.ejs**
-  - Version updates (v7.0.0 → v8.0.1)
+  - Version updates (v0.7.0 → v0.8.1)
   - Connection loading code
   - Timestamp cache busting
 
@@ -435,7 +435,7 @@ const galacticTypes = ['galaxy', 'zone', 'anomaly', ...]; // Removed 'star'
 
 **Latest Commit:**
 ```
-230cf3e - v8.0.1 - 3D Galactic Map Rebuild & Connection System
+230cf3e - v0.8.1 - 3D Galactic Map Rebuild & Connection System
 - 98 files changed
 - 6,633 insertions(+), 1,527 deletions(-)
 ```
@@ -529,7 +529,7 @@ const galacticTypes = ['galaxy', 'zone', 'anomaly', ...]; // Removed 'star'
 **Live Server:** ps.madladslab.com
 **Port:** 3399
 **Service:** tmux session `ps`
-**Status:** ✅ Running with v8.0.1
+**Status:** ✅ Running with v0.8.1
 
 **Deployment Method:**
 ```bash
@@ -564,7 +564,7 @@ tmux new-session -d -s ps -c /srv/ps "PORT=3399 npm start"
    - Verify on GitHub
 
 4. **Documentation updates**
-   - Update CLAUDE.md with v8.0.1
+   - Update CLAUDE.md with v0.8.1
    - Add connection system to architecture docs
    - Create troubleshooting guide for 3D issues
 

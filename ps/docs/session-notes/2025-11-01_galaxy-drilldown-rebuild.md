@@ -4,12 +4,12 @@
 Complete rebuild of the galaxy drill-down functionality using a minimal, from-scratch approach. Previous complex implementation failed to render stars despite correct object creation.
 
 ## Problem
-After extensive debugging with v3.4 through v7.0.0:
+After extensive debugging with v3.4 through v0.7.0:
 - Stars were being created with correct geometry (radius 2500)
 - Camera was positioned correctly
 - Objects existed in scene (confirmed via console)
 - BUT: Nothing rendered when clicking into galaxy view
-- Even a simple red wireframe cube test (v7.0.0) was attempted
+- Even a simple red wireframe cube test (v0.7.0) was attempted
 
 ## Root Cause Analysis
 The previous implementation had too many layers of complexity:
@@ -31,7 +31,7 @@ Started from scratch with absolute minimal implementation:
 5. Enable controls immediately
 6. No effects, no labels initially
 
-### New Implementation (v8.0.0)
+### New Implementation (v0.8.0)
 
 **File:** [galactic-map-3d.js](/srv/ps/public/javascripts/galactic-map-3d.js) lines 2895-2957
 
@@ -93,7 +93,7 @@ Started from scratch with absolute minimal implementation:
 - ❌ Deferred rendering
 - ❌ Complex zoom calculations
 - ❌ Disabled controls workarounds
-- ❌ Nuclear test cube (v7.0.0)
+- ❌ Nuclear test cube (v0.7.0)
 
 ### What Remains
 - ✅ Simple yellow spheres (radius 500)
@@ -170,7 +170,7 @@ Started from scratch with absolute minimal implementation:
 
 ## Architecture Changes
 
-### Before (v3.4 - v7.0.0):
+### Before (v3.4 - v0.7.0):
 ```
 showGalaxyLevel()
   ↓
@@ -192,7 +192,7 @@ Complex camera calculations
 Deferred rendering
 ```
 
-### After (v8.0.0):
+### After (v0.8.0):
 ```
 showGalaxyLevel()
   ↓
@@ -222,7 +222,7 @@ Immediate render
 - Replaced with minimal star creation approach
 
 ### [galactic-map-3d.ejs](/srv/ps/views/universe/galactic-map-3d.ejs)
-- **Line 1077:** Version updated from v7.0.0 to v8.0.0 for cache busting
+- **Line 1077:** Version updated from v0.7.0 to v0.8.0 for cache busting
 
 ## Version History
 
@@ -230,8 +230,8 @@ Immediate render
 - **v5.5.x** - Simplified effects, removed glows
 - **v5.6.x - v5.9.x** - Various camera/frustum fixes
 - **v6.0.x - v6.1.0** - Debug sphere tests, frustum adjustments
-- **v7.0.0** - Nuclear test with wireframe cube
-- **v8.0.0** - Complete rebuild with minimal approach ✅
+- **v0.7.0** - Nuclear test with wireframe cube
+- **v0.8.0** - Complete rebuild with minimal approach ✅
 
 ## Next Steps (If Needed)
 
@@ -269,7 +269,7 @@ If this minimal version still fails:
 - **Controls:** OrbitControls enabled, target at star center
 
 ## Version
-- **Feature Version:** v8.0.0 - Minimal Galaxy Drill-Down Rebuild
+- **Feature Version:** v0.8.0 - Minimal Galaxy Drill-Down Rebuild
 - **Date:** November 1, 2025
 - **Status:** ✅ Deployed and Running
 - **Service:** Port 3399

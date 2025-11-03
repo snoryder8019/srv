@@ -651,6 +651,19 @@
       </div>
     </div>
 
+    <!-- Cron Job Execution History -->
+    <div class="dashboard-grid">
+      <div class="dashboard-card wide-card">
+        <div class="card-header">
+          <h3 class="card-title">📝 Cron Job Execution History</h3>
+          <button class="action-btn" onclick="refreshCronHistory()">Refresh</button>
+        </div>
+        <div id="cron-history" style="max-height: 400px; overflow-y: auto;">
+          <div style="color: rgba(255,255,255,0.6); font-size: 12px; text-align: center; padding: 20px;">Loading history...</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Unified MongoDB Management -->
     <div class="dashboard-grid">
       <div class="dashboard-card wide-card">
@@ -916,20 +929,52 @@
         return;
       }
 
-      container.innerHTML = jobs.map(job => `
-        <div class="cron-job-item">
-          <div class="cron-job-header">
-            <div class="cron-job-name">${job.name}</div>
-            <span class="card-status ${job.running ? 'status-healthy' : 'status-down'}">
-              ${job.running ? 'Active' : 'Inactive'}
-            </span>
+      container.innerHTML = jobs.map(job => {
+        let lastRunHtml = '';
+        if (job.lastExecution) {
+          const timeAgo = getTimeAgo(job.lastExecution.timestamp);
+          const statusColor = job.lastExecution.success ? '#00ff9f' : '#ff5252';
+          const statusIcon = job.lastExecution.success ? '✅' : '❌';
+
+          lastRunHtml = `
+            <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px; font-size: 11px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: ${statusColor};">${statusIcon} Last run: ${timeAgo}</span>
+                <span style="color: rgba(255,255,255,0.6);">${job.lastExecution.duration}ms</span>
+              </div>
+              ${job.lastExecution.message ? `<div style="margin-top: 4px; color: rgba(255,255,255,0.7);">${job.lastExecution.message}</div>` : ''}
+            </div>
+          `;
+        }
+
+        return `
+          <div class="cron-job-item">
+            <div class="cron-job-header">
+              <div class="cron-job-name">${job.name}</div>
+              <span class="card-status ${job.running ? 'status-healthy' : 'status-down'}">
+                ${job.running ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div class="cron-job-schedule">${job.schedule}</div>
+            ${lastRunHtml}
+            <button class="cron-trigger-btn" onclick="triggerCronJob('${job.name}')" style="margin-top: 8px;">
+              Trigger Now
+            </button>
           </div>
-          <div class="cron-job-schedule">${job.schedule}</div>
-          <button class="cron-trigger-btn" onclick="triggerCronJob('${job.name}')">
-            Trigger Now
-          </button>
-        </div>
-      `).join('');
+        `;
+      }).join('');
+    }
+
+    // Helper function to format time ago
+    function getTimeAgo(timestamp) {
+      const now = new Date();
+      const past = new Date(timestamp);
+      const seconds = Math.floor((now - past) / 1000);
+
+      if (seconds < 60) return `${seconds}s ago`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+      return `${Math.floor(seconds / 86400)}d ago`;
     }
 
     async function triggerCronJob(jobName) {
@@ -942,12 +987,71 @@
 
         if (data.success) {
           alert(`Job "${jobName}" triggered successfully!`);
+          // Refresh both job status and history
+          await refreshCronJobs();
+          await refreshCronHistory();
         } else {
           alert(`Failed to trigger job: ${data.error}`);
         }
       } catch (error) {
         alert(`Error triggering job: ${error.message}`);
       }
+    }
+
+    async function refreshCronHistory() {
+      try {
+        const response = await fetch('/admin/api/cron/history?limit=50');
+        const data = await response.json();
+
+        if (data.success) {
+          displayCronHistory(data.history);
+        }
+      } catch (error) {
+        console.error('Error loading cron history:', error);
+      }
+    }
+
+    function displayCronHistory(history) {
+      const container = document.getElementById('cron-history');
+
+      if (!history || history.length === 0) {
+        container.innerHTML = '<div style="color: rgba(255,255,255,0.6); font-size: 12px; text-align: center; padding: 20px;">No execution history available</div>';
+        return;
+      }
+
+      let html = '<div style="font-size: 11px; font-family: monospace;">';
+
+      history.forEach(entry => {
+        const statusColor = entry.success ? '#00ff9f' : '#ff5252';
+        const statusIcon = entry.success ? '✅' : '❌';
+        const timestamp = new Date(entry.timestamp).toLocaleString();
+
+        html += `
+          <div style="
+            padding: 10px;
+            margin-bottom: 8px;
+            background: rgba(0,0,0,0.3);
+            border-left: 3px solid ${statusColor};
+            border-radius: 4px;
+          ">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
+              <div style="font-weight: bold; color: ${statusColor};">
+                ${statusIcon} ${entry.jobName}
+              </div>
+              <div style="color: rgba(255,255,255,0.5); font-size: 10px;">
+                ${entry.duration}ms
+              </div>
+            </div>
+            <div style="color: rgba(255,255,255,0.6); font-size: 10px; margin-bottom: 4px;">
+              ${timestamp}
+            </div>
+            ${entry.message ? `<div style="color: rgba(255,255,255,0.8); margin-top: 6px;">${entry.message}</div>` : ''}
+          </div>
+        `;
+      });
+
+      html += '</div>';
+      container.innerHTML = html;
     }
 
     async function testDatabaseConnection() {
@@ -1647,6 +1751,7 @@
     async function initDashboard() {
       await loadSystemStatus();
       await refreshCronJobs();
+      await refreshCronHistory();
       await loadDatabaseMetrics();
       await loadTestMetrics();
       await refreshDatabaseUsage();

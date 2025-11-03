@@ -1,5 +1,6 @@
 import express from 'express';
-import { Asset } from '../models/Asset.js';
+import { getDb } from '../../../plugins/mongo/mongo.js';
+import { collections } from '../../../config/database.js';
 import { physicsService } from '../../../services/physics-service.js';
 
 const router = express.Router();
@@ -10,15 +11,19 @@ const router = express.Router();
  */
 router.get('/', async (req, res) => {
   try {
+    const db = getDb();
+
     // Get all galaxies with their current positions and physics
-    const galaxies = await Asset.find({ assetType: 'galaxy' })
-      .select('_id title coordinates physics assetType')
-      .lean();
+    const galaxies = await db.collection(collections.assets)
+      .find({ assetType: 'galaxy' })
+      .project({ _id: 1, title: 1, coordinates: 1, physics: 1, assetType: 1, parentId: 1 })
+      .toArray();
 
     // Get all anomalies
-    const anomalies = await Asset.find({ assetType: 'anomaly' })
-      .select('_id title coordinates assetType')
-      .lean();
+    const anomalies = await db.collection(collections.assets)
+      .find({ assetType: 'anomaly' })
+      .project({ _id: 1, title: 1, coordinates: 1, assetType: 1 })
+      .toArray();
 
     // Get current connections from physics service
     const connections = physicsService.getConnections ? physicsService.getConnections() : [];

@@ -1,7 +1,7 @@
 # Claude AI Context - Stringborn Universe
 
-**Last Updated:** January 3, 2025 (Session Wrap)
-**Current Version:** v8.0.6 (Session Wrap & Documentation)
+**Last Updated:** November 3, 2025 (Session Wrap)
+**Current Version:** v0.8.6 (Session Wrap & Documentation)
 **Purpose:** Efficient context loading for AI assistance sessions
 
 ---
@@ -71,25 +71,25 @@ lsof -ti:3399 | xargs kill -9
 
 ### Recent Commits (Last 5)
 ```
-[Current] - 2025-01-03 - v8.0.6 - Session Wrap & Documentation ⭐ LIVE PRODUCTION
-[Previous] - 2025-01-03 - v8.0.5 - Terminal Interface Overhaul
+[Current] - 2025-11-03 - v0.8.6 - Session Wrap & Documentation ⭐ LIVE PRODUCTION
+[Previous] - 2025-11-03 - v0.8.5 - Terminal Interface Overhaul
 6a6c625 - 2025-11-03 - commit
-f338f02 - 2025-11-03 - v8.0.4 - Header & Breadcrumb Navigation System
-d61b0a1 - 2025-11-02 - v8.0.3 - Real-Time Planet Lighting & Navigation Fix
+f338f02 - 2025-11-03 - v0.8.4 - Header & Breadcrumb Navigation System
+d61b0a1 - 2025-11-02 - v0.8.3 - Real-Time Planet Lighting & Navigation Fix
 ```
 
-### Today's Session Additions (Jan 3, 2025)
+### Today's Session Additions (Nov 3, 2025)
 
-**v8.0.6 - Session Wrap & Documentation (MAINTENANCE RELEASE):**
-1. ✅ Updated patch notes to v8.0.6 with streamlined maintenance release content
-2. ✅ Moved v8.0.5 detailed notes to collapsible Previous Versions section
-3. ✅ Added v8.0.5 "Terminal Interface Overhaul" archive entry with full details
+**v0.8.6 - Session Wrap & Documentation (MAINTENANCE RELEASE):**
+1. ✅ Updated patch notes to v0.8.6 with streamlined maintenance release content
+2. ✅ Moved v0.8.5 detailed notes to collapsible Previous Versions section
+3. ✅ Added v0.8.5 "Terminal Interface Overhaul" archive entry with full details
 4. ✅ Updated CLAUDE.md with latest session summary and version info
-5. ✅ Organized patch notes with historical version tracking (v8.0.5, v0.4.0)
+5. ✅ Organized patch notes with historical version tracking (v0.8.5, v0.4.0)
 
 **Key Changes:**
 - **Patch Notes Archive:** Collapsible Previous Versions section for historical releases
-- **v8.0.5 Documentation:** Comprehensive terminal overlay implementation archived
+- **v0.8.5 Documentation:** Comprehensive terminal overlay implementation archived
 - **Version History:** Organized chronological patch notes with expand/collapse functionality
 - **Development Docs:** CLAUDE.md updated with current state and session summary
 
@@ -99,9 +99,9 @@ d61b0a1 - 2025-11-02 - v8.0.3 - Real-Time Planet Lighting & Navigation Fix
 
 **Database Changes:** None (documentation-only release)
 
-### Previous Session (Jan 3, 2025)
+### Previous Session (Nov 3, 2025)
 
-**v8.0.5 - Terminal Interface Overhaul (MAJOR FEATURE RELEASE):**
+**v0.8.5 - Terminal Interface Overhaul (MAJOR FEATURE RELEASE):**
 1. ✅ Created three terminal-themed overlays: Character, Inventory, Profile
 2. ✅ Implemented color-coded themes (Blue/Cyan/Purple) matching The Tome's green aesthetic
 3. ✅ Added split-view inventory layout (Equipment/Fittings/Locations + Items grid)
@@ -125,7 +125,7 @@ d61b0a1 - 2025-11-02 - v8.0.3 - Real-Time Planet Lighting & Navigation Fix
 
 **Files Modified:**
 - `views/universe/galactic-map-3d.ejs` - Complete terminal overlay system implementation
-- `views/help/patch-notes.ejs` - Comprehensive v8.0.5 documentation
+- `views/help/patch-notes.ejs` - Comprehensive v0.8.5 documentation
 - `api/v1/universe/index.js` - Added /tome-data endpoint for overlay data fetching
 
 **Critical Bug Fixes:**
@@ -136,7 +136,7 @@ d61b0a1 - 2025-11-02 - v8.0.3 - Real-Time Planet Lighting & Navigation Fix
 
 ### Previous Session (Nov 3, 2025)
 
-**v8.0.3 - Orbital Trail Visualization (LIVE PRODUCTION - Session 2):**
+**v0.8.3 - Orbital Trail Visualization (LIVE PRODUCTION - Session 2):**
 1. ✅ Added white orbital trail rings behind planets in galaxy view
 2. ✅ Implemented tapered opacity gradient (bright at planet → transparent at star)
 3. ✅ Trail follows planet's past path (90-degree arc / quarter orbit)
@@ -156,7 +156,7 @@ d61b0a1 - 2025-11-02 - v8.0.3 - Real-Time Planet Lighting & Navigation Fix
 
 **Previous Session (Earlier Nov 2, 2025):**
 
-**v8.0.2 - Cinematic Animations & Interaction Fix (LIVE PRODUCTION - Session 1):**
+**v0.8.2 - Cinematic Animations & Interaction Fix (LIVE PRODUCTION - Session 1):**
 1. ✅ Implemented cinematic zoom-in animation when clicking galaxy in galactic view (750ms)
 2. ✅ Added dramatic star expansion animation from galaxy center (750ms quartic ease-in)
 3. ✅ Implemented zoom-out animation with proper directional vector to galactic view
@@ -178,7 +178,7 @@ d61b0a1 - 2025-11-02 - v8.0.3 - Real-Time Planet Lighting & Navigation Fix
 
 ### Previous Session (Nov 1, 2025)
 
-**v8.0.1 - 3D Galactic Map Rebuild & Connection System (LIVE PRODUCTION):**
+**v0.8.1 - 3D Galactic Map Rebuild & Connection System (LIVE PRODUCTION):**
 1. ✅ Complete rebuild of galaxy drill-down rendering system
 2. ✅ Fixed star visibility in galaxy view (stars now persist)
 3. ✅ Implemented color-coded label system (purple galaxies, white anomalies, yellow stars)
@@ -531,27 +531,27 @@ curl http://localhost:3399/api/v1/motd/list  # Admin only
 
 ## 📝 Session Notes
 
-**Last Session:** Jan 3, 2025 - v8.0.6 Session Wrap & Documentation (MAINTENANCE RELEASE)
+**Last Session:** Nov 3, 2025 - v0.8.6 Session Wrap & Documentation (MAINTENANCE RELEASE)
 **Type:** Documentation and session cleanup
 **Key Achievements:**
-- ✅ Updated patch notes to v8.0.6 with streamlined maintenance content
-- ✅ Moved v8.0.5 detailed implementation notes to Previous Versions archive
+- ✅ Updated patch notes to v0.8.6 with streamlined maintenance content
+- ✅ Moved v0.8.5 detailed implementation notes to Previous Versions archive
 - ✅ Added collapsible historical version tracking system
 - ✅ Updated CLAUDE.md with comprehensive session summary
 - ✅ Prepared for server restart with version bump
 
 **Technical Details:**
 - **Patch Notes Structure:** Current release + collapsible historical versions
-- **Version Archive:** v8.0.5 (Terminal Interface Overhaul), v0.4.0 (Foundation Arc)
+- **Version Archive:** v0.8.5 (Terminal Interface Overhaul), v0.4.0 (Foundation Arc)
 - **Documentation Updates:** CLAUDE.md reflects latest terminal overlay system
 - **2 files modified:** patch-notes.ejs (restructuring), CLAUDE.md (session summary)
 
 **Status:**
 - ✅ Patch notes restructured and archived
-- ✅ CLAUDE.md updated with v8.0.6 info
+- ✅ CLAUDE.md updated with v0.8.6 info
 - ⏳ Server restart pending
 
-**Previous Session:** Jan 3, 2025 - v8.0.5 Terminal Interface Overhaul (MAJOR RELEASE)
+**Previous Session:** Nov 3, 2025 - v0.8.5 Terminal Interface Overhaul (MAJOR RELEASE)
 **Type:** Major feature implementation - Terminal overlay system
 **Key Achievements:**
 - ✅ Created three color-coded terminal overlays (Character/Inventory/Profile)
@@ -585,6 +585,61 @@ curl http://localhost:3399/api/v1/motd/list  # Admin only
 ---
 
 ## 🔧 Troubleshooting Quick Reference
+
+**⚠️ CRITICAL: EJS Template Line Number Debugging**
+
+When debugging errors in EJS files with inline `<script>` blocks (like `galactic-map-3d.ejs`, `system-map-3d.ejs`):
+
+**THE PROBLEM:**
+- Browser console shows error at line 5354
+- But the file only has 4738 lines
+- **THIS IS NOT A CACHING ISSUE!**
+
+**THE CAUSE:**
+EJS templates with inline `<script>` blocks create one continuous HTML document. Line numbers in browser console refer to the **RENDERED HTML OUTPUT** (the complete EJS-generated page), NOT separate JavaScript files or cached versions.
+
+**Example:**
+```
+views/universe/galactic-map-3d.ejs structure:
+Line 1-100:    HTML header, styles
+Line 101-200:  <script> block 1 (inline JavaScript)
+Line 201-1000: HTML body, more inline <script> blocks
+Line 1001-end: More inline JavaScript
+
+Browser sees this as ONE file with 5000+ lines!
+```
+
+**DEBUGGING STEPS:**
+1. **DO NOT assume it's browser cache** - Hard refresh will NOT fix this
+2. **Find the actual error location:**
+   - Browser shows: `galactic-map-3d:5354`
+   - This is line 5354 in the RENDERED HTML
+   - View page source (Ctrl+U) and navigate to that line
+   - Find which `<script>` block contains the error
+   - Calculate offset from the script block start
+3. **Look for syntax issues:**
+   - EJS expressions like `<%= user && user._id %>` inside JavaScript
+   - EJS HTML-escapes operators: `&&` becomes `&amp;&amp;`, breaking syntax
+   - Use separate EJS logic: `<% if (user) { %><%= user._id %><% } %>`
+
+**WHAT NOT TO DO:**
+- ❌ Add cache-busting query parameters (`?nocache=123`)
+- ❌ Clear browser cache repeatedly
+- ❌ Use hard refresh (Ctrl+Shift+R)
+- ❌ Change cache-control headers
+- ❌ Try private browsing mode
+
+**WHAT TO DO:**
+- ✅ Read browser console error carefully for actual syntax issue
+- ✅ View page source to see rendered HTML at reported line
+- ✅ Check for EJS expression syntax errors in JavaScript blocks
+- ✅ Use external JavaScript files when possible (avoid inline `<script>`)
+- ✅ Test in fresh session if needed, but don't blame cache
+
+**Critical Quote from User:**
+> "CACHE HAS NEVER BEEN THE PROBLEM NO MATTER HOW MANY TIMES YOU SUUGGEST IT..IT ALWAYS A js ERROR"
+
+> "the line descrepancies are ejs...not cache"
 
 **Service Won't Start:**
 ```bash
@@ -682,4 +737,4 @@ tmux attach -t ps
 ---
 
 *Efficient context for AI collaboration - keep updated after major sessions*
-*Last major update: November 1, 2025 - v8.0.1 (Live Production Rebuild)*
+*Last major update: November 1, 2025 - v0.8.1 (Live Production Rebuild)*

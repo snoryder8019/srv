@@ -357,7 +357,7 @@ router.get('/galactic-state', async (req, res) => {
 
     // Get all galaxies with their current positions and physics
     const galaxies = await assetsCollection.find({ assetType: 'galaxy' })
-      .project({ _id: 1, title: 1, coordinates: 1, physics: 1, assetType: 1 })
+      .project({ _id: 1, title: 1, coordinates: 1, physics: 1, assetType: 1, parentId: 1 })
       .toArray();
 
     // Get all anomalies
@@ -380,15 +380,66 @@ router.get('/galactic-state', async (req, res) => {
       })
       .toArray();
 
+    // Get current connections from physics service
+    const connections = physicsService.getConnections ? physicsService.getConnections() : [];
+
+    // Get all active characters in galactic space
+    const charactersCollection = db.collection('characters');
+    const characters = await charactersCollection.find({ 'location.type': 'galactic' })
+      .project({
+        _id: 1,
+        name: 1,
+        userId: 1,
+        location: 1,
+        navigation: 1,
+        activeInShip: 1
+      })
+      .toArray();
+
+    // Attach each character to nearest galaxy (for rendering on map)
+    const charactersWithGalaxy = characters.map(char => {
+      const charPos = char.location;
+      let nearestGalaxy = null;
+      let minDistance = Infinity;
+
+      // Find nearest galaxy
+      for (const galaxy of galaxies) {
+        const dx = galaxy.coordinates.x - charPos.x;
+        const dy = galaxy.coordinates.y - charPos.y;
+        const dz = galaxy.coordinates.z - charPos.z;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestGalaxy = galaxy._id.toString();
+        }
+      }
+
+      return {
+        _id: char._id,
+        name: char.name,
+        userId: char.userId,
+        location: char.location,
+        navigation: char.navigation,
+        activeInShip: char.activeInShip,
+        nearestGalaxy: nearestGalaxy,
+        distanceToGalaxy: minDistance
+      };
+    });
+
     res.json({
       success: true,
       galaxies,
       anomalies,
       stars,
+      connections,
+      characters: charactersWithGalaxy,
       count: {
         galaxies: galaxies.length,
         anomalies: anomalies.length,
-        stars: stars.length
+        stars: stars.length,
+        connections: connections.length,
+        characters: charactersWithGalaxy.length
       },
       timestamp: Date.now()
     });

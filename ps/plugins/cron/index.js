@@ -21,6 +21,37 @@ import { cleanupExpiredTokens, createActivityTokenIndexes } from '../../utilitie
  */
 
 const jobs = [];
+const jobHistory = [];
+
+/**
+ * Log job execution to history
+ */
+function logJobExecution(jobName, success, message = '', duration = 0) {
+  const entry = {
+    jobName,
+    success,
+    message,
+    duration,
+    timestamp: new Date().toISOString()
+  };
+
+  jobHistory.unshift(entry);
+
+  // Keep only last 100 entries
+  if (jobHistory.length > 100) {
+    jobHistory.pop();
+  }
+
+  // Detailed console logging
+  const emoji = success ? '✅' : '❌';
+  const status = success ? 'SUCCESS' : 'FAILED';
+  console.log(`${emoji} CRON [${jobName}] ${status} - ${duration}ms`);
+  if (message) {
+    console.log(`   └─ ${message}`);
+  }
+
+  return entry;
+}
 
 /**
  * Initialize cron jobs
@@ -31,11 +62,16 @@ export function initializeCronJobs() {
   // Documentation Tree Update
   // Runs every day at 3:00 AM
   const docsUpdateJob = cron.schedule('0 3 * * *', async () => {
+    const startTime = Date.now();
     console.log('📚 Running scheduled documentation tree update...');
     try {
-      await generateDocsTree();
-      console.log('✅ Documentation tree updated successfully via cron');
+      const result = await generateDocsTree();
+      const duration = Date.now() - startTime;
+      const message = `Generated tree with ${result.totalFiles} files in ${result.categories.length} categories`;
+      logJobExecution('Documentation Tree Update', true, message, duration);
     } catch (error) {
+      const duration = Date.now() - startTime;
+      logJobExecution('Documentation Tree Update', false, error.message, duration);
       console.error('❌ Error updating documentation tree via cron:', error);
     }
   }, {
@@ -53,11 +89,15 @@ export function initializeCronJobs() {
   // Patch Notes Update
   // Runs every day at 3:30 AM (30 minutes after docs update)
   const patchNotesUpdateJob = cron.schedule('30 3 * * *', async () => {
+    const startTime = Date.now();
     console.log('📝 Running scheduled patch notes update...');
     try {
       await updatePatchNotes();
-      console.log('✅ Patch notes updated successfully via cron');
+      const duration = Date.now() - startTime;
+      logJobExecution('Patch Notes Update', true, 'Patch notes index and changelog updated', duration);
     } catch (error) {
+      const duration = Date.now() - startTime;
+      logJobExecution('Patch Notes Update', false, error.message, duration);
       console.error('❌ Error updating patch notes via cron:', error);
     }
   }, {
@@ -75,11 +115,16 @@ export function initializeCronJobs() {
   // Activity Token Cleanup
   // Runs every 15 minutes to clean up expired tokens
   const tokenCleanupJob = cron.schedule('*/15 * * * *', async () => {
+    const startTime = Date.now();
     console.log('🧹 Running activity token cleanup...');
     try {
-      await cleanupExpiredTokens();
-      console.log('✅ Activity tokens cleaned up successfully');
+      const result = await cleanupExpiredTokens();
+      const duration = Date.now() - startTime;
+      const removed = result?.deletedCount || 0;
+      logJobExecution('Activity Token Cleanup', true, `Removed ${removed} expired tokens`, duration);
     } catch (error) {
+      const duration = Date.now() - startTime;
+      logJobExecution('Activity Token Cleanup', false, error.message, duration);
       console.error('❌ Error cleaning up activity tokens:', error);
     }
   }, {
@@ -147,6 +192,26 @@ export function getJobsStatus() {
 }
 
 /**
+ * Get job execution history
+ */
+export function getJobHistory(limit = 20) {
+  return jobHistory.slice(0, limit);
+}
+
+/**
+ * Get latest execution for each job
+ */
+export function getLatestExecutions() {
+  const latest = {};
+  for (const entry of jobHistory) {
+    if (!latest[entry.jobName]) {
+      latest[entry.jobName] = entry;
+    }
+  }
+  return latest;
+}
+
+/**
  * Manually trigger a job by name
  */
 export async function triggerJob(jobName) {
@@ -171,5 +236,7 @@ export default {
   initializeCronJobs,
   stopAllJobs,
   getJobsStatus,
+  getJobHistory,
+  getLatestExecutions,
   triggerJob
 };

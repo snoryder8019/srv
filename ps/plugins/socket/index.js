@@ -19,7 +19,7 @@ export default function initSockets(server) {
 
     // Handle character joining (entering the universe)
     socket.on('characterJoin', (data) => {
-      console.log('Character joined:', data.characterId, 'at asset:', data.assetId);
+      console.log('🎯 Character joined:', data.characterId, 'name:', data.characterName, 'userId:', data.userId, 'at asset:', data.assetId);
       socket.characterId = data.characterId;
       socket.characterName = data.characterName;
       socket.userId = data.userId;
@@ -204,5 +204,24 @@ export default function initSockets(server) {
     });
   });
 
+  // Expose method to get connected user IDs
+  io.getConnectedUserIds = () => {
+    const userIds = new Set();
+    for (const player of onlinePlayers.values()) {
+      if (player.userId) {
+        userIds.add(player.userId.toString());
+      }
+    }
+    return Array.from(userIds);
+  };
+
   return io;
+}
+
+// Export helper to get online players (for other modules)
+export function getConnectedUserIds(io) {
+  if (io && io.getConnectedUserIds) {
+    return io.getConnectedUserIds();
+  }
+  return [];
 }

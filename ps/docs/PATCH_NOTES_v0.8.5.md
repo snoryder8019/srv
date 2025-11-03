@@ -1,7 +1,7 @@
-# Stringborn Universe - Patch Notes v8.0.5
+# Stringborn Universe - Patch Notes v0.8.5
 
 **Release Date:** November 3, 2025
-**Version:** 8.0.5 - Loading Spinner & Location Info System
+**Version:** 0.8.5 - Loading Spinner & Location Info System
 **Status:** LIVE PRODUCTION
 
 ---
