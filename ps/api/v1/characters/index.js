@@ -9,8 +9,30 @@ const MAX_CHARACTERS = 3;
 const GAME_STATE_URL = process.env.GAME_STATE_URL || 'https://svc.madladslab.com';
 
 // Get all characters for logged-in user
+// If ?map=true is provided, return ALL characters with galactic positions for map visualization
 router.get('/', async (req, res) => {
   try {
+    // Map visualization mode - return all characters with galactic positions
+    if (req.query.map === 'true') {
+      const db = getDb();
+      const characters = await db.collection('characters')
+        .find({
+          'location.type': 'galactic',
+          'location.x': { $exists: true }
+        })
+        .project({
+          _id: 1,
+          name: 1,
+          location: 1,
+          navigation: 1
+        })
+        .toArray();
+
+      console.log(`🗺️ Map mode: Found ${characters.length} characters with galactic positions`);
+      return res.json({ characters });
+    }
+
+    // User's own characters
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -23,7 +45,7 @@ router.get('/', async (req, res) => {
     res.json({ characters });
   } catch (err) {
     console.error('Error fetching characters:', err);
-    res.status(500).json({ error: 'Failed to fetch characters' });
+    res.status(500).json({ error: 'Failed to fetch characters', details: err.message });
   }
 });
 

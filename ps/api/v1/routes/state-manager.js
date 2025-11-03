@@ -422,6 +422,7 @@ router.get('/map-state-3d', async (req, res) => {
       radius: asset.radius || 10,
       renderData: asset.renderData || {},
       parentId: asset.parentId?.toString() || null,
+      parentType: asset.parentType || null, // ADDED: Required for planet filtering
       parentGalaxy: asset.parentGalaxy?.toString() || null,
       parentStar: asset.parentStar?.toString() || null,
       orbitRadius: asset.orbitRadius || null,

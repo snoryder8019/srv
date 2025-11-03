@@ -20,7 +20,15 @@ class PhysicsService {
     this.ANOMALY_CAPTURE_DISTANCE = 15000; // Increased to cover universe scale
     this.ANOMALY_MASS = 1000000;
     this.GALAXY_MASS = 100000;
+    this.STAR_MASS = 10000; // Mass for star orbital mechanics
     this.MAX_VELOCITY = 15; // Reduced - orbital speeds should be ~1-10 units/sec with lower G
+
+    // Anti-clustering constants - prevent galaxies from converging
+    this.GALAXY_REPULSION_DISTANCE = 2500; // Galaxies repel each other within this distance
+    this.GALAXY_REPULSION_STRENGTH = 15000; // Force multiplier (30x stronger than gravity)
+    this.MIN_GALAXY_SEPARATION = 1200; // Minimum safe distance between galaxies
+    this.MIN_ANOMALY_DISTANCE = 1400; // Minimum distance from anomaly center
+    this.MAX_ORBIT_RANGE = 8000; // Max distance from anomaly to maintain orbit
 
     // Universe boundary constraints - keep galaxies within scene bounds
     this.UNIVERSE_BOUNDS = {
@@ -43,6 +51,7 @@ class PhysicsService {
     this.galacticCache = {
       anomalies: [],
       galaxies: [],
+      stars: [], // Stars orbit their parent galaxies
       lastUpdate: 0,
       updateInterval: 30000 // Refresh every 30 seconds
     };
@@ -155,14 +164,15 @@ class PhysicsService {
         }
       }
 
-      // Update galactic physics (galaxies orbiting anomalies)
-      const { updatedGalaxies, connections } = await this.updateGalacticPhysics();
+      // Update galactic physics (galaxies and stars orbiting)
+      const { updatedGalaxies, updatedStars, connections } = await this.updateGalacticPhysics();
 
-      // Broadcast galaxy positions and connections if socket.io is available
+      // Broadcast galaxy, star positions and connections if socket.io is available
       if (this.io) {
-        if (updatedGalaxies.length > 0) {
+        if (updatedGalaxies.length > 0 || updatedStars.length > 0) {
           this.io.emit('galacticPhysicsUpdate', {
             galaxies: updatedGalaxies,
+            stars: updatedStars || [],
             connections: connections,
             simulationSpeed: this.simulationSpeed,
             timestamp: Date.now()
@@ -171,7 +181,28 @@ class PhysicsService {
           // Log sample position for debugging
           if (updatedGalaxies[0]) {
             const g = updatedGalaxies[0];
-            console.log(`📡 Broadcast: ${g.id.substring(0,8)} pos:(${g.position.x.toFixed(0)},${g.position.y.toFixed(0)},${g.position.z.toFixed(0)}) | ${connections.length} connections`);
+            console.log(`📡 Broadcast: ${g.id.substring(0,8)} pos:(${g.position.x.toFixed(0)},${g.position.y.toFixed(0)},${g.position.z.toFixed(0)}) | ${updatedStars?.length || 0} stars | ${connections.length} connections`);
+          }
+        }
+
+        // Broadcast character positions if there are any characters with galactic positions
+        if (characters.length > 0) {
+          const charactersWithPositions = characters.filter(char =>
+            char.location && (char.location.x !== undefined || char.location.type === 'galactic')
+          );
+
+          if (charactersWithPositions.length > 0) {
+            this.io.emit('charactersUpdate', {
+              characters: charactersWithPositions.map(char => ({
+                _id: char._id,
+                id: char._id.toString(),
+                name: char.name,
+                location: char.location,
+                galacticPosition: char.location,
+                navigation: char.navigation
+              })),
+              timestamp: Date.now()
+            });
           }
         }
       }
@@ -273,20 +304,23 @@ class PhysicsService {
       if (this.galacticCache.galaxies.length === 0) {
         this.galacticCache.anomalies = await Asset.getByTypes(['anomaly']);
         this.galacticCache.galaxies = await Asset.getByTypes(['galaxy']);
+        this.galacticCache.stars = await Asset.getByTypes(['star']);
         this.galacticCache.lastUpdate = now;
-        console.log(`🌌 Loaded ${this.galacticCache.galaxies.length} galaxies and ${this.galacticCache.anomalies.length} anomalies into physics cache`);
+        console.log(`🌌 Loaded ${this.galacticCache.galaxies.length} galaxies, ${this.galacticCache.stars.length} stars, and ${this.galacticCache.anomalies.length} anomalies into physics cache`);
       }
 
-      // Refresh both anomalies and galaxies periodically to pick up database changes
+      // Refresh all galactic objects periodically to pick up database changes
       if (now - this.galacticCache.lastUpdate > this.galacticCache.updateInterval) {
         this.galacticCache.anomalies = await Asset.getByTypes(['anomaly']);
         this.galacticCache.galaxies = await Asset.getByTypes(['galaxy']);
+        this.galacticCache.stars = await Asset.getByTypes(['star']);
         this.galacticCache.lastUpdate = now;
-        console.log(`🔄 Refreshed galactic cache (${this.galacticCache.galaxies.length} galaxies, ${this.galacticCache.anomalies.length} anomalies)`);
+        console.log(`🔄 Refreshed galactic cache (${this.galacticCache.galaxies.length} galaxies, ${this.galacticCache.stars.length} stars, ${this.galacticCache.anomalies.length} anomalies)`);
       }
 
       const anomalies = this.galacticCache.anomalies;
       const galaxies = this.galacticCache.galaxies;
+      const stars = this.galacticCache.stars;
 
       if (galaxies.length === 0) return [];
 
@@ -320,13 +354,30 @@ class PhysicsService {
             const distSq = dx*dx + dy*dy + dz*dz;
             const dist = Math.sqrt(distSq);
 
-            // Gravitational force: F = G * m1 * m2 / r^2
-            const force = (this.GRAVITATIONAL_CONSTANT * this.ANOMALY_MASS * this.GALAXY_MASS) / (distSq + 1);
+            // Check if galaxy has escaped orbit (too far from anomaly)
+            if (dist > this.MAX_ORBIT_RANGE) {
+              // Galaxy has escaped - remove parent binding
+              galaxy.parentId = null;
+              console.log(`🚀 Galaxy "${galaxy.title}" escaped orbit (distance: ${dist.toFixed(0)} > ${this.MAX_ORBIT_RANGE})`);
+            } else if (dist < this.MIN_ANOMALY_DISTANCE) {
+              // TOO CLOSE to anomaly - strong repulsion to push away
+              const repulsionForce = this.GALAXY_REPULSION_STRENGTH * 10; // 10x stronger when too close
+              totalForceX = -(dx / dist) * repulsionForce; // Push AWAY from anomaly
+              totalForceY = -(dy / dist) * repulsionForce;
+              totalForceZ = -(dz / dist) * repulsionForce;
 
-            // Direction unit vector
-            totalForceX = (dx / dist) * force;
-            totalForceY = (dy / dist) * force;
-            totalForceZ = (dz / dist) * force;
+              if (this.tickCounter % 30 === 0) {
+                console.log(`⚠️  Galaxy "${galaxy.title}" too close to anomaly (${dist.toFixed(0)} < ${this.MIN_ANOMALY_DISTANCE}) - repelling!`);
+              }
+            } else {
+              // Normal gravitational force: F = G * m1 * m2 / r^2
+              const force = (this.GRAVITATIONAL_CONSTANT * this.ANOMALY_MASS * this.GALAXY_MASS) / (distSq + 1);
+
+              // Direction unit vector
+              totalForceX = (dx / dist) * force;
+              totalForceY = (dy / dist) * force;
+              totalForceZ = (dz / dist) * force;
+            }
           }
         } else {
           // Fallback: if no parent assigned, use nearest anomaly
@@ -354,8 +405,14 @@ class PhysicsService {
           }
         }
 
+        // Apply galaxy-galaxy repulsion to prevent clustering
+        const repulsionForces = this.applyGalaxyRepulsion(galaxy, galaxies);
+        totalForceX += repulsionForces.x;
+        totalForceY += repulsionForces.y;
+        totalForceZ += repulsionForces.z;
+
         // Apply boundary repulsion forces to keep galaxies within scene bounds
-        const { forces: boundaryForces, boundaryViolation } = this.applyBoundaryForces(galaxy);
+        const { forces: boundaryForces } = this.applyBoundaryForces(galaxy);
         totalForceX += boundaryForces.x;
         totalForceY += boundaryForces.y;
         totalForceZ += boundaryForces.z;
@@ -417,6 +474,108 @@ class PhysicsService {
         });
       }
 
+      // Update star orbital mechanics (stars orbit their parent galaxies)
+      const updatedStars = [];
+      if (this.tickCounter % 30 === 0 && stars.length > 0) {
+        console.log(`⭐ Processing ${stars.length} stars for orbital updates...`);
+      }
+
+      for (const star of stars) {
+        // Only update stars with a parent galaxy
+        if (!star.parentGalaxy) {
+          if (this.tickCounter % 30 === 0) {
+            console.log(`  ⚠️  Star "${star.title}" has no parentGalaxy`);
+          }
+          continue;
+        }
+
+        // Handle both ObjectId and string parentGalaxy
+        const parentGalaxyId = typeof star.parentGalaxy === 'string' ? star.parentGalaxy : star.parentGalaxy.toString();
+        const parentGalaxy = galaxies.find(g => g._id.toString() === parentGalaxyId);
+        if (!parentGalaxy) {
+          if (this.tickCounter % 30 === 0) {
+            console.log(`  ⚠️  Star "${star.title}" parent galaxy not found: ${parentGalaxyId}`);
+          }
+          continue;
+        }
+
+        // Initialize physics if not present
+        if (!star.physics) {
+          star.physics = { vx: 0, vy: 0, vz: 0 };
+        }
+
+        // Calculate gravitational force from parent galaxy
+        const dx = parentGalaxy.coordinates.x - star.coordinates.x;
+        const dy = parentGalaxy.coordinates.y - star.coordinates.y;
+        const dz = parentGalaxy.coordinates.z - star.coordinates.z;
+        const distSq = dx*dx + dy*dy + dz*dz;
+        const dist = Math.sqrt(distSq);
+
+        // Gravitational force: F = G * m1 * m2 / r^2
+        const force = (this.GRAVITATIONAL_CONSTANT * this.GALAXY_MASS * this.STAR_MASS) / (distSq + 1);
+
+        // Direction unit vector
+        const forceX = (dx / dist) * force;
+        const forceY = (dy / dist) * force;
+        const forceZ = (dz / dist) * force;
+
+        // Apply forces to velocity (F = ma, assuming m = STAR_MASS)
+        const accelX = forceX / this.STAR_MASS;
+        const accelY = forceY / this.STAR_MASS;
+        const accelZ = forceZ / this.STAR_MASS;
+
+        star.physics.vx += accelX * deltaTime;
+        star.physics.vy += accelY * deltaTime;
+        star.physics.vz += accelZ * deltaTime;
+
+        // Clamp velocity to max speed
+        const speed = Math.sqrt(
+          star.physics.vx**2 +
+          star.physics.vy**2 +
+          star.physics.vz**2
+        );
+        if (speed > this.MAX_VELOCITY) {
+          const scale = this.MAX_VELOCITY / speed;
+          star.physics.vx *= scale;
+          star.physics.vy *= scale;
+          star.physics.vz *= scale;
+        }
+
+        // Update position based on velocity
+        star.coordinates.x += star.physics.vx * deltaTime;
+        star.coordinates.y += star.physics.vy * deltaTime;
+        star.coordinates.z += star.physics.vz * deltaTime;
+
+        // Add to bulk update operations
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: star._id },
+            update: {
+              $set: {
+                coordinates: star.coordinates,
+                physics: star.physics,
+                updatedAt: new Date()
+              }
+            }
+          }
+        });
+
+        // Add to broadcast list
+        updatedStars.push({
+          id: star._id.toString(),
+          position: {
+            x: star.coordinates.x,
+            y: star.coordinates.y,
+            z: star.coordinates.z
+          },
+          velocity: {
+            vx: star.physics.vx,
+            vy: star.physics.vy,
+            vz: star.physics.vz
+          }
+        });
+      }
+
       // Process connections between anomalies and galaxies
       this.updateConnections(anomalies, galaxies, activeConnections);
 
@@ -433,12 +592,17 @@ class PhysicsService {
         const assetsCollection = db.collection('assets');
         await assetsCollection.bulkWrite(bulkOps, { ordered: false });
         this.dbWriteCounter = 0;
+
+        // Log star updates
+        if (updatedStars.length > 0 && this.tickCounter % 30 === 0) {
+          console.log(`⭐ Updated ${updatedStars.length} stars orbiting galaxies`);
+        }
       }
 
-      return { updatedGalaxies, connections: activeConnections };
+      return { updatedGalaxies, updatedStars, connections: activeConnections };
     } catch (error) {
       console.error('Galactic physics error:', error.message);
-      return { updatedGalaxies: [], connections: [] };
+      return { updatedGalaxies: [], updatedStars: [], connections: [] };
     }
   }
 
@@ -712,6 +876,55 @@ class PhysicsService {
    * Apply boundary repulsion forces to keep galaxies within universe bounds
    * Uses soft and hard zones for progressive containment
    */
+  /**
+   * Apply galaxy-galaxy repulsion forces to prevent clustering
+   * Galaxies push each other away when too close
+   */
+  applyGalaxyRepulsion(galaxy, allGalaxies) {
+    const forces = { x: 0, y: 0, z: 0 };
+
+    for (const otherGalaxy of allGalaxies) {
+      // Skip self
+      if (otherGalaxy._id.toString() === galaxy._id.toString()) continue;
+
+      const dx = galaxy.coordinates.x - otherGalaxy.coordinates.x;
+      const dy = galaxy.coordinates.y - otherGalaxy.coordinates.y;
+      const dz = galaxy.coordinates.z - otherGalaxy.coordinates.z;
+      const distSq = dx*dx + dy*dy + dz*dz;
+      const dist = Math.sqrt(distSq);
+
+      // Only apply repulsion if within repulsion distance
+      if (dist < this.GALAXY_REPULSION_DISTANCE) {
+        // Repulsion force increases as distance decreases (inverse square + extra boost at close range)
+        const baseRepulsion = this.GALAXY_REPULSION_STRENGTH / (distSq + 1);
+
+        // Extra strong repulsion if below minimum safe separation
+        let repulsionMultiplier = 1.0;
+        if (dist < this.MIN_GALAXY_SEPARATION) {
+          repulsionMultiplier = 3.0; // 3x stronger when dangerously close
+        }
+
+        const force = baseRepulsion * repulsionMultiplier;
+
+        // Direction: away from other galaxy
+        const dirX = dx / dist;
+        const dirY = dy / dist;
+        const dirZ = dz / dist;
+
+        forces.x += dirX * force;
+        forces.y += dirY * force;
+        forces.z += dirZ * force;
+
+        // Debug log when galaxies are too close
+        if (dist < this.MIN_GALAXY_SEPARATION && this.tickCounter % 30 === 0) {
+          console.log(`⚠️  Galaxies too close! ${galaxy.title?.substring(0,15)} <-> ${otherGalaxy.title?.substring(0,15)}: ${dist.toFixed(0)} units (min: ${this.MIN_GALAXY_SEPARATION})`);
+        }
+      }
+    }
+
+    return forces;
+  }
+
   applyBoundaryForces(galaxy) {
     const forces = { x: 0, y: 0, z: 0 };
     let boundaryViolation = false;
