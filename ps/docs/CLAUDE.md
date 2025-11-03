@@ -71,14 +71,47 @@ lsof -ti:3399 | xargs kill -9
 
 ### Recent Commits (Last 5)
 ```
-230cf3e - 2025-11-01 - v8.0.1 - 3D Galactic Map Rebuild & Connection System ⭐ LIVE PRODUCTION
-6383b8f - 2025-10-30 - patch 5.0.1 (Scott)
-baf236f - 2025-10-28 - patchit (Scott)
-e5fcbbf - 2025-10-28 - works push (Scott) ⭐ MASSIVE 3D UPDATE
-d075496 - 2025-10-27 - utd (Scott)
+[Current] - 2025-11-03 - v8.0.5 - Loading Spinner & Location Info System ⭐ LIVE PRODUCTION
+6a6c625 - 2025-11-03 - commit
+f338f02 - 2025-11-03 - v8.0.4 - Header & Breadcrumb Navigation System
+d61b0a1 - 2025-11-02 - v8.0.3 - Real-Time Planet Lighting & Navigation Fix
+a4eaac9 - 2025-11-02 - v8.0.2 - Cinematic Animations & Interaction Fix
 ```
 
-### Today's Session Additions (Nov 2, 2025)
+### Today's Session Additions (Nov 3, 2025)
+
+**v8.0.5 - Loading Spinner & Location Info System (LIVE PRODUCTION):**
+1. ✅ Added minimal CSS-only loading spinner left of breadcrumb navigation
+2. ✅ Implemented dynamic location info display below breadcrumb (current location + child assets)
+3. ✅ Created Local Group asset type for universe-level organization
+4. ✅ Added "Local Group: Borne" as top-level container for all galaxies
+5. ✅ Fixed function definition order bug preventing location updates
+6. ✅ Integrated spinner with asset loading events (shows during fetch)
+7. ✅ Added location info to both galactic-map-3d and system-map-3d views
+8. ✅ Mobile responsive design for all new UI elements
+9. ✅ Console logging for debugging location/spinner updates
+10. ✅ Asset counting system for all view levels (universe/galaxy/system)
+
+**Key Technical Changes:**
+- **Loading Spinner:** CSS keyframe animation, 18px cyan ring, positioned at top-right
+- **Location Display:** Shows current location name + child asset counts
+  - Universe: "Local Group: Borne" + galaxy/anomaly counts
+  - Galaxy: "{Galaxy Name}" + star/anomaly counts
+  - System: "{Star Name}" + planet/moon counts
+- **Function Order Fix:** Moved all utility functions to line 431+ (before galacticMap init)
+- **setupViewOverrides():** Wraps all view override logic, called before showUniverseLevel()
+- **Local Group Asset:** New assetType for universe-level grouping (ID: 6908dd266f30fc233c4570de)
+- **2 files changed:** galactic-map-3d.ejs (400+ lines), system-map-3d.ejs (150+ lines)
+
+**Files Modified:**
+- `views/universe/galactic-map-3d.ejs` - Loading spinner, location info, function reorganization
+- `views/universe/system-map-3d.ejs` - Loading spinner and location info support
+
+**Database Changes:**
+- Created `localGroup` asset "Borne" (assetType: localGroup)
+- Total assets: 1020 (was 1019)
+
+### Previous Session (Nov 3, 2025)
 
 **v8.0.3 - Orbital Trail Visualization (LIVE PRODUCTION - Session 2):**
 1. ✅ Added white orbital trail rings behind planets in galaxy view
