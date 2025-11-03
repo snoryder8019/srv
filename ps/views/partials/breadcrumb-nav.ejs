@@ -1,0 +1,168 @@
+<!-- Universe Breadcrumb Navigation -->
+<div class="breadcrumb-nav" id="universeBreadcrumb">
+  <%
+    // Determine active breadcrumb based on currentView variable
+    const viewMap = {
+      'galactic': ['galactic-map', 'galaxy-map', 'solar-system', 'explorer'],
+      'galaxy': ['galactic-map', 'galaxy-map', 'solar-system', 'explorer'],
+      'system': ['galactic-map', 'galaxy-map', 'solar-system', 'explorer'],
+      'explorer': ['galactic-map', 'galaxy-map', 'solar-system', 'explorer']
+    };
+
+    const crumbs = viewMap[currentView] || ['galactic-map', 'galaxy-map', 'solar-system', 'explorer'];
+    const activeIndex = currentView === 'galactic' ? 0 :
+                        currentView === 'galaxy' ? 1 :
+                        currentView === 'system' ? 2 :
+                        currentView === 'explorer' ? 3 : 0;
+  %>
+
+  <% crumbs.forEach((crumb, index) => { %>
+    <% if (index < activeIndex) { %>
+      <a href="javascript:void(0)" class="breadcrumb-item <%= index === activeIndex ? 'active' : '' %> <%= index < activeIndex ? 'completed' : '' %>" data-index="<%= index %>" onclick="window.navigateBreadcrumb && window.navigateBreadcrumb(<%= index %>)">
+        <%= crumb %>
+      </a>
+    <% } else { %>
+      <span class="breadcrumb-item <%= index === activeIndex ? 'active' : '' %> <%= index < activeIndex ? 'completed' : '' %>" data-index="<%= index %>">
+        <%= crumb %>
+      </span>
+    <% } %>
+    <% if (index < crumbs.length - 1) { %>
+      <span class="breadcrumb-separator">&gt;</span>
+    <% } %>
+  <% }); %>
+</div>
+
+<script>
+  // Dynamic breadcrumb update utility
+  window.updateBreadcrumb = function(level) {
+    const breadcrumb = document.getElementById('universeBreadcrumb');
+    if (!breadcrumb) return;
+
+    const items = breadcrumb.querySelectorAll('.breadcrumb-item');
+    const levelMap = {
+      'galactic': 0,
+      'galaxy': 1,
+      'system': 2,
+      'explorer': 3
+    };
+
+    const activeIndex = levelMap[level] !== undefined ? levelMap[level] : 0;
+
+    items.forEach((item, index) => {
+      item.classList.remove('active', 'completed');
+      if (index === activeIndex) {
+        item.classList.add('active');
+      } else if (index < activeIndex) {
+        item.classList.add('completed');
+        // Make completed items clickable
+        if (item.tagName !== 'A') {
+          const link = document.createElement('a');
+          link.href = 'javascript:void(0)';
+          link.className = item.className;
+          link.dataset.index = item.dataset.index;
+          link.textContent = item.textContent;
+          link.onclick = () => window.navigateBreadcrumb && window.navigateBreadcrumb(index);
+          item.replaceWith(link);
+        }
+      } else {
+        // Make non-completed items non-clickable
+        if (item.tagName === 'A') {
+          const span = document.createElement('span');
+          span.className = item.className;
+          span.dataset.index = item.dataset.index;
+          span.textContent = item.textContent;
+          item.replaceWith(span);
+        }
+      }
+    });
+  };
+
+  // Breadcrumb navigation handler
+  window.navigateBreadcrumb = function(index) {
+    // Index 0 = galactic-map, 1 = galaxy-map, 2 = system, 3 = explorer
+    if (index === 0) {
+      // Navigate to galactic view
+      if (window.galacticMap && window.galacticMap.showGalacticLevel) {
+        window.galacticMap.showGalacticLevel();
+      } else {
+        window.location.href = '/universe/galactic-map-3d';
+      }
+    }
+    // Add more navigation logic as needed for other levels
+  };
+</script>
+
+<style>
+  .breadcrumb-nav {
+    position: fixed;
+    top: 60px; /* Below header */
+    right: 20px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 15px;
+    z-index: 90;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .breadcrumb-item {
+    color: #666;
+    text-transform: lowercase;
+    transition: color 0.2s;
+    white-space: nowrap;
+  }
+
+  .breadcrumb-item.completed {
+    color: #00ff9f;
+    opacity: 0.6;
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .breadcrumb-item.completed:hover {
+    opacity: 1;
+    text-shadow: 0 0 8px rgba(0, 255, 159, 0.5);
+  }
+
+  .breadcrumb-item.active {
+    color: #00ffaa;
+    font-weight: bold;
+    text-shadow: 0 0 8px rgba(0, 255, 170, 0.5);
+  }
+
+  .breadcrumb-separator {
+    color: rgba(0, 255, 170, 0.3);
+    font-size: 10px;
+  }
+
+  /* Mobile responsive */
+  @media (max-width: 768px) {
+    .breadcrumb-nav {
+      top: 50px;
+      right: 10px;
+      font-size: 9px;
+      padding: 6px 10px;
+      gap: 5px;
+    }
+
+    .breadcrumb-item {
+      display: none;
+    }
+
+    .breadcrumb-item.active,
+    .breadcrumb-item.completed:last-of-type {
+      display: inline;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .breadcrumb-nav {
+      font-size: 8px;
+      padding: 4px 8px;
+    }
+  }
+</style>

@@ -56,6 +56,12 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Make user available to all views
+app.use((req, res, next) => {
+  res.locals.user = req.user || null;
+  next();
+});
+
 // Load active character middleware (must be after passport)
 app.use(loadActiveCharacter);
 

@@ -100,6 +100,7 @@ class GalacticMap3D {
     this.planets = new Map();
     this.connections = new Map();
     this.players = new Map(); // Player characters
+    this.galaxyOrbits = []; // Galaxy orbital trails (purple pen stripes)
 
     // Groups for organization
     this.starfieldGroup = new THREE.Group();
@@ -795,6 +796,13 @@ class GalacticMap3D {
 
       console.log(`🏷️ Added purple label "${title}" above galaxy at y=${size * 2.0} (relative to galaxy)`);
 
+      // Create purple orbital trail in galactic view (only if not the current galaxy we're inside)
+      if (this.currentLevel === 'galactic' && !isCurrentGalaxy && assetData.physics && assetData.physics.vx !== undefined) {
+        // We'll create the trail once we know the galaxy's parent anomaly
+        // For now, just mark that this galaxy should have a trail
+        galaxyGroup.userData.needsTrail = true;
+      }
+
       // Use the group as the mesh (will be added to scene later)
       mesh = galaxyGroup;
 
@@ -859,7 +867,7 @@ class GalacticMap3D {
       // No glow
       glow = null;
     } else if (assetType === 'star') {
-      // Stars: Simple orbs only - no effects
+      // Stars: Bright orbs with visible haze/glow in galaxy view
       const adjustedSize = size * 5.0;
       const colorObj = new THREE.Color(0xFFFF00);
 
@@ -899,7 +907,7 @@ class GalacticMap3D {
       label.raycast = () => {}; // Disable raycasting on label so clicks pass through
       this.assetsGroup.add(label);
 
-      // No glow
+      // No glow effects
       glow = null;
 
     } else {
@@ -1707,17 +1715,18 @@ class GalacticMap3D {
       modal.id = 'star-info-modal';
       modal.style.cssText = `
         position: fixed;
-        top: 20px;
+        bottom: 20px;
         right: 20px;
-        background: rgba(0, 0, 0, 0.9);
-        border: 2px solid #FFD700;
+        background: rgba(0, 20, 40, 0.95);
+        border: 2px solid #6dd5ed;
         border-radius: 10px;
         padding: 20px;
-        color: #FFD700;
+        color: #6dd5ed;
         font-family: 'Courier New', monospace;
         z-index: 1000;
         min-width: 250px;
-        box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        box-shadow: 0 0 20px rgba(109, 213, 237, 0.5);
+        backdrop-filter: blur(10px);
       `;
       document.body.appendChild(modal);
     }
@@ -1728,23 +1737,25 @@ class GalacticMap3D {
     ).length : 0;
 
     modal.innerHTML = `
-      <h3 style="margin: 0 0 10px 0; color: #FFD700;">⭐ ${starData.title || 'Unknown Star'}</h3>
-      <div style="margin: 10px 0; font-size: 14px;">
+      <h3 style="margin: 0 0 10px 0; color: #6dd5ed; text-shadow: 0 0 10px rgba(109, 213, 237, 0.5);">⭐ ${starData.title || 'Unknown Star'}</h3>
+      <div style="margin: 10px 0; font-size: 14px; color: #6dd5ed;">
         <div>Type: Star</div>
         <div>Planets: ${planetCount}</div>
-        <div style="margin-top: 10px; font-size: 12px; color: #AAA;">Camera following star...</div>
+        <div style="margin-top: 10px; font-size: 12px; color: #2193b0;">Camera following star...</div>
       </div>
       <button id="view-system-btn" style="
         width: 100%;
         padding: 10px;
         margin-top: 15px;
-        background: linear-gradient(45deg, #FFD700, #FFA500);
+        background: linear-gradient(45deg, #6dd5ed, #2193b0);
         border: none;
         border-radius: 5px;
         color: #000;
         font-weight: bold;
         cursor: pointer;
         font-size: 14px;
+        box-shadow: 0 0 10px rgba(109, 213, 237, 0.3);
+        transition: all 0.3s;
       ">
         🚀 View Solar System
       </button>
@@ -1752,12 +1763,13 @@ class GalacticMap3D {
         width: 100%;
         padding: 8px;
         margin-top: 10px;
-        background: #444;
-        border: 1px solid #666;
+        background: rgba(0, 20, 40, 0.6);
+        border: 1px solid #2193b0;
         border-radius: 5px;
-        color: #FFF;
+        color: #6dd5ed;
         cursor: pointer;
         font-size: 12px;
+        transition: all 0.3s;
       ">
         ✋ Stop Following
       </button>
@@ -2310,35 +2322,63 @@ class GalacticMap3D {
    * Updates galaxy positions based on authoritative server simulation
    */
   handleServerPhysicsUpdate(data) {
-    if (!data || !data.galaxies) return;
+    if (!data) return;
 
     // Update galaxy positions
-    data.galaxies.forEach(galaxyUpdate => {
-      const asset = this.assets.get(galaxyUpdate.id);
-      if (!asset || !asset.mesh || asset.mesh.userData.type !== 'galaxy') return;
+    if (data.galaxies && data.galaxies.length > 0) {
+      data.galaxies.forEach(galaxyUpdate => {
+        const asset = this.assets.get(galaxyUpdate.id);
+        if (!asset || !asset.mesh || asset.mesh.userData.type !== 'galaxy') return;
 
-      const mesh = asset.mesh;
-      const targetPos = galaxyUpdate.position;
+        const mesh = asset.mesh;
+        const targetPos = galaxyUpdate.position;
 
-      // Smooth interpolation to new position (lerp for smooth movement)
-      // This prevents jumpy movement between server updates
-      const lerpFactor = 0.1; // Adjust for smoothness vs responsiveness
-      mesh.position.x += (targetPos.x - mesh.position.x) * lerpFactor;
-      mesh.position.y += (targetPos.y - mesh.position.y) * lerpFactor;
-      mesh.position.z += (targetPos.z - mesh.position.z) * lerpFactor;
+        // Smooth interpolation to new position (lerp for smooth movement)
+        // This prevents jumpy movement between server updates
+        const lerpFactor = 0.1; // Adjust for smoothness vs responsiveness
+        mesh.position.x += (targetPos.x - mesh.position.x) * lerpFactor;
+        mesh.position.y += (targetPos.y - mesh.position.y) * lerpFactor;
+        mesh.position.z += (targetPos.z - mesh.position.z) * lerpFactor;
 
-      // Store velocity for debugging/visualization
-      if (galaxyUpdate.velocity) {
-        mesh.userData.velocity = new THREE.Vector3(
-          galaxyUpdate.velocity.vx,
-          galaxyUpdate.velocity.vy,
-          galaxyUpdate.velocity.vz
-        );
-      }
+        // Store velocity for debugging/visualization
+        if (galaxyUpdate.velocity) {
+          mesh.userData.velocity = new THREE.Vector3(
+            galaxyUpdate.velocity.vx,
+            galaxyUpdate.velocity.vy,
+            galaxyUpdate.velocity.vz
+          );
+        }
 
-      // Update stars that belong to this galaxy
-      this.updateStarsForGalaxy(galaxyUpdate.id);
-    });
+        // Create/update purple orbital trail for galaxy
+        this.createGalaxyTrail(mesh, galaxyUpdate.id);
+      });
+    }
+
+    // Update star positions (stars orbit galaxies in galactic view)
+    if (data.stars && data.stars.length > 0 && this.currentLevel === 'galactic') {
+      data.stars.forEach(starUpdate => {
+        const asset = this.assets.get(starUpdate.id);
+        if (!asset || !asset.mesh || asset.mesh.userData.type !== 'star') return;
+
+        const mesh = asset.mesh;
+        const targetPos = starUpdate.position;
+
+        // Smooth interpolation to new position
+        const lerpFactor = 0.1;
+        mesh.position.x += (targetPos.x - mesh.position.x) * lerpFactor;
+        mesh.position.y += (targetPos.y - mesh.position.y) * lerpFactor;
+        mesh.position.z += (targetPos.z - mesh.position.z) * lerpFactor;
+
+        // Store velocity for debugging/visualization
+        if (starUpdate.velocity) {
+          mesh.userData.velocity = new THREE.Vector3(
+            starUpdate.velocity.vx,
+            starUpdate.velocity.vy,
+            starUpdate.velocity.vz
+          );
+        }
+      });
+    }
 
     // Update connections if provided
     if (data.connections) {
@@ -2355,6 +2395,9 @@ class GalacticMap3D {
    * Update connection visualizations from server data
    */
   updateConnectionsFromServer(connections) {
+    // Only render in galactic/universe view (not in galaxy interior)
+    if (this.currentLevel !== 'galactic' && this.currentLevel !== 'universe') return;
+
     // Clear existing connections
     while (this.connectionsGroup.children.length > 0) {
       const child = this.connectionsGroup.children[0];
@@ -2364,6 +2407,7 @@ class GalacticMap3D {
     }
 
     // Create new connections
+    console.log(`🔗 Rendering ${connections.length} connection lines`);
     connections.forEach(conn => {
       this.createConnection(conn);
     });
@@ -2429,6 +2473,200 @@ class GalacticMap3D {
   }
 
   /**
+   * Create or update purple orbital trail for a galaxy
+   * Shows the galaxy's past orbital path as a tapered purple "pen stripe"
+   */
+  createGalaxyTrail(galaxyMesh, galaxyId) {
+    // Works in both 'universe' and 'galactic' levels
+    if (this.currentLevel !== 'galactic' && this.currentLevel !== 'universe') return;
+
+    const asset = this.assets.get(galaxyId);
+    if (!asset || !galaxyMesh) {
+      console.warn(`⚠️ Cannot create trail: asset or mesh missing for ${galaxyId}`);
+      return;
+    }
+
+    // Find parent anomaly (galaxies orbit anomalies)
+    const anomalies = Array.from(this.assets.values()).filter(a => a.mesh && a.mesh.userData.type === 'anomaly');
+    if (anomalies.length === 0) {
+      console.warn(`⚠️ Cannot create galaxy trail: No anomalies found (${this.assets.size} assets loaded)`);
+      return;
+    }
+
+    // Use nearest anomaly as orbit center
+    const galaxyPos = galaxyMesh.position;
+    let nearestAnomaly = anomalies[0].mesh;
+    let minDist = Infinity;
+
+    for (const anomaly of anomalies) {
+      const dist = galaxyPos.distanceTo(anomaly.mesh.position);
+      if (dist < minDist) {
+        minDist = dist;
+        nearestAnomaly = anomaly.mesh;
+      }
+    }
+
+    const orbitCenter = nearestAnomaly.position;
+    const orbitRadius = galaxyPos.distanceTo(orbitCenter);
+
+    // Calculate current angle
+    const dx = galaxyPos.x - orbitCenter.x;
+    const dz = galaxyPos.z - orbitCenter.z;
+    const currentAngle = Math.atan2(dz, dx);
+
+    // Create trail points (90-degree arc behind galaxy)
+    const trailSegments = 64;
+    const trailLength = Math.PI * 0.5; // 90 degrees
+    const trailPoints = [];
+
+    for (let i = 0; i < trailSegments; i++) {
+      const t = i / (trailSegments - 1); // 0 to 1
+      const trailAngle = currentAngle - (t * trailLength); // Go backwards from current angle
+
+      const x = orbitCenter.x + Math.cos(trailAngle) * orbitRadius;
+      const y = orbitCenter.y; // Keep at same Y level
+      const z = orbitCenter.z + Math.sin(trailAngle) * orbitRadius;
+
+      trailPoints.push(new THREE.Vector3(x, y, z));
+    }
+
+    // Create line geometry with tapering opacity
+    const trailGeometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
+
+    // Create colors array for gradient (bright purple at galaxy, fade to transparent)
+    const colors = [];
+    for (let i = 0; i < trailSegments; i++) {
+      const t = i / (trailSegments - 1);
+      const opacity = 1.0 - t; // Fade from 1.0 to 0.0
+      // Purple color (RGB: 138, 79, 255 normalized) with fading opacity
+      colors.push(opacity * 0.541, opacity * 0.31, opacity * 1.0);
+    }
+    trailGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+    // Create line material with vertex colors (purple pen stripe)
+    const trailMaterial = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8,
+      linewidth: 3,
+      blending: THREE.AdditiveBlending // Bright purple additive blending
+    });
+
+    const trailLine = new THREE.Line(trailGeometry, trailMaterial);
+    trailLine.frustumCulled = false;
+    this.assetsGroup.add(trailLine);
+
+    // Store orbit data for animation
+    const existingOrbit = this.galaxyOrbits.find(o => o.galaxyId === galaxyId);
+    if (existingOrbit) {
+      // Remove old trail
+      if (existingOrbit.trail) {
+        this.assetsGroup.remove(existingOrbit.trail);
+        existingOrbit.trail.geometry.dispose();
+        existingOrbit.trail.material.dispose();
+      }
+      // Update existing entry
+      existingOrbit.trail = trailLine;
+      existingOrbit.trailPoints = trailPoints;
+      existingOrbit.orbitCenter = orbitCenter;
+      existingOrbit.orbitRadius = orbitRadius;
+    } else {
+      // Add new entry
+      this.galaxyOrbits.push({
+        galaxyId: galaxyId,
+        mesh: galaxyMesh,
+        trail: trailLine,
+        trailPoints: trailPoints,
+        orbitCenter: orbitCenter,
+        orbitRadius: orbitRadius
+      });
+    }
+  }
+
+  /**
+   * Create or update character pin at galactic coordinates
+   * Shows player/character location as a colored marker
+   */
+  createCharacterPin(character) {
+    const characterId = character._id || character.id;
+
+    // Remove existing pin if any
+    const existingPin = this.players.get(characterId);
+    if (existingPin && existingPin.mesh) {
+      this.playersGroup.remove(existingPin.mesh);
+      if (existingPin.mesh.geometry) existingPin.mesh.geometry.dispose();
+      if (existingPin.mesh.material) existingPin.mesh.material.dispose();
+    }
+
+    // Get character location
+    const location = character.location || character.galacticPosition;
+    if (!location || !location.x) {
+      console.warn(`⚠️ Character ${character.name} has no galactic position`);
+      return;
+    }
+
+    // Create pin mesh (small colored sphere with marker above)
+    const pinGroup = new THREE.Group();
+
+    // Base sphere (character location)
+    const baseGeometry = new THREE.SphereGeometry(15, 16, 16);
+    const baseMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffff, // Cyan for players
+      emissive: 0x00ffff,
+      emissiveIntensity: 0.5
+    });
+    const baseMesh = new THREE.Mesh(baseGeometry, baseMaterial);
+    pinGroup.add(baseMesh);
+
+    // Marker cone above (pointing down at location)
+    const coneGeometry = new THREE.ConeGeometry(10, 30, 8);
+    const coneMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffff00, // Yellow marker
+      emissive: 0xffff00,
+      emissiveIntensity: 0.8
+    });
+    const coneMesh = new THREE.Mesh(coneGeometry, coneMaterial);
+    coneMesh.position.y = 40; // Above the base sphere
+    coneMesh.rotation.x = Math.PI; // Point down
+    pinGroup.add(coneMesh);
+
+    // Label with character name
+    const labelCanvas = document.createElement('canvas');
+    const context = labelCanvas.getContext('2d');
+    labelCanvas.width = 256;
+    labelCanvas.height = 64;
+    context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    context.fillRect(0, 0, labelCanvas.width, labelCanvas.height);
+    context.font = 'Bold 24px Arial';
+    context.fillStyle = '#00FFFF';
+    context.textAlign = 'center';
+    context.fillText(character.name || 'Player', 128, 40);
+
+    const labelTexture = new THREE.CanvasTexture(labelCanvas);
+    const labelMaterial = new THREE.SpriteMaterial({ map: labelTexture });
+    const label = new THREE.Sprite(labelMaterial);
+    label.scale.set(400, 100, 1);
+    label.position.set(0, 80, 0); // Above the cone
+    label.frustumCulled = false;
+    pinGroup.add(label);
+
+    // Position the pin group
+    pinGroup.position.set(location.x, location.y || 0, location.z || 0);
+
+    // Add to scene
+    this.playersGroup.add(pinGroup);
+
+    // Store reference
+    this.players.set(characterId, {
+      character: character,
+      mesh: pinGroup,
+      lastUpdate: Date.now()
+    });
+
+    console.log(`📍 Created character pin for "${character.name}" at (${location.x.toFixed(0)}, ${location.y?.toFixed(0) || 0}, ${location.z?.toFixed(0) || 0})`);
+  }
+
+  /**
    * Initialize socket connection for physics updates
    */
   initializeSocket(socket) {
@@ -2444,7 +2682,57 @@ class GalacticMap3D {
       this.handleServerPhysicsUpdate(data);
     });
 
-    console.log('✅ GalacticMap3D listening for server physics updates');
+    // Listen for character position updates
+    socket.on('characterPositionUpdate', (data) => {
+      console.log(`📍 Received character position update:`, data);
+      if (data.character) {
+        this.createCharacterPin(data.character);
+      }
+    });
+
+    // Listen for multiple character updates
+    socket.on('charactersUpdate', (data) => {
+      console.log(`👥 Received ${data.characters?.length || 0} character updates`);
+      if (data.characters) {
+        data.characters.forEach(char => this.createCharacterPin(char));
+      }
+    });
+
+    console.log('✅ GalacticMap3D listening for server physics and character updates');
+
+    // Fetch initial character positions
+    this.fetchCharacters();
+  }
+
+  /**
+   * Fetch all character positions from the server
+   */
+  async fetchCharacters() {
+    try {
+      console.log('🔍 Fetching character positions...');
+      const response = await fetch('/api/v1/characters?map=true');
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.characters && Array.isArray(data.characters)) {
+        console.log(`👥 Fetched ${data.characters.length} characters with galactic positions`);
+
+        // Create pins for all characters with galactic positions
+        data.characters.forEach(char => {
+          if (char.location || char.galacticPosition) {
+            this.createCharacterPin(char);
+          }
+        });
+      } else {
+        console.warn('⚠️ No characters array in response:', data);
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch characters:', error);
+    }
   }
 
   /**
@@ -2526,6 +2814,24 @@ class GalacticMap3D {
 
         // Apply slight inclination to Y position
         orbit.mesh.position.y = center.y + Math.sin(orbit.angle) * orbit.radius * orbit.inclination;
+
+        // Update orbital trail (pen stripe path)
+        if (orbit.trail && orbit.trailPoints) {
+          const trailSegments = orbit.trailPoints.length;
+          const trailLength = Math.PI * 0.5; // Quarter orbit trail
+          const positions = orbit.trail.geometry.attributes.position.array;
+
+          for (let i = 0; i < trailSegments; i++) {
+            const t = i / (trailSegments - 1);
+            const trailAngle = orbit.angle - (t * trailLength); // Go backwards from current angle
+
+            positions[i * 3] = center.x + Math.cos(trailAngle) * orbit.radius;
+            positions[i * 3 + 1] = center.y + Math.sin(trailAngle) * orbit.radius * orbit.inclination;
+            positions[i * 3 + 2] = center.z + Math.sin(trailAngle) * orbit.radius;
+          }
+
+          orbit.trail.geometry.attributes.position.needsUpdate = true;
+        }
 
         // Real-time lighting update: Rotate planet to show day/night cycle
         // The MeshStandardMaterial automatically receives lighting from the parent star's PointLight
@@ -2810,6 +3116,11 @@ class GalacticMap3D {
    */
   async loadAssets() {
     try {
+      // Show loading indicator
+      if (window.showUniverseLoading) {
+        window.showUniverseLoading();
+      }
+
       console.log('📡 Fetching universe state from State Manager...');
       console.log('   Current allAssets before fetch:', this.allAssets.length, 'items');
       const response = await fetch('/api/v1/state/map-state-3d');
@@ -2854,9 +3165,10 @@ class GalacticMap3D {
 
       console.log(`✅ Stored ${this.allAssets.length} total assets`);
 
-      // UNIVERSE MAP: Show only universe-level objects (NO stars, planets or moons)
-      // Stars are shown when you drill into a galaxy
-      const universeTypes = ['galaxy', 'zone', 'anomaly', 'nebula'];
+      // GALACTIC MAP: Show galaxies, anomalies, zones, and stars
+      // Stars orbit their galaxies and are visible in galactic view
+      // Planets are only shown when you drill into a star system
+      const universeTypes = ['galaxy', 'zone', 'anomaly', 'nebula', 'star'];
       const galacticAssets = this.allAssets.filter(asset =>
         universeTypes.includes(asset.assetType)
       );
@@ -2888,8 +3200,28 @@ class GalacticMap3D {
       // REMOVED: Orbital paths and velocity arrows - all visualization must come from
       // actual asset coordinates managed by game state manager, not calculated visuals
 
-      // Create connection web from anomaly to galaxies (connections are asset relationships)
-      this.createGalacticConnections();
+      // Create initial galaxy orbital trails (purple pen stripes)
+      console.log(`🔍 Current level: ${this.currentLevel}, Assets loaded: ${this.assets.size}`);
+      if (this.currentLevel === 'galactic') {
+        console.log(`🎯 Scheduling galaxy trail creation in 500ms...`);
+        setTimeout(() => {
+          console.log(`⏰ Executing galaxy trail creation now...`);
+          let createdCount = 0;
+          Array.from(this.assets.values()).forEach(asset => {
+            if (asset.mesh && asset.mesh.userData.type === 'galaxy') {
+              this.createGalaxyTrail(asset.mesh, asset.mesh.userData.id);
+              createdCount++;
+            }
+          });
+          console.log(`💜 Created ${createdCount} galaxy orbital trails (stored: ${this.galaxyOrbits.length})`);
+        }, 500); // Small delay to ensure all assets are positioned
+      } else {
+        console.warn(`⚠️ Not in galactic level! Current: ${this.currentLevel}`);
+      }
+
+      // DISABLED: Old static connection code - now using real-time server connections
+      // this.createGalacticConnections();
+      console.log('🔗 Connection lines will be rendered from real-time server physics data');
 
       // Populate asset selector in sidebar if function exists
       if (window.populateAssetSelector) {
@@ -2898,9 +3230,21 @@ class GalacticMap3D {
         }, 100);
       }
 
+      // Hide loading indicator after assets are loaded
+      if (window.hideUniverseLoading) {
+        setTimeout(() => {
+          window.hideUniverseLoading();
+        }, 600); // Small delay to show indicator briefly
+      }
+
     } catch (error) {
       console.error('❌ Failed to load assets:', error);
       console.error('Error details:', error.message, error.stack);
+
+      // Hide loading indicator on error too
+      if (window.hideUniverseLoading) {
+        window.hideUniverseLoading();
+      }
     }
   }
 
@@ -3104,10 +3448,10 @@ class GalacticMap3D {
   }
 
   /**
-   * Show only galactic-level assets (galaxies, zones, anomalies)
+   * Show only galactic-level assets (galaxies, zones, anomalies, stars)
    */
   showGalacticLevel() {
-    console.log('🌌 Showing GALACTIC level - galaxies, zones, anomalies only');
+    console.log('🌌 Showing GALACTIC level - galaxies, zones, anomalies, and stars');
 
     // Store the previous galaxy center before switching levels (for zoom-out animation)
     const previousGalaxyCenter = this.controls ? this.controls.target.clone() : new THREE.Vector3(0, 0, 0);
@@ -3117,17 +3461,32 @@ class GalacticMap3D {
     this.selectedGalaxyId = null;
     this.selectedStarId = null;
 
+    // Update breadcrumb navigation
+    if (window.updateBreadcrumb) {
+      window.updateBreadcrumb('galactic');
+    }
+
     // Clear current scene
     this.clearAssets();
 
-    // Show only top-level galactic objects
-    const galacticTypes = ['galaxy', 'zone', 'anomaly', 'nebula'];
+    // Show only top-level galactic objects (including stars)
+    const galacticTypes = ['galaxy', 'zone', 'anomaly', 'nebula', 'star'];
     const galacticAssets = this.allAssets.filter(asset =>
       galacticTypes.includes(asset.assetType)
     );
 
     console.log(`   Found ${galacticAssets.length} galactic-level assets`);
     galacticAssets.forEach(asset => this.addAsset(asset));
+
+    // Create galaxy orbital trails after assets are loaded
+    setTimeout(() => {
+      Array.from(this.assets.values()).forEach(asset => {
+        if (asset.mesh && asset.mesh.userData.type === 'galaxy') {
+          this.createGalaxyTrail(asset.mesh, asset.mesh.userData.id);
+        }
+      });
+      console.log(`💜 Recreated ${this.galaxyOrbits.length} galaxy orbital trails`);
+    }, 500);
 
     // Restore saved camera position if available, otherwise use default
     if (this.savedGalacticCameraPosition && this.savedGalacticControlsTarget) {
@@ -3171,8 +3530,7 @@ class GalacticMap3D {
       }
     }
 
-    // Hide back button at galactic level
-    this.hideBackButton();
+    // Back button removed - using breadcrumb navigation instead
   }
 
   /**
@@ -3202,6 +3560,20 @@ class GalacticMap3D {
 
     console.log(`   ✅ After adding: assets Map has ${this.assets.size} items`);
     console.log(`   Scene group has ${this.assetsGroup.children.length} children`);
+
+    // Create galaxy orbital trails (purple pen stripes) - works in both universe and galactic views
+    console.log(`🔍 Universe/Galactic level - Creating galaxy trails...`);
+    setTimeout(() => {
+      console.log(`⏰ Executing galaxy trail creation...`);
+      let createdCount = 0;
+      Array.from(this.assets.values()).forEach(asset => {
+        if (asset.mesh && asset.mesh.userData.type === 'galaxy') {
+          this.createGalaxyTrail(asset.mesh, asset.mesh.userData.id);
+          createdCount++;
+        }
+      });
+      console.log(`💜 Created ${createdCount} galaxy orbital trails (stored: ${this.galaxyOrbits.length})`);
+    }, 500);
 
     // Reset camera to universe center
     this.camera.position.set(
@@ -3348,6 +3720,11 @@ class GalacticMap3D {
     this.currentLevel = 'galaxy';
     this.selectedGalaxyId = galaxyId;
     this.selectedStarId = null;
+
+    // Update breadcrumb navigation
+    if (window.updateBreadcrumb) {
+      window.updateBreadcrumb('galaxy');
+    }
 
     // Clear current scene
     this.clearAssets();
@@ -3692,9 +4069,54 @@ class GalacticMap3D {
 
           this.assetsGroup.add(planetMesh);
 
-          // Store orbit data for animation
+          // Create tapered orbital trail ring (pen stripe showing past path)
+          // Trail fades from planet position back toward star
+          const trailSegments = 64; // Number of segments in the trail
+          const trailLength = Math.PI * 0.5; // Trail covers 90 degrees (quarter orbit)
+          const trailPoints = [];
+
+          for (let i = 0; i < trailSegments; i++) {
+            const t = i / (trailSegments - 1); // 0 to 1
+            const trailAngle = angle - (t * trailLength); // Go backwards from current angle
+
+            const x = parentStar.position.x + Math.cos(trailAngle) * orbitRadius;
+            const y = parentStar.position.y;
+            const z = parentStar.position.z + Math.sin(trailAngle) * orbitRadius;
+
+            trailPoints.push(new THREE.Vector3(x, y, z));
+          }
+
+          // Create line geometry with tapering opacity
+          const trailGeometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
+
+          // Create colors array for gradient (bright white at planet, fade to transparent toward star)
+          const colors = [];
+          for (let i = 0; i < trailSegments; i++) {
+            const t = i / (trailSegments - 1);
+            const opacity = 1.0 - t; // Fade from 1.0 to 0.0
+            // White color with fading opacity
+            colors.push(opacity, opacity, opacity);
+          }
+          trailGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+          // Create line material with vertex colors (white pen stripe)
+          const trailMaterial = new THREE.LineBasicMaterial({
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            linewidth: 3,
+            blending: THREE.AdditiveBlending // Bright white additive blending
+          });
+
+          const trailLine = new THREE.Line(trailGeometry, trailMaterial);
+          trailLine.frustumCulled = false;
+          this.assetsGroup.add(trailLine);
+
+          // Store orbit data for animation (including trail reference)
           this.planetOrbits.push({
             mesh: planetMesh,
+            trail: trailLine,
+            trailPoints: trailPoints,
             parentStar: parentStar, // Store reference to parent star (not clone!)
             radius: orbitRadius,
             speed: 0.001 + (Math.random() * 0.002), // Much faster: 10x faster than before
@@ -3819,8 +4241,7 @@ class GalacticMap3D {
       animateZoomAndExpansion()
     });
 
-    // Show back button UI
-    this.showBackButton();
+    // Back button removed - using breadcrumb navigation instead
   }
 
   /**
@@ -3882,6 +4303,18 @@ class GalacticMap3D {
       if (child.material) child.material.dispose();
     });
     this.connectionsGroup.clear();
+
+    // Clear galaxy orbital trails
+    if (this.galaxyOrbits) {
+      this.galaxyOrbits.forEach(orbit => {
+        if (orbit.trail) {
+          this.assetsGroup.remove(orbit.trail);
+          orbit.trail.geometry.dispose();
+          orbit.trail.material.dispose();
+        }
+      });
+      this.galaxyOrbits = [];
+    }
 
     // Clear maps
     this.assets.clear();
@@ -4300,25 +4733,6 @@ class GalacticMap3D {
   /**
    * Show back button to return to previous view level
    */
-  showBackButton() {
-    const backBtn = document.getElementById('galaxyBackBtn');
-    if (backBtn) {
-      backBtn.style.display = 'flex';
-      backBtn.style.opacity = '1';
-    }
-  }
-
-  /**
-   * Hide back button
-   */
-  hideBackButton() {
-    const backBtn = document.getElementById('galaxyBackBtn');
-    if (backBtn) {
-      backBtn.style.display = 'none';
-      backBtn.style.opacity = '0';
-    }
-  }
-
   /**
    * Dispose of all resources
    */
