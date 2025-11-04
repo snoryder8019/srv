@@ -1,6 +1,37 @@
 # Recent Changes Summary
 
-Generated: 2025-11-03T22:09:41.688Z
+Generated: 2025-11-04T00:12:45.032Z
+
+---
+
+## Commit: Refactor: Socket.IO player coordinates and galactic level standardization
+
+- **Hash:** `b3517f1`
+- **Author:** Scott
+- **Date:** 11/3/2025
+- **Changes:** 3 files, +95/-93 lines
+
+### Modified Areas:
+
+**Frontend:** 1 files
+**Backend:** 1 files
+**Views:** 1 files
+
+---
+
+## Commit: v0.8.6 - Infrastructure & Documentation Organization
+
+- **Hash:** `ac723ba`
+- **Author:** Scott
+- **Date:** 11/3/2025
+- **Changes:** 64 files, +1555/-531 lines
+
+### Modified Areas:
+
+**Frontend:** 1 files
+**Backend:** 4 files
+**Views:** 1 files
+**Documentation:** 53 files
 
 ---
 
@@ -33,7 +64,7 @@ Generated: 2025-11-03T22:09:41.688Z
 
 ---
 
-## Commit: v0.8.5 - Loading Spinner & Location Info System
+## Commit: v8.0.5 - Loading Spinner & Location Info System
 
 - **Hash:** `1acd985`
 - **Author:** Scott
@@ -44,35 +75,6 @@ Generated: 2025-11-03T22:09:41.688Z
 
 **Views:** 2 files
 **Documentation:** 3 files
-
----
-
-## Commit: commit
-
-- **Hash:** `6a6c625`
-- **Author:** Scott
-- **Date:** 11/3/2025
-- **Changes:** 11 files, +739/-78 lines
-
-### Modified Areas:
-
-**Backend:** 3 files
-**Scripts:** 3 files
-**Documentation:** 4 files
-
----
-
-## Commit: v0.8.4 - Header & Breadcrumb Navigation System
-
-- **Hash:** `f338f02`
-- **Author:** Scott
-- **Date:** 11/3/2025
-- **Changes:** 9 files, +765/-157 lines
-
-### Modified Areas:
-
-**Frontend:** 2 files
-**Views:** 6 files
 
 ---
 

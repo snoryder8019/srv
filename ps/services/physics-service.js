@@ -178,6 +178,8 @@ class PhysicsService {
         if (updatedGalaxies.length > 0 || updatedStars.length > 0) {
           // Get list of connected user IDs
           const connectedUserIds = this.io.getConnectedUserIds ? this.io.getConnectedUserIds() : [];
+          console.log(`👥 Connected user IDs (${connectedUserIds.length}):`, connectedUserIds);
+          console.log(`🎮 Total characters with galactic location: ${characters.length}`);
 
           // Get characters with positions for rendering
           // Calculate actual render position from docked galaxy + offset
@@ -185,6 +187,7 @@ class PhysicsService {
           const charactersForRendering = characters.filter(char => {
             const hasLocation = char.location && char.location.type === 'galactic';
             const isConnected = connectedUserIds.includes(char.userId.toString());
+            console.log(`   🔍 Character ${char.name} (userId: ${char.userId}): hasLocation=${hasLocation}, isConnected=${isConnected}`);
             return hasLocation && isConnected; // Only show connected players!
           }).map(char => {
             let renderX = char.location.x;

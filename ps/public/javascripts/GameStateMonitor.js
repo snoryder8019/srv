@@ -73,6 +73,23 @@ class GameStateMonitor {
   setupSocketListeners() {
     if (!this.socket) return;
 
+    // Galactic physics update - PRIMARY source for all online players with galaxy info
+    this.socket.on('galacticPhysicsUpdate', (data) => {
+      if (data.characters && Array.isArray(data.characters)) {
+        console.log(`📡 GameStateMonitor: Received ${data.characters.length} online characters`);
+
+        data.characters.forEach(char => {
+          this.updatePlayerGalacticState(char);
+        });
+
+        // Emit state sync for UI updates
+        this.emit('stateSync', {
+          players: Array.from(this.players.values()),
+          timestamp: data.timestamp
+        });
+      }
+    });
+
     // Player movement updates (real-time from galactic-map-3d)
     this.socket.on('playerMoved', (data) => {
       this.updatePlayerPosition(data.characterId, data.location, data.characterName);
@@ -168,6 +185,45 @@ class GameStateMonitor {
         });
       }
     });
+  }
+
+  /**
+   * Update player's galactic state (from galacticPhysicsUpdate)
+   * This includes galaxy docking info and travel state
+   */
+  updatePlayerGalacticState(character) {
+    if (!character || !character._id) return;
+
+    const existingPlayer = this.players.get(character._id);
+
+    const playerState = {
+      characterId: character._id,
+      characterName: character.name || existingPlayer?.characterName || 'Unknown',
+      userId: character.userId,
+      position: {
+        x: character.location?.x || 0,
+        y: character.location?.y || 0,
+        z: character.location?.z || 0
+      },
+      velocity: {
+        x: 0,
+        y: 0,
+        z: 0
+      },
+      // Galaxy-based travel info
+      dockedGalaxyId: character.dockedGalaxyId || null,
+      dockedGalaxyName: character.dockedGalaxyName || null,
+      isInTransit: character.isInTransit || false,
+      transitFrom: character.transitFrom || null,
+      transitTo: character.transitTo || null,
+      activeInShip: character.activeInShip || false,
+      lastUpdated: Date.now()
+    };
+
+    this.players.set(character._id, playerState);
+
+    // Notify listeners
+    this.emit('playerPositionUpdate', playerState);
   }
 
   /**

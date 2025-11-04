@@ -3380,6 +3380,11 @@
       if (e.key === 'Escape' && window.galacticMap) {
         window.galacticMap.deselectObject();
       }
+      // Home key or 'H' - Focus on current player
+      if ((e.key === 'Home' || e.key === 'h' || e.key === 'H') && window.galacticMap) {
+        console.log('🎯 Keyboard shortcut: Focus on player');
+        window.galacticMap.focusOnCurrentPlayer();
+      }
     });
 
     // Wire up control buttons
@@ -3408,17 +3413,10 @@
         return;
       }
 
-      const location = window.currentCharacter.location;
-      const playerPos = new THREE.Vector3(
-        location.x || 0,
-        location.y || 0,
-        location.z || 0
-      );
+      console.log(`📍 Locating player: ${window.currentCharacter.name}`);
 
-      console.log(`📍 Locating player at (${playerPos.x}, ${playerPos.y}, ${playerPos.z})`);
-
-      // Focus camera on player with appropriate zoom
-      window.galacticMap.focusCameraOn(playerPos, 1500);
+      // Use the new focusOnCurrentPlayer method
+      window.galacticMap.focusOnCurrentPlayer();
 
       // Show notification
       const notification = document.createElement('div');
@@ -3606,12 +3604,15 @@
 
     // Load current character and emit join event
     socket.on('connect', async () => {
-      console.log('✅ Socket.IO connected:', socket.id);
+      console.log('✅ Socket.IO connected - CHARACTER LOADING HANDLER:', socket.id);
 
       try {
+        console.log('🔍 Fetching current character from /api/v1/characters/current...');
         // Fetch current character
         const response = await fetch('/api/v1/characters/current');
+        console.log('📥 Character API response status:', response.status);
         const data = await response.json();
+        console.log('📦 Character API data:', data);
 
         if (data.success && data.character) {
           const character = data.character;
@@ -3619,6 +3620,7 @@
 
           // Store character globally
           window.currentCharacter = character;
+          window.currentCharacterId = character._id; // For easy comparison in rendering
 
           // Initialize GameStateMonitor with socket and current character
           if (window.gameStateMonitor && !window.gameStateMonitor.connected) {
@@ -3633,8 +3635,19 @@
           }
 
           // Add player character to 3D map
+          console.log('🗺️ Attempting to add character to galactic map...', {
+            hasMap: !!window.galacticMap,
+            hasLocation: !!character.location,
+            location: character.location
+          });
           if (window.galacticMap && character.location) {
             window.galacticMap.addPlayerCharacter(character);
+            console.log('✅ Character added to galactic map!');
+          } else {
+            console.warn('⚠️ Cannot add character to map:', {
+              mapExists: !!window.galacticMap,
+              locationExists: !!character.location
+            });
           }
 
           // Emit character join event
@@ -4619,61 +4632,67 @@
 
     const socket = io();
 
-    socket.on('connect', () => {
+    socket.on('connect', async () => {
       console.log('✅✅✅ EMERGENCY SOCKET CONNECTED! ID:', socket.id);
       console.log('   Assets currently in map:', window.galacticMap.assets.size);
       if (window.galacticMap.assets.size > 0) {
         console.log('   First 5 asset IDs:', Array.from(window.galacticMap.assets.keys()).slice(0, 5));
       }
-    });
 
-    socket.on('galacticPhysicsUpdate', (data) => {
-      // Only update physics when at galactic/universe overview levels, NOT when viewing galaxy/system interiors
-      if (window.galacticMap.currentLevel === 'galaxy' || window.galacticMap.currentLevel === 'system') {
-        console.log('🌌 Physics update skipped - viewing interior (current: ' + window.galacticMap.currentLevel + ')');
-        return;
-      }
+      // Load current character and add to map
+      try {
+        console.log('🔍 Fetching current character from /api/v1/characters/current...');
+        const response = await fetch('/api/v1/characters/current');
+        console.log('📥 Character API response status:', response.status);
+        const data = await response.json();
+        console.log('📦 Character API data:', data);
 
-      // Physics update logging disabled - too spammy
-      // console.log('🌌🌌🌌 PHYSICS UPDATE RECEIVED! ' + data.galaxies.length + ' galaxies');
+        if (data.success && data.character) {
+          const character = data.character;
+          console.log('📍 Current character loaded:', character.name, 'at', character.location);
 
-      if (window.galacticMap.assets.size === 0) {
-        console.warn('   ⚠️ Assets map is empty! Assets may not be loaded yet.');
-        return;
-      }
+          // Store character globally
+          window.currentCharacter = character;
+          window.currentCharacterId = character._id;
 
-      let updated = 0;
-      data.galaxies.forEach(g => {
-        const asset = window.galacticMap.assets.get(g.id);
-        if (asset && asset.mesh) {
-          const oldPos = asset.mesh.position.clone();
-          asset.mesh.position.set(g.position.x, g.position.y, g.position.z);
+          // Add player character to 3D map
+          console.log('🗺️ Attempting to add character to galactic map...', {
+            hasMap: !!window.galacticMap,
+            hasLocation: !!character.location,
+            location: character.location
+          });
+          if (window.galacticMap && character.location) {
+            window.galacticMap.addPlayerCharacter(character);
+            console.log('✅ Character added to galactic map!');
+          } else {
+            console.warn('⚠️ Cannot add character to map:', {
+              mapExists: !!window.galacticMap,
+              locationExists: !!character.location
+            });
+          }
 
-          // Force update flags
-          asset.mesh.updateMatrixWorld(true);
-
-          const distance = oldPos.distanceTo(asset.mesh.position);
-          updated++;
-          // console.log('   ✅ ' + g.id.substring(0,8) + ': (' + g.position.x.toFixed(0) + ', ' + g.position.y.toFixed(0) + ', ' + g.position.z.toFixed(0) + ') moved ' + distance.toFixed(1) + ' units');
+          // Emit character join event
+          if (character.location) {
+            socket.emit('characterJoin', {
+              characterId: character._id,
+              characterName: character.name,
+              userId: character.userId,
+              location: character.location,
+              assetId: character.location.assetId || null
+            });
+            console.log('📡 Character join event emitted');
+          }
         } else {
-          console.warn('   ❌ ' + g.id.substring(0,12) + ' not in map! Available IDs:', Array.from(window.galacticMap.assets.keys()).slice(0, 3).join(', '));
+          console.log('⚠️ No active character found');
         }
-      });
-
-      // Update connection lines for all moved assets
-      if (window.galacticMap && window.galacticMap.updateConnectionsForAsset) {
-        data.galaxies.forEach(g => {
-          window.galacticMap.updateConnectionsForAsset(g.id);
-        });
+      } catch (error) {
+        console.error('❌ Error loading character:', error);
       }
-
-      // Force a render after updating positions
-      if (window.galacticMap && window.galacticMap.renderer && window.galacticMap.scene && window.galacticMap.camera) {
-        window.galacticMap.renderer.render(window.galacticMap.scene, window.galacticMap.camera);
-      }
-
-      // console.log('   Updated ' + updated + '/' + data.galaxies.length + ' positions, updated connections, and forced render.');
     });
+
+    // NOTE: galacticPhysicsUpdate handler is registered via GalacticMap3D.initializeSocket()
+    // The handler in galactic-map-3d.js (handleServerPhysicsUpdate) processes galaxies, stars, connections, AND characters
+    // Do NOT add duplicate handlers here as they will intercept the event
 
     window.emergencySocket = socket;
     console.log('✅ Emergency socket listener ready!');

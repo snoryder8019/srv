@@ -107,6 +107,7 @@ class GalacticMap3D {
     this.assetsGroup = new THREE.Group();
     this.connectionsGroup = new THREE.Group();
     this.playersGroup = new THREE.Group(); // Group for all player markers
+    this.playersGroup.renderOrder = 1000; // Ensure players render on top
     this.scene.add(this.starfieldGroup);
     this.scene.add(this.assetsGroup);
     this.scene.add(this.connectionsGroup);
@@ -2387,11 +2388,17 @@ class GalacticMap3D {
 
     // Update character positions (replaces removed charactersUpdate event)
     if (data.characters && Array.isArray(data.characters)) {
+      console.log(`📦 Received ${data.characters.length} characters in physics update:`, data.characters.map(c => c.name));
       data.characters.forEach(char => {
         if (char.location && char.location.x !== undefined) {
+          console.log(`🎯 Calling createCharacterPin for ${char.name} at (${char.location.x}, ${char.location.y}, ${char.location.z})`);
           this.createCharacterPin(char);
+        } else {
+          console.warn(`⚠️ Character ${char.name} missing location or coordinates`);
         }
       });
+    } else {
+      console.log('⚠️ No characters in physics update');
     }
 
     // Store simulation speed for UI
@@ -2614,52 +2621,96 @@ class GalacticMap3D {
       return;
     }
 
+    // Check if this is the current player
+    const isCurrentPlayer = (typeof window !== 'undefined' && window.currentCharacterId === characterId);
+
+    // DEBUG: Log comparison
+    console.log('🔍 Character ID comparison:', {
+      characterId: characterId,
+      currentCharacterId: window.currentCharacterId,
+      isCurrentPlayer: isCurrentPlayer,
+      characterName: character.name,
+      windowExists: typeof window !== 'undefined'
+    });
+
+    // Color scheme based on player type
+    const colors = isCurrentPlayer ? {
+      core: 0xFFD700,      // Gold for current player
+      glow: 0xFF8C00,      // Dark orange glow
+      rings: [0xFFD700, 0xFFAA00, 0xFF8C00], // Gold gradient
+      label: '#FFD700',    // Gold label
+      scale: 1.2           // 20% larger
+    } : {
+      core: 0x00FF00,      // Green for other players
+      glow: 0x00FF00,      // Green glow
+      rings: [0x00FF00, 0x00DD00, 0x00BB00], // Green gradient
+      label: '#00FFFF',    // Cyan label
+      scale: 1.0           // Normal size
+    };
+
     // Create character orb with orbital rings
     const pinGroup = new THREE.Group();
 
-    // Core glowing green orb
-    const orbGeometry = new THREE.SphereGeometry(25, 32, 32);
-    const orbMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff00, // Bright green
+    // Core glowing orb (gold for you, green for others)
+    const orbGeometry = new THREE.SphereGeometry(25 * colors.scale, 32, 32);
+    const orbMaterial = new THREE.MeshStandardMaterial({
+      color: colors.core,
       transparent: true,
       opacity: 0.85,
-      emissive: 0x00ff00,
-      emissiveIntensity: 0.6
+      emissive: colors.core,
+      emissiveIntensity: 0.6,
+      metalness: 0.5,
+      roughness: 0.3
     });
     const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+    orb.frustumCulled = false; // Always render, even off-screen
     pinGroup.add(orb);
 
     // Outer glow sphere
-    const glowGeometry = new THREE.SphereGeometry(35, 32, 32);
+    const glowGeometry = new THREE.SphereGeometry(35 * colors.scale, 32, 32);
     const glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
+      color: colors.glow,
       transparent: true,
       opacity: 0.2,
       side: THREE.BackSide
     });
     const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    glow.frustumCulled = false;
     pinGroup.add(glow);
 
     // Create 3 orbital rings at different angles
-    const ringColors = [0x00ff00, 0x00dd00, 0x00bb00];
     const ringAngles = [0, 60, 120]; // Degrees
 
     for (let i = 0; i < 3; i++) {
-      const ringGeometry = new THREE.TorusGeometry(60, 2, 16, 64);
-      const ringMaterial = new THREE.MeshBasicMaterial({
-        color: ringColors[i],
+      const ringGeometry = new THREE.TorusGeometry(60 * colors.scale, 2 * colors.scale, 16, 64);
+      const ringMaterial = new THREE.MeshStandardMaterial({
+        color: colors.rings[i],
         transparent: true,
         opacity: 0.5,
-        emissive: ringColors[i],
-        emissiveIntensity: 0.3
+        emissive: colors.rings[i],
+        emissiveIntensity: 0.3,
+        metalness: 0.5,
+        roughness: 0.3
       });
       const ring = new THREE.Mesh(ringGeometry, ringMaterial);
       ring.rotation.x = Math.PI / 2; // Make horizontal
       ring.rotation.z = (ringAngles[i] * Math.PI) / 180;
+      ring.frustumCulled = false;
       pinGroup.add(ring);
     }
 
-    // Label with character name
+    // Add pulsing animation for current player
+    if (isCurrentPlayer) {
+      pinGroup.userData.pulse = {
+        orb: orb,
+        glow: glow,
+        time: 0,
+        speed: 2.0 // Pulse frequency
+      };
+      console.log('✨ Added pulsing animation to current player');
+    }
+
+    // Label with character name (gold for you, cyan for others)
     const labelCanvas = document.createElement('canvas');
     const context = labelCanvas.getContext('2d');
     labelCanvas.width = 256;
@@ -2667,7 +2718,7 @@ class GalacticMap3D {
     context.fillStyle = 'rgba(0, 0, 0, 0.7)';
     context.fillRect(0, 0, labelCanvas.width, labelCanvas.height);
     context.font = 'Bold 24px Arial';
-    context.fillStyle = '#00FFFF';
+    context.fillStyle = colors.label;
     context.textAlign = 'center';
     context.fillText(character.name || 'Player', 128, 40);
 
@@ -2953,8 +3004,28 @@ class GalacticMap3D {
       }
     });
 
-    // Animate player character glows
+    // Animate player character pins (pulsing for current player)
     this.players.forEach(player => {
+      // Handle new pulse system for current player
+      if (player.mesh && player.mesh.userData.pulse) {
+        const pulse = player.mesh.userData.pulse;
+        pulse.time += 0.016; // ~60 FPS increment
+
+        // Pulsing scale for current player (gold orb)
+        const pulseScale = 1.0 + Math.sin(pulse.time * pulse.speed) * 0.15;
+        pulse.orb.scale.set(pulseScale, pulseScale, pulseScale);
+        pulse.glow.scale.set(pulseScale, pulseScale, pulseScale);
+
+        // Pulsing emissive intensity
+        const pulseIntensity = 0.6 + Math.sin(pulse.time * pulse.speed) * 0.3;
+        pulse.orb.material.emissiveIntensity = pulseIntensity;
+
+        // Pulsing glow opacity
+        const pulseOpacity = 0.2 + Math.sin(pulse.time * pulse.speed) * 0.1;
+        pulse.glow.material.opacity = pulseOpacity;
+      }
+
+      // Handle old pulsing system (backwards compatibility)
       if (player.glow && player.glow.userData.isPulsing) {
         const time = Date.now() * 0.001;
         const phase = player.glow.userData.pulsePhase;
@@ -4400,87 +4471,74 @@ class GalacticMap3D {
       return;
     }
 
-    const { _id, name, location } = character;
+    console.log(`👤 Adding player character via createCharacterPin:`, character.name);
 
-    // Check if player already exists - if so, just update position
-    if (this.players.has(_id)) {
-      console.log(`👤 Player ${name} already exists, updating position`);
-      this.updatePlayerPosition(_id, location, name);
+    // Use the enhanced createCharacterPin method which handles current player detection
+    this.createCharacterPin(character);
+
+    // If this is the current player, focus camera on them
+    if (window.currentCharacterId === character._id) {
+      console.log('🎥 Focusing camera on current player');
+      this.focusOnCurrentPlayer();
+    }
+  }
+
+  /**
+   * Focus camera on the current player's character
+   */
+  focusOnCurrentPlayer() {
+    if (!window.currentCharacterId) {
+      console.warn('⚠️ No current player ID set');
       return;
     }
 
-    const position = new THREE.Vector3(
-      location.x || 0,
-      location.y || 0,
-      location.z || 0
+    const playerData = this.players.get(window.currentCharacterId);
+    if (!playerData || !playerData.mesh) {
+      console.warn('⚠️ Current player not found in scene');
+      return;
+    }
+
+    const playerPosition = playerData.mesh.position;
+    console.log('📍 Player position:', playerPosition);
+
+    // Animate camera to focus on player
+    const distance = 800; // Distance from player
+    const targetCameraPos = new THREE.Vector3(
+      playerPosition.x,
+      playerPosition.y + distance * 0.5,
+      playerPosition.z + distance
     );
 
-    console.log(`👤 Adding new player character: ${name} at`, position);
+    // Smooth camera transition
+    const startPos = this.camera.position.clone();
+    const startTarget = this.controls.target.clone();
+    const duration = 1500; // 1.5 seconds
+    const startTime = Date.now();
 
-    // Create player marker - arrow shape pointing up
-    const arrowGroup = new THREE.Group();
+    const animateCamera = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
 
-    // Arrow shaft (cylinder)
-    const shaftGeometry = new THREE.CylinderGeometry(8, 8, 40, 8);
-    const shaftMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff00, // Bright green for player
-    });
-    const shaft = new THREE.Mesh(shaftGeometry, shaftMaterial);
-    shaft.position.y = 0;
-    arrowGroup.add(shaft);
+      // Ease-in-out function
+      const eased = progress < 0.5
+        ? 4 * progress * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 
-    // Arrow head (cone)
-    const headGeometry = new THREE.ConeGeometry(20, 30, 8);
-    const headMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
-    });
-    const head = new THREE.Mesh(headGeometry, headMaterial);
-    head.position.y = 35; // Above shaft
-    arrowGroup.add(head);
+      // Interpolate camera position
+      this.camera.position.lerpVectors(startPos, targetCameraPos, eased);
 
-    arrowGroup.position.copy(position);
+      // Interpolate camera target (look at player)
+      this.controls.target.lerpVectors(startTarget, playerPosition, eased);
+      this.controls.update();
 
-    // Add glow ring around player
-    const glowGeometry = new THREE.TorusGeometry(35, 8, 8, 16);
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
-      transparent: true,
-      opacity: 0.6
-    });
-    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-    glow.position.copy(position);
-    glow.rotation.x = Math.PI / 2;
+      if (progress < 1) {
+        requestAnimationFrame(animateCamera);
+      } else {
+        console.log('✅ Camera focused on player');
+      }
+    };
 
-    // Create text sprite for player name
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 256;
-    canvas.height = 64;
-
-    context.font = 'Bold 32px Arial';
-    context.fillStyle = '#00ff00';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(name, 128, 32);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
-    const sprite = new THREE.Sprite(spriteMaterial);
-    sprite.scale.set(100, 25, 1);
-    sprite.position.copy(position);
-    sprite.position.y += 70; // Position above arrow
-
-    // Store marker, glow, and label
-    this.players.set(_id, { marker: arrowGroup, glow, label: sprite, name });
-    this.playersGroup.add(arrowGroup);
-    this.playersGroup.add(glow);
-    this.playersGroup.add(sprite);
-
-    // Add pulsing animation
-    glow.userData.isPulsing = true;
-    glow.userData.pulsePhase = Math.random() * Math.PI * 2;
-
-    console.log(`✅ Player character added: ${name}`);
+    animateCamera();
   }
 
   /**
