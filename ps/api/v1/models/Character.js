@@ -93,7 +93,46 @@ export class Character {
           highSlots: [null, null, null], // Weapons, mining lasers
           midSlots: [null, null, null, null], // Shield, prop mods, tackle
           lowSlots: [null, null, null, null], // Armor, damage mods, power
-          rigSlots: [null, null] // Permanent modifications
+          rigSlots: [null, null], // Permanent modifications
+
+          // === SURVIVAL SYSTEM FITTINGS (NEW) ===
+          cargoCapacity: 500,
+          cargoUsed: 0,
+
+          lifeSupport: {
+            installed: true,
+            type: 'Basic',
+            oxygenCapacity: 500,
+            oxygenRemaining: 500,
+            foodCapacity: 50,
+            foodRemaining: 50
+          },
+
+          fuelTanks: {
+            capacity: 500,
+            remaining: 500,
+            type: 'Standard'
+          },
+
+          medicalBay: {
+            installed: false,
+            medKitsCapacity: 10,
+            medKitsRemaining: 0,
+            autoRevive: false
+          },
+
+          habitat: {
+            type: null, // Matches character.species
+            installed: true
+          },
+
+          shielding: {
+            radiation: 0,
+            thermal: 0,
+            nebula: 0
+          },
+
+          specialFittings: []
         },
         cargoHold: {
           capacity: 1000, // m³
@@ -686,6 +725,201 @@ export class Character {
       vy: 0,
       vz: 0
     });
+  }
+
+  /**
+   * Enter a zone (interior location)
+   *
+   * @param {String} characterId - Character ID
+   * @param {String} zoneId - Zone asset ID
+   * @param {Object} spawnPoint - Spawn coordinates {x, y} in zone
+   * @returns {Object} - Updated character
+   */
+  static async enterZone(characterId, zoneId, spawnPoint = null) {
+    const db = getDb();
+
+    // Get zone data to find spawn point
+    const zone = await db.collection(collections.assets).findOne({
+      _id: new ObjectId(zoneId)
+    });
+
+    if (!zone) {
+      throw new Error('Zone not found');
+    }
+
+    // Use provided spawn point or find player spawn in zoneData
+    let coords = spawnPoint;
+
+    if (!coords && zone.zoneData?.spawnPoints) {
+      const playerSpawn = zone.zoneData.spawnPoints.find(sp => sp.type === 'player');
+      if (playerSpawn) {
+        coords = { x: playerSpawn.x + 0.5, y: playerSpawn.y + 0.5 }; // Center of tile
+      }
+    }
+
+    // Fallback to zone center if no spawn point found
+    if (!coords && zone.zoneData) {
+      coords = {
+        x: (zone.zoneData.width || 64) / 2,
+        y: (zone.zoneData.height || 64) / 2
+      };
+    }
+
+    // Default coords if all else fails
+    if (!coords) {
+      coords = { x: 32, y: 32 };
+    }
+
+    // Update character location to zone-based
+    const result = await db.collection(collections.characters).findOneAndUpdate(
+      { _id: new ObjectId(characterId) },
+      {
+        $set: {
+          location: {
+            type: 'zone',
+            zoneId: new ObjectId(zoneId),
+            zoneName: zone.title || zone.name || 'Unknown Zone',
+            x: coords.x,
+            y: coords.y,
+            z: 0, // Height in zone (for multi-level zones)
+            vx: 0,
+            vy: 0,
+            lastUpdated: new Date()
+          },
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    return result;
+  }
+
+  /**
+   * Exit zone and return to galactic map
+   *
+   * @param {String} characterId - Character ID
+   * @param {Object} galacticCoords - Galactic coordinates to return to {x, y, z}
+   * @returns {Object} - Updated character
+   */
+  static async exitZone(characterId, galacticCoords = null) {
+    const db = getDb();
+    const character = await this.findById(characterId);
+
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    // Use provided coords or character's last galactic location
+    let coords = galacticCoords;
+
+    if (!coords && character.location?.zoneId) {
+      // Try to get the parent asset's location
+      const zone = await db.collection(collections.assets).findOne({
+        _id: character.location.zoneId
+      });
+
+      if (zone?.hierarchy?.parent) {
+        const parent = await db.collection(collections.assets).findOne({
+          _id: zone.hierarchy.parent
+        });
+
+        if (parent?.coordinates3D) {
+          coords = parent.coordinates3D;
+        } else if (parent?.coordinates) {
+          coords = { x: parent.coordinates.x, y: parent.coordinates.y, z: 0 };
+        }
+      }
+    }
+
+    // Fallback to origin if no coords found
+    if (!coords) {
+      coords = { x: 0, y: 0, z: 0 };
+    }
+
+    // Update character location back to galactic
+    const result = await db.collection(collections.characters).findOneAndUpdate(
+      { _id: new ObjectId(characterId) },
+      {
+        $set: {
+          location: {
+            type: 'galactic',
+            x: coords.x,
+            y: coords.y,
+            z: coords.z || 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            lastUpdated: new Date()
+          },
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    return result;
+  }
+
+  /**
+   * Update character's zone position (for movement within zone)
+   *
+   * @param {String} characterId - Character ID
+   * @param {Object} position - New position {x, y, vx, vy}
+   * @returns {Boolean} - Success
+   */
+  static async updateZonePosition(characterId, position) {
+    const db = getDb();
+
+    const updateData = {
+      'location.x': position.x,
+      'location.y': position.y,
+      'location.lastUpdated': new Date(),
+      updatedAt: new Date()
+    };
+
+    if (position.vx !== undefined) {
+      updateData['location.vx'] = position.vx;
+    }
+
+    if (position.vy !== undefined) {
+      updateData['location.vy'] = position.vy;
+    }
+
+    if (position.z !== undefined) {
+      updateData['location.z'] = position.z;
+    }
+
+    const result = await db.collection(collections.characters).updateOne(
+      { _id: new ObjectId(characterId) },
+      { $set: updateData }
+    );
+
+    return result.modifiedCount > 0;
+  }
+
+  /**
+   * Get all characters in a specific zone
+   *
+   * @param {String} zoneId - Zone asset ID
+   * @returns {Array} - Characters in zone
+   */
+  static async getCharactersInZone(zoneId) {
+    const db = getDb();
+    return await db.collection(collections.characters)
+      .find({
+        'location.type': 'zone',
+        'location.zoneId': new ObjectId(zoneId)
+      })
+      .project({
+        _id: 1,
+        userId: 1,
+        name: 1,
+        species: 1,
+        level: 1,
+        location: 1
+      })
+      .toArray();
   }
 }
 

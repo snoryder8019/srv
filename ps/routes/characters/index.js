@@ -231,4 +231,147 @@ router.get('/:id/ship', async (req, res) => {
   }
 });
 
+/**
+ * Zone-based multiplayer routes
+ */
+
+// Enter a zone
+router.post('/:id/enter-zone', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const characterId = req.params.id;
+    const { zoneId, spawnPoint } = req.body;
+
+    if (!zoneId) {
+      return res.status(400).json({ error: 'zoneId is required' });
+    }
+
+    // Verify character ownership
+    const character = await Character.findById(characterId);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    if (character.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'You do not own this character' });
+    }
+
+    // Enter the zone
+    const updatedCharacter = await Character.enterZone(characterId, zoneId, spawnPoint);
+
+    console.log(`✅ Character ${character.name} entered zone ${zoneId}`);
+
+    res.json({
+      success: true,
+      character: updatedCharacter,
+      message: 'Entered zone successfully'
+    });
+  } catch (err) {
+    console.error('❌ Error entering zone:', err);
+    res.status(500).json({ error: err.message || 'Failed to enter zone' });
+  }
+});
+
+// Exit a zone
+router.post('/:id/exit-zone', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const characterId = req.params.id;
+    const { galacticCoords } = req.body;
+
+    // Verify character ownership
+    const character = await Character.findById(characterId);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    if (character.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'You do not own this character' });
+    }
+
+    // Exit the zone
+    const updatedCharacter = await Character.exitZone(characterId, galacticCoords);
+
+    console.log(`✅ Character ${character.name} exited zone, returned to galactic`);
+
+    res.json({
+      success: true,
+      character: updatedCharacter,
+      message: 'Exited zone successfully'
+    });
+  } catch (err) {
+    console.error('❌ Error exiting zone:', err);
+    res.status(500).json({ error: err.message || 'Failed to exit zone' });
+  }
+});
+
+// Update position within zone (fast, for real-time movement)
+router.post('/:id/update-zone-position', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const characterId = req.params.id;
+    const { position } = req.body;
+
+    if (!position || position.x === undefined || position.y === undefined) {
+      return res.status(400).json({ error: 'Valid position {x, y} is required' });
+    }
+
+    // Verify character ownership
+    const character = await Character.findById(characterId);
+    if (!character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    if (character.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'You do not own this character' });
+    }
+
+    // Update position
+    const success = await Character.updateZonePosition(characterId, position);
+
+    if (!success) {
+      return res.status(500).json({ error: 'Failed to update position' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Position updated'
+    });
+  } catch (err) {
+    console.error('❌ Error updating zone position:', err);
+    res.status(500).json({ error: err.message || 'Failed to update position' });
+  }
+});
+
+// Get all characters in a zone
+router.get('/zone/:zoneId/characters', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { zoneId } = req.params;
+
+    const characters = await Character.getCharactersInZone(zoneId);
+
+    res.json({
+      success: true,
+      characters,
+      count: characters.length
+    });
+  } catch (err) {
+    console.error('❌ Error fetching zone characters:', err);
+    res.status(500).json({ error: err.message || 'Failed to fetch characters' });
+  }
+});
+
 export default router;

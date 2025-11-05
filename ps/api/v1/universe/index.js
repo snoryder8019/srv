@@ -211,6 +211,52 @@ router.get('/assets/:id/hierarchy', async (req, res) => {
   }
 });
 
+// Get universe assets for TOME (new unified endpoint)
+router.get('/assets', async (req, res) => {
+  try {
+    const db = getDb();
+
+    // Fetch approved universe assets
+    const approvedAssets = await db.collection('assets')
+      .find({ status: 'approved' })
+      .toArray();
+
+    // Categorize by type
+    const galaxies = approvedAssets.filter(a => a.assetType === 'galaxy');
+    const stars = approvedAssets.filter(a => a.assetType === 'star');
+    const planets = approvedAssets.filter(a => a.assetType === 'planet');
+    const moons = approvedAssets.filter(a => a.assetType === 'moon');
+    const anomalies = approvedAssets.filter(a => a.assetType === 'anomaly');
+
+    res.json({
+      success: true,
+      assets: {
+        galaxies,
+        stars,
+        planets,
+        moons,
+        anomalies
+      },
+      counts: {
+        galaxies: galaxies.length,
+        stars: stars.length,
+        planets: planets.length,
+        moons: moons.length,
+        anomalies: anomalies.length,
+        total: approvedAssets.filter(a =>
+          ['galaxy', 'star', 'planet', 'moon', 'anomaly'].includes(a.assetType)
+        ).length
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching universe assets:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch universe assets'
+    });
+  }
+});
+
 // Get Tome data (for in-game overlay)
 router.get('/tome-data', async (req, res) => {
   try {

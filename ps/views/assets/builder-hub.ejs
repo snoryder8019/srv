@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/asset-builder.css">
+  <style>
+    .hub-container {
+      max-width: 1800px;
+      margin: 2rem auto;
+      padding: 2rem;
+    }
+
+    .hub-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .hub-header h1 {
+      font-size: 3rem;
+      background: linear-gradient(135deg, #8a4fff, #00ff88);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1rem;
+    }
+
+    .hub-header p {
+      color: #aaa;
+      font-size: 1.2rem;
+    }
+
+    .hub-layout {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 2rem;
+    }
+
+    /* Left Sidebar - Quick Actions */
+    .quick-actions-panel {
+      background: rgba(20, 20, 40, 0.95);
+      border: 2px solid #8a4fff;
+      border-radius: 12px;
+      padding: 2rem;
+      height: fit-content;
+      position: sticky;
+      top: 20px;
+    }
+
+    .quick-actions-panel h2 {
+      color: #8a4fff;
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 2px solid #8a4fff;
+      padding-bottom: 0.5rem;
+    }
+
+    .builder-card {
+      background: rgba(138, 79, 255, 0.1);
+      border: 2px solid #8a4fff;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-decoration: none;
+      display: block;
+      color: inherit;
+    }
+
+    .builder-card:hover {
+      background: rgba(138, 79, 255, 0.2);
+      border-color: #00ff88;
+      transform: translateX(5px);
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+    }
+
+    .builder-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #00ff88;
+      margin-bottom: 0.5rem;
+    }
+
+    .builder-card-icon {
+      font-size: 1.5rem;
+    }
+
+    .builder-card-desc {
+      color: #aaa;
+      font-size: 0.9rem;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .stat-card {
+      background: rgba(0, 255, 136, 0.1);
+      border: 1px solid #00ff88;
+      border-radius: 6px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #00ff88;
+    }
+
+    .stat-label {
+      color: #aaa;
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+
+    /* Main Content - Hierarchy Tree */
+    .hierarchy-panel {
+      background: rgba(20, 20, 40, 0.95);
+      border: 2px solid #8a4fff;
+      border-radius: 12px;
+      padding: 2rem;
+    }
+
+    .hierarchy-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      border-bottom: 2px solid #8a4fff;
+      padding-bottom: 1rem;
+    }
+
+    .hierarchy-header h2 {
+      color: #8a4fff;
+      font-size: 1.8rem;
+      margin: 0;
+    }
+
+    .view-toggle {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .view-toggle button {
+      padding: 0.5rem 1rem;
+      background: rgba(138, 79, 255, 0.2);
+      border: 1px solid #8a4fff;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .view-toggle button.active {
+      background: rgba(138, 79, 255, 0.5);
+      border-color: #00ff88;
+    }
+
+    .search-box {
+      margin-bottom: 1.5rem;
+    }
+
+    .search-box input {
+      width: 100%;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 1rem;
+    }
+
+    .search-box input:focus {
+      outline: none;
+      border-color: #8a4fff;
+      box-shadow: 0 0 10px rgba(138, 79, 255, 0.3);
+    }
+
+    /* Tree View */
+    .hierarchy-tree {
+      max-height: 800px;
+      overflow-y: auto;
+      padding-right: 1rem;
+    }
+
+    .tree-node {
+      margin-bottom: 0.5rem;
+    }
+
+    .tree-node-content {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-left: 3px solid transparent;
+    }
+
+    .tree-node-content:hover {
+      background: rgba(138, 79, 255, 0.2);
+      border-left-color: #8a4fff;
+    }
+
+    .tree-node-content.has-children {
+      background: rgba(138, 79, 255, 0.1);
+    }
+
+    .tree-expand-btn {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(138, 79, 255, 0.3);
+      border: 1px solid #8a4fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+
+    .tree-expand-btn:hover {
+      background: rgba(138, 79, 255, 0.5);
+    }
+
+    .tree-expand-btn.expanded {
+      transform: rotate(90deg);
+    }
+
+    .tree-node-icon {
+      font-size: 1.5rem;
+    }
+
+    .tree-node-info {
+      flex: 1;
+    }
+
+    .tree-node-title {
+      color: #00ff88;
+      font-weight: bold;
+      font-size: 1rem;
+    }
+
+    .tree-node-meta {
+      color: #888;
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+
+    .tree-node-actions {
+      display: flex;
+      gap: 0.5rem;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .tree-node-content:hover .tree-node-actions {
+      opacity: 1;
+    }
+
+    .tree-action-btn {
+      padding: 0.375rem 0.75rem;
+      background: rgba(0, 255, 136, 0.2);
+      border: 1px solid #00ff88;
+      color: #00ff88;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .tree-action-btn:hover {
+      background: rgba(0, 255, 136, 0.3);
+      transform: scale(1.05);
+    }
+
+    .tree-children {
+      margin-left: 2rem;
+      margin-top: 0.5rem;
+      border-left: 2px dashed #444;
+      padding-left: 1rem;
+      display: none;
+    }
+
+    .tree-children.expanded {
+      display: block;
+    }
+
+    /* Grid View */
+    .hierarchy-grid {
+      display: none;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .hierarchy-grid.active {
+      display: grid;
+    }
+
+    .grid-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid #444;
+      border-radius: 8px;
+      padding: 1.5rem;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+
+    .grid-card:hover {
+      border-color: #8a4fff;
+      box-shadow: 0 0 20px rgba(138, 79, 255, 0.3);
+      transform: translateY(-5px);
+    }
+
+    .grid-card-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .grid-card-icon {
+      font-size: 2.5rem;
+    }
+
+    .grid-card-title {
+      color: #00ff88;
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+
+    .grid-card-type {
+      color: #888;
+      font-size: 0.85rem;
+    }
+
+    .grid-card-meta {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #444;
+      font-size: 0.85rem;
+      color: #aaa;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: #888;
+    }
+
+    .empty-state-icon {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+    }
+
+    .empty-state-text {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+    }
+
+    .empty-state-cta {
+      display: inline-block;
+      padding: 1rem 2rem;
+      background: rgba(138, 79, 255, 0.3);
+      border: 2px solid #8a4fff;
+      color: #00ff88;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+
+    .empty-state-cta:hover {
+      background: rgba(138, 79, 255, 0.5);
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="hub-container">
+    <!-- Header -->
+    <div class="hub-header">
+      <h1>🏛️ Universal Builder Hub</h1>
+      <p>Central command for all asset creation tools and hierarchy management</p>
+    </div>
+
+    <div class="hub-layout">
+      <!-- Left Sidebar - Quick Actions -->
+      <div class="quick-actions-panel">
+        <h2>🚀 Quick Create</h2>
+
+        <a href="/assets/builder-enhanced" class="builder-card">
+          <div class="builder-card-title">
+            <span class="builder-card-icon">🎨</span>
+            <span>Asset Builder</span>
+          </div>
+          <div class="builder-card-desc">Create galaxies, planets, items, and more</div>
+        </a>
+
+        <a href="/assets/sprite-creator" class="builder-card">
+          <div class="builder-card-title">
+            <span class="builder-card-icon">🖼️</span>
+            <span>Sprite Creator</span>
+          </div>
+          <div class="builder-card-desc">Import sprite sheets and create visual assets</div>
+        </a>
+
+        <a href="/universe/interior-map-builder" class="builder-card">
+          <div class="builder-card-title">
+            <span class="builder-card-icon">🗺️</span>
+            <span>Interior Map Builder</span>
+          </div>
+          <div class="builder-card-desc">Design roguelite dungeons and interiors</div>
+        </a>
+
+        <!-- Asset Stats -->
+        <div class="stats-grid">
+          <%
+          const totalAssets = assetCounts.reduce((sum, item) => sum + item.count, 0);
+          const galaxyCount = assetCounts.find(c => c._id === 'galaxy')?.count || 0;
+          const planetCount = assetCounts.find(c => c._id === 'planet')?.count || 0;
+          const zoneCount = assetCounts.find(c => c._id === 'zone')?.count || 0;
+          const spriteCount = assetCounts.find(c => c._id === 'sprite')?.count || 0;
+          %>
+          <div class="stat-card">
+            <div class="stat-number"><%= totalAssets %></div>
+            <div class="stat-label">Total Assets</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number"><%= galaxyCount %></div>
+            <div class="stat-label">Galaxies</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number"><%= planetCount %></div>
+            <div class="stat-label">Planets</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number"><%= zoneCount %></div>
+            <div class="stat-label">Zones</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number"><%= spriteCount %></div>
+            <div class="stat-label">Sprites</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number"><%= assetCounts.length %></div>
+            <div class="stat-label">Asset Types</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content - Hierarchy View -->
+      <div class="hierarchy-panel">
+        <div class="hierarchy-header">
+          <h2>🌳 Asset Hierarchy</h2>
+          <div class="view-toggle">
+            <button class="active" data-view="tree">Tree View</button>
+            <button data-view="grid">Grid View</button>
+          </div>
+        </div>
+
+        <!-- Search Box -->
+        <div class="search-box">
+          <input type="text" id="hierarchySearch" placeholder="🔍 Search assets by name or type...">
+        </div>
+
+        <!-- Tree View -->
+        <div class="hierarchy-tree active" id="treeView">
+          <% if (assets.length === 0) { %>
+            <div class="empty-state">
+              <div class="empty-state-icon">📦</div>
+              <div class="empty-state-text">No assets yet. Let's create your first asset!</div>
+              <a href="/assets/builder-enhanced" class="empty-state-cta">Create Asset</a>
+            </div>
+          <% } else { %>
+            <div id="hierarchyTreeContent"></div>
+          <% } %>
+        </div>
+
+        <!-- Grid View -->
+        <div class="hierarchy-grid" id="gridView">
+          <% if (assets.length > 0) { %>
+            <% assets.forEach(asset => { %>
+              <div class="grid-card" data-asset-id="<%= asset._id %>">
+                <div class="grid-card-header">
+                  <div class="grid-card-icon">
+                    <%
+                    const icons = {
+                      'galaxy': '🌌',
+                      'star': '⭐',
+                      'planet': '🌍',
+                      'orbital': '🛰️',
+                      'zone': '🏛️',
+                      'sprite': '🎨',
+                      'sprite_sheet': '🖼️',
+                      'environment': '🗺️'
+                    };
+                    %>
+                    <%= icons[asset.assetType] || '📦' %>
+                  </div>
+                  <div>
+                    <div class="grid-card-title"><%= asset.title || asset.name %></div>
+                    <div class="grid-card-type"><%= asset.assetType %></div>
+                  </div>
+                </div>
+                <div class="grid-card-meta">
+                  <span>Depth: <%= asset.hierarchy?.depth || 0 %></span>
+                  <% if (asset.hierarchy?.children?.length > 0) { %>
+                    <span>Children: <%= asset.hierarchy.children.length %></span>
+                  <% } %>
+                </div>
+              </div>
+            <% }); %>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <!-- Pass assets data to JavaScript -->
+  <script>
+    window.assetsData = <%- JSON.stringify(assets) %>;
+  </script>
+  <script src="/javascripts/builder-hub.js"></script>
+</body>
+</html>

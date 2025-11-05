@@ -8,6 +8,36 @@ import { ObjectId } from 'mongodb';
 
 export class Asset {
   /**
+   * Get default map level for asset type
+   * Controls which zoom level the asset appears on
+   */
+  static getDefaultMapLevel(assetType) {
+    const defaults = {
+      // Galactic Level - Deep space objects
+      'galaxy': 'galactic',
+      'anomaly': 'galactic',
+      'anomoly': 'galactic', // Support legacy spelling
+      'localGroup': 'galactic',
+      'nebula': 'galactic',
+
+      // Galaxy Level - Objects within a galaxy
+      'star': 'galaxy',
+      'station': 'galaxy',
+      'starship': 'galaxy',
+
+      // System Level - Objects within a star system
+      'planet': 'system',
+      'orbital': 'system',
+      'asteroid': 'system',
+
+      // Orbital Level - Close proximity objects
+      'zone': 'orbital',
+      'sprite': null // Sprites don't render on 3D maps
+    };
+    return defaults[assetType] || 'system'; // Default to system level
+  }
+
+  /**
    * Create a new asset
    */
   static async create(assetData) {
@@ -59,7 +89,16 @@ export class Asset {
       isInteractive: assetData.isInteractive || false,
       interactionType: assetData.interactionType || null,
 
-      // HIERARCHY: Support for multi-level universe navigation
+      // HIERARCHY: Full hierarchical asset system (ENHANCED)
+      hierarchy: {
+        parent: assetData.hierarchy?.parent ? new ObjectId(assetData.hierarchy.parent) : null,
+        parentType: assetData.hierarchy?.parentType || null,
+        children: assetData.hierarchy?.children?.map(id => new ObjectId(id)) || [],
+        depth: assetData.hierarchy?.depth || 0,
+        path: assetData.hierarchy?.path?.map(id => new ObjectId(id)) || []
+      },
+
+      // LEGACY: Support for old hierarchy fields (backward compatibility)
       parentGalaxy: assetData.parentGalaxy ? new ObjectId(assetData.parentGalaxy) : null,
       parentStar: assetData.parentStar ? new ObjectId(assetData.parentStar) : null,
 
@@ -69,6 +108,13 @@ export class Asset {
         y: assetData.coordinates?.y || 0,
         z: assetData.coordinates?.z || 0
       },
+
+      // Map Level - Controls which zoom level this asset appears on
+      // Options: 'galactic', 'galaxy', 'system', 'orbital'
+      mapLevel: assetData.mapLevel || this.getDefaultMapLevel(assetData.assetType),
+
+      // Render Data - Visual display properties for 3D maps
+      renderData: assetData.renderData || null,
 
       // Orbital mechanics (for planets/moons orbiting stars)
       orbital: assetData.orbital ? {
@@ -86,6 +132,83 @@ export class Asset {
       starType: assetData.starType || null, // red dwarf, yellow star, blue giant, etc.
       luminosity: assetData.luminosity || 1,
       temperature: assetData.temperature || null,
+
+      // Storyline Arc properties (for assetType: 'storyline_arc')
+      arc_setting: assetData.arc_setting || null,
+      arc_themes: assetData.arc_themes || [],
+      arc_conflict: assetData.arc_conflict || null,
+      arc_visual_mood: assetData.arc_visual_mood || null,
+      arc_quest_hooks: assetData.arc_quest_hooks || [],
+      arc_linked_assets: assetData.arc_linked_assets || [],
+
+      // Storyline NPC properties (for assetType: 'storyline_npc')
+      npc_role: assetData.npc_role || null,
+      npc_arc_id: assetData.npc_arc_id || null,
+      npc_traits: assetData.npc_traits || [],
+      npc_dialogue_style: assetData.npc_dialogue_style || null,
+      npc_locations: assetData.npc_locations || [],
+      npc_signature_items: assetData.npc_signature_items || [],
+
+      // Storyline Quest properties (for assetType: 'storyline_quest')
+      quest_arc_id: assetData.quest_arc_id || null,
+      quest_type: assetData.quest_type || null,
+      quest_trigger_condition: assetData.quest_trigger_condition || null,
+      quest_objectives: assetData.quest_objectives || [],
+      quest_rewards: assetData.quest_rewards || [],
+      quest_prerequisites: assetData.quest_prerequisites || [],
+
+      // Storyline Location properties (for assetType: 'storyline_location')
+      location_arc_id: assetData.location_arc_id || null,
+      location_mood_tags: assetData.location_mood_tags || [],
+      location_interactive_elements: assetData.location_interactive_elements || [],
+      location_linked_asset: assetData.location_linked_asset || null,
+      location_zone_name: assetData.location_zone_name || null,
+
+      // Storyline Script properties (for assetType: 'storyline_script')
+      script_arc_id: assetData.script_arc_id || null,
+      script_scene_title: assetData.script_scene_title || null,
+      script_location_id: assetData.script_location_id || null,
+      script_scene_description: assetData.script_scene_description || null,
+      script_dialogue: assetData.script_dialogue || null,
+      script_actions: assetData.script_actions || [],
+      script_cinematic_trigger: assetData.script_cinematic_trigger || null,
+
+      // ZONE DATA: Roguelite dungeon/interior map data (for assetType: 'zone')
+      zoneData: assetData.zoneData ? {
+        type: assetData.zoneData.type || 'dungeon', // dungeon, city, wilderness, ship_interior
+        difficulty: assetData.zoneData.difficulty || 1,
+        width: assetData.zoneData.width || 50,
+        height: assetData.zoneData.height || 50,
+        tileSize: assetData.zoneData.tileSize || 32,
+        layers: {
+          ground: assetData.zoneData.layers?.ground || [],
+          walls: assetData.zoneData.layers?.walls || [],
+          objects: assetData.zoneData.layers?.objects || [],
+          sprites: assetData.zoneData.layers?.sprites || []
+        },
+        spawnPoints: assetData.zoneData.spawnPoints || [],
+        lootTables: assetData.zoneData.lootTables || [],
+        enemyPatterns: assetData.zoneData.enemyPatterns || [],
+        lighting: assetData.zoneData.lighting || 'normal',
+        musicTrack: assetData.zoneData.musicTrack || null,
+        ambientSounds: assetData.zoneData.ambientSounds || []
+      } : null,
+
+      // SPRITE DATA: Sprite/visual element data (for assetType: 'sprite')
+      spriteData: assetData.spriteData ? {
+        spriteSheet: assetData.spriteData.spriteSheet || null,
+        spriteSheetId: assetData.spriteData.spriteSheetId ? new ObjectId(assetData.spriteData.spriteSheetId) : null,
+        frame: assetData.spriteData.frame || 0,
+        frameCount: assetData.spriteData.frameCount || 1,
+        width: assetData.spriteData.width || 32,
+        height: assetData.spriteData.height || 32,
+        collision: assetData.spriteData.collision || { x: 0, y: 0, w: 32, h: 32 },
+        solid: assetData.spriteData.solid || false,
+        interactive: assetData.spriteData.interactive || false,
+        interactionType: assetData.spriteData.interactionType || null, // door, chest, npc, lever, etc.
+        animationSpeed: assetData.spriteData.animationSpeed || 100,
+        properties: assetData.spriteData.properties || {}
+      } : null,
 
       // Metadata
       tags: assetData.tags || [],
@@ -737,6 +860,285 @@ export class Asset {
     }
 
     return await db.collection(collections.assets).countDocuments(query);
+  }
+
+  /**
+   * ========================================
+   * HIERARCHICAL ASSET SYSTEM METHODS (NEW)
+   * ========================================
+   */
+
+  /**
+   * Link child asset to parent asset
+   */
+  static async linkToParent(childId, parentId, parentType) {
+    const db = getDb();
+
+    const parent = await this.findById(parentId);
+    if (!parent) {
+      throw new Error('Parent asset not found');
+    }
+
+    // Calculate depth (parent's depth + 1)
+    const depth = (parent.hierarchy?.depth || 0) + 1;
+
+    // Build path (parent's path + parent ID)
+    const path = [...(parent.hierarchy?.path || []), new ObjectId(parentId)];
+
+    // Update child with parent info
+    await db.collection(collections.assets).updateOne(
+      { _id: new ObjectId(childId) },
+      {
+        $set: {
+          'hierarchy.parent': new ObjectId(parentId),
+          'hierarchy.parentType': parentType,
+          'hierarchy.depth': depth,
+          'hierarchy.path': path,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    // Add child to parent's children array
+    await db.collection(collections.assets).updateOne(
+      { _id: new ObjectId(parentId) },
+      {
+        $addToSet: {
+          'hierarchy.children': new ObjectId(childId)
+        },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    return true;
+  }
+
+  /**
+   * Get full hierarchy tree starting from asset
+   */
+  static async getHierarchyTree(assetId, maxDepth = 5) {
+    const db = getDb();
+    const asset = await this.findById(assetId);
+
+    if (!asset) return null;
+
+    // Recursive function to build tree
+    const buildTree = async (node, currentDepth = 0) => {
+      if (currentDepth >= maxDepth) return node;
+
+      const children = await db.collection(collections.assets)
+        .find({ 'hierarchy.parent': node._id })
+        .toArray();
+
+      node.children = await Promise.all(
+        children.map(child => buildTree(child, currentDepth + 1))
+      );
+
+      return node;
+    };
+
+    return await buildTree(asset);
+  }
+
+  /**
+   * Get all ancestors of an asset (path to root)
+   */
+  static async getAncestors(assetId) {
+    const db = getDb();
+    const asset = await this.findById(assetId);
+
+    if (!asset || !asset.hierarchy?.path) return [];
+
+    const ancestorIds = asset.hierarchy.path;
+    const ancestors = await db.collection(collections.assets)
+      .find({ _id: { $in: ancestorIds } })
+      .toArray();
+
+    // Sort by depth to maintain order
+    return ancestors.sort((a, b) =>
+      (a.hierarchy?.depth || 0) - (b.hierarchy?.depth || 0)
+    );
+  }
+
+  /**
+   * Get all descendants of an asset
+   */
+  static async getDescendants(assetId, maxDepth = 10) {
+    const db = getDb();
+    const descendants = [];
+
+    const fetchChildren = async (parentId, currentDepth = 0) => {
+      if (currentDepth >= maxDepth) return;
+
+      const children = await db.collection(collections.assets)
+        .find({ 'hierarchy.parent': new ObjectId(parentId) })
+        .toArray();
+
+      descendants.push(...children);
+
+      for (const child of children) {
+        await fetchChildren(child._id, currentDepth + 1);
+      }
+    };
+
+    await fetchChildren(assetId);
+    return descendants;
+  }
+
+  /**
+   * Get siblings of an asset (shares same parent)
+   */
+  static async getSiblings(assetId) {
+    const db = getDb();
+    const asset = await this.findById(assetId);
+
+    if (!asset || !asset.hierarchy?.parent) return [];
+
+    return await db.collection(collections.assets)
+      .find({
+        'hierarchy.parent': asset.hierarchy.parent,
+        _id: { $ne: asset._id }
+      })
+      .toArray();
+  }
+
+  /**
+   * Unlink asset from parent
+   */
+  static async unlinkFromParent(childId) {
+    const db = getDb();
+    const child = await this.findById(childId);
+
+    if (!child || !child.hierarchy?.parent) return false;
+
+    const parentId = child.hierarchy.parent;
+
+    // Remove child from parent's children array
+    await db.collection(collections.assets).updateOne(
+      { _id: parentId },
+      {
+        $pull: { 'hierarchy.children': new ObjectId(childId) },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    // Clear child's parent info
+    await db.collection(collections.assets).updateOne(
+      { _id: new ObjectId(childId) },
+      {
+        $set: {
+          'hierarchy.parent': null,
+          'hierarchy.parentType': null,
+          'hierarchy.depth': 0,
+          'hierarchy.path': [],
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    return true;
+  }
+
+  /**
+   * Move asset to new parent
+   */
+  static async moveToNewParent(childId, newParentId, newParentType) {
+    await this.unlinkFromParent(childId);
+    await this.linkToParent(childId, newParentId, newParentType);
+    return true;
+  }
+
+  /**
+   * Find assets by status
+   */
+  static async findByStatus(status) {
+    const db = getDb();
+    return await db.collection(collections.assets)
+      .find({ status: status })
+      .sort({ createdAt: -1 })
+      .toArray();
+  }
+
+  /**
+   * Get asset statistics
+   */
+  static async getStats() {
+    const db = getDb();
+    const stats = await db.collection(collections.assets).aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    // Convert to object format
+    const result = {
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      submitted: 0
+    };
+
+    stats.forEach(stat => {
+      if (stat._id && result.hasOwnProperty(stat._id)) {
+        result[stat._id] = stat.count;
+      }
+    });
+
+    return result;
+  }
+
+  /**
+   * Approve an asset
+   */
+  static async approve(assetId, adminId, adminNotes = null) {
+    const db = getDb();
+
+    const updateData = {
+      status: 'approved',
+      approvedBy: new ObjectId(adminId),
+      approvedAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    if (adminNotes) {
+      updateData.adminNotes = adminNotes;
+    }
+
+    const result = await db.collection(collections.assets).updateOne(
+      { _id: new ObjectId(assetId) },
+      { $set: updateData }
+    );
+
+    return result.modifiedCount > 0;
+  }
+
+  /**
+   * Reject an asset
+   */
+  static async reject(assetId, adminId, adminNotes) {
+    const db = getDb();
+
+    if (!adminNotes) {
+      throw new Error('Admin notes required for rejection');
+    }
+
+    const result = await db.collection(collections.assets).updateOne(
+      { _id: new ObjectId(assetId) },
+      {
+        $set: {
+          status: 'rejected',
+          rejectedBy: new ObjectId(adminId),
+          rejectedAt: new Date(),
+          adminNotes: adminNotes,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    return result.modifiedCount > 0;
   }
 }
 

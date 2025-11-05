@@ -76,11 +76,17 @@
                   <option value="object">Object (Pixel-Built)</option>
                   <option value="structure">Structure/Building</option>
                 </optgroup>
+                <optgroup label="Storyline Assets">
+                  <option value="storyline_arc">📖 Storyline Arc</option>
+                  <option value="storyline_npc">🎭 NPC Character</option>
+                  <option value="storyline_quest">📜 Quest/Mission</option>
+                  <option value="storyline_location">📍 Story Location</option>
+                  <option value="storyline_script">🎬 Cinematic Script</option>
+                </optgroup>
                 <optgroup label="Characters & Lore">
-                  <option value="character">Character/NPC</option>
+                  <option value="character">Character/NPC (Generic)</option>
                   <option value="species">Species</option>
                   <option value="faction">Faction</option>
-                  <option value="quest">Quest/Mission</option>
                   <option value="ability">Ability/Skill</option>
                 </optgroup>
                 <optgroup label="Other">
@@ -113,33 +119,34 @@
         <!-- Location & Hierarchy -->
         <div class="form-section">
           <h3>🌌 Location & Hierarchy</h3>
-          <p>Link this asset to a location in the universe</p>
+          <p>Link this asset to a parent in the universe hierarchy</p>
+
+          <!-- Hierarchy Breadcrumb Display -->
+          <div id="hierarchyBreadcrumb" style="display: none; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 0.75rem; margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; color: #3b82f6; font-size: 0.875rem;">
+              <span style="font-weight: 600;">Hierarchy Path:</span>
+              <div id="breadcrumbPath" style="display: flex; align-items: center; gap: 0.25rem;"></div>
+            </div>
+          </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label for="parentGalaxy">Parent Galaxy</label>
-              <select id="parentGalaxy" name="parentGalaxy">
+              <label for="parentAsset">
+                <span id="parentAssetLabel">Parent Asset</span>
+                <span id="parentAssetHint" style="font-weight: normal; color: #888; font-size: 0.875rem;"></span>
+              </label>
+              <select id="parentAsset" name="parentAsset">
                 <option value="">None (Standalone Asset)</option>
-                <option value="__CREATE_NEW__">➕ Create New Galaxy</option>
-                <optgroup label="Existing Galaxies">
-                  <% if (galaxies && galaxies.length > 0) { %>
-                    <% galaxies.forEach(galaxy => { %>
-                      <option value="<%= galaxy._id %>"><%= galaxy.title %></option>
-                    <% }); %>
-                  <% } else { %>
-                    <option value="" disabled>No galaxies found</option>
-                  <% } %>
-                </optgroup>
               </select>
-              <small>Select a galaxy to place this asset in</small>
+              <small id="parentAssetHelp">Select an asset type first to see available parent options</small>
             </div>
 
-            <div class="form-group">
-              <label for="parentStar">Parent Star System</label>
-              <select id="parentStar" name="parentStar" disabled>
-                <option value="">Select a galaxy first</option>
-              </select>
-              <small>Select a star system (requires galaxy selection)</small>
+            <div class="form-group" id="buildInteriorGroup" style="display: none;">
+              <label>&nbsp;</label>
+              <button type="button" id="buildInteriorBtn" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+                🏗️ Build Interior / Zone
+              </button>
+              <small>Open Interior Map Builder for this asset</small>
             </div>
           </div>
 
@@ -158,6 +165,26 @@
               <input type="number" id="coordZ" name="coordZ" step="0.1" placeholder="0">
             </div>
           </div>
+
+          <!-- Map Level (controls which zoom level asset appears on) -->
+          <div class="form-group" id="mapLevelRow" style="display: none;">
+            <label for="mapLevel">🗺️ Map Level
+              <small style="font-weight: normal; color: #888;">(controls which zoom level this asset appears on)</small>
+            </label>
+            <select id="mapLevel" name="mapLevel">
+              <option value="">Auto (based on asset type)</option>
+              <option value="galactic">🌌 Galactic - Deep space (galaxies, anomalies)</option>
+              <option value="galaxy">⭐ Galaxy - Inside galaxy (stars, stations, starships)</option>
+              <option value="system">🪐 System - Solar system (planets, asteroids)</option>
+              <option value="orbital">🛰️ Orbital - Close proximity (zones, stations)</option>
+            </select>
+            <small>Default is automatically set based on asset type. Override if needed.</small>
+          </div>
+
+          <!-- Hidden fields for hierarchy data -->
+          <input type="hidden" id="hierarchyParent" name="hierarchy_parent">
+          <input type="hidden" id="hierarchyParentType" name="hierarchy_parentType">
+          <input type="hidden" id="hierarchyDepth" name="hierarchy_depth">
         </div>
 
         <!-- Type-Specific Fields (dynamically populated) -->

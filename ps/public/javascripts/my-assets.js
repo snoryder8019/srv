@@ -85,7 +85,7 @@ function createAssetCard(asset) {
           '<span style="color: #888; font-size: 0.875rem;">No pending suggestions</span>') +
       '</div>' +
       '<div class="asset-card-actions" style="margin-top: 1rem;">' +
-        '<button class="btn btn-primary" onclick="viewAssetDetails(\'' + asset._id + '\')" style="width: 100%;">View Details</button>' +
+        '<button class="btn btn-primary" onclick="viewAssetDetails(\'' + asset._id + '\')" style="width: 100%;">✏️ Edit</button>' +
         (pendingSuggestions > 0 ?
           '<button class="btn btn-secondary" onclick="viewSuggestions(\'' + asset._id + '\')" style="width: 100%; margin-top: 0.5rem;">Review Suggestions (' + pendingSuggestions + ')</button>' :
           '') +
@@ -95,7 +95,62 @@ function createAssetCard(asset) {
 }
 
 function viewAssetDetails(assetId) {
-  window.location.href = '/assets/' + assetId;
+  const asset = userAssets.find(a => a._id === assetId);
+
+  if (!asset) {
+    showAlert('Asset not found', 'error');
+    return;
+  }
+
+  // Route to appropriate editor based on asset type
+  let editorUrl;
+
+  switch(asset.assetType) {
+    case 'zone':
+      // Zone interior editor (in universe routes)
+      editorUrl = `/universe/interior-map-builder?zoneId=${assetId}`;
+      break;
+
+    case 'sprite':
+      // Sprite/pixel art builder
+      editorUrl = `/assets/builder?assetId=${assetId}`;
+      break;
+
+    case 'planet':
+    case 'galaxy':
+    case 'star':
+    case 'anomaly':
+    case 'anomoly':
+    case 'station':
+    case 'starship':
+    case 'orbital':
+    case 'asteroid':
+    case 'nebula':
+    case 'localGroup':
+      // Enhanced asset builder for celestial objects
+      editorUrl = `/assets/builder-enhanced?assetId=${assetId}`;
+      break;
+
+    case 'environment':
+    case 'object':
+    case 'item':
+    case 'weapon':
+    case 'armor':
+    case 'consumable':
+    case 'character':
+    case 'species':
+    case 'npc':
+    case 'quest':
+    case 'location':
+    case 'arc':
+    default:
+      // Enhanced builder for all other types
+      editorUrl = `/assets/builder-enhanced?assetId=${assetId}`;
+      break;
+  }
+
+  console.log(`📝 Opening editor for ${asset.assetType}: ${editorUrl}`);
+  window.location.href = editorUrl;
 }
 
 function viewSuggestions(assetId) {

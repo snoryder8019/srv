@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Version Check</title>
+    <style>
+        body {
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            padding: 20px;
+        }
+        .info { color: #0ff; margin: 10px 0; }
+        .warning { color: #ff0; }
+    </style>
+</head>
+<body>
+    <h1>Stringborn PS - Version Check</h1>
+    <div class="info">Current time: <span id="time"></span></div>
+    <div class="info">JavaScript file timestamp: <span id="js-timestamp"></span></div>
+    <div class="warning">If the timestamp is old, you need to hard refresh (Ctrl+Shift+R)</div>
+
+    <h2>Test Socket.IO Character Broadcast:</h2>
+    <div id="status">Connecting...</div>
+    <div id="characters"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        document.getElementById('time').textContent = new Date().toLocaleString();
+        document.getElementById('js-timestamp').textContent = '2025-11-04 02:00:00 UTC (LATEST)';
+
+        const socket = io();
+        const statusDiv = document.getElementById('status');
+        const charsDiv = document.getElementById('characters');
+
+        socket.on('connect', () => {
+            statusDiv.textContent = '✅ Connected';
+            statusDiv.style.color = '#0f0';
+        });
+
+        socket.on('galacticPhysicsUpdate', (data) => {
+            if (data.characters) {
+                charsDiv.innerHTML = `<h3>Received ${data.characters.length} characters:</h3>`;
+                data.characters.forEach(char => {
+                    charsDiv.innerHTML += `<div class="info">👤 ${char.name} at (${char.location.x.toFixed(0)}, ${char.location.y.toFixed(0)}, ${char.location.z.toFixed(0)}) @ ${char.dockedGalaxyName}</div>`;
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,419 @@
+//REFERENCE CLAUDE.md for programatic advisories before using this as context
+
+{
+  "progamatic_advisory":{"READ CLAUDE.md"},
+  "session_metadata": {
+    "date": "2025-11-04",
+    "project": "Stringborn Universe - Galactic Map 3D",
+    "session_type": "Complete System Redesign - Nested Payloads, Modal Interactions, Ship Fittings & Survival",
+    "duration": "Full session + POA creation",
+    "status": "POA Complete - Ready for Implementation"
+  },
+  "session_summary": {
+    "initial_request": "Fix socket payloads - players not appearing at galaxy pins, characters 5000+ units from docked galaxy",
+    "expanded_scope": "User requested nested payload structure (Option B), galaxy modal interactions, universal chat with slash commands, and ship fittings/survival system with consequences",
+    "issues_identified": [
+      "Characters not appearing at galaxy pins in galactic-map-3d",
+      "Characters 5000+ units away from their docked galaxy",
+      "Flat payload structure (characters separate from galaxies)",
+      "No modal interaction system for galaxy selection",
+      "Direct drill-down on galaxy click (no options/info)",
+      "No survival mechanics (travel has no consequences)",
+      "Missing ship fittings system (fuel, food, oxygen, medkits)",
+      "No storehouse inventory for galaxy-level item storage",
+      "No chat slash commands for supply management"
+    ],
+    "solution_chosen": "Option B: Nested Payload Structure with comprehensive survival system",
+    "core_changes": [
+      "Nest characters under galaxies in payload (characters AT galaxy position)",
+      "Separate inTransit array for traveling characters",
+      "Modal-based galaxy interaction (repurpose #star-info-modal)",
+      "Universal chat at galaxy level with slash commands",
+      "Ship fittings system (fuel, food, oxygen, medkits, habitat)",
+      "Travel validation (check supplies before allowing travel)",
+      "Consequences system (death, ship loss, respawn with starter ship)",
+      "Storehouse inventory for galaxy-level storage",
+      "Tester commands (/testersupply) for QA testing"
+    ]
+  },
+  "plan_of_action": {
+    "document": "/srv/ps/docs/POA_GALACTIC_INTERACTION_SYSTEM.md",
+    "status": "Complete and ready for implementation",
+    "phases": {
+      "phase_0": {
+        "name": "Database Schema & Seeding",
+        "tasks": [
+          "Add Character.ship.fittings schema (fuel, food, oxygen, medkits, habitat, shielding)",
+          "Create Storehouse model for galaxy-level inventory",
+          "Create seed script: /srv/ps/scripts/seed-ship-fittings.js",
+          "Create seed script: /srv/ps/scripts/seed-galaxy-storehouses.js",
+          "Run both seed scripts to populate existing data"
+        ],
+        "files_to_create": [
+          "/srv/ps/scripts/seed-ship-fittings.js",
+          "/srv/ps/scripts/seed-galaxy-storehouses.js",
+          "/srv/ps/api/v1/models/Storehouse.js"
+        ],
+        "files_to_modify": [
+          "/srv/ps/api/v1/models/Character.js"
+        ]
+      },
+      "phase_1": {
+        "name": "Payload Restructure",
+        "tasks": [
+          "Nest characters under galaxies (galaxies[].dockedCharacters)",
+          "Create separate inTransit array for traveling characters",
+          "Include ship fittings in character data for UI display"
+        ],
+        "files_to_modify": [
+          "/srv/ps/services/physics-service.js (lines 169-243)"
+        ]
+      },
+      "phase_2": {
+        "name": "GameStateMonitor Update",
+        "tasks": [
+          "Parse nested payload structure",
+          "Extract dockedCharacters from each galaxy",
+          "Process inTransit array separately",
+          "Characters position = galaxy position (no calculation needed)"
+        ],
+        "files_to_modify": [
+          "/srv/ps/public/javascripts/GameStateMonitor.js (lines 76-91)"
+        ]
+      },
+      "phase_3": {
+        "name": "Three.js Scene Updates",
+        "tasks": [
+          "Update character pin creation loop (process nested structure)",
+          "Fix createCharacterPin to ALWAYS use absolute coords (remove scene origin hack)",
+          "Modify selectObject() to route galaxy clicks to modal instead of drill-down"
+        ],
+        "files_to_modify": [
+          "/srv/ps/public/javascripts/galactic-map-3d.js (lines ~2399-2420, ~2764-2771, ~1680-1691)"
+        ]
+      },
+      "phase_4": {
+        "name": "Galaxy Modal System",
+        "tasks": [
+          "Create showGalaxyModal() method",
+          "Display galaxy info, ship status, travel requirements",
+          "Show docked players list",
+          "Add universal chat with input",
+          "Implement conditional action buttons (Enter Orbit / Hyper Travel / Storehouse)",
+          "Add slash command handler (/help, /supply, /storehouse, /testersupply)"
+        ],
+        "files_to_modify": [
+          "/srv/ps/public/javascripts/galactic-map-3d.js (~line 1850+)"
+        ]
+      },
+      "phase_5": {
+        "name": "Socket Integration",
+        "tasks": [
+          "Add galaxyChatMessage handler",
+          "Add testerSupply handler (QA command)",
+          "Add resupplyFromStorehouse handler",
+          "Broadcast chat messages to galaxy-specific channels"
+        ],
+        "files_to_modify": [
+          "/srv/ps/plugins/socket/index.js (~line 160+)"
+        ]
+      },
+      "phase_6": {
+        "name": "Travel Validation API",
+        "tasks": [
+          "Create /api/v1/travel/validate endpoint",
+          "Calculate resource requirements based on distance",
+          "Check fuel, food, oxygen against requirements",
+          "Return warnings and blockers",
+          "Estimate arrival condition (health, ship, survival chance)"
+        ],
+        "files_to_create": [
+          "/srv/ps/api/v1/routes/travel.js"
+        ]
+      },
+      "phase_7": {
+        "name": "Storehouse API",
+        "tasks": [
+          "Create /api/v1/storehouse/:galaxyId endpoint",
+          "Fetch or create storehouse for galaxy",
+          "Return inventory and galaxy name"
+        ],
+        "files_to_create": [
+          "/srv/ps/api/v1/routes/storehouse.js"
+        ]
+      }
+    }
+  },
+  "new_payload_structure": {
+    "description": "Characters nested under galaxies, inTransit as separate array",
+    "example": {
+      "galaxies": [
+        {
+          "id": "galaxy_id",
+          "title": "Cosmic Nexus",
+          "position": {"x": 2534, "y": 3935, "z": 3326},
+          "velocity": {"vx": 2.3, "vy": -1.1, "vz": 0.8},
+          "dockedCharacters": [
+            {
+              "_id": "char_id",
+              "name": "Faithbender",
+              "userId": "user_id",
+              "activeInShip": true,
+              "ship": {
+                "name": "Void Runner",
+                "fittings": {
+                  "fuel": {"capacity": 1000, "remaining": 650},
+                  "food": {"capacity": 100, "remaining": 75},
+                  "oxygen": {"capacity": 1000, "remaining": 800}
+                }
+              }
+            }
+          ],
+          "stats": {
+            "starCount": 42,
+            "threatLevel": "Medium"
+          },
+          "storehouse": {
+            "fuel": 50000,
+            "food": 20000,
+            "oxygen": 100000,
+            "medkits": 5000
+          }
+        }
+      ],
+      "inTransit": [
+        {
+          "_id": "char_id",
+          "name": "Wanderer",
+          "location": {"x": 1500, "y": 2500, "z": 3000},
+          "from": "galaxy_id_1",
+          "to": "galaxy_id_2",
+          "eta": 120
+        }
+      ],
+      "connections": [],
+      "timestamp": 1234567890
+    }
+  },
+  "ship_fittings_system": {
+    "description": "Comprehensive survival system with resource consumption and consequences",
+    "resources": {
+      "fuel": {
+        "consumption_rate": "0.5 per unit distance",
+        "consequence": "Drift and die in 2 minutes"
+      },
+      "food": {
+        "consumption_rate": "2 per hour of travel",
+        "consequence": "Starvation damage (5 HP per 5 seconds)"
+      },
+      "oxygen": {
+        "consumption_rate": "5 per hour of travel",
+        "consequence": "Suffocation damage (10 HP per 5 seconds)"
+      },
+      "medkits": {
+        "consumption_rate": "On-demand healing",
+        "consequence": "Cannot heal damage"
+      }
+    },
+    "death_consequences": {
+      "respawn_location": "Nearest station",
+      "ship_loss": "Lose current ship and all cargo",
+      "credit_penalty": "Lose 10% of credits",
+      "starter_ship": {
+        "name": "Emergency Pod",
+        "class": "Shuttle",
+        "fuel": {"capacity": 100, "remaining": 100},
+        "food": {"capacity": 10, "remaining": 10},
+        "oxygen": {"capacity": 100, "remaining": 100}
+      },
+      "respawn_health": "50% health"
+    },
+    "travel_validation": {
+      "checks": ["fuel_sufficient", "food_sufficient", "oxygen_sufficient"],
+      "warnings": ["low_fuel", "no_habitat", "radiation_zone"],
+      "blockers": ["insufficient_fuel", "insufficient_food", "insufficient_oxygen", "required_fitting_missing"],
+      "estimated_arrival": {
+        "health_percent": "0-100",
+        "ship_condition": "0-100",
+        "survival_chance": "0-100"
+      }
+    }
+  },
+  "chat_slash_commands": {
+    "description": "Universal chat commands for supply management at galaxies",
+    "commands": {
+      "/help": {
+        "access": "All",
+        "description": "Show all available commands"
+      },
+      "/supply <item> <amount>": {
+        "access": "Docked players only",
+        "description": "Resupply from galaxy storehouse",
+        "example": "/supply fuel 500"
+      },
+      "/storehouse": {
+        "access": "Docked players only",
+        "description": "Open storehouse inventory modal"
+      },
+      "/transfer <item> <amount>": {
+        "access": "Docked players only",
+        "description": "Transfer items to storehouse",
+        "example": "/transfer food 50"
+      },
+      "/testersupply": {
+        "access": "Testers only",
+        "description": "Max out all supplies (QA testing)",
+        "effects": "Fill fuel, food, oxygen, medkits to capacity"
+      }
+    }
+  },
+  "galaxy_modal_features": {
+    "sections": [
+      "Galaxy info (stars, distance, threat level)",
+      "Ship status (fuel, food, oxygen, medkits with color coding)",
+      "Travel requirements (if not docked)",
+      "Warnings and blockers (if insufficient supplies)",
+      "Players at galaxy list",
+      "Universal chat with slash command support"
+    ],
+    "action_buttons": {
+      "when_docked": ["Enter Orbit (drill down to galaxy level)", "Storehouse", "Close"],
+      "when_can_travel": ["Hyper Travel", "Close"],
+      "when_cannot_travel": ["Cannot Travel (disabled)", "Resupply", "Close"]
+    }
+  },
+  "files_to_create": [
+    "/srv/ps/api/v1/models/Storehouse.js",
+    "/srv/ps/api/v1/routes/travel.js",
+    "/srv/ps/api/v1/routes/storehouse.js",
+    "/srv/ps/scripts/seed-ship-fittings.js",
+    "/srv/ps/scripts/seed-galaxy-storehouses.js",
+    "/srv/ps/docs/POA_GALACTIC_INTERACTION_SYSTEM.md"
+  ],
+  "files_to_modify": [
+    "/srv/ps/api/v1/models/Character.js - Add ship.fittings schema",
+    "/srv/ps/services/physics-service.js - Nest characters under galaxies (lines 169-243)",
+    "/srv/ps/public/javascripts/GameStateMonitor.js - Parse nested payload (lines 76-91)",
+    "/srv/ps/public/javascripts/galactic-map-3d.js - Modal + chat + validation (~500 new lines)",
+    "/srv/ps/plugins/socket/index.js - Chat + tester supply handlers (~line 160+)"
+  ],
+  "implementation_order": {
+    "step_1": "Run seed scripts to populate ship fittings and storehouses",
+    "step_2": "Restructure physics-service payload (nest characters)",
+    "step_3": "Update GameStateMonitor to parse nested structure",
+    "step_4": "Fix galactic-map-3d character pin creation",
+    "step_5": "Implement galaxy modal system",
+    "step_6": "Add socket chat handlers",
+    "step_7": "Create travel validation API",
+    "step_8": "Create storehouse API",
+    "step_9": "Test end-to-end"
+  },
+  "testing_checklist": {
+    "phase_0_database": [
+      "Run seed-ship-fittings.js - verify all characters have fittings",
+      "Run seed-galaxy-storehouses.js - verify storehouse for each galaxy"
+    ],
+    "phase_1_payload": [
+      "Check server logs for galaxies[].dockedCharacters",
+      "Open debug-socket-payloads.html and verify nested structure",
+      "Verify inTransit array exists"
+    ],
+    "phase_2_game_state_monitor": [
+      "Check browser console for 'Galaxy X: N docked characters' logs",
+      "Verify characters extracted from nested structure"
+    ],
+    "phase_3_scene": [
+      "Character pins appear at galaxy positions (not 5000 units away)",
+      "Multiple players at same galaxy all visible",
+      "In-transit characters appear at travel coordinates"
+    ],
+    "phase_4_modal": [
+      "Click galaxy → modal opens",
+      "Ship status displays with correct values",
+      "Travel requirements calculated",
+      "Players list shows docked characters",
+      "Chat input visible when docked"
+    ],
+    "phase_5_chat": [
+      "Type message → broadcasts to all at galaxy",
+      "Type /help → shows commands",
+      "Type /testersupply → fills all supplies (if tester)",
+      "Type /supply fuel 100 → transfers from storehouse"
+    ],
+    "phase_6_7_apis": [
+      "Travel validation returns correct requirements",
+      "Blockers prevent travel when supplies insufficient",
+      "Storehouse API returns inventory"
+    ]
+  },
+  "quick_commands": {
+    "seed_database": "node /srv/ps/scripts/seed-ship-fittings.js && node /srv/ps/scripts/seed-galaxy-storehouses.js",
+    "restart_server": "lsof -ti:3399 | xargs -r kill -9 && cd /srv/ps && nohup npm start > /tmp/ps-server.log 2>&1 &",
+    "check_nested_payload": "tail -50 /tmp/ps-server.log | grep 'dockedCharacters'",
+    "check_in_transit": "tail -50 /tmp/ps-server.log | grep 'inTransit'",
+    "test_pages": [
+      "http://localhost:3399/debug-socket-payloads.html",
+      "http://localhost:3399/universe/galactic-map-3d"
+    ]
+  },
+  "success_criteria": {
+    "critical": [
+      "Players appear at their galaxy pins (not 5000 units away)",
+      "Multiple online players visible at same galaxy",
+      "Galaxy modal opens on click with supply info",
+      "Travel validation prevents travel with insufficient supplies",
+      "Modal shows 'Cannot Travel' when supplies too low"
+    ],
+    "important": [
+      "Universal chat works with slash commands",
+      "Tester command /testersupply works",
+      "Storehouse transfers work",
+      "Ship status displays with color coding"
+    ],
+    "nice_to_have": [
+      "Travel ETA displayed",
+      "Survival chance percentage shown",
+      "Warning messages for risky travel"
+    ]
+  },
+  "design_decisions": {
+    "nested_payload": {
+      "reason": "Cleaner architecture, single source of truth, no drift between character and galaxy positions",
+      "trade_off": "Requires restructuring payload at server and client, but eliminates ongoing sync issues"
+    },
+    "no_offsets": {
+      "reason": "Characters ARE at galaxy position in galactic level, offsets only needed at planet level",
+      "user_request": "User explicitly requested no offsets for galactic space"
+    },
+    "storehouse_not_backpack": {
+      "reason": "Galaxy-level inventory more appropriate for galactic space travel",
+      "user_request": "User specified storehouse as priority over character backpack"
+    },
+    "modal_interaction": {
+      "reason": "Provides info and options before committing to action (Enter Orbit vs Hyper Travel)",
+      "replaces": "Direct drill-down on galaxy click (too aggressive)"
+    },
+    "consequences_matter": {
+      "reason": "User emphasized: 'consequences matter in the Stringborne project'",
+      "impact": "Death, ship loss, and respawn with starter ship add meaningful risk to travel"
+    }
+  },
+  "important_notes": {
+    "user_priorities": [
+      "Nested payload structure (Option B) chosen by user",
+      "Ship fittings and survival system are critical",
+      "Consequences matter - death and ship loss required",
+      "Tester supply command for QA testing",
+      "Storehouse priority over backpack",
+      "No offsets at galactic level"
+    ],
+    "scope": "This is a complete system redesign, not just a bug fix. Estimated 4-6 hours of implementation time across 7 phases.",
+    "dependencies": "Must seed database FIRST before testing any other phase",
+    "testing_approach": "Test each phase incrementally, do not skip ahead"
+  },
+  "next_session_start": {
+    "first_action": "Review POA document at /srv/ps/docs/POA_GALACTIC_INTERACTION_SYSTEM.md",
+    "second_action": "Begin Phase 0: Run seed scripts",
+    "confirmation_needed": "User should confirm they want to proceed with Option B implementation before starting"
+  }
+}

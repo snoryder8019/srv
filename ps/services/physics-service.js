@@ -176,67 +176,133 @@ class PhysicsService {
       // Broadcast galaxy, star positions and connections if socket.io is available
       if (this.io) {
         if (updatedGalaxies.length > 0 || updatedStars.length > 0) {
-          // Get list of connected user IDs
-          const connectedUserIds = this.io.getConnectedUserIds ? this.io.getConnectedUserIds() : [];
-          console.log(`👥 Connected user IDs (${connectedUserIds.length}):`, connectedUserIds);
+          // Get list of connected character IDs (ACTIVE characters, not all characters owned by connected users)
+          const connectedCharacterIds = this.io.getConnectedCharacterIds ? this.io.getConnectedCharacterIds() : [];
+          console.log(`👥 Connected character IDs (${connectedCharacterIds.length}):`, connectedCharacterIds);
           console.log(`🎮 Total characters with galactic location: ${characters.length}`);
 
-          // Get characters with positions for rendering
-          // Calculate actual render position from docked galaxy + offset
-          // ONLY include characters whose users are currently connected via Socket.IO
-          const charactersForRendering = characters.filter(char => {
+          // OPTION B: NESTED PAYLOAD STRUCTURE
+          // Characters are nested under their galaxies, inTransit is separate array
+          const activeCharacters = characters.filter(char => {
             const hasLocation = char.location && char.location.type === 'galactic';
-            const isConnected = connectedUserIds.includes(char.userId.toString());
-            console.log(`   🔍 Character ${char.name} (userId: ${char.userId}): hasLocation=${hasLocation}, isConnected=${isConnected}`);
-            return hasLocation && isConnected; // Only show connected players!
-          }).map(char => {
-            let renderX = char.location.x;
-            let renderY = char.location.y;
-            let renderZ = char.location.z;
-            let dockedGalaxyName = null;
+            const isActiveCharacter = connectedCharacterIds.includes(char._id.toString());
+            console.log(`   🔍 Character ${char.name} (charId: ${char._id}): hasLocation=${hasLocation}, isActive=${isActiveCharacter}`);
+            return hasLocation && isActiveCharacter; // Only show active characters!
+          });
 
-            // If character is docked at a galaxy, calculate position from galaxy coords + offset
-            if (char.location.dockedGalaxyId) {
-              const dockedGalaxy = updatedGalaxies.find(g => g.id === char.location.dockedGalaxyId);
-              if (dockedGalaxy) {
-                renderX = dockedGalaxy.position.x + (char.location.offsetX || 0);
-                renderY = dockedGalaxy.position.y + (char.location.offsetY || 0);
-                renderZ = dockedGalaxy.position.z + (char.location.offsetZ || 0);
-                // dockedGalaxyName will be populated from galaxy title
-              }
-            }
+          // Nest characters under galaxies
+          const galaxiesWithCharacters = updatedGalaxies.map(galaxy => {
+            // Find all characters docked at this galaxy
+            const dockedCharacters = activeCharacters
+              .filter(char => char.location.dockedGalaxyId === galaxy.id)
+              .map(char => ({
+                _id: char._id,
+                name: char.name,
+                userId: char.userId,
+                activeInShip: char.activeInShip,
+                ship: char.ship ? {
+                  name: char.ship.name,
+                  class: char.ship.class,
+                  fittings: {
+                    fuel: {
+                      capacity: char.ship.fittings?.fuelTanks?.capacity || 0,
+                      remaining: char.ship.fittings?.fuelTanks?.remaining || 0
+                    },
+                    food: {
+                      capacity: char.ship.fittings?.lifeSupport?.foodCapacity || 0,
+                      remaining: char.ship.fittings?.lifeSupport?.foodRemaining || 0
+                    },
+                    oxygen: {
+                      capacity: char.ship.fittings?.lifeSupport?.oxygenCapacity || 0,
+                      remaining: char.ship.fittings?.lifeSupport?.oxygenRemaining || 0
+                    },
+                    medkits: {
+                      capacity: char.ship.fittings?.medicalBay?.medKitsCapacity || 0,
+                      remaining: char.ship.fittings?.medicalBay?.medKitsRemaining || 0
+                    }
+                  }
+                } : null
+              }));
 
             return {
-              _id: char._id,
-              name: char.name,
-              userId: char.userId,
-              dockedGalaxyId: char.location.dockedGalaxyId || null,
-              dockedGalaxyName: dockedGalaxyName,
-              isInTransit: char.navigation?.isInTransit || false,
-              transitFrom: char.navigation?.isInTransit ? char.navigation.from : null,
-              transitTo: char.navigation?.isInTransit ? char.navigation.destination : null,
-              location: {
-                x: renderX,
-                y: renderY,
-                z: renderZ
-              },
-              activeInShip: char.activeInShip
+              ...galaxy,
+              dockedCharacters: dockedCharacters
             };
           });
 
+          // Separate inTransit array for traveling characters
+          const inTransit = activeCharacters
+            .filter(char => char.navigation?.isInTransit)
+            .map(char => ({
+              _id: char._id,
+              name: char.name,
+              userId: char.userId,
+              location: {
+                x: char.location.x,
+                y: char.location.y,
+                z: char.location.z
+              },
+              from: char.navigation.from,
+              to: char.navigation.destination,
+              eta: char.navigation.eta || null,
+              activeInShip: char.activeInShip,
+              ship: char.ship ? {
+                name: char.ship.name,
+                fittings: {
+                  fuel: {
+                    capacity: char.ship.fittings?.fuelTanks?.capacity || 0,
+                    remaining: char.ship.fittings?.fuelTanks?.remaining || 0
+                  },
+                  food: {
+                    capacity: char.ship.fittings?.lifeSupport?.foodCapacity || 0,
+                    remaining: char.ship.fittings?.lifeSupport?.foodRemaining || 0
+                  },
+                  oxygen: {
+                    capacity: char.ship.fittings?.lifeSupport?.oxygenCapacity || 0,
+                    remaining: char.ship.fittings?.lifeSupport?.oxygenRemaining || 0
+                  },
+                  medkits: {
+                    capacity: char.ship.fittings?.medicalBay?.medKitsCapacity || 0,
+                    remaining: char.ship.fittings?.medicalBay?.medKitsRemaining || 0
+                  }
+                }
+              } : null
+            }));
+
           const payload = {
-            galaxies: updatedGalaxies,
+            galaxies: galaxiesWithCharacters, // Galaxies with nested dockedCharacters
             stars: updatedStars || [],
             connections: connections,
-            characters: charactersForRendering, // Include characters in main payload
+            inTransit: inTransit, // Separate array for traveling characters
             simulationSpeed: this.simulationSpeed,
             timestamp: Date.now()
           };
 
           this.io.emit('galacticPhysicsUpdate', payload);
 
-          // Log broadcast details
-          console.log(`📡 galacticPhysicsUpdate emitted: galaxies=${updatedGalaxies.length}, stars=${updatedStars?.length || 0}, connections=${connections.length}, characters=${charactersForRendering.length}`);
+          // Log broadcast details with nested character info
+          const totalDockedChars = galaxiesWithCharacters.reduce((sum, g) => sum + g.dockedCharacters.length, 0);
+          console.log(`📡 galacticPhysicsUpdate emitted: galaxies=${galaxiesWithCharacters.length}, stars=${updatedStars?.length || 0}, connections=${connections.length}, dockedChars=${totalDockedChars}, inTransit=${inTransit.length}`);
+
+          // Log galaxies with docked characters
+          galaxiesWithCharacters.forEach(galaxy => {
+            if (galaxy.dockedCharacters.length > 0) {
+              const galaxyAsset = this.galacticCache.galaxies.find(g => g._id.toString() === galaxy.id);
+              console.log(`   🌌 Galaxy "${galaxyAsset?.title || galaxy.id}": ${galaxy.dockedCharacters.length} docked characters`);
+              galaxy.dockedCharacters.forEach(char => {
+                console.log(`      👤 ${char.name} (ship: ${char.ship?.name || 'none'})`);
+              });
+            }
+          });
+
+          // Log in-transit characters
+          if (inTransit.length > 0) {
+            console.log(`   🚀 In-Transit Characters: ${inTransit.length}`);
+            inTransit.forEach(char => {
+              console.log(`      👤 ${char.name} at (${char.location.x.toFixed(0)}, ${char.location.y.toFixed(0)}, ${char.location.z.toFixed(0)})`);
+            });
+          }
+
           if (connections.length > 0) {
             console.log(`   🔗 Connection: ${connections[0].from.substring(0,8)} <-> ${connections[0].to.substring(0,8)} (${connections[0].state})`);
           }
@@ -1124,16 +1190,24 @@ class PhysicsService {
   /**
    * Update docked characters - ensure they have a dockedGalaxyId set
    * Characters not in transit should be attached to nearest galaxy
+   * Character positions are stored as absolute galactic coordinates (no offsets)
    */
   async updateDockedCharacterPositions(characters, updatedGalaxies) {
     const db = getDb();
+    const bulkUpdates = [];
 
     for (const character of characters) {
       // Skip characters in transit - they navigate independently
       if (character.navigation?.isInTransit) continue;
 
-      // If character doesn't have a docked galaxy, find and assign nearest one
-      if (!character.location.dockedGalaxyId) {
+      // Find the galaxy this character is docked at
+      let dockedGalaxy = null;
+      if (character.location.dockedGalaxyId) {
+        dockedGalaxy = updatedGalaxies.find(g => g.id === character.location.dockedGalaxyId);
+      }
+
+      // If character doesn't have a docked galaxy OR doesn't have galaxy name, find and assign nearest one
+      if (!character.location.dockedGalaxyId || !character.location.dockedGalaxyName) {
         let nearestGalaxy = null;
         let minDistance = Infinity;
 
@@ -1150,38 +1224,86 @@ class PhysicsService {
         }
 
         // Always assign to nearest galaxy, even if far away
-        // Characters in deep space will still be "attached" to nearest galaxy for rendering
+        // Characters in deep space will still be "attached" to nearest galaxy for reference
         if (nearestGalaxy) {
-          // Store galaxy ID and relative offset
-          const offsetX = character.location.x - nearestGalaxy.position.x;
-          const offsetY = character.location.y - nearestGalaxy.position.y;
-          const offsetZ = character.location.z - nearestGalaxy.position.z;
-
-          await db.collection('characters').updateOne(
-            { _id: character._id },
-            {
-              $set: {
-                'location.dockedGalaxyId': nearestGalaxy.id,
-                'location.dockedGalaxyName': null, // Will be populated on read
-                'location.offsetX': offsetX,
-                'location.offsetY': offsetY,
-                'location.offsetZ': offsetZ,
-                'location.lastUpdated': new Date()
-              }
-            }
-          );
+          // Get galaxy name from cache
+          const galaxyAsset = this.galacticCache.galaxies.find(g => g._id.toString() === nearestGalaxy.id);
+          const galaxyName = galaxyAsset?.title || null;
 
           // Update in-memory object for this tick
           character.location.dockedGalaxyId = nearestGalaxy.id;
-          character.location.offsetX = offsetX;
-          character.location.offsetY = offsetY;
-          character.location.offsetZ = offsetZ;
+          character.location.dockedGalaxyName = galaxyName;
+          dockedGalaxy = nearestGalaxy;
 
-          if (minDistance > 3000) {
-            console.log(`📍 Character "${character.name}" attached to distant galaxy (${minDistance.toFixed(0)} units away)`);
-          }
+          // SNAP character to galaxy position when first docking
+          // This ensures characters are AT their galaxy, not thousands of units away
+          character.location.x = nearestGalaxy.position.x;
+          character.location.y = nearestGalaxy.position.y;
+          character.location.z = nearestGalaxy.position.z;
+
+          console.log(`📍 Character "${character.name}" snapped to "${galaxyName}" at (${nearestGalaxy.position.x.toFixed(0)}, ${nearestGalaxy.position.y.toFixed(0)}, ${nearestGalaxy.position.z.toFixed(0)})`);
+
+          // Add to bulk update
+          bulkUpdates.push({
+            updateOne: {
+              filter: { _id: character._id },
+              update: {
+                $set: {
+                  'location.dockedGalaxyId': nearestGalaxy.id,
+                  'location.dockedGalaxyName': galaxyName,
+                  'location.x': nearestGalaxy.position.x,
+                  'location.y': nearestGalaxy.position.y,
+                  'location.z': nearestGalaxy.position.z,
+                  'location.lastUpdated': new Date()
+                },
+                $unset: {
+                  // Remove old offset fields if they exist
+                  'location.offsetX': '',
+                  'location.offsetY': '',
+                  'location.offsetZ': ''
+                }
+              }
+            }
+          });
         }
       }
+
+      // CRITICAL: Move character with their docked galaxy!
+      // Characters that are docked should move as their galaxy moves through space
+      if (dockedGalaxy && dockedGalaxy.velocity) {
+        // Apply galaxy's velocity to character's position
+        const baseTime = this.tickRate / 1000; // Convert to seconds
+        const deltaTime = baseTime * this.simulationSpeed;
+
+        const deltaX = dockedGalaxy.velocity.vx * deltaTime;
+        const deltaY = dockedGalaxy.velocity.vy * deltaTime;
+        const deltaZ = dockedGalaxy.velocity.vz * deltaTime;
+
+        // Update character position in memory
+        character.location.x += deltaX;
+        character.location.y += deltaY;
+        character.location.z += deltaZ;
+
+        // Add to bulk update
+        bulkUpdates.push({
+          updateOne: {
+            filter: { _id: character._id },
+            update: {
+              $set: {
+                'location.x': character.location.x,
+                'location.y': character.location.y,
+                'location.z': character.location.z,
+                'location.lastUpdated': new Date()
+              }
+            }
+          }
+        });
+      }
+    }
+
+    // Execute all updates in one batch
+    if (bulkUpdates.length > 0) {
+      await db.collection('characters').bulkWrite(bulkUpdates, { ordered: false });
     }
   }
 

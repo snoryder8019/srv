@@ -74,20 +74,68 @@ class GameStateMonitor {
     if (!this.socket) return;
 
     // Galactic physics update - PRIMARY source for all online players with galaxy info
+    // OPTION B: Nested payload structure (characters under galaxies + inTransit)
     this.socket.on('galacticPhysicsUpdate', (data) => {
-      if (data.characters && Array.isArray(data.characters)) {
-        console.log(`📡 GameStateMonitor: Received ${data.characters.length} online characters`);
+      // Extract characters from nested structure
+      const allCharacters = [];
 
-        data.characters.forEach(char => {
-          this.updatePlayerGalacticState(char);
-        });
+      // Extract docked characters from galaxies
+      if (data.galaxies && Array.isArray(data.galaxies)) {
+        data.galaxies.forEach(galaxy => {
+          if (galaxy.dockedCharacters && galaxy.dockedCharacters.length > 0) {
+            console.log(`📡 GameStateMonitor: Galaxy ${galaxy.id}: ${galaxy.dockedCharacters.length} docked characters`);
 
-        // Emit state sync for UI updates
-        this.emit('stateSync', {
-          players: Array.from(this.players.values()),
-          timestamp: data.timestamp
+            galaxy.dockedCharacters.forEach(char => {
+              // Character position = galaxy position (they're docked!)
+              allCharacters.push({
+                _id: char._id,
+                name: char.name,
+                userId: char.userId,
+                location: {
+                  x: galaxy.position.x,
+                  y: galaxy.position.y,
+                  z: galaxy.position.z
+                },
+                dockedGalaxyId: galaxy.id,
+                isInTransit: false,
+                activeInShip: char.activeInShip,
+                ship: char.ship
+              });
+            });
+          }
         });
       }
+
+      // Extract in-transit characters
+      if (data.inTransit && Array.isArray(data.inTransit)) {
+        console.log(`📡 GameStateMonitor: ${data.inTransit.length} characters in transit`);
+        data.inTransit.forEach(char => {
+          allCharacters.push({
+            _id: char._id,
+            name: char.name,
+            userId: char.userId,
+            location: char.location, // Use travel coordinates
+            dockedGalaxyId: null,
+            isInTransit: true,
+            activeInShip: char.activeInShip,
+            from: char.from,
+            to: char.to,
+            eta: char.eta
+          });
+        });
+      }
+
+      // Update all character states
+      console.log(`📡 GameStateMonitor: Total ${allCharacters.length} online characters (nested structure)`);
+      allCharacters.forEach(char => {
+        this.updatePlayerGalacticState(char);
+      });
+
+      // Emit state sync for UI updates
+      this.emit('stateSync', {
+        players: Array.from(this.players.values()),
+        timestamp: data.timestamp
+      });
     });
 
     // Player movement updates (real-time from galactic-map-3d)

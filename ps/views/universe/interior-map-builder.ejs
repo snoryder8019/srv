@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interior Map Builder - Stringborn Universe</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    .map-builder-container {
+      max-width: 1600px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background: rgba(20, 20, 40, 0.95);
+      border-radius: 12px;
+      border: 2px solid #8a4fff;
+    }
+
+    .builder-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .builder-header h1 {
+      color: #8a4fff;
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+      text-shadow: 0 0 20px rgba(138, 79, 255, 0.6);
+    }
+
+    .builder-header p {
+      color: #aaa;
+      font-size: 1.1rem;
+    }
+
+    .builder-layout {
+      display: grid;
+      grid-template-columns: 250px 1fr 300px;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    /* Left Sidebar - Tools */
+    .tools-panel {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 1.5rem;
+      border-radius: 8px;
+      border: 1px solid #444;
+      height: fit-content;
+      position: sticky;
+      top: 20px;
+    }
+
+    .tools-panel h2 {
+      color: #8a4fff;
+      font-size: 1.3rem;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid #8a4fff;
+      padding-bottom: 0.5rem;
+    }
+
+    .tool-section {
+      margin-bottom: 1.5rem;
+    }
+
+    .tool-section h3 {
+      color: #00ff88;
+      font-size: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .tool-button {
+      width: 100%;
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      background: rgba(138, 79, 255, 0.2);
+      border: 2px solid #8a4fff;
+      color: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tool-button:hover {
+      background: rgba(138, 79, 255, 0.4);
+      border-color: #00ff88;
+      transform: translateX(5px);
+    }
+
+    .tool-button.active {
+      background: rgba(0, 255, 136, 0.3);
+      border-color: #00ff88;
+      box-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
+    }
+
+    .tile-type-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .tile-type {
+      padding: 0.5rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 2px solid #444;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+      font-size: 0.85rem;
+    }
+
+    .tile-type:hover {
+      border-color: #8a4fff;
+    }
+
+    .tile-type.selected {
+      border-color: #00ff88;
+      background: rgba(0, 255, 136, 0.2);
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+    }
+
+    /* Center - Canvas */
+    .canvas-section {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 1.5rem;
+      border-radius: 8px;
+      border: 1px solid #444;
+    }
+
+    .canvas-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 6px;
+    }
+
+    .canvas-controls h2 {
+      color: #8a4fff;
+      font-size: 1.3rem;
+      margin: 0;
+    }
+
+    .control-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .control-btn {
+      padding: 0.5rem 1rem;
+      background: rgba(138, 79, 255, 0.2);
+      border: 1px solid #8a4fff;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.9rem;
+    }
+
+    .control-btn:hover {
+      background: rgba(138, 79, 255, 0.4);
+      border-color: #00ff88;
+    }
+
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      height: 800px;
+      margin: 0 auto;
+      background: #0a0a0a;
+      border: 2px solid #8a4fff;
+      border-radius: 8px;
+      overflow: auto;
+      box-shadow: inset 0 0 30px rgba(138, 79, 255, 0.2);
+    }
+
+    #mapCanvas {
+      cursor: crosshair;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .zoom-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      justify-content: center;
+    }
+
+    .zoom-controls button {
+      padding: 0.5rem 1rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #444;
+      color: #8a4fff;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .zoom-controls button:hover {
+      border-color: #8a4fff;
+      background: rgba(138, 79, 255, 0.2);
+    }
+
+    .zoom-level {
+      color: #00ff88;
+      font-weight: bold;
+      min-width: 80px;
+      text-align: center;
+    }
+
+    /* Right Sidebar - Properties */
+    .properties-panel {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 1.5rem;
+      border-radius: 8px;
+      border: 1px solid #444;
+      height: fit-content;
+      position: sticky;
+      top: 20px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .properties-panel h2 {
+      color: #8a4fff;
+      font-size: 1.3rem;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid #8a4fff;
+      padding-bottom: 0.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      color: #00ff88;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 0.95rem;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #8a4fff;
+      box-shadow: 0 0 10px rgba(138, 79, 255, 0.3);
+    }
+
+    .form-group small {
+      color: #888;
+      font-size: 0.85rem;
+      display: block;
+      margin-top: 0.25rem;
+    }
+
+    .preset-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .preset-btn {
+      padding: 0.75rem;
+      background: rgba(0, 255, 136, 0.1);
+      border: 1px solid #00ff88;
+      color: #00ff88;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.85rem;
+    }
+
+    .preset-btn:hover {
+      background: rgba(0, 255, 136, 0.2);
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+    }
+
+    .action-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-top: 2rem;
+    }
+
+    .action-btn {
+      padding: 1rem;
+      border: 2px solid;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 1rem;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+
+    .action-btn.primary {
+      background: rgba(138, 79, 255, 0.2);
+      border-color: #8a4fff;
+      color: #8a4fff;
+    }
+
+    .action-btn.primary:hover {
+      background: rgba(138, 79, 255, 0.4);
+      box-shadow: 0 0 20px rgba(138, 79, 255, 0.5);
+    }
+
+    .action-btn.success {
+      background: rgba(0, 255, 136, 0.2);
+      border-color: #00ff88;
+      color: #00ff88;
+    }
+
+    .action-btn.success:hover {
+      background: rgba(0, 255, 136, 0.4);
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+    }
+
+    .action-btn.danger {
+      background: rgba(255, 79, 79, 0.2);
+      border-color: #ff4f4f;
+      color: #ff4f4f;
+    }
+
+    .action-btn.danger:hover {
+      background: rgba(255, 79, 79, 0.4);
+      box-shadow: 0 0 20px rgba(255, 79, 79, 0.5);
+    }
+
+    .legend {
+      margin-top: 2rem;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 6px;
+      border: 1px solid #444;
+    }
+
+    .legend h3 {
+      color: #8a4fff;
+      font-size: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .legend-items {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+    }
+
+    .legend-color {
+      width: 20px;
+      height: 20px;
+      border-radius: 3px;
+      border: 1px solid #666;
+    }
+
+    .alert {
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      border: 1px solid;
+    }
+
+    .alert.info {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: #3b82f6;
+      color: #93c5fd;
+    }
+
+    .alert.success {
+      background: rgba(0, 255, 136, 0.1);
+      border-color: #00ff88;
+      color: #00ff88;
+    }
+
+    .alert.error {
+      background: rgba(255, 79, 79, 0.1);
+      border-color: #ff4f4f;
+      color: #ff4f4f;
+    }
+
+    @media (max-width: 1400px) {
+      .builder-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .tools-panel,
+      .properties-panel {
+        position: relative;
+        top: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="map-builder-container">
+    <!-- Header -->
+    <div class="builder-header">
+      <h1>🗺️ Interior Map Builder</h1>
+      <p>Design roguelite interior layouts for starships, space stations, planetary buildings, and pubs</p>
+
+      <!-- Parent Asset Info (if linked) -->
+      <div id="parentAssetInfo" style="display: none; margin-top: 1rem; padding: 1rem; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px;">
+        <div style="display: flex; align-items: center; gap: 1rem; justify-content: center;">
+          <span style="color: #3b82f6; font-weight: 600;">Building interior for:</span>
+          <span id="parentAssetName" style="color: #00ff88; font-size: 1.1rem; font-weight: bold;"></span>
+          <span id="parentAssetType" style="color: #888; font-size: 0.9rem;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alert Container -->
+    <div id="alertContainer"></div>
+
+    <!-- Builder Layout -->
+    <div class="builder-layout">
+      <!-- Left Sidebar - Tools -->
+      <div class="tools-panel">
+        <h2>🛠️ Tools</h2>
+
+        <!-- Drawing Tools -->
+        <div class="tool-section">
+          <h3>Draw Mode</h3>
+          <button class="tool-button active" data-tool="draw">
+            <span>✏️</span>
+            <span>Draw</span>
+          </button>
+          <button class="tool-button" data-tool="erase">
+            <span>🧹</span>
+            <span>Erase</span>
+          </button>
+          <button class="tool-button" data-tool="fill">
+            <span>🪣</span>
+            <span>Fill Bucket</span>
+          </button>
+          <button class="tool-button" data-tool="select">
+            <span>⬜</span>
+            <span>Select Area</span>
+          </button>
+        </div>
+
+        <!-- Tile Types -->
+        <div class="tool-section">
+          <h3>Tile Types</h3>
+          <div class="tile-type-grid">
+            <div class="tile-type selected" data-tile="floor" style="background: #2d2d2d; color: #fff;">
+              🟫 Floor
+            </div>
+            <div class="tile-type" data-tile="wall" style="background: #4a4a4a; color: #fff;">
+              🟦 Wall
+            </div>
+            <div class="tile-type" data-tile="door" style="background: #8b5a00; color: #fff;">
+              🚪 Door
+            </div>
+            <div class="tile-type" data-tile="window" style="background: #4169e1; color: #fff;">
+              🪟 Window
+            </div>
+            <div class="tile-type" data-tile="spawn" style="background: #00ff00; color: #000;">
+              🟢 Spawn
+            </div>
+            <div class="tile-type" data-tile="exit" style="background: #ff0000; color: #fff;">
+              🔴 Exit
+            </div>
+            <div class="tile-type" data-tile="hazard" style="background: #ff6600; color: #fff;">
+              ⚠️ Hazard
+            </div>
+            <div class="tile-type" data-tile="loot" style="background: #ffd700; color: #000;">
+              💰 Loot
+            </div>
+            <div class="tile-type" data-tile="npc" style="background: #9370db; color: #fff;">
+              👤 NPC
+            </div>
+            <div class="tile-type" data-tile="interactive" style="background: #00ffff; color: #000;">
+              ⚙️ Interactive
+            </div>
+            <div class="tile-type" data-tile="teleport" style="background: #ff00ff; color: #fff;">
+              🌀 Teleport
+            </div>
+            <div class="tile-type" data-tile="furniture" style="background: #8b4513; color: #fff;">
+              🪑 Furniture
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="tool-section">
+          <h3>Quick Actions</h3>
+          <button class="tool-button" onclick="clearMap()">
+            <span>🗑️</span>
+            <span>Clear Map</span>
+          </button>
+          <button class="tool-button" onclick="toggleGrid()">
+            <span>📐</span>
+            <span>Toggle Grid</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Center - Canvas -->
+      <div class="canvas-section">
+        <div class="canvas-controls">
+          <h2>Canvas</h2>
+          <div class="control-buttons">
+            <button class="control-btn" onclick="undoAction()">↶ Undo</button>
+            <button class="control-btn" onclick="redoAction()">↷ Redo</button>
+          </div>
+        </div>
+
+        <div class="canvas-container">
+          <canvas id="mapCanvas"></canvas>
+        </div>
+
+        <div class="zoom-controls">
+          <button onclick="zoomOut()">-</button>
+          <span class="zoom-level" id="zoomLevel">100%</span>
+          <button onclick="zoomIn()">+</button>
+          <button onclick="resetZoom()">Reset</button>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend">
+          <h3>Legend</h3>
+          <div class="legend-items">
+            <div class="legend-item">
+              <div class="legend-color" style="background: #2d2d2d;"></div>
+              <span>Floor - Walkable area</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #4a4a4a;"></div>
+              <span>Wall - Solid barrier</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #8b5a00;"></div>
+              <span>Door - Passageway</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #4169e1;"></div>
+              <span>Window - Transparent</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #00ff00;"></div>
+              <span>Spawn - Player start</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #ff0000;"></div>
+              <span>Exit - Level exit</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #ff6600;"></div>
+              <span>Hazard - Damage zone</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #ffd700;"></div>
+              <span>Loot - Item spawn</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #9370db;"></div>
+              <span>NPC - Character spawn</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #00ffff;"></div>
+              <span>Interactive - Usable object</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #ff00ff;"></div>
+              <span>Teleport - Warp point</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #8b4513;"></div>
+              <span>Furniture - Decoration</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Sidebar - Properties -->
+      <div class="properties-panel">
+        <h2>⚙️ Map Properties</h2>
+
+        <!-- Map Info -->
+        <div class="form-group">
+          <label>Map Name</label>
+          <input type="text" id="mapName" placeholder="e.g., Bridge of The Wanderer">
+        </div>
+
+        <div class="form-group">
+          <label>Map Type</label>
+          <select id="mapType">
+            <option value="starship">🚀 Starship</option>
+            <option value="station">🛰️ Space Station</option>
+            <option value="pub">🍺 Pub/Bar</option>
+            <option value="building">🏢 Planetary Building</option>
+            <option value="facility">🏭 Facility</option>
+            <option value="dungeon">⚔️ Dungeon</option>
+            <option value="other">📦 Other</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="mapDescription" placeholder="Describe this interior space..."></textarea>
+        </div>
+
+        <!-- Map Size Presets -->
+        <div class="form-group">
+          <label>Map Size</label>
+          <div class="preset-buttons">
+            <button class="preset-btn" onclick="setMapSize(32, 32)">Small<br>32x32</button>
+            <button class="preset-btn" onclick="setMapSize(64, 64)">Medium<br>64x64</button>
+            <button class="preset-btn" onclick="setMapSize(96, 96)">Large<br>96x96</button>
+            <button class="preset-btn" onclick="setMapSize(128, 128)">Huge<br>128x128</button>
+          </div>
+        </div>
+
+        <!-- Custom Size -->
+        <div class="form-group">
+          <label>Custom Size</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+            <div>
+              <input type="number" id="customWidth" placeholder="Width" min="16" max="256" value="64">
+              <small>Width (tiles)</small>
+            </div>
+            <div>
+              <input type="number" id="customHeight" placeholder="Height" min="16" max="256" value="64">
+              <small>Height (tiles)</small>
+            </div>
+          </div>
+          <button class="preset-btn" onclick="applyCustomSize()" style="margin-top: 0.5rem; width: 100%;">
+            Apply Custom Size
+          </button>
+        </div>
+
+        <!-- Link to World Asset -->
+        <div class="form-group">
+          <label>Link to World Asset</label>
+          <select id="linkedAsset">
+            <option value="">Select a world asset...</option>
+            <option value="create">➕ Create New World Asset</option>
+          </select>
+          <small>Link this map to a planet, ship, or station asset</small>
+        </div>
+
+        <!-- Metadata -->
+        <div class="form-group">
+          <label>Tags (comma-separated)</label>
+          <input type="text" id="mapTags" placeholder="roguelite, combat, exploration">
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button class="action-btn primary" onclick="saveDraft()">
+            💾 Save Draft
+          </button>
+          <button class="action-btn success" id="saveAsZoneBtn" onclick="saveAsZoneAsset()" style="background: rgba(16, 185, 129, 0.3); border-color: #10b981;">
+            ✅ Save as Zone Asset
+          </button>
+          <button class="action-btn success" onclick="exportMap()">
+            📤 Export JSON
+          </button>
+          <button class="action-btn danger" onclick="newMap()">
+            🗑️ New Map
+          </button>
+          <button class="action-btn primary" onclick="importMap()">
+            📥 Import JSON
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script src="/javascripts/interior-map-builder.js?v=<%= typeof VERSION !== 'undefined' ? VERSION : '1.0.0' %>"></script>
+</body>
+</html>

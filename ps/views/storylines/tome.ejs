@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TOME - Storylines | Stringborn Universe</title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <style>
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+    }
+
+    .tome-container {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .tome-header {
+      text-align: center;
+      margin-bottom: 3rem;
+      padding: 2rem;
+      background: linear-gradient(135deg, #8a4fff 0%, #00ffff 100%);
+      border-radius: 8px;
+    }
+
+    .tome-header h1 {
+      margin: 0;
+      color: #0a0a0a;
+      font-size: 2.5rem;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .tome-header p {
+      margin: 0.5rem 0 0 0;
+      color: #1a1a1a;
+      font-size: 1.1rem;
+    }
+
+    .storyline-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 2rem;
+      margin-bottom: 3rem;
+    }
+
+    .storyline-card {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+      border: 2px solid #8a4fff;
+      border-radius: 8px;
+      padding: 1.5rem;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .storyline-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(138, 79, 255, 0.3);
+      border-color: #00ffff;
+    }
+
+    .arc-title {
+      font-size: 1.5rem;
+      color: #8a4fff;
+      margin: 0 0 0.5rem 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .arc-setting {
+      color: #00ffff;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      font-style: italic;
+    }
+
+    .arc-themes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .theme-tag {
+      background: rgba(138, 79, 255, 0.2);
+      border: 1px solid #8a4fff;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      color: #8a4fff;
+    }
+
+    .arc-conflict {
+      color: #e0e0e0;
+      margin: 1rem 0;
+      line-height: 1.6;
+    }
+
+    .quest-hooks {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #333;
+    }
+
+    .quest-hooks h4 {
+      color: #00ffff;
+      font-size: 0.9rem;
+      margin: 0 0 0.5rem 0;
+    }
+
+    .quest-hooks ul {
+      margin: 0;
+      padding-left: 1.5rem;
+      color: #ccc;
+      font-size: 0.85rem;
+    }
+
+    .quest-hooks li {
+      margin-bottom: 0.25rem;
+    }
+
+    .section-header {
+      color: #8a4fff;
+      font-size: 2rem;
+      margin: 3rem 0 1.5rem 0;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid #8a4fff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .npc-card, .quest-card, .location-card, .script-card {
+      background: #1a1a1a;
+      border-left: 4px solid;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      border-radius: 4px;
+    }
+
+    .npc-card { border-left-color: #ff6b6b; }
+    .quest-card { border-left-color: #ffd93d; }
+    .location-card { border-left-color: #6bcf7f; }
+    .script-card { border-left-color: #4d96ff; }
+
+    .card-title {
+      font-size: 1.2rem;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+
+    .npc-card .card-title { color: #ff6b6b; }
+    .quest-card .card-title { color: #ffd93d; }
+    .location-card .card-title { color: #6bcf7f; }
+    .script-card .card-title { color: #4d96ff; }
+
+    .card-meta {
+      font-size: 0.85rem;
+      color: #999;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-content {
+      color: #ccc;
+      line-height: 1.6;
+    }
+
+    .traits {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .trait-badge {
+      background: rgba(255, 107, 107, 0.2);
+      border: 1px solid #ff6b6b;
+      padding: 0.2rem 0.6rem;
+      border-radius: 15px;
+      font-size: 0.75rem;
+      color: #ff6b6b;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 4rem 2rem;
+      font-size: 1.5rem;
+      color: #8a4fff;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin: 2rem 0;
+      padding: 1.5rem;
+      background: rgba(138, 79, 255, 0.1);
+      border-radius: 8px;
+    }
+
+    .stat-box {
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 2.5rem;
+      color: #8a4fff;
+      font-weight: bold;
+    }
+
+    .stat-label {
+      color: #00ffff;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="tome-container">
+    <div class="tome-header">
+      <h1>📖 THE TOME</h1>
+      <p>Chronicles of the Stringborn Universe</p>
+    </div>
+
+    <div id="loading" class="loading">Loading storylines...</div>
+
+    <div id="content" style="display: none;">
+      <!-- Stats -->
+      <div class="stats">
+        <div class="stat-box">
+          <div class="stat-number" id="stat-arcs">0</div>
+          <div class="stat-label">Story Arcs</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" id="stat-npcs">0</div>
+          <div class="stat-label">NPCs</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" id="stat-quests">0</div>
+          <div class="stat-label">Quests</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" id="stat-locations">0</div>
+          <div class="stat-label">Locations</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" id="stat-scripts">0</div>
+          <div class="stat-label">Scripts</div>
+        </div>
+      </div>
+
+      <!-- Storyline Arcs -->
+      <h2 class="section-header">📖 Storyline Arcs</h2>
+      <div id="arcs-grid" class="storyline-grid"></div>
+
+      <!-- NPCs -->
+      <h2 class="section-header">🎭 Characters & NPCs</h2>
+      <div id="npcs-list"></div>
+
+      <!-- Quests -->
+      <h2 class="section-header">📜 Quests & Missions</h2>
+      <div id="quests-list"></div>
+
+      <!-- Locations -->
+      <h2 class="section-header">📍 Story Locations</h2>
+      <div id="locations-list"></div>
+
+      <!-- Scripts -->
+      <h2 class="section-header">🎬 Cinematic Scripts</h2>
+      <div id="scripts-list"></div>
+    </div>
+  </div>
+
+  <script>
+    // Fetch all storylines
+    async function loadStorylines() {
+      try {
+        const response = await fetch('/api/v1/storylines/all');
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error('Failed to load storylines');
+        }
+
+        // Hide loading, show content
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+
+        // Update stats
+        document.getElementById('stat-arcs').textContent = data.counts.arcs;
+        document.getElementById('stat-npcs').textContent = data.counts.npcs;
+        document.getElementById('stat-quests').textContent = data.counts.quests;
+        document.getElementById('stat-locations').textContent = data.counts.locations;
+        document.getElementById('stat-scripts').textContent = data.counts.scripts;
+
+        // Render sections
+        renderArcs(data.data.arcs);
+        renderNPCs(data.data.npcs);
+        renderQuests(data.data.quests);
+        renderLocations(data.data.locations);
+        renderScripts(data.data.scripts);
+
+      } catch (error) {
+        console.error('Error loading storylines:', error);
+        document.getElementById('loading').textContent = 'Error loading storylines. Please refresh the page.';
+      }
+    }
+
+    function renderArcs(arcs) {
+      const grid = document.getElementById('arcs-grid');
+      grid.innerHTML = arcs.map(arc => `
+        <div class="storyline-card">
+          <h3 class="arc-title">📖 ${arc.title}</h3>
+          <div class="arc-setting">${arc.arc_setting || ''}</div>
+          <div class="arc-themes">
+            ${(arc.arc_themes || []).map(theme => `<span class="theme-tag">${theme}</span>`).join('')}
+          </div>
+          <div class="arc-conflict">${arc.arc_conflict || arc.description}</div>
+          ${arc.arc_quest_hooks && arc.arc_quest_hooks.length > 0 ? `
+            <div class="quest-hooks">
+              <h4>Quest Hooks:</h4>
+              <ul>
+                ${arc.arc_quest_hooks.map(hook => `<li>${hook}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+
+    function renderNPCs(npcs) {
+      const list = document.getElementById('npcs-list');
+      list.innerHTML = npcs.map(npc => `
+        <div class="npc-card">
+          <div class="card-title">🎭 ${npc.title}</div>
+          <div class="card-meta">${npc.npc_role.replace(/_/g, ' ').toUpperCase()}</div>
+          <div class="card-content">
+            ${npc.lore || npc.description}
+          </div>
+          ${npc.npc_traits && npc.npc_traits.length > 0 ? `
+            <div class="traits">
+              ${npc.npc_traits.map(trait => `<span class="trait-badge">${trait}</span>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+
+    function renderQuests(quests) {
+      const list = document.getElementById('quests-list');
+      list.innerHTML = quests.map(quest => `
+        <div class="quest-card">
+          <div class="card-title">📜 ${quest.title}</div>
+          <div class="card-meta">${quest.quest_type ? quest.quest_type.replace(/_/g, ' ').toUpperCase() : 'QUEST'}</div>
+          <div class="card-content">
+            ${quest.description}
+            ${quest.quest_trigger_condition ? `<br><br><strong>Trigger:</strong> ${quest.quest_trigger_condition}` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderLocations(locations) {
+      const list = document.getElementById('locations-list');
+      list.innerHTML = locations.map(loc => `
+        <div class="location-card">
+          <div class="card-title">📍 ${loc.title}</div>
+          <div class="card-meta">${(loc.location_mood_tags || []).join(', ')}</div>
+          <div class="card-content">
+            ${loc.description}
+            ${loc.location_interactive_elements && loc.location_interactive_elements.length > 0 ? `
+              <br><br><strong>Interactive:</strong> ${loc.location_interactive_elements.join(', ')}
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderScripts(scripts) {
+      const list = document.getElementById('scripts-list');
+      list.innerHTML = scripts.map(script => `
+        <div class="script-card">
+          <div class="card-title">🎬 ${script.script_scene_title || script.title}</div>
+          <div class="card-meta">${script.script_location_id || 'LOCATION UNKNOWN'}</div>
+          <div class="card-content">
+            ${script.script_scene_description || script.description}
+            ${script.script_dialogue ? `
+              <br><br><pre style="color: #ccc; white-space: pre-wrap; font-family: 'Courier New', monospace;">${script.script_dialogue}</pre>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Load on page load
+    window.addEventListener('DOMContentLoaded', loadStorylines);
+  </script>
+
+  <%- include('../partials/footer') %>
+</body>
+</html>

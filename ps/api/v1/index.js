@@ -12,6 +12,11 @@ import stateManagerRouter from './routes/state-manager.js';
 import activityRouter from './activity/index.js';
 import shipsRouter from './ships/index.js';
 import motdRouter from './routes/motd.js';
+import storylinesRouter from './routes/storylines.js';
+import travelRouter from './routes/travel.js';
+import storehouseRouter from './routes/storehouse.js';
+import hierarchyRouter from './routes/hierarchy.js';
+import spritesRouter from './routes/sprites.js';
 
 const router = express.Router();
 
@@ -29,7 +34,12 @@ router.get('/', (req, res) => {
       stateManager: '/api/v1/state',
       activity: '/api/v1/activity',
       ships: '/api/v1/ships',
-      motd: '/api/v1/motd'
+      motd: '/api/v1/motd',
+      storylines: '/api/v1/storylines',
+      travel: '/api/v1/travel',
+      storehouse: '/api/v1/storehouse',
+      hierarchy: '/api/v1/hierarchy',
+      sprites: '/api/v1/sprites'
     }
   });
 });
@@ -46,6 +56,11 @@ router.use('/state', stateManagerRouter); // State manager for game state and ph
 router.use('/activity', activityRouter); // Activity token management
 router.use('/ships', shipsRouter); // Ship builder and custom ships
 router.use('/motd', motdRouter); // Message of the Day system
+router.use('/storylines', storylinesRouter); // Storyline assets for TOME
+router.use('/travel', travelRouter); // Travel validation for survival system
+router.use('/storehouse', storehouseRouter); // Galaxy-level inventory management
+router.use('/hierarchy', hierarchyRouter); // Hierarchical asset relationships
+router.use('/sprites', spritesRouter); // Sprite creation and zone assignment
 router.use('/', inventoryRouter); // Inventory routes handle their own /characters/:id/inventory paths
 router.use('/', shipRouter); // Ship routes handle their own /characters/:id/ship paths
 

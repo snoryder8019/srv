@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/stylesheets/style.css">
+  <link rel="stylesheet" href="/stylesheets/asset-builder.css">
+  <style>
+    .mode-tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .mode-tab {
+      padding: 1rem 2rem;
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      border-bottom: 3px solid transparent;
+      transition: all 0.3s;
+    }
+
+    .mode-tab:hover {
+      color: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .mode-tab.active {
+      color: #3b82f6;
+      border-bottom-color: #3b82f6;
+    }
+
+    .mode-content {
+      display: none;
+    }
+
+    .mode-content.active {
+      display: block;
+    }
+
+    .sprite-preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+    }
+
+    .sprite-preview-item {
+      text-align: center;
+      padding: 0.5rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .sprite-preview-item:hover {
+      background: rgba(59, 130, 246, 0.2);
+      transform: scale(1.05);
+    }
+
+    .sprite-preview-item.selected {
+      background: rgba(59, 130, 246, 0.3);
+      border: 2px solid #3b82f6;
+    }
+
+    .sprite-preview-img {
+      width: 64px;
+      height: 64px;
+      image-rendering: pixelated;
+      margin: 0 auto;
+    }
+
+    .json-editor {
+      background: #1a1a1a;
+      color: #10b981;
+      font-family: 'Courier New', monospace;
+      padding: 1rem;
+      border-radius: 8px;
+      min-height: 300px;
+      font-size: 0.875rem;
+    }
+
+    .upload-zone {
+      border: 2px dashed rgba(59, 130, 246, 0.5);
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      background: rgba(59, 130, 246, 0.05);
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .upload-zone:hover {
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .upload-zone.dragover {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.1);
+    }
+
+    .sprite-properties {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .collision-editor {
+      position: relative;
+      width: 200px;
+      height: 200px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      margin: 1rem auto;
+      cursor: crosshair;
+    }
+
+    .collision-box {
+      position: absolute;
+      border: 2px solid #ef4444;
+      background: rgba(239, 68, 68, 0.2);
+      pointer-events: none;
+    }
+
+    .sprite-list {
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    .sprite-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+    }
+
+    .sprite-item:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body>
+  <%- include('../partials/header', { user: user }) %>
+
+  <div class="asset-builder-container">
+    <h1>🎨 Sprite Creator</h1>
+    <p>Create sprite assets for zones, environments, and roguelite dungeons</p>
+
+    <div id="alertContainer"></div>
+
+    <!-- Mode Selection Tabs -->
+    <div class="mode-tabs">
+      <button class="mode-tab active" data-mode="json-import">
+        📦 JSON Import
+      </button>
+      <button class="mode-tab" data-mode="manual">
+        ✏️ Manual Create
+      </button>
+      <button class="mode-tab" data-mode="zone-assign">
+        🗺️ Zone Assignment
+      </button>
+    </div>
+
+    <!-- JSON Import Mode -->
+    <div class="mode-content active" id="json-import-mode">
+      <div class="form-section">
+        <h3>📦 Bulk Import Sprites from JSON</h3>
+        <p>Upload a sprite sheet image and JSON definition to create multiple sprite assets at once</p>
+
+        <!-- Sprite Sheet Upload -->
+        <div class="form-group">
+          <label for="spriteSheetUpload">Sprite Sheet Image *</label>
+          <div class="upload-zone" id="spriteSheetUploadZone">
+            <p style="margin: 0 0 0.5rem 0; font-size: 2rem;">📁</p>
+            <p style="margin: 0; color: rgba(255, 255, 255, 0.8);">
+              Drop sprite sheet here or click to browse
+            </p>
+            <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: rgba(255, 255, 255, 0.5);">
+              PNG, JPG (recommended: power of 2 dimensions)
+            </p>
+          </div>
+          <input type="file" id="spriteSheetUpload" accept="image/*" style="display: none;">
+          <div id="spriteSheetPreview" style="margin-top: 1rem; display: none;">
+            <img id="spriteSheetImg" style="max-width: 100%; border: 1px solid #444; border-radius: 4px; image-rendering: pixelated;">
+          </div>
+        </div>
+
+        <!-- JSON Definition -->
+        <div class="form-group">
+          <label for="jsonDefinition">
+            JSON Definition *
+            <span style="color: #888; font-weight: normal; font-size: 0.875rem;">(Sprite sheet metadata)</span>
+          </label>
+          <textarea id="jsonDefinition" class="json-editor" placeholder='{
+  "name": "Dungeon Tileset",
+  "tileWidth": 32,
+  "tileHeight": 32,
+  "sprites": [
+    {
+      "name": "Stone Wall",
+      "frame": 0,
+      "x": 0,
+      "y": 0,
+      "solid": true,
+      "collision": { "x": 0, "y": 0, "w": 32, "h": 32 }
+    },
+    {
+      "name": "Wooden Door",
+      "frame": 1,
+      "x": 32,
+      "y": 0,
+      "interactive": true,
+      "interactionType": "door"
+    }
+  ]
+}'></textarea>
+          <small>Define sprite positions, properties, and collision boxes</small>
+        </div>
+
+        <!-- Zone Assignment (Optional) -->
+        <div class="form-group">
+          <label for="jsonImportZone">Assign to Zone (Optional)</label>
+          <select id="jsonImportZone">
+            <option value="">No zone (create as library assets)</option>
+            <% if (zones && zones.length > 0) { %>
+              <% zones.forEach(zone => { %>
+                <option value="<%= zone._id %>"><%= zone.title %> (<%= zone.assetType %>)</option>
+              <% }); %>
+            <% } %>
+          </select>
+          <small>Link imported sprites to a specific zone for immediate use</small>
+        </div>
+
+        <!-- Actions -->
+        <div class="form-actions">
+          <button type="button" id="validateJsonBtn" class="btn btn-secondary">
+            🔍 Validate JSON
+          </button>
+          <button type="button" id="importSpritesBtn" class="btn btn-success">
+            📦 Import All Sprites
+          </button>
+        </div>
+
+        <!-- Preview Grid -->
+        <div id="jsonImportPreview" style="display: none;">
+          <h4>Preview (<span id="previewCount">0</span> sprites)</h4>
+          <div class="sprite-preview-grid" id="jsonPreviewGrid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Create Mode -->
+    <div class="mode-content" id="manual-mode">
+      <div class="form-section">
+        <h3>✏️ Manual Sprite Creation</h3>
+        <p>Create individual sprite assets with custom properties</p>
+
+        <form id="manualSpriteForm">
+          <!-- Basic Info -->
+          <div class="form-group">
+            <label for="spriteName">Sprite Name *</label>
+            <input type="text" id="spriteName" required placeholder="e.g., Stone Wall, Health Potion">
+          </div>
+
+          <div class="form-group">
+            <label for="spriteDescription">Description</label>
+            <textarea id="spriteDescription" rows="2" placeholder="Brief description of this sprite"></textarea>
+          </div>
+
+          <!-- Sprite Source -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="spriteSource">Source Type</label>
+              <select id="spriteSource">
+                <option value="upload">Upload New Image</option>
+                <option value="sheet">Use Existing Sheet</option>
+              </select>
+            </div>
+
+            <div class="form-group" id="uploadSourceGroup">
+              <label for="manualSpriteUpload">Upload Sprite Image</label>
+              <input type="file" id="manualSpriteUpload" accept="image/*">
+            </div>
+
+            <div class="form-group" id="sheetSourceGroup" style="display: none;">
+              <label for="existingSpriteSheet">Sprite Sheet</label>
+              <select id="existingSpriteSheet">
+                <option value="">Select sprite sheet</option>
+                <% if (spriteSheets && spriteSheets.length > 0) { %>
+                  <% spriteSheets.forEach(sheet => { %>
+                    <option value="<%= sheet._id %>"><%= sheet.title || sheet.name %></option>
+                  <% }); %>
+                <% } %>
+              </select>
+            </div>
+          </div>
+
+          <!-- Sprite Properties -->
+          <div class="sprite-properties">
+            <div class="form-group">
+              <label for="spriteWidth">Width (px)</label>
+              <input type="number" id="spriteWidth" value="32" min="1">
+            </div>
+
+            <div class="form-group">
+              <label for="spriteHeight">Height (px)</label>
+              <input type="number" id="spriteHeight" value="32" min="1">
+            </div>
+
+            <div class="form-group">
+              <label for="spriteFrame">Frame Index</label>
+              <input type="number" id="spriteFrame" value="0" min="0">
+            </div>
+
+            <div class="form-group">
+              <label for="frameCount">Frame Count (Animation)</label>
+              <input type="number" id="frameCount" value="1" min="1">
+            </div>
+
+            <div class="form-group">
+              <label for="animationSpeed">Animation Speed (ms)</label>
+              <input type="number" id="animationSpeed" value="100" min="10" step="10">
+            </div>
+
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="spriteSolid">
+                Solid (Blocks movement)
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="spriteInteractive">
+                Interactive
+              </label>
+            </div>
+
+            <div class="form-group" id="interactionTypeGroup" style="display: none;">
+              <label for="interactionType">Interaction Type</label>
+              <select id="interactionType">
+                <option value="door">Door</option>
+                <option value="chest">Chest</option>
+                <option value="npc">NPC</option>
+                <option value="item">Item</option>
+                <option value="terminal">Terminal</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Collision Box Editor -->
+          <div class="form-group">
+            <h4>Collision Box</h4>
+            <p style="font-size: 0.875rem; color: #888;">Click and drag to define collision area</p>
+            <div class="collision-editor" id="collisionEditor">
+              <div class="collision-box" id="collisionBox"></div>
+              <canvas id="collisionCanvas"></canvas>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-top: 0.5rem;">
+              <div>
+                <label style="font-size: 0.75rem;">X</label>
+                <input type="number" id="collisionX" value="0" min="0" style="width: 100%;">
+              </div>
+              <div>
+                <label style="font-size: 0.75rem;">Y</label>
+                <input type="number" id="collisionY" value="0" min="0" style="width: 100%;">
+              </div>
+              <div>
+                <label style="font-size: 0.75rem;">Width</label>
+                <input type="number" id="collisionW" value="32" min="1" style="width: 100%;">
+              </div>
+              <div>
+                <label style="font-size: 0.75rem;">Height</label>
+                <input type="number" id="collisionH" value="32" min="1" style="width: 100%;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Zone Assignment -->
+          <div class="form-group">
+            <label for="manualZoneAssign">Assign to Zone (Optional)</label>
+            <select id="manualZoneAssign">
+              <option value="">No zone (create as library asset)</option>
+              <% if (zones && zones.length > 0) { %>
+                <% zones.forEach(zone => { %>
+                  <option value="<%= zone._id %>"><%= zone.title %> (<%= zone.assetType %>)</option>
+                <% }); %>
+              <% } %>
+            </select>
+          </div>
+
+          <!-- Actions -->
+          <div class="form-actions">
+            <button type="button" id="resetManualFormBtn" class="btn btn-secondary">
+              Reset Form
+            </button>
+            <button type="submit" class="btn btn-success">
+              ✅ Create Sprite
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Zone Assignment Mode -->
+    <div class="mode-content" id="zone-assign-mode">
+      <div class="form-section">
+        <h3>🗺️ Assign Sprites to Zone</h3>
+        <p>Add existing sprite assets to a zone for use in the Interior Map Builder</p>
+
+        <!-- Zone Selection -->
+        <div class="form-group">
+          <label for="targetZone">Target Zone *</label>
+          <select id="targetZone">
+            <option value="">Select a zone</option>
+            <% if (zones && zones.length > 0) { %>
+              <% zones.forEach(zone => { %>
+                <option value="<%= zone._id %>"><%= zone.title %> (<%= zone.assetType %>)</option>
+              <% }); %>
+            <% } %>
+          </select>
+        </div>
+
+        <!-- Sprite Library -->
+        <div class="form-group">
+          <h4>Available Sprites</h4>
+          <input type="text" id="spriteSearch" placeholder="Search sprites..." style="margin-bottom: 1rem;">
+          <div class="sprite-list" id="spriteLibrary">
+            <p style="color: #888;">Select a zone to load available sprites</p>
+          </div>
+        </div>
+
+        <!-- Selected Sprites -->
+        <div class="form-group">
+          <h4>Selected Sprites (<span id="selectedCount">0</span>)</h4>
+          <div class="sprite-preview-grid" id="selectedSpritesGrid">
+            <p style="color: #888;">No sprites selected</p>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="form-actions">
+          <button type="button" id="clearSelectionBtn" class="btn btn-secondary">
+            Clear Selection
+          </button>
+          <button type="button" id="assignToZoneBtn" class="btn btn-success">
+            🗺️ Assign to Zone
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script src="/javascripts/sprite-creator.js"></script>
+</body>
+</html>

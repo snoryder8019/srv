@@ -670,6 +670,93 @@ ls -la /srv/ps/.env
 - Check `tmux ls` before killing processes
 - Use `/srv/start-all-services.sh` for full restart
 
+**⚠️ CRITICAL: Browser Cache vs Server Code Updates**
+
+When you update JavaScript files (`galactic-map-3d.js`, `GameStateMonitor.js`, etc.) on the server, the browser may still be running OLD CACHED VERSIONS of those files. This is a REAL browser caching issue (unlike the EJS line number issue above which is NOT cache).
+
+**THE PROBLEM:**
+- Server code is updated and restarted
+- Browser console shows old code still running
+- New features/logs don't appear
+- Socket.IO receives data but JavaScript doesn't process it correctly
+
+**HOW TO DETECT:**
+1. Check file timestamp in URL: `galactic-map-3d.js?v=8.0.1&t=1762220883177`
+2. Look for missing console logs that you just added to the code
+3. Features that should work according to server logs don't work in browser
+4. `window.galacticMap` or other globals have old method signatures
+
+**SOLUTIONS (in order of effectiveness):**
+
+1. **Hard Refresh (Most Common Fix):**
+   ```
+   Chrome/Firefox/Edge: Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac)
+   Safari: Cmd+Option+R
+   ```
+   - Forces browser to bypass cache and re-download all assets
+   - Do this 2-3 times if issue persists
+   - Must be done on the SPECIFIC PAGE with issues
+
+2. **Clear Browser Cache (Nuclear Option):**
+   ```
+   Chrome: Ctrl+Shift+Delete → "Cached images and files" → Clear
+   Firefox: Ctrl+Shift+Delete → "Cache" → Clear
+   Safari: Cmd+Option+E
+   ```
+   - Clears ALL cached files for ALL websites
+   - Overkill but guaranteed to work
+
+3. **Disable Cache in DevTools (Development Only):**
+   ```
+   1. Open DevTools (F12)
+   2. Network tab
+   3. Check "Disable cache" checkbox
+   4. Keep DevTools OPEN while browsing
+   ```
+   - Only works while DevTools is open
+   - Good for active development sessions
+
+4. **Version Busting (Server-Side Solution):**
+   ```javascript
+   // In EJS template
+   <script src="/javascripts/galactic-map-3d.js?v=<%= VERSION %>"></script>
+
+   // VERSION should change on every deploy
+   // Example: ?v=8.0.6&t=<%= Date.now() %>
+   ```
+   - Forces browser to treat it as a new file
+   - Already implemented in most PS templates
+
+5. **Service Worker Issues (Advanced):**
+   ```javascript
+   // Check if service worker is caching
+   navigator.serviceWorker.getRegistrations().then(registrations => {
+     console.log('Active service workers:', registrations.length);
+     registrations.forEach(sw => sw.unregister());
+   });
+   ```
+   - Service workers can cache aggressively
+   - Rare on PS but possible
+
+**WHEN TO SUSPECT BROWSER CACHE:**
+- ✅ Server logs show character positions being broadcast
+- ✅ Network tab shows galacticPhysicsUpdate events
+- ❌ Browser console shows NO character-related logs
+- ❌ Console logs from updated code don't appear
+- ❌ Old variable names/functions still referenced in errors
+
+**VERIFICATION STEPS:**
+1. Open browser DevTools → Network tab
+2. Filter for `.js` files
+3. Check "Size" column - should show file size, not "(from cache)"
+4. If shows "(disk cache)" or "(memory cache)", do hard refresh
+5. After hard refresh, should show actual file size (KB)
+
+**USER QUOTE:**
+> "the line descrepancies are ejs...not cache"
+
+This refers to EJS LINE NUMBERS (see section above). JavaScript file caching is a SEPARATE, REAL browser issue that requires hard refresh to fix.
+
 ---
 
 ## 🔒 SECURITY RULES

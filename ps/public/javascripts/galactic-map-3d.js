@@ -101,6 +101,7 @@ class GalacticMap3D {
     this.connections = new Map();
     this.players = new Map(); // Player characters
     this.galaxyOrbits = []; // Galaxy orbital trails (purple pen stripes)
+    this.assetsLoaded = false; // Flag to track when galaxies/anomalies are loaded
 
     // Groups for organization
     this.starfieldGroup = new THREE.Group();
@@ -1591,11 +1592,21 @@ class GalacticMap3D {
           this.selectObject(object);
         } else {
           console.log('❌ No valid object found with userData.id');
-          this.deselectObject();
+          if (!this.justSelected) {
+            console.log('🔴 Deselecting (no object)');
+            this.deselectObject();
+          } else {
+            console.log('🛡️ PROTECTED: Not deselecting (justSelected=true)');
+          }
         }
       } else {
         console.log('❌ No intersections found, deselecting');
-        this.deselectObject();
+        if (!this.justSelected) {
+          console.log('🔴 Deselecting (no intersections)');
+          this.deselectObject();
+        } else {
+          console.log('🛡️ PROTECTED: Not deselecting (justSelected=true)');
+        }
       }
     } catch (error) {
       console.error('❌ Error in handleClick:', error);
@@ -1607,11 +1618,20 @@ class GalacticMap3D {
    * Select an object and handle drill-down navigation
    */
   selectObject(object) {
+    console.log('🔥 selectObject CALLED with:', object.userData?.title, 'type:', object.userData?.assetType);
     try {
       if (!object || !object.userData) {
         console.warn('⚠️ Invalid object for selection');
         return;
       }
+
+      // Set flag to prevent immediate deselection
+      this.justSelected = true;
+      console.log('✅ Set justSelected=true, protection active for 500ms');
+      setTimeout(() => {
+        this.justSelected = false;
+        console.log('⏰ Protection window expired, justSelected=false');
+      }, 500); // 500ms protection window
 
       // Deselect previous
       if (this.selectedObject) {
@@ -1687,6 +1707,20 @@ class GalacticMap3D {
         this.selectedStar = null;
         this.followingStar = false;
         this.hideStarInfoModal();
+      }
+
+      // If selecting an anomaly or zone, show landable location modal
+      // NOTE: userData uses 'type' not 'assetType'
+      const assetType = object.userData.type || object.userData.assetType;
+      console.log(`🔍 Checking modal trigger: type=${object.userData.type}, assetType=${object.userData.assetType}, resolved=${assetType}, title=${object.userData.title}`);
+      if (assetType === 'anomaly' || assetType === 'zone') {
+        console.log(`🎯 Selected landable location: ${object.userData.title} - CALLING showLandableLocationModal`);
+        this.showLandableLocationModal(object.userData).catch(err => {
+          console.error('❌ Error showing modal:', err);
+        });
+      } else {
+        console.log(`ℹ️ Not anomaly/zone (type=${assetType}), hiding modal`);
+        this.hideLandableLocationModal();
       }
 
       // Emit event for UI to handle
@@ -1801,6 +1835,186 @@ class GalacticMap3D {
    */
   hideStarInfoModal() {
     const modal = document.getElementById('star-info-modal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+
+  /**
+   * Show landable location modal (for anomalies, zones, etc.)
+   */
+  async showLandableLocationModal(assetData) {
+    console.log('🚀 showLandableLocationModal CALLED with:', assetData);
+    let modal = document.getElementById('landable-location-modal');
+    if (!modal) {
+      // Create modal if it doesn't exist
+      modal = document.createElement('div');
+      modal.id = 'landable-location-modal';
+      modal.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(40, 0, 60, 0.95);
+        border: 2px solid #ff00ff;
+        border-radius: 10px;
+        padding: 20px;
+        color: #ff00ff;
+        font-family: 'Courier New', monospace;
+        z-index: 1000;
+        min-width: 300px;
+        box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
+        backdrop-filter: blur(10px);
+      `;
+      document.body.appendChild(modal);
+    }
+
+    const assetType = assetData.type || assetData.assetType;
+    const icon = assetType === 'anomaly' ? '🌀' : '🏛️';
+    const typeName = assetType === 'anomaly' ? 'Anomaly' : 'Zone';
+
+    // Check if anomaly has interior zones
+    let hasInterior = true;
+    let interiorInfo = '';
+    if (assetType === 'anomaly') {
+      try {
+        const response = await fetch(`/api/v1/hierarchy/descendants/${assetData.id}?maxDepth=1`, {
+          credentials: 'same-origin'
+        });
+        const data = await response.json();
+        const zones = data.descendants?.filter(d => d.assetType === 'zone') || [];
+        hasInterior = zones.length > 0;
+        if (hasInterior) {
+          interiorInfo = `<div style="font-size: 11px; color: #00ff88; margin-top: 5px;">✅ Interior zones: ${zones.length}</div>`;
+        } else {
+          interiorInfo = `<div style="font-size: 11px; color: #ffaa00; margin-top: 5px;">⚠️ No interior zones yet</div>`;
+        }
+      } catch (error) {
+        console.error('Error checking interior zones:', error);
+      }
+    }
+
+    modal.innerHTML = `
+      <h3 style="margin: 0 0 10px 0; color: #ff00ff; text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);">
+        ${icon} ${assetData.title || 'Unknown Location'}
+      </h3>
+      <div style="margin: 10px 0; font-size: 14px; color: #ff00ff;">
+        <div>Type: ${typeName}</div>
+        <div>Status: <span style="color: #00ff88;">Landable</span></div>
+        <div style="margin-top: 10px; font-size: 12px; color: #cc00cc;">
+          ${assetType === 'anomaly' ? 'Interstellar Starship Colony' : 'Explorable Zone'}
+        </div>
+        ${interiorInfo}
+      </div>
+      <button id="land-location-btn" style="
+        width: 100%;
+        padding: 10px;
+        margin-top: 15px;
+        background: linear-gradient(45deg, #ff00ff, #cc00cc);
+        border: none;
+        border-radius: 5px;
+        color: #fff;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 14px;
+        box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
+        text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+        transition: all 0.3s;
+      ">
+        🚀 ${hasInterior ? 'Enter Interior' : 'Land Here'}
+      </button>
+      <button id="close-location-btn" style="
+        width: 100%;
+        padding: 8px;
+        margin-top: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid #ff00ff;
+        border-radius: 5px;
+        color: #ff00ff;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.3s;
+      ">
+        Close
+      </button>
+    `;
+
+    modal.style.display = 'block';
+
+    // Stop click events from propagating to canvas
+    modal.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+    modal.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+    });
+    modal.addEventListener('mouseup', (e) => {
+      e.stopPropagation();
+    });
+
+    // Add event listeners
+    const landBtn = document.getElementById('land-location-btn');
+    if (landBtn) {
+      landBtn.onclick = async () => {
+        console.log(`🚀 Landing on ${assetData.title}`);
+
+        // For anomalies, find the interior zone first
+        const assetType = assetData.type || assetData.assetType;
+        if (assetType === 'anomaly') {
+          try {
+            // Fetch direct children (zones) of this anomaly
+            const response = await fetch(`/api/v1/hierarchy/descendants/${assetData.id}?maxDepth=1`, {
+              credentials: 'same-origin'
+            });
+            const data = await response.json();
+
+            if (data.success && data.descendants && data.descendants.length > 0) {
+              // Prefer zones with actual zoneData (floormap), fallback to any zone
+              let interiorZone = data.descendants.find(child =>
+                child.assetType === 'zone' && child.zoneData
+              );
+
+              // If no zone has data, use the first zone found
+              if (!interiorZone) {
+                interiorZone = data.descendants.find(child => child.assetType === 'zone');
+              }
+
+              if (interiorZone) {
+                const hasData = interiorZone.zoneData ? '✅' : '⚠️ (no floormap)';
+                console.log(`✅ Found interior zone: ${interiorZone.title} (${interiorZone._id}) ${hasData}`);
+                window.location.href = `/universe/zone/${interiorZone._id}`;
+              } else {
+                console.log('⚠️ No zone found in anomaly children');
+                alert(`This anomaly doesn't have an interior zone yet!\n\nCreate one at: /universe/interior-map-builder?parentAssetId=${assetData.id}&parentAssetType=anomaly`);
+              }
+            } else {
+              console.log('⚠️ No interior zone found for this anomaly');
+              alert(`This anomaly doesn't have an interior zone yet!\n\nCreate one at: /universe/interior-map-builder?parentAssetId=${assetData.id}&parentAssetType=anomaly`);
+            }
+          } catch (error) {
+            console.error('Error finding interior zone:', error);
+            alert('Failed to find interior zone. Check console for details.');
+          }
+        } else {
+          // For zones, navigate directly
+          window.location.href = `/universe/zone/${assetData.id}`;
+        }
+      };
+    }
+
+    const closeBtn = document.getElementById('close-location-btn');
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        this.hideLandableLocationModal();
+        this.deselectObject();
+      };
+    }
+  }
+
+  /**
+   * Hide landable location modal
+   */
+  hideLandableLocationModal() {
+    const modal = document.getElementById('landable-location-modal');
     if (modal) {
       modal.style.display = 'none';
     }
@@ -2054,6 +2268,9 @@ class GalacticMap3D {
       }
       this.selectedObject = null;
     }
+
+      // Hide landable location modal when deselecting
+      this.hideLandableLocationModal();
 
       try {
         const event = new CustomEvent('assetDeselected');
@@ -2323,6 +2540,14 @@ class GalacticMap3D {
    * Updates galaxy positions based on authoritative server simulation
    */
   handleServerPhysicsUpdate(data) {
+    console.log('⚡ handleServerPhysicsUpdate CALLED', {
+      hasData: !!data,
+      galaxies: data?.galaxies?.length || 0,
+      stars: data?.stars?.length || 0,
+      characters: data?.characters?.length || 0,
+      connections: data?.connections?.length || 0
+    });
+
     if (!data) return;
 
     // Update galaxy positions
@@ -2386,17 +2611,74 @@ class GalacticMap3D {
       this.updateConnectionsFromServer(data.connections);
     }
 
-    // Update character positions (replaces removed charactersUpdate event)
-    if (data.characters && Array.isArray(data.characters)) {
-      console.log(`📦 Received ${data.characters.length} characters in physics update:`, data.characters.map(c => c.name));
-      data.characters.forEach(char => {
-        if (char.location && char.location.x !== undefined) {
-          console.log(`🎯 Calling createCharacterPin for ${char.name} at (${char.location.x}, ${char.location.y}, ${char.location.z})`);
-          this.createCharacterPin(char);
-        } else {
-          console.warn(`⚠️ Character ${char.name} missing location or coordinates`);
+    // OPTION B: Extract characters from nested structure
+    const allCharacters = [];
+
+    // Extract docked characters from galaxies
+    if (data.galaxies && Array.isArray(data.galaxies)) {
+      data.galaxies.forEach(galaxy => {
+        if (galaxy.dockedCharacters && galaxy.dockedCharacters.length > 0) {
+          console.log(`🌌 Galaxy ${galaxy.id}: ${galaxy.dockedCharacters.length} docked characters`);
+          galaxy.dockedCharacters.forEach(char => {
+            // Character position = galaxy position (they're docked!)
+            allCharacters.push({
+              _id: char._id,
+              name: char.name,
+              userId: char.userId,
+              location: {
+                x: galaxy.position.x,
+                y: galaxy.position.y,
+                z: galaxy.position.z
+              },
+              dockedGalaxyId: galaxy.id,
+              isInTransit: false,
+              activeInShip: char.activeInShip,
+              ship: char.ship
+            });
+          });
         }
       });
+    }
+
+    // Extract in-transit characters
+    if (data.inTransit && Array.isArray(data.inTransit)) {
+      console.log(`🚀 ${data.inTransit.length} characters in transit`);
+      data.inTransit.forEach(char => {
+        allCharacters.push({
+          _id: char._id,
+          name: char.name,
+          userId: char.userId,
+          location: char.location,
+          dockedGalaxyId: null,
+          isInTransit: true,
+          activeInShip: char.activeInShip,
+          from: char.from,
+          to: char.to,
+          eta: char.eta
+        });
+      });
+    }
+
+    // Update character positions
+    if (allCharacters.length > 0) {
+      console.log(`📦 Total ${allCharacters.length} characters (nested structure)`);
+      allCharacters.forEach(char => {
+        if (char.location && char.location.x !== undefined) {
+          console.log(`🎯 Creating pin for ${char.name} at (${char.location.x.toFixed(0)}, ${char.location.y.toFixed(0)}, ${char.location.z.toFixed(0)}) ${char.dockedGalaxyId ? 'DOCKED' : 'IN-TRANSIT'}`);
+          this.createCharacterPin(char);
+
+          // Detailed verification
+          const playerData = this.players.get(char._id);
+          if (playerData && playerData.mesh) {
+            console.log(`   ✅ Pin at:`, playerData.mesh.position);
+          }
+        } else {
+          console.warn(`⚠️ Character ${char.name} missing location`, char);
+        }
+      });
+
+      // Camera info for debugging
+      console.log(`🎬 Camera: pos=(${this.camera.position.x.toFixed(0)}, ${this.camera.position.y.toFixed(0)}, ${this.camera.position.z.toFixed(0)})`);
     } else {
       console.log('⚠️ No characters in physics update');
     }
@@ -2731,19 +3013,30 @@ class GalacticMap3D {
     pinGroup.add(label);
 
     // Position the pin group
+    // OPTION B: ALL characters use their actual galactic coordinates (galaxy position)
+    // Characters are now nested under galaxies, so location = galaxy position
     pinGroup.position.set(location.x, location.y || 0, location.z || 0);
+
+    if (isCurrentPlayer) {
+      console.log(`📍 Created YOUR character pin for "${character.name}" at (${location.x.toFixed(0)}, ${location.y?.toFixed(0) || 0}, ${location.z?.toFixed(0) || 0})`);
+    } else {
+      console.log(`📍 Created OTHER player pin for "${character.name}" at (${location.x.toFixed(0)}, ${location.y?.toFixed(0) || 0}, ${location.z?.toFixed(0) || 0})`);
+    }
 
     // Add to scene
     this.playersGroup.add(pinGroup);
+    pinGroup.visible = true; // Ensure visibility
+    this.playersGroup.visible = true; // Ensure parent group is visible
 
-    // Store reference
+    // Store reference (keep actual location for potential future use)
     this.players.set(characterId, {
       character: character,
       mesh: pinGroup,
+      galacticLocation: {x: location.x, y: location.y || 0, z: location.z || 0}, // Store real coords
       lastUpdate: Date.now()
     });
 
-    console.log(`📍 Created character pin for "${character.name}" at (${location.x.toFixed(0)}, ${location.y?.toFixed(0) || 0}, ${location.z?.toFixed(0) || 0})`);
+    console.log(`   👁️  Pin visible: ${pinGroup.visible}, playersGroup visible: ${this.playersGroup.visible}, in scene: ${this.playersGroup.parent === this.scene}`);
   }
 
   /**
@@ -2757,8 +3050,17 @@ class GalacticMap3D {
 
     this.socket = socket;
 
-    // Listen for physics updates from server
+    // Listen for physics updates from server (OPTION B: nested structure)
     socket.on('galacticPhysicsUpdate', (data) => {
+      const totalChars = (data.galaxies || []).reduce((sum, g) => sum + (g.dockedCharacters?.length || 0), 0) + (data.inTransit?.length || 0);
+      console.log('🔔 galacticPhysicsUpdate EVENT FIRED!', {
+        hasData: !!data,
+        galaxies: data?.galaxies?.length || 0,
+        dockedChars: (data.galaxies || []).reduce((sum, g) => sum + (g.dockedCharacters?.length || 0), 0),
+        inTransit: data?.inTransit?.length || 0,
+        totalChars: totalChars,
+        timestamp: new Date().toISOString()
+      });
       this.handleServerPhysicsUpdate(data);
     });
 
@@ -2775,8 +3077,14 @@ class GalacticMap3D {
 
     console.log('✅ GalacticMap3D listening for server physics and character updates');
 
-    // Fetch initial character positions
-    this.fetchCharacters();
+    // Only fetch characters if assets are already loaded
+    // Otherwise, they'll be loaded when showGalacticLevel() is called
+    if (this.assetsLoaded) {
+      console.log('📍 Assets already loaded, fetching characters now');
+      this.fetchCharacters();
+    } else {
+      console.log('⏳ Waiting for assets to load before fetching characters');
+    }
   }
 
   /**
@@ -2816,13 +3124,14 @@ class GalacticMap3D {
   animate() {
     requestAnimationFrame(() => this.animate());
 
-    // Physics updates now come from server via socket.io
-    // Client only renders what the server tells it
+    try {
+      // Physics updates now come from server via socket.io
+      // Client only renders what the server tells it
 
-    // Update OrbitControls (if available)
-    if (this.controls) {
-      this.controls.update();
-    }
+      // Update OrbitControls (if available)
+      if (this.controls) {
+        this.controls.update();
+      }
 
     // Constrain camera to stay within starfield cube boundaries
     this.constrainCamera();
@@ -3126,6 +3435,10 @@ class GalacticMap3D {
     // DEBUG logging removed - too spammy
 
     this.renderer.render(this.scene, this.camera);
+    } catch (error) {
+      console.error('❌ Animation loop error:', error);
+      // Continue animation even if error occurs
+    }
   }
 
   /**
@@ -3260,12 +3573,16 @@ class GalacticMap3D {
 
       console.log(`✅ Stored ${this.allAssets.length} total assets`);
 
-      // GALACTIC MAP: Show galaxies, anomalies, zones, and stars
-      // Stars orbit their galaxies and are visible in galactic view
-      // Planets are only shown when you drill into a star system
-      const universeTypes = ['galaxy', 'zone', 'anomaly', 'nebula', 'star'];
+      // GALACTIC MAP: Show only galactic-level assets
+      // Uses mapLevel field to control which zoom level assets appear on
+      // galactic = galaxies, anomalies, deep space objects
+      // galaxy = stars, stations (shown when drilling into galaxy)
+      // system = planets, asteroids (shown when drilling into system)
+      // orbital = zones, close objects (shown near planets)
       const galacticAssets = this.allAssets.filter(asset =>
-        universeTypes.includes(asset.assetType)
+        asset.mapLevel === 'galactic' ||
+        asset.assetType === 'galaxy' ||  // Fallback for assets without mapLevel
+        asset.assetType === 'anomaly'
       );
 
       let loadedCount = 0;
@@ -3573,6 +3890,16 @@ class GalacticMap3D {
 
     console.log(`   Found ${galacticAssets.length} galactic-level assets (galaxies and anomalies only)`);
     galacticAssets.forEach(asset => this.addAsset(asset));
+
+    // Mark assets as loaded so characters can be rendered
+    this.assetsLoaded = true;
+    console.log('✅ Galactic assets loaded, characters can now be rendered');
+
+    // Fetch characters if socket is already initialized
+    if (this.socket) {
+      console.log('📍 Socket already connected, fetching characters now');
+      this.fetchCharacters();
+    }
 
     // Create galaxy orbital trails after assets are loaded
     setTimeout(() => {
@@ -4559,12 +4886,21 @@ class GalacticMap3D {
     const player = this.players.get(characterId);
 
     if (player) {
-      // Update existing player
-      player.marker.position.copy(position);
-      player.glow.position.copy(position);
-      if (player.label) {
-        player.label.position.copy(position);
-        player.label.position.y += 70;
+      // Update existing player position
+      // Players created by createCharacterPin have: {mesh, character, galacticLocation}
+      if (player.mesh) {
+        // Modern structure from createCharacterPin
+        player.mesh.position.copy(position);
+        player.galacticLocation = {x: location.x, y: location.y || 0, z: location.z || 0};
+        console.log(`🔄 Updated player "${characterName || player.character?.name}" position to (${location.x.toFixed(0)}, ${location.y?.toFixed(0) || 0}, ${location.z?.toFixed(0) || 0})`);
+      } else if (player.marker) {
+        // Old structure (fallback for compatibility)
+        player.marker.position.copy(position);
+        if (player.glow) player.glow.position.copy(position);
+        if (player.label) {
+          player.label.position.copy(position);
+          player.label.position.y += 70;
+        }
       }
     } else {
       // Add new player

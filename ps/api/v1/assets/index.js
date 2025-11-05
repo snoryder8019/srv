@@ -73,15 +73,81 @@ function addTypeSpecificFields(assetData, body) {
   // Lore fields
   if (body.backstory) assetData.backstory = body.backstory;
   if (body.lore) assetData.lore = body.lore;
+
+  // Hierarchy data (NEW)
+  if (body.hierarchy) {
+    assetData.hierarchy = typeof body.hierarchy === 'string'
+      ? JSON.parse(body.hierarchy)
+      : body.hierarchy;
+  }
+
+  // Coordinates (NEW)
+  if (body.coordinates) {
+    assetData.coordinates = typeof body.coordinates === 'string'
+      ? JSON.parse(body.coordinates)
+      : body.coordinates;
+  }
+
+  // Zone Data - for interior zones/floormaps (NEW)
+  if (body.zoneData) {
+    assetData.zoneData = typeof body.zoneData === 'string'
+      ? JSON.parse(body.zoneData)
+      : body.zoneData;
+  }
+
+  // Sprite Data - for sprite assets (NEW)
+  if (body.spriteData) {
+    assetData.spriteData = typeof body.spriteData === 'string'
+      ? JSON.parse(body.spriteData)
+      : body.spriteData;
+  }
+
+  // Render Data - for 3D map rendering (NEW)
+  if (body.renderData) {
+    assetData.renderData = typeof body.renderData === 'string'
+      ? JSON.parse(body.renderData)
+      : body.renderData;
+  }
+
+  // Map Level - for controlling zoom level visibility (NEW)
+  if (body.mapLevel) {
+    assetData.mapLevel = body.mapLevel;
+  }
+
+  // Tags (NEW)
+  if (body.tags) {
+    assetData.tags = typeof body.tags === 'string'
+      ? JSON.parse(body.tags)
+      : body.tags;
+  }
 }
 
 /**
  * GET /api/v1/assets
  * Get all assets for current user
+ * Query params: assetType (filter by type), limit (max results)
  */
 router.get('/', isAuthenticated, async (req, res) => {
   try {
-    const assets = await Asset.findByUserId(req.user._id);
+    const { assetType, limit } = req.query;
+
+    let assets;
+
+    if (assetType) {
+      // Fetch assets of specific type (for hierarchy parent selection)
+      const { getDb } = await import('../../../plugins/mongo/mongo.js');
+      const db = getDb();
+      const query = { assetType };
+
+      assets = await db.collection('assets')
+        .find(query)
+        .limit(parseInt(limit) || 1000)
+        .toArray();
+    } else {
+      // Fetch user's assets
+      assets = await Asset.findByUserId(req.user._id);
+    }
+
     res.json({ success: true, assets });
   } catch (error) {
     console.error('Error fetching assets:', error);

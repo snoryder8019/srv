@@ -7,7 +7,7 @@ let pixelEditor = null;
 let currentAssetId = null;
 
 // Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // Initialize pixel editor
   pixelEditor = new PixelEditor('pixelEditorContainer', {
     gridSize: 32,
@@ -31,8 +31,20 @@ document.addEventListener('DOMContentLoaded', () => {
   // Setup asset type change handler
   document.getElementById('assetType').addEventListener('change', handleAssetTypeChange);
 
-  // Setup galaxy and star system handlers
-  setupLocationHierarchy();
+  // Setup enhanced hierarchy system
+  setupEnhancedHierarchy();
+
+  // Setup Build Interior button
+  setupBuildInteriorButton();
+
+  // Check if editing existing asset from URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const assetId = urlParams.get('id');
+
+  if (assetId) {
+    console.log(`📂 Loading existing asset for editing: ${assetId}`);
+    await loadExistingAsset(assetId);
+  }
 
   // Load user's assets
   loadAssets();
@@ -73,6 +85,164 @@ function showAlert(message, type = 'info') {
   setTimeout(() => {
     alert.remove();
   }, 5000);
+}
+
+/**
+ * Load existing asset for editing
+ */
+async function loadExistingAsset(assetId) {
+  try {
+    showAlert('Loading asset data...', 'info');
+
+    const response = await fetch(`/api/v1/assets/${assetId}`, {
+      credentials: 'same-origin'
+    });
+
+    const data = await response.json();
+
+    if (!data.success || !data.asset) {
+      throw new Error('Asset not found');
+    }
+
+    const asset = data.asset;
+    console.log('✅ Asset loaded:', asset);
+
+    // Store current asset ID for updates
+    currentAssetId = assetId;
+
+    // Populate basic fields
+    document.getElementById('assetTitle').value = asset.title || '';
+    document.getElementById('assetDescription').value = asset.description || '';
+    document.getElementById('assetType').value = asset.assetType || '';
+
+    // Trigger asset type change to show type-specific fields
+    if (asset.assetType) {
+      const event = new Event('change');
+      document.getElementById('assetType').dispatchEvent(event);
+
+      // Wait for type-specific fields to be created
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // Populate subType if present
+    if (asset.subType && document.getElementById('subType')) {
+      document.getElementById('subType').value = asset.subType;
+    }
+
+    // Populate lore fields
+    if (document.getElementById('lore')) {
+      document.getElementById('lore').value = asset.lore || '';
+    }
+    if (document.getElementById('backstory')) {
+      document.getElementById('backstory').value = asset.backstory || '';
+    }
+    if (document.getElementById('flavor')) {
+      document.getElementById('flavor').value = asset.flavor || '';
+    }
+
+    // Populate tags
+    if (asset.tags && document.getElementById('tags')) {
+      document.getElementById('tags').value = asset.tags.join(', ');
+    }
+
+    // Populate environment-specific fields
+    if (asset.assetType === 'environment') {
+      if (asset.environmentType && document.getElementById('environmentType')) {
+        document.getElementById('environmentType').value = asset.environmentType;
+      }
+      if (asset.climate && document.getElementById('climate')) {
+        document.getElementById('climate').value = asset.climate;
+      }
+      if (asset.atmosphere && document.getElementById('atmosphere')) {
+        document.getElementById('atmosphere').value = asset.atmosphere;
+      }
+      if (asset.gravity && document.getElementById('gravity')) {
+        document.getElementById('gravity').value = asset.gravity;
+      }
+      if (asset.resources && document.getElementById('resources')) {
+        document.getElementById('resources').value = Array.isArray(asset.resources) ? asset.resources.join(', ') : asset.resources;
+      }
+    }
+
+    // Populate object-specific fields
+    if (asset.assetType === 'object') {
+      if (asset.objectType && document.getElementById('objectType')) {
+        document.getElementById('objectType').value = asset.objectType;
+      }
+      if (document.getElementById('isInteractive')) {
+        document.getElementById('isInteractive').checked = asset.isInteractive || false;
+      }
+      if (asset.interactionType && document.getElementById('interactionType')) {
+        document.getElementById('interactionType').value = asset.interactionType;
+      }
+    }
+
+    // Populate hierarchy parent
+    if (asset.hierarchy && asset.hierarchy.parent) {
+      if (document.getElementById('parentAsset')) {
+        document.getElementById('parentAsset').value = asset.hierarchy.parent;
+      }
+      if (document.getElementById('parentAssetType')) {
+        document.getElementById('parentAssetType').value = asset.hierarchy.parentType || '';
+      }
+    }
+
+    // Populate 3D coordinates if present
+    if (asset.coordinates3D) {
+      if (document.getElementById('coord3D_x')) {
+        document.getElementById('coord3D_x').value = asset.coordinates3D.x || 0;
+      }
+      if (document.getElementById('coord3D_y')) {
+        document.getElementById('coord3D_y').value = asset.coordinates3D.y || 0;
+      }
+      if (document.getElementById('coord3D_z')) {
+        document.getElementById('coord3D_z').value = asset.coordinates3D.z || 0;
+      }
+    }
+
+    // Populate galactic coordinates if present
+    if (asset.coordinates) {
+      if (document.getElementById('coord_x')) {
+        document.getElementById('coord_x').value = asset.coordinates.x || 0;
+      }
+      if (document.getElementById('coord_y')) {
+        document.getElementById('coord_y').value = asset.coordinates.y || 0;
+      }
+    }
+
+    // Load image previews if available
+    if (asset.images) {
+      if (asset.images.pixelArt) {
+        document.getElementById('pixelArtPreview').innerHTML = `
+          <img src="${asset.images.pixelArt}" class="preview-image" alt="Pixel Art">
+          <p class="file-info">Current pixel art</p>
+        `;
+      }
+      if (asset.images.fullscreen) {
+        document.getElementById('fullscreenPreview').innerHTML = `
+          <img src="${asset.images.fullscreen}" class="preview-image" alt="Fullscreen">
+          <p class="file-info">Current fullscreen image</p>
+        `;
+      }
+      if (asset.images.indexCard) {
+        document.getElementById('indexCardPreview').innerHTML = `
+          <img src="${asset.images.indexCard}" class="preview-image" alt="Index Card">
+          <p class="file-info">Current index card</p>
+        `;
+      }
+    }
+
+    // Update button text to indicate update mode
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+      submitBtn.textContent = '💾 Update Asset';
+    }
+
+    showAlert(`✅ Loaded asset: ${asset.title}`, 'success');
+  } catch (error) {
+    console.error('❌ Error loading asset:', error);
+    showAlert(`Failed to load asset: ${error.message}`, 'error');
+  }
 }
 
 /**
@@ -299,6 +469,190 @@ function handleAssetTypeChange(e) {
         </div>
       `;
       break;
+
+    // ===== STORYLINE ASSET TYPES =====
+    case 'storyline_arc':
+      fieldsHTML += `
+        <div class="form-group">
+          <label for="arc_setting">Story Setting *</label>
+          <textarea id="arc_setting" name="arc_setting" rows="2" required placeholder="e.g., Subsurface mining colony beneath a fractured moon"></textarea>
+          <small>Physical setting where this storyline takes place</small>
+        </div>
+        <div class="form-group">
+          <label for="arc_themes">Themes (comma-separated) *</label>
+          <input type="text" id="arc_themes" name="arc_themes" required placeholder="e.g., Labor struggle, Survival, Buried secrets">
+          <small>Key themes explored in this storyline arc</small>
+        </div>
+        <div class="form-group">
+          <label for="arc_conflict">Core Conflict *</label>
+          <textarea id="arc_conflict" name="arc_conflict" rows="2" required placeholder="Central conflict that drives the narrative"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="arc_visual_mood">Visual Mood</label>
+          <textarea id="arc_visual_mood" name="arc_visual_mood" rows="2" placeholder="e.g., Industrial grime, flickering lights, claustrophobic tunnels"></textarea>
+          <small>Atmospheric description for visual design</small>
+        </div>
+        <div class="form-group">
+          <label for="arc_quest_hooks">Quest Hooks (one per line)</label>
+          <textarea id="arc_quest_hooks" name="arc_quest_hooks" rows="4" placeholder="Rescue trapped miners\nDecode tech from a buried vault\nSabotage a corrupt foreman"></textarea>
+          <small>Potential quest starting points in this arc</small>
+        </div>
+        <div class="form-group">
+          <label for="arc_linked_assets">Linked Universe Assets (comma-separated IDs)</label>
+          <input type="text" id="arc_linked_assets" name="arc_linked_assets" placeholder="galaxy_id, planet_id, station_id">
+          <small>Link this arc to existing galaxies, planets, or locations</small>
+        </div>
+      `;
+      break;
+
+    case 'storyline_npc':
+      fieldsHTML += `
+        <div class="form-group">
+          <label for="npc_role">NPC Role *</label>
+          <select id="npc_role" name="npc_role" required>
+            <option value="">Select Role</option>
+            <option value="protagonist">Protagonist</option>
+            <option value="antagonist">Antagonist</option>
+            <option value="companion">Companion</option>
+            <option value="merchant">Merchant</option>
+            <option value="quest_giver">Quest Giver</option>
+            <option value="guide">Guide</option>
+            <option value="catalyst">Catalyst</option>
+            <option value="background">Background Character</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="npc_arc_id">Parent Storyline Arc</label>
+          <input type="text" id="npc_arc_id" name="npc_arc_id" placeholder="Arc asset ID (leave empty for standalone NPC)">
+          <small>Link this NPC to a specific storyline arc</small>
+        </div>
+        <div class="form-group">
+          <label for="npc_traits">Character Traits (comma-separated) *</label>
+          <input type="text" id="npc_traits" name="npc_traits" required placeholder="e.g., Stoic, Haunted, Resilient">
+        </div>
+        <div class="form-group">
+          <label for="npc_dialogue_style">Dialogue Style *</label>
+          <input type="text" id="npc_dialogue_style" name="npc_dialogue_style" required placeholder="e.g., Sparse, reflective">
+          <small>How this character speaks</small>
+        </div>
+        <div class="form-group">
+          <label for="npc_locations">Locations (comma-separated IDs)</label>
+          <input type="text" id="npc_locations" name="npc_locations" placeholder="planet_id, station_id">
+          <small>Where this NPC can be found</small>
+        </div>
+        <div class="form-group">
+          <label for="npc_signature_items">Signature Items</label>
+          <input type="text" id="npc_signature_items" name="npc_signature_items" placeholder="e.g., Dice, Old revolver, Badge">
+          <small>Iconic items associated with this character</small>
+        </div>
+      `;
+      break;
+
+    case 'storyline_quest':
+      fieldsHTML += `
+        <div class="form-group">
+          <label for="quest_arc_id">Parent Storyline Arc</label>
+          <input type="text" id="quest_arc_id" name="quest_arc_id" placeholder="Arc asset ID">
+          <small>Link this quest to a specific storyline arc</small>
+        </div>
+        <div class="form-group">
+          <label for="quest_type">Quest Type *</label>
+          <select id="quest_type" name="quest_type" required>
+            <option value="">Select Type</option>
+            <option value="main">Main Story Quest</option>
+            <option value="side">Side Quest</option>
+            <option value="radiant">Radiant/Repeatable</option>
+            <option value="faction">Faction Quest</option>
+            <option value="exploration">Exploration</option>
+            <option value="combat">Combat Mission</option>
+            <option value="delivery">Delivery/Transport</option>
+            <option value="investigation">Investigation</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="quest_trigger_condition">Trigger Condition</label>
+          <textarea id="quest_trigger_condition" name="quest_trigger_condition" rows="2" placeholder="e.g., Red alert initiated by AI glitch"></textarea>
+          <small>What must happen for this quest to become available</small>
+        </div>
+        <div class="form-group">
+          <label for="quest_objectives">Quest Objectives (one per line) *</label>
+          <textarea id="quest_objectives" name="quest_objectives" rows="4" required placeholder="Reach the helm console\nInvestigate the anomaly\nReturn to base"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="quest_rewards">Rewards (comma-separated)</label>
+          <input type="text" id="quest_rewards" name="quest_rewards" placeholder="e.g., 500 credits, Laser Rifle, Story progression">
+        </div>
+        <div class="form-group">
+          <label for="quest_prerequisites">Prerequisite Quests (comma-separated IDs)</label>
+          <input type="text" id="quest_prerequisites" name="quest_prerequisites" placeholder="quest_id_1, quest_id_2">
+          <small>Quests that must be completed first</small>
+        </div>
+      `;
+      break;
+
+    case 'storyline_location':
+      fieldsHTML += `
+        <div class="form-group">
+          <label for="location_arc_id">Parent Storyline Arc</label>
+          <input type="text" id="location_arc_id" name="location_arc_id" placeholder="Arc asset ID">
+        </div>
+        <div class="form-group">
+          <label for="location_mood_tags">Mood Tags (comma-separated) *</label>
+          <input type="text" id="location_mood_tags" name="location_mood_tags" required placeholder="e.g., cold, dim, claustrophobic">
+        </div>
+        <div class="form-group">
+          <label for="location_interactive_elements">Interactive Elements (comma-separated)</label>
+          <input type="text" id="location_interactive_elements" name="location_interactive_elements" placeholder="e.g., bunk, AI terminal, control panel">
+          <small>Objects players can interact with in this location</small>
+        </div>
+        <div class="form-group">
+          <label for="location_linked_asset">Linked Universe Asset ID</label>
+          <input type="text" id="location_linked_asset" name="location_linked_asset" placeholder="planet_id or station_id">
+          <small>Map this story location to a real planet/station in the universe</small>
+        </div>
+        <div class="form-group">
+          <label for="location_zone_name">Zone Identifier</label>
+          <input type="text" id="location_zone_name" name="location_zone_name" placeholder="e.g., crew-quarters-ls01">
+          <small>Unique zone ID for planetary explorer integration</small>
+        </div>
+      `;
+      break;
+
+    case 'storyline_script':
+      fieldsHTML += `
+        <div class="form-group">
+          <label for="script_arc_id">Parent Storyline Arc *</label>
+          <input type="text" id="script_arc_id" name="script_arc_id" required placeholder="Arc asset ID">
+        </div>
+        <div class="form-group">
+          <label for="script_scene_title">Scene Title *</label>
+          <input type="text" id="script_scene_title" name="script_scene_title" required placeholder="e.g., Craps Before the Void">
+        </div>
+        <div class="form-group">
+          <label for="script_location_id">Location *</label>
+          <input type="text" id="script_location_id" name="script_location_id" required placeholder="INT. STARSHIP REC ROOM – NIGHT">
+          <small>Can be a story location ID or scene description</small>
+        </div>
+        <div class="form-group">
+          <label for="script_scene_description">Scene Description *</label>
+          <textarea id="script_scene_description" name="script_scene_description" rows="3" required placeholder="Dimly lit corner booth near a flickering gravity panel..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="script_dialogue">Dialogue Script *</label>
+          <textarea id="script_dialogue" name="script_dialogue" rows="10" required placeholder="JOHN: You roll a seven, you win. Snake eyes? You're toast.\nFAITHBENDER: So... this is a game of fate-time?"></textarea>
+          <small>Full dialogue script with character names</small>
+        </div>
+        <div class="form-group">
+          <label for="script_actions">Stage Directions/Actions (one per line)</label>
+          <textarea id="script_actions" name="script_actions" rows="4" placeholder="John rolls a hard eight\nFaithbender stares at the dice like they're sacred\nGravity panel flickers"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="script_cinematic_trigger">Cinematic Trigger Condition</label>
+          <input type="text" id="script_cinematic_trigger" name="script_cinematic_trigger" placeholder="e.g., Player approaches Void's Edge">
+          <small>When should this script/cutscene play?</small>
+        </div>
+      `;
+      break;
   }
 
   fieldsHTML += '</div>';
@@ -493,6 +847,40 @@ async function buildFormData(status) {
         formData.append(key, value);
       }
     }
+  }
+
+  // Hierarchy data
+  const hierarchyParent = document.getElementById('hierarchyParent').value;
+  const hierarchyParentType = document.getElementById('hierarchyParentType').value;
+  const hierarchyDepth = document.getElementById('hierarchyDepth').value;
+
+  if (hierarchyParent) {
+    const hierarchyData = {
+      parent: hierarchyParent,
+      parentType: hierarchyParentType,
+      depth: parseInt(hierarchyDepth) || 0
+    };
+    formData.append('hierarchy', JSON.stringify(hierarchyData));
+  }
+
+  // Coordinates (for spatial assets)
+  const coordX = document.getElementById('coordX').value;
+  const coordY = document.getElementById('coordY').value;
+  const coordZ = document.getElementById('coordZ').value;
+
+  if (coordX || coordY || coordZ) {
+    const coordinates = {
+      x: parseFloat(coordX) || 0,
+      y: parseFloat(coordY) || 0,
+      z: parseFloat(coordZ) || 0
+    };
+    formData.append('coordinates', JSON.stringify(coordinates));
+  }
+
+  // Map Level (controls which zoom level asset appears on)
+  const mapLevel = document.getElementById('mapLevel').value;
+  if (mapLevel) {
+    formData.append('mapLevel', mapLevel);
   }
 
   // Pixel editor data
@@ -1042,77 +1430,261 @@ function exportTerrainData() {
 }
 
 /**
- * Setup Location Hierarchy (Galaxy -> Star System)
+ * Enhanced Hierarchy System - Dynamic parent selection based on asset type
  */
-function setupLocationHierarchy() {
-  const parentGalaxySelect = document.getElementById('parentGalaxy');
-  const parentStarSelect = document.getElementById('parentStar');
+function setupEnhancedHierarchy() {
+  const assetTypeSelect = document.getElementById('assetType');
+  const parentAssetSelect = document.getElementById('parentAsset');
+  const parentAssetLabel = document.getElementById('parentAssetLabel');
+  const parentAssetHint = document.getElementById('parentAssetHint');
+  const parentAssetHelp = document.getElementById('parentAssetHelp');
+  const hierarchyBreadcrumb = document.getElementById('hierarchyBreadcrumb');
+  const breadcrumbPath = document.getElementById('breadcrumbPath');
+  const buildInteriorGroup = document.getElementById('buildInteriorGroup');
   const coordinatesRow = document.getElementById('coordinatesRow');
 
-  if (!parentGalaxySelect || !parentStarSelect) return;
+  if (!assetTypeSelect || !parentAssetSelect) return;
 
-  // Handle galaxy selection
-  parentGalaxySelect.addEventListener('change', async (e) => {
-    const galaxyId = e.target.value;
+  // Define parent-child relationships
+  const hierarchyMap = {
+    'galaxy': { parentTypes: ['anomaly', 'anomoly'], label: 'Parent Anomaly', hint: '(optional - galaxies can be standalone)' },
+    'star': { parentTypes: ['galaxy'], label: 'Parent Galaxy', hint: '(required for star systems)', required: true },
+    'planet': { parentTypes: ['star'], label: 'Parent Star System', hint: '(required for planets)', required: true },
+    'orbital': { parentTypes: ['star', 'planet'], label: 'Parent Location', hint: '(star system or planet)', required: true },
+    'environment': { parentTypes: ['planet', 'orbital', 'star'], label: 'Parent Location', hint: '(planet, station, or star system)' },
+    'zone': { parentTypes: ['planet', 'orbital', 'environment'], label: 'Parent Location', hint: '(for interior zones)' }
+  };
 
-    // Handle "Create New Galaxy" option
-    if (galaxyId === '__CREATE_NEW__') {
-      const galaxyName = prompt('Enter new galaxy name:');
-      if (galaxyName) {
-        showAlert('Galaxy creation feature coming soon! For now, use the asset builder to create a galaxy asset first.', 'info');
-        parentGalaxySelect.value = '';
-      } else {
-        parentGalaxySelect.value = '';
-      }
+  // Assets that can have interiors built
+  const buildableInteriors = ['planet', 'orbital', 'environment', 'zone'];
+
+  // Handle asset type change - update parent options
+  assetTypeSelect.addEventListener('change', async (e) => {
+    const assetType = e.target.value;
+    console.log(`[Hierarchy] Asset type changed to: ${assetType}`);
+
+    const hierarchyConfig = hierarchyMap[assetType];
+    console.log(`[Hierarchy] Hierarchy config:`, hierarchyConfig);
+
+    // Reset parent dropdown
+    parentAssetSelect.innerHTML = '<option value="">None (Standalone Asset)</option>';
+    parentAssetSelect.disabled = true;
+    hierarchyBreadcrumb.style.display = 'none';
+    coordinatesRow.style.display = 'none';
+    document.getElementById('mapLevelRow').style.display = 'none';
+
+    // Show/hide Build Interior button
+    if (buildableInteriors.includes(assetType)) {
+      buildInteriorGroup.style.display = 'block';
+    } else {
+      buildInteriorGroup.style.display = 'none';
+    }
+
+    if (!hierarchyConfig) {
+      parentAssetHelp.textContent = 'This asset type does not require a parent in the hierarchy';
       return;
     }
 
-    // Reset star system dropdown
-    parentStarSelect.innerHTML = '<option value="">Loading stars...</option>';
-    parentStarSelect.disabled = true;
+    // Update label and hint
+    parentAssetLabel.textContent = hierarchyConfig.label;
+    parentAssetHint.textContent = hierarchyConfig.hint;
+    parentAssetHelp.textContent = `Select a ${hierarchyConfig.parentTypes.join(' or ')} to link this asset to`;
 
-    if (!galaxyId) {
-      parentStarSelect.innerHTML = '<option value="">Select a galaxy first</option>';
-      coordinatesRow.style.display = 'none';
-      return;
-    }
-
+    // Fetch available parents
     try {
-      // Fetch stars for this galaxy
-      const response = await fetch(`/api/v1/universe/galaxies/${galaxyId}/stars`);
-      const data = await response.json();
+      parentAssetSelect.innerHTML = '<option value="">Loading...</option>';
 
-      if (data.success && data.stars) {
-        // Populate star dropdown
-        parentStarSelect.innerHTML = '<option value="">None (Place in galaxy)</option>';
+      const parentTypes = hierarchyConfig.parentTypes;
+      const parents = [];
 
-        data.stars.forEach(star => {
-          const option = document.createElement('option');
-          option.value = star._id;
-          option.textContent = star.title || star.name;
-          parentStarSelect.appendChild(option);
+      console.log(`[Hierarchy] Fetching parent types for ${assetType}:`, parentTypes);
+
+      // Fetch assets of each parent type
+      for (const parentType of parentTypes) {
+        console.log(`[Hierarchy] Fetching ${parentType} assets...`);
+        const response = await fetch(`/api/v1/assets?assetType=${parentType}&limit=1000`, {
+          credentials: 'same-origin'
         });
+        const data = await response.json();
 
-        parentStarSelect.disabled = false;
-        coordinatesRow.style.display = 'flex';
-        showAlert(`Found ${data.stars.length} star systems in this galaxy`, 'success');
+        console.log(`[Hierarchy] Response for ${parentType}:`, data);
+
+        if (data.success && data.assets) {
+          console.log(`[Hierarchy] Found ${data.assets.length} ${parentType} assets`);
+          parents.push(...data.assets.map(asset => ({ ...asset, type: parentType })));
+        } else if (data.error) {
+          console.error(`[Hierarchy] Error fetching ${parentType}:`, data.error);
+        }
+      }
+
+      console.log(`[Hierarchy] Total parents found:`, parents.length, parents);
+
+      // Populate dropdown
+      parentAssetSelect.innerHTML = hierarchyConfig.required
+        ? '<option value="">-- Select Required Parent --</option>'
+        : '<option value="">None (Standalone Asset)</option>';
+
+      if (parents.length > 0) {
+        // Group by type if multiple parent types
+        if (parentTypes.length > 1) {
+          parentTypes.forEach(type => {
+            const typeParents = parents.filter(p => p.type === type);
+            if (typeParents.length > 0) {
+              const optgroup = document.createElement('optgroup');
+              optgroup.label = `${type.charAt(0).toUpperCase() + type.slice(1)}s`;
+
+              typeParents.forEach(parent => {
+                const option = document.createElement('option');
+                option.value = parent._id;
+                option.textContent = parent.title || parent.name;
+                option.dataset.parentType = type;
+                optgroup.appendChild(option);
+              });
+
+              parentAssetSelect.appendChild(optgroup);
+            }
+          });
+        } else {
+          // Single type - no grouping
+          parents.forEach(parent => {
+            const option = document.createElement('option');
+            option.value = parent._id;
+            option.textContent = parent.title || parent.name;
+            option.dataset.parentType = parent.type;
+            parentAssetSelect.appendChild(option);
+          });
+        }
+
+        parentAssetSelect.disabled = false;
+
+        // Show coordinates for spatial assets
+        if (['galaxy', 'star', 'planet', 'orbital', 'anomaly', 'anomoly', 'station', 'starship', 'zone'].includes(assetType)) {
+          coordinatesRow.style.display = 'flex';
+          // Also show mapLevel for assets that appear on 3D maps
+          document.getElementById('mapLevelRow').style.display = 'block';
+        }
       } else {
-        parentStarSelect.innerHTML = '<option value="">No stars found in this galaxy</option>';
-        coordinatesRow.style.display = 'flex';
+        parentAssetSelect.innerHTML = `<option value="">No ${parentTypes.join('/')} assets found</option>`;
+        showAlert(`Please create a ${parentTypes[0]} asset first`, 'info');
       }
     } catch (error) {
-      console.error('Error fetching stars:', error);
-      parentStarSelect.innerHTML = '<option value="">Error loading stars</option>';
-      showAlert('Failed to load star systems', 'error');
+      console.error('Error fetching parent assets:', error);
+      parentAssetSelect.innerHTML = '<option value="">Error loading parents</option>';
+      showAlert('Failed to load parent assets', 'error');
     }
   });
 
-  // Handle star selection
-  parentStarSelect.addEventListener('change', (e) => {
-    if (e.target.value) {
-      coordinatesRow.style.display = 'flex';
+  // Handle parent selection - show hierarchy path
+  parentAssetSelect.addEventListener('change', async (e) => {
+    const parentId = e.target.value;
+
+    if (!parentId) {
+      hierarchyBreadcrumb.style.display = 'none';
+      document.getElementById('hierarchyParent').value = '';
+      document.getElementById('hierarchyParentType').value = '';
+      document.getElementById('hierarchyDepth').value = '0';
+      return;
+    }
+
+    const selectedOption = e.target.options[e.target.selectedIndex];
+    const parentType = selectedOption.dataset.parentType;
+
+    // Set hidden fields
+    document.getElementById('hierarchyParent').value = parentId;
+    document.getElementById('hierarchyParentType').value = parentType;
+
+    // Fetch hierarchy tree to show breadcrumb
+    try {
+      const response = await fetch(`/api/v1/hierarchy/ancestors/${parentId}`, {
+        credentials: 'same-origin'
+      });
+      const data = await response.json();
+
+      if (data.success && data.ancestors) {
+        const ancestors = data.ancestors.reverse(); // Root to parent order
+        const currentParent = { _id: parentId, title: selectedOption.textContent, assetType: parentType };
+        const fullPath = [...ancestors, currentParent];
+
+        // Set depth (parent depth + 1)
+        document.getElementById('hierarchyDepth').value = fullPath.length;
+
+        // Build breadcrumb
+        breadcrumbPath.innerHTML = fullPath.map((asset, index) => {
+          const icon = getAssetIcon(asset.assetType);
+          const isLast = index === fullPath.length - 1;
+          return `
+            <span style="display: flex; align-items: center; gap: 0.25rem;">
+              <span>${icon} ${asset.title || asset.name}</span>
+              ${!isLast ? '<span style="color: #888;">→</span>' : ''}
+            </span>
+          `;
+        }).join('');
+
+        hierarchyBreadcrumb.style.display = 'block';
+      }
+    } catch (error) {
+      console.error('Error fetching hierarchy:', error);
     }
   });
+}
+
+/**
+ * Get icon for asset type
+ */
+function getAssetIcon(assetType) {
+  const icons = {
+    'anomaly': '🌀',
+    'galaxy': '🌌',
+    'star': '⭐',
+    'planet': '🌍',
+    'orbital': '🛰️',
+    'environment': '🗺️',
+    'zone': '🏛️'
+  };
+  return icons[assetType] || '📦';
+}
+
+/**
+ * Setup Build Interior button handler
+ */
+function setupBuildInteriorButton() {
+  const buildInteriorBtn = document.getElementById('buildInteriorBtn');
+
+  if (buildInteriorBtn) {
+    buildInteriorBtn.addEventListener('click', async () => {
+      const assetType = document.getElementById('assetType').value;
+      const title = document.getElementById('title').value;
+
+      if (!title) {
+        showAlert('Please enter an asset title first', 'warning');
+        return;
+      }
+
+      // If asset exists (editing), use existing ID
+      if (currentAssetId) {
+        window.location.href = `/universe/interior-map-builder?parentAssetId=${currentAssetId}&parentAssetType=${assetType}`;
+        return;
+      }
+
+      // Otherwise, save as draft first
+      showAlert('Saving asset draft...', 'info');
+
+      try {
+        await saveDraft();
+
+        // Wait for asset to be created
+        setTimeout(() => {
+          if (currentAssetId) {
+            window.location.href = `/universe/interior-map-builder?parentAssetId=${currentAssetId}&parentAssetType=${assetType}`;
+          } else {
+            showAlert('Please save the asset first, then use Build Interior', 'warning');
+          }
+        }, 1000);
+      } catch (error) {
+        showAlert('Please save the asset as a draft first', 'warning');
+      }
+    });
+  }
 }
 
 /**

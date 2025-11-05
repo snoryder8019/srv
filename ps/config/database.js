@@ -24,7 +24,8 @@ export const collections = {
   planetaryState: 'planetaryState',
   sessions: 'sessions',
   assets: 'assets',
-  userActions: 'userActions'
+  userActions: 'userActions',
+  storehouses: 'storehouses'
 };
 
 export default {

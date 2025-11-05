@@ -1386,35 +1386,52 @@
       <div class="tome-terminal-body">
         <!-- Sidebar Navigation -->
         <div class="tome-nav">
-          <div class="tome-nav-item active" onclick="switchTomeTab('species')">
+          <div style="color: #8a4fff; padding: 0.5rem; font-weight: bold; font-size: 0.8rem;">STORYLINES</div>
+          <div class="tome-nav-item active" onclick="switchTomeTab('story-arcs')">
             <span class="nav-prefix">&gt;</span>
-            <span class="nav-text">Species</span>
-            <span class="nav-count" id="speciesCount">0</span>
+            <span class="nav-text">📖 Story Arcs</span>
+            <span class="nav-count" id="storyArcsCount">0</span>
           </div>
+          <div class="tome-nav-item" onclick="switchTomeTab('story-npcs')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">🎭 NPCs</span>
+            <span class="nav-count" id="storyNpcsCount">0</span>
+          </div>
+          <div class="tome-nav-item" onclick="switchTomeTab('story-quests')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">📜 Quests</span>
+            <span class="nav-count" id="storyQuestsCount">0</span>
+          </div>
+          <div class="tome-nav-item" onclick="switchTomeTab('story-locations')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">📍 Locations</span>
+            <span class="nav-count" id="storyLocationsCount">0</span>
+          </div>
+          <div class="tome-nav-item" onclick="switchTomeTab('story-scripts')">
+            <span class="nav-prefix">&gt;</span>
+            <span class="nav-text">🎬 Scripts</span>
+            <span class="nav-count" id="storyScriptsCount">0</span>
+          </div>
+          <div style="color: #00ffff; padding: 0.5rem; font-weight: bold; font-size: 0.8rem; margin-top: 1rem;">UNIVERSE</div>
           <div class="tome-nav-item" onclick="switchTomeTab('galaxies')">
             <span class="nav-prefix">&gt;</span>
-            <span class="nav-text">Galaxies</span>
+            <span class="nav-text">🌌 Galaxies</span>
             <span class="nav-count" id="galaxiesCount">0</span>
           </div>
           <div class="tome-nav-item" onclick="switchTomeTab('stars')">
             <span class="nav-prefix">&gt;</span>
-            <span class="nav-text">Stars</span>
+            <span class="nav-text">⭐ Stars</span>
             <span class="nav-count" id="starsCount">0</span>
           </div>
           <div class="tome-nav-item" onclick="switchTomeTab('planets')">
             <span class="nav-prefix">&gt;</span>
-            <span class="nav-text">Planets</span>
+            <span class="nav-text">🌍 Planets</span>
             <span class="nav-count" id="planetsCount">0</span>
           </div>
           <div class="tome-nav-item" onclick="switchTomeTab('anomalies')">
             <span class="nav-prefix">&gt;</span>
-            <span class="nav-text">Anomalies</span>
+            <span class="nav-text">✨ Anomalies</span>
             <span class="nav-count" id="anomaliesCount">0</span>
-          </div>
-          <div class="tome-nav-item" onclick="switchTomeTab('ships')">
-            <span class="nav-prefix">&gt;</span>
-            <span class="nav-text">Ships</span>
-            <span class="nav-count" id="shipsCount">0</span>
           </div>
         </div>
 
@@ -2377,7 +2394,7 @@
     // TOME OVERLAY SYSTEM - Early Definition
     // ========================================
     let tomeData = null;
-    let currentTomeTab = 'species';
+    let currentTomeTab = 'story-arcs';
 
     /**
      * Open Tome Overlay
@@ -2424,27 +2441,51 @@
           </div>
         `;
 
-        const response = await fetch('/api/v1/universe/tome-data');
-        const data = await response.json();
+        // Fetch both storylines and universe data in parallel
+        const [storylinesRes, universeRes] = await Promise.all([
+          fetch('/api/v1/storylines/all'),
+          fetch('/api/v1/universe/assets')
+        ]);
 
-        if (data.success) {
-          tomeData = data;
+        const storylinesData = await storylinesRes.json();
+        const universeData = await universeRes.json();
 
-          // Update counts
-          document.getElementById('speciesCount').textContent = data.species?.length || 0;
-          document.getElementById('galaxiesCount').textContent = data.assets?.galaxies?.length || 0;
-          document.getElementById('starsCount').textContent = data.assets?.stars?.length || 0;
-          document.getElementById('planetsCount').textContent = data.assets?.planets?.length || 0;
-          document.getElementById('anomaliesCount').textContent = data.assets?.anomalies?.length || 0;
-          document.getElementById('shipsCount').textContent = data.assets?.ships?.length || 0;
+        if (storylinesData.success && universeData.success) {
+          // Combine both datasets
+          tomeData = {
+            // Storylines
+            story: storylinesData.data,
+            storyCounts: storylinesData.counts,
+            // Universe
+            universe: universeData.assets || {},
+            universeCounts: {
+              galaxies: universeData.assets?.galaxies?.length || 0,
+              stars: universeData.assets?.stars?.length || 0,
+              planets: universeData.assets?.planets?.length || 0,
+              anomalies: universeData.assets?.anomalies?.length || 0
+            }
+          };
+
+          // Update counts for storyline assets
+          document.getElementById('storyArcsCount').textContent = storylinesData.counts?.arcs || 0;
+          document.getElementById('storyNpcsCount').textContent = storylinesData.counts?.npcs || 0;
+          document.getElementById('storyQuestsCount').textContent = storylinesData.counts?.quests || 0;
+          document.getElementById('storyLocationsCount').textContent = storylinesData.counts?.locations || 0;
+          document.getElementById('storyScriptsCount').textContent = storylinesData.counts?.scripts || 0;
+
+          // Update counts for universe assets
+          document.getElementById('galaxiesCount').textContent = tomeData.universeCounts.galaxies;
+          document.getElementById('starsCount').textContent = tomeData.universeCounts.stars;
+          document.getElementById('planetsCount').textContent = tomeData.universeCounts.planets;
+          document.getElementById('anomaliesCount').textContent = tomeData.universeCounts.anomalies;
 
           // Render initial content
           renderTomeContent(currentTomeTab);
         } else {
           contentBody.innerHTML = `
             <div style="color: #ff0000;">
-              <p>> ERROR: Failed to load tome data</p>
-              <p>> ${data.error || 'Unknown error'}</p>
+              <p>> ERROR: Failed to load database</p>
+              <p>> ${storylinesData.error || universeData.error || 'Unknown error'}</p>
             </div>
           `;
         }
@@ -2496,51 +2537,157 @@
 
       let html = '';
 
-      if (tab === 'species') {
-        const species = tomeData.species || [];
-        if (species.length === 0) {
-          html = '<p style="color: #00aa00;">> No species data available</p>';
-        } else {
-          species.forEach(s => {
-            html += `
-              <div class="tome-entry">
-                <div class="tome-entry-header">
-                  <div class="tome-entry-title">${s.name || 'Unknown Species'}</div>
-                  <div class="tome-entry-type">SPECIES</div>
-                </div>
-                <div class="tome-entry-description">${s.description || 'No description available.'}</div>
-                ${s.homeworld ? `<div class="tome-entry-meta"><span>🏠 Homeworld: ${s.homeworld}</span></div>` : ''}
+      // Storyline tabs
+      if (tab === 'story-arcs') {
+        const items = tomeData.story?.arcs || [];
+        items.forEach(item => {
+          html += `
+            <div class="tome-entry">
+              <div class="tome-entry-header">
+                <div class="tome-entry-title">${item.title}</div>
+                <div class="tome-entry-type">STORY ARC</div>
               </div>
-            `;
-          });
-        }
-      } else {
-        // Handle asset types
-        const assets = tomeData.assets?.[tab] || [];
-        if (assets.length === 0) {
-          html = `<p style="color: #00aa00;">> No ${tab} data available</p>`;
-        } else {
-          assets.forEach(asset => {
-            const coordinates = asset.coordinates || asset.sceneCoordinates || {};
-            html += `
-              <div class="tome-entry">
-                <div class="tome-entry-header">
-                  <div class="tome-entry-title">${asset.title || asset.name || 'Unknown'}</div>
-                  <div class="tome-entry-type">${asset.assetType?.toUpperCase() || tab.toUpperCase()}</div>
-                </div>
-                ${asset.description ? `<div class="tome-entry-description">${asset.description}</div>` : ''}
-                <div class="tome-entry-meta">
-                  ${coordinates.x !== undefined ? `<span>📍 Coords: (${Math.round(coordinates.x)}, ${Math.round(coordinates.y)}, ${Math.round(coordinates.z)})</span>` : ''}
-                  ${asset.mass ? `<span>⚖️ Mass: ${asset.mass}</span>` : ''}
-                  ${asset.radius ? `<span>📏 Radius: ${asset.radius}</span>` : ''}
-                </div>
+              <div class="tome-entry-description">${item.arc_setting || item.description}</div>
+              ${item.arc_themes?.length ? `<div class="tome-entry-meta"><span>🏷️ ${item.arc_themes.join(', ')}</span></div>` : ''}
+              ${item.arc_quest_hooks?.length ? `<div style="margin-top: 0.5rem; color: #00ffff;">Quest Hooks: ${item.arc_quest_hooks.slice(0, 2).join(' • ')}</div>` : ''}
+            </div>
+          `;
+        });
+      } else if (tab === 'story-npcs') {
+        const items = tomeData.story?.npcs || [];
+        items.forEach(item => {
+          html += `
+            <div class="tome-entry">
+              <div class="tome-entry-header">
+                <div class="tome-entry-title">${item.title}</div>
+                <div class="tome-entry-type">NPC</div>
               </div>
-            `;
-          });
-        }
+              <div class="tome-entry-description">${item.description}</div>
+              <div class="tome-entry-meta">
+                <span>🎭 ${(item.npc_role || '').replace(/_/g, ' ')}</span>
+                ${item.npc_dialogue_style ? `<span>💬 ${item.npc_dialogue_style}</span>` : ''}
+              </div>
+              ${item.npc_traits?.length ? `<div style="color: #ff6b6b; margin-top: 0.5rem;">Traits: ${item.npc_traits.slice(0, 3).join(' • ')}</div>` : ''}
+            </div>
+          `;
+        });
+      } else if (tab === 'story-quests') {
+        const items = tomeData.story?.quests || [];
+        items.forEach(item => {
+          html += `
+            <div class="tome-entry">
+              <div class="tome-entry-header">
+                <div class="tome-entry-title">${item.title}</div>
+                <div class="tome-entry-type">QUEST</div>
+              </div>
+              <div class="tome-entry-description">${item.description}</div>
+              ${item.quest_trigger_condition ? `<div style="color: #ffd93d; margin-top: 0.5rem;">⚡ ${item.quest_trigger_condition}</div>` : ''}
+            </div>
+          `;
+        });
+      } else if (tab === 'story-locations') {
+        const items = tomeData.story?.locations || [];
+        items.forEach(item => {
+          html += `
+            <div class="tome-entry">
+              <div class="tome-entry-header">
+                <div class="tome-entry-title">${item.title}</div>
+                <div class="tome-entry-type">LOCATION</div>
+              </div>
+              <div class="tome-entry-description">${item.description}</div>
+              ${item.location_mood_tags?.length ? `<div class="tome-entry-meta"><span>🌙 ${item.location_mood_tags.join(', ')}</span></div>` : ''}
+              ${item.location_interactive_elements?.length ? `<div style="color: #6bcf7f; margin-top: 0.5rem;">Interactive: ${item.location_interactive_elements.join(' • ')}</div>` : ''}
+            </div>
+          `;
+        });
+      } else if (tab === 'story-scripts') {
+        const items = tomeData.story?.scripts || [];
+        items.forEach(item => {
+          html += `
+            <div class="tome-entry">
+              <div class="tome-entry-header">
+                <div class="tome-entry-title">${item.script_scene_title || item.title}</div>
+                <div class="tome-entry-type">SCRIPT</div>
+              </div>
+              <div class="tome-entry-description">${item.script_scene_description || item.description}</div>
+              ${item.script_location_id ? `<div class="tome-entry-meta"><span>📍 ${item.script_location_id}</span></div>` : ''}
+            </div>
+          `;
+        });
+      } else if (tab === 'galaxies') {
+        const items = tomeData.universe?.galaxies || [];
+        items.forEach(item => {
+          const coords = item.coordinates || item.sceneCoordinates || {};
+          html += `
+            <div class="tome-entry">
+              <div class="tome-entry-header">
+                <div class="tome-entry-title">${item.title}</div>
+                <div class="tome-entry-type">GALAXY</div>
+              </div>
+              ${item.description ? `<div class="tome-entry-description">${item.description}</div>` : ''}
+              <div class="tome-entry-meta">
+                ${coords.x !== undefined ? `<span>📍 (${Math.round(coords.x)}, ${Math.round(coords.y)}, ${Math.round(coords.z)})</span>` : ''}
+                ${item.mass ? `<span>⚖️ Mass: ${item.mass}</span>` : ''}
+              </div>
+            </div>
+          `;
+        });
+      } else if (tab === 'stars') {
+        const items = tomeData.universe?.stars || [];
+        items.forEach(item => {
+          const coords = item.coordinates || item.sceneCoordinates || {};
+          html += `
+            <div class="tome-entry">
+              <div class="tome-entry-header">
+                <div class="tome-entry-title">${item.title}</div>
+                <div class="tome-entry-type">STAR</div>
+              </div>
+              ${item.description ? `<div class="tome-entry-description">${item.description}</div>` : ''}
+              <div class="tome-entry-meta">
+                ${coords.x !== undefined ? `<span>📍 (${Math.round(coords.x)}, ${Math.round(coords.y)}, ${Math.round(coords.z)})</span>` : ''}
+                ${item.starType ? `<span>⭐ Type: ${item.starType}</span>` : ''}
+              </div>
+            </div>
+          `;
+        });
+      } else if (tab === 'planets') {
+        const items = tomeData.universe?.planets || [];
+        items.forEach(item => {
+          const coords = item.coordinates || item.sceneCoordinates || {};
+          html += `
+            <div class="tome-entry">
+              <div class="tome-entry-header">
+                <div class="tome-entry-title">${item.title}</div>
+                <div class="tome-entry-type">PLANET</div>
+              </div>
+              ${item.description ? `<div class="tome-entry-description">${item.description}</div>` : ''}
+              <div class="tome-entry-meta">
+                ${coords.x !== undefined ? `<span>📍 (${Math.round(coords.x)}, ${Math.round(coords.y)}, ${Math.round(coords.z)})</span>` : ''}
+                ${item.radius ? `<span>📏 Radius: ${item.radius}</span>` : ''}
+              </div>
+            </div>
+          `;
+        });
+      } else if (tab === 'anomalies') {
+        const items = tomeData.universe?.anomalies || [];
+        items.forEach(item => {
+          const coords = item.coordinates || item.sceneCoordinates || {};
+          html += `
+            <div class="tome-entry">
+              <div class="tome-entry-header">
+                <div class="tome-entry-title">${item.title}</div>
+                <div class="tome-entry-type">ANOMALY</div>
+              </div>
+              ${item.description ? `<div class="tome-entry-description">${item.description}</div>` : ''}
+              <div class="tome-entry-meta">
+                ${coords.x !== undefined ? `<span>📍 (${Math.round(coords.x)}, ${Math.round(coords.y)}, ${Math.round(coords.z)})</span>` : ''}
+              </div>
+            </div>
+          `;
+        });
       }
 
-      contentBody.innerHTML = html || '<p style="color: #00aa00;">> No data available</p>';
+      contentBody.innerHTML = html || '<p style="color: #00aa00;">> No data available for this category</p>';
     }
 
     // Close tome on Escape key
@@ -2822,11 +2969,53 @@
           const usedSpace = inventoryData.ship.cargo?.usedSpace || 0;
           capacity.textContent = `${usedSpace.toFixed(1)}/${cargoCapacity} m³`;
 
-          // Render ship fittings
+          // Render ship fittings - MODULES
+          const fittings = inventoryData.ship.fittings || {};
+          const highSlots = fittings.highSlots || [];
+          const midSlots = fittings.midSlots || [];
+          const lowSlots = fittings.lowSlots || [];
+
+          const renderSlot = (slot, index, type) => {
+            if (!slot) {
+              return `
+                <div style="background: rgba(0,0,0,0.3); border: 1px dashed rgba(0,255,255,0.2); border-radius: 4px; padding: 8px; text-align: center;">
+                  <div style="color: rgba(255,255,255,0.3); font-size: 11px;">Empty ${type}</div>
+                </div>
+              `;
+            }
+            return `
+              <div style="background: rgba(0,255,255,0.1); border: 1px solid rgba(0,255,255,0.4); border-radius: 4px; padding: 8px;">
+                <div style="color: #00ffff; font-size: 11px; font-weight: bold; margin-bottom: 4px;">${slot.name || 'Unknown'}</div>
+                <div style="color: rgba(255,255,255,0.6); font-size: 10px;">${slot.description || ''}</div>
+              </div>
+            `;
+          };
+
           leftPanel.innerHTML = `
-            <div style="font-size: 13px; color: rgba(255,255,255,0.7);">
-              <p>> Ship module fittings</p>
-              <p style="margin-top: 10px; color: rgba(255,255,255,0.5);">[Fittings system in development]</p>
+            <div style="font-size: 12px; color: rgba(255,255,255,0.9); overflow-y: auto; max-height: 600px;">
+              <!-- High Slots (Weapons) -->
+              <div style="margin-bottom: 15px;">
+                <div style="color: #ff6600; font-weight: bold; margin-bottom: 8px; text-transform: uppercase;">🎯 High Slots (Weapons)</div>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 6px;">
+                  ${highSlots.map((slot, i) => renderSlot(slot, i, 'High')).join('')}
+                </div>
+              </div>
+
+              <!-- Mid Slots (Shields, Thrusters) -->
+              <div style="margin-bottom: 15px;">
+                <div style="color: #00ffff; font-weight: bold; margin-bottom: 8px; text-transform: uppercase;">🛡️ Mid Slots (Defense/Movement)</div>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 6px;">
+                  ${midSlots.map((slot, i) => renderSlot(slot, i, 'Mid')).join('')}
+                </div>
+              </div>
+
+              <!-- Low Slots (Engines, Hull) -->
+              <div style="margin-bottom: 15px;">
+                <div style="color: #ffaa00; font-weight: bold; margin-bottom: 8px; text-transform: uppercase;">⚙️ Low Slots (Engines/Hull)</div>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 6px;">
+                  ${lowSlots.map((slot, i) => renderSlot(slot, i, 'Low')).join('')}
+                </div>
+              </div>
             </div>
           `;
 
@@ -3054,6 +3243,151 @@
     });
 
     console.log('✅ Navigation confirmation system initialized');
+
+    // ========================================
+    // GALAXY ENTRY CONFIRMATION SYSTEM
+    // ========================================
+    window.showGalaxyEntryConfirmation = async function(galaxyData) {
+      console.log('🌌 Galaxy entry confirmation requested for:', galaxyData.title);
+
+      // Get current character from window
+      const currentCharacterId = window.currentCharacter?._id || '<%= character?._id %>';
+
+      if (!currentCharacterId) {
+        console.error('❌ No current character found');
+        return;
+      }
+
+      // Calculate distance to galaxy
+      const charLoc = window.currentCharacter?.location || { x: 0, y: 0, z: 0 };
+      const galaxyPos = galaxyData.data?.coordinates || galaxyData.coordinates || { x: 0, y: 0, z: 0 };
+      const dx = galaxyPos.x - charLoc.x;
+      const dy = galaxyPos.y - charLoc.y;
+      const dz = (galaxyPos.z || 0) - (charLoc.z || 0);
+      const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+      // Get travel validation from API
+      let validation = null;
+      try {
+        const response = await fetch('/api/v1/travel/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            characterId: currentCharacterId,
+            destination: galaxyPos
+          })
+        });
+        const result = await response.json();
+        if (result.success) {
+          validation = result;
+        }
+      } catch (error) {
+        console.error('❌ Failed to validate travel:', error);
+      }
+
+      // Get dialog elements
+      const dialog = document.getElementById('navigationConfirmDialog');
+      const titleEl = dialog.querySelector('.nav-confirm-title');
+      const messageEl = dialog.querySelector('.nav-confirm-message');
+      const cancelBtn = document.getElementById('cancelNavigateBtn');
+      const confirmBtn = document.getElementById('confirmNavigateBtn');
+
+      if (!dialog || !titleEl || !messageEl || !cancelBtn || !confirmBtn) {
+        console.error('❌ Navigation dialog elements not found');
+        return;
+      }
+
+      // Update dialog content for galaxy entry
+      titleEl.textContent = `Enter ${galaxyData.title}?`;
+
+      // Build message with supply info
+      let message = `<div style="text-align: left; margin: 15px 0;">`;
+
+      if (validation && validation.canTravel !== undefined) {
+        const supplies = validation.currentSupplies || {};
+        const requirements = validation.requirements || {};
+
+        message += `<div style="margin-bottom: 15px;"><strong>Distance:</strong> ${Math.round(distance)} units</div>`;
+
+        message += `<div style="margin-bottom: 10px;"><strong>Your Ship:</strong></div>`;
+        message += `<div style="margin-left: 15px; font-size: 13px;">`;
+        message += `⛽ Fuel: ${supplies.fuel || 0} / ${requirements.fuel || 0} needed<br/>`;
+        message += `🍔 Food: ${supplies.food || 0} / ${requirements.food || 0} needed<br/>`;
+        message += `💨 Oxygen: ${supplies.oxygen || 0} / ${requirements.oxygen || 0} needed<br/>`;
+        message += `💊 Medkits: ${supplies.medkits || 0}`;
+        message += `</div>`;
+
+        // Show blockers if any
+        if (validation.blockers && validation.blockers.length > 0) {
+          message += `<div style="margin: 15px 0; padding: 10px; background: rgba(255, 0, 0, 0.2); border-left: 3px solid red; border-radius: 4px;">`;
+          message += `<strong style="color: #ff4444;">⚠️ Cannot Travel:</strong><br/>`;
+          message += `<div style="font-size: 12px; margin-top: 5px;">`;
+          validation.blockers.forEach(b => {
+            message += `• ${b.message}<br/>`;
+          });
+          message += `</div></div>`;
+        }
+
+        // Show warnings if any
+        if (validation.warnings && validation.warnings.length > 0) {
+          message += `<div style="margin: 15px 0; padding: 10px; background: rgba(255, 165, 0, 0.2); border-left: 3px solid orange; border-radius: 4px;">`;
+          message += `<strong style="color: #ffaa00;">⚠️ Warnings:</strong><br/>`;
+          message += `<div style="font-size: 12px; margin-top: 5px;">`;
+          validation.warnings.forEach(w => {
+            message += `• ${w.message}<br/>`;
+          });
+          message += `</div></div>`;
+        }
+      } else {
+        message += `<div style="margin-bottom: 10px;">Traveling to ${galaxyData.title}...</div>`;
+      }
+
+      message += `<div style="margin-top: 15px; padding: 10px; background: rgba(255, 102, 0, 0.2); border-left: 3px solid #ff6600; border-radius: 4px; font-size: 13px;">`;
+      message += `⚠️ <strong>You will need equipment, food, fuel and supplies to escape this galaxy.</strong>`;
+      message += `</div>`;
+
+      message += `</div>`;
+      messageEl.innerHTML = message;
+
+      // Update button labels
+      cancelBtn.querySelector('.nav-btn-icon').textContent = '🚫';
+      cancelBtn.childNodes[cancelBtn.childNodes.length - 1].textContent = ' Stay Here';
+      confirmBtn.querySelector('.nav-btn-icon').textContent = '🚀';
+      confirmBtn.childNodes[confirmBtn.childNodes.length - 1].textContent = ' Enter Galaxy';
+
+      // Disable confirm button if cannot travel
+      if (validation && !validation.canTravel) {
+        confirmBtn.disabled = true;
+        confirmBtn.style.opacity = '0.5';
+        confirmBtn.style.cursor = 'not-allowed';
+      } else {
+        confirmBtn.disabled = false;
+        confirmBtn.style.opacity = '1';
+        confirmBtn.style.cursor = 'pointer';
+      }
+
+      // Set up confirm button to drill down into galaxy
+      const confirmHandler = () => {
+        console.log('✅ User confirmed galaxy entry');
+        window.closeNavigationDialog();
+        if (window.galacticMap && window.galacticMap.showGalaxyLevel) {
+          window.galacticMap.showGalaxyLevel(galaxyData.id);
+        }
+        // Remove this specific handler
+        confirmBtn.removeEventListener('click', confirmHandler);
+      };
+
+      // Replace existing confirm handler
+      const oldConfirm = document.getElementById('confirmNavigateBtn');
+      const newConfirm = oldConfirm.cloneNode(true);
+      oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
+      newConfirm.addEventListener('click', confirmHandler);
+
+      // Show dialog
+      dialog.classList.add('active');
+    };
+
+    console.log('✅ Galaxy entry confirmation system initialized');
   </script>
 
   <!-- 3D Galactic Map Script -->
@@ -3092,8 +3426,12 @@
       window.showLoadingSpinner && window.showLoadingSpinner();
 
       fetch('/api/v1/state/map-state-3d')
-        .then(response => response.json())
+        .then(response => {
+          console.log('📡 map-state-3d response status:', response.status);
+          return response.json();
+        })
         .then(data => {
+          console.log('📡 map-state-3d data received, success:', data.success, 'assets:', data.assets?.length);
           window.hideLoadingSpinner && window.hideLoadingSpinner();
 
           if (data.success) {
@@ -3292,11 +3630,16 @@
         currentLevel: window.galacticMap?.currentLevel
       });
 
-      // If clicking a galaxy at universe/galactic level, drill directly into galaxy view
+      // If clicking a galaxy at universe/galactic level, show entry confirmation modal
       if (assetData.type === 'galaxy' && assetData.id &&
           (window.galacticMap?.currentLevel === 'universe' || window.galacticMap?.currentLevel === 'galactic')) {
-        console.log(`🌌 DRILL DOWN: Galaxy selected at ${window.galacticMap?.currentLevel} level - ${assetData.title}`);
-        window.galacticMap.showGalaxyLevel(assetData.id);
+        console.log(`🌌 GALAXY CLICK: Showing entry confirmation for ${assetData.title}`);
+        if (window.showGalaxyEntryConfirmation) {
+          window.showGalaxyEntryConfirmation(assetData);
+        } else {
+          console.warn('⚠️ showGalaxyEntryConfirmation not found, falling back to direct drill-down');
+          window.galacticMap.showGalaxyLevel(assetData.id);
+        }
         return; // EXIT
       }
 
@@ -3660,6 +4003,9 @@
               assetId: character.location.assetId || null,
               stringDomain: character.stringDomain || 'Time String'
             });
+            console.log('📡 Character join event emitted for:', character.name);
+          } else {
+            console.warn('⚠️ Cannot emit characterJoin - character has no location');
           }
         } else {
           console.log('⚠️ No active character found');

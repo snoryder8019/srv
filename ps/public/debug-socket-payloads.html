@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket Payload Debugger - Stringborn Universe</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #0f0;
+            padding: 20px;
+            margin: 0;
+        }
+        h1 {
+            color: #8a4fff;
+            border-bottom: 2px solid #8a4fff;
+            padding-bottom: 10px;
+        }
+        .status {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .warning { color: #ff0; }
+        .info { color: #0ff; }
+        .galaxy { color: #bb88ff; }
+        .character { color: #00ff00; }
+        .connection { color: #00ffff; }
+        pre {
+            background: #000;
+            padding: 10px;
+            border-left: 3px solid #8a4fff;
+            overflow-x: auto;
+            max-height: 400px;
+        }
+        .counter {
+            font-size: 2em;
+            color: #8a4fff;
+            font-weight: bold;
+        }
+    </style>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>🔍 Socket Payload Debugger</h1>
+
+    <div class="status">
+        <strong>Connection Status:</strong> <span id="status">Connecting...</span>
+    </div>
+
+    <div class="status">
+        <strong>Updates Received:</strong> <span id="updateCount" class="counter">0</span>
+    </div>
+
+    <div class="status">
+        <h3 class="galaxy">📡 Latest galacticPhysicsUpdate Payload:</h3>
+        <div id="latestUpdate"></div>
+    </div>
+
+    <div class="status">
+        <h3 class="character">👥 Characters in Last Update:</h3>
+        <div id="characters"></div>
+    </div>
+
+    <div class="status">
+        <h3 class="galaxy">🌌 Galaxies in Last Update:</h3>
+        <div id="galaxies"></div>
+    </div>
+
+    <div class="status">
+        <h3 class="connection">🔗 Connections in Last Update:</h3>
+        <div id="connections"></div>
+    </div>
+
+    <div class="status">
+        <h3>📋 Full Payload (Last 3):</h3>
+        <pre id="fullPayload"></pre>
+    </div>
+
+    <script>
+        const socket = io();
+        let updateCount = 0;
+        const payloadHistory = [];
+
+        const statusEl = document.getElementById('status');
+        const updateCountEl = document.getElementById('updateCount');
+        const latestUpdateEl = document.getElementById('latestUpdate');
+        const charactersEl = document.getElementById('characters');
+        const galaxiesEl = document.getElementById('galaxies');
+        const connectionsEl = document.getElementById('connections');
+        const fullPayloadEl = document.getElementById('fullPayload');
+
+        socket.on('connect', () => {
+            statusEl.innerHTML = '<span class="success">✅ Connected (Socket ID: ' + socket.id + ')</span>';
+        });
+
+        socket.on('disconnect', () => {
+            statusEl.innerHTML = '<span class="error">❌ Disconnected</span>';
+        });
+
+        socket.on('galacticPhysicsUpdate', (data) => {
+            updateCount++;
+            updateCountEl.textContent = updateCount;
+
+            // Summary
+            latestUpdateEl.innerHTML = `
+                <div class="info">
+                    <strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleTimeString()}<br>
+                    <strong>Galaxies:</strong> ${data.galaxies?.length || 0}<br>
+                    <strong>Stars:</strong> ${data.stars?.length || 0}<br>
+                    <strong>Characters:</strong> ${data.characters?.length || 0}<br>
+                    <strong>Connections:</strong> ${data.connections?.length || 0}<br>
+                    <strong>Simulation Speed:</strong> ${data.simulationSpeed || 1}x
+                </div>
+            `;
+
+            // Characters
+            if (data.characters && data.characters.length > 0) {
+                let html = '';
+                data.characters.forEach(char => {
+                    html += `
+                        <div class="character">
+                            👤 <strong>${char.name}</strong> (${char._id.substring(0, 8)}...)<br>
+                            &nbsp;&nbsp;&nbsp;📍 Position: (${char.location.x.toFixed(0)}, ${char.location.y.toFixed(0)}, ${char.location.z.toFixed(0)})<br>
+                            &nbsp;&nbsp;&nbsp;🌌 Docked: ${char.dockedGalaxyName || 'None'}<br>
+                            &nbsp;&nbsp;&nbsp;🚀 In Transit: ${char.isInTransit ? 'Yes' : 'No'}
+                        </div>
+                    `;
+                });
+                charactersEl.innerHTML = html;
+            } else {
+                charactersEl.innerHTML = '<div class="warning">⚠️ No characters in this update</div>';
+            }
+
+            // Galaxies
+            if (data.galaxies && data.galaxies.length > 0) {
+                let html = `<div class="galaxy">Showing first 5 of ${data.galaxies.length} galaxies:</div>`;
+                data.galaxies.slice(0, 5).forEach(galaxy => {
+                    html += `
+                        <div class="galaxy">
+                            🌌 Galaxy ${galaxy.id.substring(0, 8)}...<br>
+                            &nbsp;&nbsp;&nbsp;📍 Position: (${galaxy.position.x.toFixed(0)}, ${galaxy.position.y.toFixed(0)}, ${galaxy.position.z.toFixed(0)})<br>
+                            &nbsp;&nbsp;&nbsp;⚡ Velocity: (${galaxy.velocity.vx.toFixed(2)}, ${galaxy.velocity.vy.toFixed(2)}, ${galaxy.velocity.vz.toFixed(2)})
+                        </div>
+                    `;
+                });
+                galaxiesEl.innerHTML = html;
+            } else {
+                galaxiesEl.innerHTML = '<div class="warning">⚠️ No galaxies in this update</div>';
+            }
+
+            // Connections
+            if (data.connections && data.connections.length > 0) {
+                let html = `<div class="connection">Showing first 5 of ${data.connections.length} connections:</div>`;
+                data.connections.slice(0, 5).forEach(conn => {
+                    html += `
+                        <div class="connection">
+                            🔗 ${conn.from.substring(0, 8)}... ↔ ${conn.to.substring(0, 8)}...<br>
+                            &nbsp;&nbsp;&nbsp;State: ${conn.state} | Distance: ${conn.distance?.toFixed(0) || 'N/A'} | ${conn.isPrimary ? 'Primary' : 'Secondary'}<br>
+                            &nbsp;&nbsp;&nbsp;Days to change: ${conn.daysToChange?.toFixed(1) || 'N/A'}
+                        </div>
+                    `;
+                });
+                connectionsEl.innerHTML = html;
+            } else {
+                connectionsEl.innerHTML = '<div class="warning">⚠️ No connections in this update</div>';
+            }
+
+            // Full payload (keep last 3)
+            payloadHistory.unshift({
+                timestamp: new Date().toLocaleTimeString(),
+                data: data
+            });
+            if (payloadHistory.length > 3) payloadHistory.pop();
+
+            fullPayloadEl.textContent = payloadHistory.map(p =>
+                `[${p.timestamp}]\n${JSON.stringify(p.data, null, 2)}\n\n`
+            ).join('---\n\n');
+        });
+
+        console.log('🔍 Socket Payload Debugger initialized');
+        console.log('Socket:', socket);
+    </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket.IO Connection Test - Stringborn Universe</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #0f0;
+            padding: 20px;
+            margin: 0;
+        }
+        h1 {
+            color: #8a4fff;
+            border-bottom: 2px solid #8a4fff;
+            padding-bottom: 10px;
+        }
+        .status {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .warning { color: #ff0; }
+        .info { color: #0ff; }
+        button {
+            background: #8a4fff;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #9955ff;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #000;
+            padding: 10px;
+            border-left: 3px solid #8a4fff;
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #222;
+        }
+    </style>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>🔌 Socket.IO Connection Test</h1>
+
+    <div class="status">
+        <strong>Socket Status:</strong> <span id="socketStatus">Initializing...</span>
+    </div>
+
+    <div class="status">
+        <strong>Character Join Status:</strong> <span id="joinStatus">Not attempted</span>
+    </div>
+
+    <div class="status">
+        <strong>Connected User IDs:</strong> <span id="connectedUsers">Unknown</span>
+    </div>
+
+    <div class="status">
+        <button id="testJoinBtn" onclick="testCharacterJoin()">Test Character Join</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div class="status">
+        <h3>Event Log:</h3>
+        <div id="eventLog" class="log"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const eventLog = document.getElementById('eventLog');
+        const socketStatus = document.getElementById('socketStatus');
+        const joinStatus = document.getElementById('joinStatus');
+        const connectedUsers = document.getElementById('connectedUsers');
+        const testJoinBtn = document.getElementById('testJoinBtn');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            eventLog.insertBefore(entry, eventLog.firstChild);
+        }
+
+        function clearLog() {
+            eventLog.innerHTML = '';
+        }
+
+        // Socket connection events
+        socket.on('connect', () => {
+            socketStatus.innerHTML = '<span class="success">✅ Connected (ID: ' + socket.id + ')</span>';
+            log('Socket connected: ' + socket.id, 'success');
+            testJoinBtn.disabled = false;
+        });
+
+        socket.on('disconnect', () => {
+            socketStatus.innerHTML = '<span class="error">❌ Disconnected</span>';
+            log('Socket disconnected', 'error');
+            testJoinBtn.disabled = true;
+        });
+
+        socket.on('connect_error', (error) => {
+            socketStatus.innerHTML = '<span class="error">❌ Connection Error</span>';
+            log('Connection error: ' + error.message, 'error');
+        });
+
+        // Character join test
+        function testCharacterJoin() {
+            const testCharacter = {
+                characterId: 'test_' + Date.now(),
+                characterName: 'Test Character',
+                userId: 'test_user_' + Date.now(),
+                location: {
+                    type: 'galactic',
+                    x: 0,
+                    y: 0,
+                    z: 0
+                },
+                assetId: null,
+                stringDomain: 'Test Domain'
+            };
+
+            log('Emitting characterJoin event...', 'info');
+            socket.emit('characterJoin', testCharacter);
+
+            joinStatus.innerHTML = '<span class="warning">⏳ Character join emitted, waiting for confirmation...</span>';
+
+            // Wait a bit then check
+            setTimeout(() => {
+                joinStatus.innerHTML = '<span class="success">✅ Character join event sent (check server logs)</span>';
+                log('Character join event sent. Check server logs for: 🎯 Character joined', 'success');
+            }, 500);
+        }
+
+        // Listen for galacticPhysicsUpdate
+        socket.on('galacticPhysicsUpdate', (data) => {
+            log(`📡 galacticPhysicsUpdate: galaxies=${data.galaxies?.length || 0}, characters=${data.characters?.length || 0}, connections=${data.connections?.length || 0}`, 'success');
+
+            if (data.characters && data.characters.length > 0) {
+                connectedUsers.innerHTML = '<span class="success">' + data.characters.length + ' characters in payload</span>';
+            } else {
+                connectedUsers.innerHTML = '<span class="warning">0 characters (no connected users)</span>';
+            }
+        });
+
+        // Listen for onlineCount
+        socket.on('onlineCount', (count) => {
+            log(`👥 Online count: ${count}`, 'info');
+        });
+
+        // Listen for characterJoined (broadcast to other users)
+        socket.on('characterJoined', (data) => {
+            log(`👤 Character joined broadcast: ${data.characterName}`, 'info');
+        });
+
+        // Listen for onlinePlayers list
+        socket.on('onlinePlayers', (players) => {
+            log(`📋 Online players list: ${players.length} players`, 'info');
+            if (players.length > 0) {
+                players.forEach(p => {
+                    log(`  - ${p.characterName} (userId: ${p.userId})`, 'info');
+                });
+            }
+        });
+
+        log('Socket.IO test page loaded', 'info');
+        log('Waiting for socket connection...', 'warning');
+    </script>
+</body>
+</html>

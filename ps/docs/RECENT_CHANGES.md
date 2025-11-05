@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2025-11-04T00:12:45.032Z
+Generated: 2025-11-05T00:13:28.377Z
+
+---
+
+## Commit: socket location stable
+
+- **Hash:** `fb9a7f1`
+- **Author:** Scott
+- **Date:** 11/4/2025
+- **Changes:** 8 files, +339/-183 lines
+
+### Modified Areas:
+
+**Frontend:** 2 files
+**Backend:** 1 files
+**Views:** 1 files
+**Documentation:** 3 files
 
 ---
 
@@ -61,20 +77,6 @@ Generated: 2025-11-04T00:12:45.032Z
 
 **Views:** 3 files
 **Documentation:** 2 files
-
----
-
-## Commit: v8.0.5 - Loading Spinner & Location Info System
-
-- **Hash:** `1acd985`
-- **Author:** Scott
-- **Date:** 11/3/2025
-- **Changes:** 6 files, +859/-1010 lines
-
-### Modified Areas:
-
-**Views:** 2 files
-**Documentation:** 3 files
 
 ---
 

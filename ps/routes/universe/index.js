@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDb } from '../../plugins/mongo/mongo.js';
 import galacticStateRouter from './galacticState.js';
+import zoneRouter from './zone.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -10,8 +11,9 @@ const __dirname = dirname(__filename);
 
 const router = express.Router();
 
-// Mount galactic state sub-routes
+// Mount sub-routes
 router.use('/', galacticStateRouter);
+router.use('/zone', zoneRouter);
 
 // Get galactic state view (streaming version)
 router.get('/galactic-state', async (req, res) => {
@@ -271,89 +273,13 @@ router.get('/species', async (req, res) => {
   res.redirect('/universe/tome');
 });
 
-// The Tome - Story, Characters, Monsters, Connections
+// The Tome - Storylines, Characters, Lore
 router.get('/tome', async (req, res) => {
-  try {
-    const db = getDb();
-
-    // Fetch all data for the tome
-    const [species, characters, approvedAssets, users] = await Promise.all([
-      db.collection('species').find({}).toArray(),
-      req.user ? db.collection('characters').find({ userId: req.user._id }).toArray() : [],
-      db.collection('assets').find({ status: 'approved' }).toArray(),
-      db.collection('users').find({}).toArray()
-    ]);
-
-    // Categorize approved assets
-    const categorizedAssets = {
-      galaxies: approvedAssets.filter(a => a.assetType === 'galaxy'),
-      planets: approvedAssets.filter(a => a.assetType === 'planet'),
-      orbitals: approvedAssets.filter(a => a.assetType === 'orbital'),
-      anomalies: approvedAssets.filter(a => a.assetType === 'anomaly'),
-      characters: approvedAssets.filter(a => a.assetType === 'character'),
-      items: approvedAssets.filter(a => a.assetType === 'item'),
-      weapons: approvedAssets.filter(a => a.assetType === 'weapon'),
-      environments: approvedAssets.filter(a => a.assetType === 'environment')
-    };
-
-    // Calculate featured creators (top 5 by approved asset count)
-    const creatorStats = {};
-    approvedAssets.forEach(asset => {
-      const userId = asset.userId?.toString();
-      if (userId) {
-        if (!creatorStats[userId]) {
-          creatorStats[userId] = {
-            userId,
-            assetCount: 0,
-            votes: 0,
-            assets: []
-          };
-        }
-        creatorStats[userId].assetCount++;
-        creatorStats[userId].votes += (asset.votes || 0);
-        creatorStats[userId].assets.push(asset);
-      }
-    });
-
-    // Add user details to creators
-    const creators = Object.values(creatorStats).map(creator => {
-      const user = users.find(u => u._id.toString() === creator.userId);
-      return {
-        ...creator,
-        username: user?.username || 'Unknown',
-        email: user?.email
-      };
-    });
-
-    // Sort by asset count and get top 5
-    const featuredCreators = creators
-      .sort((a, b) => b.assetCount - a.assetCount)
-      .slice(0, 5);
-
-    // Load lore arcs from JSON file
-    let loreArcs = [];
-    try {
-      const loreArcsPath = join(__dirname, '../../data/lore-arcs.json');
-      const loreArcsData = readFileSync(loreArcsPath, 'utf-8');
-      loreArcs = JSON.parse(loreArcsData);
-    } catch (err) {
-      console.error('Error loading lore arcs:', err);
-      loreArcs = [];
-    }
-
-    res.render('universe/tome-slim', {
-      title: 'The Tome',
-      species,
-      characters,
-      categorizedAssets,
-      featuredCreators,
-      loreArcs,
-      user: req.user
-    });
-  } catch (err) {
-    console.error('Error fetching tome data:', err);
-    res.status(500).json({ error: 'Failed to fetch tome data' });
-  }
+  res.render('storylines/tome', {
+    title: 'THE TOME - Chronicles of the Stringborn Universe',
+    user: req.user,
+    character: res.locals.character
+  });
 });
 // Sprite Atlas Creator
 router.get('/sprite-creator', (req, res) => {
@@ -368,6 +294,15 @@ router.get('/sprite-creator', (req, res) => {
 router.get('/ship-builder', (req, res) => {
   res.render('universe/ship-builder', {
     title: 'Universal Ship Builder',
+    user: req.user,
+    character: res.locals.character
+  });
+});
+
+// Interior Map Builder
+router.get('/interior-map-builder', (req, res) => {
+  res.render('universe/interior-map-builder', {
+    title: 'Interior Map Builder',
     user: req.user,
     character: res.locals.character
   });

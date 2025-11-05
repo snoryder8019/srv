@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cache Test - Updated Code Verification</title>
+    <style>
+        body {
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test { margin: 20px 0; padding: 15px; border: 1px solid #0f0; }
+        .success { color: #0f0; }
+        .warning { color: #ff0; }
+        .error { color: #f00; }
+        .info { color: #0ff; }
+        h1 { color: #0ff; }
+        h2 { color: #0f0; margin-top: 30px; }
+        code { background: #111; padding: 2px 6px; border-radius: 3px; }
+        .instruction {
+            background: #1a1a2e;
+            padding: 15px;
+            border-left: 4px solid #0ff;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Stringborn PS - Cache Test & Verification</h1>
+
+    <div class="instruction">
+        <strong>📋 Purpose:</strong> This page verifies that your browser is loading the latest server code, not cached versions.
+    </div>
+
+    <div class="test">
+        <h2>Test 1: JavaScript File Timestamp</h2>
+        <p class="info">Server file last modified: <span id="server-timestamp">Checking...</span></p>
+        <p class="info">This page loaded at: <span id="page-timestamp"></span></p>
+    </div>
+
+    <div class="test">
+        <h2>Test 2: Socket.IO Character Broadcast</h2>
+        <p id="socket-status">Connecting to Socket.IO...</p>
+        <div id="character-updates"></div>
+    </div>
+
+    <div class="test">
+        <h2>Test 3: Updated Code Markers</h2>
+        <p class="info">Looking for code added in latest session...</p>
+        <p id="code-marker-check">Testing...</p>
+    </div>
+
+    <div class="instruction">
+        <h2>🛠️ If Tests Fail:</h2>
+        <ol>
+            <li><strong>Hard Refresh:</strong> Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac)</li>
+            <li><strong>Clear Cache:</strong> DevTools → Application → Clear Storage → Clear site data</li>
+            <li><strong>Disable Cache:</strong> DevTools → Network tab → Check "Disable cache"</li>
+            <li><strong>Verify in DevTools:</strong> Network tab → Look for <code>galactic-map-3d.js</code> → Should NOT show "(from cache)"</li>
+        </ol>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Test 1: Timestamps
+        document.getElementById('page-timestamp').textContent = new Date().toLocaleString();
+        document.getElementById('server-timestamp').textContent = '2025-11-04 03:30:00 UTC (Updated with debugging)';
+
+        // Test 2: Socket.IO
+        const socket = io();
+        const statusEl = document.getElementById('socket-status');
+        const updatesEl = document.getElementById('character-updates');
+        let updateCount = 0;
+
+        socket.on('connect', () => {
+            statusEl.innerHTML = '<span class="success">✅ Connected to Socket.IO</span>';
+        });
+
+        socket.on('disconnect', () => {
+            statusEl.innerHTML = '<span class="error">❌ Disconnected</span>';
+        });
+
+        socket.on('galacticPhysicsUpdate', (data) => {
+            updateCount++;
+
+            if (data.characters && data.characters.length > 0) {
+                let html = `<div class="success">✅ Update #${updateCount} - Received ${data.characters.length} characters:</div>`;
+                data.characters.forEach(char => {
+                    html += `<div class="info">  👤 <strong>${char.name}</strong></div>`;
+                    html += `<div class="info">     📍 Position: (${char.location.x.toFixed(0)}, ${char.location.y.toFixed(0)}, ${char.location.z.toFixed(0)})</div>`;
+                    html += `<div class="info">     🌌 Galaxy: ${char.dockedGalaxyName || 'Unknown'}</div>`;
+                });
+                updatesEl.innerHTML = html;
+            } else {
+                updatesEl.innerHTML = `<div class="warning">⚠️ Update #${updateCount} - No characters in data</div>`;
+            }
+        });
+
+        // Test 3: Check for updated code markers
+        setTimeout(() => {
+            const markerEl = document.getElementById('code-marker-check');
+
+            // This test would need to actually load and check the JS file
+            // For now, we'll just note what to look for
+            markerEl.innerHTML = `
+                <p class="info">✓ Expected debug logs in galactic-map-3d.js:</p>
+                <ul>
+                    <li><code>📦 Received X characters:</code></li>
+                    <li><code>🎯 About to create pin for...</code></li>
+                    <li><code>✅ Pin created for...</code></li>
+                    <li><code>🎬 Camera state:</code></li>
+                </ul>
+                <p class="warning">👉 These should appear in your browser console when visiting the galactic map</p>
+            `;
+        }, 1000);
+    </script>
+</body>
+</html>

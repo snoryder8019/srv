@@ -1,0 +1,346 @@
+{
+  "session_metadata": {
+    "date": "2025-11-04",
+    "project": "Stringborn Universe - Galactic Map 3D",
+    "session_type": "Socket Payload Debugging & Real-Time Updates",
+    "duration": "Full session",
+    "status": "Partially Complete - Awaiting User Diagnostics"
+  },
+  "session_summary": {
+    "initial_request": "Fix socket payloads - galaxy positions and player coords aren't being sent from GameStateMonitor to galactic-map-3d scene",
+    "issues_identified": [
+      "Characters not moving with their docked galaxies",
+      "Connections not displaying in debugger",
+      "Multiple characters per user appearing (Jon mclain + Faithbender both showing)",
+      "Character positions 5000+ units away from their docked galaxy",
+      "Three.js scene loading from DB but not updating from real-time socket payloads",
+      "Socket not connecting on galactic-map-3d page (discovered at end)"
+    ],
+    "issues_resolved": [
+      "Characters now snap to galaxy positions and move with galaxies",
+      "Connection display fixed in debugger",
+      "Only active character per user now broadcasts (filter by characterId not userId)",
+      "updatePlayerPosition() method fixed to use correct property names (player.mesh)",
+      "Added getConnectedCharacterIds() method to Socket.IO plugin"
+    ],
+    "issues_pending": [
+      "Socket connection not working on galactic-map-3d page (works on debug page)",
+      "Need user to run diagnostics to identify where socket init is failing"
+    ]
+  },
+  "files_modified": {
+    "server_side": [
+      {
+        "file": "/srv/ps/services/physics-service.js",
+        "changes": [
+          "Lines 179-191: Changed from userId filtering to characterId filtering",
+          "Lines 1129-1237: Added galaxy velocity inheritance to docked characters",
+          "Lines 1172-1178: Added character position snapping to galaxy on first dock",
+          "Lines 1200-1230: Characters now move with their docked galaxy's velocity"
+        ],
+        "purpose": "Fix character-galaxy synchronization and active character filtering"
+      },
+      {
+        "file": "/srv/ps/plugins/socket/index.js",
+        "changes": [
+          "Lines 218-227: Added getConnectedCharacterIds() method",
+          "Returns array of active characterIds (not userIds)"
+        ],
+        "purpose": "Track active characters instead of all characters owned by connected users"
+      }
+    ],
+    "client_side": [
+      {
+        "file": "/srv/ps/public/javascripts/galactic-map-3d.js",
+        "changes": [
+          "Lines 4626-4639: Fixed updatePlayerPosition() to use player.mesh instead of player.marker",
+          "Added logging for position updates",
+          "Added fallback for old structure compatibility"
+        ],
+        "purpose": "Fix Three.js scene updates from GameStateMonitor events"
+      },
+      {
+        "file": "/srv/ps/public/debug-socket-payloads.html",
+        "changes": [
+          "Lines 157-172: Fixed connection display to use correct properties",
+          "Changed from strength/age to distance/daysToChange/isPrimary"
+        ],
+        "purpose": "Fix JavaScript error preventing connection display"
+      }
+    ],
+    "scripts_created": [
+      {
+        "file": "/srv/ps/scripts/snap-characters-to-galaxies.js",
+        "purpose": "Migration script to snap all existing characters to their docked galaxy positions",
+        "status": "Executed successfully - 5 characters snapped"
+      }
+    ],
+    "test_files_created": [
+      {
+        "file": "/srv/ps/public/socket-connection-test.html",
+        "purpose": "Test Socket.IO connection independently of full page complexity"
+      },
+      {
+        "file": "/srv/ps/public/debug-socket-payloads.html",
+        "purpose": "Real-time socket payload viewer (already existed, fixed connection display)"
+      }
+    ]
+  },
+  "documentation_created": [
+    {
+      "file": "/srv/ps/SOCKET_FIXES_SUMMARY.md",
+      "content": "Summary of character movement and connection display fixes"
+    },
+    {
+      "file": "/srv/ps/SOCKET_PAYLOAD_DIAGNOSTIC.md",
+      "content": "Diagnostic guide for socket payload issues with step-by-step troubleshooting"
+    },
+    {
+      "file": "/srv/ps/CHARACTER_GALAXY_SYNC_SUMMARY.md",
+      "content": "Explanation of character-galaxy position synchronization fix"
+    },
+    {
+      "file": "/srv/ps/ACTIVE_CHARACTER_FIX.md",
+      "content": "Documentation of userId to characterId filtering change"
+    },
+    {
+      "file": "/srv/ps/PAYLOAD_ISSUE_ROOT_CAUSE.md",
+      "content": "Analysis proving MOTD was not the problem, actual issue was no Socket.IO connections"
+    },
+    {
+      "file": "/srv/ps/SCENE_UPDATE_FIX.md",
+      "content": "Documentation of updatePlayerPosition() fix for Three.js scene updates"
+    },
+    {
+      "file": "/srv/ps/SOCKET_NOT_CONNECTING_DIAGNOSTIC.md",
+      "content": "Diagnostic guide for socket connection issues on galactic-map-3d page"
+    }
+  ],
+  "technical_details": {
+    "character_galaxy_sync": {
+      "problem": "Characters were 5000+ units away from their docked galaxy",
+      "solution": "Characters now snap to galaxy position and inherit galaxy velocity",
+      "formula": "character.position += galaxy.velocity * deltaTime",
+      "migration_needed": true,
+      "migration_status": "Completed - 5 characters migrated"
+    },
+    "active_character_filtering": {
+      "old_logic": "Filter by userId - showed ALL characters owned by connected users",
+      "new_logic": "Filter by characterId - shows ONLY active character per connection",
+      "example": "User with Faithbender + Jon mclain: old showed 2, new shows 1",
+      "implementation": "Added io.getConnectedCharacterIds() method, changed filter logic"
+    },
+    "scene_update_mechanism": {
+      "data_flow": "Physics Service → Socket.IO → GameStateMonitor → galactic-map-3d → Three.js",
+      "event_chain": [
+        "Server broadcasts galacticPhysicsUpdate",
+        "GameStateMonitor receives and processes",
+        "GameStateMonitor emits playerPositionUpdate",
+        "galactic-map-3d subscribes to event",
+        "Calls updatePlayerPosition()",
+        "Updates player.mesh.position",
+        "Three.js renders next frame"
+      ],
+      "bug_fixed": "updatePlayerPosition was accessing player.marker (doesn't exist) instead of player.mesh",
+      "data_structure": {
+        "created_by_createCharacterPin": {
+          "mesh": "THREE.Group (the pin)",
+          "character": "character object",
+          "galacticLocation": "{x, y, z}"
+        },
+        "expected_by_updatePlayerPosition_OLD": {
+          "marker": "THREE.Group (didn't exist)",
+          "glow": "THREE.Mesh (didn't exist)",
+          "label": "THREE.Sprite (didn't exist)"
+        }
+      }
+    },
+    "socket_connection_structure": {
+      "debug_page_works": true,
+      "galactic_map_page_works": false,
+      "socket_initializations": [
+        "Line 3568: Main socket for logged in users",
+        "Line 3760: Socket for guest users",
+        "Line 4637: Emergency socket"
+      ],
+      "expected_logs": [
+        "✅ Socket.IO CONNECTED! ID: ...",
+        "🎮 GameStateMonitor initialized",
+        "✅ Socket initialized with galactic map",
+        "📡 Character join event emitted",
+        "🔔 galacticPhysicsUpdate EVENT FIRED!"
+      ],
+      "diagnostic_needed": "User needs to check browser console on galactic-map-3d page"
+    }
+  },
+  "server_status": {
+    "server_running": true,
+    "port": 3399,
+    "socket_broadcasting": true,
+    "broadcast_interval": "1 second",
+    "current_payload": {
+      "galaxies": 13,
+      "stars": 0,
+      "connections": "8-12 (varies)",
+      "characters": "0-1 (depends on connections)",
+      "active_character_ids": ["68f1c6271db390295144f032"]
+    },
+    "example_broadcast": {
+      "galaxies": "13 items with positions and velocities",
+      "characters": [
+        {
+          "_id": "68f1c6271db390295144f032",
+          "name": "Faithbender",
+          "location": {"x": 2534, "y": 3935, "z": 3326},
+          "dockedGalaxyName": "Cosmic Nexus",
+          "isInTransit": false
+        }
+      ],
+      "connections": "8-12 anomaly-galaxy and galaxy-galaxy connections"
+    }
+  },
+  "testing_status": {
+    "server_side_verified": true,
+    "socket_broadcast_verified": true,
+    "character_movement_verified": true,
+    "payload_structure_verified": true,
+    "client_side_pending": true,
+    "pending_items": [
+      "User needs to verify socket connects on galactic-map-3d",
+      "User needs to check browser console logs",
+      "User needs to run diagnostic tests from SOCKET_NOT_CONNECTING_DIAGNOSTIC.md"
+    ]
+  },
+  "next_steps": {
+    "immediate": [
+      "User opens galactic-map-3d page",
+      "User opens browser console (F12)",
+      "User checks for Socket.IO connection logs",
+      "User runs console tests: window.socket, window.galacticMap, window.currentCharacter",
+      "User reports which logs are present and which are missing"
+    ],
+    "if_socket_not_connected": [
+      "Hard refresh browser 3-5 times (Ctrl+Shift+R)",
+      "Clear browser cache completely",
+      "Check for JavaScript errors in console (red text)",
+      "Verify Socket.IO library loaded (Network tab: /socket.io/socket.io.js)",
+      "Check if logged in and have active character"
+    ],
+    "if_socket_connected_but_no_updates": [
+      "Verify characterJoin event was emitted",
+      "Check server logs for 'Character joined' message",
+      "Manually emit characterJoin from console",
+      "Check if galacticPhysicsUpdate events are being received"
+    ],
+    "if_all_connected_but_scene_not_updating": [
+      "Check if updatePlayerPosition logs appear",
+      "Verify player.mesh exists in players Map",
+      "Check Three.js render loop is running",
+      "This scenario is unlikely given our fixes"
+    ]
+  },
+  "important_context": {
+    "coordinate_system": "Absolute galactic coordinates for all entities",
+    "character_behavior": "Characters 'ride' their docked galaxy through space",
+    "filtering_logic": "Only ACTIVE characters broadcast (one per socket connection)",
+    "update_frequency": {
+      "physics_tick": "50ms (20 ticks/sec)",
+      "socket_broadcast": "1000ms (1/sec)",
+      "gameStateMonitor_tick": "25ms (40 ticks/sec)"
+    },
+    "user_perspective": "User dictates which character is in space (not all owned characters)"
+  },
+  "code_patterns": {
+    "player_storage_structure": {
+      "mesh": "THREE.Group containing the visual pin",
+      "character": "Full character object from database",
+      "galacticLocation": "Current {x, y, z} coordinates",
+      "lastUpdate": "Timestamp of last update"
+    },
+    "socket_event_flow": {
+      "server_emits": "galacticPhysicsUpdate",
+      "gameStateMonitor_receives": "Updates internal players Map",
+      "gameStateMonitor_emits": "playerPositionUpdate",
+      "galacticMap_subscribes": "Updates Three.js scene"
+    },
+    "character_join_flow": {
+      "client_emits": "characterJoin with {characterId, userId, location}",
+      "server_stores": "In onlinePlayers Map",
+      "server_broadcasts": "characterJoined to other clients",
+      "physics_service_filters": "By characterId from onlinePlayers"
+    }
+  },
+  "debugging_tools": {
+    "debug_pages": [
+      "http://localhost:3399/debug-socket-payloads.html - Real-time payload viewer",
+      "http://localhost:3399/socket-connection-test.html - Socket connection tester",
+      "http://localhost:3399/version-check.html - Socket version checker"
+    ],
+    "console_tests": {
+      "check_socket": "window.socket",
+      "check_connection": "window.socket?.connected",
+      "check_map": "window.galacticMap",
+      "check_character": "window.currentCharacter",
+      "check_user": "window.currentUser",
+      "check_players": "window.galacticMap?.players.size",
+      "emit_join_manually": "window.socket.emit('characterJoin', {...})"
+    },
+    "server_logs": {
+      "location": "/tmp/ps-server.log",
+      "check_broadcasts": "tail -50 /tmp/ps-server.log | grep 'galacticPhysicsUpdate'",
+      "check_connections": "tail -50 /tmp/ps-server.log | grep 'Character joined'",
+      "check_character_ids": "tail -50 /tmp/ps-server.log | grep 'Connected character IDs'"
+    }
+  },
+  "known_good_state": {
+    "debug_page": {
+      "socket_connects": true,
+      "receives_updates": true,
+      "shows_galaxies": true,
+      "shows_characters": true,
+      "shows_connections": true,
+      "coordinates_updating": true
+    },
+    "server": {
+      "broadcasting": true,
+      "character_filtering": "Working (by characterId)",
+      "character_movement": "Working (with galaxies)",
+      "payload_structure": "Correct"
+    }
+  },
+  "blockers": {
+    "current_blocker": "Socket not connecting on galactic-map-3d page",
+    "blocker_type": "Client-side connection issue",
+    "requires_user_input": true,
+    "diagnostic_provided": true,
+    "cannot_proceed_without": "User console output from galactic-map-3d page"
+  },
+  "session_conclusion": {
+    "work_completed": [
+      "Fixed character-galaxy position synchronization",
+      "Fixed character movement (now move with galaxies)",
+      "Fixed active character filtering (one per user)",
+      "Fixed Three.js scene update mechanism",
+      "Created migration script and executed",
+      "Created comprehensive diagnostics",
+      "Created test pages"
+    ],
+    "work_remaining": [
+      "Diagnose why socket not connecting on galactic-map-3d",
+      "Fix socket connection issue once diagnosed",
+      "Verify scene updates in real-time after connection fixed",
+      "Test with multiple users if possible"
+    ],
+    "confidence_level": "High that fixes are correct, pending verification",
+    "handoff_status": "Ready for user diagnostics"
+  },
+  "quick_reference": {
+    "restart_server": "lsof -ti:3399 | xargs -r kill -9 && cd /srv/ps && nohup npm start > /tmp/ps-server.log 2>&1 &",
+    "check_server": "lsof -ti:3399",
+    "view_logs": "tail -50 /tmp/ps-server.log",
+    "run_migration": "node /srv/ps/scripts/snap-characters-to-galaxies.js",
+    "test_socket": "Open http://localhost:3399/socket-connection-test.html and click 'Test Character Join'",
+    "view_payloads": "Open http://localhost:3399/debug-socket-payloads.html",
+    "main_page": "http://localhost:3399/universe/galactic-map-3d"
+  }
+}

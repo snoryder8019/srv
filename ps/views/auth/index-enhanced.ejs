@@ -341,8 +341,29 @@
           localStorage.setItem('selectedCharacterId', characterId);
           console.log('✅ Character selected and saved to localStorage:', characterId);
 
-          // Redirect to galactic map with character parameter
-          window.location.href = `/universe/galactic-map?character=${characterId}`;
+          // Fetch character data to determine location type
+          const charResponse = await fetch(`/api/v1/characters/${characterId}`);
+          const charData = await charResponse.json();
+
+          if (charData.success && charData.character) {
+            const character = charData.character;
+
+            // Route based on location type
+            if (character.location && character.location.type === 'zone') {
+              // Character is in a zone - route to zone renderer
+              const zoneId = character.location.zoneId;
+              console.log(`🏛️ Character is in zone ${zoneId}, routing to zone renderer...`);
+              window.location.href = `/universe/zone/${zoneId}`;
+            } else {
+              // Character is in galactic space - route to galactic map
+              console.log('🌌 Character is in galactic space, routing to galactic map...');
+              window.location.href = `/universe/galactic-map?character=${characterId}`;
+            }
+          } else {
+            // Fallback to galactic map if character data unavailable
+            console.warn('⚠️ Could not fetch character location, defaulting to galactic map');
+            window.location.href = `/universe/galactic-map?character=${characterId}`;
+          }
         } else {
           alert('Failed to select character: ' + (data.error || 'Unknown error'));
         }
