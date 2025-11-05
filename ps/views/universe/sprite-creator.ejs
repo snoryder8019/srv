@@ -285,6 +285,78 @@
       color: #fff;
       font-weight: bold;
     }
+
+    /* Hitbox Layer Styles */
+    .layer-toggle {
+      display: flex;
+      gap: 0.5rem;
+      margin: 1rem 0;
+    }
+
+    .layer-button {
+      flex: 1;
+      padding: 0.5rem 1rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 2px solid #444;
+      color: #fff;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .layer-button:hover {
+      border-color: #8a4fff;
+    }
+
+    .layer-button.active {
+      background: rgba(138, 79, 255, 0.3);
+      border-color: #8a4fff;
+      color: #8a4fff;
+      font-weight: bold;
+    }
+
+    .hitbox-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .hitbox-canvas.active {
+      pointer-events: auto;
+    }
+
+    .hitbox-info {
+      background: rgba(255, 79, 79, 0.1);
+      border: 1px solid #ff4f4f;
+      padding: 0.75rem;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+      color: #ff9999;
+      font-size: 0.875rem;
+    }
+
+    .hitbox-tools {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .hitbox-tools button {
+      flex: 1;
+      padding: 0.5rem;
+      background: rgba(255, 79, 79, 0.2);
+      border: 1px solid #ff4f4f;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .hitbox-tools button:hover {
+      background: rgba(255, 79, 79, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -320,6 +392,19 @@
           <button class="btn btn-secondary" id="uploadModeBtn" onclick="switchMode('upload')" style="flex: 1;">📤 Upload</button>
         </div>
 
+        <!-- Layer Toggle -->
+        <div class="layer-toggle">
+          <button class="layer-button active" id="spriteLayerBtn" onclick="switchLayer('sprite')">
+            🎨 Sprite Layer
+          </button>
+          <button class="layer-button" id="hitboxLayerBtn" onclick="switchLayer('hitbox')">
+            🔴 Hitbox Layer
+          </button>
+        </div>
+        <div class="hitbox-info" id="hitboxInfo" style="display: none;">
+          <strong>Hitbox Layer Active:</strong> Draw collision/damage zones in red. These define interactive areas for combat, collision detection, and triggers.
+        </div>
+
         <!-- Draw Mode -->
         <div id="drawMode" style="display: block;">
           <div id="pixelEditorContainer"></div>
@@ -342,8 +427,16 @@
           </p>
           <div class="canvas-container">
             <canvas id="spriteCanvas" width="80" height="80"></canvas>
+            <canvas id="hitboxCanvas" class="hitbox-canvas" width="80" height="80"></canvas>
             <canvas class="grid-overlay" id="gridCanvas" width="640" height="640"></canvas>
           </div>
+        </div>
+
+        <!-- Hitbox Tools -->
+        <div class="hitbox-tools" id="hitboxTools" style="display: none;">
+          <button onclick="clearHitboxLayer()">🗑️ Clear Hitboxes</button>
+          <button onclick="toggleHitboxVisibility()">👁️ Toggle Visibility</button>
+          <button onclick="exportHitboxData()">💾 Export Hitbox Data</button>
         </div>
 
         <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
@@ -413,14 +506,22 @@
     const ctx = canvas.getContext('2d');
     const gridCanvas = document.getElementById('gridCanvas');
     const gridCtx = gridCanvas.getContext('2d');
+    const hitboxCanvas = document.getElementById('hitboxCanvas');
+    const hitboxCtx = hitboxCanvas.getContext('2d');
 
     let uploadedImage = null;
     let tileManifest = [];
     let pixelEditor = null;
     let currentMode = 'draw';
+    let currentLayer = 'sprite';
     let copiedTileData = null;
     let selectedTileX = -1;
     let selectedTileY = -1;
+    let hitboxData = {}; // Store hitbox data per tile
+    let hitboxVisible = true;
+    let isDrawingHitbox = false;
+    let hitboxStartX = 0;
+    let hitboxStartY = 0;
 
     // Planet types from existing system
     const PLANET_TYPES = [
@@ -487,6 +588,25 @@
         ]
       }
     };
+
+    // Layer switching
+    function switchLayer(layer) {
+      currentLayer = layer;
+
+      if (layer === 'sprite') {
+        document.getElementById('spriteLayerBtn').classList.add('active');
+        document.getElementById('hitboxLayerBtn').classList.remove('active');
+        document.getElementById('hitboxInfo').style.display = 'none';
+        document.getElementById('hitboxTools').style.display = 'none';
+        hitboxCanvas.classList.remove('active');
+      } else {
+        document.getElementById('spriteLayerBtn').classList.remove('active');
+        document.getElementById('hitboxLayerBtn').classList.add('active');
+        document.getElementById('hitboxInfo').style.display = 'block';
+        document.getElementById('hitboxTools').style.display = 'flex';
+        hitboxCanvas.classList.add('active');
+      }
+    }
 
     // Mode switching
     function switchMode(mode) {
@@ -773,6 +893,7 @@
         packType,
         description,
         tiles: tileManifest,
+        hitboxes: hitboxData, // Include hitbox data
       }));
 
       try {
@@ -909,8 +1030,123 @@
       showSuccess('Copy cancelled');
     }
 
+    // Hitbox layer functions
+    function setupHitboxDrawing() {
+      hitboxCanvas.addEventListener('mousedown', startHitboxDraw);
+      hitboxCanvas.addEventListener('mousemove', drawHitbox);
+      hitboxCanvas.addEventListener('mouseup', endHitboxDraw);
+    }
+
+    function startHitboxDraw(e) {
+      if (currentLayer !== 'hitbox') return;
+      isDrawingHitbox = true;
+      const rect = hitboxCanvas.getBoundingClientRect();
+      const scaleX = 80 / rect.width;
+      const scaleY = 80 / rect.height;
+      hitboxStartX = Math.floor((e.clientX - rect.left) * scaleX);
+      hitboxStartY = Math.floor((e.clientY - rect.top) * scaleY);
+    }
+
+    function drawHitbox(e) {
+      if (!isDrawingHitbox || currentLayer !== 'hitbox') return;
+      const rect = hitboxCanvas.getBoundingClientRect();
+      const scaleX = 80 / rect.width;
+      const scaleY = 80 / rect.height;
+      const currentX = Math.floor((e.clientX - rect.left) * scaleX);
+      const currentY = Math.floor((e.clientY - rect.top) * scaleY);
+
+      // Redraw all existing hitboxes
+      renderHitboxes();
+
+      // Draw current hitbox being created
+      hitboxCtx.strokeStyle = '#ff4f4f';
+      hitboxCtx.fillStyle = 'rgba(255, 79, 79, 0.3)';
+      hitboxCtx.lineWidth = 1;
+      const width = currentX - hitboxStartX;
+      const height = currentY - hitboxStartY;
+      hitboxCtx.fillRect(hitboxStartX, hitboxStartY, width, height);
+      hitboxCtx.strokeRect(hitboxStartX, hitboxStartY, width, height);
+    }
+
+    function endHitboxDraw(e) {
+      if (!isDrawingHitbox || currentLayer !== 'hitbox') return;
+      isDrawingHitbox = false;
+      const rect = hitboxCanvas.getBoundingClientRect();
+      const scaleX = 80 / rect.width;
+      const scaleY = 80 / rect.height;
+      const endX = Math.floor((e.clientX - rect.left) * scaleX);
+      const endY = Math.floor((e.clientY - rect.top) * scaleY);
+
+      // Determine which tile this hitbox belongs to
+      const tileX = Math.floor(hitboxStartX / 16);
+      const tileY = Math.floor(hitboxStartY / 16);
+      const tileIndex = tileY * 5 + tileX;
+
+      // Store hitbox data
+      if (!hitboxData[tileIndex]) {
+        hitboxData[tileIndex] = [];
+      }
+
+      hitboxData[tileIndex].push({
+        x: hitboxStartX,
+        y: hitboxStartY,
+        width: endX - hitboxStartX,
+        height: endY - hitboxStartY
+      });
+
+      renderHitboxes();
+      showSuccess(`Hitbox added to tile ${tileIndex} (${tileX}, ${tileY})`);
+    }
+
+    function renderHitboxes() {
+      if (!hitboxVisible) return;
+      hitboxCtx.clearRect(0, 0, 80, 80);
+
+      Object.keys(hitboxData).forEach(tileIndex => {
+        hitboxData[tileIndex].forEach(box => {
+          hitboxCtx.strokeStyle = '#ff4f4f';
+          hitboxCtx.fillStyle = 'rgba(255, 79, 79, 0.3)';
+          hitboxCtx.lineWidth = 1;
+          hitboxCtx.fillRect(box.x, box.y, box.width, box.height);
+          hitboxCtx.strokeRect(box.x, box.y, box.width, box.height);
+        });
+      });
+    }
+
+    function clearHitboxLayer() {
+      if (confirm('Clear all hitboxes? This cannot be undone.')) {
+        hitboxData = {};
+        hitboxCtx.clearRect(0, 0, 80, 80);
+        showSuccess('All hitboxes cleared');
+      }
+    }
+
+    function toggleHitboxVisibility() {
+      hitboxVisible = !hitboxVisible;
+      if (hitboxVisible) {
+        renderHitboxes();
+        showSuccess('Hitboxes visible');
+      } else {
+        hitboxCtx.clearRect(0, 0, 80, 80);
+        showSuccess('Hitboxes hidden');
+      }
+    }
+
+    function exportHitboxData() {
+      const hitboxJson = JSON.stringify(hitboxData, null, 2);
+      const blob = new Blob([hitboxJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'hitbox-data.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showSuccess('Hitbox data exported!');
+    }
+
     // Initialize on load
     init();
+    setupHitboxDrawing();
   </script>
 </body>
 </html>
