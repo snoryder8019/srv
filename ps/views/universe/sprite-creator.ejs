@@ -456,12 +456,13 @@
             <input type="text" id="atlasName" placeholder="e.g., Forest Terrain Pack" required>
           </div>
 
-          <div class="form-group">
-            <label>Planet Type / Biome *</label>
-            <div class="planet-type-selector" id="planetTypeSelector">
-              <!-- Planet types will be generated here -->
+          <!-- Conditional Context Selector (changes based on pack type) -->
+          <div class="form-group" id="contextSelectorGroup">
+            <label id="contextLabel">Context / Category *</label>
+            <div class="planet-type-selector" id="contextSelector">
+              <!-- Context options will be generated here based on pack type -->
             </div>
-            <input type="hidden" id="selectedPlanetType" required>
+            <input type="hidden" id="selectedContext" required>
           </div>
 
           <div class="form-group">
@@ -536,17 +537,121 @@
     let hitboxStartX = 0;
     let hitboxStartY = 0;
 
-    // Planet types from existing system
-    const PLANET_TYPES = [
-      { type: 'forest', name: 'Forest', icon: '🌲', biome: 'temperate' },
-      { type: 'desert', name: 'Desert', icon: '🏜️', biome: 'desert' },
-      { type: 'ocean', name: 'Ocean', icon: '🌊', biome: 'ocean' },
-      { type: 'volcanic', name: 'Volcanic', icon: '🌋', biome: 'volcanic' },
-      { type: 'ice', name: 'Ice', icon: '❄️', biome: 'frozen' },
-      { type: 'grassland', name: 'Grassland', icon: '🌾', biome: 'grassland' },
-      { type: 'tundra', name: 'Tundra', icon: '🏔️', biome: 'tundra' },
-      { type: 'swamp', name: 'Swamp', icon: '🐊', biome: 'swamp' },
-    ];
+    // Context options for each pack type
+    const CONTEXT_OPTIONS = {
+      terrain: {
+        label: 'Planet Biome',
+        options: [
+          { type: 'forest', name: 'Forest', icon: '🌲' },
+          { type: 'desert', name: 'Desert', icon: '🏜️' },
+          { type: 'ocean', name: 'Ocean', icon: '🌊' },
+          { type: 'volcanic', name: 'Volcanic', icon: '🌋' },
+          { type: 'ice', name: 'Ice', icon: '❄️' },
+          { type: 'grassland', name: 'Grassland', icon: '🌾' },
+          { type: 'tundra', name: 'Tundra', icon: '🏔️' },
+          { type: 'swamp', name: 'Swamp', icon: '🐊' },
+        ]
+      },
+      dungeon: {
+        label: 'Dungeon Theme',
+        options: [
+          { type: 'crypt', name: 'Crypt', icon: '⚰️' },
+          { type: 'cave', name: 'Cave', icon: '🗿' },
+          { type: 'ruins', name: 'Ancient Ruins', icon: '🏛️' },
+          { type: 'sewer', name: 'Sewer', icon: '🚰' },
+          { type: 'prison', name: 'Prison', icon: '🔒' },
+          { type: 'temple', name: 'Temple', icon: '⛩️' },
+        ]
+      },
+      ship_interior: {
+        label: 'Ship Class',
+        options: [
+          { type: 'fighter', name: 'Fighter', icon: '🚀' },
+          { type: 'freighter', name: 'Freighter', icon: '📦' },
+          { type: 'cruiser', name: 'Cruiser', icon: '🛸' },
+          { type: 'battleship', name: 'Battleship', icon: '⚔️' },
+          { type: 'colony', name: 'Colony Ship', icon: '🏙️' },
+          { type: 'science', name: 'Science Vessel', icon: '🔬' },
+        ]
+      },
+      inn: {
+        label: 'Era / Culture',
+        options: [
+          { type: 'medieval', name: 'Medieval', icon: '🏰' },
+          { type: 'western', name: 'Western', icon: '🤠' },
+          { type: 'fantasy', name: 'High Fantasy', icon: '🧙' },
+          { type: 'pirate', name: 'Pirate Den', icon: '🏴‍☠️' },
+          { type: 'steampunk', name: 'Steampunk', icon: '⚙️' },
+          { type: 'scifi', name: 'Sci-Fi Cantina', icon: '🛸' },
+        ]
+      },
+      fortress: {
+        label: 'Architectural Style',
+        options: [
+          { type: 'human', name: 'Human Castle', icon: '🏰' },
+          { type: 'elven', name: 'Elven Citadel', icon: '🌟' },
+          { type: 'dwarven', name: 'Dwarven Hold', icon: '⛏️' },
+          { type: 'orcish', name: 'Orc Stronghold', icon: '⚔️' },
+          { type: 'dark', name: 'Dark Fortress', icon: '🌑' },
+          { type: 'oriental', name: 'Oriental Palace', icon: '🏯' },
+        ]
+      },
+      dungeon_sidescroll: {
+        label: 'Difficulty / Theme',
+        options: [
+          { type: 'beginner', name: 'Beginner', icon: '🟢' },
+          { type: 'intermediate', name: 'Intermediate', icon: '🟡' },
+          { type: 'expert', name: 'Expert', icon: '🔴' },
+          { type: 'lava', name: 'Lava Temple', icon: '🌋' },
+          { type: 'ice', name: 'Ice Cavern', icon: '❄️' },
+          { type: 'toxic', name: 'Toxic Ruins', icon: '☢️' },
+        ]
+      },
+      asteroids: {
+        label: 'Game Mode',
+        options: [
+          { type: 'arcade', name: 'Arcade', icon: '🕹️' },
+          { type: 'survival', name: 'Survival', icon: '⏱️' },
+          { type: 'boss_rush', name: 'Boss Rush', icon: '👾' },
+          { type: 'exploration', name: 'Exploration', icon: '🗺️' },
+          { type: 'mining', name: 'Mining', icon: '⛏️' },
+          { type: 'combat', name: 'Combat', icon: '💥' },
+        ]
+      },
+      monsters: {
+        label: 'Faction / Type',
+        options: [
+          { type: 'undead', name: 'Undead', icon: '💀' },
+          { type: 'beast', name: 'Beast', icon: '🐺' },
+          { type: 'demon', name: 'Demon', icon: '😈' },
+          { type: 'elemental', name: 'Elemental', icon: '🔥' },
+          { type: 'insectoid', name: 'Insectoid', icon: '🐛' },
+          { type: 'alien', name: 'Alien', icon: '👽' },
+        ]
+      },
+      npcs: {
+        label: 'Faction / Role',
+        options: [
+          { type: 'civilian', name: 'Civilian', icon: '👤' },
+          { type: 'merchant', name: 'Merchant', icon: '💰' },
+          { type: 'guard', name: 'Guard', icon: '🛡️' },
+          { type: 'noble', name: 'Noble', icon: '👑' },
+          { type: 'guild', name: 'Guild Member', icon: '⚒️' },
+          { type: 'clergy', name: 'Clergy', icon: '✝️' },
+        ]
+      },
+      buildings: {
+        label: 'Tech Level',
+        options: [
+          { type: 'primitive', name: 'Primitive', icon: '🪨' },
+          { type: 'medieval', name: 'Medieval', icon: '🏰' },
+          { type: 'industrial', name: 'Industrial', icon: '🏭' },
+          { type: 'modern', name: 'Modern', icon: '🏢' },
+          { type: 'scifi', name: 'Sci-Fi', icon: '🚀' },
+          { type: 'alien', name: 'Alien Tech', icon: '👽' },
+        ]
+      }
+    };
 
     // Tile categories by row (as per spec) - varies by pack type
     const PACK_TYPE_RULES = {
@@ -713,10 +818,34 @@
       }
     }
 
+    // Generate context options based on pack type
+    function generateContextOptions(packType = 'terrain') {
+      const contextData = CONTEXT_OPTIONS[packType];
+      if (!contextData) return;
+
+      const label = document.getElementById('contextLabel');
+      const container = document.getElementById('contextSelector');
+
+      label.textContent = contextData.label + ' *';
+      container.innerHTML = contextData.options.map(option => `
+        <div class="planet-type-card" onclick="selectContext('${option.type}')">
+          <div class="type-icon">${option.icon}</div>
+          <div class="type-name">${option.name}</div>
+        </div>
+      `).join('');
+    }
+
+    // Select context option
+    function selectContext(type) {
+      document.querySelectorAll('.planet-type-card').forEach(card => card.classList.remove('selected'));
+      event.target.closest('.planet-type-card').classList.add('selected');
+      document.getElementById('selectedContext').value = type;
+    }
+
     // Initialize
     function init() {
       drawGrid();
-      generatePlanetTypes();
+      generateContextOptions('terrain'); // Default context
       generateTileGrid('terrain'); // Default to terrain
       setupUploadZone();
       switchMode('draw'); // Start in draw mode
@@ -725,8 +854,9 @@
       const packTypeSelect = document.getElementById('packType');
       packTypeSelect.addEventListener('change', (e) => {
         const packType = e.target.value;
+        generateContextOptions(packType); // Update context options
         generateTileGrid(packType);
-        showSuccess(`Tile grid updated for ${PACK_TYPE_RULES[packType].name}`);
+        showSuccess(`Pack type changed to ${PACK_TYPE_RULES[packType].name}`);
       });
     }
 
@@ -751,23 +881,6 @@
       }
     }
 
-    // Generate planet type cards
-    function generatePlanetTypes() {
-      const container = document.getElementById('planetTypeSelector');
-      container.innerHTML = PLANET_TYPES.map(type => `
-        <div class="planet-type-card" onclick="selectPlanetType('${type.type}')">
-          <div class="type-icon">${type.icon}</div>
-          <div class="type-name">${type.name}</div>
-        </div>
-      `).join('');
-    }
-
-    // Select planet type
-    function selectPlanetType(type) {
-      document.querySelectorAll('.planet-type-card').forEach(card => card.classList.remove('selected'));
-      event.target.closest('.planet-type-card').classList.add('selected');
-      document.getElementById('selectedPlanetType').value = type;
-    }
 
     // Generate tile grid based on pack type
     function generateTileGrid(packType = 'terrain') {
@@ -901,12 +1014,12 @@
     // Submit atlas
     async function submitAtlas() {
       const name = document.getElementById('atlasName').value;
-      const planetType = document.getElementById('selectedPlanetType').value;
+      const context = document.getElementById('selectedContext').value;
       const packType = document.getElementById('packType').value;
       const description = document.getElementById('description').value;
 
-      if (!name || !planetType) {
-        showError('Please fill in all required fields');
+      if (!name || !context) {
+        showError('Please fill in all required fields (name and context)');
         return;
       }
 
@@ -952,7 +1065,7 @@
       formData.append('atlasImage', blob, 'atlas.png');
       formData.append('manifest', JSON.stringify({
         name,
-        planetType,
+        context, // Contextual category (planet biome, ship class, etc.)
         packType,
         description,
         tiles: tileManifest,
