@@ -1,7 +1,7 @@
 # Claude AI Context - Stringborn Universe
 
-**Last Updated:** November 3, 2025 (Session Wrap)
-**Current Version:** v0.8.6 (Session Wrap & Documentation)
+**Last Updated:** November 5, 2025 (Zone Template Critical Fix)
+**Current Version:** v0.8.7 (Critical Zone Template EJS Syntax Error)
 **Purpose:** Efficient context loading for AI assistance sessions
 
 ---
@@ -71,33 +71,47 @@ lsof -ti:3399 | xargs kill -9
 
 ### Recent Commits (Last 5)
 ```
-[Current] - 2025-11-03 - v0.8.6 - Session Wrap & Documentation ⭐ LIVE PRODUCTION
-[Previous] - 2025-11-03 - v0.8.5 - Terminal Interface Overhaul
-6a6c625 - 2025-11-03 - commit
-f338f02 - 2025-11-03 - v0.8.4 - Header & Breadcrumb Navigation System
-d61b0a1 - 2025-11-02 - v0.8.3 - Real-Time Planet Lighting & Navigation Fix
+[Current] - 2025-11-05 - v0.8.7 - Critical Zone Template EJS Syntax Error ⭐ LIVE PRODUCTION
+f6ec015 - 2025-11-05 - socket location stable
+b3517f1 - 2025-11-05 - Refactor: Socket.IO player coordinates and galactic level standardization
+ac723ba - 2025-11-05 - v0.8.6 - Infrastructure & Documentation Organization
+c965686 - 2025-11-05 - commit 8.0.6
 ```
 
-### Today's Session Additions (Nov 3, 2025)
+### Today's Session Additions (Nov 5, 2025)
 
-**v0.8.6 - Session Wrap & Documentation (MAINTENANCE RELEASE):**
-1. ✅ Updated patch notes to v0.8.6 with streamlined maintenance release content
-2. ✅ Moved v0.8.5 detailed notes to collapsible Previous Versions section
-3. ✅ Added v0.8.5 "Terminal Interface Overhaul" archive entry with full details
-4. ✅ Updated CLAUDE.md with latest session summary and version info
-5. ✅ Organized patch notes with historical version tracking (v0.8.5, v0.4.0)
+**v0.8.7 - Critical Zone Template EJS Syntax Error (CRITICAL BUG FIX):**
+1. ✅ Fixed zone.ejs line 166: Changed `<%= %>` to `<%- %>` for characterData JSON
+2. ✅ Added Socket.IO client library to zone.ejs head section
+3. ✅ Implemented proper script loading order with defer attribute
+4. ✅ Created comprehensive patch notes (PATCH_NOTES_v0.8.7.md)
+5. ✅ Updated CHANGELOG_LATEST.md with commit details
+6. ✅ Updated PATCH_NOTES_INDEX.md with v0.8.7 entry
 
-**Key Changes:**
-- **Patch Notes Archive:** Collapsible Previous Versions section for historical releases
-- **v0.8.5 Documentation:** Comprehensive terminal overlay implementation archived
-- **Version History:** Organized chronological patch notes with expand/collapse functionality
-- **Development Docs:** CLAUDE.md updated with current state and session summary
+**Critical Bug Fixed:**
+- **Issue:** Zone pages at `/universe/zone/:zoneId` failed to load
+- **Error:** `SyntaxError: expected property name, got '&'` in browser console
+- **Root Cause:** EJS `<%= %>` HTML-escapes JSON, turning `&` into `&amp;`
+- **Solution:** Changed to `<%- %>` which outputs raw, unescaped content
+- **Impact:** All zone interior pages now load correctly
+
+**Key Technical Lesson:**
+When embedding JSON in EJS templates, ALWAYS use `<%-` (unescaped) not `<%=` (HTML-escaped). HTML escaping breaks JSON parsing.
 
 **Files Modified:**
-- `views/help/patch-notes.ejs` - Version bump, content restructuring, archive system
-- `docs/CLAUDE.md` - Version update, session summary, commit history
+- `views/universe/zone.ejs` - Critical fix on line 166, Socket.IO integration, script loading
+- `docs/PATCH_NOTES_v0.8.7.md` - New comprehensive patch notes
+- `docs/CHANGELOG_LATEST.md` - Updated with v0.8.7 commit
+- `docs/PATCH_NOTES_INDEX.md` - Added v0.8.7 entry
+- `docs/CLAUDE.md` - Session summary and version update
 
-**Database Changes:** None (documentation-only release)
+**Testing Verified:**
+- `/universe/zone/690a8ea829c03e47b2000138` - Loads successfully
+- Zone data properly initialized in browser window
+- Character data correctly parsed
+- No JSON syntax errors in console
+
+**Database Changes:** None (template-only fix)
 
 ### Previous Session (Nov 3, 2025)
 

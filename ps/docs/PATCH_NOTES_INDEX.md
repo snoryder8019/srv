@@ -6,6 +6,7 @@ Last Updated: 2025-11-05T00:13:28.527Z
 
 ## Available Versions
 
+- [Version 0.8.7](PATCH_NOTES_v0.8.7.md) - v0.8.7 "Critical Zone Template Fix"
 - [Version 0.8.6](PATCH_NOTES_v0.8.6.md) - Patch Notes v0.8.6
 - [Version 0.8.5](PATCH_NOTES_v0.8.5.md)
 - [Version 0.8.2](PATCH_NOTES_v0.8.2.md)
