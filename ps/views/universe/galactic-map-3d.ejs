@@ -352,6 +352,127 @@
         font-size: 8px;
       }
     }
+
+    /* Travel Status Notification Bar */
+    #travelStatusBar {
+      position: fixed;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 170, 0, 0.95);
+      border: 2px solid #ffaa00;
+      border-radius: 8px;
+      padding: 12px 24px;
+      color: #000;
+      font-size: 14px;
+      font-weight: bold;
+      z-index: 10000;
+      display: none;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 0 30px rgba(255, 170, 0, 0.6);
+      min-width: 300px;
+      text-align: center;
+    }
+
+    #travelStatusBar.visible {
+      display: block;
+      animation: slideDown 0.3s ease-out;
+    }
+
+    #travelStatusBar.arrival {
+      background: rgba(0, 255, 170, 0.95);
+      border-color: #00ffaa;
+      box-shadow: 0 0 30px rgba(0, 255, 170, 0.6);
+    }
+
+    @keyframes slideDown {
+      from {
+        transform: translateX(-50%) translateY(-20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .travel-status-icon {
+      font-size: 18px;
+      margin-right: 8px;
+    }
+
+    .travel-progress {
+      font-size: 12px;
+      margin-top: 6px;
+      opacity: 0.8;
+    }
+
+    /* View Navigation Buttons */
+    .view-nav-buttons {
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .view-nav-btn {
+      background: rgba(0, 20, 40, 0.9);
+      border: 2px solid #4488ff;
+      border-radius: 6px;
+      padding: 8px 14px;
+      color: #4488ff;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 140px;
+      font-weight: bold;
+    }
+
+    .view-nav-btn:hover {
+      background: rgba(68, 136, 255, 0.3);
+      border-color: #66aaff;
+      box-shadow: 0 0 15px rgba(68, 136, 255, 0.5);
+      transform: translateX(-3px);
+    }
+
+    .view-nav-btn:active {
+      transform: translateX(-3px) scale(0.98);
+    }
+
+    .view-nav-btn .icon {
+      font-size: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .view-nav-buttons {
+        top: 70px;
+        right: 10px;
+      }
+
+      .view-nav-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+        min-width: 120px;
+      }
+
+      #travelStatusBar {
+        top: 65px;
+        padding: 10px 16px;
+        font-size: 12px;
+        min-width: 250px;
+      }
+
+      .travel-progress {
+        font-size: 10px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -365,6 +486,25 @@
   <div class="location-info">
     <div id="locationName" class="location-name">UNIVERSE</div>
     <div id="locationChildren" class="location-children">Loading assets...</div>
+  </div>
+
+  <!-- Travel Status Notification Bar -->
+  <div id="travelStatusBar">
+    <span class="travel-status-icon">🚀</span>
+    <span id="travelStatusText">In Transit</span>
+    <div class="travel-progress" id="travelProgress"></div>
+  </div>
+
+  <!-- View Navigation Buttons -->
+  <div class="view-nav-buttons">
+    <button class="view-nav-btn" id="goToMeBtn">
+      <span class="icon">📍</span>
+      <span>Go To Me</span>
+    </button>
+    <button class="view-nav-btn" id="viewCenterBtn">
+      <span class="icon">🎯</span>
+      <span>Galactic Center</span>
+    </button>
   </div>
 
   <!-- Main Map Container -->
@@ -3274,7 +3414,9 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             characterId: currentCharacterId,
-            destination: galaxyPos
+            destination: galaxyPos,
+            destinationAssetId: galaxyData.id,
+            travelType: 'connection' // Default to connection travel for validation
           })
         });
         const result = await response.json();
@@ -3342,6 +3484,55 @@
         message += `<div style="margin-bottom: 10px;">Traveling to ${galaxyData.title}...</div>`;
       }
 
+      // Check for active connection (client-side)
+      const currentAssetId = window.currentCharacter?.location?.dockedGalaxyId ||
+                             window.currentCharacter?.location?.assetId;
+      const connections = window.galacticMap?.lastPhysicsData?.connections || [];
+      const activeConnection = connections.find(conn => {
+        const isConnected = (conn.from === currentAssetId && conn.to === galaxyData.id) ||
+                            (conn.to === currentAssetId && conn.from === galaxyData.id);
+        return isConnected && conn.state !== 'broken';
+      });
+
+      // Add travel mode selection
+      message += `<div style="margin-top: 20px; padding: 15px; background: rgba(138, 79, 255, 0.1); border: 1px solid rgba(138, 79, 255, 0.3); border-radius: 8px;">`;
+      message += `<strong style="color: #8a4fff;">Choose Travel Method:</strong><br/>`;
+
+      // Show connection status
+      if (activeConnection) {
+        let connColor = '#00ff00';
+        if (activeConnection.state === 'forming') connColor = '#0088ff';
+        else if (activeConnection.color) connColor = '#' + activeConnection.color.toString(16).padStart(6, '0');
+
+        message += `<div style="margin: 8px 0; padding: 8px; background: rgba(0, 255, 0, 0.1); border-left: 3px solid ${connColor}; border-radius: 4px; font-size: 12px;">`;
+        message += `✅ <strong>Connection Found:</strong> ${activeConnection.state} (${Math.round(activeConnection.distance || 0)} units)`;
+        message += `</div>`;
+      } else {
+        message += `<div style="margin: 8px 0; padding: 8px; background: rgba(255, 0, 0, 0.1); border-left: 3px solid #ff0000; border-radius: 4px; font-size: 12px;">`;
+        message += `❌ <strong>No Connection</strong> - Must use "Fall Into Galaxy"`;
+        message += `</div>`;
+      }
+
+      message += `<div style="margin-top: 10px; display: flex; gap: 10px;">`;
+
+      // Fall into galaxy option
+      const canFall = distance <= 500 && (character.ship?.fittings?.lifeSupport?.foodRemaining || 0) >= 10 && (character.ship?.fittings?.medicalBay?.medKitsRemaining || 0) >= 1;
+      message += `<button id="fallIntoGalaxyBtn" style="flex: 1; padding: 10px; background: ${canFall ? 'rgba(255, 165, 0, 0.3)' : 'rgba(100, 100, 100, 0.3)'}; border: 2px solid ${canFall ? '#ffaa00' : '#666'}; border-radius: 6px; color: ${canFall ? '#ffaa00' : '#999'}; cursor: ${canFall ? 'pointer' : 'not-allowed'}; font-size: 13px;" ${canFall ? '' : 'disabled'}>`;
+      message += `🪐 Fall Into Galaxy<br/><span style="font-size: 11px;">(Food + First Aid)</span>`;
+      message += `</button>`;
+
+      // Travel along connection option
+      message += `<button id="travelAlongConnectionBtn" style="flex: 1; padding: 10px; background: rgba(0, 136, 255, 0.3); border: 2px solid #0088ff; border-radius: 6px; color: #0088ff; cursor: pointer; font-size: 13px;">`;
+      message += `🚀 Travel Along Connection<br/><span style="font-size: 11px;">(Requires Fuel + Connection)</span>`;
+      message += `</button>`;
+
+      message += `</div>`;
+      message += `<div style="margin-top: 10px; font-size: 11px; color: #888;">`;
+      message += `Fall into galaxy: Must be within 500 units, requires 10 food & 1 medkit<br/>`;
+      message += `Travel: Must have active connection (green/yellow/orange line), requires fuel`;
+      message += `</div>`;
+      message += `</div>`;
+
       message += `<div style="margin-top: 15px; padding: 10px; background: rgba(255, 102, 0, 0.2); border-left: 3px solid #ff6600; border-radius: 4px; font-size: 13px;">`;
       message += `⚠️ <strong>You will need equipment, food, fuel and supplies to escape this galaxy.</strong>`;
       message += `</div>`;
@@ -3352,36 +3543,99 @@
       // Update button labels
       cancelBtn.querySelector('.nav-btn-icon').textContent = '🚫';
       cancelBtn.childNodes[cancelBtn.childNodes.length - 1].textContent = ' Stay Here';
-      confirmBtn.querySelector('.nav-btn-icon').textContent = '🚀';
-      confirmBtn.childNodes[confirmBtn.childNodes.length - 1].textContent = ' Enter Galaxy';
 
-      // Disable confirm button if cannot travel
-      if (validation && !validation.canTravel) {
-        confirmBtn.disabled = true;
-        confirmBtn.style.opacity = '0.5';
-        confirmBtn.style.cursor = 'not-allowed';
-      } else {
-        confirmBtn.disabled = false;
-        confirmBtn.style.opacity = '1';
-        confirmBtn.style.cursor = 'pointer';
-      }
+      // Hide the default confirm button, use custom buttons instead
+      confirmBtn.style.display = 'none';
 
-      // Set up confirm button to drill down into galaxy
-      const confirmHandler = () => {
-        console.log('✅ User confirmed galaxy entry');
-        window.closeNavigationDialog();
-        if (window.galacticMap && window.galacticMap.showGalaxyLevel) {
-          window.galacticMap.showGalaxyLevel(galaxyData.id);
+      // Set up fall into galaxy handler
+      setTimeout(() => {
+        const fallBtn = document.getElementById('fallIntoGalaxyBtn');
+        if (fallBtn && !fallBtn.disabled) {
+          fallBtn.onclick = () => {
+            console.log('✅ User chose to fall into galaxy');
+            window.closeNavigationDialog();
+            if (window.galacticMap && window.galacticMap.showGalaxyLevel) {
+              window.galacticMap.showGalaxyLevel(galaxyData.id);
+            }
+          };
         }
-        // Remove this specific handler
-        confirmBtn.removeEventListener('click', confirmHandler);
-      };
 
-      // Replace existing confirm handler
-      const oldConfirm = document.getElementById('confirmNavigateBtn');
-      const newConfirm = oldConfirm.cloneNode(true);
-      oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
-      newConfirm.addEventListener('click', confirmHandler);
+        // Set up travel along connection handler
+        const travelBtn = document.getElementById('travelAlongConnectionBtn');
+        if (travelBtn) {
+          travelBtn.onclick = async () => {
+            console.log('✅ User chose to travel along connection');
+
+            // Get character's current location (asset they're docked at)
+            const currentAssetId = window.currentCharacter?.location?.dockedGalaxyId ||
+                                   window.currentCharacter?.location?.assetId;
+
+            if (!currentAssetId) {
+              alert('❌ Cannot determine your current location. You must be docked at a galaxy or anomaly to travel.');
+              return;
+            }
+
+            // Check if there's an active connection between current location and destination
+            // Access the latest physics data from the galactic map
+            const connections = window.galacticMap?.lastPhysicsData?.connections || [];
+
+            const hasConnection = connections.some(conn => {
+              // Check if connection exists between current and destination
+              const isConnected = (conn.from === currentAssetId && conn.to === galaxyData.id) ||
+                                  (conn.to === currentAssetId && conn.from === galaxyData.id);
+
+              // Must be an active connection (not broken)
+              const isActive = conn.state !== 'broken';
+
+              return isConnected && isActive;
+            });
+
+            if (!hasConnection) {
+              alert('❌ No active connection between your location and ' + galaxyData.title +
+                    '\n\nYou can only travel along visible connection lines (green, yellow, orange, or red).' +
+                    '\n\nTry using "Fall Into Galaxy" instead if you\'re close enough.');
+              return;
+            }
+
+            // Check if character has enough fuel
+            if (validation && !validation.canTravel) {
+              let blockerMessages = validation.blockers.map(b => b.message).join('\n');
+              alert('❌ Cannot travel:\n\n' + blockerMessages);
+              return;
+            }
+
+            // All checks passed, start travel animation along connection
+            console.log('✅ Connection found! Starting travel along connection...');
+            window.closeNavigationDialog();
+
+            // Get current position (from docked asset) and destination position
+            let currentPos = { x: 0, y: 0, z: 0 };
+
+            // Try to get position from docked asset
+            const dockedAsset = window.galacticMap?.assets?.get(currentAssetId);
+            if (dockedAsset && dockedAsset.coordinates) {
+              currentPos = dockedAsset.coordinates;
+            } else if (window.currentCharacter?.location) {
+              currentPos = window.currentCharacter.location;
+            }
+
+            const destPos = galaxyData.data?.coordinates || galaxyData.coordinates || { x: 0, y: 0, z: 0 };
+
+            // Start animated travel along connection line
+            if (window.galacticMap && window.galacticMap.startConnectionTravel) {
+              window.galacticMap.startConnectionTravel(
+                currentAssetId,
+                galaxyData.id,
+                currentPos,
+                destPos,
+                validation.requirements?.travelTime || 10 // Travel time in seconds
+              );
+            } else {
+              console.error('❌ startConnectionTravel function not found');
+            }
+          };
+        }
+      }, 100);
 
       // Show dialog
       dialog.classList.add('active');
@@ -3984,8 +4238,17 @@
             location: character.location
           });
           if (window.galacticMap && character.location) {
+            // Add character pin
             window.galacticMap.addPlayerCharacter(character);
             console.log('✅ Character added to galactic map!');
+
+            // Ensure camera focuses on character's current location after assets load
+            setTimeout(() => {
+              if (window.galacticMap && window.galacticMap.focusOnCurrentPlayer) {
+                console.log('🎥 Re-focusing camera on character location after initialization');
+                window.galacticMap.focusOnCurrentPlayer();
+              }
+            }, 1000); // Give assets time to fully load
           } else {
             console.warn('⚠️ Cannot add character to map:', {
               mapExists: !!window.galacticMap,
@@ -5036,13 +5299,156 @@
       }
     });
 
-    // NOTE: galacticPhysicsUpdate handler is registered via GalacticMap3D.initializeSocket()
-    // The handler in galactic-map-3d.js (handleServerPhysicsUpdate) processes galaxies, stars, connections, AND characters
-    // Do NOT add duplicate handlers here as they will intercept the event
+    // Register galacticPhysicsUpdate handler
+    console.log('🔌 Registering emergency socket with galactic map...');
+    if (window.galacticMap && window.galacticMap.initializeSocket) {
+      window.galacticMap.initializeSocket(socket);
+      console.log('✅ Emergency socket registered with galactic map physics handler');
+    } else {
+      console.error('❌ Cannot register emergency socket - galacticMap.initializeSocket not available');
+    }
 
     window.emergencySocket = socket;
     console.log('✅ Emergency socket listener ready!');
   });
+})();
+</script>
+
+<script>
+// Travel Status Bar & View Navigation Buttons
+(function() {
+  const travelStatusBar = document.getElementById('travelStatusBar');
+  const travelStatusText = document.getElementById('travelStatusText');
+  const travelProgress = document.getElementById('travelProgress');
+  const goToMeBtn = document.getElementById('goToMeBtn');
+  const viewCenterBtn = document.getElementById('viewCenterBtn');
+
+  // Show travel status notification
+  window.showTravelStatus = function(message, progress = '', isArrival = false) {
+    travelStatusText.textContent = message;
+    travelProgress.textContent = progress;
+
+    if (isArrival) {
+      travelStatusBar.classList.add('arrival');
+    } else {
+      travelStatusBar.classList.remove('arrival');
+    }
+
+    travelStatusBar.classList.add('visible');
+  };
+
+  // Hide travel status notification
+  window.hideTravelStatus = function() {
+    travelStatusBar.classList.remove('visible');
+    setTimeout(() => {
+      travelStatusBar.classList.remove('arrival');
+    }, 300);
+  };
+
+  // Update travel progress
+  window.updateTravelProgress = function(percent, eta, destination) {
+    const progress = `${Math.round(percent)}% • ETA: ${eta}s • Destination: ${destination}`;
+    travelProgress.textContent = progress;
+  };
+
+  // Go To Me button - focus camera on current character
+  goToMeBtn.addEventListener('click', () => {
+    if (!window.currentCharacter) {
+      alert('⚠️ No character loaded');
+      return;
+    }
+
+    if (!window.galacticMap) {
+      alert('⚠️ Map not initialized');
+      return;
+    }
+
+    // Use the focusOnCurrentPlayer method
+    window.galacticMap.focusOnCurrentPlayer();
+
+    // Show brief notification
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 255, 170, 0.95);
+      border: 2px solid #00ffaa;
+      padding: 10px 20px;
+      border-radius: 6px;
+      color: #000;
+      font-weight: bold;
+      z-index: 10000;
+      box-shadow: 0 0 20px rgba(0, 255, 170, 0.3);
+    `;
+    notification.textContent = `📍 Located: ${window.currentCharacter.name}`;
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+      if (notification.parentNode) {
+        document.body.removeChild(notification);
+      }
+    }, 2000);
+  });
+
+  // View Galactic Center button - focus on anomaly
+  viewCenterBtn.addEventListener('click', () => {
+    if (!window.galacticMap) {
+      alert('⚠️ Map not initialized');
+      return;
+    }
+
+    // Find the Primordial Singularity (anomaly at center)
+    const anomaly = Array.from(window.galacticMap.assets.values())
+      .find(asset => asset.assetType === 'anomaly' && asset.title?.includes('Primordial'));
+
+    if (!anomaly) {
+      console.warn('⚠️ Galactic center anomaly not found');
+      // Fallback: zoom to origin
+      window.galacticMap.camera.position.set(0, 2000, 5000);
+      window.galacticMap.camera.lookAt(0, 0, 0);
+      return;
+    }
+
+    // Focus on the anomaly
+    const pos = anomaly.coordinates;
+    const distance = 3000; // View distance from center
+
+    window.galacticMap.camera.position.set(
+      pos.x,
+      pos.y + distance * 0.5,
+      pos.z + distance
+    );
+    window.galacticMap.camera.lookAt(pos.x, pos.y, pos.z || 0);
+
+    // Show brief notification
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(138, 79, 255, 0.95);
+      border: 2px solid #8a4fff;
+      padding: 10px 20px;
+      border-radius: 6px;
+      color: #fff;
+      font-weight: bold;
+      z-index: 10000;
+      box-shadow: 0 0 20px rgba(138, 79, 255, 0.3);
+    `;
+    notification.textContent = `🎯 Viewing: ${anomaly.title || 'Galactic Center'}`;
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+      if (notification.parentNode) {
+        document.body.removeChild(notification);
+      }
+    }, 2000);
+  });
+
+  console.log('✅ Travel status & view navigation ready');
 })();
 </script>
 

@@ -1,82 +1,70 @@
 # Recent Changes Summary
 
-Generated: 2025-11-05T00:13:28.377Z
+Generated: 2025-11-07T15:26:57.273Z
 
 ---
 
-## Commit: socket location stable
+## Commit: v0.8.10 - World Sprite Builder: Contextual Category System
 
-- **Hash:** `fb9a7f1`
+- **Hash:** `282c1fd`
 - **Author:** Scott
-- **Date:** 11/4/2025
-- **Changes:** 8 files, +339/-183 lines
+- **Date:** 11/5/2025
+- **Changes:** 1 files, +152/-39 lines
 
 ### Modified Areas:
 
-**Frontend:** 2 files
-**Backend:** 1 files
-**Views:** 1 files
-**Documentation:** 3 files
-
----
-
-## Commit: Refactor: Socket.IO player coordinates and galactic level standardization
-
-- **Hash:** `b3517f1`
-- **Author:** Scott
-- **Date:** 11/3/2025
-- **Changes:** 3 files, +95/-93 lines
-
-### Modified Areas:
-
-**Frontend:** 1 files
-**Backend:** 1 files
 **Views:** 1 files
 
 ---
 
-## Commit: v0.8.6 - Infrastructure & Documentation Organization
+## Commit: v0.8.9 - World Sprite Builder: Expanded Pack Types for 2D Environments
 
-- **Hash:** `ac723ba`
+- **Hash:** `0c50a42`
 - **Author:** Scott
-- **Date:** 11/3/2025
-- **Changes:** 64 files, +1555/-531 lines
+- **Date:** 11/5/2025
+- **Changes:** 1 files, +69/-6 lines
 
 ### Modified Areas:
 
-**Frontend:** 1 files
-**Backend:** 4 files
 **Views:** 1 files
-**Documentation:** 53 files
 
 ---
 
-## Commit: commit 8.0.6
+## Commit: Menu: Update sprite creator link to World Sprite Builder
 
-- **Hash:** `c965686`
+- **Hash:** `8da3c00`
 - **Author:** Scott
-- **Date:** 11/3/2025
-- **Changes:** 10 files, +3520/-543 lines
+- **Date:** 11/5/2025
+- **Changes:** 1 files, +5/-5 lines
 
 ### Modified Areas:
 
-**Backend:** 1 files
-**Views:** 4 files
+**Views:** 1 files
+
+---
+
+## Commit: v0.8.8 - Sprite Builder: Restore working version + Hitbox Layer
+
+- **Hash:** `4ba3595`
+- **Author:** Scott
+- **Date:** 11/5/2025
+
+### Modified Areas:
+
+**Views:** 1 files
+
+---
+
+## Commit: v0.8.7 - Documentation: Patch notes and CLAUDE.md update
+
+- **Hash:** `d446d1a`
+- **Author:** Scott
+- **Date:** 11/5/2025
+- **Changes:** 4 files, +153/-23 lines
+
+### Modified Areas:
+
 **Documentation:** 4 files
-
----
-
-## Commit: commit
-
-- **Hash:** `57d9668`
-- **Author:** Scott
-- **Date:** 11/3/2025
-- **Changes:** 5 files, +5228/-27 lines
-
-### Modified Areas:
-
-**Views:** 3 files
-**Documentation:** 2 files
 
 ---
 

@@ -2550,9 +2550,6 @@ class GalacticMap3D {
 
     if (!data) return;
 
-    // Store latest physics data for connection checking
-    this.lastPhysicsData = data;
-
     // Update galaxy positions
     if (data.galaxies && data.galaxies.length > 0) {
       data.galaxies.forEach(galaxyUpdate => {
@@ -2578,20 +2575,8 @@ class GalacticMap3D {
           );
         }
 
-        // DEBUG: Log what we receive for trail
-        console.log(`🔍 Galaxy ${galaxyUpdate.id.substring(0, 8)} received data:`, {
-          hasTrail: !!galaxyUpdate.trail,
-          trailLength: galaxyUpdate.trail ? galaxyUpdate.trail.length : 0,
-          keys: Object.keys(galaxyUpdate)
-        });
-
-        // Create/update purple orbital trail for galaxy (using actual position history from server)
-        if (galaxyUpdate.trail && galaxyUpdate.trail.length > 0) {
-          console.log(`💜 Galaxy ${galaxyUpdate.id.substring(0, 8)}: Trail with ${galaxyUpdate.trail.length} positions`);
-          this.createGalaxyTrail(mesh, galaxyUpdate.id, galaxyUpdate.trail);
-        } else {
-          console.warn(`⚠️ Galaxy ${galaxyUpdate.id.substring(0, 8)}: No trail data yet`);
-        }
+        // Create/update purple orbital trail for galaxy
+        this.createGalaxyTrail(mesh, galaxyUpdate.id);
       });
     }
 
@@ -2623,10 +2608,7 @@ class GalacticMap3D {
 
     // Update connections if provided
     if (data.connections) {
-      console.log(`📡 Received ${data.connections.length} connections from server`);
       this.updateConnectionsFromServer(data.connections);
-    } else {
-      console.warn('⚠️ No connections in physics update data');
     }
 
     // OPTION B: Extract characters from nested structure
@@ -2712,31 +2694,21 @@ class GalacticMap3D {
    */
   updateConnectionsFromServer(connections) {
     // Only render in galactic view (not in galaxy interior)
-    if (this.currentLevel !== 'galactic') {
-      console.log('⚠️ Skipping connections render - not in galactic view (currentLevel:', this.currentLevel, ')');
-      return;
-    }
-
-    console.log(`🔗 Rendering ${connections.length} connection lines in galactic view`);
+    if (this.currentLevel !== 'galactic') return;
 
     // Clear existing connections
-    const oldCount = this.connectionsGroup.children.length;
     while (this.connectionsGroup.children.length > 0) {
       const child = this.connectionsGroup.children[0];
       if (child.geometry) child.geometry.dispose();
       if (child.material) child.material.dispose();
       this.connectionsGroup.remove(child);
     }
-    console.log(`   Cleared ${oldCount} old connection lines`);
 
     // Create new connections
-    connections.forEach((conn, index) => {
-      if (index < 3) {
-        console.log(`   Connection ${index}: ${conn.from} → ${conn.to}, state: ${conn.state}, distance: ${conn.distance}`);
-      }
+    console.log(`🔗 Rendering ${connections.length} connection lines`);
+    connections.forEach(conn => {
       this.createConnection(conn);
     });
-    console.log(`   ✅ Created ${this.connectionsGroup.children.length} connection line objects`);
   }
 
   /**
@@ -2750,50 +2722,39 @@ class GalacticMap3D {
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
 
     // Determine line style based on state
-    // Use server-provided color for gradient (yellow→orange→red)
     let material;
     if (conn.state === 'stable') {
-      // Green solid line for stable connections
+      // Green solid line for stable connections (3+ days)
       material = new THREE.LineBasicMaterial({
-        color: conn.color || 0x00ff00,
-        transparent: true,
-        opacity: 0.8,
-        linewidth: conn.isPrimary ? 3 : 2
-      });
-    } else if (conn.state === 'breaking') {
-      // Yellow→Orange→Red solid (gradient based on distance)
-      material = new THREE.LineBasicMaterial({
-        color: conn.color || 0xff4400, // Use server color for gradient
-        transparent: true,
-        opacity: 0.75,
-        linewidth: 2
-      });
-    } else if (conn.state === 'broken') {
-      // Red dashed for recently broken connections
-      material = new THREE.LineDashedMaterial({
-        color: conn.color || 0xff0000,
-        transparent: true,
-        opacity: 0.5,
-        linewidth: 2,
-        dashSize: 20,
-        gapSize: 20
-      });
-    } else if (conn.state === 'forming') {
-      // Blue dashed for forming connections
-      material = new THREE.LineDashedMaterial({
-        color: conn.color || 0x0088ff,
+        color: 0x00ff00,
         transparent: true,
         opacity: 0.6,
-        linewidth: 2,
-        dashSize: 30,
-        gapSize: 15
+        linewidth: conn.isPrimary ? 2 : 1
+      });
+    } else if (conn.state === 'breaking') {
+      // Red-orange for connections about to break (<1 day)
+      material = new THREE.LineBasicMaterial({
+        color: 0xff4400,
+        transparent: true,
+        opacity: 0.5,
+        linewidth: 1
+      });
+    } else if (conn.state === 'forming') {
+      // Blue dashed for forming connections (<0.5 days)
+      material = new THREE.LineDashedMaterial({
+        color: 0x0088ff,
+        transparent: true,
+        opacity: 0.4,
+        linewidth: 1,
+        dashSize: 20,
+        gapSize: 10
       });
     }
 
     const line = new THREE.Line(geometry, material);
 
     // For dashed lines, compute line distances
-    if (conn.state === 'forming' || conn.state === 'broken') {
+    if (conn.state === 'forming') {
       line.computeLineDistances();
     }
 
@@ -2811,45 +2772,69 @@ class GalacticMap3D {
 
   /**
    * Create or update purple orbital trail for a galaxy
-   * Shows the galaxy's ACTUAL past trajectory (from physics position history)
+   * Shows the galaxy's past orbital path as a tapered purple "pen stripe"
    */
-  createGalaxyTrail(galaxyMesh, galaxyId, trailHistory = null) {
+  createGalaxyTrail(galaxyMesh, galaxyId) {
     // Only works in galactic level
-    if (this.currentLevel !== 'galactic') {
-      console.log(`⚠️ Skipping trail for ${galaxyId.substring(0, 8)} - not in galactic view`);
-      return;
-    }
+    if (this.currentLevel !== 'galactic') return;
 
     const asset = this.assets.get(galaxyId);
     if (!asset || !galaxyMesh) {
-      console.warn(`⚠️ Cannot create trail: asset or mesh missing for ${galaxyId.substring(0, 8)}`);
+      console.warn(`⚠️ Cannot create trail: asset or mesh missing for ${galaxyId}`);
       return;
     }
 
-    // Use trail history from server if provided, otherwise skip
-    if (!trailHistory || trailHistory.length < 2) {
-      // Not enough history yet, skip trail creation
-      console.log(`⚠️ Trail for ${galaxyId.substring(0, 8)}: Not enough history (${trailHistory ? trailHistory.length : 0} positions)`);
+    // Find parent anomaly (galaxies orbit anomalies)
+    const anomalies = Array.from(this.assets.values()).filter(a => a.mesh && a.mesh.userData.type === 'anomaly');
+    if (anomalies.length === 0) {
+      console.warn(`⚠️ Cannot create galaxy trail: No anomalies found (${this.assets.size} assets loaded)`);
       return;
     }
 
-    console.log(`✨ Creating trail for ${galaxyId.substring(0, 8)}: ${trailHistory.length} positions`);
+    // Use nearest anomaly as orbit center
+    const galaxyPos = galaxyMesh.position;
+    let nearestAnomaly = anomalies[0].mesh;
+    let minDist = Infinity;
 
-    // Convert trail history to Vector3 points (newest to oldest)
+    for (const anomaly of anomalies) {
+      const dist = galaxyPos.distanceTo(anomaly.mesh.position);
+      if (dist < minDist) {
+        minDist = dist;
+        nearestAnomaly = anomaly.mesh;
+      }
+    }
+
+    const orbitCenter = nearestAnomaly.position;
+    const orbitRadius = galaxyPos.distanceTo(orbitCenter);
+
+    // Calculate current angle
+    const dx = galaxyPos.x - orbitCenter.x;
+    const dz = galaxyPos.z - orbitCenter.z;
+    const currentAngle = Math.atan2(dz, dx);
+
+    // Create trail points (180-degree arc behind galaxy - half orbit for better trajectory visibility)
+    const trailSegments = 128; // Doubled for smoother longer trail
+    const trailLength = Math.PI; // 180 degrees (half orbit)
     const trailPoints = [];
-    for (let i = trailHistory.length - 1; i >= 0; i--) {
-      const pos = trailHistory[i];
-      trailPoints.push(new THREE.Vector3(pos.x, pos.y, pos.z));
+
+    for (let i = 0; i < trailSegments; i++) {
+      const t = i / (trailSegments - 1); // 0 to 1
+      const trailAngle = currentAngle - (t * trailLength); // Go backwards from current angle
+
+      const x = orbitCenter.x + Math.cos(trailAngle) * orbitRadius;
+      const y = orbitCenter.y; // Keep at same Y level
+      const z = orbitCenter.z + Math.sin(trailAngle) * orbitRadius;
+
+      trailPoints.push(new THREE.Vector3(x, y, z));
     }
 
-    // Create line geometry from actual position history
+    // Create line geometry with tapering opacity
     const trailGeometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
 
     // Create colors array for gradient (bright purple at galaxy, fade to transparent)
     const colors = [];
-    const numPoints = trailPoints.length;
-    for (let i = 0; i < numPoints; i++) {
-      const t = i / (numPoints - 1); // 0 to 1 (newest to oldest)
+    for (let i = 0; i < trailSegments; i++) {
+      const t = i / (trailSegments - 1);
       const opacity = 1.0 - t; // Fade from 1.0 to 0.0
       // Purple color (RGB: 138, 79, 255 normalized) with fading opacity
       colors.push(opacity * 0.541, opacity * 0.31, opacity * 1.0);
@@ -2860,8 +2845,8 @@ class GalacticMap3D {
     const trailMaterial = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.9,
-      linewidth: 3,
+      opacity: 1.0, // Increased from 0.8 for better visibility
+      linewidth: 5,  // Increased from 3 for thicker trails
       blending: THREE.AdditiveBlending // Bright purple additive blending
     });
 
@@ -2869,7 +2854,7 @@ class GalacticMap3D {
     trailLine.frustumCulled = false;
     this.assetsGroup.add(trailLine);
 
-    // Store trail data
+    // Store orbit data for animation
     const existingOrbit = this.galaxyOrbits.find(o => o.galaxyId === galaxyId);
     if (existingOrbit) {
       // Remove old trail
@@ -2881,7 +2866,8 @@ class GalacticMap3D {
       // Update existing entry
       existingOrbit.trail = trailLine;
       existingOrbit.trailPoints = trailPoints;
-      existingOrbit.trailHistory = trailHistory;
+      existingOrbit.orbitCenter = orbitCenter;
+      existingOrbit.orbitRadius = orbitRadius;
     } else {
       // Add new entry
       this.galaxyOrbits.push({
@@ -2889,7 +2875,8 @@ class GalacticMap3D {
         mesh: galaxyMesh,
         trail: trailLine,
         trailPoints: trailPoints,
-        trailHistory: trailHistory
+        orbitCenter: orbitCenter,
+        orbitRadius: orbitRadius
       });
     }
   }
@@ -3140,9 +3127,6 @@ class GalacticMap3D {
     try {
       // Physics updates now come from server via socket.io
       // Client only renders what the server tells it
-
-      // Update traveling character position (connection travel animation)
-      this.updateTravelingCharacter();
 
       // Update OrbitControls (if available)
       if (this.controls) {
@@ -5157,346 +5141,6 @@ class GalacticMap3D {
   /**
    * Show back button to return to previous view level
    */
-  /**
-   * Start animated travel along connection line
-   */
-  startConnectionTravel(fromAssetId, toAssetId, startPos, endPos, travelTimeSeconds) {
-    console.log('🚀 Starting connection travel animation', {
-      from: fromAssetId,
-      to: toAssetId,
-      travelTime: travelTimeSeconds
-    });
-
-    // Create character marker if it doesn't exist
-    if (!this.travelingCharacterMarker) {
-      const geometry = new THREE.SphereGeometry(20, 16, 16);
-      const material = new THREE.MeshBasicMaterial({
-        color: 0xffff00,
-        emissive: 0xffff00,
-        emissiveIntensity: 0.5
-      });
-      this.travelingCharacterMarker = new THREE.Mesh(geometry, material);
-      this.scene.add(this.travelingCharacterMarker);
-    }
-
-    // Set starting position
-    this.travelingCharacterMarker.position.set(startPos.x, startPos.y, startPos.z || 0);
-    this.travelingCharacterMarker.visible = true;
-
-    // Store travel data
-    this.activeTravelData = {
-      startTime: Date.now(),
-      duration: travelTimeSeconds * 1000, // Convert to milliseconds
-      startPos: new THREE.Vector3(startPos.x, startPos.y, startPos.z || 0),
-      endPos: new THREE.Vector3(endPos.x, endPos.y, endPos.z || 0),
-      fromAssetId,
-      toAssetId
-    };
-
-    // Show travel status notification
-    const destinationAsset = this.assets.get(toAssetId);
-    const destinationName = destinationAsset?.title || destinationAsset?.name || 'Unknown';
-
-    if (window.showTravelStatus) {
-      window.showTravelStatus(
-        `🚀 In Transit to ${destinationName}`,
-        `Travel time: ${travelTimeSeconds}s`,
-        false
-      );
-    }
-
-    // Update character navigation status to in-transit
-    this.setCharacterTravelStatus(fromAssetId, toAssetId, travelTimeSeconds);
-
-    // Deduct fuel at start of travel
-    this.deductTravelFuel(startPos, endPos);
-
-    console.log('✅ Travel animation started - marker visible at starting position');
-  }
-
-  /**
-   * Set character travel status to in-transit
-   */
-  async setCharacterTravelStatus(fromAssetId, toAssetId, travelTimeSeconds) {
-    try {
-      const characterId = window.currentCharacter?._id;
-      if (!characterId) return;
-
-      const response = await fetch('/api/v1/characters/travel-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          characterId,
-          isInTransit: true,
-          from: fromAssetId,
-          to: toAssetId,
-          estimatedArrival: Date.now() + (travelTimeSeconds * 1000)
-        })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        console.log('✅ Character travel status set to in-transit');
-
-        // Update local character data
-        if (window.currentCharacter) {
-          window.currentCharacter.navigation = {
-            isInTransit: true,
-            from: fromAssetId,
-            to: toAssetId,
-            estimatedArrival: Date.now() + (travelTimeSeconds * 1000)
-          };
-        }
-      } else {
-        console.error('❌ Failed to set travel status:', result.error);
-      }
-    } catch (error) {
-      console.error('❌ Error setting travel status:', error);
-    }
-  }
-
-  /**
-   * Clear character travel status (set to docked/not in transit)
-   */
-  async clearCharacterTravelStatus() {
-    try {
-      const characterId = window.currentCharacter?._id;
-      if (!characterId) return;
-
-      const response = await fetch('/api/v1/travel/travel-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          characterId,
-          isInTransit: false
-        })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        console.log('✅ Character travel status cleared (now docked)');
-
-        // Update local character data
-        if (window.currentCharacter && window.currentCharacter.navigation) {
-          window.currentCharacter.navigation.isInTransit = false;
-          window.currentCharacter.navigation.from = null;
-          window.currentCharacter.navigation.to = null;
-          window.currentCharacter.navigation.estimatedArrival = null;
-        }
-      } else {
-        console.error('❌ Failed to clear travel status:', result.error);
-      }
-    } catch (error) {
-      console.error('❌ Error clearing travel status:', error);
-    }
-  }
-
-  /**
-   * Deduct fuel for travel
-   */
-  async deductTravelFuel(startPos, endPos) {
-    try {
-      const dx = endPos.x - startPos.x;
-      const dy = endPos.y - startPos.y;
-      const dz = (endPos.z || 0) - (startPos.z || 0);
-      const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
-
-      const fuelRequired = Math.ceil(distance * 0.5);
-
-      console.log(`⛽ Deducting ${fuelRequired} fuel for ${Math.round(distance)} unit journey`);
-
-      const characterId = window.currentCharacter?._id;
-      if (!characterId) return;
-
-      const response = await fetch('/api/v1/travel/deduct-fuel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          characterId,
-          fuelAmount: fuelRequired
-        })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        console.log(`✅ Fuel deducted: ${fuelRequired} units`);
-        // Update local character data
-        if (window.currentCharacter?.ship?.fittings?.fuelTanks) {
-          window.currentCharacter.ship.fittings.fuelTanks.remaining -= fuelRequired;
-        }
-      } else {
-        console.error('❌ Failed to deduct fuel:', result.error);
-      }
-    } catch (error) {
-      console.error('❌ Error deducting fuel:', error);
-    }
-  }
-
-  /**
-   * Update traveling character position (called in animation loop)
-   * Follows the actual connection line path dynamically
-   */
-  updateTravelingCharacter() {
-    if (!this.activeTravelData || !this.travelingCharacterMarker) return;
-
-    const now = Date.now();
-    const elapsed = now - this.activeTravelData.startTime;
-    const progress = Math.min(elapsed / this.activeTravelData.duration, 1.0);
-
-    // Get current positions of source and destination assets (they may have moved!)
-    const fromAsset = this.assets.get(this.activeTravelData.fromAssetId);
-    const toAsset = this.assets.get(this.activeTravelData.toAssetId);
-
-    if (!fromAsset || !toAsset) {
-      console.error('❌ Travel assets not found');
-      return;
-    }
-
-    // Get current positions from the actual mesh positions (updated by physics)
-    const fromPos = fromAsset.mesh ?
-      fromAsset.mesh.position :
-      new THREE.Vector3(fromAsset.coordinates.x, fromAsset.coordinates.y, fromAsset.coordinates.z || 0);
-
-    const toPos = toAsset.mesh ?
-      toAsset.mesh.position :
-      new THREE.Vector3(toAsset.coordinates.x, toAsset.coordinates.y, toAsset.coordinates.z || 0);
-
-    // Lerp along the CURRENT path (which updates as galaxies move)
-    const currentPos = new THREE.Vector3().lerpVectors(fromPos, toPos, progress);
-
-    // Update orb position to stick to the connection line
-    this.travelingCharacterMarker.position.copy(currentPos);
-
-    // Optional: Make orb look at destination
-    this.travelingCharacterMarker.lookAt(toPos);
-
-    // Update travel status bar with progress
-    const remaining = this.activeTravelData.duration - elapsed;
-    const etaSeconds = Math.ceil(remaining / 1000);
-    const percent = progress * 100;
-    const destinationName = toAsset.title || toAsset.name || 'Unknown';
-
-    if (window.updateTravelProgress) {
-      window.updateTravelProgress(percent, etaSeconds, destinationName);
-    }
-
-    // Arrival check
-    if (progress >= 1.0) {
-      console.log('✅ Travel complete! Arrived at destination');
-      this.travelingCharacterMarker.visible = false;
-
-      // Update character location on server
-      this.completeTravelToDestination(this.activeTravelData.toAssetId);
-
-      this.activeTravelData = null;
-    }
-  }
-
-  /**
-   * Complete travel and update character location
-   */
-  async completeTravelToDestination(destinationAssetId) {
-    console.log('📍 Updating character location to:', destinationAssetId);
-
-    try {
-      const characterId = window.currentCharacter?._id;
-      if (!characterId) {
-        console.error('❌ No current character ID found');
-        return;
-      }
-
-      // Update character location via API
-      const response = await fetch('/api/v1/characters/location', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          characterId,
-          dockedGalaxyId: destinationAssetId,
-          updateType: 'dock'
-        })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        console.log('✅ Character location updated on server');
-
-        // Get destination asset to get coordinates
-        const destinationAsset = this.assets.get(destinationAssetId);
-        if (!destinationAsset) {
-          console.error('❌ Destination asset not found');
-          return;
-        }
-
-        const destCoords = destinationAsset.coordinates;
-
-        // Update character data
-        if (window.currentCharacter) {
-          window.currentCharacter.location = {
-            ...window.currentCharacter.location,
-            dockedGalaxyId: destinationAssetId,
-            assetId: destinationAssetId,
-            x: destCoords.x,
-            y: destCoords.y,
-            z: destCoords.z || 0,
-            type: 'galactic'
-          };
-        }
-
-        // Emit socket event to update other clients
-        if (window.socket) {
-          window.socket.emit('characterMoved', {
-            characterId: characterId,
-            characterName: window.currentCharacter?.name,
-            userId: window.currentCharacter?.userId,
-            location: window.currentCharacter.location,
-            assetId: destinationAssetId
-          });
-          console.log('📡 Socket event emitted: characterMoved');
-        }
-
-        // Clear in-transit status (set to docked)
-        await this.clearCharacterTravelStatus();
-
-        // Update/create character pin at new location
-        this.createCharacterPin(window.currentCharacter);
-        console.log('📍 Character pin updated at new location');
-
-        // Focus camera on new location
-        setTimeout(() => {
-          this.focusOnCurrentPlayer();
-          console.log('🎥 Camera focused on new arrival location');
-        }, 100); // Small delay to ensure pin is fully created
-
-        // Show arrival notification in status bar
-        const destinationName = destinationAsset.title || destinationAsset.name || 'Unknown';
-        if (window.showTravelStatus) {
-          window.showTravelStatus(
-            `✅ Arrived at ${destinationName}`,
-            `Location: ${destinationName}`,
-            true // isArrival = true (green color)
-          );
-
-          // Hide status bar after 4 seconds
-          setTimeout(() => {
-            if (window.hideTravelStatus) {
-              window.hideTravelStatus();
-            }
-          }, 4000);
-        }
-
-        // Also show legacy notification if available
-        if (window.showNotification) {
-          window.showNotification(`✅ Arrived at ${destinationName}`, 'success');
-        }
-
-      } else {
-        console.error('❌ Failed to update character location:', result.error);
-      }
-    } catch (error) {
-      console.error('❌ Error updating character location:', error);
-    }
-  }
-
   /**
    * Dispose of all resources
    */

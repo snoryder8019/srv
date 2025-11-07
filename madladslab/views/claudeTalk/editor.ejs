@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Vision - Code Editor</title>
+  <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Monaco Editor -->
+  <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/editor/editor.main.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: #252526;
+      border-bottom: 1px solid #3c3c3c;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .header h1 {
+      font-size: 1.2rem;
+      color: #cccccc;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .file-path {
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      color: #4ec9b0;
+      background: #1e1e1e;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+    }
+
+    .header-right {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .btn {
+      background: #0e639c;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn:hover {
+      background: #1177bb;
+    }
+
+    .btn:disabled {
+      background: #555555;
+      cursor: not-allowed;
+    }
+
+    .btn-success {
+      background: #0e7a0d;
+    }
+
+    .btn-success:hover {
+      background: #14a00f;
+    }
+
+    .btn-danger {
+      background: #a81f1f;
+    }
+
+    .btn-danger:hover {
+      background: #d12828;
+    }
+
+    .btn-secondary {
+      background: #3c3c3c;
+    }
+
+    .btn-secondary:hover {
+      background: #4c4c4c;
+    }
+
+    .status-bar {
+      background: #007acc;
+      color: white;
+      padding: 0.4rem 1rem;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-bar.success {
+      background: #0e7a0d;
+    }
+
+    .status-bar.error {
+      background: #a81f1f;
+    }
+
+    .editor-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #editor {
+      width: 100%;
+      height: 100%;
+    }
+
+    .modified-indicator {
+      color: #f0db4f;
+      font-size: 1.2rem;
+    }
+
+    .save-shortcut {
+      font-size: 0.8rem;
+      color: #858585;
+      margin-left: 0.5rem;
+    }
+
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(30, 30, 30, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1rem;
+      z-index: 1000;
+    }
+
+    .loading-overlay i {
+      font-size: 3rem;
+      color: #0e639c;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-overlay.hidden {
+      display: none;
+    }
+
+    .editor-info {
+      display: flex;
+      gap: 1.5rem;
+      font-size: 0.85rem;
+    }
+
+    .editor-info span {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: stretch;
+      }
+
+      .header-left,
+      .header-right {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .btn {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="loading-overlay" id="loadingOverlay">
+    <i class="fas fa-spinner"></i>
+    <div>Loading editor...</div>
+  </div>
+
+  <div class="header">
+    <div class="header-left">
+      <h1>
+        <i class="fas fa-code"></i>
+        Code Editor
+      </h1>
+      <div class="file-path" id="filePath">No file selected</div>
+      <span class="modified-indicator" id="modifiedIndicator" style="display: none;">
+        <i class="fas fa-circle"></i>
+      </span>
+    </div>
+    <div class="header-right">
+      <button class="btn btn-success" onclick="saveFile()" id="saveBtn">
+        <i class="fas fa-save"></i>
+        Save
+        <span class="save-shortcut">(Ctrl+S)</span>
+      </button>
+      <button class="btn btn-secondary" onclick="reloadFile()">
+        <i class="fas fa-sync-alt"></i>
+        Reload
+      </button>
+      <button class="btn btn-secondary" onclick="askClaude()">
+        <i class="fas fa-robot"></i>
+        Ask Claude
+      </button>
+      <a href="/claudeTalk/browser" class="btn btn-secondary">
+        <i class="fas fa-folder-open"></i>
+        Browser
+      </a>
+      <a href="/claudeTalk" class="btn btn-secondary">
+        <i class="fas fa-comments"></i>
+        Chat
+      </a>
+    </div>
+  </div>
+
+  <div class="status-bar" id="statusBar">
+    <div class="editor-info">
+      <span>
+        <i class="fas fa-file-code"></i>
+        <span id="language">Plain Text</span>
+      </span>
+      <span>
+        <i class="fas fa-text-height"></i>
+        Line <span id="lineNumber">1</span>, Col <span id="columnNumber">1</span>
+      </span>
+      <span>
+        <i class="fas fa-align-left"></i>
+        <span id="lineCount">0</span> lines
+      </span>
+      <span>
+        <i class="fas fa-file-alt"></i>
+        <span id="fileSize">0 B</span>
+      </span>
+    </div>
+    <div>
+      <span id="statusMessage">Ready</span>
+    </div>
+  </div>
+
+  <div class="editor-container">
+    <div id="editor"></div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+  <script>
+    let editor;
+    let currentFilePath = null;
+    let originalContent = '';
+    let isModified = false;
+
+    // Get file path from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const filePath = urlParams.get('file');
+
+    // Initialize Monaco Editor
+    require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+
+    require(['vs/editor/editor.main'], function () {
+      // Create editor
+      editor = monaco.editor.create(document.getElementById('editor'), {
+        value: '',
+        theme: 'vs-dark',
+        automaticLayout: true,
+        fontSize: 14,
+        minimap: {
+          enabled: true
+        },
+        scrollBeyondLastLine: false,
+        wordWrap: 'on',
+        tabSize: 2
+      });
+
+      // Track cursor position
+      editor.onDidChangeCursorPosition((e) => {
+        document.getElementById('lineNumber').textContent = e.position.lineNumber;
+        document.getElementById('columnNumber').textContent = e.position.column;
+      });
+
+      // Track content changes
+      editor.onDidChangeModelContent(() => {
+        const currentContent = editor.getValue();
+        isModified = currentContent !== originalContent;
+        updateModifiedIndicator();
+        updateLineCount();
+      });
+
+      // Keyboard shortcuts
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        saveFile();
+      });
+
+      // Load file if specified
+      if (filePath) {
+        loadFile(filePath);
+      } else {
+        hideLoading();
+        document.getElementById('statusMessage').textContent = 'No file specified';
+      }
+    });
+
+    async function loadFile(path) {
+      currentFilePath = path;
+      document.getElementById('filePath').textContent = path;
+      showLoading('Loading file...');
+
+      try {
+        const response = await fetch(`/claudeTalk/readFile?path=${encodeURIComponent(path)}`);
+        const data = await response.json();
+
+        if (data.success) {
+          originalContent = data.content;
+          editor.setValue(data.content);
+          isModified = false;
+          updateModifiedIndicator();
+
+          // Set language based on file extension
+          const ext = path.split('.').pop().toLowerCase();
+          const language = getLanguageFromExtension(ext);
+          monaco.editor.setModelLanguage(editor.getModel(), language);
+          document.getElementById('language').textContent = language.charAt(0).toUpperCase() + language.slice(1);
+
+          // Update file info
+          document.getElementById('fileSize').textContent = formatSize(data.size);
+          updateLineCount();
+
+          setStatus(`File loaded: ${path}`, 'success');
+        } else {
+          setStatus(`Error loading file: ${data.error}`, 'error');
+          editor.setValue(`// Error loading file: ${data.error}\n// File: ${path}`);
+        }
+      } catch (error) {
+        console.error('Error loading file:', error);
+        setStatus(`Failed to load file: ${error.message}`, 'error');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function saveFile() {
+      if (!currentFilePath) {
+        alert('No file is currently open');
+        return;
+      }
+
+      const content = editor.getValue();
+      showLoading('Saving file...');
+
+      try {
+        const response = await fetch('/claudeTalk/saveFile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            path: currentFilePath,
+            content: content
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          originalContent = content;
+          isModified = false;
+          updateModifiedIndicator();
+          setStatus(`File saved: ${currentFilePath}`, 'success');
+        } else {
+          setStatus(`Error saving file: ${data.error}`, 'error');
+          alert(`Failed to save file: ${data.error}`);
+        }
+      } catch (error) {
+        console.error('Error saving file:', error);
+        setStatus(`Failed to save file: ${error.message}`, 'error');
+        alert(`Failed to save file: ${error.message}`);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function reloadFile() {
+      if (!currentFilePath) {
+        alert('No file is currently open');
+        return;
+      }
+
+      if (isModified) {
+        if (!confirm('You have unsaved changes. Reload anyway?')) {
+          return;
+        }
+      }
+
+      loadFile(currentFilePath);
+    }
+
+    function askClaude() {
+      const selectedText = editor.getModel().getValueInRange(editor.getSelection());
+      const question = selectedText
+        ? prompt('Ask Claude about this code:', `Explain this code:\n\n${selectedText}`)
+        : prompt('Ask Claude about this file:', `What does this file do?`);
+
+      if (question) {
+        const context = selectedText || editor.getValue();
+        const fullQuestion = selectedText
+          ? `File: ${currentFilePath}\n\nCode:\n${context}\n\nQuestion: ${question}`
+          : `File: ${currentFilePath}\n\nQuestion: ${question}`;
+
+        // Open chat in new window with question pre-filled
+        const chatUrl = `/claudeTalk?message=${encodeURIComponent(fullQuestion)}`;
+        window.open(chatUrl, '_blank');
+      }
+    }
+
+    function updateModifiedIndicator() {
+      const indicator = document.getElementById('modifiedIndicator');
+      indicator.style.display = isModified ? 'inline' : 'none';
+    }
+
+    function updateLineCount() {
+      const lineCount = editor.getModel().getLineCount();
+      document.getElementById('lineCount').textContent = lineCount;
+    }
+
+    function setStatus(message, type = 'normal') {
+      const statusBar = document.getElementById('statusBar');
+      const statusMessage = document.getElementById('statusMessage');
+
+      statusMessage.textContent = message;
+      statusBar.className = 'status-bar';
+
+      if (type === 'success') {
+        statusBar.classList.add('success');
+      } else if (type === 'error') {
+        statusBar.classList.add('error');
+      }
+
+      // Clear status after 3 seconds for success/error
+      if (type !== 'normal') {
+        setTimeout(() => {
+          statusMessage.textContent = 'Ready';
+          statusBar.className = 'status-bar';
+        }, 3000);
+      }
+    }
+
+    function showLoading(message = 'Loading...') {
+      const overlay = document.getElementById('loadingOverlay');
+      overlay.querySelector('div').textContent = message;
+      overlay.classList.remove('hidden');
+    }
+
+    function hideLoading() {
+      document.getElementById('loadingOverlay').classList.add('hidden');
+    }
+
+    function getLanguageFromExtension(ext) {
+      const languageMap = {
+        'js': 'javascript',
+        'mjs': 'javascript',
+        'cjs': 'javascript',
+        'ts': 'typescript',
+        'json': 'json',
+        'html': 'html',
+        'htm': 'html',
+        'ejs': 'html',
+        'css': 'css',
+        'scss': 'scss',
+        'less': 'less',
+        'md': 'markdown',
+        'markdown': 'markdown',
+        'xml': 'xml',
+        'yml': 'yaml',
+        'yaml': 'yaml',
+        'sh': 'shell',
+        'bash': 'shell',
+        'py': 'python',
+        'rb': 'ruby',
+        'php': 'php',
+        'java': 'java',
+        'c': 'c',
+        'cpp': 'cpp',
+        'cs': 'csharp',
+        'go': 'go',
+        'rs': 'rust',
+        'sql': 'sql',
+        'env': 'shell',
+        'conf': 'ini',
+        'ini': 'ini',
+        'txt': 'plaintext'
+      };
+
+      return languageMap[ext] || 'plaintext';
+    }
+
+    function formatSize(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    // Warn before leaving if unsaved changes
+    window.addEventListener('beforeunload', (e) => {
+      if (isModified) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Leave anyway?';
+        return e.returnValue;
+      }
+    });
+  </script>
+</body>
+</html>

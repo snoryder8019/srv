@@ -41,11 +41,12 @@ class PhysicsService {
     this.BOUNDARY_HARD_ZONE = 4800; // Strong pushback beyond this
 
     // Connection rules (in AU - Astronomical Units)
-    this.CONNECTION_DISTANCE = 150; // Max distance for stable connection
-    this.ORBIT_BUFFER = 150; // Minimum orbital radius buffer
-    this.STABLE_CONNECTION_THRESHOLD = 3; // Days to be considered stable (scaled by sim speed)
-    this.BREAKING_CONNECTION_THRESHOLD = 1; // Day before breaking (scaled)
-    this.FORMING_CONNECTION_THRESHOLD = 0.5; // Half day before forming (scaled)
+    this.CONNECTION_DISTANCE = 6800; // Max distance for stable connection (reduced by 15%: 8000 * 0.85 = 6800)
+    this.ORBIT_BUFFER = 100; // Minimum orbital radius buffer (reduced - anomalies are much smaller now)
+    this.STABLE_CONNECTION_THRESHOLD = 0.00012; // ~10 seconds to be considered stable (for testing: 10sec/86400 = 0.00012 days)
+    this.BREAKING_CONNECTION_THRESHOLD = 0.00006; // ~5 seconds before breaking (for testing: 5sec/86400 = 0.00006 days)
+    this.FORMING_CONNECTION_THRESHOLD = 0.00006; // ~5 seconds while forming (for testing)
+    this.BROKEN_DISPLAY_DURATION = 0.00012; // Display broken connections for ~10 seconds (red dashed, for testing)
     this.ORBIT_LOCK_DURATION = 7; // Days in stable orbit before gravity well event (scaled)
 
     // Cache for galactic objects (refreshed periodically)
@@ -57,8 +58,13 @@ class PhysicsService {
       updateInterval: 30000 // Refresh every 30 seconds
     };
 
+    // Position history for orbital trails (actual trajectories, not calculated circles)
+    this.positionHistory = new Map(); // galaxyId -> array of {x, y, z, timestamp} positions
+    this.maxHistoryLength = 120; // Store last 120 positions (2 minutes at 1 tick/sec)
+
     // Connection tracking
     this.connections = new Map(); // connectionId -> connection state
+    this.brokenConnections = new Map(); // connectionId -> {brokenAt: tickCounter, ...} for recently broken
     this.activeConnections = []; // Latest active connections array for visualization
     this.orbitLocks = new Map(); // galaxyId -> orbit lock state
     this.gravityWells = []; // Active gravity well events
@@ -149,6 +155,12 @@ class PhysicsService {
       if (characters.length > 0) {
         for (const character of characters) {
           try {
+            // Skip docked characters - they don't experience gravity, they're stationary at their dock
+            if (character.location.dockedGalaxyId || character.location.assetId) {
+              // Character is docked, skip physics (will be moved with galaxy if needed)
+              continue;
+            }
+
             // Find nearby celestial bodies within gravity radius
             const nearbyBodies = this.findNearbyBodies(character.location, celestialBodies);
 
@@ -277,6 +289,14 @@ class PhysicsService {
             simulationSpeed: this.simulationSpeed,
             timestamp: Date.now()
           };
+
+          // DEBUG: Check if trails are in payload
+          const galaxyWithTrail = galaxiesWithCharacters.find(g => g.trail && g.trail.length > 0);
+          if (galaxyWithTrail) {
+            console.log(`✅ Trail data present: Galaxy ${galaxyWithTrail.id.substring(0, 8)} has ${galaxyWithTrail.trail.length} trail positions`);
+          } else {
+            console.warn(`⚠️ NO TRAIL DATA in payload! First galaxy:`, galaxiesWithCharacters[0] ? Object.keys(galaxiesWithCharacters[0]) : 'none');
+          }
 
           this.io.emit('galacticPhysicsUpdate', payload);
 
@@ -565,9 +585,29 @@ class PhysicsService {
           }
         });
 
-        // Add to broadcast list
+        // Record position in history for trail rendering
+        const galaxyId = galaxy._id.toString();
+        if (!this.positionHistory.has(galaxyId)) {
+          this.positionHistory.set(galaxyId, []);
+        }
+        const history = this.positionHistory.get(galaxyId);
+
+        // Add current position to history
+        history.push({
+          x: galaxy.coordinates.x,
+          y: galaxy.coordinates.y,
+          z: galaxy.coordinates.z,
+          timestamp: Date.now()
+        });
+
+        // Keep only last N positions
+        if (history.length > this.maxHistoryLength) {
+          history.shift(); // Remove oldest
+        }
+
+        // Add to broadcast list with trail history
         updatedGalaxies.push({
-          id: galaxy._id.toString(),
+          id: galaxyId,
           position: {
             x: galaxy.coordinates.x,
             y: galaxy.coordinates.y,
@@ -577,7 +617,8 @@ class PhysicsService {
             vx: galaxy.physics.vx,
             vy: galaxy.physics.vy,
             vz: galaxy.physics.vz
-          }
+          },
+          trail: history.slice(-60) // Send last 60 positions (1 minute of history)
         });
       }
 
@@ -753,27 +794,19 @@ class PhysicsService {
         return distA - distB;
       });
 
-      // Always connect to closest orbiting galaxy
-      const closest = orbitingGalaxies[0];
-      const closestDist = this.calculateDistance(anomalyPos, closest.coordinates);
-
-      connectedGalaxies.push({
-        galaxy: closest,
-        distance: closestDist,
-        isPrimary: true
-      });
-
-      // Add up to 2 more connections within range (after ORBIT_BUFFER)
-      for (let i = 1; i < orbitingGalaxies.length && connectedGalaxies.length < 3; i++) {
+      // Connect to closest 2 orbiting galaxies (anomaly max connections = 2)
+      // First galaxy is marked as primary
+      const MAX_ANOMALY_CONNECTIONS = 2;
+      for (let i = 0; i < Math.min(orbitingGalaxies.length, MAX_ANOMALY_CONNECTIONS); i++) {
         const galaxy = orbitingGalaxies[i];
         const dist = this.calculateDistance(anomalyPos, galaxy.coordinates);
 
-        // Must be beyond orbit buffer and within connection distance
-        if (dist > this.ORBIT_BUFFER && dist < this.CONNECTION_DISTANCE + this.ORBIT_BUFFER) {
+        // Connect if within connection distance
+        if (dist < this.CONNECTION_DISTANCE) {
           connectedGalaxies.push({
             galaxy: galaxy,
             distance: dist,
-            isPrimary: false
+            isPrimary: i === 0 // First one is primary (closest)
           });
         }
       }
@@ -816,16 +849,45 @@ class PhysicsService {
           // Existing connection
           const connectionAge = (this.tickCounter - existingConn.createdAt) * this.tickRate / 1000 / 86400 * this.simulationSpeed;
 
+          // Calculate distance percentage (how close to breaking)
+          const distancePercent = conn.distance / this.CONNECTION_DISTANCE;
+
           if (connectionAge < this.STABLE_CONNECTION_THRESHOLD) {
             state = 'forming'; // Still forming, blue dashed
             color = 0x0088ff;
-          } else if (conn.distance > this.CONNECTION_DISTANCE + this.ORBIT_BUFFER) {
-            // Connection breaking
-            state = 'breaking'; // red-orange
-            color = 0xff4400;
+          } else if (distancePercent > 0.95) {
+            // Very close to breaking (>95% of max distance) - RED
+            state = 'breaking';
+            color = 0xff0000; // Pure red
+          } else if (distancePercent > 0.85) {
+            // Getting close (85-95%) - ORANGE
+            state = 'breaking';
+            color = 0xff8800; // Orange
+          } else if (distancePercent > 0.75) {
+            // Starting to strain (75-85%) - YELLOW
+            state = 'breaking';
+            color = 0xffff00; // Yellow
           } else {
-            state = 'stable'; // green
+            state = 'stable'; // green solid
             color = 0x00ff00;
+          }
+
+          // Check if connection should break (exceeded max distance)
+          if (conn.distance > this.CONNECTION_DISTANCE * 1.05) {
+            // Give 5% buffer before actually breaking
+            // Move to broken connections map
+            this.brokenConnections.set(connectionId, {
+              ...existingConn,
+              brokenAt: this.tickCounter,
+              fromPos: { x: anomalyPos.x, y: anomalyPos.y, z: anomalyPos.z },
+              toPos: {
+                x: conn.galaxy.coordinates.x,
+                y: conn.galaxy.coordinates.y,
+                z: conn.galaxy.coordinates.z
+              }
+            });
+            this.connections.delete(connectionId);
+            continue; // Skip adding to active connections
           }
 
           existingConn.distance = conn.distance;
@@ -854,7 +916,7 @@ class PhysicsService {
 
     // Galaxy-to-Galaxy connections (for travel routes between galaxies)
     // Connect galaxies that are close to each other
-    const GALAXY_CONNECTION_DISTANCE = 3000; // Max distance for galaxy-galaxy connections
+    const GALAXY_CONNECTION_DISTANCE = 2550; // Max distance for galaxy-galaxy connections (reduced by 15%: 3000 * 0.85 = 2550)
 
     for (let i = 0; i < galaxies.length; i++) {
       const galaxy1 = galaxies[i];
@@ -899,15 +961,41 @@ class PhysicsService {
           } else {
             const connectionAge = (this.tickCounter - existingConn.createdAt) * this.tickRate / 1000 / 86400 * this.simulationSpeed;
 
+            // Calculate distance percentage (how close to breaking)
+            const distancePercent = dist / GALAXY_CONNECTION_DISTANCE;
+
             if (connectionAge < this.STABLE_CONNECTION_THRESHOLD) {
               state = 'forming';
               color = 0x0088ff;
-            } else if (dist > GALAXY_CONNECTION_DISTANCE * 0.9) {
+            } else if (distancePercent > 0.95) {
+              // Very close to breaking (>95% of max distance) - RED
               state = 'breaking';
-              color = 0xff4400;
+              color = 0xff0000; // Pure red
+            } else if (distancePercent > 0.85) {
+              // Getting close (85-95%) - ORANGE
+              state = 'breaking';
+              color = 0xff8800; // Orange
+            } else if (distancePercent > 0.75) {
+              // Starting to strain (75-85%) - YELLOW
+              state = 'breaking';
+              color = 0xffff00; // Yellow
             } else {
               state = 'stable';
               color = 0x00ff00;
+            }
+
+            // Check if connection should break (exceeded max distance)
+            if (dist > GALAXY_CONNECTION_DISTANCE * 1.05) {
+              // Give 5% buffer before actually breaking
+              // Move to broken connections map
+              this.brokenConnections.set(connectionId, {
+                ...existingConn,
+                brokenAt: this.tickCounter,
+                fromPos: { x: galaxy1.coordinates.x, y: galaxy1.coordinates.y, z: galaxy1.coordinates.z },
+                toPos: { x: galaxy2.coordinates.x, y: galaxy2.coordinates.y, z: galaxy2.coordinates.z }
+              });
+              this.connections.delete(connectionId);
+              continue; // Skip adding to active connections
             }
 
             existingConn.distance = dist;
@@ -933,9 +1021,33 @@ class PhysicsService {
       }
     }
 
-    // Clean up broken connections
+    // Add recently broken connections (red dashed) to activeConnections for display
+    for (const [connId, brokenConn] of this.brokenConnections.entries()) {
+      const timeSinceBroken = (this.tickCounter - brokenConn.brokenAt) * this.tickRate / 1000 / 86400 * this.simulationSpeed;
+
+      if (timeSinceBroken < this.BROKEN_DISPLAY_DURATION) {
+        // Still within display window, show as red dashed
+        activeConnections.push({
+          id: connId,
+          from: brokenConn.fromId,
+          to: brokenConn.toId,
+          fromPos: brokenConn.fromPos,
+          toPos: brokenConn.toPos,
+          distance: brokenConn.distance,
+          state: 'broken', // red dashed
+          color: 0xff0000, // pure red
+          daysToChange: 0,
+          isPrimary: false
+        });
+      } else {
+        // Too old, remove from broken connections map
+        this.brokenConnections.delete(connId);
+      }
+    }
+
+    // Clean up active connections that are no longer valid
     for (const [connId, conn] of this.connections.entries()) {
-      const stillActive = activeConnections.some(ac => ac.id === connId);
+      const stillActive = activeConnections.some(ac => ac.id === connId && ac.state !== 'broken');
       if (!stillActive) {
         this.connections.delete(connId);
       }

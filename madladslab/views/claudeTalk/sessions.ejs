@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Vision - TMUX Sessions</title>
+  <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: #252526;
+      border-bottom: 1px solid #3c3c3c;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .header h1 {
+      font-size: 1.2rem;
+      color: #cccccc;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      background: #0e639c;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-decoration: none;
+    }
+
+    .btn:hover {
+      background: #1177bb;
+    }
+
+    .btn-secondary {
+      background: #3c3c3c;
+    }
+
+    .btn-secondary:hover {
+      background: #4c4c4c;
+    }
+
+    .btn-success {
+      background: #0e7a0d;
+    }
+
+    .btn-success:hover {
+      background: #14a00f;
+    }
+
+    .btn-danger {
+      background: #a81f1f;
+    }
+
+    .btn-danger:hover {
+      background: #d12828;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: #252526;
+      border: 1px solid #3c3c3c;
+      border-radius: 8px;
+      padding: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .stat-icon {
+      font-size: 2.5rem;
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: rgba(14, 99, 156, 0.2);
+      color: #0e639c;
+    }
+
+    .stat-icon.success {
+      background: rgba(14, 122, 13, 0.2);
+      color: #0e7a0d;
+    }
+
+    .stat-icon.warning {
+      background: rgba(240, 219, 79, 0.2);
+      color: #f0db4f;
+    }
+
+    .stat-content h3 {
+      font-size: 0.85rem;
+      color: #858585;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-content .value {
+      font-size: 2rem;
+      font-weight: 600;
+      color: #cccccc;
+    }
+
+    .sessions-section {
+      background: #252526;
+      border: 1px solid #3c3c3c;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 1.5rem;
+      border-bottom: 1px solid #3c3c3c;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-header h2 {
+      font-size: 1.1rem;
+      color: #cccccc;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .session-list {
+      padding: 1rem;
+    }
+
+    .session-card {
+      background: #1e1e1e;
+      border: 1px solid #3c3c3c;
+      border-radius: 6px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      transition: all 0.2s;
+    }
+
+    .session-card:hover {
+      border-color: #0e639c;
+      transform: translateY(-2px);
+    }
+
+    .session-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .session-name {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #4ec9b0;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .session-status {
+      padding: 0.4rem 0.8rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .session-status.running {
+      background: rgba(14, 122, 13, 0.2);
+      color: #0e7a0d;
+    }
+
+    .session-status.stopped {
+      background: rgba(168, 31, 31, 0.2);
+      color: #a81f1f;
+    }
+
+    .session-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .session-info {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .info-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      color: #858585;
+    }
+
+    .info-item i {
+      color: #0e639c;
+      width: 20px;
+    }
+
+    .info-item .value {
+      color: #cccccc;
+    }
+
+    .logs-container {
+      background: #0c0c0c;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 1rem;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      color: #d4d4d4;
+      margin-top: 1rem;
+      display: none;
+    }
+
+    .logs-container.visible {
+      display: block;
+    }
+
+    .logs-container pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: #858585;
+    }
+
+    .loading i {
+      font-size: 3rem;
+      animation: spin 1s linear infinite;
+      margin-bottom: 1rem;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: #858585;
+    }
+
+    .empty-state i {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1e1e1e;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #424242;
+      border-radius: 5px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4f4f4f;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 1rem;
+      }
+
+      .session-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .session-actions {
+        width: 100%;
+      }
+
+      .session-actions .btn {
+        flex: 1;
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <i class="fas fa-layer-group"></i>
+      TMUX Session Manager
+    </h1>
+    <div class="header-actions">
+      <button class="btn btn-success" onclick="refreshSessions()">
+        <i class="fas fa-sync-alt"></i>
+        Refresh
+      </button>
+      <a href="/claudeTalk/browser" class="btn btn-secondary">
+        <i class="fas fa-folder-open"></i>
+        Browser
+      </a>
+      <a href="/claudeTalk/terminal" class="btn btn-secondary">
+        <i class="fas fa-terminal"></i>
+        Terminal
+      </a>
+      <a href="/claudeTalk" class="btn btn-secondary">
+        <i class="fas fa-comments"></i>
+        Chat
+      </a>
+      <a href="/" class="btn btn-secondary">
+        <i class="fas fa-home"></i>
+        Home
+      </a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon success">
+          <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="stat-content">
+          <h3>Running Sessions</h3>
+          <div class="value" id="runningCount">-</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="fas fa-layer-group"></i>
+        </div>
+        <div class="stat-content">
+          <h3>Total Sessions</h3>
+          <div class="value" id="totalCount">-</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon warning">
+          <i class="fas fa-server"></i>
+        </div>
+        <div class="stat-content">
+          <h3>Services</h3>
+          <div class="value" id="servicesCount">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sessions-section">
+      <div class="section-header">
+        <h2>
+          <i class="fas fa-list"></i>
+          Active Sessions
+        </h2>
+        <button class="btn btn-secondary" onclick="checkAllLogs()">
+          <i class="fas fa-file-alt"></i>
+          Show All Logs
+        </button>
+      </div>
+      <div class="session-list" id="sessionList">
+        <div class="loading">
+          <i class="fas fa-spinner"></i>
+          <p>Loading sessions...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Load sessions on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadSessions();
+    });
+
+    async function loadSessions() {
+      const sessionList = document.getElementById('sessionList');
+      sessionList.innerHTML = '<div class="loading"><i class="fas fa-spinner"></i><p>Loading sessions...</p></div>';
+
+      try {
+        const response = await fetch('/claudeTalk/tmuxSessions');
+        const data = await response.json();
+
+        if (data.success && data.sessions && data.sessions.length > 0) {
+          displaySessions(data.sessions);
+          updateStats(data.sessions);
+        } else {
+          sessionList.innerHTML = `
+            <div class="empty-state">
+              <i class="fas fa-layer-group"></i>
+              <p>No TMUX sessions found</p>
+              <p style="margin-top: 1rem; font-size: 0.9rem;">
+                Sessions are typically named: madladslab_session, ps_session, etc.
+              </p>
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error loading sessions:', error);
+        sessionList.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-exclamation-triangle"></i>
+            <p>Failed to load sessions</p>
+            <p style="margin-top: 1rem; font-size: 0.9rem;">${error.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    function displaySessions(sessions) {
+      const sessionList = document.getElementById('sessionList');
+
+      sessionList.innerHTML = sessions.map((session, index) => {
+        const isRunning = true; // All sessions in tmux list are running
+        const sessionName = session.replace('_session', '');
+
+        return `
+          <div class="session-card" id="session-${index}">
+            <div class="session-header">
+              <div class="session-name">
+                <i class="fas fa-terminal"></i>
+                ${session}
+              </div>
+              <span class="session-status running">Running</span>
+            </div>
+
+            <div class="session-info">
+              <div class="info-item">
+                <i class="fas fa-tag"></i>
+                <span>Service: <span class="value">${sessionName}</span></span>
+              </div>
+              <div class="info-item">
+                <i class="fas fa-folder"></i>
+                <span>Directory: <span class="value">/srv/${sessionName}</span></span>
+              </div>
+            </div>
+
+            <div class="session-actions">
+              <button class="btn btn-secondary" onclick="viewLogs('${session}', ${index})">
+                <i class="fas fa-file-alt"></i>
+                View Logs
+              </button>
+              <button class="btn btn-secondary" onclick="attachSession('${session}')">
+                <i class="fas fa-external-link-alt"></i>
+                Attach
+              </button>
+              <button class="btn btn-success" onclick="restartSession('${session}')">
+                <i class="fas fa-redo"></i>
+                Restart
+              </button>
+              <button class="btn btn-danger" onclick="stopSession('${session}')">
+                <i class="fas fa-stop"></i>
+                Stop
+              </button>
+            </div>
+
+            <div class="logs-container" id="logs-${index}">
+              <pre>Loading logs...</pre>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateStats(sessions) {
+      document.getElementById('totalCount').textContent = sessions.length;
+      document.getElementById('runningCount').textContent = sessions.length;
+
+      // Count services (sessions ending with _session)
+      const services = sessions.filter(s => s.includes('_session')).length;
+      document.getElementById('servicesCount').textContent = services;
+    }
+
+    async function viewLogs(sessionName, index) {
+      const logsContainer = document.getElementById(`logs-${index}`);
+      const isVisible = logsContainer.classList.contains('visible');
+
+      if (isVisible) {
+        logsContainer.classList.remove('visible');
+        return;
+      }
+
+      logsContainer.classList.add('visible');
+      logsContainer.innerHTML = '<pre>Loading logs...</pre>';
+
+      try {
+        const response = await fetch(`/claudeTalk/sessionLogs?session=${encodeURIComponent(sessionName)}`);
+        const data = await response.json();
+
+        if (data.success) {
+          logsContainer.innerHTML = `<pre>${data.logs || 'No logs available'}</pre>`;
+        } else {
+          logsContainer.innerHTML = `<pre>Error: ${data.error}</pre>`;
+        }
+      } catch (error) {
+        console.error('Error loading logs:', error);
+        logsContainer.innerHTML = `<pre>Failed to load logs: ${error.message}</pre>`;
+      }
+    }
+
+    function attachSession(sessionName) {
+      alert(`To attach to this session, use your terminal:\n\ntmux attach-session -t ${sessionName}\n\nOr use the Terminal tab in Claude Vision.`);
+    }
+
+    async function restartSession(sessionName) {
+      if (!confirm(`Restart session "${sessionName}"? This will kill the current session and start a new one.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/claudeTalk/restartSession', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ session: sessionName })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          alert(`Session "${sessionName}" restarted successfully!`);
+          setTimeout(() => loadSessions(), 1000);
+        } else {
+          alert(`Failed to restart session: ${data.error}`);
+        }
+      } catch (error) {
+        console.error('Error restarting session:', error);
+        alert(`Failed to restart session: ${error.message}`);
+      }
+    }
+
+    async function stopSession(sessionName) {
+      if (!confirm(`Stop session "${sessionName}"? The session will be terminated.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/claudeTalk/stopSession', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ session: sessionName })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          alert(`Session "${sessionName}" stopped successfully!`);
+          setTimeout(() => loadSessions(), 1000);
+        } else {
+          alert(`Failed to stop session: ${data.error}`);
+        }
+      } catch (error) {
+        console.error('Error stopping session:', error);
+        alert(`Failed to stop session: ${error.message}`);
+      }
+    }
+
+    function checkAllLogs() {
+      const logsContainers = document.querySelectorAll('.logs-container');
+      const anyVisible = Array.from(logsContainers).some(c => c.classList.contains('visible'));
+
+      logsContainers.forEach((container, index) => {
+        if (anyVisible) {
+          container.classList.remove('visible');
+        } else {
+          const sessionCard = document.querySelectorAll('.session-card')[index];
+          const sessionName = sessionCard.querySelector('.session-name').textContent.trim();
+          viewLogs(sessionName, index);
+        }
+      });
+    }
+
+    function refreshSessions() {
+      loadSessions();
+    }
+  </script>
+</body>
+</html>

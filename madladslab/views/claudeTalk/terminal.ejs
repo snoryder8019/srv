@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Vision - Terminal</title>
+  <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #0c0c0c;
+      color: #d4d4d4;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: #1e1e1e;
+      border-bottom: 1px solid #3c3c3c;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .header h1 {
+      font-size: 1.2rem;
+      color: #cccccc;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      background: #0e639c;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-decoration: none;
+    }
+
+    .btn:hover {
+      background: #1177bb;
+    }
+
+    .btn-secondary {
+      background: #3c3c3c;
+    }
+
+    .btn-secondary:hover {
+      background: #4c4c4c;
+    }
+
+    .btn-danger {
+      background: #a81f1f;
+    }
+
+    .btn-danger:hover {
+      background: #d12828;
+    }
+
+    .terminal-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 1rem;
+    }
+
+    .terminal {
+      flex: 1;
+      background: #0c0c0c;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 1rem;
+      overflow-y: auto;
+      font-family: 'Courier New', Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #cccccc;
+    }
+
+    .terminal-line {
+      margin-bottom: 0.5rem;
+      word-wrap: break-word;
+    }
+
+    .terminal-line.command {
+      color: #4ec9b0;
+    }
+
+    .terminal-line.output {
+      color: #d4d4d4;
+    }
+
+    .terminal-line.error {
+      color: #f48771;
+    }
+
+    .terminal-line.success {
+      color: #89d185;
+    }
+
+    .prompt {
+      color: #4ec9b0;
+      user-select: none;
+    }
+
+    .terminal-input-container {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 1rem;
+      background: #1e1e1e;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 0.75rem 1rem;
+    }
+
+    .terminal-prompt {
+      color: #4ec9b0;
+      font-family: 'Courier New', Consolas, monospace;
+      font-size: 14px;
+      user-select: none;
+    }
+
+    .terminal-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #cccccc;
+      font-family: 'Courier New', Consolas, monospace;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .terminal-send-btn {
+      background: #0e639c;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+    }
+
+    .terminal-send-btn:hover {
+      background: #1177bb;
+    }
+
+    .terminal-send-btn:disabled {
+      background: #555555;
+      cursor: not-allowed;
+    }
+
+    .working-directory {
+      background: #1e1e1e;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-family: 'Courier New', Consolas, monospace;
+      font-size: 0.9rem;
+    }
+
+    .working-directory label {
+      color: #858585;
+      user-select: none;
+    }
+
+    .working-directory .path {
+      color: #4ec9b0;
+      flex: 1;
+    }
+
+    .command-history {
+      position: fixed;
+      bottom: 100px;
+      right: 2rem;
+      background: #1e1e1e;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 1rem;
+      max-width: 300px;
+      max-height: 400px;
+      overflow-y: auto;
+      display: none;
+      z-index: 1000;
+    }
+
+    .command-history.visible {
+      display: block;
+    }
+
+    .command-history h3 {
+      color: #cccccc;
+      font-size: 0.9rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .history-item {
+      background: #0c0c0c;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      font-family: 'Courier New', Consolas, monospace;
+      font-size: 0.85rem;
+      color: #4ec9b0;
+      transition: background 0.2s;
+    }
+
+    .history-item:hover {
+      background: #2a2d2e;
+      border-color: #0e639c;
+    }
+
+    .quick-commands {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    .quick-cmd-btn {
+      background: #2d2d30;
+      border: 1px solid #3c3c3c;
+      color: #cccccc;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+      font-family: 'Courier New', Consolas, monospace;
+    }
+
+    .quick-cmd-btn:hover {
+      background: #3c3c3c;
+      border-color: #0e639c;
+      transform: translateY(-1px);
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #0c0c0c;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #424242;
+      border-radius: 5px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4f4f4f;
+    }
+
+    @media (max-width: 768px) {
+      .terminal-container {
+        padding: 0.5rem;
+      }
+
+      .quick-commands {
+        flex-direction: column;
+      }
+
+      .command-history {
+        right: 0.5rem;
+        left: 0.5rem;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <i class="fas fa-terminal"></i>
+      Terminal - /srv
+    </h1>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="toggleHistory()">
+        <i class="fas fa-history"></i>
+        History
+      </button>
+      <button class="btn btn-danger" onclick="clearTerminal()">
+        <i class="fas fa-eraser"></i>
+        Clear
+      </button>
+      <a href="/claudeTalk/browser" class="btn btn-secondary">
+        <i class="fas fa-folder-open"></i>
+        Browser
+      </a>
+      <a href="/claudeTalk/sessions" class="btn btn-secondary">
+        <i class="fas fa-layer-group"></i>
+        Sessions
+      </a>
+      <a href="/claudeTalk" class="btn btn-secondary">
+        <i class="fas fa-comments"></i>
+        Chat
+      </a>
+    </div>
+  </div>
+
+  <div class="terminal-container">
+    <div class="working-directory">
+      <label><i class="fas fa-folder"></i> Working Directory:</label>
+      <span class="path" id="currentDir">/srv</span>
+      <button class="btn btn-secondary" onclick="changeDirectory()">
+        <i class="fas fa-folder-open"></i>
+        Change
+      </button>
+    </div>
+
+    <div class="quick-commands">
+      <button class="quick-cmd-btn" onclick="runQuickCommand('ls -la')">ls -la</button>
+      <button class="quick-cmd-btn" onclick="runQuickCommand('pwd')">pwd</button>
+      <button class="quick-cmd-btn" onclick="runQuickCommand('git status')">git status</button>
+      <button class="quick-cmd-btn" onclick="runQuickCommand('npm run dev')">npm run dev</button>
+      <button class="quick-cmd-btn" onclick="runQuickCommand('tmux ls')">tmux ls</button>
+    </div>
+
+    <div class="terminal" id="terminal">
+      <div class="terminal-line success">
+        <i class="fas fa-check-circle"></i> Claude Vision Terminal - Ready
+      </div>
+      <div class="terminal-line">
+        Type your commands below. Working directory: /srv
+      </div>
+      <div class="terminal-line">
+        <span style="color: #858585;">Tip: Use Ctrl+C to stop running commands, or click History to reuse commands</span>
+      </div>
+    </div>
+
+    <div class="terminal-input-container">
+      <span class="terminal-prompt" id="prompt">user@srv:~$</span>
+      <input
+        type="text"
+        class="terminal-input"
+        id="commandInput"
+        placeholder="Enter command..."
+        autocomplete="off"
+      >
+      <button class="terminal-send-btn" id="sendBtn" onclick="executeCommand()">
+        <i class="fas fa-play"></i> Execute
+      </button>
+    </div>
+  </div>
+
+  <div class="command-history" id="commandHistory">
+    <h3>
+      <i class="fas fa-history"></i>
+      Command History
+    </h3>
+    <div id="historyList">
+      <div style="color: #858585; font-size: 0.85rem;">No commands yet</div>
+    </div>
+  </div>
+
+  <script>
+    let commandHistory = [];
+    let historyIndex = -1;
+    let currentDirectory = '/srv';
+
+    const commandInput = document.getElementById('commandInput');
+    const terminal = document.getElementById('terminal');
+    const sendBtn = document.getElementById('sendBtn');
+
+    // Focus input on load
+    commandInput.focus();
+
+    // Handle Enter key
+    commandInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        executeCommand();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        navigateHistory('up');
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        navigateHistory('down');
+      }
+    });
+
+    async function executeCommand() {
+      const command = commandInput.value.trim();
+
+      if (!command) return;
+
+      // Add to history
+      commandHistory.push(command);
+      historyIndex = commandHistory.length;
+      updateHistoryDisplay();
+
+      // Display command in terminal
+      addTerminalLine(`<span class="prompt">$ </span>${escapeHtml(command)}`, 'command');
+
+      // Clear input
+      commandInput.value = '';
+
+      // Disable input while executing
+      commandInput.disabled = true;
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+
+      try {
+        const response = await fetch('/claudeTalk/executeCommand', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            command: command,
+            cwd: currentDirectory
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          if (data.stdout) {
+            addTerminalLine(escapeHtml(data.stdout), 'output');
+          }
+          if (data.stderr) {
+            addTerminalLine(escapeHtml(data.stderr), 'error');
+          }
+          if (!data.stdout && !data.stderr) {
+            addTerminalLine('Command executed successfully (no output)', 'success');
+          }
+        } else {
+          addTerminalLine(`Error: ${escapeHtml(data.error || 'Command failed')}`, 'error');
+          if (data.stdout) {
+            addTerminalLine(escapeHtml(data.stdout), 'output');
+          }
+          if (data.stderr) {
+            addTerminalLine(escapeHtml(data.stderr), 'error');
+          }
+        }
+      } catch (error) {
+        console.error('Error executing command:', error);
+        addTerminalLine(`Failed to execute command: ${escapeHtml(error.message)}`, 'error');
+      } finally {
+        // Re-enable input
+        commandInput.disabled = false;
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i class="fas fa-play"></i> Execute';
+        commandInput.focus();
+
+        // Auto-scroll to bottom
+        terminal.scrollTop = terminal.scrollHeight;
+      }
+    }
+
+    function addTerminalLine(content, type = 'output') {
+      const line = document.createElement('div');
+      line.className = `terminal-line ${type}`;
+      line.innerHTML = content;
+      terminal.appendChild(line);
+
+      // Auto-scroll to bottom
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function runQuickCommand(command) {
+      commandInput.value = command;
+      commandInput.focus();
+    }
+
+    function navigateHistory(direction) {
+      if (commandHistory.length === 0) return;
+
+      if (direction === 'up') {
+        if (historyIndex > 0) {
+          historyIndex--;
+          commandInput.value = commandHistory[historyIndex];
+        }
+      } else if (direction === 'down') {
+        if (historyIndex < commandHistory.length - 1) {
+          historyIndex++;
+          commandInput.value = commandHistory[historyIndex];
+        } else {
+          historyIndex = commandHistory.length;
+          commandInput.value = '';
+        }
+      }
+    }
+
+    function toggleHistory() {
+      const historyPanel = document.getElementById('commandHistory');
+      historyPanel.classList.toggle('visible');
+    }
+
+    function updateHistoryDisplay() {
+      const historyList = document.getElementById('historyList');
+
+      if (commandHistory.length === 0) {
+        historyList.innerHTML = '<div style="color: #858585; font-size: 0.85rem;">No commands yet</div>';
+        return;
+      }
+
+      historyList.innerHTML = commandHistory.slice().reverse().map(cmd => {
+        return `<div class="history-item" onclick="rerunCommand('${escapeHtml(cmd)}')">${escapeHtml(cmd)}</div>`;
+      }).join('');
+    }
+
+    function rerunCommand(command) {
+      commandInput.value = command;
+      toggleHistory();
+      commandInput.focus();
+    }
+
+    function changeDirectory() {
+      const newDir = prompt('Enter new working directory:', currentDirectory);
+
+      if (newDir && newDir.trim()) {
+        currentDirectory = newDir.trim();
+        document.getElementById('currentDir').textContent = currentDirectory;
+        document.getElementById('prompt').textContent = `user@${currentDirectory.split('/').pop() || 'srv'}:~$`;
+        addTerminalLine(`Changed directory to: ${currentDirectory}`, 'success');
+      }
+    }
+
+    function clearTerminal() {
+      if (confirm('Clear terminal output?')) {
+        terminal.innerHTML = `
+          <div class="terminal-line success">
+            <i class="fas fa-check-circle"></i> Terminal cleared
+          </div>
+        `;
+      }
+    }
+
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, m => map[m]);
+    }
+  </script>
+</body>
+</html>

@@ -46,6 +46,38 @@ router.get('/voice', (req, res) => {
   });
 });
 
+// GET /claudeTalk/browser - File browser interface
+router.get('/browser', (req, res) => {
+  res.render('claudeTalk/browser', {
+    title: 'File Browser - Claude Vision',
+    user: req.user
+  });
+});
+
+// GET /claudeTalk/editor - Code editor interface
+router.get('/editor', (req, res) => {
+  res.render('claudeTalk/editor', {
+    title: 'Code Editor - Claude Vision',
+    user: req.user
+  });
+});
+
+// GET /claudeTalk/sessions - TMUX session manager
+router.get('/sessions', (req, res) => {
+  res.render('claudeTalk/sessions', {
+    title: 'TMUX Sessions - Claude Vision',
+    user: req.user
+  });
+});
+
+// GET /claudeTalk/terminal - Terminal interface
+router.get('/terminal', (req, res) => {
+  res.render('claudeTalk/terminal', {
+    title: 'Terminal - Claude Vision',
+    user: req.user
+  });
+});
+
 // POST /claudeTalk/message - Send a message to Claude with VM control tools
 router.post('/message', async (req, res) => {
   try {
@@ -1285,6 +1317,282 @@ async function sendRokuCommand(rokuIp, command) {
     throw new Error(`Could not send command to Roku: ${error.message}`);
   }
 }
+
+// ============================================
+// FILE BROWSER & EDITOR API ENDPOINTS
+// ============================================
+
+// GET /claudeTalk/browse - Browse directory contents
+router.get('/browse', async (req, res) => {
+  try {
+    const dirPath = req.query.path || '/srv';
+
+    const result = await executeTool('list_directory', { path: dirPath });
+
+    if (result.success) {
+      res.json({
+        success: true,
+        path: result.path,
+        items: result.items
+      });
+    } else {
+      res.json({
+        success: false,
+        error: result.error || 'Failed to list directory'
+      });
+    }
+  } catch (error) {
+    console.error('Browse error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /claudeTalk/readFile - Read file contents
+router.get('/readFile', async (req, res) => {
+  try {
+    const filePath = req.query.path;
+
+    if (!filePath) {
+      return res.status(400).json({
+        success: false,
+        error: 'File path is required'
+      });
+    }
+
+    const result = await executeTool('read_file', { path: filePath });
+
+    if (result.success) {
+      res.json({
+        success: true,
+        path: result.path,
+        content: result.content,
+        size: result.size,
+        modified: result.modified
+      });
+    } else {
+      res.json({
+        success: false,
+        error: result.error || 'Failed to read file'
+      });
+    }
+  } catch (error) {
+    console.error('Read file error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /claudeTalk/saveFile - Save file contents
+router.post('/saveFile', async (req, res) => {
+  try {
+    const { path, content } = req.body;
+
+    if (!path || content === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'Path and content are required'
+      });
+    }
+
+    const result = await executeTool('write_file', { path, content });
+
+    if (result.success) {
+      res.json({
+        success: true,
+        path: result.path,
+        message: result.message
+      });
+    } else {
+      res.json({
+        success: false,
+        error: result.error || 'Failed to save file'
+      });
+    }
+  } catch (error) {
+    console.error('Save file error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// TMUX SESSION MANAGEMENT API ENDPOINTS
+// ============================================
+
+// GET /claudeTalk/tmuxSessions - List all TMUX sessions
+router.get('/tmuxSessions', async (req, res) => {
+  try {
+    const result = await executeTool('list_services', {});
+
+    if (result.success) {
+      res.json({
+        success: true,
+        sessions: result.services || []
+      });
+    } else {
+      res.json({
+        success: false,
+        error: result.error || 'Failed to list sessions'
+      });
+    }
+  } catch (error) {
+    console.error('List sessions error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /claudeTalk/sessionLogs - Get logs from a TMUX session
+router.get('/sessionLogs', async (req, res) => {
+  try {
+    const sessionName = req.query.session;
+
+    if (!sessionName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session name is required'
+      });
+    }
+
+    const result = await executeTool('get_service_logs', {
+      service: sessionName,
+      lines: 100
+    });
+
+    if (result.success) {
+      res.json({
+        success: true,
+        logs: result.logs,
+        service: result.service
+      });
+    } else {
+      res.json({
+        success: false,
+        error: result.error || 'Failed to get logs'
+      });
+    }
+  } catch (error) {
+    console.error('Get logs error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /claudeTalk/restartSession - Restart a TMUX session
+router.post('/restartSession', async (req, res) => {
+  try {
+    const { session } = req.body;
+
+    if (!session) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session name is required'
+      });
+    }
+
+    const result = await executeTool('restart_service', { service: session });
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: result.message,
+        session: result.session
+      });
+    } else {
+      res.json({
+        success: false,
+        error: result.error || 'Failed to restart session'
+      });
+    }
+  } catch (error) {
+    console.error('Restart session error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /claudeTalk/stopSession - Stop a TMUX session
+router.post('/stopSession', async (req, res) => {
+  try {
+    const { session } = req.body;
+
+    if (!session) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session name is required'
+      });
+    }
+
+    const result = await executeTool('execute_command', {
+      command: `tmux kill-session -t ${session}`
+    });
+
+    if (result.success || result.stdout !== undefined) {
+      res.json({
+        success: true,
+        message: `Session ${session} stopped`
+      });
+    } else {
+      res.json({
+        success: false,
+        error: result.error || 'Failed to stop session'
+      });
+    }
+  } catch (error) {
+    console.error('Stop session error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// TERMINAL API ENDPOINT
+// ============================================
+
+// POST /claudeTalk/executeCommand - Execute shell command
+router.post('/executeCommand', async (req, res) => {
+  try {
+    const { command, cwd } = req.body;
+
+    if (!command) {
+      return res.status(400).json({
+        success: false,
+        error: 'Command is required'
+      });
+    }
+
+    // Build command with cd if cwd is provided
+    const fullCommand = cwd ? `cd ${cwd} && ${command}` : command;
+
+    const result = await executeTool('execute_command', {
+      command: fullCommand,
+      timeout: 60000 // 60 second timeout
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Execute command error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 // Socket.IO setup function (to be called from main app)
 export function setupWebSocket(io) {

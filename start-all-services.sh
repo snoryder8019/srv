@@ -10,13 +10,14 @@ SERVICES=(
   "madladslab:3000:/srv/madladslab:npm start"
   "ps:3399:/srv/ps:npm start"
   "game-state:3500:/srv/game-state-service:node index.js"
-  "acm:3001:/srv/acm:npm start"
+  "acm:3004:/srv/acm:npm start"
   "nocometalworkz:3002:/srv/nocometalworkz:npm start"
   "sfg:3003:/srv/sfg:npm start"
-  "sna:3004:/srv/sna:npm start"
+  "sna:3010:/srv/sna:npm start"
   "twww:3005:/srv/twww:npm start"
   "w2portal:3006:/srv/w2MongoClient:npm start"
   "madThree:3007:/srv/madThree:npm start"
+  "graffitiTV:3008:/srv/graffiti-tv:GRAFFITI_TV_PORT=3008 npm start"
 )
 
 # Kill existing sessions

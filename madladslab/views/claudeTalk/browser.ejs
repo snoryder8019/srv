@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Vision - Server Browser</title>
+  <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .header {
+      background: #252526;
+      border-bottom: 1px solid #3c3c3c;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header h1 {
+      font-size: 1.2rem;
+      color: #cccccc;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .nav-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn {
+      background: #0e639c;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn:hover {
+      background: #1177bb;
+    }
+
+    .btn-secondary {
+      background: #3c3c3c;
+    }
+
+    .btn-secondary:hover {
+      background: #4c4c4c;
+    }
+
+    .main-container {
+      display: flex;
+      height: calc(100vh - 58px);
+    }
+
+    .sidebar {
+      width: 300px;
+      background: #252526;
+      border-right: 1px solid #3c3c3c;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 1rem;
+      border-bottom: 1px solid #3c3c3c;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sidebar-header h2 {
+      font-size: 0.9rem;
+      color: #cccccc;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .path-display {
+      padding: 0.75rem 1rem;
+      background: #1e1e1e;
+      border-bottom: 1px solid #3c3c3c;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: #4ec9b0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tree {
+      padding: 0.5rem 0;
+    }
+
+    .tree-item {
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: background 0.1s;
+      user-select: none;
+    }
+
+    .tree-item:hover {
+      background: #2a2d2e;
+    }
+
+    .tree-item.selected {
+      background: #094771;
+    }
+
+    .tree-item.directory {
+      font-weight: 500;
+    }
+
+    .tree-item i {
+      width: 16px;
+      font-size: 14px;
+    }
+
+    .tree-item .folder-icon {
+      color: #dcb67a;
+    }
+
+    .tree-item .file-icon {
+      color: #c5c5c5;
+    }
+
+    .tree-item.js-file .file-icon {
+      color: #f0db4f;
+    }
+
+    .tree-item.json-file .file-icon {
+      color: #89d185;
+    }
+
+    .tree-item.md-file .file-icon {
+      color: #519aba;
+    }
+
+    .content-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .content-header {
+      background: #1e1e1e;
+      border-bottom: 1px solid #3c3c3c;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      color: #cccccc;
+    }
+
+    .breadcrumb-separator {
+      color: #6a6a6a;
+    }
+
+    .file-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 1rem;
+    }
+
+    .file-card {
+      background: #2d2d30;
+      border: 1px solid #3c3c3c;
+      border-radius: 6px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .file-card:hover {
+      background: #333333;
+      border-color: #0e639c;
+      transform: translateY(-2px);
+    }
+
+    .file-card.selected {
+      background: #094771;
+      border-color: #1177bb;
+    }
+
+    .file-card i {
+      font-size: 2.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .file-card.directory i {
+      color: #dcb67a;
+    }
+
+    .file-card.file i {
+      color: #c5c5c5;
+    }
+
+    .file-card .file-name {
+      font-size: 0.85rem;
+      word-break: break-word;
+      color: #cccccc;
+    }
+
+    .file-card .file-info {
+      font-size: 0.7rem;
+      color: #858585;
+      margin-top: 0.5rem;
+    }
+
+    .file-preview {
+      background: #1e1e1e;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 1.5rem;
+      margin-top: 1rem;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .file-preview pre {
+      margin: 0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: #d4d4d4;
+      white-space: pre-wrap;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #858585;
+    }
+
+    .loading i {
+      font-size: 2rem;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .search-box {
+      background: #3c3c3c;
+      border: 1px solid #555555;
+      color: #cccccc;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      width: 250px;
+    }
+
+    .search-box:focus {
+      outline: none;
+      border-color: #0e639c;
+    }
+
+    .view-toggle {
+      display: flex;
+      gap: 0.25rem;
+      background: #3c3c3c;
+      border-radius: 4px;
+      padding: 0.25rem;
+    }
+
+    .view-toggle button {
+      background: transparent;
+      border: none;
+      color: #cccccc;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: background 0.2s;
+    }
+
+    .view-toggle button:hover {
+      background: #4c4c4c;
+    }
+
+    .view-toggle button.active {
+      background: #0e639c;
+      color: white;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: #858585;
+    }
+
+    .empty-state i {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1e1e1e;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #424242;
+      border-radius: 5px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4f4f4f;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <i class="fas fa-eye"></i>
+      Claude Vision - Server Browser
+    </h1>
+    <div class="nav-buttons">
+      <a href="/claudeTalk" class="btn btn-secondary">
+        <i class="fas fa-comments"></i> Chat
+      </a>
+      <a href="/claudeTalk/terminal" class="btn btn-secondary">
+        <i class="fas fa-terminal"></i> Terminal
+      </a>
+      <a href="/claudeTalk/sessions" class="btn btn-secondary">
+        <i class="fas fa-layer-group"></i> Sessions
+      </a>
+      <a href="/" class="btn btn-secondary">
+        <i class="fas fa-home"></i> Home
+      </a>
+    </div>
+  </div>
+
+  <div class="main-container">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2><i class="fas fa-folder-tree"></i> Directory Tree</h2>
+        <button class="btn btn-secondary" onclick="refreshTree()" title="Refresh">
+          <i class="fas fa-sync-alt"></i>
+        </button>
+      </div>
+      <div class="path-display">
+        <i class="fas fa-terminal"></i>
+        <span id="currentPath">/srv</span>
+      </div>
+      <div class="tree" id="directoryTree">
+        <div class="loading">
+          <i class="fas fa-spinner"></i>
+          <p>Loading directory tree...</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="content-header">
+        <div class="breadcrumb" id="breadcrumb">
+          <i class="fas fa-folder-open"></i>
+          <span>srv</span>
+        </div>
+        <div class="toolbar">
+          <input type="text" class="search-box" id="searchBox" placeholder="Search files...">
+          <div class="view-toggle">
+            <button class="active" onclick="setView('grid')" title="Grid view">
+              <i class="fas fa-th"></i>
+            </button>
+            <button onclick="setView('list')" title="List view">
+              <i class="fas fa-list"></i>
+            </button>
+          </div>
+          <button class="btn" onclick="openInEditor()" title="Open in editor">
+            <i class="fas fa-edit"></i> Edit
+          </button>
+        </div>
+      </div>
+
+      <div class="file-list">
+        <div class="file-grid" id="fileGrid">
+          <div class="loading">
+            <i class="fas fa-spinner"></i>
+            <p>Loading files...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentPath = '/srv';
+    let currentView = 'grid';
+    let selectedFile = null;
+
+    // Load directory on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadDirectory('/srv');
+      loadDirectoryTree('/srv');
+    });
+
+    // Search functionality
+    document.getElementById('searchBox').addEventListener('input', (e) => {
+      const searchTerm = e.target.value.toLowerCase();
+      const fileCards = document.querySelectorAll('.file-card');
+
+      fileCards.forEach(card => {
+        const fileName = card.querySelector('.file-name').textContent.toLowerCase();
+        if (fileName.includes(searchTerm)) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    });
+
+    async function loadDirectory(path) {
+      currentPath = path;
+      document.getElementById('currentPath').textContent = path;
+      updateBreadcrumb(path);
+
+      const fileGrid = document.getElementById('fileGrid');
+      fileGrid.innerHTML = '<div class="loading"><i class="fas fa-spinner"></i><p>Loading files...</p></div>';
+
+      try {
+        const response = await fetch(`/claudeTalk/browse?path=${encodeURIComponent(path)}`);
+        const data = await response.json();
+
+        if (data.success) {
+          displayFiles(data.items);
+        } else {
+          fileGrid.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Error: ${data.error}</p></div>`;
+        }
+      } catch (error) {
+        console.error('Error loading directory:', error);
+        fileGrid.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Failed to load directory</p></div>`;
+      }
+    }
+
+    function displayFiles(items) {
+      const fileGrid = document.getElementById('fileGrid');
+
+      if (items.length === 0) {
+        fileGrid.innerHTML = '<div class="empty-state"><i class="fas fa-folder-open"></i><p>This directory is empty</p></div>';
+        return;
+      }
+
+      // Sort: directories first, then files alphabetically
+      items.sort((a, b) => {
+        if (a.type === b.type) {
+          return a.name.localeCompare(b.name);
+        }
+        return a.type === 'directory' ? -1 : 1;
+      });
+
+      fileGrid.innerHTML = items.map(item => {
+        const isDir = item.type === 'directory';
+        const icon = isDir ? 'fa-folder' : getFileIcon(item.name);
+        const fileClass = getFileClass(item.name);
+        const size = isDir ? '' : formatSize(item.size);
+
+        return `
+          <div class="file-card ${item.type} ${fileClass}"
+               onclick="selectFile('${item.name}', '${item.type}')"
+               ondblclick="openFile('${item.name}', '${item.type}')">
+            <i class="fas ${icon}"></i>
+            <div class="file-name">${item.name}</div>
+            ${size ? `<div class="file-info">${size}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadDirectoryTree(path, parentElement = null) {
+      try {
+        const response = await fetch(`/claudeTalk/browse?path=${encodeURIComponent(path)}`);
+        const data = await response.json();
+
+        if (data.success) {
+          const tree = document.getElementById('directoryTree');
+          tree.innerHTML = '';
+
+          // Add parent directory link if not at root
+          if (path !== '/srv') {
+            const parentPath = path.split('/').slice(0, -1).join('/') || '/srv';
+            tree.innerHTML += `
+              <div class="tree-item directory" onclick="loadDirectory('${parentPath}')">
+                <i class="fas fa-level-up-alt folder-icon"></i>
+                <span>..</span>
+              </div>
+            `;
+          }
+
+          // Add directories
+          const directories = data.items.filter(item => item.type === 'directory');
+          directories.forEach(item => {
+            const fullPath = `${path}/${item.name}`.replace('//', '/');
+            tree.innerHTML += `
+              <div class="tree-item directory" onclick="loadDirectory('${fullPath}')">
+                <i class="fas fa-folder folder-icon"></i>
+                <span>${item.name}</span>
+              </div>
+            `;
+          });
+        }
+      } catch (error) {
+        console.error('Error loading tree:', error);
+      }
+    }
+
+    function updateBreadcrumb(path) {
+      const parts = path.split('/').filter(Boolean);
+      const breadcrumb = document.getElementById('breadcrumb');
+
+      let html = '<i class="fas fa-folder-open"></i>';
+      let currentPath = '';
+
+      parts.forEach((part, index) => {
+        currentPath += '/' + part;
+        const isLast = index === parts.length - 1;
+
+        if (isLast) {
+          html += `<span class="breadcrumb-separator">/</span><span>${part}</span>`;
+        } else {
+          html += `<span class="breadcrumb-separator">/</span><a href="#" onclick="loadDirectory('${currentPath}'); return false;" style="color: #4ec9b0; text-decoration: none;">${part}</a>`;
+        }
+      });
+
+      breadcrumb.innerHTML = html;
+    }
+
+    function selectFile(name, type) {
+      selectedFile = { name, type, path: `${currentPath}/${name}` };
+
+      // Remove previous selection
+      document.querySelectorAll('.file-card').forEach(card => card.classList.remove('selected'));
+
+      // Add selection to clicked card
+      event.currentTarget.classList.add('selected');
+    }
+
+    function openFile(name, type) {
+      const fullPath = `${currentPath}/${name}`.replace('//', '/');
+
+      if (type === 'directory') {
+        loadDirectory(fullPath);
+        loadDirectoryTree(fullPath);
+      } else {
+        // Open file in editor
+        window.open(`/claudeTalk/editor?file=${encodeURIComponent(fullPath)}`, '_blank');
+      }
+    }
+
+    function openInEditor() {
+      if (!selectedFile) {
+        alert('Please select a file first');
+        return;
+      }
+
+      if (selectedFile.type === 'directory') {
+        alert('Cannot edit directories. Please select a file.');
+        return;
+      }
+
+      window.open(`/claudeTalk/editor?file=${encodeURIComponent(selectedFile.path)}`, '_blank');
+    }
+
+    function refreshTree() {
+      loadDirectory(currentPath);
+      loadDirectoryTree(currentPath);
+    }
+
+    function setView(view) {
+      currentView = view;
+
+      // Update button states
+      document.querySelectorAll('.view-toggle button').forEach(btn => btn.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+
+      // TODO: Implement list view
+      if (view === 'list') {
+        alert('List view coming soon!');
+      }
+    }
+
+    function getFileIcon(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const iconMap = {
+        'js': 'fa-file-code',
+        'json': 'fa-file-code',
+        'md': 'fa-file-alt',
+        'txt': 'fa-file-alt',
+        'html': 'fa-file-code',
+        'css': 'fa-file-code',
+        'ejs': 'fa-file-code',
+        'sh': 'fa-terminal',
+        'log': 'fa-file-alt',
+        'env': 'fa-file-shield',
+        'png': 'fa-file-image',
+        'jpg': 'fa-file-image',
+        'jpeg': 'fa-file-image',
+        'gif': 'fa-file-image',
+        'svg': 'fa-file-image',
+        'pdf': 'fa-file-pdf',
+        'zip': 'fa-file-archive',
+        'tar': 'fa-file-archive',
+        'gz': 'fa-file-archive'
+      };
+
+      return iconMap[ext] || 'fa-file';
+    }
+
+    function getFileClass(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      return `${ext}-file`;
+    }
+
+    function formatSize(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+  </script>
+</body>
+</html>
