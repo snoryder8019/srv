@@ -21,6 +21,11 @@ const documentSchema = new mongoose.Schema({
 
 const onboardingPacketSchema = new mongoose.Schema(
   {
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: true
+    },
     employeeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Employee",
@@ -50,8 +55,9 @@ const onboardingPacketSchema = new mongoose.Schema(
 );
 
 // Indexes
+onboardingPacketSchema.index({ brandId: 1, employeeId: 1 });
+onboardingPacketSchema.index({ brandId: 1, status: 1 });
 onboardingPacketSchema.index({ employeeId: 1 });
-onboardingPacketSchema.index({ status: 1 });
 
 const OnboardingPacket = mongoose.model("OnboardingPacket", onboardingPacketSchema);
 

@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - MadLadsLab</title>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <link rel="stylesheet" href="/stylesheets/style.css">
+    <style>
+        .scrapeman-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            color: #fff;
+        }
+
+        .scrapeman-header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid var(--accent, #00ff00);
+        }
+
+        .scrapeman-header h1 {
+            color: var(--accent, #00ff00);
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        .scrapeman-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .scraper-panel {
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .scraper-panel h2 {
+            color: var(--accent, #00ff00);
+            margin-bottom: 1rem;
+            font-size: 1.3rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            color: #ccc;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent, #00ff00);
+            box-shadow: 0 0 5px rgba(0, 255, 0, 0.3);
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: auto;
+            cursor: pointer;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            background: var(--accent, #00ff00);
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: #00cc00;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+        }
+
+        .btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #555;
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: #666;
+        }
+
+        .results-panel {
+            grid-column: 1 / -1;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1.5rem;
+            display: none;
+        }
+
+        .results-panel.visible {
+            display: block;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #444;
+        }
+
+        .results-header h2 {
+            color: var(--accent, #00ff00);
+            margin: 0;
+        }
+
+        .results-content {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 1rem;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .results-content pre {
+            margin: 0;
+            color: #ccc;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--accent, #00ff00);
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .error-message {
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff0000;
+            border-radius: 4px;
+            padding: 1rem;
+            color: #ff6666;
+            margin-bottom: 1rem;
+        }
+
+        .success-message {
+            background: rgba(0, 255, 0, 0.2);
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            padding: 1rem;
+            color: #66ff66;
+            margin-bottom: 1rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #444;
+        }
+
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: transparent;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: var(--accent, #00ff00);
+            border-bottom-color: var(--accent, #00ff00);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .app-card {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .app-card:hover {
+            border-color: var(--accent, #00ff00);
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+        }
+
+        .app-card h3 {
+            color: var(--accent, #00ff00);
+            margin: 0 0 0.5rem 0;
+            font-size: 1.1rem;
+        }
+
+        .app-card p {
+            color: #888;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .assets-tab-content {
+            display: none;
+        }
+
+        .assets-tab-content.active {
+            display: block;
+        }
+
+        .asset-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .asset-item {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .asset-item:hover {
+            border-color: var(--accent, #00ff00);
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+        }
+
+        .asset-item img {
+            max-width: 100%;
+            max-height: 100px;
+            object-fit: contain;
+            margin-bottom: 0.5rem;
+            border-radius: 2px;
+        }
+
+        .asset-item .asset-name {
+            color: #ccc;
+            font-size: 0.75rem;
+            word-break: break-all;
+            margin-bottom: 0.25rem;
+        }
+
+        .asset-item .asset-size {
+            color: #888;
+            font-size: 0.7rem;
+        }
+
+        .asset-list {
+            margin-top: 1rem;
+        }
+
+        .asset-list-item {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .asset-list-item:hover {
+            border-color: var(--accent, #00ff00);
+        }
+
+        .asset-list-item .asset-info {
+            flex: 1;
+        }
+
+        .asset-list-item .asset-info .name {
+            color: #ccc;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .asset-list-item .asset-info .path {
+            color: #888;
+            font-size: 0.75rem;
+        }
+
+        .asset-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .asset-actions button {
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+        }
+
+        .footerPopup {
+            display: none !important;
+        }
+
+        /* Scraped Images Carousel */
+        #scrapedImagesScroll {
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent, #00ff00) rgba(0, 0, 0, 0.3);
+        }
+
+        #scrapedImagesScroll::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        #scrapedImagesScroll::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+        }
+
+        #scrapedImagesScroll::-webkit-scrollbar-thumb {
+            background: var(--accent, #00ff00);
+            border-radius: 4px;
+        }
+
+        .scraped-image-card {
+            min-width: 120px;
+            max-width: 120px;
+            height: 160px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 3px solid #444;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s;
+            scroll-snap-align: start;
+            position: relative;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            animation: slideInFade 0.5s ease-in-out forwards;
+        }
+
+        .scraped-image-card:hover {
+            border-color: var(--accent, #00ff00);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.7);
+            transform: translateY(-5px) scale(1.05);
+        }
+
+        .scraped-image-card img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .scraped-image-card .filename {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+            padding: 0.75rem 0.5rem 0.5rem;
+            font-size: 0.65rem;
+            color: #ccc;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            white-space: nowrap;
+            text-align: center;
+        }
+
+        @keyframes slideInFade {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @media (max-width: 968px) {
+            .scrapeman-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .asset-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <%-include('../mainContent/header.ejs')%>
+
+    <div class="scrapeman-container">
+        <div class="scrapeman-header">
+            <h1>ScapeMan</h1>
+            <p class="introText">Web Scraper Utility - Extract, Analyze, and Transform Web Content</p>
+        </div>
+
+        <div class="scrapeman-grid">
+            <!-- Quick Scrape Panel -->
+            <div class="scraper-panel">
+                <h2>Quick Scrape</h2>
+                <p style="color: #888; font-size: 0.85rem; margin-bottom: 1rem;">
+                    <strong>Note:</strong> Some websites block scraping (403 errors). Try:
+                    <a href="#" onclick="event.preventDefault(); document.getElementById('quickUrl').value='https://example.com'; return false;" style="color: var(--accent);">example.com</a>,
+                    <a href="#" onclick="event.preventDefault(); document.getElementById('quickUrl').value='https://wikipedia.org'; return false;" style="color: var(--accent);">wikipedia.org</a>
+                </p>
+                <form id="quickScrapeForm">
+                    <div class="form-group">
+                        <label for="quickUrl">Target URL</label>
+                        <input type="url" id="quickUrl" name="url" placeholder="https://example.com" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Scrape Options</label>
+                        <div class="checkbox-group">
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="includeMetadata" name="includeMetadata" checked>
+                                <label for="includeMetadata">Metadata</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="includeContent" name="includeContent" checked>
+                                <label for="includeContent">Content</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="includeLinks" name="includeLinks">
+                                <label for="includeLinks">Links</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="includeImages" name="includeImages">
+                                <label for="includeImages">Images</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn">Scrape URL</button>
+                </form>
+            </div>
+
+            <!-- Advanced Extraction Panel -->
+            <div class="scraper-panel">
+                <h2>Custom Extraction</h2>
+                <form id="customExtractionForm">
+                    <div class="form-group">
+                        <label for="customUrl">Target URL</label>
+                        <input type="url" id="customUrl" name="url" placeholder="https://example.com" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="selectors">CSS Selectors (JSON)</label>
+                        <textarea id="selectors" name="selectors" placeholder='{"title": "h1", "paragraphs": "p"}'></textarea>
+                    </div>
+
+                    <button type="submit" class="btn">Extract Data</button>
+                </form>
+            </div>
+
+            <!-- Local Apps Browser -->
+            <div class="scraper-panel" style="grid-column: 1 / -1;">
+                <h2>Local Apps Browser</h2>
+                <p style="color: #ccc; margin-bottom: 1rem; font-size: 0.9rem;">Browse and extract images/assets from local /srv applications</p>
+
+                <div id="appsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                    <div style="text-align: center; padding: 2rem; color: #888;">Loading apps...</div>
+                </div>
+
+                <div id="appAssets" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #444;">
+                        <h3 style="color: var(--accent, #00ff00); margin: 0;" id="appAssetsTitle">Assets</h3>
+                        <button class="btn btn-secondary" onclick="closeAppAssets()">Close</button>
+                    </div>
+
+                    <div class="tabs">
+                        <button class="tab active" onclick="switchAssetsTab('images')">Images</button>
+                        <button class="tab" onclick="switchAssetsTab('stylesheets')">Stylesheets</button>
+                        <button class="tab" onclick="switchAssetsTab('scripts')">Scripts</button>
+                        <button class="tab" onclick="switchAssetsTab('other')">Other</button>
+                    </div>
+
+                    <div id="imagesAssets" class="assets-tab-content active"></div>
+                    <div id="stylesheetsAssets" class="assets-tab-content"></div>
+                    <div id="scriptsAssets" class="assets-tab-content"></div>
+                    <div id="otherAssets" class="assets-tab-content"></div>
+                </div>
+            </div>
+
+            <!-- Scraped Images Showcase -->
+            <div class="scraper-panel" style="grid-column: 1 / -1;">
+                <h2>Scraped Images Showcase</h2>
+                <p style="color: #ccc; margin-bottom: 1rem; font-size: 0.9rem;">Recent images extracted from web scraping operations</p>
+
+                <div id="scrapedImagesCarousel" style="position: relative; overflow: hidden; padding: 1rem 0;">
+                    <div id="scrapedImagesScroll" style="display: flex; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; padding: 0.5rem;">
+                        <div style="text-align: center; padding: 2rem; color: #888; min-width: 100%;">Loading scraped images...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Panel -->
+            <div class="results-panel" id="resultsPanel">
+                <div class="results-header">
+                    <h2>Results</h2>
+                    <div>
+                        <button class="btn btn-secondary" onclick="copyResults()">Copy</button>
+                        <button class="btn btn-secondary" onclick="downloadResults()">Download</button>
+                        <button class="btn" id="saveImagesBtn" onclick="saveScrapedImages()" style="display: none;">Save Images</button>
+                        <button class="btn btn-secondary" onclick="clearResults()">Clear</button>
+                    </div>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('raw')">Raw Data</button>
+                    <button class="tab" onclick="switchTab('formatted')">Formatted</button>
+                    <button class="tab" onclick="switchTab('metadata')">Metadata</button>
+                </div>
+
+                <div id="rawTab" class="tab-content active">
+                    <div class="results-content" id="rawResults">
+                        <pre id="rawData"></pre>
+                    </div>
+                </div>
+
+                <div id="formattedTab" class="tab-content">
+                    <div class="results-content" id="formattedResults">
+                        <pre id="formattedData"></pre>
+                    </div>
+                </div>
+
+                <div id="metadataTab" class="tab-content">
+                    <div class="results-content" id="metadataResults">
+                        <pre id="metadataData"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <%-include('../mainContent/adminNav.ejs')%>
+
+    <script>
+        let lastResults = null;
+
+        // Quick Scrape Form Handler
+        document.getElementById('quickScrapeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const url = document.getElementById('quickUrl').value;
+            const options = {
+                includeMetadata: document.getElementById('includeMetadata').checked,
+                includeContent: document.getElementById('includeContent').checked,
+                includeLinks: document.getElementById('includeLinks').checked,
+                includeImages: document.getElementById('includeImages').checked
+            };
+
+            await performScrape(url, options);
+        });
+
+        // Custom Extraction Form Handler
+        document.getElementById('customExtractionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const url = document.getElementById('customUrl').value;
+            const selectorsText = document.getElementById('selectors').value;
+
+            let selectors = null;
+            if (selectorsText.trim()) {
+                try {
+                    selectors = JSON.parse(selectorsText);
+                } catch (err) {
+                    showError('Invalid JSON in selectors field');
+                    return;
+                }
+            }
+
+            await performScrape(url, { selectors });
+        });
+
+        async function performScrape(url, options = {}) {
+            const resultsPanel = document.getElementById('resultsPanel');
+            const rawData = document.getElementById('rawData');
+
+            resultsPanel.classList.add('visible');
+            rawData.innerHTML = '<div class="loading">Scraping URL</div>';
+
+            try {
+                const endpoint = options.selectors ? '/scrapeman/api/extract' : '/scrapeman/api/scrape';
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ url, options, selectors: options.selectors })
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Scraping failed');
+                }
+
+                lastResults = result.data || result;
+                displayResults(lastResults);
+            } catch (error) {
+                rawData.innerHTML = `<div class="error-message">Error: ${error.message}</div>`;
+            }
+        }
+
+        function displayResults(data) {
+            document.getElementById('rawData').textContent = JSON.stringify(data, null, 2);
+            document.getElementById('formattedData').textContent = formatData(data);
+            document.getElementById('metadataData').textContent = JSON.stringify(data.metadata || {}, null, 2);
+
+            // Show "Save Images" button if images were found
+            const saveImagesBtn = document.getElementById('saveImagesBtn');
+            if (data.images && data.images.length > 0) {
+                saveImagesBtn.style.display = 'inline-block';
+            } else {
+                saveImagesBtn.style.display = 'none';
+            }
+        }
+
+        function formatData(data) {
+            if (!data) return 'No data available';
+
+            let formatted = '';
+            if (data.title) formatted += `Title: ${data.title}\n\n`;
+            if (data.url) formatted += `URL: ${data.url}\n\n`;
+            if (data.content) formatted += `Content:\n${data.content}\n\n`;
+            if (data.links && data.links.length) {
+                formatted += `Links (${data.links.length}):\n`;
+                data.links.forEach(link => formatted += `  - ${link}\n`);
+            }
+
+            return formatted || JSON.stringify(data, null, 2);
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById(`${tabName}Tab`).classList.add('active');
+        }
+
+        function copyResults() {
+            const activeTab = document.querySelector('.tab-content.active pre');
+            if (activeTab && activeTab.textContent) {
+                navigator.clipboard.writeText(activeTab.textContent);
+                alert('Results copied to clipboard!');
+            }
+        }
+
+        function downloadResults() {
+            if (!lastResults) return;
+
+            const blob = new Blob([JSON.stringify(lastResults, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `scrapeman-${Date.now()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function clearResults() {
+            document.getElementById('resultsPanel').classList.remove('visible');
+            lastResults = null;
+        }
+
+        function showError(message) {
+            const rawData = document.getElementById('rawData');
+            rawData.innerHTML = `<div class="error-message">${message}</div>`;
+        }
+
+        async function saveScrapedImages() {
+            if (!lastResults || !lastResults.images || lastResults.images.length === 0) {
+                alert('No images to save');
+                return;
+            }
+
+            const saveBtn = document.getElementById('saveImagesBtn');
+            const originalText = saveBtn.textContent;
+            saveBtn.textContent = 'Saving...';
+            saveBtn.disabled = true;
+
+            try {
+                // Extract image URLs from results
+                const imageUrls = lastResults.images.map(img => {
+                    // Handle different image data structures
+                    if (typeof img === 'string') return img;
+                    if (img.src) return img.src;
+                    if (img.url) return img.url;
+                    return null;
+                }).filter(url => url !== null);
+
+                if (imageUrls.length === 0) {
+                    alert('No valid image URLs found');
+                    saveBtn.textContent = originalText;
+                    saveBtn.disabled = false;
+                    return;
+                }
+
+                const response = await fetch('/scrapeman/api/save-images', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ images: imageUrls })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`${result.message}\n\nSaved images are available at /imageScrape/\n\nSaved: ${result.saved.length}\nErrors: ${result.errors.length}`);
+                } else {
+                    alert(`Error: ${result.error}`);
+                }
+
+            } catch (error) {
+                console.error('Save images error:', error);
+                alert(`Error saving images: ${error.message}`);
+            } finally {
+                saveBtn.textContent = originalText;
+                saveBtn.disabled = false;
+            }
+        }
+
+        // ===== LOCAL APPS BROWSER =====
+        let currentAppAssets = null;
+
+        async function loadLocalApps() {
+            try {
+                const response = await fetch('/scrapeman/api/local-apps');
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error);
+                }
+
+                displayApps(result.apps);
+            } catch (error) {
+                console.error('Error loading apps:', error);
+                document.getElementById('appsGrid').innerHTML =
+                    `<div style="text-align: center; padding: 2rem; color: #ff6666;">Error loading apps: ${error.message}</div>`;
+            }
+        }
+
+        function displayApps(apps) {
+            const appsGrid = document.getElementById('appsGrid');
+            appsGrid.innerHTML = '';
+
+            apps.forEach(app => {
+                const card = document.createElement('div');
+                card.className = 'app-card';
+                card.innerHTML = `
+                    <h3>${app.name}</h3>
+                    <p>Port: ${app.port}</p>
+                    <p style="font-size: 0.75rem; margin-top: 0.5rem;">${app.dir}</p>
+                `;
+                card.addEventListener('click', () => loadAppAssets(app));
+                appsGrid.appendChild(card);
+            });
+        }
+
+        async function loadAppAssets(app) {
+            try {
+                document.getElementById('appsGrid').style.display = 'none';
+                document.getElementById('appAssets').style.display = 'block';
+                document.getElementById('appAssetsTitle').textContent = `Assets: ${app.name}`;
+
+                // Show loading state
+                document.getElementById('imagesAssets').innerHTML = '<div class="loading">Scanning assets</div>';
+
+                const response = await fetch('/scrapeman/api/scan-app', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appDir: app.dir })
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error);
+                }
+
+                currentAppAssets = { app, assets: result.assets };
+                displayAssets(result.assets);
+            } catch (error) {
+                console.error('Error loading app assets:', error);
+                document.getElementById('imagesAssets').innerHTML =
+                    `<div class="error-message">Error: ${error.message}</div>`;
+            }
+        }
+
+        function displayAssets(assets) {
+            // Display images
+            const imagesContainer = document.getElementById('imagesAssets');
+            if (assets.images && assets.images.length > 0) {
+                imagesContainer.innerHTML = `<div class="asset-grid"></div>`;
+                const grid = imagesContainer.querySelector('.asset-grid');
+
+                assets.images.forEach(img => {
+                    const item = document.createElement('div');
+                    item.className = 'asset-item';
+                    const appPort = currentAppAssets.app.port;
+                    const imgUrl = `http://localhost:${appPort}/${img.path.replace(/\\/g, '/')}`;
+
+                    item.innerHTML = `
+                        <img src="${imgUrl}" alt="${img.name}" onerror="this.src='/images/beaker_logo_no_stash.png'">
+                        <div class="asset-name">${img.name}</div>
+                        <div class="asset-size">${formatFileSize(img.size)}</div>
+                    `;
+                    item.addEventListener('click', () => showAssetActions(img, imgUrl));
+                    grid.appendChild(item);
+                });
+            } else {
+                imagesContainer.innerHTML = '<p style="color: #888; padding: 1rem;">No images found</p>';
+            }
+
+            // Display stylesheets
+            displayAssetList('stylesheetsAssets', assets.stylesheets);
+
+            // Display scripts
+            displayAssetList('scriptsAssets', assets.scripts);
+
+            // Display other assets
+            displayAssetList('otherAssets', assets.other);
+        }
+
+        function displayAssetList(containerId, assets) {
+            const container = document.getElementById(containerId);
+            if (assets && assets.length > 0) {
+                container.innerHTML = '<div class="asset-list"></div>';
+                const list = container.querySelector('.asset-list');
+
+                assets.forEach(asset => {
+                    const item = document.createElement('div');
+                    item.className = 'asset-list-item';
+                    const assetUrl = `http://localhost:${currentAppAssets.app.port}/${asset.path.replace(/\\/g, '/')}`;
+
+                    item.innerHTML = `
+                        <div class="asset-info">
+                            <div class="name">${asset.name}</div>
+                            <div class="path">${asset.path}</div>
+                        </div>
+                        <div class="asset-size">${formatFileSize(asset.size)}</div>
+                    `;
+                    item.addEventListener('click', () => showAssetActions(asset, assetUrl));
+                    list.appendChild(item);
+                });
+            } else {
+                container.innerHTML = '<p style="color: #888; padding: 1rem;">No assets found</p>';
+            }
+        }
+
+        function showAssetActions(asset, url) {
+            const actions = confirm(`Asset: ${asset.name}\n\nChoose action:\nOK = Copy Path\nCancel = Open in New Tab`);
+
+            if (actions) {
+                // Copy path to clipboard
+                navigator.clipboard.writeText(url).then(() => {
+                    alert(`Path copied to clipboard:\n${url}`);
+                });
+            } else {
+                // Open in new tab
+                window.open(url, '_blank');
+            }
+        }
+
+        function switchAssetsTab(tabName) {
+            // Remove active class from all tabs and content
+            document.querySelectorAll('#appAssets .tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.assets-tab-content').forEach(content => content.classList.remove('active'));
+
+            // Add active class to selected tab and content
+            event.target.classList.add('active');
+            document.getElementById(`${tabName}Assets`).classList.add('active');
+        }
+
+        function closeAppAssets() {
+            document.getElementById('appAssets').style.display = 'none';
+            document.getElementById('appsGrid').style.display = 'grid';
+            currentAppAssets = null;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // ===== SCRAPED IMAGES CAROUSEL =====
+        let scrapedImages = [];
+        let currentCarouselIndex = 0;
+        const CAROUSEL_IMAGES_TO_SHOW = 20;
+        const CAROUSEL_ROTATION_INTERVAL = 8000; // 8 seconds
+
+        async function loadScrapedImages() {
+            try {
+                const response = await fetch('/scrapeman/api/scraped-images');
+                const result = await response.json();
+
+                if (result.success && result.images.length > 0) {
+                    scrapedImages = result.images;
+                    shuffleArray(scrapedImages);
+                    displayCarouselImages();
+                    setInterval(rotateCarouselImages, CAROUSEL_ROTATION_INTERVAL);
+                } else {
+                    document.getElementById('scrapedImagesScroll').innerHTML = `
+                        <div style="text-align: center; color: #888; padding: 2rem; min-width: 100%;">
+                            No scraped images yet. <a href="#quickScrapeForm" style="color: var(--accent);">Start scraping!</a>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading scraped images:', error);
+                document.getElementById('scrapedImagesScroll').innerHTML = `
+                    <div style="text-align: center; color: #ff6666; padding: 2rem; min-width: 100%;">
+                        Error loading images
+                    </div>
+                `;
+            }
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        function displayCarouselImages() {
+            const scrollContainer = document.getElementById('scrapedImagesScroll');
+            scrollContainer.innerHTML = '';
+
+            const imagesToShow = scrapedImages.slice(currentCarouselIndex, currentCarouselIndex + CAROUSEL_IMAGES_TO_SHOW);
+
+            imagesToShow.forEach((img, index) => {
+                const card = document.createElement('div');
+                card.className = 'scraped-image-card';
+                card.style.animationDelay = `${index * 0.05}s`;
+
+                card.innerHTML = `
+                    <img src="${img.url}"
+                         alt="${img.filename}"
+                         onerror="this.parentElement.style.display='none'">
+                    <div class="filename">${img.filename}</div>
+                `;
+
+                card.addEventListener('click', function() {
+                    window.open(img.url, '_blank');
+                });
+
+                scrollContainer.appendChild(card);
+            });
+        }
+
+        function rotateCarouselImages() {
+            if (scrapedImages.length <= CAROUSEL_IMAGES_TO_SHOW) return;
+
+            currentCarouselIndex += CAROUSEL_IMAGES_TO_SHOW;
+            if (currentCarouselIndex >= scrapedImages.length) {
+                currentCarouselIndex = 0;
+                shuffleArray(scrapedImages);
+            }
+
+            displayCarouselImages();
+        }
+
+        // Load scraped images when page loads (add to existing DOMContentLoaded)
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadLocalApps();
+            await loadScrapedImages();
+        });
+    </script>
+</body>
+</html>

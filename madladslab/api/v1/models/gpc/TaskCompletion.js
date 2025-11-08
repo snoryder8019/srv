@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 
 const taskCompletionSchema = new mongoose.Schema(
   {
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: true
+    },
     taskId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Task",
@@ -39,8 +44,9 @@ const taskCompletionSchema = new mongoose.Schema(
 );
 
 // Indexes
+taskCompletionSchema.index({ brandId: 1, taskId: 1, completionDate: -1 });
+taskCompletionSchema.index({ brandId: 1, completedBy: 1, completionDate: -1 });
 taskCompletionSchema.index({ taskId: 1, completionDate: -1 });
-taskCompletionSchema.index({ completedBy: 1, completionDate: -1 });
 
 const TaskCompletion = mongoose.model("TaskCompletion", taskCompletionSchema);
 

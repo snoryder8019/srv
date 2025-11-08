@@ -14,6 +14,8 @@ import claudeTalk from "./claudeTalk/index.js"
 import payments from "./payments/index.js"
 import gpc from "./gpc/index.js"
 import backOffice from "./backOffice/index.js"
+import scrapeman from "./scrapeman/index.js"
+import bucketUpload from "./bucketUpload/index.js"
 /* GET home page. */
 
 router.use('/admin', admin)
@@ -29,6 +31,8 @@ router.use('/gpc', gpc)
 router.use('/backOffice', backOffice)
 router.use('/claudeTalk', claudeTalk)
 router.use('/payments', payments)
+router.use('/scrapeman', scrapeman)
+router.use('/bucketUpload', bucketUpload)
 router.use('/', plugins)
 
 router.get('/', function(req, res, next) {

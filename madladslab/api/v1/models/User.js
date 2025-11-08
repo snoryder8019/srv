@@ -27,6 +27,36 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['admin', 'manager', 'staff', null],
       default: null
+      // DEPRECATED: Use backoffice.brands instead. Kept for backwards compatibility during migration.
+    },
+    backoffice: {
+      brands: [{
+        brandId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Brand'
+        },
+        role: {
+          type: String,
+          enum: ['admin', 'manager', 'staff'],
+          required: true
+        },
+        status: {
+          type: String,
+          enum: ['active', 'inactive'],
+          default: 'active'
+        },
+        joinedAt: {
+          type: Date,
+          default: Date.now
+        }
+      }],
+      activeBrandId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Brand'
+      },
+      lastAccessedAt: {
+        type: Date
+      }
     },
     contest: {
       type: String,

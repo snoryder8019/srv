@@ -38,6 +38,11 @@ const quizQuestionSchema = new mongoose.Schema({
 
 const trainingModuleSchema = new mongoose.Schema(
   {
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: true
+    },
     title: {
       type: String,
       required: true
@@ -85,8 +90,9 @@ const trainingModuleSchema = new mongoose.Schema(
 );
 
 // Indexes
-trainingModuleSchema.index({ category: 1, active: 1 });
-trainingModuleSchema.index({ targetRoles: 1 });
+trainingModuleSchema.index({ brandId: 1, category: 1, active: 1 });
+trainingModuleSchema.index({ brandId: 1, targetRoles: 1 });
+trainingModuleSchema.index({ brandId: 1 });
 
 const TrainingModule = mongoose.model("TrainingModule", trainingModuleSchema);
 

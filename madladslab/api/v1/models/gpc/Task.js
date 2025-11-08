@@ -23,6 +23,11 @@ const taskStepSchema = new mongoose.Schema({
 
 const taskSchema = new mongoose.Schema(
   {
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: true
+    },
     title: {
       type: String,
       required: true
@@ -63,8 +68,8 @@ const taskSchema = new mongoose.Schema(
 );
 
 // Indexes
-taskSchema.index({ type: 1, department: 1, active: 1 });
-taskSchema.index({ assignedRoles: 1 });
+taskSchema.index({ brandId: 1, type: 1, department: 1, active: 1 });
+taskSchema.index({ brandId: 1, assignedRoles: 1 });
 
 const Task = mongoose.model("Task", taskSchema);
 

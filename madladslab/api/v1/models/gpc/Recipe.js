@@ -25,6 +25,11 @@ const instructionSchema = new mongoose.Schema({
 
 const recipeSchema = new mongoose.Schema(
   {
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: true
+    },
     name: {
       type: String,
       required: true
@@ -79,9 +84,9 @@ const recipeSchema = new mongoose.Schema(
 );
 
 // Indexes
-recipeSchema.index({ category: 1, active: 1 });
-recipeSchema.index({ name: 1 });
-recipeSchema.index({ subcategory: 1 });
+recipeSchema.index({ brandId: 1, category: 1, active: 1 });
+recipeSchema.index({ brandId: 1, name: 1 });
+recipeSchema.index({ brandId: 1, subcategory: 1 });
 
 const Recipe = mongoose.model("Recipe", recipeSchema);
 

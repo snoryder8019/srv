@@ -4,6 +4,8 @@ import path from 'path';
 import cookieParser from 'cookie-parser';
 import logger from 'morgan';
 import { fileURLToPath } from 'url';
+import apiRouter from './routes/api.js';
+import linodeApiRouter from './routes/linode-api.js';
 
 const app = express();
 
@@ -21,8 +23,10 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Routes
+app.use('/api', apiRouter);
+app.use('/api/linode', linodeApiRouter);
 app.get('/', function(req, res, next) {
-  res.render('index', { title: 'Graffiti TV' });
+  res.render('index', { title: 'Graffiti Pasta TV' });
 });
 
 // catch 404 and forward to error handler

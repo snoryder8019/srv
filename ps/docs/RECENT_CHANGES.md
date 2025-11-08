@@ -1,6 +1,23 @@
 # Recent Changes Summary
 
-Generated: 2025-11-07T15:26:57.273Z
+Generated: 2025-11-08T08:30:00.027Z
+
+---
+
+## Commit: services proxies and domains fixed in etc
+
+- **Hash:** `c30f611`
+- **Author:** Scott
+- **Date:** 11/7/2025
+- **Changes:** 55 files, +17912/-204 lines
+
+### Modified Areas:
+
+**Frontend:** 2 files
+**Backend:** 6 files
+**Views:** 7 files
+**Scripts:** 6 files
+**Documentation:** 21 files
 
 ---
 
@@ -52,19 +69,6 @@ Generated: 2025-11-07T15:26:57.273Z
 ### Modified Areas:
 
 **Views:** 1 files
-
----
-
-## Commit: v0.8.7 - Documentation: Patch notes and CLAUDE.md update
-
-- **Hash:** `d446d1a`
-- **Author:** Scott
-- **Date:** 11/5/2025
-- **Changes:** 4 files, +153/-23 lines
-
-### Modified Areas:
-
-**Documentation:** 4 files
 
 ---
 

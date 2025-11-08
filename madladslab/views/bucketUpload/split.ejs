@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .back-btn {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.3s;
+      font-size: 14px;
+    }
+
+    .back-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    /* Upload Section */
+    .upload-section {
+      margin-bottom: 30px;
+    }
+
+    .upload-zone {
+      border: 3px dashed #667eea;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      background: #f8f9ff;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .upload-zone:hover {
+      border-color: #764ba2;
+      background: #f0f1ff;
+    }
+
+    .upload-zone.dragging {
+      border-color: #764ba2;
+      background: #e8e9ff;
+      transform: scale(1.02);
+    }
+
+    .upload-icon {
+      font-size: 48px;
+      margin-bottom: 15px;
+    }
+
+    .upload-zone h3 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+
+    .upload-zone p {
+      color: #666;
+      font-size: 14px;
+    }
+
+    #video-input {
+      display: none;
+    }
+
+    /* Video Info */
+    .video-info {
+      display: none;
+      background: #f8f9ff;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+
+    .video-info.active {
+      display: block;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+
+    .info-item {
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+      border-left: 3px solid #667eea;
+    }
+
+    .info-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 5px;
+    }
+
+    .info-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .size-warning {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      color: #856404;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+      display: none;
+    }
+
+    .size-warning.show {
+      display: block;
+    }
+
+    /* Split Options */
+    .split-options {
+      display: none;
+      margin-bottom: 30px;
+    }
+
+    .split-options.active {
+      display: block;
+    }
+
+    .split-options h3 {
+      color: #333;
+      margin-bottom: 15px;
+    }
+
+    .split-buttons {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .split-btn {
+      background: white;
+      border: 2px solid #667eea;
+      color: #667eea;
+      padding: 15px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      transition: all 0.3s;
+      text-align: center;
+    }
+
+    .split-btn:hover {
+      background: #667eea;
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+    }
+
+    .split-btn.active {
+      background: #667eea;
+      color: white;
+    }
+
+    /* Segments Preview */
+    .segments-preview {
+      display: none;
+      background: #f8f9ff;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+
+    .segments-preview.active {
+      display: block;
+    }
+
+    .segments-preview h4 {
+      color: #333;
+      margin-bottom: 15px;
+    }
+
+    .segment-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .segment-item {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-left: 3px solid #667eea;
+    }
+
+    .segment-info {
+      flex: 1;
+    }
+
+    .segment-name {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .segment-details {
+      font-size: 13px;
+      color: #666;
+    }
+
+    .segment-size {
+      font-weight: 600;
+      color: #667eea;
+      font-size: 14px;
+    }
+
+    .segment-size.over-limit {
+      color: #dc3545;
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+      display: none;
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .action-buttons.active {
+      display: flex;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* Progress */
+    .progress-container {
+      display: none;
+      margin-top: 20px;
+    }
+
+    .progress-container.active {
+      display: block;
+    }
+
+    .progress-bar {
+      background: #e9ecef;
+      height: 30px;
+      border-radius: 15px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      transition: width 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .progress-text {
+      text-align: center;
+      color: #666;
+      font-size: 14px;
+    }
+
+    /* Alert */
+    .alert {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      padding: 15px 20px;
+      border-radius: 10px;
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+      z-index: 1000;
+      opacity: 0;
+      transform: translateY(-20px);
+      transition: all 0.3s;
+      max-width: 400px;
+    }
+
+    .alert.active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .alert.success {
+      border-left: 4px solid #28a745;
+    }
+
+    .alert.error {
+      border-left: 4px solid #dc3545;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 22px;
+      }
+
+      .content {
+        padding: 20px;
+      }
+
+      .split-buttons {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .action-buttons {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>✂️ Video Splitter</h1>
+      <a href="/bucketUpload" class="back-btn">← Back to Uploads</a>
+    </div>
+
+    <div class="content">
+      <!-- Upload Section -->
+      <div class="upload-section">
+        <div class="upload-zone" id="upload-zone">
+          <div class="upload-icon">📹</div>
+          <h3>Select Large Video File</h3>
+          <p>Split large videos into smaller segments for trimming</p>
+          <p style="margin-top: 10px; font-size: 12px; color: #999;">No size limit - we'll split it for you!</p>
+        </div>
+        <input type="file" id="video-input" accept="video/*">
+      </div>
+
+      <!-- Video Info -->
+      <div class="video-info" id="video-info">
+        <h3>📊 Video Information</h3>
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Filename</div>
+            <div class="info-value" id="info-filename">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">File Size</div>
+            <div class="info-value" id="info-size">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Duration</div>
+            <div class="info-value" id="info-duration">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Resolution</div>
+            <div class="info-value" id="info-resolution">-</div>
+          </div>
+        </div>
+        <div class="size-warning" id="size-warning">
+          ⚠️ This file exceeds 500MB. Split it into smaller segments to use the video trimmer.
+        </div>
+      </div>
+
+      <!-- Split Options -->
+      <div class="split-options" id="split-options">
+        <h3>Choose Split Option</h3>
+        <div class="split-buttons">
+          <button class="split-btn" onclick="selectSplit(2)">
+            Split in Halves<br>
+            <small>(2 segments)</small>
+          </button>
+          <button class="split-btn" onclick="selectSplit(3)">
+            Split in Thirds<br>
+            <small>(3 segments)</small>
+          </button>
+          <button class="split-btn" onclick="selectSplit(4)">
+            Split in Fourths<br>
+            <small>(4 segments)</small>
+          </button>
+          <button class="split-btn" onclick="selectSplit(5)">
+            Split in Fifths<br>
+            <small>(5 segments)</small>
+          </button>
+        </div>
+      </div>
+
+      <!-- Segments Preview -->
+      <div class="segments-preview" id="segments-preview">
+        <h4>📋 Segment Preview</h4>
+        <div class="segment-list" id="segment-list"></div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-buttons" id="action-buttons">
+        <button class="btn btn-secondary" onclick="resetSplitter()">Reset</button>
+        <button class="btn btn-primary" onclick="processSegments()" id="process-btn">
+          Process & Download Segments
+        </button>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-container" id="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill">0%</div>
+        </div>
+        <div class="progress-text" id="progress-text">Processing segments...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden video element for processing -->
+  <video id="processor-video" style="display: none;"></video>
+
+  <!-- Alert -->
+  <div class="alert" id="alert"></div>
+
+  <script src="/javascripts/videoSplitter.js"></script>
+</body>
+</html>

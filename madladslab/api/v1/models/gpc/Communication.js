@@ -30,6 +30,11 @@ const commentSchema = new mongoose.Schema({
 
 const communicationSchema = new mongoose.Schema(
   {
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: true
+    },
     authorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -75,10 +80,10 @@ const communicationSchema = new mongoose.Schema(
 );
 
 // Indexes
-communicationSchema.index({ createdAt: -1 });
-communicationSchema.index({ authorId: 1 });
-communicationSchema.index({ type: 1, pinned: 1 });
-communicationSchema.index({ targetAudience: 1 });
+communicationSchema.index({ brandId: 1, createdAt: -1 });
+communicationSchema.index({ brandId: 1, authorId: 1 });
+communicationSchema.index({ brandId: 1, type: 1, pinned: 1 });
+communicationSchema.index({ brandId: 1, targetAudience: 1 });
 
 const Communication = mongoose.model("Communication", communicationSchema);
 

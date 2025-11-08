@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 { font-size: 24px; }
+
+    .back-link {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .back-link:hover {
+      background: rgba(255,255,255,0.3);
+    }
+
+    .main-content {
+      padding: 30px;
+    }
+
+    .upload-section {
+      border: 2px dashed #667eea;
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      background: #f9f9ff;
+      margin-bottom: 30px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .upload-section:hover {
+      background: #f0f0ff;
+      border-color: #5568d3;
+    }
+
+    .upload-section.has-video {
+      display: none;
+    }
+
+    .upload-icon {
+      font-size: 48px;
+      color: #667eea;
+      margin-bottom: 10px;
+    }
+
+    .upload-text {
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+
+    .upload-hint {
+      font-size: 13px;
+      color: #999;
+    }
+
+    #video-input {
+      display: none;
+    }
+
+    .video-editor {
+      display: none;
+    }
+
+    .video-editor.active {
+      display: block;
+    }
+
+    .video-preview {
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    #preview-video {
+      width: 100%;
+      max-height: 500px;
+      display: block;
+    }
+
+    .video-info {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .info-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .info-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+
+    .info-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .trim-controls {
+      margin-bottom: 20px;
+    }
+
+    .trim-controls h3 {
+      font-size: 16px;
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .timeline {
+      position: relative;
+      height: 60px;
+      background: #e0e0e0;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .timeline-fill {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .timeline-handle {
+      position: absolute;
+      top: 0;
+      width: 4px;
+      height: 100%;
+      background: #667eea;
+      cursor: ew-resize;
+      z-index: 10;
+    }
+
+    .timeline-handle::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px;
+      height: 30px;
+      background: #667eea;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .timeline-handle.start {
+      left: 0;
+    }
+
+    .timeline-handle.end {
+      right: 0;
+    }
+
+    .time-inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .time-input-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .time-input-group label {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+
+    .time-input-group input {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .time-display {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+
+    .time-display span {
+      font-size: 14px;
+      color: #666;
+    }
+
+    .time-display strong {
+      color: #333;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 600;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+      flex: 1;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .btn-danger {
+      background: #f44336;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #d32f2f;
+    }
+
+    .upload-options {
+      margin-top: 20px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 8px;
+    }
+
+    .upload-options h3 {
+      font-size: 16px;
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .option-group {
+      margin-bottom: 15px;
+    }
+
+    .option-group label {
+      display: block;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+
+    .option-group input,
+    .option-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .progress-bar {
+      display: none;
+      margin-top: 20px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 8px;
+    }
+
+    .progress-bar.active {
+      display: block;
+    }
+
+    .progress-label {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 10px;
+    }
+
+    .progress-track {
+      height: 8px;
+      background: #e0e0e0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      font-size: 12px;
+      color: #999;
+      text-align: center;
+    }
+
+    .alert {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4caf50;
+      color: white;
+      padding: 15px 20px;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 2000;
+      display: none;
+      animation: slideIn 0.3s;
+    }
+
+    .alert.error {
+      background: #f44336;
+    }
+
+    .alert.active {
+      display: block;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(400px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+      body { padding: 10px; }
+      .header { padding: 15px; flex-direction: column; gap: 10px; }
+      .header h1 { font-size: 20px; }
+      .main-content { padding: 20px; }
+      .upload-section { padding: 30px 20px; }
+      .time-inputs { grid-template-columns: 1fr; }
+      .action-buttons { flex-direction: column; }
+      .btn { width: 100%; }
+    }
+
+    @media (max-width: 480px) {
+      .header h1 { font-size: 18px; }
+      .main-content { padding: 15px; }
+      .upload-section { padding: 20px 15px; }
+      .video-info { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>✂️ Video Trimmer</h1>
+      <a href="/bucketUpload" class="back-link">← Back to Uploads</a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+
+      <!-- Upload Section -->
+      <div class="upload-section" id="upload-section" onclick="document.getElementById('video-input').click()">
+        <div class="upload-icon">🎬</div>
+        <div class="upload-text">Select a video to trim</div>
+        <div class="upload-hint">Click to browse • MP4, MOV, WebM • Max 500MB</div>
+        <div class="upload-hint" style="margin-top: 10px; font-weight: 600;">
+          File larger than 500MB? <a href="/bucketUpload/split" style="color: #667eea; text-decoration: underline;">Split it first →</a>
+        </div>
+        <input type="file" id="video-input" accept="video/*">
+      </div>
+
+      <!-- Video Editor -->
+      <div class="video-editor" id="video-editor">
+
+        <!-- Video Preview -->
+        <div class="video-preview">
+          <video id="preview-video" controls></video>
+        </div>
+
+        <!-- Video Info -->
+        <div class="video-info">
+          <div class="info-item">
+            <span class="info-label">File Name</span>
+            <span class="info-value" id="info-filename">-</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Duration</span>
+            <span class="info-value" id="info-duration">-</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Size</span>
+            <span class="info-value" id="info-size">-</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Resolution</span>
+            <span class="info-value" id="info-resolution">-</span>
+          </div>
+        </div>
+
+        <!-- Trim Controls -->
+        <div class="trim-controls">
+          <h3>Trim Video</h3>
+
+          <!-- Timeline -->
+          <div class="timeline" id="timeline">
+            <div class="timeline-fill" id="timeline-fill"></div>
+            <div class="timeline-handle start" id="start-handle"></div>
+            <div class="timeline-handle end" id="end-handle"></div>
+          </div>
+
+          <!-- Time Display -->
+          <div class="time-display">
+            <span>Start: <strong id="display-start">0:00</strong></span>
+            <span>End: <strong id="display-end">0:00</strong></span>
+            <span>Duration: <strong id="display-duration">0:00</strong></span>
+          </div>
+
+          <!-- Time Inputs -->
+          <div class="time-inputs">
+            <div class="time-input-group">
+              <label>Start Time (seconds)</label>
+              <input type="number" id="input-start" min="0" step="0.1" value="0">
+            </div>
+            <div class="time-input-group">
+              <label>End Time (seconds)</label>
+              <input type="number" id="input-end" min="0" step="0.1" value="0">
+            </div>
+            <div class="time-input-group">
+              <label>Quick Select</label>
+              <select id="quick-select">
+                <option value="">Custom</option>
+                <option value="first30">First 30 seconds</option>
+                <option value="first60">First 1 minute</option>
+                <option value="last30">Last 30 seconds</option>
+                <option value="middle60">Middle 1 minute</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="action-buttons">
+            <button class="btn btn-secondary" onclick="resetTrim()">Reset</button>
+            <button class="btn btn-primary" id="trim-button" onclick="trimAndUpload()">✂️ Trim & Upload to Bucket</button>
+          </div>
+        </div>
+
+        <!-- Upload Options -->
+        <div class="upload-options">
+          <h3>Upload Options</h3>
+
+          <div class="option-group">
+            <label>Bucket</label>
+            <select id="upload-bucket">
+              <option value="madladslab">madladslab</option>
+              <option value="acm">acm</option>
+              <option value="sna">sna</option>
+              <option value="twww">twww</option>
+              <option value="ps">ps</option>
+              <option value="graffiti-tv">graffiti-tv</option>
+            </select>
+          </div>
+
+          <div class="option-group">
+            <label>Subdirectory (optional)</label>
+            <input type="text" id="upload-subdirectory" placeholder="e.g., videos, clips">
+          </div>
+
+          <div class="option-group">
+            <label>File Name (optional)</label>
+            <input type="text" id="upload-filename" placeholder="Leave blank for auto-generated name">
+          </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-bar" id="progress-bar">
+          <div class="progress-label">Processing video...</div>
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-text" id="progress-text">0%</div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Alert -->
+  <div class="alert" id="alert"></div>
+
+  <script>
+    // Check browser compatibility on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.createElement('canvas');
+      const isCompatible =
+        typeof canvas.captureStream === 'function' &&
+        typeof MediaRecorder !== 'undefined';
+
+      if (!isCompatible) {
+        const container = document.querySelector('.main-content');
+        container.innerHTML = `
+          <div style="padding: 40px; text-align: center;">
+            <h2 style="color: #f44336; margin-bottom: 20px;">⚠️ Browser Not Supported</h2>
+            <p style="font-size: 16px; color: #666; margin-bottom: 20px;">
+              Your browser does not support client-side video trimming.
+            </p>
+            <p style="font-size: 14px; color: #999; margin-bottom: 30px;">
+              Please use one of the following browsers:
+            </p>
+            <div style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+              <div style="padding: 20px; background: #f9f9f9; border-radius: 8px;">
+                <div style="font-size: 32px; margin-bottom: 10px;">🌐</div>
+                <div style="font-weight: 600;">Google Chrome</div>
+                <div style="font-size: 12px; color: #999;">Recommended</div>
+              </div>
+              <div style="padding: 20px; background: #f9f9f9; border-radius: 8px;">
+                <div style="font-size: 32px; margin-bottom: 10px;">🌊</div>
+                <div style="font-weight: 600;">Microsoft Edge</div>
+                <div style="font-size: 12px; color: #999;">Recommended</div>
+              </div>
+              <div style="padding: 20px; background: #f9f9f9; border-radius: 8px;">
+                <div style="font-size: 32px; margin-bottom: 10px;">🦊</div>
+                <div style="font-weight: 600;">Firefox</div>
+                <div style="font-size: 12px; color: #999;">Partial support</div>
+              </div>
+            </div>
+            <p style="margin-top: 30px;">
+              <a href="/bucketUpload" style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 4px;">
+                ← Back to Bucket Manager
+              </a>
+            </p>
+          </div>
+        `;
+      }
+    });
+  </script>
+  <script src="/javascripts/videoTrimmer.js"></script>
+
+</body>
+</html>

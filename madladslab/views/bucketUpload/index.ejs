@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 { font-size: 24px; }
+    .stats { display: flex; gap: 20px; font-size: 14px; }
+    .stat { display: flex; flex-direction: column; }
+    .stat-label { opacity: 0.8; }
+    .stat-value { font-size: 18px; font-weight: bold; }
+
+    .main-content {
+      display: grid;
+      grid-template-columns: 300px 1fr 350px;
+      height: calc(100vh - 180px);
+    }
+
+    /* Directory Tree */
+    .tree-panel {
+      border-right: 1px solid #e0e0e0;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .tree-panel h3 {
+      font-size: 14px;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 15px;
+    }
+
+    .tree-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s;
+    }
+
+    .tree-item:hover {
+      background: #f0f0f0;
+    }
+
+    .tree-item.active {
+      background: #667eea;
+      color: white;
+    }
+
+    .tree-item.bucket {
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    .tree-item.subdirectory {
+      padding-left: 30px;
+      font-size: 14px;
+    }
+
+    .tree-item .count {
+      background: rgba(0,0,0,0.1);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+    }
+
+    .tree-item.active .count {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .create-dir-btn {
+      margin-top: 15px;
+      width: 100%;
+      padding: 10px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .create-dir-btn:hover {
+      background: #5568d3;
+    }
+
+    /* Asset Grid */
+    .asset-panel {
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .panel-header h2 {
+      font-size: 18px;
+      color: #333;
+    }
+
+    .search-box {
+      padding: 8px 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      width: 250px;
+    }
+
+    .upload-zone {
+      border: 2px dashed #667eea;
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      background: #f9f9ff;
+      margin-bottom: 20px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .upload-zone:hover, .upload-zone.drag-over {
+      background: #f0f0ff;
+      border-color: #5568d3;
+    }
+
+    .upload-zone.uploading {
+      background: #e8ffe8;
+      border-color: #4caf50;
+    }
+
+    .upload-zone-icon {
+      font-size: 48px;
+      color: #667eea;
+      margin-bottom: 10px;
+    }
+
+    .upload-zone-text {
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+
+    .upload-zone-hint {
+      font-size: 13px;
+      color: #999;
+    }
+
+    .asset-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 15px;
+    }
+
+    .asset-card {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: white;
+    }
+
+    .asset-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transform: translateY(-2px);
+    }
+
+    .asset-card.selected {
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+    }
+
+    .asset-thumbnail {
+      width: 100%;
+      height: 150px;
+      background: #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .asset-thumbnail img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .asset-thumbnail .icon {
+      font-size: 48px;
+      color: #999;
+    }
+
+    .asset-info {
+      padding: 10px;
+    }
+
+    .asset-name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+
+    .asset-meta {
+      font-size: 11px;
+      color: #999;
+    }
+
+    /* Detail Panel */
+    .detail-panel {
+      border-left: 1px solid #e0e0e0;
+      padding: 20px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .detail-panel.active {
+      display: block;
+    }
+
+    .detail-panel h3 {
+      font-size: 16px;
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .detail-preview {
+      width: 100%;
+      max-height: 250px;
+      background: #f0f0f0;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .detail-preview img, .detail-preview video {
+      width: 100%;
+      max-height: 250px;
+      object-fit: contain;
+    }
+
+    .detail-section {
+      margin-bottom: 20px;
+    }
+
+    .detail-section label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 5px;
+    }
+
+    .detail-section input, .detail-section textarea, .detail-section select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .detail-section textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .detail-section .read-only {
+      background: #f9f9f9;
+      color: #666;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .btn-danger {
+      background: #f44336;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #d32f2f;
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .url-copy {
+      display: flex;
+      gap: 5px;
+    }
+
+    .url-copy input {
+      flex: 1;
+    }
+
+    .url-copy button {
+      padding: 8px 15px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .url-copy button:hover {
+      background: #5568d3;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      max-width: 500px;
+      width: 90%;
+    }
+
+    .modal-content h3 {
+      margin-bottom: 15px;
+    }
+
+    .modal-content input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #999;
+    }
+
+    .empty-state-icon {
+      font-size: 64px;
+      margin-bottom: 10px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+    }
+
+    .alert {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4caf50;
+      color: white;
+      padding: 15px 20px;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 2000;
+      display: none;
+      animation: slideIn 0.3s;
+    }
+
+    .alert.error {
+      background: #f44336;
+    }
+
+    .alert.active {
+      display: block;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(400px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* ============================================ */
+    /* MOBILE RESPONSIVE STYLES */
+    /* ============================================ */
+
+    /* Tablet (768px and below) */
+    @media (max-width: 768px) {
+      body {
+        padding: 10px;
+      }
+
+      .header {
+        padding: 15px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .header h1 {
+        font-size: 20px;
+      }
+
+      .stats {
+        flex-direction: row;
+        gap: 15px;
+        font-size: 12px;
+      }
+
+      .stat-value {
+        font-size: 16px;
+      }
+
+      /* Change layout to single column on tablet */
+      .main-content {
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: calc(100vh - 200px);
+      }
+
+      /* Tree panel becomes collapsible */
+      .tree-panel {
+        border-right: none;
+        border-bottom: 1px solid #e0e0e0;
+        max-height: 300px;
+        padding: 15px;
+      }
+
+      /* Asset panel takes full width */
+      .asset-panel {
+        padding: 15px;
+      }
+
+      .panel-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+
+      .search-box {
+        width: 100%;
+      }
+
+      /* Upload zone more compact */
+      .upload-zone {
+        padding: 30px 20px;
+      }
+
+      .upload-zone-icon {
+        font-size: 40px;
+      }
+
+      .upload-zone-text {
+        font-size: 14px;
+      }
+
+      /* Asset grid 2 columns on tablet */
+      .asset-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      /* Detail panel overlay on tablet */
+      .detail-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: white;
+        z-index: 1000;
+        border-left: none;
+        padding: 15px;
+        overflow-y: auto;
+      }
+
+      .detail-panel.active {
+        display: block;
+      }
+
+      /* Add close button for mobile detail panel */
+      .detail-panel::before {
+        content: '✕ Close';
+        display: block;
+        text-align: right;
+        font-size: 18px;
+        color: #667eea;
+        margin-bottom: 10px;
+        cursor: pointer;
+        padding: 10px;
+        background: #f0f0f0;
+        border-radius: 4px;
+      }
+
+      .modal-content {
+        width: 95%;
+        padding: 20px;
+      }
+    }
+
+    /* Mobile (480px and below) */
+    @media (max-width: 480px) {
+      body {
+        padding: 5px;
+      }
+
+      .container {
+        border-radius: 4px;
+      }
+
+      .header {
+        padding: 12px;
+      }
+
+      .header h1 {
+        font-size: 18px;
+      }
+
+      .stats {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .stat {
+        text-align: center;
+      }
+
+      .stat-label {
+        font-size: 11px;
+      }
+
+      .stat-value {
+        font-size: 14px;
+      }
+
+      /* Tree panel more compact */
+      .tree-panel {
+        padding: 10px;
+        max-height: 250px;
+      }
+
+      .tree-panel h3 {
+        font-size: 13px;
+        margin-bottom: 10px;
+      }
+
+      .tree-item {
+        padding: 10px 8px;
+        font-size: 13px;
+      }
+
+      .tree-item.subdirectory {
+        padding-left: 20px;
+        font-size: 12px;
+      }
+
+      .create-dir-btn {
+        padding: 12px;
+        font-size: 13px;
+      }
+
+      /* Asset panel mobile optimized */
+      .asset-panel {
+        padding: 10px;
+      }
+
+      .panel-header h2 {
+        font-size: 16px;
+      }
+
+      .search-box {
+        padding: 10px;
+        font-size: 14px;
+      }
+
+      /* Upload zone mobile */
+      .upload-zone {
+        padding: 20px 15px;
+        margin-bottom: 15px;
+      }
+
+      .upload-zone-icon {
+        font-size: 36px;
+      }
+
+      .upload-zone-text {
+        font-size: 13px;
+      }
+
+      .upload-zone-hint {
+        font-size: 11px;
+      }
+
+      /* Single column grid on mobile */
+      .asset-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .asset-card {
+        border-radius: 6px;
+      }
+
+      .asset-thumbnail {
+        height: 120px;
+      }
+
+      .asset-thumbnail .icon {
+        font-size: 36px;
+      }
+
+      .asset-info {
+        padding: 8px;
+      }
+
+      .asset-name {
+        font-size: 12px;
+      }
+
+      .asset-meta {
+        font-size: 10px;
+      }
+
+      /* Detail panel mobile */
+      .detail-panel {
+        padding: 10px;
+      }
+
+      .detail-panel h3 {
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+
+      .detail-preview {
+        max-height: 200px;
+        margin-bottom: 15px;
+      }
+
+      .detail-section {
+        margin-bottom: 15px;
+      }
+
+      .detail-section label {
+        font-size: 12px;
+      }
+
+      .detail-section input,
+      .detail-section textarea,
+      .detail-section select {
+        padding: 10px;
+        font-size: 14px;
+      }
+
+      .detail-section textarea {
+        min-height: 60px;
+      }
+
+      .button-group {
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .btn {
+        padding: 12px;
+        font-size: 13px;
+      }
+
+      .url-copy {
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .url-copy button {
+        width: 100%;
+        padding: 10px;
+      }
+
+      /* Modal mobile */
+      .modal-content {
+        width: 95%;
+        padding: 15px;
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+
+      .modal-content h3 {
+        font-size: 16px;
+      }
+
+      .modal-content input,
+      .modal-content select {
+        padding: 10px;
+        font-size: 14px;
+      }
+
+      /* Alert mobile */
+      .alert {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        padding: 12px 15px;
+        font-size: 13px;
+        text-align: center;
+      }
+
+      /* Empty state mobile */
+      .empty-state {
+        padding: 40px 15px;
+      }
+
+      .empty-state-icon {
+        font-size: 48px;
+      }
+
+      /* Loading mobile */
+      .loading {
+        padding: 30px 15px;
+        font-size: 14px;
+      }
+    }
+
+    /* Extra small mobile (360px and below) */
+    @media (max-width: 360px) {
+      .header h1 {
+        font-size: 16px;
+      }
+
+      .stats {
+        gap: 10px;
+      }
+
+      .asset-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .asset-thumbnail {
+        height: 150px;
+      }
+
+      .upload-zone {
+        padding: 15px 10px;
+      }
+
+      .upload-zone-icon {
+        font-size: 32px;
+      }
+    }
+
+    /* Landscape orientation adjustments */
+    @media (max-width: 768px) and (orientation: landscape) {
+      .main-content {
+        height: auto;
+      }
+
+      .tree-panel {
+        max-height: 200px;
+      }
+
+      .detail-panel {
+        overflow-y: auto;
+      }
+    }
+
+    /* Touch-friendly improvements for mobile */
+    @media (hover: none) and (pointer: coarse) {
+      /* Larger tap targets on touch devices */
+      .tree-item {
+        padding: 12px 10px;
+        min-height: 44px;
+      }
+
+      .asset-card {
+        min-height: 44px;
+      }
+
+      .btn {
+        min-height: 44px;
+      }
+
+      .create-dir-btn {
+        min-height: 44px;
+      }
+
+      /* Remove hover effects on touch devices */
+      .tree-item:hover,
+      .asset-card:hover,
+      .upload-zone:hover {
+        transform: none;
+      }
+
+      /* Improve touch scrolling */
+      .tree-panel,
+      .asset-panel,
+      .detail-panel {
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+
+    /* Mobile menu toggle button */
+    .mobile-tree-toggle {
+      display: none;
+      width: 100%;
+      padding: 12px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .mobile-tree-toggle {
+        display: block;
+      }
+
+      .tree-panel {
+        display: none;
+      }
+
+      .tree-panel.mobile-open {
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="container">
+    <div class="header">
+      <h1>>� Linode Bucket Manager</h1>
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-label">Total Assets</span>
+          <span class="stat-value" id="stat-total">-</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Storage Used</span>
+          <span class="stat-value" id="stat-size">-</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+
+      <!-- Directory Tree -->
+      <div class="tree-panel">
+        <h3>=� Buckets</h3>
+        <div id="directory-tree" class="loading">Loading...</div>
+        <button class="create-dir-btn" onclick="openCreateDirModal()">+ Create Subdirectory</button>
+        <a href="/bucketUpload/split" class="create-dir-btn" style="display: block; text-align: center; text-decoration: none; margin-top: 10px; background: #28a745;">📹 Split Large Videos</a>
+        <a href="/bucketUpload/trim" class="create-dir-btn" style="display: block; text-align: center; text-decoration: none; margin-top: 10px; background: #764ba2;">✂️ Trim Videos</a>
+      </div>
+
+      <!-- Asset Grid -->
+      <div class="asset-panel">
+        <!-- Mobile Tree Toggle -->
+        <button class="mobile-tree-toggle" onclick="toggleMobileTree()">📁 Show Buckets</button>
+
+        <div class="panel-header">
+          <h2 id="current-path">All Assets</h2>
+          <input type="search" class="search-box" placeholder="Search assets..." id="search-input">
+        </div>
+
+        <!-- Upload Zone -->
+        <div class="upload-zone" id="upload-zone">
+          <div class="upload-zone-icon">=�</div>
+          <div class="upload-zone-text">Drag & drop files here</div>
+          <div class="upload-zone-hint">or click to browse " Images, Videos, 3D Objects, PDFs</div>
+          <input type="file" id="file-input" multiple style="display: none;">
+        </div>
+
+        <!-- Asset Grid -->
+        <div id="asset-grid" class="asset-grid">
+          <div class="loading">Select a bucket to view assets</div>
+        </div>
+      </div>
+
+      <!-- Detail Panel -->
+      <div class="detail-panel" id="detail-panel">
+        <h3>Asset Details</h3>
+
+        <div class="detail-preview" id="detail-preview"></div>
+
+        <div class="detail-section">
+          <label>File Name</label>
+          <input type="text" id="detail-filename" class="read-only" readonly>
+        </div>
+
+        <div class="detail-section">
+          <label>Title (optional)</label>
+          <input type="text" id="detail-title">
+        </div>
+
+        <div class="detail-section">
+          <label>Description (optional)</label>
+          <textarea id="detail-description"></textarea>
+        </div>
+
+        <div class="detail-section">
+          <label>Tags (comma-separated)</label>
+          <input type="text" id="detail-tags" placeholder="tag1, tag2, tag3">
+        </div>
+
+        <div class="detail-section">
+          <label>Visibility</label>
+          <select id="detail-visibility">
+            <option value="public">Public</option>
+            <option value="private">Private</option>
+          </select>
+        </div>
+
+        <div class="detail-section">
+          <label>Public URL</label>
+          <div class="url-copy">
+            <input type="text" id="detail-url" class="read-only" readonly>
+            <button onclick="copyUrl()">Copy</button>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <label>File Info</label>
+          <input type="text" id="detail-info" class="read-only" readonly>
+        </div>
+
+        <div class="button-group">
+          <button class="btn btn-primary" onclick="saveMetadata()">Save Changes</button>
+          <button class="btn btn-secondary" onclick="closeDetail()">Close</button>
+        </div>
+
+        <div class="button-group">
+          <button class="btn btn-danger" onclick="deleteAsset()">=� Delete Asset</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Create Directory Modal -->
+  <div class="modal" id="create-dir-modal">
+    <div class="modal-content">
+      <h3>Create Subdirectory</h3>
+      <label>Bucket</label>
+      <select id="new-dir-bucket">
+        <option value="madladslab">madladslab</option>
+        <option value="acm">acm</option>
+        <option value="sna">sna</option>
+        <option value="twww">twww</option>
+        <option value="ps">ps</option>
+        <option value="graffiti-tv">graffiti-tv</option>
+        <option value="nocometalworkz">nocometalworkz</option>
+        <option value="sfg">sfg</option>
+        <option value="madThree">madThree</option>
+        <option value="w2MongoClient">w2MongoClient</option>
+        <option value="servers">servers</option>
+      </select>
+      <label>Subdirectory Name</label>
+      <input type="text" id="new-dir-name" placeholder="e.g., images, videos, products">
+      <div class="button-group">
+        <button class="btn btn-primary" onclick="createDirectory()">Create</button>
+        <button class="btn btn-secondary" onclick="closeCreateDirModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alert -->
+  <div class="alert" id="alert"></div>
+
+  <script src="/javascripts/bucketManager.js"></script>
+
+</body>
+</html>

@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 
 const trainingProgressSchema = new mongoose.Schema(
   {
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: true
+    },
     employeeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Employee",
@@ -41,8 +46,9 @@ const trainingProgressSchema = new mongoose.Schema(
 );
 
 // Indexes
-trainingProgressSchema.index({ employeeId: 1, moduleId: 1 }, { unique: true });
-trainingProgressSchema.index({ status: 1 });
+trainingProgressSchema.index({ brandId: 1, employeeId: 1, moduleId: 1 }, { unique: true });
+trainingProgressSchema.index({ brandId: 1, status: 1 });
+trainingProgressSchema.index({ employeeId: 1, moduleId: 1 });
 
 const TrainingProgress = mongoose.model("TrainingProgress", trainingProgressSchema);
 

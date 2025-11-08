@@ -2,11 +2,15 @@ import mongoose from "mongoose";
 
 const employeeSchema = new mongoose.Schema(
   {
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: true
+    },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
-      unique: true
+      required: true
     },
     role: {
       type: String,
@@ -53,9 +57,11 @@ const employeeSchema = new mongoose.Schema(
 );
 
 // Indexes
+employeeSchema.index({ userId: 1, brandId: 1 }, { unique: true }); // One employee record per user per brand
+employeeSchema.index({ brandId: 1, role: 1, status: 1 });
+employeeSchema.index({ brandId: 1, department: 1, status: 1 });
 employeeSchema.index({ userId: 1 });
-employeeSchema.index({ role: 1, status: 1 });
-employeeSchema.index({ department: 1, status: 1 });
+employeeSchema.index({ brandId: 1 });
 
 const Employee = mongoose.model("Employee", employeeSchema);
 
