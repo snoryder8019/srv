@@ -2,44 +2,43 @@
 document.addEventListener("DOMContentLoaded", () => {
     const mainDivs = document.querySelectorAll(".mainDiv");
     const navButtons = document.querySelectorAll(".navButton");
+    const sectionContents = document.querySelectorAll(".sectionContent");
 
+    // Update nav dot active state
     function updateNavButtons(activeIndex) {
         navButtons.forEach((btn, index) => {
-            if (index === activeIndex) {
-                btn.style.backgroundColor = "black";
-                btn.style.border = "2px solid white";
-            } else {
-                btn.style.backgroundColor = "white";
-                btn.style.border = "2px solid black";
-            }
+            btn.classList.toggle("active", index === activeIndex);
         });
     }
 
-    // Intersection Observer to track which .mainDiv is in view
+    // Intersection Observer for nav dots + fade-in animations
     const observer = new IntersectionObserver(
         (entries) => {
-            let activeIndex = 0;
-            entries.forEach((entry, index) => {
+            entries.forEach((entry) => {
+                const index = [...mainDivs].indexOf(entry.target);
+                const content = entry.target.querySelector(".sectionContent");
+
                 if (entry.isIntersecting) {
-                    activeIndex = [...mainDivs].indexOf(entry.target);
+                    updateNavButtons(index);
+                    if (content) content.classList.add("visible");
                 }
             });
-            updateNavButtons(activeIndex);
         },
-        { threshold: 0.6 } // Adjusted to detect when 60% of the div is in view
+        { threshold: 0.5 }
     );
 
     mainDivs.forEach((div) => observer.observe(div));
 
-    // Click event for smooth scrolling & updating buttons
+    // Click nav dots to scroll to section
     navButtons.forEach((btn, index) => {
         btn.addEventListener("click", () => {
             mainDivs[index].scrollIntoView({ behavior: "smooth" });
         });
     });
 
-    // Set initial state on load
+    // Make first section visible immediately
+    const firstContent = mainDivs[0] && mainDivs[0].querySelector(".sectionContent");
+    if (firstContent) firstContent.classList.add("visible");
     updateNavButtons(0);
 });
-
 </script>
