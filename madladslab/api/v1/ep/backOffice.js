@@ -14,7 +14,8 @@ export async function createEmployee(data) {
   const employee = new Employee(data);
   await employee.save();
 
-  // Sync User.isBackoffice with Employee.role
+  // Sync User.isBackoffice with Employee.role (for backward compatibility)
+  // In multi-brand, this tracks the "most recent" role
   await User.findByIdAndUpdate(
     data.userId,
     { $set: { isBackoffice: data.role || 'staff' } }
@@ -27,12 +28,23 @@ export async function getEmployee(employeeId) {
   return await Employee.findById(employeeId).populate('userId assignedBy trainingModulesCompleted');
 }
 
-export async function getEmployeeByUserId(userId) {
-  return await Employee.findOne({ userId }).populate('userId assignedBy trainingModulesCompleted');
+export async function getEmployeeByUserId(userId, brandId = null) {
+  const query = { userId };
+  if (brandId) {
+    query.brandId = brandId;
+  }
+  return await Employee.findOne(query).populate('userId assignedBy trainingModulesCompleted');
 }
 
 export async function getAllEmployees(filters = {}) {
   const query = { ...filters };
+  return await Employee.find(query)
+    .populate('userId assignedBy')
+    .sort({ createdAt: -1 });
+}
+
+export async function getEmployeesByBrand(brandId, filters = {}) {
+  const query = { brandId, ...filters };
   return await Employee.find(query)
     .populate('userId assignedBy')
     .sort({ createdAt: -1 });
@@ -64,8 +76,14 @@ export async function updateEmployee(employeeId, updates) {
   return employee;
 }
 
-export async function assignManagerRole(adminId, employeeId) {
-  const admin = await Employee.findOne({ userId: adminId, role: 'admin' });
+export async function assignManagerRole(adminId, employeeId, brandId = null) {
+  // Build query for admin check - if brandId provided, check admin within that brand
+  const adminQuery = { userId: adminId, role: 'admin' };
+  if (brandId) {
+    adminQuery.brandId = brandId;
+  }
+
+  const admin = await Employee.findOne(adminQuery);
   if (!admin) {
     throw new Error('Only admins can assign manager roles');
   }
@@ -141,35 +159,45 @@ export async function getTrainingModule(moduleId) {
   return await TrainingModule.findById(moduleId).populate('createdBy');
 }
 
-export async function getAllTrainingModules(filters = {}) {
+export async function getAllTrainingModules(filters = {}, brandId = null) {
   const query = { active: true, ...filters };
+  if (brandId) {
+    query.brandId = brandId;
+  }
   return await TrainingModule.find(query)
     .populate('createdBy')
     .sort({ category: 1, title: 1 });
 }
 
-export async function getTrainingModulesForEmployee(employeeId) {
+export async function getTrainingModulesForEmployee(employeeId, brandId = null) {
   const employee = await Employee.findById(employeeId);
   if (!employee) {
     throw new Error('Employee not found');
   }
 
-  // Get modules that target this employee's role or "all"
-  const modules = await TrainingModule.find({
+  // Build query for modules - filter by brand if provided
+  const moduleQuery = {
     active: true,
     $or: [
       { targetRoles: employee.role },
       { targetRoles: 'all' }
     ]
-  }).sort({ category: 1, title: 1 });
+  };
+  if (brandId) {
+    moduleQuery.brandId = brandId;
+  }
+
+  // Get modules that target this employee's role or "all"
+  const modules = await TrainingModule.find(moduleQuery).sort({ category: 1, title: 1 });
 
   // Get progress for each module
   const modulesWithProgress = await Promise.all(
     modules.map(async (module) => {
-      const progress = await TrainingProgress.findOne({
-        employeeId,
-        moduleId: module._id
-      });
+      const progressQuery = { employeeId, moduleId: module._id };
+      if (brandId) {
+        progressQuery.brandId = brandId;
+      }
+      const progress = await TrainingProgress.findOne(progressQuery);
 
       return {
         ...module.toObject(),
@@ -189,13 +217,18 @@ export async function updateTrainingModule(moduleId, updates) {
   );
 }
 
-export async function startTrainingModule(employeeId, moduleId) {
-  let progress = await TrainingProgress.findOne({ employeeId, moduleId });
+export async function startTrainingModule(employeeId, moduleId, brandId = null) {
+  const query = { employeeId, moduleId };
+  if (brandId) {
+    query.brandId = brandId;
+  }
+  let progress = await TrainingProgress.findOne(query);
 
   if (!progress) {
     progress = new TrainingProgress({
       employeeId,
       moduleId,
+      brandId,
       status: 'in-progress',
       progress: 0
     });
@@ -207,20 +240,25 @@ export async function startTrainingModule(employeeId, moduleId) {
   return progress;
 }
 
-export async function updateTrainingProgress(employeeId, moduleId, progressPercentage) {
+export async function updateTrainingProgress(employeeId, moduleId, progressPercentage, brandId = null) {
+  const query = { employeeId, moduleId };
+  if (brandId) {
+    query.brandId = brandId;
+  }
   return await TrainingProgress.findOneAndUpdate(
-    { employeeId, moduleId },
+    query,
     {
       $set: {
         progress: progressPercentage,
-        status: progressPercentage >= 100 ? 'completed' : 'in-progress'
+        status: progressPercentage >= 100 ? 'completed' : 'in-progress',
+        brandId
       }
     },
     { new: true, upsert: true }
   );
 }
 
-export async function submitQuiz(employeeId, moduleId, answers) {
+export async function submitQuiz(employeeId, moduleId, answers, brandId = null) {
   const module = await TrainingModule.findById(moduleId);
   if (!module) {
     throw new Error('Training module not found');
@@ -238,9 +276,13 @@ export async function submitQuiz(employeeId, moduleId, answers) {
   const passed = score >= module.passingScore;
 
   // Update progress
-  let progress = await TrainingProgress.findOne({ employeeId, moduleId });
+  const query = { employeeId, moduleId };
+  if (brandId) {
+    query.brandId = brandId;
+  }
+  let progress = await TrainingProgress.findOne(query);
   if (!progress) {
-    progress = new TrainingProgress({ employeeId, moduleId });
+    progress = new TrainingProgress({ employeeId, moduleId, brandId });
   }
 
   progress.quizAttempts.push({
@@ -275,10 +317,14 @@ export async function createPost(data) {
   return await post.populate('authorId');
 }
 
-export async function getAllPosts(targetAudience = null, limit = 50) {
+export async function getAllPosts(targetAudience = null, limit = 50, brandId = null) {
   const query = targetAudience
     ? { targetAudience: { $in: [targetAudience, 'all'] } }
     : {};
+
+  if (brandId) {
+    query.brandId = brandId;
+  }
 
   return await Communication.find(query)
     .populate('authorId comments.userId reactions.userId')
@@ -371,10 +417,13 @@ export async function getRecipe(recipeId, userRole) {
   return recipe;
 }
 
-export async function getAllRecipes(category = null, userRole = 'staff') {
+export async function getAllRecipes(category = null, userRole = 'staff', brandId = null) {
   const query = { active: true };
   if (category) {
     query.category = category;
+  }
+  if (brandId) {
+    query.brandId = brandId;
   }
 
   const recipes = await Recipe.find(query)
@@ -426,14 +475,17 @@ export async function getTask(taskId) {
   return await Task.findById(taskId).populate('createdBy');
 }
 
-export async function getAllTasks(filters = {}) {
+export async function getAllTasks(filters = {}, brandId = null) {
   const query = { active: true, ...filters };
+  if (brandId) {
+    query.brandId = brandId;
+  }
   return await Task.find(query)
     .populate('createdBy')
     .sort({ type: 1, title: 1 });
 }
 
-export async function getTasksForEmployee(employeeRole, department) {
+export async function getTasksForEmployee(employeeRole, department, brandId = null) {
   const query = {
     active: true,
     $or: [
@@ -450,6 +502,10 @@ export async function getTasksForEmployee(employeeRole, department) {
     ]
   };
 
+  if (brandId) {
+    query.brandId = brandId;
+  }
+
   return await Task.find(query)
     .populate('createdBy')
     .sort({ type: 1, title: 1 });
@@ -463,7 +519,7 @@ export async function updateTask(taskId, updates) {
   );
 }
 
-export async function completeTask(taskId, userId, stepsCompleted, notes = '') {
+export async function completeTask(taskId, userId, stepsCompleted, notes = '', brandId = null) {
   const task = await Task.findById(taskId);
   if (!task) {
     throw new Error('Task not found');
@@ -471,13 +527,19 @@ export async function completeTask(taskId, userId, stepsCompleted, notes = '') {
 
   const allStepsComplete = stepsCompleted.length === task.steps.length;
 
-  const completion = new TaskCompletion({
+  const completionData = {
     taskId,
     completedBy: userId,
     stepsCompleted,
     allStepsComplete,
     notes
-  });
+  };
+
+  if (brandId) {
+    completionData.brandId = brandId;
+  }
+
+  const completion = new TaskCompletion(completionData);
 
   await completion.save();
   return await completion.populate('completedBy taskId');

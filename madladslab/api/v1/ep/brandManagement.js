@@ -5,6 +5,22 @@ import Employee from "../models/gpc/Employee.js";
 // ============ BRAND CRUD ============
 
 export async function createBrand(data, ownerId) {
+  // Auto-generate slug from name if not provided
+  if (!data.slug && data.name) {
+    data.slug = data.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    // Ensure slug is unique by checking and appending number if needed
+    let slugBase = data.slug;
+    let counter = 1;
+    while (await Brand.findOne({ slug: data.slug })) {
+      data.slug = `${slugBase}-${counter}`;
+      counter++;
+    }
+  }
+
   const brand = new Brand({
     ...data,
     owner: ownerId
@@ -13,7 +29,13 @@ export async function createBrand(data, ownerId) {
   await brand.save();
 
   // Add owner to brand with admin role
-  await addUserToBrand(ownerId, brand._id, 'admin');
+  try {
+    await addUserToBrand(ownerId, brand._id, 'admin');
+  } catch (error) {
+    console.error('Error adding owner to brand:', error);
+    // Rethrow to ensure the caller knows about the error
+    throw new Error(`Brand created but failed to add owner: ${error.message}`);
+  }
 
   return await brand.populate('owner');
 }
@@ -133,11 +155,18 @@ export async function addUserToBrand(userId, brandId, role = 'staff') {
       department: 'other',
       status: 'active'
     });
-    await employee.save();
+    try {
+      await employee.save();
+      console.log(`Created employee record for user ${userId} in brand ${brandId}`);
+    } catch (empError) {
+      console.error('Error creating employee record:', empError);
+      throw empError;
+    }
   } else {
     employee.role = role;
     employee.status = 'active';
     await employee.save();
+    console.log(`Updated employee record for user ${userId} in brand ${brandId}`);
   }
 
   return user;

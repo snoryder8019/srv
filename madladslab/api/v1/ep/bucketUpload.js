@@ -201,7 +201,7 @@ router.get('/directories', async (req, res) => {
 
 /**
  * POST /api/v1/bucket/directory
- * Create new subdirectory
+ * Create new subdirectory by uploading a .keep placeholder file
  */
 router.post('/directory', async (req, res) => {
   try {
@@ -216,9 +216,41 @@ router.post('/directory', async (req, res) => {
       return res.status(400).json({ error: 'Invalid subdirectory name' });
     }
 
+    // Create a .keep file to establish the directory in S3
+    // S3 doesn't have true directories, so we need at least one object
+    const keepFileContent = Buffer.from(JSON.stringify({
+      created: new Date().toISOString(),
+      type: 'directory_placeholder',
+      message: 'This file maintains the directory structure in object storage'
+    }, null, 2));
+
+    const bucketPath = `${bucket}/${subdirectory}`;
+
+    // Upload .keep file to Linode (preserve exact filename)
+    const publicUrl = await uploadToLinode(keepFileContent, '.keep', bucketPath, true);
+
+    // Create Asset record for the .keep file
+    const asset = new Asset({
+      filename: '.keep',
+      originalName: '.keep',
+      bucket,
+      subdirectory,
+      bucketPath: `${bucketPath}/.keep`,
+      publicUrl,
+      fileType: 'other',
+      mimeType: 'application/json',
+      size: keepFileContent.length,
+      visibility: 'public',
+      tags: ['directory', 'placeholder'],
+      uploadedBy: req.user ? req.user._id : null
+    });
+
+    await asset.save();
+
     res.json({
       success: true,
-      message: `Subdirectory ${bucket}/${subdirectory} ready for uploads`
+      message: `Subdirectory ${bucket}/${subdirectory} created successfully`,
+      asset
     });
 
   } catch (error) {

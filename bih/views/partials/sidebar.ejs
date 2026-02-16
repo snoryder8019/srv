@@ -1,0 +1,152 @@
+<% if (user) { %>
+<div id="sidebar">
+  <div id="sidebar-toggle" title="Users">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+    <span id="sidebar-count">0</span>
+  </div>
+  <div id="sidebar-panel">
+    <div id="sidebar-header">
+      <span>> users</span>
+      <button id="sidebar-close">&times;</button>
+    </div>
+    <div id="sidebar-users"></div>
+  </div>
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function () {
+  // Shared socket — aggressive reconnect for drops
+  window.__bihChatSocket = window.__bihChatSocket || io('/chat', {
+    reconnection: true,
+    reconnectionDelay: 300,
+    reconnectionDelayMax: 2000,
+    reconnectionAttempts: Infinity,
+    timeout: 5000
+  });
+  var socket = window.__bihChatSocket;
+
+  var toggle = document.getElementById('sidebar-toggle');
+  var panel = document.getElementById('sidebar-panel');
+  var closeBtn = document.getElementById('sidebar-close');
+  var usersEl = document.getElementById('sidebar-users');
+  var countEl = document.getElementById('sidebar-count');
+  var isOpen = false;
+
+  // Track active calls for join UX
+  var activeCalls = [];
+
+  toggle.addEventListener('click', function () {
+    isOpen = !isOpen;
+    panel.classList.toggle('open', isOpen);
+    toggle.classList.toggle('active', isOpen);
+  });
+
+  closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    isOpen = false;
+    panel.classList.remove('open');
+    toggle.classList.remove('active');
+  });
+
+  // Find if a user is in an active call, return callId or null
+  function findUserCall(userId) {
+    for (var i = 0; i < activeCalls.length; i++) {
+      var call = activeCalls[i];
+      for (var j = 0; j < call.participants.length; j++) {
+        if (call.participants[j].userId === userId) return call.callId;
+      }
+    }
+    return null;
+  }
+
+  // Listen for active-calls broadcast from server
+  socket.on('active-calls', function (calls) {
+    activeCalls = calls || [];
+    renderUsers(lastUsers);
+  });
+
+  var lastUsers = [];
+
+  function renderUsers(users) {
+    lastUsers = users;
+    countEl.textContent = users.length;
+    usersEl.innerHTML = '';
+    users.forEach(function (u) {
+      var row = document.createElement('div');
+      row.classList.add('sidebar-user');
+
+      var dot = document.createElement('span');
+      dot.classList.add('sidebar-dot');
+
+      var name = document.createElement('span');
+      name.classList.add('sidebar-name');
+      name.textContent = u.displayName;
+
+      row.appendChild(dot);
+      row.appendChild(name);
+
+      if (u.avatar) {
+        var img = document.createElement('img');
+        img.src = u.avatar;
+        img.classList.add('sidebar-avatar');
+        row.insertBefore(img, name);
+      }
+
+      // Check if this user is in an active call
+      var userCallId = findUserCall(u.userId);
+      if (userCallId) {
+        var inCallDot = document.createElement('span');
+        inCallDot.classList.add('sidebar-in-call');
+        row.appendChild(inCallDot);
+
+        var inCallLabel = document.createElement('span');
+        inCallLabel.classList.add('sidebar-in-call-label');
+        inCallLabel.textContent = 'in call';
+        row.appendChild(inCallLabel);
+      }
+
+      // Call / Join button
+      var callBtn = document.createElement('button');
+      callBtn.classList.add('sidebar-call-btn');
+
+      if (userCallId) {
+        // Join existing call
+        callBtn.title = 'Join call with ' + u.displayName;
+        callBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>';
+        (function (cid) {
+          callBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (window.__bihWebRTC) window.__bihWebRTC.joinCall(cid);
+          });
+        })(userCallId);
+      } else {
+        // Start new call
+        callBtn.title = 'Call ' + u.displayName;
+        callBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2z"/></svg>';
+        callBtn.dataset.userId = u.userId;
+        callBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (window.__bihWebRTC) window.__bihWebRTC.call(u.userId, 'voice');
+        });
+      }
+      row.appendChild(callBtn);
+
+      usersEl.appendChild(row);
+    });
+  }
+
+  socket.on('online-users', function (users) {
+    renderUsers(users);
+  });
+
+  socket.on('connect_error', function () {
+    document.getElementById('sidebar').style.display = 'none';
+  });
+})();
+</script>
+<% } %>

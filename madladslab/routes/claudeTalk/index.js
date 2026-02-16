@@ -81,7 +81,7 @@ router.get('/terminal', (req, res) => {
 // POST /claudeTalk/message - Send a message to Claude with VM control tools
 router.post('/message', async (req, res) => {
   try {
-    const { message, sessionId = 'default', model = 'claude-sonnet-4-20250514' } = req.body;
+    const { message, sessionId = 'default', model = 'claude-sonnet-4-20250514', terminalMode = false } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
@@ -105,16 +105,22 @@ router.post('/message', async (req, res) => {
     let iterations = 0;
     const maxIterations = 10; // Prevent infinite loops
 
+    // Optimize system prompt based on mode
+    const systemPrompt = terminalMode
+      ? "Terminal CLI mode: Respond in 10 words or less. NO lists, NO explanations, NO questions. Format: '✓ Result' or 'Count • Detail'. Examples: '✓ 11 services active' or 'CPU 15% RAM 2.1/8GB Disk 45%' or '✓ Restarted' or '3 files found' or '❌ Offline'. NEVER repeat tool output data. Just quick status."
+      : "You are a helpful AI assistant with access to VM control tools. You can manage services, read/write files, execute commands, and check system status. Always explain what you're doing before using tools.";
+
     while (iterations < maxIterations) {
       iterations++;
 
       // Call Claude API with tools
       response = await anthropic.messages.create({
-        model: model,
-        max_tokens: 4096,
+        model: terminalMode ? 'claude-3-5-haiku-20241022' : model, // Use Haiku for faster, more concise responses
+        max_tokens: terminalMode ? 150 : 4096, // Strict token limit in terminal mode
+        temperature: terminalMode ? 0 : 1, // Deterministic in terminal mode
         messages: history,
         tools: tools,
-        system: "You are a helpful AI assistant with access to VM control tools. You can manage services, read/write files, execute commands, and check system status. Always explain what you're doing before using tools."
+        system: systemPrompt
       });
 
       // Check if Claude wants to use a tool
@@ -156,7 +162,38 @@ router.post('/message', async (req, res) => {
 
     // Extract final assistant's text reply
     const textBlock = response.content.find(block => block.type === 'text');
-    const assistantMessage = textBlock ? textBlock.text : 'Task completed.';
+    let assistantMessage = textBlock ? textBlock.text : 'Task completed.';
+
+    // In terminal mode, aggressively truncate verbose responses
+    if (terminalMode) {
+      // Strategy: Just get the core info from tool results instead
+      if (toolResults.length > 0) {
+        const firstTool = toolResults[0];
+        if (firstTool.tool === 'list_services' && firstTool.result.count) {
+          assistantMessage = `✓ ${firstTool.result.count} services running`;
+        } else if (firstTool.tool === 'check_server_status' && firstTool.result.success) {
+          assistantMessage = `✓ CPU ${firstTool.result.cpu}% • RAM ${firstTool.result.memory} • Disk ${firstTool.result.disk}`;
+        } else if (firstTool.tool === 'execute_command') {
+          if (firstTool.result.success) {
+            assistantMessage = firstTool.result.stdout ? `✓ ${firstTool.result.stdout.substring(0, 80)}` : '✓ Command executed';
+          } else {
+            assistantMessage = `❌ ${firstTool.result.error || 'Command failed'}`;
+          }
+        } else if (firstTool.tool === 'restart_service') {
+          assistantMessage = firstTool.result.success ? `✓ Service restarted` : `❌ Restart failed`;
+        } else if (firstTool.tool === 'read_file') {
+          assistantMessage = firstTool.result.success ? `✓ File read (${firstTool.result.size} bytes)` : `❌ Read failed`;
+        } else {
+          // Fallback: just take first sentence
+          const firstSentence = assistantMessage.split(/[.!?]/)[0];
+          assistantMessage = firstSentence.substring(0, 80) + (firstSentence.length > 80 ? '...' : '');
+        }
+      } else {
+        // No tools used, just truncate the message
+        const firstSentence = assistantMessage.split(/[.!?]/)[0];
+        assistantMessage = firstSentence.substring(0, 80) + (firstSentence.length > 80 ? '...' : '');
+      }
+    }
 
     // Add final response to history if not already there
     if (iterations === 0) {

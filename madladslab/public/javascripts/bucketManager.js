@@ -87,6 +87,33 @@ function renderDirectoryTree(tree) {
 }
 
 /**
+ * Update subdirectory selector for current bucket
+ */
+function updateSubdirectorySelector() {
+  const select = document.getElementById('upload-subdirectory-select');
+  if (!select) return;
+
+  select.innerHTML = '<option value="">Root (no subdirectory)</option>';
+
+  if (!currentBucket) return;
+
+  // Find current bucket in tree
+  const bucket = directoryTree.find(b => b.name === currentBucket);
+  if (!bucket) return;
+
+  // Add subdirectories as options
+  bucket.children.forEach(subdir => {
+    const option = document.createElement('option');
+    option.value = subdir.name;
+    option.textContent = subdir.name;
+    if (subdir.name === currentSubdirectory) {
+      option.selected = true;
+    }
+    select.appendChild(option);
+  });
+}
+
+/**
  * Select directory and load assets
  */
 async function selectDirectory(bucket, subdirectory) {
@@ -100,6 +127,9 @@ async function selectDirectory(bucket, subdirectory) {
   // Update header
   const path = subdirectory ? `${bucket}/${subdirectory}` : bucket;
   document.getElementById('current-path').textContent = `📍 ${path}`;
+
+  // Update subdirectory selector
+  updateSubdirectorySelector();
 
   // Load assets
   await loadAssets();
@@ -382,9 +412,13 @@ async function handleFiles(files) {
   }
 
   formData.append('bucket', currentBucket);
-  if (currentSubdirectory) {
-    formData.append('subdirectory', currentSubdirectory);
+
+  // Use selected subdirectory from dropdown (allows manual targeting)
+  const selectedSubdir = document.getElementById('upload-subdirectory-select')?.value;
+  if (selectedSubdir) {
+    formData.append('subdirectory', selectedSubdir);
   }
+
   formData.append('visibility', 'public');
 
   try {
@@ -507,9 +541,10 @@ async function createDirectory() {
     const data = await response.json();
 
     if (data.success) {
-      showAlert('✅ Subdirectory created! Upload files to populate it.');
+      showAlert('✅ Subdirectory created with .keep placeholder file!');
       closeCreateDirModal();
       loadDirectoryTree();
+      document.getElementById('new-dir-name').value = '';
     } else {
       showAlert('❌ ' + (data.error || 'Failed to create directory'), 'error');
     }

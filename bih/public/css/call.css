@@ -1,0 +1,369 @@
+/* === Active Call Overlay === */
+#call-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 99997;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+}
+
+#call-container {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 360px;
+  max-width: 90vw;
+  box-shadow: 0 0 30px rgba(0, 255, 65, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.3s ease;
+}
+
+/* Widen container when 2+ peers */
+#call-container.multi-peer {
+  width: 540px;
+}
+
+#call-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--green);
+  font-size: 12px;
+}
+
+#call-status { color: var(--green-dim); }
+#call-duration { color: var(--text-dim); font-size: 11px; }
+
+/* === Multi-peer Grid === */
+#call-peers-grid {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  min-height: 80px;
+  grid-template-columns: 1fr;
+}
+
+/* 2 peers: side-by-side */
+#call-peers-grid.peers-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* 3 peers: 2 top, 1 centered bottom */
+#call-peers-grid.peers-3 {
+  grid-template-columns: 1fr 1fr;
+}
+#call-peers-grid.peers-3 .call-peer-tile:nth-child(3) {
+  grid-column: 1 / -1;
+  max-width: 50%;
+  justify-self: center;
+}
+
+/* 4+ peers: 2-column grid */
+#call-peers-grid.peers-many {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* Individual peer tile */
+.call-peer-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  gap: 6px;
+  background: #050505;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+  min-height: 90px;
+}
+
+.call-tile-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--green-muted);
+  object-fit: cover;
+}
+
+.call-tile-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--green-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--green-dim);
+  font-size: 20px;
+  background: var(--bg);
+}
+
+.call-tile-name {
+  color: var(--green);
+  font-size: 11px;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Audio wave indicator per tile */
+.call-tile-waves {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  height: 16px;
+}
+
+.call-tile-waves .call-audio-wave {
+  width: 2px;
+  background: var(--green);
+  border-radius: 1px;
+  animation: audioWave 0.8s ease-in-out infinite alternate;
+  box-shadow: 0 0 3px rgba(0, 255, 65, 0.3);
+}
+.call-tile-waves .call-audio-wave:nth-child(1) { height: 6px; animation-delay: 0s; }
+.call-tile-waves .call-audio-wave:nth-child(2) { height: 12px; animation-delay: 0.2s; }
+.call-tile-waves .call-audio-wave:nth-child(3) { height: 8px; animation-delay: 0.4s; }
+
+/* Video inside a peer tile */
+.call-peer-tile video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+/* Name overlay on video */
+.call-peer-tile.has-video .call-tile-name {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 10px;
+}
+
+/* Hide avatar when video is active */
+.call-peer-tile.has-video .call-tile-avatar,
+.call-peer-tile.has-video .call-tile-placeholder,
+.call-peer-tile.has-video .call-tile-waves {
+  display: none;
+}
+
+/* === Local video PiP === */
+#call-media {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+}
+
+#call-local-video {
+  position: fixed;
+  bottom: 100px;
+  right: 16px;
+  width: 120px;
+  height: 90px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  object-fit: cover;
+  background: #050505;
+  z-index: 99998;
+  display: none;
+}
+
+@keyframes audioWave {
+  from { height: 4px; }
+  to { height: 16px; }
+}
+
+/* Call control buttons */
+#call-controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+#call-controls button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--green-dim);
+  background: transparent;
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+  margin: 0;
+}
+
+#call-controls button svg { stroke: var(--green); }
+
+#call-controls button:hover {
+  background: var(--green-muted);
+  box-shadow: 0 0 10px rgba(0, 255, 65, 0.2);
+}
+
+#call-controls button.active {
+  background: var(--green-muted);
+  border-color: var(--green);
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.3);
+}
+
+#call-controls button.muted {
+  border-color: var(--danger);
+}
+#call-controls button.muted svg { stroke: var(--danger); }
+
+.call-btn-danger {
+  border-color: var(--danger) !important;
+}
+.call-btn-danger svg { stroke: var(--danger) !important; }
+.call-btn-danger:hover {
+  background: rgba(255, 51, 51, 0.15) !important;
+  box-shadow: 0 0 10px rgba(255, 51, 51, 0.3) !important;
+}
+
+/* === Incoming Call Modal === */
+#call-incoming-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 99997;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+}
+
+#call-incoming-container {
+  background: var(--bg);
+  border: 1px solid var(--green-dim);
+  border-radius: 4px;
+  padding: 24px 32px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(0, 255, 65, 0.15);
+  animation: incomingPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes incomingPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 65, 0.1); }
+  50% { box-shadow: 0 0 40px rgba(0, 255, 65, 0.25); }
+}
+
+#call-incoming-header { color: var(--green); font-size: 14px; margin-bottom: 8px; }
+#call-incoming-type { color: var(--green-dim); font-size: 11px; margin-bottom: 12px; }
+#call-incoming-caller { color: var(--green); font-size: 16px; margin-bottom: 20px; }
+
+#call-incoming-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+#call-incoming-actions button {
+  padding: 10px 24px;
+  font-family: var(--mono);
+  font-size: 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid;
+  background: transparent;
+  transition: all 0.2s;
+  margin: 0;
+}
+
+.call-btn-accept { color: var(--green); border-color: var(--green-dim); }
+.call-btn-accept:hover {
+  background: var(--green-muted);
+  box-shadow: 0 0 12px rgba(0, 255, 65, 0.3);
+}
+
+/* === Sidebar call button === */
+.sidebar-call-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--green-dim);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.sidebar-call-btn svg { stroke: var(--green-dim); }
+.sidebar-user:hover .sidebar-call-btn { opacity: 1; }
+.sidebar-call-btn:hover svg {
+  stroke: var(--green);
+  filter: drop-shadow(0 0 4px rgba(0, 255, 65, 0.4));
+}
+
+/* === Sidebar in-call indicator === */
+.sidebar-in-call {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-left: 6px;
+  animation: inCallPulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 4px rgba(0, 255, 65, 0.5);
+}
+
+@keyframes inCallPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.7); }
+}
+
+.sidebar-in-call-label {
+  font-size: 9px;
+  color: var(--green-dim);
+  margin-left: 4px;
+}
+
+/* === Ringing animation === */
+@keyframes ringingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+#call-overlay[data-state="ringing"] #call-status {
+  animation: ringingPulse 1.5s ease-in-out infinite;
+}
+#call-overlay[data-state="connecting"] #call-status {
+  animation: ringingPulse 0.8s ease-in-out infinite;
+}
+
+/* === Mobile === */
+@media (max-width: 768px) {
+  #call-container,
+  #call-container.multi-peer { width: 95vw; }
+  #call-incoming-container { padding: 20px; }
+  .call-peer-tile { min-height: 70px; padding: 8px 4px; }
+  .call-tile-avatar, .call-tile-placeholder { width: 36px; height: 36px; font-size: 16px; }
+}

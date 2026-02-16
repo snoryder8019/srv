@@ -13,9 +13,11 @@ import lbb from "./lbb/index.js"
 import claudeTalk from "./claudeTalk/index.js"
 import payments from "./payments/index.js"
 import gpc from "./gpc/index.js"
-import backOffice from "./backOffice/index.js"
+// Using multi-brand backoffice routes
+import backOffice from "./backOffice/index-multibrand.js"
 import scrapeman from "./scrapeman/index.js"
 import bucketUpload from "./bucketUpload/index.js"
+import stevenClawbert from "./stevenClawbert/index.js"
 /* GET home page. */
 
 router.use('/admin', admin)
@@ -28,11 +30,13 @@ router.use('/grafitti', grafitti)
 router.use('/trader', trader)
 router.use('/lbb', lbb)
 router.use('/gpc', gpc)
-router.use('/backOffice', backOffice)
+router.use('/backOffice', backOffice)  // Legacy URL
+router.use('/backoffice', backOffice)   // New lowercase URL for multi-brand
 router.use('/claudeTalk', claudeTalk)
 router.use('/payments', payments)
 router.use('/scrapeman', scrapeman)
 router.use('/bucketUpload', bucketUpload)
+router.use('/stevenClawbert', stevenClawbert)
 router.use('/', plugins)
 
 router.get('/', function(req, res, next) {

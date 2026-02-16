@@ -55,10 +55,11 @@ function generateUniqueFilename(originalFilename) {
  * @param {Buffer} fileBuffer - The file data as a buffer
  * @param {string} originalFilename - Original filename
  * @param {string} folder - Optional folder path (e.g., 'training', 'tasks', 'recipes')
+ * @param {boolean} preserveFilename - If true, use exact filename without generating unique name (default: false)
  * @returns {Promise<string>} - Returns the public URL of the uploaded file
  */
-export async function uploadToLinode(fileBuffer, originalFilename, folder = 'general') {
-  const filename = generateUniqueFilename(originalFilename);
+export async function uploadToLinode(fileBuffer, originalFilename, folder = 'general', preserveFilename = false) {
+  const filename = preserveFilename ? originalFilename : generateUniqueFilename(originalFilename);
   const key = folder ? `${folder}/${filename}` : filename;
 
   const client = getLinodeClient();

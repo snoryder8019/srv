@@ -1,6 +1,23 @@
 # Recent Changes Summary
 
-Generated: 2025-11-08T08:30:00.027Z
+Generated: 2026-02-16T08:30:00.030Z
+
+---
+
+## Commit: good push
+
+- **Hash:** `27034f4`
+- **Author:** Scott
+- **Date:** 11/8/2025
+- **Changes:** 106 files, +17543/-426 lines
+
+### Modified Areas:
+
+**Frontend:** 4 files
+**Backend:** 23 files
+**Views:** 18 files
+**Scripts:** 1 files
+**Documentation:** 16 files
 
 ---
 
@@ -53,18 +70,6 @@ Generated: 2025-11-08T08:30:00.027Z
 - **Author:** Scott
 - **Date:** 11/5/2025
 - **Changes:** 1 files, +5/-5 lines
-
-### Modified Areas:
-
-**Views:** 1 files
-
----
-
-## Commit: v0.8.8 - Sprite Builder: Restore working version + Hitbox Layer
-
-- **Hash:** `4ba3595`
-- **Author:** Scott
-- **Date:** 11/5/2025
 
 ### Modified Areas:
 

@@ -272,6 +272,93 @@
       transform: translateY(-1px);
     }
 
+    .mode-toggle {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      background: #1e1e1e;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      padding: 0.5rem;
+    }
+
+    .mode-btn {
+      flex: 1;
+      background: #2d2d30;
+      border: 1px solid #3c3c3c;
+      color: #cccccc;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .mode-btn.active {
+      background: #0e639c;
+      border-color: #1177bb;
+      color: white;
+    }
+
+    .mode-btn:hover:not(.active) {
+      background: #3c3c3c;
+    }
+
+    .claude-response {
+      background: rgba(14, 99, 156, 0.08);
+      border-left: 3px solid #0e639c;
+      padding: 0.75rem 1rem;
+      margin: 0.5rem 0;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .claude-label {
+      color: #0e639c;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .tool-execution {
+      background: rgba(76, 175, 80, 0.1);
+      border-left: 4px solid #4caf50;
+      padding: 0.75rem;
+      margin: 0.5rem 0;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+
+    .tool-name {
+      color: #4caf50;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+
+    .tool-result {
+      background: #0c0c0c;
+      padding: 0.5rem;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+      font-family: 'Courier New', Consolas, monospace;
+      font-size: 0.85rem;
+    }
+
+    /* Compact user message styling */
+    .terminal-line.user-msg {
+      color: #4ec9b0;
+      font-size: 0.9rem;
+      margin-bottom: 0.25rem;
+    }
+
     /* Scrollbar styling */
     ::-webkit-scrollbar {
       width: 10px;
@@ -431,7 +518,18 @@
   </div>
 
   <div class="terminal-container">
-    <div class="working-directory">
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="shellModeBtn" onclick="switchMode('shell')">
+        <i class="fas fa-terminal"></i>
+        Shell Commands
+      </button>
+      <button class="mode-btn" id="claudeModeBtn" onclick="switchMode('claude')">
+        <i class="fas fa-brain"></i>
+        Claude AI
+      </button>
+    </div>
+
+    <div class="working-directory" id="workingDirSection">
       <label><i class="fas fa-folder"></i> Working Directory:</label>
       <span class="path" id="currentDir">/srv</span>
       <button class="btn btn-secondary" onclick="changeDirectory()">
@@ -440,7 +538,7 @@
       </button>
     </div>
 
-    <div class="quick-commands">
+    <div class="quick-commands" id="quickCommandsSection">
       <button class="quick-cmd-btn" onclick="runQuickCommand('ls -la')">ls -la</button>
       <button class="quick-cmd-btn" onclick="runQuickCommand('pwd')">pwd</button>
       <button class="quick-cmd-btn" onclick="runQuickCommand('git status')">git status</button>
@@ -489,6 +587,8 @@
     let commandHistory = [];
     let historyIndex = -1;
     let currentDirectory = '/srv';
+    let currentMode = 'shell'; // 'shell' or 'claude'
+    let claudeSessionId = 'terminal-' + Date.now();
 
     const commandInput = document.getElementById('commandInput');
     const terminal = document.getElementById('terminal');
@@ -496,6 +596,35 @@
 
     // Focus input on load
     commandInput.focus();
+
+    // Mode switching
+    function switchMode(mode) {
+      currentMode = mode;
+
+      // Update buttons
+      document.getElementById('shellModeBtn').classList.toggle('active', mode === 'shell');
+      document.getElementById('claudeModeBtn').classList.toggle('active', mode === 'claude');
+
+      // Update UI elements
+      const workingDirSection = document.getElementById('workingDirSection');
+      const quickCommandsSection = document.getElementById('quickCommandsSection');
+
+      if (mode === 'claude') {
+        workingDirSection.style.display = 'none';
+        quickCommandsSection.style.display = 'none';
+        commandInput.placeholder = 'Ask Claude AI anything...';
+        document.getElementById('prompt').innerHTML = '<i class="fas fa-brain"></i>';
+        addTerminalLine('<div class="claude-response"><div class="claude-label"><i class="fas fa-brain"></i> Claude AI Mode</div>You can now chat with Claude AI. Claude has access to system tools and can execute commands for you.</div>', 'success');
+      } else {
+        workingDirSection.style.display = 'flex';
+        quickCommandsSection.style.display = 'flex';
+        commandInput.placeholder = 'Enter command...';
+        document.getElementById('prompt').textContent = 'user@srv:~$';
+        addTerminalLine('<div class="terminal-line success"><i class="fas fa-terminal"></i> Shell Command Mode</div>', 'success');
+      }
+
+      commandInput.focus();
+    }
 
     // Handle Enter key
     commandInput.addEventListener('keydown', (e) => {
@@ -520,63 +649,131 @@
       historyIndex = commandHistory.length;
       updateHistoryDisplay();
 
-      // Display command in terminal
-      addTerminalLine(`<span class="prompt">$ </span>${escapeHtml(command)}`, 'command');
-
       // Clear input
       commandInput.value = '';
 
       // Disable input while executing
       commandInput.disabled = true;
       sendBtn.disabled = true;
-      sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
 
-      try {
-        const response = await fetch('/claudeTalk/executeCommand', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            command: command,
-            cwd: currentDirectory
-          })
-        });
+      if (currentMode === 'claude') {
+        // Claude AI mode
+        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Thinking...';
 
-        const data = await response.json();
+        // Display user message
+        addTerminalLine(`<div class="terminal-line" style="color: #4ec9b0;"><i class="fas fa-user"></i> You: ${escapeHtml(command)}</div>`, 'command');
 
-        if (data.success) {
-          if (data.stdout) {
-            addTerminalLine(escapeHtml(data.stdout), 'output');
+        try {
+          const response = await fetch('/claudeTalk/message', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              message: command,
+              sessionId: claudeSessionId,
+              terminalMode: true
+            })
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            // Create Claude response HTML - compact format
+            let responseHtml = '<div class="claude-response">';
+            responseHtml += '<div class="claude-label"><i class="fas fa-brain"></i> Claude:</div>';
+            responseHtml += escapeHtml(data.response);
+
+            // Show tool executions in compact format
+            if (data.toolsUsed && data.toolsUsed.length > 0) {
+              responseHtml += '<div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(14, 99, 156, 0.2);">';
+              responseHtml += '<div style="color: #858585; font-size: 0.85rem; margin-bottom: 0.5rem;"><i class="fas fa-tools"></i> Actions (' + data.toolsUsed.length + '):</div>';
+
+              data.toolsUsed.forEach(tool => {
+                // Compact tool display - just name and success status
+                const success = tool.result && (tool.result.success !== false);
+                const icon = success ? '✓' : '✗';
+                const color = success ? '#4caf50' : '#f48771';
+
+                responseHtml += '<div style="font-size: 0.85rem; color: ' + color + '; margin-bottom: 0.25rem;">';
+                responseHtml += icon + ' ' + escapeHtml(tool.tool);
+
+                // Only show minimal input details
+                if (tool.input && tool.input.command) {
+                  responseHtml += ' <span style="color: #858585;">(' + escapeHtml(tool.input.command.substring(0, 30)) + (tool.input.command.length > 30 ? '...' : '') + ')</span>';
+                } else if (tool.input && tool.input.path) {
+                  responseHtml += ' <span style="color: #858585;">(' + escapeHtml(tool.input.path) + ')</span>';
+                }
+
+                responseHtml += '</div>';
+              });
+
+              responseHtml += '</div>';
+            }
+
+            responseHtml += '</div>';
+            addTerminalLine(responseHtml, 'output');
+          } else {
+            addTerminalLine(`<div class="terminal-line error"><i class="fas fa-exclamation-triangle"></i> Error: ${escapeHtml(data.error || 'Failed to get response from Claude')}</div>`, 'error');
           }
-          if (data.stderr) {
-            addTerminalLine(escapeHtml(data.stderr), 'error');
-          }
-          if (!data.stdout && !data.stderr) {
-            addTerminalLine('Command executed successfully (no output)', 'success');
-          }
-        } else {
-          addTerminalLine(`Error: ${escapeHtml(data.error || 'Command failed')}`, 'error');
-          if (data.stdout) {
-            addTerminalLine(escapeHtml(data.stdout), 'output');
-          }
-          if (data.stderr) {
-            addTerminalLine(escapeHtml(data.stderr), 'error');
-          }
+        } catch (error) {
+          console.error('Error communicating with Claude:', error);
+          addTerminalLine(`<div class="terminal-line error"><i class="fas fa-exclamation-triangle"></i> Failed to communicate with Claude: ${escapeHtml(error.message)}</div>`, 'error');
         }
-      } catch (error) {
-        console.error('Error executing command:', error);
-        addTerminalLine(`Failed to execute command: ${escapeHtml(error.message)}`, 'error');
-      } finally {
-        // Re-enable input
-        commandInput.disabled = false;
-        sendBtn.disabled = false;
-        sendBtn.innerHTML = '<i class="fas fa-play"></i> Execute';
-        commandInput.focus();
+      } else {
+        // Shell command mode
+        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
 
-        // Auto-scroll to bottom
-        terminal.scrollTop = terminal.scrollHeight;
+        // Display command in terminal
+        addTerminalLine(`<span class="prompt">$ </span>${escapeHtml(command)}`, 'command');
+
+        try {
+          const response = await fetch('/claudeTalk/executeCommand', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              command: command,
+              cwd: currentDirectory
+            })
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            if (data.stdout) {
+              addTerminalLine(escapeHtml(data.stdout), 'output');
+            }
+            if (data.stderr) {
+              addTerminalLine(escapeHtml(data.stderr), 'error');
+            }
+            if (!data.stdout && !data.stderr) {
+              addTerminalLine('Command executed successfully (no output)', 'success');
+            }
+          } else {
+            addTerminalLine(`Error: ${escapeHtml(data.error || 'Command failed')}`, 'error');
+            if (data.stdout) {
+              addTerminalLine(escapeHtml(data.stdout), 'output');
+            }
+            if (data.stderr) {
+              addTerminalLine(escapeHtml(data.stderr), 'error');
+            }
+          }
+        } catch (error) {
+          console.error('Error executing command:', error);
+          addTerminalLine(`Failed to execute command: ${escapeHtml(error.message)}`, 'error');
+        }
       }
+
+      // Re-enable input
+      commandInput.disabled = false;
+      sendBtn.disabled = false;
+      sendBtn.innerHTML = '<i class="fas fa-play"></i> Execute';
+      commandInput.focus();
+
+      // Auto-scroll to bottom
+      terminal.scrollTop = terminal.scrollHeight;
     }
 
     function addTerminalLine(content, type = 'output') {

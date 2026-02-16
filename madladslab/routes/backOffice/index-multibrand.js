@@ -250,6 +250,33 @@ router.get("/info", async (req, res) => {
   }
 });
 
+// Setup page - in multi-brand context, redirect to main landing
+// This maintains backward compatibility with old /backOffice/setup URLs
+router.get("/setup", requireAuth, async (req, res) => {
+  try {
+    // In multi-brand, setup happens at the main landing page
+    // Redirect users there to create/join brands
+    const brands = await getUserBrands(req.user._id);
+
+    if (brands.length === 0) {
+      // No brands - show brand creation page
+      return res.render("backOffice/brand-setup", {
+        user: req.user,
+        title: "Create Your Brand - Back Office"
+      });
+    } else if (brands.length === 1) {
+      // Has a brand - redirect to it
+      return res.redirect(`/backoffice/${brands[0].slug}`);
+    } else {
+      // Multiple brands - show selector
+      return res.redirect('/backoffice');
+    }
+  } catch (error) {
+    console.error("Error loading setup page:", error);
+    res.status(500).send("Error loading setup page");
+  }
+});
+
 // ============ BRAND-SCOPED ROUTES ============
 
 // Brand dashboard - redirects based on role
@@ -488,8 +515,291 @@ router.post("/:brandSlug/api/employees", requireAuth, requireBrand, requireEmplo
   }
 });
 
-// TODO: Add all other API routes with brand context
-// (Feed, Training, Recipes, Tasks, etc.)
+// ============ API ROUTES - ONBOARDING ============
+
+router.get("/:brandSlug/api/onboarding/:employeeId", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const onboarding = await getEmployeeOnboarding(req.params.employeeId);
+    res.json(onboarding);
+  } catch (error) {
+    console.error("Error fetching onboarding:", error);
+    res.status(500).json({ error: "Error fetching onboarding" });
+  }
+});
+
+router.post("/:brandSlug/api/onboarding", requireAuth, requireBrand, requireEmployee, requireManager, async (req, res) => {
+  try {
+    const packet = await createOnboardingPacket({
+      ...req.body,
+      brandId: req.brand._id,
+      assignedBy: req.user._id
+    });
+    res.status(201).json(packet);
+  } catch (error) {
+    console.error("Error creating onboarding packet:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put("/:brandSlug/api/onboarding/:id/document/:index", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const packet = await updateOnboardingDocument(
+      req.params.id,
+      parseInt(req.params.index),
+      req.body
+    );
+    res.json(packet);
+  } catch (error) {
+    console.error("Error updating onboarding document:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ API ROUTES - TRAINING ============
+
+router.get("/:brandSlug/api/training/modules", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const modules = await getTrainingModulesForEmployee(req.employee._id, req.brand._id);
+    res.json(modules);
+  } catch (error) {
+    console.error("Error fetching training modules:", error);
+    res.status(500).json({ error: "Error fetching training modules" });
+  }
+});
+
+router.get("/:brandSlug/api/training/modules/:id", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const module = await getTrainingModule(req.params.id);
+    res.json(module);
+  } catch (error) {
+    console.error("Error fetching training module:", error);
+    res.status(500).json({ error: "Error fetching training module" });
+  }
+});
+
+router.post("/:brandSlug/api/training/modules", requireAuth, requireBrand, requireEmployee, requireManager, async (req, res) => {
+  try {
+    const module = await createTrainingModule({
+      ...req.body,
+      brandId: req.brand._id,
+      createdBy: req.user._id
+    });
+    res.status(201).json(module);
+  } catch (error) {
+    console.error("Error creating training module:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:brandSlug/api/training/modules/:id/start", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const progress = await startTrainingModule(req.employee._id, req.params.id, req.brand._id);
+    res.json(progress);
+  } catch (error) {
+    console.error("Error starting training module:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:brandSlug/api/training/modules/:id/quiz", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const result = await submitQuiz(req.employee._id, req.params.id, req.body.answers, req.brand._id);
+    res.json(result);
+  } catch (error) {
+    console.error("Error submitting quiz:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ API ROUTES - COMMUNICATION ============
+
+router.get("/:brandSlug/api/feed", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+    const posts = await getAllPosts(req.employee.department, limit, req.brand._id);
+    res.json(posts);
+  } catch (error) {
+    console.error("Error fetching feed:", error);
+    res.status(500).json({ error: "Error fetching feed" });
+  }
+});
+
+router.post("/:brandSlug/api/feed", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const post = await createPost({
+      ...req.body,
+      brandId: req.brand._id,
+      authorId: req.user._id
+    });
+    res.status(201).json(post);
+  } catch (error) {
+    console.error("Error creating post:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:brandSlug/api/feed/:id/comment", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const post = await addComment(req.params.id, req.user._id, req.body.content);
+    res.json(post);
+  } catch (error) {
+    console.error("Error adding comment:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:brandSlug/api/feed/:id/reaction", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const post = await addReaction(req.params.id, req.user._id, req.body.emoji);
+    res.json(post);
+  } catch (error) {
+    console.error("Error adding reaction:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:brandSlug/api/feed/:id/pin", requireAuth, requireBrand, requireEmployee, requireManager, async (req, res) => {
+  try {
+    const post = await togglePinPost(req.params.id);
+    res.json(post);
+  } catch (error) {
+    console.error("Error toggling pin:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ API ROUTES - RECIPES ============
+
+router.get("/:brandSlug/api/recipes", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const category = req.query.category || null;
+    const recipes = await getAllRecipes(category, req.employee.role, req.brand._id);
+    res.json(recipes);
+  } catch (error) {
+    console.error("Error fetching recipes:", error);
+    res.status(500).json({ error: "Error fetching recipes" });
+  }
+});
+
+router.get("/:brandSlug/api/recipes/:id", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const recipe = await getRecipe(req.params.id, req.employee.role);
+    res.json(recipe);
+  } catch (error) {
+    console.error("Error fetching recipe:", error);
+    res.status(500).json({ error: "Error fetching recipe" });
+  }
+});
+
+router.post("/:brandSlug/api/recipes", requireAuth, requireBrand, requireEmployee, requireManager, async (req, res) => {
+  try {
+    const recipe = await createRecipe({
+      ...req.body,
+      brandId: req.brand._id,
+      createdBy: req.user._id
+    });
+    res.status(201).json(recipe);
+  } catch (error) {
+    console.error("Error creating recipe:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put("/:brandSlug/api/recipes/:id", requireAuth, requireBrand, requireEmployee, requireManager, async (req, res) => {
+  try {
+    const recipe = await updateRecipe(req.params.id, req.body, req.user._id);
+    res.json(recipe);
+  } catch (error) {
+    console.error("Error updating recipe:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ API ROUTES - TASKS ============
+
+router.get("/:brandSlug/api/tasks", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const tasks = await getTasksForEmployee(req.employee.role, req.employee.department, req.brand._id);
+    res.json(tasks);
+  } catch (error) {
+    console.error("Error fetching tasks:", error);
+    res.status(500).json({ error: "Error fetching tasks" });
+  }
+});
+
+router.post("/:brandSlug/api/tasks", requireAuth, requireBrand, requireEmployee, requireManager, async (req, res) => {
+  try {
+    const task = await createTask({
+      ...req.body,
+      brandId: req.brand._id,
+      createdBy: req.user._id
+    });
+    res.status(201).json(task);
+  } catch (error) {
+    console.error("Error creating task:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:brandSlug/api/tasks/:id/complete", requireAuth, requireBrand, requireEmployee, async (req, res) => {
+  try {
+    const completion = await completeTask(
+      req.params.id,
+      req.user._id,
+      req.body.stepsCompleted,
+      req.body.notes,
+      req.brand._id
+    );
+    res.json(completion);
+  } catch (error) {
+    console.error("Error completing task:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/:brandSlug/api/tasks/:id/completions", requireAuth, requireBrand, requireEmployee, requireManager, async (req, res) => {
+  try {
+    const completions = await getTaskCompletions(
+      req.params.id,
+      req.query.startDate,
+      req.query.endDate
+    );
+    res.json(completions);
+  } catch (error) {
+    console.error("Error fetching task completions:", error);
+    res.status(500).json({ error: "Error fetching task completions" });
+  }
+});
+
+router.post("/:brandSlug/api/tasks/completions/:id/verify", requireAuth, requireBrand, requireEmployee, requireManager, async (req, res) => {
+  try {
+    const completion = await verifyTaskCompletion(req.params.id, req.user._id);
+    res.json(completion);
+  } catch (error) {
+    console.error("Error verifying task completion:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put("/:brandSlug/api/employees/:id", requireAuth, requireBrand, requireEmployee, requireManager, async (req, res) => {
+  try {
+    const employee = await updateEmployee(req.params.id, req.body);
+    res.json(employee);
+  } catch (error) {
+    console.error("Error updating employee:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:brandSlug/api/employees/:id/assign-manager", requireAuth, requireBrand, requireEmployee, requireAdmin, async (req, res) => {
+  try {
+    const employee = await assignManagerRole(req.user._id, req.params.id, req.brand._id);
+    res.json(employee);
+  } catch (error) {
+    console.error("Error assigning manager role:", error);
+    res.status(400).json({ error: error.message });
+  }
+});
 
 // ============ IMAGE UPLOAD ROUTE ============
 
