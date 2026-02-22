@@ -15,6 +15,70 @@
   let loadingMore = false;
   let loadMoreEl = null;
 
+  // Tab state
+  var activeTab = 'global';
+  var globalMessagesCache = []; // DOM elements
+  var channelMessages = {};     // channelId -> array of DOM elements
+  var chatTabs = document.getElementById('chat-tabs');
+
+  function switchTab(tabId) {
+    activeTab = tabId;
+    // Update tab highlights
+    if (chatTabs) {
+      var tabs = chatTabs.querySelectorAll('.chat-tab');
+      tabs.forEach(function (t) {
+        t.classList.toggle('active', t.getAttribute('data-tab') === tabId);
+      });
+    }
+    // Swap message content
+    messages.innerHTML = '';
+    if (tabId === 'global') {
+      globalMessagesCache.forEach(function (el) { messages.appendChild(el); });
+      if (hasMore) showLoadMore();
+      input.placeholder = 'Type a message...';
+    } else {
+      (channelMessages[tabId] || []).forEach(function (el) { messages.appendChild(el); });
+      input.placeholder = 'Message channel...';
+    }
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  // Expose bridges for channels.js
+  window.__bihChatSwitchTab = switchTab;
+  window.__bihChatActiveTab = function () { return activeTab; };
+  window.__bihChatInjectChannelMessage = function (channelId, data) {
+    var el = createMsgEl(data);
+    if (!channelMessages[channelId]) channelMessages[channelId] = [];
+    channelMessages[channelId].push(el);
+    if (activeTab === channelId) {
+      messages.appendChild(el);
+      messages.scrollTop = messages.scrollHeight;
+    }
+    if (!isOpen || activeTab !== channelId) {
+      unread++;
+      badge.textContent = unread;
+      badge.style.display = 'flex';
+    }
+  };
+  window.__bihChatRemoveChannelTab = function (channelId) {
+    delete channelMessages[channelId];
+    if (activeTab === channelId) switchTab('global');
+    if (chatTabs) {
+      var tab = chatTabs.querySelector('[data-tab="' + channelId + '"]');
+      if (tab) tab.remove();
+    }
+  };
+
+  // Tab click delegation
+  if (chatTabs) {
+    chatTabs.addEventListener('click', function (e) {
+      var tab = e.target.closest('.chat-tab');
+      if (tab && !e.target.classList.contains('chat-tab-close')) {
+        switchTab(tab.getAttribute('data-tab'));
+      }
+    });
+  }
+
   // Generate a short ping tone via Web Audio API
   function playPing() {
     try {
@@ -149,14 +213,16 @@
 
   // Initial history
   socket.on('chat-history', function (data) {
+    globalMessagesCache = [];
     messages.innerHTML = '';
     data.messages.forEach(function (msg) {
       var el = createMsgEl(msg);
       el.dataset.ts = msg.createdAt;
-      messages.appendChild(el);
+      globalMessagesCache.push(el);
+      if (activeTab === 'global') messages.appendChild(el);
     });
     hasMore = data.hasMore;
-    showLoadMore();
+    if (activeTab === 'global') showLoadMore();
     messages.scrollTop = messages.scrollHeight;
   });
 
@@ -166,14 +232,17 @@
     if (loadMoreEl) loadMoreEl.remove();
     var scrollBefore = messages.scrollHeight;
     var firstChild = messages.firstChild;
+    var newEls = [];
     data.messages.forEach(function (msg) {
       var el = createMsgEl(msg);
       el.dataset.ts = msg.createdAt;
-      messages.insertBefore(el, firstChild);
+      newEls.push(el);
+      if (activeTab === 'global') messages.insertBefore(el, firstChild);
     });
+    // Prepend to global cache
+    globalMessagesCache = newEls.concat(globalMessagesCache);
     hasMore = data.hasMore;
-    showLoadMore();
-    // Keep scroll position stable
+    if (activeTab === 'global') showLoadMore();
     messages.scrollTop = messages.scrollHeight - scrollBefore;
   });
 
@@ -207,7 +276,11 @@
     e.preventDefault();
     var msg = input.value.trim();
     if (!msg) return;
-    socket.emit('chat-message', msg);
+    if (activeTab !== 'global' && window.__bihChannels && window.__bihChannels.sendMessage) {
+      window.__bihChannels.sendMessage(activeTab, msg);
+    } else {
+      socket.emit('chat-message', msg);
+    }
     input.value = '';
   });
 
@@ -215,10 +288,13 @@
     playBlip();
     var el = createMsgEl(data);
     el.dataset.ts = data.timestamp;
-    messages.appendChild(el);
-    messages.scrollTop = messages.scrollHeight;
+    globalMessagesCache.push(el);
+    if (activeTab === 'global') {
+      messages.appendChild(el);
+      messages.scrollTop = messages.scrollHeight;
+    }
 
-    if (!isOpen) {
+    if (!isOpen || activeTab !== 'global') {
       unread++;
       badge.textContent = unread;
       badge.style.display = 'flex';
@@ -230,8 +306,11 @@
     var div = document.createElement('div');
     div.classList.add('chat-msg', 'chat-system');
     div.textContent = data.displayName + ' connected';
-    messages.appendChild(div);
-    messages.scrollTop = messages.scrollHeight;
+    globalMessagesCache.push(div);
+    if (activeTab === 'global') {
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
   });
 
   socket.on('online-users', function (users) {

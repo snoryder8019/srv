@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> | MadLadsLab Bookkeeping</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d0d0d; color: #e0e0e0; }
+    a { color: #00ff88; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Header ── */
+    .fin-header {
+      background: linear-gradient(135deg, #0a2a1a 0%, #003322 100%);
+      border-bottom: 2px solid #00ff88;
+      padding: 1.25rem 2rem;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    }
+    .fin-header h1 { font-size: 1.4rem; color: #00ff88; letter-spacing: 1px; }
+    .btn {
+      display: inline-block; padding: 0.45rem 1rem; border-radius: 4px;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.2s;
+      text-decoration: none;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #00ff88; color: #000; }
+    .btn-outline { background: transparent; border: 1px solid #00ff88; color: #00ff88; }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      background: #111; border-bottom: 1px solid #222;
+      padding: 0.75rem 2rem;
+      display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;
+    }
+    .filter-bar label { font-size: 0.78rem; color: #666; }
+    .filter-bar select {
+      padding: 0.35rem 0.6rem;
+      background: #1a1a1a; border: 1px solid #333; color: #e0e0e0;
+      border-radius: 4px; font-size: 0.82rem;
+    }
+    .filter-bar select:focus { outline: none; border-color: #00ff88; }
+
+    /* ── Page ── */
+    .page { max-width: 1300px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+
+    /* ── Summary cards ── */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .summary-card {
+      background: #111; border: 1px solid #2a2a2a; border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+    }
+    .summary-card .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: #555; margin-bottom: 0.4rem; }
+    .summary-card .value { font-size: 1.6rem; font-weight: 700; }
+    .summary-card .sub   { font-size: 0.78rem; color: #555; margin-top: 0.25rem; }
+    .green { color: #00ff88; }
+    .red   { color: #ff4444; }
+    .white { color: #e0e0e0; }
+
+    /* ── Section headers ── */
+    .section-hdr {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px; color: #555;
+      border-bottom: 1px solid #222; padding-bottom: 0.5rem; margin: 2rem 0 1rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    /* ── Two-col layout ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+    /* ── Data tables ── */
+    .data-table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead th {
+      background: #111; color: #666; font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.5px; padding: 0.55rem 0.75rem; text-align: left;
+      border-bottom: 2px solid #222; white-space: nowrap;
+    }
+    thead th.right { text-align: right; }
+    tbody tr { border-bottom: 1px solid #181818; transition: background 0.1s; }
+    tbody tr:hover { background: #161616; }
+    tbody td { padding: 0.5rem 0.75rem; vertical-align: middle; }
+    tbody td.right { text-align: right; font-variant-numeric: tabular-nums; }
+    .pos { color: #00ff88; }
+    .neg { color: #ff4444; }
+
+    /* ── Bar chart ── */
+    .bar-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.4rem; font-size: 0.78rem; }
+    .bar-label { width: 160px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; }
+    .bar-track { flex: 1; background: #1a1a1a; border-radius: 3px; height: 12px; overflow: hidden; }
+    .bar-fill   { height: 100%; border-radius: 3px; transition: width 0.5s; }
+    .bar-fill.expense { background: #ff4444; }
+    .bar-fill.income  { background: #00ff88; }
+    .bar-amount { width: 90px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+    /* ── Monthly grid ── */
+    .month-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 0.6rem;
+    }
+    .month-card {
+      background: #111; border: 1px solid #1e1e1e; border-radius: 6px;
+      padding: 0.75rem;
+    }
+    .month-card .mo-label { font-size: 0.72rem; color: #666; margin-bottom: 0.35rem; }
+    .month-card .mo-exp   { font-size: 0.9rem; font-weight: 700; color: #ff4444; }
+    .month-card .mo-inc   { font-size: 0.72rem; color: #00ff88; margin-top: 0.15rem; }
+    .month-card .mo-net   { font-size: 0.7rem; color: #888; margin-top: 0.15rem; border-top: 1px solid #222; padding-top: 0.15rem; }
+
+    /* ── Entity breakdown ── */
+    .entity-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem;
+    }
+    .entity-card {
+      background: #111; border: 1px solid #1e1e1e; border-radius: 6px; padding: 1rem;
+    }
+    .entity-card h4 { font-size: 0.8rem; color: #00ff88; margin-bottom: 0.5rem; }
+    .entity-card .e-row { display: flex; justify-content: space-between; font-size: 0.78rem; padding: 0.15rem 0; }
+    .entity-card .e-lbl { color: #666; }
+    .entity-card .e-val { font-weight: 600; }
+
+    /* ── Empty ── */
+    .empty { text-align: center; padding: 4rem; color: #444; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<div class="fin-header">
+  <h1>$ Categorical Report<% if (filterYear) { %> — <%= filterYear %><% } %></h1>
+  <nav style="display:flex;gap:0.75rem;flex-wrap:wrap">
+    <a href="/finances/upload" class="btn btn-primary">+ Upload</a>
+    <a href="/finances/uploads" class="btn btn-outline">Recent Uploads</a>
+    <a href="/finances" class="btn btn-outline">Transactions</a>
+    <a href="/" class="btn btn-outline">Home</a>
+  </nav>
+</div>
+
+<!-- Filter bar -->
+<form class="filter-bar" method="GET" action="/finances/report">
+  <label>Year</label>
+  <select name="year" onchange="this.form.submit()">
+    <option value="">All Years</option>
+    <% YEARS.forEach(y => { %>
+      <option value="<%= y %>" <%= filterYear == y ? 'selected' : '' %>><%= y %></option>
+    <% }) %>
+  </select>
+
+  <label>Entity</label>
+  <select name="entity" onchange="this.form.submit()">
+    <option value="">All Entities</option>
+    <% ENTITIES.forEach(e => { %>
+      <option value="<%= e %>" <%= filterEntity === e ? 'selected' : '' %>><%= e %></option>
+    <% }) %>
+  </select>
+
+  <% if (filterYear || filterEntity) { %>
+    <a href="/finances/report" class="btn btn-outline" style="padding:0.3rem 0.75rem;font-size:0.78rem">Clear ×</a>
+  <% } %>
+
+  <span style="margin-left:auto;font-size:0.78rem;color:#444"><%= txCount.toLocaleString() %> transactions</span>
+</form>
+
+<div class="page">
+
+<% if (txCount === 0) { %>
+  <div class="empty">No transactions found for the selected filters. <a href="/finances/upload">Upload statements</a> to get started.</div>
+<% } else { %>
+
+  <!-- ── Summary cards ── -->
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="label">Total Income</div>
+      <div class="value green">$<%= totalIncome.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) %></div>
+      <div class="sub">Credits & deposits</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Total Expenses</div>
+      <div class="value red">$<%= Math.abs(totalExpense).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) %></div>
+      <div class="sub">Debits & charges</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Net</div>
+      <div class="value <%= netTotal >= 0 ? 'green' : 'red' %>">
+        <%= netTotal >= 0 ? '+' : '-' %>$<%= Math.abs(netTotal).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) %>
+      </div>
+      <div class="sub">Income minus expenses</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Transactions</div>
+      <div class="value white"><%= txCount.toLocaleString() %></div>
+      <div class="sub"><%= categories.length %> categories detected</div>
+    </div>
+  </div>
+
+  <!-- ── Category breakdown ── -->
+  <div class="section-hdr">Spending by Category</div>
+  <div class="two-col">
+
+    <!-- Bar chart -->
+    <div>
+      <%
+        const maxExp = Math.max(...categories.map(c => Math.abs(c.expense)), 1);
+      %>
+      <% categories.filter(c => c.expense < 0).forEach(c => { %>
+        <div class="bar-row">
+          <span class="bar-label" title="<%= c.cat %>"><%= c.cat %></span>
+          <div class="bar-track">
+            <div class="bar-fill expense" style="width:<%= Math.round(Math.abs(c.expense)/maxExp*100) %>%"></div>
+          </div>
+          <span class="bar-amount neg">$<%= Math.abs(c.expense).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) %></span>
+        </div>
+      <% }) %>
+      <% if (categories.some(c => c.income > 0)) { %>
+        <div style="margin-top:1rem;margin-bottom:0.5rem;font-size:0.72rem;color:#555;text-transform:uppercase;letter-spacing:1px">Income Categories</div>
+        <%
+          const maxInc = Math.max(...categories.map(c => c.income), 1);
+        %>
+        <% categories.filter(c => c.income > 0).forEach(c => { %>
+          <div class="bar-row">
+            <span class="bar-label" title="<%= c.cat %>"><%= c.cat %></span>
+            <div class="bar-track">
+              <div class="bar-fill income" style="width:<%= Math.round(c.income/maxInc*100) %>%"></div>
+            </div>
+            <span class="bar-amount pos">$<%= c.income.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) %></span>
+          </div>
+        <% }) %>
+      <% } %>
+    </div>
+
+    <!-- Category table -->
+    <div class="data-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th class="right">Expense</th>
+            <th class="right">Income</th>
+            <th class="right">Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% categories.forEach(c => { %>
+          <tr>
+            <td><a href="/finances?category=<%= encodeURIComponent(c.cat) %><%= filterYear ? '&year='+filterYear : '' %>" style="color:#ccc"><%= c.cat %></a></td>
+            <td class="right neg"><% if (c.expense < 0) { %>$<%= Math.abs(c.expense).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) %><% } else { %>—<% } %></td>
+            <td class="right pos"><% if (c.income > 0) { %>$<%= c.income.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) %><% } else { %>—<% } %></td>
+            <td class="right" style="color:#555"><%= c.count %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Monthly breakdown ── -->
+  <div class="section-hdr">Month-by-Month</div>
+  <div class="month-grid">
+    <% months.forEach(mo => {
+      const m = byMonth[mo];
+      const net = m.income + m.expense;
+      const label = new Date(mo + '-15').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    %>
+    <div class="month-card">
+      <div class="mo-label"><%= label %></div>
+      <div class="mo-exp">-$<%= Math.abs(m.expense).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) %></div>
+      <div class="mo-inc">+$<%= m.income.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) %></div>
+      <div class="mo-net <%= net >= 0 ? 'pos' : 'neg' %>">net <%= net >= 0 ? '+' : '' %>$<%= net.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) %></div>
+    </div>
+    <% }) %>
+  </div>
+
+  <!-- ── Entity + Top Merchants ── -->
+  <div class="two-col" style="margin-top:2rem">
+
+    <!-- Entity breakdown -->
+    <div>
+      <div class="section-hdr">By Entity</div>
+      <div class="entity-grid">
+        <% Object.entries(byEntity).sort((a,b) => a[1].expense - b[1].expense).forEach(([ent, d]) => { %>
+        <div class="entity-card">
+          <h4><%= ent %></h4>
+          <div class="e-row"><span class="e-lbl">Expense</span><span class="e-val neg">$<%= Math.abs(d.expense).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) %></span></div>
+          <div class="e-row"><span class="e-lbl">Income</span><span class="e-val pos">$<%= d.income.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) %></span></div>
+          <div class="e-row"><span class="e-lbl">Transactions</span><span class="e-val" style="color:#888"><%= d.count %></span></div>
+        </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Top merchants -->
+    <div>
+      <div class="section-hdr">Top Merchants / Payees <span style="color:#333">(by spend)</span></div>
+      <div class="data-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Merchant</th>
+              <th class="right">Total Spent</th>
+              <th class="right">Transactions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% topMerchants.forEach(m => { %>
+            <tr>
+              <td style="color:#ccc;font-size:0.78rem"><%= m.name %></td>
+              <td class="right neg">$<%= Math.abs(m.total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) %></td>
+              <td class="right" style="color:#555"><%= m.count %></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<% } %>
+</div><!-- /page -->
+
+</body>
+</html>

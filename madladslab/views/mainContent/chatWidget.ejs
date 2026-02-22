@@ -1,0 +1,502 @@
+<!-- Live Chat Widget -->
+<style>
+/* Chat Widget Styles - Matches madLadsLab luxury dark theme */
+#chatWidget {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+#chatButton {
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.08));
+  border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+}
+
+#chatButton:hover {
+  transform: scale(1.08);
+  background: linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.12));
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3);
+}
+
+#chatButton svg {
+  width: 28px;
+  height: 28px;
+  fill: rgba(255,255,255,0.9);
+  transition: transform 0.3s;
+}
+
+#chatButton.open svg {
+  transform: rotate(90deg);
+}
+
+#chatPanel {
+  position: fixed;
+  bottom: 104px;
+  right: 24px;
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  height: 560px;
+  max-height: calc(100vh - 140px);
+  background: #0a0a0a;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#chatPanel.open {
+  display: flex;
+}
+
+#chatHeader {
+  padding: 20px;
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#chatHeader img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.15);
+}
+
+#chatHeader .info {
+  flex: 1;
+}
+
+#chatHeader .info h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.95);
+  letter-spacing: 0.02em;
+}
+
+#chatHeader .info p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+}
+
+#chatMessages {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #0a0a0a;
+}
+
+#chatMessages::-webkit-scrollbar {
+  width: 6px;
+}
+
+#chatMessages::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.03);
+  border-radius: 3px;
+}
+
+#chatMessages::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+}
+
+#chatMessages::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.chat-message {
+  display: flex;
+  gap: 10px;
+  animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-message.user {
+  justify-content: flex-end;
+}
+
+.chat-message .bubble {
+  max-width: 75%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+.chat-message.assistant .bubble {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.9);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.chat-message.user .bubble {
+  background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.1));
+  color: rgba(255,255,255,0.95);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.chat-message.admin .bubble {
+  background: rgba(255, 170, 0, 0.12);
+  color: rgba(255,255,255,0.95);
+  border: 1px solid rgba(255, 170, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(255, 170, 0, 0.1);
+}
+
+.chat-message.admin .agent-label {
+  display: inline-block;
+  background: rgba(255, 170, 0, 0.2);
+  color: #ffaa00;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.chat-message .avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+#chatForm {
+  padding: 16px;
+  background: rgba(255,255,255,0.04);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  gap: 10px;
+}
+
+#chatInput {
+  flex: 1;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.95);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s;
+}
+
+#chatInput:focus {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.2);
+}
+
+#chatInput::placeholder {
+  color: rgba(255,255,255,0.4);
+}
+
+#chatSendBtn {
+  padding: 0 18px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.9);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+#chatSendBtn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.16);
+  transform: translateY(-1px);
+}
+
+#chatSendBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 12px;
+  width: fit-content;
+}
+
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.5);
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-6px); }
+}
+
+@media (max-width: 480px) {
+  #chatPanel {
+    width: calc(100vw - 32px);
+    height: calc(100vh - 120px);
+    bottom: 96px;
+    right: 16px;
+  }
+  #chatButton {
+    bottom: 16px;
+    right: 16px;
+  }
+}
+</style>
+
+<!-- Chat Widget HTML -->
+<div id="chatWidget">
+  <div id="chatButton" onclick="toggleChat()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+    </svg>
+  </div>
+  
+  <div id="chatPanel">
+    <div id="chatHeader">
+      <img src="/images/beaker_logo_no_stash.png" alt="Pepe">
+      <div class="info">
+        <h3>Pepe</h3>
+        <p>madLadsLab Assistant</p>
+      </div>
+    </div>
+    
+    <div id="chatMessages">
+      <div class="chat-message assistant">
+        <div class="avatar">🐸</div>
+        <div class="bubble">Hey there! I'm Pepe, your friendly guide to madLadsLab. How can I help you today?</div>
+      </div>
+    </div>
+    
+    <form id="chatForm" onsubmit="sendMessage(event)">
+      <input 
+        type="text" 
+        id="chatInput" 
+        placeholder="Type your message..." 
+        autocomplete="off"
+        maxlength="500"
+      >
+      <button type="submit" id="chatSendBtn">Send</button>
+    </form>
+  </div>
+</div>
+
+<script>
+// Chat Widget JavaScript
+(function() {
+  const STORAGE_KEY = 'madlads_chat_session';
+  let sessionId = localStorage.getItem(STORAGE_KEY);
+  let lastMessageCount = 0;
+  let pollInterval = null;
+  
+  if (!sessionId) {
+    sessionId = 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem(STORAGE_KEY, sessionId);
+  }
+
+  window.toggleChat = function() {
+    const button = document.getElementById('chatButton');
+    const panel = document.getElementById('chatPanel');
+    const isOpen = panel.classList.contains('open');
+    
+    if (isOpen) {
+      panel.classList.remove('open');
+      button.classList.remove('open');
+      // Stop polling when closed
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    } else {
+      panel.classList.add('open');
+      button.classList.add('open');
+      document.getElementById('chatInput').focus();
+      // Start polling for new messages
+      if (!pollInterval) {
+        pollInterval = setInterval(checkForNewMessages, 5000);
+      }
+    }
+  };
+
+  async function checkForNewMessages() {
+    try {
+      const response = await fetch(`/livechat/history/${sessionId}`);
+      if (!response.ok) return;
+      
+      const session = await response.json();
+      
+      // If there are new messages, update the display
+      if (session.messages && session.messages.length > lastMessageCount) {
+        const newMessages = session.messages.slice(lastMessageCount);
+        newMessages.forEach(msg => {
+          // Only add messages we haven't shown yet
+          if (msg.role === 'admin') {
+            addMessage('admin', msg.content);
+          }
+        });
+        lastMessageCount = session.messages.length;
+      }
+    } catch (error) {
+      console.error('Error checking for new messages:', error);
+    }
+  }
+
+  window.sendMessage = async function(e) {
+    e.preventDefault();
+    
+    const input = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('chatSendBtn');
+    const messages = document.getElementById('chatMessages');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    // Add user message to UI
+    addMessage('user', message);
+    lastMessageCount++; // User message
+    input.value = '';
+    sendBtn.disabled = true;
+    
+    // Show typing indicator
+    const typingId = 'typing-' + Date.now();
+    const typingDiv = document.createElement('div');
+    typingDiv.id = typingId;
+    typingDiv.className = 'chat-message assistant';
+    typingDiv.innerHTML = `
+      <div class="avatar">🐸</div>
+      <div class="typing-indicator">
+        <span></span><span></span><span></span>
+      </div>
+    `;
+    messages.appendChild(typingDiv);
+    messages.scrollTop = messages.scrollHeight;
+    
+    try {
+      const response = await fetch('/livechat/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, sessionId })
+      });
+      
+      const data = await response.json();
+      
+      // Remove typing indicator
+      document.getElementById(typingId).remove();
+      
+      if (data.error) {
+        addMessage('assistant', data.error);
+        lastMessageCount++; // Error message
+        if (data.limitReached) {
+          sendBtn.disabled = true;
+          input.disabled = true;
+          input.placeholder = 'Session limit reached';
+        }
+      } else {
+        addMessage('assistant', data.message);
+        lastMessageCount++; // Assistant response
+      }
+    } catch (error) {
+      document.getElementById(typingId).remove();
+      addMessage('assistant', 'Sorry, something went wrong. Please try again or call us at (682) 241-4402.');
+      lastMessageCount++; // Error message
+      console.error('Chat error:', error);
+    }
+    
+    sendBtn.disabled = false;
+    input.focus();
+  };
+
+  function addMessage(role, content) {
+    const messages = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message ' + role;
+    
+    if (role === 'assistant') {
+      messageDiv.innerHTML = `
+        <div class="avatar">🐸</div>
+        <div class="bubble">${escapeHtml(content)}</div>
+      `;
+    } else if (role === 'admin') {
+      messageDiv.innerHTML = `
+        <div class="avatar">👨‍💼</div>
+        <div class="bubble">
+          <div class="agent-label">Human Agent</div>
+          ${escapeHtml(content)}
+        </div>
+      `;
+    } else {
+      messageDiv.innerHTML = `
+        <div class="bubble">${escapeHtml(content)}</div>
+      `;
+    }
+    
+    messages.appendChild(messageDiv);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Initialize message count with the welcome message
+  lastMessageCount = 1;
+
+  // Cleanup interval on page unload
+  window.addEventListener('beforeunload', () => {
+    if (pollInterval) clearInterval(pollInterval);
+  });
+})();
+</script>

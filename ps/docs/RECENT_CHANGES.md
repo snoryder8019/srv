@@ -1,6 +1,23 @@
 # Recent Changes Summary
 
-Generated: 2026-02-16T08:30:00.030Z
+Generated: 2026-02-22T08:30:00.021Z
+
+---
+
+## Commit: risky push
+
+- **Hash:** `f6e1caf`
+- **Author:** Scott
+- **Date:** 2/16/2026
+- **Changes:** 66 files, +10662/-407 lines
+
+### Modified Areas:
+
+**Frontend:** 2 files
+**Backend:** 13 files
+**Views:** 21 files
+**Scripts:** 3 files
+**Documentation:** 7 files
 
 ---
 
@@ -57,19 +74,6 @@ Generated: 2026-02-16T08:30:00.030Z
 - **Author:** Scott
 - **Date:** 11/5/2025
 - **Changes:** 1 files, +69/-6 lines
-
-### Modified Areas:
-
-**Views:** 1 files
-
----
-
-## Commit: Menu: Update sprite creator link to World Sprite Builder
-
-- **Hash:** `8da3c00`
-- **Author:** Scott
-- **Date:** 11/5/2025
-- **Changes:** 1 files, +5/-5 lines
 
 ### Modified Areas:
 

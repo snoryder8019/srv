@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Live Chats - madLadsLab Admin</title>
+    <style>
+        /* Common Admin Styles */
+        body {
+            background: #0a0a0a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .admin-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .admin-main {
+            flex: 1;
+            padding: 2rem;
+            margin-left: 250px;
+            margin-top: 60px;
+        }
+
+        .admin-header {
+            margin-bottom: 2rem;
+        }
+
+        .admin-header h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin: 0 0 0.5rem 0;
+        }
+
+        .admin-subtitle {
+            color: #888;
+            font-size: 1rem;
+            margin: 0;
+        }
+
+        .content-section {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .content-section h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.95);
+            margin: 0 0 1rem 0;
+        }
+
+        @media (max-width: 768px) {
+            .admin-main {
+                margin-left: 0;
+                padding: 1rem;
+            }
+        }
+
+        /* Live Chats Specific Styles */
+        .session-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .session-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .session-card:hover {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(255,255,255,0.12);
+            transform: translateX(4px);
+        }
+
+        .session-card.active {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.15);
+        }
+
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .session-id {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: rgba(255,255,255,0.5);
+            font-weight: 600;
+        }
+
+        .session-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.4);
+        }
+
+        .session-preview {
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            line-height: 1.5;
+            margin-top: 8px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .session-badges {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge.new {
+            background: rgba(0, 255, 136, 0.15);
+            color: #00ff88;
+            border: 1px solid rgba(0, 255, 136, 0.3);
+        }
+
+        .badge.messages {
+            background: rgba(0, 170, 255, 0.15);
+            color: #00aaff;
+            border: 1px solid rgba(0, 170, 255, 0.3);
+        }
+
+        .conversation-panel {
+            margin-top: 24px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 24px;
+            display: none;
+        }
+
+        .conversation-panel.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .conversation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            margin-bottom: 24px;
+        }
+
+        .conversation-info h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.95);
+            margin: 0 0 8px 0;
+        }
+
+        .conversation-info p {
+            font-size: 13px;
+            color: rgba(255,255,255,0.5);
+            margin: 0;
+        }
+
+        .close-conversation {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.7);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .close-conversation:hover {
+            background: rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.9);
+        }
+
+        .messages-container {
+            max-height: 500px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding-right: 8px;
+        }
+
+        .messages-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .messages-container::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.03);
+            border-radius: 4px;
+        }
+
+        .messages-container::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+
+        .messages-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .message-item {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            animation: messageSlideIn 0.3s;
+        }
+
+        @keyframes messageSlideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .message-item.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-item.admin {
+            background: rgba(255, 170, 0, 0.05);
+            padding: 16px;
+            border-radius: 12px;
+            border-left: 3px solid #ffaa00;
+        }
+
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .message-item.admin .message-avatar {
+            background: rgba(255, 170, 0, 0.2);
+        }
+
+        .message-content {
+            flex: 1;
+            max-width: 70%;
+        }
+
+        .message-item.user .message-content {
+            text-align: right;
+        }
+
+        .message-role {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.5);
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+        }
+
+        .message-item.admin .message-role {
+            color: #ffaa00;
+        }
+
+        .message-text {
+            background: rgba(255,255,255,0.06);
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: rgba(255,255,255,0.9);
+            word-wrap: break-word;
+        }
+
+        .message-item.user .message-text {
+            background: rgba(255,255,255,0.08);
+        }
+
+        .message-item.admin .message-text {
+            background: rgba(255, 170, 0, 0.1);
+            border: 1px solid rgba(255, 170, 0, 0.2);
+        }
+
+        .message-timestamp {
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
+            margin-top: 6px;
+        }
+
+        .reply-form {
+            display: flex;
+            gap: 12px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .reply-input {
+            flex: 1;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: rgba(255,255,255,0.95);
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.2s;
+            resize: vertical;
+            min-height: 44px;
+            max-height: 200px;
+        }
+
+        .reply-input:focus {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .reply-input::placeholder {
+            color: rgba(255,255,255,0.4);
+        }
+
+        .reply-btn {
+            background: rgba(0, 255, 136, 0.15);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            color: #00ff88;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .reply-btn:hover:not(:disabled) {
+            background: rgba(0, 255, 136, 0.25);
+            border-color: rgba(0, 255, 136, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .reply-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(255,255,255,0.5);
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.7);
+            margin: 0 0 8px 0;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .refresh-indicator {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: rgba(0, 255, 136, 0.15);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            color: #00ff88;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            display: none;
+            animation: slideInUp 0.3s;
+        }
+
+        .refresh-indicator.show {
+            display: block;
+        }
+
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+  <%-include('../mainContent/adminHeader.ejs')%>
+
+  <div class="admin-container">
+    <%-include('../mainContent/adminSidebar.ejs')%>
+
+    <main class="admin-main">
+      <div class="admin-header">
+        <h1>💬 Live Chat Sessions</h1>
+        <p class="admin-subtitle">View and respond to Pepe chat conversations</p>
+      </div>
+
+      <div class="content-section">
+        <div id="sessionsContainer" class="session-list">
+          <!-- Sessions will be loaded here -->
+        </div>
+        
+        <div id="emptyState" class="empty-state" style="display: none;">
+          <svg fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <h3>No chat sessions yet</h3>
+          <p>Conversations will appear here when visitors use the chat widget</p>
+        </div>
+      </div>
+
+      <div id="conversationPanel" class="conversation-panel">
+        <div class="conversation-header">
+          <div class="conversation-info">
+            <h3 id="convTitle">Loading...</h3>
+            <p id="convMeta">Loading...</p>
+          </div>
+          <button class="close-conversation" onclick="closeConversation()">✕ Close</button>
+        </div>
+        
+        <div id="messagesContainer" class="messages-container">
+          <!-- Messages will be loaded here -->
+        </div>
+
+        <form class="reply-form" onsubmit="sendReply(event)">
+          <textarea 
+            id="replyInput" 
+            class="reply-input" 
+            placeholder="Type your reply as a human agent..."
+            rows="2"
+            maxlength="1000"
+          ></textarea>
+          <button type="submit" id="replyBtn" class="reply-btn">Send</button>
+        </form>
+      </div>
+
+      <div id="refreshIndicator" class="refresh-indicator">
+        🔄 New messages detected
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let sessions = [];
+    let currentSessionId = null;
+    let refreshInterval = null;
+
+    // Load sessions on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      loadSessions();
+      // Auto-refresh every 5 seconds
+      refreshInterval = setInterval(loadSessions, 5000);
+    });
+
+    async function loadSessions() {
+      try {
+        const response = await fetch('/admin/livechats/api/sessions');
+        const data = await response.json();
+        
+        if (data.success) {
+          const hadSessions = sessions.length > 0;
+          const newSessionCount = data.sessions.length;
+          
+          sessions = data.sessions;
+          renderSessions();
+          
+          // Show notification if new sessions arrived
+          if (hadSessions && newSessionCount > sessions.length) {
+            showRefreshIndicator();
+          }
+          
+          // If currently viewing a session, refresh it
+          if (currentSessionId) {
+            loadConversation(currentSessionId);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading sessions:', error);
+      }
+    }
+
+    function renderSessions() {
+      const container = document.getElementById('sessionsContainer');
+      const emptyState = document.getElementById('emptyState');
+      
+      if (sessions.length === 0) {
+        container.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+      }
+      
+      emptyState.style.display = 'none';
+      
+      container.innerHTML = sessions.map(session => {
+        const firstMsg = session.messages.find(m => m.role === 'user');
+        const preview = firstMsg ? firstMsg.content : 'No messages yet';
+        const isNew = (Date.now() - new Date(session.createdAt).getTime()) < 300000; // 5 min
+        const isActive = session.sessionId === currentSessionId;
+        
+        return `
+          <div class="session-card ${isActive ? 'active' : ''}" onclick="loadConversation('${session.sessionId}')">
+            <div class="session-header">
+              <div class="session-id">${session.sessionId}</div>
+              <div class="session-meta">
+                <span>📍 ${session.ip || 'Unknown IP'}</span>
+                <span>🕐 ${formatTimestamp(session.createdAt)}</span>
+              </div>
+            </div>
+            <div class="session-preview">${escapeHtml(preview)}</div>
+            <div class="session-badges">
+              ${isNew ? '<span class="badge new">New</span>' : ''}
+              <span class="badge messages">${session.messageCount} messages</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadConversation(sessionId) {
+      try {
+        currentSessionId = sessionId;
+        
+        const response = await fetch(`/admin/livechats/api/session/${sessionId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          renderConversation(data.session);
+        }
+      } catch (error) {
+        console.error('Error loading conversation:', error);
+      }
+    }
+
+    function renderConversation(session) {
+      const panel = document.getElementById('conversationPanel');
+      const title = document.getElementById('convTitle');
+      const meta = document.getElementById('convMeta');
+      const container = document.getElementById('messagesContainer');
+      
+      title.textContent = `Session: ${session.sessionId.substring(0, 20)}...`;
+      meta.textContent = `IP: ${session.ip} • Started: ${formatTimestamp(session.createdAt)} • ${session.messageCount} messages`;
+      
+      container.innerHTML = session.messages.map(msg => {
+        const role = msg.role === 'user' ? 'user' : (msg.role === 'admin' ? 'admin' : 'assistant');
+        const avatar = role === 'user' ? '👤' : (role === 'admin' ? '👨‍💼' : '🐸');
+        const roleLabel = role === 'user' ? 'Visitor' : (role === 'admin' ? 'You (Agent)' : 'Pepe');
+        
+        return `
+          <div class="message-item ${role}">
+            <div class="message-avatar">${avatar}</div>
+            <div class="message-content">
+              <div class="message-role">${roleLabel}</div>
+              <div class="message-text">${escapeHtml(msg.content)}</div>
+              <div class="message-timestamp">${formatTimestamp(msg.timestamp)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      panel.classList.add('active');
+      container.scrollTop = container.scrollHeight;
+      
+      // Update active session card
+      renderSessions();
+    }
+
+    function closeConversation() {
+      currentSessionId = null;
+      document.getElementById('conversationPanel').classList.remove('active');
+      renderSessions();
+    }
+
+    async function sendReply(e) {
+      e.preventDefault();
+      
+      if (!currentSessionId) return;
+      
+      const input = document.getElementById('replyInput');
+      const btn = document.getElementById('replyBtn');
+      const message = input.value.trim();
+      
+      if (!message) return;
+      
+      btn.disabled = true;
+      input.disabled = true;
+      
+      try {
+        const response = await fetch(`/admin/livechats/${currentSessionId}/reply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          input.value = '';
+          await loadConversation(currentSessionId);
+          await loadSessions();
+        } else {
+          alert('Failed to send reply: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Error sending reply:', error);
+        alert('Failed to send reply. Please try again.');
+      } finally {
+        btn.disabled = false;
+        input.disabled = false;
+        input.focus();
+      }
+    }
+
+    function showRefreshIndicator() {
+      const indicator = document.getElementById('refreshIndicator');
+      indicator.classList.add('show');
+      setTimeout(() => {
+        indicator.classList.remove('show');
+      }, 3000);
+    }
+
+    function formatTimestamp(timestamp) {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now - date;
+      
+      if (diff < 60000) return 'Just now';
+      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+      
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Clean up interval on page unload
+    window.addEventListener('beforeunload', () => {
+      if (refreshInterval) clearInterval(refreshInterval);
+    });
+  </script>
+</body>
+</html>

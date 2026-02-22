@@ -92,6 +92,30 @@ function migrateOldConversations() {
 }
 migrateOldConversations();
 
+// Session rotation: maps clientSessionId → { ocSessionId, messageCount }
+// Rotates the openclaw session every MAX_TURNS exchanges to keep token cost bounded
+const sessionState = new Map();
+const MAX_TURNS = 8; // rotate after this many user→assistant exchanges
+
+function getOcSessionId(clientSessionId) {
+  let state = sessionState.get(clientSessionId);
+  if (!state) {
+    state = { ocSessionId: clientSessionId + '-0', messageCount: 0 };
+    sessionState.set(clientSessionId, state);
+  }
+  if (state.messageCount >= MAX_TURNS) {
+    const epoch = Date.now().toString(36);
+    state.ocSessionId = clientSessionId + '-' + epoch;
+    state.messageCount = 0;
+  }
+  return state.ocSessionId;
+}
+
+function incrementTurn(clientSessionId) {
+  const state = sessionState.get(clientSessionId);
+  if (state) state.messageCount++;
+}
+
 // Allowed openclaw subcommands for the command endpoint
 const ALLOWED_COMMANDS = [
   'status', 'health', 'sessions list', 'agents list',
@@ -141,7 +165,26 @@ function extractAgentText(rawOutput) {
     if (parsed.content) return parsed.content;
     if (parsed.response) return parsed.response;
 
-    // If nothing matched, return a summary rather than the full dump
+    // Try to find text in any nested structure
+    if (parsed.result && parsed.result.text) return parsed.result.text;
+    if (parsed.result && parsed.result.response) return parsed.result.response;
+    if (parsed.output) return typeof parsed.output === 'string' ? parsed.output : JSON.stringify(parsed.output);
+    
+    // Deep search for any 'text' or 'content' field
+    const deepFind = (obj, keys) => {
+      if (!obj || typeof obj !== 'object') return null;
+      for (const k of keys) { if (typeof obj[k] === 'string' && obj[k].length > 5) return obj[k]; }
+      for (const v of Object.values(obj)) {
+        const found = deepFind(v, keys);
+        if (found) return found;
+      }
+      return null;
+    };
+    const found = deepFind(parsed, ['text', 'content', 'response', 'reply', 'message', 'body']);
+    if (found) return found;
+
+    // Last resort — stringify but log it for debugging
+    console.warn('[extractAgentText] No text field found, dumping keys:', Object.keys(parsed));
     return JSON.stringify(parsed, null, 2);
   } catch {
     // Not JSON — clean up raw text output
@@ -177,12 +220,15 @@ router.post('/message', async (req, res) => {
       return res.json({ success: false, error: 'Message is required' });
     }
 
+    // Use rotated session ID to bound token growth per request
+    const ocSessionId = sessionId ? getOcSessionId(sessionId) : null;
+
     // Build command
     const escapedMsg = message.replace(/'/g, "'\\''");
     let cmd = `agent --agent main --message '${escapedMsg}' --json`;
 
-    if (sessionId) {
-      const escapedSid = sessionId.replace(/'/g, "'\\''");
+    if (ocSessionId) {
+      const escapedSid = ocSessionId.replace(/'/g, "'\\''");
       cmd += ` --session-id '${escapedSid}'`;
     }
 
@@ -198,15 +244,26 @@ router.post('/message', async (req, res) => {
     const fullOutput = result.output || result.stderr || result.error || '';
     const responseText = extractAgentText(fullOutput);
 
-    // Track conversation
-    const sid = sessionId || 'default';
-    if (!conversations.has(sid)) {
-      conversations.set(sid, []);
+    if (result.success && responseText && sessionId) {
+      // Save to thread file for history display
+      const threadId = sessionId;
+      const msgs = loadThread(threadId);
+      const now = Date.now();
+      msgs.push({ role: 'user', content: message.trim(), timestamp: now });
+      msgs.push({ role: 'assistant', content: responseText, timestamp: now + 1 });
+      saveThread(threadId, msgs);
+      // Update thread index
+      const index = loadThreadIndex();
+      const existing = index.find(t => t.id === threadId);
+      if (existing) {
+        existing.updatedAt = now;
+        existing.messageCount = msgs.length;
+      } else {
+        index.push({ id: threadId, name: 'Session ' + threadId.substring(0, 12), createdAt: now, updatedAt: now, messageCount: msgs.length });
+      }
+      saveThreadIndex(index);
+      incrementTurn(sessionId);
     }
-    conversations.get(sid).push(
-      { role: 'user', content: message, timestamp: Date.now() },
-      { role: 'assistant', content: responseText, timestamp: Date.now() }
-    );
 
     res.json({
       success: result.success,
@@ -267,7 +324,7 @@ router.post('/command', async (req, res) => {
 // GET /history — Get conversation history for a session
 router.get('/history', (req, res) => {
   const sid = req.query.sessionId || 'default';
-  const history = conversations.get(sid) || [];
+  const history = loadThread(sid);
   res.json({ success: true, history });
 });
 

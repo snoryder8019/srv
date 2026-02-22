@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden;
+      background: linear-gradient(180deg, #000510 0%, #000d1e 40%, #010d1f 60%, #011830 100%); }
+
+    #scene { position: absolute; inset: 0; display: block; }
+    #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+
+    /* HUD elements */
+    .hud {
+      position: absolute;
+      z-index: 10;
+      font-family: 'Courier New', monospace;
+      pointer-events: none;
+    }
+    .hud a, .hud button { pointer-events: auto; }
+
+    #hud-tl { top: 14px; left: 14px; }
+    #hud-tl a {
+      color: #e74c3c; font-size: 0.78rem; text-decoration: none;
+      opacity: 0.7; transition: opacity 0.15s;
+    }
+    #hud-tl a:hover { opacity: 1; }
+    #hud-tl h2 {
+      font-size: 1rem; color: #00ddff; margin-top: 6px;
+      text-shadow: 0 0 12px #00ddff88;
+      letter-spacing: 0.04em;
+    }
+
+    #hud-tr {
+      top: 14px; right: 14px; text-align: right;
+      color: #00ddff88; font-size: 0.68rem; line-height: 1.8;
+    }
+
+    #hud-bl {
+      bottom: 14px; left: 14px;
+      color: #00ddff66; font-size: 0.68rem; line-height: 1.7;
+    }
+    #breadcrumb {
+      color: #aaa; font-size: 0.73rem; margin-bottom: 4px;
+      max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .bc-seg { cursor: pointer; color: #00ddff55; transition: color 0.12s; }
+    .bc-seg:hover { color: #00ddff; }
+    .bc-sep { color: #00ddff22; }
+    #nav-row { display: flex; gap: 5px; margin-bottom: 5px; }
+    .nav-btn {
+      background: rgba(0,221,255,0.07); border: 1px solid rgba(0,221,255,0.2);
+      color: #00ddff77; padding: 2px 9px; border-radius: 3px;
+      cursor: pointer; font-family: 'Courier New', monospace; font-size: 0.65rem;
+      transition: all 0.12s; pointer-events: auto; letter-spacing: 0.02em;
+    }
+    .nav-btn:hover:not([disabled]) { background: rgba(0,221,255,0.2); color: #00ddff; border-color: rgba(0,221,255,0.5); }
+    .nav-btn[disabled] { opacity: 0.25; cursor: default; }
+
+    #hud-br {
+      bottom: 14px; right: 14px; text-align: right;
+      color: #333; font-size: 0.65rem;
+    }
+
+    /* Loading screen */
+    #loading {
+      position: absolute; inset: 0; z-index: 100;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(180deg, #000510 0%, #010d1f 60%, #011830 100%);
+      color: #00ddff;
+      font-family: 'Courier New', monospace;
+      gap: 1rem;
+    }
+    #loading .spinner {
+      width: 40px; height: 40px;
+      border: 2px solid #00ddff22;
+      border-top-color: #00ddff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading.hidden { display: none; }
+
+    /* Legend */
+    #legend {
+      position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+      z-index: 10;
+      display: flex; gap: 0.75rem; align-items: center;
+      font-family: 'Courier New', monospace; font-size: 0.65rem;
+      background: rgba(0,0,10,0.7); border: 1px solid #00ddff22;
+      padding: 5px 12px; border-radius: 20px;
+      pointer-events: none;
+    }
+    .leg { display: flex; align-items: center; gap: 4px; }
+    .leg-dot { width: 8px; height: 8px; border-radius: 1px; }
+
+    /* File viewer panel */
+    #viewer-overlay {
+      position: absolute; inset: 0; z-index: 49;
+      background: rgba(0,0,15,0.75);
+      display: none; cursor: pointer;
+    }
+    #viewer-overlay.open { display: block; }
+
+    #file-viewer {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%) scale(0.85);
+      width: min(92vw, 940px);
+      height: min(82vh, 720px);
+      background: #04040f;
+      border: 1px solid #00ddff;
+      box-shadow:
+        0 0 0 1px #00ddff22,
+        0 0 30px #00ddff22,
+        0 0 80px #00ddff08,
+        inset 0 0 30px rgba(0,0,20,0.5);
+      z-index: 50;
+      display: flex; flex-direction: column;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    #file-viewer.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+
+    /* Corner accents */
+    #file-viewer::before,
+    #file-viewer::after {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      border-color: #00ddff;
+      border-style: solid;
+      z-index: 1;
+      pointer-events: none;
+    }
+    #file-viewer::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+    #file-viewer::after  { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+    .viewer-header {
+      background: #070718;
+      border-bottom: 1px solid #00ddff22;
+      padding: 0.45rem 0.85rem;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+      font-family: 'Courier New', monospace;
+    }
+    .viewer-path { color: #00ddff; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%; }
+    .viewer-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
+    .viewer-btn {
+      background: rgba(0,221,255,0.08);
+      border: 1px solid rgba(0,221,255,0.25);
+      color: #00ddff; padding: 0.22rem 0.55rem;
+      border-radius: 3px; cursor: pointer;
+      font-size: 0.72rem; font-family: 'Courier New', monospace;
+      transition: background 0.12s;
+    }
+    .viewer-btn:hover { background: rgba(0,221,255,0.2); }
+    .viewer-btn.danger { border-color: rgba(231,76,60,0.3); color: #e74c3c; background: rgba(231,76,60,0.08); }
+    .viewer-btn.danger:hover { background: rgba(231,76,60,0.2); }
+
+    .viewer-tabs {
+      display: flex; border-bottom: 1px solid #00ddff18;
+      flex-shrink: 0; background: #060614;
+    }
+    .vtab {
+      padding: 0.3rem 0.8rem;
+      font-family: 'Courier New', monospace; font-size: 0.7rem;
+      cursor: pointer; border: none; background: transparent;
+      color: #444; border-bottom: 2px solid transparent;
+      transition: all 0.12s; white-space: nowrap;
+    }
+    .vtab.active { color: #00ddff; border-bottom-color: #00ddff; background: #0a0a20; }
+    .vtab:hover:not(.active) { color: #777; }
+
+    .viewer-body { flex: 1; overflow: hidden; position: relative; }
+
+    #viewer-code {
+      position: absolute; inset: 0;
+      overflow: auto; padding: 1rem 1.2rem;
+      font-family: 'Courier New', monospace; font-size: 0.76rem;
+      color: #b8c8c8; white-space: pre; line-height: 1.55;
+      background: transparent; display: block;
+    }
+    #viewer-code::-webkit-scrollbar { width: 5px; height: 5px; }
+    #viewer-code::-webkit-scrollbar-track { background: transparent; }
+    #viewer-code::-webkit-scrollbar-thumb { background: #00ddff33; border-radius: 3px; }
+
+    #viewer-iframe {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      border: none; background: #fff; display: none;
+    }
+
+    /* CSS2D node labels */
+    .node-label {
+      pointer-events: none;
+      font-family: 'Courier New', monospace; font-size: 10px;
+      color: #888; text-shadow: 0 0 6px #000, 0 0 3px #000;
+      white-space: nowrap; user-select: none;
+      padding: 1px 3px;
+    }
+    .node-label.type-dir  { color: #00ddff; text-shadow: 0 0 8px #00ddff44, 0 0 3px #000; }
+    .node-label.type-ejs  { color: #ff6688; text-shadow: 0 0 8px #ff446644, 0 0 3px #000; }
+    .node-label.type-js   { color: #ffcc00; text-shadow: 0 0 8px #ffcc0044, 0 0 3px #000; }
+    .node-label.type-json { color: #00ffcc; text-shadow: 0 0 8px #00ffcc44, 0 0 3px #000; }
+    .node-label.type-css  { color: #cc88ff; text-shadow: 0 0 8px #cc88ff44, 0 0 3px #000; }
+    .node-label.type-md   { color: #88cc88; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Mapping /srv node graph...</span>
+</div>
+
+<canvas id="scene"></canvas>
+<div id="labels"></div>
+
+<!-- HUD -->
+<div class="hud" id="hud-tl">
+  <a href="/stevenClawbert">&#8592; Steven Clawbert</a>
+  <h2>&#x2B21; SRV Node Browser</h2>
+</div>
+
+<div class="hud" id="hud-tr">
+  <div id="node-count">nodes: 0</div>
+  <div id="edge-count">edges: 0</div>
+</div>
+
+<div class="hud" id="hud-bl">
+  <div id="nav-row">
+    <button class="nav-btn" id="back-btn" disabled onclick="window._goBack && window._goBack()">&#x21A9; Back</button>
+    <button class="nav-btn" onclick="window._collapseAll && window._collapseAll()">&#x229F; Collapse All</button>
+  </div>
+  <div id="breadcrumb"><span style="color:#00ddff88">/srv</span></div>
+  <div>drag: orbit &middot; scroll: zoom &middot; click dir: expand &middot; click file: view</div>
+</div>
+
+<div class="hud" id="hud-br">SRV Node Browser &mdash; stevenClawbert</div>
+
+<!-- Legend -->
+<div id="legend">
+  <div class="leg"><div class="leg-dot" style="background:#00ddff;border-radius:50%"></div><span style="color:#00ddff88">dir</span></div>
+  <div class="leg"><div class="leg-dot" style="background:#ff6688"></div><span style="color:#ff668888">.ejs</span></div>
+  <div class="leg"><div class="leg-dot" style="background:#ffcc00"></div><span style="color:#ffcc0088">.js</span></div>
+  <div class="leg"><div class="leg-dot" style="background:#00ffcc;border-radius:50%"></div><span style="color:#00ffcc88">.json</span></div>
+  <div class="leg"><div class="leg-dot" style="background:#cc88ff;border-radius:50%"></div><span style="color:#cc88ff88">.css</span></div>
+  <div class="leg"><div class="leg-dot" style="background:#446666"></div><span style="color:#44666688">other</span></div>
+</div>
+
+<!-- File Viewer -->
+<div id="viewer-overlay" onclick="window._closeViewer && window._closeViewer()"></div>
+<div id="file-viewer">
+  <div class="viewer-header">
+    <span class="viewer-path" id="viewer-path-label"></span>
+    <div class="viewer-actions">
+      <button class="viewer-btn" id="open-tab-btn" style="display:none" onclick="window._openTab && window._openTab()">&#8599; New Tab</button>
+      <button class="viewer-btn danger" onclick="window._closeViewer && window._closeViewer()">&#10005; Close</button>
+    </div>
+  </div>
+  <div class="viewer-tabs" id="viewer-tabs"></div>
+  <div class="viewer-body">
+    <pre id="viewer-code"></pre>
+    <iframe id="viewer-iframe"></iframe>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ===================== RENDERER / SCENE =====================
+
+const canvas = document.getElementById('scene');
+const labelsEl = document.getElementById('labels');
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 0); // transparent — CSS gradient shows through
+
+const labelRenderer = new CSS2DRenderer({ element: labelsEl });
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+
+const scene = new THREE.Scene();
+// no scene.background — CSS gradient provides orientation (dark top → lighter bottom)
+scene.fog = new THREE.FogExp2(0x010d1f, 0.008);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 18, 48);
+camera.lookAt(0, 0, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 3;
+controls.maxDistance = 300;
+
+// Lighting
+scene.add(new THREE.AmbientLight(0x1a1a33, 3));
+const dLight = new THREE.DirectionalLight(0x6699ff, 1.2);
+dLight.position.set(10, 20, 15);
+scene.add(dLight);
+const pLight = new THREE.PointLight(0x00ddff, 3.0, 100);
+pLight.position.set(0, 8, 0);
+scene.add(pLight);
+
+// Starfield
+(function buildStars() {
+  const pos = new Float32Array(3000 * 3);
+  for (let i = 0; i < pos.length; i++) pos[i] = (Math.random() - 0.5) * 600;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.25, sizeAttenuation: true })));
+})();
+
+// Nebula cloud sprites — soft radial blobs for depth/atmosphere
+(function buildClouds() {
+  const size = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d');
+  const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  grad.addColorStop(0,   'rgba(255,255,255,0.18)');
+  grad.addColorStop(0.45,'rgba(255,255,255,0.06)');
+  grad.addColorStop(1,   'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(cv);
+
+  const palette = [0x003366, 0x001144, 0x110033, 0x002244, 0x003322, 0x0a0a44];
+  for (let i = 0; i < 52; i++) {
+    const col = palette[Math.floor(Math.random() * palette.length)];
+    const mat = new THREE.SpriteMaterial({
+      map: tex, color: col,
+      transparent: true, depthWrite: false,
+      opacity: 0.55 + Math.random() * 0.4,
+      blending: THREE.AdditiveBlending
+    });
+    const sp = new THREE.Sprite(mat);
+    const w = 28 + Math.random() * 52;
+    sp.scale.set(w, w * (0.45 + Math.random() * 0.55), 1);
+    sp.position.set(
+      (Math.random() - 0.5) * 260,
+      (Math.random() - 0.5) * 70,
+      (Math.random() - 0.5) * 260
+    );
+    scene.add(sp);
+  }
+})();
+
+// Grid
+const grid = new THREE.GridHelper(300, 50, 0x003333, 0x001a1a);
+grid.position.y = -22;
+scene.add(grid);
+
+// ===================== NODE DEFINITIONS =====================
+
+const DEFS = {
+  dir:     { color: 0x00ddff, emissive: 0x007799, label: 'type-dir'  },
+  '.ejs':  { color: 0xff4466, emissive: 0x771133, label: 'type-ejs'  },
+  '.js':   { color: 0xffcc00, emissive: 0x775500, label: 'type-js'   },
+  '.ts':   { color: 0x4499ff, emissive: 0x113388, label: 'type-js'   },
+  '.mjs':  { color: 0xffcc00, emissive: 0x775500, label: 'type-js'   },
+  '.cjs':  { color: 0xffcc00, emissive: 0x775500, label: 'type-js'   },
+  '.json': { color: 0x00ffcc, emissive: 0x007755, label: 'type-json' },
+  '.css':  { color: 0xcc88ff, emissive: 0x552277, label: 'type-css'  },
+  '.scss': { color: 0xcc88ff, emissive: 0x552277, label: 'type-css'  },
+  '.md':   { color: 0x88cc88, emissive: 0x336633, label: 'type-md'   },
+  default: { color: 0x88aaaa, emissive: 0x224444, label: ''          }
+};
+
+function getDef(item) {
+  if (item.isDir) return DEFS.dir;
+  return DEFS[item.ext] || DEFS.default;
+}
+
+function makeGeometry(item) {
+  if (item.isDir)             return new THREE.IcosahedronGeometry(1.0, 0);
+  if (item.ext === '.ejs')    return new THREE.BoxGeometry(0.85, 0.85, 0.85);
+  if (['.js','.ts','.mjs','.cjs'].includes(item.ext)) return new THREE.BoxGeometry(0.7, 0.7, 0.7);
+  if (item.ext === '.json')   return new THREE.CylinderGeometry(0.42, 0.42, 0.72, 6);
+  if (['.css','.scss'].includes(item.ext)) return new THREE.SphereGeometry(0.48, 8, 6);
+  if (item.ext === '.md')     return new THREE.OctahedronGeometry(0.55, 0);
+  return new THREE.TetrahedronGeometry(0.52, 0);
+}
+
+// ===================== GRAPH STATE =====================
+
+const nodes = new Map();   // path → nodeObj
+const edges = [];          // { from, to, line }
+let nodesDirty = true;
+let nodeArr = [];
+let simSteps = 0;
+const MAX_SIM = 180;
+const _tv = new THREE.Vector3();
+
+function refreshNodeArr() {
+  if (nodesDirty) { nodeArr = Array.from(nodes.values()); nodesDirty = false; }
+  return nodeArr;
+}
+
+function updateHUD() {
+  document.getElementById('node-count').textContent = 'nodes: ' + nodes.size;
+  document.getElementById('edge-count').textContent = 'edges: ' + edges.length;
+}
+
+// ===================== ADD / REMOVE NODES =====================
+
+function addNode(item, parentPath) {
+  if (nodes.has(item.path)) return nodes.get(item.path);
+
+  const def = getDef(item);
+  const mat = new THREE.MeshPhongMaterial({
+    color: def.color, emissive: def.emissive, emissiveIntensity: 1.6, shininess: 140
+  });
+  const mesh = new THREE.Mesh(makeGeometry(item), mat);
+  mesh.userData.nodePath = item.path;
+
+  // Label
+  const div = document.createElement('div');
+  div.className = 'node-label ' + def.label;
+  div.textContent = item.name + (item.isDir && item.childCount ? ` (${item.childCount})` : '');
+  const labelObj = new CSS2DObject(div);
+  labelObj.position.y = item.isDir ? 1.5 : 1.1;
+  mesh.add(labelObj);
+
+  const parentNode = parentPath ? nodes.get(parentPath) : null;
+  const px = parentNode ? parentNode.pos.x : 0;
+  const py = parentNode ? parentNode.pos.y : 0;
+  const pz = parentNode ? parentNode.pos.z : 0;
+  const spread = item.isDir ? 14 : 7;
+
+  const pos = {
+    x: px + (Math.random() - 0.5) * spread,
+    y: py + (Math.random() - 0.5) * spread * 0.4,
+    z: pz + (Math.random() - 0.5) * spread
+  };
+
+  mesh.position.set(pos.x, pos.y, pos.z);
+  scene.add(mesh);
+
+  const isCore = !parentPath || parentPath === '/srv'; // root + direct children stay bright
+  const node = { item, mesh, labelDiv: div, pos, vel: {x:0,y:0,z:0}, parentPath, isCore, expanded: false, loading: false, phaseOffset: Math.random() * Math.PI * 2 };
+  nodes.set(item.path, node);
+  nodesDirty = true;
+
+  if (parentNode) {
+    const pts = [
+      new THREE.Vector3(parentNode.pos.x, parentNode.pos.y, parentNode.pos.z),
+      new THREE.Vector3(pos.x, pos.y, pos.z)
+    ];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x004466, transparent: true, opacity: 0.45 }));
+    scene.add(line);
+    edges.push({ from: parentNode, to: node, line, active: false });
+  }
+
+  simSteps = 0;
+  updateHUD();
+  return node;
+}
+
+function removeDescendants(nodePath) {
+  const toRemove = new Set();
+  for (const [p] of nodes) {
+    if (p !== nodePath && p.startsWith(nodePath + '/')) toRemove.add(p);
+  }
+  for (let i = edges.length - 1; i >= 0; i--) {
+    const e = edges[i];
+    if (toRemove.has(e.from.item.path) || toRemove.has(e.to.item.path)) {
+      scene.remove(e.line);
+      e.line.geometry.dispose(); e.line.material.dispose();
+      edges.splice(i, 1);
+    }
+  }
+  for (const p of toRemove) {
+    const n = nodes.get(p);
+    if (n) {
+      // Remove CSS2D label DOM elements before detaching mesh from scene
+      n.mesh.traverse(obj => { if (obj.isCSS2DObject) obj.element.remove(); });
+      scene.remove(n.mesh);
+      n.mesh.geometry.dispose(); n.mesh.material.dispose();
+      nodes.delete(p);
+    }
+  }
+  nodesDirty = true;
+  simSteps = 0;
+  updateHUD();
+}
+
+// ===================== LAYOUT =====================
+
+function layoutChildren(parentNode, childNodes) {
+  if (!childNodes.length) return;
+  const count = childNodes.length;
+  const radius = Math.max(14, Math.sqrt(count) * 6.0);
+  const pp = parentNode.pos;
+  childNodes.forEach((child, i) => {
+    const az = (i / count) * Math.PI * 2 + Math.random() * 0.25;
+    const el = (Math.random() - 0.5) * 0.5;
+    child.pos = {
+      x: pp.x + Math.cos(az) * Math.cos(el) * radius,
+      y: pp.y - 4 + Math.sin(el) * radius * 0.4,
+      z: pp.z + Math.sin(az) * Math.cos(el) * radius
+    };
+  });
+  simSteps = 0;
+}
+
+// ===================== FORCE SIMULATION =====================
+
+function simulateStep() {
+  const arr = refreshNodeArr();
+  const REP = 55, REST = 14, SPRING = 0.035, DAMP = 0.78, GRAV = 0.004;
+
+  for (let a = 0; a < arr.length; a++) {
+    for (let b = a + 1; b < arr.length; b++) {
+      const na = arr[a], nb = arr[b];
+      const dx = nb.pos.x - na.pos.x, dy = nb.pos.y - na.pos.y, dz = nb.pos.z - na.pos.z;
+      const d2 = dx*dx + dy*dy + dz*dz + 0.01;
+      const d = Math.sqrt(d2);
+      const f = REP / d2;
+      const fx = f*dx/d, fy = f*dy/d, fz = f*dz/d;
+      na.vel.x -= fx; na.vel.y -= fy; na.vel.z -= fz;
+      nb.vel.x += fx; nb.vel.y += fy; nb.vel.z += fz;
+    }
+  }
+
+  for (const e of edges) {
+    const na = e.from, nb = e.to;
+    const dx = nb.pos.x - na.pos.x, dy = nb.pos.y - na.pos.y, dz = nb.pos.z - na.pos.z;
+    const d = Math.max(0.01, Math.sqrt(dx*dx + dy*dy + dz*dz));
+    const f = SPRING * (d - REST);
+    const fx = f*dx/d, fy = f*dy/d, fz = f*dz/d;
+    if (na.item.path !== '/srv') { na.vel.x += fx; na.vel.y += fy; na.vel.z += fz; }
+    nb.vel.x -= fx; nb.vel.y -= fy; nb.vel.z -= fz;
+  }
+
+  for (const n of arr) {
+    if (n.item.path === '/srv') { n.vel.x = n.vel.y = n.vel.z = 0; continue; }
+    n.vel.x *= DAMP; n.vel.y *= DAMP; n.vel.z *= DAMP;
+    n.vel.y -= GRAV * n.pos.y;
+    n.pos.x += n.vel.x; n.pos.y += n.vel.y; n.pos.z += n.vel.z;
+  }
+}
+
+// ===================== API =====================
+
+async function fetchLS(p) {
+  const r = await fetch('/stevenClawbert/browser/api/ls?path=' + encodeURIComponent(p));
+  return r.json();
+}
+async function fetchRead(p) {
+  const r = await fetch('/stevenClawbert/browser/api/read?path=' + encodeURIComponent(p));
+  return r.json();
+}
+
+// ===================== INTERACTION =====================
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let hoveredNode = null;
+let mouseDownPos = { x: 0, y: 0 };
+let camAnim = null; // { node, dir, dist } — smooth camera focus
+let activeNodePath = null; // path of last clicked node — used to highlight its edges
+
+// ===================== NAVIGATION STACK =====================
+
+const expandStack = []; // ordered list of expanded dir paths
+
+function pushExpand(node) {
+  if (!expandStack.includes(node.item.path)) expandStack.push(node.item.path);
+  updateBreadcrumb();
+}
+
+function dropFromStack(nodePath) {
+  for (let i = expandStack.length - 1; i >= 0; i--) {
+    if (expandStack[i] === nodePath || expandStack[i].startsWith(nodePath + '/')) {
+      expandStack.splice(i, 1);
+    }
+  }
+  updateBreadcrumb();
+}
+
+function updateBreadcrumb() {
+  const bc = document.getElementById('breadcrumb');
+  const backBtn = document.getElementById('back-btn');
+  if (expandStack.length === 0) {
+    bc.innerHTML = '<span style="color:#00ddff88">/srv</span>';
+    backBtn.disabled = true;
+    return;
+  }
+  backBtn.disabled = false;
+  const lastPath = expandStack[expandStack.length - 1];
+  const parts = lastPath.replace(/^\//, '').split('/');
+  let html = '', acc = '';
+  parts.forEach((part, i) => {
+    acc += '/' + part;
+    const p = acc;
+    const isLast = i === parts.length - 1;
+    if (i > 0) html += '<span class="bc-sep"> &#x203A; </span>';
+    if (isLast) {
+      html += `<span style="color:#00ddff">${part}</span>`;
+    } else {
+      html += `<span class="bc-seg" onclick="window._navTo('${p}')">${part}</span>`;
+    }
+  });
+  bc.innerHTML = html;
+}
+
+window._navTo = (path) => {
+  // Collapse all expansions at and below this path, then re-focus here
+  for (const p of [...expandStack]) {
+    if (p.startsWith(path + '/') || p === path) {
+      const n = nodes.get(p);
+      if (n) { removeDescendants(p); n.expanded = false; }
+    }
+  }
+  // Re-expand this node to show its direct children (they were kept)
+  dropFromStack(path);
+};
+
+window._goBack = () => {
+  if (!expandStack.length) return;
+  const lastPath = expandStack[expandStack.length - 1];
+  const node = nodes.get(lastPath);
+  if (node) { removeDescendants(lastPath); node.expanded = false; }
+  expandStack.pop();
+  // Prune stale entries
+  for (let i = expandStack.length - 1; i >= 0; i--) {
+    const n = nodes.get(expandStack[i]);
+    if (!n || !n.expanded) expandStack.splice(i, 1);
+  }
+  updateBreadcrumb();
+  // Refocus camera on new top of stack, or root
+  const focusPath = expandStack.length ? expandStack[expandStack.length - 1] : '/srv';
+  const focusNode = nodes.get(focusPath);
+  if (focusNode) {
+    const _np = focusNode.mesh.position;
+    const _dir = camera.position.clone().sub(_np).normalize();
+    const _dist = Math.max(20, camera.position.distanceTo(_np) * 0.78);
+    camAnim = { node: focusNode, dir: _dir, dist: _dist };
+    activeNodePath = focusNode.item.path;
+  }
+};
+
+window._collapseAll = () => {
+  for (const [, n] of nodes) {
+    if (n.item.isDir && n.expanded) { removeDescendants(n.item.path); n.expanded = false; }
+  }
+  expandStack.length = 0;
+  updateBreadcrumb();
+};
+
+canvas.addEventListener('mousedown', e => { mouseDownPos.x = e.clientX; mouseDownPos.y = e.clientY; });
+
+canvas.addEventListener('click', async e => {
+  if (document.getElementById('file-viewer').classList.contains('open')) return;
+  const dx = e.clientX - mouseDownPos.x, dy = e.clientY - mouseDownPos.y;
+  if (dx*dx + dy*dy > 25) return; // was a drag
+
+  const _r = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - _r.left) / _r.width) * 2 - 1;
+  mouse.y = -((e.clientY - _r.top) / _r.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+
+  const meshes = refreshNodeArr().map(n => n.mesh);
+  const hits = raycaster.intersectObjects(meshes);
+  if (!hits.length) return;
+
+  const node = nodes.get(hits[0].object.userData.nodePath);
+  if (!node) return;
+
+  // Centre camera orbit on tapped node — track node live so moving nodes still get centered
+  {
+    const _np = node.mesh.position;
+    const _dir = camera.position.clone().sub(_np).normalize();
+    const _dist = Math.max(20, camera.position.distanceTo(_np) * 0.78);
+    camAnim = { node, dir: _dir, dist: _dist };
+  }
+  activeNodePath = node.item.path;
+
+  if (node.item.isDir) {
+    if (node.loading) return;
+    if (node.expanded) {
+      removeDescendants(node.item.path);
+      node.expanded = false;
+      dropFromStack(node.item.path);
+    } else {
+      // Guard: children already in graph (state desync) — just mark expanded
+      const hasKids = [...nodes.keys()].some(p => p.startsWith(node.item.path + '/'));
+      if (hasKids) { node.expanded = true; pushExpand(node); return; }
+      node.loading = true;
+      try {
+        const data = await fetchLS(node.item.path);
+        if (!data.success) return;
+        const children = data.items.slice(0, 60).map(item => addNode(item, node.item.path));
+        layoutChildren(node, children);
+        node.expanded = true;
+        pushExpand(node);
+      } finally {
+        node.loading = false;
+      }
+    }
+  } else {
+    openFile(node);
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const _r = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - _r.left) / _r.width) * 2 - 1;
+  mouse.y = -((e.clientY - _r.top) / _r.height) * 2 + 1;
+});
+
+function doHover() {
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = refreshNodeArr().map(n => n.mesh);
+  const hits = raycaster.intersectObjects(meshes);
+
+  if (hoveredNode) { hoveredNode.mesh.scale.setScalar(1); hoveredNode = null; }
+
+  if (hits.length) {
+    const node = nodes.get(hits[0].object.userData.nodePath);
+    if (node) { node.mesh.scale.setScalar(1.35); hoveredNode = node; canvas.style.cursor = 'pointer'; }
+  } else {
+    canvas.style.cursor = 'default';
+  }
+}
+
+// ===================== FILE VIEWER =====================
+
+// Returns { renderUrl, routeUrl, label } for renderable files (.ejs, .js).
+// renderUrl: server-side renders via /api/render — works for any project, no auth/cookie issues.
+// routeUrl:  the live Express route (madladslab views only) — used for "New Tab" button.
+function getRenderUrls(filePath) {
+  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+  if (ext !== '.ejs' && ext !== '.js') return null;
+
+  const renderUrl = '/stevenClawbert/browser/api/render?path=' + encodeURIComponent(filePath);
+
+  // Route URL only for madladslab views (.ejs only)
+  const prefix = '/srv/madladslab/views/';
+  let routeUrl = null;
+  if (ext === '.ejs' && filePath.startsWith(prefix)) {
+    let rel = filePath.slice(prefix.length).replace(/\.ejs$/, '').replace(/\/index$/, '');
+    if (rel === 'index') rel = '';
+    routeUrl = '/' + rel;
+  }
+
+  const label = ext === '.js'
+    ? '\u25B6 JS View'
+    : (routeUrl ? '\u25A1 Live \u2192 ' + routeUrl : '\u25A1 Live Preview');
+
+  return { renderUrl, routeUrl, label };
+}
+
+let currentRouteUrl = null;
+
+async function openFile(node) {
+  const pathLabel = document.getElementById('viewer-path-label');
+  const code = document.getElementById('viewer-code');
+  const iframe = document.getElementById('viewer-iframe');
+  const tabs = document.getElementById('viewer-tabs');
+  const openTabBtn = document.getElementById('open-tab-btn');
+
+  pathLabel.textContent = node.item.path;
+  tabs.innerHTML = '';
+  code.textContent = 'Loading...';
+
+  const renderUrls = getRenderUrls(node.item.path);
+  currentRouteUrl = renderUrls ? renderUrls.routeUrl : null;
+
+  // Source tab
+  const srcTab = document.createElement('button');
+  srcTab.className = 'vtab';
+  srcTab.textContent = '{ } Source';
+  srcTab.onclick = () => { setActiveTab(srcTab); code.style.display = 'block'; iframe.style.display = 'none'; };
+  tabs.appendChild(srcTab);
+
+  if (renderUrls) {
+    const { renderUrl, routeUrl, label } = renderUrls;
+    const previewTab = document.createElement('button');
+    previewTab.className = 'vtab active';
+    previewTab.textContent = label;
+    previewTab.onclick = () => {
+      setActiveTab(previewTab);
+      if (!iframe.getAttribute('data-loaded')) { iframe.src = renderUrl; iframe.setAttribute('data-loaded', '1'); }
+      iframe.style.display = 'block'; code.style.display = 'none';
+    };
+    tabs.appendChild(previewTab);
+
+    // "New Tab" opens the real live route (madladslab only), else opens render URL
+    openTabBtn.style.display = '';
+    window._openTab = () => window.open(routeUrl || renderUrl, '_blank');
+
+    // Default to live preview — rendered server-side (no cookie/auth issues)
+    iframe.removeAttribute('data-loaded');
+    iframe.src = renderUrl;
+    iframe.setAttribute('data-loaded', '1');
+    iframe.style.display = 'block';
+    code.style.display = 'none';
+  } else {
+    srcTab.classList.add('active');
+    code.style.display = 'block';
+    iframe.style.display = 'none';
+    openTabBtn.style.display = 'none';
+  }
+
+  document.getElementById('viewer-overlay').classList.add('open');
+  document.getElementById('file-viewer').classList.add('open');
+
+  // Fetch source in background (available when Source tab is clicked)
+  const data = await fetchRead(node.item.path);
+  code.textContent = data.success ? data.content : ('Error: ' + data.error);
+}
+
+function setActiveTab(activeEl) {
+  document.querySelectorAll('.vtab').forEach(t => t.classList.remove('active'));
+  activeEl.classList.add('active');
+}
+
+window._closeViewer = () => {
+  document.getElementById('file-viewer').classList.remove('open');
+  document.getElementById('viewer-overlay').classList.remove('open');
+  document.getElementById('viewer-iframe').src = 'about:blank';
+};
+window._openTab = () => {
+  if (currentRouteUrl) window.open(currentRouteUrl, '_blank');
+};
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') window._closeViewer();
+});
+
+// ===================== EDGE GEOMETRY UPDATE =====================
+
+function updateEdges() {
+  for (const e of edges) {
+    const pos = e.line.geometry.attributes.position;
+    pos.setXYZ(0, e.from.mesh.position.x, e.from.mesh.position.y, e.from.mesh.position.z);
+    pos.setXYZ(1, e.to.mesh.position.x,   e.to.mesh.position.y,   e.to.mesh.position.z);
+    pos.needsUpdate = true;
+    const isActive = activeNodePath && (e.from.item.path === activeNodePath || e.to.item.path === activeNodePath);
+    e.line.material.color.setHex(isActive ? 0x00ccff : 0x004466);
+    e.line.material.opacity = isActive ? 0.9 : 0.35;
+  }
+}
+
+// ===================== INIT =====================
+
+async function init() {
+  const rootItem = { name: 'srv', path: '/srv', isDir: true, ext: null, size: 0, childCount: 0 };
+  const root = addNode(rootItem, null);
+  root.pos = { x: 0, y: 0, z: 0 };
+  root.mesh.position.set(0, 0, 0);
+
+  // Make root node slightly bigger
+  root.mesh.scale.setScalar(1.4);
+
+  const data = await fetchLS('/srv');
+  if (data.success) {
+    const children = data.items.map(item => addNode(item, '/srv'));
+    layoutChildren(root, children);
+    root.expanded = true;
+  }
+
+  document.getElementById('loading').classList.add('hidden');
+  simSteps = 0;
+}
+
+// ===================== ANIMATION LOOP =====================
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  if (simSteps < MAX_SIM) { simulateStep(); simSteps++; }
+
+  // Sync mesh positions + rotation + pulse + distance brightness
+  for (const n of refreshNodeArr()) {
+    _tv.set(n.pos.x, n.pos.y, n.pos.z);
+    n.mesh.position.lerp(_tv, 0.12);
+    n.mesh.rotation.y += n.item.isDir ? 0.004 : 0.006;
+
+    // Core nodes (root + depth-1) stay fully bright; deeper nodes get a gentle floor
+    const emissiveBase = n.isCore ? 2.0 : 1.6;
+
+    if (n.item.isDir) {
+      if (n.expanded) {
+        n.mesh.material.emissive.setHex(0x00bb88);
+        n.mesh.material.emissiveIntensity = (n.isCore ? 2.2 : 1.8) + 0.7 * Math.sin(t * 2.5 + n.phaseOffset);
+      } else {
+        n.mesh.material.emissive.setHex(0x007799);
+        n.mesh.material.emissiveIntensity = (n.isCore ? 1.4 : 1.0) + 0.5 * Math.sin(t * 1.5 + n.phaseOffset);
+      }
+    } else {
+      n.mesh.material.emissiveIntensity = emissiveBase;
+    }
+  }
+
+  updateEdges();
+  doHover();
+
+  // controls.update() runs first so its camera recalc doesn't overwrite our camAnim lerp
+  controls.update();
+
+  if (camAnim) {
+    // Recompute desired positions from the node's live (possibly still moving) position
+    const _livePos = camAnim.node.mesh.position;
+    const _desiredTarget = _livePos.clone();
+    const _desiredCamPos = _livePos.clone().add(camAnim.dir.clone().multiplyScalar(camAnim.dist));
+    controls.target.lerp(_desiredTarget, 0.09);
+    camera.position.lerp(_desiredCamPos, 0.09);
+    if (controls.target.distanceTo(_desiredTarget) < 0.15) camAnim = null;
+  }
+
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+
+// ===================== RESIZE =====================
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ===================== START =====================
+
+init().then(animate);
+</script>
+</body>
+</html>

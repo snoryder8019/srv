@@ -8,6 +8,8 @@
   <link rel="stylesheet" href="/css/chat.css">
   <link rel="stylesheet" href="/css/sidebar.css">
   <link rel="stylesheet" href="/css/call.css">
+  <link rel="stylesheet" href="/css/broadcast.css">
+  <link rel="stylesheet" href="/css/channels.css">
 </head>
 <body>
   <h1>bih</h1>
@@ -15,6 +17,19 @@
   <div></div>
   <% if (user) { %>
     <p>Welcome, <%= user.displayName || user.email %></p>
+    <% if (user.isAdmin || user.isBIH) { %>
+    <button id="broadcast-go-live" type="button" title="Go Live">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <path d="M8 21h8"/>
+        <path d="M12 17v4"/>
+        <circle cx="12" cy="10" r="2"/>
+        <path d="M8.5 6.5a5 5 0 0 1 7 0"/>
+        <path d="M6 4a8 8 0 0 1 12 0"/>
+      </svg>
+      <span id="broadcast-btn-label">GO LIVE</span>
+    </button>
+    <% } %>
     <a href="/dashboard">Dashboard</a>
     <a href="/profile">Profile</a>
     <a href="/auth/logout">Logout</a>
@@ -22,8 +37,133 @@
     <a href="/auth/login">Login</a>
     <a href="/auth/register">Register</a>
   <% } %>
+
+  <!-- Broadcast TV Frame -->
+  <div id="broadcast-tv">
+    <div id="broadcast-tv-bezel">
+      <div id="broadcast-tv-header">
+        <span id="broadcast-tv-status">
+          <span class="broadcast-live-dot"></span>
+          LIVE
+        </span>
+        <span id="broadcast-tv-host"></span>
+      </div>
+      <div id="broadcast-tv-screen">
+        <video id="broadcast-video" autoplay playsinline controls></video>
+        <div id="broadcast-tv-static">
+          <div class="static-text">NO SIGNAL</div>
+          <div class="static-subtext">Want to broadcast? Contact Scott to request access.</div>
+        </div>
+        <!-- Shelf overlay — covers the video frame -->
+        <div id="shelf-overlay" class="shelf-overlay-hidden">
+          <div id="shelf-overlay-header">
+            <span id="shelf-overlay-title"></span>
+            <button id="shelf-overlay-close" type="button">&times;</button>
+          </div>
+          <div id="shelf-overlay-content">
+            <div class="shelf-overlay-empty">Nothing here yet</div>
+          </div>
+        </div>
+      </div>
+      <div id="broadcast-tv-controls">
+        <span id="broadcast-viewer-count">0 watching</span>
+      </div>
+      <div id="broadcast-tap-notice">
+        Tap or click the video to play — autoplay is blocked by your browser
+      </div>
+    </div>
+
+    <!-- Thumbnail Scroller -->
+    <div id="broadcast-shelf">
+      <div id="broadcast-shelf-track">
+        <button class="shelf-thumb" data-shelf="clips" type="button">
+          <div class="shelf-thumb-img">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
+          <span class="shelf-thumb-label">Clips</span>
+        </button>
+        <button class="shelf-thumb" data-shelf="replays" type="button">
+          <div class="shelf-thumb-img">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+          </div>
+          <span class="shelf-thumb-label">Replays</span>
+        </button>
+        <button class="shelf-thumb" data-shelf="archive" type="button">
+          <div class="shelf-thumb-img">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <span class="shelf-thumb-label">Archive</span>
+        </button>
+        <button class="shelf-thumb" data-shelf="schedule" type="button">
+          <div class="shelf-thumb-img">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          </div>
+          <span class="shelf-thumb-label">Schedule</span>
+        </button>
+        <button class="shelf-thumb" data-shelf="channels" type="button">
+          <div class="shelf-thumb-img">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <span class="shelf-thumb-label">Channels</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <%- include('partials/sidebar') %>
   <%- include('partials/chat') %>
   <%- include('partials/call') %>
+  <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var overlay = document.getElementById('shelf-overlay');
+    var overlayTitle = document.getElementById('shelf-overlay-title');
+    var overlayContent = document.getElementById('shelf-overlay-content');
+    var closeBtn = document.getElementById('shelf-overlay-close');
+    var thumbs = document.querySelectorAll('.shelf-thumb[data-shelf]');
+    var activeShelf = null;
+
+    function openShelf(name) {
+      if (!overlay) return;
+      // Toggle off if same shelf tapped again
+      if (activeShelf === name) { closeShelf(); return; }
+      activeShelf = name;
+      // Set title
+      if (overlayTitle) overlayTitle.textContent = name;
+      // Set content per category
+      if (overlayContent) {
+        if (name === 'channels' && window.__bihChannels) {
+          window.__bihChannels.open(overlayContent);
+        } else {
+          overlayContent.innerHTML = '<div class="shelf-overlay-empty">No ' + name + ' yet</div>';
+        }
+      }
+      overlay.classList.remove('shelf-overlay-hidden');
+      // Highlight active thumb
+      thumbs.forEach(function (t) {
+        t.classList.toggle('active', t.getAttribute('data-shelf') === name);
+      });
+    }
+
+    function closeShelf() {
+      if (!overlay) return;
+      activeShelf = null;
+      overlay.classList.add('shelf-overlay-hidden');
+      thumbs.forEach(function (t) { t.classList.remove('active'); });
+    }
+
+    thumbs.forEach(function (thumb) {
+      thumb.addEventListener('click', function (e) {
+        e.preventDefault();
+        openShelf(this.getAttribute('data-shelf'));
+      });
+    });
+
+    if (closeBtn) closeBtn.addEventListener('click', closeShelf);
+  });
+  </script>
+  <% if (user) { %>
+  <script src="/js/broadcast.js"></script>
+  <script src="/js/channels.js"></script>
+  <% } %>
 </body>
 </html>

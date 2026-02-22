@@ -37,6 +37,14 @@
 - [x] Call UI — ring, accept, reject, hang up
 - [x] Multi-party calls (full-mesh topology, room-based signaling, dynamic peer grid, join-call UX)
 
+## Phase 3.5: Ticket System (Complete)
+- [x] Ticket model (subject, message, status, staff actions)
+- [x] User role fields (isAdmin, isBIH) on User schema
+- [x] Submit ticket form for all authenticated users
+- [x] Ticket list — users see own tickets, staff (isAdmin/isBIH) see all
+- [x] Ticket detail view with action history
+- [x] Staff panel — add responses, update status (open/in-progress/closed)
+
 ## Phase 4: Communication Enhancements (Future)
 - [ ] Direct messages (1-on-1 private chat)
 - [ ] Chat rooms / channels
@@ -47,7 +55,7 @@
 
 ## Phase 5: Platform Growth (Future)
 - [ ] Epic / Twitch username fields on profile
-- [ ] Admin panel / user management
-- [ ] Role-based access control
+- [ ] Admin panel / user management (role fields added — isAdmin, isBIH)
+- [x] Role-based access control (ticket system uses isAdmin/isBIH)
 - [ ] Activity/presence status (online, away, busy)
 - [ ] Mobile-responsive UI polish

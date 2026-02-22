@@ -7,6 +7,10 @@ const userSchema = new mongoose.Schema({
   displayName: { type: String },
   googleId: { type: String },
   avatar: { type: String },
+  epicId: { type: String },
+  twitchId: { type: String },
+  isAdmin: { type: Boolean, default: false },
+  isBIH: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 

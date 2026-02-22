@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> | MadLadsLab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d0d0d; color: #e0e0e0; min-height: 100vh; }
+
+    .fin-header {
+      background: linear-gradient(135deg, #0a2a1a 0%, #003322 100%);
+      border-bottom: 2px solid #00ff88;
+      padding: 1.25rem 2rem;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    }
+    .fin-header h1 { font-size: 1.5rem; color: #00ff88; letter-spacing: 1px; }
+    .btn {
+      display: inline-block; padding: 0.45rem 1rem; border-radius: 4px;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.2s;
+      text-decoration: none;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #00ff88; color: #000; }
+    .btn-outline { background: transparent; border: 1px solid #00ff88; color: #00ff88; }
+    .btn-danger  { background: #ff4444; color: #fff; }
+    .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.78rem; }
+
+    .page { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+    }
+    .stat-pill {
+      background: #111; border: 1px solid #2a2a2a; border-radius: 6px;
+      padding: 0.6rem 1rem; font-size: 0.82rem;
+    }
+    .stat-pill span { color: #00ff88; font-weight: 700; font-size: 1rem; display: block; }
+
+    /* ── Batch cards ── */
+    .batch-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .batch-card {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem 1.5rem;
+      align-items: center;
+      transition: border-color 0.2s;
+    }
+    .batch-card:hover { border-color: #00ff88; }
+
+    .batch-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; align-items: baseline; }
+    .batch-filename {
+      font-size: 0.95rem; font-weight: 600; color: #e0e0e0;
+      word-break: break-all;
+    }
+    .badge {
+      display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px;
+      font-size: 0.72rem; font-weight: 600; white-space: nowrap;
+    }
+    .badge-inst  { background: #1a2a3a; color: #64b5f6; }
+    .badge-type  { background: #1a2a1a; color: #66bb6a; }
+    .badge-year  { background: #2a2a1a; color: #ffa726; }
+    .badge-entity { background: #2a1a3a; color: #ba68c8; }
+
+    .batch-sub {
+      font-size: 0.78rem; color: #666; margin-top: 0.25rem;
+    }
+
+    .batch-right { text-align: right; }
+    .batch-count { font-size: 1.1rem; font-weight: 700; color: #00ff88; }
+    .batch-count span { font-size: 0.75rem; color: #555; font-weight: 400; }
+    .batch-total { font-size: 0.82rem; margin-top: 0.2rem; }
+    .batch-total.neg { color: #ff6666; }
+    .batch-total.pos { color: #00ff88; }
+
+    .batch-actions { grid-column: 1 / -1; display: flex; gap: 0.5rem; margin-top: 0.25rem; }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center; padding: 4rem 1rem; color: #555;
+    }
+    .empty h2 { font-size: 1.25rem; margin-bottom: 0.75rem; }
+    .empty p  { font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      background: #00ff88; color: #000; padding: 0.75rem 1.25rem;
+      border-radius: 6px; font-weight: 600; font-size: 0.9rem;
+      display: none; z-index: 9999;
+    }
+    #toast.error { background: #ff4444; color: #fff; }
+  </style>
+</head>
+<body>
+
+<div class="fin-header">
+  <h1>$ Recent Uploads</h1>
+  <nav style="display:flex;gap:0.75rem;flex-wrap:wrap">
+    <a href="/finances/upload" class="btn btn-primary">+ Upload More</a>
+    <a href="/finances" class="btn btn-outline">Dashboard</a>
+    <a href="/" class="btn btn-outline">Home</a>
+  </nav>
+</div>
+
+<div class="page">
+
+  <%
+    function timeAgo(date) {
+      if (!date) return 'unknown time';
+      const sec = Math.floor((Date.now() - new Date(date)) / 1000);
+      if (sec < 60)   return 'just now';
+      if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+      if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
+      if (sec < 604800) return Math.floor(sec / 86400) + 'd ago';
+      return new Date(date).toLocaleDateString('en-US');
+    }
+  %>
+
+  <% if (!batches || batches.length === 0) { %>
+    <div class="empty">
+      <h2 style="color:#00ff88">No uploads yet</h2>
+      <p>Upload a bank or CC statement to get started.</p>
+      <a href="/finances/upload" class="btn btn-primary">Upload Statements</a>
+    </div>
+  <% } else { %>
+
+    <!-- Stats bar -->
+    <div class="stats-bar">
+      <div class="stat-pill">
+        <span><%= batches.length %></span>
+        Upload batches
+      </div>
+      <div class="stat-pill">
+        <span><%= batches.reduce((s, b) => s + b.count, 0).toLocaleString() %></span>
+        Total transactions
+      </div>
+      <div class="stat-pill">
+        <span>
+          <%
+            const netTotal = batches.reduce((s, b) => s + b.totalAmount, 0);
+          %>
+          <%= netTotal < 0 ? '-' : '+' %>$<%= Math.abs(netTotal).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) %>
+        </span>
+        Net total
+      </div>
+    </div>
+
+    <div class="batch-list">
+      <% batches.forEach(batch => {
+        const ago = timeAgo(batch.uploadedAt);
+        const isNeg = batch.totalAmount < 0;
+      %>
+      <div class="batch-card">
+        <div>
+          <div class="batch-meta">
+            <span class="batch-filename"><%= batch._id.source || 'Unknown file' %></span>
+            <% if (batch.institution) { %><span class="badge badge-inst"><%= batch.institution %></span><% } %>
+            <% if (batch.accountType) { %><span class="badge badge-type"><%= batch.accountType %></span><% } %>
+            <% if (batch.taxYear) { %><span class="badge badge-year"><%= batch.taxYear %></span><% } %>
+            <% if (batch.entity) { %><span class="badge badge-entity"><%= batch.entity %></span><% } %>
+          </div>
+          <div class="batch-sub">
+            Uploaded <%= ago %>
+            <% if (batch._id.uploadedBy) { %> · by <%= batch._id.uploadedBy %><% } %>
+          </div>
+        </div>
+
+        <div class="batch-right">
+          <div class="batch-count"><%= batch.count.toLocaleString() %> <span>rows</span></div>
+          <div class="batch-total <%= isNeg ? 'neg' : 'pos' %>">
+            <%= isNeg ? '-' : '+' %>$<%= Math.abs(batch.totalAmount).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) %>
+          </div>
+        </div>
+
+        <div class="batch-actions">
+          <a href="/finances?source=<%= encodeURIComponent(batch._id.source) %>" class="btn btn-outline btn-sm">View Transactions</a>
+          <button class="btn btn-danger btn-sm" onclick="deleteBatch('<%= encodeURIComponent(batch._id.source) %>', this)">Delete Batch</button>
+        </div>
+      </div>
+      <% }) %>
+    </div>
+
+  <% } %>
+</div>
+
+<div id="toast"></div>
+
+<script>
+async function deleteBatch(source, btn) {
+  if (!confirm('Delete ALL transactions from this upload batch?')) return;
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  try {
+    const res  = await fetch('/finances/api/batch/' + source, { method: 'DELETE' });
+    const json = await res.json();
+    if (json.success) {
+      showToast(`Deleted ${json.deleted} transaction(s)`);
+      btn.closest('.batch-card').remove();
+    } else {
+      showToast(json.message, true);
+      btn.disabled = false;
+      btn.textContent = 'Delete Batch';
+    }
+  } catch {
+    showToast('Delete failed', true);
+    btn.disabled = false;
+    btn.textContent = 'Delete Batch';
+  }
+}
+
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = isError ? 'error' : '';
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 3500);
+}
+
+// ── timeAgo – runs server-side via EJS ───────────────────────────────────────
+// (defined as a template helper below, but also available in JS for dynamic use)
+</script>
+
+</body>
+</html>

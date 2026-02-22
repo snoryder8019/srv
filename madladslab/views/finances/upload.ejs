@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> | MadLadsLab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d0d0d;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .fin-header {
+      background: linear-gradient(135deg, #0a2a1a 0%, #003322 100%);
+      border-bottom: 2px solid #00ff88;
+      padding: 1.25rem 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; flex-wrap: wrap;
+    }
+    .fin-header h1 { font-size: 1.5rem; color: #00ff88; letter-spacing: 1px; }
+    .btn {
+      display: inline-block; padding: 0.45rem 1rem; border-radius: 4px;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #00ff88; color: #000; }
+    .btn-outline { background: transparent; border: 1px solid #00ff88; color: #00ff88; text-decoration: none; }
+
+    /* ── Page layout ── */
+    .page { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+    .page-intro { color: #aaa; font-size: 0.9rem; margin-bottom: 2rem; line-height: 1.6; }
+    .page-intro strong { color: #00ff88; }
+
+    /* ── Generic upload hero ── */
+    .generic-upload {
+      background: #111;
+      border: 2px solid #00ff88;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .generic-upload h2 { color: #00ff88; font-size: 1.1rem; margin-bottom: 0.25rem; }
+    .generic-upload p  { color: #888; font-size: 0.82rem; margin-bottom: 1.25rem; }
+
+    /* ── Preview table ── */
+    .preview-wrap { margin-top: 1rem; }
+    .preview-wrap h4 { font-size: 0.78rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; }
+    .preview-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .preview-table th { background: #1a1a1a; color: #666; padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid #222; }
+    .preview-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #1a1a1a; color: #ccc; }
+    .preview-table .pos { color: #00ff88; } .preview-table .neg { color: #ff6666; }
+    .preview-msg { font-size: 0.82rem; color: #888; margin-top: 0.5rem; }
+
+    /* ── Section tabs ── */
+    .tab-bar {
+      display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+      border-bottom: 2px solid #222; padding-bottom: 0.75rem;
+    }
+    .tab-btn {
+      padding: 0.4rem 1rem; border-radius: 4px 4px 0 0; font-size: 0.82rem; font-weight: 600;
+      cursor: pointer; border: 1px solid #333; background: #1a1a1a; color: #888;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: #00ff88; border-color: #00ff88; }
+    .tab-btn.active { background: #00ff88; color: #000; border-color: #00ff88; }
+
+    /* ── Upload card grid ── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.25rem;
+    }
+    .upload-card {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 1.25rem;
+      transition: border-color 0.2s;
+    }
+    .upload-card:hover { border-color: #00ff88; }
+    .upload-card-header {
+      display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;
+    }
+    .bank-icon {
+      width: 40px; height: 40px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.25rem; font-weight: 900; flex-shrink: 0;
+    }
+    .upload-card h3 { font-size: 1rem; color: #e0e0e0; }
+    .upload-card p  { font-size: 0.78rem; color: #888; margin-top: 0.15rem; }
+
+    /* ── Form fields ── */
+    .form-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .form-group { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; min-width: 120px; }
+    .form-group label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-group select, .form-group input[type="text"], .form-group input[type="number"],
+    .form-group textarea {
+      padding: 0.4rem 0.6rem;
+      background: #1a1a1a; border: 1px solid #333; color: #e0e0e0;
+      border-radius: 4px; font-size: 0.82rem;
+    }
+    .form-group select:focus, .form-group input:focus, .form-group textarea:focus {
+      outline: none; border-color: #00ff88;
+    }
+    .form-group input[type="number"] { max-width: 100px; }
+
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 2px dashed #333; border-radius: 6px; padding: 1.25rem;
+      text-align: center; cursor: pointer; transition: all 0.2s;
+      background: #141414; position: relative;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #00ff88; background: rgba(0,255,136,0.04); }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-zone .drop-label { font-size: 0.82rem; color: #666; pointer-events: none; }
+    .drop-zone .drop-label strong { color: #00ff88; display: block; margin-bottom: 0.25rem; font-size: 0.9rem; }
+    .drop-zone .file-chosen { font-size: 0.82rem; color: #00ff88; margin-top: 0.5rem; display: none; }
+
+    /* ── Submit row ── */
+    .submit-row { display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem; }
+    .upload-status { font-size: 0.82rem; color: #888; }
+    .upload-status.ok  { color: #00ff88; }
+    .upload-status.err { color: #ff4444; }
+
+    /* ── Tips box ── */
+    .tips-box {
+      background: rgba(0,255,136,0.05);
+      border-left: 3px solid #00ff88;
+      border-radius: 4px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2rem;
+      font-size: 0.82rem;
+      line-height: 1.7;
+      color: #aaa;
+    }
+    .tips-box h4 { color: #00ff88; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    .tips-box ul { margin-left: 1.25rem; }
+
+    /* ── Section title ── */
+    .section-title {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
+      color: #555; margin: 2rem 0 1rem; display: flex; align-items: center; gap: 0.75rem;
+    }
+    .section-title::after { content: ''; flex: 1; height: 1px; background: #222; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      background: #00ff88; color: #000; padding: 0.75rem 1.25rem;
+      border-radius: 6px; font-weight: 600; font-size: 0.9rem;
+      display: none; z-index: 9999;
+    }
+    #toast.error { background: #ff4444; color: #fff; }
+
+    /* ── Bank brand colours ── */
+    .icon-chase    { background: #1a2744; color: #3a7bd5; }
+    .icon-wells    { background: #7b1313; color: #d63031; }
+    .icon-boa      { background: #0d1f3c; color: #e31837; }
+    .icon-amex     { background: #003580; color: #6eb8e0; }
+    .icon-capone   { background: #b41212; color: #fff; }
+    .icon-discover { background: #f05a28; color: #fff; }
+    .icon-citi     { background: #003087; color: #fff; }
+    .icon-paypal   { background: #003087; color: #009cde; }
+    .icon-venmo    { background: #008fe8; color: #fff; }
+    .icon-generic  { background: #1a1a2a; color: #aaa; }
+    .icon-sync     { background: #2a1a3a; color: #ba68c8; }
+    .icon-quickbooks { background: #1a2e1a; color: #2ca01c; }
+  </style>
+</head>
+<body>
+
+<div class="fin-header">
+  <h1>$ Upload Bank / CC Statements</h1>
+  <nav style="display:flex;gap:0.75rem;flex-wrap:wrap">
+    <a href="/finances/uploads" class="btn btn-primary">Recent Uploads</a>
+    <a href="/finances" class="btn btn-outline">← Dashboard</a>
+    <a href="/" class="btn btn-outline">Home</a>
+  </nav>
+</div>
+
+<div class="page">
+
+  <p class="page-intro">
+    Upload statements from your banking and credit card accounts to build your bookkeeping records.
+    Supported formats: <strong>CSV, PDF, OFX, QFX, XLSX</strong>.<br>
+    Assign each upload to the correct <strong>entity</strong> and <strong>tax year</strong> so records route correctly.
+    After upload, categorize transactions from the dashboard.
+  </p>
+
+  <!-- ══ GENERIC / AUTO-DETECT ════════════════════════════════════════════ -->
+  <div class="generic-upload">
+    <h2>Any Bank — Auto-Detect</h2>
+    <p>Drop any CSV here. The parser reads your file's column headers and figures out date, description, and amount automatically — no need to know the exact format.</p>
+
+    <form class="upload-form" id="genericForm" data-institution="">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Institution Name <span style="color:#555">(optional, helps with edge cases)</span></label>
+          <input type="text" name="institutionText" placeholder="e.g. Chase, First National, Amex…">
+        </div>
+        <div class="form-group">
+          <label>Tax Year</label>
+          <select name="taxYear">
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Account Type</label>
+          <select name="accountType">
+            <option>Checking</option><option>Savings</option><option>Credit Card</option><option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Entity</label>
+          <select name="entity">
+            <option value="W2 Marketing LLC">W2 Marketing LLC</option>
+            <option value="madladslab LLC">madladslab LLC</option>
+            <option value="Scott Employment">Scott Employment</option>
+            <option value="Oil Royalties">Oil Royalties</option>
+            <option value="VRBO">VRBO</option>
+            <option value="Airbnb">Airbnb</option>
+            <option value="Personal / Home" selected>Personal / Home</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Notes (optional)</label>
+          <input type="text" name="notes" placeholder="e.g. Jan–Jun 2023">
+        </div>
+      </div>
+
+      <div class="drop-zone" id="genericDropZone" style="margin-top:0.75rem">
+        <input type="file" name="statement" id="file-generic" accept=".csv,.pdf,.xlsx,.xls,.ofx,.qfx">
+        <div class="drop-label">
+          <strong>Drop any CSV here or click to browse</strong>
+          Accepted: .csv, .pdf, .xlsx, .ofx, .qfx
+        </div>
+      </div>
+
+      <!-- Preview area -->
+      <div class="preview-wrap" id="genericPreview" style="display:none">
+        <h4>Preview — first 5 rows</h4>
+        <table class="preview-table">
+          <thead><tr><th>Date</th><th>Description</th><th>Amount</th></tr></thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+        <p class="preview-msg" id="previewMsg"></p>
+      </div>
+
+      <div class="submit-row" style="margin-top:1rem">
+        <button type="button" class="btn btn-outline" id="previewBtn">Preview</button>
+        <button type="submit" class="btn btn-primary">Import All</button>
+        <span class="upload-status" id="genericStatus"></span>
+      </div>
+    </form>
+  </div>
+
+  <div class="tips-box">
+    <h4>How to export statements</h4>
+    <ul>
+      <li><strong>Chase:</strong> Account Activity → Download → CSV (select date range)</li>
+      <li><strong>Wells Fargo:</strong> Account Activity → Export → Comma Delimited</li>
+      <li><strong>Bank of America:</strong> Transactions → Download → CSV</li>
+      <li><strong>Amex:</strong> Statements & Activity → Download → CSV</li>
+      <li><strong>Capital One:</strong> Transaction History → Download → CSV</li>
+      <li><strong>Discover:</strong> Manage → Download Transactions → CSV</li>
+      <li><strong>Citi:</strong> Account Activity → Download → CSV or OFX</li>
+      <li><strong>PayPal:</strong> Activity → Statements → Download → CSV</li>
+      <li><strong>Venmo:</strong> Settings → Statements → Download (CSV)</li>
+    </ul>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="banks">Banks</button>
+    <button class="tab-btn" data-tab="credit">Credit Cards</button>
+    <button class="tab-btn" data-tab="other">PayPal / Venmo</button>
+    <button class="tab-btn" data-tab="pdf">PDFs & Other</button>
+  </div>
+
+  <!-- ══ BANKS ══════════════════════════════════════════════════════════════ -->
+  <div class="tab-panel card-grid" id="tab-banks">
+
+    <!-- Chase -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-chase">C</div>
+        <div><h3>Chase Bank</h3><p>Checking · Savings · Business</p></div>
+      </div>
+      <form class="upload-form" data-institution="Chase">
+        <%- include('./partials/upload-fields.ejs') %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv,.ofx', id: 'chase' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Wells Fargo -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-wells">W</div>
+        <div><h3>Wells Fargo</h3><p>Checking · Savings</p></div>
+      </div>
+      <form class="upload-form" data-institution="Wells Fargo">
+        <%- include('./partials/upload-fields.ejs') %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv,.ofx', id: 'wells' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Bank of America -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-boa">B</div>
+        <div><h3>Bank of America</h3><p>Checking · Savings · Business</p></div>
+      </div>
+      <form class="upload-form" data-institution="Bank of America">
+        <%- include('./partials/upload-fields.ejs') %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv,.ofx,.qfx', id: 'boa' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+  </div><!-- /tab-banks -->
+
+  <!-- ══ CREDIT CARDS ═══════════════════════════════════════════════════════ -->
+  <div class="tab-panel card-grid" id="tab-credit" style="display:none">
+
+    <!-- Amex -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-amex">AX</div>
+        <div><h3>American Express</h3><p>Personal · Business</p></div>
+      </div>
+      <form class="upload-form" data-institution="American Express">
+        <%- include('./partials/upload-fields.ejs', { defaultType: 'Credit Card' }) %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv,.ofx', id: 'amex' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Capital One -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-capone">C1</div>
+        <div><h3>Capital One</h3><p>Venture · Quicksilver · Business</p></div>
+      </div>
+      <form class="upload-form" data-institution="Capital One">
+        <%- include('./partials/upload-fields.ejs', { defaultType: 'Credit Card' }) %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv', id: 'capone' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Discover -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-discover">D</div>
+        <div><h3>Discover</h3><p>it Cash · Miles</p></div>
+      </div>
+      <form class="upload-form" data-institution="Discover">
+        <%- include('./partials/upload-fields.ejs', { defaultType: 'Credit Card' }) %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv', id: 'discover' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Citi -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-citi">CI</div>
+        <div><h3>Citi</h3><p>Double Cash · Custom Cash</p></div>
+      </div>
+      <form class="upload-form" data-institution="Citi">
+        <%- include('./partials/upload-fields.ejs', { defaultType: 'Credit Card' }) %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv,.ofx,.qfx', id: 'citi' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+  </div><!-- /tab-credit -->
+
+  <!-- ══ PAYPAL / VENMO ═════════════════════════════════════════════════════ -->
+  <div class="tab-panel card-grid" id="tab-other" style="display:none">
+
+    <!-- PayPal -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-paypal">PP</div>
+        <div><h3>PayPal</h3><p>Activity CSV export</p></div>
+      </div>
+      <form class="upload-form" data-institution="PayPal">
+        <%- include('./partials/upload-fields.ejs') %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv', id: 'paypal' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Venmo -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-venmo">V</div>
+        <div><h3>Venmo</h3><p>Statement CSV export</p></div>
+      </div>
+      <form class="upload-form" data-institution="Venmo">
+        <%- include('./partials/upload-fields.ejs') %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv', id: 'venmo' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+  </div><!-- /tab-other -->
+
+  <!-- ══ PDFs & OTHER ═══════════════════════════════════════════════════════ -->
+  <div class="tab-panel card-grid" id="tab-pdf" style="display:none">
+
+    <!-- Generic PDF -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-generic">PDF</div>
+        <div><h3>PDF Statement</h3><p>Any bank or CC PDF</p></div>
+      </div>
+      <form class="upload-form" data-institution="">
+        <div class="form-row" style="margin-bottom:0.75rem">
+          <div class="form-group">
+            <label>Institution Name</label>
+            <input type="text" name="institutionText" placeholder="e.g. Chase, Amex…">
+          </div>
+        </div>
+        <%- include('./partials/upload-fields.ejs') %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.pdf,.csv,.xlsx,.xls,.ofx,.qfx', id: 'pdf' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- QuickBooks Export -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-quickbooks">QB</div>
+        <div><h3>QuickBooks Export</h3><p>CSV / IIF export</p></div>
+      </div>
+      <form class="upload-form" data-institution="QuickBooks">
+        <%- include('./partials/upload-fields.ejs') %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.csv,.iif,.xlsx', id: 'qb' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Sync.com / Oil Royalty PDFs -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon icon-sync">$</div>
+        <div><h3>Oil Royalty Statement</h3><p>PDF royalty check stubs</p></div>
+      </div>
+      <form class="upload-form" data-institution="Oil Royalty">
+        <div class="form-row" style="margin-bottom:0.75rem">
+          <div class="form-group">
+            <label>Entity (fixed)</label>
+            <select name="entityOverride">
+              <option value="Oil Royalties">Oil Royalties</option>
+            </select>
+          </div>
+        </div>
+        <%- include('./partials/upload-fields.ejs') %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.pdf,.csv', id: 'oil' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- VRBO / Airbnb -->
+    <div class="upload-card">
+      <div class="upload-card-header">
+        <div class="bank-icon" style="background:#e00b24;color:#fff">STR</div>
+        <div><h3>VRBO / Airbnb</h3><p>Host earnings CSV or PDF</p></div>
+      </div>
+      <form class="upload-form" data-institution="">
+        <div class="form-row" style="margin-bottom:0.75rem">
+          <div class="form-group">
+            <label>Platform</label>
+            <select name="entityOverride">
+              <option value="VRBO">VRBO</option>
+              <option value="Airbnb">Airbnb</option>
+            </select>
+          </div>
+        </div>
+        <%- include('./partials/upload-fields.ejs') %>
+        <%- include('./partials/drop-zone.ejs', { accept: '.pdf,.csv,.xlsx', id: 'str' }) %>
+        <div class="submit-row">
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <span class="upload-status"></span>
+        </div>
+      </form>
+    </div>
+
+  </div><!-- /tab-pdf -->
+
+</div><!-- /page -->
+
+<div id="toast"></div>
+
+<script>
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).style.display = 'grid';
+  });
+});
+
+// ── Drag/drop visual ──────────────────────────────────────────────────────────
+document.querySelectorAll('.drop-zone').forEach(zone => {
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const input = zone.querySelector('input[type="file"]');
+    if (e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+      showFileChosen(zone, e.dataTransfer.files[0].name);
+    }
+  });
+  zone.querySelector('input[type="file"]')?.addEventListener('change', function() {
+    if (this.files[0]) showFileChosen(zone, this.files[0].name);
+  });
+});
+
+function showFileChosen(zone, name) {
+  let el = zone.querySelector('.file-chosen');
+  if (!el) { el = document.createElement('div'); el.className = 'file-chosen'; zone.appendChild(el); }
+  el.textContent = '📎 ' + name;
+  el.style.display = 'block';
+}
+
+// ── Upload forms ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.upload-form').forEach(form => {
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const statusEl = form.querySelector('.upload-status');
+    const fileInput = form.querySelector('input[type="file"]');
+
+    if (!fileInput?.files[0]) {
+      statusEl.textContent = 'Please select a file first.';
+      statusEl.className   = 'upload-status err';
+      return;
+    }
+
+    statusEl.textContent = 'Uploading…';
+    statusEl.className   = 'upload-status';
+
+    const fd = new FormData();
+    fd.append('statement', fileInput.files[0]);
+
+    // Institution – card data-institution OR custom text field
+    const customInst = form.querySelector('input[name="institutionText"]')?.value;
+    fd.append('institution', customInst || form.dataset.institution || 'Unknown');
+
+    // Entity – entityOverride select takes priority
+    const entityOverride = form.querySelector('select[name="entityOverride"]')?.value;
+    fd.append('entity',      entityOverride || form.querySelector('select[name="entity"]')?.value || 'Personal / Home');
+    fd.append('taxYear',     form.querySelector('select[name="taxYear"]')?.value  || new Date().getFullYear());
+    fd.append('accountType', form.querySelector('select[name="accountType"]')?.value || 'Other');
+    fd.append('notes',       form.querySelector('input[name="notes"]')?.value     || '');
+
+    try {
+      const res  = await fetch('/finances/upload', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (json.success) {
+        statusEl.innerHTML = `✓ ${json.message} — <a href="${json.viewUrl || '/finances/uploads'}" style="color:#000;font-weight:700">View →</a>`;
+        statusEl.className = 'upload-status ok';
+        showToast(json.message);
+        fileInput.value = '';
+        const chosen = form.querySelector('.file-chosen');
+        if (chosen) chosen.style.display = 'none';
+      } else {
+        statusEl.textContent = '✗ ' + json.message;
+        statusEl.className   = 'upload-status err';
+        showToast(json.message, true);
+      }
+    } catch (err) {
+      statusEl.textContent = '✗ Upload failed';
+      statusEl.className   = 'upload-status err';
+      showToast('Upload failed', true);
+    }
+  });
+});
+
+// ── Generic form: preview button ─────────────────────────────────────────────
+document.getElementById('previewBtn').addEventListener('click', async () => {
+  const form      = document.getElementById('genericForm');
+  const fileInput = form.querySelector('input[type="file"]');
+  const statusEl  = document.getElementById('genericStatus');
+
+  if (!fileInput?.files[0]) {
+    statusEl.textContent = 'Select a file first.';
+    statusEl.className   = 'upload-status err';
+    return;
+  }
+
+  statusEl.textContent = 'Parsing…';
+  statusEl.className   = 'upload-status';
+
+  const fd = new FormData();
+  fd.append('statement',   fileInput.files[0]);
+  fd.append('institution', form.querySelector('input[name="institutionText"]')?.value || '');
+  fd.append('entity',      form.querySelector('select[name="entity"]')?.value || '');
+  fd.append('taxYear',     form.querySelector('select[name="taxYear"]')?.value || '');
+  fd.append('accountType', form.querySelector('select[name="accountType"]')?.value || '');
+
+  try {
+    const res  = await fetch('/finances/api/preview', { method: 'POST', body: fd });
+    const json = await res.json();
+
+    if (!json.success) {
+      statusEl.textContent = '✗ ' + json.message;
+      statusEl.className   = 'upload-status err';
+      return;
+    }
+
+    const preview = document.getElementById('genericPreview');
+    const body    = document.getElementById('previewBody');
+    const msg     = document.getElementById('previewMsg');
+
+    body.innerHTML = '';
+    if (json.rows.length === 0) {
+      msg.textContent = 'No rows detected. Check that the file has a recognizable header row.';
+    } else {
+      json.rows.forEach(r => {
+        const amt = parseFloat(r.amount);
+        const tr  = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${new Date(r.date).toLocaleDateString('en-US')}</td>
+          <td>${r.description}</td>
+          <td class="${amt < 0 ? 'neg' : 'pos'}">${amt < 0 ? '-' : '+'}$${Math.abs(amt).toFixed(2)}</td>
+        `;
+        body.appendChild(tr);
+      });
+      msg.textContent = `Detected ${json.total} total rows. Showing first ${json.rows.length}.`;
+    }
+
+    preview.style.display = 'block';
+    statusEl.textContent  = '';
+    statusEl.className    = 'upload-status';
+  } catch (err) {
+    statusEl.textContent = '✗ Preview failed';
+    statusEl.className   = 'upload-status err';
+  }
+});
+
+// ── Generic form: file chosen display ────────────────────────────────────────
+document.getElementById('file-generic').addEventListener('change', function () {
+  if (this.files[0]) {
+    showFileChosen(document.getElementById('genericDropZone'), this.files[0].name);
+    document.getElementById('genericPreview').style.display = 'none';
+    document.getElementById('genericStatus').textContent    = '';
+  }
+});
+
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = isError ? 'error' : '';
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+</script>
+</body>
+</html>

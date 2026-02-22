@@ -52,6 +52,8 @@ app.use((req, res, next) => {
 app.use('/', require('./routes/index'));
 app.use('/auth', require('./routes/auth'));
 app.use('/profile', require('./routes/profile'));
+app.use('/tickets', require('./routes/tickets'));
+app.use('/api', require('./routes/api'));
 
 // Socket.IO — share session with express
 io.engine.use(sessionMiddleware);
@@ -69,8 +71,13 @@ chat.use((socket, next) => {
 
 const onlineUsers = new Map(); // keyed by socket.id
 const activeCalls = new Map(); // keyed by callId
+const activeBroadcast = { active: false, broadcasterId: null, broadcasterName: null, broadcasterAvatar: null, broadcasterSocketId: null, viewers: new Map() }; // viewers: viewerUserId -> socketId
 const ChatMessage = require('./models/ChatMessage');
+const Channel = require('./models/Channel');
 const HISTORY_LIMIT = 20;
+
+// Purge stale channel docs from prior process
+Channel.deleteMany({}).catch(() => {});
 
 function getSocketIdsForUser(targetUserId) {
   const ids = [];
@@ -186,6 +193,40 @@ chat.on('connection', async (socket) => {
       }
     }
     chat.emit('active-calls', list);
+    broadcastChannelsList();
+  }
+
+  // Helper: broadcast channels list (public channels + active private calls)
+  function broadcastChannelsList() {
+    const list = [];
+    for (const [callId, call] of activeCalls) {
+      if (call.status !== 'active') continue;
+      if (call.isChannel) {
+        list.push({
+          callId,
+          name: call.channelName,
+          creatorName: call.creatorName,
+          callType: call.callType,
+          participantCount: call.participants.size,
+          participants: [...call.participants.values()].map(p => ({
+            displayName: p.displayName, avatar: p.avatar
+          }))
+        });
+      } else {
+        // Surface private calls too
+        const parts = [...call.participants.values()];
+        list.push({
+          callId,
+          name: 'Active Call',
+          creatorName: parts[0]?.displayName || 'Unknown',
+          callType: call.callType,
+          participantCount: call.participants.size,
+          participants: parts.map(p => ({ displayName: p.displayName, avatar: p.avatar })),
+          isPrivate: true
+        });
+      }
+    }
+    chat.emit('channels-list', list);
   }
 
   // Helper: find which call a user is in
@@ -430,6 +471,227 @@ chat.on('connection', async (socket) => {
     }
   });
 
+  // === Channels (public joinable rooms) ===
+
+  socket.on('channel-create', async ({ name, callType }) => {
+    const creator = onlineUsers.get(socket.id);
+    if (!creator) return;
+    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 60) {
+      return socket.emit('channel-error', { message: 'Invalid channel name' });
+    }
+    if (findCallForUser(creator.userId)) {
+      return socket.emit('channel-error', { message: 'You are already in a call' });
+    }
+
+    const callId = 'ch-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const channelName = name.trim();
+    const participants = new Map();
+    participants.set(creator.userId, { socketId: socket.id, displayName: creator.displayName, avatar: creator.avatar });
+
+    activeCalls.set(callId, {
+      participants,
+      status: 'active',
+      callType: callType || 'video',
+      isChannel: true,
+      channelName,
+      creatorId: creator.userId,
+      creatorName: creator.displayName,
+      startedAt: Date.now()
+    });
+
+    try {
+      await Channel.create({ callId, name: channelName, creatorId: creator.userId, creatorName: creator.displayName, callType: callType || 'video' });
+    } catch (e) { /* non-critical */ }
+
+    socket.emit('channel-created', { callId, name: channelName, callType: callType || 'video' });
+    socket.emit('room-joined', { callId, callType: callType || 'video', peers: [] });
+    broadcastActiveCalls();
+  });
+
+  socket.on('channel-leave', ({ channelId }) => {
+    const call = activeCalls.get(channelId);
+    if (!call) return;
+    const u = onlineUsers.get(socket.id);
+    if (!u || !call.participants.has(u.userId)) return;
+
+    call.participants.delete(u.userId);
+
+    for (const [, p] of call.participants) {
+      chat.to(p.socketId).emit('room-peer-left', { callId: channelId, peerId: u.userId });
+    }
+
+    if (call.participants.size === 0) {
+      activeCalls.delete(channelId);
+      if (call.isChannel) Channel.findOneAndDelete({ callId: channelId }).catch(() => {});
+    } else if (call.participants.size === 1 && !call.isChannel) {
+      // Private call — end if only 1 left
+      for (const [, p] of call.participants) {
+        chat.to(p.socketId).emit('call-ended', { callId: channelId, reason: 'last-peer' });
+      }
+      activeCalls.delete(channelId);
+    }
+
+    broadcastActiveCalls();
+  });
+
+  socket.on('channel-message', async ({ channelId, text }) => {
+    if (!channelId || !text || typeof text !== 'string') return;
+    const call = activeCalls.get(channelId);
+    if (!call || !call.isChannel) return;
+    const sender = onlineUsers.get(socket.id);
+    if (!sender || !call.participants.has(sender.userId)) return;
+
+    const freshUser = await User.findById(sender.userId).lean();
+    const msg = {
+      channelId,
+      displayName: freshUser ? (freshUser.displayName || freshUser.email) : sender.displayName,
+      avatar: freshUser ? freshUser.avatar : sender.avatar,
+      text,
+      timestamp: new Date().toISOString()
+    };
+    // Relay to all participants in the channel
+    for (const [, p] of call.participants) {
+      chat.to(p.socketId).emit('channel-message', msg);
+    }
+  });
+
+  socket.on('channels-request', () => {
+    const list = [];
+    for (const [callId, call] of activeCalls) {
+      if (call.status !== 'active') continue;
+      if (call.isChannel) {
+        list.push({
+          callId,
+          name: call.channelName,
+          creatorName: call.creatorName,
+          callType: call.callType,
+          participantCount: call.participants.size,
+          participants: [...call.participants.values()].map(p => ({
+            displayName: p.displayName, avatar: p.avatar
+          }))
+        });
+      } else {
+        const parts = [...call.participants.values()];
+        list.push({
+          callId,
+          name: 'Active Call',
+          creatorName: parts[0]?.displayName || 'Unknown',
+          callType: call.callType,
+          participantCount: call.participants.size,
+          participants: parts.map(p => ({ displayName: p.displayName, avatar: p.avatar })),
+          isPrivate: true
+        });
+      }
+    }
+    socket.emit('channels-list', list);
+  });
+
+  // === Broadcast (one-to-many live streaming) ===
+
+  socket.on('broadcast-start', async () => {
+    const broadcaster = onlineUsers.get(socket.id);
+    if (!broadcaster) return;
+    // Check admin/bih permission
+    const freshUser = await User.findById(broadcaster.userId).lean();
+    if (!freshUser || (!freshUser.isAdmin && !freshUser.isBIH)) {
+      return socket.emit('broadcast-error', { message: 'Not authorized to broadcast' });
+    }
+    if (activeBroadcast.active) {
+      return socket.emit('broadcast-error', { message: 'A broadcast is already live' });
+    }
+    activeBroadcast.active = true;
+    activeBroadcast.broadcasterId = broadcaster.userId;
+    activeBroadcast.broadcasterName = freshUser.displayName || freshUser.email;
+    activeBroadcast.broadcasterAvatar = freshUser.avatar;
+    activeBroadcast.broadcasterSocketId = socket.id;
+    activeBroadcast.viewers.clear();
+    chat.emit('broadcast-live', {
+      broadcasterId: activeBroadcast.broadcasterId,
+      broadcasterName: activeBroadcast.broadcasterName,
+      broadcasterAvatar: activeBroadcast.broadcasterAvatar
+    });
+  });
+
+  socket.on('broadcast-stop', () => {
+    const broadcaster = onlineUsers.get(socket.id);
+    if (!broadcaster || activeBroadcast.broadcasterId !== broadcaster.userId) return;
+    // Notify all viewers
+    for (const [, viewerSid] of activeBroadcast.viewers) {
+      chat.to(viewerSid).emit('broadcast-ended');
+    }
+    activeBroadcast.active = false;
+    activeBroadcast.broadcasterId = null;
+    activeBroadcast.broadcasterName = null;
+    activeBroadcast.broadcasterAvatar = null;
+    activeBroadcast.broadcasterSocketId = null;
+    activeBroadcast.viewers.clear();
+    chat.emit('broadcast-offline');
+  });
+
+  // Viewer wants to watch — tell broadcaster to send an offer
+  socket.on('broadcast-watch', () => {
+    if (!activeBroadcast.active) return socket.emit('broadcast-error', { message: 'No active broadcast' });
+    const viewer = onlineUsers.get(socket.id);
+    if (!viewer) return;
+    if (viewer.userId === activeBroadcast.broadcasterId) return;
+    activeBroadcast.viewers.set(viewer.userId, socket.id);
+    // Tell broadcaster to create an offer for this viewer
+    chat.to(activeBroadcast.broadcasterSocketId).emit('broadcast-viewer-joined', {
+      viewerId: viewer.userId,
+      viewerSocketId: socket.id
+    });
+  });
+
+  socket.on('broadcast-leave', () => {
+    const viewer = onlineUsers.get(socket.id);
+    if (!viewer || !activeBroadcast.active) return;
+    activeBroadcast.viewers.delete(viewer.userId);
+    chat.to(activeBroadcast.broadcasterSocketId).emit('broadcast-viewer-left', {
+      viewerId: viewer.userId
+    });
+  });
+
+  // WebRTC signaling for broadcast (separate from call signaling)
+  socket.on('broadcast-offer', ({ targetSocketId, sdp }) => {
+    chat.to(targetSocketId).emit('broadcast-offer', { sdp });
+  });
+
+  socket.on('broadcast-answer', ({ sdp }) => {
+    if (!activeBroadcast.active) return;
+    chat.to(activeBroadcast.broadcasterSocketId).emit('broadcast-answer', {
+      fromViewerId: onlineUsers.get(socket.id)?.userId,
+      sdp
+    });
+  });
+
+  socket.on('broadcast-ice', ({ targetSocketId, candidate }) => {
+    chat.to(targetSocketId).emit('broadcast-ice', { fromId: socket.id, candidate });
+  });
+
+  // Send current broadcast status to newly connected user
+  if (activeBroadcast.active) {
+    socket.emit('broadcast-live', {
+      broadcasterId: activeBroadcast.broadcasterId,
+      broadcasterName: activeBroadcast.broadcasterName,
+      broadcasterAvatar: activeBroadcast.broadcasterAvatar
+    });
+  }
+
+  // Send current channels list to newly connected user
+  socket.emit('channels-list', (() => {
+    const list = [];
+    for (const [callId, call] of activeCalls) {
+      if (call.status !== 'active') continue;
+      if (call.isChannel) {
+        list.push({ callId, name: call.channelName, creatorName: call.creatorName, callType: call.callType, participantCount: call.participants.size, participants: [...call.participants.values()].map(p => ({ displayName: p.displayName, avatar: p.avatar })) });
+      } else {
+        const parts = [...call.participants.values()];
+        list.push({ callId, name: 'Active Call', creatorName: parts[0]?.displayName || 'Unknown', callType: call.callType, participantCount: call.participants.size, participants: parts.map(p => ({ displayName: p.displayName, avatar: p.avatar })), isPrivate: true });
+      }
+    }
+    return list;
+  })());
+
   // === Disconnect ===
 
   socket.on('disconnect', async () => {
@@ -455,7 +717,10 @@ chat.on('connection', async (socket) => {
             for (const [, remainingP] of call.participants) {
               chat.to(remainingP.socketId).emit('room-peer-left', { callId, peerId: user.userId });
             }
-            if (call.participants.size <= 1) {
+            if (call.participants.size === 0) {
+              if (call.isChannel) Channel.findOneAndDelete({ callId }).catch(() => {});
+              activeCalls.delete(callId);
+            } else if (call.participants.size <= 1 && !call.isChannel) {
               for (const [, lastP] of call.participants) {
                 chat.to(lastP.socketId).emit('call-ended', { callId, reason: 'disconnect' });
               }
@@ -466,6 +731,28 @@ chat.on('connection', async (socket) => {
       }
       broadcastActiveCalls();
     }
+
+    // Clean up broadcast if broadcaster disconnects
+    if (user && activeBroadcast.active && activeBroadcast.broadcasterId === user.userId) {
+      for (const [, viewerSid] of activeBroadcast.viewers) {
+        chat.to(viewerSid).emit('broadcast-ended');
+      }
+      activeBroadcast.active = false;
+      activeBroadcast.broadcasterId = null;
+      activeBroadcast.broadcasterName = null;
+      activeBroadcast.broadcasterAvatar = null;
+      activeBroadcast.broadcasterSocketId = null;
+      activeBroadcast.viewers.clear();
+      chat.emit('broadcast-offline');
+    }
+    // Remove viewer if they disconnect
+    if (user && activeBroadcast.active && activeBroadcast.viewers.has(user.userId)) {
+      activeBroadcast.viewers.delete(user.userId);
+      if (activeBroadcast.broadcasterSocketId) {
+        chat.to(activeBroadcast.broadcasterSocketId).emit('broadcast-viewer-left', { viewerId: user.userId });
+      }
+    }
+
     onlineUsers.delete(socket.id);
     chat.emit('online-users', await getUniqueOnlineUsers());
   });

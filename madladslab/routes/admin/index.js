@@ -483,4 +483,99 @@ router.get('/monitor/api/daemon/status', isAdmin, async (req, res) => {
     }
 });
 
+// ==================== LIVE CHATS ADMIN PANEL ====================
+
+// Live Chats - Main admin view
+router.get('/livechats', isAdmin, async (req, res) => {
+    try {
+        const user = req.user;
+        res.render("admin/livechats", {
+            user: user,
+            currentPage: 'livechats'
+        });
+    } catch (error) {
+        console.error('Error rendering livechats page:', error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// Live Chats API - Get all sessions
+router.get('/livechats/api/sessions', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const db = getDb();
+        
+        const sessions = await db.collection('livechats')
+            .find({})
+            .sort({ updatedAt: -1 })
+            .toArray();
+        
+        res.json({ success: true, sessions });
+    } catch (error) {
+        console.error('Error fetching sessions:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Live Chats API - Get single session details
+router.get('/livechats/api/session/:sessionId', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const db = getDb();
+        
+        const session = await db.collection('livechats').findOne({ 
+            sessionId: req.params.sessionId 
+        });
+        
+        if (!session) {
+            return res.status(404).json({ success: false, error: 'Session not found' });
+        }
+        
+        res.json({ success: true, session });
+    } catch (error) {
+        console.error('Error fetching session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Live Chats API - Post reply to a session
+router.post('/livechats/:sessionId/reply', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const db = getDb();
+        const { sessionId } = req.params;
+        const { message } = req.body;
+        
+        if (!message || !message.trim()) {
+            return res.status(400).json({ success: false, error: 'Message is required' });
+        }
+        
+        const session = await db.collection('livechats').findOne({ sessionId });
+        
+        if (!session) {
+            return res.status(404).json({ success: false, error: 'Session not found' });
+        }
+        
+        // Add admin message to the session
+        const adminMessage = {
+            role: 'admin',
+            content: message.trim(),
+            timestamp: new Date()
+        };
+        
+        await db.collection('livechats').updateOne(
+            { sessionId },
+            { 
+                $push: { messages: adminMessage },
+                $set: { updatedAt: new Date() }
+            }
+        );
+        
+        res.json({ success: true, message: 'Reply sent successfully' });
+    } catch (error) {
+        console.error('Error sending reply:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 export default router

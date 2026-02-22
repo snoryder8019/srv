@@ -690,9 +690,24 @@
 
   // ==================== PUBLIC API ====================
 
+  // Prepare call state for a channel creator (media + overlay, no emit)
+  function prepareCall(callId, type) {
+    if (currentCallId) return Promise.reject(new Error('Already in a call'));
+    currentCallId = callId;
+    callType = type || 'video';
+    return getLocalMedia(callType).then(function () {
+      showCallOverlay('active');
+      startCallTimer();
+    }).catch(function (err) {
+      currentCallId = null;
+      throw err;
+    });
+  }
+
   window.__bihWebRTC = {
     call: initCall,
     joinCall: joinCall,
+    prepareCall: prepareCall,
     hangup: hangup,
     toggleMute: toggleMute,
     toggleVideo: toggleVideo,

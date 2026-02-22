@@ -54,4 +54,22 @@ router.post('/update-avatar', ensureAuth, upload.single('avatar'), async (req, r
   }
 });
 
+// Update Epic / Twitch IDs
+router.post('/update-ids', ensureAuth, async (req, res) => {
+  try {
+    const { epicId, twitchId } = req.body;
+    const update = {
+      epicId: epicId ? epicId.trim() : '',
+      twitchId: twitchId ? twitchId.trim() : ''
+    };
+    await User.findByIdAndUpdate(req.user._id, update);
+    req.user.epicId = update.epicId;
+    req.user.twitchId = update.twitchId;
+    res.render('profile', { success: 'Gaming IDs updated', error: null });
+  } catch (err) {
+    console.error(err);
+    res.render('profile', { error: 'Failed to update gaming IDs', success: null });
+  }
+});
+
 module.exports = router;
