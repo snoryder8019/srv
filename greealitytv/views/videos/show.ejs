@@ -1,0 +1,41 @@
+<%- include('../partials/head', { title: video.title }) %>
+<%- include('../partials/nav') %>
+<main class="video-main">
+  <%- include('../partials/flash') %>
+  <div class="video-player-wrap">
+    <video class="video-player" controls preload="metadata">
+      <source src="<%= video.videoUrl %>" type="video/mp4">
+      Your browser does not support video playback.
+    </video>
+  </div>
+
+  <div class="video-detail-container">
+    <div class="video-detail-content">
+      <h1 class="video-title"><%= video.title %></h1>
+      <div class="article-byline">
+        <% if (video.author && video.author.avatar) { %><img src="<%= video.author.avatar %>" class="meta-avatar meta-avatar-lg"><% } %>
+        <div>
+          <a href="/profile/<%= video.author ? video.author._id : '' %>" class="author-link"><%= video.author ? video.author.displayName : '' %></a>
+          <span class="article-date"><%= new Date(video.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) %> · <%= video.views %> views</span>
+        </div>
+      </div>
+      <% if (video.tags && video.tags.length) { %>
+        <div class="tag-row"><% video.tags.forEach(t => { %><span class="tag"><%= t %></span><% }) %></div>
+      <% } %>
+      <% if (video.description) { %>
+        <p class="video-description"><%= video.description %></p>
+      <% } %>
+
+      <% if (user && (user.isAdmin || (video.author && video.author._id.toString() === user._id.toString()))) { %>
+        <div class="article-actions">
+          <form action="/videos/<%= video._id %>?_method=DELETE" method="POST" onsubmit="return confirm('Delete this video?')">
+            <button class="btn btn-danger btn-sm">Delete Video</button>
+          </form>
+        </div>
+      <% } %>
+
+      <%- include('../partials/comment-list', { comments, contentType: 'video', contentId: video._id }) %>
+    </div>
+  </div>
+</main>
+<%- include('../partials/footer') %>

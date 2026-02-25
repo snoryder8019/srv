@@ -1,0 +1,75 @@
+<%- include('partials/head', { title: 'Feed' }) %>
+<%- include('partials/nav') %>
+
+<main class="feed-main">
+  <%- include('partials/flash') %>
+
+  <div class="feed-header">
+    <h1>The Feed</h1>
+    <p>Everything happening in Greeley — articles, videos, community voices.</p>
+  </div>
+
+  <div class="feed-layout">
+    <div class="feed-posts">
+      <% if (posts.length === 0) { %>
+        <div class="empty-state">No articles yet. <a href="/posts/new">Write the first one.</a></div>
+      <% } %>
+      <% posts.forEach(post => { %>
+        <article class="feed-card">
+          <% if (post.coverImage) { %>
+            <a href="/posts/<%= post._id %>" class="feed-card-img" style="background-image:url('<%= post.coverImage %>')"></a>
+          <% } %>
+          <div class="feed-card-body">
+            <% if (post.tags && post.tags.length) { %>
+              <div class="tag-row"><% post.tags.slice(0,3).forEach(t => { %><span class="tag"><%= t %></span><% }) %></div>
+            <% } %>
+            <h2 class="feed-card-title"><a href="/posts/<%= post._id %>"><%= post.title %></a></h2>
+            <p class="feed-card-excerpt"><%= post.excerpt || '' %></p>
+            <div class="card-meta">
+              <% if (post.author && post.author.avatar) { %><img src="<%= post.author.avatar %>" class="meta-avatar"><% } %>
+              <span><%= post.author ? post.author.displayName : '' %></span>
+              <span class="dot">·</span>
+              <span><%= new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %></span>
+              <span class="dot">·</span>
+              <span><%= post.views %> views</span>
+            </div>
+          </div>
+        </article>
+      <% }) %>
+
+      <!-- Pagination -->
+      <% if (totalPages > 1) { %>
+        <div class="pagination">
+          <% if (page > 1) { %><a href="/feed?page=<%= page - 1 %>" class="btn btn-outline btn-sm">← Prev</a><% } %>
+          <span>Page <%= page %> of <%= totalPages %></span>
+          <% if (page < totalPages) { %><a href="/feed?page=<%= page + 1 %>" class="btn btn-outline btn-sm">Next →</a><% } %>
+        </div>
+      <% } %>
+    </div>
+
+    <aside class="feed-sidebar">
+      <div class="sidebar-block">
+        <h3>Recent Videos</h3>
+        <% videos.slice(0,4).forEach(v => { %>
+          <a href="/videos/<%= v._id %>" class="sidebar-video">
+            <% if (v.thumbnail) { %>
+              <img src="<%= v.thumbnail %>" alt="<%= v.title %>">
+            <% } else { %>
+              <div class="sidebar-video-placeholder">▶</div>
+            <% } %>
+            <span><%= v.title %></span>
+          </a>
+        <% }) %>
+        <a href="/videos" class="see-all-link">All videos →</a>
+      </div>
+
+      <div class="sidebar-block">
+        <a href="/posts/new" class="btn btn-primary btn-block">+ Write Article</a>
+        <a href="/videos/new" class="btn btn-outline btn-block" style="margin-top:.5rem">+ Upload Video</a>
+        <a href="/petitions/new" class="btn btn-outline btn-block" style="margin-top:.5rem">+ Start Petition</a>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<%- include('partials/footer') %>

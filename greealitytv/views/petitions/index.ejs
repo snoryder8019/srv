@@ -1,0 +1,38 @@
+<%- include('../partials/head', { title: 'Community Votes' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main">
+  <%- include('../partials/flash') %>
+  <div class="page-header">
+    <h1>Community Votes</h1>
+    <% if (user) { %><a href="/votes/new" class="btn btn-primary">+ Start a Vote</a><% } %>
+  </div>
+  <div class="petition-list petition-list-full">
+    <% if (petitions.length === 0) { %>
+      <div class="empty-state">No active votes yet. <% if (user) { %><a href="/votes/new">Start one.</a><% } %></div>
+    <% } %>
+    <% petitions.forEach(p => { %>
+      <div class="petition-card">
+        <div class="petition-info">
+          <h3><a href="/votes/<%= p._id %>"><%= p.title %></a></h3>
+          <p><%= p.description.substring(0, 180) %>...</p>
+          <div class="card-meta">
+            <% if (p.author && p.author.avatar) { %><img src="<%= p.author.avatar %>" class="meta-avatar"><% } %>
+            <span>By <%= p.author ? p.author.displayName : '' %></span>
+            <span class="dot">·</span>
+            <span><%= new Date(p.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %></span>
+          </div>
+        </div>
+        <div class="petition-stats">
+          <div class="petition-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" style="width:<%= Math.min(100, Math.round(p.signatories.length / p.goal * 100)) %>%"></div>
+            </div>
+            <span><strong><%= p.signatories.length %></strong> / <%= p.goal %> votes (<%= Math.round(p.signatories.length / p.goal * 100) %>%)</span>
+          </div>
+          <a href="/votes/<%= p._id %>" class="btn btn-red btn-sm">Cast Your Vote</a>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</main>
+<%- include('../partials/footer') %>

@@ -1,0 +1,90 @@
+<%- include('../partials/head', { title: 'Admin Dashboard' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main admin-main">
+  <%- include('../partials/flash') %>
+  <div class="admin-header">
+    <h1>Admin Dashboard</h1>
+    <a href="/admin/users" class="btn btn-outline">Manage Users</a>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span class="stat-num"><%= stats.totalUsers %></span>
+      <span class="stat-label">Total Users</span>
+      <span class="stat-sub">+<%= stats.newUsers %> this week</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= stats.publishedPosts %></span>
+      <span class="stat-label">Published Posts</span>
+      <span class="stat-sub"><%= stats.totalPosts %> total</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= stats.totalVideos %></span>
+      <span class="stat-label">Videos</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= stats.activePetitions %></span>
+      <span class="stat-label">Active Petitions</span>
+      <span class="stat-sub"><%= stats.totalPetitions %> total</span>
+    </div>
+  </div>
+
+  <div class="admin-grid">
+    <section class="admin-section">
+      <h2>Recent Articles</h2>
+      <table class="admin-table">
+        <thead><tr><th>Title</th><th>Author</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          <% recentPosts.forEach(p => { %>
+            <tr>
+              <td><a href="/posts/<%= p._id %>"><%= p.title.substring(0, 40) %><%= p.title.length > 40 ? '...' : '' %></a></td>
+              <td><%= p.author ? p.author.displayName : '?' %></td>
+              <td><%= new Date(p.createdAt).toLocaleDateString() %></td>
+              <td><span class="status-badge <%= p.published ? 'status-green' : 'status-gray' %>"><%= p.published ? 'Published' : 'Draft' %></span></td>
+              <td class="action-cell">
+                <button class="btn btn-outline btn-xs toggle-publish" data-id="<%= p._id %>" data-published="<%= p.published %>">
+                  <%= p.published ? 'Unpublish' : 'Publish' %>
+                </button>
+                <form action="/admin/posts/<%= p._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete?')">
+                  <button class="btn btn-danger btn-xs">Del</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="admin-section">
+      <h2>Recent Signups</h2>
+      <div class="user-list">
+        <% recentUsers.forEach(u => { %>
+          <div class="user-row">
+            <% if (u.avatar) { %><img src="<%= u.avatar %>" class="meta-avatar"><% } %>
+            <div>
+              <span class="user-name"><%= u.displayName %></span>
+              <span class="user-email"><%= u.email %></span>
+            </div>
+            <span class="list-meta"><%= new Date(u.createdAt).toLocaleDateString() %></span>
+            <span class="status-badge <%= u.isAdmin ? 'status-red' : 'status-gray' %>"><%= u.isAdmin ? 'Admin' : 'User' %></span>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+document.querySelectorAll('.toggle-publish').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const res = await fetch(`/admin/posts/${btn.dataset.id}/publish?_method=PUT`, { method: 'POST' });
+    const data = await res.json();
+    btn.textContent = data.published ? 'Unpublish' : 'Publish';
+    btn.dataset.published = data.published;
+    const badge = btn.closest('tr').querySelector('.status-badge');
+    badge.textContent = data.published ? 'Published' : 'Draft';
+    badge.className = `status-badge ${data.published ? 'status-green' : 'status-gray'}`;
+  });
+});
+</script>
+<%- include('../partials/footer') %>

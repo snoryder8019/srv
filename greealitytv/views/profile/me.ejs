@@ -1,0 +1,55 @@
+<%- include('../partials/head', { title: 'My Profile' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main">
+  <%- include('../partials/flash') %>
+  <div class="profile-header">
+    <% if (profileUser.avatar) { %><img src="<%= profileUser.avatar %>" class="profile-avatar"><% } %>
+    <div class="profile-info">
+      <h1><%= profileUser.displayName %></h1>
+      <span class="profile-email"><%= profileUser.email %></span>
+      <% if (profileUser.isAdmin) { %><span class="admin-badge">Admin</span><% } %>
+    </div>
+  </div>
+
+  <div class="profile-bio-form">
+    <form action="/profile/bio" method="POST">
+      <label>Bio</label>
+      <textarea name="bio" rows="3" placeholder="Tell Greeley who you are..."><%= profileUser.bio || '' %></textarea>
+      <button type="submit" class="btn btn-outline btn-sm">Save Bio</button>
+    </form>
+  </div>
+
+  <div class="profile-content-tabs">
+    <h3>My Articles (<%= posts.length %>)</h3>
+    <% if (posts.length === 0) { %>
+      <div class="empty-state">No articles yet. <a href="/posts/new">Write one.</a></div>
+    <% } %>
+    <% posts.forEach(post => { %>
+      <div class="list-item">
+        <a href="/posts/<%= post._id %>"><%= post.title %></a>
+        <span class="list-meta"><%= new Date(post.createdAt).toLocaleDateString() %> · <%= post.views %> views · <%= post.published ? 'Published' : 'Draft' %></span>
+        <div class="list-actions">
+          <a href="/posts/<%= post._id %>/edit" class="btn btn-outline btn-xs">Edit</a>
+          <form action="/posts/<%= post._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete?')">
+            <button class="btn btn-danger btn-xs">Delete</button>
+          </form>
+        </div>
+      </div>
+    <% }) %>
+
+    <h3 style="margin-top:2rem">My Videos (<%= videos.length %>)</h3>
+    <% if (videos.length === 0) { %>
+      <div class="empty-state">No videos yet. <a href="/videos/new">Upload one.</a></div>
+    <% } %>
+    <% videos.forEach(v => { %>
+      <div class="list-item">
+        <a href="/videos/<%= v._id %>"><%= v.title %></a>
+        <span class="list-meta"><%= new Date(v.createdAt).toLocaleDateString() %> · <%= v.views %> views</span>
+        <form action="/videos/<%= v._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete?')">
+          <button class="btn btn-danger btn-xs">Delete</button>
+        </form>
+      </div>
+    <% }) %>
+  </div>
+</main>
+<%- include('../partials/footer') %>

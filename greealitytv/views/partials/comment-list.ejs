@@ -1,0 +1,42 @@
+<section class="comments-section" id="comments">
+  <h3 class="section-title"><%= comments.length %> Comment<%= comments.length !== 1 ? 's' : '' %></h3>
+
+  <% if (user) { %>
+    <form class="comment-form" action="/<%= contentType %>s/<%= contentId %>/comments" method="POST">
+      <textarea name="body" placeholder="Share your thoughts..." required rows="3"></textarea>
+      <button type="submit" class="btn btn-primary">Post Comment</button>
+    </form>
+  <% } else { %>
+    <div class="comment-gate">
+      <p>Join the conversation — <a href="/auth/google">Sign in with Google</a> to comment.</p>
+    </div>
+  <% } %>
+
+  <div class="comment-list">
+    <% comments.forEach(comment => { %>
+      <div class="comment" id="comment-<%= comment._id %>">
+        <div class="comment-meta">
+          <% if (comment.author && comment.author.avatar) { %>
+            <img src="<%= comment.author.avatar %>" class="comment-avatar" alt="">
+          <% } %>
+          <span class="comment-author"><%= comment.author ? comment.author.displayName : 'Unknown' %></span>
+          <span class="comment-date"><%= new Date(comment.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %></span>
+        </div>
+        <p class="comment-body"><%= comment.body %></p>
+        <div class="comment-votes">
+          <% if (user) { %>
+            <button class="vote-btn up-btn" data-id="<%= comment._id %>" data-content-type="<%= contentType %>" data-content-id="<%= contentId %>">
+              ▲ <span class="up-count"><%= comment.upvotes.length %></span>
+            </button>
+            <button class="vote-btn down-btn" data-id="<%= comment._id %>" data-content-type="<%= contentType %>" data-content-id="<%= contentId %>">
+              ▼ <span class="down-count"><%= comment.downvotes.length %></span>
+            </button>
+          <% } else { %>
+            <span class="vote-static">▲ <%= comment.upvotes.length %></span>
+            <span class="vote-static">▼ <%= comment.downvotes.length %></span>
+          <% } %>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</section>

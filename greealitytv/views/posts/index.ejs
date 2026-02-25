@@ -1,0 +1,36 @@
+<%- include('../partials/head', { title: 'Articles' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main">
+  <%- include('../partials/flash') %>
+  <div class="page-header">
+    <h1>Articles</h1>
+    <% if (user) { %><a href="/posts/new" class="btn btn-primary">+ Write Article</a><% } %>
+  </div>
+  <% if (tag) { %><div class="tag-filter">Filtering by: <span class="tag"><%= tag %></span> <a href="/posts">Clear</a></div><% } %>
+  <div class="card-grid">
+    <% if (posts.length === 0) { %>
+      <div class="empty-state">No articles yet. Be the first voice.</div>
+    <% } %>
+    <% posts.forEach(post => { %>
+      <article class="card">
+        <% if (post.coverImage) { %>
+          <div class="card-img" style="background-image:url('<%= post.coverImage %>')"></div>
+        <% } else { %><div class="card-img card-img-placeholder"></div><% } %>
+        <div class="card-body">
+          <% if (post.tags && post.tags.length) { %>
+            <div class="tag-row"><% post.tags.slice(0,2).forEach(t => { %><a href="/posts?tag=<%= encodeURIComponent(t) %>" class="tag"><%= t %></a><% }) %></div>
+          <% } %>
+          <h3 class="card-title"><a href="/posts/<%= post._id %>"><%= post.title %></a></h3>
+          <p class="card-excerpt"><%= post.excerpt || '' %></p>
+          <div class="card-meta">
+            <% if (post.author && post.author.avatar) { %><img src="<%= post.author.avatar %>" class="meta-avatar"><% } %>
+            <span><%= post.author ? post.author.displayName : '' %></span>
+            <span class="dot">·</span>
+            <span><%= new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %></span>
+          </div>
+        </div>
+      </article>
+    <% }) %>
+  </div>
+</main>
+<%- include('../partials/footer') %>

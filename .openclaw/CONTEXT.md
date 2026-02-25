@@ -39,6 +39,7 @@ Last verified: 2026-02-21
 | nocometalworkz | /srv/nocometalworkz | 3002 | nocometalworkz.com | `nocometalworkz` | Active |
 | mcp-server | /srv/mcp | — | — | `mcp-server` | Active |
 | mcp-http | /srv/mcp | 3600 | — | `mcp-http` | Active |
+| greealitytv | /srv/greealitytv | 3400 | grealitytv.com | `greealitytv` | Active dev |
 
 ---
 

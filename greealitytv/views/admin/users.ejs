@@ -1,0 +1,46 @@
+<%- include('../partials/head', { title: 'Manage Users' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main admin-main">
+  <%- include('../partials/flash') %>
+  <div class="admin-header">
+    <h1>Users (<%= users.length %>)</h1>
+    <a href="/admin" class="btn btn-outline">← Dashboard</a>
+  </div>
+  <table class="admin-table">
+    <thead><tr><th>User</th><th>Email</th><th>Joined</th><th>Role</th><th>Actions</th></tr></thead>
+    <tbody>
+      <% users.forEach(u => { %>
+        <tr id="user-<%= u._id %>">
+          <td>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <% if (u.avatar) { %><img src="<%= u.avatar %>" class="meta-avatar"><% } %>
+              <%= u.displayName %>
+            </div>
+          </td>
+          <td><%= u.email %></td>
+          <td><%= new Date(u.createdAt).toLocaleDateString() %></td>
+          <td><span class="status-badge <%= u.isAdmin ? 'status-red' : 'status-gray' %>" id="role-<%= u._id %>"><%= u.isAdmin ? 'Admin' : 'User' %></span></td>
+          <td>
+            <button class="btn btn-outline btn-xs toggle-admin" data-id="<%= u._id %>" data-admin="<%= u.isAdmin %>">
+              <%= u.isAdmin ? 'Remove Admin' : 'Make Admin' %>
+            </button>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</main>
+
+<script>
+document.querySelectorAll('.toggle-admin').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const res = await fetch(`/admin/users/${btn.dataset.id}/admin?_method=PUT`, { method: 'POST' });
+    const data = await res.json();
+    btn.textContent = data.isAdmin ? 'Remove Admin' : 'Make Admin';
+    const badge = document.getElementById(`role-${btn.dataset.id}`);
+    badge.textContent = data.isAdmin ? 'Admin' : 'User';
+    badge.className = `status-badge ${data.isAdmin ? 'status-red' : 'status-gray'}`;
+  });
+});
+</script>
+<%- include('../partials/footer') %>

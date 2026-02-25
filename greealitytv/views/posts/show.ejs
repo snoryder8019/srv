@@ -1,0 +1,41 @@
+<%- include('../partials/head', { title: post.title }) %>
+<%- include('../partials/nav') %>
+<main class="article-main">
+  <%- include('../partials/flash') %>
+
+  <% if (post.coverImage) { %>
+    <div class="article-hero" style="background-image:url('<%= post.coverImage %>')"></div>
+  <% } %>
+
+  <div class="article-container">
+    <div class="article-content">
+      <div class="article-meta-top">
+        <% if (post.tags && post.tags.length) { %>
+          <div class="tag-row"><% post.tags.forEach(t => { %><a href="/posts?tag=<%= encodeURIComponent(t) %>" class="tag"><%= t %></a><% }) %></div>
+        <% } %>
+        <h1 class="article-title"><%= post.title %></h1>
+        <div class="article-byline">
+          <% if (post.author && post.author.avatar) { %><img src="<%= post.author.avatar %>" class="meta-avatar meta-avatar-lg"><% } %>
+          <div>
+            <a href="/profile/<%= post.author ? post.author._id : '' %>" class="author-link"><%= post.author ? post.author.displayName : '' %></a>
+            <span class="article-date"><%= new Date(post.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) %> · <%= post.views %> views</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="article-body"><%- post.body %></div>
+
+      <% if (user && (user.isAdmin || (post.author && post.author._id.toString() === user._id.toString()))) { %>
+        <div class="article-actions">
+          <a href="/posts/<%= post._id %>/edit" class="btn btn-outline btn-sm">Edit</a>
+          <form action="/posts/<%= post._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete this post?')">
+            <button class="btn btn-danger btn-sm">Delete</button>
+          </form>
+        </div>
+      <% } %>
+
+      <%- include('../partials/comment-list', { comments, contentType: 'post', contentId: post._id }) %>
+    </div>
+  </div>
+</main>
+<%- include('../partials/footer') %>

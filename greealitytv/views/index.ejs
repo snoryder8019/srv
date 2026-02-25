@@ -1,0 +1,119 @@
+<%- include('partials/head', { title: 'Home' }) %>
+<%- include('partials/nav') %>
+
+<main>
+  <%- include('partials/flash') %>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-eyebrow">Greeley, Colorado</div>
+      <h1 class="hero-headline">Your City.<br>Your Neighbors.<br><span class="hero-accent">Your Hub.</span></h1>
+      <p class="hero-sub">From downtown to the neighborhoods — local news, community stories, and votes on what matters in Greeley. No spin, just local.</p>
+      <div class="hero-cta">
+        <a href="/feed" class="btn btn-primary btn-lg">Read the Feed</a>
+        <a href="/votes" class="btn btn-outline btn-lg">Community Votes</a>
+      </div>
+    </div>
+    <div class="hero-badge">
+      <div class="badge-ring">
+        <span>COMMUNITY</span>
+        <span class="badge-city">GREELEY CO</span>
+        <span>SINCE 2025</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- LATEST ARTICLES -->
+  <% if (posts.length) { %>
+  <section class="home-section">
+    <div class="section-header">
+      <h2>Latest Articles</h2>
+      <a href="/posts" class="see-all">See all →</a>
+    </div>
+    <div class="card-grid">
+      <% posts.forEach(post => { %>
+        <article class="card">
+          <% if (post.coverImage) { %>
+            <div class="card-img" style="background-image:url('<%= post.coverImage %>')"></div>
+          <% } else { %>
+            <div class="card-img card-img-placeholder"></div>
+          <% } %>
+          <div class="card-body">
+            <% if (post.tags && post.tags.length) { %>
+              <span class="tag"><%= post.tags[0] %></span>
+            <% } %>
+            <h3 class="card-title"><a href="/posts/<%= post._id %>"><%= post.title %></a></h3>
+            <p class="card-excerpt"><%= post.excerpt || '' %></p>
+            <div class="card-meta">
+              <% if (post.author && post.author.avatar) { %><img src="<%= post.author.avatar %>" class="meta-avatar"><% } %>
+              <span><%= post.author ? post.author.displayName : '' %></span>
+              <span class="dot">·</span>
+              <span><%= new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) %></span>
+            </div>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <!-- LATEST VIDEOS -->
+  <% if (videos.length) { %>
+  <section class="home-section home-section-dark">
+    <div class="section-header">
+      <h2>Video Stories</h2>
+      <a href="/videos" class="see-all">See all →</a>
+    </div>
+    <div class="video-grid">
+      <% videos.forEach(video => { %>
+        <div class="video-card">
+          <a href="/videos/<%= video._id %>" class="video-thumb">
+            <% if (video.thumbnail) { %>
+              <img src="<%= video.thumbnail %>" alt="<%= video.title %>">
+            <% } else { %>
+              <div class="video-thumb-placeholder">▶</div>
+            <% } %>
+            <div class="play-overlay">▶</div>
+          </a>
+          <div class="video-info">
+            <h4><a href="/videos/<%= video._id %>"><%= video.title %></a></h4>
+            <span class="video-author"><%= video.author ? video.author.displayName : '' %></span>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <!-- COMMUNITY VOTES -->
+  <% if (petitions.length) { %>
+  <section class="home-section">
+    <div class="section-header">
+      <h2>Community Votes</h2>
+      <a href="/votes" class="see-all">See all →</a>
+    </div>
+    <div class="petition-list">
+      <% petitions.forEach(p => { %>
+        <div class="petition-card">
+          <div class="petition-info">
+            <h4><a href="/votes/<%= p._id %>"><%= p.title %></a></h4>
+            <p><%= p.description.substring(0, 120) %>...</p>
+          </div>
+          <div class="petition-stats">
+            <div class="petition-progress">
+              <div class="progress-bar">
+                <div class="progress-fill" style="width:<%= Math.min(100, Math.round(p.signatories.length / p.goal * 100)) %>%"></div>
+              </div>
+              <span><strong><%= p.signatories.length %></strong> / <%= p.goal %> votes</span>
+            </div>
+            <a href="/votes/<%= p._id %>" class="btn btn-red btn-sm">Cast Your Vote</a>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+</main>
+
+<%- include('partials/footer') %>

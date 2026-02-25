@@ -1,0 +1,53 @@
+<%- include('../partials/head', { title: petition.title }) %>
+<%- include('../partials/nav') %>
+<main class="page-main">
+  <%- include('../partials/flash') %>
+  <div class="petition-detail">
+    <div class="petition-detail-content">
+      <h1><%= petition.title %></h1>
+      <div class="article-byline">
+        <% if (petition.author && petition.author.avatar) { %><img src="<%= petition.author.avatar %>" class="meta-avatar meta-avatar-lg"><% } %>
+        <div>
+          <a href="/profile/<%= petition.author ? petition.author._id : '' %>" class="author-link"><%= petition.author ? petition.author.displayName : '' %></a>
+          <span class="article-date">Started <%= new Date(petition.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) %></span>
+        </div>
+      </div>
+      <p class="petition-description"><%= petition.description %></p>
+    </div>
+
+    <div class="petition-sidebar">
+      <div class="petition-sign-box">
+        <div class="petition-count"><span class="count-big"><%= petition.signatories.length %></span> votes</div>
+        <div class="petition-progress" style="margin: 1rem 0">
+          <div class="progress-bar progress-bar-lg">
+            <div class="progress-fill" style="width:<%= Math.min(100, Math.round(petition.signatories.length / petition.goal * 100)) %>%"></div>
+          </div>
+          <span>Goal: <%= petition.goal %> votes (<%= Math.round(petition.signatories.length / petition.goal * 100) %>%)</span>
+        </div>
+
+        <% if (!user) { %>
+          <a href="/auth/google" class="btn btn-primary btn-block">Sign In to Vote</a>
+        <% } else if (signed) { %>
+          <div class="signed-badge">✓ You voted on this</div>
+        <% } else { %>
+          <form action="/votes/<%= petition._id %>/sign" method="POST">
+            <button type="submit" class="btn btn-red btn-block btn-lg">Cast Your Vote</button>
+          </form>
+        <% } %>
+      </div>
+
+      <% if (petition.signatories.length > 0) { %>
+        <div class="signatories-list">
+          <h4>Recent Voters</h4>
+          <% petition.signatories.slice(-8).reverse().forEach(s => { %>
+            <div class="signatory">
+              <% if (s.avatar) { %><img src="<%= s.avatar %>" class="meta-avatar"><% } %>
+              <span><%= s.displayName %></span>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</main>
+<%- include('../partials/footer') %>
