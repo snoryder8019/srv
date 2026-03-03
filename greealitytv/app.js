@@ -12,6 +12,7 @@ require('./config/passport')(passport);
 
 const app = express();
 
+app.set('trust proxy', 1);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
@@ -45,7 +46,10 @@ app.use('/auth', require('./routes/auth'));
 app.use('/posts', require('./routes/posts'));
 app.use('/videos', require('./routes/videos'));
 app.use('/votes', require('./routes/petitions'));
+app.use('/local', require('./routes/local'));
+app.use('/gigs', require('./routes/gigs'));
 app.use('/profile', require('./routes/profile'));
+app.use('/shares', require('./routes/shares'));
 app.use('/admin', require('./routes/admin'));
 
 const PORT = process.env.PORT || 3400;

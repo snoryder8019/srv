@@ -19,9 +19,11 @@ import scrapeman from "./scrapeman/index.js"
 import bucketUpload from "./bucketUpload/index.js"
 import stevenClawbert from "./stevenClawbert/index.js"
 import srvBrowser from "./stevenClawbert/filebrowser.js"
+import stevenLive from "./stevenClawbert/live.js"
 import finances from "./finances/index.js"
 import contact from "./contact.js"
 import livechat from "./livechat.js"
+import hue from "./hue/index.js"
 /* GET home page. */
 
 router.use('/admin', admin)
@@ -41,10 +43,12 @@ router.use('/payments', payments)
 router.use('/scrapeman', scrapeman)
 router.use('/bucketUpload', bucketUpload)
 router.use('/stevenClawbert/browser', srvBrowser)
+router.use('/stevenClawbert/live', stevenLive)
 router.use('/stevenClawbert', stevenClawbert)
 router.use('/finances', finances)
 router.use('/contact', contact)
 router.use('/livechat', livechat)
+router.use('/hue', hue)
 router.use('/', plugins)
 
 router.get('/', function(req, res, next) {

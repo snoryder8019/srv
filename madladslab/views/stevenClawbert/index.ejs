@@ -492,6 +492,81 @@
     .task-item.done .task-tag { background: #224422; color: #66cc66; }
     .task-item.done .task-text { opacity: 0.5; text-decoration: line-through; }
 
+    /* ===== THREADS DRAWER ===== */
+    .threads-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 70; opacity: 0; pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    .threads-overlay.open { opacity: 1; pointer-events: auto; }
+
+    .threads-drawer {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: min(300px, 88vw);
+      background: #0d0d0d;
+      border-right: 1px solid var(--border);
+      z-index: 80;
+      display: flex; flex-direction: column;
+      transform: translateX(-100%);
+      transition: transform 0.28s cubic-bezier(0.32,0.72,0,1);
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bottom);
+    }
+    .threads-drawer.open { transform: translateX(0); }
+
+    .threads-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.7rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0; gap: 0.5rem;
+    }
+    .threads-header span { font-weight: bold; color: var(--red); font-size: 0.9rem; flex: 1; }
+    .threads-new-btn {
+      background: rgba(231,76,60,0.15);
+      border: 1px solid rgba(231,76,60,0.35);
+      color: var(--red);
+      padding: 0.3rem 0.65rem;
+      border-radius: 7px; cursor: pointer;
+      font-size: 0.8rem; font-family: inherit;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .threads-new-btn:active { background: rgba(231,76,60,0.35); }
+
+    .threads-list {
+      flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+      padding: 0.4rem 0;
+    }
+    .threads-list::-webkit-scrollbar { width: 3px; }
+    .threads-list::-webkit-scrollbar-thumb { background: var(--red-dark); border-radius: 3px; }
+
+    .thread-item {
+      display: flex; align-items: center;
+      padding: 0.55rem 0.85rem;
+      cursor: pointer; gap: 0.5rem;
+      transition: background 0.12s;
+      border-left: 3px solid transparent;
+    }
+    .thread-item:hover { background: rgba(255,255,255,0.04); }
+    .thread-item.active { background: rgba(231,76,60,0.1); border-left-color: var(--red); }
+    .thread-icon { font-size: 1rem; flex-shrink: 0; }
+    .thread-body { flex: 1; min-width: 0; }
+    .thread-name {
+      font-size: 0.83rem; color: #ddd;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .thread-item.active .thread-name { color: var(--red); }
+    .thread-meta { font-size: 0.67rem; color: var(--text-dim); margin-top: 0.08rem; }
+    .thread-del {
+      background: none; border: none; color: #555; cursor: pointer;
+      font-size: 0.95rem; padding: 0.2rem; line-height: 1;
+      flex-shrink: 0; opacity: 0;
+      transition: opacity 0.15s, color 0.15s;
+    }
+    .thread-item:hover .thread-del { opacity: 1; }
+    .thread-del:hover { color: var(--red); }
+    .threads-empty { padding: 1.5rem 1rem; color: var(--text-dim); font-size: 0.82rem; text-align: center; }
+
     /* ===== DESKTOP (768px+) ===== */
     @media (min-width: 769px) {
       .header { padding: 0.6rem 1.5rem; }
@@ -527,6 +602,7 @@
 <div class="header">
   <h1><span class="claw">&#x1F99E;</span> Steven Clawbert</h1>
   <div class="header-right">
+    <button class="icon-btn" id="threadsBtn" onclick="toggleThreads()" title="Threads">&#x1F5C2;</button>
     <button class="icon-btn" id="optionsBtn" onclick="toggleOptions()" title="Options">&#x2699;</button>
     <button class="icon-btn" id="panelBtn" onclick="togglePanel()" title="Controls">&#x1F4CA;</button>
   </div>
@@ -549,6 +625,19 @@
   <a href="/stevenClawbert/browser" class="opt-link">&#x2B21; SRV Browser</a>
   <a href="/claudeTalk" class="opt-link">Claude Talk</a>
   <a href="/" class="opt-link">Home</a>
+</div>
+
+<!-- THREADS DRAWER -->
+<div class="threads-overlay" id="threadsOverlay" onclick="toggleThreads()"></div>
+<div class="threads-drawer" id="threadsDrawer">
+  <div class="threads-header">
+    <span>&#x1F5C2; Threads</span>
+    <button class="threads-new-btn" onclick="createThread()">+ New</button>
+    <button class="icon-btn" style="width:30px;height:30px;font-size:1.1rem;" onclick="toggleThreads()">&times;</button>
+  </div>
+  <div class="threads-list" id="threadsList">
+    <div class="threads-empty">Loading threads...</div>
+  </div>
 </div>
 
 <!-- MAIN LAYOUT -->
@@ -1066,6 +1155,87 @@
   }
   setTimeout(() => runQuickAction('health'), 500);
   loadHistory();
+
+  // === Threads ===
+  let threadsOpen = false;
+
+  function toggleThreads() {
+    threadsOpen = !threadsOpen;
+    document.getElementById('threadsDrawer').classList.toggle('open', threadsOpen);
+    document.getElementById('threadsOverlay').classList.toggle('open', threadsOpen);
+    document.getElementById('threadsBtn').classList.toggle('active', threadsOpen);
+    if (threadsOpen) loadThreads();
+  }
+
+  async function loadThreads() {
+    const list = document.getElementById('threadsList');
+    try {
+      const resp = await fetch('/stevenClawbert/threads');
+      const data = await resp.json();
+      if (!data.success || !data.threads || data.threads.length === 0) {
+        list.innerHTML = '<div class="threads-empty">No threads yet. Hit "+ New" to start one.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      for (const t of data.threads) {
+        const active = t.id === sessionId;
+        const div = document.createElement('div');
+        div.className = 'thread-item' + (active ? ' active' : '');
+        div.dataset.id = t.id;
+        const d = new Date(t.updatedAt);
+        const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        const msgStr = t.messageCount ? `${t.messageCount} msgs · ` : '';
+        div.innerHTML = `
+          <span class="thread-icon">${active ? '&#x25B6;' : '&#x1F5C3;'}</span>
+          <div class="thread-body">
+            <div class="thread-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</div>
+            <div class="thread-meta">${msgStr}${dateStr}</div>
+          </div>
+          <button class="thread-del" onclick="deleteThread(event,'${t.id}')" title="Delete">&#x2715;</button>`;
+        div.addEventListener('click', (e) => {
+          if (e.target.classList.contains('thread-del')) return;
+          switchThread(t.id, t.name);
+        });
+        list.appendChild(div);
+      }
+    } catch (err) {
+      list.innerHTML = `<div class="threads-empty">Error: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function switchThread(id, name) {
+    if (id === sessionId) { toggleThreads(); return; }
+    localStorage.setItem('sc-sessionId', id);
+    // Reload page to pick up new session
+    window.location.reload();
+  }
+
+  async function createThread() {
+    const name = prompt('Thread name (or leave blank):') ?? '';
+    try {
+      const resp = await fetch('/stevenClawbert/threads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() || 'New Chat' })
+      });
+      const data = await resp.json();
+      if (data.success && data.thread) {
+        switchThread(data.thread.id, data.thread.name);
+      }
+    } catch (err) {
+      addSystemMessage('Error creating thread: ' + err.message);
+    }
+  }
+
+  async function deleteThread(e, id) {
+    e.stopPropagation();
+    if (id === sessionId) { addSystemMessage('Cannot delete active thread.'); return; }
+    if (!confirm('Delete this thread?')) return;
+    try {
+      await fetch('/stevenClawbert/threads/' + id, { method: 'DELETE' });
+      loadThreads();
+    } catch (err) { addSystemMessage('Error: ' + err.message); }
+  }
 </script>
 </body>
 </html>

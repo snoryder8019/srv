@@ -4,7 +4,11 @@
   <%- include('../partials/flash') %>
   <div class="admin-header">
     <h1>Admin Dashboard</h1>
-    <a href="/admin/users" class="btn btn-outline">Manage Users</a>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <a href="/admin/local" class="btn btn-outline btn-sm">Local Listings</a>
+      <a href="/admin/gigs"  class="btn btn-outline btn-sm">Gigs &amp; Jobs</a>
+      <a href="/admin/users" class="btn btn-outline btn-sm">Users</a>
+    </div>
   </div>
 
   <div class="stats-grid">
@@ -27,7 +31,169 @@
       <span class="stat-label">Active Petitions</span>
       <span class="stat-sub"><%= stats.totalPetitions %> total</span>
     </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= stats.approvedLocals %></span>
+      <span class="stat-label">Local Listings</span>
+      <span class="stat-sub"><%= stats.totalLocals %> total</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= stats.approvedGigs %></span>
+      <span class="stat-label">Active Gigs/Jobs</span>
+      <span class="stat-sub"><%= stats.totalGigs %> total</span>
+    </div>
   </div>
+
+  <!-- Pending Approval Queues -->
+  <% const totalPending = pendingPosts.length + pendingVideos.length + pendingShares.length + pendingLocals.length + pendingGigs.length; %>
+  <% if (totalPending > 0) { %>
+  <section class="admin-section pending-section">
+    <h2>Pending Approval <span class="badge-count"><%= totalPending %></span></h2>
+
+    <% if (pendingPosts.length > 0) { %>
+    <h3 class="pending-sub">Articles (<%= pendingPosts.length %>)</h3>
+    <table class="admin-table">
+      <thead><tr><th>Title</th><th>Author</th><th>Submitted</th><th>Actions</th></tr></thead>
+      <tbody>
+        <% pendingPosts.forEach(p => { %>
+          <tr>
+            <td><strong><%= p.title.substring(0, 50) %><%= p.title.length > 50 ? '...' : '' %></strong></td>
+            <td><%= p.author ? p.author.displayName : '?' %></td>
+            <td><%= new Date(p.createdAt).toLocaleDateString() %></td>
+            <td class="action-cell">
+              <form action="/admin/posts/<%= p._id %>/approve" method="POST" style="display:inline">
+                <button class="btn btn-primary btn-xs">Approve</button>
+              </form>
+              <form action="/admin/posts/<%= p._id %>/reject" method="POST" style="display:inline">
+                <button class="btn btn-outline btn-xs">Reject</button>
+              </form>
+              <form action="/admin/posts/<%= p._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete?')">
+                <button class="btn btn-danger btn-xs">Del</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } %>
+
+    <% if (pendingVideos.length > 0) { %>
+    <h3 class="pending-sub">Videos (<%= pendingVideos.length %>)</h3>
+    <table class="admin-table">
+      <thead><tr><th>Title</th><th>Author</th><th>Submitted</th><th>Actions</th></tr></thead>
+      <tbody>
+        <% pendingVideos.forEach(v => { %>
+          <tr>
+            <td><strong><%= v.title.substring(0, 50) %><%= v.title.length > 50 ? '...' : '' %></strong></td>
+            <td><%= v.author ? v.author.displayName : '?' %></td>
+            <td><%= new Date(v.createdAt).toLocaleDateString() %></td>
+            <td class="action-cell">
+              <form action="/admin/videos/<%= v._id %>/approve" method="POST" style="display:inline">
+                <button class="btn btn-primary btn-xs">Approve</button>
+              </form>
+              <form action="/admin/videos/<%= v._id %>/reject" method="POST" style="display:inline">
+                <button class="btn btn-outline btn-xs">Reject</button>
+              </form>
+              <form action="/admin/videos/<%= v._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete?')">
+                <button class="btn btn-danger btn-xs">Del</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } %>
+
+    <% if (pendingShares.length > 0) { %>
+    <h3 class="pending-sub">Shared Links (<%= pendingShares.length %>)</h3>
+    <table class="admin-table">
+      <thead><tr><th>Title</th><th>Platform</th><th>Submitted By</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody>
+        <% pendingShares.forEach(s => { %>
+          <tr>
+            <td><a href="<%= s.url %>" target="_blank" rel="noopener"><%= s.title.substring(0, 45) %><%= s.title.length > 45 ? '...' : '' %></a></td>
+            <td><span class="tag tag-<%= s.platform %>"><%= s.platform %></span></td>
+            <td><%= s.submittedBy ? s.submittedBy.displayName : '?' %></td>
+            <td><%= new Date(s.createdAt).toLocaleDateString() %></td>
+            <td class="action-cell">
+              <form action="/admin/shares/<%= s._id %>/approve" method="POST" style="display:inline">
+                <button class="btn btn-primary btn-xs">Approve</button>
+              </form>
+              <form action="/admin/shares/<%= s._id %>/reject" method="POST" style="display:inline">
+                <button class="btn btn-outline btn-xs">Reject</button>
+              </form>
+              <form action="/admin/shares/<%= s._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete?')">
+                <button class="btn btn-danger btn-xs">Del</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } %>
+
+    <% if (pendingLocals.length > 0) { %>
+    <h3 class="pending-sub">Local Listings (<%= pendingLocals.length %>)</h3>
+    <table class="admin-table">
+      <thead><tr><th>Name</th><th>Category</th><th>Neighborhood</th><th>Submitted By</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody>
+        <% pendingLocals.forEach(l => { %>
+          <tr>
+            <td><strong><%= l.name.substring(0, 45) %><%= l.name.length > 45 ? '...' : '' %></strong></td>
+            <td><span class="tag"><%= l.category %></span></td>
+            <td><%= l.neighborhood %></td>
+            <td><%= l.submittedBy ? l.submittedBy.displayName : '?' %></td>
+            <td><%= new Date(l.createdAt).toLocaleDateString() %></td>
+            <td class="action-cell">
+              <form action="/admin/local/<%= l._id %>/approve" method="POST" style="display:inline">
+                <button class="btn btn-primary btn-xs">Approve</button>
+              </form>
+              <form action="/admin/local/<%= l._id %>/reject" method="POST" style="display:inline">
+                <button class="btn btn-outline btn-xs">Reject</button>
+              </form>
+              <form action="/admin/local/<%= l._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete?')">
+                <button class="btn btn-danger btn-xs">Del</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } %>
+
+    <% if (pendingGigs.length > 0) { %>
+    <h3 class="pending-sub">Gigs &amp; Jobs (<%= pendingGigs.length %>)</h3>
+    <table class="admin-table">
+      <thead><tr><th>Title</th><th>Type</th><th>Category</th><th>Submitted By</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody>
+        <% pendingGigs.forEach(g => { %>
+          <tr>
+            <td><strong><%= g.title.substring(0, 45) %><%= g.title.length > 45 ? '...' : '' %></strong></td>
+            <td><span class="tag"><%= g.type %></span></td>
+            <td><%= g.category %></td>
+            <td><%= g.submittedBy ? g.submittedBy.displayName : '?' %></td>
+            <td><%= new Date(g.createdAt).toLocaleDateString() %></td>
+            <td class="action-cell">
+              <form action="/admin/gigs/<%= g._id %>/approve" method="POST" style="display:inline">
+                <button class="btn btn-primary btn-xs">Approve</button>
+              </form>
+              <form action="/admin/gigs/<%= g._id %>/reject" method="POST" style="display:inline">
+                <button class="btn btn-outline btn-xs">Reject</button>
+              </form>
+              <form action="/admin/gigs/<%= g._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete?')">
+                <button class="btn btn-danger btn-xs">Del</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } %>
+  </section>
+  <% } else { %>
+  <section class="admin-section">
+    <p class="empty-state" style="padding:1rem 0;">No pending content — all caught up!</p>
+  </section>
+  <% } %>
 
   <div class="admin-grid">
     <section class="admin-section">

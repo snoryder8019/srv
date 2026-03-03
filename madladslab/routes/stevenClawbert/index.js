@@ -328,4 +328,49 @@ router.get('/history', (req, res) => {
   res.json({ success: true, history });
 });
 
+// === Thread CRUD ===
+
+// GET /threads — List all threads (sorted by updatedAt desc)
+router.get('/threads', (req, res) => {
+  const index = loadThreadIndex();
+  const sorted = [...index].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  res.json({ success: true, threads: sorted });
+});
+
+// POST /threads — Create a new thread
+router.post('/threads', (req, res) => {
+  const { name } = req.body || {};
+  const id = 'thread-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+  const now = Date.now();
+  const thread = { id, name: (name || 'New Chat').trim(), createdAt: now, updatedAt: now, messageCount: 0 };
+  const index = loadThreadIndex();
+  index.unshift(thread);
+  saveThreadIndex(index);
+  saveThread(id, []);
+  res.json({ success: true, thread });
+});
+
+// PUT /threads/:id — Rename a thread
+router.put('/threads/:id', (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.json({ success: false, error: 'Name required' });
+  const index = loadThreadIndex();
+  const t = index.find(t => t.id === req.params.id);
+  if (!t) return res.json({ success: false, error: 'Thread not found' });
+  t.name = name.trim();
+  saveThreadIndex(index);
+  res.json({ success: true });
+});
+
+// DELETE /threads/:id — Delete a thread
+router.delete('/threads/:id', (req, res) => {
+  const index = loadThreadIndex();
+  const pos = index.findIndex(t => t.id === req.params.id);
+  if (pos === -1) return res.json({ success: false, error: 'Thread not found' });
+  index.splice(pos, 1);
+  saveThreadIndex(index);
+  deleteThreadFile(req.params.id);
+  res.json({ success: true });
+});
+
 export default router;

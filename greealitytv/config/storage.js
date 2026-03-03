@@ -10,17 +10,20 @@ const s3 = new S3Client({
     accessKeyId: process.env.LINODE_ACCESS,
     secretAccessKey: process.env.LINODE_SECRET
   },
-  forcePathStyle: false
+  forcePathStyle: false,
+  // Disable checksum headers — Linode Object Storage doesn't support them
+  // and will abort the TLS connection when present (AWS SDK v3.500+)
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED'
 });
 
 const imageUpload = multer({
   storage: multerS3({
     s3,
     bucket: process.env.LINODE_BUCKET,
-    acl: 'public-read',
     contentType: multerS3.AUTO_CONTENT_TYPE,
     key: (req, file, cb) => {
-      const name = `images/${Date.now()}-${path.basename(file.originalname).replace(/\s+/g, '-')}`;
+      const name = `greealitytv/images/${Date.now()}-${path.basename(file.originalname).replace(/\s+/g, '-')}`;
       cb(null, name);
     }
   }),
@@ -38,10 +41,9 @@ const videoUpload = multer({
   storage: multerS3({
     s3,
     bucket: process.env.LINODE_BUCKET,
-    acl: 'public-read',
     contentType: multerS3.AUTO_CONTENT_TYPE,
     key: (req, file, cb) => {
-      const name = `videos/${Date.now()}-${path.basename(file.originalname).replace(/\s+/g, '-')}`;
+      const name = `greealitytv/videos/${Date.now()}-${path.basename(file.originalname).replace(/\s+/g, '-')}`;
       cb(null, name);
     }
   }),
@@ -54,4 +56,19 @@ const videoUpload = multer({
   }
 });
 
-module.exports = { imageUpload, videoUpload };
+// For video upload page: handles both video + thumbnail fields together
+const videoFields = multer({
+  storage: multerS3({
+    s3,
+    bucket: process.env.LINODE_BUCKET,
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    key: (req, file, cb) => {
+      const folder = file.fieldname === 'video' ? 'videos' : 'thumbnails';
+      const name = `greealitytv/${folder}/${Date.now()}-${path.basename(file.originalname).replace(/\s+/g, '-')}`;
+      cb(null, name);
+    }
+  }),
+  limits: { fileSize: 500 * 1024 * 1024 }
+});
+
+module.exports = { imageUpload, videoUpload, videoFields };

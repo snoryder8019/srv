@@ -1,0 +1,128 @@
+<%- include('../partials/head', { title: 'Gigs & Jobs' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main">
+  <%- include('../partials/flash') %>
+
+  <div class="local-hero">
+    <div class="local-hero-inner">
+      <h1>Gigs &amp; Jobs</h1>
+      <p>Short-term gigs, part-time and full-time jobs posted by the Greeley community.</p>
+      <% if (user) { %>
+        <a href="/gigs/new" class="btn btn-primary">+ Post a Gig or Job</a>
+      <% } else { %>
+        <a href="/auth/google" class="btn btn-outline">Sign in to post</a>
+      <% } %>
+    </div>
+  </div>
+
+  <section class="local-listings-section">
+    <!-- Type + Category Filters -->
+    <div class="category-tabs" id="typeTabs">
+      <button class="cat-tab cat-active" data-type="all">All</button>
+      <button class="cat-tab" data-type="gig">⚡ Gigs</button>
+      <button class="cat-tab" data-type="job">💼 Jobs</button>
+    </div>
+
+    <div class="gig-filters">
+      <label for="catFilter">Category:</label>
+      <select id="catFilter">
+        <option value="all">All Categories</option>
+        <% categories.forEach(c => { %>
+          <option value="<%= c %>"><%= c %></option>
+        <% }) %>
+      </select>
+      <label for="hoodFilter">Neighborhood:</label>
+      <select id="hoodFilter">
+        <option value="all">All Neighborhoods</option>
+        <option value="remote">Remote Only</option>
+        <% neighborhoods.forEach(n => { %>
+          <option value="<%= n %>"><%= n %></option>
+        <% }) %>
+      </select>
+    </div>
+
+    <% if (gigs.length === 0) { %>
+      <div class="empty-state local-empty">
+        <p>No gigs or jobs posted yet — be the first!</p>
+        <% if (user) { %><a href="/gigs/new" class="btn btn-primary">Post a Gig or Job</a><% } %>
+      </div>
+    <% } else { %>
+      <div class="gigs-list" id="gigsGrid">
+        <% gigs.forEach(g => { %>
+          <div class="gig-card"
+               data-type="<%= g.type %>"
+               data-cat="<%= g.category %>"
+               data-hood="<%= g.isRemote ? 'remote' : (g.neighborhood || 'all') %>">
+            <div class="gig-card-header">
+              <div class="gig-badges">
+                <span class="gig-type-badge gig-type-<%= g.type %>">
+                  <%= g.type === 'gig' ? '⚡ Gig' : '💼 Job' %>
+                </span>
+                <span class="gig-cat-badge"><%= g.category %></span>
+                <% if (g.isRemote) { %><span class="gig-remote-badge">🌐 Remote</span><% } %>
+              </div>
+              <span class="gig-date"><%= new Date(g.createdAt).toLocaleDateString() %></span>
+            </div>
+            <h3 class="gig-title"><%= g.title %></h3>
+            <% if (g.company) { %><p class="gig-company"><%= g.company %></p><% } %>
+            <p class="gig-desc"><%= g.description.substring(0, 180) %><%= g.description.length > 180 ? '…' : '' %></p>
+            <div class="gig-footer">
+              <div class="gig-meta">
+                <% if (g.pay) { %><span class="gig-pay">💵 <%= g.pay %></span><% } %>
+                <% if (g.neighborhood && !g.isRemote) { %><span class="gig-hood">📍 <%= g.neighborhood %></span><% } %>
+                <% if (g.expiresAt) { %><span class="gig-expires">Expires <%= new Date(g.expiresAt).toLocaleDateString() %></span><% } %>
+              </div>
+              <a href="<%= g.contact.startsWith('http') ? g.contact : 'mailto:' + g.contact %>"
+                 class="btn btn-primary btn-sm"
+                 target="_blank" rel="noopener">
+                Apply / Contact
+              </a>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+      <p class="listings-empty-msg" id="noResultsMsg" style="display:none;">No postings match those filters.</p>
+    <% } %>
+  </section>
+</main>
+
+<script>
+let activeType = 'all';
+let activeCat  = 'all';
+let activeHood = 'all';
+
+document.querySelectorAll('[data-type]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeType = btn.dataset.type;
+    document.querySelectorAll('[data-type]').forEach(b => b.classList.remove('cat-active'));
+    btn.classList.add('cat-active');
+    filterGigs();
+  });
+});
+
+document.getElementById('catFilter').addEventListener('change', e => {
+  activeCat = e.target.value;
+  filterGigs();
+});
+
+document.getElementById('hoodFilter').addEventListener('change', e => {
+  activeHood = e.target.value;
+  filterGigs();
+});
+
+function filterGigs() {
+  const cards = document.querySelectorAll('.gig-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const typeMatch = activeType === 'all' || card.dataset.type === activeType;
+    const catMatch  = activeCat  === 'all' || card.dataset.cat  === activeCat;
+    const hoodMatch = activeHood === 'all' || card.dataset.hood === activeHood;
+    const show = typeMatch && catMatch && hoodMatch;
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('noResultsMsg').style.display = visible === 0 ? 'block' : 'none';
+}
+</script>
+
+<%- include('../partials/footer') %>

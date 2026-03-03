@@ -20,7 +20,12 @@ router.get('/new', ensureAuth, (req, res) => {
   res.render('posts/new');
 });
 
-router.post('/', ensureAuth, imageUpload.single('coverImage'), async (req, res) => {
+router.post('/', ensureAuth, (req, res, next) => {
+  imageUpload.single('coverImage')(req, res, (err) => {
+    if (err) console.error('Cover image upload skipped:', err.message);
+    next();
+  });
+}, async (req, res) => {
   try {
     const { title, body, tags } = req.body;
     const tagArray = tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
@@ -32,10 +37,12 @@ router.post('/', ensureAuth, imageUpload.single('coverImage'), async (req, res) 
       excerpt,
       tags: tagArray,
       author: req.user._id,
-      coverImage: req.file ? req.file.location : null
+      coverImage: req.file ? req.file.location : null,
+      published: false,
+      status: 'pending'
     });
 
-    req.flash('success', 'Post published!');
+    req.flash('success', 'Article submitted! It will appear after admin review.');
     res.redirect('/posts');
   } catch (err) {
     console.error(err);
@@ -73,7 +80,12 @@ router.get('/:id/edit', ensureAuth, async (req, res) => {
   }
 });
 
-router.put('/:id', ensureAuth, imageUpload.single('coverImage'), async (req, res) => {
+router.put('/:id', ensureAuth, (req, res, next) => {
+  imageUpload.single('coverImage')(req, res, (err) => {
+    if (err) console.error('Cover image upload skipped:', err.message);
+    next();
+  });
+}, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
     if (!post) return res.render('error', { message: 'Post not found.' });

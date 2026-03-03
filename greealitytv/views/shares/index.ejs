@@ -1,0 +1,48 @@
+<%- include('../partials/head', { title: 'Share Digest' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main">
+  <%- include('../partials/flash') %>
+  <div class="page-header">
+    <h1>Share Digest</h1>
+    <% if (user) { %><a href="/shares/new" class="btn btn-primary">+ Share a Link</a><% } %>
+  </div>
+  <p class="page-sub">Community-curated links from Reddit, Instagram, and Facebook — approved by our team.</p>
+
+  <div class="tag-row" style="margin-bottom:1.5rem;">
+    <a href="/shares" class="tag <%= !platform ? 'tag-active' : '' %>">All</a>
+    <a href="/shares?platform=reddit" class="tag tag-reddit <%= platform === 'reddit' ? 'tag-active' : '' %>">Reddit</a>
+    <a href="/shares?platform=instagram" class="tag tag-instagram <%= platform === 'instagram' ? 'tag-active' : '' %>">Instagram</a>
+    <a href="/shares?platform=facebook" class="tag tag-facebook <%= platform === 'facebook' ? 'tag-active' : '' %>">Facebook</a>
+    <a href="/shares?platform=other" class="tag <%= platform === 'other' ? 'tag-active' : '' %>">Other</a>
+  </div>
+
+  <div class="card-grid">
+    <% if (shares.length === 0) { %>
+      <div class="empty-state">No links in the digest yet.</div>
+    <% } %>
+    <% shares.forEach(s => { %>
+      <article class="card share-card">
+        <div class="card-body">
+          <div class="tag-row">
+            <span class="tag tag-<%= s.platform %>"><%= s.platform %></span>
+          </div>
+          <h3 class="card-title">
+            <a href="<%= s.url %>" target="_blank" rel="noopener noreferrer"><%= s.title %></a>
+          </h3>
+          <% if (s.description) { %>
+            <p class="card-excerpt"><%= s.description %></p>
+          <% } %>
+          <div class="card-meta">
+            <% if (s.submittedBy && s.submittedBy.avatar) { %><img src="<%= s.submittedBy.avatar %>" class="meta-avatar"><% } %>
+            <span><%= s.submittedBy ? s.submittedBy.displayName : '' %></span>
+            <span class="dot">·</span>
+            <span><%= new Date(s.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %></span>
+            <span class="dot">·</span>
+            <a href="<%= s.url %>" target="_blank" rel="noopener noreferrer" class="share-ext-link">View on <%= s.platform %> →</a>
+          </div>
+        </div>
+      </article>
+    <% }) %>
+  </div>
+</main>
+<%- include('../partials/footer') %>

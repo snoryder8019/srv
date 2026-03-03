@@ -1,6 +1,38 @@
 # Recent Changes Summary
 
-Generated: 2026-02-25T16:28:27.545Z
+Generated: 2026-03-03T08:30:00.022Z
+
+---
+
+## GreeAlityTV — Neighborhoods, Local & Gigs Feature Drop (3/3/2026)
+
+- **New models:** `grv_local` (Local directory listings) + `grv_gigs` (Gigs & Jobs board)
+- **14 Greeley neighborhoods** hardcoded: Downtown, University District, Westlake, Island Grove, East Greeley, North Greeley, South Greeley, Bittersweet, Country Club, Poudre River, Alta Vista, West Side, Sunrise, Prairie West
+- **`/local`** — interactive Leaflet/OpenStreetMap neighborhood map with clickable zones, category tabs (Food / Businesses / Services / Food Trucks), user-submission flow with S3 image upload
+- **`/gigs`** — Gigs & Jobs board with type/category/neighborhood filtering, remote flag, expiry date
+- **Cookie consent banner** — bottom-fixed, localStorage-backed, Accept/Decline
+- **Admin dashboard** expanded — 6 stats cards, management nav buttons (Local / Gigs / Users)
+- **`/admin/local`** — full listing management: status filter bar, inline Approve/Reject/Reset via AJAX, Delete
+- **`/admin/gigs`** — full gigs management: type + category filters, inline status management via AJAX
+- **`PUT /admin/local/:id/status`** + **`PUT /admin/gigs/:id/status`** — JSON APIs for inline admin updates
+- **CHANGELOG.md** created at `/srv/greealitytv/CHANGELOG.md`
+
+**Files changed:** 14 new, 7 modified (models, routes, views, CSS, JS)
+
+---
+
+## Commit: good push
+
+- **Hash:** `31cf8b3`
+- **Author:** Scott
+- **Date:** 2/25/2026
+- **Changes:** 51 files, +6048/-36 lines
+
+### Modified Areas:
+
+**Backend:** 7 files
+**Views:** 22 files
+**Documentation:** 5 files
 
 ---
 
@@ -68,19 +100,6 @@ Generated: 2026-02-25T16:28:27.545Z
 **Views:** 7 files
 **Scripts:** 6 files
 **Documentation:** 21 files
-
----
-
-## Commit: v0.8.10 - World Sprite Builder: Contextual Category System
-
-- **Hash:** `282c1fd`
-- **Author:** Scott
-- **Date:** 11/5/2025
-- **Changes:** 1 files, +152/-39 lines
-
-### Modified Areas:
-
-**Views:** 1 files
 
 ---
 

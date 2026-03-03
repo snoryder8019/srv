@@ -58,7 +58,9 @@ RULES:
 - If someone wants to schedule a consultation or sign up, collect their name, email or phone, and what they're interested in. Tell them the team will reach out within 24 hours.
 - Never invent services or pricing not listed above.
 - Be enthusiastic but not pushy. Let the services sell themselves.
-- If asked about competitors, stay positive — focus on what makes madLadsLab different (privacy, customization, white-glove service).`;
+- If asked about competitors, stay positive — focus on what makes madLadsLab different (privacy, customization, white-glove service).
+- Within your FIRST or SECOND response, naturally ask for the visitor's name if you don't already have it. Keep it casual, e.g. "What's your name, by the way?" or "Who do I have the pleasure of chatting with?"
+- The FIRST time a visitor tells you their name, append EXACTLY this hidden marker at the very end of your response (on its own line, no extra text): [[NAME:TheirFirstName]] — replace TheirFirstName with their actual first name. Only include this marker ONCE ever.`;
 
 // Helper: Get or create chat session
 async function getChatSession(sessionId, ip) {
@@ -210,13 +212,20 @@ router.post('/message', limiter, async (req, res) => {
       messages: conversationHistory,
     });
 
-    const assistantMessage = response.content[0].text;
+    let assistantMessage = response.content[0].text;
+
+    // Extract visitor name if Pepe included the [[NAME:...]] marker
+    const nameMatch = assistantMessage.match(/\[\[NAME:([^\]]+)\]\]/);
+    if (nameMatch) {
+      session.visitorName = nameMatch[1].trim();
+      assistantMessage = assistantMessage.replace(/\n?\[\[NAME:[^\]]+\]\]/g, '').trim();
+    }
 
     // Add assistant response to session
-    session.messages.push({ 
-      role: 'assistant', 
-      content: assistantMessage, 
-      timestamp: new Date() 
+    session.messages.push({
+      role: 'assistant',
+      content: assistantMessage,
+      timestamp: new Date()
     });
     session.updatedAt = new Date();
 
@@ -239,6 +248,87 @@ router.post('/message', limiter, async (req, res) => {
     res.status(500).json({ 
       error: 'Something went wrong. Please try again or call us at (682) 241-4402.' 
     });
+  }
+});
+
+// POST /livechat/wa-inject — WhatsApp bridge: inject Scott's reply without a browser session
+// Auth: x-wa-secret header OR body.secret must match WA_INJECT_SECRET env var
+router.post('/wa-inject', async (req, res) => {
+  try {
+    const secret = req.headers['x-wa-secret'] || req.body.secret;
+    if (!process.env.WA_INJECT_SECRET || secret !== process.env.WA_INJECT_SECRET) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { sessionId, message } = req.body;
+    if (!sessionId || !message?.trim()) {
+      return res.status(400).json({ error: 'Missing sessionId or message' });
+    }
+
+    const db = getDb();
+    const session = await db.collection('livechats').findOne({ sessionId });
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found', sessionId });
+    }
+
+    await db.collection('livechats').updateOne(
+      { sessionId },
+      {
+        $push: { messages: { role: 'admin', content: message.trim(), timestamp: new Date() } },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    console.log(`[LiveChat WA] Scott injected reply into session ${sessionId.substring(0, 12)}`);
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('❌ wa-inject error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /livechat/wa-sessions — list active sessions for !mlChats (secret-auth)
+router.get('/wa-sessions', async (req, res) => {
+  try {
+    const secret = req.headers['x-wa-secret'] || req.query.secret;
+    if (!process.env.WA_INJECT_SECRET || secret !== process.env.WA_INJECT_SECRET) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const db = getDb();
+    const sessions = await db.collection('livechats')
+      .find({})
+      .sort({ updatedAt: -1 })
+      .limit(15)
+      .toArray();
+
+    // Load session-map for short IDs
+    const mapPath = '/root/.openclaw/workspace/livechat-alerts/session-map.json';
+    let sessionMap = { counter: 0, map: {} };
+    try { sessionMap = JSON.parse(fs.readFileSync(mapPath, 'utf8')); } catch {}
+    // Invert: full sessionId → short num
+    const idToNum = {};
+    for (const [num, sid] of Object.entries(sessionMap.map || {})) idToNum[sid] = num;
+
+    const formatted = sessions.map(s => {
+      const firstUserMsg = s.messages?.find(m => m.role === 'user');
+      const ageMs = Date.now() - new Date(s.updatedAt).getTime();
+      const ageMin = Math.floor(ageMs / 60000);
+      const age = ageMin < 1 ? 'just now' : ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
+      return {
+        num: idToNum[s.sessionId] || '?',
+        sessionId: s.sessionId,
+        visitorName: s.visitorName || null,
+        firstMessage: (firstUserMsg?.content || '').substring(0, 100),
+        messageCount: s.messageCount || 0,
+        lastActive: age,
+      };
+    });
+
+    res.json({ success: true, sessions: formatted });
+  } catch (error) {
+    console.error('❌ wa-sessions error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

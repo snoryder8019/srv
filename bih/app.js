@@ -74,10 +74,122 @@ const activeCalls = new Map(); // keyed by callId
 const activeBroadcast = { active: false, broadcasterId: null, broadcasterName: null, broadcasterAvatar: null, broadcasterSocketId: null, viewers: new Map() }; // viewers: viewerUserId -> socketId
 const ChatMessage = require('./models/ChatMessage');
 const Channel = require('./models/Channel');
+const Suggestion = require('./models/Suggestion');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 const HISTORY_LIMIT = 20;
 
 // Purge stale channel docs from prior process
 Channel.deleteMany({}).catch(() => {});
+
+// === Jules Winfield — chat liaison agent ===
+const JULES = { displayName: 'Jules Winfield', avatar: '/img/jules.png', isBot: true };
+
+async function julesSay(text, targetSocket) {
+  const now = new Date();
+  const msg = {
+    displayName: JULES.displayName,
+    avatar: JULES.avatar,
+    message: text,
+    timestamp: now.toISOString(),
+    isBot: true
+  };
+  if (targetSocket) {
+    // Private: greetings and command acks — no DB persistence, ephemeral by design
+    targetSocket.emit('chat-message', msg);
+  } else {
+    // Public broadcast: save to DB so it survives reconnects and history reloads
+    try {
+      const saved = await ChatMessage.create({
+        displayName: JULES.displayName,
+        avatar: JULES.avatar,
+        message: text,
+        isBot: true,
+        createdAt: now
+      });
+      msg.timestamp = saved.createdAt.toISOString();
+    } catch (e) {
+      console.error('[Jules] save error:', e.message);
+    }
+    chat.emit('chat-message', msg);
+  }
+}
+
+// Jules conversation engine — routed through openclaw agent service
+const julesSessions = new Map(); // userId -> { sessionId, turns, lastActivity }
+const julesRateLimit = new Map(); // userId -> last response timestamp
+const greetedUsers = new Set();   // userIds greeted this process run — survives socket reconnects
+const JULES_MAX_TURNS = 6;
+const JULES_SESSION_MS = 15 * 60 * 1000; // 15 min inactivity resets session
+const JULES_RATE_MS = 5000;               // one Jules reply per 5s per user
+
+// Purge stale session state every 30 min
+setInterval(() => {
+  const now = Date.now();
+  for (const [uid, s] of julesSessions.entries()) {
+    if (now - s.lastActivity > JULES_SESSION_MS) julesSessions.delete(uid);
+  }
+}, 30 * 60 * 1000);
+
+function parseJulesReply(stdout) {
+  try {
+    const parsed = JSON.parse(stdout);
+    if (parsed.payloads && Array.isArray(parsed.payloads)) {
+      return parsed.payloads.map(p => p.text).filter(Boolean).join('\n').trim();
+    }
+    if (parsed.text) return parsed.text;
+    if (parsed.reply) return parsed.reply;
+    if (parsed.response) return parsed.response;
+  } catch { /* not JSON */ }
+  return stdout.split('\n')
+    .filter(l => l.trim() && !l.startsWith('[diagnostic]') && !l.startsWith('Gateway agent failed') && !l.startsWith('FailoverError:'))
+    .join('\n').trim() || null;
+}
+
+async function julesChat(userId, userMessage) {
+  const lastResp = julesRateLimit.get(userId);
+  if (lastResp && Date.now() - lastResp < JULES_RATE_MS) return;
+  julesRateLimit.set(userId, Date.now());
+
+  let session = julesSessions.get(userId);
+  const now = Date.now();
+
+  // Start fresh session if none or expired
+  if (!session || now - session.lastActivity > JULES_SESSION_MS) {
+    session = {
+      sessionId: 'bih-jules-' + userId.toString().slice(-8) + '-' + now.toString(36),
+      turns: 0,
+      lastActivity: now
+    };
+    julesSessions.set(userId, session);
+  }
+
+  // Hard cap — wrap and clear
+  if (session.turns >= JULES_MAX_TURNS) {
+    julesSay("We've covered enough ground. Vincent can take it from here if you need more.", null);
+    julesSessions.delete(userId);
+    return;
+  }
+
+  session.turns++;
+  session.lastActivity = Date.now();
+
+  try {
+    const escaped = userMessage.replace(/'/g, "'\\''");
+    const cmd = `openclaw agent --agent jules-winfield --message '${escaped}' --json --session-id '${session.sessionId}' --timeout 30`;
+    const { stdout, stderr } = await execAsync(cmd, {
+      timeout: 35000,
+      maxBuffer: 1024 * 1024,
+      env: { ...process.env, NO_COLOR: '1' }
+    });
+    const reply = parseJulesReply(stdout || stderr);
+    if (reply) julesSay(reply, null); // broadcast — public conversation
+  } catch (err) {
+    console.error('[Jules] openclaw error:', err.message);
+    julesSay('Something came up on my end. Give it a moment.', null);
+  }
+}
 
 function getSocketIdsForUser(targetUserId) {
   const ids = [];
@@ -130,8 +242,17 @@ chat.on('connection', async (socket) => {
 
   // Broadcast deduplicated user list
   chat.emit('online-users', await getUniqueOnlineUsers());
-  // Only notify join if user wasn't already connected
-  if (!wasAlreadyOnline) socket.broadcast.emit('user-joined', { displayName });
+  // Only notify join if user wasn't already connected (multi-tab guard)
+  if (!wasAlreadyOnline) {
+    socket.broadcast.emit('user-joined', { displayName });
+  }
+  // Jules greets once per user per process run — survives page navigations and reconnects
+  if (!greetedUsers.has(userId)) {
+    greetedUsers.add(userId);
+    setTimeout(() => {
+      julesSay(`${displayName}. I'm Jules. You got feedback for the dev team? Type !suggest followed by your idea.`, socket);
+    }, 800);
+  }
 
   // Load more history
   socket.on('load-more', async (beforeTimestamp) => {
@@ -146,10 +267,36 @@ chat.on('connection', async (socket) => {
   });
 
   socket.on('chat-message', async (msg) => {
+    if (typeof msg !== 'string' || !msg.trim()) return;
+
     // Re-fetch user for fresh avatar/displayName
     const freshUser = await User.findById(user._id).lean();
     const freshName = freshUser.displayName || freshUser.email;
     const freshAvatar = freshUser.avatar;
+
+    // Jules commands
+    if (msg.startsWith('!suggest ')) {
+      const text = msg.slice(9).trim();
+      if (text.length < 5) return julesSay('Say more than that.', socket);
+      await Suggestion.create({ userId: user._id, displayName: freshName, text });
+      return julesSay('Logged. The team will see it.', socket);
+    }
+    if (msg.trim() === '!help') {
+      return julesSay('!suggest <your idea> — sends feedback to the dev team. @jules <message> — talk to me directly.', socket);
+    }
+
+    // Jules conversation: @jules <message> — saved to history, Jules replies publicly
+    if (msg.toLowerCase().startsWith('@jules ')) {
+      const userMessage = msg.slice(7).trim();
+      if (userMessage) {
+        const timestamp = new Date();
+        const saved = await ChatMessage.create({ userId: user._id, displayName: freshName, avatar: freshAvatar, message: msg, createdAt: timestamp });
+        chat.emit('chat-message', { displayName: freshName, avatar: freshAvatar, message: msg, timestamp: saved.createdAt.toISOString() });
+        await julesChat(userId, userMessage);
+      }
+      return;
+    }
+
     const timestamp = new Date();
     const saved = await ChatMessage.create({
       userId: user._id,

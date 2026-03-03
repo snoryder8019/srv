@@ -3,30 +3,7 @@ const router = express.Router();
 const Video = require('../models/Video');
 const Comment = require('../models/Comment');
 const { ensureAuth } = require('../middleware/auth');
-const { videoUpload, imageUpload } = require('../config/storage');
-const multer = require('multer');
-
-const uploadFields = multer({
-  storage: require('multer-s3')({
-    s3: new (require('@aws-sdk/client-s3').S3Client)({
-      endpoint: process.env.S3_ENDPOINT,
-      region: process.env.LINODE_REGION || 'us-east-1',
-      credentials: {
-        accessKeyId: process.env.LINODE_ACCESS,
-        secretAccessKey: process.env.LINODE_SECRET
-      },
-      forcePathStyle: false
-    }),
-    bucket: process.env.LINODE_BUCKET,
-    acl: 'public-read',
-    contentType: require('multer-s3').AUTO_CONTENT_TYPE,
-    key: (req, file, cb) => {
-      const folder = file.fieldname === 'video' ? 'videos' : 'thumbnails';
-      cb(null, `${folder}/${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`);
-    }
-  }),
-  limits: { fileSize: 500 * 1024 * 1024 }
-});
+const { videoFields } = require('../config/storage');
 
 router.get('/', async (req, res) => {
   try {
@@ -41,10 +18,15 @@ router.get('/new', ensureAuth, (req, res) => {
   res.render('videos/new');
 });
 
-router.post('/', ensureAuth, uploadFields.fields([
-  { name: 'video', maxCount: 1 },
-  { name: 'thumbnail', maxCount: 1 }
-]), async (req, res) => {
+router.post('/', ensureAuth, (req, res, next) => {
+  videoFields.fields([
+    { name: 'video', maxCount: 1 },
+    { name: 'thumbnail', maxCount: 1 }
+  ])(req, res, (err) => {
+    if (err) console.error('Video upload error:', err.message);
+    next();
+  });
+}, async (req, res) => {
   try {
     const { title, description, tags } = req.body;
     const tagArray = tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
@@ -60,10 +42,12 @@ router.post('/', ensureAuth, uploadFields.fields([
       tags: tagArray,
       author: req.user._id,
       videoUrl: req.files.video[0].location,
-      thumbnail: req.files.thumbnail ? req.files.thumbnail[0].location : null
+      thumbnail: req.files.thumbnail ? req.files.thumbnail[0].location : null,
+      published: false,
+      status: 'pending'
     });
 
-    req.flash('success', 'Video uploaded!');
+    req.flash('success', 'Video submitted! It will appear after admin review.');
     res.redirect('/videos');
   } catch (err) {
     console.error(err);

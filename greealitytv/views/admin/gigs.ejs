@@ -1,0 +1,194 @@
+<%- include('../partials/head', { title: 'Manage Gigs & Jobs' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main admin-main">
+  <%- include('../partials/flash') %>
+
+  <div class="admin-header">
+    <h1>Gigs &amp; Jobs</h1>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <a href="/gigs" class="btn btn-outline btn-sm" target="_blank">View Public Page ↗</a>
+      <a href="/admin" class="btn btn-outline btn-sm">← Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Status summary + filters -->
+  <div class="admin-status-bar">
+    <button class="status-filter-btn status-filter-active" data-filter="all">
+      All <span class="badge-count"><%= gigs.length %></span>
+    </button>
+    <button class="status-filter-btn" data-filter="pending">
+      Pending <span class="badge-count badge-orange"><%= counts.pending %></span>
+    </button>
+    <button class="status-filter-btn" data-filter="approved">
+      Approved <span class="badge-count badge-green"><%= counts.approved %></span>
+    </button>
+    <button class="status-filter-btn" data-filter="rejected">
+      Rejected <span class="badge-count badge-red"><%= counts.rejected %></span>
+    </button>
+
+    <div style="margin-left:auto;display:flex;gap:.5rem;flex-wrap:wrap;">
+      <select id="typeFilter" class="admin-select">
+        <option value="all">All Types</option>
+        <option value="gig">Gig</option>
+        <option value="job">Job</option>
+      </select>
+      <select id="catFilterGigs" class="admin-select">
+        <option value="all">All Categories</option>
+        <% categories.forEach(c => { %>
+          <option value="<%= c %>"><%= c %></option>
+        <% }) %>
+      </select>
+    </div>
+  </div>
+
+  <% if (gigs.length === 0) { %>
+    <div class="admin-section"><p class="empty-state">No gigs or jobs yet.</p></div>
+  <% } else { %>
+  <section class="admin-section" style="overflow-x:auto;">
+    <table class="admin-table" id="gigsTable">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Type</th>
+          <th>Category</th>
+          <th>Pay</th>
+          <th>Contact</th>
+          <th>Submitted By</th>
+          <th>Date</th>
+          <th>Expires</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% gigs.forEach(g => { %>
+          <tr id="gig-row-<%= g._id %>"
+              data-status="<%= g.status %>"
+              data-type="<%= g.type %>"
+              data-cat="<%= g.category %>">
+            <td>
+              <strong><%= g.title.substring(0, 40) %><%= g.title.length > 40 ? '…' : '' %></strong>
+              <% if (g.company) { %><div class="row-sub"><%= g.company %></div><% } %>
+              <% if (g.isRemote) { %><span class="tag" style="font-size:.7rem;margin-top:.2rem;">Remote</span><% } %>
+            </td>
+            <td><span class="tag gig-type-<%= g.type %>"><%= g.type %></span></td>
+            <td><span class="row-sub"><%= g.category %></span></td>
+            <td><span class="row-sub"><%= g.pay || '—' %></span></td>
+            <td>
+              <span class="row-sub" style="word-break:break-all;max-width:120px;display:block;">
+                <%= g.contact.substring(0, 40) %><%= g.contact.length > 40 ? '…' : '' %>
+              </span>
+            </td>
+            <td><%= g.submittedBy ? g.submittedBy.displayName : '?' %></td>
+            <td><%= new Date(g.createdAt).toLocaleDateString() %></td>
+            <td>
+              <% if (g.expiresAt) { %>
+                <span class="row-sub <%= new Date(g.expiresAt) < new Date() ? 'text-danger' : '' %>">
+                  <%= new Date(g.expiresAt).toLocaleDateString() %>
+                </span>
+              <% } else { %>—<% } %>
+            </td>
+            <td>
+              <span class="status-badge status-<%= g.status === 'approved' ? 'green' : g.status === 'rejected' ? 'red' : 'orange' %>"
+                    id="gig-status-<%= g._id %>">
+                <%= g.status %>
+              </span>
+            </td>
+            <td class="action-cell">
+              <% if (g.status !== 'approved') { %>
+                <button class="btn btn-primary btn-xs gig-status-btn"
+                        data-id="<%= g._id %>" data-status="approved">Approve</button>
+              <% } %>
+              <% if (g.status !== 'rejected') { %>
+                <button class="btn btn-outline btn-xs gig-status-btn"
+                        data-id="<%= g._id %>" data-status="rejected">Reject</button>
+              <% } %>
+              <% if (g.status !== 'pending') { %>
+                <button class="btn btn-outline btn-xs gig-status-btn"
+                        data-id="<%= g._id %>" data-status="pending">Reset</button>
+              <% } %>
+              <form action="/admin/gigs/<%= g._id %>?_method=DELETE" method="POST"
+                    style="display:inline" onsubmit="return confirm('Delete this posting permanently?')">
+                <button class="btn btn-danger btn-xs">Del</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <p id="gigsNoResults" class="listings-empty-msg" style="display:none;">No postings match those filters.</p>
+  </section>
+  <% } %>
+</main>
+
+<script>
+let activeStatusFilter = 'all';
+let activeTypeFilter   = 'all';
+let activeCatFilter    = 'all';
+
+document.querySelectorAll('.status-filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeStatusFilter = btn.dataset.filter;
+    document.querySelectorAll('.status-filter-btn').forEach(b => b.classList.remove('status-filter-active'));
+    btn.classList.add('status-filter-active');
+    filterTable();
+  });
+});
+document.getElementById('typeFilter').addEventListener('change', e => { activeTypeFilter = e.target.value; filterTable(); });
+document.getElementById('catFilterGigs').addEventListener('change', e => { activeCatFilter = e.target.value; filterTable(); });
+
+function filterTable() {
+  const rows = document.querySelectorAll('#gigsTable tbody tr');
+  let visible = 0;
+  rows.forEach(row => {
+    const sm = activeStatusFilter === 'all' || row.dataset.status === activeStatusFilter;
+    const tm = activeTypeFilter   === 'all' || row.dataset.type   === activeTypeFilter;
+    const cm = activeCatFilter    === 'all' || row.dataset.cat    === activeCatFilter;
+    const show = sm && tm && cm;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('gigsNoResults').style.display = visible === 0 ? 'block' : 'none';
+}
+
+// ── Inline status (event delegation) ──────────────────────────────
+const STATUS_CLASS = { approved: 'status-green', rejected: 'status-red', pending: 'status-orange' };
+
+function renderGigActionBtns(cell, id, status) {
+  const delForm = cell.querySelector('form').outerHTML;
+  cell.innerHTML = '';
+  if (status !== 'approved') cell.insertAdjacentHTML('beforeend', `<button class="btn btn-primary btn-xs gig-status-btn" data-id="${id}" data-status="approved">Approve</button> `);
+  if (status !== 'rejected') cell.insertAdjacentHTML('beforeend', `<button class="btn btn-outline btn-xs gig-status-btn" data-id="${id}" data-status="rejected">Reject</button> `);
+  if (status !== 'pending')  cell.insertAdjacentHTML('beforeend', `<button class="btn btn-outline btn-xs gig-status-btn" data-id="${id}" data-status="pending">Reset</button> `);
+  cell.insertAdjacentHTML('beforeend', delForm);
+}
+
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.gig-status-btn');
+  if (!btn) return;
+  const id     = btn.dataset.id;
+  const status = btn.dataset.status;
+  btn.disabled = true;
+  try {
+    const res  = await fetch(`/admin/gigs/${id}/status?_method=PUT`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); btn.disabled = false; return; }
+
+    const badge = document.getElementById(`gig-status-${id}`);
+    badge.textContent = data.status;
+    badge.className = `status-badge ${STATUS_CLASS[data.status]}`;
+
+    const row = document.getElementById(`gig-row-${id}`);
+    row.dataset.status = data.status;
+    renderGigActionBtns(btn.closest('.action-cell'), id, data.status);
+    filterTable();
+  } catch (err) {
+    btn.disabled = false;
+  }
+});
+</script>
+<%- include('../partials/footer') %>

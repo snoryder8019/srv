@@ -1,0 +1,188 @@
+<%- include('../partials/head', { title: 'Manage Local Listings' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main admin-main">
+  <%- include('../partials/flash') %>
+
+  <div class="admin-header">
+    <h1>Local Listings</h1>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <a href="/local" class="btn btn-outline btn-sm" target="_blank">View Public Page ↗</a>
+      <a href="/admin" class="btn btn-outline btn-sm">← Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Status summary chips -->
+  <div class="admin-status-bar">
+    <button class="status-filter-btn status-filter-active" data-filter="all">
+      All <span class="badge-count"><%= locals.length %></span>
+    </button>
+    <button class="status-filter-btn" data-filter="pending">
+      Pending <span class="badge-count badge-orange"><%= counts.pending %></span>
+    </button>
+    <button class="status-filter-btn" data-filter="approved">
+      Approved <span class="badge-count badge-green"><%= counts.approved %></span>
+    </button>
+    <button class="status-filter-btn" data-filter="rejected">
+      Rejected <span class="badge-count badge-red"><%= counts.rejected %></span>
+    </button>
+
+    <div style="margin-left:auto;">
+      <select id="catFilterAdmin" class="admin-select">
+        <option value="all">All Categories</option>
+        <option value="food">Food</option>
+        <option value="business">Business</option>
+        <option value="service">Service</option>
+        <option value="food-truck">Food Truck</option>
+      </select>
+      <select id="hoodFilterAdmin" class="admin-select" style="margin-left:.5rem;">
+        <option value="all">All Neighborhoods</option>
+        <% neighborhoods.forEach(n => { %>
+          <option value="<%= n %>"><%= n %></option>
+        <% }) %>
+      </select>
+    </div>
+  </div>
+
+  <% if (locals.length === 0) { %>
+    <div class="admin-section"><p class="empty-state">No local listings yet.</p></div>
+  <% } else { %>
+  <section class="admin-section" style="overflow-x:auto;">
+    <table class="admin-table" id="localTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Category</th>
+          <th>Neighborhood</th>
+          <th>Address</th>
+          <th>Submitted By</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% locals.forEach(l => { %>
+          <tr id="local-row-<%= l._id %>"
+              data-status="<%= l.status %>"
+              data-cat="<%= l.category %>"
+              data-hood="<%= l.neighborhood %>">
+            <td>
+              <strong><%= l.name.substring(0, 40) %><%= l.name.length > 40 ? '…' : '' %></strong>
+              <% if (l.description) { %>
+                <div class="row-sub"><%= l.description.substring(0, 60) %>…</div>
+              <% } %>
+            </td>
+            <td><span class="tag"><%= l.category %></span></td>
+            <td><%= l.neighborhood %></td>
+            <td><span class="row-sub"><%= l.address || '—' %></span></td>
+            <td><%= l.submittedBy ? l.submittedBy.displayName : '?' %></td>
+            <td><%= new Date(l.createdAt).toLocaleDateString() %></td>
+            <td>
+              <span class="status-badge status-<%= l.status === 'approved' ? 'green' : l.status === 'rejected' ? 'red' : 'orange' %>"
+                    id="local-status-<%= l._id %>">
+                <%= l.status %>
+              </span>
+            </td>
+            <td class="action-cell">
+              <% if (l.status !== 'approved') { %>
+                <button class="btn btn-primary btn-xs local-status-btn"
+                        data-id="<%= l._id %>" data-status="approved">Approve</button>
+              <% } %>
+              <% if (l.status !== 'rejected') { %>
+                <button class="btn btn-outline btn-xs local-status-btn"
+                        data-id="<%= l._id %>" data-status="rejected">Reject</button>
+              <% } %>
+              <% if (l.status !== 'pending') { %>
+                <button class="btn btn-outline btn-xs local-status-btn"
+                        data-id="<%= l._id %>" data-status="pending">Reset</button>
+              <% } %>
+              <form action="/admin/local/<%= l._id %>?_method=DELETE" method="POST"
+                    style="display:inline" onsubmit="return confirm('Delete this listing permanently?')">
+                <button class="btn btn-danger btn-xs">Del</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <p id="localNoResults" class="listings-empty-msg" style="display:none;">No listings match those filters.</p>
+  </section>
+  <% } %>
+</main>
+
+<script>
+// ── Status filter ──────────────────────────────────────────────────
+let activeStatusFilter = 'all';
+let activeCatFilter    = 'all';
+let activeHoodFilter   = 'all';
+
+document.querySelectorAll('.status-filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeStatusFilter = btn.dataset.filter;
+    document.querySelectorAll('.status-filter-btn').forEach(b => b.classList.remove('status-filter-active'));
+    btn.classList.add('status-filter-active');
+    filterTable();
+  });
+});
+document.getElementById('catFilterAdmin').addEventListener('change', e => {
+  activeCatFilter = e.target.value; filterTable();
+});
+document.getElementById('hoodFilterAdmin').addEventListener('change', e => {
+  activeHoodFilter = e.target.value; filterTable();
+});
+
+function filterTable() {
+  const rows = document.querySelectorAll('#localTable tbody tr');
+  let visible = 0;
+  rows.forEach(row => {
+    const statusMatch = activeStatusFilter === 'all' || row.dataset.status === activeStatusFilter;
+    const catMatch    = activeCatFilter    === 'all' || row.dataset.cat    === activeCatFilter;
+    const hoodMatch   = activeHoodFilter   === 'all' || row.dataset.hood   === activeHoodFilter;
+    const show = statusMatch && catMatch && hoodMatch;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('localNoResults').style.display = visible === 0 ? 'block' : 'none';
+}
+
+// ── Inline status change (event delegation) ───────────────────────
+const STATUS_CLASS = { approved: 'status-green', rejected: 'status-red', pending: 'status-orange' };
+
+function renderActionBtns(cell, id, status) {
+  const delForm = cell.querySelector('form').outerHTML;
+  cell.innerHTML = '';
+  if (status !== 'approved') cell.insertAdjacentHTML('beforeend', `<button class="btn btn-primary btn-xs local-status-btn" data-id="${id}" data-status="approved">Approve</button> `);
+  if (status !== 'rejected') cell.insertAdjacentHTML('beforeend', `<button class="btn btn-outline btn-xs local-status-btn" data-id="${id}" data-status="rejected">Reject</button> `);
+  if (status !== 'pending')  cell.insertAdjacentHTML('beforeend', `<button class="btn btn-outline btn-xs local-status-btn" data-id="${id}" data-status="pending">Reset</button> `);
+  cell.insertAdjacentHTML('beforeend', delForm);
+}
+
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.local-status-btn');
+  if (!btn) return;
+  const id     = btn.dataset.id;
+  const status = btn.dataset.status;
+  btn.disabled = true;
+  try {
+    const res  = await fetch(`/admin/local/${id}/status?_method=PUT`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); btn.disabled = false; return; }
+
+    const badge = document.getElementById(`local-status-${id}`);
+    badge.textContent = data.status;
+    badge.className = `status-badge ${STATUS_CLASS[data.status]}`;
+
+    const row = document.getElementById(`local-row-${id}`);
+    row.dataset.status = data.status;
+    renderActionBtns(btn.closest('.action-cell'), id, data.status);
+    filterTable();
+  } catch (err) {
+    btn.disabled = false;
+  }
+});
+</script>
+<%- include('../partials/footer') %>

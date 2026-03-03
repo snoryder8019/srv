@@ -1,0 +1,206 @@
+<%- include('../partials/head', { title: 'Local Greeley' }) %>
+<%- include('../partials/nav') %>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<main class="page-main">
+  <%- include('../partials/flash') %>
+
+  <div class="local-hero">
+    <div class="local-hero-inner">
+      <h1>Local Greeley</h1>
+      <p>Food, businesses, services, and food trucks — all submitted by your neighbors.</p>
+      <% if (user) { %>
+        <a href="/local/new" class="btn btn-primary">+ Add a Listing</a>
+      <% } else { %>
+        <a href="/auth/google" class="btn btn-outline">Sign in to submit</a>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- Neighborhood Map -->
+  <section class="local-map-section">
+    <h2 class="section-title">Explore by Neighborhood</h2>
+    <p class="section-sub">Click a neighborhood to filter listings below.</p>
+    <div id="neighborhood-map"></div>
+    <div class="neighborhood-chips" id="neighborhoodChips">
+      <button class="chip chip-active" data-hood="all">All Neighborhoods</button>
+      <% neighborhoods.forEach(n => { %>
+        <button class="chip" data-hood="<%= n %>"><%= n %></button>
+      <% }) %>
+    </div>
+  </section>
+
+  <!-- Category Tabs + Listings -->
+  <section class="local-listings-section">
+    <div class="category-tabs" id="categoryTabs">
+      <button class="cat-tab cat-active" data-cat="all">All</button>
+      <button class="cat-tab" data-cat="food">🍽 Food</button>
+      <button class="cat-tab" data-cat="business">🏢 Businesses</button>
+      <button class="cat-tab" data-cat="service">🔧 Services</button>
+      <button class="cat-tab" data-cat="food-truck">🚚 Food Trucks</button>
+    </div>
+
+    <% if (listings.length === 0) { %>
+      <div class="empty-state local-empty">
+        <p>No listings yet — be the first to add one!</p>
+        <% if (user) { %><a href="/local/new" class="btn btn-primary">Add a Listing</a><% } %>
+      </div>
+    <% } else { %>
+      <div class="local-grid" id="listingsGrid">
+        <% listings.forEach(l => { %>
+          <div class="local-card"
+               data-hood="<%= l.neighborhood %>"
+               data-cat="<%= l.category %>">
+            <% if (l.image) { %>
+              <div class="local-card-img">
+                <img src="<%= l.image %>" alt="<%= l.name %>">
+              </div>
+            <% } %>
+            <div class="local-card-body">
+              <div class="local-card-top">
+                <span class="cat-badge cat-badge-<%= l.category %>">
+                  <%= l.category === 'food' ? '🍽 Food' :
+                      l.category === 'business' ? '🏢 Business' :
+                      l.category === 'service' ? '🔧 Service' : '🚚 Food Truck' %>
+                </span>
+                <span class="hood-tag"><%= l.neighborhood %></span>
+              </div>
+              <h3 class="local-card-name"><%= l.name %></h3>
+              <p class="local-card-desc"><%= l.description.substring(0, 120) %><%= l.description.length > 120 ? '…' : '' %></p>
+              <div class="local-card-meta">
+                <% if (l.address) { %><span>📍 <%= l.address %></span><% } %>
+                <% if (l.hours) { %><span>🕐 <%= l.hours %></span><% } %>
+                <% if (l.phone) { %><span><a href="tel:<%= l.phone %>"><%= l.phone %></a></span><% } %>
+                <% if (l.website) { %><span><a href="<%= l.website %>" target="_blank" rel="noopener">Website ↗</a></span><% } %>
+              </div>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+      <p class="listings-empty-msg" id="noResultsMsg" style="display:none;">No listings match those filters.</p>
+    <% } %>
+  </section>
+</main>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ─── Neighborhood map ───────────────────────────────────────────────
+const NEIGHBORHOODS = [
+  { name: 'Downtown',            lat: 40.4233, lng: -104.7091, r: 650 },
+  { name: 'University District', lat: 40.4055, lng: -104.7094, r: 700 },
+  { name: 'Westlake',            lat: 40.4268, lng: -104.7485, r: 850 },
+  { name: 'Island Grove',        lat: 40.4205, lng: -104.7015, r: 600 },
+  { name: 'East Greeley',        lat: 40.4218, lng: -104.6770, r: 800 },
+  { name: 'North Greeley',       lat: 40.4525, lng: -104.7112, r: 800 },
+  { name: 'South Greeley',       lat: 40.3875, lng: -104.7040, r: 800 },
+  { name: 'Bittersweet',         lat: 40.4155, lng: -104.7212, r: 650 },
+  { name: 'Country Club',        lat: 40.4471, lng: -104.6977, r: 700 },
+  { name: 'Poudre River',        lat: 40.4575, lng: -104.7228, r: 800 },
+  { name: 'Alta Vista',          lat: 40.4350, lng: -104.6840, r: 650 },
+  { name: 'West Side',           lat: 40.4134, lng: -104.7340, r: 700 },
+  { name: 'Sunrise',             lat: 40.4332, lng: -104.7245, r: 600 },
+  { name: 'Prairie West',        lat: 40.4278, lng: -104.7625, r: 800 }
+];
+
+const COLOR_DEFAULT  = { color: '#c0392b', fillColor: '#1a2340', fillOpacity: 0.55, weight: 2 };
+const COLOR_ACTIVE   = { color: '#f0c040', fillColor: '#c0392b', fillOpacity: 0.75, weight: 3 };
+const COLOR_HAS_DATA = { color: '#f0c040', fillColor: '#1a2340', fillOpacity: 0.65, weight: 2 };
+
+const map = L.map('neighborhood-map', { zoomControl: true, scrollWheelZoom: false })
+              .setView([40.4233, -104.7091], 12);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 18
+}).addTo(map);
+
+// Count listings per neighborhood from the DOM
+const hoodCounts = {};
+document.querySelectorAll('.local-card').forEach(card => {
+  const h = card.dataset.hood;
+  hoodCounts[h] = (hoodCounts[h] || 0) + 1;
+});
+
+const circleMap = {};
+let activeHood = 'all';
+
+NEIGHBORHOODS.forEach(n => {
+  const hasData = (hoodCounts[n.name] || 0) > 0;
+  const style   = hasData ? COLOR_HAS_DATA : COLOR_DEFAULT;
+  const circle  = L.circle([n.lat, n.lng], { radius: n.r, ...style })
+    .addTo(map)
+    .bindTooltip(`<strong>${n.name}</strong>${hasData ? `<br>${hoodCounts[n.name]} listing${hoodCounts[n.name] > 1 ? 's' : ''}` : '<br>No listings yet'}`, { sticky: true });
+
+  circle.on('click', () => setHoodFilter(n.name));
+  circleMap[n.name] = circle;
+});
+
+function setHoodFilter(hood) {
+  activeHood = hood === activeHood ? 'all' : hood;
+
+  // Update circles
+  NEIGHBORHOODS.forEach(n => {
+    const hasData = (hoodCounts[n.name] || 0) > 0;
+    circleMap[n.name].setStyle(
+      activeHood === n.name ? COLOR_ACTIVE :
+      hasData ? COLOR_HAS_DATA : COLOR_DEFAULT
+    );
+  });
+
+  // Update chips
+  document.querySelectorAll('.chip').forEach(c => {
+    c.classList.toggle('chip-active', c.dataset.hood === activeHood || (activeHood === 'all' && c.dataset.hood === 'all'));
+  });
+
+  filterListings();
+}
+
+// ─── Chips click ────────────────────────────────────────────────────
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const hood = chip.dataset.hood;
+    if (hood === 'all') {
+      setHoodFilter('all');
+      activeHood = 'all';
+      // Reset circle styles
+      NEIGHBORHOODS.forEach(n => {
+        const hasData = (hoodCounts[n.name] || 0) > 0;
+        circleMap[n.name].setStyle(hasData ? COLOR_HAS_DATA : COLOR_DEFAULT);
+      });
+    } else {
+      setHoodFilter(hood);
+    }
+  });
+});
+
+// ─── Category tabs ──────────────────────────────────────────────────
+let activeCat = 'all';
+document.querySelectorAll('.cat-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    activeCat = tab.dataset.cat;
+    document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('cat-active'));
+    tab.classList.add('cat-active');
+    filterListings();
+  });
+});
+
+// ─── Filter listings ────────────────────────────────────────────────
+function filterListings() {
+  const cards = document.querySelectorAll('.local-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const hoodMatch = activeHood === 'all' || card.dataset.hood === activeHood;
+    const catMatch  = activeCat === 'all'  || card.dataset.cat  === activeCat;
+    const show = hoodMatch && catMatch;
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  const noMsg = document.getElementById('noResultsMsg');
+  if (noMsg) noMsg.style.display = visible === 0 ? 'block' : 'none';
+}
+</script>
+
+<%- include('../partials/footer') %>

@@ -7,7 +7,8 @@ const VideoSchema = new mongoose.Schema({
   thumbnail: { type: String },
   author: { type: mongoose.Schema.Types.ObjectId, ref: 'GrvUser', required: true },
   tags: [{ type: String }],
-  published: { type: Boolean, default: true },
+  published: { type: Boolean, default: false },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   views: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
 }, { collection: 'grv_videos' });
