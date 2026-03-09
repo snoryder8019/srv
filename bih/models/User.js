@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema({
   twitchId: { type: String },
   isAdmin: { type: Boolean, default: false },
   isBIH: { type: Boolean, default: false },
+  permissions: { type: [String], default: [] },
   createdAt: { type: Date, default: Date.now }
 });
 

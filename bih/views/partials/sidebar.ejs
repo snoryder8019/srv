@@ -74,67 +74,80 @@
 
   function renderUsers(users) {
     lastUsers = users;
-    countEl.textContent = users.length;
+    // Count only real users for the header number
+    var realCount = users.filter(function (u) { return !u.isBot; }).length;
+    countEl.textContent = realCount;
     usersEl.innerHTML = '';
-    users.forEach(function (u) {
+
+    // Real users first, then bots
+    var sorted = users.slice().sort(function (a, b) {
+      return (a.isBot ? 1 : 0) - (b.isBot ? 1 : 0);
+    });
+
+    sorted.forEach(function (u) {
       var row = document.createElement('div');
       row.classList.add('sidebar-user');
+      if (u.isBot) row.classList.add('sidebar-bot');
 
       var dot = document.createElement('span');
-      dot.classList.add('sidebar-dot');
+      dot.classList.add(u.isBot ? 'sidebar-bot-dot' : 'sidebar-dot');
 
       var name = document.createElement('span');
       name.classList.add('sidebar-name');
       name.textContent = u.displayName;
 
       row.appendChild(dot);
-      row.appendChild(name);
 
       if (u.avatar) {
         var img = document.createElement('img');
         img.src = u.avatar;
         img.classList.add('sidebar-avatar');
-        row.insertBefore(img, name);
+        row.appendChild(img);
       }
 
-      // Check if this user is in an active call
-      var userCallId = findUserCall(u.userId);
-      if (userCallId) {
-        var inCallDot = document.createElement('span');
-        inCallDot.classList.add('sidebar-in-call');
-        row.appendChild(inCallDot);
+      row.appendChild(name);
 
-        var inCallLabel = document.createElement('span');
-        inCallLabel.classList.add('sidebar-in-call-label');
-        inCallLabel.textContent = 'in call';
-        row.appendChild(inCallLabel);
-      }
+      if (u.isBot) {
+        // Bot badge — no call button
+        var badge = document.createElement('span');
+        badge.classList.add('sidebar-bot-badge');
+        badge.textContent = 'bot';
+        row.appendChild(badge);
+      } else {
+        // Check if this user is in an active call
+        var userCallId = findUserCall(u.userId);
+        if (userCallId) {
+          var inCallDot = document.createElement('span');
+          inCallDot.classList.add('sidebar-in-call');
+          row.appendChild(inCallDot);
+          var inCallLabel = document.createElement('span');
+          inCallLabel.classList.add('sidebar-in-call-label');
+          inCallLabel.textContent = 'in call';
+          row.appendChild(inCallLabel);
+        }
 
-      // Call / Join button
-      var callBtn = document.createElement('button');
-      callBtn.classList.add('sidebar-call-btn');
-
-      if (userCallId) {
-        // Join existing call
-        callBtn.title = 'Join call with ' + u.displayName;
-        callBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>';
-        (function (cid) {
+        var callBtn = document.createElement('button');
+        callBtn.classList.add('sidebar-call-btn');
+        if (userCallId) {
+          callBtn.title = 'Join call with ' + u.displayName;
+          callBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>';
+          (function (cid) {
+            callBtn.addEventListener('click', function (e) {
+              e.stopPropagation();
+              if (window.__bihWebRTC) window.__bihWebRTC.joinCall(cid);
+            });
+          })(userCallId);
+        } else {
+          callBtn.title = 'Call ' + u.displayName;
+          callBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2z"/></svg>';
+          callBtn.dataset.userId = u.userId;
           callBtn.addEventListener('click', function (e) {
             e.stopPropagation();
-            if (window.__bihWebRTC) window.__bihWebRTC.joinCall(cid);
+            if (window.__bihWebRTC) window.__bihWebRTC.call(u.userId, 'voice');
           });
-        })(userCallId);
-      } else {
-        // Start new call
-        callBtn.title = 'Call ' + u.displayName;
-        callBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2z"/></svg>';
-        callBtn.dataset.userId = u.userId;
-        callBtn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          if (window.__bihWebRTC) window.__bihWebRTC.call(u.userId, 'voice');
-        });
+        }
+        row.appendChild(callBtn);
       }
-      row.appendChild(callBtn);
 
       usersEl.appendChild(row);
     });

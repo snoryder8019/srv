@@ -24,9 +24,15 @@ import finances from "./finances/index.js"
 import contact from "./contact.js"
 import livechat from "./livechat.js"
 import hue from "./hue/index.js"
+import agents from "./agents/index.js"
+import skins from "./skins/index.js"
+import w2marketing from "./w2marketing/index.js"
+import Agent from "../api/v1/models/Agent.js"
 /* GET home page. */
 
 router.use('/admin', admin)
+router.use('/agents', agents)
+router.use('/skins', skins)
 router.use('/qrs', qrs)
 router.use('/q', q) // Short URL redirects for QR codes
 router.use('/bikelite', bikelite)
@@ -49,12 +55,17 @@ router.use('/finances', finances)
 router.use('/contact', contact)
 router.use('/livechat', livechat)
 router.use('/hue', hue)
+router.use('/w2marketing', w2marketing)
 router.use('/', plugins)
 
-router.get('/', function(req, res, next) {
-  const user = req.user;
-  console.log(req.session.user)
-  res.render('index', { title: 'Express', user:user });
+router.get('/', async function(req, res, next) {
+  try {
+    const user = req.user;
+    const chatAgent = await Agent.findOne({ 'pepeChat.enabled': true }, 'name description pepeChat').lean();
+    res.render('index', { title: 'Express', user, chatAgent: chatAgent || null });
+  } catch (e) {
+    res.render('index', { title: 'Express', user: req.user, chatAgent: null });
+  }
 });
 router.get('/auth', function(req, res, next) {
   res.render('auth/index', { title: 'Auth' });

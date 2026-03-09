@@ -1,4 +1,13 @@
 require('dotenv').config();
+
+// engine.io has an intermittent race that throws ERR_HTTP_HEADERS_SENT as an
+// uncaught exception — swallow it so the process doesn't crash.
+process.on('uncaughtException', (err) => {
+  if (err.code === 'ERR_HTTP_HEADERS_SENT') return;
+  console.error('Uncaught exception:', err);
+  process.exit(1);
+});
+
 const express = require('express');
 const mongoose = require('mongoose');
 const session = require('express-session');
@@ -54,6 +63,7 @@ app.use('/auth', require('./routes/auth'));
 app.use('/profile', require('./routes/profile'));
 app.use('/tickets', require('./routes/tickets'));
 app.use('/api', require('./routes/api'));
+app.use('/api', require('./routes/bots'));
 
 // Socket.IO — share session with express
 io.engine.use(sessionMiddleware);
@@ -75,9 +85,6 @@ const activeBroadcast = { active: false, broadcasterId: null, broadcasterName: n
 const ChatMessage = require('./models/ChatMessage');
 const Channel = require('./models/Channel');
 const Suggestion = require('./models/Suggestion');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
 const HISTORY_LIMIT = 20;
 
 // Purge stale channel docs from prior process
@@ -116,80 +123,8 @@ async function julesSay(text, targetSocket) {
   }
 }
 
-// Jules conversation engine — routed through openclaw agent service
-const julesSessions = new Map(); // userId -> { sessionId, turns, lastActivity }
-const julesRateLimit = new Map(); // userId -> last response timestamp
+const botRateLimit = new Map();   // `${botId}-${userId}` -> last response timestamp
 const greetedUsers = new Set();   // userIds greeted this process run — survives socket reconnects
-const JULES_MAX_TURNS = 6;
-const JULES_SESSION_MS = 15 * 60 * 1000; // 15 min inactivity resets session
-const JULES_RATE_MS = 5000;               // one Jules reply per 5s per user
-
-// Purge stale session state every 30 min
-setInterval(() => {
-  const now = Date.now();
-  for (const [uid, s] of julesSessions.entries()) {
-    if (now - s.lastActivity > JULES_SESSION_MS) julesSessions.delete(uid);
-  }
-}, 30 * 60 * 1000);
-
-function parseJulesReply(stdout) {
-  try {
-    const parsed = JSON.parse(stdout);
-    if (parsed.payloads && Array.isArray(parsed.payloads)) {
-      return parsed.payloads.map(p => p.text).filter(Boolean).join('\n').trim();
-    }
-    if (parsed.text) return parsed.text;
-    if (parsed.reply) return parsed.reply;
-    if (parsed.response) return parsed.response;
-  } catch { /* not JSON */ }
-  return stdout.split('\n')
-    .filter(l => l.trim() && !l.startsWith('[diagnostic]') && !l.startsWith('Gateway agent failed') && !l.startsWith('FailoverError:'))
-    .join('\n').trim() || null;
-}
-
-async function julesChat(userId, userMessage) {
-  const lastResp = julesRateLimit.get(userId);
-  if (lastResp && Date.now() - lastResp < JULES_RATE_MS) return;
-  julesRateLimit.set(userId, Date.now());
-
-  let session = julesSessions.get(userId);
-  const now = Date.now();
-
-  // Start fresh session if none or expired
-  if (!session || now - session.lastActivity > JULES_SESSION_MS) {
-    session = {
-      sessionId: 'bih-jules-' + userId.toString().slice(-8) + '-' + now.toString(36),
-      turns: 0,
-      lastActivity: now
-    };
-    julesSessions.set(userId, session);
-  }
-
-  // Hard cap — wrap and clear
-  if (session.turns >= JULES_MAX_TURNS) {
-    julesSay("We've covered enough ground. Vincent can take it from here if you need more.", null);
-    julesSessions.delete(userId);
-    return;
-  }
-
-  session.turns++;
-  session.lastActivity = Date.now();
-
-  try {
-    const escaped = userMessage.replace(/'/g, "'\\''");
-    const cmd = `openclaw agent --agent jules-winfield --message '${escaped}' --json --session-id '${session.sessionId}' --timeout 30`;
-    const { stdout, stderr } = await execAsync(cmd, {
-      timeout: 35000,
-      maxBuffer: 1024 * 1024,
-      env: { ...process.env, NO_COLOR: '1' }
-    });
-    const reply = parseJulesReply(stdout || stderr);
-    if (reply) julesSay(reply, null); // broadcast — public conversation
-  } catch (err) {
-    console.error('[Jules] openclaw error:', err.message);
-    julesSay('Something came up on my end. Give it a moment.', null);
-  }
-}
 
 function getSocketIdsForUser(targetUserId) {
   const ids = [];
@@ -210,7 +145,7 @@ async function getUniqueOnlineUsers() {
   const freshUsers = await User.find({ _id: { $in: userIds } }).lean();
   const freshMap = {};
   freshUsers.forEach(u => { freshMap[u._id.toString()] = u; });
-  return Array.from(seen.values()).map(u => {
+  const realUsers = Array.from(seen.values()).map(u => {
     const fresh = freshMap[u.userId];
     return {
       userId: u.userId,
@@ -218,7 +153,106 @@ async function getUniqueOnlineUsers() {
       avatar: fresh ? fresh.avatar : u.avatar
     };
   });
+
+  // Append active bots as persistent "online" members
+  try {
+    const { getActiveBots } = require('./lib/agentBot');
+    const bots = await getActiveBots();
+    const botUsers = bots.map(b => ({
+      userId: `bot:${b._id}`,
+      displayName: b.bihBot.displayName || b.name,
+      avatar: b.bihBot.avatar || '',
+      isBot: true
+    }));
+    return [...realUsers, ...botUsers];
+  } catch (e) {
+    return realUsers;
+  }
 }
+
+// Fire all active bih bots — each decides whether to reply ([SILENT] = skip)
+// excludeBotId: skip a bot that just spoke (prevents self-reply loops)
+// isBotMessage: true when a bot is speaking — triggers more selective engagement
+async function runBots(message, senderName, excludeBotId, isBotMessage = false) {
+  try {
+    const { getActiveBots, botChat } = require('./lib/agentBot');
+    const bots = await getActiveBots();
+    if (!bots.length) return;
+
+    // Collect all active bot display names for peer-awareness in prompts
+    const activeBotNames = bots.map(b => b.bihBot.displayName || b.name);
+
+    const recentHistory = await ChatMessage.find()
+      .sort({ createdAt: -1 }).limit(8).lean();
+    recentHistory.reverse();
+
+    for (const bot of bots) {
+      if (excludeBotId && bot._id.toString() === excludeBotId.toString()) continue;
+
+      const rateKey = bot._id.toString();
+      const lastResp = botRateLimit.get(rateKey);
+      const rateMs = bot.bihBot.rateMs || 8000;
+      if (lastResp && Date.now() - lastResp < rateMs) continue;
+
+      // Bot-to-bot: each bot only has a 25% chance of engaging with another bot's message
+      if (isBotMessage && Math.random() > 0.25) continue;
+
+      botRateLimit.set(rateKey, Date.now());
+      const botDisplayName = bot.bihBot.displayName || bot.name;
+      const botAvatar = bot.bihBot.avatar || '';
+
+      botChat(bot, recentHistory, message, senderName, activeBotNames)
+        .then(async reply => {
+          if (!reply) return; // [SILENT]
+          const botMsg = {
+            displayName: botDisplayName,
+            avatar: botAvatar,
+            message: reply,
+            timestamp: new Date().toISOString(),
+            isBot: true
+          };
+          try {
+            const savedBot = await ChatMessage.create({
+              displayName: botDisplayName,
+              avatar: botAvatar,
+              message: reply,
+              isBot: true
+            });
+            botMsg.timestamp = savedBot.createdAt.toISOString();
+          } catch (e) { /* non-critical */ }
+          chat.emit('chat-message', botMsg);
+          // Other bots can react — flagged as bot message so 25% engagement applies
+          runBots(reply, botDisplayName, bot._id, true);
+        })
+        .catch(err => console.error(`[Bot:${botDisplayName}] error:`, err.message));
+    }
+  } catch (err) {
+    console.error('[runBots] error:', err.message);
+  }
+}
+
+// Internal endpoint for MCP bih-chat tool — broadcasts a bot message to the chat namespace
+app.post('/api/bot-alert', async (req, res) => {
+  const { message, displayName, secret } = req.body;
+  const expected = process.env.BOT_ALERT_SECRET || 'bih-internal';
+  if (secret !== expected) return res.status(403).json({ error: 'Forbidden' });
+  if (!message || typeof message !== 'string') return res.status(400).json({ error: 'message required' });
+
+  const name = displayName || 'Agent';
+  const botMsg = {
+    displayName: name,
+    avatar: '',
+    message,
+    timestamp: new Date().toISOString(),
+    isBot: true
+  };
+  try {
+    const saved = await ChatMessage.create({ displayName: name, message, isBot: true });
+    botMsg.timestamp = saved.createdAt.toISOString();
+  } catch (e) { /* non-critical */ }
+  chat.emit('chat-message', botMsg);
+  res.json({ ok: true });
+});
 
 chat.on('connection', async (socket) => {
   const userId = socket.request.session.passport.user;
@@ -282,21 +316,200 @@ chat.on('connection', async (socket) => {
       return julesSay('Logged. The team will see it.', socket);
     }
     if (msg.trim() === '!help') {
-      return julesSay('!suggest <your idea> — sends feedback to the dev team. @jules <message> — talk to me directly.', socket);
-    }
-
-    // Jules conversation: @jules <message> — saved to history, Jules replies publicly
-    if (msg.toLowerCase().startsWith('@jules ')) {
-      const userMessage = msg.slice(7).trim();
-      if (userMessage) {
-        const timestamp = new Date();
-        const saved = await ChatMessage.create({ userId: user._id, displayName: freshName, avatar: freshAvatar, message: msg, createdAt: timestamp });
-        chat.emit('chat-message', { displayName: freshName, avatar: freshAvatar, message: msg, timestamp: saved.createdAt.toISOString() });
-        await julesChat(userId, userMessage);
+      const lines = [
+        '── Commands ──',
+        '!suggest <idea>         — send feedback to the dev team',
+        '@<botname> <message>    — talk directly to a bot (e.g. @jules, @marcellus)',
+        '!list-agents  (!list-a) — list all madladslab agents',
+      ];
+      if (freshUser.isAdmin) {
+        lines.push(
+          '!activate <name>               — enable agent as bih bot        [admin]',
+          '!deactivate <name>             — disable agent from bih          [admin]',
+          '!spawn <name> [model]          — create a new agent              [admin]',
+          '!users                         — list all users + roles          [admin]',
+          '!perms <username>              — show user permissions           [admin]',
+          '!grant <username> <perm>       — grant user a permission         [admin]',
+          '!revoke <username> <perm>      — revoke user permission          [admin]',
+          '!agent-grant <agent> <cap>     — grant agent a capability        [admin]',
+          '!agent-revoke <agent> <cap>    — revoke agent capability         [admin]',
+          '!agent-roles <agent> [roles]   — restrict agent to roles (* = all) [admin]',
+        );
       }
-      return;
+      return julesSay(lines.join('\n'), socket);
     }
 
+    // !list-agents / !list-a* shorthand
+    if (/^!list-a\S*/i.test(msg.trim())) {
+      try {
+        const { listAgents } = require('./lib/agentBot');
+        const agents = await listAgents();
+        if (!agents.length) return julesSay('No agents found in madladslab.', socket);
+        const lines = agents.map(a => {
+          const bihStatus = a.bihBot?.enabled ? '🟢 bih-active' : '⚫ bih-off';
+          const displayName = a.bihBot?.displayName || a.name;
+          return `${displayName} (${a.model}) — ${bihStatus}`;
+        });
+        return julesSay('── Agents ──\n' + lines.join('\n'), socket);
+      } catch (e) {
+        return julesSay('Failed to fetch agents: ' + e.message, socket);
+      }
+    }
+
+    // Admin-only agent commands
+    if (/^!activate\b/i.test(msg.trim()) || /^!deactivate\b/i.test(msg.trim()) || /^!spawn\b/i.test(msg.trim())) {
+      if (!freshUser.isAdmin) return julesSay('That command requires admin.', socket);
+
+      if (/^!activate\s+/i.test(msg)) {
+        const name = msg.replace(/^!activate\s+/i, '').trim();
+        if (!name) return julesSay('Usage: !activate <agent name>', socket);
+        try {
+          const { activateAgent } = require('./lib/agentBot');
+          const agent = await activateAgent(name);
+          if (!agent) return julesSay(`No agent named "${name}" found.`, socket);
+          return julesSay(`${agent.bihBot.displayName || agent.name} is now active in bih.`, socket);
+        } catch (e) {
+          return julesSay('Error: ' + e.message, socket);
+        }
+      }
+
+      if (/^!deactivate\s+/i.test(msg)) {
+        const name = msg.replace(/^!deactivate\s+/i, '').trim();
+        if (!name) return julesSay('Usage: !deactivate <agent name>', socket);
+        try {
+          const { deactivateAgent } = require('./lib/agentBot');
+          const agent = await deactivateAgent(name);
+          if (!agent) return julesSay(`No agent named "${name}" found.`, socket);
+          return julesSay(`${agent.bihBot.displayName || agent.name} has been deactivated.`, socket);
+        } catch (e) {
+          return julesSay('Error: ' + e.message, socket);
+        }
+      }
+
+      if (/^!spawn\s+/i.test(msg)) {
+        const parts = msg.replace(/^!spawn\s+/i, '').trim().split(/\s+/);
+        const name = parts[0];
+        const model = parts[1] || 'qwen2.5:7b';
+        if (!name) return julesSay('Usage: !spawn <name> [model]', socket);
+        try {
+          const { createAgent } = require('./lib/agentBot');
+          const agent = await createAgent(name, model, null, freshUser._id);
+          return julesSay(`Agent "${agent.name}" created with model ${agent.model}. Use !activate ${agent.name} to deploy it here.`, socket);
+        } catch (e) {
+          return julesSay('Error: ' + e.message, socket);
+        }
+      }
+    }
+
+    // ── User permission commands (admin only) ─────────────────────────────
+    if (/^!(grant|revoke|perms|users)\b/i.test(msg.trim())) {
+      if (!freshUser.isAdmin) return julesSay('That command requires admin.', socket);
+
+      // !users — list all users with roles
+      if (/^!users$/i.test(msg.trim())) {
+        const all = await User.find({}, 'displayName email isAdmin isBIH permissions').sort({ displayName: 1 }).lean();
+        if (!all.length) return julesSay('No users found.', socket);
+        const lines = all.map(u => {
+          const roles = [];
+          if (u.isAdmin) roles.push('admin');
+          if (u.isBIH) roles.push('bih');
+          (u.permissions || []).forEach(p => roles.push(p));
+          return `${u.displayName || u.email}  [${roles.join(', ') || 'none'}]`;
+        });
+        return julesSay('── Users ──\n' + lines.join('\n'), socket);
+      }
+
+      // !perms <username>
+      if (/^!perms\s+/i.test(msg)) {
+        const target = msg.replace(/^!perms\s+/i, '').trim();
+        const u = await User.findOne({ displayName: new RegExp(`^${target}$`, 'i') }).lean()
+          || await User.findOne({ email: new RegExp(`^${target}$`, 'i') }).lean();
+        if (!u) return julesSay(`User "${target}" not found.`, socket);
+        const roles = [];
+        if (u.isAdmin) roles.push('admin');
+        if (u.isBIH) roles.push('bih');
+        (u.permissions || []).forEach(p => roles.push(p));
+        return julesSay(`${u.displayName || u.email}: [${roles.join(', ') || 'none'}]`, socket);
+      }
+
+      // !grant <username> <perm>
+      if (/^!grant\s+/i.test(msg)) {
+        const parts = msg.replace(/^!grant\s+/i, '').trim().split(/\s+/);
+        const target = parts[0], perm = parts[1];
+        if (!target || !perm) return julesSay('Usage: !grant <username> <perm>', socket);
+        const u = await User.findOne({ displayName: new RegExp(`^${target}$`, 'i') })
+          || await User.findOne({ email: new RegExp(`^${target}$`, 'i') });
+        if (!u) return julesSay(`User "${target}" not found.`, socket);
+        if (perm === 'admin') { u.isAdmin = true; }
+        else if (perm === 'bih') { u.isBIH = true; }
+        else { if (!u.permissions.includes(perm)) u.permissions.push(perm); }
+        await u.save();
+        return julesSay(`Granted [${perm}] to ${u.displayName || u.email}.`, socket);
+      }
+
+      // !revoke <username> <perm>
+      if (/^!revoke\s+/i.test(msg)) {
+        const parts = msg.replace(/^!revoke\s+/i, '').trim().split(/\s+/);
+        const target = parts[0], perm = parts[1];
+        if (!target || !perm) return julesSay('Usage: !revoke <username> <perm>', socket);
+        const u = await User.findOne({ displayName: new RegExp(`^${target}$`, 'i') })
+          || await User.findOne({ email: new RegExp(`^${target}$`, 'i') });
+        if (!u) return julesSay(`User "${target}" not found.`, socket);
+        if (perm === 'admin') { u.isAdmin = false; }
+        else if (perm === 'bih') { u.isBIH = false; }
+        else { u.permissions = u.permissions.filter(p => p !== perm); }
+        await u.save();
+        return julesSay(`Revoked [${perm}] from ${u.displayName || u.email}.`, socket);
+      }
+    }
+
+    // ── Agent permission commands (admin only) ────────────────────────────
+    if (/^!(agent-grant|agent-revoke|agent-roles)\b/i.test(msg.trim())) {
+      if (!freshUser.isAdmin) return julesSay('That command requires admin.', socket);
+
+      // !agent-grant <agentname> <capability>
+      if (/^!agent-grant\s+/i.test(msg)) {
+        const parts = msg.replace(/^!agent-grant\s+/i, '').trim().split(/\s+/);
+        const agentName = parts[0], cap = parts[1];
+        if (!agentName || !cap) return julesSay('Usage: !agent-grant <agentname> <capability>', socket);
+        try {
+          const { grantAgentPerm } = require('./lib/agentBot');
+          const agent = await grantAgentPerm(agentName, cap);
+          if (!agent) return julesSay(`Agent "${agentName}" not found.`, socket);
+          return julesSay(`Agent ${agent.name} granted capability [${cap}]. Caps: ${(agent.capabilities || []).join(', ') || 'none'}`, socket);
+        } catch (e) { return julesSay('Error: ' + e.message, socket); }
+      }
+
+      // !agent-revoke <agentname> <capability>
+      if (/^!agent-revoke\s+/i.test(msg)) {
+        const parts = msg.replace(/^!agent-revoke\s+/i, '').trim().split(/\s+/);
+        const agentName = parts[0], cap = parts[1];
+        if (!agentName || !cap) return julesSay('Usage: !agent-revoke <agentname> <capability>', socket);
+        try {
+          const { revokeAgentPerm } = require('./lib/agentBot');
+          const agent = await revokeAgentPerm(agentName, cap);
+          if (!agent) return julesSay(`Agent "${agentName}" not found.`, socket);
+          return julesSay(`Agent ${agent.name} revoked capability [${cap}]. Caps: ${(agent.capabilities || []).join(', ') || 'none'}`, socket);
+        } catch (e) { return julesSay('Error: ' + e.message, socket); }
+      }
+
+      // !agent-roles <agentname> [role1,role2,...] — restrict who can trigger this agent
+      if (/^!agent-roles\s+/i.test(msg)) {
+        const parts = msg.replace(/^!agent-roles\s+/i, '').trim().split(/\s+/);
+        const agentName = parts[0], rolesRaw = parts[1];
+        if (!agentName) return julesSay('Usage: !agent-roles <agentname> [role1,role2 | *]', socket);
+        const roles = !rolesRaw || rolesRaw === '*' ? [] : rolesRaw.split(',').map(r => r.trim()).filter(Boolean);
+        try {
+          const { setAgentAllowedRoles } = require('./lib/agentBot');
+          const agent = await setAgentAllowedRoles(agentName, roles);
+          if (!agent) return julesSay(`Agent "${agentName}" not found.`, socket);
+          const display = roles.length ? roles.join(', ') : '* (all users)';
+          return julesSay(`Agent ${agent.name} restricted to roles: ${display}`, socket);
+        } catch (e) { return julesSay('Error: ' + e.message, socket); }
+      }
+    }
+
+    // Save and broadcast the message
     const timestamp = new Date();
     const saved = await ChatMessage.create({
       userId: user._id,
@@ -311,6 +524,46 @@ chat.on('connection', async (socket) => {
       message: msg,
       timestamp: saved.createdAt.toISOString()
     });
+
+    // @botname direct address — find the specific bot and force a reply
+    const atMatch = msg.match(/^@([\w-]+)\b/i);
+    if (atMatch) {
+      const handle = atMatch[1].toLowerCase();
+      try {
+        const { getActiveBots, botChat } = require('./lib/agentBot');
+        const bots = await getActiveBots();
+        const target = bots.find(b => {
+          const trigger = (b.bihBot.trigger || '').toLowerCase();
+          const dName = (b.bihBot.displayName || b.name).toLowerCase().replace(/\s+/g, '-');
+          const firstName = (b.bihBot.displayName || b.name).toLowerCase().split(' ')[0];
+          return trigger === handle || dName === handle || firstName === handle;
+        });
+        if (target) {
+          const activeBotNames = bots.map(b => b.bihBot.displayName || b.name);
+          const recentHistory = await ChatMessage.find().sort({ createdAt: -1 }).limit(8).lean();
+          recentHistory.reverse();
+          const botDisplayName = target.bihBot.displayName || target.name;
+          const botAvatar = target.bihBot.avatar || '';
+          botChat(target, recentHistory, msg, freshName, activeBotNames, { directAddress: true })
+            .then(async reply => {
+              const finalReply = reply || `Yeah, I'm here.`;
+              const botMsg = { displayName: botDisplayName, avatar: botAvatar, message: finalReply, timestamp: new Date().toISOString(), isBot: true };
+              try {
+                const saved2 = await ChatMessage.create({ displayName: botDisplayName, avatar: botAvatar, message: finalReply, isBot: true });
+                botMsg.timestamp = saved2.createdAt.toISOString();
+              } catch (_) {}
+              chat.emit('chat-message', botMsg);
+              runBots(finalReply, botDisplayName, target._id, true);
+            })
+            .catch(err => console.error(`[Bot:${botDisplayName}] direct error:`, err.message));
+          return; // only the addressed bot responds
+        }
+      } catch (e) {
+        console.error('[at-address] error:', e.message);
+      }
+    }
+
+    runBots(msg, freshName, null);
   });
 
   // Link preview fetcher

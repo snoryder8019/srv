@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Agent Dashboard - madLadsLab</title>
+    <link rel="stylesheet" href="/stylesheets/admin.css">
+    <link rel="stylesheet" href="/stylesheets/agents.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <%-include('../mainContent/adminHeader.ejs')%>
+
+  <div class="admin-container">
+    <%-include('../mainContent/adminSidebar.ejs')%>
+
+    <main class="admin-main">
+      <div class="admin-header">
+        <h1>AI Agent Dashboard</h1>
+        <p class="admin-subtitle">Spawn and manage AI agents powered by Ollama</p>
+      </div>
+
+      <%- include('./partials/_docs.ejs') %>
+
+      <!-- Create Agent Button -->
+      <div class="action-bar">
+        <button id="createAgentBtn" class="btn-primary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Spawn New Agent
+        </button>
+        <button id="testOllamaBtn" class="btn-secondary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+          Test Ollama
+        </button>
+      </div>
+
+      <!-- Agents Grid -->
+      <div class="agents-grid" id="agentsGrid">
+        <% if (agents && agents.length > 0) { %>
+          <% agents.forEach(agent => { %>
+            <%- include('./partials/_card.ejs', { agent }) %>
+          <% }); %>
+        <% } else { %>
+          <div class="empty-state-card">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <h3>No agents yet</h3>
+            <p>Click "Spawn New Agent" to create your first AI agent</p>
+          </div>
+        <% } %>
+      </div>
+    </main>
+  </div>
+
+  <%- include('./partials/_modal-create.ejs') %>
+  <%- include('./partials/_modal-chat.ejs') %>
+  <%- include('./partials/_modal-logs.ejs') %>
+  <%- include('./partials/_modal-detail.ejs') %>
+
+  <script>
+    const SPAWN_USER_NAME = <%- JSON.stringify(user.displayName || user.email || 'your operator') %>;
+    const SPAWN_AGENT_ROSTER = <%- JSON.stringify(agents.map(function(a){ return a.name + ' (' + a.role + ')'; }).join(', ') || 'none yet') %>;
+  </script>
+  <script src="/javascripts/agents-presets.js"></script>
+  <script src="/javascripts/agents-ui.js"></script>
+  <script src="/javascripts/agents-client.js"></script>
+
+  <%-include('../mainContent/adminNav.ejs')%>
+</body>
+</html>

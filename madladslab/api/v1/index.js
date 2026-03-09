@@ -8,7 +8,14 @@ const router = express.Router();
 router.get('/', (req, res, next) => {
     res.json({"message":"sna version 1"})
 });
-router.use('/mcp',mcp)
+function mcpAuth(req, res, next) {
+  if (req.headers['x-mcp-secret'] !== process.env.MCP_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+}
+
+router.use('/mcp', mcpAuth, mcp)
 router.use('/',ep)
 router.use('/helpers',helpers)
 export default router;

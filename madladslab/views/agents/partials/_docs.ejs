@@ -1,0 +1,165 @@
+<!-- System Docs -->
+<details class="agent-docs" id="agentDocs">
+  <summary class="agent-docs-summary">
+    <span class="docs-toggle-icon">📋</span>
+    <span>System Reference</span>
+    <span class="docs-toggle-hint">click to expand</span>
+  </summary>
+  <div class="agent-docs-body">
+
+    <div class="docs-section">
+      <h3>Overview</h3>
+      <p>A full agentic platform backed by Ollama. Each agent has its own identity (name, model, role, system prompt), a persistent memory store (conversations, thread summary, long-term notes, knowledge base), configurable MCP tools, and an optional background process that runs autonomously every 2 minutes. Agents can also be deployed as bots in <strong>bih chat</strong>.</p>
+    </div>
+
+    <div class="docs-section">
+      <h3>Agent Cards</h3>
+      <p>Each card shows status badge, model, role, temperature, message/token counts, and last-active date. Cards have inline tabs:</p>
+      <ul>
+        <li><strong>Overview</strong> — created date, creator, last updated</li>
+        <li><strong>Tuning</strong> — lazy-loaded system prompt and model params</li>
+        <li><strong>Logs</strong> — last 50 log entries with level filters and live tail via Socket.IO</li>
+        <li><strong>Memory</strong> — conversation count, KB entries, token usage</li>
+      </ul>
+      <p>Footer buttons: <code>Chat</code> · <code>Manage</code> · <code>+ bih</code> / <code>bih: @trigger</code> · <code>Start</code>/<code>Stop</code>.</p>
+    </div>
+
+    <div class="docs-section">
+      <h3>Chat (Agentic Loop)</h3>
+      <p>Each chat turn runs an agentic loop (up to 10 iterations). The agent may call any of its enabled MCP tools before producing a final text response. Real-time tool call progress is streamed via Socket.IO and shown as inline badges in the chat window. Proactive push messages from the background process also appear here (pink, distinct styling). Unread push messages show a badge on the Chat button when the modal is closed.</p>
+      <p>Context injected per turn (in order): system prompt → live session context (agent name, user, time, other agents) → thread summary → long-term memory → knowledge base → last 10 conversations → new message.</p>
+      <p>After each turn, two background jobs fire-and-forget: <strong>thread summary</strong> update and <strong>long-term memory / notes</strong> extraction. When conversation history exceeds 20 entries, the oldest 10 are compacted into a KB summary entry automatically.</p>
+      <p><strong>Role middleware</strong> runs before the main loop:</p>
+      <ul>
+        <li><strong>researcher</strong> — generates a TLDR of the message first, injected as a system note</li>
+        <li><strong>vibecoder</strong> — generates a task breakdown first, injected as a system note</li>
+      </ul>
+    </div>
+
+    <div class="docs-section">
+      <h3>Memory System</h3>
+      <ul>
+        <li><strong>Conversations</strong> — last 50 shown; stored rolling, compacted at 20+</li>
+        <li><strong>Thread Summary</strong> — auto-updated bullet list of what has been worked on; editable manually</li>
+        <li><strong>Long-term Memory / Notes</strong> — action items and key decisions extracted after each turn; supports checkboxes (<code>- [ ]</code>); editable manually</li>
+        <li><strong>Knowledge Base</strong> — manually added or auto-generated context entries (type: context / fact / instruction / background); deletable individually</li>
+      </ul>
+      <p>All memory updates are broadcast over Socket.IO so the UI stays live without reloading.</p>
+    </div>
+
+    <div class="docs-section">
+      <h3>Tuning</h3>
+      <p>System prompt edits are versioned (history stored on the agent). Model params: <code>temperature</code> (0–2), <code>maxTokens</code>, <code>contextWindow</code>, <code>topP</code>, <code>topK</code>, <code>repeatPenalty</code>. bihBot display name, avatar, and typing rate (ms) are also tunable here. Enabled status and trigger keyword are controlled via the card footer toggle.</p>
+    </div>
+
+    <div class="docs-section">
+      <h3>MCP Tools (19)</h3>
+      <p>Tools are enabled per-agent. Two separate pools: <strong>chat tools</strong> (used during interactive chat) and <strong>background tools</strong> (used during autonomous background ticks). Both configured in Manage → MCP tab.</p>
+      <table class="docs-table">
+        <thead><tr><th>Category</th><th>Tools</th></tr></thead>
+        <tbody>
+          <tr><td>Filesystem</td><td>read-file, write-file, list-directory, file-find, grep-search, log-tail</td></tr>
+          <tr><td>Shell</td><td>execute, process-list, tmux-sessions, tmux-logs, service-port, npm-run</td></tr>
+          <tr><td>Git</td><td>git-status (read-only: status, log, diff, branch, show)</td></tr>
+          <tr><td>Network</td><td>http-request (localhost + *.madladslab.com only), web-search (Brave)</td></tr>
+          <tr><td>Database</td><td>mongo-find (read-only), mongo-write (agent_notes, agent_tasks only)</td></tr>
+          <tr><td>Integrations</td><td>bih-chat (post alert to bih chat)</td></tr>
+          <tr><td>Meta</td><td>context (read project CLAUDE.md)</td></tr>
+        </tbody>
+      </table>
+      <p>Dangerous ops are blocked (<code>killall</code>, <code>pkill -9</code>, <code>rm -rf /</code>, etc.). All filesystem/shell tools are scoped to <code>/srv</code>.</p>
+    </div>
+
+    <div class="docs-section">
+      <h3>Background Process</h3>
+      <p>Each agent can run an autonomous background process that ticks every <strong>2 minutes</strong>. On each tick the agent gets its system prompt, a roster of other agents, the current time, and up to 3 recent KB entries. If background tools are enabled it may call one round of tools before its final response. Output is expected as JSON <code>{"title":"...","content":"...","pushToChat":true}</code>. If <code>pushToChat</code> is true, the finding is pushed to any open chat window as a proactive message. All findings are stored as <code>AgentAction</code> records visible in the Actions tab. Returns <code>null</code> if nothing to report.</p>
+    </div>
+
+    <div class="docs-section">
+      <h3>bihBot Integration</h3>
+      <p>Any agent can be deployed as a chat bot in <strong>bih</strong> (port 3055). Toggle via the <code>+ bih</code> button on the card. When enabled, bih chat users trigger the agent by prefixing a message with <code>@trigger-name</code>. The agent responds using its full config. Display name, avatar, and response typing rate are configurable in Tuning.</p>
+    </div>
+
+    <div class="docs-section">
+      <h3>Personality Presets</h3>
+      <p>12 presets available when spawning a new agent:</p>
+      <div class="preset-doc-grid">
+        <span><strong>🖥 Server Monitor</strong> — researcher; watches services, ports, tmux sessions</span>
+        <span><strong>⚡ Vibecoder</strong> — vibecoder; fullstack dev, reads &amp; writes code in /srv</span>
+        <span><strong>🔬 Researcher</strong> — researcher; deep-dives into files, produces TLDRs</span>
+        <span><strong>🐛 Debug Detective</strong> — assistant; traces errors through logs and grep</span>
+        <span><strong>📖 Lore Keeper</strong> — assistant; sci-fi MMO world-building and narrative</span>
+        <span><strong>🔒 Security Auditor</strong> — researcher; OWASP and injection pattern review</span>
+        <span><strong>🗄 Data Scout</strong> — researcher; MongoDB queries and data pattern analysis</span>
+        <span><strong>🎤 Jules Winfield</strong> — bih bot; Pulp Fiction philosopher, raw and wise</span>
+        <span><strong>📣 Hype Beast</strong> — bih bot; energetic gaming announcer</span>
+        <span><strong>🧘 The Sage</strong> — bih bot; ancient cryptic gamer mystic</span>
+        <span><strong>🛸 Tinfoil</strong> — bih bot; conspiracy theorist, nothing is a coincidence</span>
+        <span><strong>✦ Custom</strong> — blank slate, define everything from scratch</span>
+      </div>
+    </div>
+
+    <div class="docs-section">
+      <h3>REST API Reference</h3>
+      <table class="docs-table">
+        <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td colspan="3" class="docs-table-group">Agents CRUD</td></tr>
+          <tr><td>GET</td><td>/api/agents</td><td>List all agents</td></tr>
+          <tr><td>GET</td><td>/api/agents/:id</td><td>Get single agent</td></tr>
+          <tr><td>POST</td><td>/api/agents</td><td>Create (name, model, provider, systemPrompt, temperature, contextWindow, maxTokens)</td></tr>
+          <tr><td>PUT</td><td>/api/agents/:id</td><td>Update agent fields</td></tr>
+          <tr><td>DELETE</td><td>/api/agents/:id</td><td>Delete agent</td></tr>
+          <tr><td>PATCH</td><td>/api/agents/:id/status</td><td>Set status: idle | running | stopped | error</td></tr>
+          <tr><td>PATCH</td><td>/api/agents/:id/bih-bot</td><td>Toggle bih bot (enabled, trigger, displayName, avatar)</td></tr>
+          <tr><td>GET</td><td>/api/agents/:id/logs</td><td>Last 50 logs (reversed)</td></tr>
+          <tr><td>GET</td><td>/api/ollama/test</td><td>Test Ollama connection, list available models</td></tr>
+          <tr><td colspan="3" class="docs-table-group">Chat</td></tr>
+          <tr><td>POST</td><td>/api/agents/:id/chat</td><td>Send message → agentic loop → { response, toolCalls, usage }</td></tr>
+          <tr><td colspan="3" class="docs-table-group">Memory</td></tr>
+          <tr><td>GET</td><td>/api/agents/:id/memory</td><td>Full memory object (conversations, KB, summary, notes)</td></tr>
+          <tr><td>GET</td><td>/api/agents/:id/memory/stats</td><td>Counts and token stats</td></tr>
+          <tr><td>POST</td><td>/api/agents/:id/memory/knowledge</td><td>Add KB entry (title, content, type)</td></tr>
+          <tr><td>DELETE</td><td>/api/agents/:id/memory/knowledge/:knowledgeId</td><td>Delete KB entry</td></tr>
+          <tr><td>PUT</td><td>/api/agents/:id/memory/summary</td><td>Overwrite thread summary</td></tr>
+          <tr><td>PUT</td><td>/api/agents/:id/memory/notes</td><td>Overwrite long-term memory / notes</td></tr>
+          <tr><td>DELETE</td><td>/api/agents/:id/memory</td><td>Clear all memory</td></tr>
+          <tr><td colspan="3" class="docs-table-group">Tuning</td></tr>
+          <tr><td>GET</td><td>/api/agents/:id/tuning</td><td>Get tuning config, systemPromptHistory, bihBot settings</td></tr>
+          <tr><td>PUT</td><td>/api/agents/:id/tuning</td><td>Update systemPrompt, model params, bihBot display settings</td></tr>
+          <tr><td colspan="3" class="docs-table-group">MCP Tools</td></tr>
+          <tr><td>GET</td><td>/api/mcp/available-tools</td><td>All 19 available tools with category</td></tr>
+          <tr><td>GET</td><td>/api/agents/:id/mcp</td><td>Agent's current enabled tool config</td></tr>
+          <tr><td>POST</td><td>/api/agents/:id/mcp/enable</td><td>Set enabled chat tools array</td></tr>
+          <tr><td colspan="3" class="docs-table-group">Actions / Findings</td></tr>
+          <tr><td>GET</td><td>/api/agents/:id/actions</td><td>Agent's action records (filterable by type, limit)</td></tr>
+          <tr><td>GET</td><td>/api/actions</td><td>All actions across all agents</td></tr>
+          <tr><td>DELETE</td><td>/api/agents/:id/actions/:actionId</td><td>Delete action record</td></tr>
+          <tr><td colspan="3" class="docs-table-group">Background Process</td></tr>
+          <tr><td>GET</td><td>/api/background/status</td><td>List all running background processes</td></tr>
+          <tr><td>POST</td><td>/api/agents/:id/background/start</td><td>Start background process</td></tr>
+          <tr><td>POST</td><td>/api/agents/:id/background/stop</td><td>Stop background process</td></tr>
+          <tr><td>PUT</td><td>/api/agents/:id/background/tools</td><td>Set background tool pool</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="docs-section">
+      <h3>Socket.IO Events</h3>
+      <p>All events are scoped per agent. Client subscribes with <code>socket.on('agent:&lt;agentId&gt;:&lt;event&gt;', handler)</code>.</p>
+      <table class="docs-table">
+        <thead><tr><th>Event suffix</th><th>Payload</th></tr></thead>
+        <tbody>
+          <tr><td>tool-call</td><td>{ callId, tool, args }</td></tr>
+          <tr><td>tool-result</td><td>{ callId, tool, success, error? }</td></tr>
+          <tr><td>memory-update</td><td>{ type, data } — types: conversation, knowledge, knowledge-deleted, cleared</td></tr>
+          <tr><td>tuning-update</td><td>{ systemPrompt, adjustableParams, config }</td></tr>
+          <tr><td>action-new</td><td>AgentAction document</td></tr>
+          <tr><td>background-status</td><td>{ status: started | stopped | tick, lastRun?, runCount? }</td></tr>
+          <tr><td>push</td><td>{ type, title, content, actionId } — proactive message injected into chat</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</details>

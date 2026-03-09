@@ -4,371 +4,145 @@
     <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
     <link rel="stylesheet" href="/stylesheets/admin.css">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Live Chats - madLadsLab Admin</title>
+    <title>Chat Analytics - madLadsLab Admin</title>
     <style>
-        /* Live Chats-specific styles */
-        .content-section {
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(255,255,255,0.08);
-        }
-        .session-list {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .session-card {
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 12px;
-            padding: 20px;
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-
-        .session-card:hover {
-            background: rgba(255,255,255,0.06);
-            border-color: rgba(255,255,255,0.12);
-            transform: translateX(4px);
-        }
-
-        .session-card.active {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.15);
-        }
-
-        .session-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 12px;
-        }
-
-        .session-id {
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            color: rgba(255,255,255,0.5);
-            font-weight: 600;
-        }
-
-        .session-meta {
-            display: flex;
-            gap: 16px;
-            font-size: 12px;
-            color: rgba(255,255,255,0.4);
-        }
-
-        .session-preview {
-            font-size: 14px;
-            color: rgba(255,255,255,0.7);
-            line-height: 1.5;
-            margin-top: 8px;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .session-badges {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-
-        .badge {
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .badge.new {
-            background: rgba(0, 255, 136, 0.15);
-            color: #00ff88;
-            border: 1px solid rgba(0, 255, 136, 0.3);
-        }
-
-        .badge.messages {
-            background: rgba(0, 170, 255, 0.15);
-            color: #00aaff;
-            border: 1px solid rgba(0, 170, 255, 0.3);
-        }
-
-        .conversation-panel {
-            margin-top: 24px;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 12px;
-            padding: 24px;
-            display: none;
-        }
-
-        .conversation-panel.active {
-            display: block;
-            animation: fadeIn 0.3s;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .conversation-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-bottom: 16px;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
+        /* ── Stats bar ── */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
             margin-bottom: 24px;
         }
-
-        .conversation-info h3 {
-            font-size: 18px;
-            font-weight: 600;
-            color: rgba(255,255,255,0.95);
-            margin: 0 0 8px 0;
+        .stat-tile {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
         }
-
-        .conversation-info p {
-            font-size: 13px;
-            color: rgba(255,255,255,0.5);
-            margin: 0;
+        .stat-tile .val {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+            margin-bottom: 4px;
         }
+        .stat-tile .val.green  { color: #00ff88; }
+        .stat-tile .val.blue   { color: #00aaff; }
+        .stat-tile .val.yellow { color: #ffcc00; }
+        .stat-tile .val.pink   { color: #ff88cc; }
+        .stat-tile .lbl { font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.5px; }
 
-        .close-conversation {
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.12);
-            color: rgba(255,255,255,0.7);
-            padding: 8px 16px;
-            border-radius: 8px;
-            cursor: pointer;
+        /* ── Funnel ── */
+        .funnel { display: flex; gap: 0; margin-bottom: 24px; align-items: stretch; }
+        .funnel-step {
+            flex: 1;
+            padding: 14px 16px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-right: none;
+            text-align: center;
+        }
+        .funnel-step:first-child { border-radius: 10px 0 0 10px; }
+        .funnel-step:last-child  { border-right: 1px solid rgba(255,255,255,0.08); border-radius: 0 10px 10px 0; }
+        .funnel-step .f-val { font-size: 1.6rem; font-weight: 700; }
+        .funnel-step .f-lbl { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+        .funnel-step .f-pct { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 4px; }
+        .funnel-step.s1 .f-val { color: #fff; }
+        .funnel-step.s2 .f-val { color: #00aaff; }
+        .funnel-step.s3 .f-val { color: #00ff88; }
+        .funnel-step.s4 .f-val { color: #ff88cc; }
+
+        /* ── Mini chart (CSS bars) ── */
+        .chart-row { display: flex; align-items: flex-end; gap: 6px; height: 60px; margin-bottom: 4px; }
+        .chart-bar { flex: 1; border-radius: 3px 3px 0 0; min-height: 2px; transition: height 0.4s; }
+        .chart-bar.sessions { background: rgba(0,170,255,0.5); }
+        .chart-bar.leads    { background: rgba(0,255,136,0.7); }
+        .chart-labels { display: flex; gap: 6px; }
+        .chart-labels span { flex: 1; text-align: center; font-size: 9px; color: rgba(255,255,255,0.3); }
+        .chart-legend { display: flex; gap: 16px; margin-top: 6px; }
+        .chart-legend span { font-size: 11px; color: rgba(255,255,255,0.5); }
+        .chart-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+        /* ── Tabs ── */
+        .chat-tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .chat-tab {
+            padding: 10px 18px;
             font-size: 13px;
             font-weight: 500;
-            transition: all 0.2s;
-        }
-
-        .close-conversation:hover {
-            background: rgba(255,255,255,0.12);
-            color: rgba(255,255,255,0.9);
-        }
-
-        .messages-container {
-            max-height: 500px;
-            overflow-y: auto;
-            margin-bottom: 20px;
-            padding-right: 8px;
-        }
-
-        .messages-container::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .messages-container::-webkit-scrollbar-track {
-            background: rgba(255,255,255,0.03);
-            border-radius: 4px;
-        }
-
-        .messages-container::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.1);
-            border-radius: 4px;
-        }
-
-        .messages-container::-webkit-scrollbar-thumb:hover {
-            background: rgba(255,255,255,0.15);
-        }
-
-        .message-item {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 20px;
-            animation: messageSlideIn 0.3s;
-        }
-
-        @keyframes messageSlideIn {
-            from { opacity: 0; transform: translateX(-10px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        .message-item.user {
-            flex-direction: row-reverse;
-        }
-
-        .message-item.admin {
-            background: rgba(255, 170, 0, 0.05);
-            padding: 16px;
-            border-radius: 12px;
-            border-left: 3px solid #ffaa00;
-        }
-
-        .message-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.08);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            flex-shrink: 0;
-        }
-
-        .message-item.admin .message-avatar {
-            background: rgba(255, 170, 0, 0.2);
-        }
-
-        .message-content {
-            flex: 1;
-            max-width: 70%;
-        }
-
-        .message-item.user .message-content {
-            text-align: right;
-        }
-
-        .message-role {
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
             color: rgba(255,255,255,0.5);
-            margin-bottom: 4px;
-            letter-spacing: 0.5px;
-        }
-
-        .message-item.admin .message-role {
-            color: #ffaa00;
-        }
-
-        .message-text {
-            background: rgba(255,255,255,0.06);
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 14px;
-            line-height: 1.6;
-            color: rgba(255,255,255,0.9);
-            word-wrap: break-word;
-        }
-
-        .message-item.user .message-text {
-            background: rgba(255,255,255,0.08);
-        }
-
-        .message-item.admin .message-text {
-            background: rgba(255, 170, 0, 0.1);
-            border: 1px solid rgba(255, 170, 0, 0.2);
-        }
-
-        .message-timestamp {
-            font-size: 11px;
-            color: rgba(255,255,255,0.4);
-            margin-top: 6px;
-        }
-
-        .reply-form {
-            display: flex;
-            gap: 12px;
-            padding-top: 16px;
-            border-top: 1px solid rgba(255,255,255,0.08);
-        }
-
-        .reply-input {
-            flex: 1;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 8px;
-            padding: 12px 16px;
-            color: rgba(255,255,255,0.95);
-            font-size: 14px;
-            font-family: inherit;
-            outline: none;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
             transition: all 0.2s;
-            resize: vertical;
-            min-height: 44px;
-            max-height: 200px;
         }
+        .chat-tab.active { color: #fff; border-bottom-color: #00ff88; }
+        .chat-tab:hover  { color: rgba(255,255,255,0.8); }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
 
-        .reply-input:focus {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.2);
-        }
+        /* ── Leads table ── */
+        .leads-table { width: 100%; border-collapse: collapse; }
+        .leads-table th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .leads-table td { padding: 12px 14px; font-size: 13px; color: rgba(255,255,255,0.8); border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .leads-table tr:hover td { background: rgba(255,255,255,0.03); cursor: pointer; }
+        .leads-table .email-val { color: #00aaff; }
+        .leads-table .phone-val { color: #00ff88; }
+        .leads-table .name-val  { font-weight: 600; color: #fff; }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-left: 6px; }
+        .tag.email { background: rgba(0,170,255,0.15); color: #00aaff; border: 1px solid rgba(0,170,255,0.3); }
+        .tag.phone { background: rgba(0,255,136,0.12); color: #00ff88; border: 1px solid rgba(0,255,136,0.25); }
 
-        .reply-input::placeholder {
-            color: rgba(255,255,255,0.4);
-        }
-
-        .reply-btn {
-            background: rgba(0, 255, 136, 0.15);
-            border: 1px solid rgba(0, 255, 136, 0.3);
-            color: #00ff88;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
+        /* ── Session list (from original) ── */
+        .session-list { display: flex; flex-direction: column; gap: 12px; }
+        .session-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 16px 20px;
             cursor: pointer;
             transition: all 0.2s;
-            white-space: nowrap;
         }
+        .session-card:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); }
+        .session-card.active { border-color: #00ff88; }
+        .session-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .session-visitor { font-size: 14px; font-weight: 600; color: #fff; }
+        .session-time { font-size: 12px; color: rgba(255,255,255,0.4); }
+        .session-preview { font-size: 13px; color: rgba(255,255,255,0.6); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+        .session-foot { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+        .badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+        .badge.msgs { background: rgba(0,170,255,0.12); color: #00aaff; border: 1px solid rgba(0,170,255,0.25); }
+        .badge.lead { background: rgba(0,255,136,0.12); color: #00ff88; border: 1px solid rgba(0,255,136,0.25); }
 
-        .reply-btn:hover:not(:disabled) {
-            background: rgba(0, 255, 136, 0.25);
-            border-color: rgba(0, 255, 136, 0.4);
-            transform: translateY(-1px);
-        }
+        /* ── Conversation panel ── */
+        .conv-panel { margin-top: 20px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; display: none; }
+        .conv-panel.open { display: block; }
+        .conv-head { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 18px; }
+        .conv-meta { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+        .conv-close { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+        .conv-close:hover { background: rgba(255,255,255,0.12); }
+        .msgs-wrap { max-height: 460px; overflow-y: auto; margin-bottom: 16px; }
+        .msg-row { display: flex; gap: 10px; margin-bottom: 16px; }
+        .msg-row.user { flex-direction: row-reverse; }
+        .msg-row.admin { background: rgba(255,170,0,0.04); border-left: 2px solid #ffaa00; padding: 10px 14px; border-radius: 8px; }
+        .msg-av { width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+        .msg-body { flex: 1; max-width: 70%; }
+        .msg-row.user .msg-body { text-align: right; }
+        .msg-who { font-size: 10px; font-weight: 700; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 4px; letter-spacing: 0.5px; }
+        .msg-row.admin .msg-who { color: #ffaa00; }
+        .msg-txt { background: rgba(255,255,255,0.06); padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5; color: rgba(255,255,255,0.88); word-wrap: break-word; }
+        .msg-row.user .msg-txt { background: rgba(255,255,255,0.09); }
+        .msg-ts { font-size: 10px; color: rgba(255,255,255,0.3); margin-top: 4px; }
+        .reply-row { display: flex; gap: 10px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); }
+        .reply-ta { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 14px; color: rgba(255,255,255,0.9); font-size: 13px; font-family: inherit; outline: none; resize: vertical; min-height: 40px; }
+        .reply-btn { background: rgba(0,255,136,0.14); border: 1px solid rgba(0,255,136,0.3); color: #00ff88; padding: 10px 22px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .reply-btn:hover:not(:disabled) { background: rgba(0,255,136,0.24); }
+        .reply-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        .reply-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: rgba(255,255,255,0.5);
-        }
-
-        .empty-state svg {
-            width: 64px;
-            height: 64px;
-            margin-bottom: 20px;
-            opacity: 0.3;
-        }
-
-        .empty-state h3 {
-            font-size: 18px;
-            font-weight: 600;
-            color: rgba(255,255,255,0.7);
-            margin: 0 0 8px 0;
-        }
-
-        .empty-state p {
-            font-size: 14px;
-            margin: 0;
-        }
-
-        .refresh-indicator {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: rgba(0, 255, 136, 0.15);
-            border: 1px solid rgba(0, 255, 136, 0.3);
-            color: #00ff88;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 600;
-            display: none;
-            animation: slideInUp 0.3s;
-        }
-
-        .refresh-indicator.show {
-            display: block;
-        }
-
-        @keyframes slideInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        .empty-msg { text-align: center; padding: 40px; color: rgba(255,255,255,0.4); font-size: 14px; }
+        .tbl-wrap { overflow-x: auto; }
     </style>
 </head>
 <body>
@@ -379,255 +153,460 @@
 
     <main class="admin-main">
       <div class="admin-header">
-        <h1>💬 Live Chat Sessions</h1>
-        <p class="admin-subtitle">View and respond to Pepe chat conversations</p>
+        <h1>💬 Chat Analytics</h1>
+        <p class="admin-subtitle">Visitor conversations, leads captured, and funnel metrics</p>
       </div>
 
-      <div class="content-section">
-        <div id="sessionsContainer" class="session-list">
-          <!-- Sessions will be loaded here -->
-        </div>
-        
-        <div id="emptyState" class="empty-state" style="display: none;">
-          <svg fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" viewBox="0 0 24 24">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
-          <h3>No chat sessions yet</h3>
-          <p>Conversations will appear here when visitors use the chat widget</p>
+      <!-- Stats bar -->
+      <div class="stats-bar" id="statsBar">
+        <div class="stat-tile"><div class="val" id="s-total">—</div><div class="lbl">Total Sessions</div></div>
+        <div class="stat-tile"><div class="val green" id="s-today">—</div><div class="lbl">Today</div></div>
+        <div class="stat-tile"><div class="val blue" id="s-week">—</div><div class="lbl">This Week</div></div>
+        <div class="stat-tile"><div class="val yellow" id="s-name">—</div><div class="lbl">Named</div></div>
+        <div class="stat-tile"><div class="val pink" id="s-email">—</div><div class="lbl">Email Leads</div></div>
+        <div class="stat-tile"><div class="val green" id="s-phone">—</div><div class="lbl">Phone Leads</div></div>
+        <div class="stat-tile"><div class="val" id="s-msgs">—</div><div class="lbl">Total Messages</div></div>
+        <div class="stat-tile"><div class="val blue" id="s-avg">—</div><div class="lbl">Avg Msg/Session</div></div>
+      </div>
+
+      <!-- Funnel -->
+      <div class="funnel" id="funnelRow">
+        <div class="funnel-step s1"><div class="f-val" id="f-total">—</div><div class="f-lbl">Visitors</div><div class="f-pct">100%</div></div>
+        <div class="funnel-step s2"><div class="f-val" id="f-name">—</div><div class="f-lbl">Named</div><div class="f-pct" id="f-name-pct">—</div></div>
+        <div class="funnel-step s3"><div class="f-val" id="f-email">—</div><div class="f-lbl">Email</div><div class="f-pct" id="f-email-pct">—</div></div>
+        <div class="funnel-step s4"><div class="f-val" id="f-phone">—</div><div class="f-lbl">Phone</div><div class="f-pct" id="f-phone-pct">—</div></div>
+      </div>
+
+      <!-- 7-day chart -->
+      <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:16px 20px;margin-bottom:24px;">
+        <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.6);margin-bottom:12px;">Sessions & Leads — Last 7 Days</div>
+        <div class="chart-row" id="chartBars"></div>
+        <div class="chart-labels" id="chartLabels"></div>
+        <div class="chart-legend">
+          <span><span class="dot" style="background:rgba(0,170,255,0.5)"></span>Sessions</span>
+          <span><span class="dot" style="background:rgba(0,255,136,0.7)"></span>Leads</span>
         </div>
       </div>
 
-      <div id="conversationPanel" class="conversation-panel">
-        <div class="conversation-header">
-          <div class="conversation-info">
-            <h3 id="convTitle">Loading...</h3>
-            <p id="convMeta">Loading...</p>
+      <!-- Tabs -->
+      <div class="chat-tabs">
+        <button class="chat-tab active" onclick="switchTab('leads')">🎯 Leads</button>
+        <button class="chat-tab" onclick="switchTab('sessions')">💬 All Sessions</button>
+      </div>
+
+      <!-- Leads tab -->
+      <div id="tab-leads" class="tab-pane active">
+        <div class="tbl-wrap">
+          <table class="leads-table">
+            <thead>
+              <tr>
+                <th>Visitor</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Messages</th>
+                <th>Last Active</th>
+              </tr>
+            </thead>
+            <tbody id="leadsBody"><tr><td colspan="5" class="empty-msg">Loading leads...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Sessions tab -->
+      <div id="tab-sessions" class="tab-pane">
+        <div class="session-list" id="sessionList"></div>
+        <div id="sessionsEmpty" class="empty-msg" style="display:none">No sessions yet.</div>
+      </div>
+
+      <!-- Conversation detail -->
+      <div id="convPanel" class="conv-panel">
+        <div class="conv-head">
+          <div>
+            <strong id="convTitle" style="color:#fff;font-size:15px"></strong>
+            <div class="conv-meta" id="convMeta"></div>
           </div>
-          <button class="close-conversation" onclick="closeConversation()">✕ Close</button>
+          <div style="display:flex;gap:8px">
+            <button onclick="deleteSession(currentSessionId)" style="background:rgba(255,60,60,0.1);border:1px solid rgba(255,60,60,0.25);color:#ff6666;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.2s" onmouseenter="this.style.background='rgba(255,60,60,0.2)'" onmouseleave="this.style.background='rgba(255,60,60,0.1)'">🗑 Delete</button>
+            <button class="conv-close" onclick="closeConv()">✕ Close</button>
+          </div>
         </div>
-        
-        <div id="messagesContainer" class="messages-container">
-          <!-- Messages will be loaded here -->
-        </div>
-
-        <form class="reply-form" onsubmit="sendReply(event)">
-          <textarea 
-            id="replyInput" 
-            class="reply-input" 
-            placeholder="Type your reply as a human agent..."
-            rows="2"
-            maxlength="1000"
-          ></textarea>
-          <button type="submit" id="replyBtn" class="reply-btn">Send</button>
+        <div class="msgs-wrap" id="msgsWrap"></div>
+        <div id="cmdDropdown" style="display:none;background:#111;border:1px solid rgba(255,255,255,0.12);border-radius:8px;margin-bottom:6px;overflow:hidden;"></div>
+        <form class="reply-row" onsubmit="sendReply(event)">
+          <textarea class="reply-ta" id="replyTa" rows="2" placeholder="Reply or type ! for commands..." maxlength="1000" oninput="onTaInput(this)"></textarea>
+          <button type="submit" class="reply-btn" id="replyBtn">Send</button>
         </form>
       </div>
 
-      <div id="refreshIndicator" class="refresh-indicator">
-        🔄 New messages detected
-      </div>
     </main>
   </div>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script>
-    let sessions = [];
+    const ADMIN_SECRET = '<%= wsToken %>';
+    let activeLiveSessions = new Set(); // sessionIds with active visitor sockets
+    let adminSocket = null;
+    let allSessions = [];
     let currentSessionId = null;
-    let refreshInterval = null;
+    let refreshTimer = null;
 
-    // Load sessions on page load
-    document.addEventListener('DOMContentLoaded', () => {
-      loadSessions();
-      // Auto-refresh every 5 seconds
-      refreshInterval = setInterval(loadSessions, 5000);
-    });
+    function switchTab(name) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.chat-tab').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      document.querySelectorAll('.chat-tab').forEach(b => {
+        if (b.textContent.toLowerCase().includes(name === 'leads' ? 'leads' : 'sessions')) b.classList.add('active');
+      });
+    }
 
-    async function loadSessions() {
-      try {
-        const response = await fetch('/admin/livechats/api/sessions');
-        const data = await response.json();
-        
-        if (data.success) {
-          const hadSessions = sessions.length > 0;
-          const newSessionCount = data.sessions.length;
-          
-          sessions = data.sessions;
-          renderSessions();
-          
-          // Show notification if new sessions arrived
-          if (hadSessions && newSessionCount > sessions.length) {
-            showRefreshIndicator();
-          }
-          
-          // If currently viewing a session, refresh it
-          if (currentSessionId) {
-            loadConversation(currentSessionId);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading sessions:', error);
+    async function loadStats() {
+      const r = await fetch('/admin/livechats/api/stats');
+      const { stats } = await r.json();
+      document.getElementById('s-total').textContent = stats.total;
+      document.getElementById('s-today').textContent = stats.todayCount;
+      document.getElementById('s-week').textContent  = stats.weekCount;
+      document.getElementById('s-name').textContent  = stats.withName;
+      document.getElementById('s-email').textContent = stats.withEmail;
+      document.getElementById('s-phone').textContent = stats.withPhone;
+      document.getElementById('s-msgs').textContent  = stats.totalMessages.toLocaleString();
+      document.getElementById('s-avg').textContent   = stats.avgMessages;
+      // Funnel
+      const pct = v => stats.total ? Math.round(v / stats.total * 100) + '%' : '0%';
+      document.getElementById('f-total').textContent    = stats.total;
+      document.getElementById('f-name').textContent     = stats.withName;
+      document.getElementById('f-email').textContent    = stats.withEmail;
+      document.getElementById('f-phone').textContent    = stats.withPhone;
+      document.getElementById('f-name-pct').textContent  = pct(stats.withName);
+      document.getElementById('f-email-pct').textContent = pct(stats.withEmail);
+      document.getElementById('f-phone-pct').textContent = pct(stats.withPhone);
+      // Chart
+      renderChart(stats.dailyBreakdown);
+    }
+
+    function renderChart(days) {
+      const maxSessions = Math.max(...days.map(d => d.sessions), 1);
+      const barsEl   = document.getElementById('chartBars');
+      const labelsEl = document.getElementById('chartLabels');
+      // Fill missing days
+      const map = {};
+      days.forEach(d => map[d._id] = d);
+      const out = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        out.push({ key, sessions: map[key]?.sessions || 0, leads: map[key]?.leads || 0 });
       }
+      barsEl.innerHTML = out.map(d => {
+        const h = Math.max(Math.round(d.sessions / maxSessions * 56), 2);
+        const lh = d.sessions ? Math.max(Math.round(d.leads / d.sessions * h), 1) : 0;
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;height:60px;justify-content:flex-end">
+          <div style="width:100%;display:flex;gap:2px;align-items:flex-end;justify-content:center">
+            <div class="chart-bar sessions" style="height:${h}px;flex:1"></div>
+            <div class="chart-bar leads"    style="height:${lh}px;flex:1"></div>
+          </div>
+        </div>`;
+      }).join('');
+      labelsEl.innerHTML = out.map(d => `<span>${d.key.slice(5)}</span>`).join('');
+    }
+
+    async function loadLeads() {
+      const r = await fetch('/admin/livechats/api/leads');
+      const { leads } = await r.json();
+      const tbody = document.getElementById('leadsBody');
+      if (!leads.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">No leads yet — keep the chat running!</td></tr>'; return; }
+      tbody.innerHTML = leads.map(l => `
+        <tr onclick="loadConv('${l.sessionId}')">
+          <td class="name-val">${esc(l.visitorName || '—')}</td>
+          <td class="email-val">${l.visitorEmail ? `<a href="mailto:${esc(l.visitorEmail)}" style="color:#00aaff">${esc(l.visitorEmail)}</a>` : '—'}</td>
+          <td class="phone-val">${l.visitorPhone ? `<a href="tel:${esc(l.visitorPhone)}" style="color:#00ff88">${esc(l.visitorPhone)}</a>` : '—'}</td>
+          <td>${l.messageCount}</td>
+          <td style="color:rgba(255,255,255,0.4)">${relTime(l.updatedAt)}</td>
+        </tr>`).join('');
     }
 
     function renderSessions() {
-      const container = document.getElementById('sessionsContainer');
-      const emptyState = document.getElementById('emptyState');
-      
-      if (sessions.length === 0) {
-        container.innerHTML = '';
-        emptyState.style.display = 'block';
-        return;
-      }
-      
-      emptyState.style.display = 'none';
-      
-      container.innerHTML = sessions.map(session => {
-        const firstMsg = session.messages.find(m => m.role === 'user');
-        const preview = firstMsg ? firstMsg.content : 'No messages yet';
-        const isNew = (Date.now() - new Date(session.createdAt).getTime()) < 300000; // 5 min
-        const isActive = session.sessionId === currentSessionId;
-        
-        return `
-          <div class="session-card ${isActive ? 'active' : ''}" onclick="loadConversation('${session.sessionId}')">
-            <div class="session-header">
-              <div class="session-id">${session.sessionId}</div>
-              <div class="session-meta">
-                <span>📍 ${session.ip || 'Unknown IP'}</span>
-                <span>🕐 ${formatTimestamp(session.createdAt)}</span>
-              </div>
+      const list  = document.getElementById('sessionList');
+      const empty = document.getElementById('sessionsEmpty');
+      if (!allSessions.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+      empty.style.display = 'none';
+      list.innerHTML = allSessions.map(s => {
+        const firstMsg = s.messages?.find(m => m.role === 'user');
+        const preview  = firstMsg?.content || 'No messages';
+        const isLead   = s.visitorEmail || s.visitorPhone;
+        const name     = s.visitorName || s.sessionId.substring(0, 14) + '…';
+        const isLive   = activeLiveSessions.has(s.sessionId);
+        return `<div class="session-card ${s.sessionId === currentSessionId ? 'active' : ''}" onclick="loadConv('${s.sessionId}')">
+          <div class="session-top">
+            <div class="session-visitor">
+              <span id="live-${s.sessionId}" title="${isLive ? 'Visitor is live' : 'Inactive'}"
+                style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;background:${isLive ? '#00ff88' : 'rgba(255,255,255,0.2)'}"></span>
+              ${esc(name)}
             </div>
-            <div class="session-preview">${escapeHtml(preview)}</div>
-            <div class="session-badges">
-              ${isNew ? '<span class="badge new">New</span>' : ''}
-              <span class="badge messages">${session.messageCount} messages</span>
-            </div>
+            <div class="session-time">${relTime(s.createdAt)}</div>
           </div>
-        `;
+          <div class="session-preview">${esc(preview)}</div>
+          <div class="session-foot">
+            <span class="badge msgs">${s.messageCount} msg</span>
+            ${isLead ? '<span class="badge lead">lead</span>' : ''}
+            ${isLive  ? '<span class="badge" style="background:rgba(0,255,136,0.12);color:#00ff88;border:1px solid rgba(0,255,136,0.25)">LIVE</span>' : ''}
+            ${s.visitorEmail ? `<span style="font-size:11px;color:#00aaff">${esc(s.visitorEmail)}</span>` : ''}
+            <span onclick="event.stopPropagation();deleteSession('${s.sessionId}')" style="margin-left:auto;cursor:pointer;color:rgba(255,80,80,0.5);font-size:13px;padding:2px 6px;border-radius:4px" title="Delete session" onmouseenter="this.style.color='rgba(255,80,80,0.9)'" onmouseleave="this.style.color='rgba(255,80,80,0.5)'">🗑</span>
+          </div>
+        </div>`;
       }).join('');
     }
 
-    async function loadConversation(sessionId) {
-      try {
-        currentSessionId = sessionId;
-        
-        const response = await fetch(`/admin/livechats/api/session/${sessionId}`);
-        const data = await response.json();
-        
-        if (data.success) {
-          renderConversation(data.session);
-        }
-      } catch (error) {
-        console.error('Error loading conversation:', error);
-      }
-    }
-
-    function renderConversation(session) {
-      const panel = document.getElementById('conversationPanel');
-      const title = document.getElementById('convTitle');
-      const meta = document.getElementById('convMeta');
-      const container = document.getElementById('messagesContainer');
-      
-      title.textContent = `Session: ${session.sessionId.substring(0, 20)}...`;
-      meta.textContent = `IP: ${session.ip} • Started: ${formatTimestamp(session.createdAt)} • ${session.messageCount} messages`;
-      
-      container.innerHTML = session.messages.map(msg => {
-        const role = msg.role === 'user' ? 'user' : (msg.role === 'admin' ? 'admin' : 'assistant');
-        const avatar = role === 'user' ? '👤' : (role === 'admin' ? '👨‍💼' : '🐸');
-        const roleLabel = role === 'user' ? 'Visitor' : (role === 'admin' ? 'You (Agent)' : 'Pepe');
-        
-        return `
-          <div class="message-item ${role}">
-            <div class="message-avatar">${avatar}</div>
-            <div class="message-content">
-              <div class="message-role">${roleLabel}</div>
-              <div class="message-text">${escapeHtml(msg.content)}</div>
-              <div class="message-timestamp">${formatTimestamp(msg.timestamp)}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-      
-      panel.classList.add('active');
-      container.scrollTop = container.scrollHeight;
-      
-      // Update active session card
+    async function loadSessions() {
+      const r = await fetch('/admin/livechats/api/sessions');
+      const { sessions } = await r.json();
+      allSessions = sessions;
       renderSessions();
     }
 
-    function closeConversation() {
+    async function loadConv(sessionId) {
+      currentSessionId = sessionId;
+      // Subscribe to real-time updates for this session
+      if (adminSocket?.connected) adminSocket.emit('admin:subscribe', sessionId);
+      const r = await fetch(`/admin/livechats/api/session/${sessionId}`);
+      const { session } = await r.json();
+      const panel = document.getElementById('convPanel');
+      const name  = session.visitorName || session.sessionId.substring(0, 16) + '…';
+      const isLive = activeLiveSessions.has(sessionId);
+      document.getElementById('convTitle').innerHTML =
+        `${esc(name)} ${isLive ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#00ff88;margin-left:8px;vertical-align:middle" title="Visitor is live"></span>' : ''}`;
+      document.getElementById('convMeta').textContent =
+        `IP: ${session.ip}  ·  Started: ${relTime(session.createdAt)}  ·  ${session.messageCount} exchanges` +
+        (session.visitorEmail ? `  ·  ${session.visitorEmail}` : '') +
+        (session.visitorPhone ? `  ·  ${session.visitorPhone}` : '');
+      window._currentSession = session; // store for !info command
+      const wrap = document.getElementById('msgsWrap');
+      wrap.innerHTML = (session.messages || []).map(m => msgHtml(m)).join('');
+      panel.classList.add('open');
+      wrap.scrollTop = wrap.scrollHeight;
+      document.querySelectorAll('.session-card').forEach(c => {
+        c.classList.toggle('active', c.getAttribute('onclick')?.includes(sessionId));
+      });
+    }
+
+    function msgHtml(m) {
+      if (m.role === 'system' || m.type === 'system' || m.type === 'note') {
+        const isNote = m.type === 'note';
+        return `<div style="text-align:center;margin:8px 0">
+          <span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;
+            background:${isNote ? 'rgba(255,200,0,0.1)' : 'rgba(255,255,255,0.05)'};
+            border:1px solid ${isNote ? 'rgba(255,200,0,0.25)' : 'rgba(255,255,255,0.08)'};
+            color:${isNote ? '#ffcc00' : 'rgba(255,255,255,0.4)'}">
+            ${esc(m.content)}
+          </span>
+        </div>`;
+      }
+      const role = m.role === 'user' ? 'user' : (m.role === 'admin' ? 'admin' : 'assistant');
+      const av   = role === 'user' ? '👤' : role === 'admin' ? '👨‍💼' : '🤖';
+      const who  = role === 'user' ? 'Visitor' : role === 'admin' ? 'You (Agent)' : 'Bot';
+      return `<div class="msg-row ${role}">
+        <div class="msg-av">${av}</div>
+        <div class="msg-body">
+          <div class="msg-who">${who}</div>
+          <div class="msg-txt">${esc(m.content)}</div>
+          <div class="msg-ts">${relTime(m.timestamp)}</div>
+        </div>
+      </div>`;
+    }
+
+    function appendMessage(m) {
+      const wrap = document.getElementById('msgsWrap');
+      wrap.insertAdjacentHTML('beforeend', msgHtml(m));
+      wrap.scrollTop = wrap.scrollHeight;
+    }
+
+    function closeConv() {
       currentSessionId = null;
-      document.getElementById('conversationPanel').classList.remove('active');
-      renderSessions();
+      document.getElementById('convPanel').classList.remove('open');
     }
 
-    async function sendReply(e) {
+    // ── Commands ──
+    const COMMANDS = [
+      { cmd: '!help',          desc: 'Show all commands' },
+      { cmd: '!info',          desc: 'Show session info (name, email, phone)' },
+      { cmd: '!pause',         desc: 'Pause bot — you handle the chat' },
+      { cmd: '!bot',           desc: 'Resume bot responses' },
+      { cmd: '!close',         desc: 'Mark session as resolved' },
+      { cmd: '!note <text>',   desc: 'Add private note to session' },
+      { cmd: '!name <value>',  desc: 'Set visitor name' },
+      { cmd: '!email <value>', desc: 'Set visitor email' },
+      { cmd: '!phone <value>', desc: 'Set visitor phone' },
+    ];
+
+    function onTaInput(ta) {
+      const val = ta.value;
+      const dd  = document.getElementById('cmdDropdown');
+      if (!val.startsWith('!')) { dd.style.display = 'none'; return; }
+      const matches = COMMANDS.filter(c => c.cmd.startsWith(val.split(' ')[0]));
+      if (!matches.length) { dd.style.display = 'none'; return; }
+      dd.innerHTML = matches.map(c =>
+        `<div onclick="fillCmd('${c.cmd}')" style="padding:8px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:16px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.05);"
+          onmouseenter="this.style.background='rgba(255,255,255,0.06)'" onmouseleave="this.style.background=''">
+          <span style="color:#00ff88;font-family:monospace">${esc(c.cmd)}</span>
+          <span style="color:rgba(255,255,255,0.4)">${esc(c.desc)}</span>
+        </div>`
+      ).join('');
+      dd.style.display = 'block';
+    }
+
+    function fillCmd(cmd) {
+      const ta = document.getElementById('replyTa');
+      ta.value = cmd.endsWith('>') ? cmd.replace(/<[^>]+>/, '') : cmd + ' ';
+      document.getElementById('cmdDropdown').style.display = 'none';
+      ta.focus();
+    }
+
+    function execCommand(raw) {
+      const parts  = raw.trim().split(/\s+/);
+      const cmd    = parts[0].toLowerCase();
+      const args   = parts.slice(1).join(' ');
+
+      if (cmd === '!help') {
+        appendMessage({ role: 'system', content: COMMANDS.map(c => `${c.cmd} — ${c.desc}`).join('\n'), timestamp: new Date() });
+        return true;
+      }
+      if (cmd === '!info') {
+        const s = (window._currentSession || {});
+        appendMessage({ role: 'system', content:
+          `Session info:\nName: ${s.visitorName || '—'}\nEmail: ${s.visitorEmail || '—'}\nPhone: ${s.visitorPhone || '—'}\nIP: ${s.ip || '—'}\nMessages: ${s.messageCount || 0}`,
+          timestamp: new Date() });
+        return true;
+      }
+      const serverCmds = { '!pause': 'pause', '!bot': 'bot', '!close': 'close', '!note': 'note', '!name': 'name', '!email': 'email', '!phone': 'phone' };
+      if (serverCmds[cmd] && adminSocket?.connected) {
+        adminSocket.emit('admin:command', { sessionId: currentSessionId, cmd: serverCmds[cmd], args });
+        return true;
+      }
+      return false;
+    }
+
+    function sendReply(e) {
       e.preventDefault();
-      
       if (!currentSessionId) return;
-      
-      const input = document.getElementById('replyInput');
-      const btn = document.getElementById('replyBtn');
-      const message = input.value.trim();
-      
-      if (!message) return;
-      
-      btn.disabled = true;
-      input.disabled = true;
-      
-      try {
-        const response = await fetch(`/admin/livechats/${currentSessionId}/reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-          input.value = '';
-          await loadConversation(currentSessionId);
-          await loadSessions();
-        } else {
-          alert('Failed to send reply: ' + (data.error || 'Unknown error'));
-        }
-      } catch (error) {
-        console.error('Error sending reply:', error);
-        alert('Failed to send reply. Please try again.');
-      } finally {
-        btn.disabled = false;
-        input.disabled = false;
-        input.focus();
+      const ta  = document.getElementById('replyTa');
+      const msg = ta.value.trim();
+      if (!msg) return;
+      document.getElementById('cmdDropdown').style.display = 'none';
+
+      // Command?
+      if (msg.startsWith('!')) {
+        const handled = execCommand(msg);
+        if (handled) { ta.value = ''; ta.focus(); return; }
+      }
+
+      // Normal reply
+      if (adminSocket?.connected) {
+        adminSocket.emit('admin:reply', { sessionId: currentSessionId, message: msg });
+        ta.value = '';
+        appendMessage({ role: 'admin', content: msg, timestamp: new Date() });
+        ta.focus();
+      } else {
+        const btn = document.getElementById('replyBtn');
+        btn.disabled = true; ta.disabled = true;
+        fetch(`/admin/livechats/${currentSessionId}/reply`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg })
+        }).then(() => { ta.value = ''; loadConv(currentSessionId); })
+          .finally(() => { btn.disabled = false; ta.disabled = false; ta.focus(); });
       }
     }
 
-    function showRefreshIndicator() {
-      const indicator = document.getElementById('refreshIndicator');
-      indicator.classList.add('show');
-      setTimeout(() => {
-        indicator.classList.remove('show');
-      }, 3000);
+    function relTime(ts) {
+      if (!ts) return '—';
+      const d   = new Date(ts);
+      const ms  = Date.now() - d;
+      if (ms < 60000)   return 'just now';
+      if (ms < 3600000) return Math.floor(ms / 60000) + 'm ago';
+      if (ms < 86400000) return Math.floor(ms / 3600000) + 'h ago';
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
     }
 
-    function formatTimestamp(timestamp) {
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diff = now - date;
-      
-      if (diff < 60000) return 'Just now';
-      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-      
-      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    function esc(t) {
+      if (!t) return '';
+      const d = document.createElement('div');
+      d.textContent = String(t);
+      return d.innerHTML;
     }
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
+    // ── Socket.IO admin connection ──
+    function initAdminSocket() {
+      adminSocket = io('/pepe', { transports: ['websocket', 'polling'] });
+
+      adminSocket.on('connect', () => {
+        adminSocket.emit('admin:auth', ADMIN_SECRET);
+      });
+
+      // Snapshot of already-active visitors when admin connects
+      adminSocket.on('admin:active-snapshot', (list) => {
+        activeLiveSessions = new Set(list.map(s => s.sessionId));
+        renderSessions();
+      });
+
+      // Visitor opened chat
+      adminSocket.on('visitor:active', ({ sessionId }) => {
+        activeLiveSessions.add(sessionId);
+        updateLiveDot(sessionId, true);
+      });
+
+      // Visitor closed / disconnected
+      adminSocket.on('visitor:inactive', ({ sessionId }) => {
+        activeLiveSessions.delete(sessionId);
+        updateLiveDot(sessionId, false);
+      });
+
+      // Real-time new message in the session we're watching
+      adminSocket.on('session:new-message', (msg) => {
+        if (currentSessionId) appendMessage(msg);
+      });
+
+      // Command execution feedback
+      adminSocket.on('admin:command-feedback', ({ type, content }) => {
+        appendMessage({ role: 'system', content, timestamp: new Date() });
+      });
     }
 
-    // Clean up interval on page unload
-    window.addEventListener('beforeunload', () => {
-      if (refreshInterval) clearInterval(refreshInterval);
+    function updateLiveDot(sessionId, live) {
+      const dot = document.getElementById(`live-${sessionId}`);
+      if (dot) {
+        dot.style.background = live ? '#00ff88' : 'rgba(255,255,255,0.2)';
+        dot.title = live ? 'Visitor is live' : 'Inactive';
+      }
+    }
+
+    async function deleteSession(sessionId) {
+      if (!sessionId || !confirm('Delete this chat session? This cannot be undone.')) return;
+      try {
+        const r = await fetch(`/admin/livechats/${sessionId}`, { method: 'DELETE' });
+        const data = await r.json();
+        if (data.success) {
+          if (currentSessionId === sessionId) closeConv();
+          allSessions = allSessions.filter(s => s.sessionId !== sessionId);
+          renderSessions();
+          loadStats();
+          loadLeads();
+        } else {
+          alert('Delete failed: ' + (data.error || 'Unknown error'));
+        }
+      } catch (e) {
+        alert('Delete failed: ' + e.message);
+      }
+    }
+
+    // ── Boot ──
+    document.addEventListener('DOMContentLoaded', () => {
+      initAdminSocket();
+      loadStats();
+      loadLeads();
+      loadSessions();
+      refreshTimer = setInterval(() => { loadStats(); loadLeads(); loadSessions(); }, 30000);
     });
+    window.addEventListener('beforeunload', () => clearInterval(refreshTimer));
   </script>
+
+  <%-include('../mainContent/adminNav.ejs')%>
 </body>
 </html>

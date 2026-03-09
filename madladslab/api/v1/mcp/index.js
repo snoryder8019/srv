@@ -22,11 +22,22 @@ const FORBIDDEN_COMMANDS = [
   'init 6'
 ];
 
-const KNOWN_SESSIONS = [
-  { name: 'ps', port: 3399, description: 'Stringborn Universe service' },
-  { name: 'game-state', port: 3500, description: 'Game state service' },
-  { name: 'madladslab', port: 3000, description: 'Main lab service' },
-];
+const CONTEXT_PATH = '/srv/.claude-context.json';
+let _cachedSessions = null;
+
+async function getKnownSessions() {
+  if (_cachedSessions) return _cachedSessions;
+  const raw = await readFile(CONTEXT_PATH, 'utf-8');
+  const ctx = JSON.parse(raw);
+  _cachedSessions = Object.values(ctx.services)
+    .filter(s => s.tmuxSession && typeof s.port === 'number')
+    .map(s => ({
+      name: s.tmuxSession,
+      port: s.port,
+      description: s.description || s.name
+    }));
+  return _cachedSessions;
+}
 
 // Helper functions
 function isPathAllowed(filePath) {
@@ -95,7 +106,8 @@ router.get('/tmux/sessions', async (req, res) => {
     const result = await executeCommand('tmux ls 2>/dev/null || echo "No sessions"');
     const sessions = result.stdout.split('\n').filter(Boolean);
 
-    const sessionInfo = KNOWN_SESSIONS.map(known => {
+    const knownSessions = await getKnownSessions();
+    const sessionInfo = knownSessions.map(known => {
       const running = sessions.some(s => s.startsWith(known.name + ':'));
       return {
         ...known,
@@ -115,7 +127,8 @@ router.get('/tmux/session/:name', async (req, res) => {
   try {
     const session = req.params.name;
     const listResult = await executeCommand(`tmux list-sessions 2>/dev/null | grep "^${session}:" || echo "Not running"`);
-    const portCheck = KNOWN_SESSIONS.find(s => s.name === session);
+    const knownSessions = await getKnownSessions();
+    const portCheck = knownSessions.find(s => s.name === session);
 
     let portStatus = null;
     if (portCheck && portCheck.port) {

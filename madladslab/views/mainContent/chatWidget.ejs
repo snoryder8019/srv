@@ -103,6 +103,18 @@
   color: rgba(255,255,255,0.5);
 }
 
+#chatHeader .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4caf50;
+  flex-shrink: 0;
+}
+
+#chatHeader .status-dot.offline {
+  background: rgba(255,255,255,0.2);
+}
+
 #chatMessages {
   flex: 1;
   padding: 20px;
@@ -293,8 +305,54 @@
     right: 16px;
   }
 }
+
+/* Markdown rendering inside chat bubbles */
+.bubble.markdown-body p { margin: 0 0 8px; }
+.bubble.markdown-body p:last-child { margin-bottom: 0; }
+.bubble.markdown-body ul,
+.bubble.markdown-body ol { margin: 4px 0 8px; padding-left: 18px; }
+.bubble.markdown-body li { margin-bottom: 2px; }
+.bubble.markdown-body code {
+  background: rgba(255,255,255,0.12);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+}
+.bubble.markdown-body pre {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.bubble.markdown-body pre code {
+  background: none;
+  padding: 0;
+  font-size: 12px;
+}
+.bubble.markdown-body strong { color: rgba(255,255,255,1); }
+.bubble.markdown-body em { color: rgba(255,255,255,0.75); }
+.bubble.markdown-body h1,
+.bubble.markdown-body h2,
+.bubble.markdown-body h3 {
+  margin: 6px 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.95);
+}
+.bubble.markdown-body a { color: rgba(120,180,255,0.9); }
+.bubble.markdown-body blockquote {
+  border-left: 2px solid rgba(255,255,255,0.2);
+  margin: 4px 0;
+  padding-left: 10px;
+  color: rgba(255,255,255,0.6);
+}
+.bubble.markdown-body hr { border-color: rgba(255,255,255,0.1); margin: 8px 0; }
 </style>
 
+<% if (typeof chatAgent === 'object' && chatAgent) { %>
 <!-- Chat Widget HTML -->
 <div id="chatWidget">
   <div id="chatButton" onclick="toggleChat()">
@@ -302,28 +360,37 @@
       <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
     </svg>
   </div>
-  
+
   <div id="chatPanel">
     <div id="chatHeader">
-      <img src="/images/beaker_logo_no_stash.png" alt="Pepe">
+      <% if (chatAgent.pepeChat && chatAgent.pepeChat.avatar) { %>
+        <img src="<%= chatAgent.pepeChat.avatar %>" alt="<%= chatAgent.name %>" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.15);">
+      <% } else { %>
+        <img src="/images/beaker_logo_no_stash.png" alt="<%= chatAgent.name %>">
+      <% } %>
       <div class="info">
-        <h3>Pepe</h3>
-        <p>madLadsLab Assistant</p>
+        <h3><%= chatAgent.name %></h3>
+        <p><%= chatAgent.description || 'madLadsLab Assistant' %></p>
       </div>
+      <div id="chatStatusDot" class="status-dot offline"></div>
     </div>
-    
+
     <div id="chatMessages">
       <div class="chat-message assistant">
-        <div class="avatar">🐸</div>
-        <div class="bubble">Hey there! I'm Pepe, your friendly guide to madLadsLab. How can I help you today?</div>
+        <% if (chatAgent.pepeChat && chatAgent.pepeChat.avatar) { %>
+          <img src="<%= chatAgent.pepeChat.avatar %>" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;" alt="avatar">
+        <% } else { %>
+          <div class="avatar"><%= chatAgent.name[0].toUpperCase() %></div>
+        <% } %>
+        <div class="bubble">Hey there! I'm <%= chatAgent.name %>, your guide to madLadsLab. How can I help you today?</div>
       </div>
     </div>
-    
+
     <form id="chatForm" onsubmit="sendMessage(event)">
-      <input 
-        type="text" 
-        id="chatInput" 
-        placeholder="Type your message..." 
+      <input
+        type="text"
+        id="chatInput"
+        placeholder="Type your message..."
         autocomplete="off"
         maxlength="500"
       >
@@ -331,172 +398,202 @@
     </form>
   </div>
 </div>
+<% } %>
 
+<% if (typeof chatAgent === 'object' && chatAgent) { %>
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-// Chat Widget JavaScript
 (function() {
   const STORAGE_KEY = 'madlads_chat_session';
   let sessionId = localStorage.getItem(STORAGE_KEY);
-  let lastMessageCount = 0;
-  let pollInterval = null;
-  
   if (!sessionId) {
     sessionId = 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     localStorage.setItem(STORAGE_KEY, sessionId);
+  }
+
+  // Agent avatar (URL or empty — falls back to initials)
+  const CHAT_AVATAR_URL = <%- JSON.stringify((chatAgent.pepeChat && chatAgent.pepeChat.avatar) || '') %>;
+  const CHAT_AGENT_INITIAL = <%- JSON.stringify((chatAgent.name || '?')[0].toUpperCase()) %>;
+
+  function avatarHtml() {
+    if (CHAT_AVATAR_URL) {
+      return `<img src="${CHAT_AVATAR_URL}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;" alt="avatar">`;
+    }
+    return `<div class="avatar">${CHAT_AGENT_INITIAL}</div>`;
+  }
+
+  // Cookie helpers
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+  function setCookie(name, value, days) {
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+  }
+
+  // Visitor identity: logged-in session (server-injected) merged with stored cookies
+  const serverUser = <%- JSON.stringify(
+    (typeof user === 'object' && user)
+      ? { name: user.displayName || user.firstName || null, email: user.email || null }
+      : null
+  ) %>;
+  const VISITOR = {
+    name:  (serverUser && serverUser.name)  || getCookie('ml_visitor_name')  || null,
+    email: (serverUser && serverUser.email) || getCookie('ml_visitor_email') || null,
+    phone: getCookie('ml_visitor_phone') || null,
+  };
+
+  let pepeSocket = null;
+  let typingEl = null;
+  let inputLocked = false;
+
+  function getSocket() {
+    if (pepeSocket && pepeSocket.connected) return pepeSocket;
+
+    pepeSocket = io('/pepe', {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 2000,
+      reconnectionAttempts: 5
+    });
+
+    pepeSocket.on('connect', () => {
+      document.getElementById('chatStatusDot').classList.remove('offline');
+      pepeSocket.emit('visitor:identify', sessionId);
+    });
+
+    pepeSocket.on('admin:message', ({ message }) => {
+      removeTyping();
+      addMessage('admin', message);
+    });
+
+    pepeSocket.on('disconnect', () => {
+      document.getElementById('chatStatusDot').classList.add('offline');
+    });
+
+    pepeSocket.on('typing', (isTyping) => {
+      if (isTyping) {
+        showTyping();
+      } else {
+        removeTyping();
+      }
+    });
+
+    pepeSocket.on('response', ({ message }) => {
+      removeTyping();
+      addMessage('assistant', message);
+      document.getElementById('chatSendBtn').disabled = false;
+      document.getElementById('chatInput').disabled = false;
+      document.getElementById('chatInput').focus();
+      inputLocked = false;
+    });
+
+    pepeSocket.on('lead:captured', (data) => {
+      // Write cookies for 30 days so returning visitors are recognised
+      if (data.name)  { setCookie('ml_visitor_name',  data.name,  30); VISITOR.name  = data.name; }
+      if (data.email) { setCookie('ml_visitor_email', data.email, 30); VISITOR.email = data.email; }
+      if (data.phone) { setCookie('ml_visitor_phone', data.phone, 30); VISITOR.phone = data.phone; }
+    });
+
+    pepeSocket.on('error', ({ error, limitReached }) => {
+      removeTyping();
+      addMessage('assistant', error);
+      if (limitReached) {
+        document.getElementById('chatSendBtn').disabled = true;
+        document.getElementById('chatInput').disabled = true;
+        document.getElementById('chatInput').placeholder = 'Session limit reached';
+      } else {
+        document.getElementById('chatSendBtn').disabled = false;
+        document.getElementById('chatInput').disabled = false;
+      }
+      inputLocked = false;
+    });
+
+    return pepeSocket;
   }
 
   window.toggleChat = function() {
     const button = document.getElementById('chatButton');
     const panel = document.getElementById('chatPanel');
     const isOpen = panel.classList.contains('open');
-    
+
     if (isOpen) {
       panel.classList.remove('open');
       button.classList.remove('open');
-      // Stop polling when closed
-      if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-      }
     } else {
       panel.classList.add('open');
       button.classList.add('open');
       document.getElementById('chatInput').focus();
-      // Start polling for new messages
-      if (!pollInterval) {
-        pollInterval = setInterval(checkForNewMessages, 5000);
-      }
+      // Connect on first open
+      getSocket();
     }
   };
 
-  async function checkForNewMessages() {
-    try {
-      const response = await fetch(`/livechat/history/${sessionId}`);
-      if (!response.ok) return;
-      
-      const session = await response.json();
-      
-      // If there are new messages, update the display
-      if (session.messages && session.messages.length > lastMessageCount) {
-        const newMessages = session.messages.slice(lastMessageCount);
-        newMessages.forEach(msg => {
-          // Only add messages we haven't shown yet
-          if (msg.role === 'admin') {
-            addMessage('admin', msg.content);
-          }
-        });
-        lastMessageCount = session.messages.length;
-      }
-    } catch (error) {
-      console.error('Error checking for new messages:', error);
+  window.sendMessage = function(e) {
+    e.preventDefault();
+    if (inputLocked) return;
+
+    const input = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('chatSendBtn');
+    const message = input.value.trim();
+    if (!message) return;
+
+    addMessage('user', message);
+    input.value = '';
+    sendBtn.disabled = true;
+    input.disabled = true;
+    inputLocked = true;
+
+    getSocket().emit('message', { sessionId, message, visitor: VISITOR });
+  };
+
+  function showTyping() {
+    if (typingEl) return;
+    const messages = document.getElementById('chatMessages');
+    typingEl = document.createElement('div');
+    typingEl.className = 'chat-message assistant';
+    typingEl.id = 'pepe-typing';
+    typingEl.innerHTML = `
+      ${avatarHtml()}
+      <div class="typing-indicator"><span></span><span></span><span></span></div>
+    `;
+    messages.appendChild(typingEl);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function removeTyping() {
+    if (typingEl) {
+      typingEl.remove();
+      typingEl = null;
     }
   }
 
-  window.sendMessage = async function(e) {
-    e.preventDefault();
-    
-    const input = document.getElementById('chatInput');
-    const sendBtn = document.getElementById('chatSendBtn');
-    const messages = document.getElementById('chatMessages');
-    const message = input.value.trim();
-    
-    if (!message) return;
-    
-    // Add user message to UI
-    addMessage('user', message);
-    lastMessageCount++; // User message
-    input.value = '';
-    sendBtn.disabled = true;
-    
-    // Show typing indicator
-    const typingId = 'typing-' + Date.now();
-    const typingDiv = document.createElement('div');
-    typingDiv.id = typingId;
-    typingDiv.className = 'chat-message assistant';
-    typingDiv.innerHTML = `
-      <div class="avatar">🐸</div>
-      <div class="typing-indicator">
-        <span></span><span></span><span></span>
-      </div>
-    `;
-    messages.appendChild(typingDiv);
-    messages.scrollTop = messages.scrollHeight;
-    
-    try {
-      const response = await fetch('/livechat/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, sessionId })
-      });
-      
-      const data = await response.json();
-      
-      // Remove typing indicator
-      document.getElementById(typingId).remove();
-      
-      if (data.error) {
-        addMessage('assistant', data.error);
-        lastMessageCount++; // Error message
-        if (data.limitReached) {
-          sendBtn.disabled = true;
-          input.disabled = true;
-          input.placeholder = 'Session limit reached';
-        }
-      } else {
-        addMessage('assistant', data.message);
-        lastMessageCount++; // Assistant response
-      }
-    } catch (error) {
-      document.getElementById(typingId).remove();
-      addMessage('assistant', 'Sorry, something went wrong. Please try again or call us at (682) 241-4402.');
-      lastMessageCount++; // Error message
-      console.error('Chat error:', error);
-    }
-    
-    sendBtn.disabled = false;
-    input.focus();
-  };
-
   function addMessage(role, content) {
     const messages = document.getElementById('chatMessages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'chat-message ' + role;
-    
+    const div = document.createElement('div');
+    div.className = 'chat-message ' + role;
+
     if (role === 'assistant') {
-      messageDiv.innerHTML = `
-        <div class="avatar">🐸</div>
-        <div class="bubble">${escapeHtml(content)}</div>
-      `;
+      const md = typeof marked !== 'undefined' ? marked.parse(content) : escapeHtml(content);
+      div.innerHTML = `${avatarHtml()}<div class="bubble markdown-body">${md}</div>`;
     } else if (role === 'admin') {
-      messageDiv.innerHTML = `
-        <div class="avatar">👨‍💼</div>
-        <div class="bubble">
-          <div class="agent-label">Human Agent</div>
-          ${escapeHtml(content)}
-        </div>
-      `;
+      const md = typeof marked !== 'undefined' ? marked.parse(content) : escapeHtml(content);
+      div.innerHTML = `<div class="avatar">👨‍💼</div><div class="bubble markdown-body"><div class="agent-label">Human Agent</div>${md}</div>`;
     } else {
-      messageDiv.innerHTML = `
-        <div class="bubble">${escapeHtml(content)}</div>
-      `;
+      div.innerHTML = `<div class="bubble">${escapeHtml(content)}</div>`;
     }
-    
-    messages.appendChild(messageDiv);
+
+    messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
   }
 
   function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
   }
-
-  // Initialize message count with the welcome message
-  lastMessageCount = 1;
-
-  // Cleanup interval on page unload
-  window.addEventListener('beforeunload', () => {
-    if (pollInterval) clearInterval(pollInterval);
-  });
 })();
 </script>
+<% } %>

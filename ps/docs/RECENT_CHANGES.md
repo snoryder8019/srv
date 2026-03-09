@@ -1,23 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-03-03T08:30:00.022Z
+Generated: 2026-03-08T07:55:50.121Z
 
 ---
 
-## GreeAlityTV — Neighborhoods, Local & Gigs Feature Drop (3/3/2026)
+## Commit: git cleanups
 
-- **New models:** `grv_local` (Local directory listings) + `grv_gigs` (Gigs & Jobs board)
-- **14 Greeley neighborhoods** hardcoded: Downtown, University District, Westlake, Island Grove, East Greeley, North Greeley, South Greeley, Bittersweet, Country Club, Poudre River, Alta Vista, West Side, Sunrise, Prairie West
-- **`/local`** — interactive Leaflet/OpenStreetMap neighborhood map with clickable zones, category tabs (Food / Businesses / Services / Food Trucks), user-submission flow with S3 image upload
-- **`/gigs`** — Gigs & Jobs board with type/category/neighborhood filtering, remote flag, expiry date
-- **Cookie consent banner** — bottom-fixed, localStorage-backed, Accept/Decline
-- **Admin dashboard** expanded — 6 stats cards, management nav buttons (Local / Gigs / Users)
-- **`/admin/local`** — full listing management: status filter bar, inline Approve/Reject/Reset via AJAX, Delete
-- **`/admin/gigs`** — full gigs management: type + category filters, inline status management via AJAX
-- **`PUT /admin/local/:id/status`** + **`PUT /admin/gigs/:id/status`** — JSON APIs for inline admin updates
-- **CHANGELOG.md** created at `/srv/greealitytv/CHANGELOG.md`
+- **Hash:** `bd1eb11`
+- **Author:** Scott
+- **Date:** 3/3/2026
+- **Changes:** 92 files, +6826/-1363 lines
 
-**Files changed:** 14 new, 7 modified (models, routes, views, CSS, JS)
+### Modified Areas:
+
+**Frontend:** 1 files
+**Backend:** 13 files
+**Views:** 32 files
+**Documentation:** 8 files
 
 ---
 
@@ -83,23 +82,6 @@ Generated: 2026-03-03T08:30:00.022Z
 **Views:** 18 files
 **Scripts:** 1 files
 **Documentation:** 16 files
-
----
-
-## Commit: services proxies and domains fixed in etc
-
-- **Hash:** `c30f611`
-- **Author:** Scott
-- **Date:** 11/7/2025
-- **Changes:** 55 files, +17912/-204 lines
-
-### Modified Areas:
-
-**Frontend:** 2 files
-**Backend:** 6 files
-**Views:** 7 files
-**Scripts:** 6 files
-**Documentation:** 21 files
 
 ---
 

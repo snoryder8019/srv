@@ -4,6 +4,7 @@ import Sites from "../../api/v1/models/Site.js"
 import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { createAdminToken } from '../../lib/adminSocketTokens.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -485,13 +486,74 @@ router.get('/monitor/api/daemon/status', isAdmin, async (req, res) => {
 
 // ==================== LIVE CHATS ADMIN PANEL ====================
 
+// Chat Analytics API — summary stats
+router.get('/livechats/api/stats', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const db = getDb();
+        const col = db.collection('livechats');
+
+        const now = new Date();
+        const today   = new Date(now); today.setHours(0,0,0,0);
+        const weekAgo = new Date(now - 7  * 86400000);
+
+        const [total, todayCount, weekCount, withName, withEmail, withPhone, totalMsgs, dailyBreakdown] = await Promise.all([
+            col.countDocuments(),
+            col.countDocuments({ createdAt: { $gte: today } }),
+            col.countDocuments({ createdAt: { $gte: weekAgo } }),
+            col.countDocuments({ visitorName:  { $exists: true, $ne: null, $ne: '' } }),
+            col.countDocuments({ visitorEmail: { $exists: true, $ne: null, $ne: '' } }),
+            col.countDocuments({ visitorPhone: { $exists: true, $ne: null, $ne: '' } }),
+            col.aggregate([{ $group: { _id: null, total: { $sum: '$messageCount' }, avg: { $avg: '$messageCount' } } }]).toArray(),
+            col.aggregate([
+                { $match: { createdAt: { $gte: weekAgo } } },
+                { $group: {
+                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                    sessions: { $sum: 1 },
+                    leads: { $sum: { $cond: [{ $or: [
+                        { $gt: ['$visitorEmail', ''] },
+                        { $gt: ['$visitorPhone', ''] }
+                    ]}, 1, 0] } }
+                }},
+                { $sort: { _id: 1 } }
+            ]).toArray()
+        ]);
+
+        res.json({ success: true, stats: {
+            total, todayCount, weekCount, withName, withEmail, withPhone,
+            totalMessages: totalMsgs[0]?.total || 0,
+            avgMessages: Math.round(totalMsgs[0]?.avg || 0),
+            dailyBreakdown
+        }});
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Chat Analytics API — leads only (sessions with email or phone)
+router.get('/livechats/api/leads', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const db = getDb();
+        const leads = await db.collection('livechats')
+            .find({ $or: [
+                { visitorEmail: { $exists: true, $ne: null, $ne: '' } },
+                { visitorPhone: { $exists: true, $ne: null, $ne: '' } }
+            ]})
+            .sort({ updatedAt: -1 })
+            .project({ sessionId:1, visitorName:1, visitorEmail:1, visitorPhone:1, messageCount:1, createdAt:1, updatedAt:1, ip:1 })
+            .toArray();
+        res.json({ success: true, leads });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 // Live Chats - Main admin view
 router.get('/livechats', isAdmin, async (req, res) => {
     try {
         const user = req.user;
+        const wsToken = createAdminToken();
         res.render("admin/livechats", {
             user: user,
-            currentPage: 'livechats'
+            currentPage: 'livechats',
+            wsToken
         });
     } catch (error) {
         console.error('Error rendering livechats page:', error);
@@ -574,6 +636,22 @@ router.post('/livechats/:sessionId/reply', isAdmin, async (req, res) => {
         res.json({ success: true, message: 'Reply sent successfully' });
     } catch (error) {
         console.error('Error sending reply:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Live Chats API - Delete a session
+router.delete('/livechats/:sessionId', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const db = getDb();
+        const result = await db.collection('livechats').deleteOne({ sessionId: req.params.sessionId });
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ success: false, error: 'Session not found' });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting session:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

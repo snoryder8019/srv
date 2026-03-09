@@ -1,0 +1,1 @@
+cli interface , rpg npc players  for directory and coding management. a few characters that own basic attributes like strength agility intelligents

@@ -100,7 +100,7 @@ async function sendNotificationEmail(sessionId, firstMessage, ip) {
 
     const mailOptions = {
       from: process.env.ZOHO_USER,
-      to: process.env.GMAIL_USER || 'scott@madladslab.com',
+      to: process.env.NOTIFY_EMAIL || process.env.ZOHO_USER,
       subject: '💬 New Live Chat Visitor on madLadsLab',
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #111; color: #fff; border-radius: 12px;">

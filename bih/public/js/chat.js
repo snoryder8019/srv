@@ -334,6 +334,101 @@
     }
   });
 
+  // ── Command autocomplete ──────────────────────────────────────────────────
+  var COMMANDS = [
+    { cmd: '!help',              hint: 'show all commands' },
+    { cmd: '!suggest ',          hint: '<idea>  — send feedback to dev team' },
+    { cmd: '!list-agents',       hint: 'list all madladslab agents' },
+    { cmd: '@',                  hint: '<botname> <message>  — talk directly to a bot' },
+    // agent management
+    { cmd: '!activate ',         hint: '<name>  — enable agent as bih bot [admin]' },
+    { cmd: '!deactivate ',       hint: '<name>  — disable agent from bih [admin]' },
+    { cmd: '!spawn ',            hint: '<name> [model]  — create new agent [admin]' },
+    { cmd: '!agent-grant ',      hint: '<agent> <capability>  — grant agent a cap [admin]' },
+    { cmd: '!agent-revoke ',     hint: '<agent> <capability>  — revoke agent cap [admin]' },
+    { cmd: '!agent-roles ',      hint: '<agent> [roles]  — restrict agent to roles [admin]' },
+    // user permissions
+    { cmd: '!users',             hint: 'list all users + roles [admin]' },
+    { cmd: '!perms ',            hint: '<username>  — show user permissions [admin]' },
+    { cmd: '!grant ',            hint: '<username> <perm>  — grant user a permission [admin]' },
+    { cmd: '!revoke ',           hint: '<username> <perm>  — revoke user permission [admin]' },
+  ];
+
+  var cmdBox = document.createElement('div');
+  cmdBox.id = 'cmd-suggest';
+  panel.appendChild(cmdBox);
+
+  var cmdActive = -1; // keyboard-selected index
+
+  function renderCmds(filtered) {
+    cmdBox.innerHTML = '';
+    cmdActive = -1;
+    if (!filtered.length) { cmdBox.classList.remove('open'); return; }
+    filtered.forEach(function (c, i) {
+      var item = document.createElement('div');
+      item.className = 'cmd-item';
+      item.dataset.cmd = c.cmd;
+      var name = document.createElement('span');
+      name.className = 'cmd-name';
+      name.textContent = c.cmd;
+      var hint = document.createElement('span');
+      hint.className = 'cmd-hint';
+      hint.textContent = c.hint;
+      item.appendChild(name);
+      item.appendChild(hint);
+      item.addEventListener('mousedown', function (e) {
+        e.preventDefault(); // keep input focus
+        input.value = c.cmd;
+        cmdBox.classList.remove('open');
+        input.focus();
+      });
+      cmdBox.appendChild(item);
+    });
+    cmdBox.classList.add('open');
+  }
+
+  function setActiveItem(idx) {
+    var items = cmdBox.querySelectorAll('.cmd-item');
+    items.forEach(function (el, i) { el.classList.toggle('active', i === idx); });
+    cmdActive = idx;
+  }
+
+  input.addEventListener('input', function () {
+    var val = input.value;
+    if (!val.startsWith('!') && !val.startsWith('@')) { cmdBox.classList.remove('open'); return; }
+    var lower = val.toLowerCase();
+    var matches = COMMANDS.filter(function (c) {
+      return c.cmd.toLowerCase().startsWith(lower) || lower.startsWith(c.cmd.toLowerCase().trimEnd());
+    });
+    renderCmds(matches);
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (!cmdBox.classList.contains('open')) return;
+    var items = cmdBox.querySelectorAll('.cmd-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveItem(Math.min(cmdActive + 1, items.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveItem(Math.max(cmdActive - 1, 0));
+    } else if (e.key === 'Tab' || (e.key === 'Enter' && cmdActive >= 0)) {
+      if (cmdActive >= 0 && items[cmdActive]) {
+        e.preventDefault();
+        input.value = items[cmdActive].dataset.cmd;
+        cmdBox.classList.remove('open');
+      }
+    } else if (e.key === 'Escape') {
+      cmdBox.classList.remove('open');
+    }
+  });
+
+  // Close dropdown on blur (allow mousedown on items to fire first)
+  input.addEventListener('blur', function () {
+    setTimeout(function () { cmdBox.classList.remove('open'); }, 150);
+  });
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Handle link preview results from server
   socket.on('link-preview-result', function (data) {
     var containers = pendingPreviews[data.url];

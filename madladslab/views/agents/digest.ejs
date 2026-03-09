@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Agent Digest - madLadsLab</title>
+    <link rel="stylesheet" href="/stylesheets/admin.css">
+    <link rel="stylesheet" href="/stylesheets/agents.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <%-include('../mainContent/adminHeader.ejs')%>
+
+  <div class="admin-container">
+    <%-include('../mainContent/adminSidebar.ejs')%>
+
+    <main class="admin-main digest-main">
+
+      <div class="digest-header">
+        <div>
+          <h1>Agent Digest</h1>
+          <p class="admin-subtitle">Unified feed of all background findings across the org</p>
+        </div>
+        <div class="digest-header-controls">
+          <span class="digest-live-dot" id="liveDot" title="Live updates active"></span>
+          <button class="btn-secondary btn-sm" onclick="refreshDigest()">↻ Refresh</button>
+          <a href="/agents" class="btn-secondary btn-sm">← Agents</a>
+        </div>
+      </div>
+
+      <div class="digest-layout">
+
+        <!-- LEFT: Feed -->
+        <div class="digest-feed-col">
+          <div class="digest-toolbar">
+            <div class="digest-filters" id="agentFilters">
+              <button class="filter-chip active" onclick="setAgentFilter(this, null)">All agents</button>
+              <% agents.forEach(a => { %>
+                <button class="filter-chip" onclick="setAgentFilter(this, '<%= a._id %>')" data-agent-id="<%= a._id %>">
+                  <%= a.name %>
+                </button>
+              <% }); %>
+            </div>
+            <div class="digest-type-filters">
+              <button class="filter-chip active" onclick="setTypeFilter(this, null)">All types</button>
+              <button class="filter-chip" onclick="setTypeFilter(this, 'background')">Background</button>
+              <button class="filter-chip" onclick="setTypeFilter(this, 'finding')">Findings</button>
+              <button class="filter-chip" onclick="setTypeFilter(this, 'image')">Images</button>
+              <button class="filter-chip" onclick="setTypeFilter(this, 'tldr')">TLDR</button>
+            </div>
+          </div>
+
+          <div id="digestFeed" class="digest-feed">
+            <p class="loading">Loading digest...</p>
+          </div>
+        </div>
+
+        <!-- RIGHT: Stats + Org -->
+        <div class="digest-sidebar-col">
+
+          <div class="digest-stat-panel" id="statsPanel">
+            <h3>Activity</h3>
+            <p class="loading">...</p>
+          </div>
+
+          <div class="digest-org-panel digest-task-panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
+              <h3 style="margin:0">Task Queue</h3>
+              <select id="taskAgentSelect" onchange="renderTaskQueue()" style="background:#0a0a0a;border:1px solid #2a2a2a;color:#888;border-radius:4px;padding:0.2rem 0.4rem;font-size:0.72rem">
+                <option value="">All agents</option>
+                <% agents.forEach(a => { %>
+                  <option value="<%= a._id %>"><%= a.name %></option>
+                <% }); %>
+              </select>
+            </div>
+            <div id="taskQueue" class="task-queue">
+              <p class="loading">...</p>
+            </div>
+          </div>
+
+          <div class="digest-org-panel">
+            <h3>Org Chart</h3>
+            <div id="orgChart" class="org-chart">
+              <p class="loading">...</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    const DIGEST_AGENTS = <%- JSON.stringify(agents) %>;
+  </script>
+  <script src="/javascripts/agents-digest.js"></script>
+  <%-include('../mainContent/adminNav.ejs')%>
+</body>
+</html>

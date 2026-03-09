@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
 
     await transporter.sendMail({
       from: process.env.ZOHO_USER,
-      to: process.env.GMAIL_USER || 'scott@madladslab.com',
+      to: process.env.NOTIFY_EMAIL || process.env.ZOHO_USER,
       subject: `madLadsLab Contact: ${name}`,
       html,
     });
