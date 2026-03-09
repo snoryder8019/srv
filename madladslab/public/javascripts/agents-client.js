@@ -44,6 +44,7 @@ function initAgentSocket() {
   agentSocket.on('background:tick', handleBackgroundTick);
   agentSocket.on('background:started', handleBackgroundStarted);
   agentSocket.on('background:stopped', handleBackgroundStopped);
+  agentSocket.on('agent:push', handleAgentPush);
 
   return agentSocket;
 }
@@ -139,6 +140,37 @@ function handleActionNew(data) {
   }
   if (data.action.type === 'background') {
     showNotification(`Background finding: ${data.action.title}`, 'info');
+  }
+}
+
+function handleAgentPush(data) {
+  const messagesDiv = document.getElementById('chatMessages');
+  const isChatOpen = document.getElementById('chatModal')?.classList.contains('active');
+  const isThisAgent = typeof currentChatAgentId !== 'undefined' && currentChatAgentId === data.agentId;
+
+  if (isChatOpen && isThisAgent && messagesDiv) {
+    const preview = data.content.length > 400 ? data.content.substring(0, 400) + '…' : data.content;
+    messagesDiv.insertAdjacentHTML('beforeend', `
+      <div class="chat-message proactive">
+        <div class="chat-message-avatar">★</div>
+        <div class="chat-message-content">
+          <span class="chat-proactive-label">background finding</span>
+          <span class="chat-proactive-title">${escapeHtml(data.title)}</span>
+          <span class="chat-proactive-body">${escapeHtml(preview)}</span>
+        </div>
+      </div>
+    `);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  } else {
+    // Chat not open — increment unread badge
+    if (typeof chatUnreadCounts !== 'undefined') {
+      chatUnreadCounts[data.agentId] = (chatUnreadCounts[data.agentId] || 0) + 1;
+      const badge = document.getElementById(`chat-badge-${data.agentId}`);
+      if (badge) {
+        badge.textContent = chatUnreadCounts[data.agentId];
+        badge.classList.add('has-unread');
+      }
+    }
   }
 }
 

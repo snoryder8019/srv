@@ -78,7 +78,27 @@ const agentSchema = new mongoose.Schema(
         default: 2,
         min: 1,
         max: 1440
+      },
+      backgroundRunning: {
+        type: Boolean,
+        default: false
       }
+    },
+    bgTickHistory: {
+      type: [{
+        timestamp: { type: Date, default: Date.now },
+        title: String,
+        summary: String,
+        nextFocus: String,
+        idle: { type: Boolean, default: false }
+      }],
+      default: []
+    },
+    bgProductivity: {
+      score: { type: Number, default: 50 },        // 0-100
+      consecutiveIdle: { type: Number, default: 0 },
+      totalTicks: { type: Number, default: 0 },
+      activeTicks: { type: Number, default: 0 }
     },
     tuning: {
       systemPromptHistory: [{
@@ -158,6 +178,10 @@ const agentSchema = new mongoose.Schema(
         default: ''
       },
       longTermMemory: {
+        type: String,
+        default: ''
+      },
+      bgFindings: {
         type: String,
         default: ''
       },

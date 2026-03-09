@@ -6,6 +6,7 @@ let activeAgentFilter = null;
 let activeTypeFilter = null;
 let allActions = [];
 let agentSocket = null;
+const bgState = {}; // agentId -> { running, runCount, lastRun }
 
 const TIER_COLORS = { apex: '#ff4444', executive: '#ff9900', manager: '#ffcc00', worker: '#555' };
 const TYPE_COLORS = { tldr: '#00aaff', task_list: '#ffaa00', finding: '#00ff88', background: '#ff88cc', file_write: '#ffcc00', image: '#cc88ff' };
@@ -17,8 +18,8 @@ DIGEST_AGENTS.forEach(a => { agentMap[a._id] = a; });
 // ── Init ───────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   refreshDigest();
-  renderOrgChart();
   renderTaskQueue();
+  refreshBgControls();
   initSockets();
 });
 
@@ -78,6 +79,7 @@ function renderActionCard(action) {
     `;
   }
 
+  const bodyId = `dc-${action._id}`;
   const promoteBtns = action.type !== 'image' && agentId ? `
     <button class="btn-promote" onclick="promoteDigestAction('${agentId}','${action._id}','knowledge')">→ KB</button>
     <button class="btn-promote" onclick="promoteDigestAction('${agentId}','${action._id}','longterm')">→ Notes</button>
@@ -96,6 +98,7 @@ function renderActionCard(action) {
       ${body}
       <div class="action-footer">
         ${promoteBtns}
+        ${action.type !== 'image' ? `<button class="btn-font-size" onclick="toggleFontSize('${bodyId}', this)" title="Toggle text size">A±</button>` : ''}
         ${action.tokens ? `<span class="action-tokens">${action.tokens} tok</span>` : ''}
       </div>
     </div>
@@ -292,6 +295,99 @@ function toggleExpand(id, btn) {
   btn.textContent = collapsed ? 'Show more' : 'Show less';
 }
 
+function toggleFontSize(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const sizes = ['', 'digest-text-md', 'digest-text-lg'];
+  const cur = sizes.findIndex(c => c && el.classList.contains(c));
+  const next = (cur + 1) % sizes.length;
+  sizes.forEach(c => c && el.classList.remove(c));
+  if (sizes[next]) el.classList.add(sizes[next]);
+  btn.textContent = next === 0 ? 'A±' : next === 1 ? 'A+' : 'A++';
+}
+
+// ── Background controls ────────────────────────────────────
+async function refreshBgControls() {
+  try {
+    const res = await fetch('/agents/api/background/status');
+    const data = await res.json();
+    if (!data.success) return;
+    // Seed bgState from running processes
+    data.processes.forEach(p => {
+      bgState[p.agentId] = { running: true, runCount: p.runCount, lastRun: p.lastRun };
+    });
+    renderBgControls();
+  } catch (_) {
+    renderBgControls();
+  }
+}
+
+function renderBgControls() {
+  const panel = document.getElementById('bgControls');
+  if (!DIGEST_AGENTS.length) {
+    panel.innerHTML = '<p class="empty-state" style="font-size:0.75rem;padding:0.5rem 0">No agents</p>';
+    return;
+  }
+  panel.innerHTML = DIGEST_AGENTS.map(a => {
+    const st = bgState[a._id] || { running: false, runCount: 0, lastRun: null };
+    const dotColor = st.running ? '#00ff88' : '#333';
+    const dotAnim = st.running ? '' : 'animation:none';
+    const ticks = st.running ? `<span class="bg-ctrl-ticks" id="bgticks-${a._id}">${st.runCount}</span>t` : '';
+    const score = st.productivityScore ?? '';
+    const scoreColor = score === '' ? '#444' : score >= 60 ? '#00ff88' : score >= 30 ? '#ffaa00' : '#ff4444';
+    const scoreStr = score !== '' ? `<span class="bg-ctrl-score" id="bgscore-${a._id}" style="color:${scoreColor}" title="Productivity score">${score}%</span>` : '';
+    return `
+      <div class="bg-ctrl-row" id="bgrow-${a._id}">
+        <span class="status-dot" style="background:${dotColor};${dotAnim};flex-shrink:0"></span>
+        <span class="bg-ctrl-name">${escHtml(a.name)}</span>
+        <span class="bg-ctrl-ticks-wrap">${ticks} ${scoreStr}</span>
+        ${st.running
+          ? `<button class="btn-xs btn-danger" onclick="toggleBg('${a._id}', false)">■</button>`
+          : `<button class="btn-xs btn-secondary" onclick="toggleBg('${a._id}', true)">▶</button>`
+        }
+      </div>`;
+  }).join('');
+}
+
+function updateBgRow(agentId) {
+  const row = document.getElementById(`bgrow-${agentId}`);
+  if (!row) return;
+  const st = bgState[agentId] || { running: false, runCount: 0 };
+  const dot = row.querySelector('.status-dot');
+  if (dot) { dot.style.background = st.running ? '#00ff88' : '#333'; dot.style.animation = st.running ? '' : 'none'; }
+  const ticksWrap = row.querySelector('.bg-ctrl-ticks-wrap');
+  if (ticksWrap) ticksWrap.innerHTML = st.running ? `<span class="bg-ctrl-ticks" id="bgticks-${agentId}">${st.runCount}</span> ticks` : '';
+  const btn = row.querySelector('button');
+  if (btn) {
+    btn.className = st.running ? 'btn-xs btn-danger' : 'btn-xs btn-secondary';
+    btn.textContent = st.running ? '■' : '▶';
+    btn.onclick = () => toggleBg(agentId, !st.running);
+  }
+}
+
+async function toggleBg(agentId, start) {
+  try {
+    const endpoint = start ? 'background/start' : 'background/stop';
+    const res = await fetch(`/agents/api/agents/${agentId}/${endpoint}`, { method: 'POST' });
+    const data = await res.json();
+    if (!data.success) { showToast(data.error || 'Failed', 'error'); return; }
+    if (!start) {
+      bgState[agentId] = { running: false, runCount: 0, lastRun: null };
+      updateBgRow(agentId);
+    }
+    // started state update comes via socket background:started
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function startAllBackground() {
+  const idle = DIGEST_AGENTS.filter(a => !bgState[a._id]?.running);
+  if (!idle.length) { showToast('All agents already running', 'info'); return; }
+  await Promise.all(idle.map(a => toggleBg(a._id, true)));
+  showToast(`Started ${idle.length} agent(s)`, 'success');
+}
+
 // ── Live socket ────────────────────────────────────────────
 function initSockets() {
   agentSocket = io('/agents', { transports: ['websocket', 'polling'], reconnection: true });
@@ -310,6 +406,31 @@ function initSockets() {
     feed.insertAdjacentHTML('afterbegin', renderActionCard(action));
     renderStats();
     showToast(`New: ${action.title}`, 'info');
+  });
+
+  agentSocket.on('background:started', ({ agentId }) => {
+    bgState[agentId] = { running: true, runCount: 0, lastRun: null };
+    updateBgRow(agentId);
+  });
+  agentSocket.on('background:stopped', ({ agentId }) => {
+    bgState[agentId] = { running: false, runCount: 0, lastRun: null };
+    updateBgRow(agentId);
+  });
+  agentSocket.on('background:tick', ({ agentId, runCount, lastRun, productivityScore, consecutiveIdle }) => {
+    if (!bgState[agentId]) bgState[agentId] = { running: true };
+    bgState[agentId].runCount = runCount;
+    bgState[agentId].lastRun = lastRun;
+    if (productivityScore !== undefined) bgState[agentId].productivityScore = productivityScore;
+    if (consecutiveIdle !== undefined) bgState[agentId].consecutiveIdle = consecutiveIdle;
+    const tickEl = document.getElementById(`bgticks-${agentId}`);
+    if (tickEl) tickEl.textContent = runCount + 't';
+    const scoreEl = document.getElementById(`bgscore-${agentId}`);
+    if (scoreEl && productivityScore !== undefined) {
+      const color = productivityScore >= 60 ? '#00ff88' : productivityScore >= 30 ? '#ffaa00' : '#ff4444';
+      scoreEl.textContent = productivityScore + '%';
+      scoreEl.style.color = color;
+      scoreEl.title = consecutiveIdle > 0 ? `${consecutiveIdle} idle tick(s) — may invent tasks` : 'Productivity score';
+    }
   });
 }
 

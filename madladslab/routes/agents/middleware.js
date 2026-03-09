@@ -27,7 +27,8 @@ export async function runResearcherMiddleware(agent, message, ollamaBaseUrl, oll
         title: `TLDR: ${message.substring(0, 60)}`,
         content: res.data.choices?.[0]?.message?.content || '',
         tokens: res.data.usage?.completion_tokens || 0,
-        status: 'complete'
+        status: 'complete',
+        fromMiddleware: true
     });
     await action.save();
     return action;
@@ -50,7 +51,8 @@ export async function runVibecoderMiddleware(agent, message, ollamaBaseUrl, olla
         title: `Tasks: ${message.substring(0, 60)}`,
         content: res.data.choices?.[0]?.message?.content || '',
         tokens: res.data.usage?.completion_tokens || 0,
-        status: 'complete'
+        status: 'complete',
+        fromMiddleware: true
     });
     await action.save();
     return action;

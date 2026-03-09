@@ -9,6 +9,9 @@ import { isAdmin, runResearcherMiddleware, runVibecoderMiddleware } from "./midd
 
 const router = express.Router();
 
+// Per-agent rate limit: prevent stacked LLM calls if a request is already in flight
+const chatInFlight = new Map(); // agentId -> timestamp of last request start
+
 // Chat with agent (agentic loop with MCP tool support)
 router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
     try {
@@ -23,6 +26,13 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
         if (!agent) {
             return res.status(404).json({ success: false, error: 'Agent not found' });
         }
+
+        // Rate guard: reject if a request for this agent is already in flight
+        const agentIdStr = req.params.id;
+        if (chatInFlight.has(agentIdStr)) {
+            return res.status(429).json({ success: false, error: 'Agent is already processing a message — please wait' });
+        }
+        chatInFlight.set(agentIdStr, Date.now());
 
         agent.status = 'running';
         await agent.save();
@@ -51,17 +61,21 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
                 messages.push({ role: 'system', content: ctx });
             } catch (_) {}
 
-            // Inject thread summary and long-term memory into context
+            // ── Inject all memory layers ──────────────────────────────
             if (agent.memory.threadSummary) {
-                messages.push({ role: 'system', content: `Thread Summary (what has been worked on so far):\n${agent.memory.threadSummary}` });
+                messages.push({ role: 'system', content: `Thread Summary (what we have worked on so far):\n${agent.memory.threadSummary}` });
             }
             if (agent.memory.longTermMemory) {
-                messages.push({ role: 'system', content: `Long-term Memory (persistent notes, tasks, next steps):\n${agent.memory.longTermMemory}` });
+                messages.push({ role: 'system', content: `Your Notes (tasks, decisions, next steps from our conversations):\n${agent.memory.longTermMemory}` });
             }
-
+            if (agent.memory.bgFindings) {
+                // Background research done autonomously — inject last 1500 chars so it doesn't dominate
+                messages.push({ role: 'system', content: `Background Research (what you found while running autonomously — can be referenced in responses):\n${agent.memory.bgFindings.slice(-1500)}` });
+            }
             if (agent.memory.knowledgeBase?.length > 0) {
-                const kb = agent.memory.knowledgeBase
-                    .map(e => `[${e.type.toUpperCase()}] ${e.title}:\n${e.content}`)
+                // Cap per-entry at 300 chars to keep context manageable; most recent 12 entries
+                const kb = agent.memory.knowledgeBase.slice(-12)
+                    .map(e => `[${e.type.toUpperCase()}] ${e.title}:\n${e.content.substring(0, 300)}`)
                     .join('\n\n');
                 messages.push({ role: 'system', content: `Knowledge Base:\n${kb}` });
             }
@@ -278,6 +292,7 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
                 });
             }
 
+            chatInFlight.delete(agentIdStr);
             res.json({
                 success: true,
                 response: finalResponse,
@@ -308,6 +323,7 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
 
                 agent.status = 'idle';
                 await agent.save();
+                chatInFlight.delete(agentIdStr);
                 return res.json({
                     success: true,
                     response: imageResponse,
@@ -320,6 +336,7 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
             await agent.save();
             await agent.addLog('error', `Ollama API error: ${ollamaError.message}`);
 
+            chatInFlight.delete(agentIdStr);
             res.status(500).json({
                 success: false,
                 error: 'Failed to communicate with Ollama',
@@ -327,6 +344,7 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
             });
         }
     } catch (error) {
+        chatInFlight.delete(req.params.id);
         console.error('Error in agent chat:', error);
         res.status(500).json({ success: false, error: error.message });
     }

@@ -36,7 +36,7 @@ app.use(
       mongoUrl: process.env.DB_URL,  // Ensure this is set in .env
       collectionName: 'sessions'
     }),
-    cookie: { secure: true, httpOnly: true, sameSite: 'strict' },
+    cookie: { secure: true, httpOnly: true, sameSite: 'lax' },
   })
 );
 
@@ -45,12 +45,6 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-// app.use((req, res, next) => {
-//   console.log("Session ID:", req.session.id);
-//   console.log("Session User:", req.session.user);
-//   console.log("Request User:", req.user);
-//   next();
-// });
 
 
 connectDB();

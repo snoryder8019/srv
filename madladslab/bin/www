@@ -11,6 +11,7 @@ import http from 'http';
 import initSockets from '../plugins/socket/index.js';
 import { setupWebSocket } from '../routes/claudeTalk/index.js';
 import { startMonitoring } from '../lib/serviceMonitorDaemon.js';
+import { resumeBackgroundProcesses } from '../routes/agents/background.js';
 
 /**
  * Get port from environment and store in Express.
@@ -45,6 +46,11 @@ if (process.env.ENABLE_SERVICE_MONITOR !== 'false') {
   startMonitoring();
   logger('Service monitoring daemon started');
 }
+
+/**
+ * Resume background processes that were running before restart
+ */
+setTimeout(() => resumeBackgroundProcesses(io), 3000);
 
 /**
  * Normalize a port into a number, string, or false.

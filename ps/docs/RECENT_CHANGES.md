@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-03-08T07:55:50.121Z
+Generated: 2026-03-09T07:30:00.014Z
+
+---
+
+## Commit: big changes
+
+- **Hash:** `7132174`
+- **Author:** Scott
+- **Date:** 3/9/2026
+- **Changes:** 128 files, +15695/-881 lines
+
+### Modified Areas:
+
+**Frontend:** 5 files
+**Backend:** 22 files
+**Views:** 20 files
+**Documentation:** 7 files
 
 ---
 
@@ -65,23 +81,6 @@ Generated: 2026-03-08T07:55:50.121Z
 **Views:** 21 files
 **Scripts:** 3 files
 **Documentation:** 7 files
-
----
-
-## Commit: good push
-
-- **Hash:** `27034f4`
-- **Author:** Scott
-- **Date:** 11/8/2025
-- **Changes:** 106 files, +17543/-426 lines
-
-### Modified Areas:
-
-**Frontend:** 4 files
-**Backend:** 23 files
-**Views:** 18 files
-**Scripts:** 1 files
-**Documentation:** 16 files
 
 ---
 

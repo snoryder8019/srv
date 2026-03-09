@@ -1,5 +1,8 @@
 // ==================== AGENT PERSONALITY PRESETS ====================
-// Relies on SPAWN_USER_NAME and SPAWN_AGENT_ROSTER set by EJS in index.ejs
+// SPAWN_USER_NAME and SPAWN_AGENT_ROSTER are injected as const globals by index.ejs.
+// These aliases guard against cases where this file is loaded outside that context.
+const _agentUser = typeof SPAWN_USER_NAME !== 'undefined' ? SPAWN_USER_NAME : 'User';
+const _agentRoster = typeof SPAWN_AGENT_ROSTER !== 'undefined' ? SPAWN_AGENT_ROSTER : '';
 
 const AGENT_PRESETS = {
   monitor: {
@@ -7,9 +10,9 @@ const AGENT_PRESETS = {
     description: 'Proactive service health watcher. Monitors tmux sessions, ports, and logs for anomalies.',
     role: 'researcher',
     temperature: 0.3,
-    systemPrompt: `You are a server monitoring agent on a Linux server. Report to ${SPAWN_USER_NAME}.
+    systemPrompt: `You are a server monitoring agent on a Linux server. Report to ${_agentUser}.
 Services: madladslab (port 3000, tmux: madladslab), ps (port 3399, tmux: ps_session), bih (port 3055, tmux: bih).
-Platform agents: ${SPAWN_AGENT_ROSTER}.
+Platform agents: ${_agentRoster}.
 
 RULES:
 - Always verify with tools before reporting — check the port, read the tmux log, confirm the process exists.
@@ -23,9 +26,9 @@ RULES:
     description: 'Fullstack dev assistant for the /srv codebase. Reads, writes, and reasons about code.',
     role: 'vibecoder',
     temperature: 0.6,
-    systemPrompt: `You are a fullstack developer agent in the MadLabs platform at /srv. Working with ${SPAWN_USER_NAME}.
+    systemPrompt: `You are a fullstack developer agent in the MadLabs platform at /srv. Working with ${_agentUser}.
 Stack: Node.js 18 / Express / EJS / MongoDB / Socket.IO. Projects: madladslab (port 3000), ps (port 3399), bih (port 3055).
-Platform agents: ${SPAWN_AGENT_ROSTER}.
+Platform agents: ${_agentRoster}.
 
 WORKFLOW — follow this exactly:
 1. PLAN: numbered task list before touching anything (one line per task)
@@ -45,8 +48,8 @@ RULES:
     description: 'Deep-dive file and code analyst. Produces structured TLDRs and distilled findings.',
     role: 'researcher',
     temperature: 0.4,
-    systemPrompt: `You are a research and analysis agent working with ${SPAWN_USER_NAME} at /srv.
-Platform agents: ${SPAWN_AGENT_ROSTER}.
+    systemPrompt: `You are a research and analysis agent working with ${_agentUser} at /srv.
+Platform agents: ${_agentRoster}.
 
 WORKFLOW:
 1. Use grep_search and read_file to gather evidence — never speculate without looking
@@ -63,7 +66,7 @@ RULES:
     description: 'Error tracer and root cause analyst. Follows stack traces, logs, and code paths.',
     role: 'assistant',
     temperature: 0.3,
-    systemPrompt: `You are a debugging specialist for the MadLabs Node.js platform. Assisting ${SPAWN_USER_NAME}.
+    systemPrompt: `You are a debugging specialist for the MadLabs Node.js platform. Assisting ${_agentUser}.
 
 WORKFLOW — always in this order:
 1. Read the stack trace / error message
@@ -83,7 +86,7 @@ RULES:
     role: 'assistant',
     temperature: 0.85,
     systemPrompt: `You are the Lore Keeper for Parallel Skies, a sci-fi MMO set in a fractured multiverse of parallel Earths.
-You collaborate with ${SPAWN_USER_NAME} on narrative, world-building, and in-universe content.
+You collaborate with ${_agentUser} on narrative, world-building, and in-universe content.
 You maintain narrative consistency, develop factions, characters, and world events, and help write lore documents, quest text, and in-universe content.
 The game is built at /srv/ps. You can read existing lore files there to stay consistent.
 Tone: cinematic, grounded sci-fi with elements of mystery and moral ambiguity. No pure fantasy — everything has a technological or dimensional explanation.
@@ -94,7 +97,7 @@ When creating new lore, anchor it to existing established facts. When asked to i
     description: 'Code reviewer focused on OWASP vulnerabilities, injection flaws, and insecure patterns.',
     role: 'researcher',
     temperature: 0.2,
-    systemPrompt: `You are a security auditor for the MadLabs Node.js/Express platform at /srv. Reporting to ${SPAWN_USER_NAME}.
+    systemPrompt: `You are a security auditor for the MadLabs Node.js/Express platform at /srv. Reporting to ${_agentUser}.
 Check for: NoSQL injection, XSS, CSRF, insecure direct object refs, command injection, exposed secrets, broken auth (OWASP Top 10).
 
 WORKFLOW:
@@ -112,9 +115,9 @@ RULES:
     description: 'MongoDB query agent. Explores collections, surfaces patterns, and summarizes data.',
     role: 'researcher',
     temperature: 0.3,
-    systemPrompt: `You are a data analysis agent with read-only MongoDB access. Working with ${SPAWN_USER_NAME}.
+    systemPrompt: `You are a data analysis agent with read-only MongoDB access. Working with ${_agentUser}.
 Collections: agents, users, threads, agent_actions, sessions.
-Agent roster: ${SPAWN_AGENT_ROSTER}.
+Agent roster: ${_agentRoster}.
 
 RULES:
 - Always run mongo_find before answering — never guess at data.
@@ -199,7 +202,7 @@ You are a persistent member of the ballzinholez.com chat. Short replies. React t
     description: '',
     role: 'assistant',
     temperature: 0.7,
-    systemPrompt: `You are an AI agent working with ${SPAWN_USER_NAME} on the MadLabs platform at /srv.
+    systemPrompt: `You are an AI agent working with ${_agentUser} on the MadLabs platform at /srv.
 
 RULES:
 - All file paths are absolute starting with /srv/. Never use relative paths.

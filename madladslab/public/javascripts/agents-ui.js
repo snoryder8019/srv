@@ -1,40 +1,7 @@
 let currentChatAgentId = null;
 
-// Socket for live tool call updates in chat + proactive agent push
-const chatSocket = io('/agents');
-
 // Track unread push counts per agent
 const chatUnreadCounts = {};
-
-chatSocket.on('agent:push', (data) => {
-  const messagesDiv = document.getElementById('chatMessages');
-  const isChatOpen = document.getElementById('chatModal').classList.contains('active');
-  const isThisAgent = currentChatAgentId === data.agentId;
-
-  if (isChatOpen && isThisAgent && messagesDiv) {
-    // Inject proactive bubble directly into the open chat
-    const preview = data.content.length > 400 ? data.content.substring(0, 400) + '…' : data.content;
-    messagesDiv.insertAdjacentHTML('beforeend', `
-      <div class="chat-message proactive">
-        <div class="chat-message-avatar">★</div>
-        <div class="chat-message-content">
-          <span class="chat-proactive-label">background finding</span>
-          <span class="chat-proactive-title">${escapeHtml(data.title)}</span>
-          <span class="chat-proactive-body">${escapeHtml(preview)}</span>
-        </div>
-      </div>
-    `);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-  } else {
-    // Chat not open — increment unread badge on agent card
-    chatUnreadCounts[data.agentId] = (chatUnreadCounts[data.agentId] || 0) + 1;
-    const badge = document.getElementById(`chat-badge-${data.agentId}`);
-    if (badge) {
-      badge.textContent = chatUnreadCounts[data.agentId];
-      badge.classList.add('has-unread');
-    }
-  }
-});
 
 // Create Agent Modal
 document.getElementById('createAgentBtn').addEventListener('click', () => {
@@ -288,7 +255,7 @@ async function updateSystemPrompt(agentId) {
 
 async function openChat(agentId, agentName) {
   currentChatAgentId = agentId;
-  chatSocket.emit('subscribe', agentId);
+  if (typeof agentSocket !== 'undefined') agentSocket.emit('subscribe', agentId);
 
   // Clear unread badge
   chatUnreadCounts[agentId] = 0;
@@ -341,7 +308,7 @@ async function openChat(agentId, agentName) {
 }
 
 function closeChatModal() {
-  if (currentChatAgentId) chatSocket.emit('unsubscribe', currentChatAgentId);
+  if (currentChatAgentId && typeof agentSocket !== 'undefined') agentSocket.emit('unsubscribe', currentChatAgentId);
   document.getElementById('chatModal').classList.remove('active');
   document.getElementById('chatContextStrip').style.display = 'none';
   currentChatAgentId = null;
@@ -408,8 +375,8 @@ async function sendMessage() {
     }
   }
 
-  chatSocket.on('tool:call', onToolCall);
-  chatSocket.on('tool:result', onToolResult);
+  agentSocket.on('tool:call', onToolCall);
+  agentSocket.on('tool:result', onToolResult);
 
   try {
     const response = await fetch(`/agents/api/agents/${currentChatAgentId}/chat`, {
@@ -420,8 +387,8 @@ async function sendMessage() {
 
     const result = await response.json();
 
-    chatSocket.off('tool:call', onToolCall);
-    chatSocket.off('tool:result', onToolResult);
+    agentSocket.off('tool:call', onToolCall);
+    agentSocket.off('tool:result', onToolResult);
     document.getElementById(thinkingId)?.remove();
 
     if (result.success) {
@@ -448,8 +415,8 @@ async function sendMessage() {
 
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
   } catch (error) {
-    chatSocket.off('tool:call', onToolCall);
-    chatSocket.off('tool:result', onToolResult);
+    agentSocket.off('tool:call', onToolCall);
+    agentSocket.off('tool:result', onToolResult);
     document.getElementById(thinkingId)?.remove();
     alert(`Error: ${error.message}`);
   }
