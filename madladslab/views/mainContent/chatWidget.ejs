@@ -363,11 +363,7 @@
 
   <div id="chatPanel">
     <div id="chatHeader">
-      <% if (chatAgent.pepeChat && chatAgent.pepeChat.avatar) { %>
-        <img src="<%= chatAgent.pepeChat.avatar %>" alt="<%= chatAgent.name %>" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.15);">
-      <% } else { %>
         <img src="/images/beaker_logo_no_stash.png" alt="<%= chatAgent.name %>">
-      <% } %>
       <div class="info">
         <h3><%= chatAgent.name %></h3>
         <p><%= chatAgent.description || 'madLadsLab Assistant' %></p>
@@ -377,11 +373,7 @@
 
     <div id="chatMessages">
       <div class="chat-message assistant">
-        <% if (chatAgent.pepeChat && chatAgent.pepeChat.avatar) { %>
-          <img src="<%= chatAgent.pepeChat.avatar %>" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;" alt="avatar">
-        <% } else { %>
-          <div class="avatar"><%= chatAgent.name[0].toUpperCase() %></div>
-        <% } %>
+            <div class="avatar"><%= chatAgent.name[0].toUpperCase() %></div>
         <div class="bubble">Hey there! I'm <%= chatAgent.name %>, your guide to madLadsLab. How can I help you today?</div>
       </div>
     </div>
@@ -405,15 +397,16 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
 (function() {
-  const STORAGE_KEY = 'madlads_chat_session';
+  const SITE_TOKEN = <%- JSON.stringify(chatAgent._siteToken || '') %>;
+  const STORAGE_KEY = 'fwdchat_session_' + SITE_TOKEN;
   let sessionId = localStorage.getItem(STORAGE_KEY);
   if (!sessionId) {
     sessionId = 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     localStorage.setItem(STORAGE_KEY, sessionId);
   }
 
-  // Agent avatar (URL or empty — falls back to initials)
-  const CHAT_AVATAR_URL = <%- JSON.stringify((chatAgent.pepeChat && chatAgent.pepeChat.avatar) || '') %>;
+  // Agent avatar (falls back to initials)
+  const CHAT_AVATAR_URL = '';
   const CHAT_AGENT_INITIAL = <%- JSON.stringify((chatAgent.name || '?')[0].toUpperCase()) %>;
 
   function avatarHtml() {
@@ -452,8 +445,9 @@
   function getSocket() {
     if (pepeSocket && pepeSocket.connected) return pepeSocket;
 
-    pepeSocket = io('/pepe', {
+    pepeSocket = io('/forwardchat', {
       transports: ['websocket', 'polling'],
+      query: { site: SITE_TOKEN },
       reconnection: true,
       reconnectionDelay: 2000,
       reconnectionAttempts: 5

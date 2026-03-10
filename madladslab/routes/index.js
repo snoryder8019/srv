@@ -28,6 +28,7 @@ import agents from "./agents/index.js"
 import skins from "./skins/index.js"
 import w2marketing from "./w2marketing/index.js"
 import Agent from "../api/v1/models/Agent.js"
+import ForwardChatSite from "../api/v1/models/ForwardChatSite.js"
 /* GET home page. */
 
 router.use('/admin', admin)
@@ -57,12 +58,16 @@ router.use('/livechat', livechat)
 router.use('/hue', hue)
 router.use('/w2marketing', w2marketing)
 router.use('/', plugins)
-
+//for the chopping block to put in /srv/archive
+//claude talk, contest, backoffice both, trader, lbb, gpc,euker,scrapeman
 router.get('/', async function(req, res, next) {
   try {
     const user = req.user;
-    const chatAgent = await Agent.findOne({ 'pepeChat.enabled': true }, 'name description pepeChat').lean();
-    res.render('index', { title: 'Express', user, chatAgent: chatAgent || null });
+    const site = await ForwardChatSite.findOne({ siteUrl: /madladslab\.com/i, enabled: true })
+      .populate('activeAgent', 'name description')
+      .lean();
+    const chatAgent = site?.activeAgent ? { ...site.activeAgent, _siteToken: site.plugin.token } : null;
+    res.render('index', { title: 'Express', user, chatAgent });
   } catch (e) {
     res.render('index', { title: 'Express', user: req.user, chatAgent: null });
   }

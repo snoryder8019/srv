@@ -7,6 +7,7 @@ import memoryRouter from "./memory.js";
 import actionsRouter from "./actions.js";
 import mcpRouter from "./mcp.js";
 import backgroundRouter from "./background.js";
+import forwardChatRouter from "./forwardchat.js";
 
 const router = express.Router();
 
@@ -17,5 +18,6 @@ router.use(memoryRouter);
 router.use(actionsRouter);
 router.use(mcpRouter);
 router.use(backgroundRouter);
+router.use(forwardChatRouter);
 
 export default router;

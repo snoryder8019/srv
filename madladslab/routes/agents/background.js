@@ -41,6 +41,32 @@ async function runBackgroundTick(io, agentId, proc) {
         const agent = await Agent.findById(agentId);
         if (!agent) { stopBackgroundProcess(io, agentId); return; }
 
+        // ── Inject due crons as pending tasks ──────────────────
+        try {
+            const db = mongoose.connection.db;
+            if (db) {
+                const dueCrons = await db.collection('agent_crons')
+                    .find({ agentId, active: true, nextRun: { $lte: new Date() } })
+                    .toArray();
+                for (const cron of dueCrons) {
+                    await db.collection('agent_tasks').insertOne({
+                        agentId,
+                        title: cron.title,
+                        description: cron.content,
+                        priority: 'medium',
+                        priorityScore: 2,
+                        status: 'pending',
+                        source: 'cron',
+                        createdAt: new Date()
+                    });
+                    await db.collection('agent_crons').updateOne(
+                        { _id: cron._id },
+                        { $set: { nextRun: new Date(Date.now() + cron.intervalMinutes * 60000), lastRun: new Date() } }
+                    );
+                }
+            }
+        } catch (_) {}
+
         const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'https://ollama.madladslab.com';
         const ollamaApiKey = process.env.OLLAMA_API_KEY;
 
@@ -77,6 +103,9 @@ async function runBackgroundTick(io, agentId, proc) {
         const consecutiveIdle = prod.consecutiveIdle || 0;
         const stuck = consecutiveIdle >= 2; // 2+ idle ticks = stuck, invent tasks
 
+        // ── Obsession detection ────────────────────────────────
+        const obsessionTopic = detectTopicRepetition(tickHistory);
+
         let reasoningCtx = '';
         if (tickHistory.length > 0) {
             const histLines = tickHistory.map((h, i) => {
@@ -86,13 +115,25 @@ async function runBackgroundTick(io, agentId, proc) {
             }).join('\n');
             const productivityLine = `Productivity score: ${prod.score}/100 (${prod.activeTicks}/${prod.totalTicks} ticks produced findings).`;
             const stuckLine = stuck ? `\nWARNING: You have been idle for ${consecutiveIdle} consecutive ticks. Your current approach is NOT WORKING. You MUST change strategy and invent new tasks.` : '';
-            reasoningCtx = `BRIEF — your last ${tickHistory.length} ticks:\n${histLines}\n\n${productivityLine}${stuckLine}\n\nDo NOT repeat topics from recent ticks. If you planned something, execute it now.`;
+            const obsessionLine = obsessionTopic ? `\nOBSESSION DETECTED: You have repeated the topic "${obsessionTopic}" across multiple recent ticks. This topic is now BANNED for this tick. Explore a completely different area.` : '';
+            reasoningCtx = `BRIEF — your last ${tickHistory.length} ticks:\n${histLines}\n\n${productivityLine}${stuckLine}${obsessionLine}\n\nDo NOT repeat topics from recent ticks. If you planned something, execute it now.`;
+        }
+
+        // ── Periodic bgFindings consolidation (every 4 active ticks) ──
+        const activeTicks = prod.activeTicks || 0;
+        if (activeTicks > 0 && activeTicks % 4 === 0) {
+            consolidateBgFindings(agentId, agent, ollamaBaseUrl, ollamaApiKey)
+                .then(() => dispatchSupportAgents(agentId, agent, 'prompt-cleaner', ollamaBaseUrl, ollamaApiKey))
+                .catch(e => console.error(`[BG ${agentId}] Consolidation failed:`, e.message));
         }
 
         // ── Build directive ────────────────────────────────────
         const bgPrompt = agent.config.backgroundPrompt?.trim();
         let bgDirective;
-        if (bgPrompt) {
+        if (obsessionTopic && !bgPrompt && pendingTasks.length === 0) {
+            // Hard redirect — break the obsession loop
+            bgDirective = `${reasoningCtx}\n\nOBSESSION BREAK MODE: You have explored "${obsessionTopic}" too many times. You MUST explore a completely different area this tick. Do NOT mention "${obsessionTopic}".\nOutput JSON — newTasks encouraged:\n{"title":"<completely new topic>","content":"<finding>","pushToChat":false,"newTasks":[{"title":"...","description":"...","priority":"medium"}],"nextFocus":"<new direction unrelated to ${obsessionTopic}>","productivityNote":"breaking repetition loop"}`;
+        } else if (bgPrompt) {
             bgDirective = (reasoningCtx ? `${reasoningCtx}\n\n` : '') + bgPrompt;
         } else if (pendingTasks.length > 0) {
             const taskList = pendingTasks.map((t, i) =>
@@ -132,7 +173,7 @@ async function runBackgroundTick(io, agentId, proc) {
         const reqBody = {
             model: agent.model,
             messages,
-            options: { temperature: agent.config.temperature },
+            temperature: agent.config.temperature,
             stream: false
         };
         if (toolDefs.length > 0) reqBody.tools = toolDefs;
@@ -157,28 +198,29 @@ async function runBackgroundTick(io, agentId, proc) {
         const ollamaHeaders = { 'Authorization': `Bearer ${ollamaApiKey}`, 'Content-Type': 'application/json' };
         const OLLAMA_TIMEOUT = 120000; // 2 min — background ticks are non-urgent
 
-        let res = await axios.post(`${ollamaBaseUrl}/api/chat`, reqBody,
+        let res = await axios.post(`${ollamaBaseUrl}/v1/chat/completions`, reqBody,
             { headers: ollamaHeaders, timeout: OLLAMA_TIMEOUT });
 
         // One round of tool execution if tools were called
-        if (toolDefs.length > 0 && res.data.message?.tool_calls?.length > 0) {
-            messages.push(res.data.message);
-            for (const toolCall of res.data.message.tool_calls) {
+        const assistantMsg = res.data.choices?.[0]?.message;
+        if (toolDefs.length > 0 && assistantMsg?.tool_calls?.length > 0) {
+            messages.push(assistantMsg);
+            for (const toolCall of assistantMsg.tool_calls) {
                 const toolName = toolCall.function.name;
                 const toolArgs = typeof toolCall.function.arguments === 'string'
                     ? JSON.parse(toolCall.function.arguments)
                     : toolCall.function.arguments;
                 let toolResult;
-                try { toolResult = await executeMcpTool(toolName, toolArgs); }
+                try { toolResult = await executeMcpTool(toolName, toolArgs, agentId); }
                 catch (err) { toolResult = { error: err.message }; }
-                messages.push({ role: 'tool', content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult) });
+                messages.push({ role: 'tool', tool_call_id: toolCall.id, content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult) });
             }
-            res = await axios.post(`${ollamaBaseUrl}/api/chat`, {
-                model: agent.model, messages, options: { temperature: agent.config.temperature }, stream: false
+            res = await axios.post(`${ollamaBaseUrl}/v1/chat/completions`, {
+                model: agent.model, messages, temperature: agent.config.temperature, stream: false
             }, { headers: ollamaHeaders, timeout: OLLAMA_TIMEOUT });
         }
 
-        const content = res.data.message?.content?.trim();
+        const content = res.data.choices?.[0]?.message?.content?.trim();
         proc.lastRun = new Date();
         proc.runCount++;
 
@@ -192,7 +234,7 @@ async function runBackgroundTick(io, agentId, proc) {
                 type: 'background',
                 title: parsed.title || 'Background insight',
                 content: parsed.content || content,
-                tokens: (res.data.eval_count || 0),
+                tokens: (res.data.usage?.completion_tokens || res.data.usage?.total_tokens || 0),
                 status: 'complete'
             });
             if (!isIdle) await action.save();
@@ -226,6 +268,101 @@ async function runBackgroundTick(io, agentId, proc) {
         });
     } catch (err) {
         console.error(`Background tick error [${agentId}]:`, err.message);
+    }
+}
+
+// ── Topic repetition detector ─────────────────────────────────────────────────
+// Returns the dominant repeated topic if the last 4 non-idle ticks share a keyword,
+// otherwise returns null.
+function detectTopicRepetition(tickHistory) {
+    const STOP_WORDS = new Set(['the','and','for','with','from','that','this','have','been','will','about','what','your','their','into','they','when','then','more','some','also','were','has','not','but','our','any','can','its','are','was','out','all','new','task','tick','idle','null','research','background','finding','based','using','update','review','analysis','check']);
+    const recent = tickHistory.filter(h => !h.idle).slice(-4);
+    if (recent.length < 3) return null;
+
+    const wordSets = recent.map(h => {
+        const words = (h.title || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/)
+            .filter(w => w.length > 3 && !STOP_WORDS.has(w));
+        return new Set(words);
+    });
+
+    // Find words that appear in 3+ of the last 4 non-idle ticks
+    const allWords = [...wordSets.reduce((a, s) => new Set([...a, ...s]), new Set())];
+    const repeated = allWords.filter(w => wordSets.filter(s => s.has(w)).length >= 3);
+    return repeated.length > 0 ? repeated.slice(0, 3).join('/') : null;
+}
+
+// ── bgFindings consolidation ──────────────────────────────────────────────────
+// Runs every 4 active ticks. Calls the LLM to:
+//   1. Deduplicate + compress bgFindings into a clean summary
+//   2. Identify 3 unexplored topic areas
+//   3. Seed those as new pending tasks
+async function consolidateBgFindings(agentId, agent, ollamaBaseUrl, ollamaApiKey) {
+    if (!agent.memory?.bgFindings || agent.memory.bgFindings.length < 200) return;
+
+    const prompt = `You are a research coordinator reviewing an agent's background research log. The agent has been looping and repeating topics.
+
+BACKGROUND RESEARCH LOG:
+${agent.memory.bgFindings.slice(-3000)}
+
+Do three things:
+1. Write a DEDUPLICATED SUMMARY of unique findings (max 1200 chars, bullet points, no repetition).
+2. List 3 topic areas the agent has NOT yet explored based on its role: "${agent.role}".
+3. For each unexplored area, write a concrete task.
+
+Output JSON ONLY:
+{
+  "consolidatedSummary": "<deduplicated bullet-point summary>",
+  "gaps": ["<area 1>", "<area 2>", "<area 3>"],
+  "newTasks": [
+    {"title": "...", "description": "...", "priority": "high|medium|low"},
+    {"title": "...", "description": "...", "priority": "high|medium|low"},
+    {"title": "...", "description": "...", "priority": "medium|low"}
+  ]
+}`;
+
+    const res = await axios.post(`${ollamaBaseUrl}/v1/chat/completions`, {
+        model: agent.model,
+        messages: [
+            { role: 'system', content: 'You are a concise research coordinator. Output valid JSON only.' },
+            { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        stream: false
+    }, { headers: { 'Authorization': `Bearer ${process.env.OLLAMA_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 90000 });
+
+    const raw = res.data.choices?.[0]?.message?.content?.trim() || '';
+    let parsed;
+    try {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch (_) { return; }
+    if (!parsed) return;
+
+    // Replace bgFindings with deduplicated version + gap note
+    if (parsed.consolidatedSummary) {
+        const gapNote = parsed.gaps?.length ? `\n\n[Gaps identified — tasks created: ${parsed.gaps.join(', ')}]` : '';
+        const newFindings = `[Consolidated ${new Date().toLocaleDateString()}]\n${parsed.consolidatedSummary}${gapNote}`;
+        await Agent.findByIdAndUpdate(agentId, { $set: { 'memory.bgFindings': newFindings } });
+        console.log(`[BG ${agentId}] bgFindings consolidated (${agent.memory.bgFindings.length} → ${newFindings.length} chars)`);
+    }
+
+    // Seed gap tasks
+    if (Array.isArray(parsed.newTasks) && parsed.newTasks.length > 0) {
+        const db = mongoose.connection.db;
+        if (!db) return;
+        const PRIORITY_SCORE = { high: 3, medium: 2, low: 1 };
+        const docs = parsed.newTasks.filter(t => t?.title).map(t => ({
+            agentId,
+            title: String(t.title).substring(0, 200),
+            description: String(t.description || '').substring(0, 500),
+            priority: ['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium',
+            priorityScore: PRIORITY_SCORE[t.priority] || 2,
+            status: 'pending',
+            source: 'consolidation',
+            createdAt: new Date()
+        }));
+        if (docs.length > 0) await db.collection('agent_tasks').insertMany(docs);
+        console.log(`[BG ${agentId}] Consolidation seeded ${docs.length} gap task(s)`);
     }
 }
 
@@ -338,6 +475,85 @@ async function extractBgKnowledge(agentId) {
     } catch (_) {}
 }
 
+// ── Support agent dispatcher ──────────────────────────────────────────────────
+// Called after consolidation. Finds enabled support agents of the given role,
+// sends them a structured task via chat-internal, then writes the result back
+// to the target agent's field (systemPrompt for prompt-cleaner, bgFindings for others).
+async function dispatchSupportAgents(agentId, agent, role, ollamaBaseUrl, ollamaApiKey) {
+    const freshAgent = await Agent.findById(agentId, 'supportAgents config.systemPrompt memory.bgFindings memory.longTermMemory name role').lean();
+    if (!freshAgent || !freshAgent.supportAgents?.length) return;
+
+    const eligible = freshAgent.supportAgents.filter(s => s.enabled && s.role === role);
+    if (!eligible.length) return;
+
+    for (const support of eligible) {
+        try {
+            const supportAgent = await Agent.findById(support.agentId, 'name model config.systemPrompt config.temperature').lean();
+            if (!supportAgent) continue;
+
+            let taskMessage = '';
+            if (role === 'prompt-cleaner') {
+                taskMessage = `You are performing a background maintenance task for agent "${freshAgent.name}" (${freshAgent.role}).
+
+CURRENT SYSTEM PROMPT:
+${freshAgent.config.systemPrompt}
+
+RECENT BACKGROUND FINDINGS (context about what this agent has learned):
+${(freshAgent.memory.bgFindings || '').slice(-1500)}
+
+Your task: Rewrite the system prompt to be tighter, clearer, and reflect what this agent has actually been doing and learning. Remove bloat, fix contradictions, sharpen the persona. Do NOT add guardrails or restrictions unless they were already present.
+
+Output JSON only:
+{"revisedPrompt": "<the improved system prompt>", "changesSummary": "<1-2 sentences: what you changed and why>"}`;
+            } else if (role === 'kb-curator') {
+                taskMessage = `Curate the knowledge base for agent "${freshAgent.name}". Review the following long-term memory and background findings, then identify which entries are stale, redundant, or should be promoted to permanent KB.
+
+LONG-TERM MEMORY:
+${freshAgent.memory.longTermMemory || '(empty)'}
+
+BACKGROUND FINDINGS:
+${(freshAgent.memory.bgFindings || '').slice(-1500)}
+
+Output JSON only:
+{"curationNotes": "<what you found>", "suggestedRemovals": ["<entry title>"], "suggestedPromotions": [{"title": "...", "content": "..."}]}`;
+            }
+
+            if (!taskMessage) continue;
+
+            const res = await axios.post(`${ollamaBaseUrl}/v1/chat/completions`, {
+                model: supportAgent.model,
+                messages: [
+                    { role: 'system', content: supportAgent.config.systemPrompt },
+                    { role: 'user', content: taskMessage }
+                ],
+                temperature: supportAgent.config.temperature ?? 0.3,
+                stream: false
+            }, {
+                headers: { 'Authorization': `Bearer ${ollamaApiKey}`, 'Content-Type': 'application/json' },
+                timeout: 120000
+            });
+
+            const raw = res.data.choices?.[0]?.message?.content?.trim() || '';
+            const jsonMatch = raw.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) continue;
+            const parsed = JSON.parse(jsonMatch[0]);
+
+            if (role === 'prompt-cleaner' && parsed.revisedPrompt) {
+                await Agent.findByIdAndUpdate(agentId, {
+                    $set: { 'config.systemPrompt': parsed.revisedPrompt },
+                    $push: { 'tuning.systemPromptHistory': { prompt: freshAgent.config.systemPrompt, timestamp: new Date() } }
+                });
+                console.log(`[BG ${agentId}] Prompt cleaned by support agent "${supportAgent.name}": ${parsed.changesSummary}`);
+                // Log on the target agent
+                const targetAgentDoc = await Agent.findById(agentId);
+                if (targetAgentDoc) await targetAgentDoc.addLog('info', `System prompt cleaned by support agent "${supportAgent.name}": ${parsed.changesSummary}`);
+            }
+        } catch (e) {
+            console.error(`[BG ${agentId}] Support agent dispatch (${role}) failed:`, e.message);
+        }
+    }
+}
+
 // ==================== BACKGROUND PROCESS ROUTES ====================
 
 const router = express.Router();
@@ -418,6 +634,35 @@ router.put('/api/agents/:id/background/tools', isAdmin, async (req, res) => {
         await agent.save();
 
         res.json({ success: true, backgroundEnabledTools: tools });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+router.get('/api/agents/:id/context-debug', isAdmin, async (req, res) => {
+    try {
+        const agent = await Agent.findById(req.params.id,
+            'name role model bgTickHistory bgProductivity config.backgroundInterval config.backgroundRunning memory.conversations memory.threadSummary memory.longTermMemory memory.bgFindings memory.knowledgeBase'
+        ).lean();
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+
+        const recentActions = await AgentAction.find({ agentId: req.params.id })
+            .sort({ createdAt: -1 }).limit(10).lean();
+
+        res.json({
+            success: true,
+            agentName: agent.name,
+            backgroundInterval: agent.config?.backgroundInterval ?? 2,
+            backgroundRunning: agent.config?.backgroundRunning ?? false,
+            bgTickHistory: (agent.bgTickHistory || []).slice(-10).reverse(),
+            bgProductivity: agent.bgProductivity || {},
+            conversations: (agent.memory?.conversations || []).slice(-10).reverse(),
+            threadSummary: agent.memory?.threadSummary || '',
+            longTermMemory: agent.memory?.longTermMemory || '',
+            bgFindings: (agent.memory?.bgFindings || '').slice(-2000),
+            knowledgeBase: (agent.memory?.knowledgeBase || []).slice(-8),
+            recentActions
+        });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

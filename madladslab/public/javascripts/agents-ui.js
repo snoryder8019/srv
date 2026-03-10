@@ -11,8 +11,102 @@ document.getElementById('createAgentBtn').addEventListener('click', () => {
   document.getElementById('agentId').value = '';
   document.getElementById('presetSection').style.display = '';
   document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('selected'));
+  // Reset prompt builder
+  document.getElementById('promptBuilderBody').style.display = 'none';
+  document.getElementById('promptBuilderToggle').textContent = '▸ expand';
+  ['pb-tone','pb-style','pb-domain','pb-rules','pb-escalation'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  // Reset support agent fields
+  document.getElementById('isSupportAgent').checked = false;
+  document.getElementById('supportAgentFields').style.display = 'none';
+  document.getElementById('supportAgentSection').style.display = '';
+  populateSupportAgentDropdown();
   document.getElementById('agentModal').classList.add('active');
 });
+
+// ── Prompt Builder ────────────────────────────────────────────────────────────
+
+function togglePromptBuilder() {
+  const body = document.getElementById('promptBuilderBody');
+  const toggle = document.getElementById('promptBuilderToggle');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  toggle.textContent = open ? '▸ expand' : '▾ collapse';
+}
+
+function applyPromptBuilder() {
+  const tone = document.getElementById('pb-tone').value;
+  const style = document.getElementById('pb-style').value;
+  const domain = document.getElementById('pb-domain').value.trim();
+  const rules = document.getElementById('pb-rules').value.trim();
+  const escalation = document.getElementById('pb-escalation').value.trim();
+
+  const name = document.getElementById('agentName').value.trim() || 'this agent';
+
+  const TONE_MAP = {
+    professional: 'Professional and clear. No filler. Formal where context demands it.',
+    friendly: 'Warm, approachable, and helpful. Use natural language. Not overly formal.',
+    technical: 'Precise and expert-level. Use correct terminology. Assume technical literacy.',
+    concise: 'Minimal words, maximum signal. Every sentence must earn its place.',
+    conversational: 'Natural and relaxed. Write like a knowledgeable human, not a manual.'
+  };
+  const STYLE_MAP = {
+    bullets: 'Use bullet points for all lists and multi-part answers.',
+    prose: 'Full sentences and paragraphs. No bullet lists.',
+    mixed: 'Prose for context, bullet points for lists and options.',
+    structured: 'Use headers and sections to organize longer responses.',
+    brief: 'Maximum 1–3 sentences per response. No elaboration unless asked.'
+  };
+
+  let prompt = `IDENTITY: You are ${name}.`;
+  if (domain) prompt += ` Your domain is: ${domain}.`;
+  prompt += '\n\n';
+
+  if (tone && TONE_MAP[tone]) prompt += `TONE: ${TONE_MAP[tone]}\n\n`;
+  if (style && STYLE_MAP[style]) prompt += `RESPONSE STYLE: ${STYLE_MAP[style]}\n\n`;
+
+  prompt += `PROTOCOL:\n1. Understand the request fully before responding.\n2. Answer directly — no preamble, no restating the question.\n3. If you cannot help with something, say so clearly and briefly.`;
+  if (escalation) prompt += `\n4. When you cannot resolve an issue: ${escalation}.`;
+  prompt += '\n\n';
+
+  if (rules) {
+    const ruleList = rules.split(',').map(r => r.trim()).filter(Boolean);
+    prompt += `HARD RULES:\n${ruleList.map(r => `- ${r}`).join('\n')}`;
+  }
+
+  document.getElementById('systemPrompt').value = prompt.trim();
+
+  // Collapse builder after applying
+  document.getElementById('promptBuilderBody').style.display = 'none';
+  document.getElementById('promptBuilderToggle').textContent = '▸ expand';
+}
+
+function toggleSupportAgentFields() {
+  const checked = document.getElementById('isSupportAgent').checked;
+  document.getElementById('supportAgentFields').style.display = checked ? '' : 'none';
+}
+
+async function populateSupportAgentDropdown() {
+  const sel = document.getElementById('supportsAgentId');
+  if (!sel) return;
+  try {
+    const res = await fetch('/agents/api/agents');
+    const data = await res.json();
+    sel.innerHTML = '<option value="">— select agent —</option>';
+    if (data.success) {
+      data.agents.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a._id;
+        opt.textContent = `${a.name} [${a.role}]`;
+        sel.appendChild(opt);
+      });
+    }
+  } catch (e) {
+    console.error('Failed to load agents for support dropdown:', e);
+  }
+}
 
 // Test Ollama Connection
 document.getElementById('testOllamaBtn').addEventListener('click', async () => {
@@ -41,6 +135,12 @@ document.getElementById('agentForm').addEventListener('submit', async (e) => {
   try {
     const url = agentId ? `/agents/api/agents/${agentId}` : '/agents/api/agents';
     const method = agentId ? 'PUT' : 'POST';
+
+    // Attach preset MCP tools when creating (not editing)
+    if (!agentId && typeof _selectedPresetMcpTools !== 'undefined' && _selectedPresetMcpTools !== null) {
+      data.mcpTools = _selectedPresetMcpTools;
+      data.mcpBackgroundTools = _selectedPresetMcpBgTools;
+    }
 
     const response = await fetch(url, {
       method,
@@ -91,6 +191,7 @@ function editAgent(agentId) {
         document.getElementById('temperature').value = agent.config.temperature;
         document.getElementById('maxTokens').value = agent.config.maxTokens;
         document.getElementById('presetSection').style.display = 'none';
+        document.getElementById('supportAgentSection').style.display = 'none';
         document.getElementById('agentModal').classList.add('active');
       }
     });
@@ -116,6 +217,295 @@ async function deleteAgent(agentId) {
   }
 }
 
+// ── forwardChat discipline ────────────────────────────────────────────────────
+
+// Cache of all registered sites (loaded once per page)
+let _fwdChatSites = null;
+async function loadFwdChatSites() {
+  if (_fwdChatSites) return _fwdChatSites;
+  try {
+    const res = await fetch('/agents/api/forwardchat/sites');
+    const data = await res.json();
+    _fwdChatSites = data.success ? data.sites : [];
+  } catch (e) {
+    _fwdChatSites = [];
+  }
+  return _fwdChatSites;
+}
+
+function _positionFwdChatDd(dd, btn) {
+  const r = btn.getBoundingClientRect();
+  const ddWidth = 230;
+  const spaceAbove = r.top;
+  const spaceBelow = window.innerHeight - r.bottom;
+  if (spaceAbove > 240 || spaceAbove > spaceBelow) {
+    dd.style.top = 'auto';
+    dd.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+  } else {
+    dd.style.bottom = 'auto';
+    dd.style.top = (r.bottom + 6) + 'px';
+  }
+  let left = r.left;
+  if (left + ddWidth > window.innerWidth - 8) left = window.innerWidth - ddWidth - 8;
+  if (left < 8) left = 8;
+  dd.style.left = left + 'px';
+}
+
+function toggleFwdChatPanel(agentId) {
+  const dd = document.getElementById(`fwdchat-dd-${agentId}`);
+  const isOpen = dd.style.display !== 'none';
+
+  // Close all open panels (return them to their original parents first)
+  document.querySelectorAll('[id^="fwdchat-dd-"]').forEach(el => {
+    el.style.display = 'none';
+    // Return to original panel if it was portalled
+    const origPanel = document.getElementById(`fwdchat-panel-${el.id.replace('fwdchat-dd-', '')}`);
+    if (origPanel && el.parentElement === document.body) origPanel.appendChild(el);
+  });
+  if (isOpen) return;
+
+  // Portal dropdown to <body> so it fully escapes card overflow:hidden
+  document.body.appendChild(dd);
+
+  const btn = document.querySelector(`#fwdchat-panel-${agentId} .btn-fwdchat-toggle`);
+  if (btn) _positionFwdChatDd(dd, btn);
+
+  dd.style.display = 'block';
+
+  // Populate site dropdown
+  loadFwdChatSites().then(sites => {
+    const sel = document.getElementById(`fwdchat-site-sel-${agentId}`);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">+ assign site</option>';
+    sites.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s._id;
+      opt.textContent = `${s.siteName} (${s.siteUrl})`;
+      sel.appendChild(opt);
+    });
+    // Populate site name labels for already-assigned sites
+    const container = document.getElementById(`fwdchat-sites-${agentId}`);
+    if (container) {
+      container.querySelectorAll('.fwdchat-site-tag').forEach(tag => {
+        const siteId = tag.dataset.siteId;
+        const found = sites.find(s => s._id === siteId);
+        if (found) tag.querySelector('.fwdchat-site-name').textContent = found.siteName;
+      });
+    }
+  });
+}
+
+// Close panels when clicking outside or scrolling — return portalled dropdowns to their panels
+function _closeAllFwdChatPanels() {
+  document.querySelectorAll('[id^="fwdchat-dd-"]').forEach(el => {
+    el.style.display = 'none';
+    const origPanel = document.getElementById(`fwdchat-panel-${el.id.replace('fwdchat-dd-', '')}`);
+    if (origPanel && el.parentElement === document.body) origPanel.appendChild(el);
+  });
+}
+document.addEventListener('click', _closeAllFwdChatPanels);
+window.addEventListener('scroll', _closeAllFwdChatPanels, true);
+
+async function toggleFwdChatBih(agentId, currentlyEnabled) {
+  const enable = !currentlyEnabled;
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/forwardchat/bih`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enable })
+    });
+    const result = await res.json();
+    if (result.success) {
+      const btn = document.getElementById(`fwdchat-bih-${agentId}`);
+      if (enable) {
+        btn.textContent = 'live';
+        btn.classList.add('active');
+      } else {
+        btn.textContent = 'deploy';
+        btn.classList.remove('active');
+      }
+      btn.onclick = (e) => { e.stopPropagation(); toggleFwdChatBih(agentId, enable); };
+      // Update count badge
+      refreshFwdChatBadge(agentId);
+    } else {
+      alert(`Error: ${result.error}`);
+    }
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+async function onFwdChatSiteSelect(agentId, siteId) {
+  if (!siteId) return;
+  const sel = document.getElementById(`fwdchat-site-sel-${agentId}`);
+  sel.value = '';
+  try {
+    const res = await fetch(`/agents/api/forwardchat/sites/${siteId}/agent`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId })
+    });
+    const result = await res.json();
+    if (result.success) {
+      // Add tag to the active sites list
+      const container = document.getElementById(`fwdchat-sites-${agentId}`);
+      const sites = await loadFwdChatSites();
+      const site = sites.find(s => s._id === siteId);
+      const tag = document.createElement('div');
+      tag.className = 'fwdchat-site-tag active';
+      tag.dataset.siteId = siteId;
+      tag.innerHTML = `<span class="fwdchat-site-dot"></span><span class="fwdchat-site-name">${site?.siteName || siteId}</span><button onclick="event.stopPropagation(); removeFwdChatSite('${agentId}', '${siteId}')" title="Remove">×</button>`;
+      container.appendChild(tag);
+      refreshFwdChatBadge(agentId);
+    } else {
+      alert(`Error: ${result.error}`);
+    }
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+async function removeFwdChatSite(agentId, siteId) {
+  if (!confirm('Remove this site assignment?')) return;
+  try {
+    const res = await fetch(`/agents/api/forwardchat/sites/${siteId}/agent`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: null })
+    });
+    const result = await res.json();
+    if (result.success) {
+      const container = document.getElementById(`fwdchat-sites-${agentId}`);
+      const tag = container?.querySelector(`[data-site-id="${siteId}"]`);
+      if (tag) tag.remove();
+      refreshFwdChatBadge(agentId);
+    } else {
+      alert(`Error: ${result.error}`);
+    }
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+function refreshFwdChatBadge(agentId) {
+  const bihBtn = document.getElementById(`fwdchat-bih-${agentId}`);
+  const bihOn = bihBtn?.classList.contains('active') ? 1 : 0;
+  const siteCount = document.getElementById(`fwdchat-sites-${agentId}`)?.querySelectorAll('.fwdchat-site-tag.active').length || 0;
+  const total = bihOn + siteCount;
+  const toggle = document.querySelector(`#fwdchat-panel-${agentId} .btn-fwdchat-toggle`);
+  if (!toggle) return;
+  let badge = toggle.querySelector('.fwdchat-count-badge');
+  if (total > 0) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'fwdchat-count-badge';
+      toggle.appendChild(badge);
+    }
+    badge.textContent = total;
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
+function openFwdChatSiteManager() {
+  // Open a simple modal for site management
+  let modal = document.getElementById('fwdChatSiteModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'fwdChatSiteModal';
+    modal.className = 'modal-overlay active';
+    modal.innerHTML = `
+      <div class="modal-container" style="max-width:560px" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h2>forwardChat — Registered Sites</h2>
+          <button class="modal-close" onclick="document.getElementById('fwdChatSiteModal').remove()">×</button>
+        </div>
+        <div class="modal-body" id="fwdChatSiteBody">
+          <div class="loading">Loading sites...</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-primary" onclick="openFwdChatRegisterSite()">+ Register New Site</button>
+          <button class="btn-secondary" onclick="document.getElementById('fwdChatSiteModal').remove()">Close</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  } else {
+    modal.classList.add('active');
+  }
+  renderFwdChatSiteList();
+}
+
+async function renderFwdChatSiteList() {
+  const body = document.getElementById('fwdChatSiteBody');
+  if (!body) return;
+  _fwdChatSites = null; // force refresh
+  const sites = await loadFwdChatSites();
+  if (!sites.length) {
+    body.innerHTML = '<p style="color:#888;text-align:center;padding:2rem">No sites registered yet.</p>';
+    return;
+  }
+  body.innerHTML = sites.map(s => `
+    <div class="fwdchat-site-row-item">
+      <div class="fwdchat-site-info">
+        <span class="fwdchat-site-status-dot ${s.plugin?.verified ? 'verified' : ''}"></span>
+        <div>
+          <strong>${s.siteName}</strong>
+          <span class="fwdchat-site-url">${s.siteUrl}</span>
+        </div>
+      </div>
+      <div class="fwdchat-site-actions">
+        <button class="btn-copy-token" onclick="copyFwdChatToken('${s.plugin?.token}')" title="Copy install token">copy token</button>
+        <button class="btn-danger-sm" onclick="deleteFwdChatSite('${s._id}')">×</button>
+      </div>
+    </div>
+    <div class="fwdchat-install-snippet" id="snippet-${s._id}" style="display:none">
+      <code>&lt;script src="https://madladslab.com/plugin/forwardchat.js?site=${s.plugin?.token}"&gt;&lt;/script&gt;</code>
+    </div>
+  `).join('');
+}
+
+function copyFwdChatToken(token) {
+  const snippet = `<script src="https://madladslab.com/plugin/forwardchat.js?site=${token}"><\/script>`;
+  navigator.clipboard.writeText(snippet).then(() => alert('Install snippet copied to clipboard!'));
+}
+
+async function deleteFwdChatSite(siteId) {
+  if (!confirm('Delete this site? This will remove all agent assignments.')) return;
+  try {
+    const res = await fetch(`/agents/api/forwardchat/sites/${siteId}`, { method: 'DELETE' });
+    const result = await res.json();
+    if (result.success) {
+      _fwdChatSites = null;
+      renderFwdChatSiteList();
+    } else {
+      alert(`Error: ${result.error}`);
+    }
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+function openFwdChatRegisterSite() {
+  const name = prompt('Site name (e.g. "Client Website"):');
+  if (!name?.trim()) return;
+  const url = prompt('Site URL (e.g. "https://example.com"):');
+  if (!url?.trim()) return;
+  fetch('/agents/api/forwardchat/sites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteName: name.trim(), siteUrl: url.trim(), origin: url.trim() })
+  }).then(r => r.json()).then(result => {
+    if (result.success) {
+      _fwdChatSites = null;
+      renderFwdChatSiteList();
+      copyFwdChatToken(result.token);
+    } else {
+      alert(`Error: ${result.error}`);
+    }
+  });
+}
+
+// ── legacy bihBot (kept for direct bihBot config via manage panel) ────────────
 async function toggleBihBot(agentId, currentlyEnabled, currentTrigger) {
   const enable = !currentlyEnabled;
   let trigger = currentTrigger;
@@ -132,56 +522,7 @@ async function toggleBihBot(agentId, currentlyEnabled, currentTrigger) {
       body: JSON.stringify({ enabled: enable, trigger })
     });
     const result = await res.json();
-    if (result.success) {
-      const btn = document.getElementById(`bih-btn-${agentId}`);
-      if (enable) {
-        btn.textContent = `bih: @${result.bihBot.trigger}`;
-        btn.classList.add('bih-bot-active');
-        btn.title = `@${result.bihBot.trigger} active in bih chat`;
-      } else {
-        btn.textContent = '+ bih';
-        btn.classList.remove('bih-bot-active');
-        btn.title = 'Deploy to bih chat';
-      }
-      btn.onclick = (e) => { e.stopPropagation(); toggleBihBot(agentId, enable, result.bihBot.trigger); };
-    } else {
-      alert(`Error: ${result.error}`);
-    }
-  } catch (err) {
-    alert(`Error: ${err.message}`);
-  }
-}
-
-async function togglePepeChat(agentId, currentlyEnabled) {
-  const enable = !currentlyEnabled;
-  const agentName = document.querySelector(`[data-agent-id="${agentId}"] .agent-name`)?.textContent?.trim() || agentId;
-  if (enable && !confirm(`Deploy "${agentName}" as the madladslab.com chat agent? Any currently assigned agent will be replaced.`)) return;
-  try {
-    const res = await fetch(`/agents/api/agents/${agentId}/pepe-chat`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: enable })
-    });
-    const result = await res.json();
-    if (result.success) {
-      // Reset all madlads buttons
-      document.querySelectorAll('[id^="pepe-btn-"]').forEach(btn => {
-        btn.textContent = '+ madlads';
-        btn.classList.remove('bih-bot-active');
-        btn.title = 'Deploy as madladslab.com chat agent';
-        const aid = btn.id.replace('pepe-btn-', '');
-        btn.onclick = (e) => { e.stopPropagation(); togglePepeChat(aid, false); };
-      });
-      const btn = document.getElementById(`pepe-btn-${agentId}`);
-      if (enable) {
-        btn.textContent = `madlads: ${agentName}`;
-        btn.classList.add('bih-bot-active');
-        btn.title = `${agentName} is the site chat agent`;
-        btn.onclick = (e) => { e.stopPropagation(); togglePepeChat(agentId, true); };
-      }
-    } else {
-      alert(`Error: ${result.error}`);
-    }
+    if (!result.success) alert(`Error: ${result.error}`);
   } catch (err) {
     alert(`Error: ${err.message}`);
   }
@@ -255,7 +596,7 @@ async function updateSystemPrompt(agentId) {
 
 async function openChat(agentId, agentName) {
   currentChatAgentId = agentId;
-  if (typeof agentSocket !== 'undefined') agentSocket.emit('subscribe', agentId);
+  if (agentSocket) agentSocket.emit('subscribe', agentId);
 
   // Clear unread badge
   chatUnreadCounts[agentId] = 0;
@@ -267,7 +608,8 @@ async function openChat(agentId, agentName) {
   document.getElementById('chatModal').classList.add('active');
 
   try {
-    const res = await fetch(`/agents/api/agents/${agentId}/memory`);
+    const res = await fetch(`/agents/api/agents/${agentId}/memory`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Memory fetch failed: ${res.status}`);
     const data = await res.json();
     messagesDiv.innerHTML = '';
 
@@ -287,23 +629,25 @@ async function openChat(agentId, agentName) {
       `;
 
       if (convs.length > 0) {
+        // API returns newest-first; reverse to render oldest→newest (scroll to bottom = newest)
+        const fragment = document.createDocumentFragment();
         convs.slice().reverse().forEach(conv => {
-          messagesDiv.innerHTML += `
-            <div class="chat-message user">
-              <div class="chat-message-avatar">U</div>
-              <div class="chat-message-content">${escapeHtml(conv.userMessage)}</div>
-            </div>
-            <div class="chat-message">
-              <div class="chat-message-avatar">AI</div>
-              <div class="chat-message-content">${renderMarkdown(conv.agentResponse)}</div>
-            </div>
-          `;
+          const userEl = document.createElement('div');
+          userEl.className = 'chat-message user';
+          userEl.innerHTML = `<div class="chat-message-avatar">U</div><div class="chat-message-content">${escapeHtml(conv.userMessage || '')}</div>`;
+          const aiEl = document.createElement('div');
+          aiEl.className = 'chat-message';
+          aiEl.innerHTML = `<div class="chat-message-avatar">AI</div><div class="chat-message-content">${renderMarkdown(conv.agentResponse || '')}</div>`;
+          fragment.appendChild(userEl);
+          fragment.appendChild(aiEl);
         });
+        messagesDiv.appendChild(fragment);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
       }
     }
   } catch (e) {
-    messagesDiv.innerHTML = '';
+    console.error('[openChat] Failed to load history:', e.message);
+    messagesDiv.innerHTML = '<p class="loading" style="color:#f55">Failed to load history. Try reopening.</p>';
   }
 }
 

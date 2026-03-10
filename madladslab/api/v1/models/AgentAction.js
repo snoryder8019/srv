@@ -13,7 +13,7 @@ const agentActionSchema = new mongoose.Schema(
     // type drives how the action is displayed/filtered
     type: {
       type: String,
-      enum: ['tldr', 'task_list', 'finding', 'background', 'file_write', 'image'],
+      enum: ['tldr', 'task_list', 'background', 'file_write', 'image', 'finding'],
       required: true
     },
     title: {
@@ -50,6 +50,9 @@ const agentActionSchema = new mongoose.Schema(
     collection: 'agent_actions'
   }
 );
+
+// Auto-expire background actions after 30 days; keep tldr/task_list/image/file_write indefinitely
+agentActionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30, partialFilterExpression: { type: 'background' } });
 
 // Static: latest N actions across all agents (findings view)
 agentActionSchema.statics.getFindings = function(limit = 100) {

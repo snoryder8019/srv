@@ -155,6 +155,73 @@ router.post('/api/agents/:id/actions/:actionId/promote-task', isAdmin, async (re
     }
 });
 
+// Create a manual action for an agent
+router.post('/api/agents/:id/actions', isAdmin, async (req, res) => {
+    try {
+        const { title, content, type = 'finding' } = req.body;
+        if (!title || !content) return res.status(400).json({ success: false, error: 'title and content required' });
+        const allowed = ['tldr', 'task_list', 'background', 'file_write', 'image', 'finding'];
+        if (!allowed.includes(type)) return res.status(400).json({ success: false, error: 'invalid type' });
+        const action = new AgentAction({ agentId: req.params.id, type, title, content, status: 'complete' });
+        await action.save();
+        res.json({ success: true, action });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// List crons for an agent
+router.get('/api/agents/:id/crons', isAdmin, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const crons = await db.collection('agent_crons')
+            .find({ agentId: req.params.id, active: true })
+            .sort({ createdAt: -1 })
+            .toArray();
+        res.json({ success: true, crons });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Create a cron for an agent
+router.post('/api/agents/:id/crons', isAdmin, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const { title, content, intervalMinutes = 60 } = req.body;
+        if (!title || !content) return res.status(400).json({ success: false, error: 'title and content required' });
+        const interval = Math.max(5, Math.min(10080, parseInt(intervalMinutes) || 60));
+        const cron = {
+            agentId: req.params.id,
+            title: String(title).substring(0, 200),
+            content: String(content).substring(0, 1000),
+            intervalMinutes: interval,
+            active: true,
+            nextRun: new Date(Date.now() + interval * 60000),
+            lastRun: null,
+            createdAt: new Date()
+        };
+        const result = await db.collection('agent_crons').insertOne(cron);
+        res.json({ success: true, cron: { ...cron, _id: result.insertedId } });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete/disable a cron
+router.delete('/api/agents/:id/crons/:cronId', isAdmin, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        await db.collection('agent_crons').updateOne(
+            { _id: new mongoose.Types.ObjectId(req.params.cronId), agentId: req.params.id },
+            { $set: { active: false } }
+        );
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Delete a specific action
 router.delete('/api/agents/:id/actions/:actionId', isAdmin, async (req, res) => {
     try {

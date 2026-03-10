@@ -7,6 +7,7 @@ import { spawn } from "child_process";
 import { uploadToLinode } from "../../lib/linodeStorage.js";
 
 import Agent from "../../api/v1/models/Agent.js";
+import AgentAction from "../../api/v1/models/AgentAction.js";
 import { isAdmin } from "./middleware.js";
 
 // ==================== MCP TOOL DEFINITIONS ====================
@@ -384,7 +385,7 @@ function mcpRunCommand(command, timeout = 30000) {
     });
 }
 
-export async function executeMcpTool(toolName, args) {
+export async function executeMcpTool(toolName, args, agentId = null) {
     switch (toolName) {
         case 'read_file': {
             const resolved = resolvePath(args.path);
@@ -440,7 +441,18 @@ export async function executeMcpTool(toolName, args) {
             } else {
                 await writeFile(resolved, args.content, 'utf-8');
             }
-            return { path: resolved, bytes: Buffer.byteLength(args.content), action: args.append ? 'appended' : 'written' };
+            const result = { path: resolved, bytes: Buffer.byteLength(args.content), action: args.append ? 'appended' : 'written' };
+            if (agentId) {
+                new AgentAction({
+                    agentId,
+                    type: 'file_write',
+                    title: `${result.action}: ${resolved.replace('/srv/', '')}`,
+                    content: args.content.substring(0, 500),
+                    metadata: { path: resolved, bytes: result.bytes, append: !!args.append },
+                    status: 'complete'
+                }).save().catch(() => {});
+            }
+            return result;
         }
         case 'grep_search': {
             const resolved = resolvePath(args.path);
@@ -719,7 +731,7 @@ router.post('/api/mcp/execute-internal', async (req, res) => {
             return res.status(403).json({ error: `Tool "${toolName}" is not enabled for this agent` });
         }
 
-        const result = await executeMcpTool(toolName, args || {});
+        const result = await executeMcpTool(toolName, args || {}, agentId);
         res.json({ success: true, result });
     } catch (error) {
         console.error(`[mcp-internal] ${toolName} error:`, error.message);
@@ -771,7 +783,7 @@ router.get('/api/agents/:id/mcp', isAdmin, async (req, res) => {
 
         res.json({
             success: true,
-            mcpConfig: agent.mcpConfig || { enabledTools: [], endpoints: [] }
+            mcpConfig: agent.mcpConfig || { enabledTools: [] }
         });
     } catch (error) {
         console.error('Error fetching MCP config:', error);

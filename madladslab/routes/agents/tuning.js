@@ -20,7 +20,6 @@ router.get('/api/agents/:id/tuning', isAdmin, async (req, res) => {
             tuning: {
                 systemPrompt: agent.config.systemPrompt,
                 systemPromptHistory: agent.tuning.systemPromptHistory || [],
-                adjustableParams: agent.tuning.adjustableParams || {},
                 config: {
                     temperature: agent.config.temperature,
                     maxTokens: agent.config.maxTokens,
@@ -41,7 +40,7 @@ router.get('/api/agents/:id/tuning', isAdmin, async (req, res) => {
 // Update agent tuning configuration
 router.put('/api/agents/:id/tuning', isAdmin, async (req, res) => {
     try {
-        const { systemPrompt, adjustableParams, temperature, maxTokens, contextWindow, topP, topK, repeatPenalty, bihBot } = req.body;
+        const { systemPrompt, temperature, maxTokens, contextWindow, topP, topK, repeatPenalty, bihBot } = req.body;
 
         const agent = await Agent.findById(req.params.id);
 
@@ -49,8 +48,8 @@ router.put('/api/agents/:id/tuning', isAdmin, async (req, res) => {
             return res.status(404).json({ success: false, error: 'Agent not found' });
         }
 
-        if (systemPrompt || adjustableParams) {
-            await agent.updateTuning(systemPrompt, adjustableParams);
+        if (systemPrompt) {
+            await agent.updateTuning(systemPrompt);
         }
 
         if (temperature !== undefined) agent.config.temperature = parseFloat(temperature);
@@ -73,7 +72,6 @@ router.put('/api/agents/:id/tuning', isAdmin, async (req, res) => {
         if (io) {
             emitTuningUpdate(io, agent._id.toString(), {
                 systemPrompt: agent.config.systemPrompt,
-                adjustableParams: agent.tuning.adjustableParams,
                 config: {
                     temperature: agent.config.temperature,
                     maxTokens: agent.config.maxTokens,

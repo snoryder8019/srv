@@ -29,7 +29,7 @@ const agentSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['assistant', 'researcher', 'vibecoder'],
+      enum: ['assistant', 'researcher', 'vibecoder', 'forwardChat'],
       default: 'assistant'
     },
     config: {
@@ -107,27 +107,7 @@ const agentSchema = new mongoose.Schema(
           type: Date,
           default: Date.now
         }
-      }],
-      adjustableParams: {
-        creativity: {
-          type: Number,
-          default: 0.5,
-          min: 0,
-          max: 1
-        },
-        verbosity: {
-          type: Number,
-          default: 0.5,
-          min: 0,
-          max: 1
-        },
-        formality: {
-          type: Number,
-          default: 0.5,
-          min: 0,
-          max: 1
-        }
-      }
+      }]
     },
     mcpConfig: {
       enabledTools: {
@@ -138,14 +118,6 @@ const agentSchema = new mongoose.Schema(
         type: [String],
         default: []
       },
-      endpoints: [{
-        name: String,
-        enabled: {
-          type: Boolean,
-          default: false
-        },
-        description: String
-      }]
     },
     memory: {
       conversations: [{
@@ -235,6 +207,53 @@ const agentSchema = new mongoose.Schema(
       sessionLimit: { type: Number, default: 50 },
       rateLimitPerHour: { type: Number, default: 60 },
       avatar: { type: String, default: '' }
+    },
+    // forwardChat — unified external site deployment discipline
+    forwardChat: {
+      // Per-site assignments: which sites this agent serves + mode per site
+      sites: [{
+        siteId: { type: mongoose.Schema.Types.ObjectId, ref: 'ForwardChatSite' },
+        chatMode: {
+          type: String,
+          enum: ['passive', 'active', 'agent'],
+          default: 'active'
+        },
+        enabled: { type: Boolean, default: true }
+      }],
+      // BIH platform deployment (mirrors bihBot but under forwardChat discipline)
+      bihEnabled: { type: Boolean, default: false },
+      sessionLimit: { type: Number, default: 50 },
+      rateLimitPerHour: { type: Number, default: 60 },
+      // Consumer chatbot guardrails — third permission column
+      guardrails: {
+        enabled: { type: Boolean, default: false },
+        allowedTopics: { type: [String], default: [] },
+        blockedKeywords: { type: [String], default: [] },
+        maxResponseLength: { type: Number, default: 0 },  // 0 = unlimited
+        profanityFilter: { type: Boolean, default: false },
+        systemPromptLock: { type: Boolean, default: true },
+        offTopicResponse: { type: String, default: '' },  // custom canned reply
+        rateLimit: {
+          messagesPerSession: { type: Number, default: 0 },
+          messagesPerHour: { type: Number, default: 0 }
+        }
+      }
+    },
+    // Support agent relationships — service bonds (not hierarchy)
+    supportAgents: [{
+      agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },
+      role: {
+        type: String,
+        enum: ['prompt-cleaner', 'kb-curator', 'reviewer', 'background-support', 'custom'],
+        default: 'custom'
+      },
+      label: { type: String, default: '' },  // optional human label
+      enabled: { type: Boolean, default: true }
+    }],
+    // If this agent IS a support agent, which agent does it serve?
+    supportsAgent: {
+      agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent', default: null },
+      role: { type: String, default: '' }
     },
     tier: {
       type: String,
@@ -350,7 +369,7 @@ agentSchema.methods.clearMemory = function() {
 };
 
 // Method to update tuning parameters
-agentSchema.methods.updateTuning = function(systemPrompt, adjustableParams) {
+agentSchema.methods.updateTuning = function(systemPrompt) {
   if (systemPrompt && systemPrompt !== this.config.systemPrompt) {
     // Save to history
     this.tuning.systemPromptHistory.push({
@@ -364,10 +383,6 @@ agentSchema.methods.updateTuning = function(systemPrompt, adjustableParams) {
     }
 
     this.config.systemPrompt = systemPrompt;
-  }
-
-  if (adjustableParams) {
-    Object.assign(this.tuning.adjustableParams, adjustableParams);
   }
 
   return this.save();

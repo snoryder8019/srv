@@ -164,7 +164,7 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
                 totalTokens += ollamaRes.data.usage?.completion_tokens || ollamaRes.data.usage?.total_tokens || 0;
                 const assistantMsg = ollamaRes.data.choices?.[0]?.message;
 
-                if (assistantMsg.tool_calls?.length > 0) {
+                if (assistantMsg?.tool_calls?.length > 0) {
                     messages.push(assistantMsg);
 
                     for (const toolCall of assistantMsg.tool_calls) {
@@ -181,7 +181,7 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
 
                         let toolResult;
                         try {
-                            toolResult = await executeMcpTool(toolName, toolArgs);
+                            toolResult = await executeMcpTool(toolName, toolArgs, agent._id.toString());
                             if (io) emitToolResult(io, agent._id.toString(), { callId, tool: toolName, success: true });
                         } catch (err) {
                             toolResult = { error: err.message };
@@ -198,11 +198,12 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
 
                         messages.push({
                             role: 'tool',
+                            tool_call_id: toolCall.id,
                             content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
                         });
                     }
                 } else {
-                    finalResponse = assistantMsg.content;
+                    finalResponse = assistantMsg?.content ?? null;
                 }
             }
 

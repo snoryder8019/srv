@@ -8,11 +8,15 @@
     <link rel="stylesheet" href="/stylesheets/agents.css">
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 </head>
 <body>
+  <!-- Full-page helix background art -->
+  <canvas id="helixBg" style="position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0.62"></canvas>
+
   <%-include('../mainContent/adminHeader.ejs')%>
 
-  <div class="admin-container">
+  <div class="admin-container" style="position:relative;z-index:1">
     <%-include('../mainContent/adminSidebar.ejs')%>
 
     <main class="admin-main digest-main">
@@ -24,6 +28,7 @@
         </div>
         <div class="digest-header-controls">
           <span class="digest-live-dot" id="liveDot" title="Live updates active"></span>
+          <button class="btn-secondary btn-sm" onclick="openContextModal()">⬡ Context</button>
           <button class="btn-secondary btn-sm" onclick="refreshDigest()">↻ Refresh</button>
           <a href="/agents" class="btn-secondary btn-sm">← Agents</a>
         </div>
@@ -33,6 +38,19 @@
 
         <!-- LEFT: Feed -->
         <div class="digest-feed-col">
+
+          <!-- Pin Board -->
+          <div class="pin-board" id="pinBoardSection">
+            <div class="pin-board-header" onclick="document.getElementById('pinBoardSection').classList.toggle('pin-board-open')">
+              <span>📌</span>&nbsp;Pinned
+              <span class="pin-board-count" id="pinBoardCount"></span>
+              <span class="pin-board-chevron">▾</span>
+            </div>
+            <div class="pin-board-grid" id="pinBoardGrid">
+              <p class="pin-board-empty">No pinned items — click ⋯ on a card to pin.</p>
+            </div>
+          </div>
+
           <div class="digest-toolbar">
             <div class="digest-filters" id="agentFilters">
               <button class="filter-chip active" onclick="setAgentFilter(this, null)">All agents</button>
@@ -67,7 +85,7 @@
           <div class="digest-org-panel digest-task-panel">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
               <h3 style="margin:0">Task Queue</h3>
-              <select id="taskAgentSelect" onchange="renderTaskQueue()" style="background:#0a0a0a;border:1px solid #2a2a2a;color:#888;border-radius:4px;padding:0.2rem 0.4rem;font-size:0.72rem">
+              <select id="taskAgentSelect" onchange="renderTaskQueue()" style="background:rgba(0,0,0,0.4);border:1px solid #2a2a2a;color:#888;border-radius:4px;padding:0.2rem 0.4rem;font-size:0.72rem">
                 <option value="">All agents</option>
                 <% agents.forEach(a => { %>
                   <option value="<%= a._id %>"><%= a.name %></option>
@@ -95,10 +113,64 @@
     </main>
   </div>
 
+  <!-- Context Debug Modal -->
+  <div class="modal" id="contextDebugModal" onclick="if(event.target===this)closeContextModal()">
+    <div class="modal-content" style="max-width:760px">
+      <div class="modal-header">
+        <h2 id="ctxModalTitle">Context Debug</h2>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <select id="ctxAgentSelect" onchange="loadContextDebug(this.value)" style="background:#0a0a0a;border:1px solid #2a2a2a;color:#ccc;border-radius:4px;padding:0.2rem 0.5rem;font-size:0.8rem">
+            <% agents.forEach(a => { %>
+              <option value="<%= a._id %>"><%= a.name %></option>
+            <% }); %>
+          </select>
+          <button class="modal-close" onclick="closeContextModal()">×</button>
+        </div>
+      </div>
+      <div id="ctxModalBody" style="padding:1rem;font-size:0.8rem;overflow-y:auto;max-height:calc(80vh - 60px)"></div>
+    </div>
+  </div>
+
   <script>
     const DIGEST_AGENTS = <%- JSON.stringify(agents) %>;
   </script>
   <script src="/javascripts/agents-digest.js"></script>
+  <script src="/javascripts/digest-helix.js"></script>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const canvas = document.getElementById('helixBg');
+    if (canvas && window.digestHelix) digestHelix.init(canvas);
+
+    /* Hook socket new-action → helix pulse */
+    const _origInit = window.initSockets;
+    if (_origInit) {
+      /* Patch action:new after socket is set up */
+      const _patch = setInterval(() => {
+        if (!window.agentSocket) return;
+        clearInterval(_patch);
+        window.agentSocket.on('action:new', () => {
+          if (window.digestHelix) window.digestHelix.pulse();
+        });
+        window.agentSocket.on('background:tick', () => {
+          if (window.digestHelix) window.digestHelix.pulse('tick');
+        });
+      }, 200);
+    }
+  });
+  </script>
+
+  <!-- Card Export Modal -->
+  <div class="modal" id="cardExportModal" onclick="if(event.target===this)closeExportModal()">
+    <div class="modal-content" style="max-width:480px">
+      <div class="modal-header">
+        <h2 id="cardExportModalTitle">Export</h2>
+        <button class="modal-close" onclick="closeExportModal()">×</button>
+      </div>
+      <div id="cardExportModalBody" style="padding:1rem;overflow-y:auto;max-height:70vh"></div>
+    </div>
+  </div>
+
   <%-include('../mainContent/adminNav.ejs')%>
 </body>
 </html>

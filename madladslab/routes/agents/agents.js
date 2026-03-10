@@ -108,7 +108,7 @@ router.get('/api/agents/:id', isAdmin, async (req, res) => {
 // Create new agent
 router.post('/api/agents', isAdmin, async (req, res) => {
     try {
-        const { name, description, model, provider, systemPrompt, temperature, contextWindow, maxTokens } = req.body;
+        const { name, description, model, provider, role, systemPrompt, temperature, contextWindow, maxTokens, mcpTools, mcpBackgroundTools, supportsAgentId, supportRole, supportLabel } = req.body;
 
         if (!name || name.trim().length === 0) {
             return res.status(400).json({ success: false, error: 'Agent name is required' });
@@ -122,24 +122,63 @@ router.post('/api/agents', isAdmin, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Temperature must be between 0 and 2' });
         }
 
+        const VALID_TOOLS = new Set([
+            'read-file', 'write-file', 'list-directory', 'file-find', 'grep-search', 'git-status',
+            'execute', 'process-list', 'tmux-sessions', 'tmux-logs', 'service-port',
+            'http-request', 'mongo-find', 'mongo-write', 'web-search', 'log-tail',
+            'bih-chat', 'npm-run', 'context', 'cron-job', 'generate-image', 'message-agent', 'fetch-url'
+        ]);
+        const sanitizeTools = (arr) =>
+            Array.isArray(arr) ? arr.filter(t => typeof t === 'string' && VALID_TOOLS.has(t)) : [];
+
         const agentData = {
             name: name.trim(),
             description: description?.trim() || '',
             model: model.trim(),
             provider: provider || 'ollama',
+            role: ['assistant', 'researcher', 'vibecoder', 'forwardChat'].includes(role) ? role : 'assistant',
             createdBy: req.user._id,
             config: {
                 systemPrompt: systemPrompt || 'You are a helpful AI assistant.',
                 temperature: temperature !== undefined ? parseFloat(temperature) : 0.7,
                 contextWindow: contextWindow ? parseInt(contextWindow) : 200000,
                 maxTokens: maxTokens ? parseInt(maxTokens) : 8192
+            },
+            mcpConfig: {
+                enabledTools: sanitizeTools(mcpTools),
+                backgroundEnabledTools: sanitizeTools(mcpBackgroundTools)
             }
         };
 
         const agent = new Agent(agentData);
         await agent.save();
-        await agent.addLog('info', `Agent created by ${req.user.displayName || req.user.email}`);
 
+        // If this agent is a support agent for another, wire the relationship both ways
+        if (supportsAgentId && supportsAgentId.trim()) {
+            try {
+                const targetAgent = await Agent.findById(supportsAgentId.trim());
+                if (targetAgent) {
+                    const validSupportRoles = ['prompt-cleaner', 'kb-curator', 'reviewer', 'background-support', 'custom'];
+                    const resolvedRole = validSupportRoles.includes(supportRole) ? supportRole : 'custom';
+                    // Set supportsAgent on the new agent
+                    agent.supportsAgent = { agentId: targetAgent._id, role: resolvedRole };
+                    await agent.save();
+                    // Add this agent to the target's supportAgents list
+                    targetAgent.supportAgents.push({
+                        agentId: agent._id,
+                        role: resolvedRole,
+                        label: supportLabel?.trim() || '',
+                        enabled: true
+                    });
+                    await targetAgent.save();
+                    await targetAgent.addLog('info', `Support agent "${agent.name}" (${resolvedRole}) assigned by ${req.user.displayName || req.user.email}`);
+                }
+            } catch (e) {
+                console.error('[Agent create] support agent wiring failed:', e.message);
+            }
+        }
+
+        await agent.addLog('info', `Agent created by ${req.user.displayName || req.user.email}`);
         res.json({ success: true, agent });
     } catch (error) {
         console.error('Error creating agent:', error);
@@ -348,6 +387,133 @@ router.get('/api/agents/:id/logs', isAdmin, async (req, res) => {
         res.json({ success: true, logs: agent.logs.slice(-50).reverse() });
     } catch (error) {
         console.error('Error fetching agent logs:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ── Support agent management ──────────────────────────────────────────────────
+
+// List support agents for an agent
+router.get('/api/agents/:id/support-agents', isAdmin, async (req, res) => {
+    try {
+        const agent = await Agent.findById(req.params.id, 'supportAgents').populate('supportAgents.agentId', 'name role status').lean();
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+        res.json({ success: true, supportAgents: agent.supportAgents || [] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Add a support agent to an agent
+router.post('/api/agents/:id/support-agents', isAdmin, async (req, res) => {
+    try {
+        const { agentId, role, label } = req.body;
+        if (!agentId) return res.status(400).json({ success: false, error: 'agentId required' });
+
+        const [agent, supportAgent] = await Promise.all([
+            Agent.findById(req.params.id),
+            Agent.findById(agentId)
+        ]);
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+        if (!supportAgent) return res.status(404).json({ success: false, error: 'Support agent not found' });
+        if (agentId === req.params.id) return res.status(400).json({ success: false, error: 'Agent cannot support itself' });
+
+        const validRoles = ['prompt-cleaner', 'kb-curator', 'reviewer', 'background-support', 'custom'];
+        const resolvedRole = validRoles.includes(role) ? role : 'custom';
+
+        // Avoid duplicates
+        const already = agent.supportAgents.some(s => s.agentId.toString() === agentId);
+        if (already) return res.status(400).json({ success: false, error: 'Already a support agent' });
+
+        agent.supportAgents.push({ agentId, role: resolvedRole, label: label?.trim() || '', enabled: true });
+        await agent.save();
+
+        // Set supportsAgent on the support agent side
+        supportAgent.supportsAgent = { agentId: agent._id, role: resolvedRole };
+        await supportAgent.save();
+
+        await agent.addLog('info', `Support agent "${supportAgent.name}" (${resolvedRole}) added by ${req.user.displayName || req.user.email}`);
+        res.json({ success: true, supportAgents: agent.supportAgents });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Remove a support agent
+router.delete('/api/agents/:id/support-agents/:supportAgentId', isAdmin, async (req, res) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+
+        agent.supportAgents = agent.supportAgents.filter(s => s.agentId.toString() !== req.params.supportAgentId);
+        await agent.save();
+
+        // Clear supportsAgent on the other side
+        await Agent.findByIdAndUpdate(req.params.supportAgentId, { $set: { 'supportsAgent.agentId': null, 'supportsAgent.role': '' } });
+
+        await agent.addLog('info', `Support agent removed by ${req.user.displayName || req.user.email}`);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Toggle support agent enabled/disabled
+router.patch('/api/agents/:id/support-agents/:supportAgentId', isAdmin, async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+
+        const entry = agent.supportAgents.find(s => s.agentId.toString() === req.params.supportAgentId);
+        if (!entry) return res.status(404).json({ success: false, error: 'Support agent relationship not found' });
+
+        entry.enabled = typeof enabled === 'boolean' ? enabled : entry.enabled;
+        await agent.save();
+        res.json({ success: true, supportAgents: agent.supportAgents });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ── Guardrails management ────────────────────────────────────────────────────
+
+// Get guardrails config
+router.get('/api/agents/:id/guardrails', isAdmin, async (req, res) => {
+    try {
+        const agent = await Agent.findById(req.params.id, 'forwardChat.guardrails').lean();
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+        res.json({ success: true, guardrails: agent.forwardChat?.guardrails || {} });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update guardrails config
+router.put('/api/agents/:id/guardrails', isAdmin, async (req, res) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+
+        const g = req.body;
+        const gr = agent.forwardChat.guardrails;
+
+        if (typeof g.enabled === 'boolean') gr.enabled = g.enabled;
+        if (Array.isArray(g.allowedTopics)) gr.allowedTopics = g.allowedTopics.map(t => String(t).trim()).filter(Boolean);
+        if (Array.isArray(g.blockedKeywords)) gr.blockedKeywords = g.blockedKeywords.map(k => String(k).trim()).filter(Boolean);
+        if (g.maxResponseLength !== undefined) gr.maxResponseLength = Math.max(0, parseInt(g.maxResponseLength) || 0);
+        if (typeof g.profanityFilter === 'boolean') gr.profanityFilter = g.profanityFilter;
+        if (typeof g.systemPromptLock === 'boolean') gr.systemPromptLock = g.systemPromptLock;
+        if (g.offTopicResponse !== undefined) gr.offTopicResponse = String(g.offTopicResponse).substring(0, 500);
+        if (g.rateLimit) {
+            if (g.rateLimit.messagesPerSession !== undefined) gr.rateLimit.messagesPerSession = Math.max(0, parseInt(g.rateLimit.messagesPerSession) || 0);
+            if (g.rateLimit.messagesPerHour !== undefined) gr.rateLimit.messagesPerHour = Math.max(0, parseInt(g.rateLimit.messagesPerHour) || 0);
+        }
+
+        await agent.save();
+        await agent.addLog('info', `Guardrails updated by ${req.user.displayName || req.user.email}`);
+        res.json({ success: true, guardrails: agent.forwardChat.guardrails });
+    } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });

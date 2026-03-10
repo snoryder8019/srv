@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 import registerContest from "./contest.js";
 import { registerAgents } from "./agents.js";
 import { registerPepe } from "./pepe.js";
+import { registerForwardChat } from "./forwardchat.js";
 
 export default function initSockets(server) {
   const io = new Server(server, {
@@ -14,6 +15,7 @@ export default function initSockets(server) {
   registerContest(io);
   registerAgents(io);
   registerPepe(io);
+  registerForwardChat(io);
 
   return io;
 }

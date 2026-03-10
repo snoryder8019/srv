@@ -295,6 +295,12 @@ function switchTab(tabName) {
     case 'permissions':
       loadPermissionsTab(currentAgentId);
       break;
+    case 'guardrails':
+      loadGuardrailsTab(currentAgentId);
+      break;
+    case 'support':
+      loadSupportTab(currentAgentId);
+      break;
   }
 }
 
@@ -480,18 +486,18 @@ async function loadTuningTab(agentId) {
         <div class="form-section">
           <h3>Personality Sliders</h3>
           <div class="slider-group">
-            <label>Creativity: <span id="creativityValue">${tuning.adjustableParams.creativity || 0.5}</span></label>
-            <input type="range" id="tuningCreativity" name="creativity" min="0" max="1" step="0.1" value="${tuning.adjustableParams.creativity || 0.5}" class="slider">
+            <label>Creativity: <span id="creativityValue">${tuning.adjustableParams?.creativity || 0.5}</span></label>
+            <input type="range" id="tuningCreativity" name="creativity" min="0" max="1" step="0.1" value="${tuning.adjustableParams?.creativity || 0.5}" class="slider">
           </div>
 
           <div class="slider-group">
-            <label>Verbosity: <span id="verbosityValue">${tuning.adjustableParams.verbosity || 0.5}</span></label>
-            <input type="range" id="tuningVerbosity" name="verbosity" min="0" max="1" step="0.1" value="${tuning.adjustableParams.verbosity || 0.5}" class="slider">
+            <label>Verbosity: <span id="verbosityValue">${tuning.adjustableParams?.verbosity || 0.5}</span></label>
+            <input type="range" id="tuningVerbosity" name="verbosity" min="0" max="1" step="0.1" value="${tuning.adjustableParams?.verbosity || 0.5}" class="slider">
           </div>
 
           <div class="slider-group">
-            <label>Formality: <span id="formalityValue">${tuning.adjustableParams.formality || 0.5}</span></label>
-            <input type="range" id="tuningFormality" name="formality" min="0" max="1" step="0.1" value="${tuning.adjustableParams.formality || 0.5}" class="slider">
+            <label>Formality: <span id="formalityValue">${tuning.adjustableParams?.formality || 0.5}</span></label>
+            <input type="range" id="tuningFormality" name="formality" min="0" max="1" step="0.1" value="${tuning.adjustableParams?.formality || 0.5}" class="slider">
           </div>
         </div>
 
@@ -761,24 +767,36 @@ async function loadPermissionsTab(agentId) {
     const allAgents = hierarchyData.agents || [];
     const otherAgents = allAgents.filter(a => a._id !== agentId);
 
-    // Build tool checkboxes by category
-    function renderToolGrid(id, enabledList) {
+    // Build unified 3-column tool table (Permission | Chat | Background)
+    function renderToolTable(chatEnabled, bgEnabled) {
       if (!availableTools.length) return '<p style="color:#555">No tools available</p>';
       const categories = {};
       availableTools.forEach(t => { (categories[t.category || 'other'] = categories[t.category || 'other'] || []).push(t); });
-      return `<div class="mcp-tools-grid" id="${id}">` +
-        Object.entries(categories).map(([cat, tools]) => `
-          <div class="mcp-category">
-            <div class="mcp-category-label">${cat}</div>
-            ${tools.map(tool => `
-              <label class="mcp-tool-checkbox">
-                <input type="checkbox" value="${tool.name}" ${enabledList.includes(tool.name) ? 'checked' : ''}>
-                <span class="mcp-tool-name">${tool.name}</span>
-                <span class="mcp-tool-desc">${tool.description}</span>
-              </label>
-            `).join('')}
-          </div>
-        `).join('') + `</div>`;
+      const rows = Object.entries(categories).map(([cat, tools]) => `
+        <tr class="tools-cat-row"><td colspan="3">${cat}</td></tr>
+        ${tools.map(tool => `
+          <tr>
+            <td class="tool-perm-name">
+              <span class="mcp-tool-name">${tool.name}</span>
+              <span class="mcp-tool-desc">${tool.description}</span>
+            </td>
+            <td class="tool-perm-check"><input type="checkbox" class="chat-tool-cb" value="${tool.name}" ${chatEnabled.includes(tool.name) ? 'checked' : ''}></td>
+            <td class="tool-perm-check"><input type="checkbox" class="bg-tool-cb" value="${tool.name}" ${bgEnabled.includes(tool.name) ? 'checked' : ''}></td>
+          </tr>
+        `).join('')}
+      `).join('');
+      return `
+        <table class="tools-perm-table">
+          <thead>
+            <tr>
+              <th>Permission</th>
+              <th>Chat</th>
+              <th>Background</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
     }
 
     container.innerHTML = `
@@ -812,20 +830,12 @@ async function loadPermissionsTab(agentId) {
         </div>
 
         <div class="perm-section">
-          <h3>Chat MCP Tools</h3>
-          <p class="mcp-description">Tools this agent can call during chat sessions</p>
-          ${renderToolGrid('permChatToolsGrid', enabledChatTools)}
-          <div style="margin-top:0.75rem">
-            <button class="btn-primary btn-sm" onclick="saveChatTools('${agentId}')">Save Chat Tools</button>
-          </div>
-        </div>
-
-        <div class="perm-section">
-          <h3>Background MCP Tools</h3>
-          <p class="mcp-description">Tools available during background process ticks</p>
-          ${renderToolGrid('permBgToolsGrid', enabledBgTools)}
-          <div style="margin-top:0.75rem">
-            <button class="btn-primary btn-sm" onclick="saveBgTools('${agentId}')">Save Background Tools</button>
+          <h3>MCP Tools</h3>
+          <p class="mcp-description">Grant tool access per context</p>
+          ${renderToolTable(enabledChatTools, enabledBgTools)}
+          <div class="tools-perm-save-row">
+            <button class="btn-primary btn-sm" onclick="saveChatTools('${agentId}')">Save Chat</button>
+            <button class="btn-primary btn-sm" onclick="saveBgTools('${agentId}')">Save Background</button>
           </div>
         </div>
 
@@ -917,8 +927,236 @@ async function loadPermissionsTab(agentId) {
   }
 }
 
+// ── Guardrails Tab ─────────────────────────────────────────────────────────────
+async function loadGuardrailsTab(agentId) {
+  const container = document.getElementById('guardrailsTab');
+  container.innerHTML = '<p class="loading">Loading guardrails...</p>';
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/guardrails`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    const gr = data.guardrails;
+
+    container.innerHTML = `
+      <div class="permissions-layout">
+        <div class="perm-section">
+          <h3>Consumer Chatbot Guardrails</h3>
+          <p class="mcp-description">Third-column permissions — enforce boundaries on consumer-facing forwardChat deployments.</p>
+
+          <div class="form-group" style="margin-bottom:1rem">
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+              <input type="checkbox" id="gr-enabled" ${gr.enabled ? 'checked' : ''}>
+              <strong>Guardrails enabled</strong>
+            </label>
+          </div>
+
+          <div class="perm-section" style="background:#0a0a0a;border:1px solid #1a1a1a">
+            <h4 style="margin:0 0 0.75rem;color:#888;font-size:0.82rem;text-transform:uppercase;letter-spacing:0.05em">Access Controls</h4>
+            <div class="form-group">
+              <label style="color:#aaa;font-size:0.82rem">Allowed topics <span style="color:#555;font-weight:400">(comma-separated — leave blank to allow all)</span></label>
+              <input type="text" id="gr-allowedTopics" class="form-control" value="${escapeHtml((gr.allowedTopics || []).join(', '))}" placeholder="e.g. support, billing, product info">
+            </div>
+            <div class="form-group" style="margin-top:0.75rem">
+              <label style="color:#aaa;font-size:0.82rem">Blocked keywords <span style="color:#555;font-weight:400">(comma-separated)</span></label>
+              <input type="text" id="gr-blockedKeywords" class="form-control" value="${escapeHtml((gr.blockedKeywords || []).join(', '))}" placeholder="e.g. competitor, refund hack">
+            </div>
+            <div class="form-group" style="margin-top:0.75rem">
+              <label style="color:#aaa;font-size:0.82rem">Off-topic / blocked response <span style="color:#555;font-weight:400">(what the bot says when blocked — leave blank for default)</span></label>
+              <input type="text" id="gr-offTopicResponse" class="form-control" value="${escapeHtml(gr.offTopicResponse || '')}" placeholder="I'm not able to help with that. Can I assist with something else?">
+            </div>
+          </div>
+
+          <div class="perm-section" style="background:#0a0a0a;border:1px solid #1a1a1a;margin-top:0.75rem">
+            <h4 style="margin:0 0 0.75rem;color:#888;font-size:0.82rem;text-transform:uppercase;letter-spacing:0.05em">Security</h4>
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;margin-bottom:0.6rem">
+              <input type="checkbox" id="gr-systemPromptLock" ${gr.systemPromptLock !== false ? 'checked' : ''}>
+              <span style="color:#ccc;font-size:0.85rem">System prompt lock — block prompt injection attempts</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+              <input type="checkbox" id="gr-profanityFilter" ${gr.profanityFilter ? 'checked' : ''}>
+              <span style="color:#ccc;font-size:0.85rem">Profanity filter</span>
+            </label>
+          </div>
+
+          <div class="perm-section" style="background:#0a0a0a;border:1px solid #1a1a1a;margin-top:0.75rem">
+            <h4 style="margin:0 0 0.75rem;color:#888;font-size:0.82rem;text-transform:uppercase;letter-spacing:0.05em">Rate Limits</h4>
+            <div style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div class="form-group" style="flex:1;min-width:140px">
+                <label style="color:#aaa;font-size:0.82rem">Max response length <span style="color:#555">(chars, 0 = unlimited)</span></label>
+                <input type="number" id="gr-maxResponseLength" class="form-control" value="${gr.maxResponseLength || 0}" min="0" step="100">
+              </div>
+              <div class="form-group" style="flex:1;min-width:140px">
+                <label style="color:#aaa;font-size:0.82rem">Messages per session <span style="color:#555">(0 = unlimited)</span></label>
+                <input type="number" id="gr-msgsPerSession" class="form-control" value="${gr.rateLimit?.messagesPerSession || 0}" min="0">
+              </div>
+              <div class="form-group" style="flex:1;min-width:140px">
+                <label style="color:#aaa;font-size:0.82rem">Messages per hour / IP <span style="color:#555">(0 = unlimited)</span></label>
+                <input type="number" id="gr-msgsPerHour" class="form-control" value="${gr.rateLimit?.messagesPerHour || 0}" min="0">
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:1rem">
+            <button class="btn-primary btn-sm" onclick="saveGuardrails('${agentId}')">Save Guardrails</button>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<p class="empty-state" style="color:#ff4444">Error: ${err.message}</p>`;
+  }
+}
+
+async function saveGuardrails(agentId) {
+  const payload = {
+    enabled: document.getElementById('gr-enabled').checked,
+    allowedTopics: document.getElementById('gr-allowedTopics').value.split(',').map(s => s.trim()).filter(Boolean),
+    blockedKeywords: document.getElementById('gr-blockedKeywords').value.split(',').map(s => s.trim()).filter(Boolean),
+    offTopicResponse: document.getElementById('gr-offTopicResponse').value.trim(),
+    systemPromptLock: document.getElementById('gr-systemPromptLock').checked,
+    profanityFilter: document.getElementById('gr-profanityFilter').checked,
+    maxResponseLength: parseInt(document.getElementById('gr-maxResponseLength').value) || 0,
+    rateLimit: {
+      messagesPerSession: parseInt(document.getElementById('gr-msgsPerSession').value) || 0,
+      messagesPerHour: parseInt(document.getElementById('gr-msgsPerHour').value) || 0
+    }
+  };
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/guardrails`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showNotification('Guardrails saved', 'success');
+  } catch (err) {
+    showNotification('Failed: ' + err.message, 'error');
+  }
+}
+
+// ── Support Agents Tab ─────────────────────────────────────────────────────────
+async function loadSupportTab(agentId) {
+  const container = document.getElementById('supportTab');
+  container.innerHTML = '<p class="loading">Loading support agents...</p>';
+  try {
+    const [supportRes, allRes] = await Promise.all([
+      fetch(`/agents/api/agents/${agentId}/support-agents`),
+      fetch('/agents/api/agents')
+    ]);
+    const supportData = await supportRes.json();
+    const allData = await allRes.json();
+    if (!supportData.success) throw new Error(supportData.error);
+
+    const supportAgents = supportData.supportAgents || [];
+    const allAgents = (allData.agents || []).filter(a => a._id !== agentId);
+    const supportRoles = ['prompt-cleaner', 'kb-curator', 'reviewer', 'background-support', 'custom'];
+
+    const rows = supportAgents.map(s => {
+      const name = s.agentId?.name || s.agentId || 'Unknown';
+      const sid = s.agentId?._id || s.agentId;
+      return `
+        <div class="support-agent-row" style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem;background:#0d0d0d;border:1px solid #1a1a1a;border-radius:6px;margin-bottom:0.5rem">
+          <span style="flex:1;color:#ccc;font-size:0.88rem"><strong>${escapeHtml(name)}</strong></span>
+          <span class="cap-tag" style="font-size:0.75rem">${s.role}</span>
+          ${s.label ? `<span style="color:#555;font-size:0.78rem">${escapeHtml(s.label)}</span>` : ''}
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;color:#888;font-size:0.8rem">
+            <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleSupportAgent('${agentId}','${sid}',this.checked)">
+            enabled
+          </label>
+          <button class="btn-danger btn-xs" onclick="removeSupportAgent('${agentId}','${sid}')">×</button>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="permissions-layout">
+        <div class="perm-section">
+          <h3>Support Agents</h3>
+          <p class="mcp-description">Agents that perform maintenance services for this agent — prompt cleanup, KB curation, output review. These run automatically during background consolidation.</p>
+
+          ${supportAgents.length ? rows : '<p style="color:#555;font-size:0.85rem">No support agents assigned.</p>'}
+
+          <div class="perm-section" style="background:#0a0a0a;border:1px solid #1a1a1a;margin-top:1rem">
+            <h4 style="margin:0 0 0.75rem;color:#888;font-size:0.82rem;text-transform:uppercase;letter-spacing:0.05em">Assign Support Agent</h4>
+            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end">
+              <div class="form-group" style="flex:2;min-width:160px">
+                <label style="color:#aaa;font-size:0.82rem">Agent</label>
+                <select id="newSupportAgentId" style="width:100%;background:#111;border:1px solid #2a2a2a;color:#ccc;border-radius:4px;padding:0.35rem 0.5rem;font-size:0.82rem">
+                  <option value="">— select agent —</option>
+                  ${allAgents.map(a => `<option value="${a._id}">${escapeHtml(a.name)} [${a.role}]</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group" style="flex:1;min-width:140px">
+                <label style="color:#aaa;font-size:0.82rem">Role</label>
+                <select id="newSupportRole" style="width:100%;background:#111;border:1px solid #2a2a2a;color:#ccc;border-radius:4px;padding:0.35rem 0.5rem;font-size:0.82rem">
+                  ${supportRoles.map(r => `<option value="${r}">${r}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group" style="flex:1;min-width:120px">
+                <label style="color:#aaa;font-size:0.82rem">Label <span style="color:#555">(optional)</span></label>
+                <input type="text" id="newSupportLabel" class="form-control" placeholder="e.g. prompt doctor">
+              </div>
+              <button class="btn-primary btn-sm" onclick="addSupportAgent('${agentId}')">Assign</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<p class="empty-state" style="color:#ff4444">Error: ${err.message}</p>`;
+  }
+}
+
+async function addSupportAgent(agentId) {
+  const sid = document.getElementById('newSupportAgentId').value;
+  const role = document.getElementById('newSupportRole').value;
+  const label = document.getElementById('newSupportLabel').value.trim();
+  if (!sid) return showNotification('Select an agent first', 'error');
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/support-agents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: sid, role, label })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showNotification('Support agent assigned', 'success');
+    loadSupportTab(agentId);
+  } catch (err) {
+    showNotification('Failed: ' + err.message, 'error');
+  }
+}
+
+async function removeSupportAgent(agentId, supportAgentId) {
+  if (!confirm('Remove this support agent?')) return;
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/support-agents/${supportAgentId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showNotification('Support agent removed', 'success');
+    loadSupportTab(agentId);
+  } catch (err) {
+    showNotification('Failed: ' + err.message, 'error');
+  }
+}
+
+async function toggleSupportAgent(agentId, supportAgentId, enabled) {
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/support-agents/${supportAgentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+  } catch (err) {
+    showNotification('Failed: ' + err.message, 'error');
+  }
+}
+
 async function saveBgTools(agentId) {
-  const checked = Array.from(document.querySelectorAll('#permBgToolsGrid input[type="checkbox"]:checked'))
+  const checked = Array.from(document.querySelectorAll('.bg-tool-cb:checked'))
     .map(cb => cb.value);
   try {
     const res = await fetch(`/agents/api/agents/${agentId}/background/tools`, {
@@ -935,7 +1173,7 @@ async function saveBgTools(agentId) {
 }
 
 async function saveChatTools(agentId) {
-  const checked = Array.from(document.querySelectorAll('#permChatToolsGrid input[type="checkbox"]:checked'))
+  const checked = Array.from(document.querySelectorAll('.chat-tool-cb:checked'))
     .map(cb => cb.value);
   try {
     const res = await fetch(`/agents/api/agents/${agentId}/mcp/enable`, {

@@ -67,26 +67,48 @@
       <span class="chat-unread-badge" id="chat-badge-<%= agent._id %>"></span>
     </button>
     <button class="btn-manage" onclick="event.stopPropagation(); openAgentDetail('<%= agent._id %>')">Manage</button>
-    <button class="btn-bih-bot <%= agent.bihBot && agent.bihBot.enabled ? 'bih-bot-active' : '' %>"
-      id="bih-btn-<%= agent._id %>"
-      onclick="event.stopPropagation(); toggleBihBot('<%= agent._id %>', <%= agent.bihBot && agent.bihBot.enabled ? 'true' : 'false' %>, '<%= (agent.bihBot && agent.bihBot.trigger) || agent.name.toLowerCase().replace(/\s+/g, '-') %>')"
-      title="<%= agent.bihBot && agent.bihBot.enabled ? '@' + agent.bihBot.trigger + ' active in bih chat' : 'Deploy to bih chat' %>">
-      <% if (agent.bihBot && agent.bihBot.enabled) { %>
-        bih: @<%= agent.bihBot.trigger %>
-      <% } else { %>
-        + bih
-      <% } %>
-    </button>
-    <button class="btn-bih-bot <%= agent.pepeChat && agent.pepeChat.enabled ? 'bih-bot-active' : '' %>"
-      id="pepe-btn-<%= agent._id %>"
-      onclick="event.stopPropagation(); togglePepeChat('<%= agent._id %>', <%= agent.pepeChat && agent.pepeChat.enabled ? 'true' : 'false' %>)"
-      title="<%= agent.pepeChat && agent.pepeChat.enabled ? agent.name + ' is the site chat agent' : 'Deploy as madladslab.com chat agent' %>">
-      <% if (agent.pepeChat && agent.pepeChat.enabled) { %>
-        madlads: <%= agent.name %>
-      <% } else { %>
-        + madlads
-      <% } %>
-    </button>
+
+    <!-- forwardChat discipline panel -->
+    <div class="fwdchat-panel" id="fwdchat-panel-<%= agent._id %>">
+      <button class="btn-fwdchat-toggle" onclick="event.stopPropagation(); toggleFwdChatPanel('<%= agent._id %>')" title="forwardChat deployments">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.94-.94a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        forwardChat
+        <% const bihOn = agent.forwardChat && agent.forwardChat.bihEnabled; %>
+        <% const siteCount = agent.forwardChat && agent.forwardChat.sites ? agent.forwardChat.sites.filter(s => s.enabled).length : 0; %>
+        <% if (bihOn || siteCount > 0) { %>
+          <span class="fwdchat-count-badge"><%= (bihOn ? 1 : 0) + siteCount %></span>
+        <% } %>
+      </button>
+
+      <div class="fwdchat-dropdown" id="fwdchat-dd-<%= agent._id %>" style="display:none">
+        <!-- Sites dropdown row -->
+        <div class="fwdchat-row fwdchat-sites-row">
+          <select class="fwdchat-site-select" id="fwdchat-site-sel-<%= agent._id %>"
+            onclick="event.stopPropagation()"
+            onchange="onFwdChatSiteSelect('<%= agent._id %>', this.value)">
+            <option value="">+ assign site</option>
+          </select>
+        </div>
+
+        <!-- Active site assignments -->
+        <div class="fwdchat-active-sites" id="fwdchat-sites-<%= agent._id %>">
+          <% if (agent.forwardChat && agent.forwardChat.sites && agent.forwardChat.sites.length > 0) { %>
+            <% agent.forwardChat.sites.forEach(function(s) { %>
+              <div class="fwdchat-site-tag <%= s.enabled ? 'active' : '' %>" data-site-id="<%= s.siteId %>">
+                <span class="fwdchat-site-dot"></span>
+                <span class="fwdchat-site-name">site</span>
+                <button onclick="event.stopPropagation(); removeFwdChatSite('<%= agent._id %>', '<%= s.siteId %>')" title="Remove">×</button>
+              </div>
+            <% }); %>
+          <% } %>
+        </div>
+
+        <div class="fwdchat-footer-row">
+          <a href="#" onclick="event.stopPropagation(); event.preventDefault(); openFwdChatSiteManager()" class="fwdchat-manage-link">manage sites</a>
+        </div>
+      </div>
+    </div>
+
     <button class="btn-status" onclick="event.stopPropagation(); toggleStatus('<%= agent._id %>', '<%= agent.status %>')">
       <% if (agent.status === 'running' || agent.status === 'idle') { %>
         Stop
