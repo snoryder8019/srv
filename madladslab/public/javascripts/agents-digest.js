@@ -56,6 +56,7 @@ function renderFeed() {
     return;
   }
   feed.innerHTML = filtered.map(a => renderActionCard(a)).join('');
+  fixMobileCards(feed);
 }
 
 function renderActionCard(action, pinned = false) {
@@ -369,6 +370,8 @@ function initSockets() {
     document.getElementById('liveDot').classList.add('live');
     // Subscribe to all known agents
     DIGEST_AGENTS.forEach(a => agentSocket.emit('subscribe', a._id));
+    // Subscribe to DB I/O monitor
+    agentSocket.emit('db:subscribe');
   });
   agentSocket.on('disconnect', () => document.getElementById('liveDot').classList.remove('live'));
   agentSocket.on('action:new', ({ action }) => {
@@ -378,8 +381,20 @@ function initSockets() {
     const placeholder = feed.querySelector('.empty-state, .loading');
     if (placeholder) placeholder.remove();
     feed.insertAdjacentHTML('afterbegin', renderActionCard(action));
+    fixMobileCards(feed);
     renderStats();
     showToast(`New: ${action.title}`, 'info');
+  });
+
+  agentSocket.on('db:snapshot', (events) => {
+    const list = document.getElementById('dbMonitor');
+    if (!list) return;
+    if (!events.length) { list.innerHTML = '<p class="db-empty">No events yet</p>'; return; }
+    list.innerHTML = events.map(renderDbEvent).join('');
+  });
+
+  agentSocket.on('db:event', (event) => {
+    pushDbEvent(event);
   });
 
   agentSocket.on('background:started', ({ agentId }) => {
@@ -859,6 +874,58 @@ function renderPinBoard() {
   }
   grid.innerHTML = pinned.map(a => renderActionCard(a, true)).join('');
   section.classList.add('pin-board-open');
+}
+
+// ── Mobile card fix ────────────────────────────────────────
+// The global AI-overhaul CSS sets animation:digestCardIn with fill-mode:both
+// on .digest-card, which comes after the @media mobile block and overrides it.
+// Directly zeroing inline styles guarantees no transform/stacking-context overlap.
+function fixMobileCards(container) {
+  if (window.innerWidth > 768) return;
+  container.querySelectorAll('.digest-card').forEach(el => {
+    el.style.cssText += ';animation:none!important;transform:none!important;position:relative!important';
+  });
+}
+
+// ── DB I/O Monitor ─────────────────────────────────────────
+function renderDbEvent(e) {
+  const isWrite = e.op === 'write';
+  const color   = isWrite ? '#ff88cc' : '#6ec6ff';
+  const icon    = isWrite ? '↑' : '↓';
+  const agentName = e.agentId ? (agentMap[e.agentId]?.name || '') : '';
+  const label   = e.label ? `<span class="db-label">${escHtml(e.label)}</span>` : '';
+  const agent   = agentName ? `<span class="db-agent-tag">${escHtml(agentName)}</span>` : '';
+  return `
+    <div class="db-event-row">
+      <span class="db-op-badge" style="color:${color}">${icon} ${e.op}</span>
+      <span class="db-col-name">${escHtml(e.collection)}</span>
+      ${agent}${label}
+      <span class="db-ts">${timeSince(e.ts)}</span>
+    </div>`;
+}
+
+function pushDbEvent(event) {
+  const list = document.getElementById('dbMonitor');
+  if (!list) return;
+  const placeholder = list.querySelector('.loading, .db-empty');
+  if (placeholder) placeholder.remove();
+  list.insertAdjacentHTML('afterbegin', renderDbEvent(event));
+  // Cap DOM rows at 30
+  const rows = list.querySelectorAll('.db-event-row');
+  if (rows.length > 30) rows[rows.length - 1].remove();
+  // Flash the status dot
+  const dot = document.getElementById('dbMonitorDot');
+  if (dot) {
+    dot.classList.add('db-monitor-dot-flash');
+    setTimeout(() => dot.classList.remove('db-monitor-dot-flash'), 400);
+  }
+}
+
+function timeSince(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 60000)    return Math.floor(diff / 1000) + 's';
+  if (diff < 3600000)  return Math.floor(diff / 60000) + 'm';
+  return Math.floor(diff / 3600000) + 'h';
 }
 
 // ── Export modal helpers ───────────────────────────────────

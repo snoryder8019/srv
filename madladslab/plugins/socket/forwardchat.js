@@ -301,6 +301,7 @@ export function registerForwardChat(io) {
             sessionId,
             siteId: site._id,
             siteName: site.siteName,
+            agentId: currentAgent._id.toString(),
             ip,
             messages: [],
             createdAt: new Date(),
@@ -309,6 +310,22 @@ export function registerForwardChat(io) {
             notificationSent: false
           };
           await sessions.insertOne(sess);
+        } else if (!sess.agentId) {
+          // Backfill agentId for sessions created before this fix
+          await sessions.updateOne({ sessionId }, { $set: { agentId: currentAgent._id.toString() } });
+          sess = { ...sess, agentId: currentAgent._id.toString() };
+        } else if (sess.agentId !== currentAgent._id.toString()) {
+          // Agent changed — reset history so previous agent's context doesn't bleed in
+          await sessions.updateOne({ sessionId }, {
+            $set: {
+              agentId: currentAgent._id.toString(),
+              messages: [],
+              messageCount: 0,
+              notificationSent: false,
+              updatedAt: new Date()
+            }
+          });
+          sess = { ...sess, agentId: currentAgent._id.toString(), messages: [], messageCount: 0, notificationSent: false };
         }
 
         const sessionLimit = currentAgent.forwardChat?.sessionLimit || 50;

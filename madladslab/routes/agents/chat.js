@@ -56,7 +56,7 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
                     .map(a => `  - ${a.name} [${a.role}] (${a.status})`)
                     .join('\n');
                 const userName = req.user.displayName || req.user.email || 'Unknown user';
-                let ctx = `Session context:\n- You are: ${agent.name} (${agent.role})\n- Speaking with: ${userName}\n- Time: ${new Date().toLocaleString()}`;
+                let ctx = `Session context:\n- You are: ${agent.name} (${agent.role})\n- Your agentId (MongoDB _id): ${agent._id}\n- Speaking with: ${userName}\n- Time: ${new Date().toLocaleString()}\n- IMPORTANT: Your Knowledge Base, Thread Summary, Long-term Memory, and Background Research are already injected below as system messages. Do NOT use mongo_find to search for your own KB or memory — it is already here. The 'agents' collection contains agent configs, NOT general knowledge about people or entities.`;
                 if (roster) ctx += `\n- Other agents:\n${roster}`;
                 messages.push({ role: 'system', content: ctx });
             } catch (_) {}
@@ -77,7 +77,7 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
                 const kb = agent.memory.knowledgeBase.slice(-12)
                     .map(e => `[${e.type.toUpperCase()}] ${e.title}:\n${e.content.substring(0, 300)}`)
                     .join('\n\n');
-                messages.push({ role: 'system', content: `Knowledge Base:\n${kb}` });
+                messages.push({ role: 'system', content: `Knowledge Base (already loaded — do NOT query for this via mongo_find):\n${kb}` });
             }
 
             const recentConvos = (agent.memory.conversations || []).slice(-10);

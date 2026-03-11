@@ -22,8 +22,11 @@ router.get('/api/agents/:id/memory', isAdmin, async (req, res) => {
                 knowledgeBase: agent.memory.knowledgeBase || [],
                 stats: agent.memory.stats || { totalTokens: 0, contextUsagePercent: 0 },
                 threadSummary: agent.memory.threadSummary || '',
-                longTermMemory: agent.memory.longTermMemory || ''
-            }
+                longTermMemory: agent.memory.longTermMemory || '',
+                bgFindings: agent.memory.bgFindings || '',
+            },
+            bgProductivity: agent.bgProductivity || { score: 50, consecutiveIdle: 0, totalTicks: 0, activeTicks: 0 },
+            bgTickHistory: (agent.bgTickHistory || []).slice(-10).reverse()
         });
     } catch (error) {
         console.error('Error fetching memory:', error);
@@ -45,7 +48,11 @@ router.get('/api/agents/:id/memory/stats', isAdmin, async (req, res) => {
             knowledgeBaseEntries: (agent.memory.knowledgeBase || []).length,
             totalTokens: agent.memory.stats?.totalTokens || 0,
             contextUsagePercent: agent.memory.stats?.contextUsagePercent || 0,
-            contextWindow: agent.config.contextWindow
+            contextWindow: agent.config.contextWindow,
+            bgFindingsChars: (agent.memory.bgFindings || '').length,
+            bgProductivityScore: agent.bgProductivity?.score ?? 50,
+            bgTotalTicks: agent.bgProductivity?.totalTicks ?? 0,
+            bgActiveTicks: agent.bgProductivity?.activeTicks ?? 0
         };
 
         res.json({ success: true, stats });
@@ -147,6 +154,74 @@ router.put('/api/agents/:id/memory/notes', isAdmin, async (req, res) => {
         await agent.save();
 
         res.json({ success: true, longTermMemory: agent.memory.longTermMemory });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Compiled context preview — assemble the exact system messages that would be sent to the LLM
+// Returns each layer labelled so the operator can see what's shaping the agent's persona
+router.get('/api/agents/:id/context-preview', isAdmin, async (req, res) => {
+    try {
+        const agent = await Agent.findById(req.params.id).lean();
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+
+        const layers = [];
+        let totalChars = 0;
+
+        function addLayer(label, content, source) {
+            if (!content?.trim()) return;
+            layers.push({ label, source, chars: content.length, content: content.trim() });
+            totalChars += content.length;
+        }
+
+        addLayer('System Prompt', agent.config?.systemPrompt, 'config.systemPrompt');
+
+        // Session context (simulated — no live user/roster available in preview)
+        addLayer('Session Context (template)', `You are: ${agent.name} (${agent.role})\nSpeaking with: [current user]\nTime: [live]`, 'runtime');
+
+        if (agent.memory?.threadSummary) {
+            addLayer('Thread Summary', agent.memory.threadSummary, 'memory.threadSummary');
+        }
+        if (agent.memory?.longTermMemory) {
+            addLayer('Long-term Memory / Notes', agent.memory.longTermMemory, 'memory.longTermMemory');
+        }
+        if (agent.memory?.bgFindings) {
+            const snippet = agent.memory.bgFindings.slice(-1500);
+            addLayer('Background Research (last 1500 chars)', snippet, 'memory.bgFindings');
+        }
+        if (agent.memory?.knowledgeBase?.length > 0) {
+            const kb = agent.memory.knowledgeBase.slice(-12)
+                .map(e => `[${e.type.toUpperCase()}] ${e.title}:\n${e.content.substring(0, 300)}`)
+                .join('\n\n');
+            addLayer('Knowledge Base', kb, 'memory.knowledgeBase');
+        }
+
+        // Recent conversations (last 3 shown as preview)
+        const recentConvos = (agent.memory?.conversations || []).slice(-3);
+        if (recentConvos.length > 0) {
+            const preview = recentConvos.map(c =>
+                `User: ${c.userMessage?.substring(0, 100)}…\nAgent: ${c.agentResponse?.substring(0, 150)}…`
+            ).join('\n---\n');
+            addLayer(`Recent Conversations (last ${recentConvos.length} of ${agent.memory.conversations.length})`, preview, 'memory.conversations');
+        }
+
+        res.json({ success: true, layers, totalChars, agentName: agent.name });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update / clear background findings
+router.put('/api/agents/:id/memory/bg-findings', isAdmin, async (req, res) => {
+    try {
+        const { bgFindings } = req.body;
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+
+        agent.memory.bgFindings = bgFindings || '';
+        await agent.save();
+        res.json({ success: true, bgFindings: agent.memory.bgFindings });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

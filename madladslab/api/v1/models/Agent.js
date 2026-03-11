@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { track as trackDb } from '../../../lib/dbMonitor.js';
 
 // Agent schema for storing spawned agents and their configurations
 const agentSchema = new mongoose.Schema(
@@ -363,8 +364,11 @@ agentSchema.methods.clearMemory = function() {
   this.memory.knowledgeBase = [];
   this.memory.threadSummary = '';
   this.memory.longTermMemory = '';
+  this.memory.bgFindings = '';
   this.memory.stats.totalTokens = 0;
   this.memory.stats.contextUsagePercent = 0;
+  this.bgTickHistory = [];
+  this.bgProductivity = { score: 50, consecutiveIdle: 0, totalTicks: 0, activeTicks: 0 };
   return this.save();
 };
 
@@ -393,6 +397,26 @@ agentSchema.methods.enableMcpTools = function(tools) {
   this.mcpConfig.enabledTools = tools;
   return this.save();
 };
+
+// ── DB Monitor hooks ──────────────────────────────────────────────────────────
+agentSchema.post('save', function(doc) {
+  trackDb('write', 'agents', doc._id?.toString());
+});
+agentSchema.post('findOne', function(doc) {
+  if (doc) trackDb('read', 'agents', doc._id?.toString());
+});
+agentSchema.post('find', function(docs) {
+  if (docs?.length) trackDb('read', 'agents', null, `${docs.length} docs`);
+});
+agentSchema.post('findOneAndUpdate', function(doc) {
+  if (doc) trackDb('write', 'agents', doc._id?.toString());
+});
+agentSchema.post('updateOne', function() {
+  trackDb('write', 'agents');
+});
+agentSchema.post('updateMany', function() {
+  trackDb('write', 'agents');
+});
 
 const Agent = mongoose.model("Agent", agentSchema);
 

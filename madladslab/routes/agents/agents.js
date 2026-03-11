@@ -1,5 +1,6 @@
 import express from "express";
 import axios from "axios";
+import mongoose from "mongoose";
 
 import Agent from "../../api/v1/models/Agent.js";
 import { isAdmin } from "./middleware.js";
@@ -233,7 +234,37 @@ router.delete('/api/agents/:id', isAdmin, async (req, res) => {
             return res.status(404).json({ success: false, error: 'Agent not found' });
         }
 
-        await Agent.findByIdAndDelete(req.params.id);
+        const agentId = req.params.id;
+        const agentObjectId = agent._id; // ObjectId — used for Mongoose-managed collections
+        const db = mongoose.connection.db;
+
+        // Cascade delete all agent-owned documents from raw collections.
+        // agent_actions stores agentId as ObjectId (Mongoose model).
+        // agent_tasks / agent_notes / agent_crons store agentId as string (raw MCP inserts).
+        await Promise.all([
+            db.collection('agent_actions').deleteMany({ agentId: agentObjectId }),
+            db.collection('agent_tasks').deleteMany({ agentId }),
+            db.collection('agent_notes').deleteMany({ agentId }),
+            db.collection('agent_crons').deleteMany({ agentId }),
+        ]);
+
+        // Remove from other agents' supportAgents lists and clear supportsAgent back-refs
+        await Agent.updateMany(
+            { 'supportAgents.agentId': agent._id },
+            { $pull: { supportAgents: { agentId: agent._id } } }
+        );
+        await Agent.updateMany(
+            { 'supportsAgent.agentId': agent._id },
+            { $set: { 'supportsAgent.agentId': null, 'supportsAgent.role': '' } }
+        );
+
+        // Clear parentAgent refs on child agents
+        await Agent.updateMany(
+            { parentAgent: agent._id },
+            { $set: { parentAgent: null } }
+        );
+
+        await Agent.findByIdAndDelete(agentId);
 
         res.json({ success: true, message: 'Agent deleted successfully' });
     } catch (error) {
@@ -306,14 +337,25 @@ router.patch('/api/agents/:id/bih-bot', isAdmin, async (req, res) => {
         const agent = await Agent.findById(req.params.id);
         if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
 
-        agent.bihBot.enabled = typeof enabled === 'boolean' ? enabled : agent.bihBot.enabled;
-        agent.bihBot.trigger = trigger
-            ? trigger.toLowerCase().replace(/[^a-z0-9_-]/g, '')
-            : (agent.bihBot.trigger || agent.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, ''));
-        agent.bihBot.displayName = displayName || agent.bihBot.displayName || agent.name;
-        agent.bihBot.avatar = avatar !== undefined ? avatar : agent.bihBot.avatar;
+        if (enabled === false) {
+            // Full reset — wipe all bih config so re-assignment starts clean
+            agent.bihBot.enabled = false;
+            agent.bihBot.trigger = '';
+            agent.bihBot.displayName = '';
+            agent.bihBot.avatar = '';
+            agent.bihBot.chatMode = 'passive';
+            agent.bihBot.allowedRoles = [];
+        } else {
+            agent.bihBot.enabled = typeof enabled === 'boolean' ? enabled : agent.bihBot.enabled;
+            agent.bihBot.trigger = trigger
+                ? trigger.toLowerCase().replace(/[^a-z0-9_-]/g, '')
+                : (agent.bihBot.trigger || agent.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, ''));
+            agent.bihBot.displayName = displayName || agent.bihBot.displayName || agent.name;
+            agent.bihBot.avatar = avatar !== undefined ? avatar : agent.bihBot.avatar;
+        }
 
         await agent.save();
+        await agent.addLog('info', `bihBot ${agent.bihBot.enabled ? 'enabled' : 'disabled and reset'} by ${req.user.displayName || req.user.email}`);
         res.json({ success: true, bihBot: agent.bihBot });
     } catch (error) {
         console.error('Error updating bihBot config:', error);

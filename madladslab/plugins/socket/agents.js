@@ -4,6 +4,7 @@
  */
 
 import Agent from "../../api/v1/models/Agent.js";
+import { getRecent as getRecentDbEvents } from '../../lib/dbMonitor.js';
 
 export function registerAgents(io) {
   const agentsNamespace = io.of('/agents');
@@ -84,6 +85,12 @@ export function registerAgents(io) {
         console.error('Error fetching memory:', error);
         socket.emit('error', { message: 'Failed to fetch memory' });
       }
+    });
+
+    // Subscribe to live DB I/O monitor feed (digest page)
+    socket.on('db:subscribe', () => {
+      socket.join('db-monitor');
+      socket.emit('db:snapshot', getRecentDbEvents());
     });
 
     socket.on('disconnect', () => {

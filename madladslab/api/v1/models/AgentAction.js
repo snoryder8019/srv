@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { track as trackDb } from '../../../lib/dbMonitor.js';
 
 // Tracks all agent-generated outputs: middleware docs (TLDR, task lists),
 // background findings, and file writes. One document per action.
@@ -61,6 +62,23 @@ agentActionSchema.statics.getFindings = function(limit = 100) {
     .sort({ createdAt: -1 })
     .limit(limit);
 };
+
+// ── DB Monitor hooks ──────────────────────────────────────────────────────────
+agentActionSchema.post('save', function(doc) {
+  trackDb('write', 'agent_actions', doc.agentId?.toString(), doc.type);
+});
+agentActionSchema.post('findOne', function(doc) {
+  if (doc) trackDb('read', 'agent_actions', doc.agentId?.toString());
+});
+agentActionSchema.post('find', function(docs) {
+  if (docs?.length) trackDb('read', 'agent_actions', null, `${docs.length} docs`);
+});
+agentActionSchema.post('deleteOne', function() {
+  trackDb('write', 'agent_actions', null, 'delete');
+});
+agentActionSchema.post('deleteMany', function() {
+  trackDb('write', 'agent_actions', null, 'deleteMany');
+});
 
 const AgentAction = mongoose.model('AgentAction', agentActionSchema);
 

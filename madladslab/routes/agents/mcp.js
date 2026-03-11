@@ -208,11 +208,11 @@ export const MCP_TOOL_DEFINITIONS = {
         type: 'function',
         function: {
             name: 'mongo_find',
-            description: 'Read-only MongoDB query against a collection in the current database.',
+            description: 'Read-only MongoDB query against a collection in the current database. IMPORTANT: Knowledge Base entries are NOT a separate collection — they are embedded in the agents collection at memory.knowledgeBase and are already injected into your context. Do NOT attempt to query agent_kb, knowledgebase, or similar — they do not exist.',
             parameters: {
                 type: 'object',
                 properties: {
-                    collection: { type: 'string', description: 'Collection name (e.g. agents, users, threads)' },
+                    collection: { type: 'string', description: 'Allowed collections: agents, agent_actions, agent_tasks, agent_notes, agent_crons, users, threads, sessions. Agent-scoped collections (agent_tasks, agent_notes, agent_actions, agent_crons) are automatically filtered to your agentId. To read your own KB: collection="agents", filter={"_id":"<your agentId>"}, projection={"memory.knowledgeBase":1}' },
                     filter: { type: 'object', description: 'MongoDB filter query object' },
                     projection: { type: 'object', description: 'Fields to include/exclude' },
                     sort: { type: 'object', description: 'Sort order' },
@@ -230,7 +230,7 @@ export const MCP_TOOL_DEFINITIONS = {
             parameters: {
                 type: 'object',
                 properties: {
-                    collection: { type: 'string', description: 'Allowed: agent_notes, agent_tasks' },
+                    collection: { type: 'string', description: 'Allowed: agent_notes, agent_tasks. Your agentId is automatically stamped — do not include it in the document.' },
                     operation: { type: 'string', enum: ['insertOne', 'updateOne', 'deleteOne'], description: 'Write operation' },
                     filter: { type: 'object', description: 'Filter for updateOne/deleteOne' },
                     document: { type: 'object', description: 'Document to insert, or update payload ($set etc)' }
@@ -522,11 +522,33 @@ export async function executeMcpTool(toolName, args, agentId = null) {
         case 'mongo_find': {
             const db = mongoose.connection.db;
             if (!db) throw new Error('No database connection');
-            const safeCollections = ['agents', 'users', 'threads', 'agent_actions', 'sessions', 'agent_tasks', 'agent_notes'];
+            const safeCollections = ['agents', 'users', 'threads', 'agent_actions', 'sessions', 'agent_tasks', 'agent_notes', 'agent_crons'];
             if (!safeCollections.includes(args.collection)) throw new Error(`Collection must be one of: ${safeCollections.join(', ')}`);
+
+            // Agent-scoped collections: always inject agentId so agents only see their own data
+            const agentScopedCollections = ['agent_tasks', 'agent_notes', 'agent_actions', 'agent_crons'];
+            let filter = args.filter || {};
+            if (agentScopedCollections.includes(args.collection) && agentId) {
+                filter = { ...filter, agentId };
+            }
+
+            // Guard: querying 'agents' by name for a non-agent entity is always wrong.
+            // Return an explicit error so the agent stops retrying and uses the right approach.
+            if (args.collection === 'agents' && filter.name && typeof filter.name === 'string') {
+                const nameMatch = await db.collection('agents').findOne({ name: filter.name }, { projection: { _id: 1, name: 1 } });
+                if (!nameMatch) {
+                    return {
+                        collection: 'agents',
+                        count: 0,
+                        documents: [],
+                        _hint: `No agent named "${filter.name}" exists. The 'agents' collection only contains AI agent configs — not people, characters, or external entities. If you are looking for knowledge about "${filter.name}", check your Knowledge Base (already injected in context) or use web_search to research them, then store findings via mongo_write to agent_notes.`
+                    };
+                }
+            }
+
             const limit = Math.min(args.limit || 10, 50);
             const docs = await db.collection(args.collection)
-                .find(args.filter || {}, { projection: args.projection })
+                .find(filter, { projection: args.projection })
                 .sort(args.sort || { _id: -1 })
                 .limit(limit)
                 .toArray();
@@ -540,13 +562,17 @@ export async function executeMcpTool(toolName, args, agentId = null) {
             const col = db.collection(args.collection);
             let result;
             if (args.operation === 'insertOne') {
-                result = await col.insertOne({ ...args.document, _createdAt: new Date() });
+                // Always stamp agentId so the document is owned and cascade-deletable
+                result = await col.insertOne({ ...args.document, agentId: agentId || args.document?.agentId, _createdAt: new Date() });
             } else if (args.operation === 'updateOne') {
                 if (!args.filter) throw new Error('filter required for updateOne');
-                result = await col.updateOne(args.filter, args.document);
+                // Scope to agentId so agents can't mutate each other's documents
+                const scopedFilter = agentId ? { ...args.filter, agentId } : args.filter;
+                result = await col.updateOne(scopedFilter, args.document);
             } else if (args.operation === 'deleteOne') {
                 if (!args.filter) throw new Error('filter required for deleteOne');
-                result = await col.deleteOne(args.filter);
+                const scopedFilter = agentId ? { ...args.filter, agentId } : args.filter;
+                result = await col.deleteOne(scopedFilter);
             }
             return { collection: args.collection, operation: args.operation, result };
         }

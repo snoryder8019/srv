@@ -150,7 +150,7 @@ async function runBackgroundTick(io, agentId, proc) {
 
         const messages = [
             { role: 'system', content: agent.config.systemPrompt },
-            { role: 'system', content: `You are: ${agent.name} (${agent.role}). Running as background process.\nTime: ${new Date().toLocaleString()}${bgRoster ? `\nOther agents:\n${bgRoster}` : ''}\n\n${bgDirective}\n\nOutput format: JSON object as described above, or exactly: null` }
+            { role: 'system', content: `You are: ${agent.name} (${agent.role}). Running as background process.\nYour agentId (MongoDB _id): ${agentId}\nTime: ${new Date().toLocaleString()}${bgRoster ? `\nOther agents:\n${bgRoster}` : ''}\n\nMEMORY RULES:\n- Your Knowledge Base, Background Research Log, and Long-term Memory are injected below as system messages. They are ALREADY LOADED.\n- Do NOT use mongo_find to look up your own KB or memory — it is already in your context.\n- The 'agents' collection contains AI agent configs ONLY, not knowledge about people, characters, or external entities. Searching it for a person's name will always fail.\n- To store new research findings: write to agent_notes collection via mongo_write, or output them in the JSON content field so they get saved to bgFindings.\n\n${bgDirective}\n\nOutput format: JSON object as described above, or exactly: null` }
         ];
 
         // ── Inject memory context (separated to avoid collision with chat) ──
@@ -165,9 +165,11 @@ async function runBackgroundTick(io, agentId, proc) {
             messages.push({ role: 'system', content: `Background Research Log (your autonomous findings — do not repeat these):\n${agent.memory.bgFindings.slice(-2000)}` });
         }
         if (agent.memory.knowledgeBase?.length > 0) {
-            // Most recent KB entries, capped per-entry to avoid context bloat
+            // Most recent KB entries, capped per-entry to avoid context bloat.
+            // KB is embedded in the agents document — there is no separate agent_kb collection.
+            // Do NOT use mongo_find to look for KB; it is already injected here.
             const kb = agent.memory.knowledgeBase.slice(-8).map(e => `[${e.type.toUpperCase()}] ${e.title}: ${e.content.substring(0, 200)}`).join('\n');
-            messages.push({ role: 'system', content: `Knowledge Base:\n${kb}` });
+            messages.push({ role: 'system', content: `Knowledge Base (already loaded — do NOT query for this via mongo_find):\n${kb}` });
         }
 
         const reqBody = {

@@ -588,8 +588,12 @@ async function loadMemoryTab(agentId) {
 
     const memory = memoryData.memory;
     const stats = statsData.stats;
+    const bgProductivity = memoryData.bgProductivity || { score: 50, totalTicks: 0, activeTicks: 0, consecutiveIdle: 0 };
+    const bgTickHistory = memoryData.bgTickHistory || [];
 
     const container = document.getElementById('memoryTab');
+
+    const prodColor = bgProductivity.score >= 70 ? '#4caf50' : bgProductivity.score >= 40 ? '#ffaa00' : '#ff4444';
 
     container.innerHTML = `
       <div class="memory-layout">
@@ -614,6 +618,15 @@ async function loadMemoryTab(agentId) {
             </div>
             <div class="stat-value-small">${stats.contextUsagePercent.toFixed(1)}%</div>
           </div>
+          <div class="stat-card">
+            <div class="stat-label">BG Productivity</div>
+            <div class="stat-value" style="color:${prodColor}">${bgProductivity.score}/100</div>
+            <div class="stat-value-small">${bgProductivity.activeTicks}/${bgProductivity.totalTicks} ticks active${bgProductivity.consecutiveIdle > 0 ? ` · ${bgProductivity.consecutiveIdle} idle` : ''}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">BG Research Log</div>
+            <div class="stat-value">${stats.bgFindingsChars?.toLocaleString() || 0} chars</div>
+          </div>
 
           <div class="memory-actions">
             <button class="btn-secondary btn-block" onclick="showAddKnowledge('${agentId}')">Add Knowledge</button>
@@ -622,6 +635,17 @@ async function loadMemoryTab(agentId) {
         </div>
 
         <div class="memory-content">
+
+          <!-- Compiled Context / Persona Preview -->
+          <div class="memory-section" id="contextPreviewSection">
+            <div class="memory-section-header">
+              <h3>Compiled Context</h3>
+              <span class="memory-section-hint">Exact layers sent to the LLM — what's shaping this agent's persona</span>
+            </div>
+            <div id="contextPreviewBody" style="color:#555;font-size:0.82rem;padding:0.5rem 0">
+              <button class="btn-secondary btn-sm" onclick="loadContextPreview('${agentId}')">Load Compiled Context</button>
+            </div>
+          </div>
 
           <!-- Thread Summary -->
           <div class="memory-section memory-section-pinned">
@@ -646,6 +670,36 @@ async function loadMemoryTab(agentId) {
               <button class="btn-primary btn-sm" onclick="saveLongTermMemory('${agentId}')">Save Notes</button>
             </div>
           </div>
+
+          <!-- Background Research Log -->
+          <div class="memory-section memory-section-pinned">
+            <div class="memory-section-header">
+              <h3>Background Research Log</h3>
+              <span class="memory-section-hint">Consolidated findings from autonomous background ticks</span>
+            </div>
+            <textarea id="bgFindingsInput" class="memory-textarea memory-textarea-tall" rows="8" placeholder="No background research yet...">${escapeHtml(memory.bgFindings || '')}</textarea>
+            <div class="memory-save-row">
+              <button class="btn-primary btn-sm" onclick="saveBgFindings('${agentId}')">Save</button>
+              <button class="btn-danger btn-sm" onclick="clearBgFindings('${agentId}')">Clear</button>
+            </div>
+          </div>
+
+          <!-- Background Tick History -->
+          ${bgTickHistory.length > 0 ? `
+          <div class="memory-section">
+            <h3>Recent Background Ticks</h3>
+            <div class="conversations-list">
+              ${bgTickHistory.map(tick => `
+                <div class="conversation-item">
+                  <div class="conversation-time">${new Date(tick.timestamp).toLocaleString()}${tick.idle ? ' <span style="color:#555;font-size:0.75rem">[idle]</span>' : ''}</div>
+                  <div class="conversation-user"><strong>${escapeHtml(tick.title || '')}</strong></div>
+                  ${tick.summary ? `<div class="conversation-agent">${escapeHtml(tick.summary)}</div>` : ''}
+                  ${tick.nextFocus ? `<div class="conversation-tokens">Next: ${escapeHtml(tick.nextFocus)}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
 
           <!-- Recent Conversations -->
           <div class="memory-section">
@@ -883,6 +937,10 @@ async function loadPermissionsTab(agentId) {
         <div class="perm-section">
           <h3>bih Bot — Chat Mode</h3>
           <p class="mcp-description">Controls how this agent behaves in bih chat. In <strong>agent</strong> mode, enabled Chat MCP Tools above become active for @-mentions.</p>
+          <div style="margin-bottom:1rem;padding:0.5rem 0.75rem;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;display:flex;align-items:center;justify-content:space-between;gap:1rem">
+            <span style="color:#888;font-size:0.82rem">Active as <strong style="color:#ccc">@${agent.bihBot.trigger}</strong> · "${escapeHtml(agent.bihBot.displayName || '')}"</span>
+            <button class="btn-danger btn-xs" onclick="disableBihBot('${agentId}')">Remove from bih</button>
+          </div>
           <div class="chat-mode-options">
             <label class="chat-mode-option">
               <input type="radio" name="chatMode" value="passive" ${(agent.bihBot?.chatMode || 'passive') === 'passive' ? 'checked' : ''}>
@@ -915,8 +973,19 @@ async function loadPermissionsTab(agentId) {
         </div>
         ` : `
         <div class="perm-section">
-          <h3>bih Bot — Chat Mode &amp; Allowed Roles</h3>
-          <p class="mcp-description" style="color:#555">Enable this agent as a bih bot first (via the Tuning tab) to configure chat mode and role restrictions.</p>
+          <h3>bih Bot</h3>
+          <p class="mcp-description" style="color:#777;margin-bottom:1rem">Deploy this agent into bih group chat. Set a trigger word and display name to activate it.</p>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.75rem">
+            <div style="flex:1;min-width:140px">
+              <label style="color:#888;font-size:0.82rem;display:block;margin-bottom:0.3rem">Trigger word <span style="color:#555">(users type @trigger)</span></label>
+              <input type="text" id="bihEnableTrigger" class="form-control" placeholder="nova, pepe, etc." style="font-size:0.85rem">
+            </div>
+            <div style="flex:1;min-width:140px">
+              <label style="color:#888;font-size:0.82rem;display:block;margin-bottom:0.3rem">Display name</label>
+              <input type="text" id="bihEnableDisplayName" class="form-control" placeholder="Name shown in chat" style="font-size:0.85rem">
+            </div>
+          </div>
+          <button class="btn-primary btn-sm" onclick="enableBihBot('${agentId}')">Enable bih Bot</button>
         </div>
         `}
 
@@ -1247,6 +1316,43 @@ async function saveAllowedRoles(agentId) {
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
     showNotification('Allowed roles saved', 'success');
+  } catch (err) {
+    showNotification('Failed: ' + err.message, 'error');
+  }
+}
+
+async function enableBihBot(agentId) {
+  const trigger = document.getElementById('bihEnableTrigger')?.value?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const displayName = document.getElementById('bihEnableDisplayName')?.value?.trim();
+  if (!trigger) return showNotification('Enter a trigger word', 'error');
+  if (!displayName) return showNotification('Enter a display name', 'error');
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/bih-bot`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true, trigger, displayName })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showNotification(`bih bot enabled as @${trigger}`, 'success');
+    loadPermissionsTab(agentId);
+  } catch (err) {
+    showNotification('Failed: ' + err.message, 'error');
+  }
+}
+
+async function disableBihBot(agentId) {
+  if (!confirm('Remove this agent from bih chat? All bih config (trigger, display name, chat mode, roles) will be reset.')) return;
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/bih-bot`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showNotification('Removed from bih chat — config reset', 'success');
+    loadPermissionsTab(agentId);
   } catch (err) {
     showNotification('Failed: ' + err.message, 'error');
   }
@@ -1583,6 +1689,75 @@ async function saveLongTermMemory(agentId) {
     showNotification('Long-term memory saved', 'success');
   } catch (err) {
     showNotification('Failed to save notes: ' + err.message, 'error');
+  }
+}
+
+async function saveBgFindings(agentId) {
+  const text = document.getElementById('bgFindingsInput')?.value || '';
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/memory/bg-findings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bgFindings: text })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showNotification('Background findings saved', 'success');
+  } catch (err) {
+    showNotification('Failed: ' + err.message, 'error');
+  }
+}
+
+async function clearBgFindings(agentId) {
+  if (!confirm('Clear background research log? This cannot be undone.')) return;
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/memory/bg-findings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bgFindings: '' })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    document.getElementById('bgFindingsInput').value = '';
+    showNotification('Background research log cleared', 'success');
+  } catch (err) {
+    showNotification('Failed: ' + err.message, 'error');
+  }
+}
+
+async function loadContextPreview(agentId) {
+  const body = document.getElementById('contextPreviewBody');
+  if (!body) return;
+  body.innerHTML = '<span style="color:#555">Loading…</span>';
+  try {
+    const res = await fetch(`/agents/api/agents/${agentId}/context-preview`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    const sourceColor = { 'config.systemPrompt': '#00aaff', 'runtime': '#888', 'memory.threadSummary': '#ffaa00', 'memory.longTermMemory': '#ff88cc', 'memory.bgFindings': '#00ff88', 'memory.knowledgeBase': '#cc88ff', 'memory.conversations': '#aaa' };
+
+    body.innerHTML = `
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.75rem;flex-wrap:wrap">
+        <span style="color:#888;font-size:0.8rem">${data.layers.length} layers · ${data.totalChars.toLocaleString()} chars total</span>
+        <button class="btn-secondary btn-xs" onclick="loadContextPreview('${agentId}')">Refresh</button>
+      </div>
+      ${data.layers.map((layer) => {
+        const color = sourceColor[layer.source] || '#888';
+        return `
+          <div style="margin-bottom:0.75rem;border:1px solid rgba(255,255,255,0.07);border-radius:6px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.65rem;background:rgba(255,255,255,0.04);cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+              <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block"></span>
+              <span style="font-weight:600;font-size:0.82rem;color:#ccc;flex:1">${escapeHtml(layer.label)}</span>
+              <span style="color:#555;font-size:0.75rem">${layer.chars.toLocaleString()} chars</span>
+              <span style="color:#444;font-size:0.7rem;font-family:monospace">${escapeHtml(layer.source)}</span>
+            </div>
+            <div style="display:none;padding:0.65rem;background:#0a0a0a;white-space:pre-wrap;font-family:monospace;font-size:0.78rem;color:#aaa;line-height:1.5;max-height:300px;overflow-y:auto">${escapeHtml(layer.content)}</div>
+          </div>
+        `;
+      }).join('')}
+    `;
+  } catch (err) {
+    body.innerHTML = `<span style="color:#ff4444">Error: ${escapeHtml(err.message)}</span>`;
   }
 }
 
