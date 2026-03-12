@@ -688,10 +688,15 @@ export async function executeMcpTool(toolName, args, agentId = null) {
             if (!args.agentId || !args.message) throw new Error('agentId and message are required');
             const target = await Agent.findById(args.agentId, 'name').lean();
             if (!target) throw new Error(`Agent ${args.agentId} not found`);
+            let callerName = 'Agent';
+            if (agentId) {
+                const caller = await Agent.findById(agentId, 'name').lean();
+                if (caller) callerName = caller.name;
+            }
             const resp = await axios.post(`http://localhost:3000/agents/api/agents/${args.agentId}/chat-internal`, {
                 secret: process.env.BOT_ALERT_SECRET || 'bih-internal',
                 message: args.message,
-                fromAgentName: 'Agent (MCP)'
+                fromAgentName: callerName
             }, { timeout: 120000 });
             if (!resp.data.success) throw new Error(resp.data.error || 'chat-internal failed');
             return { agentName: target.name, response: resp.data.response };

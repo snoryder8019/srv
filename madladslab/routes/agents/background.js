@@ -7,6 +7,12 @@ import AgentAction from "../../api/v1/models/AgentAction.js";
 import { emitActionNew, emitBackgroundStatus, emitAgentPush } from "../../plugins/socket/agents.js";
 import { MCP_TOOL_DEFINITIONS, executeMcpTool } from "./mcp.js";
 import { isAdmin } from "./middleware.js";
+import { buildTaskDoc, insertTasksCapped } from "./task-helpers.js";
+
+const mkOllamaHeaders = (apiKey) => ({
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json'
+});
 
 // ==================== BACKGROUND PROCESS MANAGER ====================
 
@@ -49,16 +55,9 @@ async function runBackgroundTick(io, agentId, proc) {
                     .find({ agentId, active: true, nextRun: { $lte: new Date() } })
                     .toArray();
                 for (const cron of dueCrons) {
-                    await db.collection('agent_tasks').insertOne({
-                        agentId,
-                        title: cron.title,
-                        description: cron.content,
-                        priority: 'medium',
-                        priorityScore: 2,
-                        status: 'pending',
-                        source: 'cron',
-                        createdAt: new Date()
-                    });
+                    await db.collection('agent_tasks').insertOne(
+                        buildTaskDoc(agentId, { title: cron.title, description: cron.content, priority: 'medium' }, 'cron')
+                    );
                     await db.collection('agent_crons').updateOne(
                         { _id: cron._id },
                         { $set: { nextRun: new Date(Date.now() + cron.intervalMinutes * 60000), lastRun: new Date() } }
@@ -76,11 +75,15 @@ async function runBackgroundTick(io, agentId, proc) {
             : [];
 
         let bgRoster = '';
+        let allAgents = [];
         try {
-            const allAgents = await Agent.find({}, 'name role status').lean();
+            allAgents = await Agent.find({}, 'name role status tier').lean();
+            const isApex = agent.tier === 'apex';
             bgRoster = allAgents
                 .filter(a => a._id.toString() !== agentId)
-                .map(a => `  - ${a.name} [${a.role}] (${a.status})`)
+                .map(a => isApex
+                    ? `  - ${a._id} | ${a.name} [${a.role}] (${a.status})`
+                    : `  - ${a.name} [${a.role}] (${a.status})`)
                 .join('\n');
         } catch (_) {}
 
@@ -134,12 +137,19 @@ async function runBackgroundTick(io, agentId, proc) {
             // Hard redirect — break the obsession loop
             bgDirective = `${reasoningCtx}\n\nOBSESSION BREAK MODE: You have explored "${obsessionTopic}" too many times. You MUST explore a completely different area this tick. Do NOT mention "${obsessionTopic}".\nOutput JSON — newTasks encouraged:\n{"title":"<completely new topic>","content":"<finding>","pushToChat":false,"newTasks":[{"title":"...","description":"...","priority":"medium"}],"nextFocus":"<new direction unrelated to ${obsessionTopic}>","productivityNote":"breaking repetition loop"}`;
         } else if (bgPrompt) {
-            bgDirective = (reasoningCtx ? `${reasoningCtx}\n\n` : '') + bgPrompt;
+            let directive = (reasoningCtx ? `${reasoningCtx}\n\n` : '') + bgPrompt;
+            if (pendingTasks.length > 0) {
+                const taskList = pendingTasks.map((t, i) =>
+                    `${i + 1}. [${(t.priority || 'medium').toUpperCase()}] ${t.title}${t.description ? ': ' + t.description : ''} (id: ${t._id})`
+                ).join('\n');
+                directive += `\n\nYou also have ${pendingTasks.length} pending task(s) — address at least one this tick:\n${taskList}\nOutput JSON with "completedTaskIds":["<id>"] for any tasks you finish.`;
+            }
+            bgDirective = directive;
         } else if (pendingTasks.length > 0) {
             const taskList = pendingTasks.map((t, i) =>
                 `${i + 1}. [${(t.priority || 'medium').toUpperCase()}] ${t.title}${t.description ? ': ' + t.description : ''} (id: ${t._id})`
             ).join('\n');
-            bgDirective = `${reasoningCtx ? reasoningCtx + '\n\n' : ''}You have ${pendingTasks.length} pending task(s):\n${taskList}\n\n${toolDefs.length > 0 ? 'Use your tools to complete the task.' : ''}\nWork on the highest priority task. Output JSON:\n{"title":"Task: <what you did>","content":"<detailed result>","pushToChat":true|false,"completedTaskIds":["<id>"],"newTasks":[{"title":"...","description":"...","priority":"high|medium|low"}],"nextFocus":"<next concrete step>","productivityNote":"<one sentence: what worked or why you changed approach>"}\nOnly include completedTaskIds if you actually finished a task.`;
+            bgDirective = `${reasoningCtx ? reasoningCtx + '\n\n' : ''}You have ${pendingTasks.length} pending task(s):\n${taskList}\n\n${toolDefs.length > 0 ? 'Use your tools to complete the task.' : ''}\nWork on the highest priority task.\n\nIMPORTANT: If a task requires human input, a real-world decision, or an action you cannot perform autonomously (e.g. writing code, making a purchase, contacting someone), set "question":true and ask the human directly in "content". Do NOT pretend to complete it. The task will be paused until they reply in chat.\n\nOutput JSON:\n{"title":"Task: <what you did or asked>","content":"<detailed result, OR your question to the human>","pushToChat":true,"question":true|false,"completedTaskIds":["<id>"],"newTasks":[{"title":"...","description":"...","priority":"high|medium|low"}],"nextFocus":"<next concrete step>","productivityNote":"<one sentence>"}\nOnly include completedTaskIds if you actually finished a task. If question:true, do NOT include completedTaskIds.`;
         } else if (stuck) {
             // Task invention mode — all memory context already injected as system messages above
             bgDirective = `${reasoningCtx}\n\nTASK INVENTION MODE: You have been idle. Review your Background Research Log and Chat Memory (injected above) — find gaps. Invent 2+ tasks you have NOT yet done.\n${toolDefs.length > 0 ? 'Use a tool to verify something before inventing tasks.' : ''}\nOutput JSON — newTasks REQUIRED with 2+ items:\n{"title":"Task Invention: <topic>","content":"<rationale>","pushToChat":false,"newTasks":[{"title":"...","description":"...","priority":"high|medium"},{"title":"...","description":"...","priority":"medium"}],"nextFocus":"<first task you will execute next tick>","productivityNote":"<what you will change>"}`;
@@ -197,7 +207,7 @@ async function runBackgroundTick(io, agentId, proc) {
             } catch (_) {}
         }
 
-        const ollamaHeaders = { 'Authorization': `Bearer ${ollamaApiKey}`, 'Content-Type': 'application/json' };
+        const ollamaHeaders = mkOllamaHeaders(ollamaApiKey);
         const OLLAMA_TIMEOUT = 120000; // 2 min — background ticks are non-urgent
 
         let res = await axios.post(`${ollamaBaseUrl}/v1/chat/completions`, reqBody,
@@ -228,9 +238,47 @@ async function runBackgroundTick(io, agentId, proc) {
 
         if (content && content !== 'null' && !content.toLowerCase().startsWith('null')) {
             let parsed;
-            try { parsed = JSON.parse(content); } catch { parsed = { title: 'Background insight', content }; }
+            try { parsed = JSON.parse(content); } catch {
+                // Model sometimes outputs prose/preamble before the JSON — try to extract it
+                let extracted = null;
+                const codeBlock = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+                if (codeBlock) { try { extracted = JSON.parse(codeBlock[1].trim()); } catch {} }
+                if (!extracted) {
+                    const jsonMatch = content.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) { try { extracted = JSON.parse(jsonMatch[0]); } catch {} }
+                }
+                parsed = extracted || { title: 'Background insight', content };
+            }
 
             const isIdle = parsed.title === 'idle';
+
+            // ── Question mode: agent needs human input ─────────────────
+            if (parsed.question === true && pendingTasks.length > 0) {
+                const questionTask = pendingTasks[0]; // highest priority task that triggered the question
+                try {
+                    const db = mongoose.connection.db;
+                    if (db) {
+                        await db.collection('agent_tasks').updateOne(
+                            { _id: questionTask._id },
+                            { $set: { status: 'needs_human', questionAsked: parsed.content, askedAt: new Date() } }
+                        );
+                    }
+                    // Inject into conversation history so the chat route picks it up as context
+                    await Agent.findByIdAndUpdate(agentId, {
+                        $push: {
+                            'memory.conversations': {
+                                userMessage: `[Task] ${questionTask.title}`,
+                                agentResponse: parsed.content,
+                                tokenCount: 0,
+                                timestamp: new Date()
+                            }
+                        }
+                    });
+                } catch (e) {
+                    console.error(`[BG ${agentId}] needs_human update failed:`, e.message);
+                }
+            }
+
             const action = new AgentAction({
                 agentId,
                 type: 'background',
@@ -330,7 +378,7 @@ Output JSON ONLY:
         ],
         temperature: 0.3,
         stream: false
-    }, { headers: { 'Authorization': `Bearer ${process.env.OLLAMA_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 90000 });
+    }, { headers: mkOllamaHeaders(process.env.OLLAMA_API_KEY), timeout: 90000 });
 
     const raw = res.data.choices?.[0]?.message?.content?.trim() || '';
     let parsed;
@@ -348,23 +396,12 @@ Output JSON ONLY:
         console.log(`[BG ${agentId}] bgFindings consolidated (${agent.memory.bgFindings.length} → ${newFindings.length} chars)`);
     }
 
-    // Seed gap tasks
+    // Seed gap tasks — only if under the per-agent cap
     if (Array.isArray(parsed.newTasks) && parsed.newTasks.length > 0) {
         const db = mongoose.connection.db;
         if (!db) return;
-        const PRIORITY_SCORE = { high: 3, medium: 2, low: 1 };
-        const docs = parsed.newTasks.filter(t => t?.title).map(t => ({
-            agentId,
-            title: String(t.title).substring(0, 200),
-            description: String(t.description || '').substring(0, 500),
-            priority: ['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium',
-            priorityScore: PRIORITY_SCORE[t.priority] || 2,
-            status: 'pending',
-            source: 'consolidation',
-            createdAt: new Date()
-        }));
-        if (docs.length > 0) await db.collection('agent_tasks').insertMany(docs);
-        console.log(`[BG ${agentId}] Consolidation seeded ${docs.length} gap task(s)`);
+        const n = await insertTasksCapped(db.collection('agent_tasks'), agentId, parsed.newTasks, 'consolidation');
+        if (n > 0) console.log(`[BG ${agentId}] Consolidation seeded ${n} gap task(s)`);
     }
 }
 
@@ -385,23 +422,9 @@ async function processTaskOperations(agentId, parsed) {
         }
     }
 
-    // Create new tasks
+    // Create new tasks — only if under the per-agent cap
     if (Array.isArray(parsed.newTasks) && parsed.newTasks.length > 0) {
-        const PRIORITY_SCORE = { high: 3, medium: 2, low: 1 };
-        const docs = parsed.newTasks
-            .filter(t => t?.title)
-            .slice(0, 5) // cap per tick
-            .map(t => ({
-                agentId,
-                title: String(t.title).substring(0, 200),
-                description: String(t.description || '').substring(0, 500),
-                priority: ['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium',
-                priorityScore: PRIORITY_SCORE[t.priority] || 2,
-                status: 'pending',
-                source: 'self',
-                createdAt: new Date()
-            }));
-        if (docs.length > 0) await col.insertMany(docs);
+        await insertTasksCapped(col, agentId, parsed.newTasks.slice(0, 5), 'self');
     }
 }
 
@@ -462,7 +485,7 @@ async function extractBgKnowledge(agentId) {
             ],
             temperature: 0.2,
             stream: false
-        }, { headers: { 'Authorization': `Bearer ${ollamaApiKey}`, 'Content-Type': 'application/json' } });
+        }, { headers: mkOllamaHeaders(ollamaApiKey) });
         const distilled = res.data.choices?.[0]?.message?.content || '';
         if (distilled && distilled.length > 20) {
             await Agent.findByIdAndUpdate(agentId, {
@@ -530,10 +553,7 @@ Output JSON only:
                 ],
                 temperature: supportAgent.config.temperature ?? 0.3,
                 stream: false
-            }, {
-                headers: { 'Authorization': `Bearer ${ollamaApiKey}`, 'Content-Type': 'application/json' },
-                timeout: 120000
-            });
+            }, { headers: mkOllamaHeaders(ollamaApiKey), timeout: 120000 });
 
             const raw = res.data.choices?.[0]?.message?.content?.trim() || '';
             const jsonMatch = raw.match(/\{[\s\S]*\}/);

@@ -15,22 +15,43 @@ const TYPE_COLORS = { tldr: '#00aaff', task_list: '#ffaa00', finding: '#00ff88',
 const agentMap = {};
 DIGEST_AGENTS.forEach(a => { agentMap[a._id] = a; });
 
+// Replace any known agent ObjectIDs in a string with their names
+const OBJ_ID_RE = /\b([0-9a-f]{24})\b/g;
+function resolveAgentIds(str) {
+  if (!str) return str;
+  return str.replace(OBJ_ID_RE, (id) => agentMap[id]?.name || id);
+}
+
+// ── Shared helpers ─────────────────────────────────────────
+function agentOptions(selectedId = null) {
+  return DIGEST_AGENTS.map(a =>
+    `<option value="${a._id}"${a._id === selectedId ? ' selected' : ''}>${escHtml(a.name)}</option>`
+  ).join('');
+}
+
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error);
+  return data;
+}
+
 // ── Init ───────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   refreshDigest();
+  refreshScorecard();
   renderTaskQueue();
-  refreshBgControls();
+  renderApprovalQueue();
+  seedBgState(); // seed bgState from running processes before scorecard renders
   initSockets();
   initCardMenu();
+  setInterval(refreshScorecard, 60000); // auto-refresh scorecard every 60s
+  setInterval(renderApprovalQueue, 30000); // poll approval queue every 30s
 });
 
 async function refreshDigest() {
   try {
-    const limit = 200;
-    const url = `/agents/api/actions?limit=${limit}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
+    const data = await apiFetch('/agents/api/actions?limit=200');
     allActions = data.actions;
     renderFeed();
     renderStats();
@@ -77,7 +98,7 @@ function renderActionCard(action, pinned = false) {
     const isLong = (action.content || '').length > 400;
     const id = `dc-${action._id}`;
     body = `
-      <div class="digest-card-body markdown-body${isLong ? ' action-content-collapsed' : ''}" id="${id}">${renderMd(action.content)}</div>
+      <div class="digest-card-body markdown-body${isLong ? ' action-content-collapsed' : ''}" id="${id}">${renderMd(resolveAgentIds(action.content))}</div>
       ${isLong ? `<button class="action-expand-btn" onclick="toggleExpand('${id}', this)">Show more</button>` : ''}
     `;
   }
@@ -94,7 +115,7 @@ function renderActionCard(action, pinned = false) {
       <div class="digest-card-header">
         <span class="digest-agent-badge" style="border-color:${tierColor}44;color:${tierColor}">${escHtml(agentName)}</span>
         <span class="action-type-badge" style="color:${typeColor};border-color:${typeColor}33;background:${typeColor}11">${action.type.replace('_',' ')}</span>
-        <span class="digest-card-title">${escHtml(action.title)}</span>
+        <span class="digest-card-title">${escHtml(resolveAgentIds(action.title))}</span>
         <span class="digest-card-time">${timeStr}</span>
         ${pinned ? `<button class="btn-icon btn-unpin" onclick="togglePin('${action._id}')" title="Unpin">📌</button>` : ''}
         <button class="btn-icon action-del" onclick="deleteDigestAction('${agentId}','${action._id}')" title="Delete">×</button>
@@ -134,6 +155,86 @@ function renderStats() {
   `;
 }
 
+// ── Productivity Scorecard ─────────────────────────────────
+async function refreshScorecard() {
+  const panel = document.getElementById('scorecardPanel');
+  if (!panel) return;
+  try {
+    const data = await apiFetch('/agents/api/tasks/scorecard');
+    renderScorecard(data.scorecard, data.totals);
+  } catch (err) {
+    panel.innerHTML = `<h3>Productivity</h3><p style="color:#ff4444;font-size:0.75rem">${err.message}</p>`;
+  }
+}
+
+function renderScorecard(scorecard, totals) {
+  const panel = document.getElementById('scorecardPanel');
+  if (!panel) return;
+
+  const totalAll = totals.complete + totals.pending + totals.needs_human;
+  const orgRate = totalAll > 0 ? Math.round((totals.complete / totalAll) * 100) : 0;
+  const orgColor = orgRate >= 60 ? '#00ff88' : orgRate >= 30 ? '#ffaa00' : '#ff4444';
+
+  const rows = scorecard.map(a => {
+    const total = a.complete + a.pending + a.needs_human;
+    const rate = a.completionRate;
+    const barColor = rate === null ? '#333' : rate >= 60 ? '#00ff88' : rate >= 30 ? '#ffaa00' : '#ff4444';
+    const barPct = rate ?? 0;
+    const nhBadge = a.needs_human > 0
+      ? `<span title="${a.needs_human} waiting for you" style="color:#ffaa00;font-size:0.65rem;margin-left:0.3rem">⚠ ${a.needs_human}</span>`
+      : '';
+    const last24 = a.completedLast24h > 0
+      ? `<span style="color:#00ff88;font-size:0.65rem" title="Completed in last 24h">+${a.completedLast24h}</span>`
+      : `<span style="color:#555;font-size:0.65rem">+0</span>`;
+    const prodScore = a.productivityScore !== null
+      ? `<span style="color:#555;font-size:0.65rem" title="BG productivity score">${a.productivityScore}%</span>`
+      : '';
+    const st = bgState[a.agentId] || {};
+    const isRunning = st.running ?? a.backgroundRunning;
+    const ticks = st.runCount ?? 0;
+    const bgDot = isRunning
+      ? `<span id="sc-dot-${a.agentId}" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#00ff88;margin-left:0.3rem;vertical-align:middle" title="Background running"></span>`
+      : `<span id="sc-dot-${a.agentId}" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#333;margin-left:0.3rem;vertical-align:middle" title="Background stopped"></span>`;
+    const noTasksYet = total === 0;
+    const toggleLabel = isRunning ? '■' : '▶';
+    const toggleClass = isRunning ? 'btn-danger' : 'btn-secondary';
+    return `
+      <div class="scorecard-row">
+        <div class="scorecard-name-row">
+          <span onclick="filterByAgent('${a.agentId}')" style="cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Filter by ${escHtml(a.name)}">${escHtml(a.name)}${bgDot}${nhBadge}</span>
+          <span id="sc-ticks-${a.agentId}" style="color:#555;font-size:0.62rem;min-width:24px;text-align:right">${ticks > 0 ? ticks + 't' : ''}</span>
+          <button class="btn-xs btn-secondary" onclick="openContextModal('${a.agentId}')" title="Context debug" style="padding:0 0.3rem;flex-shrink:0">⬡</button>
+          <button class="btn-xs ${toggleClass}" id="sc-btn-${a.agentId}" onclick="toggleBg('${a.agentId}', ${!isRunning})" style="flex-shrink:0">${toggleLabel}</button>
+        </div>
+        <div class="scorecard-bar-wrap">
+          <div class="scorecard-bar" style="width:${barPct}%;background:${barColor}"></div>
+        </div>
+        <div class="scorecard-meta">
+          <span style="color:${noTasksYet ? '#444' : barColor};font-weight:600;font-size:0.72rem">${noTasksYet ? 'new' : rate !== null ? rate + '%' : '–'}</span>
+          <span style="color:#444;font-size:0.65rem">${a.complete}/${total}</span>
+          ${last24}
+          ${prodScore}
+        </div>
+      </div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
+      <h3 style="margin:0">Productivity</h3>
+      <button class="btn-xs btn-secondary" onclick="refreshScorecard()" title="Refresh">↻</button>
+    </div>
+    <div class="scorecard-org-summary">
+      <span style="color:#888;font-size:0.72rem">Org completion rate</span>
+      <span style="color:${orgColor};font-weight:700;font-size:1rem">${orgRate}%</span>
+      <span style="color:#555;font-size:0.65rem">${totals.complete}/${totalAll} tasks · +${totals.completedLast24h} today</span>
+    </div>
+    <div class="scorecard-needs-human-banner${totals.needs_human > 0 ? '' : ' hidden'}">
+      ⚠ ${totals.needs_human} task${totals.needs_human !== 1 ? 's' : ''} waiting for your reply
+    </div>
+    <div class="scorecard-rows">${rows}</div>
+  `;
+}
+
 // ── Task queue ─────────────────────────────────────────────
 async function renderTaskQueue() {
   const panel = document.getElementById('taskQueue');
@@ -142,14 +243,12 @@ async function renderTaskQueue() {
     // Fetch tasks for all agents or a specific one
     let tasks = [];
     if (agentId) {
-      const res = await fetch(`/agents/api/agents/${agentId}/tasks?status=pending`);
-      const data = await res.json();
+      const data = await apiFetch(`/agents/api/agents/${agentId}/tasks?status=pending`);
       tasks = (data.tasks || []).map(t => ({ ...t, agentName: agentMap[agentId]?.name || '' }));
     } else {
       // Fetch for all agents in parallel
       const results = await Promise.all(DIGEST_AGENTS.map(a =>
-        fetch(`/agents/api/agents/${a._id}/tasks?status=pending`)
-          .then(r => r.json())
+        apiFetch(`/agents/api/agents/${a._id}/tasks?status=pending`)
           .then(d => (d.tasks || []).map(t => ({ ...t, agentName: a.name, agentId: a._id })))
           .catch(() => [])
       ));
@@ -185,11 +284,148 @@ async function renderTaskQueue() {
 
 async function cancelTask(agentId, taskId) {
   try {
-    await fetch(`/agents/api/agents/${agentId}/tasks/${taskId}`, { method: 'DELETE' });
+    await apiFetch(`/agents/api/agents/${agentId}/tasks/${taskId}`, { method: 'DELETE' });
     renderTaskQueue();
   } catch (_) {}
 }
 
+// ── Approval Queue ──────────────────────────────────────────
+let _replyTask = null;
+const _approvalTaskMap = {}; // taskId -> task object
+
+async function renderApprovalQueue() {
+  const panel = document.getElementById('approvalQueue');
+  const badge = document.getElementById('approvalQueueBadge');
+  if (!panel) return;
+  try {
+    const data = await apiFetch('/agents/api/tasks/approval-queue');
+    const tasks = data.tasks || [];
+
+    // Populate task map for safe lookup by ID
+    tasks.forEach(t => { _approvalTaskMap[String(t._id)] = t; });
+
+    if (badge) {
+      badge.textContent = tasks.length;
+      badge.style.display = tasks.length > 0 ? 'inline-flex' : 'none';
+    }
+
+    if (!tasks.length) {
+      panel.innerHTML = '<p class="empty-state" style="font-size:0.72rem;padding:0.5rem 0;color:#555">No pending approvals</p>';
+      return;
+    }
+
+    panel.innerHTML = tasks.map(t => {
+      const id = String(t._id);
+      const agentId = String(t.agentId);
+      const q = t.questionAsked || '';
+      return `
+        <div class="approval-item" onclick="openReplyModal('${id}')">
+          <div class="approval-item-header">
+            <span class="approval-agent-tag">${escHtml(t.agentName)}</span>
+            <span class="approval-item-time">${relTime(t.askedAt || t.createdAt)}</span>
+          </div>
+          <div class="approval-item-title">${escHtml(t.title)}</div>
+          ${q ? `<div class="approval-item-question">${escHtml(q.substring(0, 120))}${q.length > 120 ? '…' : ''}</div>` : ''}
+          <div class="approval-quick-row">
+            <button class="approval-thumb approval-thumb-up" onclick="event.stopPropagation();quickApprove('${agentId}','${id}','approve')" title="Approve">👍</button>
+            <button class="approval-thumb approval-thumb-down" onclick="event.stopPropagation();quickApprove('${agentId}','${id}','reject')" title="Reject">👎</button>
+            <button class="approval-open-btn" onclick="event.stopPropagation();openReplyModal('${id}')">Reply ›</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    if (panel) panel.innerHTML = `<p class="empty-state" style="color:#ff4444;font-size:0.72rem">${err.message}</p>`;
+  }
+}
+
+async function quickApprove(agentId, taskId, action) {
+  const msg = action === 'approve' ? 'Yes, approved. Go ahead.' : 'No, do not proceed with this.';
+  try {
+    await apiFetch(`/agents/api/agents/${agentId}/tasks/${taskId}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+    showToast(action === 'approve' ? 'Approved ✓' : 'Rejected ✓', 'success');
+    delete _approvalTaskMap[taskId];
+    renderApprovalQueue();
+    refreshScorecard();
+  } catch (err) {
+    showToast('Failed: ' + err.message, 'error');
+  }
+}
+
+function openReplyModal(taskId) {
+  const task = _approvalTaskMap[taskId];
+  if (!task) return;
+  _replyTask = task;
+  document.getElementById('replyModalTitle').textContent = 'Reply to Agent';
+  document.getElementById('replyAgentLabel').textContent = task.agentName || 'Agent';
+  document.getElementById('replyQuestionBox').textContent = task.questionAsked || task.title || '';
+  document.getElementById('replyTextarea').value = '';
+  document.getElementById('replyAddContext').checked = false;
+  document.getElementById('approvalReplyModal').classList.add('active');
+}
+
+function closeReplyModal() {
+  document.getElementById('approvalReplyModal').classList.remove('active');
+  _replyTask = null;
+}
+
+async function submitQuickReply(action) {
+  if (!_replyTask) return;
+  const msg = action === 'approve' ? 'Yes, approved. Go ahead.' : 'No, do not proceed with this.';
+  await _sendReply(msg, false);
+}
+
+async function submitCustomReply() {
+  if (!_replyTask) return;
+  const msg = document.getElementById('replyTextarea').value.trim();
+  if (!msg) return showToast('Enter a reply first', 'error');
+  const addCtx = document.getElementById('replyAddContext').checked;
+  await _sendReply(msg, addCtx);
+}
+
+async function _sendReply(msg, addToContext) {
+  if (!_replyTask) return;
+  const agentId = String(_replyTask.agentId);
+  const taskId = String(_replyTask._id);
+  try {
+    await apiFetch(`/agents/api/agents/${agentId}/tasks/${taskId}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+    if (addToContext) {
+      // Promote the task question + reply into KB as context
+      await apiFetch(`/agents/api/agents/${agentId}/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `Approval: ${_replyTask.title}`,
+          content: `Question: ${_replyTask.questionAsked || _replyTask.title}\n\nHuman reply: ${msg}`,
+          type: 'finding'
+        })
+      }).catch(() => {});
+    }
+    showToast('Reply sent', 'success');
+    delete _approvalTaskMap[taskId];
+    closeReplyModal();
+    renderApprovalQueue();
+    refreshScorecard();
+  } catch (err) {
+    showToast('Failed: ' + err.message, 'error');
+  }
+}
+
+function relTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - new Date(ts).getTime();
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+  return Math.floor(diff / 86400000) + 'd ago';
+}
 
 // ── Filters ────────────────────────────────────────────────
 function setAgentFilter(btn, agentId) {
@@ -218,13 +454,11 @@ function setTypeFilter(btn, type) {
 // ── Actions ────────────────────────────────────────────────
 async function promoteDigestToTask(agentId, actionId) {
   try {
-    const res = await fetch(`/agents/api/agents/${agentId}/actions/${actionId}/promote-task`, {
+    await apiFetch(`/agents/api/agents/${agentId}/actions/${actionId}/promote-task`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ priority: 'medium' })
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
     showToast('Task queued', 'success');
     renderTaskQueue();
   } catch (err) {
@@ -234,13 +468,11 @@ async function promoteDigestToTask(agentId, actionId) {
 
 async function promoteDigestAction(agentId, actionId, target) {
   try {
-    const res = await fetch(`/agents/api/agents/${agentId}/actions/${actionId}/promote`, {
+    await apiFetch(`/agents/api/agents/${agentId}/actions/${actionId}/promote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target })
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
     showToast(target === 'knowledge' ? '→ Added to KB' : '→ Added to Notes', 'success');
   } catch (err) {
     showToast('Failed: ' + err.message, 'error');
@@ -250,9 +482,7 @@ async function promoteDigestAction(agentId, actionId, target) {
 async function deleteDigestAction(agentId, actionId) {
   if (!confirm('Delete this action?')) return;
   try {
-    const res = await fetch(`/agents/api/agents/${agentId}/actions/${actionId}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
+    await apiFetch(`/agents/api/agents/${agentId}/actions/${actionId}`, { method: 'DELETE' });
     allActions = allActions.filter(a => a._id !== actionId);
     const card = document.querySelector(`.digest-card[data-id="${actionId}"]`);
     if (card) card.remove();
@@ -280,61 +510,27 @@ function toggleFontSize(id, btn) {
   btn.textContent = next === 0 ? 'A±' : next === 1 ? 'A+' : 'A++';
 }
 
-// ── Background controls ────────────────────────────────────
-async function refreshBgControls() {
+// ── Background state seeding (replaces old bg controls panel) ─
+async function seedBgState() {
   try {
-    const res = await fetch('/agents/api/background/status');
-    const data = await res.json();
-    if (!data.success) return;
-    // Seed bgState from running processes
+    const data = await apiFetch('/agents/api/background/status');
     data.processes.forEach(p => {
       bgState[p.agentId] = { running: true, runCount: p.runCount, lastRun: p.lastRun };
     });
-    renderBgControls();
-  } catch (_) {
-    renderBgControls();
-  }
+    refreshScorecard();
+  } catch (_) {}
 }
 
-function renderBgControls() {
-  const panel = document.getElementById('bgControls');
-  if (!DIGEST_AGENTS.length) {
-    panel.innerHTML = '<p class="empty-state" style="font-size:0.75rem;padding:0.5rem 0">No agents</p>';
-    return;
+function updateScoreboardRow(agentId) {
+  const st = bgState[agentId] || {};
+  const dot = document.getElementById(`sc-dot-${agentId}`);
+  if (dot) {
+    dot.style.background = st.running ? '#00ff88' : '#333';
+    dot.title = st.running ? 'Background running' : 'Background stopped';
   }
-  panel.innerHTML = DIGEST_AGENTS.map(a => {
-    const st = bgState[a._id] || { running: false, runCount: 0, lastRun: null };
-    const dotColor = st.running ? '#00ff88' : '#333';
-    const dotAnim = st.running ? '' : 'animation:none';
-    const ticks = st.running ? `<span class="bg-ctrl-ticks" id="bgticks-${a._id}">${st.runCount}</span>t` : '';
-    const score = st.productivityScore ?? '';
-    const scoreColor = score === '' ? '#444' : score >= 60 ? '#00ff88' : score >= 30 ? '#ffaa00' : '#ff4444';
-    const scoreStr = score !== '' ? `<span class="bg-ctrl-score" id="bgscore-${a._id}" style="color:${scoreColor}" title="Productivity score">${score}%</span>` : '';
-    return `
-      <div class="bg-ctrl-row" id="bgrow-${a._id}">
-        <span class="status-dot" style="background:${dotColor};${dotAnim};flex-shrink:0"></span>
-        <span class="bg-ctrl-name">${escHtml(a.name)}</span>
-        <span class="bg-ctrl-ticks-wrap">${ticks} ${scoreStr}</span>
-        <button class="btn-xs btn-secondary" onclick="openContextModal('${a._id}')" title="Context debug" style="padding:0 0.3rem">⬡</button>
-        ${st.running
-          ? `<button class="btn-xs btn-danger" onclick="toggleBg('${a._id}', false)">■</button>`
-          : `<button class="btn-xs btn-secondary" onclick="toggleBg('${a._id}', true)">▶</button>`
-        }
-      </div>`;
-  }).join('');
-}
-
-function updateBgRow(agentId) {
-  const row = document.getElementById(`bgrow-${agentId}`);
-  if (!row) return;
-  const st = bgState[agentId] || { running: false, runCount: 0 };
-  const dot = row.querySelector('.status-dot');
-  if (dot) { dot.style.background = st.running ? '#00ff88' : '#333'; dot.style.animation = st.running ? '' : 'none'; }
-  const ticksWrap = row.querySelector('.bg-ctrl-ticks-wrap');
-  if (ticksWrap) ticksWrap.innerHTML = st.running ? `<span class="bg-ctrl-ticks" id="bgticks-${agentId}">${st.runCount}</span> ticks` : '';
-  const btn = row.querySelector('button');
+  const btn = document.getElementById(`sc-btn-${agentId}`);
   if (btn) {
-    btn.className = st.running ? 'btn-xs btn-danger' : 'btn-xs btn-secondary';
+    btn.className = `btn-xs ${st.running ? 'btn-danger' : 'btn-secondary'}`;
     btn.textContent = st.running ? '■' : '▶';
     btn.onclick = () => toggleBg(agentId, !st.running);
   }
@@ -384,6 +580,7 @@ function initSockets() {
     fixMobileCards(feed);
     renderStats();
     showToast(`New: ${action.title}`, 'info');
+    renderApprovalQueue(); // refresh in case new task is needs_human
   });
 
   agentSocket.on('db:snapshot', (events) => {
@@ -398,12 +595,15 @@ function initSockets() {
   });
 
   agentSocket.on('background:started', ({ agentId }) => {
-    bgState[agentId] = { running: true, runCount: 0, lastRun: null };
-    updateBgRow(agentId);
+    if (!bgState[agentId]) bgState[agentId] = {};
+    bgState[agentId].running = true;
+    bgState[agentId].runCount = bgState[agentId].runCount || 0;
+    updateScoreboardRow(agentId);
   });
   agentSocket.on('background:stopped', ({ agentId }) => {
-    bgState[agentId] = { running: false, runCount: 0, lastRun: null };
-    updateBgRow(agentId);
+    if (!bgState[agentId]) bgState[agentId] = {};
+    bgState[agentId].running = false;
+    updateScoreboardRow(agentId);
   });
   agentSocket.on('background:tick', ({ agentId, runCount, lastRun, productivityScore, consecutiveIdle }) => {
     if (!bgState[agentId]) bgState[agentId] = { running: true };
@@ -411,15 +611,9 @@ function initSockets() {
     bgState[agentId].lastRun = lastRun;
     if (productivityScore !== undefined) bgState[agentId].productivityScore = productivityScore;
     if (consecutiveIdle !== undefined) bgState[agentId].consecutiveIdle = consecutiveIdle;
-    const tickEl = document.getElementById(`bgticks-${agentId}`);
+    // Update scorecard tick count live
+    const tickEl = document.getElementById(`sc-ticks-${agentId}`);
     if (tickEl) tickEl.textContent = runCount + 't';
-    const scoreEl = document.getElementById(`bgscore-${agentId}`);
-    if (scoreEl && productivityScore !== undefined) {
-      const color = productivityScore >= 60 ? '#00ff88' : productivityScore >= 30 ? '#ffaa00' : '#ff4444';
-      scoreEl.textContent = productivityScore + '%';
-      scoreEl.style.color = color;
-      scoreEl.title = consecutiveIdle > 0 ? `${consecutiveIdle} idle tick(s) — may invent tasks` : 'Productivity score';
-    }
   });
 }
 
@@ -461,9 +655,7 @@ async function loadContextDebug(agentId) {
   document.getElementById('ctxModalTitle').textContent = 'Context Debug — ' + (agentMap[agentId]?.name || agentId);
 
   try {
-    const res = await fetch(`/agents/api/agents/${agentId}/context-debug`);
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
+    const data = await apiFetch(`/agents/api/agents/${agentId}/context-debug`);
     body.innerHTML = renderContextDebug(data);
   } catch (err) {
     body.innerHTML = `<p style="color:#ff4444">Error: ${escHtml(err.message)}</p>`;
@@ -477,13 +669,11 @@ async function saveTickInterval(agentId) {
   if (!val || val < 1) { msg.textContent = 'Min 1 min'; msg.style.color = '#ff4444'; return; }
   msg.textContent = 'Saving…'; msg.style.color = '#555';
   try {
-    const res = await fetch(`/agents/api/agents/${agentId}/background/config`, {
+    const data = await apiFetch(`/agents/api/agents/${agentId}/background/config`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ backgroundInterval: val })
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
     msg.textContent = data.restarted ? `Saved & restarted (${val}m)` : `Saved (${val}m)`;
     msg.style.color = '#00ff88';
     setTimeout(() => { msg.textContent = ''; }, 3000);
@@ -680,7 +870,7 @@ function copyCardPrompt(action) {
 
 // ── Send to Agent ──────────────────────────────────────────
 function openSendToAgentModal(action) {
-  const opts = DIGEST_AGENTS.map(a => `<option value="${a._id}">${escHtml(a.name)}</option>`).join('');
+  const opts = agentOptions();
   const preview = (action.title + '\n\n' + action.content).substring(0, 300);
   openExportModal('Send to Agent', `
     <div class="export-modal-section">
@@ -711,12 +901,10 @@ async function submitSendToAgent() {
     ? `${prefix}\n\n---\n**${action.title}**\n${action.content}`
     : `**${action.title}**\n\n${action.content}`;
   try {
-    const res = await fetch(`/agents/api/agents/${agentId}/chat`, {
+    await apiFetch(`/agents/api/agents/${agentId}/chat`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message })
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
     closeExportModal();
     showToast('Sent to agent', 'success');
   } catch (err) { showToast('Send failed: ' + err.message, 'error'); }
@@ -749,7 +937,7 @@ function copyNewAgentPrompt() {
 // ── Create Action ──────────────────────────────────────────
 function openCreateActionModal(action) {
   const srcId = action.agentId?._id || action.agentId;
-  const opts = DIGEST_AGENTS.map(a => `<option value="${a._id}"${a._id === srcId ? ' selected' : ''}>${escHtml(a.name)}</option>`).join('');
+  const opts = agentOptions(srcId);
   openExportModal('Create Action', `
     <div class="export-modal-section">
       <div class="export-modal-label">Target agent</div>
@@ -780,12 +968,10 @@ async function submitCreateAction() {
   const action = _menuAction;
   if (!agentId || !action) return;
   try {
-    const res = await fetch(`/agents/api/agents/${agentId}/actions`, {
+    await apiFetch(`/agents/api/agents/${agentId}/actions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: action.title, content: action.content, type })
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
     closeExportModal();
     showToast('Action created', 'success');
   } catch (err) { showToast('Failed: ' + err.message, 'error'); }
@@ -794,7 +980,7 @@ async function submitCreateAction() {
 // ── Schedule Cron ──────────────────────────────────────────
 function openCronModal(action) {
   const srcId = action.agentId?._id || action.agentId;
-  const opts = DIGEST_AGENTS.map(a => `<option value="${a._id}"${a._id === srcId ? ' selected' : ''}>${escHtml(a.name)}</option>`).join('');
+  const opts = agentOptions(srcId);
   openExportModal('Schedule Cron', `
     <div class="export-modal-section">
       <div class="export-modal-label">Agent</div>
@@ -829,12 +1015,10 @@ async function submitCron() {
   const action = _menuAction;
   if (!agentId || !title || !action) return;
   try {
-    const res = await fetch(`/agents/api/agents/${agentId}/crons`, {
+    await apiFetch(`/agents/api/agents/${agentId}/crons`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, content: action.content, intervalMinutes: interval })
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
     closeExportModal();
     showToast(`Cron scheduled — repeats every ${interval}m`, 'success');
   } catch (err) { showToast('Failed: ' + err.message, 'error'); }

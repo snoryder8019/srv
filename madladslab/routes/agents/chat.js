@@ -1,5 +1,6 @@
 import express from "express";
 import axios from "axios";
+import mongoose from "mongoose";
 
 import Agent from "../../api/v1/models/Agent.js";
 import AgentAction from "../../api/v1/models/AgentAction.js";
@@ -79,6 +80,25 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
                     .join('\n\n');
                 messages.push({ role: 'system', content: `Knowledge Base (already loaded — do NOT query for this via mongo_find):\n${kb}` });
             }
+
+            // ── Inject needs_human tasks awaiting human reply ─────────
+            let needsHumanTaskIds = [];
+            try {
+                const db = mongoose.connection.db;
+                if (db) {
+                    const pendingQuestions = await db.collection('agent_tasks')
+                        .find({ agentId: agent._id.toString(), status: 'needs_human' })
+                        .sort({ askedAt: 1 })
+                        .toArray();
+                    if (pendingQuestions.length > 0) {
+                        needsHumanTaskIds = pendingQuestions.map(t => t._id);
+                        const qList = pendingQuestions.map(t =>
+                            `- [${t._id}] ${t.title}: ${t.questionAsked || t.description || '(no detail)'}`
+                        ).join('\n');
+                        messages.push({ role: 'system', content: `You have ${pendingQuestions.length} task(s) paused awaiting human input:\n${qList}\n\nIf the human's message addresses any of these, resolve them in your response. They will be marked complete automatically after you reply.` });
+                    }
+                }
+            } catch (_) {}
 
             const recentConvos = (agent.memory.conversations || []).slice(-10);
             for (const conv of recentConvos) {
@@ -233,6 +253,19 @@ router.post('/api/agents/:id/chat', isAdmin, async (req, res) => {
 
             await agent.updateStats(1, totalTokens);
             await agent.addConversation(message, finalResponse, totalTokens);
+
+            // Mark needs_human tasks as resolved now that the human has replied
+            if (needsHumanTaskIds.length > 0) {
+                try {
+                    const db = mongoose.connection.db;
+                    if (db) {
+                        await db.collection('agent_tasks').updateMany(
+                            { _id: { $in: needsHumanTaskIds } },
+                            { $set: { status: 'complete', completedAt: new Date(), completedBy: 'human_reply' } }
+                        );
+                    }
+                } catch (_) {}
+            }
 
             // Fire-and-forget: update thread summary, long-term memory, and KB in background.
             // Each uses findByIdAndUpdate on its own field to avoid concurrent save races.

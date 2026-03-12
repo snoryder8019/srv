@@ -77,9 +77,34 @@
         <!-- RIGHT: Stats + Org -->
         <div class="digest-sidebar-col">
 
+          <div class="digest-stat-panel" id="scorecardPanel">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+              <h3 style="margin:0">Productivity</h3>
+              <div style="display:flex;gap:0.3rem">
+                <button class="btn-xs btn-secondary" onclick="startAllBackground()" title="Start all stopped agents">▶ All</button>
+                <button class="btn-xs btn-secondary" onclick="refreshScorecard()" title="Refresh">↻</button>
+              </div>
+            </div>
+            <p class="loading">...</p>
+          </div>
+
           <div class="digest-stat-panel" id="statsPanel">
             <h3>Activity</h3>
             <p class="loading">...</p>
+          </div>
+
+          <!-- Approval Queue -->
+          <div class="digest-org-panel digest-approval-panel" id="approvalQueuePanel">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
+              <h3 style="margin:0;display:flex;align-items:center;gap:0.4rem">
+                Approval Queue
+                <span class="approval-queue-badge" id="approvalQueueBadge" style="display:none"></span>
+              </h3>
+              <button class="btn-xs btn-secondary" onclick="renderApprovalQueue()" title="Refresh">↻</button>
+            </div>
+            <div id="approvalQueue" class="approval-queue">
+              <p class="loading" style="font-size:0.72rem;color:#555">Loading...</p>
+            </div>
           </div>
 
           <div class="digest-org-panel digest-task-panel">
@@ -97,17 +122,7 @@
             </div>
           </div>
 
-          <div class="digest-org-panel digest-bg-panel">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
-              <h3 style="margin:0">Background</h3>
-              <button class="btn-xs btn-secondary" onclick="startAllBackground()" title="Start all agents">▶ All</button>
-            </div>
-            <div id="bgControls" class="bg-controls-list">
-              <p class="loading">...</p>
-            </div>
-          </div>
-
-          <div class="digest-org-panel digest-db-panel">
+<div class="digest-org-panel digest-db-panel">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
               <h3 style="margin:0">DB I/O</h3>
               <span id="dbMonitorDot" class="db-monitor-dot" title="Waiting for events"></span>
@@ -169,6 +184,33 @@
     }
   });
   </script>
+
+  <!-- Approval Reply Modal -->
+  <div class="modal" id="approvalReplyModal" onclick="if(event.target===this)closeReplyModal()">
+    <div class="modal-content" style="max-width:520px">
+      <div class="modal-header">
+        <h2 id="replyModalTitle">Reply to Agent</h2>
+        <button class="modal-close" onclick="closeReplyModal()">×</button>
+      </div>
+      <div id="replyModalBody" style="padding:1rem">
+        <div class="reply-agent-label" id="replyAgentLabel"></div>
+        <div class="reply-question-box" id="replyQuestionBox"></div>
+        <div class="reply-quick-actions">
+          <button class="reply-btn-approve" onclick="submitQuickReply('approve')">👍 Approve</button>
+          <button class="reply-btn-reject" onclick="submitQuickReply('reject')">👎 Reject</button>
+        </div>
+        <div class="reply-divider">or write a reply</div>
+        <textarea id="replyTextarea" class="reply-textarea" rows="3" placeholder="Type your reply..."></textarea>
+        <label class="reply-ctx-label">
+          <input type="checkbox" id="replyAddContext"> Add reply to agent context
+        </label>
+        <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem">
+          <button class="btn-secondary btn-sm" onclick="closeReplyModal()">Cancel</button>
+          <button class="btn-primary btn-sm" onclick="submitCustomReply()">Send Reply</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Card Export Modal -->
   <div class="modal" id="cardExportModal" onclick="if(event.target===this)closeExportModal()">
