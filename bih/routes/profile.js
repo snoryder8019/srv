@@ -54,17 +54,19 @@ router.post('/update-avatar', ensureAuth, upload.single('avatar'), async (req, r
   }
 });
 
-// Update Epic / Twitch IDs
+// Update Epic / Twitch / The Show IDs
 router.post('/update-ids', ensureAuth, async (req, res) => {
   try {
-    const { epicId, twitchId } = req.body;
+    const { epicId, twitchId, theShowUsername, theShowPlatform } = req.body;
+    const validPlatforms = ['PS5', 'PS4', 'Xbox', 'Switch', 'PC', ''];
     const update = {
       epicId: epicId ? epicId.trim() : '',
-      twitchId: twitchId ? twitchId.trim() : ''
+      twitchId: twitchId ? twitchId.trim() : '',
+      theShowUsername: theShowUsername ? theShowUsername.trim() : '',
+      theShowPlatform: validPlatforms.includes(theShowPlatform) ? theShowPlatform : ''
     };
     await User.findByIdAndUpdate(req.user._id, update);
-    req.user.epicId = update.epicId;
-    req.user.twitchId = update.twitchId;
+    Object.assign(req.user, update);
     res.render('profile', { success: 'Gaming IDs updated', error: null });
   } catch (err) {
     console.error(err);

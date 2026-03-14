@@ -656,4 +656,106 @@ router.delete('/livechats/:sessionId', isAdmin, async (req, res) => {
     }
 });
 
+// ==================== USER PERMISSIONS ADMIN ====================
+
+const MODULES = [
+  { key: 'agents',        label: 'AI Agents' },
+  { key: 'skins',         label: 'Skins' },
+  { key: 'qrs',           label: 'QRS / QR Codes' },
+  { key: 'bikelite',      label: 'Bikelite' },
+  { key: 'contest',       label: 'Contest' },
+  { key: 'euker',         label: 'Euker' },
+  { key: 'grafitti',      label: 'Grafitti TV' },
+  { key: 'trader',        label: 'Trader' },
+  { key: 'lbb',           label: 'LBB' },
+  { key: 'gpc',           label: 'GPC' },
+  { key: 'backoffice',    label: 'Back Office' },
+  { key: 'claudeTalk',    label: 'ClaudeTalk' },
+  { key: 'payments',      label: 'Payments' },
+  { key: 'scrapeman',     label: 'Scrapeman' },
+  { key: 'bucketUpload',  label: 'Bucket Upload' },
+  { key: 'stevenClawbert',label: 'StevenClawbert' },
+  { key: 'finances',      label: 'Finances' },
+  { key: 'hue',           label: 'Hue' },
+  { key: 'w2marketing',   label: 'W2 Marketing' },
+];
+
+// GET /admin/users — user list
+router.get('/users', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const db = getDb();
+        const users = await db.collection('users')
+            .find({})
+            .project({ password: 0, confirmationToken: 0 })
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.render('admin/users', {
+            user: req.user,
+            users,
+            modules: MODULES,
+            currentPage: 'users',
+            success: req.query.success,
+            error: req.query.error
+        });
+    } catch (error) {
+        console.error('Users admin error:', error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// GET /admin/users/:id/permissions — JSON for modal
+router.get('/users/:id/permissions', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const { ObjectId } = await import('mongodb');
+        const db = getDb();
+        const user = await db.collection('users').findOne(
+            { _id: new ObjectId(req.params.id) },
+            { projection: { password: 0, confirmationToken: 0 } }
+        );
+        if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+        res.json({ success: true, user });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /admin/users/:id/permissions — save permissions + isAdmin flag
+router.post('/users/:id/permissions', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const { ObjectId } = await import('mongodb');
+        const db = getDb();
+
+        // Build permissions map from submitted checkboxes
+        // Body shape: { isAdmin: 'on'|undefined, perm_finances: 'admin'|'write'|'read'|'' ... }
+        const permissions = {};
+        for (const mod of MODULES) {
+            const val = req.body[`perm_${mod.key}`];
+            if (val && ['read', 'write', 'admin'].includes(val)) {
+                permissions[mod.key] = val;
+            }
+        }
+
+        const isAdminFlag = req.body.isAdmin === 'on';
+
+        // Prevent removing your own admin flag
+        if (req.user._id.toString() === req.params.id && !isAdminFlag) {
+            return res.redirect('/admin/users?error=Cannot remove your own admin access');
+        }
+
+        await db.collection('users').updateOne(
+            { _id: new ObjectId(req.params.id) },
+            { $set: { isAdmin: isAdminFlag, permissions } }
+        );
+
+        res.redirect('/admin/users?success=Permissions updated');
+    } catch (error) {
+        console.error('Save permissions error:', error);
+        res.redirect('/admin/users?error=' + encodeURIComponent(error.message));
+    }
+});
+
 export default router

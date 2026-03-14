@@ -117,8 +117,8 @@
     var sessionId = getSessionId();
     var visitor   = getVisitor();
 
-    // Socket connection
-    var socket = window.io(BASE_URL, {
+    // Socket connection — /forwardchat namespace
+    var socket = window.io(BASE_URL + '/forwardchat', {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       query: { site: SITE_TOKEN }

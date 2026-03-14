@@ -9,6 +9,8 @@ const userSchema = new mongoose.Schema({
   avatar: { type: String },
   epicId: { type: String },
   twitchId: { type: String },
+  theShowUsername: { type: String },
+  theShowPlatform: { type: String, enum: ['PS5', 'PS4', 'Xbox', 'Switch', 'PC', ''], default: '' },
   isAdmin: { type: Boolean, default: false },
   isBIH: { type: Boolean, default: false },
   permissions: { type: [String], default: [] },

@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-03-11T07:30:00.021Z
+Generated: 2026-03-14T07:30:00.016Z
+
+---
+
+## Commit: good push
+
+- **Hash:** `6fa9450`
+- **Author:** Scott
+- **Date:** 3/12/2026
+- **Changes:** 12 files, +733/-229 lines
+
+### Modified Areas:
+
+**Frontend:** 2 files
+**Backend:** 5 files
+**Views:** 1 files
+**Documentation:** 3 files
 
 ---
 
@@ -64,22 +80,6 @@ Generated: 2026-03-11T07:30:00.021Z
 **Backend:** 22 files
 **Views:** 20 files
 **Documentation:** 7 files
-
----
-
-## Commit: git cleanups
-
-- **Hash:** `bd1eb11`
-- **Author:** Scott
-- **Date:** 3/3/2026
-- **Changes:** 92 files, +6826/-1363 lines
-
-### Modified Areas:
-
-**Frontend:** 1 files
-**Backend:** 13 files
-**Views:** 32 files
-**Documentation:** 8 files
 
 ---
 

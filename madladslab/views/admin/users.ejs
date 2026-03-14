@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" type="image/png" href="/images/beaker_logo_no_stash.png">
+    <link rel="stylesheet" href="/stylesheets/admin.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>User Permissions - madLadsLab Admin</title>
+    <style>
+        .users-grid {
+            display: grid;
+            gap: 10px;
+        }
+        .user-row {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .user-row:hover { border-color: rgba(255,255,255,0.22); background: rgba(255,255,255,0.06); }
+        .user-avatar {
+            width: 38px; height: 38px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #7c3aed, #2563eb);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.95rem; color: #fff;
+            flex-shrink: 0;
+        }
+        .user-info { flex: 1; min-width: 0; }
+        .user-name { font-weight: 600; font-size: 0.95rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-email { font-size: 0.78rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+        .badge {
+            font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .badge-superuser { background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed55; }
+        .badge-admin   { background: #dc262622; color: #f87171; border: 1px solid #dc262655; }
+        .badge-write   { background: #d9770622; color: #fb923c; border: 1px solid #d9770655; }
+        .badge-read    { background: #0369a122; color: #38bdf8; border: 1px solid #0369a155; }
+        .badge-none    { background: #1e293b; color: #475569; border: 1px solid #334155; }
+        .edit-btn {
+            margin-left: auto; padding: 6px 14px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.12);
+            background: transparent; color: #94a3b8; font-size: 0.8rem; cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .edit-btn:hover { background: rgba(255,255,255,0.08); color: #e2e8f0; }
+
+        /* Search */
+        .user-search { width: 100%; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px;
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; font-size: 0.9rem; }
+        .user-search::placeholder { color: #475569; }
+        .user-search:focus { outline: none; border-color: rgba(255,255,255,0.25); }
+
+        /* Permissions Modal */
+        .perm-backdrop {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 1000;
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .perm-box {
+            background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px;
+            width: 100%; max-width: 680px; max-height: 90vh; overflow-y: auto;
+            padding: 28px; position: relative;
+        }
+        .perm-title { font-size: 1.15rem; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
+        .perm-sub { font-size: 0.82rem; color: #64748b; margin-bottom: 24px; }
+        .perm-close {
+            position: absolute; top: 18px; right: 18px; background: none; border: none;
+            color: #64748b; font-size: 1.4rem; cursor: pointer; line-height: 1;
+        }
+        .perm-close:hover { color: #e2e8f0; }
+
+        /* Superuser toggle */
+        .superuser-row {
+            display: flex; align-items: center; gap: 12px;
+            background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.25);
+            border-radius: 10px; padding: 12px 16px; margin-bottom: 22px;
+        }
+        .superuser-row label { font-weight: 600; color: #a78bfa; font-size: 0.9rem; cursor: pointer; }
+        .superuser-row small { color: #64748b; font-size: 0.75rem; display: block; }
+        .toggle-wrap { margin-left: auto; }
+
+        /* Module grid */
+        .modules-section-title {
+            font-size: 0.7rem; font-weight: 700; color: #475569; text-transform: uppercase;
+            letter-spacing: 0.08em; margin-bottom: 10px;
+        }
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+        .module-card {
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 9px; padding: 10px 12px;
+        }
+        .module-label { font-size: 0.82rem; font-weight: 600; color: #cbd5e1; margin-bottom: 7px; }
+        .level-select {
+            width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+            color: #e2e8f0; border-radius: 6px; padding: 5px 8px; font-size: 0.8rem; cursor: pointer;
+        }
+        .level-select:focus { outline: none; border-color: rgba(255,255,255,0.25); }
+        .level-select option { background: #1e293b; }
+
+        /* level color hints */
+        .level-select[data-level="read"]  { border-color: #0369a188; }
+        .level-select[data-level="write"] { border-color: #d9770688; }
+        .level-select[data-level="admin"] { border-color: #dc262688; }
+        .level-select[data-level=""]      { border-color: rgba(255,255,255,0.07); color: #475569; }
+
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+        .btn-save {
+            padding: 9px 22px; border-radius: 8px; border: none; font-weight: 600; font-size: 0.88rem;
+            background: #7c3aed; color: #fff; cursor: pointer; transition: background 0.15s;
+        }
+        .btn-save:hover { background: #6d28d9; }
+        .btn-cancel {
+            padding: 9px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+            background: transparent; color: #94a3b8; font-size: 0.88rem; cursor: pointer;
+        }
+        .btn-cancel:hover { background: rgba(255,255,255,0.05); }
+    </style>
+</head>
+<body>
+<%- include('../mainContent/adminHeader.ejs') %>
+<div class="admin-container">
+    <%- include('../mainContent/adminSidebar.ejs') %>
+    <main class="admin-main">
+
+        <div class="admin-header">
+            <h1>User Permissions</h1>
+            <p class="admin-subtitle">Select a user to manage their module access levels</p>
+        </div>
+
+        <% if (typeof success !== 'undefined' && success) { %>
+          <div class="alert alert-success"><%= success %></div>
+        <% } %>
+        <% if (typeof error !== 'undefined' && error) { %>
+          <div class="alert alert-error"><%= error %></div>
+        <% } %>
+
+        <div class="content-section">
+            <input type="text" class="user-search" id="userSearch" placeholder="Search by name or email…">
+            <div class="users-grid" id="usersGrid">
+                <% users.forEach(u => {
+                    const perms = u.permissions || {};
+                    const permKeys = Object.keys(perms);
+                    const initials = ((u.displayName || u.firstName || u.email || '?')[0]).toUpperCase();
+                    const uName = u.displayName || ((u.firstName||'') + ' ' + (u.lastName||'')).trim() || u.email || '';
+                %>
+                <div class="user-row" data-name="<%= uName.toLowerCase() %>" data-email="<%= (u.email || '').toLowerCase() %>">
+                    <div class="user-avatar"><%= initials %></div>
+                    <div class="user-info">
+                        <div class="user-name"><%= uName %></div>
+                        <div class="user-email"><%= u.email %></div>
+                    </div>
+                    <div class="user-badges">
+                        <% if (u.isAdmin) { %><span class="badge badge-superuser">Superuser</span><% } %>
+                        <% permKeys.slice(0,3).forEach(k => { %>
+                          <span class="badge badge-<%= perms[k] %>"><%= k %> · <%= perms[k] %></span>
+                        <% }) %>
+                        <% if (permKeys.length > 3) { %><span class="badge badge-none">+<%= permKeys.length - 3 %> more</span><% } %>
+                        <% if (!u.isAdmin && permKeys.length === 0) { %><span class="badge badge-none">No access</span><% } %>
+                    </div>
+                    <button class="edit-btn" data-uid="<%= u._id.toString() %>">Edit</button>
+                </div>
+                <% }) %>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- Permission Editor Modal -->
+<div class="perm-backdrop" id="modalBackdrop" style="display:none">
+    <div class="perm-box">
+        <button class="perm-close" onclick="closeModal()">×</button>
+        <div class="perm-title" id="modalTitle">Edit Permissions</div>
+        <div class="perm-sub" id="modalSub"></div>
+
+        <form id="permForm" method="POST">
+            <!-- Superuser -->
+            <div class="superuser-row">
+                <div>
+                    <label for="chkAdmin">Superuser (isAdmin)</label>
+                    <small>Full access to /admin panel and all modules — assign with care</small>
+                </div>
+                <div class="toggle-wrap">
+                    <input type="checkbox" id="chkAdmin" name="isAdmin">
+                </div>
+            </div>
+
+            <!-- Module levels -->
+            <div class="modules-section-title">Module Access Levels</div>
+            <div class="modules-grid">
+                <% modules.forEach(mod => { %>
+                <div class="module-card">
+                    <div class="module-label"><%= mod.label %></div>
+                    <select class="level-select" name="perm_<%= mod.key %>" data-key="<%= mod.key %>" onchange="tintSelect(this)">
+                        <option value="">— no access —</option>
+                        <option value="read">read</option>
+                        <option value="write">write</option>
+                        <option value="admin">admin</option>
+                    </select>
+                </div>
+                <% }) %>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn-save">Save Permissions</button>
+            </div>
+        </form>
+    </div>
+</div>  <!-- end .perm-backdrop -->
+
+<script>
+// Build user map server-side with raw JS output — no HTML encoding issues
+var UD = {};
+<% users.forEach(function(u) {
+    var perms = u.permissions || {};
+    var uName = u.displayName || ((u.firstName||'') + ' ' + (u.lastName||'')).trim() || u.email || '';
+%>
+UD[<%- JSON.stringify(u._id.toString()) %>] = {
+    name:    <%- JSON.stringify(uName) %>,
+    email:   <%- JSON.stringify(u.email || '') %>,
+    isAdmin: <%- u.isAdmin ? 'true' : 'false' %>,
+    perms:   <%- JSON.stringify(perms) %>
+};
+<% }); %>
+
+document.querySelectorAll('.edit-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var uid = btn.dataset.uid;
+        var u   = UD[uid];
+        if (!u) { console.error('No user data for', uid); return; }
+
+        document.getElementById('modalTitle').textContent = u.name || u.email;
+        document.getElementById('modalSub').textContent   = u.email;
+        document.getElementById('permForm').action = '/admin/users/' + uid + '/permissions';
+        document.getElementById('chkAdmin').checked = u.isAdmin;
+
+        document.querySelectorAll('.level-select').forEach(function (sel) {
+            sel.value = u.perms[sel.dataset.key] || '';
+            tintSelect(sel);
+        });
+
+        document.getElementById('modalBackdrop').style.display = 'flex';
+    });
+});
+
+document.getElementById('modalBackdrop').addEventListener('click', function (e) {
+    if (e.target === e.currentTarget) closeModal();
+});
+
+document.getElementById('userSearch').addEventListener('input', function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll('.user-row').forEach(function (row) {
+        var match = (row.dataset.name || '').includes(q) || (row.dataset.email || '').includes(q);
+        row.style.display = match ? '' : 'none';
+    });
+});
+
+function closeModal() {
+    document.getElementById('modalBackdrop').style.display = 'none';
+}
+
+function tintSelect(sel) {
+    sel.dataset.level = sel.value;
+}
+</script>
+</body>
+</html>

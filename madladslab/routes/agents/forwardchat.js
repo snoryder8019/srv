@@ -93,9 +93,20 @@ router.delete('/api/forwardchat/sites/:id', isAdmin, async (req, res) => {
   }
 });
 
+// ── CORS for public plugin endpoints (called cross-origin from 3rd-party sites)
+function pluginCors(req, res, next) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+}
+
 // ── Plugin Verification (called by the forwardchat loader on first load) ─────
 // Public endpoint — no isAdmin (called from 3rd-party site context)
-router.post('/api/forwardchat/verify/:token', async (req, res) => {
+router.options('/api/forwardchat/verify/:token', pluginCors);
+router.options('/api/forwardchat/meta', pluginCors);
+router.post('/api/forwardchat/verify/:token', pluginCors, async (req, res) => {
   try {
     const site = await ForwardChatSite.findOne({ 'plugin.token': req.params.token });
     if (!site) return res.status(404).json({ success: false, error: 'Invalid token' });
@@ -125,7 +136,7 @@ router.post('/api/forwardchat/verify/:token', async (req, res) => {
 });
 
 // ── Plugin runtime meta (served to loader to resolve runtime URL) ─────────────
-router.get('/api/forwardchat/meta', async (req, res) => {
+router.get('/api/forwardchat/meta', pluginCors, async (req, res) => {
   try {
     const { site: token } = req.query;
     if (!token) return res.status(400).json({ success: false, error: 'Missing site token' });

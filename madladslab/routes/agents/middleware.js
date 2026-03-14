@@ -1,6 +1,9 @@
 import axios from "axios";
 import AgentAction from "../../api/v1/models/AgentAction.js";
 
+import { requireModule } from '../../middleware/permissions.js';
+
+// Superuser-only — only used where full isAdmin is explicitly needed
 export async function isAdmin(req, res, next) {
     const user = req.user;
     if (user && user.isAdmin === true) {
@@ -9,6 +12,11 @@ export async function isAdmin(req, res, next) {
         return res.status(401).send('Unauthorized');
     }
 }
+
+// Module-level access — isAdmin bypasses, others need agents permission
+export const requireAgents = requireModule('agents', 'read');
+export const requireAgentsWrite = requireModule('agents', 'write');
+export const requireAgentsAdmin = requireModule('agents', 'admin');
 
 export async function runResearcherMiddleware(agent, message, ollamaBaseUrl, ollamaApiKey) {
     const res = await axios.post(`${ollamaBaseUrl}/v1/chat/completions`, {

@@ -3,12 +3,12 @@ import axios from "axios";
 import mongoose from "mongoose";
 
 import Agent from "../../api/v1/models/Agent.js";
-import { isAdmin } from "./middleware.js";
+import { isAdmin, requireAgents, requireAgentsWrite, requireAgentsAdmin } from "./middleware.js";
 
 const router = express.Router();
 
 // Dashboard
-router.get('/', isAdmin, async (req, res) => {
+router.get('/', requireAgents, async (req, res) => {
     try {
         const agents = await Agent.find({})
             .populate('createdBy', 'displayName email')
@@ -26,7 +26,7 @@ router.get('/', isAdmin, async (req, res) => {
 });
 
 // Digest — unified background feed
-router.get('/digest', isAdmin, async (req, res) => {
+router.get('/digest', requireAgents, async (req, res) => {
     try {
         const agents = await Agent.find({}, 'name role status tier').sort({ tier: 1, name: 1 }).lean();
         res.render("agents/digest", { user: req.user, agents, currentPage: 'agents' });
@@ -37,7 +37,7 @@ router.get('/digest', isAdmin, async (req, res) => {
 });
 
 // Get all agents
-router.get('/api/agents', isAdmin, async (req, res) => {
+router.get('/api/agents', requireAgents, async (req, res) => {
     try {
         const agents = await Agent.find({})
             .populate('createdBy', 'displayName email')
@@ -51,7 +51,7 @@ router.get('/api/agents', isAdmin, async (req, res) => {
 });
 
 // Get full org chart
-router.get('/api/agents/hierarchy', isAdmin, async (req, res) => {
+router.get('/api/agents/hierarchy', requireAgents, async (req, res) => {
     try {
         const agents = await Agent.find({}, 'name role status tier parentAgent').lean();
         res.json({ success: true, agents });
@@ -61,7 +61,7 @@ router.get('/api/agents/hierarchy', isAdmin, async (req, res) => {
 });
 
 // Set hierarchy tier + parent
-router.put('/api/agents/:id/hierarchy', isAdmin, async (req, res) => {
+router.put('/api/agents/:id/hierarchy', requireAgentsWrite, async (req, res) => {
     try {
         const { tier, parentAgentId } = req.body;
         const agent = await Agent.findById(req.params.id);
@@ -90,7 +90,7 @@ router.put('/api/agents/:id/hierarchy', isAdmin, async (req, res) => {
 });
 
 // Get single agent
-router.get('/api/agents/:id', isAdmin, async (req, res) => {
+router.get('/api/agents/:id', requireAgents, async (req, res) => {
     try {
         const agent = await Agent.findById(req.params.id)
             .populate('createdBy', 'displayName email');
@@ -107,7 +107,7 @@ router.get('/api/agents/:id', isAdmin, async (req, res) => {
 });
 
 // Create new agent
-router.post('/api/agents', isAdmin, async (req, res) => {
+router.post('/api/agents', requireAgentsWrite, async (req, res) => {
     try {
         const { name, description, model, provider, role, systemPrompt, temperature, contextWindow, maxTokens, mcpTools, mcpBackgroundTools, supportsAgentId, supportRole, supportLabel } = req.body;
 
@@ -188,7 +188,7 @@ router.post('/api/agents', isAdmin, async (req, res) => {
 });
 
 // Update agent
-router.put('/api/agents/:id', isAdmin, async (req, res) => {
+router.put('/api/agents/:id', requireAgentsWrite, async (req, res) => {
     try {
         const { name, description, model, provider, systemPrompt, temperature, contextWindow, maxTokens } = req.body;
 
@@ -226,7 +226,7 @@ router.put('/api/agents/:id', isAdmin, async (req, res) => {
 });
 
 // Delete agent
-router.delete('/api/agents/:id', isAdmin, async (req, res) => {
+router.delete('/api/agents/:id', requireAgentsAdmin, async (req, res) => {
     try {
         const agent = await Agent.findById(req.params.id);
 
@@ -274,7 +274,7 @@ router.delete('/api/agents/:id', isAdmin, async (req, res) => {
 });
 
 // Update capabilities
-router.put('/api/agents/:id/capabilities', isAdmin, async (req, res) => {
+router.put('/api/agents/:id/capabilities', requireAgentsWrite, async (req, res) => {
     try {
         const { capabilities } = req.body;
         if (!Array.isArray(capabilities)) {
@@ -293,7 +293,7 @@ router.put('/api/agents/:id/capabilities', isAdmin, async (req, res) => {
 });
 
 // Update bihBot chatMode
-router.put('/api/agents/:id/bih-bot/chat-mode', isAdmin, async (req, res) => {
+router.put('/api/agents/:id/bih-bot/chat-mode', requireAgentsWrite, async (req, res) => {
     try {
         const { chatMode } = req.body;
         if (!['passive', 'active', 'agent'].includes(chatMode)) {
@@ -312,7 +312,7 @@ router.put('/api/agents/:id/bih-bot/chat-mode', isAdmin, async (req, res) => {
 });
 
 // Update bihBot allowedRoles
-router.put('/api/agents/:id/bih-bot/roles', isAdmin, async (req, res) => {
+router.put('/api/agents/:id/bih-bot/roles', requireAgentsWrite, async (req, res) => {
     try {
         const { allowedRoles } = req.body;
         if (!Array.isArray(allowedRoles)) {
@@ -331,7 +331,7 @@ router.put('/api/agents/:id/bih-bot/roles', isAdmin, async (req, res) => {
 });
 
 // Toggle bih chat bot deployment
-router.patch('/api/agents/:id/bih-bot', isAdmin, async (req, res) => {
+router.patch('/api/agents/:id/bih-bot', requireAgentsWrite, async (req, res) => {
     try {
         const { enabled, trigger, displayName, avatar } = req.body;
         const agent = await Agent.findById(req.params.id);
@@ -365,7 +365,7 @@ router.patch('/api/agents/:id/bih-bot', isAdmin, async (req, res) => {
 
 // Toggle pepeChat (consumer-facing chat) on an agent
 // Only one agent can have pepeChat.enabled at a time
-router.patch('/api/agents/:id/pepe-chat', isAdmin, async (req, res) => {
+router.patch('/api/agents/:id/pepe-chat', requireAgentsWrite, async (req, res) => {
     try {
         const { enabled, sessionLimit, rateLimitPerHour, avatar } = req.body;
         const agent = await Agent.findById(req.params.id);
@@ -392,7 +392,7 @@ router.patch('/api/agents/:id/pepe-chat', isAdmin, async (req, res) => {
 });
 
 // Update agent status
-router.patch('/api/agents/:id/status', isAdmin, async (req, res) => {
+router.patch('/api/agents/:id/status', requireAgentsWrite, async (req, res) => {
     try {
         const { status } = req.body;
 
@@ -418,7 +418,7 @@ router.patch('/api/agents/:id/status', isAdmin, async (req, res) => {
 });
 
 // Get agent logs
-router.get('/api/agents/:id/logs', isAdmin, async (req, res) => {
+router.get('/api/agents/:id/logs', requireAgents, async (req, res) => {
     try {
         const agent = await Agent.findById(req.params.id);
 
@@ -436,7 +436,7 @@ router.get('/api/agents/:id/logs', isAdmin, async (req, res) => {
 // ── Support agent management ──────────────────────────────────────────────────
 
 // List support agents for an agent
-router.get('/api/agents/:id/support-agents', isAdmin, async (req, res) => {
+router.get('/api/agents/:id/support-agents', requireAgents, async (req, res) => {
     try {
         const agent = await Agent.findById(req.params.id, 'supportAgents').populate('supportAgents.agentId', 'name role status').lean();
         if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
@@ -447,7 +447,7 @@ router.get('/api/agents/:id/support-agents', isAdmin, async (req, res) => {
 });
 
 // Add a support agent to an agent
-router.post('/api/agents/:id/support-agents', isAdmin, async (req, res) => {
+router.post('/api/agents/:id/support-agents', requireAgentsWrite, async (req, res) => {
     try {
         const { agentId, role, label } = req.body;
         if (!agentId) return res.status(400).json({ success: false, error: 'agentId required' });
@@ -482,7 +482,7 @@ router.post('/api/agents/:id/support-agents', isAdmin, async (req, res) => {
 });
 
 // Remove a support agent
-router.delete('/api/agents/:id/support-agents/:supportAgentId', isAdmin, async (req, res) => {
+router.delete('/api/agents/:id/support-agents/:supportAgentId', requireAgentsAdmin, async (req, res) => {
     try {
         const agent = await Agent.findById(req.params.id);
         if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
@@ -501,7 +501,7 @@ router.delete('/api/agents/:id/support-agents/:supportAgentId', isAdmin, async (
 });
 
 // Toggle support agent enabled/disabled
-router.patch('/api/agents/:id/support-agents/:supportAgentId', isAdmin, async (req, res) => {
+router.patch('/api/agents/:id/support-agents/:supportAgentId', requireAgentsWrite, async (req, res) => {
     try {
         const { enabled } = req.body;
         const agent = await Agent.findById(req.params.id);
@@ -521,7 +521,7 @@ router.patch('/api/agents/:id/support-agents/:supportAgentId', isAdmin, async (r
 // ── Guardrails management ────────────────────────────────────────────────────
 
 // Get guardrails config
-router.get('/api/agents/:id/guardrails', isAdmin, async (req, res) => {
+router.get('/api/agents/:id/guardrails', requireAgents, async (req, res) => {
     try {
         const agent = await Agent.findById(req.params.id, 'forwardChat.guardrails').lean();
         if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
@@ -532,7 +532,7 @@ router.get('/api/agents/:id/guardrails', isAdmin, async (req, res) => {
 });
 
 // Update guardrails config
-router.put('/api/agents/:id/guardrails', isAdmin, async (req, res) => {
+router.put('/api/agents/:id/guardrails', requireAgentsWrite, async (req, res) => {
     try {
         const agent = await Agent.findById(req.params.id);
         if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
@@ -561,7 +561,7 @@ router.put('/api/agents/:id/guardrails', isAdmin, async (req, res) => {
 });
 
 // Test Ollama connection
-router.get('/api/ollama/test', isAdmin, async (req, res) => {
+router.get('/api/ollama/test', requireAgents, async (req, res) => {
     try {
         const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'https://ollama.madladslab.com';
         const ollamaApiKey = process.env.OLLAMA_API_KEY;

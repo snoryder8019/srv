@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Show Hub - bih</title>
+  <link rel="stylesheet" href="/css/theme.css">
+  <link rel="stylesheet" href="/css/chat.css">
+  <link rel="stylesheet" href="/css/sidebar.css">
+  <link rel="stylesheet" href="/css/call.css">
+  <style>
+    .ts-grid { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
+    .ts-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      padding: 12px;
+      width: 180px;
+      box-sizing: border-box;
+    }
+    .ts-card img { width: 100%; display: block; border: none; }
+    .ts-card .name { color: var(--green); font-size: 13px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ts-card .meta { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+    .ts-card .ovr { font-size: 22px; font-weight: bold; color: var(--green); }
+    .ts-section { margin: 24px 0 8px; }
+    .ts-member-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 220px;
+      box-sizing: border-box;
+    }
+    .ts-member-card img { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); }
+    .ts-member-card .no-avatar {
+      width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-dim); font-size: 16px; flex-shrink: 0;
+    }
+    .ts-member-info .handle { color: var(--green); font-size: 13px; }
+    .ts-member-info .platform { color: var(--text-dim); font-size: 11px; }
+    .ts-member-info .bih-name { color: var(--green-muted); font-size: 11px; }
+    .ts-update-row {
+      border-bottom: 1px solid var(--border);
+      padding: 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .ts-update-row img { width: 40px; height: 40px; object-fit: cover; }
+    .ts-update-row .ovr-change { font-size: 12px; }
+    .ovr-up { color: #00ff41; }
+    .ovr-down { color: #ff3333; }
+    input[type="text"].ts-search {
+      width: 260px;
+      margin-right: 8px;
+    }
+    .ts-pagination { margin-top: 12px; display: flex; gap: 8px; }
+    .ts-pagination button { font-size: 12px; padding: 4px 10px; }
+  </style>
+</head>
+<body>
+  <h1>The Show Hub</h1>
+  <nav style="margin-bottom:16px;">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/profile" style="margin-left:16px;">Profile</a>
+    <a href="/" style="margin-left:16px;">Home</a>
+    <% if (!user.theShowUsername) { %>
+      <span style="color:var(--text-dim); font-size:12px; margin-left:20px;">> <a href="/profile">Set your The Show username</a> to appear in the members list</span>
+    <% } %>
+  </nav>
+
+  <hr>
+
+  <!-- BIH Members playing The Show -->
+  <h2 class="ts-section">BIH on The Show</h2>
+  <div id="ts-members" class="ts-grid">
+    <p style="color:var(--text-dim);">> loading members...</p>
+  </div>
+
+  <hr>
+
+  <!-- Profile links (shown if user has theShowUsername set) -->
+  <% if (user.theShowUsername) { %>
+  <h2 class="ts-section">Your Profile</h2>
+  <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+    <a href="https://mlb25.theshow.com/community/users/<%= encodeURIComponent(user.theShowUsername) %>" target="_blank" rel="noopener"
+       style="display:inline-block; padding:8px 16px; border:1px solid var(--border); color:var(--green); font-size:13px;">
+      View Profile on The Show ↗
+    </a>
+    <a href="https://mlb25.theshow.com/community/users/<%= encodeURIComponent(user.theShowUsername) %>/game_history" target="_blank" rel="noopener"
+       style="display:inline-block; padding:8px 16px; border:1px solid var(--border); color:var(--green); font-size:13px;">
+      Game History ↗
+    </a>
+    <a href="https://mlb25.theshow.com/community/users/<%= encodeURIComponent(user.theShowUsername) %>/collection" target="_blank" rel="noopener"
+       style="display:inline-block; padding:8px 16px; border:1px solid var(--border); color:var(--green); font-size:13px;">
+      Collection ↗
+    </a>
+  </div>
+  <p style="color:var(--text-dim); font-size:11px;">> The Show's API blocks third-party access — links open directly on TheShow.com</p>
+  <hr>
+  <% } %>
+
+  <!-- Player Card Search -->
+  <h2 class="ts-section">Player Card Search</h2>
+  <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+    <input type="text" id="ts-search-input" class="ts-search" placeholder="Search player name..." />
+    <button id="ts-search-btn">Search</button>
+  </div>
+  <div id="ts-search-results" class="ts-grid" style="margin-top:12px;"></div>
+  <div class="ts-pagination" id="ts-search-pagination" style="display:none;">
+    <button id="ts-prev-btn">Prev</button>
+    <span id="ts-page-label" style="color:var(--text-dim); font-size:12px; align-self:center;"></span>
+    <button id="ts-next-btn">Next</button>
+  </div>
+
+  <hr>
+
+  <!-- Roster Updates -->
+  <h2 class="ts-section">Latest Roster Updates</h2>
+  <div id="ts-roster-updates">
+    <p style="color:var(--text-dim);">> loading roster updates...</p>
+  </div>
+
+  <script>
+  (function () {
+    const TS = 'https://mlb25.theshow.com/apis';
+
+    async function tsGet(path) {
+      const res = await fetch(TS + path, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) throw new Error(res.status);
+      return res.json();
+    }
+
+    // ── Members ─────────────────────────────────────────────────────────────
+    async function loadMembers() {
+      const el = document.getElementById('ts-members');
+      try {
+        const res = await fetch('/api/theshow/members');
+        const { members } = await res.json();
+        if (!members.length) {
+          el.innerHTML = '<p style="color:var(--text-dim);">> no members have set a The Show username yet</p>';
+          return;
+        }
+        el.innerHTML = members.map(m => {
+          const avatarHtml = m.avatar
+            ? `<img src="${m.avatar}" alt="${m.displayName}">`
+            : `<div class="no-avatar">?</div>`;
+          const platformColors = { PS5: '#003791', PS4: '#003791', Xbox: '#107c10', Switch: '#e4000f', PC: '#1b2838', '': '' };
+          const platformBg = platformColors[m.theShowPlatform] || '#1a2a1a';
+          return `
+            <div class="ts-member-card">
+              ${avatarHtml}
+              <div class="ts-member-info">
+                <div class="handle">${escHtml(m.theShowUsername)}</div>
+                <div class="platform" style="color:#ccc; background:${platformBg}; display:inline-block; padding:1px 5px; border-radius:2px; font-size:10px; margin-top:2px;">${escHtml(m.theShowPlatform || '')}</div>
+                <div class="bih-name">${escHtml(m.displayName || '')}</div>
+              </div>
+            </div>`;
+        }).join('');
+      } catch {
+        el.innerHTML = '<p style="color:#ff3333;">> failed to load members</p>';
+      }
+    }
+
+    // ── Player Search ────────────────────────────────────────────────────────
+    let currentPage = 1;
+    let currentSearch = '';
+    let totalPages = 1;
+
+    async function searchPlayers(name, page) {
+      currentSearch = name;
+      currentPage = page;
+      const resultsEl = document.getElementById('ts-search-results');
+      const paginationEl = document.getElementById('ts-search-pagination');
+      resultsEl.innerHTML = '<p style="color:var(--text-dim);">> searching...</p>';
+      paginationEl.style.display = 'none';
+      try {
+        const params = new URLSearchParams({ page });
+        if (name) params.set('query', name);
+        const data = await tsGet(`/player_search.json?${params}`);
+        const items = data.items || [];
+        totalPages = data.total_pages || 1;
+
+        if (!items.length) {
+          resultsEl.innerHTML = '<p style="color:var(--text-dim);">> no results</p>';
+          return;
+        }
+
+        resultsEl.innerHTML = items.map(p => {
+          const ovr = p.ovr || p.overall || '?';
+          const img = p.img || '';
+          const pos = p.display_position || p.position || '';
+          const team = p.team_short_name || p.team || '';
+          const series = p.series || '';
+          return `
+            <div class="ts-card" style="cursor:pointer;" onclick="showPlayerDetail('${escHtml(p.uuid)}')">
+              ${img ? `<img src="${escHtml(img)}" alt="${escHtml(p.name || '')}" loading="lazy">` : '<div style="height:80px;background:#0d1a0d;"></div>'}
+              <div class="ovr">${escHtml(String(ovr))}</div>
+              <div class="name">${escHtml(p.name || 'Unknown')}</div>
+              <div class="meta">${escHtml(pos)} · ${escHtml(team)}</div>
+              <div class="meta" style="margin-top:2px;">${escHtml(series)}</div>
+            </div>`;
+        }).join('');
+
+        if (totalPages > 1) {
+          paginationEl.style.display = 'flex';
+          document.getElementById('ts-page-label').textContent = `Page ${currentPage} of ${totalPages}`;
+          document.getElementById('ts-prev-btn').disabled = currentPage <= 1;
+          document.getElementById('ts-next-btn').disabled = currentPage >= totalPages;
+        }
+      } catch {
+        resultsEl.innerHTML = '<p style="color:#ff3333;">> failed to fetch players</p>';
+      }
+    }
+
+    async function showPlayerDetail(uuid) {
+      try {
+        const p = await tsGet(`/item.json?uuid=${encodeURIComponent(uuid)}`);
+        const attrs = p.jersey_number !== undefined ? [
+          ['OVR', p.ovr || p.overall],
+          ['SPD', p.speed], ['CON L', p.con_left], ['CON R', p.con_right],
+          ['POW L', p.pow_left], ['POW R', p.pow_right],
+          ['FLD', p.fielding], ['ARM', p.arm_strength]
+        ].filter(a => a[1] !== undefined) : [];
+
+        const detail = document.createElement('div');
+        detail.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;';
+        detail.innerHTML = `
+          <div style="background:var(--bg-surface);border:1px solid var(--border);padding:24px;max-width:380px;width:90%;position:relative;">
+            <button onclick="this.closest('div[style]').remove()" style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px;">✕</button>
+            ${p.img ? `<img src="${escHtml(p.img)}" style="width:100%;max-height:200px;object-fit:contain;">` : ''}
+            <div style="font-size:24px;color:var(--green);font-weight:bold;margin-top:8px;">${escHtml(String(p.ovr || p.overall || '?'))}</div>
+            <div style="color:var(--green);font-size:16px;">${escHtml(p.name || 'Unknown')}</div>
+            <div style="color:var(--text-dim);font-size:12px;">${escHtml(p.display_position || '')} · ${escHtml(p.team_short_name || '')} · ${escHtml(p.series || '')}</div>
+            ${attrs.length ? `<div style="margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">
+              ${attrs.map(([k, v]) => `<div style="text-align:center;"><div style="color:var(--text-dim);font-size:10px;">${k}</div><div style="color:var(--green);font-size:14px;font-weight:bold;">${v}</div></div>`).join('')}
+            </div>` : ''}
+          </div>`;
+        document.body.appendChild(detail);
+        detail.addEventListener('click', e => { if (e.target === detail) detail.remove(); });
+      } catch { /* ignore */ }
+    }
+
+    document.getElementById('ts-search-btn').addEventListener('click', () => {
+      const name = document.getElementById('ts-search-input').value.trim();
+      searchPlayers(name, 1);
+    });
+    document.getElementById('ts-search-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('ts-search-btn').click();
+    });
+    document.getElementById('ts-prev-btn').addEventListener('click', () => {
+      if (currentPage > 1) searchPlayers(currentSearch, currentPage - 1);
+    });
+    document.getElementById('ts-next-btn').addEventListener('click', () => {
+      if (currentPage < totalPages) searchPlayers(currentSearch, currentPage + 1);
+    });
+
+    // ── Roster Updates ───────────────────────────────────────────────────────
+    async function loadRosterUpdates() {
+      const el = document.getElementById('ts-roster-updates');
+      try {
+        const data = await tsGet('/roster_updates.json');
+        const updates = data.roster_updates || [];
+        if (!updates.length) {
+          el.innerHTML = '<p style="color:var(--text-dim);">> no roster updates found</p>';
+          return;
+        }
+        el.innerHTML = updates.slice(0, 10).map(u => `
+          <div class="ts-update-row" style="cursor:pointer;" onclick="loadRosterUpdateDetail(${u.id})">
+            <div>
+              <div style="color:var(--green);font-size:13px;">${escHtml(u.name || 'Roster Update')}</div>
+              <div style="color:var(--text-dim);font-size:11px;">${escHtml(u.live_date || u.date || '')}</div>
+            </div>
+            <div style="color:var(--text-dim);font-size:11px;margin-left:auto;">${u.count || ''} changes ›</div>
+          </div>`).join('');
+      } catch {
+        el.innerHTML = '<p style="color:#ff3333;">> failed to load roster updates</p>';
+      }
+    }
+
+    async function loadRosterUpdateDetail(id) {
+      try {
+        const data = await tsGet(`/roster_update.json?id=${id}`);
+        const changes = data.attribute_changes || [];
+        if (!changes.length) return;
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);display:flex;align-items:flex-start;justify-content:center;z-index:9999;overflow-y:auto;padding:40px 0;';
+        modal.innerHTML = `
+          <div style="background:var(--bg-surface);border:1px solid var(--border);padding:20px;max-width:480px;width:90%;position:relative;">
+            <button onclick="this.closest('[style]').remove()" style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px;">✕</button>
+            <h3 style="color:var(--green);margin-bottom:12px;">${escHtml(data.name || 'Roster Update')}</h3>
+            ${changes.map(c => {
+              const diff = (c.current_overall || 0) - (c.old_overall || 0);
+              const diffStr = diff > 0 ? `+${diff}` : String(diff);
+              const cls = diff > 0 ? 'ovr-up' : 'ovr-down';
+              return `
+                <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+                  ${c.img ? `<img src="${escHtml(c.img)}" style="width:40px;height:40px;object-fit:contain;">` : '<div style="width:40px;"></div>'}
+                  <div>
+                    <div style="color:var(--green);font-size:12px;">${escHtml(c.name || '')}</div>
+                    <div style="color:var(--text-dim);font-size:11px;">${escHtml(c.display_position || '')} · ${escHtml(c.team_short_name || '')}</div>
+                  </div>
+                  <div class="ovr-change ${cls}" style="margin-left:auto;font-weight:bold;">
+                    ${c.old_overall || '?'} → ${c.current_overall || '?'}
+                    <span style="font-size:11px;">(${diffStr})</span>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+      } catch { /* ignore */ }
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Init
+    loadMembers();
+    loadRosterUpdates();
+  })();
+  </script>
+
+  <%- include('partials/sidebar') %>
+  <%- include('partials/chat') %>
+  <%- include('partials/call') %>
+</body>
+</html>

@@ -67,6 +67,14 @@ const userSchema = new mongoose.Schema(
     subscription: {
       type: String,
       default: 'free'
+    },
+    permissions: {
+      type: Map,
+      of: {
+        type: String,
+        enum: ['read', 'write', 'admin']
+      },
+      default: {}
     }
   },
   {
