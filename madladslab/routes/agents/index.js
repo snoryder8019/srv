@@ -8,6 +8,7 @@ import actionsRouter from "./actions.js";
 import mcpRouter from "./mcp.js";
 import backgroundRouter from "./background.js";
 import forwardChatRouter from "./forwardchat.js";
+import reportsRouter from "./reports.js";
 
 const router = express.Router();
 
@@ -19,5 +20,6 @@ router.use(actionsRouter);
 router.use(mcpRouter);
 router.use(backgroundRouter);
 router.use(forwardChatRouter);
+router.use(reportsRouter);
 
 export default router;

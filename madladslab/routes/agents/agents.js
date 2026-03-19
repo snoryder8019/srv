@@ -1,26 +1,60 @@
 import express from "express";
 import axios from "axios";
 import mongoose from "mongoose";
+import { readdir } from "fs/promises";
+import { join, resolve } from "path";
 
 import Agent from "../../api/v1/models/Agent.js";
+import AgentAction from "../../api/v1/models/AgentAction.js";
 import { isAdmin, requireAgents, requireAgentsWrite, requireAgentsAdmin } from "./middleware.js";
 
 const router = express.Router();
 
-// Dashboard
-router.get('/', requireAgents, async (req, res) => {
-    try {
-        const agents = await Agent.find({})
-            .populate('createdBy', 'displayName email')
-            .sort({ createdAt: -1 });
+// Root → Hub
+router.get('/', requireAgents, (req, res) => res.redirect('/agents/hub'));
 
-        res.render("agents/index", {
+// Display — TV/wall dashboard
+router.get('/display', requireAgents, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const agents = await Agent.find({}, 'name description model role status tier category project capabilities bgProductivity bgTickHistory stats config.backgroundRunning').lean();
+
+        // Group by category
+        const CATS = ['business','ops','security','research','personal','creative','education','other'];
+        const byCategory = {};
+        CATS.forEach(c => byCategory[c] = []);
+        agents.forEach(a => {
+            const cat = CATS.includes(a.category) ? a.category : 'other';
+            byCategory[cat].push(a);
+        });
+
+        // Org stats
+        const totalAgents = agents.length;
+        const activeAgents = agents.filter(a => ['idle','running'].includes(a.status)).length;
+        const bgRunning = agents.filter(a => a.config?.backgroundRunning).length;
+
+        // Recent actions (last 20)
+        const recentActions = await db.collection('agent_actions').find({}).sort({ createdAt: -1 }).limit(20).toArray().catch(() => []);
+
+        // Task counts
+        const pendingTasks = await db.collection('agent_tasks').countDocuments({ status: { $in: ['pending','needs_human'] } }).catch(() => 0);
+        const doneTasks = await db.collection('agent_tasks').countDocuments({ status: 'completed' }).catch(() => 0);
+
+        res.render('agents/display', {
             user: req.user,
-            agents,
-            currentPage: 'agents'
+            byCategory,
+            CATS,
+            totalAgents,
+            activeAgents,
+            bgRunning,
+            recentActions: JSON.stringify(recentActions),
+            pendingTasks,
+            doneTasks,
+            currentPage: 'agents-display',
+            layout: false
         });
     } catch (error) {
-        console.error('Error loading agents dashboard:', error);
+        console.error('Error loading display:', error);
         res.status(500).send('Internal Server Error');
     }
 });
@@ -46,6 +80,135 @@ router.get('/api/agents', requireAgents, async (req, res) => {
         res.json({ success: true, agents });
     } catch (error) {
         console.error('Error fetching agents:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Hub view
+router.get('/hub', requireAgents, async (req, res) => {
+    try {
+        const agents = await Agent.find({})
+            .populate('createdBy', 'displayName email')
+            .sort({ createdAt: -1 });
+        res.render('agents/hub', { user: req.user, agents, currentPage: 'agents-hub' });
+    } catch (error) {
+        console.error('Error loading agent hub:', error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// Admin: wipe a single collection entirely (agents, notes, or actions)
+router.post('/api/agents/admin/wipe', isAdmin, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const { target } = req.body;
+        if (!['agents', 'notes', 'actions', 'tasks', 'projects', 'reports'].includes(target)) {
+            return res.status(400).json({ success: false, error: 'Invalid target' });
+        }
+        let deleted = 0;
+        if (target === 'agents') {
+            const r = await Agent.deleteMany({});
+            deleted = r.deletedCount;
+        } else if (target === 'notes') {
+            const r = await db.collection('agent_notes').deleteMany({});
+            deleted = r.deletedCount;
+        } else if (target === 'actions') {
+            const r = await AgentAction.deleteMany({});
+            deleted = r.deletedCount;
+        } else if (target === 'tasks') {
+            const r = await db.collection('agent_tasks').deleteMany({});
+            deleted = r.deletedCount;
+        } else if (target === 'projects') {
+            const r = await db.collection('agent_projects').deleteMany({});
+            deleted = r.deletedCount;
+        } else if (target === 'reports') {
+            const r = await db.collection('agent_reports').deleteMany({});
+            deleted = r.deletedCount;
+        }
+        console.log(`[ADMIN WIPE] target=${target} deleted=${deleted} by ${req.user?.email || 'unknown'}`);
+        res.json({ success: true, target, deleted });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Reset ALL agent namespace collections org-wide (must be before /:id routes)
+router.post('/api/agents/namespaces/reset-all', isAdmin, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const { collections = ['tasks', 'notes', 'crons', 'actions'] } = req.body;
+        const deleted = {};
+        if (collections.includes('tasks')) { const r = await db.collection('agent_tasks').deleteMany({}); deleted.tasks = r.deletedCount; }
+        if (collections.includes('notes')) { const r = await db.collection('agent_notes').deleteMany({}); deleted.notes = r.deletedCount; }
+        if (collections.includes('crons')) { const r = await db.collection('agent_crons').deleteMany({}); deleted.crons = r.deletedCount; }
+        if (collections.includes('actions')) { const r = await AgentAction.deleteMany({}); deleted.actions = r.deletedCount; }
+        res.json({ success: true, deleted });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ── Projects ────────────────────────────────────────────────────────────────
+
+router.get('/api/agents/projects', requireAgents, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const projects = await db.collection('agent_projects').find({}).sort({ createdAt: -1 }).toArray();
+        res.json({ success: true, projects });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+router.post('/api/agents/projects', requireAgentsWrite, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const { name, description = '', category = 'other' } = req.body;
+        if (!name?.trim()) return res.status(400).json({ success: false, error: 'name required' });
+        const VALID_CATS = ['business','personal','education','research','creative','ops','security','other'];
+        const project = {
+            name: name.trim(),
+            description: description.trim(),
+            category: VALID_CATS.includes(category) ? category : 'other',
+            createdAt: new Date(),
+            createdBy: req.user._id.toString()
+        };
+        const result = await db.collection('agent_projects').insertOne(project);
+        res.json({ success: true, project: { ...project, _id: result.insertedId } });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+router.delete('/api/agents/projects/:projectId', requireAgentsAdmin, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        await db.collection('agent_projects').deleteOne({
+            _id: new mongoose.Types.ObjectId(req.params.projectId)
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ── Dir tree (locked to /srv subtree) ──────────────────────────────────────
+
+router.get('/api/agents/dirtree', isAdmin, async (req, res) => {
+    try {
+        const reqPath = req.query.path || '/srv';
+        const resolved = resolve(reqPath);
+        if (!resolved.startsWith('/srv')) {
+            return res.status(403).json({ success: false, error: 'Path must be under /srv' });
+        }
+        const entries = await readdir(resolved, { withFileTypes: true });
+        const SKIP = new Set(['.git', 'node_modules', '.npm', 'dist', 'build', '.cache']);
+        const children = entries
+            .filter(e => !e.name.startsWith('.') && !SKIP.has(e.name))
+            .map(e => ({ name: e.name, path: join(resolved, e.name), isDir: e.isDirectory() }))
+            .sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name));
+        res.json({ success: true, path: resolved, children });
+    } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -109,7 +272,7 @@ router.get('/api/agents/:id', requireAgents, async (req, res) => {
 // Create new agent
 router.post('/api/agents', requireAgentsWrite, async (req, res) => {
     try {
-        const { name, description, model, provider, role, systemPrompt, temperature, contextWindow, maxTokens, mcpTools, mcpBackgroundTools, supportsAgentId, supportRole, supportLabel } = req.body;
+        const { name, description, model, provider, role, systemPrompt, temperature, contextWindow, maxTokens, mcpTools, mcpBackgroundTools, supportsAgentId, supportRole, supportLabel, project, category, workingDir, capabilities } = req.body;
 
         if (!name || name.trim().length === 0) {
             return res.status(400).json({ success: false, error: 'Agent name is required' });
@@ -148,7 +311,11 @@ router.post('/api/agents', requireAgentsWrite, async (req, res) => {
             mcpConfig: {
                 enabledTools: sanitizeTools(mcpTools),
                 backgroundEnabledTools: sanitizeTools(mcpBackgroundTools)
-            }
+            },
+            project: project || '',
+            category: ['business','personal','education','research','creative','ops','security','other'].includes(category) ? category : 'other',
+            workingDir: workingDir || '',
+            capabilities: Array.isArray(capabilities) ? capabilities.filter(c => typeof c === 'string') : []
         };
 
         const agent = new Agent(agentData);
@@ -159,7 +326,12 @@ router.post('/api/agents', requireAgentsWrite, async (req, res) => {
             try {
                 const targetAgent = await Agent.findById(supportsAgentId.trim());
                 if (targetAgent) {
-                    const validSupportRoles = ['prompt-cleaner', 'kb-curator', 'reviewer', 'background-support', 'custom'];
+                    const validSupportRoles = [
+                        'prompt-cleaner', 'kb-curator', 'reviewer', 'background-support',
+                        'summarizer', 'fact-checker', 'tone-adjuster', 'context-injector',
+                        'quality-gate', 'escalation-handler', 'data-validator', 'memory-manager',
+                        'task-planner', 'output-formatter', 'content-filter', 'custom'
+                    ];
                     const resolvedRole = validSupportRoles.includes(supportRole) ? supportRole : 'custom';
                     // Set supportsAgent on the new agent
                     agent.supportsAgent = { agentId: targetAgent._id, role: resolvedRole };
@@ -190,7 +362,7 @@ router.post('/api/agents', requireAgentsWrite, async (req, res) => {
 // Update agent
 router.put('/api/agents/:id', requireAgentsWrite, async (req, res) => {
     try {
-        const { name, description, model, provider, systemPrompt, temperature, contextWindow, maxTokens } = req.body;
+        const { name, description, model, provider, role, systemPrompt, temperature, contextWindow, maxTokens, backgroundPrompt, project, category, workingDir, capabilities } = req.body;
 
         const agent = await Agent.findById(req.params.id);
 
@@ -209,11 +381,17 @@ router.put('/api/agents/:id', requireAgentsWrite, async (req, res) => {
         if (name !== undefined) agent.name = name.trim();
         if (description !== undefined) agent.description = description.trim();
         if (model !== undefined) agent.model = model.trim();
+        if (role !== undefined && ['assistant','researcher','vibecoder','forwardChat'].includes(role)) agent.role = role;
         if (provider !== undefined) agent.provider = provider;
         if (systemPrompt !== undefined) agent.config.systemPrompt = systemPrompt;
         if (temperature !== undefined) agent.config.temperature = parseFloat(temperature);
         if (contextWindow !== undefined) agent.config.contextWindow = parseInt(contextWindow);
         if (maxTokens !== undefined) agent.config.maxTokens = parseInt(maxTokens);
+        if (backgroundPrompt !== undefined) agent.config.backgroundPrompt = backgroundPrompt;
+        if (project !== undefined) agent.project = project;
+        if (category !== undefined && ['business','personal','education','research','creative','ops','security','other'].includes(category)) agent.category = category;
+        if (workingDir !== undefined) agent.workingDir = workingDir;
+        if (capabilities !== undefined && Array.isArray(capabilities)) agent.capabilities = capabilities.filter(c => typeof c === 'string');
 
         await agent.save();
         await agent.addLog('info', `Agent updated by ${req.user.displayName || req.user.email}`);

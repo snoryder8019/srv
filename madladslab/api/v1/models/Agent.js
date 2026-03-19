@@ -245,7 +245,12 @@ const agentSchema = new mongoose.Schema(
       agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent' },
       role: {
         type: String,
-        enum: ['prompt-cleaner', 'kb-curator', 'reviewer', 'background-support', 'custom'],
+        enum: [
+          'prompt-cleaner', 'kb-curator', 'reviewer', 'background-support',
+          'summarizer', 'fact-checker', 'tone-adjuster', 'context-injector',
+          'quality-gate', 'escalation-handler', 'data-validator', 'memory-manager',
+          'task-planner', 'output-formatter', 'content-filter', 'custom'
+        ],
         default: 'custom'
       },
       label: { type: String, default: '' },  // optional human label
@@ -269,6 +274,19 @@ const agentSchema = new mongoose.Schema(
     capabilities: {
       type: [String],
       default: []
+    },
+    project: {
+      type: String,
+      default: ''
+    },
+    category: {
+      type: String,
+      enum: ['business', 'personal', 'education', 'research', 'creative', 'ops', 'security', 'other'],
+      default: 'other'
+    },
+    workingDir: {
+      type: String,
+      default: ''
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,

@@ -5,8 +5,37 @@ import AgentAction from "../../api/v1/models/AgentAction.js";
 import Agent from "../../api/v1/models/Agent.js";
 import { isAdmin } from "./middleware.js";
 import { buildTaskDoc } from "./task-helpers.js";
+import { COPY_MAP, getSiteCopy, getCopyByType, searchCopy } from "./librarian.js";
 
 const router = express.Router();
+
+// ── Librarian ──────────────────────────────────────────────────────────────
+
+// Full copy map — all sites
+router.get('/api/librarian', isAdmin, (req, res) => {
+    res.json({ success: true, map: COPY_MAP });
+});
+
+// Copy for a specific site
+router.get('/api/librarian/:site', isAdmin, (req, res) => {
+    const data = getSiteCopy(req.params.site);
+    if (!data) return res.status(404).json({ success: false, error: `Site '${req.params.site}' not found. Available: ${Object.keys(COPY_MAP).join(', ')}` });
+    res.json({ success: true, site: req.params.site, ...data });
+});
+
+// Search copy locations by keyword
+router.get('/api/librarian/search/:keyword', isAdmin, (req, res) => {
+    const results = searchCopy(req.params.keyword);
+    res.json({ success: true, keyword: req.params.keyword, count: results.length, results });
+});
+
+// Filter by type: hardcoded | database | json_file | hardcoded_js | hardcoded_config | seed_file | markdown_files
+router.get('/api/librarian/type/:type', isAdmin, (req, res) => {
+    const results = getCopyByType(req.params.type);
+    res.json({ success: true, type: req.params.type, count: results.length, results });
+});
+
+// ── Actions ────────────────────────────────────────────────────────────────
 
 // Get actions for a specific agent
 router.get('/api/agents/:id/actions', isAdmin, async (req, res) => {
@@ -198,6 +227,70 @@ router.delete('/api/agents/:id/crons/:cronId', isAdmin, async (req, res) => {
             { $set: { active: false } }
         );
         res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// List notes written by an agent (via mongo_write MCP tool)
+router.get('/api/agents/:id/notes', isAdmin, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const notes = await db.collection('agent_notes')
+            .find({ agentId: req.params.id })
+            .sort({ _id: -1 })
+            .limit(200)
+            .toArray();
+        res.json({ success: true, notes });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete a specific note
+router.delete('/api/agents/:id/notes/:noteId', isAdmin, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        await db.collection('agent_notes').deleteOne({
+            _id: new mongoose.Types.ObjectId(req.params.noteId),
+            agentId: req.params.id
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Reset namespace collections for a single agent
+router.post('/api/agents/:id/namespaces/reset', isAdmin, async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const { collections = ['tasks', 'notes', 'crons', 'actions'], clearMemory = false } = req.body;
+        const agentId = req.params.id;
+        const deleted = {};
+
+        if (collections.includes('tasks')) {
+            const r = await db.collection('agent_tasks').deleteMany({ agentId });
+            deleted.tasks = r.deletedCount;
+        }
+        if (collections.includes('notes')) {
+            const r = await db.collection('agent_notes').deleteMany({ agentId });
+            deleted.notes = r.deletedCount;
+        }
+        if (collections.includes('crons')) {
+            const r = await db.collection('agent_crons').deleteMany({ agentId });
+            deleted.crons = r.deletedCount;
+        }
+        if (collections.includes('actions')) {
+            const r = await AgentAction.deleteMany({ agentId });
+            deleted.actions = r.deletedCount;
+        }
+        if (clearMemory) {
+            const agent = await Agent.findById(agentId);
+            if (agent) { await agent.clearMemory(); deleted.memory = true; }
+        }
+
+        res.json({ success: true, deleted });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

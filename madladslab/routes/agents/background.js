@@ -42,6 +42,50 @@ export function stopBackgroundProcess(io, agentId) {
     return true;
 }
 
+// ── Researcher-specific directive builder ─────────────────────────────────────
+// Determines tick phase from memory state to avoid redundant research loops:
+//   synthesis  — context already loaded; derive conclusions + gaps (no tool calls)
+//   targeted   — pending tasks exist; answer specific questions against loaded context or tools
+//   exploration — no context yet; pick ONE concrete topic and investigate it
+function buildResearcherDirective(agent, pendingTasks, reasoningCtx, toolDefs, stuck) {
+    const findings = agent.memory.bgFindings || '';
+    const kb = agent.memory.knowledgeBase || [];
+    const longTerm = agent.memory.longTermMemory || '';
+    const hasFindings = findings.length > 300;
+    const hasKB = kb.length > 0;
+    const hasContext = hasFindings || hasKB || longTerm.length > 100;
+    const ctx = reasoningCtx ? `${reasoningCtx}\n\n` : '';
+
+    const JSON_SCHEMA = `{"title":"...","content":"<finding or synthesis>","pushToChat":true|false,"newTasks":[{"title":"...","description":"...","priority":"high|medium|low"}],"nextFocus":"<one specific question for next tick>","productivityNote":"<one sentence>"}`;
+
+    // ── Phase: pending tasks — answer them ────────────────────────
+    if (pendingTasks.length > 0) {
+        const task = pendingTasks[0]; // highest priority
+        const rest = pendingTasks.slice(1).map((t, i) =>
+            `${i + 2}. [${(t.priority || 'medium').toUpperCase()}] ${t.title}`
+        ).join('\n');
+        return `${ctx}RESEARCH TASK MODE — address the top task using context already loaded above. Do NOT re-fetch data you already have in memory.\n\nTop task (id: ${task._id}):\n[${(task.priority || 'medium').toUpperCase()}] ${task.title}${task.description ? ': ' + task.description : ''}\n${rest ? `\nQueued: \n${rest}` : ''}\n\nSteps:\n1. Check your Background Research Log and Knowledge Base (already injected above) for relevant data.\n2. ${toolDefs.length > 0 ? 'Only use a tool if the answer is NOT in your loaded context.' : 'Synthesize an answer from your loaded context.'}\n3. If you cannot answer without human input, set "question":true.\n\nIMPORTANT: If a task requires human input or a real-world action you cannot perform autonomously, set "question":true. Do NOT pretend to complete it.\n\nOutput JSON:\n{"title":"Task: <what you resolved>","content":"<result or question>","pushToChat":true,"question":true|false,"completedTaskIds":["${task._id}"],"newTasks":[],"nextFocus":"<next task or gap>","productivityNote":"<one sentence>"}\nOnly include completedTaskIds if actually finished.`;
+    }
+
+    // ── Phase: synthesis — derive conclusions from loaded context ──
+    if (hasContext && !stuck) {
+        const kbSummary = kb.length > 0
+            ? `\nKB entries loaded: ${kb.length} (${kb.map(e => e.title).join(', ')})`
+            : '';
+        const findingLen = findings.length;
+        return `${ctx}SYNTHESIS MODE — your Background Research Log (${findingLen} chars) and Knowledge Base are already loaded above. DO NOT fetch new data this tick.\n${kbSummary}\n\nYour job this tick:\n1. Read the loaded context carefully.\n2. Identify 2-3 CONTRADICTIONS, GAPS, or UNANSWERED QUESTIONS in what you already know.\n3. Derive 1-2 concrete CONCLUSIONS or INSIGHTS that follow from the evidence.\n4. For each gap, create a specific task with a clear question to answer.\n\nDo NOT summarize what you already wrote. Push conclusions forward — what does the evidence MEAN?\n\nOutput JSON:\n${JSON_SCHEMA}\nnewTasks REQUIRED (2+ items — one per gap). nextFocus = the most important unanswered question.\nIf context is thin and you have nothing to synthesize: {"title":"idle","content":"insufficient context","nextFocus":"<first topic to research>","productivityNote":"seeding first research tick"}`;
+    }
+
+    // ── Phase: exploration — no context yet or stuck; pick ONE topic ──
+    const toolHint = toolDefs.length > 0
+        ? 'Use ONE tool call to gather initial data on this topic.'
+        : 'Reason from your system prompt and role — write what you know and what you need to find out.';
+    const stuckNote = stuck
+        ? 'STUCK RECOVERY: Your recent approach has not produced findings. Pick a completely different topic from your role/system prompt.\n\n'
+        : '';
+    return `${ctx}${stuckNote}EXPLORATION MODE — no substantial context loaded yet. Pick ONE specific topic directly from your role and system prompt. Do NOT pick a vague topic like "general research".\n\n${toolHint}\n\nRules:\n- One topic, one investigation this tick.\n- Output a concrete finding, not a plan.\n- Create 2+ follow-up tasks for what you did NOT cover.\n\nOutput JSON:\n${JSON_SCHEMA}\nnewTasks REQUIRED (2+ follow-up questions). nextFocus = the most important follow-up.`;
+}
+
 async function runBackgroundTick(io, agentId, proc) {
     try {
         const agent = await Agent.findById(agentId);
@@ -145,6 +189,8 @@ async function runBackgroundTick(io, agentId, proc) {
                 directive += `\n\nYou also have ${pendingTasks.length} pending task(s) — address at least one this tick:\n${taskList}\nOutput JSON with "completedTaskIds":["<id>"] for any tasks you finish.`;
             }
             bgDirective = directive;
+        } else if (agent.role === 'researcher') {
+            bgDirective = buildResearcherDirective(agent, pendingTasks, reasoningCtx, toolDefs, stuck);
         } else if (pendingTasks.length > 0) {
             const taskList = pendingTasks.map((t, i) =>
                 `${i + 1}. [${(t.priority || 'medium').toUpperCase()}] ${t.title}${t.description ? ': ' + t.description : ''} (id: ${t._id})`
@@ -279,15 +325,33 @@ async function runBackgroundTick(io, agentId, proc) {
                 }
             }
 
-            const action = new AgentAction({
-                agentId,
-                type: 'background',
+            // ── Dedup: if same title was saved within 2× interval, update instead of insert ──
+            const dedupWindowMs = (agent.config.backgroundInterval || 2) * 2 * 60 * 1000;
+            const dedupCutoff = new Date(Date.now() - dedupWindowMs);
+            const existingAction = !isIdle && await AgentAction.findOne({
+                agentId, type: 'background',
                 title: parsed.title || 'Background insight',
-                content: parsed.content || content,
-                tokens: (res.data.usage?.completion_tokens || res.data.usage?.total_tokens || 0),
-                status: 'complete'
-            });
-            if (!isIdle) await action.save();
+                createdAt: { $gte: dedupCutoff }
+            }).sort({ createdAt: -1 });
+
+            let action;
+            if (existingAction) {
+                existingAction.content = parsed.content || content;
+                existingAction.tokens += (res.data.usage?.completion_tokens || res.data.usage?.total_tokens || 0);
+                existingAction.updatedAt = new Date();
+                await existingAction.save();
+                action = existingAction;
+            } else {
+                action = new AgentAction({
+                    agentId,
+                    type: 'background',
+                    title: parsed.title || 'Background insight',
+                    content: parsed.content || content,
+                    tokens: (res.data.usage?.completion_tokens || res.data.usage?.total_tokens || 0),
+                    status: 'complete'
+                });
+                if (!isIdle) await action.save();
+            }
             if (!isIdle && io) emitActionNew(io, agentId, action.toObject());
             if (!isIdle && io && parsed.pushToChat !== false) {
                 emitAgentPush(io, agentId, {

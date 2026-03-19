@@ -4,13 +4,23 @@ let currentChatAgentId = null;
 const chatUnreadCounts = {};
 
 // Create Agent Modal
-document.getElementById('createAgentBtn').addEventListener('click', () => {
+function openCreateAgentModal() {
   document.getElementById('modalTitle').textContent = 'Spawn New Agent';
   document.getElementById('submitBtnText').textContent = 'Create Agent';
   document.getElementById('agentForm').reset();
   document.getElementById('agentId').value = '';
   document.getElementById('presetSection').style.display = '';
-  document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('selected'));
+  // Reset preset dropdown
+  const presetSel = document.getElementById('presetSelect');
+  if (presetSel) presetSel.value = '';
+  // Reset domain checkboxes
+  document.querySelectorAll('#domainGrid input[type="checkbox"]').forEach(cb => cb.checked = false);
+  // Reset dir tree
+  document.getElementById('agentWorkingDir').value = '';
+  document.getElementById('dirTreeSelectedLabel').textContent = 'not set';
+  document.getElementById('dirTreeSelectedLabel').style.color = '';
+  if (document.getElementById('dirTreePanel')) document.getElementById('dirTreePanel').style.display = 'none';
+  if (document.getElementById('dirTreeToggle')) document.getElementById('dirTreeToggle').textContent = '▸ browse';
   // Reset prompt builder
   document.getElementById('promptBuilderBody').style.display = 'none';
   document.getElementById('promptBuilderToggle').textContent = '▸ expand';
@@ -23,8 +33,14 @@ document.getElementById('createAgentBtn').addEventListener('click', () => {
   document.getElementById('supportAgentFields').style.display = 'none';
   document.getElementById('supportAgentSection').style.display = '';
   populateSupportAgentDropdown();
+  // Load projects
+  if (typeof loadProjectsDropdown === 'function') loadProjectsDropdown();
+  // Populate "From Existing Agent" optgroup
+  if (typeof populateExistingAgentsOptgroup === 'function') populateExistingAgentsOptgroup();
   document.getElementById('agentModal').classList.add('active');
-});
+}
+
+document.getElementById('createAgentBtn')?.addEventListener('click', openCreateAgentModal);
 
 // ── Prompt Builder ────────────────────────────────────────────────────────────
 
@@ -109,7 +125,7 @@ async function populateSupportAgentDropdown() {
 }
 
 // Test Ollama Connection
-document.getElementById('testOllamaBtn').addEventListener('click', async () => {
+document.getElementById('testOllamaBtn')?.addEventListener('click', async () => {
   try {
     const response = await fetch('/agents/api/ollama/test');
     const data = await response.json();
@@ -141,6 +157,10 @@ document.getElementById('agentForm').addEventListener('submit', async (e) => {
       data.mcpTools = _selectedPresetMcpTools;
       data.mcpBackgroundTools = _selectedPresetMcpBgTools;
     }
+
+    // Collect domain checkboxes → capabilities array
+    data.capabilities = Array.from(document.querySelectorAll('#domainGrid input[type="checkbox"]:checked'))
+      .map(cb => cb.value);
 
     const response = await fetch(url, {
       method,
@@ -190,6 +210,24 @@ function editAgent(agentId) {
         document.getElementById('systemPrompt').value = agent.config.systemPrompt;
         document.getElementById('temperature').value = agent.config.temperature;
         document.getElementById('maxTokens').value = agent.config.maxTokens;
+        // New fields
+        if (agent.category) document.getElementById('agentCategory').value = agent.category;
+        if (agent.workingDir) {
+          document.getElementById('agentWorkingDir').value = agent.workingDir;
+          document.getElementById('dirTreeSelectedLabel').textContent = agent.workingDir;
+          document.getElementById('dirTreeSelectedLabel').style.color = '#00ff88';
+        }
+        // Domain checkboxes
+        const caps = agent.capabilities || [];
+        document.querySelectorAll('#domainGrid input[type="checkbox"]').forEach(cb => {
+          cb.checked = caps.includes(cb.value);
+        });
+        // Load projects then set current
+        if (typeof loadProjectsDropdown === 'function') {
+          loadProjectsDropdown().then(() => {
+            if (agent.project) document.getElementById('agentProject').value = agent.project;
+          });
+        }
         document.getElementById('presetSection').style.display = 'none';
         document.getElementById('supportAgentSection').style.display = 'none';
         document.getElementById('agentModal').classList.add('active');
