@@ -640,7 +640,11 @@ async function openChat(agentId, agentName) {
   chatUnreadCounts[agentId] = 0;
   const badge = document.getElementById(`chat-badge-${agentId}`);
   if (badge) { badge.textContent = ''; badge.classList.remove('has-unread'); }
-  document.getElementById('chatTitle').textContent = `Chat with ${agentName}`;
+  const nameSpan = document.getElementById('chatTitleName');
+  if (nameSpan) nameSpan.textContent = agentName;
+  // Avatar placeholder — set src/content when avatars are available
+  const avatarEl = document.getElementById('chatTitleAvatar');
+  if (avatarEl) { avatarEl.textContent = agentName ? agentName[0].toUpperCase() : '?'; avatarEl.dataset.agentId = agentId; }
   const messagesDiv = document.getElementById('chatMessages');
   messagesDiv.innerHTML = '<p class="loading">Loading history...</p>';
   document.getElementById('chatModal').classList.add('active');
@@ -675,7 +679,7 @@ async function openChat(agentId, agentName) {
           userEl.innerHTML = `<div class="chat-message-avatar">U</div><div class="chat-message-content">${escapeHtml(conv.userMessage || '')}</div>`;
           const aiEl = document.createElement('div');
           aiEl.className = 'chat-message';
-          aiEl.innerHTML = `<div class="chat-message-avatar">AI</div><div class="chat-message-content">${renderMarkdown(conv.agentResponse || '')}</div>`;
+          aiEl.innerHTML = `<div class="chat-message-avatar">AI</div><div class="chat-message-content">${renderMarkdown(conv.agentResponse || '')}</div><button class="chat-speak-btn" onclick="chatSpeakBtn(this)" title="Read aloud">&#x1F50A;</button>`;
           fragment.appendChild(userEl);
           fragment.appendChild(aiEl);
         });
@@ -694,6 +698,169 @@ function closeChatModal() {
   document.getElementById('chatModal').classList.remove('active');
   document.getElementById('chatContextStrip').style.display = 'none';
   currentChatAgentId = null;
+  // Stop any ongoing speech
+  chatStopSpeaking();
+  chatStopMic();
+}
+
+// ── TTS / STT ──────────────────────────────────────────────────────────────
+
+let _chatCurrentAudio = null;
+let _chatVoice = 'lessac';
+
+function chatSetVoice(v) { _chatVoice = v; }
+
+// Strip markdown for cleaner speech
+function _ttsClean(text, maxChars = 0) {
+  let clean = text
+    .replace(/```[\s\S]*?```/g, 'code block.')
+    .replace(/`[^`]+`/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/#+\s/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, 'link.')
+    .replace(/\n+/g, ' ')
+    .trim();
+  // Cap to first sentence for auto-speak (keeps latency low)
+  if (maxChars > 0 && clean.length > maxChars) {
+    const cut = clean.search(/[.!?](?:\s|$)/);
+    clean = cut > 0 && cut < maxChars ? clean.slice(0, cut + 1) : clean.slice(0, maxChars);
+  }
+  return clean;
+}
+
+// Stop any currently playing audio
+function chatStopSpeaking() {
+  if (_chatCurrentAudio) {
+    _chatCurrentAudio.pause();
+    _chatCurrentAudio = null;
+  }
+  document.querySelectorAll('.chat-speak-btn.speaking').forEach(b => b.classList.remove('speaking'));
+}
+
+// Speak text via Piper TTS backend
+// autoSpeak=true caps to first sentence for low latency; button clicks speak full text
+// Split clean text into sentences for pipelining
+function _ttsSentences(text) {
+  return text.match(/[^.!?]+[.!?]+\s*/g)?.map(s => s.trim()).filter(Boolean) || [text];
+}
+
+// Fetch one sentence → blob URL
+async function _ttsFetch(sentence) {
+  const res = await fetch('/agents/api/tts', {
+    method: 'POST',
+    credentials: 'include',
+    redirect: 'error',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: sentence, voice: _chatVoice }),
+  });
+  const ct = res.headers.get('content-type') || '';
+  if (!res.ok || !ct.includes('audio')) throw new Error(`TTS ${res.status}`);
+  return URL.createObjectURL(await res.blob());
+}
+
+// Play a blob URL, resolve when done
+function _ttsPlayUrl(url) {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(url);
+    _chatCurrentAudio = audio;
+    audio.onended  = () => { URL.revokeObjectURL(url); resolve(); };
+    audio.onerror  = (e) => { URL.revokeObjectURL(url); reject(e); };
+    audio.play().catch(reject);
+  });
+}
+
+// autoSpeak=true caps to ~first sentence for low latency; button clicks speak full text
+async function chatSpeak(text, btn, autoSpeak = false) {
+  const clean = _ttsClean(text, autoSpeak ? 300 : 0);
+  if (!clean) return;
+
+  chatStopSpeaking();
+  if (btn) btn.classList.add('speaking');
+
+  const sentences = _ttsSentences(clean);
+
+  try {
+    // Prefetch sentence 0; while it plays, sentence 1 is already fetching
+    let nextFetch = _ttsFetch(sentences[0]);
+
+    for (let i = 0; i < sentences.length; i++) {
+      const prefetchNext = sentences[i + 1] ? _ttsFetch(sentences[i + 1]) : null;
+      const url = await nextFetch;
+      // Check if user stopped playback mid-sequence
+      if (!btn || btn.classList.contains('speaking')) {
+        await _ttsPlayUrl(url);
+      } else {
+        URL.revokeObjectURL(url);
+        break;
+      }
+      nextFetch = prefetchNext;
+    }
+
+    _chatCurrentAudio = null;
+    if (btn) btn.classList.remove('speaking');
+  } catch (err) {
+    console.error('[TTS] Piper failed, falling back to Web Speech:', err.message);
+    _chatCurrentAudio = null;
+    if (window.speechSynthesis) {
+      const utt = new SpeechSynthesisUtterance(clean);
+      utt.rate = 1.0; utt.pitch = 0.95;
+      utt.onend = () => { if (btn) btn.classList.remove('speaking'); };
+      window.speechSynthesis.speak(utt);
+    } else {
+      if (btn) btn.classList.remove('speaking');
+    }
+  }
+}
+
+// Speaker button click — toggles play/stop
+function chatSpeakBtn(btn) {
+  // If already playing this button, stop
+  if (btn.classList.contains('speaking')) { chatStopSpeaking(); return; }
+  const contentEl = btn.closest('.chat-message')?.querySelector('.chat-message-content');
+  if (!contentEl) return;
+  chatSpeak(contentEl.innerText || contentEl.textContent, btn);
+}
+
+// ── STT (browser Web Speech API — Chrome/Safari) ──
+let _chatRecognition = null;
+let _chatIsRecording = false;
+
+(function initChatSpeech() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) return;
+  _chatRecognition = new SpeechRec();
+  _chatRecognition.continuous = false;
+  _chatRecognition.interimResults = false;
+  _chatRecognition.lang = 'en-US';
+  _chatRecognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    const input = document.getElementById('chatInput');
+    if (input) { input.value = transcript; sendMessage(); }
+    chatStopMic();
+  };
+  _chatRecognition.onerror = (e) => {
+    if (e.error !== 'no-speech') console.warn('[ChatSTT]', e.error);
+    chatStopMic();
+  };
+  _chatRecognition.onend = () => chatStopMic();
+})();
+
+function chatToggleMic() {
+  if (_chatIsRecording) { chatStopMic(); return; }
+  if (!_chatRecognition) return;
+  _chatIsRecording = true;
+  const btn = document.getElementById('chatMicBtn');
+  if (btn) btn.classList.add('recording');
+  try { _chatRecognition.start(); } catch(e) { chatStopMic(); }
+}
+
+function chatStopMic() {
+  _chatIsRecording = false;
+  const btn = document.getElementById('chatMicBtn');
+  if (btn) btn.classList.remove('recording');
+  try { if (_chatRecognition) _chatRecognition.stop(); } catch(e) { /* already stopped */ }
 }
 
 document.getElementById('sendChatBtn').addEventListener('click', sendMessage);
@@ -778,8 +945,11 @@ async function sendMessage() {
         <div class="chat-message">
           <div class="chat-message-avatar">AI</div>
           <div class="chat-message-content">${renderMarkdown(result.response)}</div>
+          <button class="chat-speak-btn" onclick="chatSpeakBtn(this)" title="Read aloud">&#x1F50A;</button>
         </div>
       `);
+      const newSpeakBtn = messagesDiv.lastElementChild?.querySelector('.chat-speak-btn');
+      chatSpeak(result.response, newSpeakBtn, true);
     } else {
       messagesDiv.insertAdjacentHTML('beforeend', `
         <div class="chat-message">

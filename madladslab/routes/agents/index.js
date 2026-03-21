@@ -9,6 +9,7 @@ import mcpRouter from "./mcp.js";
 import backgroundRouter from "./background.js";
 import forwardChatRouter from "./forwardchat.js";
 import reportsRouter from "./reports.js";
+import ttsRouter from "./tts.js";
 
 const router = express.Router();
 
@@ -21,5 +22,6 @@ router.use(mcpRouter);
 router.use(backgroundRouter);
 router.use(forwardChatRouter);
 router.use(reportsRouter);
+router.use(ttsRouter);
 
 export default router;

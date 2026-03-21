@@ -1,0 +1,239 @@
+<%- include('../partials/head', { title: client.name }) %>
+<%- include('../partials/sidebar', { page: 'clients', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title"><%= client.name %></div>
+  <div class="topbar-actions">
+    <a href="/admin/clients/<%= client._id %>/edit" class="btn btn-ghost btn-sm">Edit</a>
+    <form method="POST" action="/admin/clients/<%= client._id %>/delete" style="display:inline" onsubmit="return confirm('Delete this client?')">
+      <button class="btn btn-danger btn-sm">Delete</button>
+    </form>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Client header card -->
+  <div class="card" style="margin-bottom:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
+      <div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--dark);"><%= client.name %></div>
+        <div style="font-size:0.8rem;color:var(--slate);margin-top:2px;"><%= client.company || '' %><%= client.company && client.email ? ' · ' : '' %><%= client.email || '' %></div>
+      </div>
+      <span class="badge badge-<%= client.status %>" style="margin-top:4px;"><%= client.status %></span>
+    </div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:16px;">
+      <% if (client.phone) { %><div class="text-slate" style="font-size:0.82rem;"><strong style="font-weight:600;letter-spacing:.06em;">Phone</strong> · <%= client.phone %></div><% } %>
+      <% if (client.website) { %><div class="text-slate" style="font-size:0.82rem;"><a href="<%= client.website %>" target="_blank" style="color:var(--navy);"><%= client.website %></a></div><% } %>
+      <% if (client.address) { %><div class="text-slate" style="font-size:0.82rem;"><%= client.address %></div><% } %>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <a href="?tab=overview" class="tab-link <%= tab === 'overview' ? 'active' : '' %>">Overview</a>
+    <a href="?tab=invoices" class="tab-link <%= tab === 'invoices' ? 'active' : '' %>">Invoices (<%= invoices.length %>)</a>
+    <a href="?tab=files" class="tab-link <%= tab === 'files' ? 'active' : '' %>">Files (<%= files.length %>)</a>
+    <a href="?tab=onboarding" class="tab-link <%= tab === 'onboarding' ? 'active' : '' %>">Onboarding</a>
+  </div>
+
+  <!-- OVERVIEW TAB -->
+  <% if (tab === 'overview') { %>
+    <div class="card">
+      <div class="card-title">Notes</div>
+      <p style="font-size:0.9rem;font-weight:300;color:var(--slate);line-height:1.7;"><%= client.notes || 'No notes yet.' %></p>
+    </div>
+    <div class="card mt-24">
+      <div class="card-title">Summary</div>
+      <table>
+        <tbody>
+          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;width:140px;">Added</td><td><%= new Date(client.createdAt).toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'}) %></td></tr>
+          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Invoices</td><td><%= invoices.length %> total</td></tr>
+          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Files</td><td><%= files.length %> shared</td></tr>
+          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Onboarding</td><td><%= client.onboarding?.complete ? 'Complete' : `In progress (step ${client.onboarding?.step || 0})` %></td></tr>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+  <!-- INVOICES TAB -->
+  <% if (tab === 'invoices') { %>
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">New Invoice</div>
+      <form method="POST" action="/admin/clients/<%= client._id %>/invoices">
+        <div class="form-grid cols-3">
+          <div class="form-field">
+            <label>Invoice Title</label>
+            <input type="text" name="title" placeholder="Social Media - March" required>
+          </div>
+          <div class="form-field">
+            <label>Amount ($)</label>
+            <input type="number" name="amount" placeholder="500.00" step="0.01" min="0" required>
+          </div>
+          <div class="form-field">
+            <label>Status</label>
+            <select name="status">
+              <option value="unpaid">Unpaid</option>
+              <option value="paid">Paid</option>
+              <option value="draft">Draft</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Due Date</label>
+            <input type="date" name="dueDate">
+          </div>
+          <div class="form-field span-2">
+            <label>Notes</label>
+            <input type="text" name="notes" placeholder="Optional notes">
+          </div>
+        </div>
+        <div style="margin-top:16px;"><button type="submit" class="btn btn-navy btn-sm">Add Invoice</button></div>
+      </form>
+    </div>
+
+    <% if (!invoices.length) { %>
+      <div class="empty"><div class="empty-icon">$</div><p>No invoices yet.</p></div>
+    <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Title</th><th>Amount</th><th>Status</th><th>Due</th><th>Notes</th><th></th></tr></thead>
+        <tbody>
+          <% for (const inv of invoices) { %>
+          <tr>
+            <td style="font-weight:500;"><%= inv.title %></td>
+            <td>$<%= inv.amount.toFixed(2) %></td>
+            <td>
+              <form method="POST" action="/admin/clients/<%= client._id %>/invoices/<%= inv._id %>/status" style="display:inline;">
+                <select name="status" onchange="this.form.submit()" style="padding:4px 8px;font-size:0.75rem;border:1px solid var(--ivory-mid);border-radius:2px;background:var(--white);font-family:'Jost',sans-serif;appearance:none;-webkit-appearance:auto;">
+                  <option value="draft" <%= inv.status === 'draft' ? 'selected' : '' %>>Draft</option>
+                  <option value="unpaid" <%= inv.status === 'unpaid' ? 'selected' : '' %>>Unpaid</option>
+                  <option value="paid" <%= inv.status === 'paid' ? 'selected' : '' %>>Paid</option>
+                </select>
+              </form>
+            </td>
+            <td class="text-slate"><%= inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—' %></td>
+            <td class="text-slate" style="font-size:0.82rem;"><%= inv.notes || '—' %></td>
+            <td>
+              <form method="POST" action="/admin/clients/<%= client._id %>/invoices/<%= inv._id %>/delete" onsubmit="return confirm('Delete invoice?')">
+                <button class="btn btn-danger btn-sm">Del</button>
+              </form>
+            </td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  <% } %>
+
+  <!-- FILES TAB -->
+  <% if (tab === 'files') { %>
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">Upload File</div>
+      <form method="POST" action="/admin/clients/<%= client._id %>/files" enctype="multipart/form-data">
+        <div class="form-grid">
+          <div class="form-field">
+            <label>File</label>
+            <input type="file" name="file" required>
+          </div>
+          <div class="form-field">
+            <label>Label (optional)</label>
+            <input type="text" name="label" placeholder="e.g. Brand Guide v1">
+          </div>
+        </div>
+        <div style="margin-top:16px;"><button type="submit" class="btn btn-navy btn-sm">Upload File</button></div>
+      </form>
+    </div>
+
+    <% if (!files.length) { %>
+      <div class="empty"><div class="empty-icon">📁</div><p>No files shared yet.</p></div>
+    <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Label</th><th>Type</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
+        <tbody>
+          <% for (const f of files) { %>
+          <tr>
+            <td><% if (f.url) { %><a href="<%= f.url %>" target="_blank" style="color:var(--navy);"><%= f.name %></a><% } else { %><span class="text-slate"><%= f.name %></span><% } %></td>
+            <td><%= f.label || '—' %></td>
+            <td class="text-slate" style="font-size:0.8rem;"><%= f.type || '—' %></td>
+            <td class="text-slate" style="font-size:0.8rem;"><%= f.size ? (f.size / 1024).toFixed(0) + ' KB' : '—' %></td>
+            <td class="text-slate"><%= new Date(f.uploadedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) %></td>
+            <td>
+              <form method="POST" action="/admin/clients/<%= client._id %>/files/<%= f._id %>/delete" onsubmit="return confirm('Delete file?')">
+                <button class="btn btn-danger btn-sm">Del</button>
+              </form>
+            </td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  <% } %>
+
+  <!-- ONBOARDING TAB -->
+  <% if (tab === 'onboarding') { %>
+    <div class="card">
+      <div class="card-title">Client Onboarding</div>
+      <form method="POST" action="/admin/clients/<%= client._id %>/onboarding">
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Business Type</label>
+            <input type="text" name="businessType" value="<%= client.onboarding?.data?.businessType || '' %>" placeholder="e.g. Restaurant, Retail, Salon">
+          </div>
+          <div class="form-field">
+            <label>Budget Range</label>
+            <select name="budget">
+              <option value="" <%= !client.onboarding?.data?.budget ? 'selected' : '' %>>Select...</option>
+              <option value="under500" <%= client.onboarding?.data?.budget === 'under500' ? 'selected' : '' %>>Under $500/mo</option>
+              <option value="500-1000" <%= client.onboarding?.data?.budget === '500-1000' ? 'selected' : '' %>>$500–$1,000/mo</option>
+              <option value="1000-2500" <%= client.onboarding?.data?.budget === '1000-2500' ? 'selected' : '' %>>$1,000–$2,500/mo</option>
+              <option value="2500+" <%= client.onboarding?.data?.budget === '2500+' ? 'selected' : '' %>>$2,500+/mo</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Timeline</label>
+            <select name="timeline">
+              <option value="" <%= !client.onboarding?.data?.timeline ? 'selected' : '' %>>Select...</option>
+              <option value="asap" <%= client.onboarding?.data?.timeline === 'asap' ? 'selected' : '' %>>ASAP</option>
+              <option value="1month" <%= client.onboarding?.data?.timeline === '1month' ? 'selected' : '' %>>Within 1 month</option>
+              <option value="3months" <%= client.onboarding?.data?.timeline === '3months' ? 'selected' : '' %>>1–3 months</option>
+              <option value="flexible" <%= client.onboarding?.data?.timeline === 'flexible' ? 'selected' : '' %>>Flexible</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Social Platforms</label>
+            <input type="text" name="socialPlatforms" value="<%= client.onboarding?.data?.socialPlatforms || '' %>" placeholder="Instagram, Facebook, TikTok">
+          </div>
+          <div class="form-field">
+            <label>Current Website</label>
+            <input type="url" name="currentWebsite" value="<%= client.onboarding?.data?.currentWebsite || '' %>" placeholder="https://...">
+          </div>
+          <div class="form-field">
+            <label>Progress Step</label>
+            <select name="step">
+              <option value="0" <%= !client.onboarding?.step ? 'selected' : '' %>>Not started</option>
+              <option value="1" <%= client.onboarding?.step === 1 ? 'selected' : '' %>>Step 1 — Initial call</option>
+              <option value="2" <%= client.onboarding?.step === 2 ? 'selected' : '' %>>Step 2 — Proposal sent</option>
+              <option value="3" <%= client.onboarding?.step === 3 ? 'selected' : '' %>>Step 3 — Contract signed</option>
+              <option value="done" <%= client.onboarding?.complete ? 'selected' : '' %>>Complete</option>
+            </select>
+          </div>
+          <div class="form-field span-2">
+            <label>Goals</label>
+            <textarea name="goals" placeholder="What does the client want to achieve?"><%= client.onboarding?.data?.goals || '' %></textarea>
+          </div>
+          <div class="form-field span-2">
+            <label>Brand Notes</label>
+            <textarea name="brandNotes" placeholder="Brand voice, colors, style preferences..."><%= client.onboarding?.data?.brandNotes || '' %></textarea>
+          </div>
+        </div>
+        <div style="margin-top:24px;"><button type="submit" class="btn btn-navy">Save Onboarding Data</button></div>
+      </form>
+    </div>
+  <% } %>
+</div>
+
+</div></div>
+</body>
+</html>

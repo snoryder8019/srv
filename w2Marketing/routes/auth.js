@@ -14,7 +14,7 @@ router.get('/google/callback', (req, res, next) => {
   passport.authenticate('google', { failureRedirect: '/admin/login?error=oauth' }, (err, user) => {
     if (err || !user) return res.redirect('/admin/login?error=oauth');
 
-    if (!user.isW2Admin) {
+    if (!user.isW2Admin && !user.isAdmin) {
       return res.redirect('/admin/login?error=unauthorized');
     }
 

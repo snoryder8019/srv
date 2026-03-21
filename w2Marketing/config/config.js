@@ -11,4 +11,11 @@ export const config = {
   GGLSEC: process.env.GGLSEC,
   JWT_SECRET: process.env.JWT_SECRET || 'dev_secret_change_me',
   SESHSEC: process.env.SESHSEC || 'dev_session_secret',
+  LINODE_ENDPOINT: process.env.LINODE_URL || 'https://us-ord-1.linodeobjects.com',
+  LINODE_REGION: process.env.LINODE_REGION || 'us-ord-1',
+  LINODE_BUCKET: process.env.LINODE_BUCKET || 'madladslab',
+  LINODE_KEY: process.env.LINODE_ACCESS,  // env var is LINODE_ACCESS
+  LINODE_SECRET: process.env.LINODE_SECRET,
+  GOOGLE_PLACES_KEY: process.env.GOOGLE_PLACES_KEY || process.env.GGLAPI,
+  GOOGLE_PLACE_ID: process.env.GOOGLE_PLACE_ID,
 };

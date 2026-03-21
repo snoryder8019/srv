@@ -4,9 +4,12 @@ import { config } from '../config/config.js';
 export function requireAdmin(req, res, next) {
   const token = req.cookies?.w2_token;
   if (!token) return res.redirect('/admin/login');
-
   try {
     const decoded = jwt.verify(token, config.JWT_SECRET);
+    if (!decoded.isW2Admin && !decoded.isAdmin) {
+      res.clearCookie('w2_token');
+      return res.redirect('/admin/login?error=unauthorized');
+    }
     req.adminUser = decoded;
     next();
   } catch {
@@ -21,6 +24,7 @@ export function issueAdminJWT(user, res) {
     email: user.email,
     displayName: user.displayName,
     isW2Admin: user.isW2Admin,
+    isAdmin: user.isAdmin,
   };
   const token = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '8h' });
   res.cookie('w2_token', token, {

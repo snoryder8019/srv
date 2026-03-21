@@ -203,31 +203,26 @@ async function hubRefreshHeader(agentId) {
     const bgRunning = a.config?.backgroundRunning;
     const prod = a.bgProductivity?.score ?? null;
 
+    const avatarLetter = hubEsc(a.name)[0]?.toUpperCase() || '?';
     document.getElementById('hubAgentHeader').innerHTML = `
-      <div class="hub-agent-header-left">
+      <div class="hub-header-top">
         <button class="hub-mobile-back" onclick="hubMobileBack()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           Back
         </button>
-        <div class="hub-header-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-        </div>
-        <div class="hub-header-meta">
-          <div class="hub-header-name">${hubEsc(a.name)}</div>
-          <div class="hub-header-sub">
-            <span id="hubHeaderStatus" class="hub-header-status status-${a.status}"><span class="status-dot"></span>${a.status}</span>
-            <span class="hub-header-chip" style="background:${tc}22;color:${tc};border-color:${tc}44">${a.tier}</span>
-            <span class="hub-header-chip">${hubEsc(a.role)}</span>
-            <span class="hub-header-chip">${hubEsc(a.model)}</span>
-            <span class="hub-header-chip">temp ${a.config.temperature}</span>
-            ${bgRunning ? `<span class="hub-header-chip hub-chip-bg">bg running${prod !== null ? ` · ${prod}%` : ''}</span>` : ''}
-          </div>
-        </div>
+        <div class="hub-header-avatar" data-agent-id="${a._id}">${avatarLetter}</div>
+        <span class="hub-header-name">${hubEsc(a.name)}</span>
+      </div>
+      <div class="hub-header-sub">
+        <span id="hubHeaderStatus" class="hub-header-status status-${a.status}"><span class="status-dot"></span>${a.status}</span>
+        <span class="hub-header-chip" style="background:${tc}22;color:${tc};border-color:${tc}44">${a.tier}</span>
+        <span class="hub-header-chip">${hubEsc(a.role)}</span>
+        <span class="hub-header-chip">${hubEsc(a.model)}</span>
+        <span class="hub-header-chip">temp ${a.config.temperature}</span>
+        ${bgRunning ? `<span class="hub-header-chip hub-chip-bg">bg running${prod !== null ? ` · ${prod}%` : ''}</span>` : ''}
       </div>
       <div class="hub-header-actions">
-        <button class="hub-btn-sm" onclick="openChat('${a._id}', '${hubEsc(a.name).replace(/'/g,"\\'")}')">Chat</button>
+        <button class="hub-btn-sm hub-btn-primary" onclick="openChat('${a._id}', '${hubEsc(a.name).replace(/'/g,"\\'")}')">Chat</button>
         ${bgRunning
           ? `<button class="hub-btn-sm hub-btn-stop" onclick="stopBackground('${a._id}')">Stop BG</button>`
           : `<button class="hub-btn-sm" onclick="startBackground('${a._id}')">Start BG</button>`
