@@ -140,6 +140,36 @@
 }
 .ma-field-val { color: var(--dark); line-height: 1.4; word-break: break-word; flex: 1; }
 
+/* TTS / STT controls */
+.ma-speak-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--slate); font-size: 0.85rem; padding: 2px 5px;
+  border-radius: 3px; line-height: 1; opacity: 0.6;
+  transition: opacity .15s, color .15s;
+  vertical-align: middle; margin-left: 6px; flex-shrink: 0;
+}
+.ma-speak-btn:hover { opacity: 1; color: var(--navy); }
+.ma-speak-btn.speaking { opacity: 1; color: var(--gold); animation: ma-pulse 1s infinite; }
+@keyframes ma-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.ma-mic-btn {
+  padding: 10px 12px; font-size: 1rem; line-height: 1;
+  border-radius: 4px; border: 1px solid var(--ivory-mid);
+  background: #fff; cursor: pointer; color: var(--slate);
+  transition: background .15s, color .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.ma-mic-btn:hover { border-color: var(--navy); color: var(--navy); }
+.ma-mic-btn.recording { background: #fee; border-color: #c33; color: #c33; animation: ma-pulse 0.8s infinite; }
+
+#ma-voice-select {
+  padding: 6px 8px; font-size: 0.78rem; font-family: inherit;
+  border: 1px solid var(--ivory-mid); border-radius: 4px;
+  background: #fff; color: var(--dark); cursor: pointer;
+  flex-shrink: 0;
+}
+#ma-voice-select:focus { outline: none; border-color: var(--navy); }
+
 /* Mobile overrides */
 @media (max-width: 820px) {
   .dash-two-col { grid-template-columns: 1fr !important; }
@@ -152,37 +182,84 @@
   .ma-field-key { width: 90px; }
 }
 @media (max-width: 520px) {
+  /* Tighten overall content */
+  .content { padding: 14px 12px; }
+  .agent-card { margin-top: 14px; }
+  .card { padding: 14px 12px; }
+  .card + .card { margin-top: 10px; }
+
+  /* Topbar: hide Edit Copy to reduce crowding, keep + Portfolio */
+  .topbar-hide-mobile { display: none !important; }
+
+  /* Stat grid: horizontal scroll strip */
+  .stat-grid {
+    display: flex !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .stat-grid::-webkit-scrollbar { display: none; }
+  .stat-card {
+    flex: 0 0 auto;
+    min-width: 96px;
+    padding: 10px 12px;
+  }
+  .stat-label { font-size: 0.55rem; }
+  .stat-value { font-size: 1.7rem; }
+
+  /* Agent header */
+  .agent-header { margin-bottom: 10px; }
+  .agent-header p { display: none; }
+  .agent-header a.btn { padding: 5px 10px; font-size: 0.62rem; }
+
   /* Chat area */
-  #ma-messages { max-height: 190px; }
-  .ma-bubble { max-width: 96%; font-size: 0.82rem; padding: 8px 11px; }
+  #ma-messages { max-height: 200px; margin-bottom: 10px; }
+  .ma-bubble { max-width: 96%; font-size: 0.82rem; padding: 8px 10px; }
 
-  /* Quick chips — smaller, scrollable row */
-  #ma-quick { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
-  #ma-quick .btn { font-size: 0.62rem; padding: 4px 10px; white-space: nowrap; flex-shrink: 0; }
+  /* Quick chips — horizontal scroll */
+  #ma-quick { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; gap: 5px; margin-bottom: 8px; }
+  #ma-quick .btn { font-size: 0.6rem; padding: 5px 10px; white-space: nowrap; flex-shrink: 0; }
 
-  /* Input row */
-  .ma-input-row input { font-size: 0.85rem; padding: 9px 12px; }
-  .ma-input-row .btn { padding: 9px 14px; font-size: 0.72rem; }
+  /* Input row:
+     Row 1: [voice select ──────] [mic]
+     Row 2: [input ──────────────] [send] */
+  .ma-input-row { flex-wrap: wrap; gap: 6px; }
+  #ma-voice-select { order: 1; flex: 1 1 0; min-width: 0; font-size: 0.73rem; padding: 7px 8px; }
+  .ma-mic-btn { order: 2; flex-shrink: 0; padding: 8px 11px; font-size: 0.95rem; }
+  .ma-input-row input { order: 3; flex: 1 1 0; min-width: 0; font-size: 0.85rem; padding: 9px 12px; }
+  .ma-input-row .btn { order: 4; flex-shrink: 0; padding: 9px 14px; font-size: 0.72rem; }
 
   /* Result card */
+  #ma-result { margin-top: 12px; }
   .ma-result-header { padding: 10px 12px; }
-  .ma-result-actions { flex-direction: column; gap: 6px; }
-  .ma-result-actions .btn { width: 100%; justify-content: center; }
-  /* Keep dismiss (✕) compact */
-  .ma-result-actions .btn:last-child { width: auto; align-self: flex-start; }
-  .ma-field-key { width: 68px; font-size: 0.58rem; }
-  #ma-result-fields { padding: 0 12px 12px; }
+  .ma-result-actions { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .ma-result-actions .btn { flex: 1 1 auto; min-width: 0; justify-content: center; font-size: 0.65rem; padding: 7px 10px; }
+  .ma-result-actions .btn:last-child { flex: 0 0 auto; }
+  .ma-field-key { width: 64px; font-size: 0.57rem; }
+  #ma-result-fields { padding: 0 12px 12px; max-height: 180px; }
+  .ma-field-row { font-size: 0.78rem; }
 
-  /* Stat grid: 2 tight cols */
-  .stat-card { padding: 14px 12px; }
-  .stat-value { font-size: 2rem; }
+  /* Quick Actions: 2-col grid on phone */
+  .quick-actions-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .quick-actions-grid .btn { padding: 9px 10px; font-size: 0.65rem; justify-content: center; }
+
+  /* Account table tighten */
+  tbody td { padding: 10px 12px; font-size: 0.82rem; }
+  thead th { padding: 9px 12px; }
 }
 </style>
 
 <div class="topbar">
   <div class="topbar-title">Dashboard</div>
   <div class="topbar-actions">
-    <a href="/admin/copy" class="btn btn-ghost btn-sm">Edit Copy</a>
+    <a href="/admin/copy" class="btn btn-ghost btn-sm topbar-hide-mobile">Edit Copy</a>
     <a href="/admin/portfolio/new" class="btn btn-navy btn-sm">+ Portfolio</a>
   </div>
 </div>
@@ -246,6 +323,12 @@
 
     <!-- Input -->
     <div class="ma-input-row">
+      <select id="ma-voice-select" title="TTS voice" onchange="maSetVoice(this.value)">
+        <option value="lessac">Lessac (F)</option>
+        <option value="ryan">Ryan (M)</option>
+        <option value="slt">SLT (F)</option>
+      </select>
+      <button class="ma-mic-btn" id="ma-mic-btn" title="Speak" onclick="maToggleMic()">🎤</button>
       <input id="ma-input" type="text" placeholder="Ask <%= agentName %>…" autocomplete="off">
       <button class="btn btn-navy" id="ma-send" onclick="maSend()">Send</button>
     </div>
@@ -290,10 +373,10 @@
     </div>
     <div class="card">
       <div class="card-title">Quick Actions</div>
-      <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="quick-actions-grid" style="display:flex;flex-direction:column;gap:10px;">
         <a href="/admin/blog/new" class="btn btn-navy">+ New Blog Post</a>
         <a href="/admin/pages/new" class="btn btn-navy">+ New Page</a>
-        <a href="/admin/portfolio/new" class="btn btn-ghost">+ Add Portfolio Item</a>
+        <a href="/admin/portfolio/new" class="btn btn-ghost">+ Portfolio Item</a>
         <a href="/admin/copy" class="btn btn-ghost">Edit Site Copy</a>
         <a href="/admin/design" class="btn btn-ghost">Design &amp; Settings</a>
         <a href="/" target="_blank" class="btn btn-ghost">View Live Site ↗</a>
@@ -313,6 +396,139 @@ let maHistory = [];
 let maLastResult = null;
 let maExecuting = false;
 
+// ── TTS / STT ─────────────────────────────────────────────────────────────────
+let _maVoice = 'lessac';
+let _maCurrentAudio = null;
+
+function maSetVoice(v) { _maVoice = v; }
+
+function _ttsClean(text, maxChars = 0) {
+  let clean = text
+    .replace(/```[\s\S]*?```/g, 'code block.')
+    .replace(/`[^`]+`/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/#+\s/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, 'link.')
+    .replace(/\n+/g, ' ')
+    .trim();
+  if (maxChars > 0 && clean.length > maxChars) {
+    const cut = clean.search(/[.!?](?:\s|$)/);
+    clean = cut > 0 && cut < maxChars ? clean.slice(0, cut + 1) : clean.slice(0, maxChars);
+  }
+  return clean;
+}
+
+function _ttsSentences(text) {
+  return text.match(/[^.!?]+[.!?]+\s*/g)?.map(s => s.trim()).filter(Boolean) || [text];
+}
+
+async function _ttsFetch(sentence) {
+  const res = await fetch('/admin/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: sentence, voice: _maVoice }),
+  });
+  const ct = res.headers.get('content-type') || '';
+  if (!res.ok || !ct.includes('audio')) throw new Error(`TTS ${res.status}`);
+  return URL.createObjectURL(await res.blob());
+}
+
+function _ttsPlayUrl(url) {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(url);
+    _maCurrentAudio = audio;
+    audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+    audio.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    audio.play().catch(reject);
+  });
+}
+
+function maStopSpeaking() {
+  if (_maCurrentAudio) { _maCurrentAudio.pause(); _maCurrentAudio = null; }
+  document.querySelectorAll('.ma-speak-btn.speaking').forEach(b => b.classList.remove('speaking'));
+}
+
+async function maSpeak(text, btn, autoSpeak = false) {
+  const clean = _ttsClean(text, autoSpeak ? 300 : 0);
+  if (!clean) return;
+  maStopSpeaking();
+  if (btn) btn.classList.add('speaking');
+  const sentences = _ttsSentences(clean);
+  try {
+    let nextFetch = _ttsFetch(sentences[0]);
+    for (let i = 0; i < sentences.length; i++) {
+      const prefetchNext = sentences[i + 1] ? _ttsFetch(sentences[i + 1]) : null;
+      const url = await nextFetch;
+      if (!btn || btn.classList.contains('speaking')) {
+        await _ttsPlayUrl(url);
+      } else {
+        URL.revokeObjectURL(url); break;
+      }
+      nextFetch = prefetchNext;
+    }
+    _maCurrentAudio = null;
+    if (btn) btn.classList.remove('speaking');
+  } catch (err) {
+    console.warn('[TTS] Piper failed, falling back to Web Speech:', err.message);
+    _maCurrentAudio = null;
+    if (window.speechSynthesis) {
+      const utt = new SpeechSynthesisUtterance(clean);
+      utt.rate = 1.0; utt.pitch = 0.95;
+      utt.onend = () => { if (btn) btn.classList.remove('speaking'); };
+      window.speechSynthesis.speak(utt);
+    } else {
+      if (btn) btn.classList.remove('speaking');
+    }
+  }
+}
+
+function maSpeakBtn(btn) {
+  if (btn.classList.contains('speaking')) { maStopSpeaking(); return; }
+  const content = btn.closest('.ma-msg')?.querySelector('.ma-bubble');
+  if (!content) return;
+  maSpeak(content.innerText || content.textContent, btn);
+}
+
+// ── STT (Web Speech API) ──────────────────────────────────────────────────────
+let _maRecognition = null;
+let _maIsRecording = false;
+
+(function initMaSpeech() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) return;
+  _maRecognition = new SpeechRec();
+  _maRecognition.continuous = false;
+  _maRecognition.interimResults = false;
+  _maRecognition.lang = 'en-US';
+  _maRecognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    const input = document.getElementById('ma-input');
+    if (input) { input.value = transcript; maSend(); }
+    maStopMic();
+  };
+  _maRecognition.onerror = (e) => {
+    if (e.error !== 'no-speech') console.warn('[STT]', e.error);
+    maStopMic();
+  };
+  _maRecognition.onend = () => maStopMic();
+})();
+
+function maToggleMic() {
+  if (_maIsRecording) { maStopMic(); return; }
+  if (!_maRecognition) return;
+  _maIsRecording = true;
+  document.getElementById('ma-mic-btn')?.classList.add('recording');
+  try { _maRecognition.start(); } catch(e) { maStopMic(); }
+}
+
+function maStopMic() {
+  _maIsRecording = false;
+  document.getElementById('ma-mic-btn')?.classList.remove('recording');
+  try { if (_maRecognition) _maRecognition.stop(); } catch(e) { /* already stopped */ }
+}
+
 // ── Chat helpers ─────────────────────────────────────────────────────────────
 function maAddMsg(role, html, isHtml) {
   const box = document.getElementById('ma-messages');
@@ -323,6 +539,14 @@ function maAddMsg(role, html, isHtml) {
   if (isHtml) bub.innerHTML = html;
   else bub.textContent = html;
   row.appendChild(bub);
+  if (role === 'agent') {
+    const speakBtn = document.createElement('button');
+    speakBtn.className = 'ma-speak-btn';
+    speakBtn.title = 'Read aloud';
+    speakBtn.textContent = '🔊';
+    speakBtn.onclick = () => maSpeakBtn(speakBtn);
+    row.appendChild(speakBtn);
+  }
   box.appendChild(row);
   box.scrollTop = box.scrollHeight;
   return bub;
@@ -388,8 +612,11 @@ async function maSend() {
 
     maLastResult = data;
     maHistory.push({ role: 'assistant', content: data.message });
-    maAddMsg('agent', data.message + ' <span style="font-size:0.75rem;color:var(--slate);">See result below ↓</span>', true);
+    const agentBub = maAddMsg('agent', data.message + ' <span style="font-size:0.75rem;color:var(--slate);">See result below ↓</span>', true);
     maShowResult(data);
+    // Auto-speak first sentence of response
+    const speakBtn = agentBub.closest('.ma-msg')?.querySelector('.ma-speak-btn');
+    maSpeak(data.message, speakBtn, true);
   } catch (e) {
     typingBub.closest('.ma-msg').remove();
     maHistory.pop();

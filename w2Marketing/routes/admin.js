@@ -9,6 +9,7 @@ import blogRouter from './admin/blog.js';
 import pagesRouter from './admin/pages.js';
 import sectionsRouter from './admin/sections.js';
 import masterAgentRouter from './admin/masterAgent.js';
+import ttsRouter from './admin/tts.js';
 
 const router = express.Router();
 
@@ -53,6 +54,7 @@ router.get('/', async (req, res) => {
 });
 
 router.use('/master-agent', masterAgentRouter);
+router.use('/tts', ttsRouter);
 router.use('/portfolio', portfolioRouter);
 router.use('/clients', clientsRouter);
 router.use('/copy', copyRouter);
