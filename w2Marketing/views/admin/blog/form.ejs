@@ -1,0 +1,513 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<style>
+  /* ── AGENT BUTTON ── */
+  .agent-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 16px; border-radius: 2px;
+    background: linear-gradient(135deg, #1C2B4A, #2E4270);
+    color: #E8D08A; border: 1px solid rgba(201,168,72,0.3);
+    font-family: 'Jost', sans-serif; font-size: 0.72rem;
+    font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .agent-btn:hover { border-color: rgba(201,168,72,0.65); }
+
+  /* ── AGENT PANEL ── */
+  #agentPanel {
+    position: fixed; top: 0; right: -440px; width: 420px; height: 100vh;
+    background: var(--white); border-left: 1px solid var(--ivory-mid);
+    box-shadow: -8px 0 40px rgba(15,27,48,0.12);
+    z-index: 500; display: flex; flex-direction: column;
+    transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  #agentPanel.open { right: 0; }
+
+  .ap-header {
+    padding: 18px 20px; border-bottom: 1px solid var(--ivory-mid);
+    background: linear-gradient(135deg, var(--navy-deep), var(--navy));
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .ap-title {
+    font-family: 'Cormorant Garamond', serif; font-size: 1.2rem;
+    font-weight: 400; color: var(--white); display: flex; align-items: center; gap: 10px;
+  }
+  .ap-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ADE80; animation: apPulse 2s infinite; }
+  @keyframes apPulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .ap-close { background: none; border: none; color: rgba(255,255,255,0.5); font-size: 1.3rem; cursor: pointer; padding: 4px; transition: color 0.15s; }
+  .ap-close:hover { color: var(--white); }
+
+  .ap-sub {
+    padding: 8px 20px; background: rgba(201,168,72,0.07);
+    border-bottom: 1px solid rgba(201,168,72,0.15); flex-shrink: 0;
+    font-size: 0.7rem; color: #92660F; letter-spacing: 0.04em;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .ap-sub-dot { width: 5px; height: 5px; border-radius: 50%; background: #4ADE80; }
+
+  .ap-msgs { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+
+  .ap-msg { display: flex; flex-direction: column; gap: 4px; }
+  .ap-msg.user { align-items: flex-end; }
+  .ap-msg.assistant { align-items: flex-start; }
+  .ap-bubble {
+    max-width: 88%; padding: 10px 14px; border-radius: 4px;
+    font-size: 0.84rem; line-height: 1.5; font-weight: 300;
+  }
+  .ap-msg.user .ap-bubble { background: var(--navy); color: var(--white); border-radius: 4px 4px 1px 4px; }
+  .ap-msg.assistant .ap-bubble { background: var(--ivory); color: var(--dark); border: 1px solid var(--ivory-mid); border-radius: 4px 4px 4px 1px; }
+  .ap-fill-notice { font-size: 0.68rem; color: var(--success,#15803D); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .ap-search-notice { font-size: 0.68rem; color: var(--slate); font-style: italic; }
+
+  .ap-footer { padding: 14px 20px; border-top: 1px solid var(--ivory-mid); flex-shrink: 0; }
+  .ap-quick { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .ap-quick-btn {
+    font-size: 0.67rem; padding: 5px 10px; border-radius: 2px;
+    border: 1px solid var(--ivory-mid); background: var(--white);
+    color: var(--slate); cursor: pointer; font-family: 'Jost', sans-serif;
+    font-weight: 500; letter-spacing: 0.04em; transition: all 0.15s; white-space: nowrap;
+  }
+  .ap-quick-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+  .ap-input-row { display: flex; gap: 8px; }
+  .ap-input {
+    flex: 1; padding: 10px 14px; border: 1px solid var(--ivory-mid);
+    border-radius: 2px; font-family: 'Jost', sans-serif; font-size: 0.88rem;
+    font-weight: 300; color: var(--dark); outline: none; resize: none;
+    transition: border-color 0.15s; min-height: 42px; max-height: 120px;
+  }
+  .ap-input:focus { border-color: var(--navy); }
+  .ap-send {
+    padding: 10px 16px; background: var(--navy); color: var(--white);
+    border: none; border-radius: 2px; cursor: pointer; font-size: 0.9rem;
+    transition: background 0.15s; flex-shrink: 0; align-self: flex-end;
+  }
+  .ap-send:hover { background: var(--navy-deep); }
+  .ap-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── TYPING ── */
+  .ap-typing { display: flex; gap: 4px; padding: 10px 14px; background: var(--ivory); border: 1px solid var(--ivory-mid); border-radius: 4px 4px 4px 1px; align-self: flex-start; }
+  .ap-typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--slate); animation: apBounce 1.2s infinite; }
+  .ap-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .ap-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes apBounce { 0%,60%,100%{transform:translateY(0);opacity:0.4;} 30%{transform:translateY(-5px);opacity:1;} }
+
+  #agentOverlay { display: none; position: fixed; inset: 0; background: rgba(15,27,48,0.15); z-index: 499; }
+  #agentOverlay.active { display: block; }
+
+  /* ── AI FIELD STATES ── */
+  .ai-filled { background: rgba(21,128,61,0.07) !important; border-color: rgba(21,128,61,0.45) !important; transition: background 0.4s, border-color 0.4s; }
+
+  .field-revert-row { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+  .revert-orig-btn, .revert-ai-btn {
+    font-size: 0.65rem; color: var(--slate); cursor: pointer;
+    background: none; border: none; padding: 0; font-family: 'Jost', sans-serif;
+    letter-spacing: 0.04em; transition: color 0.15s;
+  }
+  .revert-orig-btn { color: var(--slate); }
+  .revert-orig-btn:hover { color: var(--danger,#B91C1C); text-decoration: underline; }
+  .revert-ai-btn { color: var(--navy-mid); }
+  .revert-ai-btn:hover { color: var(--navy); text-decoration: underline; }
+  .ai-badge {
+    font-size: 0.6rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #15803D; background: rgba(21,128,61,0.1); padding: 2px 7px; border-radius: 2px;
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title"><%= post && post._id ? 'Edit Post' : 'New Post' %></div>
+  <div class="topbar-actions">
+    <button class="agent-btn" id="agentToggle"><span style="font-size:1rem;">✦</span> Blog Agent</button>
+    <a href="/admin/blog" class="btn btn-ghost btn-sm">← Back</a>
+  </div>
+</div>
+
+<div class="content">
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <form method="POST" action="<%= post && post._id ? '/admin/blog/' + post._id : '/admin/blog' %>">
+    <div class="form-grid">
+      <div class="form-field span-2" style="display:flex;flex-direction:column;gap:20px;">
+
+        <div class="card">
+          <div class="card-title">Post Content</div>
+          <div style="display:flex;flex-direction:column;gap:16px;">
+
+            <div class="form-field">
+              <label>
+                Title <span style="color:var(--danger);">*</span>
+                <span class="ai-badge" id="badge-title" style="display:none;">AI</span>
+              </label>
+              <input type="text" name="title" id="field-title"
+                value="<%= post ? post.title || '' : '' %>"
+                required placeholder="Enter post title…"
+                oninput="autoSlug(this.value)">
+              <div class="field-revert-row" id="revert-row-title"></div>
+            </div>
+
+            <div class="form-field">
+              <label>URL Slug</label>
+              <input type="text" name="slug" id="slug-field"
+                value="<%= post ? post.slug || '' : '' %>"
+                placeholder="auto-generated-from-title">
+              <span style="font-size:0.65rem;color:var(--slate);">Public URL: /blog/<strong id="slug-preview"><%= post ? post.slug || 'your-slug' : 'your-slug' %></strong></span>
+            </div>
+
+            <div class="form-field">
+              <label>
+                Excerpt
+                <span class="ai-badge" id="badge-excerpt" style="display:none;">AI</span>
+              </label>
+              <textarea name="excerpt" id="field-excerpt" rows="3"
+                placeholder="Short description shown in blog listings and previews…"><%= post ? post.excerpt || '' : '' %></textarea>
+              <div class="field-revert-row" id="revert-row-excerpt"></div>
+            </div>
+
+            <div class="form-field">
+              <label>
+                Content
+                <span style="font-size:0.62rem;color:var(--slate);text-transform:none;letter-spacing:0;">(HTML supported)</span>
+                <span class="ai-badge" id="badge-content" style="display:none;">AI</span>
+              </label>
+              <textarea name="content" id="field-content" rows="20"
+                style="font-family:monospace;font-size:0.85rem;line-height:1.6;"
+                placeholder="Write your post content here…"><%= post ? post.content || '' : '' %></textarea>
+              <div class="field-revert-row" id="revert-row-content"></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+                <% [
+                  ['Paragraph','<p>','</p>'],
+                  ['Heading 2','<h2>','</h2>'],
+                  ['Heading 3','<h3>','</h3>'],
+                  ['Bold','<strong>','</strong>'],
+                  ['Italic','<em>','</em>'],
+                  ['List','<ul>\n  <li></li>\n</ul>',''],
+                  ['Link','<a href="">','</a>'],
+                  ['Image','<img src="" alt="">',''],
+                ].forEach(([label,open,close]) => { %>
+                  <button type="button" class="btn btn-ghost btn-sm tag-btn"
+                    data-open="<%- encodeURIComponent(open) %>"
+                    data-close="<%- encodeURIComponent(close) %>"
+                    style="font-size:0.7rem;"><%= label %></button>
+                <% }) %>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="card mt-24">
+      <div class="card-title">Post Settings</div>
+      <div class="form-grid cols-3">
+        <div class="form-field">
+          <label>Status</label>
+          <select name="status">
+            <option value="draft" <%= !post || post.status === 'draft' ? 'selected' : '' %>>Draft</option>
+            <option value="published" <%= post && post.status === 'published' ? 'selected' : '' %>>Published</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>
+            Category
+            <span class="ai-badge" id="badge-category" style="display:none;">AI</span>
+          </label>
+          <input type="text" name="category" id="field-category"
+            value="<%= post ? post.category || '' : '' %>"
+            placeholder="e.g. Marketing Tips">
+          <div class="field-revert-row" id="revert-row-category"></div>
+        </div>
+        <div class="form-field">
+          <label>
+            Tags
+            <span class="ai-badge" id="badge-tags" style="display:none;">AI</span>
+          </label>
+          <input type="text" name="tags" id="field-tags"
+            value="<%= post && post.tags ? (Array.isArray(post.tags) ? post.tags.join(', ') : post.tags) : '' %>"
+            placeholder="seo, social media, branding">
+          <span style="font-size:0.65rem;color:var(--slate);">Comma-separated</span>
+          <div class="field-revert-row" id="revert-row-tags"></div>
+        </div>
+        <div class="form-field span-2">
+          <label>Featured Image URL</label>
+          <input type="url" name="featuredImageUrl"
+            value="<%= post ? post.featuredImageUrl || '' : '' %>"
+            placeholder="https://…">
+          <span style="font-size:0.65rem;color:var(--slate);">Paste a direct image URL</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:24px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <button type="submit" class="btn btn-navy"><%= post && post._id ? 'Save Changes' : 'Create Post' %></button>
+      <a href="/admin/blog" class="btn btn-ghost">Cancel</a>
+      <% if (post && post._id && post.status === 'published') { %>
+        <a href="/blog/<%= post.slug %>" target="_blank" class="btn btn-ghost" style="margin-left:auto;">View Live →</a>
+      <% } %>
+    </div>
+  </form>
+</div>
+
+</div></div>
+
+<!-- Agent Panel -->
+<div id="agentOverlay"></div>
+<div id="agentPanel">
+  <div class="ap-header">
+    <div class="ap-title"><span class="ap-dot"></span> Blog Agent</div>
+    <button class="ap-close" id="agentClose">✕</button>
+  </div>
+  <div class="ap-sub">
+    <span class="ap-sub-dot"></span>
+    Qwen 2.5 · Web search enabled · Auto-fills post fields
+  </div>
+  <div class="ap-msgs" id="agentMsgs">
+    <div class="ap-msg assistant">
+      <div class="ap-bubble">
+        Hi! I'm your blog writing assistant. I can research topics on the web and write full blog posts — title, excerpt, and HTML content.<br><br>
+        Try: <em>"Write a post about social media tips for local restaurants"</em> or <em>"Research and write about SEO basics for small businesses"</em>
+      </div>
+    </div>
+  </div>
+  <div class="ap-footer">
+    <div class="ap-quick" id="apQuick">
+      <button class="ap-quick-btn" data-prompt="Research and write a complete blog post about social media marketing tips for local Colorado businesses">Social Media Tips</button>
+      <button class="ap-quick-btn" data-prompt="Research and write a blog post about SEO basics for small business owners in Greeley CO">SEO Basics</button>
+      <button class="ap-quick-btn" data-prompt="Research current web design trends and write a post about what local businesses need in a website in 2025">Web Design Trends</button>
+      <button class="ap-quick-btn" data-prompt="Write a blog post about content marketing strategy for small businesses, with current stats">Content Strategy</button>
+      <button class="ap-quick-btn" data-prompt="Based on the current title, research the topic and write a complete post">Write from Title</button>
+    </div>
+    <div class="ap-input-row">
+      <textarea class="ap-input" id="agentInput" placeholder="Ask the agent to research and write…" rows="1"></textarea>
+      <button class="ap-send" id="agentSend">↑</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── SLUG ──
+let slugEdited = <%= post && post.slug ? 'true' : 'false' %>;
+
+function toSlug(str) {
+  return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+function autoSlug(title) {
+  if (slugEdited) return;
+  const s = toSlug(title);
+  document.getElementById('slug-field').value = s;
+  document.getElementById('slug-preview').textContent = s || 'your-slug';
+}
+document.getElementById('slug-field').addEventListener('input', function() {
+  slugEdited = true;
+  document.getElementById('slug-preview').textContent = this.value || 'your-slug';
+});
+
+// ── TAG BUTTONS ──
+function insertTag(open, close) {
+  const ta = document.getElementById('field-content');
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const sel = ta.value.substring(start, end);
+  ta.value = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
+  ta.selectionStart = start + open.length;
+  ta.selectionEnd = start + open.length + sel.length;
+  ta.focus();
+}
+document.querySelectorAll('.tag-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    insertTag(decodeURIComponent(this.dataset.open), decodeURIComponent(this.dataset.close));
+  });
+});
+
+// ── AGENT PANEL ──
+const panel = document.getElementById('agentPanel');
+const overlay = document.getElementById('agentOverlay');
+document.getElementById('agentToggle').addEventListener('click', openPanel);
+document.getElementById('agentClose').addEventListener('click', closePanel);
+overlay.addEventListener('click', closePanel);
+
+function openPanel() { panel.classList.add('open'); overlay.classList.add('active'); }
+function closePanel() { panel.classList.remove('open'); overlay.classList.remove('active'); }
+
+document.getElementById('apQuick').querySelectorAll('.ap-quick-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.getElementById('agentInput').value = this.dataset.prompt;
+    sendAgent();
+  });
+});
+
+const agentInput = document.getElementById('agentInput');
+agentInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAgent(); }
+});
+agentInput.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+document.getElementById('agentSend').addEventListener('click', sendAgent);
+
+// ── TWO-STATE REVERT ──
+// fieldStates[key] = { original, ai }  (undefined until AI fills the field)
+const fieldStates = {};
+const FIELDS = ['title', 'excerpt', 'content', 'category', 'tags'];
+
+function getFieldEl(key) { return document.getElementById('field-' + key); }
+
+function fillField(key, aiValue) {
+  const el = getFieldEl(key);
+  if (!el) return;
+
+  // Save original on first AI fill only
+  if (!fieldStates[key]) {
+    fieldStates[key] = { original: el.value, ai: aiValue };
+  } else {
+    fieldStates[key].ai = aiValue;
+  }
+
+  el.value = aiValue;
+  el.classList.add('ai-filled');
+
+  const badge = document.getElementById('badge-' + key);
+  if (badge) badge.style.display = 'inline';
+
+  // If title, sync slug
+  if (key === 'title' && !slugEdited) autoSlug(aiValue);
+
+  renderRevertRow(key, 'ai');
+}
+
+function renderRevertRow(key, state) {
+  const row = document.getElementById('revert-row-' + key);
+  if (!row || !fieldStates[key]) return;
+
+  if (state === 'ai') {
+    row.innerHTML =
+      '<button type="button" class="revert-orig-btn" data-key="' + key + '">↩ Revert to original</button>';
+    row.querySelector('.revert-orig-btn').addEventListener('click', function() {
+      revertToOriginal(this.dataset.key);
+    });
+  } else {
+    // state === 'original'
+    row.innerHTML =
+      '<button type="button" class="revert-ai-btn" data-key="' + key + '">✦ Restore AI suggestion</button>';
+    row.querySelector('.revert-ai-btn').addEventListener('click', function() {
+      restoreAi(this.dataset.key);
+    });
+  }
+}
+
+function revertToOriginal(key) {
+  const el = getFieldEl(key);
+  if (!el || !fieldStates[key]) return;
+  el.value = fieldStates[key].original;
+  el.classList.remove('ai-filled');
+  const badge = document.getElementById('badge-' + key);
+  if (badge) badge.style.display = 'none';
+  if (key === 'title' && !slugEdited) autoSlug(fieldStates[key].original);
+  renderRevertRow(key, 'original');
+}
+
+function restoreAi(key) {
+  const el = getFieldEl(key);
+  if (!el || !fieldStates[key]) return;
+  el.value = fieldStates[key].ai;
+  el.classList.add('ai-filled');
+  const badge = document.getElementById('badge-' + key);
+  if (badge) badge.style.display = 'inline';
+  if (key === 'title' && !slugEdited) autoSlug(fieldStates[key].ai);
+  renderRevertRow(key, 'ai');
+}
+
+// ── MESSAGES ──
+const agentMessages = [];
+
+function appendMsg(role, text, extra) {
+  const msgs = document.getElementById('agentMsgs');
+  const el = document.createElement('div');
+  el.className = 'ap-msg ' + role;
+  el.innerHTML = '<div class="ap-bubble">' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>';
+  if (extra) el.innerHTML += extra;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTyping(isSearching) {
+  const msgs = document.getElementById('agentMsgs');
+  const el = document.createElement('div');
+  el.id = 'apTyping';
+  el.className = 'ap-msg assistant';
+  if (isSearching) {
+    el.innerHTML = '<div class="ap-search-notice">🔍 Searching the web…</div>';
+  } else {
+    el.innerHTML = '<div class="ap-typing"><div class="ap-typing-dot"></div><div class="ap-typing-dot"></div><div class="ap-typing-dot"></div></div>';
+  }
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function hideTyping() { document.getElementById('apTyping')?.remove(); }
+
+function getCurrentPost() {
+  return {
+    title: (getFieldEl('title') || {}).value || '',
+    excerpt: (getFieldEl('excerpt') || {}).value || '',
+    content: (getFieldEl('content') || {}).value || '',
+    category: (getFieldEl('category') || {}).value || '',
+    tags: (getFieldEl('tags') || {}).value || '',
+  };
+}
+
+async function sendAgent() {
+  const text = agentInput.value.trim();
+  if (!text) return;
+  agentInput.value = '';
+  agentInput.style.height = 'auto';
+  document.getElementById('agentSend').disabled = true;
+
+  agentMessages.push({ role: 'user', content: text });
+  appendMsg('user', text);
+  showTyping(false);
+
+  try {
+    const res = await fetch('/admin/blog/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: agentMessages, currentPost: getCurrentPost() }),
+    });
+    const data = await res.json();
+    hideTyping();
+
+    if (data.error) {
+      appendMsg('assistant', 'Error: ' + data.error);
+    } else {
+      const fills = Object.entries(data.fill || {});
+      fills.forEach(([key, val]) => fillField(key, val));
+      agentMessages.push({ role: 'assistant', content: data.message });
+
+      let extra = '';
+      if (fills.length) extra = '<div class="ap-fill-notice" style="margin-top:4px;">✓ ' + fills.length + ' field' + (fills.length > 1 ? 's' : '') + ' filled</div>';
+      appendMsg('assistant', data.message, extra);
+    }
+  } catch(e) {
+    hideTyping();
+    appendMsg('assistant', 'Connection error. Please try again.');
+  } finally {
+    document.getElementById('agentSend').disabled = false;
+    agentInput.focus();
+  }
+}
+
+// Pre-fill from dashboard master agent
+(function() {
+  try {
+    const raw = sessionStorage.getItem('w2_agent_fill');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.department !== 'blog' || !data.fill) return;
+    sessionStorage.removeItem('w2_agent_fill');
+    Object.entries(data.fill).forEach(([k, v]) => { if (v) fillField(k, v); });
+  } catch { /* ignore */ }
+})();
+</script>
+
+</body>
+</html>

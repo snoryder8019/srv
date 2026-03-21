@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= post.title %> — W2 Marketing Blog</title>
+  <% if (post.excerpt) { %><meta name="description" content="<%= post.excerpt %>"><% } %>
+  <%
+    const FONT_MAP = {
+      'Cormorant Garamond': 'Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400',
+      'Playfair Display': 'Playfair+Display:ital,wght@0,400;0,600;1,400',
+      'Lora': 'Lora:ital,wght@0,400;0,600;1,400',
+      'Merriweather': 'Merriweather:ital,wght@0,300;0,400;0,700;1,300',
+      'Libre Baskerville': 'Libre+Baskerville:ital,wght@0,400;0,700;1,400',
+      'Jost': 'Jost:wght@300;400;500;600',
+      'Inter': 'Inter:wght@300;400;500;600',
+      'Poppins': 'Poppins:wght@300;400;500;600',
+      'Raleway': 'Raleway:wght@300;400;500;600',
+      'Nunito': 'Nunito:wght@300;400;500;600',
+      'DM Sans': 'DM+Sans:wght@300;400;500;600',
+    };
+    const hF = FONT_MAP[design.font_heading] || FONT_MAP['Cormorant Garamond'];
+    const bF = FONT_MAP[design.font_body] || FONT_MAP['Jost'];
+    const fontsParam = design.font_heading === design.font_body ? hF : hF + '&family=' + bF;
+  %>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=<%= fontsParam %>&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary:      <%= design.color_primary %>;
+      --primary-deep: <%= design.color_primary_deep %>;
+      --primary-mid:  <%= design.color_primary_mid %>;
+      --accent:       <%= design.color_accent %>;
+      --accent-light: <%= design.color_accent_light %>;
+      --bg:           <%= design.color_bg %>;
+      --navy: var(--primary); --gold: var(--accent);
+      --ivory: var(--bg); --ivory-mid: #E6E1D6; --slate: #6B7380; --dark: #0F1B30; --white: #FDFCFA;
+      --font-heading: '<%= design.font_heading %>', serif;
+      --font-body: '<%= design.font_body %>', sans-serif;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { font-family:var(--font-body); background:var(--white); color:var(--dark); }
+    nav { position:fixed; top:0; width:100%; z-index:1000; display:flex; justify-content:space-between; align-items:center; padding:20px 52px; background:rgba(253,252,250,0.95); backdrop-filter:blur(10px); border-bottom:1px solid var(--ivory-mid); }
+    .nav-wordmark { text-decoration:none; }
+    .nav-wordmark-top { font-family:var(--font-heading); font-size:1.4rem; font-weight:400; color:var(--dark); letter-spacing:0.04em; display:block; }
+    .nav-wordmark-sub { font-size:0.58rem; font-weight:600; letter-spacing:0.28em; text-transform:uppercase; color:var(--primary); margin-top:2px; display:block; }
+    .nav-links { display:flex; gap:2rem; list-style:none; align-items:center; }
+    .nav-links a { font-size:0.82rem; font-weight:500; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); text-decoration:none; transition:color 0.2s; }
+    .nav-links a:hover { color:var(--primary); }
+    .post-hero { padding:140px 52px 64px; background:var(--bg); }
+    .post-hero-inner { max-width:800px; margin:0 auto; }
+    .back-link { font-size:0.75rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); text-decoration:none; display:inline-flex; align-items:center; gap:6px; margin-bottom:32px; }
+    .back-link:hover { color:var(--primary); }
+    .post-meta { display:flex; gap:16px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
+    .post-category { font-size:0.65rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--accent); background:rgba(201,168,72,0.12); border:1px solid rgba(201,168,72,0.3); padding:4px 12px; border-radius:2px; }
+    .post-date { font-size:0.75rem; color:var(--slate); font-weight:300; }
+    .post-title { font-family:var(--font-heading); font-size:clamp(2rem,4.5vw,3.6rem); font-weight:300; line-height:1.1; color:var(--dark); margin-bottom:20px; }
+    .post-excerpt-lead { font-size:1.1rem; font-weight:300; color:var(--slate); line-height:1.8; margin-bottom:32px; border-left:3px solid var(--accent); padding-left:20px; }
+    .post-tags { display:flex; gap:8px; flex-wrap:wrap; }
+    .tag { font-size:0.65rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--slate); background:var(--ivory-mid); padding:4px 10px; border-radius:2px; }
+    .featured-img { width:100%; max-height:480px; object-fit:cover; display:block; }
+    .post-content-wrap { max-width:800px; margin:0 auto; padding:60px 52px 100px; }
+    .post-content { font-size:1rem; font-weight:300; line-height:1.9; color:var(--dark); }
+    .post-content h2 { font-family:var(--font-heading); font-size:1.8rem; font-weight:400; color:var(--dark); margin:48px 0 16px; }
+    .post-content h3 { font-family:var(--font-heading); font-size:1.4rem; font-weight:400; color:var(--dark); margin:36px 0 12px; }
+    .post-content p { margin-bottom:20px; }
+    .post-content ul, .post-content ol { margin:0 0 20px 24px; }
+    .post-content li { margin-bottom:8px; line-height:1.7; }
+    .post-content strong { font-weight:600; }
+    .post-content em { font-style:italic; }
+    .post-content a { color:var(--primary); }
+    .post-content a:hover { color:var(--accent); }
+    .post-content img { max-width:100%; border-radius:2px; margin:24px 0; }
+    .post-content blockquote { border-left:3px solid var(--accent); padding:16px 24px; margin:32px 0; background:var(--bg); font-style:italic; color:var(--slate); }
+    .post-footer { margin-top:60px; padding-top:32px; border-top:1px solid var(--ivory-mid); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+    footer { background:var(--primary-deep); padding:48px 52px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:24px; }
+    .footer-brand { font-family:var(--font-heading); font-size:1.3rem; font-weight:300; color:rgba(255,255,255,0.6); }
+    .footer-links { list-style:none; display:flex; gap:24px; }
+    .footer-links a { font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,0.35); text-decoration:none; transition:color 0.2s; }
+    .footer-links a:hover { color:var(--accent-light); }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-wordmark">
+    <span class="nav-wordmark-top">W2 Marketing</span>
+    <span class="nav-wordmark-sub">Greeley, CO</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="/#services">Services</a></li>
+    <li><a href="/#about">About</a></li>
+    <li><a href="/blog">Blog</a></li>
+    <li><a href="/#contact">Get Started</a></li>
+  </ul>
+</nav>
+
+<div class="post-hero">
+  <div class="post-hero-inner">
+    <a href="/blog" class="back-link">← Back to Blog</a>
+    <div class="post-meta">
+      <% if (post.category) { %><span class="post-category"><%= post.category %></span><% } %>
+      <span class="post-date"><%= new Date(post.publishedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></span>
+    </div>
+    <h1 class="post-title"><%= post.title %></h1>
+    <% if (post.excerpt) { %><p class="post-excerpt-lead"><%= post.excerpt %></p><% } %>
+    <% if (post.tags && post.tags.length) { %>
+      <div class="post-tags">
+        <% post.tags.forEach(tag => { %><span class="tag"><%= tag %></span><% }) %>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<% if (post.featuredImageUrl) { %>
+  <img src="<%= post.featuredImageUrl %>" alt="<%= post.title %>" class="featured-img">
+<% } %>
+
+<div class="post-content-wrap">
+  <div class="post-content"><%- post.content %></div>
+  <div class="post-footer">
+    <a href="/blog" class="back-link">← All Posts</a>
+    <a href="/#contact" style="font-size:0.82rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--white);background:var(--primary);padding:12px 28px;border-radius:2px;text-decoration:none;">Work With Us</a>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-brand">W2 Marketing</div>
+  <ul class="footer-links">
+    <li><a href="/">Home</a></li>
+    <li><a href="/#services">Services</a></li>
+    <li><a href="/blog">Blog</a></li>
+    <li><a href="/#contact">Contact</a></li>
+  </ul>
+</footer>
+</body>
+</html>

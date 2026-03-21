@@ -1,0 +1,202 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<style>
+/* Color picker rows — color swatch + hex input side by side, always fits */
+.color-row { display: flex; gap: 10px; align-items: center; }
+.color-row input[type=color] { width: 44px; height: 38px; flex-shrink: 0; padding: 2px; border-radius: 2px; cursor: pointer; }
+.color-row input[type=text] { flex: 1; min-width: 0; }
+
+/* Section visibility grid — minimum 2 cols on very small screens */
+.vis-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+@media (max-width: 420px) {
+  .vis-grid { grid-template-columns: 1fr; }
+}
+
+/* Swatch preview row wraps */
+.swatch-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+.swatch { width: 52px; height: 36px; border-radius: 2px; flex-shrink: 0; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Design & Settings</div>
+</div>
+<div class="content">
+
+  <% if (saved) { %>
+    <div class="alert alert-success">Settings saved successfully.</div>
+  <% } %>
+  <% if (error) { %>
+    <div class="alert alert-error">Failed to save settings. Please try again.</div>
+  <% } %>
+
+  <form method="POST" action="/admin/design">
+
+    <!-- COLOR PALETTE -->
+    <div class="card">
+      <div class="card-title">Color Palette</div>
+      <div class="form-grid cols-3">
+        <div class="form-field">
+          <label>Primary Color</label>
+          <div class="color-row">
+            <input type="color" name="color_primary" value="<%= design.color_primary %>">
+            <input type="text" name="color_primary_hex" value="<%= design.color_primary %>" readonly onfocus="this.select()" id="hex_primary">
+          </div>
+          <span style="font-size:0.65rem;color:var(--slate);">Main brand color — navs, headings, buttons</span>
+        </div>
+        <div class="form-field">
+          <label>Primary Deep</label>
+          <div class="color-row">
+            <input type="color" name="color_primary_deep" value="<%= design.color_primary_deep %>">
+            <input type="text" value="<%= design.color_primary_deep %>" readonly>
+          </div>
+          <span style="font-size:0.65rem;color:var(--slate);">Darkest shade — hero bg, footer</span>
+        </div>
+        <div class="form-field">
+          <label>Primary Mid</label>
+          <div class="color-row">
+            <input type="color" name="color_primary_mid" value="<%= design.color_primary_mid %>">
+            <input type="text" value="<%= design.color_primary_mid %>" readonly>
+          </div>
+          <span style="font-size:0.65rem;color:var(--slate);">Mid-tone — borders, hover states</span>
+        </div>
+        <div class="form-field">
+          <label>Accent Color</label>
+          <div class="color-row">
+            <input type="color" name="color_accent" value="<%= design.color_accent %>">
+            <input type="text" value="<%= design.color_accent %>" readonly>
+          </div>
+          <span style="font-size:0.65rem;color:var(--slate);">Gold accent — highlights, badges, CTA accents</span>
+        </div>
+        <div class="form-field">
+          <label>Accent Light</label>
+          <div class="color-row">
+            <input type="color" name="color_accent_light" value="<%= design.color_accent_light %>">
+            <input type="text" value="<%= design.color_accent_light %>" readonly>
+          </div>
+          <span style="font-size:0.65rem;color:var(--slate);">Light accent — text on dark backgrounds</span>
+        </div>
+        <div class="form-field">
+          <label>Background Color</label>
+          <div class="color-row">
+            <input type="color" name="color_bg" value="<%= design.color_bg %>">
+            <input type="text" value="<%= design.color_bg %>" readonly>
+          </div>
+          <span style="font-size:0.65rem;color:var(--slate);">Section backgrounds — ivory/cream tones</span>
+        </div>
+      </div>
+
+      <!-- Live preview swatches -->
+      <div style="margin-top:20px;">
+        <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:10px;">Live Palette Preview</div>
+        <div class="swatch-row" id="swatch-preview">
+          <div class="swatch" style="background:<%= design.color_primary %>;" title="Primary"></div>
+          <div class="swatch" style="background:<%= design.color_primary_deep %>;" title="Primary Deep"></div>
+          <div class="swatch" style="background:<%= design.color_primary_mid %>;" title="Primary Mid"></div>
+          <div class="swatch" style="background:<%= design.color_accent %>;" title="Accent"></div>
+          <div class="swatch" style="background:<%= design.color_accent_light %>;" title="Accent Light"></div>
+          <div class="swatch" style="background:<%= design.color_bg %>;border:1px solid var(--ivory-mid);" title="Background"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FONTS -->
+    <div class="card mt-24">
+      <div class="card-title">Typography</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Heading Font</label>
+          <select name="font_heading">
+            <% ['Cormorant Garamond','Playfair Display','Lora','Merriweather','Libre Baskerville'].forEach(f => { %>
+              <option value="<%= f %>" <%= design.font_heading === f ? 'selected' : '' %>><%= f %></option>
+            <% }) %>
+          </select>
+          <span style="font-size:0.65rem;color:var(--slate);">Used for page titles, section headings, hero text</span>
+        </div>
+        <div class="form-field">
+          <label>Body Font</label>
+          <select name="font_body">
+            <% ['Jost','Inter','Poppins','Raleway','Nunito','DM Sans'].forEach(f => { %>
+              <option value="<%= f %>" <%= design.font_body === f ? 'selected' : '' %>><%= f %></option>
+            <% }) %>
+          </select>
+          <span style="font-size:0.65rem;color:var(--slate);">Used for body text, navigation, UI elements</span>
+        </div>
+      </div>
+      <div style="margin-top:20px;padding:20px;background:var(--ivory);border-radius:2px;border:1px solid var(--ivory-mid);">
+        <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:12px;">Font Preview (after save)</div>
+        <div style="font-size:1.4rem;color:var(--dark);margin-bottom:6px;"><em>Heading: <%= design.font_heading %></em></div>
+        <div style="font-size:0.9rem;color:var(--slate);font-weight:300;">Body: <%= design.font_body %> — The quick brown fox jumps over the lazy dog</div>
+      </div>
+    </div>
+
+    <!-- SECTION VISIBILITY -->
+    <div class="card mt-24">
+      <div class="card-title">Section Visibility</div>
+      <p style="font-size:0.85rem;color:var(--slate);font-weight:300;margin-bottom:24px;">Control which sections appear on your landing page. Hidden sections are completely removed from the public page.</p>
+      <div class="vis-grid">
+        <%
+          const sections = [
+            { key: 'vis_hero',      label: 'Hero', desc: 'Top banner / headline' },
+            { key: 'vis_services',  label: 'Services', desc: 'Service cards section' },
+            { key: 'vis_portfolio', label: 'Portfolio', desc: 'Work showcase grid' },
+            { key: 'vis_about',     label: 'About', desc: 'Agency intro & stats' },
+            { key: 'vis_process',   label: 'Process', desc: 'How it works steps' },
+            { key: 'vis_reviews',   label: 'Reviews', desc: 'Google reviews' },
+            { key: 'vis_contact',   label: 'Contact', desc: 'Contact form' },
+            { key: 'vis_blog',      label: 'Blog Section', desc: 'Latest posts on home' },
+          ];
+        %>
+        <% sections.forEach(s => { %>
+          <label style="display:flex;align-items:flex-start;gap:12px;padding:16px;background:var(--ivory);border:1px solid var(--ivory-mid);border-radius:2px;cursor:pointer;transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--navy-mid)'" onmouseout="this.style.borderColor='var(--ivory-mid)'">
+            <input type="checkbox" name="<%= s.key %>" <%= design[s.key] !== 'false' && (s.key !== 'vis_blog' || design[s.key] === 'true') ? 'checked' : '' %> style="margin-top:2px;width:16px;height:16px;accent-color:var(--navy);flex-shrink:0;appearance:auto;-webkit-appearance:auto;">
+            <div>
+              <div style="font-size:0.82rem;font-weight:600;color:var(--dark);margin-bottom:2px;"><%= s.label %></div>
+              <div style="font-size:0.72rem;color:var(--slate);font-weight:300;"><%= s.desc %></div>
+            </div>
+          </label>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- AI ASSISTANT -->
+    <div class="card" style="margin-top:24px;">
+      <div class="card-title">AI Assistant</div>
+      <p style="font-size:0.85rem;color:var(--slate);margin-bottom:20px;">Configure the master agent that appears on your dashboard.</p>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Agent Name</label>
+          <input type="text" name="agent_name" value="<%= design.agent_name %>" placeholder="W2 Assistant">
+        </div>
+        <div class="form-field">
+          <label>Greeting Message</label>
+          <input type="text" name="agent_greeting" value="<%= design.agent_greeting %>" placeholder="Hi! What would you like to create?">
+        </div>
+      </div>
+      <p style="margin-top:12px;font-size:0.78rem;color:var(--slate);">MCP endpoint: <code style="background:var(--ivory);padding:2px 6px;border-radius:3px;">/admin/master-agent/mcp</code> — compatible with Claude Desktop &amp; Claude Code.</p>
+    </div>
+
+    <!-- SAVE -->
+    <div class="form-actions" style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap;">
+      <button type="submit" class="btn btn-navy">Save Settings</button>
+      <a href="/admin" class="btn btn-ghost">Cancel</a>
+    </div>
+
+  </form>
+</div>
+
+<script>
+// Sync color inputs with hex display
+document.querySelectorAll('input[type=color]').forEach(picker => {
+  const textInput = picker.nextElementSibling;
+  picker.addEventListener('input', () => {
+    if (textInput) textInput.value = picker.value;
+    // Update corresponding swatch
+    const swatches = document.querySelectorAll('#swatch-preview div');
+    const inputs = document.querySelectorAll('input[type=color]');
+    inputs.forEach((p, i) => { if (swatches[i]) swatches[i].style.background = p.value; });
+  });
+});
+</script>
+
+</div></body></html>

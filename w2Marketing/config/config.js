@@ -18,4 +18,5 @@ export const config = {
   LINODE_SECRET: process.env.LINODE_SECRET,
   GOOGLE_PLACES_KEY: process.env.GOOGLE_PLACES_KEY || process.env.GGLAPI,
   GOOGLE_PLACE_ID: process.env.GOOGLE_PLACE_ID,
+  SEARCH_API_KEY: process.env.SEARCH_API_KEY,
 };

@@ -1,0 +1,763 @@
+<%- include('../partials/head', { title: 'Sections' }) %>
+<%- include('../partials/sidebar', { page: 'sections', user: user }) %>
+
+<style>
+  .sections-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+
+  /* ── SECTION CARD ── */
+  .section-card { background:var(--white); border:1px solid var(--ivory-mid); border-radius:2px; overflow:hidden; transition:box-shadow 0.2s; }
+  .section-card:hover { box-shadow:0 4px 24px rgba(28,43,74,0.08); }
+  .section-card.custom-card { border-left:3px solid var(--gold); }
+
+  .section-card-header { padding:16px 18px; display:flex; align-items:flex-start; justify-content:space-between; border-bottom:1px solid var(--ivory-mid); gap:10px; }
+  .section-card-icon { font-size:1.2rem; color:var(--gold); flex-shrink:0; margin-top:1px; }
+  .section-card-info { flex:1; }
+  .section-card-title { font-family:'Cormorant Garamond',serif; font-size:1.1rem; font-weight:400; color:var(--dark); margin-bottom:2px; }
+  .section-card-desc { font-size:0.72rem; color:var(--slate); font-weight:300; line-height:1.4; }
+  .section-card-type { font-size:0.58rem; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--gold); margin-top:3px; }
+
+  .vis-pill { width:30px; height:17px; border-radius:9px; border:none; cursor:pointer; background:var(--ivory-mid); position:relative; transition:background 0.2s; flex-shrink:0; }
+  .vis-pill::after { content:''; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:var(--white); transition:transform 0.2s; }
+  .vis-pill.on { background:#15803D; }
+  .vis-pill.on::after { transform:translateX(13px); }
+
+  .section-card-preview { padding:12px 18px; border-bottom:1px solid var(--ivory-mid); min-height:52px; }
+  .section-preview-img { width:100%; height:72px; object-fit:cover; border-radius:2px; border:1px solid var(--ivory-mid); display:block; }
+  .section-preview-copy { font-size:0.78rem; color:var(--slate); font-weight:300; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .section-preview-empty { font-size:0.7rem; color:var(--ivory-mid); font-style:italic; text-align:center; padding:6px 0; }
+
+  .section-card-footer { padding:12px 18px; display:flex; gap:8px; }
+  .btn-edit-section { flex:1; padding:8px 12px; background:var(--navy); color:var(--white); border:none; border-radius:2px; font-family:'Jost',sans-serif; font-size:0.7rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; cursor:pointer; transition:background 0.15s; }
+  .btn-edit-section:hover { background:var(--navy-deep); }
+  .btn-agent-section { padding:8px 11px; background:linear-gradient(135deg,#1C2B4A,#2E4270); color:#E8D08A; border:1px solid rgba(201,168,72,0.3); border-radius:2px; font-size:0.82rem; cursor:pointer; transition:all 0.2s; flex-shrink:0; }
+  .btn-agent-section:hover { border-color:rgba(201,168,72,0.7); }
+  .btn-delete-section { padding:8px 10px; background:transparent; color:var(--slate); border:1px solid var(--ivory-mid); border-radius:2px; font-size:0.75rem; cursor:pointer; transition:all 0.15s; flex-shrink:0; }
+  .btn-delete-section:hover { color:var(--danger,#B91C1C); border-color:rgba(185,28,28,0.3); }
+
+  /* ── ADD SECTION BUTTON ── */
+  .add-section-card { background:transparent; border:2px dashed var(--ivory-mid); border-radius:2px; display:flex; align-items:center; justify-content:center; min-height:180px; cursor:pointer; transition:all 0.2s; color:var(--slate); flex-direction:column; gap:8px; }
+  .add-section-card:hover { border-color:var(--navy-mid); color:var(--navy); }
+  .add-section-card-icon { font-size:1.8rem; opacity:0.4; }
+  .add-section-card-label { font-size:0.72rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; }
+
+  /* ── SECTION LABEL ── */
+  .section-group-label { font-size:0.6rem; font-weight:600; letter-spacing:0.22em; text-transform:uppercase; color:var(--slate); margin-bottom:12px; margin-top:4px; }
+
+  /* ── MODAL ── */
+  .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(15,27,48,0.55); z-index:600; backdrop-filter:blur(4px); align-items:center; justify-content:center; }
+  .modal-backdrop.open { display:flex; }
+  .modal { background:var(--white); border-radius:2px; width:90vw; max-width:800px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 24px 80px rgba(15,27,48,0.3); animation:modalIn 0.2s ease; }
+  .modal.sm { max-width:560px; }
+  @keyframes modalIn { from{transform:translateY(14px);opacity:0;} to{transform:translateY(0);opacity:1;} }
+
+  .modal-header { padding:18px 24px; border-bottom:1px solid var(--ivory-mid); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; background:linear-gradient(135deg,var(--navy-deep),var(--navy)); }
+  .modal-title { font-family:'Cormorant Garamond',serif; font-size:1.3rem; font-weight:400; color:var(--white); display:flex; align-items:center; gap:10px; }
+  .modal-close { background:none; border:none; color:rgba(255,255,255,0.5); font-size:1.2rem; cursor:pointer; padding:4px; transition:color 0.15s; }
+  .modal-close:hover { color:var(--white); }
+
+  .modal-body { flex:1; overflow-y:auto; padding:24px; display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  .modal-body.single { grid-template-columns:1fr; }
+  .modal-section { display:flex; flex-direction:column; gap:14px; }
+  .modal-section-title { font-size:0.6rem; font-weight:600; letter-spacing:0.2em; text-transform:uppercase; color:var(--slate); border-bottom:1px solid var(--ivory-mid); padding-bottom:7px; }
+
+  .vis-row { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--ivory); border-radius:2px; border:1px solid var(--ivory-mid); }
+  .vis-row-label { font-size:0.75rem; color:var(--dark); font-weight:500; }
+  .vis-switch { display:flex; align-items:center; gap:8px; }
+  .vis-switch-label { font-size:0.7rem; color:var(--slate); }
+
+  .img-label-text { font-size:0.63rem; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--slate); margin-bottom:5px; display:block; }
+  .img-upload-area { border:2px dashed var(--ivory-mid); border-radius:2px; padding:14px; text-align:center; position:relative; cursor:pointer; transition:border-color 0.2s; }
+  .img-upload-area:hover { border-color:var(--navy-mid); }
+  .img-upload-area input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .img-upload-icon { font-size:1.3rem; color:var(--ivory-mid); margin-bottom:4px; }
+  .img-upload-label { font-size:0.7rem; color:var(--slate); }
+  .img-preview-wrap { position:relative; margin-bottom:7px; }
+  .img-preview { width:100%; height:110px; object-fit:cover; border-radius:2px; border:1px solid var(--ivory-mid); display:block; }
+  .img-remove-btn { position:absolute; top:5px; right:5px; background:rgba(185,28,28,0.85); color:var(--white); border:none; border-radius:2px; padding:2px 7px; font-size:0.63rem; font-weight:600; letter-spacing:0.06em; cursor:pointer; text-transform:uppercase; }
+  .img-uploading { font-size:0.73rem; color:var(--slate); text-align:center; padding:3px; display:none; }
+
+  .modal-footer { padding:14px 24px; border-top:1px solid var(--ivory-mid); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+  .modal-footer-left { display:flex; align-items:center; gap:8px; }
+  .save-indicator { font-size:0.7rem; display:none; }
+  .save-indicator.visible { display:flex; align-items:center; gap:4px; }
+
+  /* ── AGENT DRAWER ── */
+  .agent-drawer { display:none; flex-direction:column; border-top:1px solid var(--ivory-mid); flex-shrink:0; max-height:360px; }
+  .agent-drawer.open { display:flex; }
+  .agent-drawer-header { padding:10px 22px; background:linear-gradient(135deg,var(--navy-deep),var(--navy)); display:flex; align-items:center; justify-content:space-between; }
+  .agent-drawer-title { font-size:0.7rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:#E8D08A; display:flex; align-items:center; gap:7px; }
+  .agent-dot { width:6px; height:6px; border-radius:50%; background:#4ADE80; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .agent-drawer-close { background:none; border:none; color:rgba(255,255,255,0.4); font-size:1rem; cursor:pointer; transition:color 0.15s; }
+  .agent-drawer-close:hover { color:var(--white); }
+  .agent-msgs { flex:1; overflow-y:auto; padding:10px 22px; display:flex; flex-direction:column; gap:9px; min-height:70px; }
+  .agent-msg { display:flex; flex-direction:column; gap:3px; }
+  .agent-msg.user { align-items:flex-end; }
+  .agent-msg.assistant { align-items:flex-start; }
+  .agent-bubble { max-width:86%; padding:8px 12px; border-radius:4px; font-size:0.82rem; line-height:1.5; font-weight:300; }
+  .agent-msg.user .agent-bubble { background:var(--navy); color:var(--white); border-radius:4px 4px 1px 4px; }
+  .agent-msg.assistant .agent-bubble { background:var(--ivory); color:var(--dark); border:1px solid var(--ivory-mid); border-radius:4px 4px 4px 1px; }
+  .agent-fill-notice { font-size:0.66rem; color:#15803D; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
+  .agent-drawer-footer { padding:9px 22px; border-top:1px solid var(--ivory-mid); }
+  .agent-quick-row { display:flex; gap:5px; margin-bottom:7px; flex-wrap:wrap; }
+  .agent-quick-btn { font-size:0.65rem; padding:4px 9px; border-radius:2px; border:1px solid var(--ivory-mid); background:var(--white); color:var(--slate); cursor:pointer; font-family:'Jost',sans-serif; font-weight:500; letter-spacing:0.04em; transition:all 0.15s; white-space:nowrap; }
+  .agent-quick-btn:hover { border-color:var(--navy-mid); color:var(--navy); }
+  .agent-input-row { display:flex; gap:7px; }
+  .agent-input { flex:1; padding:8px 12px; border:1px solid var(--ivory-mid); border-radius:2px; font-family:'Jost',sans-serif; font-size:0.84rem; font-weight:300; color:var(--dark); outline:none; resize:none; transition:border-color 0.15s; min-height:36px; max-height:90px; }
+  .agent-input:focus { border-color:var(--navy); }
+  .agent-send { padding:7px 13px; background:var(--navy); color:var(--white); border:none; border-radius:2px; cursor:pointer; font-size:0.9rem; transition:background 0.15s; align-self:flex-end; }
+  .agent-send:hover { background:var(--navy-deep); }
+  .agent-send:disabled { opacity:0.4; cursor:not-allowed; }
+  .typing-indicator { display:flex; gap:4px; padding:9px 12px; background:var(--ivory); border:1px solid var(--ivory-mid); border-radius:4px; align-self:flex-start; }
+  .typing-dot { width:6px; height:6px; border-radius:50%; background:var(--slate); animation:typingBounce 1.2s infinite; }
+  .typing-dot:nth-child(2) { animation-delay:0.2s; }
+  .typing-dot:nth-child(3) { animation-delay:0.4s; }
+  @keyframes typingBounce { 0%,60%,100%{transform:translateY(0);opacity:0.4;} 30%{transform:translateY(-5px);opacity:1;} }
+  .ai-filled { background:rgba(21,128,61,0.07)!important; border-color:rgba(21,128,61,0.4)!important; }
+
+  /* ── NEW SECTION MODAL TYPE GRID ── */
+  .type-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; }
+  .type-card { border:2px solid var(--ivory-mid); border-radius:2px; padding:16px 14px; cursor:pointer; transition:all 0.18s; text-align:center; }
+  .type-card:hover { border-color:var(--navy-mid); }
+  .type-card.selected { border-color:var(--navy); background:rgba(28,43,74,0.04); }
+  .type-card-icon { font-size:1.5rem; color:var(--gold); margin-bottom:6px; }
+  .type-card-label { font-size:0.75rem; font-weight:600; letter-spacing:0.06em; color:var(--dark); margin-bottom:3px; }
+  .type-card-desc { font-size:0.66rem; color:var(--slate); line-height:1.3; }
+
+  @media (max-width:640px) {
+    .modal-body { grid-template-columns:1fr; }
+    .modal { width:100vw; max-width:100vw; max-height:96vh; align-self:flex-end; border-radius:4px 4px 0 0; }
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Sections</div>
+  <div class="topbar-actions">
+    <button class="btn btn-gold btn-sm" id="addSectionBtn">+ Add Section</button>
+    <a href="/" target="_blank" class="btn btn-ghost btn-sm">Preview Site ↗</a>
+  </div>
+</div>
+
+<div class="content">
+  <% if (flash) { %><div class="alert alert-success">✓ Section saved.</div><% } %>
+
+  <% if (Object.keys(sections).length) { %>
+  <div class="section-group-label">Core Sections</div>
+  <div class="sections-grid" style="margin-bottom:32px;">
+    <% for (const [sectionKey, meta] of Object.entries(sections)) { %>
+    <%
+      const visKey = 'vis_' + sectionKey;
+      const isVisible = design[visKey] !== 'false';
+      const firstImg = meta.images[0];
+      const firstImgData = firstImg ? media[firstImg.key] : null;
+      const previewText = copy[meta.copyKeys[0]] || '';
+    %>
+    <div class="section-card" data-section="<%= sectionKey %>">
+      <div class="section-card-header">
+        <div class="section-card-icon"><%= meta.icon %></div>
+        <div class="section-card-info">
+          <div class="section-card-title"><%= meta.label %></div>
+          <div class="section-card-desc"><%= meta.desc %></div>
+        </div>
+        <button class="vis-pill <%= isVisible ? 'on' : '' %>" data-section="<%= sectionKey %>" data-viskey="<%= visKey %>"></button>
+      </div>
+      <div class="section-card-preview">
+        <% if (firstImgData) { %>
+          <img src="<%= firstImgData.url %>" class="section-preview-img" alt="">
+        <% } else if (previewText) { %>
+          <div class="section-preview-copy"><%= previewText %></div>
+        <% } else { %>
+          <div class="section-preview-empty">No content yet</div>
+        <% } %>
+      </div>
+      <div class="section-card-footer">
+        <button class="btn-edit-section" onclick="openModal('<%= sectionKey %>')">Edit</button>
+        <button class="btn-agent-section" onclick="openModal('<%= sectionKey %>', true)" title="Copy Agent">✦</button>
+      </div>
+    </div>
+    <% } %>
+  </div>
+  <% } %>
+
+  <% if (customSections.length) { %>
+  <div class="section-group-label">Custom Sections</div>
+  <div class="sections-grid" id="customSectionsGrid">
+    <% for (const sec of customSections) { %>
+    <%
+      const tmpl = templates[sec.type] || {};
+      const previewText = Object.values(sec.fields || {})[0] || '';
+      const firstImgSlot = (tmpl.images || [])[0];
+      const previewImg = firstImgSlot ? sec.images?.[firstImgSlot.key]?.url : null;
+    %>
+    <div class="section-card custom-card" data-cid="<%= sec._id %>">
+      <div class="section-card-header">
+        <div class="section-card-icon"><%= tmpl.icon || '◻' %></div>
+        <div class="section-card-info">
+          <div class="section-card-title"><%= sec.label %></div>
+          <div class="section-card-type"><%= tmpl.label || sec.type %></div>
+        </div>
+        <button class="vis-pill custom-vis-pill <%= sec.visible ? 'on' : '' %>" data-cid="<%= sec._id %>"></button>
+      </div>
+      <div class="section-card-preview">
+        <% if (previewImg) { %>
+          <img src="<%= previewImg %>" class="section-preview-img" alt="">
+        <% } else if (previewText) { %>
+          <div class="section-preview-copy"><%= previewText %></div>
+        <% } else { %>
+          <div class="section-preview-empty">No content yet</div>
+        <% } %>
+      </div>
+      <div class="section-card-footer">
+        <button class="btn-edit-section" onclick="openCustomModal(<%- JSON.stringify(sec) %>)">Edit</button>
+        <button class="btn-agent-section" onclick="openCustomModal(<%- JSON.stringify(sec) %>, true)" title="Copy Agent">✦</button>
+        <button class="btn-delete-section" onclick="deleteCustomSection('<%= sec._id %>', this)" title="Delete">✕</button>
+      </div>
+    </div>
+    <% } %>
+  </div>
+  <% } %>
+
+  <% if (!customSections.length) { %>
+  <div class="section-group-label" id="customGroupLabel" style="display:none;">Custom Sections</div>
+  <div class="sections-grid" id="customSectionsGrid" style="<%= customSections.length ? '' : 'margin-top:0;' %>"></div>
+  <% } %>
+</div>
+
+</div></div>
+
+<!-- ══ NEW SECTION MODAL ══ -->
+<div class="modal-backdrop" id="newSectionBackdrop">
+  <div class="modal sm">
+    <div class="modal-header">
+      <div class="modal-title">Add Section</div>
+      <button class="modal-close" onclick="closeNewModal()">✕</button>
+    </div>
+    <div class="modal-body single" style="padding:24px;display:flex;flex-direction:column;gap:20px;">
+      <div>
+        <div class="modal-section-title" style="margin-bottom:12px;">Choose a Template</div>
+        <div class="type-grid" id="typeGrid">
+          <% for (const [tkey, tmpl] of Object.entries(templates)) { %>
+          <div class="type-card" data-type="<%= tkey %>" onclick="selectType('<%= tkey %>', this)">
+            <div class="type-card-icon"><%= tmpl.icon %></div>
+            <div class="type-card-label"><%= tmpl.label %></div>
+            <div class="type-card-desc"><%= tmpl.desc %></div>
+          </div>
+          <% } %>
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Section Name <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="newSectionLabel" placeholder="e.g. Why Choose Us, Our Team, FAQ…">
+      </div>
+      <div id="newSectionErr" style="color:var(--danger,#B91C1C);font-size:0.78rem;display:none;"></div>
+    </div>
+    <div class="modal-footer" style="justify-content:flex-end;gap:10px;">
+      <button class="btn btn-ghost btn-sm" onclick="closeNewModal()">Cancel</button>
+      <button class="btn btn-navy btn-sm" id="createSectionBtn" onclick="createSection()">Create Section</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ EDIT MODAL ══ -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span id="modalIcon"></span>
+        <span id="modalTitle">Edit Section</span>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer">
+      <div class="modal-footer-left">
+        <button class="btn btn-navy btn-sm" onclick="saveSection()">Save</button>
+        <span class="save-indicator" id="saveIndicator"></span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="toggleAgent()">✦ Copy Agent</button>
+    </div>
+    <div class="agent-drawer" id="agentDrawer">
+      <div class="agent-drawer-header">
+        <div class="agent-drawer-title"><span class="agent-dot"></span> Copy Agent — <span id="agentSectionLabel"></span></div>
+        <button class="agent-drawer-close" onclick="toggleAgent()">✕</button>
+      </div>
+      <div class="agent-msgs" id="agentMsgs"></div>
+      <div class="agent-drawer-footer">
+        <div class="agent-quick-row" id="agentQuickRow"></div>
+        <div class="agent-input-row">
+          <textarea class="agent-input" id="agentInput" placeholder="Ask the agent to write copy for this section…" rows="1"></textarea>
+          <button class="agent-send" id="agentSend">↑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SECTIONS    = <%- JSON.stringify(sections) %>;
+const TEMPLATES   = <%- JSON.stringify(templates) %>;
+const LABELS      = <%- JSON.stringify(labels) %>;
+const initCopy    = <%- JSON.stringify(copy) %>;
+const initDesign  = <%- JSON.stringify(design) %>;
+const initMedia   = <%- JSON.stringify(media) %>;
+
+let activeSection = null;   // hardcoded key
+let activeCustom  = null;   // full custom section object
+let agentMessages = [];
+let fieldOriginals = {};
+
+// ── HARDCODED VIS TOGGLES ──────────────────────────────────────────────────
+document.querySelectorAll('.vis-pill:not(.custom-vis-pill)').forEach(pill => {
+  pill.addEventListener('click', async function() {
+    const isOn = this.classList.toggle('on');
+    const fd = new URLSearchParams();
+    if (isOn) fd.append('vis_' + this.dataset.section, 'on');
+    await fetch(`/admin/sections/${this.dataset.section}/copy`, { method:'POST', body:fd });
+  });
+});
+
+// ── CUSTOM VIS TOGGLES ────────────────────────────────────────────────────
+document.querySelectorAll('.custom-vis-pill').forEach(pill => {
+  pill.addEventListener('click', async function() {
+    const isOn = this.classList.toggle('on');
+    const fd = new URLSearchParams();
+    if (isOn) fd.append('visible', 'on');
+    await fetch(`/admin/sections/custom/${this.dataset.cid}/copy`, { method:'POST', body:fd });
+  });
+});
+
+// ── NEW SECTION MODAL ─────────────────────────────────────────────────────
+let selectedType = null;
+document.getElementById('addSectionBtn').addEventListener('click', () => {
+  selectedType = null;
+  document.getElementById('newSectionLabel').value = '';
+  document.getElementById('newSectionErr').style.display = 'none';
+  document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('newSectionBackdrop').classList.add('open');
+});
+function closeNewModal() { document.getElementById('newSectionBackdrop').classList.remove('open'); }
+document.getElementById('newSectionBackdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeNewModal(); });
+
+function selectType(type, el) {
+  selectedType = type;
+  document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function createSection() {
+  const label = document.getElementById('newSectionLabel').value.trim();
+  const errEl = document.getElementById('newSectionErr');
+  if (!selectedType) { errEl.textContent = 'Please choose a template.'; errEl.style.display = ''; return; }
+  if (!label) { errEl.textContent = 'Please enter a section name.'; errEl.style.display = ''; return; }
+  errEl.style.display = 'none';
+
+  const btn = document.getElementById('createSectionBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+
+  const res = await fetch('/admin/sections/custom/new', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ type: selectedType, label }),
+  });
+  const data = await res.json();
+  btn.disabled = false; btn.textContent = 'Create Section';
+
+  if (data.ok) {
+    closeNewModal();
+    // Add card to grid and open edit modal
+    const sec = { _id: data.id, type: selectedType, label, visible: true, fields: {}, images: {} };
+    appendCustomCard(sec);
+    openCustomModal(sec, false);
+  } else {
+    errEl.textContent = data.error || 'Failed to create section.';
+    errEl.style.display = '';
+  }
+}
+
+function appendCustomCard(sec) {
+  const tmpl = TEMPLATES[sec.type] || {};
+  const grid = document.getElementById('customSectionsGrid');
+  const lbl = document.getElementById('customGroupLabel');
+  if (lbl) lbl.style.display = '';
+
+  const card = document.createElement('div');
+  card.className = 'section-card custom-card';
+  card.dataset.cid = sec._id;
+  card.innerHTML = `
+    <div class="section-card-header">
+      <div class="section-card-icon">${tmpl.icon||'◻'}</div>
+      <div class="section-card-info">
+        <div class="section-card-title">${sec.label}</div>
+        <div class="section-card-type">${tmpl.label||sec.type}</div>
+      </div>
+      <button class="vis-pill custom-vis-pill on" data-cid="${sec._id}"></button>
+    </div>
+    <div class="section-card-preview"><div class="section-preview-empty">No content yet</div></div>
+    <div class="section-card-footer">
+      <button class="btn-edit-section" onclick='openCustomModal(${JSON.stringify(sec)})'>Edit</button>
+      <button class="btn-agent-section" onclick='openCustomModal(${JSON.stringify(sec)}, true)' title="Copy Agent">✦</button>
+      <button class="btn-delete-section" onclick="deleteCustomSection('${sec._id}', this)" title="Delete">✕</button>
+    </div>`;
+  grid.appendChild(card);
+
+  // wire vis pill
+  card.querySelector('.custom-vis-pill').addEventListener('click', async function() {
+    const isOn = this.classList.toggle('on');
+    const fd = new URLSearchParams();
+    if (isOn) fd.append('visible', 'on');
+    await fetch(`/admin/sections/custom/${this.dataset.cid}/copy`, { method:'POST', body:fd });
+  });
+}
+
+// ── HARDCODED SECTION MODAL ───────────────────────────────────────────────
+function openModal(sectionKey, withAgent = false) {
+  activeSection = sectionKey; activeCustom = null;
+  agentMessages = []; fieldOriginals = {};
+  const meta = SECTIONS[sectionKey];
+  document.getElementById('modalIcon').textContent = meta.icon;
+  document.getElementById('modalTitle').textContent = 'Edit — ' + meta.label;
+  document.getElementById('agentSectionLabel').textContent = meta.label;
+  document.getElementById('saveIndicator').classList.remove('visible');
+  renderHardcodedBody(sectionKey, meta);
+  resetAgent(meta.label, [
+    { label:'Write all copy', prompt:`Write compelling copy for all fields in the ${meta.label} section` },
+    { label:'Make it punchier', prompt:`Rewrite the ${meta.label} copy to be punchier and more direct` },
+    { label:'More local', prompt:`Make the ${meta.label} copy feel more Greeley, Colorado specific` },
+  ]);
+  document.getElementById('modalBackdrop').classList.add('open');
+  if (withAgent) document.getElementById('agentDrawer').classList.add('open');
+  else document.getElementById('agentDrawer').classList.remove('open');
+}
+
+function renderHardcodedBody(sectionKey, meta) {
+  const body = document.getElementById('modalBody');
+  const visKey = 'vis_' + sectionKey;
+  const isVisible = initDesign[visKey] !== 'false';
+
+  let imagesHTML = meta.images.map(slot => {
+    const ex = initMedia[slot.key];
+    return `<div style="margin-bottom:14px;">
+      <span class="img-label-text">${slot.label}</span>
+      <div id="imgWrap-${slot.key}">
+        ${ex ? `<div class="img-preview-wrap"><img src="${ex.url}" class="img-preview" id="imgPreview-${slot.key}"><button class="img-remove-btn" onclick="removeHardImg('${sectionKey}','${slot.key}')">Remove</button></div>` : ''}
+        <div class="img-upload-area" id="uploadArea-${slot.key}" ${ex ? 'style="display:none"' : ''}>
+          <input type="file" accept="image/*" onchange="uploadHardImg('${sectionKey}','${slot.key}',this)">
+          <div class="img-upload-icon">⬆</div>
+          <div class="img-upload-label">Click or drag to upload</div>
+        </div>
+        <div class="img-uploading" id="imgUploading-${slot.key}">Uploading…</div>
+      </div></div>`;
+  }).join('');
+
+  let copyHTML = meta.copyKeys.map(key => {
+    const val = (initCopy[key] || '').replace(/"/g,'&quot;');
+    const label = LABELS[key] || key;
+    const isTA = key.endsWith('_desc') || key.endsWith('_sub') || key.endsWith('_quote');
+    return `<div class="form-field" style="margin-bottom:12px;">
+      <label>${label} <span style="display:none;font-size:.58rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#15803d;background:rgba(21,128,61,.1);padding:1px 5px;border-radius:2px;" id="aiBadge-${key}">AI</span></label>
+      ${isTA ? `<textarea name="${key}" id="mfield-${key}" style="min-height:68px;">${initCopy[key]||''}</textarea>`
+              : `<input type="text" name="${key}" id="mfield-${key}" value="${val}">`}
+    </div>`;
+  }).join('');
+
+  const hasCols = meta.images.length > 0;
+  body.className = 'modal-body' + (hasCols ? '' : ' single');
+  body.innerHTML = hasCols
+    ? `<div class="modal-section">
+        <div class="modal-section-title">Images</div>
+        <div class="vis-row"><span class="vis-row-label">Visible on Site</span>
+          <div class="vis-switch"><span class="vis-switch-label">${isVisible?'On':'Off'}</span>
+            <button class="vis-pill modal-vis-pill ${isVisible?'on':''}" data-section="${sectionKey}"></button>
+          </div></div>
+        ${imagesHTML}</div>
+      <div class="modal-section"><div class="modal-section-title">Copy</div>${copyHTML}</div>`
+    : `<div class="modal-section">
+        <div class="modal-section-title">Copy</div>
+        <div class="vis-row" style="margin-bottom:12px;"><span class="vis-row-label">Visible on Site</span>
+          <div class="vis-switch"><span class="vis-switch-label">${isVisible?'On':'Off'}</span>
+            <button class="vis-pill modal-vis-pill ${isVisible?'on':''}" data-section="${sectionKey}"></button>
+          </div></div>
+        ${copyHTML}</div>`;
+
+  body.querySelectorAll('.modal-vis-pill').forEach(p => {
+    p.addEventListener('click', function() {
+      const isOn = this.classList.toggle('on');
+      this.previousElementSibling.textContent = isOn ? 'On' : 'Off';
+      const card = document.querySelector(`.vis-pill[data-section="${this.dataset.section}"]`);
+      if (card) card.classList.toggle('on', isOn);
+    });
+  });
+}
+
+// ── CUSTOM SECTION MODAL ──────────────────────────────────────────────────
+function openCustomModal(sec, withAgent = false) {
+  activeSection = null; activeCustom = sec;
+  agentMessages = []; fieldOriginals = {};
+  const tmpl = TEMPLATES[sec.type] || {};
+  document.getElementById('modalIcon').textContent = tmpl.icon || '◻';
+  document.getElementById('modalTitle').textContent = sec.label;
+  document.getElementById('agentSectionLabel').textContent = sec.label;
+  document.getElementById('saveIndicator').classList.remove('visible');
+  renderCustomBody(sec, tmpl);
+  resetAgent(sec.label, [
+    { label:'Write all copy', prompt:`Write compelling copy for all fields in the ${sec.label} section` },
+    { label:'Make it punchy', prompt:`Rewrite the ${sec.label} copy to be punchy and conversion-focused` },
+    { label:'More local feel', prompt:`Make the ${sec.label} copy feel more local and Colorado-specific` },
+    { label:'Professional tone', prompt:`Rewrite the ${sec.label} in a polished, professional tone` },
+  ]);
+  document.getElementById('modalBackdrop').classList.add('open');
+  if (withAgent) document.getElementById('agentDrawer').classList.add('open');
+  else document.getElementById('agentDrawer').classList.remove('open');
+}
+
+function renderCustomBody(sec, tmpl) {
+  const body = document.getElementById('modalBody');
+  const isVisible = sec.visible !== false;
+
+  let imagesHTML = (tmpl.images || []).map(slot => {
+    const ex = sec.images?.[slot.key];
+    return `<div style="margin-bottom:14px;">
+      <span class="img-label-text">${slot.label}</span>
+      <div id="cimgWrap-${slot.key}">
+        ${ex ? `<div class="img-preview-wrap"><img src="${ex.url}" class="img-preview"><button class="img-remove-btn" onclick="removeCustomImg('${sec._id}','${slot.key}')">Remove</button></div>` : ''}
+        <div class="img-upload-area" id="cuploadArea-${slot.key}" ${ex ? 'style="display:none"' : ''}>
+          <input type="file" accept="image/*" onchange="uploadCustomImg('${sec._id}','${slot.key}',this)">
+          <div class="img-upload-icon">⬆</div>
+          <div class="img-upload-label">Click or drag to upload</div>
+        </div>
+        <div class="img-uploading" id="cimgUploading-${slot.key}">Uploading…</div>
+      </div></div>`;
+  }).join('');
+
+  let copyHTML = (tmpl.fields || []).map(f => {
+    const val = sec.fields?.[f.key] || '';
+    return `<div class="form-field" style="margin-bottom:12px;">
+      <label>${f.label} <span style="display:none;font-size:.58rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#15803d;background:rgba(21,128,61,.1);padding:1px 5px;border-radius:2px;" id="aiBadge-${f.key}">AI</span></label>
+      ${f.type === 'textarea'
+        ? `<textarea name="${f.key}" id="mfield-${f.key}" style="min-height:68px;">${val.replace(/</g,'&lt;')}</textarea>`
+        : `<input type="text" name="${f.key}" id="mfield-${f.key}" value="${val.replace(/"/g,'&quot;')}">`}
+    </div>`;
+  }).join('');
+
+  const hasCols = (tmpl.images || []).length > 0;
+  body.className = 'modal-body' + (hasCols ? '' : ' single');
+  body.innerHTML = hasCols
+    ? `<div class="modal-section">
+        <div class="modal-section-title">Images</div>
+        <div class="vis-row"><span class="vis-row-label">Visible on Site</span>
+          <div class="vis-switch"><span class="vis-switch-label">${isVisible?'On':'Off'}</span>
+            <button class="vis-pill modal-vis-pill ${isVisible?'on':''}" data-cid="${sec._id}"></button>
+          </div></div>
+        ${imagesHTML}</div>
+      <div class="modal-section"><div class="modal-section-title">Copy</div>${copyHTML}</div>`
+    : `<div class="modal-section">
+        <div class="modal-section-title">Copy</div>
+        <div class="vis-row" style="margin-bottom:12px;"><span class="vis-row-label">Visible on Site</span>
+          <div class="vis-switch"><span class="vis-switch-label">${isVisible?'On':'Off'}</span>
+            <button class="vis-pill modal-vis-pill ${isVisible?'on':''}" data-cid="${sec._id}"></button>
+          </div></div>
+        ${copyHTML}</div>`;
+
+  body.querySelectorAll('.modal-vis-pill').forEach(p => {
+    p.addEventListener('click', function() {
+      const isOn = this.classList.toggle('on');
+      this.previousElementSibling.textContent = isOn ? 'On' : 'Off';
+    });
+  });
+}
+
+// ── SAVE ─────────────────────────────────────────────────────────────────
+async function saveSection() {
+  const indicator = document.getElementById('saveIndicator');
+  let res;
+
+  if (activeSection) {
+    const meta = SECTIONS[activeSection];
+    const fd = new URLSearchParams();
+    for (const key of meta.copyKeys) {
+      const el = document.getElementById('mfield-' + key);
+      if (el) fd.append(key, el.value);
+    }
+    const visPill = document.querySelector('#modalBody .modal-vis-pill');
+    if (visPill?.classList.contains('on')) fd.append('vis_' + activeSection, 'on');
+    res = await fetch(`/admin/sections/${activeSection}/copy`, { method:'POST', body:fd });
+
+  } else if (activeCustom) {
+    const tmpl = TEMPLATES[activeCustom.type] || {};
+    const fd = new URLSearchParams();
+    for (const f of (tmpl.fields || [])) {
+      const el = document.getElementById('mfield-' + f.key);
+      if (el) fd.append(f.key, el.value);
+    }
+    const visPill = document.querySelector('#modalBody .modal-vis-pill');
+    if (visPill?.classList.contains('on')) fd.append('visible', 'on');
+    res = await fetch(`/admin/sections/custom/${activeCustom._id}/copy`, { method:'POST', body:fd });
+  }
+
+  const data = await res?.json();
+  if (data?.ok) {
+    indicator.textContent = '✓ Saved'; indicator.style.color = '#15803D';
+  } else {
+    indicator.textContent = '✗ Error'; indicator.style.color = 'var(--danger,#B91C1C)';
+  }
+  indicator.classList.add('visible');
+  setTimeout(() => indicator.classList.remove('visible'), 2500);
+}
+
+function closeModal() {
+  document.getElementById('modalBackdrop').classList.remove('open');
+  document.getElementById('agentDrawer').classList.remove('open');
+  activeSection = null; activeCustom = null;
+}
+document.getElementById('modalBackdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+// ── IMAGE HANDLERS ────────────────────────────────────────────────────────
+async function uploadHardImg(section, imageKey, input) {
+  const file = input.files[0]; if (!file) return;
+  document.getElementById('imgUploading-' + imageKey).style.display = 'block';
+  document.getElementById('uploadArea-' + imageKey).style.display = 'none';
+  const fd = new FormData(); fd.append('image', file); fd.append('imageKey', imageKey);
+  const res = await fetch(`/admin/sections/${section}/image`, { method:'POST', body:fd });
+  const data = await res.json();
+  document.getElementById('imgUploading-' + imageKey).style.display = 'none';
+  if (data.ok) {
+    const wrap = document.getElementById('imgWrap-' + imageKey);
+    let pw = wrap.querySelector('.img-preview-wrap');
+    if (!pw) { pw = document.createElement('div'); pw.className = 'img-preview-wrap'; pw.innerHTML = `<img class="img-preview"><button class="img-remove-btn" onclick="removeHardImg('${section}','${imageKey}')">Remove</button>`; wrap.insertBefore(pw, wrap.firstChild); }
+    pw.querySelector('img').src = data.url; initMedia[imageKey] = { url: data.url };
+  } else { document.getElementById('uploadArea-' + imageKey).style.display = ''; alert(data.error); }
+}
+async function removeHardImg(section, imageKey) {
+  if (!confirm('Remove image?')) return;
+  await fetch(`/admin/sections/${section}/image/${imageKey}`, { method:'DELETE' });
+  document.getElementById('imgWrap-' + imageKey)?.querySelector('.img-preview-wrap')?.remove();
+  document.getElementById('uploadArea-' + imageKey).style.display = '';
+}
+
+async function uploadCustomImg(id, imageKey, input) {
+  const file = input.files[0]; if (!file) return;
+  document.getElementById('cimgUploading-' + imageKey).style.display = 'block';
+  document.getElementById('cuploadArea-' + imageKey).style.display = 'none';
+  const fd = new FormData(); fd.append('image', file); fd.append('imageKey', imageKey);
+  const res = await fetch(`/admin/sections/custom/${id}/image`, { method:'POST', body:fd });
+  const data = await res.json();
+  document.getElementById('cimgUploading-' + imageKey).style.display = 'none';
+  if (data.ok) {
+    const wrap = document.getElementById('cimgWrap-' + imageKey);
+    let pw = wrap.querySelector('.img-preview-wrap');
+    if (!pw) { pw = document.createElement('div'); pw.className = 'img-preview-wrap'; pw.innerHTML = `<img class="img-preview"><button class="img-remove-btn" onclick="removeCustomImg('${id}','${imageKey}')">Remove</button>`; wrap.insertBefore(pw, wrap.firstChild); }
+    pw.querySelector('img').src = data.url;
+  } else { document.getElementById('cuploadArea-' + imageKey).style.display = ''; alert(data.error); }
+}
+async function removeCustomImg(id, imageKey) {
+  if (!confirm('Remove image?')) return;
+  await fetch(`/admin/sections/custom/${id}/image/${imageKey}`, { method:'DELETE' });
+  document.getElementById('cimgWrap-' + imageKey)?.querySelector('.img-preview-wrap')?.remove();
+  document.getElementById('cuploadArea-' + imageKey).style.display = '';
+}
+
+// ── DELETE CUSTOM SECTION ─────────────────────────────────────────────────
+async function deleteCustomSection(id, btn) {
+  if (!confirm('Delete this section? This cannot be undone.')) return;
+  const res = await fetch(`/admin/sections/custom/${id}`, { method:'DELETE' });
+  const data = await res.json();
+  if (data.ok) btn.closest('.section-card').remove();
+  else alert(data.error);
+}
+
+// ── AGENT ─────────────────────────────────────────────────────────────────
+function toggleAgent() { document.getElementById('agentDrawer').classList.toggle('open'); }
+
+function resetAgent(label, quickPrompts) {
+  document.getElementById('agentMsgs').innerHTML = `<div class="agent-msg assistant"><div class="agent-bubble">I'm focused on the <strong>${label}</strong> section. Ask me to write or improve any copy fields.</div></div>`;
+  agentMessages = [];
+  const row = document.getElementById('agentQuickRow');
+  row.innerHTML = quickPrompts.map(p => `<button class="agent-quick-btn" data-prompt="${p.prompt}">${p.label}</button>`).join('');
+  row.querySelectorAll('.agent-quick-btn').forEach(btn => {
+    btn.addEventListener('click', () => { document.getElementById('agentInput').value = btn.dataset.prompt; sendAgent(); });
+  });
+}
+
+function getCurrentCopy() {
+  const copy = {};
+  document.querySelectorAll('[id^="mfield-"]').forEach(el => {
+    copy[el.id.replace('mfield-','')] = el.value;
+  });
+  return copy;
+}
+
+function fillField(key, val) {
+  const el = document.getElementById('mfield-' + key);
+  if (!el) return;
+  if (!fieldOriginals[key]) fieldOriginals[key] = el.value;
+  el.value = val;
+  el.classList.add('ai-filled');
+  const badge = document.getElementById('aiBadge-' + key);
+  if (badge) badge.style.display = 'inline';
+}
+
+function appendAgentMsg(role, text, fillCount) {
+  const msgs = document.getElementById('agentMsgs');
+  const el = document.createElement('div');
+  el.className = 'agent-msg ' + role;
+  el.innerHTML = `<div class="agent-bubble">${text.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>`;
+  if (fillCount > 0) el.innerHTML += `<div class="agent-fill-notice">✓ ${fillCount} field${fillCount>1?'s':''} filled</div>`;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTyping() {
+  const msgs = document.getElementById('agentMsgs');
+  const el = document.createElement('div');
+  el.id = 'typingInd'; el.className = 'typing-indicator';
+  el.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+  msgs.appendChild(el); msgs.scrollTop = msgs.scrollHeight;
+}
+function hideTyping() { document.getElementById('typingInd')?.remove(); }
+
+const agentInput = document.getElementById('agentInput');
+agentInput.addEventListener('keydown', e => { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAgent();} });
+agentInput.addEventListener('input', function() { this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,90)+'px'; });
+document.getElementById('agentSend').addEventListener('click', sendAgent);
+
+async function sendAgent() {
+  const text = agentInput.value.trim();
+  if (!text) return;
+  agentInput.value = ''; agentInput.style.height = 'auto';
+  document.getElementById('agentSend').disabled = true;
+  agentMessages.push({ role:'user', content:text });
+  appendAgentMsg('user', text, 0);
+  showTyping();
+
+  try {
+    const body = {
+      messages: agentMessages,
+      section: activeSection || null,
+      currentCopy: getCurrentCopy(),
+    };
+    if (activeCustom) body.customSection = { type: activeCustom.type, label: activeCustom.label };
+
+    const res = await fetch('/admin/sections/agent', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    });
+    const data = await res.json();
+    hideTyping();
+
+    if (data.error) { appendAgentMsg('assistant','Error: '+data.error, 0); }
+    else {
+      const fills = Object.entries(data.fill || {});
+      fills.forEach(([k,v]) => fillField(k,v));
+      agentMessages.push({ role:'assistant', content:data.message });
+      appendAgentMsg('assistant', data.message, fills.length);
+    }
+  } catch(e) {
+    hideTyping();
+    appendAgentMsg('assistant','Connection error. Please try again.',0);
+  } finally {
+    document.getElementById('agentSend').disabled = false;
+    agentInput.focus();
+  }
+}
+</script>
+
+</body>
+</html>

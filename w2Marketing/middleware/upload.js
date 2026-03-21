@@ -35,3 +35,4 @@ function s3Storage(subdir, filter = anyFileFilter) {
 
 export const portfolioUpload = s3Storage('portfolio', imageFilter);
 export const clientFileUpload = s3Storage('clients');
+export const sectionUpload = s3Storage('sections', imageFilter);
