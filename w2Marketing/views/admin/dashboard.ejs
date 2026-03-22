@@ -729,5 +729,284 @@ document.getElementById('ma-input').addEventListener('keydown', e => {
 });
 </script>
 
+<!-- ── ADMIN ONBOARDING TOUR ─────────────────────────────────────────────── -->
+<style>
+#w2tut-overlay {
+  position: fixed; inset: 0; z-index: 9990;
+  pointer-events: all; /* blocks all page clicks during tour */
+}
+#w2tut-spot {
+  position: fixed; z-index: 9992; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(8,15,32,0.82);
+  transition: left 0.42s cubic-bezier(0.4,0,0.2,1),
+              top  0.42s cubic-bezier(0.4,0,0.2,1),
+              width  0.42s cubic-bezier(0.4,0,0.2,1),
+              height 0.42s cubic-bezier(0.4,0,0.2,1),
+              border-radius 0.42s;
+}
+#w2tut-tip {
+  position: fixed; z-index: 9993; pointer-events: none;
+  background: #fff; border-radius: 4px;
+  padding: 20px 24px; max-width: 360px; min-width: 260px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.35);
+  font-family: 'Jost', sans-serif; font-size: 0.9rem;
+  font-weight: 300; line-height: 1.65; color: #0F1B30;
+  transition: left 0.42s cubic-bezier(0.4,0,0.2,1),
+              top  0.42s cubic-bezier(0.4,0,0.2,1);
+}
+#w2tut-tip strong { font-weight: 600; color: #1C2B4A; }
+#w2tut-step-label {
+  font-size: 0.6rem; font-weight: 600; letter-spacing: 0.22em;
+  text-transform: uppercase; color: #C9A848; margin-bottom: 10px;
+}
+#w2tut-exit {
+  position: fixed; bottom: 32px; left: 32px; z-index: 9993;
+  background: transparent; border: 1px solid rgba(255,255,255,0.22);
+  color: rgba(255,255,255,0.55); padding: 10px 20px;
+  font-family: 'Jost', sans-serif; font-size: 0.76rem; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; border-radius: 2px; transition: all 0.2s;
+}
+#w2tut-exit:hover { border-color: rgba(255,255,255,0.5); color: #fff; }
+#w2tut-next {
+  position: fixed; bottom: 32px; right: 32px; z-index: 9993;
+  background: #C9A848; border: none; color: #0F1B30;
+  padding: 13px 30px; font-family: 'Jost', sans-serif;
+  font-size: 0.82rem; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; cursor: pointer; border-radius: 2px;
+  transition: background 0.2s;
+}
+#w2tut-next:hover { background: #E8D08A; }
+#w2tut-dots {
+  position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+  z-index: 9993; display: flex; gap: 8px; pointer-events: none;
+}
+.w2tut-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.22); transition: background 0.3s;
+}
+.w2tut-dot.active { background: #C9A848; }
+#w2tut-final {
+  position: fixed; z-index: 9993; pointer-events: none;
+  background: #fff; border-radius: 4px;
+  padding: 20px 24px; max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  font-family: 'Jost', sans-serif; font-size: 0.92rem;
+  font-weight: 300; line-height: 1.7; color: #0F1B30;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  text-align: center; display: none;
+}
+#w2tut-final strong { font-weight: 600; color: #1C2B4A; }
+#w2tut-final .tut-final-icon {
+  font-size: 1.6rem; margin-bottom: 8px; display: block;
+}
+/* force hamburger visible during tour */
+.w2tut-active #sidebarToggle { display: flex !important; }
+</style>
+
+<div id="w2tut-overlay" style="display:none;"></div>
+<div id="w2tut-spot" style="display:none;"></div>
+<div id="w2tut-tip" style="display:none;"><div id="w2tut-step-label"></div><div id="w2tut-msg"></div></div>
+<div id="w2tut-dots" style="display:none;"></div>
+<button id="w2tut-exit" style="display:none;">✕ Skip Tour</button>
+<button id="w2tut-next" style="display:none;">Next →</button>
+<div id="w2tut-final"></div>
+
+<script>
+(function() {
+  if (localStorage.getItem('w2_admin_tour_done')) return;
+
+  const STEPS = [
+    {
+      targetId: 'sidebarToggle',
+      shape: 'circle', pad: 18,
+      label: 'Step 1 of 5',
+      msg: 'Welcome! This button opens your <strong>admin navigation menu</strong>. Let\'s explore it together.',
+      onNext() {
+        const s = document.getElementById('sidebar');
+        const o = document.getElementById('sidebarOverlay');
+        const t = document.getElementById('sidebarToggle');
+        s.classList.add('open');
+        if (o) { o.style.display = 'block'; o.classList.add('active'); }
+        t.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
+    },
+    {
+      targetSel: 'a[href="/admin/sections"]',
+      shape: 'rect', pad: 8,
+      label: 'Step 2 of 5',
+      msg: 'Here\'s <strong>Sections</strong> — build and manage custom content blocks like CTAs, cards, FAQs, and image splits for your site.',
+      onNext() {
+        const s = document.getElementById('sidebar');
+        const o = document.getElementById('sidebarOverlay');
+        const t = document.getElementById('sidebarToggle');
+        s.classList.remove('open');
+        if (o) { o.classList.remove('active'); o.style.display = ''; }
+        t.classList.remove('open');
+        document.body.style.overflow = '';
+      }
+    },
+    {
+      targetSel: '.agent-card',
+      shape: 'rect', pad: 0,
+      label: 'Step 3 of 5',
+      msg: 'Here you can fill out your site content manually — or try your <strong>AI suggestion</strong>. Your agent can write copy, blog posts, and build new sections.',
+      onNext() {
+        const el = document.querySelector('.ma-input-row');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    },
+    {
+      targetSel: '#ma-quick',
+      targetSel2: '.ma-input-row',
+      shape: 'rect', pad: 10,
+      label: 'Step 4 of 5',
+      msg: 'Choose a <strong>preset suggestion</strong> to get started quickly, or type any request in the chat bar. Your agent works best with clear, specific instructions.',
+      onNext() {}
+    },
+    {
+      final: true,
+      label: 'Step 5 of 5',
+      msg: 'All your admin tools let you update <strong>copy, images, layout, and page views</strong> of your site. We recommend spending a little time with your agents before using the dashboard AI assistant — it helps you understand exactly what changes are possible.<br><br>Thank you for testing W2 Marketing! ✦'
+    }
+  ];
+
+  let step = 0;
+
+  // Show tour UI
+  document.body.classList.add('w2tut-active');
+  document.getElementById('w2tut-overlay').style.display = 'block';
+  document.getElementById('w2tut-dots').style.display = 'flex';
+  document.getElementById('w2tut-exit').style.display = 'block';
+  document.getElementById('w2tut-next').style.display = 'block';
+
+  showStep(0);
+
+  function showStep(n) {
+    step = n;
+    const s = STEPS[n];
+
+    // Dots
+    document.getElementById('w2tut-dots').innerHTML =
+      STEPS.map((_, i) => `<div class="w2tut-dot${i === n ? ' active' : ''}"></div>`).join('');
+
+    // Next button label
+    document.getElementById('w2tut-next').textContent = n === STEPS.length - 1 ? 'Done ✓' : 'Next →';
+
+    if (s.final) {
+      document.getElementById('w2tut-spot').style.display = 'none';
+      document.getElementById('w2tut-tip').style.display = 'none';
+      const fin = document.getElementById('w2tut-final');
+      fin.style.display = 'block';
+      fin.innerHTML = `<span class="tut-final-icon">✦</span><strong style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;display:block;margin-bottom:10px;">You\'re all set!</strong>${s.msg}`;
+      return;
+    }
+
+    document.getElementById('w2tut-final').style.display = 'none';
+    document.getElementById('w2tut-step-label').textContent = s.label;
+    document.getElementById('w2tut-msg').innerHTML = s.msg;
+
+    // Resolve target element
+    let el;
+    if (s.targetId) {
+      el = document.getElementById(s.targetId);
+    } else {
+      el = document.querySelector(s.targetSel);
+    }
+    if (!el) return;
+
+    // Scroll element into view first (for agent card on scrolled page)
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    setTimeout(function() {
+      const rect = el.getBoundingClientRect();
+      const spot = document.getElementById('w2tut-spot');
+      spot.style.display = 'block';
+      const tip  = document.getElementById('w2tut-tip');
+      tip.style.display = 'block';
+      const pad = s.pad || 0;
+
+      if (s.shape === 'circle') {
+        const size = Math.max(rect.width, rect.height) + pad * 2;
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        spot.style.width  = size + 'px';
+        spot.style.height = size + 'px';
+        spot.style.borderRadius = '50%';
+        spot.style.left = (cx - size / 2) + 'px';
+        spot.style.top  = (cy - size / 2) + 'px';
+      } else {
+        let top    = rect.top    - pad;
+        let left   = rect.left   - pad;
+        let right  = rect.right  + pad;
+        let bottom = rect.bottom + pad;
+        // Union with optional second target
+        if (s.targetSel2) {
+          const el2 = document.querySelector(s.targetSel2);
+          if (el2) {
+            const r2 = el2.getBoundingClientRect();
+            top    = Math.min(top,    r2.top    - pad);
+            left   = Math.min(left,   r2.left   - pad);
+            right  = Math.max(right,  r2.right  + pad);
+            bottom = Math.max(bottom, r2.bottom + pad);
+          }
+        }
+        spot.style.left   = left + 'px';
+        spot.style.top    = top  + 'px';
+        spot.style.width  = (right - left) + 'px';
+        spot.style.height = (bottom - top) + 'px';
+        spot.style.borderRadius = '6px';
+      }
+
+      // Position tooltip
+      const spotR = spot.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const tipW = 360, tipH = 140, margin = 18;
+
+      // Prefer below spotlight
+      let tipTop = spotR.bottom + margin;
+      if (tipTop + tipH > vh - 80) tipTop = spotR.top - tipH - margin;
+      tipTop = Math.max(10, Math.min(tipTop, vh - tipH - 80));
+
+      let tipLeft = spotR.left;
+      if (tipLeft + tipW > vw - 20) tipLeft = vw - tipW - 20;
+      tipLeft = Math.max(16, tipLeft);
+
+      tip.style.left = tipLeft + 'px';
+      tip.style.top  = tipTop  + 'px';
+    }, n === 0 ? 60 : 80);
+  }
+
+  function endTour() {
+    localStorage.setItem('w2_admin_tour_done', '1');
+    document.body.classList.remove('w2tut-active');
+    ['w2tut-overlay','w2tut-spot','w2tut-tip','w2tut-dots',
+     'w2tut-exit','w2tut-next','w2tut-final'].forEach(function(id) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    // Ensure sidebar closed & hamburger reset
+    document.getElementById('sidebar').classList.remove('open');
+    const o = document.getElementById('sidebarOverlay');
+    if (o) { o.classList.remove('active'); o.style.display = ''; }
+    document.getElementById('sidebarToggle').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  document.getElementById('w2tut-next').addEventListener('click', function() {
+    if (step < STEPS.length - 1) {
+      if (STEPS[step].onNext) STEPS[step].onNext();
+      const delay = (step === 0) ? 320 : 60;
+      setTimeout(function() { showStep(step + 1); }, delay);
+    } else {
+      endTour();
+    }
+  });
+
+  document.getElementById('w2tut-exit').addEventListener('click', endTour);
+})();
+</script>
+
 </body>
 </html>

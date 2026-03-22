@@ -23,7 +23,7 @@ router.get('/new', (req, res) => {
 router.post('/', portfolioUpload.single('image'), async (req, res) => {
   try {
     const db = getDb();
-    const { title, category, description, clientName, projectDate, featured, tags, order } = req.body;
+    const { title, category, description, clientName, projectDate, featured, tags, order, displayLayout } = req.body;
 
     let imageUrl = req.body.imageUrlManual || '';
     let bucketKey = '';
@@ -46,6 +46,7 @@ router.post('/', portfolioUpload.single('image'), async (req, res) => {
       featured: featured === 'on',
       tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
       order: parseInt(order) || 0,
+      displayLayout: displayLayout || 'grid',
       imageUrl,
       bucketKey,
       createdAt: new Date(),
@@ -70,7 +71,7 @@ router.get('/:id/edit', async (req, res) => {
 router.post('/:id', portfolioUpload.single('image'), async (req, res) => {
   try {
     const db = getDb();
-    const { title, category, description, clientName, projectDate, featured, tags, order } = req.body;
+    const { title, category, description, clientName, projectDate, featured, tags, order, displayLayout } = req.body;
     const existing = await db.collection('w2_portfolio').findOne({ _id: new ObjectId(req.params.id) });
     if (!existing) return res.redirect('/admin/portfolio');
 
@@ -95,6 +96,7 @@ router.post('/:id', portfolioUpload.single('image'), async (req, res) => {
         featured: featured === 'on',
         tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
         order: parseInt(order) || 0,
+        displayLayout: displayLayout || 'grid',
         imageUrl,
         bucketKey,
         updatedAt: new Date(),

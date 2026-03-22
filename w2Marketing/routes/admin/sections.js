@@ -244,6 +244,25 @@ router.post('/:section/image', (req, res) => {
   });
 });
 
+// ── HARDCODED SECTION: set image from asset URL (no upload) ──────────────────
+router.post('/:section/image-url', async (req, res) => {
+  const { section } = req.params;
+  if (!SECTIONS_META[section]) return res.status(404).json({ error: 'Unknown section' });
+  const { imageKey, url } = req.body;
+  if (!imageKey || !url) return res.status(400).json({ error: 'imageKey and url required' });
+  try {
+    const db = getDb();
+    await db.collection('w2_section_media').updateOne(
+      { key: imageKey },
+      { $set: { key: imageKey, section, url, bucketKey: '', updatedAt: new Date() } },
+      { upsert: true }
+    );
+    res.json({ ok: true, url, key: imageKey });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── HARDCODED SECTION: delete image ──────────────────────────────────────────
 router.delete('/:section/image/:imageKey', async (req, res) => {
   const { section, imageKey } = req.params;
@@ -331,6 +350,24 @@ router.post('/custom/:id/image', (req, res) => {
       res.status(500).json({ error: e.message });
     }
   });
+});
+
+// ── CUSTOM SECTIONS: set image from asset URL (no upload) ────────────────────
+router.post('/custom/:id/image-url', async (req, res) => {
+  const { imageKey, url } = req.body;
+  if (!imageKey || !url) return res.status(400).json({ error: 'imageKey and url required' });
+  try {
+    const db = getDb();
+    const sec = await db.collection('w2_custom_sections').findOne({ _id: new ObjectId(req.params.id) });
+    if (!sec) return res.status(404).json({ error: 'Not found' });
+    await db.collection('w2_custom_sections').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { [`images.${imageKey}`]: { url, bucketKey: '' }, updatedAt: new Date() } }
+    );
+    res.json({ ok: true, url, key: imageKey });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── CUSTOM SECTIONS: delete image ────────────────────────────────────────────

@@ -6,37 +6,642 @@
   <title>MadLadsLab Game Servers</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0d0d0d; color: #e0e0e0; font-family: 'Courier New', monospace; padding: 40px 20px; }
-    h1 { color: #cd412b; font-size: 2rem; margin-bottom: 8px; }
-    p.sub { color: #888; margin-bottom: 40px; }
-    .server-card {
-      background: #1a1a1a; border: 1px solid #333; border-left: 4px solid #cd412b;
-      border-radius: 4px; padding: 24px; max-width: 600px; margin-bottom: 20px;
+    :root {
+      --bg: #0d0d0d;
+      --surface: #141414;
+      --card: #1a1a1a;
+      --border: #2a2a2a;
+      --accent: #cd412b;
+      --accent-dim: #8b2d1d;
+      --green: #4caf82;
+      --yellow: #e6b800;
+      --text: #e0e0e0;
+      --muted: #666;
     }
-    .server-card h2 { color: #fff; font-size: 1.1rem; margin-bottom: 12px; }
-    .info { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; }
-    .info span { color: #888; }
-    .info code { color: #4caf82; background: #111; padding: 2px 6px; border-radius: 3px; }
-    .badge {
-      display: inline-block; font-size: 0.75rem; padding: 2px 8px;
-      border-radius: 12px; margin-bottom: 12px;
-      background: #2a2a2a; border: 1px solid #cd412b; color: #cd412b;
+    body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; min-height: 100vh; }
+
+    /* Nav */
+    nav {
+      background: #111;
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 52px;
+    }
+    .nav-brand { color: var(--accent); font-size: 1rem; font-weight: bold; letter-spacing: 0.05em; }
+    .nav-brand span { color: var(--muted); font-size: 0.75rem; margin-left: 8px; }
+    .nav-right { display: flex; align-items: center; gap: 16px; }
+    .nav-user { color: var(--muted); font-size: 0.8rem; }
+    .btn-logout {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.75rem;
+      padding: 5px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-logout:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Layout */
+    main { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
+    h2 { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
+
+    /* Server Card */
+    .server-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .card-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .game-badge {
+      font-size: 0.65rem;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      padding: 3px 10px;
+      border-radius: 2px;
+      background: var(--accent);
+      color: #fff;
+    }
+    .card-title { color: var(--text); font-size: 1rem; flex: 1; }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.offline { background: #444; }
+    .status-dot.booting { background: var(--yellow); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border-top: 1px solid var(--border);
+    }
+    .stat {
+      background: var(--card);
+      padding: 16px 20px;
+    }
+    .stat-label { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+    .stat-value { font-size: 1.1rem; color: var(--text); }
+    .stat-value.green { color: var(--green); }
+    .stat-value.muted { color: var(--muted); font-size: 0.9rem; }
+
+    /* Connect bar */
+    .connect-bar {
+      background: #111;
+      border-top: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .connect-label { color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
+    .connect-cmd {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--green);
+      font-family: inherit;
+      font-size: 0.82rem;
+      padding: 8px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 200px;
+    }
+    .btn-copy {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.75rem;
+      padding: 8px 14px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-copy:hover { border-color: var(--green); color: var(--green); }
+    .btn-copy.copied { border-color: var(--green); color: var(--green); }
+
+    /* Admin controls */
+    .admin-panel {
+      border-top: 1px solid var(--border);
+      padding: 20px 24px;
+      display: none;
+    }
+    .admin-panel.visible { display: block; }
+    .admin-title { font-size: 0.68rem; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .btn {
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: bold;
+      padding: 9px 18px;
+      border-radius: 3px;
+      cursor: pointer;
+      border: none;
+      letter-spacing: 0.05em;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-start { background: var(--green); color: #0d0d0d; }
+    .btn-stop { background: #333; color: #ff6b6b; border: 1px solid #ff4040; }
+    .btn-restart { background: #2a2a00; color: var(--yellow); border: 1px solid var(--yellow); }
+
+    /* RCON console */
+    .rcon-section { margin-top: 20px; }
+    .rcon-label { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.08em; margin-bottom: 8px; }
+    .rcon-output {
+      background: #080808;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 12px;
+      font-size: 0.78rem;
+      color: #aaa;
+      height: 140px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+    .rcon-input-row { display: flex; gap: 6px; }
+    .rcon-input {
+      flex: 1;
+      background: #111;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.82rem;
+      padding: 8px 12px;
+      border-radius: 3px;
+      outline: none;
+    }
+    .rcon-input:focus { border-color: var(--accent); }
+    .btn-rcon {
+      background: var(--accent);
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: bold;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    /* Plugins */
+    .plugins-section { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px; }
+    .plugin-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+    .plugin-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #111;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 8px 14px;
+    }
+    .plugin-name { font-size: 0.85rem; }
+    .plugin-name.enabled { color: var(--text); }
+    .plugin-name.disabled { color: var(--muted); text-decoration: line-through; }
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: #333;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--green); }
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      top: 3px; left: 3px;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-track::after { transform: translateX(16px); }
+
+    /* Alert toast */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1a1a1a;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      color: var(--text);
+      font-size: 0.82rem;
+      padding: 12px 18px;
+      border-radius: 4px;
+      transform: translateY(60px);
+      opacity: 0;
+      transition: all 0.25s;
+      z-index: 999;
+      max-width: 300px;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.ok { border-left-color: var(--green); }
+
+    /* No plugins empty state */
+    .empty { color: var(--muted); font-size: 0.8rem; padding: 12px 0; }
+
+    /* Offline overlay */
+    .offline-msg {
+      padding: 40px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
     }
   </style>
 </head>
 <body>
-  <h1>MadLadsLab Game Servers</h1>
-  <p class="sub">games.madladslab.com</p>
 
+<nav>
+  <div class="nav-brand">MadLadsLab <span>// GAME SERVERS</span></div>
+  <div class="nav-right">
+    <span class="nav-user" id="navUser"></span>
+    <form method="POST" action="/logout" style="margin:0">
+      <button class="btn-logout" type="submit">LOGOUT</button>
+    </form>
+  </div>
+</nav>
+
+<main>
+  <h2>Active Servers</h2>
+
+  <!-- RUST SERVER CARD -->
   <div class="server-card">
-    <span class="badge">RUST</span>
-    <h2>MadLadsLab Rust</h2>
-    <div class="info">
-      <div><span>Connect:</span> <code>client.connect games.madladslab.com:28015</code></div>
-      <div><span>Max Players:</span> <code>100</code></div>
-      <div><span>World Size:</span> <code>3500</code></div>
-      <div><span>Mods:</span> <code>Oxide / uMod</code></div>
+    <div class="card-header">
+      <span class="game-badge">RUST</span>
+      <span class="card-title">MadLadsLab Rust</span>
+      <div class="status-dot offline" id="rustDot"></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid" id="rustStats">
+      <div class="stat">
+        <div class="stat-label">STATUS</div>
+        <div class="stat-value muted" id="statStatus">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">PLAYERS</div>
+        <div class="stat-value" id="statPlayers">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">MAP</div>
+        <div class="stat-value muted" id="statMap">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">WORLD SIZE</div>
+        <div class="stat-value muted" id="statWorldSize">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">SEED</div>
+        <div class="stat-value muted" id="statSeed">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">FPS</div>
+        <div class="stat-value muted" id="statFps">—</div>
+      </div>
+    </div>
+
+    <!-- Connect bar -->
+    <div class="connect-bar">
+      <span class="connect-label">CONNECT:</span>
+      <span class="connect-cmd" id="connectCmd">client.connect games.madladslab.com:28015</span>
+      <button class="btn-copy" id="copyBtn" onclick="copyConnect()">COPY</button>
+    </div>
+
+    <!-- Admin panel -->
+    <div class="admin-panel" id="adminPanel">
+      <div class="admin-title">Server Controls</div>
+      <div class="btn-row">
+        <button class="btn btn-start" id="btnStart" onclick="rustAction('start')">▶ START</button>
+        <button class="btn btn-stop" id="btnStop" onclick="rustAction('stop')">■ STOP</button>
+        <button class="btn btn-restart" id="btnRestart" onclick="rustAction('restart')">↺ RESTART</button>
+      </div>
+
+      <!-- RCON console -->
+      <div class="rcon-section">
+        <div class="rcon-label">RCON CONSOLE</div>
+        <div class="rcon-output" id="rconOutput"></div>
+        <div class="rcon-input-row">
+          <input class="rcon-input" id="rconInput" placeholder="status, playerlist, oxide.reload ..." onkeydown="if(event.key==='Enter')sendRcon()">
+          <button class="btn-rcon" onclick="sendRcon()">SEND</button>
+        </div>
+      </div>
+
+      <!-- Plugins -->
+      <div class="plugins-section">
+        <div class="admin-title">Oxide Plugins</div>
+        <div class="plugin-list" id="pluginList">
+          <div class="empty">Loading plugins...</div>
+        </div>
+      </div>
     </div>
   </div>
+
+  <!-- VALHEIM SERVER CARD -->
+  <div class="server-card">
+    <div class="card-header">
+      <span class="game-badge" style="background:#4a7c9e;">VALHEIM</span>
+      <span class="card-title">MadLadsLab Valheim</span>
+      <div class="status-dot offline" id="valheimDot"></div>
+    </div>
+
+    <div class="stats-grid" id="valheimStats">
+      <div class="stat">
+        <div class="stat-label">STATUS</div>
+        <div class="stat-value muted" id="vStatStatus">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">PLAYERS</div>
+        <div class="stat-value" id="vStatPlayers">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">WORLD</div>
+        <div class="stat-value muted" id="vStatMap">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">MAX PLAYERS</div>
+        <div class="stat-value muted" id="vStatMaxPlayers">—</div>
+      </div>
+    </div>
+
+    <div class="connect-bar">
+      <span class="connect-label">CONNECT:</span>
+      <span class="connect-cmd" id="vConnectCmd">games.madladslab.com:2456</span>
+      <button class="btn-copy" id="vCopyBtn" onclick="copyValheim()">COPY</button>
+    </div>
+
+    <div class="admin-panel" id="vAdminPanel">
+      <div class="admin-title">Server Controls</div>
+      <div class="btn-row">
+        <button class="btn btn-start" id="vBtnStart" onclick="valheimAction('start')">▶ START</button>
+        <button class="btn btn-stop" id="vBtnStop" onclick="valheimAction('stop')">■ STOP</button>
+        <button class="btn btn-restart" id="vBtnRestart" onclick="valheimAction('restart')">↺ RESTART</button>
+      </div>
+
+      <div class="plugins-section">
+        <div class="admin-title">BepInEx Plugins</div>
+        <div class="plugin-list" id="vPluginList">
+          <div class="empty">Loading plugins...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+let isAdmin = false;
+let pollInterval = null;
+
+// --- Init ---
+async function init() {
+  const me = await api('GET', '/api/me');
+  if (!me) return (location.href = '/login');
+  document.getElementById('navUser').textContent = me.displayName || me.email;
+  isAdmin = me.isAdmin;
+  if (isAdmin) {
+    document.getElementById('adminPanel').classList.add('visible');
+    document.getElementById('vAdminPanel').classList.add('visible');
+    loadPlugins();
+    loadValheimPlugins();
+  }
+  await Promise.all([pollStatus(), pollValheim()]);
+  pollInterval = setInterval(() => { pollStatus(); pollValheim(); }, 15000);
+}
+
+// --- Status polling ---
+async function pollStatus() {
+  const s = await api('GET', '/api/rust/status');
+  if (!s) return;
+
+  const dot = document.getElementById('rustDot');
+  const statStatus = document.getElementById('statStatus');
+
+  dot.className = 'status-dot';
+  if (s.running && !s.booting) {
+    dot.classList.add('online');
+    statStatus.textContent = 'ONLINE';
+    statStatus.style.color = 'var(--green)';
+  } else if (s.booting) {
+    dot.classList.add('booting');
+    statStatus.textContent = 'BOOTING';
+    statStatus.style.color = 'var(--yellow)';
+  } else {
+    dot.classList.add('offline');
+    statStatus.textContent = 'OFFLINE';
+    statStatus.style.color = 'var(--muted)';
+  }
+
+  document.getElementById('statPlayers').textContent =
+    s.running && !s.booting ? `${s.players} / ${s.maxPlayers}` : '—';
+  document.getElementById('statPlayers').className = 'stat-value' + (s.players > 0 ? ' green' : '');
+  document.getElementById('statMap').textContent = s.map || '—';
+  document.getElementById('statWorldSize').textContent = s.worldSize ? s.worldSize.toLocaleString() : '—';
+  document.getElementById('statSeed').textContent = s.seed || '—';
+  document.getElementById('statFps').textContent = s.fps != null ? s.fps.toFixed(0) : '—';
+
+  // Update admin button states
+  if (isAdmin) {
+    document.getElementById('btnStart').disabled = s.running;
+    document.getElementById('btnStop').disabled = !s.running;
+    document.getElementById('btnRestart').disabled = !s.running;
+  }
+}
+
+// --- Server actions ---
+async function rustAction(action) {
+  const res = await api('POST', `/api/rust/${action}`);
+  if (res) toast(res.message || action + ' sent', res.ok);
+  setTimeout(pollStatus, 3000);
+}
+
+// --- RCON ---
+async function sendRcon() {
+  const input = document.getElementById('rconInput');
+  const cmd = input.value.trim();
+  if (!cmd) return;
+  input.value = '';
+  appendRcon(`> ${cmd}`);
+  const res = await api('POST', '/api/rust/rcon', { cmd });
+  if (res) appendRcon(res.output || res.error || '(no output)');
+}
+
+function appendRcon(text) {
+  const el = document.getElementById('rconOutput');
+  el.textContent += (el.textContent ? '\n' : '') + text;
+  el.scrollTop = el.scrollHeight;
+}
+
+// --- Plugins ---
+async function loadPlugins() {
+  const plugins = await api('GET', '/api/rust/plugins');
+  const list = document.getElementById('pluginList');
+  if (!plugins || !plugins.length) {
+    list.innerHTML = '<div class="empty">No plugins found (Oxide may not be installed)</div>';
+    return;
+  }
+  list.innerHTML = plugins.map(p => `
+    <div class="plugin-item">
+      <span class="plugin-name ${p.enabled ? 'enabled' : 'disabled'}">${p.name}</span>
+      <label class="toggle">
+        <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="togglePlugin('${p.file}', this.checked)">
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+  `).join('');
+}
+
+async function togglePlugin(file, enable) {
+  const res = await api('POST', `/api/rust/plugins/${encodeURIComponent(file)}/toggle`, { enable });
+  if (res) toast(res.ok ? `Plugin ${enable ? 'enabled' : 'disabled'}` : (res.message || 'Error'), res.ok);
+}
+
+// --- Copy ---
+function copyConnect() {
+  const txt = document.getElementById('connectCmd').textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = 'COPIED';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+// --- Helpers ---
+async function api(method, url, body) {
+  try {
+    const opts = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(url, opts);
+    if (r.status === 401) { location.href = '/login'; return null; }
+    return r.json();
+  } catch { return null; }
+}
+
+function toast(msg, ok = true) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (ok ? ' ok' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', 3000);
+}
+
+init();
+
+// --- Valheim ---
+
+async function pollValheim() {
+  const s = await api('GET', '/api/valheim/status');
+  if (!s) return;
+
+  const dot = document.getElementById('valheimDot');
+  const statStatus = document.getElementById('vStatStatus');
+
+  dot.className = 'status-dot';
+  if (s.running && !s.booting) {
+    dot.classList.add('online');
+    statStatus.textContent = 'ONLINE';
+    statStatus.style.color = 'var(--green)';
+  } else if (s.booting) {
+    dot.classList.add('booting');
+    statStatus.textContent = 'BOOTING';
+    statStatus.style.color = 'var(--yellow)';
+  } else {
+    dot.classList.add('offline');
+    statStatus.textContent = 'OFFLINE';
+    statStatus.style.color = 'var(--muted)';
+  }
+
+  document.getElementById('vStatPlayers').textContent =
+    s.running && !s.booting ? `${s.players} / ${s.maxPlayers}` : '—';
+  document.getElementById('vStatPlayers').className = 'stat-value' + (s.players > 0 ? ' green' : '');
+  document.getElementById('vStatMap').textContent = s.map || '—';
+  document.getElementById('vStatMaxPlayers').textContent = s.maxPlayers || '—';
+
+  if (isAdmin) {
+    document.getElementById('vBtnStart').disabled = s.running;
+    document.getElementById('vBtnStop').disabled = !s.running;
+    document.getElementById('vBtnRestart').disabled = !s.running;
+  }
+}
+
+async function valheimAction(action) {
+  const res = await api('POST', `/api/valheim/${action}`);
+  if (res) toast(res.message || action + ' sent', res.ok);
+  setTimeout(pollValheim, 3000);
+}
+
+async function loadValheimPlugins() {
+  const plugins = await api('GET', '/api/valheim/plugins');
+  const list = document.getElementById('vPluginList');
+  if (!plugins || !plugins.length) {
+    list.innerHTML = '<div class="empty">No plugins found (BepInEx may not be installed)</div>';
+    return;
+  }
+  list.innerHTML = plugins.map(p => `
+    <div class="plugin-item">
+      <span class="plugin-name ${p.enabled ? 'enabled' : 'disabled'}">${p.name}</span>
+      <label class="toggle">
+        <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="toggleValheimPlugin('${p.file}', this.checked)">
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+  `).join('');
+}
+
+async function toggleValheimPlugin(file, enable) {
+  const res = await api('POST', `/api/valheim/plugins/${encodeURIComponent(file)}/toggle`, { enable });
+  if (res) toast(res.ok ? `Plugin ${enable ? 'enabled' : 'disabled'}` : (res.message || 'Error'), res.ok);
+}
+
+function copyValheim() {
+  const txt = document.getElementById('vConnectCmd').textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = document.getElementById('vCopyBtn');
+    btn.textContent = 'COPIED';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+</script>
 </body>
 </html>

@@ -444,6 +444,9 @@ function renderHardcodedBody(sectionKey, meta) {
           <div class="img-upload-icon">⬆</div>
           <div class="img-upload-label">Click or drag to upload</div>
         </div>
+        <div style="margin-top:6px;">
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.65rem;" onclick="pickAssetForHardSection('${sectionKey}','${slot.key}')">◈ Pick from Assets</button>
+        </div>
         <div class="img-uploading" id="imgUploading-${slot.key}">Uploading…</div>
       </div></div>`;
   }).join('');
@@ -523,6 +526,9 @@ function renderCustomBody(sec, tmpl) {
           <input type="file" accept="image/*" onchange="uploadCustomImg('${sec._id}','${slot.key}',this)">
           <div class="img-upload-icon">⬆</div>
           <div class="img-upload-label">Click or drag to upload</div>
+        </div>
+        <div style="margin-top:6px;">
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.65rem;" onclick="pickAssetForCustomSection('${sec._id}','${slot.key}')">◈ Pick from Assets</button>
         </div>
         <div class="img-uploading" id="cimgUploading-${slot.key}">Uploading…</div>
       </div></div>`;
@@ -757,7 +763,69 @@ async function sendAgent() {
     agentInput.focus();
   }
 }
+
+// ── ASSET PICKER INTEGRATION ─────────────────────────────────────────────────
+function pickAssetForHardSection(sectionKey, imageKey) {
+  openAssetPicker({
+    folder: 'sections',
+    type: 'image',
+    onSelect: async (asset) => {
+      const r = await fetch(`/admin/sections/${sectionKey}/image-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ imageKey, url: asset.publicUrl }),
+      });
+      const data = await r.json();
+      if (data.ok) {
+        // Update preview in modal
+        const wrap = document.getElementById(`imgWrap-${imageKey}`);
+        if (wrap) {
+          const previewWrap = wrap.querySelector('.img-preview-wrap');
+          if (previewWrap) { previewWrap.querySelector('img').src = asset.publicUrl; }
+          else {
+            wrap.insertAdjacentHTML('afterbegin',
+              `<div class="img-preview-wrap"><img src="${asset.publicUrl}" class="img-preview" id="imgPreview-${imageKey}"><button class="img-remove-btn" onclick="removeHardImg('${sectionKey}','${imageKey}')">Remove</button></div>`);
+          }
+          const uploadArea = document.getElementById(`uploadArea-${imageKey}`);
+          if (uploadArea) uploadArea.style.display = 'none';
+        }
+        // Update initMedia for cards
+        if (!initMedia) window.initMedia = {};
+        initMedia[imageKey] = { url: asset.publicUrl, key: imageKey };
+      }
+    }
+  });
+}
+
+function pickAssetForCustomSection(sectionId, imageKey) {
+  openAssetPicker({
+    folder: 'sections',
+    type: 'image',
+    onSelect: async (asset) => {
+      const r = await fetch(`/admin/sections/custom/${sectionId}/image-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ imageKey, url: asset.publicUrl }),
+      });
+      const data = await r.json();
+      if (data.ok) {
+        const wrap = document.getElementById(`cimgWrap-${imageKey}`);
+        if (wrap) {
+          const previewWrap = wrap.querySelector('.img-preview-wrap');
+          if (previewWrap) { previewWrap.querySelector('img').src = asset.publicUrl; }
+          else {
+            wrap.insertAdjacentHTML('afterbegin',
+              `<div class="img-preview-wrap"><img src="${asset.publicUrl}" class="img-preview"><button class="img-remove-btn" onclick="removeCustomImg('${sectionId}','${imageKey}')">Remove</button></div>`);
+          }
+          const uploadArea = document.getElementById(`cuploadArea-${imageKey}`);
+          if (uploadArea) uploadArea.style.display = 'none';
+        }
+      }
+    }
+  });
+}
 </script>
+<script src="/js/assetPicker.js"></script>
 
 </body>
 </html>

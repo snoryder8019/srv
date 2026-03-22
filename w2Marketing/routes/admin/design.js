@@ -22,6 +22,8 @@ export const DESIGN_DEFAULTS = {
   vis_blog:            'false',
   agent_name:          'W2 Assistant',
   agent_greeting:      'Hi! I can write blog posts, update site copy, or build new sections. What would you like to create?',
+  portfolio_layout:    'grid',
+  blog_layout:         'grid',
 };
 
 router.get('/', async (req, res) => {

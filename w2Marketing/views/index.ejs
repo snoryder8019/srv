@@ -869,7 +869,7 @@
     .advisor-left { padding: 72px 32px; }
     .contact { grid-template-columns: 1fr; }
     .contact-left { padding: 72px 32px; }
-    .contact-right { padding: 72px 32px; }
+    .contact-right { padding: 72px 32px 96px; }
     .services { padding: 72px 24px; }
     .process { padding: 72px 24px; }
     .section-header { flex-direction: column; align-items: flex-start; }
@@ -877,6 +877,8 @@
     .footer-top { flex-direction: column; }
     .hero-right-content { padding: 40px 32px; }
     .form-row { flex-direction: column; }
+    .btn-submit { align-self: stretch; width: 100%; padding: 18px 24px; font-size: 0.9rem; }
+    .contact-form { max-width: 100%; }
   }
   /* ── FONT OVERRIDES (dynamic) ── */
   body { font-family: var(--font-body); }
@@ -1406,6 +1408,62 @@
       q.closest('.cs-faq-item').classList.toggle('open');
     });
   });
+
+  // Mobile keyboard: scroll send button into view when keyboard opens
+  if (window.visualViewport && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    const submitBtn = document.querySelector('.btn-submit');
+    const contactForm = document.getElementById('contact-form');
+    let keyboardOpen = false;
+    const initialVH = window.visualViewport.height;
+
+    window.visualViewport.addEventListener('resize', () => {
+      const shrunk = window.visualViewport.height < initialVH * 0.75;
+      if (shrunk && !keyboardOpen) {
+        keyboardOpen = true;
+        setTimeout(() => submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 120);
+      } else if (!shrunk) {
+        keyboardOpen = false;
+      }
+    });
+
+    contactForm.querySelectorAll('input, textarea, select').forEach(field => {
+      field.addEventListener('focus', () => {
+        setTimeout(() => {
+          if (window.visualViewport.height < initialVH * 0.75) {
+            submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }, 400);
+      });
+    });
+  }
+</script>
+
+<!-- COOKIE CONSENT BANNER -->
+<div id="w2-cookie-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:8000;background:var(--dark);padding:20px 52px;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;box-shadow:0 -4px 32px rgba(0,0,0,0.28);transform:translateY(100%);transition:transform 0.45s cubic-bezier(0.4,0,0.2,1);">
+  <p style="font-family:'Jost',sans-serif;font-size:0.82rem;font-weight:300;line-height:1.65;color:rgba(253,252,250,0.72);max-width:680px;margin:0;">We use cookies to remember your preferences and improve your experience. By continuing to browse W2 Marketing, you agree to our use of cookies.</p>
+  <div style="display:flex;gap:12px;flex-shrink:0;">
+    <button id="w2-cookie-decline" style="background:transparent;border:1px solid rgba(253,252,250,0.2);color:rgba(253,252,250,0.5);padding:10px 20px;font-family:'Jost',sans-serif;font-size:0.76rem;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;border-radius:2px;transition:border-color 0.2s,color 0.2s;">Decline</button>
+    <button id="w2-cookie-accept" style="background:var(--gold);border:none;color:var(--dark);padding:10px 26px;font-family:'Jost',sans-serif;font-size:0.76rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;border-radius:2px;transition:background 0.2s;">Accept</button>
+  </div>
+</div>
+<script>
+(function() {
+  var bar = document.getElementById('w2-cookie-bar');
+  if (localStorage.getItem('w2_cookies')) return;
+  setTimeout(function() {
+    bar.style.display = 'flex';
+    requestAnimationFrame(function() {
+      bar.style.transform = 'translateY(0)';
+    });
+  }, 900);
+  function dismiss(accepted) {
+    localStorage.setItem('w2_cookies', accepted ? 'accepted' : 'declined');
+    bar.style.transform = 'translateY(100%)';
+    setTimeout(function() { bar.style.display = 'none'; }, 460);
+  }
+  document.getElementById('w2-cookie-accept').addEventListener('click', function() { dismiss(true); });
+  document.getElementById('w2-cookie-decline').addEventListener('click', function() { dismiss(false); });
+})();
 </script>
 </body>
 </html>

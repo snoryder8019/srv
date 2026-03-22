@@ -10,6 +10,7 @@ import pagesRouter from './admin/pages.js';
 import sectionsRouter from './admin/sections.js';
 import masterAgentRouter from './admin/masterAgent.js';
 import ttsRouter from './admin/tts.js';
+import assetsRouter from './admin/assets.js';
 
 const router = express.Router();
 
@@ -62,5 +63,6 @@ router.use('/design', designRouter);
 router.use('/blog', blogRouter);
 router.use('/pages', pagesRouter);
 router.use('/sections', sectionsRouter);
+router.use('/assets', assetsRouter);
 
 export default router;

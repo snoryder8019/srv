@@ -288,6 +288,22 @@ router.post('/:id', async (req, res) => {
   }
 });
 
+// Quick publish
+router.post('/:id/publish', async (req, res) => {
+  try {
+    const db = getDb();
+    const now = new Date();
+    await db.collection('w2_blog').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { status: 'published', publishedAt: now, updatedAt: now } }
+    );
+    res.redirect('/admin/blog?msg=published');
+  } catch (err) {
+    console.error(err);
+    res.redirect('/admin/blog?err=1');
+  }
+});
+
 // Delete
 router.post('/:id/delete', async (req, res) => {
   try {
