@@ -13,8 +13,5 @@ router.get('/dashboard', ensureAuth, (req, res) => {
   res.render('dashboard');
 });
 
-router.get('/theshow', ensureAuth, (_req, res) => {
-  res.render('theshow');
-});
 
 module.exports = router;

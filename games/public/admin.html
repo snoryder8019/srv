@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — MadLadsLab Games</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0d0d; --surface: #141414; --card: #1a1a1a;
+      --border: #2a2a2a; --accent: #cd412b; --green: #4caf82;
+      --yellow: #e6b800; --text: #e0e0e0; --muted: #666;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; min-height: 100vh; }
+    nav { background: #111; border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 52px; }
+    .nav-brand { color: var(--accent); font-size: 1rem; font-weight: bold; }
+    .nav-brand span { color: var(--muted); font-size: 0.75rem; margin-left: 8px; }
+    .nav-links { display: flex; gap: 16px; align-items: center; }
+    .nav-links a { color: var(--muted); font-size: 0.8rem; text-decoration: none; }
+    .nav-links a:hover { color: var(--text); }
+    .layout { display: flex; height: calc(100vh - 52px); }
+    .sidebar { width: 200px; background: var(--surface); border-right: 1px solid var(--border); padding: 16px 0; flex-shrink: 0; }
+    .sidebar-section { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.1em; padding: 8px 16px 4px; }
+    .sidebar-item { display: block; padding: 8px 16px; font-size: 0.82rem; color: var(--muted); cursor: pointer; border-left: 2px solid transparent; transition: all 0.15s; }
+    .sidebar-item:hover, .sidebar-item.active { color: var(--text); border-left-color: var(--accent); background: rgba(205,65,43,0.05); }
+    .main { flex: 1; overflow-y: auto; padding: 24px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    h2 { font-size: 1rem; margin-bottom: 20px; color: var(--text); }
+    .server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 18px; }
+    .card-title { font-size: 0.9rem; font-weight: bold; margin-bottom: 6px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 0.72rem; font-weight: bold; margin-bottom: 10px; }
+    .badge-on { background: #1a3a2a; color: var(--green); }
+    .badge-off { background: #2a1a1a; color: var(--accent); }
+    .badge-load { background: #222; color: var(--muted); }
+    .card-info { font-size: 0.78rem; color: var(--muted); margin-bottom: 12px; }
+    .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn { padding: 5px 12px; border: 1px solid var(--border); border-radius: 3px; background: transparent; color: var(--muted); font-family: inherit; font-size: 0.78rem; cursor: pointer; transition: all 0.15s; }
+    .btn:hover { border-color: #555; color: var(--text); }
+    .btn-green:hover { border-color: var(--green); color: var(--green); }
+    .btn-red:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-yellow:hover { border-color: var(--yellow); color: var(--yellow); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { text-align: left; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.05em; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    td { padding: 8px 12px; border-bottom: 1px solid #1e1e1e; vertical-align: middle; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .tag { display: inline-block; background: #222; border: 1px solid var(--border); border-radius: 2px; padding: 1px 6px; font-size: 0.7rem; color: var(--muted); margin: 1px; }
+    .tag-admin { border-color: var(--accent); color: var(--accent); }
+    input[type="text"], select { background: #111; border: 1px solid var(--border); color: var(--text); font-family: inherit; font-size: 0.82rem; padding: 5px 10px; border-radius: 3px; outline: none; }
+    input[type="text"]:focus, select:focus { border-color: var(--accent); }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 10px 16px; font-size: 0.82rem; display: none; z-index: 999; }
+    .search-bar { margin-bottom: 16px; }
+    .search-bar input { width: 280px; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; display: none; }
+    .modal { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 24px; width: 440px; max-width: 95vw; }
+    .modal h3 { font-size: 0.95rem; margin-bottom: 16px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.05em; }
+    .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; }
+    .ticket-status { padding: 2px 7px; border-radius: 2px; font-size: 0.72rem; }
+    .st-open { background: #1a2a1a; color: var(--green); }
+    .st-in-progress { background: #2a2a1a; color: var(--yellow); }
+    .st-closed { background: #1e1e1e; color: var(--muted); }
+    .loading { color: var(--muted); font-size: 0.82rem; padding: 20px 0; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">MadLadsLab <span>Admin</span></div>
+  <div class="nav-links">
+    <a href="/">Portal</a>
+    <form method="POST" action="/logout" style="margin:0"><button class="btn" style="padding:4px 10px">Logout</button></form>
+  </div>
+</nav>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-section">GAMES</div>
+    <div class="sidebar-item active" onclick="show('servers')">Server Control</div>
+    <div class="sidebar-item" onclick="show('gusers')">Users</div>
+    <div class="sidebar-section">BIH</div>
+    <div class="sidebar-item" onclick="show('busers')">Users</div>
+    <div class="sidebar-item" onclick="show('tickets')">Tickets</div>
+  </div>
+
+  <div class="main">
+
+    <!-- Game Server Control -->
+    <div class="panel active" id="panel-servers">
+      <h2>Game Server Control</h2>
+      <div class="server-grid" id="server-grid">
+        <% ;['rust','valheim','l4d2','7dtd'].forEach(g => { %>
+        <div class="card" id="sc-GAME">
+          <div class="card-title">GAME</div>
+          <div class="badge badge-load" id="badge-GAME">LOADING...</div>
+          <div class="card-info" id="info-GAME">—</div>
+          <div class="btn-row">
+            <button class="btn btn-green" onclick="serverAction('GAME','start')">Start</button>
+            <button class="btn btn-red" onclick="serverAction('GAME','stop')">Stop</button>
+            <button class="btn btn-yellow" onclick="serverAction('GAME','restart')">Restart</button>
+          </div>
+        </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Games Users -->
+    <div class="panel" id="panel-gusers">
+      <h2>Games Users</h2>
+      <div class="search-bar"><input type="text" id="guser-search" placeholder="Search email or name..." oninput="filterTable('guser-tbody', this.value)"></div>
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Permissions</th><th>Action</th></tr></thead>
+        <tbody id="guser-tbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- bih Users -->
+    <div class="panel" id="panel-busers">
+      <h2>bih Users</h2>
+      <div class="search-bar"><input type="text" id="buser-search" placeholder="Search email or name..." oninput="filterTable('buser-tbody', this.value)"></div>
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Permissions</th><th>Action</th></tr></thead>
+        <tbody id="buser-tbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- bih Tickets -->
+    <div class="panel" id="panel-tickets">
+      <h2>bih Tickets</h2>
+      <div class="search-bar"><input type="text" id="ticket-search" placeholder="Search subject..." oninput="filterTable('ticket-tbody', this.value)"></div>
+      <table>
+        <thead><tr><th>Subject</th><th>User</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody id="ticket-tbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h3 id="modal-title">Edit User</h3>
+    <input type="hidden" id="modal-uid">
+    <input type="hidden" id="modal-scope">
+    <div class="field">
+      <label>PERMISSIONS (comma-separated, e.g. games, games:admin)</label>
+      <input type="text" id="modal-perms" style="width:100%">
+    </div>
+    <div class="field">
+      <label class="checkbox-row">
+        <input type="checkbox" id="modal-admin"> Admin
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-green" onclick="saveUser()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const GAMES = ['rust', 'valheim', 'l4d2', '7dtd'];
+let guserData = [], buserData = [];
+
+// --- Nav ---
+function show(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if (id === 'gusers' && !guserData.length) loadGUsers();
+  if (id === 'busers' && !buserData.length) loadBUsers();
+  if (id === 'tickets') loadTickets();
+}
+
+// --- Toast ---
+function toast(msg, ok = true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = ok ? '#4caf82' : '#cd412b';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+
+// --- Server control ---
+async function loadServerStatuses() {
+  for (const g of GAMES) {
+    try {
+      const r = await fetch('/api/' + g + '/status');
+      const d = await r.json();
+      const badge = document.getElementById('badge-' + g);
+      const info = document.getElementById('info-' + g);
+      if (badge) {
+        if (d.running) {
+          badge.className = 'badge badge-on'; badge.textContent = 'ONLINE';
+          info.textContent = d.players !== undefined ? 'Players: ' + d.players : 'Running';
+        } else {
+          badge.className = 'badge badge-off'; badge.textContent = 'OFFLINE';
+          info.textContent = '—';
+        }
+      }
+    } catch (e) {}
+  }
+}
+
+async function serverAction(game, action) {
+  if (!confirm(action.toUpperCase() + ' ' + game.toUpperCase() + '?')) return;
+  try {
+    const r = await fetch('/api/' + game + '/' + action, { method: 'POST' });
+    const d = await r.json();
+    if (d.error) toast(d.error, false);
+    else { toast(d.message || 'Done'); setTimeout(() => loadServerStatuses(), 2000); }
+  } catch (e) { toast('Request failed', false); }
+}
+
+// Build server cards dynamically
+function buildServerGrid() {
+  const grid = document.getElementById('server-grid');
+  grid.innerHTML = GAMES.map(g => `
+    <div class="card" id="sc-${g}">
+      <div class="card-title">${g.toUpperCase()}</div>
+      <div class="badge badge-load" id="badge-${g}">LOADING...</div>
+      <div class="card-info" id="info-${g}">—</div>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="serverAction('${g}','start')">Start</button>
+        <button class="btn btn-red" onclick="serverAction('${g}','stop')">Stop</button>
+        <button class="btn btn-yellow" onclick="serverAction('${g}','restart')">Restart</button>
+      </div>
+    </div>`).join('');
+}
+
+// --- Users ---
+function renderUserRow(u, scope) {
+  const perms = Array.isArray(u.permissions) ? u.permissions : Object.keys(u.permissions || {});
+  const permTags = perms.length ? perms.map(p => `<span class="tag">${p}</span>`).join('') : '<span class="tag">—</span>';
+  const adminTag = u.isAdmin ? '<span class="tag tag-admin">admin</span>' : '';
+  return `<tr data-search="${(u.displayName||u.email||'').toLowerCase()} ${(u.email||'').toLowerCase()}">
+    <td>${u.displayName || u.firstName || '—'}</td>
+    <td style="color:var(--muted)">${u.email}</td>
+    <td>${adminTag}</td>
+    <td>${permTags}</td>
+    <td><button class="btn" onclick='openModal(${JSON.stringify(u._id||u.id)}, "${scope}", ${JSON.stringify(perms)}, ${!!u.isAdmin})'>Edit</button></td>
+  </tr>`;
+}
+
+async function loadGUsers() {
+  const tbody = document.getElementById('guser-tbody');
+  try {
+    const r = await fetch('/admin/api/games/users');
+    guserData = await r.json();
+    tbody.innerHTML = guserData.map(u => renderUserRow(u, 'games')).join('');
+  } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="color:#cd412b">Error loading users</td></tr>'; }
+}
+
+async function loadBUsers() {
+  const tbody = document.getElementById('buser-tbody');
+  try {
+    const r = await fetch('/admin/api/bih/users');
+    buserData = await r.json();
+    tbody.innerHTML = buserData.map(u => renderUserRow(u, 'bih')).join('');
+  } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="color:#cd412b">Error loading users</td></tr>'; }
+}
+
+// --- Tickets ---
+async function loadTickets() {
+  const tbody = document.getElementById('ticket-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="loading">Loading...</td></tr>';
+  try {
+    const r = await fetch('/admin/api/bih/tickets');
+    const tickets = await r.json();
+    if (!tickets.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">No tickets</td></tr>'; return; }
+    tbody.innerHTML = tickets.map(t => {
+      const user = t.user ? (t.user.displayName || t.user.email || '?') : '?';
+      const stClass = { open: 'st-open', 'in-progress': 'st-in-progress', closed: 'st-closed' }[t.status] || '';
+      const date = new Date(t.createdAt).toLocaleDateString();
+      return `<tr data-search="${t.subject.toLowerCase()}">
+        <td>${t.subject}</td>
+        <td style="color:var(--muted)">${user}</td>
+        <td><span class="ticket-status ${stClass}">${t.status}</span></td>
+        <td style="color:var(--muted)">${date}</td>
+        <td><button class="btn" onclick="showTicket(${JSON.stringify(t)})">View</button></td>
+      </tr>`;
+    }).join('');
+  } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="color:#cd412b">Error loading tickets</td></tr>'; }
+}
+
+function showTicket(t) {
+  alert(`Subject: ${t.subject}\n\n${t.message}\n\nStatus: ${t.status}\nActions: ${t.actions ? t.actions.length : 0}`);
+}
+
+// --- Modal ---
+function openModal(uid, scope, perms, isAdmin) {
+  document.getElementById('modal-uid').value = uid;
+  document.getElementById('modal-scope').value = scope;
+  document.getElementById('modal-perms').value = Array.isArray(perms) ? perms.join(', ') : '';
+  document.getElementById('modal-admin').checked = isAdmin;
+  document.getElementById('modal-title').textContent = 'Edit ' + scope + ' User';
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+
+async function saveUser() {
+  const id = document.getElementById('modal-uid').value;
+  const scope = document.getElementById('modal-scope').value;
+  const raw = document.getElementById('modal-perms').value;
+  const permissions = raw.split(',').map(s => s.trim()).filter(Boolean);
+  const isAdmin = document.getElementById('modal-admin').checked;
+  const url = scope === 'games' ? `/admin/api/games/users/${id}` : `/admin/api/bih/users/${id}`;
+  try {
+    const r = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permissions: scope === 'games' ? permissions.reduce((a, p) => ({ ...a, [p]: 'admin' }), {}) : permissions, isAdmin }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast('Saved');
+      closeModal();
+      if (scope === 'games') { guserData = []; loadGUsers(); }
+      else { buserData = []; loadBUsers(); }
+    } else {
+      toast(d.error || 'Error', false);
+    }
+  } catch (e) { toast('Request failed', false); }
+}
+
+// --- Search filter ---
+function filterTable(tbodyId, q) {
+  const rows = document.getElementById(tbodyId).querySelectorAll('tr[data-search]');
+  const term = q.toLowerCase();
+  rows.forEach(r => r.style.display = r.dataset.search.includes(term) ? '' : 'none');
+}
+
+// Init
+buildServerGrid();
+loadServerStatuses();
+setInterval(loadServerStatuses, 30000);
+</script>
+</body>
+</html>

@@ -54,6 +54,7 @@ app.use(passport.session());
 // Make user available to all views
 app.use((req, res, next) => {
   res.locals.user = req.user || null;
+  res.locals.userTheme = (req.user && req.user.theme) || 'terminal';
   next();
 });
 
@@ -64,6 +65,8 @@ app.use('/profile', require('./routes/profile'));
 app.use('/tickets', require('./routes/tickets'));
 app.use('/api', require('./routes/api'));
 app.use('/api', require('./routes/bots'));
+app.use('/servers', require('./routes/servers'));
+app.use('/api/internal', require('./routes/internal'));
 
 // Socket.IO — share session with express
 io.engine.use(sessionMiddleware);

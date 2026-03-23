@@ -24,21 +24,23 @@ async function isAdmin(req, res, next) {
 router.get('/', isAdmin, async (req, res) => {
     try {
         const user = req.user;
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const db = getDb();
 
-        // Get all sites
-        const siteModel = new Sites();
-        const sites = await siteModel.getAll() || [];
-
-        // Get directory info
-        const routesPath = path.join(__dirname, '..');
-        const dirs = await fs.readdir(routesPath);
-        const appDirs = dirs.filter(d => !['index.js', 'securityFunctions', 'users'].includes(d));
+        // Users list for inline management panel
+        const users = await db.collection('users')
+            .find({})
+            .project({ password: 0, confirmationToken: 0 })
+            .sort({ createdAt: -1 })
+            .toArray();
 
         res.render("admin", {
             user: user,
-            sites: sites,
-            directories: appDirs,
-            currentPage: 'dashboard'
+            users: users,
+            modules: MODULES,
+            currentPage: 'dashboard',
+            success: req.query.success,
+            error: req.query.error
         });
     } catch (error) {
         console.error(error);
@@ -46,8 +48,15 @@ router.get('/', isAdmin, async (req, res) => {
     }
 });
 
-// Sites management route
-router.get('/sites', isAdmin, async (req, res) => {
+// Redirect deprecated standalone pages to dashboard
+router.get('/analytics', isAdmin, (req, res) => res.redirect('/admin'));
+router.get('/settings',  isAdmin, (req, res) => res.redirect('/admin'));
+
+// Sites management route (redirect to dashboard)
+router.get('/sites', isAdmin, (req, res) => res.redirect('/admin'));
+
+// Sites management route (kept for form posts — original below)
+router.get('/sites-manage', isAdmin, async (req, res) => {
     try {
         const user = req.user;
         const siteModel = new Sites();
@@ -317,10 +326,10 @@ router.post('/create-site', isAdmin, async (req, res) => {
         const siteModel = new Sites();
         await siteModel.create({ siteName, siteUrl, createdAt: new Date() });
 
-        res.redirect('/admin/sites?success=Site created successfully');
+        res.redirect('/admin?success=Site created successfully');
     } catch (error) {
         console.error('Error creating site:', error);
-        res.redirect('/admin/sites?error=Failed to create site');
+        res.redirect('/admin?error=Failed to create site');
     }
 });
 
@@ -337,13 +346,13 @@ router.post('/update-site', isAdmin, async (req, res) => {
         const updated = await siteModel.updateById(siteId, { siteName, siteUrl });
 
         if (updated) {
-            res.redirect('/admin/sites?success=Site updated successfully');
+            res.redirect('/admin?success=Site updated successfully');
         } else {
-            res.redirect('/admin/sites?error=Site not found');
+            res.redirect('/admin?error=Site not found');
         }
     } catch (error) {
         console.error('Error updating site:', error);
-        res.redirect('/admin/sites?error=Failed to update site');
+        res.redirect('/admin?error=Failed to update site');
     }
 });
 
@@ -360,13 +369,13 @@ router.post('/delete-site', isAdmin, async (req, res) => {
         const deleted = await siteModel.deleteById(siteId);
 
         if (deleted) {
-            res.redirect('/admin/sites?success=Site deleted successfully');
+            res.redirect('/admin?success=Site deleted successfully');
         } else {
-            res.redirect('/admin/sites?error=Site not found');
+            res.redirect('/admin?error=Site not found');
         }
     } catch (error) {
         console.error('Error deleting site:', error);
-        res.redirect('/admin/sites?error=Failed to delete site');
+        res.redirect('/admin?error=Failed to delete site');
     }
 });
 
@@ -656,28 +665,86 @@ router.delete('/livechats/:sessionId', isAdmin, async (req, res) => {
     }
 });
 
+// ==================== AGENT STATS ADMIN ====================
+
+// GET /admin/agents/api/stats — aggregate agent activity for dashboard
+router.get('/agents/api/stats', isAdmin, async (req, res) => {
+    try {
+        const { getDb } = await import('../../plugins/mongo/mongo.js');
+        const mongoose = (await import('mongoose')).default;
+        const db = getDb();
+
+        const since48h = new Date(Date.now() - 48 * 3600000);
+        const since7d  = new Date(Date.now() - 7 * 86400000);
+
+        const [
+            totalAgents,
+            actions48h,
+            totalActions,
+            pendingTasks,
+            needsHuman,
+            completedToday,
+            recentActions,
+            tokenSum
+        ] = await Promise.all([
+            mongoose.model('Agent').countDocuments(),
+            db.collection('agent_actions').countDocuments({ createdAt: { $gte: since48h } }),
+            db.collection('agent_actions').countDocuments(),
+            db.collection('agent_tasks').countDocuments({ status: 'pending' }),
+            db.collection('agent_tasks').countDocuments({ status: 'needs_human' }),
+            db.collection('agent_tasks').countDocuments({
+                status: 'complete',
+                completedAt: { $gte: new Date(new Date().setHours(0,0,0,0)) }
+            }),
+            db.collection('agent_actions')
+                .find({ createdAt: { $gte: since48h } })
+                .sort({ createdAt: -1 })
+                .limit(12)
+                .project({ agentId: 1, type: 1, title: 1, content: 1, tokens: 1, createdAt: 1 })
+                .toArray(),
+            db.collection('agent_actions').aggregate([
+                { $group: { _id: null, total: { $sum: '$tokens' } } }
+            ]).toArray()
+        ]);
+
+        // Attach agent names
+        const agentIds = [...new Set(recentActions.map(a => a.agentId?.toString()).filter(Boolean))];
+        const agents = await mongoose.model('Agent').find({ _id: { $in: agentIds } }).select('_id name').lean();
+        const agentMap = Object.fromEntries(agents.map(a => [a._id.toString(), a.name]));
+
+        const actions = recentActions.map(a => ({
+            ...a,
+            agentName: agentMap[a.agentId?.toString()] || 'Unknown'
+        }));
+
+        res.json({
+            success: true,
+            stats: {
+                totalAgents,
+                actions48h,
+                totalActions,
+                pendingTasks,
+                needsHuman,
+                completedToday,
+                totalTokens: tokenSum[0]?.total || 0,
+                recentActions: actions
+            }
+        });
+    } catch (e) {
+        console.error('Agent stats error:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // ==================== USER PERMISSIONS ADMIN ====================
 
 const MODULES = [
-  { key: 'agents',        label: 'AI Agents' },
-  { key: 'skins',         label: 'Skins' },
-  { key: 'qrs',           label: 'QRS / QR Codes' },
-  { key: 'bikelite',      label: 'Bikelite' },
-  { key: 'contest',       label: 'Contest' },
-  { key: 'euker',         label: 'Euker' },
-  { key: 'grafitti',      label: 'Grafitti TV' },
-  { key: 'trader',        label: 'Trader' },
-  { key: 'lbb',           label: 'LBB' },
-  { key: 'gpc',           label: 'GPC' },
-  { key: 'backoffice',    label: 'Back Office' },
-  { key: 'claudeTalk',    label: 'ClaudeTalk' },
-  { key: 'payments',      label: 'Payments' },
-  { key: 'scrapeman',     label: 'Scrapeman' },
-  { key: 'bucketUpload',  label: 'Bucket Upload' },
-  { key: 'stevenClawbert',label: 'StevenClawbert' },
-  { key: 'finances',      label: 'Finances' },
-  { key: 'hue',           label: 'Hue' },
-  { key: 'w2marketing',   label: 'W2 Marketing' },
+  { key: 'agents',      label: 'AI Agents' },
+  { key: 'skins',       label: 'Skins' },
+  { key: 'grafitti',    label: 'Grafitti TV' },
+  { key: 'payments',    label: 'Payments' },
+  { key: 'hue',         label: 'Hue' },
+  { key: 'w2marketing', label: 'W2 Marketing' },
 ];
 
 // GET /admin/users — user list

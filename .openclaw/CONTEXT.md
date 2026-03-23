@@ -25,21 +25,22 @@ Last verified: 2026-02-21
 | Service | Dir | Port | Domain | tmux session | Status |
 |---------|-----|------|--------|-------------|--------|
 | madladslab | /srv/madladslab | 3000 | madladslab.com | `madladslab` | Active |
-| bih | /srv/bih | 3055 | bih.madladslab.com | `bih` | Active dev |
-| ps | /srv/ps | 3399 | ps.madladslab.com | `ps_session` | Active |
-| game-state | /srv/game-state-service | 3500 | svc.madladslab.com | `game_state_session` | Active |
-| servers | /srv/servers | 3600 | servers.madladslab.com | `servers_session` | Active |
-| acm | /srv/acm | 3002 | acmcreativeconcepts.com | `acm_session` | Active |
-| sfg | /srv/sfg | 3003 | sfg.madladslab.com | `sfg_session` | Degraded (500s) |
-| sna | /srv/sna | 3010 | somenewsarticle.com | `sna_session` | Active |
-| twww | /srv/twww | 3008 | theworldwidewallet.com | `twww_session` | Active |
-| madThree | /srv/madThree | 3001 | three.madladslab.com | `madThree_session` | Active |
-| w2MongoClient | /srv/w2MongoClient | 3006 | — | `w2portal` | Active |
-| graffiti-tv | /srv/graffiti-tv | 3008 | graffiti.madladslab.com | `graffitiTV` | Active |
+| bih | /srv/bih | 3055 | ballzinholez.com | `bih` | Active |
+| ps | /srv/ps | 3399 | ps.madladslab.com | `ps` | Active |
+| game-state | /srv/game-state-service | 3500 | svc.madladslab.com | `game-state` | Active |
+| servers | /srv/servers | 3600 | servers.madladslab.com | `servers` | Active |
+| acm | /srv/acm | 3004 | acmcreativeconcepts.com | `acm` | Active |
+| sna | /srv/sna | 3010 | somenewsarticle.com | `sna` | Active |
+| twww | /srv/twww | 3008 | theworldwidewallet.com | `twww` | Active |
+| madThree | /srv/madThree | 3007 | three.madladslab.com | `madThree` | Active |
+| graffiti-tv | /srv/graffiti-tv | 3001 | graffititv.madladslab.com | `graffiti-tv` | Active |
 | nocometalworkz | /srv/nocometalworkz | 3002 | nocometalworkz.com | `nocometalworkz` | Active |
+| greealitytv | /srv/greealitytv | 3400 | greealitytv.com | `greealitytv` | Active |
+| w2Marketing | /srv/w2Marketing | 3601 | w2marketing.biz | `w2marketing` | Active |
+| w2MongoClient | /srv/w2MongoClient | 3006 | — | — | **Deprecated** |
 | mcp-server | /srv/mcp | — | — | `mcp-server` | Active |
 | mcp-http | /srv/mcp | 3600 | — | `mcp-http` | Active |
-| greealitytv | /srv/greealitytv | 3400 | grealitytv.com | `greealitytv` | Active dev |
+| sfg | /srv/depricated/sfg | — | — | — | Deprecated |
 
 ---
 

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Profile - bih</title>
-  <link rel="stylesheet" href="/css/theme.css">
+  <%- include('partials/theme-head') %>
   <link rel="stylesheet" href="/css/chat.css">
   <link rel="stylesheet" href="/css/sidebar.css">
   <link rel="stylesheet" href="/css/call.css">
@@ -52,23 +52,96 @@
     <label style="display:block; margin-bottom:4px; color:#1a5a1a;">Epic Games ID</label>
     <input type="text" name="epicId" value="<%= user.epicId || '' %>" placeholder="Epic Games username" />
 
-    <label style="display:block; margin:12px 0 4px; color:#1a5a1a;">Twitch ID</label>
+    <label style="display:block; margin:12px 0 4px; color:#1a5a1a;">Twitch Username</label>
     <input type="text" name="twitchId" value="<%= user.twitchId || '' %>" placeholder="Twitch username" />
 
-    <label style="display:block; margin:12px 0 4px; color:#1a5a1a;">MLB The Show Username</label>
-    <input type="text" name="theShowUsername" value="<%= user.theShowUsername || '' %>" placeholder="PSN / Xbox / platform username" />
+    <label style="display:block; margin:12px 0 4px; color:#1a5a1a;">Steam Username <span style="color:#555; font-size:0.8em;">(vanity URL, e.g. steamcommunity.com/id/<b>yourname</b>)</span></label>
+    <input type="text" name="steamUsername" value="<%= user.steamUsername || '' %>" placeholder="Steam vanity URL username" />
 
-    <label style="display:block; margin:8px 0 4px; color:#1a5a1a;">Platform</label>
-    <select name="theShowPlatform" style="background:var(--bg-surface,#0d1a0d); color:var(--green,#00cc33); border:1px solid #1a3a1a; padding:6px 10px; font-family:inherit;">
-      <% ['', 'PS5', 'PS4', 'Xbox', 'Switch', 'PC'].forEach(p => { %>
-        <option value="<%= p %>" <%= (user.theShowPlatform || '') === p ? 'selected' : '' %>><%= p || '-- select platform --' %></option>
-      <% }); %>
-    </select>
+    <label style="display:block; margin:12px 0 4px; color:#1a5a1a;">Xbox Gamertag</label>
+    <input type="text" name="xboxGamertag" value="<%= user.xboxGamertag || '' %>" placeholder="Xbox Gamertag" />
 
     <div style="margin-top:8px;">
       <button type="submit">Save IDs</button>
     </div>
   </form>
+
+  <hr>
+
+  <h2 style="margin:16px 0 8px;">Appearance</h2>
+  <form action="/profile/update-theme" method="POST">
+    <div style="display:flex; gap:12px; margin:12px 0; flex-wrap:wrap;">
+      <label style="cursor:pointer;">
+        <input type="radio" name="theme" value="terminal" <%= (user.theme || 'terminal') === 'terminal' ? 'checked' : '' %> style="width:auto; display:inline; margin-right:6px;" />
+        Terminal
+      </label>
+      <label style="cursor:pointer;">
+        <input type="radio" name="theme" value="gamer" <%= (user.theme || '') === 'gamer' ? 'checked' : '' %> style="width:auto; display:inline; margin-right:6px;" />
+        Modern Gamer
+      </label>
+    </div>
+    <button type="submit">Save Theme</button>
+  </form>
+
+  <% if (user.steamUsername || user.twitchId) { %>
+  <hr>
+  <h2 style="margin:16px 0 8px;">Platform Activity</h2>
+
+  <% if (user.steamUsername) { %>
+  <div id="steam-activity" style="margin-bottom:16px;">
+    <h3 style="color:#1a5a1a; font-size:0.9rem; margin-bottom:8px;">Steam — <%= user.steamUsername %></h3>
+    <div id="steam-data" style="color:#555; font-size:0.85rem;">Loading...</div>
+  </div>
+  <% } %>
+
+  <% if (user.twitchId) { %>
+  <div id="twitch-activity">
+    <h3 style="color:#6441a5; font-size:0.9rem; margin-bottom:8px;">Twitch — <%= user.twitchId %></h3>
+    <div id="twitch-data" style="color:#555; font-size:0.85rem;">Loading...</div>
+  </div>
+  <% } %>
+
+  <script>
+    <% if (user.steamUsername) { %>
+    fetch('/api/steam/activity').then(r => r.json()).then(d => {
+      const el = document.getElementById('steam-data');
+      if (d.error) { el.textContent = d.error; return; }
+      const s = d.summary;
+      let html = `<span style="color:${s.status === 'Online' ? '#00cc33' : '#555'}">${s.status}</span>`;
+      if (s.currentGame) html += ` &mdash; playing <b style="color:#00cc33">${s.currentGame}</b>`;
+      if (d.recentGames && d.recentGames.length) {
+        html += '<div style="margin-top:8px; color:#888;">Recent (2 weeks):</div><div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;">';
+        d.recentGames.forEach(g => {
+          html += `<div style="background:#0d1a0d; border:1px solid #1a3a1a; border-radius:3px; padding:6px 10px; font-size:0.8rem;">`;
+          if (g.icon) html += `<img src="${g.icon}" width="16" height="16" style="vertical-align:middle; margin-right:6px;">`;
+          html += `${g.name} <span style="color:#555">${g.playtime2Weeks}h</span></div>`;
+        });
+        html += '</div>';
+      }
+      el.innerHTML = html;
+    }).catch(() => { document.getElementById('steam-data').textContent = 'Could not load Steam data'; });
+    <% } %>
+
+    <% if (user.twitchId) { %>
+    fetch('/api/twitch/channel/<%= encodeURIComponent(user.twitchId) %>').then(r => r.json()).then(d => {
+      const el = document.getElementById('twitch-data');
+      if (d.error) { el.textContent = d.error; return; }
+      let html = '';
+      if (d.profileImage) html += `<img src="${d.profileImage}" width="32" height="32" style="border-radius:50%; vertical-align:middle; margin-right:8px;">`;
+      html += `<a href="https://twitch.tv/${d.login}" target="_blank" style="color:#6441a5">${d.displayName}</a>`;
+      html += ` <span style="color:#555">${(d.viewCount || 0).toLocaleString()} total views</span>`;
+      if (d.recentVods && d.recentVods.length) {
+        html += '<div style="margin-top:8px; color:#888;">Recent streams:</div><div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;">';
+        d.recentVods.forEach(v => {
+          html += `<a href="${v.url}" target="_blank" style="background:#0d0d1a; border:1px solid #2a1a3a; border-radius:3px; padding:6px 10px; font-size:0.8rem; color:#9a7ac4; text-decoration:none; display:block; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${v.title}">${v.title}</a>`;
+        });
+        html += '</div>';
+      }
+      el.innerHTML = html;
+    }).catch(() => { document.getElementById('twitch-data').textContent = 'Could not load Twitch data'; });
+    <% } %>
+  </script>
+  <% } %>
 
   <hr>
   <div style="margin-top:16px;">

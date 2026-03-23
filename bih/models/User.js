@@ -9,11 +9,12 @@ const userSchema = new mongoose.Schema({
   avatar: { type: String },
   epicId: { type: String },
   twitchId: { type: String },
-  theShowUsername: { type: String },
-  theShowPlatform: { type: String, enum: ['PS5', 'PS4', 'Xbox', 'Switch', 'PC', ''], default: '' },
+  steamUsername: { type: String },
+  xboxGamertag: { type: String },
   isAdmin: { type: Boolean, default: false },
   isBIH: { type: Boolean, default: false },
   permissions: { type: [String], default: [] },
+  theme: { type: String, enum: ['terminal', 'gamer'], default: 'terminal' },
   createdAt: { type: Date, default: Date.now }
 });
 

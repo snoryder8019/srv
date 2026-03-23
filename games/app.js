@@ -18,6 +18,7 @@ let db;
 const client = new MongoClient(DB_URL);
 client.connect().then(() => {
   db = client.db(); // uses db from connection string
+  app.locals.db = db;
   console.log('[games] MongoDB connected');
 }).catch(err => {
   console.error('[games] MongoDB connection failed:', err.message);
@@ -111,6 +112,8 @@ app.use('/static', express.static(__dirname + '/public'));
 // --- Routes ---
 app.use('/', require('./routes/index'));
 app.use('/api', require('./routes/api'));
+app.use('/internal', require('./routes/internal'));
+app.use('/admin', require('./routes/admin'));
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`[games] Portal running on port ${PORT}`);

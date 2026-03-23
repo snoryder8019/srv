@@ -105,4 +105,75 @@ async function getLiveStreams(userLogins) {
   });
 }
 
-module.exports = { getLiveStreams };
+/**
+ * Get user info + channel data for a single login.
+ * Returns: id, login, displayName, profileImage, description, viewCount, followerCount (null if unavailable)
+ */
+async function getChannelInfo(login) {
+  const token = await getAppToken();
+  const clientId = process.env.TWITCH_CLIENT_ID;
+
+  // Step 1: get user id + profile
+  const userInfo = await new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.twitch.tv',
+      path: `/helix/users?login=${encodeURIComponent(login)}`,
+      method: 'GET',
+      headers: { 'Client-Id': clientId, 'Authorization': `Bearer ${token}` }
+    }, (res) => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+
+  const user = userInfo.data?.[0];
+  if (!user) return null;
+
+  // Step 2: get recent VODs
+  const vodsData = await new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.twitch.tv',
+      path: `/helix/videos?user_id=${user.id}&type=archive&first=3`,
+      method: 'GET',
+      headers: { 'Client-Id': clientId, 'Authorization': `Bearer ${token}` }
+    }, (res) => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+
+  const vods = (vodsData.data || []).map(v => ({
+    id: v.id,
+    title: v.title,
+    duration: v.duration,
+    viewCount: v.view_count,
+    publishedAt: v.published_at,
+    thumbnail: v.thumbnail_url
+      .replace('%{width}', '320')
+      .replace('%{height}', '180'),
+    url: v.url,
+  }));
+
+  return {
+    id: user.id,
+    login: user.login,
+    displayName: user.display_name,
+    profileImage: user.profile_image_url,
+    description: user.description,
+    viewCount: user.view_count,
+    createdAt: user.created_at,
+    recentVods: vods,
+  };
+}
+
+module.exports = { getLiveStreams, getChannelInfo };

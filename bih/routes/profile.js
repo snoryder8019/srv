@@ -57,13 +57,12 @@ router.post('/update-avatar', ensureAuth, upload.single('avatar'), async (req, r
 // Update Epic / Twitch / The Show IDs
 router.post('/update-ids', ensureAuth, async (req, res) => {
   try {
-    const { epicId, twitchId, theShowUsername, theShowPlatform } = req.body;
-    const validPlatforms = ['PS5', 'PS4', 'Xbox', 'Switch', 'PC', ''];
+    const { epicId, twitchId, steamUsername, xboxGamertag } = req.body;
     const update = {
       epicId: epicId ? epicId.trim() : '',
       twitchId: twitchId ? twitchId.trim() : '',
-      theShowUsername: theShowUsername ? theShowUsername.trim() : '',
-      theShowPlatform: validPlatforms.includes(theShowPlatform) ? theShowPlatform : ''
+      steamUsername: steamUsername ? steamUsername.trim() : '',
+      xboxGamertag: xboxGamertag ? xboxGamertag.trim() : '',
     };
     await User.findByIdAndUpdate(req.user._id, update);
     Object.assign(req.user, update);
@@ -71,6 +70,22 @@ router.post('/update-ids', ensureAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.render('profile', { error: 'Failed to update gaming IDs', success: null });
+  }
+});
+
+// Update theme
+router.post('/update-theme', ensureAuth, async (req, res) => {
+  try {
+    const { theme } = req.body;
+    if (!['terminal', 'gamer'].includes(theme)) {
+      return res.render('profile', { error: 'Invalid theme', success: null });
+    }
+    await User.findByIdAndUpdate(req.user._id, { theme });
+    req.user.theme = theme;
+    res.render('profile', { success: 'Theme updated', error: null });
+  } catch (err) {
+    console.error(err);
+    res.render('profile', { error: 'Failed to update theme', success: null });
   }
 });
 

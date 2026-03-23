@@ -13,16 +13,20 @@ const execAsync = promisify(exec);
 
 // Configuration for each app
 const APP_CONFIG = {
-  madladslab: { port: 3000, path: '/srv/madladslab', domain: 'madladslab.com', session: 'madladslab' },
-  ps: { port: 3399, path: '/srv/ps', domain: 'ps.madladslab.com', session: 'ps' },
-  'game-state': { port: 3500, path: '/srv/game-state-service', domain: 'svc.madladslab.com', session: 'game-state' },
-  acm: { port: 3001, path: '/srv/acm', domain: 'acmcreativeconcepts.com', session: 'acm' },
-  nocometalworkz: { port: 3002, path: '/srv/nocometalworkz', domain: 'nocometalworkz.com', session: 'nocometalworkz' },
-  sfg: { port: 3003, path: '/srv/sfg', domain: 'sfg.madladslab.com', session: 'sfg' },
-  sna: { port: 3004, path: '/srv/sna', domain: 'somenewsarticle.com', session: 'sna' },
-  twww: { port: 3005, path: '/srv/twww', domain: 'theworldwidewallet.com', session: 'twww' },
-  w2portal: { port: 3006, path: '/srv/w2MongoClient', domain: 'localhost', session: 'w2portal' },
-  madThree: { port: 3007, path: '/srv/madThree', domain: 'three.madladslab.com', session: 'madThree' }
+  madladslab:  { port: 3000, path: '/srv/madladslab',           domain: 'madladslab.com',           session: 'madladslab'    },
+  bih:         { port: 3055, path: '/srv/bih',                  domain: 'ballzinholez.com',          session: 'bih'           },
+  ps:          { port: 3399, path: '/srv/ps',                   domain: 'ps.madladslab.com',         session: 'ps'            },
+  'game-state':{ port: 3502, path: '/srv/game-state-service',   domain: 'svc.madladslab.com',        session: 'game-state'    },
+  games:       { port: 3500, path: '/srv/games',               domain: 'games.madladslab.com',      session: 'games'         },
+  servers:     { port: 3600, path: '/srv/servers',              domain: 'servers.madladslab.com',    session: 'servers'       },
+  acm:         { port: 3004, path: '/srv/acm',                  domain: 'acmcreativeconcepts.com',   session: 'acm'           },
+  sna:         { port: 3010, path: '/srv/sna',                  domain: 'somenewsarticle.com',       session: 'sna'           },
+  twww:        { port: 3008, path: '/srv/twww',                 domain: 'theworldwidewallet.com',    session: 'twww'          },
+  madThree:    { port: 3007, path: '/srv/madThree',             domain: 'three.madladslab.com',      session: 'madThree'      },
+  'graffiti-tv':{ port: 3001, path: '/srv/graffiti-tv',         domain: 'graffititv.madladslab.com', session: 'graffiti-tv'   },
+  nocometalworkz:{ port: 3002, path: '/srv/nocometalworkz',     domain: 'nocometalworkz.com',        session: 'nocometalworkz'},
+  greealitytv: { port: 3400, path: '/srv/greealitytv',          domain: 'greealitytv.com',           session: 'greealitytv'   },
+  w2Marketing: { port: 3601, path: '/srv/w2Marketing',          domain: 'w2marketing.biz',           session: 'w2marketing'   },
 };
 
 /**

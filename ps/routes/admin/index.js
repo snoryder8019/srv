@@ -540,7 +540,7 @@ router.post('/api/monitor/restart/:service', isAdmin, async function(req, res) {
     'acm': { dir: '/srv/acm', port: 3002, session: 'acm_session' },
     'sfg': { dir: '/srv/sfg', port: 3003, session: 'sfg_session' },
     'ps': { dir: '/srv/ps', port: 3399, session: 'ps_session' },
-    'game-state': { dir: '/srv/game-state-service', port: 3500, session: 'game_state_session' }
+    'game-state': { dir: '/srv/game-state-service', port: 3502, session: 'game-state' }
   };
 
   if (!serviceMap[service]) {
