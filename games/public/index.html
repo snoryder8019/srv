@@ -374,6 +374,102 @@
     </div>
   </div>
 
+  <!-- LEFT 4 DEAD 2 SERVER CARD -->
+  <div class="server-card">
+    <div class="card-header">
+      <span class="game-badge" style="background:#2e7d32;">L4D2</span>
+      <span class="card-title">MadLadsLab Left 4 Dead 2</span>
+      <div class="status-dot offline" id="l4d2Dot"></div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat">
+        <div class="stat-label">STATUS</div>
+        <div class="stat-value muted" id="l4d2StatStatus">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">PLAYERS</div>
+        <div class="stat-value" id="l4d2StatPlayers">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">MAP</div>
+        <div class="stat-value muted" id="l4d2StatMap">—</div>
+      </div>
+    </div>
+
+    <div class="connect-bar">
+      <span class="connect-label">CONNECT:</span>
+      <span class="connect-cmd" id="l4d2ConnectCmd">connect games.madladslab.com:27015</span>
+      <button class="btn-copy" id="l4d2CopyBtn" onclick="copyL4D2()">COPY</button>
+    </div>
+
+    <div class="admin-panel" id="l4d2AdminPanel">
+      <div class="admin-title">Server Controls</div>
+      <div class="btn-row">
+        <button class="btn btn-start" id="l4d2BtnStart" onclick="l4d2Action('start')">▶ START</button>
+        <button class="btn btn-stop" id="l4d2BtnStop" onclick="l4d2Action('stop')">■ STOP</button>
+        <button class="btn btn-restart" id="l4d2BtnRestart" onclick="l4d2Action('restart')">↺ RESTART</button>
+      </div>
+
+      <div class="plugins-section">
+        <div class="admin-title">SourceMod Plugins</div>
+        <div class="plugin-list" id="l4d2PluginList">
+          <div class="empty">Loading plugins...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7 DAYS TO DIE SERVER CARD -->
+  <div class="server-card">
+    <div class="card-header">
+      <span class="game-badge" style="background:#7b3500;">7DTD</span>
+      <span class="card-title">MadLadsLab 7 Days to Die</span>
+      <div class="status-dot offline" id="sdtdDot"></div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat">
+        <div class="stat-label">STATUS</div>
+        <div class="stat-value muted" id="sdtdStatStatus">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">PLAYERS</div>
+        <div class="stat-value" id="sdtdStatPlayers">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">WORLD</div>
+        <div class="stat-value muted" id="sdtdStatMap">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">SEED</div>
+        <div class="stat-value muted" id="sdtdStatSeed">—</div>
+      </div>
+    </div>
+
+    <div class="connect-bar">
+      <span class="connect-label">CONNECT:</span>
+      <span class="connect-cmd" id="sdtdConnectCmd">games.madladslab.com:26900</span>
+      <button class="btn-copy" id="sdtdCopyBtn" onclick="copySdtd()">COPY</button>
+    </div>
+
+    <div class="admin-panel" id="sdtdAdminPanel">
+      <div class="admin-title">Server Controls</div>
+      <div class="btn-row">
+        <button class="btn btn-start" id="sdtdBtnStart" onclick="sdtdAction('start')">▶ START</button>
+        <button class="btn btn-stop" id="sdtdBtnStop" onclick="sdtdAction('stop')">■ STOP</button>
+        <button class="btn btn-restart" id="sdtdBtnRestart" onclick="sdtdAction('restart')">↺ RESTART</button>
+      </div>
+
+      <div class="plugins-section">
+        <div class="admin-title">Mods</div>
+        <div class="plugin-list" id="sdtdModList">
+          <div class="empty">Loading mods...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- VALHEIM SERVER CARD -->
   <div class="server-card">
     <div class="card-header">
@@ -441,11 +537,15 @@ async function init() {
   if (isAdmin) {
     document.getElementById('adminPanel').classList.add('visible');
     document.getElementById('vAdminPanel').classList.add('visible');
+    document.getElementById('l4d2AdminPanel').classList.add('visible');
+    document.getElementById('sdtdAdminPanel').classList.add('visible');
     loadPlugins();
     loadValheimPlugins();
+    loadL4D2Plugins();
+    loadSdtdMods();
   }
-  await Promise.all([pollStatus(), pollValheim()]);
-  pollInterval = setInterval(() => { pollStatus(); pollValheim(); }, 15000);
+  await Promise.all([pollStatus(), pollValheim(), pollL4D2(), pollSdtd()]);
+  pollInterval = setInterval(() => { pollStatus(); pollValheim(); pollL4D2(); pollSdtd(); }, 15000);
 }
 
 // --- Status polling ---
@@ -637,6 +737,157 @@ function copyValheim() {
   const txt = document.getElementById('vConnectCmd').textContent;
   navigator.clipboard.writeText(txt).then(() => {
     const btn = document.getElementById('vCopyBtn');
+    btn.textContent = 'COPIED';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+// --- Left 4 Dead 2 ---
+
+async function pollL4D2() {
+  const s = await api('GET', '/api/l4d2/status');
+  if (!s) return;
+
+  const dot = document.getElementById('l4d2Dot');
+  const statStatus = document.getElementById('l4d2StatStatus');
+
+  dot.className = 'status-dot';
+  if (s.running && !s.booting) {
+    dot.classList.add('online');
+    statStatus.textContent = 'ONLINE';
+    statStatus.style.color = 'var(--green)';
+  } else if (s.booting) {
+    dot.classList.add('booting');
+    statStatus.textContent = 'BOOTING';
+    statStatus.style.color = 'var(--yellow)';
+  } else {
+    dot.classList.add('offline');
+    statStatus.textContent = 'OFFLINE';
+    statStatus.style.color = 'var(--muted)';
+  }
+
+  document.getElementById('l4d2StatPlayers').textContent =
+    s.running && !s.booting ? `${s.players} / ${s.maxPlayers}` : '—';
+  document.getElementById('l4d2StatPlayers').className = 'stat-value' + (s.players > 0 ? ' green' : '');
+  document.getElementById('l4d2StatMap').textContent = s.map || '—';
+
+  if (isAdmin) {
+    document.getElementById('l4d2BtnStart').disabled = s.running;
+    document.getElementById('l4d2BtnStop').disabled = !s.running;
+    document.getElementById('l4d2BtnRestart').disabled = !s.running;
+  }
+}
+
+async function l4d2Action(action) {
+  const res = await api('POST', `/api/l4d2/${action}`);
+  if (res) toast(res.message || action + ' sent', res.ok);
+  setTimeout(pollL4D2, 3000);
+}
+
+async function loadL4D2Plugins() {
+  const plugins = await api('GET', '/api/l4d2/plugins');
+  const list = document.getElementById('l4d2PluginList');
+  if (!plugins || !plugins.length) {
+    list.innerHTML = '<div class="empty">No plugins found (SourceMod may not be installed)</div>';
+    return;
+  }
+  list.innerHTML = plugins.map(p => `
+    <div class="plugin-item">
+      <span class="plugin-name ${p.enabled ? 'enabled' : 'disabled'}">${p.name}</span>
+      <label class="toggle">
+        <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="toggleL4D2Plugin('${p.file}', this.checked)">
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+  `).join('');
+}
+
+async function toggleL4D2Plugin(file, enable) {
+  const res = await api('POST', `/api/l4d2/plugins/${encodeURIComponent(file)}/toggle`, { enable });
+  if (res) toast(res.ok ? `Plugin ${enable ? 'enabled' : 'disabled'}` : (res.message || 'Error'), res.ok);
+}
+
+function copyL4D2() {
+  const txt = document.getElementById('l4d2ConnectCmd').textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = document.getElementById('l4d2CopyBtn');
+    btn.textContent = 'COPIED';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+// --- 7 Days to Die ---
+
+async function pollSdtd() {
+  const s = await api('GET', '/api/7dtd/status');
+  if (!s) return;
+
+  const dot = document.getElementById('sdtdDot');
+  const statStatus = document.getElementById('sdtdStatStatus');
+
+  dot.className = 'status-dot';
+  if (s.running && !s.booting) {
+    dot.classList.add('online');
+    statStatus.textContent = 'ONLINE';
+    statStatus.style.color = 'var(--green)';
+  } else if (s.booting) {
+    dot.classList.add('booting');
+    statStatus.textContent = 'BOOTING';
+    statStatus.style.color = 'var(--yellow)';
+  } else {
+    dot.classList.add('offline');
+    statStatus.textContent = 'OFFLINE';
+    statStatus.style.color = 'var(--muted)';
+  }
+
+  document.getElementById('sdtdStatPlayers').textContent =
+    s.running && !s.booting ? `${s.players} / ${s.maxPlayers}` : '—';
+  document.getElementById('sdtdStatPlayers').className = 'stat-value' + (s.players > 0 ? ' green' : '');
+  document.getElementById('sdtdStatMap').textContent = s.map || '—';
+  document.getElementById('sdtdStatSeed').textContent = s.seed || '—';
+
+  if (isAdmin) {
+    document.getElementById('sdtdBtnStart').disabled = s.running;
+    document.getElementById('sdtdBtnStop').disabled = !s.running;
+    document.getElementById('sdtdBtnRestart').disabled = !s.running;
+  }
+}
+
+async function sdtdAction(action) {
+  const res = await api('POST', `/api/7dtd/${action}`);
+  if (res) toast(res.message || action + ' sent', res.ok);
+  setTimeout(pollSdtd, 3000);
+}
+
+async function loadSdtdMods() {
+  const mods = await api('GET', '/api/7dtd/mods');
+  const list = document.getElementById('sdtdModList');
+  if (!mods || !mods.length) {
+    list.innerHTML = '<div class="empty">No mods found — drop folders into /srv/games/7dtd/Mods/</div>';
+    return;
+  }
+  list.innerHTML = mods.map(m => `
+    <div class="plugin-item">
+      <span class="plugin-name ${m.enabled ? 'enabled' : 'disabled'}">${m.name}</span>
+      <label class="toggle">
+        <input type="checkbox" ${m.enabled ? 'checked' : ''} onchange="toggleSdtdMod('${m.file}', this.checked)">
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+  `).join('');
+}
+
+async function toggleSdtdMod(modname, enable) {
+  const res = await api('POST', `/api/7dtd/mods/${encodeURIComponent(modname)}/toggle`, { enable });
+  if (res) toast(res.ok ? `Mod ${enable ? 'enabled' : 'disabled'}` : (res.message || 'Error'), res.ok);
+}
+
+function copySdtd() {
+  const txt = document.getElementById('sdtdConnectCmd').textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = document.getElementById('sdtdCopyBtn');
     btn.textContent = 'COPIED';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);

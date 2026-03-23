@@ -17,14 +17,7 @@ tmux kill-session -t $SESSION 2>/dev/null
 
 tmux new-session -d -s $SESSION -x 220 -y 50
 
-tmux send-keys -t $SESSION "cd $VALHEIM_DIR && ./valheim_server.x86_64 \
-  -name \"$SERVER_NAME\" \
-  -port $GAME_PORT \
-  -world \"$WORLD_NAME\" \
-  -password \"$SERVER_PASSWORD\" \
-  -savedir \"$SAVE_DIR\" \
-  -public 1 \
-  2>&1 | tee -a $VALHEIM_DIR/logs/server.log" Enter
+tmux send-keys -t $SESSION "cd $VALHEIM_DIR && bash start_server_bepinex.sh 2>&1 | tee -a $VALHEIM_DIR/logs/server.log" Enter
 
 echo "Valheim server started in tmux session '$SESSION'"
 echo "Attach with: tmux attach -t $SESSION"

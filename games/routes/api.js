@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const rust = require('../lib/rust');
 const valheim = require('../lib/valheim');
+const l4d2 = require('../lib/l4d2');
+const sdtd = require('../lib/7dtd');
 
 function requireAuth(req, res, next) {
   if (req.isAuthenticated()) return next();
@@ -95,6 +97,40 @@ router.get('/valheim/plugins', requireAdmin, (req, res) => {
 router.post('/valheim/plugins/:filename/toggle', requireAdmin, (req, res) => {
   const { enable } = req.body;
   res.json(valheim.togglePlugin(req.params.filename, enable));
+});
+
+// --- Left 4 Dead 2 ---
+
+router.get('/l4d2/status', requireAuth, async (req, res) => {
+  try { res.json(await l4d2.getStatus()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/l4d2/start', requireAdmin, (req, res) => { res.json(l4d2.startServer()); });
+router.post('/l4d2/stop', requireAdmin, (req, res) => { res.json(l4d2.stopServer('manual stop')); });
+router.post('/l4d2/restart', requireAdmin, (req, res) => { res.json(l4d2.restartServer()); });
+
+router.get('/l4d2/plugins', requireAdmin, (req, res) => { res.json(l4d2.getPlugins()); });
+
+router.post('/l4d2/plugins/:filename/toggle', requireAdmin, (req, res) => {
+  const { enable } = req.body;
+  res.json(l4d2.togglePlugin(req.params.filename, enable));
+});
+
+// --- 7 Days to Die ---
+
+router.get('/7dtd/status', requireAuth, async (req, res) => {
+  try { res.json(await sdtd.getStatus()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/7dtd/start', requireAdmin, (req, res) => { res.json(sdtd.startServer()); });
+router.post('/7dtd/stop', requireAdmin, (req, res) => { res.json(sdtd.stopServer('manual stop')); });
+router.post('/7dtd/restart', requireAdmin, (req, res) => { res.json(sdtd.restartServer()); });
+
+router.get('/7dtd/mods', requireAdmin, (req, res) => { res.json(sdtd.getMods()); });
+
+router.post('/7dtd/mods/:modname/toggle', requireAdmin, (req, res) => {
+  const { enable } = req.body;
+  res.json(sdtd.toggleMod(req.params.modname, enable));
 });
 
 // --- Auth ---
