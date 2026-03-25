@@ -1,0 +1,158 @@
+<%- include('../layout', { title, section, user }) %>
+<%- include('../agent-assist') %>
+
+<% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+<% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+<div class="ai-bar">
+  <span class="ai-bar-label">AI Agent</span>
+  <input type="text" id="aiPrompt" placeholder="Describe the blog post... e.g. 'New seasonal menu at Graffiti Pasta'">
+  <button type="button" onclick="aiFillBlog(this)">AI Auto-Fill</button>
+</div>
+
+<form method="post" action="<%= post ? '/admin/blog/' + post._id : '/admin/blog' %>">
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;">
+    <div class="card">
+      <div class="card-header"><h2>Post Details</h2></div>
+      <div class="form-group ai-fill">
+        <label>Title</label>
+        <input type="text" name="title" value="<%= post ? post.title : '' %>" required oninput="autoSlug(this.value)">
+        <button type="button" class="ai-btn" onclick="AIAssist.fillField(this,'title','Generate a catchy blog post title for a restaurant hospitality group. Return only the title.')">AI</button>
+      </div>
+      <div class="form-group">
+        <label>Slug</label>
+        <input type="text" name="slug" id="slugField" value="<%= post ? post.slug : '' %>" placeholder="auto-generated">
+      </div>
+      <div class="form-group ai-fill">
+        <label>Excerpt</label>
+        <textarea name="excerpt" rows="2"><%= post ? (post.excerpt || '') : '' %></textarea>
+        <button type="button" class="ai-btn" onclick="var t=document.querySelector('[name=title]').value; AIAssist.fillField(this,'excerpt','Write a 1-2 sentence blog excerpt for: '+t+'. Return only the excerpt.')">AI</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Restaurant</label>
+          <select name="restaurant">
+            <option value="all" <%= post && post.restaurant === 'all' ? 'selected' : '' %>>All</option>
+            <option value="nook" <%= post && post.restaurant === 'nook' ? 'selected' : '' %>>The Nook</option>
+            <option value="heyday" <%= post && post.restaurant === 'heyday' ? 'selected' : '' %>>Heyday</option>
+            <option value="graffiti" <%= post && post.restaurant === 'graffiti' ? 'selected' : '' %>>Graffiti Pasta</option>
+          </select>
+        </div>
+        <div class="form-group ai-fill">
+          <label>Category</label>
+          <input type="text" name="category" value="<%= post ? (post.category || '') : '' %>" placeholder="e.g. Events, Menu Updates">
+          <button type="button" class="ai-btn" onclick="AIAssist.fillField(this,'category','Suggest one blog category for a restaurant group blog. Return only the category name.')">AI</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group ai-fill">
+          <label>Tags (comma-sep)</label>
+          <input type="text" name="tags" value="<%= post && post.tags ? post.tags.join(', ') : '' %>">
+          <button type="button" class="ai-btn" onclick="var t=document.querySelector('[name=title]').value; AIAssist.fillField(this,'tags','Suggest 4-5 comma-separated blog tags for: '+t+'. Return only tags.')">AI</button>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            <option value="draft" <%= post && post.status === 'draft' ? 'selected' : '' %>>Draft</option>
+            <option value="published" <%= post && post.status === 'published' ? 'selected' : '' %>>Published</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Cover Image URL</label>
+        <input type="text" name="coverImage" value="<%= post ? (post.coverImage || '') : '' %>" placeholder="https://...">
+      </div>
+    </div>
+
+    <div>
+      <% if (post) { %>
+      <div class="card">
+        <div class="card-header"><h2>Info</h2></div>
+        <p style="font-size:.85rem;color:var(--text-dim);margin-bottom:.35rem;"><strong>Created:</strong> <%= post.createdAt.toLocaleString() %></p>
+        <% if (post.publishedAt) { %>
+        <p style="font-size:.85rem;color:var(--text-dim);margin-bottom:.35rem;"><strong>Published:</strong> <%= post.publishedAt.toLocaleString() %></p>
+        <% } %>
+        <% if (post.status === 'published') { %>
+        <a href="/blog/<%= post.slug %>" class="btn btn-sm" target="_blank" style="margin-top:.5rem;">View Post</a>
+        <% } %>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Danger Zone</h2></div>
+        <button type="button" class="btn btn-danger btn-sm" onclick="if(confirm('Delete this post?')){fetch('/admin/blog/<%= post._id %>',{method:'DELETE'}).then(function(){window.location='/admin/blog'});}">Delete Post</button>
+      </div>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
+    <div class="card-header">
+      <h2>Content</h2>
+      <div style="display:flex;gap:.5rem;">
+        <button type="button" class="btn btn-sm" style="background:var(--accent-dim);color:var(--accent);border-color:var(--accent);"
+          onclick="var t=document.querySelector('[name=title]').value;var r=(document.querySelector('[name=restaurant]')||{}).value;AIAssist.fillField(this,'content','Write a full blog post in HTML for restaurant: '+r+', title: '+t+'. Include headings, paragraphs, and engaging content. Return only HTML.')">AI Generate Content</button>
+        <button type="button" class="btn btn-sm" onclick="togglePreview()">Preview</button>
+      </div>
+    </div>
+    <div id="editorWrap">
+      <div class="form-group">
+        <textarea name="content" id="contentEditor" rows="20" required><%= post ? post.content : '' %></textarea>
+      </div>
+    </div>
+    <div id="previewWrap" style="display:none;background:#fff;color:#333;border-radius:4px;padding:1rem;min-height:200px;"></div>
+  </div>
+
+  <div style="display:flex;gap:.5rem;margin-top:1rem;">
+    <button type="submit" class="btn btn-primary">Save Post</button>
+    <a href="/admin/blog" class="btn">Cancel</a>
+  </div>
+</form>
+
+<script>
+function autoSlug(val) {
+  var sf = document.getElementById('slugField');
+  if (!sf.dataset.manual) sf.value = val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+document.getElementById('slugField').addEventListener('input', function() { this.dataset.manual = '1'; });
+
+function togglePreview() {
+  var e = document.getElementById('editorWrap'), p = document.getElementById('previewWrap');
+  if (p.style.display === 'none') { p.innerHTML = document.getElementById('contentEditor').value; p.style.display = 'block'; e.style.display = 'none'; }
+  else { p.style.display = 'none'; e.style.display = 'block'; }
+}
+
+function aiFillBlog(btn) {
+  var prompt = document.getElementById('aiPrompt').value;
+  if (!prompt) { prompt = 'Write a blog post about restaurant news and events'; }
+  btn.textContent = 'Generating...';
+  btn.disabled = true;
+  fetch('/admin/blog/agent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: prompt })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.textContent = 'AI Auto-Fill';
+    btn.disabled = false;
+    if (!data.content) return;
+    var clean = data.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    var m = clean.match(/\{[\s\S]*\}/);
+    if (!m) return;
+    try {
+      var obj = JSON.parse(m[0]);
+      ['title','slug','excerpt','content','category','tags','restaurant'].forEach(function(k) {
+        var f = document.querySelector('[name="' + k + '"]');
+        if (f && obj[k] !== undefined) {
+          if (f.tagName === 'SELECT') {
+            for (var i = 0; i < f.options.length; i++) { if (f.options[i].value === obj[k]) f.selectedIndex = i; }
+          } else { f.value = obj[k]; }
+          f.dispatchEvent(new Event('input'));
+        }
+      });
+    } catch(e) { console.error('Parse error:', e); }
+  })
+  .catch(function() { btn.textContent = 'AI Auto-Fill'; btn.disabled = false; });
+}
+</script>
+
+<%- include('../layout-close') %>

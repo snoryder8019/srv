@@ -1,0 +1,42 @@
+<%- include('../layout', { title, section, user }) %>
+
+<div class="stats-grid" style="grid-template-columns:repeat(2,1fr);max-width:300px;">
+  <div class="stat-card"><div class="stat-label">Published</div><div class="stat-value"><%= stats.published %></div></div>
+  <div class="stat-card"><div class="stat-label">Drafts</div><div class="stat-value"><%= stats.drafts %></div></div>
+</div>
+
+<div class="quick-actions">
+  <a href="/admin/blog/new" class="btn btn-primary">New Post</a>
+  <form method="get" style="display:inline-flex;gap:.5rem;">
+    <select name="status" onchange="this.form.submit()">
+      <option value="">All</option>
+      <option value="draft" <%= statusFilter === 'draft' ? 'selected' : '' %>>Drafts</option>
+      <option value="published" <%= statusFilter === 'published' ? 'selected' : '' %>>Published</option>
+    </select>
+  </form>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Title</th><th>Restaurant</th><th>Category</th><th>Status</th><th>Date</th><th></th></tr></thead>
+      <tbody>
+        <% posts.forEach(function(p) { %>
+        <tr>
+          <td><a href="/admin/blog/<%= p._id %>"><%= p.title %></a></td>
+          <td><%= p.restaurant %></td>
+          <td><%= p.category || '—' %></td>
+          <td><span class="badge badge-<%= p.status === 'published' ? 'active' : 'draft' %>"><%= p.status %></span></td>
+          <td><%= (p.publishedAt || p.createdAt).toLocaleDateString() %></td>
+          <td><a href="/admin/blog/<%= p._id %>" class="btn btn-sm">Edit</a></td>
+        </tr>
+        <% }); %>
+        <% if (!posts.length) { %>
+        <tr><td colspan="6" style="text-align:center;color:var(--text-dim);">No posts yet</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%- include('../layout-close') %>

@@ -4,15 +4,25 @@ const bcrypt = require('bcrypt');
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true },
   password: { type: String },
+  googleId: { type: String },
+  avatar: { type: String },
+  firstName: { type: String },
+  lastName: { type: String },
   displayName: { type: String },
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
+  permissions: { type: [String], default: [] },
+  isActive: { type: Boolean, default: true },
+  lastLogin: { type: Date },
   createdAt: { type: Date, default: Date.now }
 });
 
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password') || !this.password) return next();
+userSchema.virtual('isAdmin').get(function () {
+  return this.role === 'admin';
+});
+
+userSchema.pre('save', async function() {
+  if (!this.isModified('password') || !this.password) return;
   this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
 
 userSchema.methods.comparePassword = async function(candidate) {

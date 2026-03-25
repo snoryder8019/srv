@@ -1,0 +1,102 @@
+<style>
+.ai-fill{position:relative;}
+.ai-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:var(--accent-dim);color:var(--accent);border:none;border-radius:4px;padding:2px 8px;font-size:.7rem;cursor:pointer;font-family:'Inter',sans-serif;letter-spacing:.03em;z-index:2;transition:opacity .15s;}
+.ai-btn:hover{opacity:.8;}
+.ai-btn.loading{pointer-events:none;opacity:.5;}
+.form-group.ai-fill label{padding-right:60px;}
+.form-group.ai-fill textarea~.ai-btn{top:8px;transform:none;right:8px;}
+.ai-bar{display:flex;gap:.5rem;align-items:center;padding:.75rem;background:var(--accent-dim);border:1px solid rgba(201,169,110,.3);border-radius:6px;margin-bottom:1rem;}
+.ai-bar input{flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;padding:.45rem .65rem;color:var(--text);font-size:.85rem;}
+.ai-bar button{background:var(--accent);color:#0a0a0a;border:none;border-radius:4px;padding:.45rem .85rem;font-weight:600;cursor:pointer;font-size:.85rem;white-space:nowrap;}
+.ai-bar-label{font-size:.75rem;color:var(--accent);white-space:nowrap;font-weight:500;}
+</style>
+
+<script>
+(function(){
+  // Agent auto-fill engine
+  window.AIAssist = {
+    generate: function(prompt, type) {
+      return fetch('/admin/agent/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt, type: type || 'content_gen' })
+      }).then(function(r) { return r.json(); });
+    },
+
+    fillField: function(btn, fieldName, prompt) {
+      var field = document.querySelector('[name="' + fieldName + '"]');
+      if (!field) return;
+      btn.classList.add('loading');
+      btn.textContent = '...';
+      this.generate(prompt, 'content_gen').then(function(data) {
+        btn.classList.remove('loading');
+        btn.textContent = 'AI';
+        if (data.content) {
+          // Strip thinking tags from deepseek
+          var clean = data.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+          field.value = clean;
+          field.dispatchEvent(new Event('input'));
+        }
+      }).catch(function() {
+        btn.classList.remove('loading');
+        btn.textContent = 'AI';
+      });
+    },
+
+    fillAll: function(btn, context) {
+      btn.classList.add('loading');
+      btn.textContent = 'Generating...';
+      var formType = context.formType || 'content';
+      var restaurant = (document.querySelector('[name="restaurant"]') || {}).value || 'all';
+      var prompt = context.prompt || '';
+
+      var restaurantNames = { all: 'all restaurants', nook: 'The Nook (Celina)', heyday: 'Heyday (Downtown Celina)', graffiti: 'Graffiti Pasta (Denton TX)' };
+      var rName = restaurantNames[restaurant] || restaurant;
+
+      var fullPrompt;
+      if (formType === 'campaign') {
+        fullPrompt = 'Generate an email campaign for ' + rName + '. ' + prompt + '\nReturn ONLY valid JSON with these exact keys: {"name":"campaign name","subject":"email subject line","htmlContent":"full HTML email body with inline styles, include {{firstName}} and {{unsubscribeLink}} variables","textContent":"plain text version"}';
+      } else if (formType === 'template') {
+        fullPrompt = 'Generate a newsletter template for ' + rName + '. ' + prompt + '\nReturn ONLY valid JSON: {"name":"template name","description":"short description","htmlContent":"full HTML email template with inline styles, include {{firstName}}, {{lastName}}, {{email}}, {{unsubscribeLink}} variables"}';
+      } else if (formType === 'promo') {
+        fullPrompt = 'Generate a restaurant promo for ' + rName + '. ' + prompt + '\nReturn ONLY valid JSON: {"name":"promo name","description":"customer-facing promo description","type":"discount or freebie or event or invite","discountValue":number,"discountType":"percent or fixed"}';
+      }
+
+      this.generate(fullPrompt, formType === 'campaign' ? 'campaign_draft' : 'content_gen')
+        .then(function(data) {
+          btn.classList.remove('loading');
+          btn.textContent = 'AI Auto-Fill';
+          if (!data.content) return;
+          // Strip thinking tags
+          var clean = data.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+          // Extract JSON from response
+          var jsonMatch = clean.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) return;
+          try {
+            var obj = JSON.parse(jsonMatch[0]);
+            Object.keys(obj).forEach(function(key) {
+              var field = document.querySelector('[name="' + key + '"]');
+              if (field && obj[key] !== undefined) {
+                if (field.tagName === 'SELECT') {
+                  var opts = field.options;
+                  for (var i = 0; i < opts.length; i++) {
+                    if (opts[i].value === obj[key]) { field.selectedIndex = i; break; }
+                  }
+                } else {
+                  field.value = obj[key];
+                }
+                field.dispatchEvent(new Event('input'));
+              }
+            });
+          } catch(e) {
+            console.error('AI parse error:', e);
+          }
+        })
+        .catch(function() {
+          btn.classList.remove('loading');
+          btn.textContent = 'AI Auto-Fill';
+        });
+    }
+  };
+})();
+</script>

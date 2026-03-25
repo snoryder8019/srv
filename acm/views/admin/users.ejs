@@ -1,0 +1,76 @@
+<%- include('layout', { title, section, user }) %>
+
+<div class="search-bar">
+  <form method="get" action="/admin/users" style="display:flex;gap:.5rem;flex-wrap:wrap;width:100%;">
+    <input type="text" name="search" placeholder="Search users..." value="<%= search %>">
+    <select name="role">
+      <option value="">All Roles</option>
+      <option value="admin" <%= roleFilter === 'admin' ? 'selected' : '' %>>Admin</option>
+      <option value="user" <%= roleFilter === 'user' ? 'selected' : '' %>>User</option>
+    </select>
+    <select name="status">
+      <option value="">All Status</option>
+      <option value="active" <%= statusFilter === 'active' ? 'selected' : '' %>>Active</option>
+      <option value="inactive" <%= statusFilter === 'inactive' ? 'selected' : '' %>>Inactive</option>
+    </select>
+    <button type="submit" class="btn btn-primary">Filter</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Users (<%= users.length %>)</h2>
+    <form method="post" action="/admin/users-bulk" id="bulkForm">
+      <input type="hidden" name="userIds" id="bulkIds">
+      <select name="action" style="width:auto;display:inline-block;margin-right:.5rem;">
+        <option value="">Bulk Action</option>
+        <option value="activate">Activate</option>
+        <option value="deactivate">Deactivate</option>
+      </select>
+      <button type="submit" class="btn btn-sm">Apply</button>
+    </form>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAll"></th>
+          <th>Email</th>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Last Login</th>
+          <th>Joined</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% users.forEach(function(u) { %>
+        <tr>
+          <td><input type="checkbox" class="user-check" value="<%= u._id %>"></td>
+          <td><a href="/admin/users/<%= u._id %>"><%= u.email %></a></td>
+          <td><%= u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || '—' %></td>
+          <td><span class="badge badge-<%= u.role %>"><%= u.role %></span></td>
+          <td><span class="badge badge-<%= u.isActive ? 'active' : 'inactive' %>"><%= u.isActive ? 'Active' : 'Inactive' %></span></td>
+          <td><%= u.lastLogin ? u.lastLogin.toLocaleDateString() : '—' %></td>
+          <td><%= u.createdAt ? u.createdAt.toLocaleDateString() : '—' %></td>
+          <td><a href="/admin/users/<%= u._id %>" class="btn btn-sm">Edit</a></td>
+        </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+document.getElementById('selectAll').addEventListener('change', function() {
+  document.querySelectorAll('.user-check').forEach(c => c.checked = this.checked);
+});
+document.getElementById('bulkForm').addEventListener('submit', function(e) {
+  var ids = Array.from(document.querySelectorAll('.user-check:checked')).map(c => c.value);
+  if (!ids.length) { e.preventDefault(); alert('Select users first'); return; }
+  document.getElementById('bulkIds').value = JSON.stringify(ids);
+});
+</script>
+
+<%- include('layout-close') %>

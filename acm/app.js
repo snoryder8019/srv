@@ -11,8 +11,16 @@ const mongoose = require('mongoose');
 const passport = require('./config/passport');
 
 const indexRouter = require('./routes/index');
+const authRouter = require('./routes/auth');
+const adminRouter = require('./routes/admin');
+const emailMarketingRouter = require('./routes/emailMarketing');
+const promosRouter = require('./routes/promos');
+const agentRouter = require('./routes/agent');
+const blogRouter = require('./routes/blog');
+const assetsRouter = require('./routes/assets');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // MongoDB
 const MONGO_URI = `${process.env.DB_URL}/${process.env.DB_NAME}?retryWrites=true&w=majority`;
@@ -53,6 +61,13 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/', indexRouter);
+app.use('/', authRouter);
+app.use('/', adminRouter);
+app.use('/', emailMarketingRouter);
+app.use('/', promosRouter);
+app.use('/', agentRouter);
+app.use('/', blogRouter);
+app.use('/', assetsRouter);
 
 // 404
 app.use((req, res, next) => {

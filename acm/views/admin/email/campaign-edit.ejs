@@ -1,0 +1,148 @@
+<%- include('../layout', { title, section, user }) %>
+<%- include('../agent-assist') %>
+
+<% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+<% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+<div class="ai-bar">
+  <span class="ai-bar-label">AI Agent</span>
+  <input type="text" id="aiPrompt" placeholder="Describe your campaign... e.g. 'Happy hour promo for Heyday this Friday'">
+  <button type="button" onclick="AIAssist.fillAll(this, { formType:'campaign', prompt: document.getElementById('aiPrompt').value })">AI Auto-Fill</button>
+</div>
+
+<form method="post" action="<%= campaign ? '/admin/email/campaigns/' + campaign._id : '/admin/email/campaigns' %>">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+    <div class="card">
+      <div class="card-header"><h2>Campaign Details</h2></div>
+      <div class="form-group ai-fill">
+        <label>Campaign Name</label>
+        <input type="text" name="name" value="<%= campaign ? campaign.name : '' %>" required>
+        <button type="button" class="ai-btn" onclick="AIAssist.fillField(this,'name','Generate a short catchy email campaign name for a restaurant group. Return only the name, nothing else.')">AI</button>
+      </div>
+      <div class="form-group ai-fill">
+        <label>Subject Line</label>
+        <input type="text" name="subject" value="<%= campaign ? campaign.subject : '' %>" required>
+        <button type="button" class="ai-btn" onclick="var n=document.querySelector('[name=name]').value; AIAssist.fillField(this,'subject','Write one email subject line for a campaign called: '+n+'. Return only the subject line, nothing else.')">AI</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Target Restaurant</label>
+          <select name="restaurant">
+            <option value="all" <%= campaign && campaign.restaurant === 'all' ? 'selected' : '' %>>All</option>
+            <option value="nook" <%= campaign && campaign.restaurant === 'nook' ? 'selected' : '' %>>The Nook</option>
+            <option value="heyday" <%= campaign && campaign.restaurant === 'heyday' ? 'selected' : '' %>>Heyday</option>
+            <option value="graffiti" <%= campaign && campaign.restaurant === 'graffiti' ? 'selected' : '' %>>Graffiti Pasta</option>
+          </select>
+        </div>
+        <div class="form-group ai-fill">
+          <label>Target Tags</label>
+          <input type="text" name="targetTags" value="<%= campaign && campaign.targetTags ? campaign.targetTags.join(', ') : '' %>" placeholder="vip, lunch-special">
+          <button type="button" class="ai-btn" onclick="AIAssist.fillField(this,'targetTags','Suggest 3-4 comma-separated subscriber tags for a restaurant email campaign. Return only tags like: vip, regulars, foodies')">AI</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <% if (campaign) { %>
+      <div class="card">
+        <div class="card-header"><h2>Status: <span class="badge badge-<%= campaign.status %>"><%= campaign.status %></span></h2></div>
+        <% if (campaign.status === 'draft') { %>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+          <button type="submit" formaction="/admin/email/campaigns/<%= campaign._id %>/send" formmethod="post" class="btn btn-success"
+            onclick="return confirm('Send this campaign now?')">Send Now</button>
+          <button type="button" class="btn" onclick="document.getElementById('scheduleModal').classList.add('active')">Schedule</button>
+        </div>
+        <% } %>
+        <% if (campaign.sentAt) { %>
+        <div style="margin-top:.75rem;">
+          <p style="font-size:.85rem;color:var(--text-dim);">Sent: <%= campaign.sentAt.toLocaleString() %></p>
+          <p style="font-size:.85rem;">Delivered: <%= campaign.stats.sent %> | Opened: <%= campaign.stats.opened %> | Bounced: <%= campaign.stats.bounced %></p>
+        </div>
+        <% } %>
+      </div>
+      <% } %>
+
+      <% if (templates && templates.length) { %>
+      <div class="card">
+        <div class="card-header"><h2>Load Template</h2></div>
+        <select id="templateSelect" onchange="loadTemplate(this.value)" style="width:100%;">
+          <option value="">— Select a template —</option>
+          <% templates.forEach(function(t) { %>
+          <option value="<%= t._id %>" data-html="<%= encodeURIComponent(t.htmlContent) %>"><%= t.name %></option>
+          <% }); %>
+        </select>
+      </div>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
+    <div class="card-header">
+      <h2>Email Content</h2>
+      <div style="display:flex;gap:.5rem;">
+        <button type="button" class="btn btn-sm" style="background:var(--accent-dim);color:var(--accent);border-color:var(--accent);"
+          onclick="var r=(document.querySelector('[name=restaurant]')||{}).value||'all';var n=document.querySelector('[name=name]').value;AIAssist.fillField(this,'htmlContent','Write a complete HTML email body with inline styles for restaurant campaign: '+n+' (restaurant: '+r+'). Include {{firstName}} greeting and {{unsubscribeLink}} footer. Return only the HTML, no explanation.')">AI Generate Body</button>
+        <button type="button" class="btn btn-sm" onclick="togglePreview()">Preview</button>
+      </div>
+    </div>
+    <div id="editorWrap">
+      <div class="form-group">
+        <label>HTML Content</label>
+        <textarea name="htmlContent" id="htmlEditor" rows="20" required><%= campaign ? campaign.htmlContent : '<h1>Hello {{firstName}}</h1>\n<p>Newsletter content goes here...</p>\n<p><a href="{{unsubscribeLink}}">Unsubscribe</a></p>' %></textarea>
+      </div>
+    </div>
+    <div id="previewWrap" style="display:none;background:#fff;color:#333;border-radius:4px;padding:1rem;min-height:200px;"></div>
+    <div class="form-group ai-fill">
+      <label>Plain Text (fallback)</label>
+      <textarea name="textContent" rows="4"><%= campaign ? (campaign.textContent || '') : '' %></textarea>
+      <button type="button" class="ai-btn" onclick="var h=document.querySelector('[name=htmlContent]').value;AIAssist.fillField(this,'textContent','Convert this HTML email to plain text. Return only plain text, no HTML:\\n'+h.substring(0,500))">AI</button>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:.5rem;margin-top:1rem;">
+    <button type="submit" class="btn btn-primary">Save Campaign</button>
+    <a href="/admin/email/campaigns" class="btn">Cancel</a>
+  </div>
+</form>
+
+<% if (campaign && campaign.status === 'draft') { %>
+<div class="modal-overlay" id="scheduleModal">
+  <div class="modal">
+    <h3>Schedule Campaign</h3>
+    <form method="post" action="/admin/email/campaigns/<%= campaign._id %>/schedule">
+      <div class="form-group">
+        <label>Send Date & Time</label>
+        <input type="datetime-local" name="scheduledAt" required>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="document.getElementById('scheduleModal').classList.remove('active')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Schedule</button>
+      </div>
+    </form>
+  </div>
+</div>
+<% } %>
+
+<script>
+function togglePreview() {
+  var editor = document.getElementById('editorWrap');
+  var preview = document.getElementById('previewWrap');
+  if (preview.style.display === 'none') {
+    preview.innerHTML = document.getElementById('htmlEditor').value;
+    preview.style.display = 'block';
+    editor.style.display = 'none';
+  } else {
+    preview.style.display = 'none';
+    editor.style.display = 'block';
+  }
+}
+function loadTemplate(id) {
+  var sel = document.getElementById('templateSelect');
+  var opt = sel.options[sel.selectedIndex];
+  if (opt && opt.dataset.html) {
+    document.getElementById('htmlEditor').value = decodeURIComponent(opt.dataset.html);
+  }
+}
+</script>
+
+<%- include('../layout-close') %>

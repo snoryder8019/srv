@@ -1,0 +1,191 @@
+<%- include('../layout', { title, section, user }) %>
+
+<div style="display:grid;grid-template-columns:220px 1fr;gap:1rem;height:calc(100vh - 56px - 3rem);">
+
+  <!-- Sidebar: Quick Actions -->
+  <div style="display:flex;flex-direction:column;gap:.5rem;">
+    <button class="btn btn-primary" onclick="quickAction('Draft Newsletter', 'campaign_draft')">Draft Newsletter</button>
+    <button class="btn" onclick="quickAction('Suggest promotional ideas for our three restaurants', 'promo_suggest')">Suggest Promos</button>
+    <button class="btn" onclick="analyzeData()">Analyze Subscribers</button>
+    <button class="btn" onclick="quickAction('Write a social media post promoting our restaurants', 'content_gen')">Generate Content</button>
+    <button class="btn" onclick="draftCampaign()">Auto-Draft Campaign</button>
+    <hr style="border-color:var(--border);margin:.5rem 0;">
+    <a href="/admin/agent/tasks" class="btn btn-sm" style="text-align:center;">Task History</a>
+  </div>
+
+  <!-- Chat Interface -->
+  <div class="chat-container">
+    <div class="chat-messages" id="chatMessages">
+      <div class="chat-msg agent">
+        Hello! I'm the ACM Hospitality Assistant. I can help you draft newsletters, suggest promotions, analyze subscriber data, and generate content for The Nook, Heyday, and Graffiti Pasta. What would you like to do?
+      </div>
+    </div>
+    <div class="typing-indicator" id="typing" style="display:none;">
+      <span>.</span><span>.</span><span>.</span> Thinking...
+    </div>
+    <div class="chat-input-wrap">
+      <input type="text" id="chatInput" placeholder="Ask the agent anything..." onkeydown="if(event.key==='Enter')sendChat()">
+      <button onclick="sendChat()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var conversation = [];
+
+// Restore from session
+try {
+  var saved = sessionStorage.getItem('acm_agent_chat');
+  if (saved) {
+    conversation = JSON.parse(saved);
+    var container = document.getElementById('chatMessages');
+    container.innerHTML = '';
+    conversation.forEach(function(m) {
+      appendMsg(m.role === 'user' ? 'user' : 'agent', m.content);
+    });
+    if (!conversation.length) {
+      appendMsg('agent', 'Hello! I\'m the ACM Hospitality Assistant. I can help you draft newsletters, suggest promotions, analyze subscriber data, and generate content for The Nook, Heyday, and Graffiti Pasta. What would you like to do?');
+    }
+  }
+} catch(e) {}
+
+function appendMsg(type, text) {
+  var container = document.getElementById('chatMessages');
+  var div = document.createElement('div');
+  div.className = 'chat-msg ' + type;
+  div.innerHTML = formatText(text);
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function formatText(text) {
+  // Basic markdown: bold, headers, lists, code blocks
+  return text
+    .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
+    .replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,.1);padding:0 4px;border-radius:2px;">$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^### (.+)$/gm, '<h4 style="margin:.5rem 0 .25rem;">$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 style="margin:.5rem 0 .25rem;">$1</h3>')
+    .replace(/^# (.+)$/gm, '<h2 style="margin:.5rem 0 .25rem;">$1</h2>')
+    .replace(/^- (.+)$/gm, '<div style="padding-left:1rem;">&bull; $1</div>')
+    .replace(/\n/g, '<br>');
+}
+
+function showTyping() { document.getElementById('typing').style.display = 'block'; }
+function hideTyping() { document.getElementById('typing').style.display = 'none'; }
+
+function saveConversation() {
+  try { sessionStorage.setItem('acm_agent_chat', JSON.stringify(conversation)); } catch(e) {}
+}
+
+function sendChat() {
+  var input = document.getElementById('chatInput');
+  var text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  appendMsg('user', text);
+  conversation.push({ role: 'user', content: text });
+  saveConversation();
+  showTyping();
+
+  fetch('/admin/agent/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: conversation })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    hideTyping();
+    var content = data.content || 'No response received.';
+    appendMsg('agent', content);
+    conversation.push({ role: 'assistant', content: content });
+    saveConversation();
+  })
+  .catch(function() {
+    hideTyping();
+    appendMsg('agent', 'Connection error. Please try again.');
+  });
+}
+
+function quickAction(prompt, type) {
+  appendMsg('user', prompt);
+  conversation.push({ role: 'user', content: prompt });
+  saveConversation();
+  showTyping();
+
+  fetch('/admin/agent/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: prompt, type: type })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    hideTyping();
+    var content = data.content || 'No response received.';
+    appendMsg('agent', content);
+    conversation.push({ role: 'assistant', content: content });
+    saveConversation();
+  })
+  .catch(function() {
+    hideTyping();
+    appendMsg('agent', 'Connection error. Please try again.');
+  });
+}
+
+function analyzeData() {
+  appendMsg('user', 'Analyze our subscriber and campaign data');
+  conversation.push({ role: 'user', content: 'Analyze our subscriber and campaign data' });
+  saveConversation();
+  showTyping();
+
+  fetch('/admin/agent/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    hideTyping();
+    var content = data.content || 'No response received.';
+    appendMsg('agent', content);
+    conversation.push({ role: 'assistant', content: content });
+    saveConversation();
+  })
+  .catch(function() {
+    hideTyping();
+    appendMsg('agent', 'Connection error. Please try again.');
+  });
+}
+
+function draftCampaign() {
+  var restaurant = prompt('Restaurant (nook/heyday/graffiti/all):', 'all') || 'all';
+  var theme = prompt('Campaign theme/topic:', 'Weekly specials update') || 'Weekly specials update';
+
+  var msg = 'Draft a campaign for ' + restaurant + ': ' + theme;
+  appendMsg('user', msg);
+  conversation.push({ role: 'user', content: msg });
+  saveConversation();
+  showTyping();
+
+  fetch('/admin/agent/draft-campaign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ restaurant: restaurant, theme: theme })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    hideTyping();
+    var content = data.content || 'No response received.';
+    appendMsg('agent', content);
+    conversation.push({ role: 'assistant', content: content });
+    saveConversation();
+  })
+  .catch(function() {
+    hideTyping();
+    appendMsg('agent', 'Connection error. Please try again.');
+  });
+}
+</script>
+
+<%- include('../layout-close') %>

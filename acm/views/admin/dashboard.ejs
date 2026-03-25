@@ -1,0 +1,346 @@
+<%- include('layout', { title, section, user }) %>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card"><div class="stat-label">Users</div><div class="stat-value"><%= stats.totalUsers %></div></div>
+  <div class="stat-card"><div class="stat-label">Subscribers</div><div class="stat-value"><%= stats.subscribers %></div></div>
+  <div class="stat-card"><div class="stat-label">Campaigns</div><div class="stat-value"><%= stats.campaigns %></div></div>
+  <div class="stat-card"><div class="stat-label">Blog Posts</div><div class="stat-value"><%= stats.blogPosts %></div></div>
+  <div class="stat-card"><div class="stat-label">Active Promos</div><div class="stat-value"><%= stats.activePromos %></div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+
+  <!-- Master Agent Panel -->
+  <div class="card" style="display:flex;flex-direction:column;">
+    <div class="card-header" style="flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:.5rem;">
+        <span style="color:var(--accent);font-size:1rem;">&#10022;</span>
+        <h2 style="margin:0;">ACM Agent</h2>
+        <span class="badge badge-admin" style="font-size:.6rem;">AI</span>
+      </div>
+      <a href="/admin/agent/tasks" class="btn btn-sm">Task History</a>
+    </div>
+    <p style="font-size:.75rem;color:var(--text-dim);margin-bottom:.75rem;">
+      I coordinate your email campaigns, blog posts, promos, newsletters, and image assets. Tell me what you need.
+    </p>
+
+    <!-- Chat messages -->
+    <div id="ma-messages" style="flex:1;overflow-y:auto;max-height:360px;display:flex;flex-direction:column;gap:.5rem;margin-bottom:.75rem;padding-right:4px;">
+      <div class="chat-msg agent">Ready — what would you like to create or update?</div>
+    </div>
+
+    <!-- Quick suggestion chips -->
+    <div id="ma-quick" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.75rem;">
+      <button class="btn btn-sm" onclick="maQuick('Draft a newsletter for all restaurants')">Draft Newsletter</button>
+      <button class="btn btn-sm" onclick="maQuick('Write a blog post about weekend specials')">Write Blog Post</button>
+      <button class="btn btn-sm" onclick="maQuick('Suggest promo ideas for The Nook')">Suggest Promos</button>
+      <button class="btn btn-sm" onclick="maQuick('Generate a social media image for Heyday')">Generate Image</button>
+    </div>
+
+    <!-- Workflow checklist (hidden until multi-step) -->
+    <div id="ma-workflow" style="display:none;margin-bottom:.75rem;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+      <div style="padding:.5rem .75rem;background:var(--bg-hover);display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <span style="color:var(--accent);">&#9881;</span>
+          <strong id="wf-title" style="font-size:.8rem;">Workflow</strong>
+          <span id="wf-progress" style="font-size:.7rem;color:var(--text-dim);"></span>
+        </div>
+        <button class="btn btn-sm btn-primary" id="wf-run-all" onclick="wfRunAll()" style="font-size:.7rem;padding:3px 8px;">Run All</button>
+      </div>
+      <div id="wf-tasks"></div>
+    </div>
+
+    <!-- Result card (hidden until result) -->
+    <div id="ma-result" style="display:none;margin-bottom:.75rem;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+      <div style="padding:.5rem .75rem;background:var(--bg-hover);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <span class="badge" id="ma-result-dept">—</span>
+          <span id="ma-result-msg" style="font-size:.8rem;font-weight:500;"></span>
+        </div>
+        <div style="display:flex;gap:.4rem;">
+          <button class="btn btn-sm btn-primary" onclick="maApply()">Apply</button>
+          <button class="btn btn-sm" onclick="maOpenEditor()">Open Editor</button>
+        </div>
+      </div>
+      <div id="ma-result-fields" style="padding:.5rem .75rem;max-height:180px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- Input -->
+    <div class="chat-input-wrap" style="border-top:none;padding:.5rem 0 0;">
+      <input type="text" id="ma-input" placeholder="Ask the agent anything..." onkeydown="if(event.key==='Enter')maSend()">
+      <button onclick="maSend()">Send</button>
+    </div>
+  </div>
+
+  <!-- Quick Actions + Recent -->
+  <div>
+    <div class="card">
+      <div class="card-header"><h2>Quick Actions</h2></div>
+      <div class="quick-actions" style="flex-wrap:wrap;">
+        <a href="/admin/email/campaigns/new" class="btn btn-primary">New Campaign</a>
+        <a href="/admin/blog/new" class="btn btn-primary">New Post</a>
+        <a href="/admin/promos/new" class="btn btn-primary">New Promo</a>
+        <a href="/admin/email/templates/new" class="btn">New Template</a>
+        <a href="/admin/assets" class="btn">Generate Image</a>
+        <a href="/admin/email/subscribers" class="btn">Subscribers</a>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Departments</h2></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;">
+        <a href="/admin/email" class="btn" style="justify-content:flex-start;">&#9993; Email Marketing</a>
+        <a href="/admin/blog" class="btn" style="justify-content:flex-start;">&#9998; Blog</a>
+        <a href="/admin/promos" class="btn" style="justify-content:flex-start;">&#10022; QR Promos</a>
+        <a href="/admin/assets" class="btn" style="justify-content:flex-start;">&#9733; AI Images</a>
+        <a href="/admin/email/templates" class="btn" style="justify-content:flex-start;">&#9993; Newsletters</a>
+        <a href="/admin/users" class="btn" style="justify-content:flex-start;">&#9787; Users</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var maHistory = [];
+var maLastResult = null;
+var wf = null;
+
+function maAppend(type, text) {
+  var c = document.getElementById('ma-messages');
+  var d = document.createElement('div');
+  d.className = 'chat-msg ' + type;
+  d.innerHTML = maFormat(text);
+  c.appendChild(d);
+  c.scrollTop = c.scrollHeight;
+}
+
+function maFormat(text) {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
+    .replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,.1);padding:0 4px;border-radius:2px;">$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^### (.+)$/gm, '<h4 style="margin:.4rem 0 .2rem;">$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 style="margin:.4rem 0 .2rem;">$1</h3>')
+    .replace(/^- (.+)$/gm, '<div style="padding-left:.75rem;">&bull; $1</div>')
+    .replace(/\n/g, '<br>');
+}
+
+function maQuick(text) {
+  document.getElementById('ma-input').value = text;
+  maSend();
+}
+
+function maSend() {
+  var input = document.getElementById('ma-input');
+  var text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  maAppend('user', text);
+  maHistory.push({ role: 'user', content: text });
+
+  // Show typing
+  var typing = document.createElement('div');
+  typing.className = 'chat-msg agent';
+  typing.id = 'ma-typing';
+  typing.innerHTML = '<span class="typing-indicator"><span>.</span><span>.</span><span>.</span></span>';
+  document.getElementById('ma-messages').appendChild(typing);
+
+  // Step 1: Route to department
+  fetch('/admin/agent/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: maHistory })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    var el = document.getElementById('ma-typing');
+    if (el) el.remove();
+
+    var content = (data.content || 'No response.').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    maAppend('agent', content);
+    maHistory.push({ role: 'assistant', content: content });
+
+    // Try to parse structured result
+    var jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        var obj = JSON.parse(jsonMatch[0]);
+        if (obj.fill || obj.title || obj.subject || obj.content || obj.name) {
+          maLastResult = obj;
+          maShowResult(obj);
+        }
+      } catch(e) {}
+    }
+
+    // Update suggestions based on context
+    maUpdateSuggestions(text);
+  })
+  .catch(function() {
+    var el = document.getElementById('ma-typing');
+    if (el) el.remove();
+    maAppend('agent', 'Connection error. Please try again.');
+  });
+}
+
+function maShowResult(obj) {
+  var container = document.getElementById('ma-result');
+  var dept = obj.department || obj.type || 'content';
+  document.getElementById('ma-result-dept').textContent = dept;
+  document.getElementById('ma-result-dept').className = 'badge badge-' + (dept === 'blog' ? 'user' : dept === 'email' ? 'sent' : 'admin');
+  document.getElementById('ma-result-msg').textContent = obj.message || 'Content generated';
+
+  var fields = document.getElementById('ma-result-fields');
+  fields.innerHTML = '';
+  var data = obj.fill || obj;
+  Object.keys(data).forEach(function(k) {
+    if (k === 'message' || k === 'department' || k === 'fill' || k === 'type') return;
+    var val = data[k];
+    if (typeof val === 'object') val = JSON.stringify(val);
+    if (!val || (typeof val === 'string' && val.length > 500)) val = (val || '').substring(0, 200) + '...';
+    fields.innerHTML += '<div style="display:flex;gap:.5rem;padding:4px 0;border-bottom:1px solid var(--border);font-size:.78rem;">' +
+      '<span style="width:100px;flex-shrink:0;font-weight:600;color:var(--text-dim);text-transform:uppercase;font-size:.6rem;padding-top:2px;">' + k + '</span>' +
+      '<span style="flex:1;word-break:break-word;">' + val + '</span></div>';
+  });
+  container.style.display = 'block';
+}
+
+function maApply() {
+  if (!maLastResult) return;
+  // Route to appropriate apply endpoint based on content
+  var data = maLastResult.fill || maLastResult;
+  var dept = maLastResult.department || '';
+
+  if (dept === 'email' || data.subject) {
+    fetch('/admin/email/campaigns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        name: data.name || data.title || 'AI Generated Campaign',
+        subject: data.subject || data.title || '',
+        htmlContent: data.htmlContent || data.content || data.body || '',
+        restaurant: data.restaurant || 'all'
+      })
+    }).then(function() { maAppend('agent', 'Campaign created! Check Email Marketing.'); });
+  } else if (dept === 'blog' || data.slug) {
+    fetch('/admin/blog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        title: data.title || 'AI Generated Post',
+        slug: data.slug || '',
+        excerpt: data.excerpt || '',
+        content: data.content || '',
+        category: data.category || '',
+        tags: data.tags || '',
+        restaurant: data.restaurant || 'all',
+        status: 'draft'
+      })
+    }).then(function() { maAppend('agent', 'Blog post created as draft! Check Blog.'); });
+  } else {
+    maAppend('agent', 'Result saved. Open the editor to apply manually.');
+  }
+}
+
+function maOpenEditor() {
+  if (!maLastResult) return;
+  var data = maLastResult.fill || maLastResult;
+  var dept = maLastResult.department || '';
+  sessionStorage.setItem('acm_agent_fill', JSON.stringify(data));
+
+  if (dept === 'email' || data.subject) window.location = '/admin/email/campaigns/new';
+  else if (dept === 'blog' || data.slug) window.location = '/admin/blog/new';
+  else if (dept === 'promo' || data.discountValue) window.location = '/admin/promos/new';
+  else window.location = '/admin/email/campaigns/new';
+}
+
+function maUpdateSuggestions(lastMsg) {
+  var quick = document.getElementById('ma-quick');
+  var suggestions = [];
+  var lower = lastMsg.toLowerCase();
+  if (lower.includes('blog') || lower.includes('post')) {
+    suggestions = ['Write another blog post about cocktails', 'Generate a cover image for this post', 'Draft a newsletter promoting this post'];
+  } else if (lower.includes('newsletter') || lower.includes('campaign') || lower.includes('email')) {
+    suggestions = ['Create a promo QR code for this campaign', 'Write a blog post about this topic', 'Analyze subscriber engagement'];
+  } else if (lower.includes('promo') || lower.includes('discount')) {
+    suggestions = ['Draft an email campaign for this promo', 'Generate a QR flyer image', 'Create promos for other restaurants'];
+  } else if (lower.includes('image') || lower.includes('asset')) {
+    suggestions = ['Generate another image variation', 'Create a social media post', 'Design a newsletter header'];
+  } else {
+    suggestions = ['Draft a weekly newsletter', 'Write a blog post', 'Create a new promo', 'Generate a restaurant image'];
+  }
+  quick.innerHTML = '';
+  suggestions.forEach(function(s) {
+    quick.innerHTML += '<button class="btn btn-sm" onclick="maQuick(\'' + s.replace(/'/g, "\\'") + '\')">' + s + '</button>';
+  });
+}
+
+// ─── Workflow (multi-step) ───────────────────
+function wfInit(title, tasks) {
+  wf = { title: title, tasks: tasks.map(function(t, i) { return { id: i, label: t, status: 'pending', result: null }; }), running: false };
+  wfRender();
+  document.getElementById('ma-workflow').style.display = 'block';
+}
+
+function wfRender() {
+  if (!wf) return;
+  var done = wf.tasks.filter(function(t) { return t.status === 'done'; }).length;
+  document.getElementById('wf-title').textContent = wf.title;
+  document.getElementById('wf-progress').textContent = done + '/' + wf.tasks.length;
+  var html = '';
+  wf.tasks.forEach(function(t) {
+    var icon = t.status === 'pending' ? '&#9675;' : t.status === 'running' ? '&#9673;' : t.status === 'done' ? '&#10003;' : '&#10007;';
+    var style = t.status === 'done' ? 'text-decoration:line-through;color:var(--text-dim);' : '';
+    html += '<div style="display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;border-top:1px solid var(--border);font-size:.8rem;">' +
+      '<span style="width:18px;text-align:center;color:' + (t.status === 'done' ? 'var(--success)' : t.status === 'running' ? 'var(--accent)' : 'var(--text-dim)') + ';">' + icon + '</span>' +
+      '<span style="flex:1;' + style + '">' + t.label + '</span>' +
+      (t.status === 'pending' ? '<button class="btn btn-sm" style="font-size:.65rem;padding:2px 6px;" onclick="wfRunTask(' + t.id + ')">Run</button>' : '') +
+      '</div>';
+  });
+  document.getElementById('wf-tasks').innerHTML = html;
+}
+
+function wfRunTask(id) {
+  var task = wf.tasks[id];
+  task.status = 'running';
+  wfRender();
+  fetch('/admin/agent/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: task.label, type: 'content_gen' })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    task.status = 'done';
+    task.result = data.content;
+    wfRender();
+    maAppend('agent', '&#10003; ' + task.label + ' — done');
+  })
+  .catch(function() { task.status = 'failed'; wfRender(); });
+}
+
+function wfRunAll() {
+  var pending = wf.tasks.filter(function(t) { return t.status === 'pending'; });
+  if (!pending.length) return;
+  function runNext() {
+    var next = wf.tasks.find(function(t) { return t.status === 'pending'; });
+    if (!next) return;
+    wfRunTask(next.id);
+    setTimeout(runNext, 2000);
+  }
+  runNext();
+}
+
+// Load from session if redirected from editor
+try {
+  var saved = sessionStorage.getItem('acm_agent_chat');
+  if (saved) {
+    maHistory = JSON.parse(saved);
+    var c = document.getElementById('ma-messages');
+    c.innerHTML = '';
+    maHistory.forEach(function(m) { maAppend(m.role === 'user' ? 'user' : 'agent', m.content); });
+  }
+} catch(e) {}
+</script>
+
+<%- include('layout-close') %>

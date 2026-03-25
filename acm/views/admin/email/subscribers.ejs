@@ -1,0 +1,105 @@
+<%- include('../layout', { title, section, user }) %>
+
+<div class="search-bar">
+  <form method="get" style="display:flex;gap:.5rem;flex-wrap:wrap;flex:1;">
+    <input type="text" name="search" placeholder="Search subscribers..." value="<%= search %>" style="max-width:250px;">
+    <select name="restaurant">
+      <option value="">All Restaurants</option>
+      <option value="nook" <%= restaurant === 'nook' ? 'selected' : '' %>>The Nook</option>
+      <option value="heyday" <%= restaurant === 'heyday' ? 'selected' : '' %>>Heyday</option>
+      <option value="graffiti" <%= restaurant === 'graffiti' ? 'selected' : '' %>>Graffiti Pasta</option>
+    </select>
+    <button type="submit" class="btn">Filter</button>
+  </form>
+  <button class="btn btn-primary" onclick="document.getElementById('addModal').classList.add('active')">Add Subscriber</button>
+  <button class="btn" onclick="document.getElementById('importModal').classList.add('active')">Import CSV</button>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>Subscribers (<%= subscribers.length %>)</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Email</th><th>Name</th><th>Source</th><th>Restaurant</th><th>Tags</th><th>Status</th><th>Joined</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% subscribers.forEach(function(s) { %>
+        <tr>
+          <td><%= s.email %></td>
+          <td><%= [s.firstName, s.lastName].filter(Boolean).join(' ') || '—' %></td>
+          <td><%= s.source %></td>
+          <td><%= s.restaurant %></td>
+          <td><%= s.tags && s.tags.length ? s.tags.join(', ') : '—' %></td>
+          <td><span class="badge badge-<%= s.isSubscribed ? 'active' : 'inactive' %>"><%= s.isSubscribed ? 'Active' : 'Unsubscribed' %></span></td>
+          <td><%= s.createdAt.toLocaleDateString() %></td>
+          <td>
+            <% if (s.isSubscribed) { %>
+            <button class="btn btn-sm btn-danger" onclick="unsub('<%= s._id %>')">Unsub</button>
+            <% } %>
+          </td>
+        </tr>
+        <% }); %>
+        <% if (!subscribers.length) { %>
+        <tr><td colspan="8" style="text-align:center;color:var(--text-dim);">No subscribers found</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Subscriber Modal -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h3>Add Subscriber</h3>
+    <form method="post" action="/admin/email/subscribers">
+      <div class="form-row">
+        <div class="form-group"><label>First Name</label><input type="text" name="firstName"></div>
+        <div class="form-group"><label>Last Name</label><input type="text" name="lastName"></div>
+      </div>
+      <div class="form-group"><label>Email</label><input type="email" name="email" required></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Restaurant</label>
+          <select name="restaurant">
+            <option value="all">All</option>
+            <option value="nook">The Nook</option>
+            <option value="heyday">Heyday</option>
+            <option value="graffiti">Graffiti Pasta</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Tags (comma-sep)</label><input type="text" name="tags" placeholder="vip, lunch"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="document.getElementById('addModal').classList.remove('active')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Import CSV Modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <h3>Import Subscribers (CSV)</h3>
+    <form method="post" action="/admin/email/subscribers/import">
+      <div class="form-group">
+        <label>CSV Data (email, firstName, lastName, restaurant — one per line)</label>
+        <textarea name="csvData" rows="8" placeholder="john@example.com, John, Doe, nook&#10;jane@example.com, Jane, Smith, heyday"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="document.getElementById('importModal').classList.remove('active')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function unsub(id) {
+  if (!confirm('Unsubscribe this person?')) return;
+  fetch('/admin/email/subscribers/' + id, { method: 'DELETE' })
+    .then(function() { location.reload(); });
+}
+</script>
+
+<%- include('../layout-close') %>

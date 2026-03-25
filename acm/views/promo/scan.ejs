@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Scanner — ACM Staff</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#0a0a0a;color:#f5f0eb;font-family:'Inter',sans-serif;padding:1rem;max-width:500px;margin:0 auto;}
+    h1{font-size:1.25rem;margin-bottom:1rem;text-align:center;}
+    .scanner-area{background:#111;border:2px dashed rgba(245,240,235,.2);border-radius:12px;padding:2rem;text-align:center;margin-bottom:1rem;min-height:200px;display:flex;align-items:center;justify-content:center;flex-direction:column;}
+    video{width:100%;border-radius:8px;display:none;}
+    .manual{margin-bottom:1rem;}
+    .manual input{width:100%;padding:.65rem;background:rgba(255,255,255,.06);border:1px solid rgba(245,240,235,.15);border-radius:4px;color:#f5f0eb;font-size:1rem;text-align:center;letter-spacing:.1em;font-family:monospace;}
+    .manual button{width:100%;padding:.65rem;background:#c9a96e;color:#0a0a0a;border:none;border-radius:4px;font-weight:600;cursor:pointer;margin-top:.5rem;}
+    .result{padding:1rem;border-radius:8px;margin-bottom:1rem;display:none;}
+    .result.success{background:rgba(39,174,96,.15);border:1px solid rgba(39,174,96,.3);display:block;}
+    .result.error{background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.3);display:block;}
+    .result h3{margin-bottom:.5rem;}
+    .history{margin-top:1rem;}
+    .history-item{padding:.5rem;border-bottom:1px solid rgba(245,240,235,.08);font-size:.85rem;display:flex;justify-content:space-between;}
+    .back{display:block;text-align:center;margin-top:1.5rem;color:rgba(245,240,235,.5);font-size:.85rem;}
+  </style>
+</head>
+<body>
+  <h1>ACM QR Scanner</h1>
+
+  <div class="scanner-area" id="scannerArea">
+    <video id="video" autoplay playsinline></video>
+    <p id="scannerMsg">Tap to enable camera</p>
+  </div>
+
+  <div class="manual">
+    <input type="text" id="codeInput" placeholder="Enter promo code" maxlength="8">
+    <button onclick="redeemCode()">Redeem Code</button>
+  </div>
+
+  <div class="result" id="result"></div>
+
+  <div class="history">
+    <h3 style="font-size:.9rem;margin-bottom:.5rem;">Recent Scans</h3>
+    <div id="historyList"></div>
+  </div>
+
+  <a href="/admin/promos" class="back">Back to Admin</a>
+
+  <script>
+  var history = [];
+
+  document.getElementById('scannerArea').addEventListener('click', function() {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      var video = document.getElementById('video');
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(function(stream) {
+          video.srcObject = stream;
+          video.style.display = 'block';
+          document.getElementById('scannerMsg').style.display = 'none';
+        })
+        .catch(function() {
+          document.getElementById('scannerMsg').textContent = 'Camera access denied. Use manual entry.';
+        });
+    }
+  });
+
+  function redeemCode() {
+    var code = document.getElementById('codeInput').value.trim().toUpperCase();
+    if (!code) return;
+
+    fetch('/scan/' + code, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var el = document.getElementById('result');
+        if (data.success) {
+          el.className = 'result success';
+          el.innerHTML = '<h3>Redeemed!</h3><p>' + data.promo.name + ' — ' + data.promo.restaurant + '</p>';
+          history.unshift({ code: code, name: data.promo.name, time: new Date().toLocaleTimeString() });
+        } else {
+          el.className = 'result error';
+          el.innerHTML = '<h3>Error</h3><p>' + data.message + '</p>';
+        }
+        document.getElementById('codeInput').value = '';
+        renderHistory();
+      });
+  }
+
+  function renderHistory() {
+    var html = '';
+    history.slice(0, 10).forEach(function(h) {
+      html += '<div class="history-item"><span>' + h.code + ' — ' + h.name + '</span><span>' + h.time + '</span></div>';
+    });
+    document.getElementById('historyList').innerHTML = html;
+  }
+
+  document.getElementById('codeInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') redeemCode();
+  });
+  </script>
+</body>
+</html>

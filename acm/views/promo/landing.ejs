@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= promo ? promo.name : 'Promo' %> — ACM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#0a0a0a;color:#f5f0eb;font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;}
+    .promo-card{width:100%;max-width:420px;border:1px solid rgba(245,240,235,.12);border-radius:12px;background:rgba(255,255,255,.03);overflow:hidden;}
+    .promo-header{padding:1.5rem;text-align:center;border-bottom:1px solid rgba(245,240,235,.08);}
+    .promo-header img{height:40px;margin-bottom:.75rem;filter:brightness(1.2);}
+    .promo-header h1{font-family:'Playfair Display',serif;font-size:1.5rem;margin-bottom:.25rem;}
+    .promo-header .restaurant{font-size:.85rem;opacity:.6;}
+    .promo-body{padding:1.5rem;}
+    .promo-badge{display:inline-block;padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:1rem;}
+    .badge-discount{background:rgba(201,169,110,.25);color:#c9a96e;}
+    .badge-freebie{background:rgba(39,174,96,.2);color:#27ae60;}
+    .badge-event{background:rgba(52,152,219,.2);color:#3498db;}
+    .badge-invite{background:rgba(155,89,182,.2);color:#9b59b6;}
+    .promo-desc{font-size:.9rem;line-height:1.6;margin-bottom:1.25rem;opacity:.85;}
+    .promo-value{font-family:'Playfair Display',serif;font-size:2.5rem;font-weight:700;text-align:center;margin:1rem 0;color:#c9a96e;}
+    .claim-form{margin-top:1rem;}
+    .claim-form input{width:100%;padding:.65rem .75rem;background:rgba(255,255,255,.06);border:1px solid rgba(245,240,235,.15);border-radius:4px;color:#f5f0eb;font-size:.95rem;margin-bottom:.75rem;}
+    .claim-form button{width:100%;padding:.75rem;background:#c9a96e;color:#0a0a0a;border:none;border-radius:4px;font-size:1rem;font-weight:600;cursor:pointer;}
+    .claim-form button:hover{opacity:.9;}
+    .error-msg{text-align:center;padding:2rem;font-size:1.1rem;opacity:.7;}
+  </style>
+</head>
+<body>
+  <div class="promo-card">
+    <% if (error) { %>
+      <div class="promo-header">
+        <img src="/images/acm.png" alt="ACM">
+      </div>
+      <div class="error-msg"><%= error %></div>
+    <% } else if (promo) { %>
+      <div class="promo-header">
+        <% if (promo.restaurant !== 'all') { %>
+          <% var logoMap = { nook: '/images/nook/nook.png', heyday: '/images/heyday/heyday_h.png', graffiti: '/images/gp/graffiti.png' }; %>
+          <img src="<%= logoMap[promo.restaurant] %>" alt="<%= RESTAURANTS[promo.restaurant] %>">
+        <% } else { %>
+          <img src="/images/acm.png" alt="ACM">
+        <% } %>
+        <h1><%= promo.name %></h1>
+        <div class="restaurant"><%= RESTAURANTS[promo.restaurant] %></div>
+      </div>
+      <div class="promo-body">
+        <span class="promo-badge badge-<%= promo.type %>"><%= promo.type %></span>
+        <% if (promo.description) { %>
+          <p class="promo-desc"><%= promo.description %></p>
+        <% } %>
+        <% if (promo.discountValue) { %>
+          <div class="promo-value">
+            <% if (promo.discountType === 'percent') { %>
+              <%= promo.discountValue %>% OFF
+            <% } else { %>
+              $<%= promo.discountValue %> OFF
+            <% } %>
+          </div>
+        <% } %>
+        <form class="claim-form" method="post" action="/promo/<%= promo.code %>/claim">
+          <input type="email" name="email" placeholder="Enter your email to claim" required>
+          <button type="submit">Claim This Offer</button>
+        </form>
+      </div>
+    <% } %>
+  </div>
+</body>
+</html>

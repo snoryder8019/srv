@@ -1,0 +1,123 @@
+<%- include('../layout', { title, section, user }) %>
+<%- include('../agent-assist') %>
+
+<% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+<% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+<div class="ai-bar">
+  <span class="ai-bar-label">AI Agent</span>
+  <input type="text" id="aiPrompt" placeholder="Describe the promo... e.g. '20% off appetizers for newsletter subscribers at Graffiti Pasta'">
+  <button type="button" onclick="AIAssist.fillAll(this, { formType:'promo', prompt: document.getElementById('aiPrompt').value })">AI Auto-Fill</button>
+</div>
+
+<form method="post" action="<%= promo ? '/admin/promos/' + promo._id : '/admin/promos' %>">
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;">
+    <div class="card">
+      <div class="card-header"><h2>Promo Details</h2></div>
+      <div class="form-group ai-fill">
+        <label>Promo Name</label>
+        <input type="text" name="name" value="<%= promo ? promo.name : '' %>" required>
+        <button type="button" class="ai-btn" onclick="var r=(document.querySelector('[name=restaurant]')||{}).value||'all'; AIAssist.fillField(this,'name','Generate a catchy promo name for restaurant: '+r+'. Return only the name.')">AI</button>
+      </div>
+      <div class="form-group ai-fill">
+        <label>Description</label>
+        <textarea name="description" rows="3"><%= promo ? (promo.description || '') : '' %></textarea>
+        <button type="button" class="ai-btn" onclick="var n=document.querySelector('[name=name]').value; var r=(document.querySelector('[name=restaurant]')||{}).value; AIAssist.fillField(this,'description','Write a short, enticing customer-facing description for a restaurant promo called: '+n+' at '+r+'. 1-2 sentences. Return only the description.')">AI</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Type</label>
+          <select name="type" required>
+            <option value="discount" <%= promo && promo.type === 'discount' ? 'selected' : '' %>>Discount</option>
+            <option value="freebie" <%= promo && promo.type === 'freebie' ? 'selected' : '' %>>Freebie</option>
+            <option value="event" <%= promo && promo.type === 'event' ? 'selected' : '' %>>Event</option>
+            <option value="invite" <%= promo && promo.type === 'invite' ? 'selected' : '' %>>Invite</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Restaurant</label>
+          <select name="restaurant" required>
+            <% Object.entries(RESTAURANTS).forEach(function([k, v]) { %>
+            <option value="<%= k %>" <%= promo && promo.restaurant === k ? 'selected' : '' %>><%= v %></option>
+            <% }); %>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Discount Value</label>
+          <input type="number" name="discountValue" value="<%= promo ? (promo.discountValue || '') : '' %>" placeholder="e.g. 20">
+        </div>
+        <div class="form-group">
+          <label>Discount Type</label>
+          <select name="discountType">
+            <option value="percent" <%= promo && promo.discountType === 'percent' ? 'selected' : '' %>>Percent (%)</option>
+            <option value="fixed" <%= promo && promo.discountType === 'fixed' ? 'selected' : '' %>>Fixed ($)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Valid From</label>
+          <input type="date" name="validFrom" value="<%= promo && promo.validFrom ? promo.validFrom.toISOString().split('T')[0] : '' %>">
+        </div>
+        <div class="form-group">
+          <label>Valid Until</label>
+          <input type="date" name="validUntil" value="<%= promo && promo.validUntil ? promo.validUntil.toISOString().split('T')[0] : '' %>">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Max Redemptions (0 = unlimited)</label>
+          <input type="number" name="maxRedemptions" value="<%= promo ? promo.maxRedemptions : 0 %>">
+        </div>
+        <div class="form-group">
+          <label>Source</label>
+          <select name="source">
+            <option value="newsletter" <%= promo && promo.source === 'newsletter' ? 'selected' : '' %>>Newsletter</option>
+            <option value="in-store" <%= promo && promo.source === 'in-store' ? 'selected' : '' %>>In-Store</option>
+            <option value="social" <%= promo && promo.source === 'social' ? 'selected' : '' %>>Social Media</option>
+            <option value="event" <%= promo && promo.source === 'event' ? 'selected' : '' %>>Event</option>
+          </select>
+        </div>
+      </div>
+      <% if (promo) { %>
+      <div class="form-group">
+        <label>Active</label>
+        <label class="toggle">
+          <input type="checkbox" name="isActive" value="true" <%= promo.isActive ? 'checked' : '' %>>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <% } %>
+    </div>
+
+    <!-- QR Code Preview -->
+    <div>
+      <div class="card" style="text-align:center;">
+        <div class="card-header"><h2>QR Code</h2></div>
+        <div class="form-group">
+          <label>Promo Code</label>
+          <input type="text" name="code" value="<%= code %>" style="text-align:center;font-family:monospace;font-size:1.2rem;letter-spacing:.1em;" <%= promo ? 'readonly' : '' %>>
+        </div>
+        <div class="qr-preview" style="display:inline-block;margin:1rem auto;">
+          <img src="<%= getPromoQRUrl(code, 250) %>" alt="QR Code" style="width:250px;height:250px;">
+        </div>
+        <p style="font-size:.75rem;color:var(--text-dim);margin-top:.5rem;">Scan to test: /promo/<%= code %></p>
+        <% if (promo) { %>
+        <div style="margin-top:.75rem;">
+          <p style="font-size:.85rem;">Redeemed: <strong><%= promo.currentRedemptions %></strong><%= promo.maxRedemptions > 0 ? ' / ' + promo.maxRedemptions : '' %></p>
+          <a href="/admin/promos/<%= promo._id %>/redemptions" class="btn btn-sm" style="margin-top:.5rem;">View Redemptions</a>
+        </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:.5rem;margin-top:1rem;">
+    <button type="submit" class="btn btn-primary">Save Promo</button>
+    <a href="/admin/promos" class="btn">Cancel</a>
+  </div>
+</form>
+
+<%- include('../layout-close') %>

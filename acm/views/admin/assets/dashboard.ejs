@@ -1,0 +1,170 @@
+<%- include('../layout', { title, section, user }) %>
+<%- include('../agent-assist') %>
+
+<div class="ai-bar">
+  <span class="ai-bar-label">AI Image Generator</span>
+  <input type="text" id="imgPrompt" placeholder="Describe the image... e.g. 'Elegant pasta dish, warm lighting, restaurant ambiance'">
+  <select id="imgSize" style="max-width:140px;">
+    <option value="square">Square (512x512)</option>
+    <option value="landscape">Landscape (768x512)</option>
+    <option value="portrait">Portrait (512x768)</option>
+    <option value="ig-post">Instagram Post</option>
+    <option value="ig-story">Instagram Story</option>
+    <option value="fb-cover">Facebook Cover</option>
+    <option value="banner">Banner (768x256)</option>
+  </select>
+  <button type="button" id="genBtn" onclick="generateImage()">Generate</button>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+  <!-- Generator -->
+  <div class="card">
+    <div class="card-header"><h2>Image Generator</h2></div>
+    <div class="form-group">
+      <label>Prompt</label>
+      <textarea id="promptArea" rows="4" placeholder="Professional food photography, artisan cocktails on marble bar, warm golden lighting, bokeh background, high resolution, restaurant interior"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Quick Styles</label>
+      <div style="display:flex;flex-wrap:wrap;gap:.4rem;">
+        <button class="btn btn-sm" onclick="addStyle('professional food photography, warm lighting')">Food Photo</button>
+        <button class="btn btn-sm" onclick="addStyle('elegant restaurant interior, ambient lighting, bokeh')">Interior</button>
+        <button class="btn btn-sm" onclick="addStyle('artisan cocktail, bar setting, moody lighting')">Cocktails</button>
+        <button class="btn btn-sm" onclick="addStyle('minimalist logo design, clean vector')">Logo</button>
+        <button class="btn btn-sm" onclick="addStyle('social media post, modern design, bold typography')">Social Media</button>
+        <button class="btn btn-sm" onclick="addStyle('promotional flyer, restaurant branding, elegant')">Promo Flyer</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>AI Prompt Assist</label>
+      <div style="display:flex;gap:.5rem;">
+        <input type="text" id="aiDescribe" placeholder="Describe what you want and AI will write the prompt...">
+        <button class="btn btn-sm" style="background:var(--accent-dim);color:var(--accent);white-space:nowrap;" onclick="aiPrompt()">AI Write Prompt</button>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="genBtn2" onclick="generateFromArea()" style="width:100%;">Generate Image</button>
+    <div id="genStatus" style="font-size:.8rem;color:var(--text-dim);margin-top:.5rem;display:none;"></div>
+  </div>
+
+  <!-- Preview / Gallery -->
+  <div>
+    <div class="card" id="previewCard">
+      <div class="card-header"><h2>Preview</h2></div>
+      <div id="previewArea" style="min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:.85rem;">
+        Generate an image to see preview
+      </div>
+    </div>
+    <div class="card" id="galleryCard" style="margin-top:1rem;">
+      <div class="card-header"><h2>Generated Images</h2></div>
+      <div id="gallery" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.5rem;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var generatedImages = [];
+
+function addStyle(style) {
+  var area = document.getElementById('promptArea');
+  area.value = area.value ? area.value + ', ' + style : style;
+}
+
+function aiPrompt() {
+  var desc = document.getElementById('aiDescribe').value;
+  if (!desc) return;
+  AIAssist.generate('Write a detailed Stable Diffusion image generation prompt for: ' + desc + '. Return only the prompt text, no explanation. Make it detailed with style, lighting, composition keywords.', 'content_gen')
+    .then(function(data) {
+      if (data.content) {
+        var clean = data.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim().replace(/^["']|["']$/g, '');
+        document.getElementById('promptArea').value = clean;
+      }
+    });
+}
+
+function generateImage() {
+  var prompt = document.getElementById('imgPrompt').value;
+  var size = document.getElementById('imgSize').value;
+  if (!prompt) return;
+  doGenerate(prompt, size);
+}
+
+function generateFromArea() {
+  var prompt = document.getElementById('promptArea').value;
+  var size = document.getElementById('imgSize').value;
+  if (!prompt) return;
+  doGenerate(prompt, size);
+}
+
+function doGenerate(prompt, size) {
+  var status = document.getElementById('genStatus');
+  status.style.display = 'block';
+  status.textContent = 'Generating image... (15-45 seconds)';
+  document.getElementById('genBtn').disabled = true;
+  document.getElementById('genBtn2').disabled = true;
+  document.getElementById('previewArea').innerHTML = '<div style="text-align:center;"><div class="typing-indicator"><span>.</span><span>.</span><span>.</span></div><br>Generating...</div>';
+
+  fetch('/admin/assets/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: prompt, size: size })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    document.getElementById('genBtn').disabled = false;
+    document.getElementById('genBtn2').disabled = false;
+    if (data.success && data.image) {
+      status.textContent = 'Generated! (' + data.size + ')';
+      document.getElementById('previewArea').innerHTML =
+        '<img src="' + data.image + '" style="max-width:100%;border-radius:4px;">' +
+        '<div style="margin-top:.5rem;display:flex;gap:.5rem;">' +
+        '<a href="' + data.image + '" download="acm-asset.png" class="btn btn-sm btn-primary">Download</a>' +
+        '<button class="btn btn-sm" onclick="copyImageData()">Copy Data URL</button>' +
+        '</div>';
+
+      // Add to gallery
+      generatedImages.unshift({ image: data.image, prompt: prompt, size: data.size });
+      renderGallery();
+    } else {
+      status.textContent = 'Error: ' + (data.error || 'Failed to generate');
+      document.getElementById('previewArea').innerHTML = '<span style="color:var(--danger);">Generation failed. The SD server may be loading. Try again.</span>';
+    }
+  })
+  .catch(function(err) {
+    document.getElementById('genBtn').disabled = false;
+    document.getElementById('genBtn2').disabled = false;
+    status.textContent = 'Connection error';
+    document.getElementById('previewArea').innerHTML = '<span style="color:var(--danger);">Connection error. Please try again.</span>';
+  });
+}
+
+function renderGallery() {
+  var html = '';
+  generatedImages.forEach(function(img, i) {
+    html += '<div style="cursor:pointer;border-radius:4px;overflow:hidden;border:1px solid var(--border);" onclick="showImage(' + i + ')" title="' + img.prompt.substring(0,50) + '">' +
+      '<img src="' + img.image + '" style="width:100%;display:block;">' +
+      '</div>';
+  });
+  document.getElementById('gallery').innerHTML = html || '<span style="color:var(--text-dim);font-size:.8rem;">No images generated yet</span>';
+}
+
+function showImage(idx) {
+  var img = generatedImages[idx];
+  document.getElementById('previewArea').innerHTML =
+    '<img src="' + img.image + '" style="max-width:100%;border-radius:4px;">' +
+    '<p style="font-size:.75rem;color:var(--text-dim);margin-top:.5rem;">' + img.prompt.substring(0, 100) + '</p>' +
+    '<div style="margin-top:.5rem;display:flex;gap:.5rem;">' +
+    '<a href="' + img.image + '" download="acm-asset.png" class="btn btn-sm btn-primary">Download</a>' +
+    '</div>';
+}
+
+function copyImageData() {
+  var img = document.querySelector('#previewArea img');
+  if (img) {
+    navigator.clipboard.writeText(img.src).then(function() { alert('Image data URL copied!'); });
+  }
+}
+
+renderGallery();
+</script>
+
+<%- include('../layout-close') %>

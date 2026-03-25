@@ -1,0 +1,53 @@
+<%- include('../layout', { title, section, user }) %>
+
+<div class="quick-actions">
+  <a href="/admin/agent" class="btn btn-primary">Back to Agent</a>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>Agent Task History</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Type</th><th>Prompt</th><th>Status</th><th>Duration</th><th>Created</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% tasks.forEach(function(t) { %>
+        <tr class="task-row" onclick="toggleTask('<%= t._id %>')">
+          <td><span class="badge badge-<%= t.type === 'chat' ? 'user' : 'admin' %>"><%= t.type %></span></td>
+          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= t.prompt.substring(0, 80) %></td>
+          <td><span class="badge badge-<%= t.status %>"><%= t.status %></span></td>
+          <td><%= t.metadata && t.metadata.duration ? (t.metadata.duration / 1000).toFixed(1) + 's' : '—' %></td>
+          <td><%= t.createdAt.toLocaleString() %></td>
+          <td><button class="btn btn-sm">View</button></td>
+        </tr>
+        <tr id="detail-<%= t._id %>" style="display:none;">
+          <td colspan="6" style="background:var(--bg-card);padding:1rem;">
+            <strong>Prompt:</strong>
+            <pre style="background:rgba(0,0,0,.3);padding:.75rem;border-radius:4px;white-space:pre-wrap;margin:.5rem 0;font-size:.8rem;"><%= t.prompt %></pre>
+            <strong>Response:</strong>
+            <pre style="background:rgba(0,0,0,.3);padding:.75rem;border-radius:4px;white-space:pre-wrap;margin:.5rem 0;font-size:.8rem;"><%= t.response || '—' %></pre>
+            <% if (t.metadata) { %>
+            <p style="font-size:.75rem;color:var(--text-dim);margin-top:.5rem;">
+              Model: <%= t.metadata.model || '—' %> | Tokens: <%= t.metadata.tokens || '—' %> | Duration: <%= t.metadata.duration ? (t.metadata.duration / 1000).toFixed(1) + 's' : '—' %>
+            </p>
+            <% } %>
+          </td>
+        </tr>
+        <% }); %>
+        <% if (!tasks.length) { %>
+        <tr><td colspan="6" style="text-align:center;color:var(--text-dim);">No tasks yet</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function toggleTask(id) {
+  var el = document.getElementById('detail-' + id);
+  el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+}
+</script>
+
+<%- include('../layout-close') %>

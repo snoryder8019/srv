@@ -1,0 +1,58 @@
+<%- include('../layout', { title, section, user }) %>
+
+<% if (!zohoConfigured) { %>
+<div class="alert alert-error">Zoho email not configured. Add ZOHO_EMAIL and ZOHO_PASSWORD to .env. Sends will be simulated.</div>
+<% } %>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Subscribers</div>
+    <div class="stat-value"><%= stats.totalSubs %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Campaigns</div>
+    <div class="stat-value"><%= stats.totalCampaigns %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Emails Sent</div>
+    <div class="stat-value"><%= stats.totalSent %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Open Rate</div>
+    <div class="stat-value"><%= stats.openRate %>%</div>
+  </div>
+</div>
+
+<div class="quick-actions">
+  <a href="/admin/email/campaigns/new" class="btn btn-primary">New Campaign</a>
+  <a href="/admin/email/subscribers" class="btn">Manage Subscribers</a>
+  <a href="/admin/email/templates" class="btn">Templates</a>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>Recent Campaigns</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Subject</th><th>Status</th><th>Sent</th><th>Created</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% campaigns.forEach(function(c) { %>
+        <tr>
+          <td><a href="/admin/email/campaigns/<%= c._id %>"><%= c.name %></a></td>
+          <td><%= c.subject %></td>
+          <td><span class="badge badge-<%= c.status %>"><%= c.status %></span></td>
+          <td><%= c.stats.sent %></td>
+          <td><%= c.createdAt.toLocaleDateString() %></td>
+          <td><a href="/admin/email/campaigns/<%= c._id %>" class="btn btn-sm">Edit</a></td>
+        </tr>
+        <% }); %>
+        <% if (!campaigns.length) { %>
+        <tr><td colspan="6" style="text-align:center;color:var(--text-dim);">No campaigns yet</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%- include('../layout-close') %>

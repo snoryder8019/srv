@@ -1,0 +1,79 @@
+<%- include('../layout', { title, section, user }) %>
+<%- include('../agent-assist') %>
+
+<% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+<% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+<div class="ai-bar">
+  <span class="ai-bar-label">AI Agent</span>
+  <input type="text" id="aiPrompt" placeholder="Describe the template... e.g. 'Weekly specials newsletter for The Nook'">
+  <button type="button" onclick="AIAssist.fillAll(this, { formType:'template', prompt: document.getElementById('aiPrompt').value })">AI Auto-Fill</button>
+</div>
+
+<form method="post" action="<%= template ? '/admin/email/templates/' + template._id : '/admin/email/templates' %>">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+    <div>
+      <div class="card">
+        <div class="card-header"><h2>Template Details</h2></div>
+        <div class="form-group ai-fill">
+          <label>Template Name</label>
+          <input type="text" name="name" value="<%= template ? template.name : '' %>" required>
+          <button type="button" class="ai-btn" onclick="AIAssist.fillField(this,'name','Generate a short newsletter template name for a restaurant hospitality group. Return only the name.')">AI</button>
+        </div>
+        <div class="form-group ai-fill">
+          <label>Description</label>
+          <input type="text" name="description" value="<%= template ? (template.description || '') : '' %>">
+          <button type="button" class="ai-btn" onclick="var n=document.querySelector('[name=name]').value; AIAssist.fillField(this,'description','Write a one-line description for a newsletter template called: '+n+'. Return only the description.')">AI</button>
+        </div>
+        <div class="form-group">
+          <label>Restaurant</label>
+          <select name="restaurant">
+            <option value="all" <%= template && template.restaurant === 'all' ? 'selected' : '' %>>All</option>
+            <option value="nook" <%= template && template.restaurant === 'nook' ? 'selected' : '' %>>The Nook</option>
+            <option value="heyday" <%= template && template.restaurant === 'heyday' ? 'selected' : '' %>>Heyday</option>
+            <option value="graffiti" <%= template && template.restaurant === 'graffiti' ? 'selected' : '' %>>Graffiti Pasta</option>
+          </select>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Available Variables</h2></div>
+        <p style="font-size:.8rem;color:var(--text-dim);font-family:monospace;">
+          {{firstName}} {{lastName}} {{email}} {{unsubscribeLink}}
+        </p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h2>Preview</h2>
+        <button type="button" class="btn btn-sm" onclick="updatePreview()">Refresh</button>
+      </div>
+      <div id="preview" style="background:#fff;color:#333;border-radius:4px;padding:1rem;min-height:300px;font-size:.85rem;"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
+    <div class="card-header">
+      <h2>HTML Content</h2>
+      <button type="button" class="btn btn-sm" style="background:var(--accent-dim);color:var(--accent);border-color:var(--accent);"
+        onclick="var r=(document.querySelector('[name=restaurant]')||{}).value||'all'; var n=document.querySelector('[name=name]').value; AIAssist.fillField(this,'htmlContent','Write a complete, professional HTML email newsletter template with inline styles for restaurant: '+r+', template: '+n+'. Include {{firstName}}, {{lastName}}, {{email}}, {{unsubscribeLink}} variables. Return only the HTML.')">AI Generate Template</button>
+    </div>
+    <div class="form-group">
+      <textarea name="htmlContent" id="htmlEditor" rows="20" required><%= template ? template.htmlContent : '<!DOCTYPE html>\n<html>\n<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">\n  <h1>Hello {{firstName}}</h1>\n  <p>Your newsletter content here...</p>\n  <hr>\n  <p style="font-size:12px;color:#999;"><a href="{{unsubscribeLink}}">Unsubscribe</a></p>\n</body>\n</html>' %></textarea>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:.5rem;margin-top:1rem;">
+    <button type="submit" class="btn btn-primary">Save Template</button>
+    <a href="/admin/email/templates" class="btn">Cancel</a>
+  </div>
+</form>
+
+<script>
+function updatePreview() {
+  document.getElementById('preview').innerHTML = document.getElementById('htmlEditor').value;
+}
+updatePreview();
+document.getElementById('htmlEditor').addEventListener('input', function() { clearTimeout(this._t); this._t = setTimeout(updatePreview, 500); });
+</script>
+
+<%- include('../layout-close') %>
