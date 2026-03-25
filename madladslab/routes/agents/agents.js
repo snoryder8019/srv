@@ -6,6 +6,7 @@ import { join, resolve } from "path";
 
 import Agent from "../../api/v1/models/Agent.js";
 import AgentAction from "../../api/v1/models/AgentAction.js";
+import "../../api/v1/models/User.js"; // ensure User schema is registered for populate()
 import { isAdmin, requireAgents, requireAgentsWrite, requireAgentsAdmin } from "./middleware.js";
 
 const router = express.Router();
@@ -565,6 +566,57 @@ router.patch('/api/agents/:id/pepe-chat', requireAgentsWrite, async (req, res) =
         res.json({ success: true, pepeChat: agent.pepeChat });
     } catch (error) {
         console.error('Error updating pepeChat config:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Save email config for an agent
+router.patch('/api/agents/:id/email-config', requireAgentsWrite, async (req, res) => {
+    try {
+        const { enabled, allowedTypes, rateLimitMinutes, dailyLimit } = req.body;
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+
+        if (typeof enabled === 'boolean') agent.emailConfig.enabled = enabled;
+        if (Array.isArray(allowedTypes)) {
+            const valid = ['notify', 'client-outreach'];
+            agent.emailConfig.allowedTypes = allowedTypes.filter(t => valid.includes(t));
+        }
+        if (rateLimitMinutes !== undefined) agent.emailConfig.rateLimitMinutes = Math.max(1, Math.min(1440, parseInt(rateLimitMinutes) || 60));
+        if (dailyLimit !== undefined) agent.emailConfig.dailyLimit = Math.max(1, Math.min(100, parseInt(dailyLimit) || 10));
+
+        await agent.save();
+        await agent.addLog('info', `Email config updated by ${req.user.displayName || req.user.email}`);
+        res.json({ success: true, emailConfig: agent.emailConfig });
+    } catch (error) {
+        console.error('Error updating email config:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Save telegram config for an agent
+router.patch('/api/agents/:id/telegram-config', requireAgentsWrite, async (req, res) => {
+    try {
+        const { enabled, allowedActions, allowedChatIds, rateLimitMinutes, dailyLimit } = req.body;
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+
+        if (typeof enabled === 'boolean') agent.telegramConfig.enabled = enabled;
+        if (Array.isArray(allowedActions)) {
+            const valid = ['notify', 'client', 'broadcast'];
+            agent.telegramConfig.allowedActions = allowedActions.filter(a => valid.includes(a));
+        }
+        if (Array.isArray(allowedChatIds)) {
+            agent.telegramConfig.allowedChatIds = allowedChatIds.map(String).filter(Boolean);
+        }
+        if (rateLimitMinutes !== undefined) agent.telegramConfig.rateLimitMinutes = Math.max(1, Math.min(1440, parseInt(rateLimitMinutes) || 60));
+        if (dailyLimit !== undefined) agent.telegramConfig.dailyLimit = Math.max(1, Math.min(200, parseInt(dailyLimit) || 20));
+
+        await agent.save();
+        await agent.addLog('info', `Telegram config updated by ${req.user.displayName || req.user.email}`);
+        res.json({ success: true, telegramConfig: agent.telegramConfig });
+    } catch (error) {
+        console.error('Error updating telegram config:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

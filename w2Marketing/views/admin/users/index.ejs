@@ -1,0 +1,195 @@
+<%- include('../partials/head', { title: 'Users & Permissions' }) %>
+<%- include('../partials/sidebar', { page: 'users', user: user }) %>
+
+<style>
+.user-table { width: 100%; border-collapse: collapse; }
+.user-table th {
+  font-size: 0.6rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--slate); text-align: left; padding: 10px 14px;
+  border-bottom: 2px solid var(--ivory-mid);
+}
+.user-table td { padding: 12px 14px; border-bottom: 1px solid var(--ivory-mid); font-size: 0.85rem; vertical-align: middle; }
+.user-table tr:hover td { background: rgba(201,168,72,0.03); }
+.user-avatar {
+  width: 32px; height: 32px; border-radius: 50%; background: var(--navy);
+  color: var(--white); display: flex; align-items: center; justify-content: center;
+  font-size: 0.72rem; font-weight: 600; flex-shrink: 0;
+}
+.user-name-cell { display: flex; align-items: center; gap: 10px; }
+.user-email { font-size: 0.75rem; color: var(--slate); }
+.role-badge {
+  display: inline-block; font-size: 0.58rem; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; padding: 2px 8px; border-radius: 2px; color: #fff;
+}
+.role-admin { background: var(--navy); }
+.role-client { background: #2B7A5B; }
+.role-collaborator { background: #6B3FA0; }
+.role-none { background: var(--slate); }
+.user-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.user-actions form { display: inline; }
+.user-actions select { padding: 5px 8px; font-size: 0.75rem; font-family: inherit; border: 1px solid var(--ivory-mid); border-radius: 3px; }
+.user-actions .btn-xs { padding: 4px 10px; font-size: 0.65rem; }
+.linked-client { font-size: 0.72rem; color: var(--gold); text-decoration: none; }
+.linked-client:hover { text-decoration: underline; }
+.no-link { font-size: 0.72rem; color: var(--slate); font-style: italic; }
+
+/* Expandable detail row */
+.user-detail { display: none; }
+.user-detail td { padding: 0 14px 16px 56px; border-bottom: 2px solid var(--ivory-mid); }
+.user-detail.open { display: table-row; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 600px; }
+.detail-grid label { font-size: 0.65rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--slate); display: block; margin-bottom: 3px; }
+.detail-grid select, .detail-grid .btn { font-family: inherit; }
+
+.perm-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.perm-checks label { font-size: 0.78rem; color: var(--dark); text-transform: none; letter-spacing: 0; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.perm-checks input[type="checkbox"] { accent-color: var(--gold); }
+
+@media (max-width: 820px) {
+  .user-table th:nth-child(4), .user-table td:nth-child(4) { display: none; }
+}
+@media (max-width: 520px) {
+  .user-table th:nth-child(3), .user-table td:nth-child(3) { display: none; }
+  .user-table td { padding: 10px 8px; font-size: 0.8rem; }
+}
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Users & Permissions</div>
+  <div class="topbar-actions">
+    <span style="font-size:0.75rem;color:var(--slate);"><%= users.length %> user<%= users.length !== 1 ? 's' : '' %></span>
+  </div>
+</div>
+
+<div class="content">
+  <% if (success) { %>
+    <div class="alert alert-success" style="background:#DCFCE7;color:#166534;padding:10px 14px;border-radius:4px;font-size:0.85rem;margin-bottom:14px;"><%= success %></div>
+  <% } %>
+  <% if (error) { %>
+    <div class="alert alert-error" style="background:#FEE2E2;color:#991B1B;padding:10px 14px;border-radius:4px;font-size:0.85rem;margin-bottom:14px;"><%= error %></div>
+  <% } %>
+
+  <div class="card" style="padding:0;overflow-x:auto;">
+    <table class="user-table">
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Role</th>
+          <th>Provider</th>
+          <th>Linked Client</th>
+          <th style="width:60px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+      <% users.forEach((u, idx) => {
+        const initials = (u.displayName || u.email || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+        const role = u.isW2Admin || u.isAdmin ? 'admin' : (u.role || 'none');
+        const linkedClient = clients.find(c => c._id.toString() === u.clientId);
+        const isSelf = u._id.toString() === user.id;
+      %>
+        <tr style="cursor:pointer;" onclick="toggleDetail(<%= idx %>)">
+          <td>
+            <div class="user-name-cell">
+              <div class="user-avatar"><%= initials %></div>
+              <div>
+                <div><%= u.displayName || 'No name' %><%= isSelf ? ' (you)' : '' %></div>
+                <div class="user-email"><%= u.email %></div>
+              </div>
+            </div>
+          </td>
+          <td><span class="role-badge role-<%= role %>"><%= role %></span></td>
+          <td style="font-size:0.78rem;color:var(--slate);text-transform:capitalize;"><%= u.provider || 'google' %></td>
+          <td>
+            <% if (linkedClient) { %>
+              <a href="/admin/clients/<%= linkedClient._id %>" class="linked-client"><%= linkedClient.company || linkedClient.name %></a>
+            <% } else { %>
+              <span class="no-link">—</span>
+            <% } %>
+          </td>
+          <td style="text-align:right;font-size:0.75rem;color:var(--slate);">&#9662;</td>
+        </tr>
+
+        <!-- Expandable detail row -->
+        <tr class="user-detail" id="detail-<%= idx %>">
+          <td colspan="5">
+            <div class="detail-grid">
+              <!-- Role -->
+              <div>
+                <label>Change Role</label>
+                <form method="POST" action="/admin/users/<%= u._id %>/role" style="display:flex;gap:6px;">
+                  <select name="role">
+                    <option value="admin" <%= role === 'admin' ? 'selected' : '' %>>Admin</option>
+                    <option value="client" <%= role === 'client' ? 'selected' : '' %>>Client</option>
+                    <option value="collaborator" <%= role === 'collaborator' ? 'selected' : '' %>>Collaborator</option>
+                  </select>
+                  <button type="submit" class="btn btn-navy btn-xs">Save</button>
+                </form>
+              </div>
+
+              <!-- Link Client -->
+              <div>
+                <label>Link to Client</label>
+                <form method="POST" action="/admin/users/<%= u._id %>/link-client" style="display:flex;gap:6px;">
+                  <select name="clientId">
+                    <option value="">— None —</option>
+                    <% clients.forEach(c => { %>
+                      <option value="<%= c._id %>" <%= u.clientId === c._id.toString() ? 'selected' : '' %>><%= c.name %><%= c.company ? ` (${c.company})` : '' %></option>
+                    <% }); %>
+                  </select>
+                  <button type="submit" class="btn btn-navy btn-xs">Link</button>
+                </form>
+              </div>
+
+              <!-- Permissions -->
+              <div style="grid-column:span 2;">
+                <label>Permissions</label>
+                <form method="POST" action="/admin/users/<%= u._id %>/permissions" style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+                  <div class="perm-checks">
+                    <% const allPerms = ['blog', 'pages', 'copy', 'design', 'assets', 'clients', 'invoices', 'email-marketing', 'meetings', 'portfolio'];
+                       const userPerms = Array.isArray(u.permissions) ? u.permissions : [];
+                       allPerms.forEach(p => { %>
+                      <label><input type="checkbox" name="permissions" value="<%= p %>" <%= userPerms.includes(p) ? 'checked' : '' %>><%= p %></label>
+                    <% }); %>
+                  </div>
+                  <button type="submit" class="btn btn-navy btn-xs">Save Perms</button>
+                </form>
+              </div>
+
+              <!-- Delete -->
+              <% if (!isSelf) { %>
+              <div style="grid-column:span 2;padding-top:8px;border-top:1px solid var(--ivory-mid);">
+                <form method="POST" action="/admin/users/<%= u._id %>/delete" onsubmit="return confirm('Delete this user? This cannot be undone.');">
+                  <button type="submit" class="btn btn-xs" style="background:var(--danger);color:#fff;">Delete User</button>
+                </form>
+              </div>
+              <% } %>
+            </div>
+          </td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="card-title">Onboarding Link</div>
+    <p style="font-size:0.85rem;color:var(--slate);margin-bottom:10px;">Share this link with new clients. They'll fill out the onboarding form and can create a Google account to access their portal.</p>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="text" id="onboard-url" value="<%= (typeof process !== 'undefined' ? process.env.DOMAIN : '') || '' %>/onboard" readonly style="flex:1;padding:10px 14px;border:1px solid var(--ivory-mid);border-radius:4px;font-family:inherit;font-size:0.85rem;background:var(--ivory);">
+      <button class="btn btn-navy btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('onboard-url').value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500);">Copy</button>
+    </div>
+  </div>
+</div>
+</div></div>
+
+<script>
+function toggleDetail(idx) {
+  const row = document.getElementById('detail-' + idx);
+  if (row) row.classList.toggle('open');
+}
+// Stop click propagation on form elements inside expandable rows
+document.querySelectorAll('.user-detail').forEach(row => {
+  row.addEventListener('click', e => e.stopPropagation());
+});
+</script>
+<script src="/js/tours/users.js"></script>

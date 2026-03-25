@@ -1,0 +1,254 @@
+<%- include('../partials/head', { title: 'Bookkeeping' }) %>
+<%- include('../partials/sidebar', { page: 'bookkeeping', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Bookkeeping</div>
+</div>
+
+<div class="content">
+  <% if (typeof success !== 'undefined' || filters.status) { /* flash via query */ } %>
+
+  <!-- Stats row -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px;">
+    <div class="card" style="text-align:center;padding:20px;">
+      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);margin-bottom:4px;">Revenue</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;color:var(--success);">$<%= stats.totalRevenue.toFixed(2) %></div>
+      <div style="font-size:0.72rem;color:var(--slate);"><%= stats.paidCount %> paid</div>
+    </div>
+    <div class="card" style="text-align:center;padding:20px;">
+      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);margin-bottom:4px;">Outstanding</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;color:var(--warn);">$<%= stats.totalOutstanding.toFixed(2) %></div>
+      <div style="font-size:0.72rem;color:var(--slate);"><%= stats.unpaidCount %> unpaid</div>
+    </div>
+    <div class="card" style="text-align:center;padding:20px;">
+      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);margin-bottom:4px;">Refunded</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;color:var(--danger);">$<%= stats.totalRefunded.toFixed(2) %></div>
+    </div>
+    <div class="card" style="text-align:center;padding:20px;">
+      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);margin-bottom:4px;">Gateways</div>
+      <div style="font-size:0.9rem;margin-top:8px;">
+        <span style="display:inline-block;padding:3px 8px;border-radius:2px;font-size:0.72rem;font-weight:600;letter-spacing:.04em;<%= paypalConfigured ? 'background:rgba(21,128,61,0.1);color:var(--success);' : 'background:rgba(107,115,128,0.1);color:var(--slate);' %>">PayPal</span>
+        <span style="display:inline-block;padding:3px 8px;border-radius:2px;font-size:0.72rem;font-weight:600;letter-spacing:.04em;margin-left:4px;<%= stripeConfigured ? 'background:rgba(21,128,61,0.1);color:var(--success);' : 'background:rgba(107,115,128,0.1);color:var(--slate);' %>">Stripe</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card" style="margin-bottom:20px;padding:16px 20px;">
+    <form method="GET" action="/admin/bookkeeping" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="form-field" style="margin:0;min-width:120px;">
+        <label style="font-size:0.7rem;">Status</label>
+        <select name="status" style="padding:5px 8px;font-size:0.8rem;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;">
+          <option value="all" <%= filters.status === 'all' ? 'selected' : '' %>>All</option>
+          <option value="draft" <%= filters.status === 'draft' ? 'selected' : '' %>>Draft</option>
+          <option value="unpaid" <%= filters.status === 'unpaid' ? 'selected' : '' %>>Unpaid</option>
+          <option value="sent" <%= filters.status === 'sent' ? 'selected' : '' %>>Sent</option>
+          <option value="paid" <%= filters.status === 'paid' ? 'selected' : '' %>>Paid</option>
+          <option value="overdue" <%= filters.status === 'overdue' ? 'selected' : '' %>>Overdue</option>
+          <option value="void" <%= filters.status === 'void' ? 'selected' : '' %>>Void</option>
+        </select>
+      </div>
+      <div class="form-field" style="margin:0;min-width:120px;">
+        <label style="font-size:0.7rem;">Provider</label>
+        <select name="provider" style="padding:5px 8px;font-size:0.8rem;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;">
+          <option value="all" <%= filters.provider === 'all' ? 'selected' : '' %>>All</option>
+          <option value="paypal" <%= filters.provider === 'paypal' ? 'selected' : '' %>>PayPal</option>
+          <option value="stripe" <%= filters.provider === 'stripe' ? 'selected' : '' %>>Stripe</option>
+        </select>
+      </div>
+      <div class="form-field" style="margin:0;min-width:140px;">
+        <label style="font-size:0.7rem;">Client</label>
+        <select name="client" style="padding:5px 8px;font-size:0.8rem;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;">
+          <option value="all" <%= filters.client === 'all' ? 'selected' : '' %>>All Clients</option>
+          <% for (const cl of clients) { %>
+          <option value="<%= cl._id %>" <%= filters.client === cl._id.toString() ? 'selected' : '' %>><%= cl.name %></option>
+          <% } %>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-navy btn-sm" style="margin-bottom:0;">Filter</button>
+      <% if (filters.status !== 'all' || filters.provider !== 'all' || filters.client !== 'all') { %>
+      <a href="/admin/bookkeeping" class="btn btn-ghost btn-sm" style="margin-bottom:0;">Clear</a>
+      <% } %>
+    </form>
+  </div>
+
+  <!-- Flash messages -->
+  <% const qs = typeof req !== 'undefined' ? req.query : {}; %>
+  <% if (qs.success) { %>
+  <div style="background:rgba(21,128,61,0.08);border:1px solid rgba(21,128,61,0.2);border-radius:3px;padding:10px 16px;margin-bottom:16px;font-size:0.82rem;color:var(--success);"><%= qs.success %></div>
+  <% } %>
+  <% if (qs.error) { %>
+  <div style="background:rgba(185,28,28,0.08);border:1px solid rgba(185,28,28,0.2);border-radius:3px;padding:10px 16px;margin-bottom:16px;font-size:0.82rem;color:var(--danger);"><%= qs.error %></div>
+  <% } %>
+
+  <!-- Invoice Ledger -->
+  <% if (!invoices.length) { %>
+    <div class="empty"><div class="empty-icon">$</div><p>No invoices found.</p></div>
+  <% } else { %>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Invoice #</th>
+          <th>Client</th>
+          <th>Title</th>
+          <th style="text-align:right;">Amount</th>
+          <th>Status</th>
+          <th>Provider</th>
+          <th>Txn ID</th>
+          <th>Paid At</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (const inv of invoices) { %>
+        <tr>
+          <td style="font-size:0.78rem;font-weight:500;color:var(--navy);white-space:nowrap;">
+            <a href="/admin/clients/<%= inv.clientId %>?tab=invoices" style="color:var(--navy);text-decoration:none;"><%= inv.invoiceNumber || '---' %></a>
+          </td>
+          <td style="font-size:0.82rem;"><%= clientMap[inv.clientId] || '---' %></td>
+          <td style="font-size:0.82rem;font-weight:500;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= inv.title %></td>
+          <td style="text-align:right;font-weight:500;">$<%= inv.amount.toFixed(2) %></td>
+          <td>
+            <%
+              const statusColors = { draft:'var(--slate)', unpaid:'var(--warn)', sent:'var(--navy)', paid:'var(--success)', overdue:'var(--danger)', void:'var(--slate)' };
+              const sc = statusColors[inv.status] || 'var(--slate)';
+            %>
+            <span style="display:inline-block;padding:2px 8px;border-radius:2px;font-size:0.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:color-mix(in srgb, <%= sc %> 10%, transparent);color:<%= sc %>;"><%= inv.status %></span>
+          </td>
+          <td style="font-size:0.78rem;color:var(--slate);">
+            <% if (inv.payments?.length) { %>
+              <% for (const p of inv.payments) { %>
+              <span style="display:inline-block;padding:1px 6px;border-radius:2px;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;<%= p.provider === 'paypal' ? 'background:rgba(0,112,186,0.1);color:#0070ba;' : 'background:rgba(99,91,255,0.1);color:#635bff;' %>"><%= p.provider %></span>
+              <% } %>
+            <% } else { %>
+              ---
+            <% } %>
+          </td>
+          <td style="font-size:0.7rem;color:var(--slate);font-family:monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<%= inv.payments?.[0]?.transactionId || '' %>">
+            <%= inv.payments?.[0]?.transactionId ? inv.payments[0].transactionId.substring(0, 16) + '...' : '---' %>
+          </td>
+          <td style="font-size:0.78rem;color:var(--slate);">
+            <%= inv.payments?.[0]?.paidAt ? new Date(inv.payments[0].paidAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '---' %>
+          </td>
+          <td style="white-space:nowrap;">
+            <div style="display:flex;gap:4px;align-items:center;">
+              <!-- Email button (not for paid/void) -->
+              <% if (!['paid', 'void'].includes(inv.status)) { %>
+              <form method="POST" action="/admin/bookkeeping/<%= inv._id %>/send" style="display:inline;" onsubmit="return confirm('Send invoice email to <%= clientMap[inv.clientId] || 'client' %>?')">
+                <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;" title="Send invoice email">Email</button>
+              </form>
+              <% } %>
+              <!-- Discount button (only for unpaid/sent/overdue) -->
+              <% if (['unpaid', 'sent', 'overdue'].includes(inv.status)) { %>
+              <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="openDiscount('<%= inv._id %>', '<%= inv.invoiceNumber %>', <%= inv.amount %>)">Discount</button>
+              <% } %>
+              <!-- Refund button (only for paid with payments) -->
+              <% if (inv.status === 'paid' && inv.payments?.length) { %>
+              <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;color:var(--danger);" onclick="openRefund('<%= inv._id %>', '<%= inv.invoiceNumber %>', '<%= inv.payments[0].provider %>', '<%= inv.payments[0].transactionId %>', <%= inv.payments[0].amount %>)">Refund</button>
+              <% } %>
+              <!-- Copy pay link -->
+              <% if (inv.paymentToken && !['paid','void'].includes(inv.status)) { %>
+              <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="navigator.clipboard.writeText(window.location.origin.replace('/admin','') + '/pay/<%= inv.paymentToken %>');this.textContent='Copied!';setTimeout(()=>this.textContent='Link',1500)">Link</button>
+              <% } %>
+            </div>
+            <!-- Refund/discount history -->
+            <% if (inv.refunds?.length) { %>
+              <% for (const r of inv.refunds) { %>
+              <div style="font-size:0.65rem;color:var(--danger);margin-top:2px;">Refunded $<%= r.amount.toFixed(2) %> on <%= new Date(r.refundedAt).toLocaleDateString('en-US', {month:'short',day:'numeric'}) %></div>
+              <% } %>
+            <% } %>
+            <% if (inv.discounts?.length) { %>
+              <% for (const d of inv.discounts) { %>
+              <div style="font-size:0.65rem;color:var(--warn);margin-top:2px;">-$<%= d.amount.toFixed(2) %> discount<%= d.reason ? ': ' + d.reason : '' %></div>
+              <% } %>
+            <% } %>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<!-- Discount Modal -->
+<div id="discountModal" style="display:none;position:fixed;inset:0;background:rgba(15,27,48,0.5);z-index:500;display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--white);border-radius:6px;padding:28px;max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.15);">
+    <div style="font-family:'Cormorant Garamond',serif;font-size:1.3rem;margin-bottom:16px;">Apply Discount</div>
+    <form id="discountForm" method="POST">
+      <div style="font-size:0.82rem;color:var(--slate);margin-bottom:12px;">Invoice: <strong id="discountInvNum"></strong> &mdash; Current total: <strong id="discountCurrent"></strong></div>
+      <div class="form-field" style="margin-bottom:12px;">
+        <label>Discount Amount ($)</label>
+        <input type="number" name="amount" step="0.01" min="0.01" required style="padding:8px 12px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.9rem;width:100%;">
+      </div>
+      <div class="form-field" style="margin-bottom:16px;">
+        <label>Reason (optional)</label>
+        <input type="text" name="reason" placeholder="e.g. Early payment, loyalty" style="padding:8px 12px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.9rem;width:100%;">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeModal('discountModal')">Cancel</button>
+        <button type="submit" class="btn btn-navy btn-sm">Apply Discount</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Refund Modal -->
+<div id="refundModal" style="display:none;position:fixed;inset:0;background:rgba(15,27,48,0.5);z-index:500;display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--white);border-radius:6px;padding:28px;max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.15);">
+    <div style="font-family:'Cormorant Garamond',serif;font-size:1.3rem;margin-bottom:16px;color:var(--danger);">Process Refund</div>
+    <form id="refundForm" method="POST">
+      <input type="hidden" name="provider" id="refundProvider">
+      <input type="hidden" name="transactionId" id="refundTxnId">
+      <div style="font-size:0.82rem;color:var(--slate);margin-bottom:12px;">Invoice: <strong id="refundInvNum"></strong> &mdash; Provider: <strong id="refundProviderLabel"></strong></div>
+      <div class="form-field" style="margin-bottom:12px;">
+        <label>Refund Amount ($) <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(leave blank for full refund)</span></label>
+        <input type="number" name="amount" id="refundAmountInput" step="0.01" min="0.01" placeholder="Full refund" style="padding:8px 12px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.9rem;width:100%;">
+      </div>
+      <div style="background:rgba(185,28,28,0.06);border:1px solid rgba(185,28,28,0.15);border-radius:3px;padding:10px 14px;margin-bottom:16px;font-size:0.78rem;color:var(--danger);">
+        This will issue a refund through the payment provider. This action cannot be undone.
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeModal('refundModal')">Cancel</button>
+        <button type="submit" class="btn btn-danger btn-sm">Process Refund</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openDiscount(id, num, currentAmount) {
+  document.getElementById('discountForm').action = '/admin/bookkeeping/' + id + '/discount';
+  document.getElementById('discountInvNum').textContent = num;
+  document.getElementById('discountCurrent').textContent = '$' + currentAmount.toFixed(2);
+  const modal = document.getElementById('discountModal');
+  modal.style.display = 'flex';
+}
+
+function openRefund(id, num, provider, txnId, amount) {
+  document.getElementById('refundForm').action = '/admin/bookkeeping/' + id + '/refund';
+  document.getElementById('refundProvider').value = provider;
+  document.getElementById('refundTxnId').value = txnId;
+  document.getElementById('refundInvNum').textContent = num;
+  document.getElementById('refundProviderLabel').textContent = provider.charAt(0).toUpperCase() + provider.slice(1);
+  document.getElementById('refundAmountInput').max = amount;
+  document.getElementById('refundAmountInput').placeholder = 'Full ($' + amount.toFixed(2) + ')';
+  const modal = document.getElementById('refundModal');
+  modal.style.display = 'flex';
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+// Close modals on backdrop click
+document.querySelectorAll('#discountModal, #refundModal').forEach(m => {
+  m.addEventListener('click', function(e) { if (e.target === this) closeModal(this.id); });
+});
+</script>
+<script src="/js/tours/bookkeeping.js"></script>
+
+</div></div>
+</body>
+</html>

@@ -1,0 +1,371 @@
+<%- include('../partials/head', { title: meeting.title }) %>
+<%- include('../partials/sidebar', { page: 'meetings', user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">
+    <a href="/admin/meetings" style="color:var(--slate);text-decoration:none;font-size:0.82rem;">Meetings</a>
+    <span style="color:var(--slate);margin:0 8px;">/</span>
+    <%= meeting.title %>
+  </div>
+  <div class="topbar-actions">
+    <% if (meeting.status === 'active') { %>
+      <a href="/meeting/<%= meeting.token %>" target="_blank" class="btn btn-navy">Join Meeting</a>
+    <% } %>
+    <button class="btn btn-danger" onclick="deleteMeetingRecord()">Delete Record</button>
+  </div>
+</div>
+
+<div class="content" style="max-width:1100px;">
+
+  <!-- STATUS BANNER -->
+  <div class="card" style="margin-bottom:24px;">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div class="card-title" style="margin-bottom:4px;"><%= meeting.title %></div>
+        <div style="font-size:0.78rem;color:var(--slate);">
+          Created by <%= meeting.createdBy %> on <%= new Date(meeting.createdAt).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) %>
+        </div>
+      </div>
+      <div style="margin-left:auto;">
+        <% if (meeting.status === 'active') { %>
+          <span class="badge badge-active">Active</span>
+        <% } else if (meeting.status === 'expired') { %>
+          <span class="badge badge-inactive">Expired</span>
+        <% } else { %>
+          <span class="badge badge-draft">Closed<%= meeting.closedAt ? ' — ' + new Date(meeting.closedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '' %></span>
+        <% } %>
+      </div>
+    </div>
+    <% if (meeting.status !== 'active') { %>
+      <div style="margin-top:12px;padding:12px 16px;background:rgba(107,115,128,0.08);border-radius:4px;font-size:0.82rem;color:var(--slate);">
+        This meeting has ended. The record below is preserved for reference.
+      </div>
+    <% } %>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+    <!-- MEETING LINK + QR -->
+    <div class="card">
+      <div class="card-title">Meeting Link</div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <input type="text" readonly value="<%= domain %>/meeting/<%= meeting.token %>"
+          style="flex:1;font-size:0.78rem;padding:8px 12px;background:var(--ivory);border:1px solid var(--ivory-mid);border-radius:2px;color:var(--slate);min-width:0;"
+          id="detail-link">
+        <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('detail-link').value).then(function(){this.textContent='Copied!'}.bind(this))">Copy</button>
+      </div>
+      <div style="text-align:center;padding:16px;background:var(--ivory);border-radius:4px;">
+        <img id="detail-qr" style="max-width:180px;width:100%;" alt="QR Code">
+      </div>
+    </div>
+
+    <!-- PARTICIPANTS -->
+    <div class="card">
+      <div class="card-title">Participants (<%= (meeting.participants || []).length %>)</div>
+      <% if ((meeting.participants || []).length === 0) { %>
+        <p style="color:var(--slate);font-size:0.85rem;">No one joined this meeting.</p>
+      <% } else { %>
+        <div style="max-height:200px;overflow-y:auto;">
+          <% (meeting.participants || []).forEach(function(p) { %>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--ivory-mid);font-size:0.82rem;">
+              <span><%= p.name %></span>
+              <span style="color:var(--slate);"><%= p.joinedAt ? new Date(p.joinedAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : '' %></span>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- TAGS -->
+  <div class="card" style="margin-top:24px;">
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+      Tags
+      <button class="btn btn-ghost btn-sm" id="tags-edit-btn">Edit</button>
+    </div>
+
+    <!-- Display mode -->
+    <div id="tags-display">
+      <% if (taggedClients.length === 0 && taggedUsers.length === 0) { %>
+        <p style="color:var(--slate);font-size:0.85rem;">No users or clients tagged.</p>
+      <% } %>
+      <% if (taggedClients.length) { %>
+        <div style="margin-bottom:8px;">
+          <span style="font-size:0.68rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);">Clients</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+            <% taggedClients.forEach(function(c) { %>
+              <span style="display:inline-block;padding:4px 12px;background:var(--navy);color:var(--ivory);border-radius:2px;font-size:0.78rem;">
+                <%= c.name || c.email %><%= c.company ? ' (' + c.company + ')' : '' %>
+              </span>
+            <% }) %>
+          </div>
+        </div>
+      <% } %>
+      <% if (taggedUsers.length) { %>
+        <div>
+          <span style="font-size:0.68rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);">Users</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+            <% taggedUsers.forEach(function(u) { %>
+              <span style="display:inline-block;padding:4px 12px;background:var(--navy);color:var(--ivory);border-radius:2px;font-size:0.78rem;">
+                <%= u.displayName || u.name || u.email %>
+              </span>
+            <% }) %>
+          </div>
+        </div>
+      <% } %>
+    </div>
+
+    <!-- Edit mode -->
+    <div id="tags-edit" style="display:none;">
+      <div class="form-grid" style="gap:16px;">
+        <div class="form-field">
+          <label>Tag Clients</label>
+          <select id="tag-clients-select" multiple style="min-height:80px;">
+            <% allClients.forEach(function(c) { %>
+              <option value="<%= c._id %>" <%= ((meeting.tags && meeting.tags.clients) || []).some(function(id) { return id.toString() === c._id.toString(); }) ? 'selected' : '' %>>
+                <%= c.name || c.email %><%= c.company ? ' (' + c.company + ')' : '' %>
+              </option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Tag Users</label>
+          <select id="tag-users-select" multiple style="min-height:80px;">
+            <% allUsers.forEach(function(u) { %>
+              <option value="<%= u._id %>" <%= ((meeting.tags && meeting.tags.users) || []).some(function(id) { return id.toString() === u._id.toString(); }) ? 'selected' : '' %>>
+                <%= u.displayName || u.name || u.email %>
+              </option>
+            <% }) %>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+        <button class="btn btn-ghost btn-sm" id="tags-cancel-btn">Cancel</button>
+        <button class="btn btn-gold btn-sm" id="tags-save-btn">Save Tags</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTES -->
+  <div class="card" style="margin-top:24px;">
+    <div class="card-title">Notes (<%= (meeting.notes || []).length %>)</div>
+    <% if ((meeting.notes || []).length === 0) { %>
+      <p style="color:var(--slate);font-size:0.85rem;">No notes were taken during this meeting.</p>
+    <% } else { %>
+      <div style="display:flex;flex-direction:column;gap:12px;max-height:500px;overflow-y:auto;">
+        <% (meeting.notes || []).forEach(function(n) { %>
+          <div style="background:var(--ivory);border-radius:4px;padding:12px 16px;">
+            <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--slate);margin-bottom:4px;">
+              <span style="font-weight:600;color:var(--navy);"><%= n.author || 'Unknown' %></span>
+              <span><%= n.createdAt ? new Date(n.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '' %></span>
+            </div>
+            <div style="font-size:0.88rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;"><%= n.text %></div>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- ASSETS -->
+  <div class="card" style="margin-top:24px;">
+    <div class="card-title">Assets (<%= (meeting.assets || []).length %>)</div>
+    <% if ((meeting.assets || []).length === 0) { %>
+      <p style="color:var(--slate);font-size:0.85rem;">No files were shared during this meeting.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>File</th>
+              <th>Uploaded By</th>
+              <th>Size</th>
+              <th>Date</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% (meeting.assets || []).forEach(function(a) {
+              var ext = (a.name || '').split('.').pop().toLowerCase();
+              var isImage = ['jpg','jpeg','png','gif','webp','svg','bmp','ico'].indexOf(ext) !== -1;
+              var isPdf = ext === 'pdf';
+            %>
+              <tr>
+                <td style="width:52px;padding:6px;">
+                  <% if (isImage) { %>
+                    <img src="<%= a.url %>" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;border:1px solid var(--ivory-mid);cursor:pointer;" onclick="openLightbox('<%= a.url %>', '<%= a.name %>', 'image')" loading="lazy">
+                  <% } else { %>
+                    <div style="width:44px;height:44px;border-radius:4px;background:var(--ivory);display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;color:var(--navy-mid);text-transform:uppercase;"><%= ext.slice(0, 4) %></div>
+                  <% } %>
+                </td>
+                <td><strong><%= a.name %></strong></td>
+                <td><%= a.uploadedBy || 'Unknown' %></td>
+                <td style="white-space:nowrap;">
+                  <% if (a.size) { %>
+                    <% if (a.size < 1024) { %><%= a.size %> B
+                    <% } else if (a.size < 1024*1024) { %><%= (a.size/1024).toFixed(1) %> KB
+                    <% } else { %><%= (a.size/(1024*1024)).toFixed(1) %> MB<% } %>
+                  <% } %>
+                </td>
+                <td style="white-space:nowrap;"><%= a.createdAt ? new Date(a.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '' %></td>
+                <td>
+                  <div style="display:flex;gap:4px;">
+                    <% if (isImage) { %>
+                      <button class="btn btn-navy btn-sm" onclick="openLightbox('<%= a.url %>', '<%= a.name %>', 'image')">View</button>
+                    <% } else if (isPdf) { %>
+                      <button class="btn btn-navy btn-sm" onclick="openLightbox('<%= a.url %>', '<%= a.name %>', 'pdf')">View</button>
+                    <% } else { %>
+                      <a href="<%= a.url %>" target="_blank" rel="noopener" class="btn btn-navy btn-sm">View</a>
+                    <% } %>
+                    <a href="<%= a.url %>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" download>Download</a>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+
+</div>
+
+<style>
+  .asset-lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 600;
+    background: rgba(15,27,48,0.85);
+    backdrop-filter: blur(6px);
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .asset-lightbox.open { display: flex; }
+  .asset-lightbox-inner {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+    cursor: default;
+  }
+  .asset-lightbox-inner img {
+    max-width: 90vw;
+    max-height: 85vh;
+    border-radius: 4px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+  }
+  .asset-lightbox-inner iframe {
+    width: 80vw;
+    height: 80vh;
+    border: none;
+    border-radius: 4px;
+    background: var(--white);
+  }
+  .asset-lightbox-close {
+    position: absolute;
+    top: -36px;
+    right: 0;
+    background: none;
+    border: none;
+    color: rgba(245,243,239,0.7);
+    font-size: 1.6rem;
+    cursor: pointer;
+  }
+  .asset-lightbox-close:hover { color: var(--white); }
+  .asset-lightbox-name {
+    position: absolute;
+    bottom: -32px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: rgba(245,243,239,0.6);
+    font-size: 0.82rem;
+  }
+</style>
+
+<!-- Asset Lightbox -->
+<div class="asset-lightbox" id="assetLightbox" onclick="if(event.target===this)closeLightbox()">
+  <div class="asset-lightbox-inner" id="lightboxInner"></div>
+</div>
+
+<script>
+// Lightbox
+function openLightbox(url, name, type) {
+  var lb = document.getElementById('assetLightbox');
+  var inner = document.getElementById('lightboxInner');
+  if (type === 'image') {
+    inner.innerHTML = '<button class="asset-lightbox-close" onclick="closeLightbox()">&times;</button>'
+      + '<img src="' + url + '" alt="' + name + '">'
+      + '<div class="asset-lightbox-name">' + name + '</div>';
+  } else if (type === 'pdf') {
+    inner.innerHTML = '<button class="asset-lightbox-close" onclick="closeLightbox()">&times;</button>'
+      + '<iframe src="' + url + '"></iframe>'
+      + '<div class="asset-lightbox-name">' + name + '</div>';
+  }
+  lb.classList.add('open');
+}
+function closeLightbox() {
+  var lb = document.getElementById('assetLightbox');
+  lb.classList.remove('open');
+  document.getElementById('lightboxInner').innerHTML = '';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeLightbox();
+});
+
+// Delete record
+function deleteMeetingRecord() {
+  if (!confirm('Permanently delete this meeting record? All notes, assets, and participant data will be lost. This cannot be undone.')) return;
+  fetch('/admin/meetings/<%= meeting._id %>/destroy', { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) window.location.href = '/admin/meetings';
+      else alert(data.error || 'Error deleting meeting');
+    })
+    .catch(function() { alert('Error deleting meeting'); });
+}
+
+// QR code
+fetch('/meeting/<%= meeting.token %>/qr')
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    document.getElementById('detail-qr').src = data.qr;
+  })
+  .catch(function() {});
+
+// Tags edit toggle
+var tagsDisplay = document.getElementById('tags-display');
+var tagsEdit = document.getElementById('tags-edit');
+document.getElementById('tags-edit-btn').addEventListener('click', function() {
+  tagsDisplay.style.display = 'none';
+  tagsEdit.style.display = 'block';
+});
+document.getElementById('tags-cancel-btn').addEventListener('click', function() {
+  tagsEdit.style.display = 'none';
+  tagsDisplay.style.display = 'block';
+});
+document.getElementById('tags-save-btn').addEventListener('click', function() {
+  var clientSel = document.getElementById('tag-clients-select');
+  var userSel = document.getElementById('tag-users-select');
+  var clientIds = Array.from(clientSel.selectedOptions).map(function(o) { return o.value; });
+  var userIds = Array.from(userSel.selectedOptions).map(function(o) { return o.value; });
+
+  fetch('/admin/meetings/<%= meeting._id %>/tags', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tagClients: clientIds.join(','), tagUsers: userIds.join(',') })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) location.reload();
+      else alert('Failed to save tags');
+    })
+    .catch(function() { alert('Failed to save tags'); });
+});
+</script>
+
+</div><!-- .main -->
+</div><!-- .layout -->
+</body>
+</html>

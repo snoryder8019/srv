@@ -794,6 +794,8 @@ async function hubLoadSettingsTab(agentId) {
     const allTools = mtd.success ? mtd.tools : [];
     const enabledTools = new Set(mcd.success ? (mcd.mcpConfig?.enabledTools || []) : []);
     const bgEnabledTools = new Set(mcd.success ? (mcd.mcpConfig?.backgroundEnabledTools || []) : []);
+    const emCfg = a.emailConfig || {};
+    const tgCfg = a.telegramConfig || {};
 
     el.innerHTML = `
       <div class="hub-settings-form">
@@ -999,7 +1001,8 @@ async function hubLoadSettingsTab(agentId) {
           <div class="hub-mcp-legend">
             <span class="hub-mcp-col-label">Chat</span>
             <span class="hub-mcp-col-label">BG</span>
-            <span></span>
+            <span class="hub-mcp-col-label">Tool</span>
+            <span class="hub-mcp-col-label" style="text-align:left">Description</span>
           </div>
           ${(() => {
             const cats = {};
@@ -1022,6 +1025,78 @@ async function hubLoadSettingsTab(agentId) {
               </div>
             `).join('');
           })()}
+        </div>
+
+        <!-- ── Email Config ──────────────────────────────────────── -->
+        <div class="hub-settings-group">
+          <div class="hub-settings-group-header">
+            <span class="hub-settings-group-title">Email Permissions</span>
+            <button type="button" class="hub-btn-sm hub-btn-primary" onclick="hubSaveEmailConfig('${agentId}')">Save</button>
+          </div>
+          <div class="hub-settings-row">
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Enabled</label>
+              <label class="hub-toggle"><input type="checkbox" id="hubEmEnabled" ${emCfg.enabled ? 'checked' : ''}><span class="hub-toggle-slider"></span></label>
+            </div>
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Rate Limit (minutes)</label>
+              <input type="number" id="hubEmRateLimit" value="${emCfg.rateLimitMinutes ?? 60}" min="1" max="1440" class="hub-input">
+            </div>
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Daily Limit</label>
+              <input type="number" id="hubEmDailyLimit" value="${emCfg.dailyLimit ?? 10}" min="1" max="100" class="hub-input">
+            </div>
+          </div>
+          <div class="hub-settings-row">
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Notify (send to owner)</label>
+              <label class="hub-toggle"><input type="checkbox" id="hubEmNotify" ${(emCfg.allowedTypes || []).includes('notify') ? 'checked' : ''}><span class="hub-toggle-slider"></span></label>
+            </div>
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Client Outreach</label>
+              <label class="hub-toggle"><input type="checkbox" id="hubEmClient" ${(emCfg.allowedTypes || []).includes('client-outreach') ? 'checked' : ''}><span class="hub-toggle-slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Telegram Config ───────────────────────────────────── -->
+        <div class="hub-settings-group">
+          <div class="hub-settings-group-header">
+            <span class="hub-settings-group-title">Telegram Permissions</span>
+            <button type="button" class="hub-btn-sm hub-btn-primary" onclick="hubSaveTelegramConfig('${agentId}')">Save</button>
+          </div>
+          <div class="hub-settings-row">
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Enabled</label>
+              <label class="hub-toggle"><input type="checkbox" id="hubTgEnabled" ${tgCfg.enabled ? 'checked' : ''}><span class="hub-toggle-slider"></span></label>
+            </div>
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Rate Limit (minutes)</label>
+              <input type="number" id="hubTgRateLimit" value="${tgCfg.rateLimitMinutes ?? 60}" min="1" max="1440" class="hub-input">
+            </div>
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Daily Limit</label>
+              <input type="number" id="hubTgDailyLimit" value="${tgCfg.dailyLimit ?? 20}" min="1" max="200" class="hub-input">
+            </div>
+          </div>
+          <div class="hub-settings-row">
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Notify (send to owner)</label>
+              <label class="hub-toggle"><input type="checkbox" id="hubTgNotify" ${(tgCfg.allowedActions || []).includes('notify') ? 'checked' : ''}><span class="hub-toggle-slider"></span></label>
+            </div>
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Client (single chat)</label>
+              <label class="hub-toggle"><input type="checkbox" id="hubTgClient" ${(tgCfg.allowedActions || []).includes('client') ? 'checked' : ''}><span class="hub-toggle-slider"></span></label>
+            </div>
+            <div class="hub-settings-field">
+              <label class="hub-mem-label">Broadcast (all chats)</label>
+              <label class="hub-toggle"><input type="checkbox" id="hubTgBroadcast" ${(tgCfg.allowedActions || []).includes('broadcast') ? 'checked' : ''}><span class="hub-toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="hub-settings-field">
+            <label class="hub-mem-label">Allowed Chat IDs <span style="color:#555;font-size:0.75rem">(comma-separated)</span></label>
+            <input type="text" id="hubTgChatIds" class="hub-input" value="${hubEsc((tgCfg.allowedChatIds || []).join(', '))}" placeholder="123456789, 987654321">
+          </div>
         </div>
 
       </div>`;
@@ -1116,6 +1191,45 @@ async function hubSaveMcpTools(agentId) {
   const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
   if (d1.success && d2.success) hubShowToast('MCP tools saved', 'success');
   else hubShowToast('Save failed: ' + (d1.error || d2.error || ''), 'error');
+}
+
+async function hubSaveEmailConfig(agentId) {
+  const allowedTypes = [];
+  if (document.getElementById('hubEmNotify')?.checked) allowedTypes.push('notify');
+  if (document.getElementById('hubEmClient')?.checked) allowedTypes.push('client-outreach');
+  const payload = {
+    enabled: document.getElementById('hubEmEnabled')?.checked,
+    allowedTypes,
+    rateLimitMinutes: parseInt(document.getElementById('hubEmRateLimit')?.value) || 60,
+    dailyLimit: parseInt(document.getElementById('hubEmDailyLimit')?.value) || 10
+  };
+  const res = await fetch(`/agents/api/agents/${agentId}/email-config`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (data.success) hubShowToast('Email config saved', 'success');
+  else hubShowToast('Save failed: ' + (data.error || ''), 'error');
+}
+
+async function hubSaveTelegramConfig(agentId) {
+  const splitTrim = v => v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const allowedActions = [];
+  if (document.getElementById('hubTgNotify')?.checked) allowedActions.push('notify');
+  if (document.getElementById('hubTgClient')?.checked) allowedActions.push('client');
+  if (document.getElementById('hubTgBroadcast')?.checked) allowedActions.push('broadcast');
+  const payload = {
+    enabled: document.getElementById('hubTgEnabled')?.checked,
+    allowedActions,
+    allowedChatIds: splitTrim(document.getElementById('hubTgChatIds')?.value),
+    rateLimitMinutes: parseInt(document.getElementById('hubTgRateLimit')?.value) || 60,
+    dailyLimit: parseInt(document.getElementById('hubTgDailyLimit')?.value) || 20
+  };
+  const res = await fetch(`/agents/api/agents/${agentId}/telegram-config`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (data.success) hubShowToast('Telegram config saved', 'success');
+  else hubShowToast('Save failed: ' + (data.error || ''), 'error');
 }
 
 // ── LLM Tuning Presets ─────────────────────────────────────────────────────

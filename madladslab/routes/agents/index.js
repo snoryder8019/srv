@@ -13,6 +13,8 @@ import ttsRouter from "./tts.js";
 
 const router = express.Router();
 
+// Reports must come before agents — agents has /api/agents/:id which would catch /api/agents/reports
+router.use(reportsRouter);
 router.use(agentsRouter);
 router.use(chatRouter);
 router.use(tuningRouter);
@@ -21,7 +23,6 @@ router.use(actionsRouter);
 router.use(mcpRouter);
 router.use(backgroundRouter);
 router.use(forwardChatRouter);
-router.use(reportsRouter);
 router.use(ttsRouter);
 
 export default router;

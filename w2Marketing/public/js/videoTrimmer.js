@@ -9,6 +9,8 @@
   let dragging = null; // 'start' | 'end'
   let dragStartX = 0;
   let dragStartVal = 0;
+  let loopEnabled = false;
+  let isLibraryAsset = false; // true when loaded from asset library URL
 
   const dropZone = document.getElementById('dropZone');
   const videoInput = document.getElementById('videoInput');
@@ -40,7 +42,6 @@
 
   /* ── DROP ZONE ── */
   dropZone.addEventListener('click', (e) => {
-    // Guard: synthetic click on the hidden input bubbles back here — break the loop
     if (e.target === videoInput) return;
     videoInput.click();
   });
@@ -55,22 +56,51 @@
     if (f && f.type.startsWith('video/')) loadVideo(f);
   });
 
+  /* ── PICK FROM LIBRARY ── */
+  const pickBtn = document.getElementById('pickFromLibrary');
+  if (pickBtn && typeof openAssetPicker === 'function') {
+    pickBtn.addEventListener('click', () => {
+      openAssetPicker({
+        type: 'video',
+        onSelect: (asset) => {
+          if (asset.fileType !== 'video') { alert('Please select a video asset.'); return; }
+          loadVideoFromUrl(asset.publicUrl, asset.title || asset.originalName, asset.size || 0);
+        }
+      });
+    });
+  }
+
+  function loadVideoFromUrl(url, name, size) {
+    isLibraryAsset = true;
+    videoFile = null; // no local file — we'll fetch it for trim
+    viName.textContent = name;
+    viSize.textContent = formatBytes(size);
+
+    video.removeEventListener('loadedmetadata', onMeta);
+    video.removeEventListener('error', onVideoError);
+    video.addEventListener('loadedmetadata', onMeta, { once: true });
+    video.addEventListener('error', onVideoError, { once: true });
+    video.crossOrigin = 'anonymous';
+    video.src = url;
+    video.load();
+  }
+
   /* ── LOAD VIDEO ── */
   function loadVideo(file) {
+    isLibraryAsset = false;
     videoFile = file;
     const url = URL.createObjectURL(file);
 
     viName.textContent = file.name;
     viSize.textContent = formatBytes(file.size);
 
-    // Remove any previous listener then attach fresh
     video.removeEventListener('loadedmetadata', onMeta);
     video.removeEventListener('error', onVideoError);
     video.addEventListener('loadedmetadata', onMeta, { once: true });
     video.addEventListener('error', onVideoError, { once: true });
 
     video.src = url;
-    video.load(); // force metadata fetch
+    video.load();
   }
 
   function onMeta() {
@@ -82,7 +112,6 @@
     endInput.max = videoDuration;
     syncInputs();
     updateTimeline();
-    // Show editor, hide drop zone card
     dropZone.closest('.card').style.display = 'none';
     editor.style.display = '';
     trimResult.style.display = 'none';
@@ -174,10 +203,54 @@
     if (!videoDuration) return;
     const pct = (video.currentTime / videoDuration) * 100;
     playhead.style.left = pct + '%';
+
+    // Loop: if playing past end, wrap to start
+    if (loopEnabled && video.currentTime >= endTime) {
+      video.currentTime = startTime;
+    }
   });
 
+  /* ── PLAY SELECTION ── */
+  const playSelBtn = document.getElementById('playSelectionBtn');
+  if (playSelBtn) {
+    playSelBtn.addEventListener('click', () => {
+      video.currentTime = startTime;
+      video.play();
+      // Stop at end (non-loop mode)
+      if (!loopEnabled) {
+        const check = () => {
+          if (video.currentTime >= endTime) {
+            video.pause();
+            video.removeEventListener('timeupdate', check);
+          }
+        };
+        video.addEventListener('timeupdate', check);
+      }
+    });
+  }
+
+  /* ── LOOP TOGGLE ── */
+  const loopBtn = document.getElementById('loopToggleBtn');
+  if (loopBtn) {
+    loopBtn.addEventListener('click', () => {
+      loopEnabled = !loopEnabled;
+      loopBtn.textContent = loopEnabled ? 'Loop On' : 'Loop Off';
+      loopBtn.style.background = loopEnabled ? 'var(--gold)' : '';
+      loopBtn.style.color = loopEnabled ? 'var(--dark)' : '';
+      loopBtn.style.borderColor = loopEnabled ? 'var(--gold)' : '';
+    });
+  }
+
+  /* ── PLAYBACK SPEED ── */
+  const speedSel = document.getElementById('playbackSpeed');
+  if (speedSel) {
+    speedSel.addEventListener('change', () => {
+      video.playbackRate = parseFloat(speedSel.value) || 1;
+    });
+  }
+
   /* ── PRESETS ── */
-  document.querySelectorAll('.preset-btn').forEach(btn => {
+  document.querySelectorAll('.preset-btn[data-preset]').forEach(btn => {
     btn.addEventListener('click', () => {
       const p = btn.dataset.preset;
       if (!videoDuration) return;
@@ -189,6 +262,12 @@
         startTime = Math.max(0, mid - 30);
         endTime = Math.min(videoDuration, mid + 30);
       } else if (p === 'full') { startTime = 0; endTime = videoDuration; }
+      // Social presets
+      else if (p === 'reel15') { startTime = 0; endTime = Math.min(15, videoDuration); }
+      else if (p === 'reel30') { startTime = 0; endTime = Math.min(30, videoDuration); }
+      else if (p === 'reel60') { startTime = 0; endTime = Math.min(60, videoDuration); }
+      else if (p === 'story') { startTime = 0; endTime = Math.min(15, videoDuration); }
+      else if (p === 'tiktok') { startTime = 0; endTime = Math.min(60, videoDuration); }
       syncInputs();
       updateTimeline();
       video.currentTime = startTime;
@@ -210,7 +289,9 @@
   trimBtn.addEventListener('click', trimAndUpload);
 
   async function trimAndUpload() {
-    if (!videoFile || !videoDuration) return;
+    if (!videoDuration) return;
+    // Need either a local file or a library URL
+    if (!videoFile && !isLibraryAsset) return;
 
     const folder = document.getElementById('trimFolder').value || 'general';
     const customFilename = document.getElementById('trimFilename').value.trim();
@@ -218,12 +299,23 @@
     trimResult.style.display = 'none';
     trimProgress.style.display = '';
     trimPbInner.style.width = '10%';
-    trimPbLabel.textContent = 'Recording trimmed clip...';
+    trimPbLabel.textContent = isLibraryAsset ? 'Fetching video...' : 'Recording trimmed clip...';
     trimBtn.disabled = true;
 
     try {
-      const blob = await recordSegment(videoFile, startTime, endTime, (pct) => {
-        trimPbInner.style.width = (10 + pct * 60) + '%';
+      // If from library, fetch the blob first
+      let sourceFile = videoFile;
+      if (isLibraryAsset && !videoFile) {
+        trimPbInner.style.width = '5%';
+        const resp = await fetch(video.src);
+        const blob = await resp.blob();
+        sourceFile = new File([blob], viName.textContent || 'library-video.mp4', { type: blob.type || 'video/mp4' });
+        trimPbInner.style.width = '15%';
+        trimPbLabel.textContent = 'Recording trimmed clip...';
+      }
+
+      const blob = await recordSegment(sourceFile, startTime, endTime, (pct) => {
+        trimPbInner.style.width = (15 + pct * 55) + '%';
         trimPbLabel.textContent = `Encoding... ${Math.round(pct * 100)}%`;
       });
 
@@ -231,7 +323,8 @@
       trimPbLabel.textContent = 'Uploading...';
 
       const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
-      const baseName = customFilename || videoFile.name.replace(/\.[^.]+$/, '') + `-trim-${Math.round(startTime)}s-${Math.round(endTime)}s`;
+      const srcName = videoFile ? videoFile.name : (viName.textContent || 'clip');
+      const baseName = customFilename || srcName.replace(/\.[^.]+$/, '') + `-trim-${Math.round(startTime)}s-${Math.round(endTime)}s`;
       const filename = baseName.endsWith(`.${ext}`) ? baseName : `${baseName}.${ext}`;
 
       const fd = new FormData();
@@ -297,7 +390,7 @@
         };
         recorder.onerror = reject;
 
-        recorder.start(250); // collect in 250ms chunks
+        recorder.start(250);
         sourceVideo.play();
 
         const duration = end - start;

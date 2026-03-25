@@ -30,6 +30,12 @@ passport.use(
             isAdmin: false,
             isCandaceAdmin: false,
             isW2Admin: false,
+            tutorials: {
+              seen: {},
+              dismissed: {},
+              autoPlay: true,
+              lastReset: null,
+            },
           });
           user = await users.findOne({ _id: result.insertedId });
         }

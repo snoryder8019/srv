@@ -1,5 +1,8 @@
 import express from 'express';
+import { ObjectId } from 'mongodb';
 import { getDb } from '../../plugins/mongo.js';
+import { brandUpload } from '../../middleware/upload.js';
+import { callLLM, tryParseAgentResponse, webSearch } from '../../plugins/agentMcp.js';
 
 const router = express.Router();
 
@@ -24,17 +27,30 @@ export const DESIGN_DEFAULTS = {
   agent_greeting:      'Hi! I can write blog posts, update site copy, or build new sections. What would you like to create?',
   portfolio_layout:    'grid',
   blog_layout:         'grid',
+  nav_logo_display:    'text',
 };
+
+// ── Theme-saveable design keys (excludes agent settings / visibility) ──
+const THEME_KEYS = [
+  'color_primary', 'color_primary_deep', 'color_primary_mid',
+  'color_accent', 'color_accent_light', 'color_bg',
+  'font_heading', 'font_body',
+  'portfolio_layout', 'blog_layout', 'nav_logo_display',
+];
 
 router.get('/', async (req, res) => {
   try {
     const db = getDb();
-    const rawDesign = await db.collection('w2_design').find({}).toArray();
+    const [rawDesign, brandImages, themes] = await Promise.all([
+      db.collection('w2_design').find({}).toArray(),
+      db.collection('w2_brand_images').find({}).sort({ slot: 1, uploadedAt: -1 }).toArray(),
+      db.collection('w2_themes').find({}).sort({ createdAt: -1 }).toArray(),
+    ]);
     const design = { ...DESIGN_DEFAULTS };
     for (const item of rawDesign) design[item.key] = item.value;
     res.render('admin/design/index', {
       user: req.adminUser, page: 'design', title: 'Design & Settings',
-      design, saved: req.query.saved === '1', error: req.query.error === '1',
+      design, brandImages, themes, saved: req.query.saved === '1', error: req.query.error === '1',
     });
   } catch (err) {
     console.error(err);
@@ -60,6 +76,256 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.redirect('/admin/design?error=1');
+  }
+});
+
+// ── Upload brand image ──
+router.post('/images', brandUpload.single('image'), async (req, res) => {
+  try {
+    const db = getDb();
+    const slot = req.body.slot; // logo_primary, logo_white, logo_icon, banner, support
+    const label = req.body.label || slot;
+    const url = req.file?.location || req.file?.path;
+    if (!url) return res.redirect('/admin/design?error=1');
+
+    await db.collection('w2_brand_images').updateOne(
+      { slot },
+      { $set: { slot, label, url, originalName: req.file.originalname, uploadedAt: new Date() } },
+      { upsert: true }
+    );
+
+    console.log(`[Design] Brand image uploaded: ${slot} → ${url}`);
+    res.redirect('/admin/design?saved=1#brand-images');
+  } catch (err) {
+    console.error('Brand image upload error:', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+// ── Upload extra support image (multiple allowed) ──
+router.post('/images/support', brandUpload.single('image'), async (req, res) => {
+  try {
+    const db = getDb();
+    const label = req.body.label || 'Untitled';
+    const url = req.file?.location || req.file?.path;
+    if (!url) return res.redirect('/admin/design?error=1');
+
+    await db.collection('w2_brand_images').insertOne({
+      slot: 'support',
+      label,
+      url,
+      originalName: req.file.originalname,
+      uploadedAt: new Date(),
+    });
+
+    console.log(`[Design] Support image uploaded: ${label} → ${url}`);
+    res.redirect('/admin/design?saved=1#brand-images');
+  } catch (err) {
+    console.error('Support image upload error:', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+// ── Delete brand image ──
+router.post('/images/:id/delete', async (req, res) => {
+  try {
+    const { ObjectId } = await import('mongodb');
+    const db = getDb();
+    await db.collection('w2_brand_images').deleteOne({ _id: new ObjectId(req.params.id) });
+    res.redirect('/admin/design?saved=1#brand-images');
+  } catch (err) {
+    console.error('Brand image delete error:', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+// ── API: list brand images (for campaign builder) ──
+router.get('/images/api', async (req, res) => {
+  const db = getDb();
+  const images = await db.collection('w2_brand_images').find({}).sort({ slot: 1, uploadedAt: -1 }).toArray();
+  res.json({ images });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// THEMES — save / apply / delete
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Save current settings as a named theme
+router.post('/themes', async (req, res) => {
+  try {
+    const db = getDb();
+    const name = (req.body.theme_name || '').trim();
+    if (!name) return res.redirect('/admin/design?error=1');
+
+    // Read current design values
+    const rawDesign = await db.collection('w2_design').find({}).toArray();
+    const current = { ...DESIGN_DEFAULTS };
+    for (const item of rawDesign) current[item.key] = item.value;
+
+    // Extract only theme-relevant keys
+    const settings = {};
+    for (const k of THEME_KEYS) settings[k] = current[k];
+
+    await db.collection('w2_themes').insertOne({
+      name,
+      settings,
+      createdAt: new Date(),
+    });
+
+    console.log(`[Design] Theme saved: "${name}"`);
+    res.redirect('/admin/design?saved=1#themes');
+  } catch (err) {
+    console.error('Theme save error:', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+// Apply a saved theme
+router.post('/themes/:id/apply', async (req, res) => {
+  try {
+    const db = getDb();
+    const theme = await db.collection('w2_themes').findOne({ _id: new ObjectId(req.params.id) });
+    if (!theme) return res.redirect('/admin/design?error=1');
+
+    const ops = Object.entries(theme.settings).map(([key, value]) =>
+      db.collection('w2_design').updateOne(
+        { key },
+        { $set: { key, value, updatedAt: new Date() } },
+        { upsert: true }
+      )
+    );
+    await Promise.all(ops);
+
+    console.log(`[Design] Theme applied: "${theme.name}"`);
+    res.redirect('/admin/design?saved=1');
+  } catch (err) {
+    console.error('Theme apply error:', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+// Delete a saved theme
+router.post('/themes/:id/delete', async (req, res) => {
+  try {
+    const db = getDb();
+    await db.collection('w2_themes').deleteOne({ _id: new ObjectId(req.params.id) });
+    res.redirect('/admin/design?saved=1#themes');
+  } catch (err) {
+    console.error('Theme delete error:', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+// API: get theme settings (for live preview)
+router.get('/themes/:id/json', async (req, res) => {
+  try {
+    const db = getDb();
+    const theme = await db.collection('w2_themes').findOne({ _id: new ObjectId(req.params.id) });
+    if (!theme) return res.status(404).json({ error: 'Theme not found' });
+    res.json(theme);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: current design as JSON (for preview iframe override)
+router.get('/api/current', async (req, res) => {
+  try {
+    const db = getDb();
+    const rawDesign = await db.collection('w2_design').find({}).toArray();
+    const design = { ...DESIGN_DEFAULTS };
+    for (const item of rawDesign) design[item.key] = item.value;
+    res.json(design);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DESIGN AGENT — specialist agent for design & settings
+// ═══════════════════════════════════════════════════════════════════════════════
+
+router.post('/agent', async (req, res) => {
+  try {
+    const { messages, currentDesign } = req.body;
+    if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages required' });
+
+    const designCtx = currentDesign
+      ? `\n\nCurrent design settings:\n${Object.entries(currentDesign).map(([k, v]) => `  ${k}: "${v}"`).join('\n')}`
+      : '';
+
+    const systemPrompt = `You are a design and branding assistant for W2 Marketing — a digital marketing agency based in Greeley, Colorado.
+
+Your job is to help configure the site's visual design: colors, fonts, layouts, and section visibility.
+
+When the user asks you to change design settings, respond with valid JSON in this exact format:
+{
+  "message": "Brief explanation of your design changes.",
+  "fill": {
+    "field_key": "new value",
+    ...
+  }
+}
+
+Only include fields in "fill" that you are actually changing. If just having a conversation, respond with:
+{
+  "message": "Your conversational response here.",
+  "fill": {}
+}
+
+Available field keys and their types:
+COLOR FIELDS (hex values):
+- color_primary: Main brand color — navs, headings, buttons (current default: #1C2B4A navy)
+- color_primary_deep: Darkest shade — hero bg, footer (default: #0F1B30)
+- color_primary_mid: Mid-tone — borders, hover states (default: #2E4270)
+- color_accent: Gold accent — highlights, badges, CTA (default: #C9A848)
+- color_accent_light: Light accent — text on dark backgrounds (default: #E8D08A)
+- color_bg: Section backgrounds — ivory/cream tones (default: #F5F3EF)
+
+FONT FIELDS:
+- font_heading: One of: Cormorant Garamond, Playfair Display, Lora, Merriweather, Libre Baskerville
+- font_body: One of: Jost, Inter, Poppins, Raleway, Nunito, DM Sans
+
+LAYOUT FIELDS:
+- portfolio_layout: grid, masonry, carousel, or list
+- blog_layout: grid, list, masonry, or featured
+- nav_logo_display: text, image, or both
+
+VISIBILITY FIELDS (string "true" or "false"):
+- vis_hero, vis_services, vis_portfolio, vis_about, vis_process, vis_reviews, vis_contact, vis_blog
+
+AGENT SETTINGS:
+- agent_name: Name of the AI assistant
+- agent_greeting: Greeting message shown in the chat
+
+DESIGN TIPS:
+- Keep color palettes cohesive. Primary/deep/mid should be shades of the same hue.
+- Accent colors should contrast with primary for CTAs and highlights.
+- Background color should be light and neutral for readability.
+- Serif fonts (Cormorant Garamond, Playfair Display) work well for headings; sans-serif (Jost, Inter) for body.
+- Consider accessibility — ensure sufficient contrast between text and background colors.
+${designCtx}`;
+
+    const lastMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+
+    // Optional web search for design inspiration
+    let researchCtx = '';
+    if (/inspir|trend|modern|style|example|like|similar/i.test(lastMsg)) {
+      try {
+        const searchResult = await webSearch(`${lastMsg} website color palette design 2025`);
+        if (searchResult && !searchResult.startsWith('Search'))
+          researchCtx = `\n\n--- DESIGN RESEARCH ---\n${searchResult}\n--- END RESEARCH ---`;
+      } catch { /* non-fatal */ }
+    }
+
+    const fullPrompt = systemPrompt + researchCtx;
+    const raw = await callLLM(messages, fullPrompt);
+    const parsed = tryParseAgentResponse(raw);
+
+    res.json(parsed);
+  } catch (err) {
+    console.error('Design agent error:', err);
+    res.status(500).json({ error: 'Agent error: ' + err.message });
   }
 });
 

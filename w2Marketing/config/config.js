@@ -19,4 +19,12 @@ export const config = {
   GOOGLE_PLACES_KEY: process.env.GOOGLE_PLACES_KEY || process.env.GGLAPI,
   GOOGLE_PLACE_ID: process.env.GOOGLE_PLACE_ID,
   SEARCH_API_KEY: process.env.SEARCH_API_KEY,
+  ZOHO_USER: process.env.ZOHO_USER,
+  ZOHO_PASS: process.env.ZOHO_PASS,
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+  STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY,
+  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+  PAYPAL_CLIENT_ID: process.env.PAYPAL_CID,
+  PAYPAL_CLIENT_SECRET: process.env.PAYPAL_SEC,
+  PAYPAL_MODE: process.env.PAYPAL_MODE || 'sandbox',
 };

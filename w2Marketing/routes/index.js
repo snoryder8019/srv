@@ -39,6 +39,15 @@ async function getDesign(db) {
   return design;
 }
 
+async function getBrandLogos(db) {
+  const rows = await db.collection('w2_brand_images').find({
+    slot: { $in: ['logo_primary', 'logo_white', 'logo_icon'] }
+  }).toArray();
+  const logos = {};
+  for (const r of rows) logos[r.slot] = r.url;
+  return logos;
+}
+
 function buildVisibility(design) {
   return {
     hero:      design.vis_hero      !== 'false',
@@ -51,6 +60,105 @@ function buildVisibility(design) {
     blog:      design.vis_blog      === 'true',
   };
 }
+
+// Public asset share
+router.get('/assets/share/:token', async (req, res) => {
+  try {
+    const db = getDb();
+    const asset = await db.collection('w2_assets').findOne({ shareToken: req.params.token });
+    if (!asset) return res.status(404).send('Asset not found or link has been revoked.');
+    res.redirect(asset.publicUrl);
+  } catch (err) {
+    res.status(500).send('Error loading asset.');
+  }
+});
+
+// ── Client Onboarding (public) ─────────────────────────────────────────────
+router.get('/onboard', async (_req, res) => {
+  try {
+    const db = getDb();
+    const design = await getDesign(db);
+    res.render('onboard', { design, error: null, formData: {} });
+  } catch {
+    res.render('onboard', { design: {}, error: null, formData: {} });
+  }
+});
+
+router.post('/onboard', async (req, res) => {
+  const { name, email, company, phone, website, address,
+          businessType, budget, timeline, socialPlatforms, goals,
+          currentWebsite, brandNotes, notes } = req.body;
+
+  if (!name || !email) {
+    const db = getDb();
+    const design = await getDesign(db);
+    return res.render('onboard', { design, error: 'Name and email are required.', formData: req.body });
+  }
+
+  try {
+    const db = getDb();
+    const now = new Date();
+
+    // Check if client email already exists — update instead of duplicate
+    const existing = await db.collection('w2_clients').findOne({ email: email.toLowerCase().trim() });
+
+    const clientData = {
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      company: company?.trim() || '',
+      phone: phone?.trim() || '',
+      website: website?.trim() || '',
+      address: address?.trim() || '',
+      status: 'prospect',
+      notes: notes?.trim() || '',
+      onboarding: {
+        complete: false,
+        step: 1,
+        data: {
+          businessType: businessType?.trim() || '',
+          goals: goals?.trim() || '',
+          budget: budget || '',
+          timeline: timeline || '',
+          socialPlatforms: socialPlatforms?.trim() || '',
+          currentWebsite: currentWebsite?.trim() || '',
+          brandNotes: brandNotes?.trim() || '',
+        },
+        updatedAt: now,
+        source: 'public-form',
+      },
+      updatedAt: now,
+    };
+
+    let clientId;
+    if (existing) {
+      await db.collection('w2_clients').updateOne({ _id: existing._id }, { $set: clientData });
+      clientId = existing._id.toString();
+    } else {
+      clientData.createdAt = now;
+      clientData.brandColors = [];
+      const result = await db.collection('w2_clients').insertOne(clientData);
+      clientId = result.insertedId.toString();
+    }
+
+    const design = await getDesign(db);
+    res.render('onboard-success', { design, clientName: name.trim(), clientId });
+  } catch (err) {
+    console.error('[onboard] error:', err);
+    const db = getDb();
+    const design = await getDesign(db);
+    res.render('onboard', { design, error: 'Something went wrong. Please try again.', formData: req.body });
+  }
+});
+
+router.get('/onboard/account-linked', async (req, res) => {
+  try {
+    const db = getDb();
+    const design = await getDesign(db);
+    res.render('onboard-linked', { design });
+  } catch {
+    res.render('onboard-linked', { design: {} });
+  }
+});
 
 // Sitemap
 router.get('/sitemap.xml', async (_req, res) => {
@@ -84,13 +192,14 @@ router.get('/sitemap.xml', async (_req, res) => {
 router.get('/', async (_req, res) => {
   try {
     const db = getDb();
-    const [rawCopy, reviews, portfolio, design, rawMedia, customSections] = await Promise.all([
+    const [rawCopy, reviews, portfolio, design, rawMedia, customSections, logos] = await Promise.all([
       db.collection('w2_copy').find({}).toArray(),
       getReviews(),
       db.collection('w2_portfolio').find({}).sort({ order: 1, createdAt: -1 }).toArray(),
       getDesign(db),
       db.collection('w2_section_media').find({}).toArray(),
       db.collection('w2_custom_sections').find({ visible: { $ne: false } }).sort({ order: 1, createdAt: 1 }).toArray(),
+      getBrandLogos(db),
     ]);
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
@@ -105,7 +214,7 @@ router.get('/', async (_req, res) => {
     res.render('index', {
       copy, reviews, portfolio, design, media,
       visibility: buildVisibility(design),
-      latestPosts, customSections,
+      latestPosts, customSections, logos,
     });
   } catch (err) {
     console.error(err);
@@ -113,7 +222,7 @@ router.get('/', async (_req, res) => {
       copy: COPY_DEFAULTS, reviews: null, portfolio: [],
       design: DESIGN_DEFAULTS, media: {},
       visibility: buildVisibility(DESIGN_DEFAULTS),
-      latestPosts: [], customSections: [],
+      latestPosts: [], customSections: [], logos: {},
     });
   }
 });
@@ -122,14 +231,15 @@ router.get('/', async (_req, res) => {
 router.get('/blog', async (_req, res) => {
   try {
     const db = getDb();
-    const [posts, design, rawCopy] = await Promise.all([
+    const [posts, design, rawCopy, logos] = await Promise.all([
       db.collection('w2_blog').find({ status: 'published' }).sort({ publishedAt: -1 }).toArray(),
       getDesign(db),
       db.collection('w2_copy').find({}).toArray(),
+      getBrandLogos(db),
     ]);
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
-    res.render('blog/index', { posts, design, copy });
+    res.render('blog/index', { posts, design, copy, logos });
   } catch (err) {
     console.error(err);
     res.status(500).send('Error loading blog');
@@ -140,15 +250,16 @@ router.get('/blog', async (_req, res) => {
 router.get('/blog/:slug', async (req, res) => {
   try {
     const db = getDb();
-    const [post, design, rawCopy] = await Promise.all([
+    const [post, design, rawCopy, logos] = await Promise.all([
       db.collection('w2_blog').findOne({ slug: req.params.slug, status: 'published' }),
       getDesign(db),
       db.collection('w2_copy').find({}).toArray(),
+      getBrandLogos(db),
     ]);
     if (!post) return res.status(404).render('404', { message: 'Post not found', design });
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
-    res.render('blog/post', { post, design, copy });
+    res.render('blog/post', { post, design, copy, logos });
   } catch (err) {
     console.error(err);
     res.status(500).send('Error loading post');
@@ -159,9 +270,10 @@ router.get('/blog/:slug', async (req, res) => {
 router.get('/:slug', async (req, res, next) => {
   try {
     const db = getDb();
-    const [pg, design] = await Promise.all([
+    const [pg, design, logos] = await Promise.all([
       db.collection('w2_pages').findOne({ slug: req.params.slug, status: 'published' }),
       getDesign(db),
+      getBrandLogos(db),
     ]);
     if (!pg) return next();
 
@@ -178,10 +290,10 @@ router.get('/:slug', async (req, res, next) => {
         db.collection(col).find(query).sort({ publishedAt: -1, createdAt: -1 }).skip(skip).limit(perPage).toArray(),
       ]);
       const totalPages = Math.ceil(total / perPage);
-      return res.render('page', { pg, design, items, p, totalPages, perPage, col });
+      return res.render('page', { pg, design, logos, items, p, totalPages, perPage, col });
     }
 
-    res.render('page', { pg, design, items: null, p: 1, totalPages: 1, perPage: 9, col: null });
+    res.render('page', { pg, design, logos, items: null, p: 1, totalPages: 1, perPage: 9, col: null });
   } catch (err) {
     console.error(err);
     next();

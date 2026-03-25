@@ -1,0 +1,574 @@
+<%- include('../partials/head', { title: 'Meetings' }) %>
+<%- include('../partials/sidebar', { page: 'meetings', user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Meetings</div>
+  <div class="topbar-actions">
+    <button class="btn btn-gold" onclick="document.getElementById('createModal').style.display='flex'">+ New Meeting</button>
+  </div>
+</div>
+
+<style>
+  /* ── History cards ── */
+  .hist-card {
+    background: var(--white);
+    border: 1px solid var(--ivory-mid);
+    border-radius: 4px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .hist-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.12s;
+  }
+  .hist-header:hover { background: var(--ivory); }
+  .hist-arrow {
+    font-size: 0.7rem;
+    color: var(--slate);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .hist-card.open .hist-arrow { transform: rotate(90deg); }
+  .hist-title { font-weight: 600; font-size: 0.92rem; color: var(--dark); flex: 1; min-width: 0; }
+  .hist-chips {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .hist-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 2px;
+    font-size: 0.68rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .hist-chip.participants { background: rgba(28,43,74,0.08); color: var(--navy); }
+  .hist-chip.notes { background: rgba(201,168,72,0.12); color: #8B7320; }
+  .hist-chip.assets { background: rgba(21,128,61,0.1); color: var(--success); }
+  .hist-date { font-size: 0.75rem; color: var(--slate); white-space: nowrap; }
+  .hist-body {
+    display: none;
+    border-top: 1px solid var(--ivory-mid);
+    padding: 20px;
+  }
+  .hist-card.open .hist-body { display: block; }
+
+  /* Sections inside expanded card */
+  .hist-section { margin-bottom: 20px; }
+  .hist-section:last-child { margin-bottom: 0; }
+  .hist-section-title {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--slate);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .hist-section-title .count {
+    background: var(--ivory);
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 0.65rem;
+    font-weight: 600;
+  }
+
+  /* Participant rows */
+  .participant-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--ivory);
+    font-size: 0.82rem;
+  }
+  .participant-row:last-child { border-bottom: none; }
+  .participant-name { font-weight: 500; color: var(--dark); }
+  .participant-time { color: var(--slate); font-size: 0.75rem; }
+
+  /* Note rows */
+  .hist-note {
+    background: var(--ivory);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .hist-note:last-child { margin-bottom: 0; }
+  .hist-note-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--slate);
+    margin-bottom: 3px;
+  }
+  .hist-note-meta .author { font-weight: 600; color: var(--navy); }
+  .hist-note-text {
+    font-size: 0.85rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--dark);
+  }
+
+  /* Asset rows */
+  .hist-asset {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--ivory);
+    font-size: 0.82rem;
+  }
+  .hist-asset:last-child { border-bottom: none; }
+  .hist-asset-icon {
+    width: 44px; height: 44px;
+    border-radius: 4px;
+    background: var(--ivory);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--navy-mid);
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+  .hist-asset-thumb {
+    width: 44px; height: 44px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+    cursor: pointer;
+    border: 1px solid var(--ivory-mid);
+  }
+  .hist-asset-info { flex: 1; min-width: 0; }
+  .hist-asset-name { font-weight: 500; color: var(--dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hist-asset-meta { font-size: 0.7rem; color: var(--slate); }
+  .hist-asset-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+  /* Lightbox */
+  .asset-lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 600;
+    background: rgba(15,27,48,0.85);
+    backdrop-filter: blur(6px);
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .asset-lightbox.open { display: flex; }
+  .asset-lightbox-inner {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+    cursor: default;
+  }
+  .asset-lightbox-inner img {
+    max-width: 90vw;
+    max-height: 85vh;
+    border-radius: 4px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+  }
+  .asset-lightbox-inner iframe {
+    width: 80vw;
+    height: 80vh;
+    border: none;
+    border-radius: 4px;
+    background: var(--white);
+  }
+  .asset-lightbox-close {
+    position: absolute;
+    top: -36px;
+    right: 0;
+    background: none;
+    border: none;
+    color: rgba(245,243,239,0.7);
+    font-size: 1.6rem;
+    cursor: pointer;
+  }
+  .asset-lightbox-close:hover { color: var(--white); }
+  .asset-lightbox-name {
+    position: absolute;
+    bottom: -32px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: rgba(245,243,239,0.6);
+    font-size: 0.82rem;
+  }
+
+  /* Tag pills */
+  .tag-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    background: var(--navy);
+    color: var(--ivory);
+    border-radius: 2px;
+    font-size: 0.72rem;
+    margin: 2px 3px 2px 0;
+  }
+
+  /* Empty history */
+  .hist-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--slate);
+    font-size: 0.88rem;
+  }
+
+</style>
+
+<div class="content">
+
+  <!-- ═══════════ ACTIVE MEETINGS ═══════════ -->
+  <% if (active.length) { %>
+    <div style="margin-bottom:32px;">
+      <div style="font-size:0.68rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:12px;">Active Meetings</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Invite Link</th>
+              <th>Expires</th>
+              <th>Participants</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% active.forEach(m => { %>
+              <tr>
+                <td><strong><%= m.title %></strong></td>
+                <td>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="text" readonly value="<%= domain %>/meeting/<%= m.token %>"
+                      style="flex:1;font-size:0.78rem;padding:6px 10px;background:var(--ivory);border:1px solid var(--ivory-mid);border-radius:2px;color:var(--slate);min-width:0;"
+                      id="link-<%= m._id %>">
+                    <button class="btn btn-ghost btn-sm" onclick="copyLink('<%= m._id %>')" title="Copy link">Copy</button>
+                  </div>
+                </td>
+                <td style="white-space:nowrap;"><%= new Date(m.expiresAt).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) %></td>
+                <td><%= m.useCount %><%= m.maxUses ? ' / ' + m.maxUses : '' %></td>
+                <td>
+                  <div style="display:flex;gap:6px;">
+                    <a href="/meeting/<%= m.token %>" target="_blank" class="btn btn-navy btn-sm">Join</a>
+                    <a href="/admin/meetings/<%= m._id %>" class="btn btn-ghost btn-sm">Detail</a>
+                    <button class="btn btn-danger btn-sm" onclick="closeMeeting('<%= m._id %>')">Close</button>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  <% } else if (meetings.length === 0) { %>
+    <div class="empty">
+      <div class="empty-icon">&#9685;</div>
+      <p>No meetings yet. Create one to generate an invite link for your clients.</p>
+    </div>
+  <% } %>
+
+  <!-- ═══════════ MEETING HISTORY ═══════════ -->
+  <div style="font-size:0.68rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+    Meeting History
+    <span style="background:var(--ivory-mid);border-radius:10px;padding:1px 8px;font-size:0.65rem;"><%= history.length %></span>
+  </div>
+
+  <% if (history.length === 0) { %>
+    <div class="hist-empty">No past meetings yet. Closed or expired meetings will appear here.</div>
+  <% } else { %>
+    <% history.forEach(function(m) {
+      var participants = m.participants || [];
+      var notes = m.notes || [];
+      var assets = m.assets || [];
+      var tagClientNames = ((m.tags && m.tags.clients) || []).map(function(id) { return clientMap[id.toString()] || 'Client'; });
+      var tagUserNames = ((m.tags && m.tags.users) || []).map(function(id) { return userMap[id.toString()] || 'User'; });
+    %>
+      <div class="hist-card" id="hist-<%= m._id %>">
+        <div class="hist-header" onclick="toggleHist('<%= m._id %>')">
+          <span class="hist-arrow">&#9654;</span>
+          <span class="hist-title"><%= m.title %></span>
+          <div class="hist-chips">
+            <% if (participants.length) { %><span class="hist-chip participants"><%= participants.length %> participant<%= participants.length !== 1 ? 's' : '' %></span><% } %>
+            <% if (notes.length) { %><span class="hist-chip notes"><%= notes.length %> note<%= notes.length !== 1 ? 's' : '' %></span><% } %>
+            <% if (assets.length) { %><span class="hist-chip assets"><%= assets.length %> file<%= assets.length !== 1 ? 's' : '' %></span><% } %>
+          </div>
+          <% if (m.status === 'expired') { %>
+            <span class="badge badge-inactive" style="flex-shrink:0;">Expired</span>
+          <% } else { %>
+            <span class="badge badge-draft" style="flex-shrink:0;">Closed</span>
+          <% } %>
+          <span class="hist-date"><%= new Date(m.closedAt || m.expiresAt || m.createdAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) %></span>
+        </div>
+
+        <div class="hist-body">
+          <!-- Meta -->
+          <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:0.78rem;color:var(--slate);margin-bottom:16px;">
+            <span>Created by <strong><%= m.createdBy %></strong></span>
+            <span>Created: <%= new Date(m.createdAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) %></span>
+            <% if (m.closedAt) { %><span>Closed: <%= new Date(m.closedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) %></span><% } %>
+            <span>Uses: <%= m.useCount %></span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+            <!-- PARTICIPANTS -->
+            <div class="hist-section">
+              <div class="hist-section-title">Participants <span class="count"><%= participants.length %></span></div>
+              <% if (participants.length === 0) { %>
+                <p style="font-size:0.82rem;color:var(--slate);">No one joined.</p>
+              <% } else { %>
+                <% participants.forEach(function(p) { %>
+                  <div class="participant-row">
+                    <span class="participant-name"><%= p.name %></span>
+                    <span class="participant-time"><%= p.joinedAt ? new Date(p.joinedAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '' %></span>
+                  </div>
+                <% }) %>
+              <% } %>
+            </div>
+
+            <!-- TAGS -->
+            <div class="hist-section">
+              <div class="hist-section-title">Tags</div>
+              <% if (tagClientNames.length === 0 && tagUserNames.length === 0) { %>
+                <p style="font-size:0.82rem;color:var(--slate);">No tags.</p>
+              <% } else { %>
+                <% if (tagClientNames.length) { %>
+                  <div style="margin-bottom:6px;font-size:0.65rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);">Clients</div>
+                  <div><% tagClientNames.forEach(function(name) { %><span class="tag-pill"><%= name %></span><% }) %></div>
+                <% } %>
+                <% if (tagUserNames.length) { %>
+                  <div style="margin-top:8px;margin-bottom:6px;font-size:0.65rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);">Users</div>
+                  <div><% tagUserNames.forEach(function(name) { %><span class="tag-pill"><%= name %></span><% }) %></div>
+                <% } %>
+              <% } %>
+              <div style="margin-top:12px;">
+                <a href="/admin/meetings/<%= m._id %>" style="font-size:0.75rem;color:var(--gold);text-decoration:none;">Edit tags &rarr;</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- NOTES -->
+          <div class="hist-section">
+            <div class="hist-section-title">Notes <span class="count"><%= notes.length %></span></div>
+            <% if (notes.length === 0) { %>
+              <p style="font-size:0.82rem;color:var(--slate);">No notes were taken.</p>
+            <% } else { %>
+              <div style="max-height:320px;overflow-y:auto;">
+                <% notes.forEach(function(n) { %>
+                  <div class="hist-note">
+                    <div class="hist-note-meta">
+                      <span class="author"><%= n.author || 'Unknown' %></span>
+                      <span><%= n.createdAt ? new Date(n.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '' %></span>
+                    </div>
+                    <div class="hist-note-text"><%= n.text %></div>
+                  </div>
+                <% }) %>
+              </div>
+            <% } %>
+          </div>
+
+          <!-- ASSETS -->
+          <div class="hist-section">
+            <div class="hist-section-title">Files &amp; Assets <span class="count"><%= assets.length %></span></div>
+            <% if (assets.length === 0) { %>
+              <p style="font-size:0.82rem;color:var(--slate);">No files were shared.</p>
+            <% } else { %>
+              <% assets.forEach(function(a) {
+                var ext = (a.name || '').split('.').pop().toLowerCase();
+                var isImage = ['jpg','jpeg','png','gif','webp','svg','bmp','ico'].indexOf(ext) !== -1;
+                var isPdf = ext === 'pdf';
+              %>
+                <div class="hist-asset">
+                  <% if (isImage) { %>
+                    <img class="hist-asset-thumb" src="<%= a.url %>" alt="<%= a.name %>" onclick="openLightbox('<%= a.url %>', '<%= a.name %>', 'image')" loading="lazy">
+                  <% } else { %>
+                    <div class="hist-asset-icon"><%= ext.slice(0, 4) %></div>
+                  <% } %>
+                  <div class="hist-asset-info">
+                    <div class="hist-asset-name"><%= a.name %></div>
+                    <div class="hist-asset-meta">
+                      <%= a.uploadedBy || 'Unknown' %>
+                      <% if (a.size) { %>
+                        &middot;
+                        <% if (a.size < 1024) { %><%= a.size %> B
+                        <% } else if (a.size < 1024*1024) { %><%= (a.size/1024).toFixed(1) %> KB
+                        <% } else { %><%= (a.size/(1024*1024)).toFixed(1) %> MB<% } %>
+                      <% } %>
+                      <% if (a.createdAt) { %>&middot; <%= new Date(a.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) %><% } %>
+                    </div>
+                  </div>
+                  <div class="hist-asset-actions">
+                    <% if (isImage) { %>
+                      <button class="btn btn-navy btn-sm" onclick="openLightbox('<%= a.url %>', '<%= a.name %>', 'image')">View</button>
+                    <% } else if (isPdf) { %>
+                      <button class="btn btn-navy btn-sm" onclick="openLightbox('<%= a.url %>', '<%= a.name %>', 'pdf')">View</button>
+                    <% } else { %>
+                      <a href="<%= a.url %>" target="_blank" rel="noopener" class="btn btn-navy btn-sm">View</a>
+                    <% } %>
+                    <a href="<%= a.url %>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" download>Download</a>
+                  </div>
+                </div>
+              <% }) %>
+            <% } %>
+          </div>
+
+          <!-- Actions -->
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--ivory-mid);">
+            <button class="btn btn-danger btn-sm" onclick="deleteMeeting('<%= m._id %>', '<%= m.title.replace(/'/g, "\\'") %>')">Delete Record</button>
+            <a href="/admin/meetings/<%= m._id %>" class="btn btn-ghost btn-sm">Full Detail &rarr;</a>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  <% } %>
+
+</div>
+
+<!-- Create Meeting Modal -->
+<div id="createModal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(15,27,48,0.55);backdrop-filter:blur(3px);align-items:center;justify-content:center;">
+  <div class="card" style="width:440px;max-width:92vw;">
+    <div class="card-title">New Meeting</div>
+    <form method="POST" action="/admin/meetings">
+      <div class="form-grid cols-1" style="gap:16px;">
+        <div class="form-field">
+          <label>Meeting Title</label>
+          <input type="text" name="title" placeholder="e.g. Q1 Strategy Review" required>
+        </div>
+        <div class="form-grid" style="gap:16px;">
+          <div class="form-field">
+            <label>Expires In</label>
+            <select name="expiresInHours">
+              <option value="1">1 hour</option>
+              <option value="4">4 hours</option>
+              <option value="12">12 hours</option>
+              <option value="24" selected>24 hours</option>
+              <option value="48">48 hours</option>
+              <option value="168">1 week</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Max Uses (blank = unlimited)</label>
+            <input type="number" name="maxUses" min="1" placeholder="Unlimited">
+          </div>
+        </div>
+        <div class="form-grid" style="gap:16px;">
+          <div class="form-field">
+            <label>Tag Clients</label>
+            <select name="tagClients" multiple style="min-height:70px;">
+              <% (clients || []).forEach(c => { %>
+                <option value="<%= c._id %>"><%= c.name || c.email %><%= c.company ? ' (' + c.company + ')' : '' %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Tag Users</label>
+            <select name="tagUsers" multiple style="min-height:70px;">
+              <% (users || []).forEach(u => { %>
+                <option value="<%= u._id %>"><%= u.displayName || u.name || u.email %></option>
+              <% }) %>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:24px;justify-content:flex-end;">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('createModal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-gold">Create Meeting</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function copyLink(id) {
+  var input = document.getElementById('link-' + id);
+  if (!input) return;
+  navigator.clipboard.writeText(input.value).then(function() {
+    var btn = input.parentElement.querySelector('button');
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+  });
+}
+
+function closeMeeting(id) {
+  if (!confirm('Close this meeting? Active participants will be disconnected.')) return;
+  fetch('/admin/meetings/' + id, { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function() { location.reload(); })
+    .catch(function() { alert('Error closing meeting'); });
+}
+
+function toggleHist(id) {
+  document.getElementById('hist-' + id).classList.toggle('open');
+}
+
+// Close modal on backdrop click
+document.getElementById('createModal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+
+function deleteMeeting(id, title) {
+  if (!confirm('Permanently delete "' + title + '"? This will remove all notes, assets, and participant data. This cannot be undone.')) return;
+  fetch('/admin/meetings/' + id + '/destroy', { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        var card = document.getElementById('hist-' + id);
+        if (card) card.remove();
+      } else {
+        alert(data.error || 'Error deleting meeting');
+      }
+    })
+    .catch(function() { alert('Error deleting meeting'); });
+}
+
+// Lightbox
+function openLightbox(url, name, type) {
+  var lb = document.getElementById('assetLightbox');
+  var inner = document.getElementById('lightboxInner');
+  var nameEl = document.getElementById('lightboxName');
+  nameEl.textContent = name;
+  if (type === 'image') {
+    inner.innerHTML = '<button class="asset-lightbox-close" onclick="closeLightbox()">&times;</button>'
+      + '<img src="' + url + '" alt="' + name + '">'
+      + '<div class="asset-lightbox-name">' + name + '</div>';
+  } else if (type === 'pdf') {
+    inner.innerHTML = '<button class="asset-lightbox-close" onclick="closeLightbox()">&times;</button>'
+      + '<iframe src="' + url + '"></iframe>'
+      + '<div class="asset-lightbox-name">' + name + '</div>';
+  }
+  lb.classList.add('open');
+}
+function closeLightbox() {
+  var lb = document.getElementById('assetLightbox');
+  lb.classList.remove('open');
+  document.getElementById('lightboxInner').innerHTML = '';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeLightbox();
+});
+</script>
+
+<!-- Asset Lightbox -->
+<div class="asset-lightbox" id="assetLightbox" onclick="if(event.target===this)closeLightbox()">
+  <div class="asset-lightbox-inner" id="lightboxInner"></div>
+  <div class="asset-lightbox-name" id="lightboxName"></div>
+</div>
+
+<script src="/js/tours/meetings.js"></script>
+</div><!-- .main -->
+</div><!-- .layout -->
+</body>
+</html>

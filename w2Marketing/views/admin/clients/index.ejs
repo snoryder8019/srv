@@ -34,7 +34,13 @@
           <td style="font-weight:500;"><a href="/admin/clients/<%= c._id %>" style="color:var(--navy);text-decoration:none;"><%= c.name %></a></td>
           <td class="text-slate"><%= c.company || '—' %></td>
           <td class="text-slate"><%= c.email || '—' %></td>
-          <td><span class="badge badge-<%= c.status %>"><%= c.status %></span></td>
+          <td>
+            <select class="status-toggle" data-id="<%= c._id %>" style="padding:4px 8px;font-size:0.72rem;border:1px solid var(--ivory-mid);border-radius:2px;background:var(--white);font-family:'Jost',sans-serif;cursor:pointer;">
+              <option value="prospect" <%= c.status === 'prospect' ? 'selected' : '' %>>Prospect</option>
+              <option value="active" <%= c.status === 'active' ? 'selected' : '' %>>Active</option>
+              <option value="inactive" <%= c.status === 'inactive' ? 'selected' : '' %>>Inactive</option>
+            </select>
+          </td>
           <td>
             <% if (c.onboarding?.complete) { %>
               <span class="badge badge-active">Done</span>
@@ -54,6 +60,24 @@
   <% } %>
 </div>
 
+<script>
+document.querySelectorAll('.status-toggle').forEach(sel => {
+  sel.addEventListener('change', async function() {
+    const id = this.dataset.id;
+    const status = this.value;
+    try {
+      const r = await fetch(`/admin/clients/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const data = await r.json();
+      if (!data.success) alert('Error: ' + (data.error || 'Failed'));
+    } catch (err) { alert('Error: ' + err.message); }
+  });
+});
+</script>
+<script src="/js/tours/clients.js"></script>
 </div></div>
 </body>
 </html>

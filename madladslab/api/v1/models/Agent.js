@@ -261,6 +261,36 @@ const agentSchema = new mongoose.Schema(
       agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent', default: null },
       role: { type: String, default: '' }
     },
+    telegramConfig: {
+      enabled: { type: Boolean, default: false },
+      allowedActions: {
+        type: [String],
+        enum: ['notify', 'client', 'broadcast'],
+        default: []
+      },
+      allowedChatIds: {
+        type: [String],
+        default: []
+      },
+      rateLimitMinutes: { type: Number, default: 60, min: 1, max: 1440 },
+      dailyLimit: { type: Number, default: 20, min: 1, max: 200 },
+      lastSentAt: { type: Date, default: null },
+      sentToday: { type: Number, default: 0 },
+      sentTodayDate: { type: String, default: '' }
+    },
+    emailConfig: {
+      enabled: { type: Boolean, default: false },
+      allowedTypes: {
+        type: [String],
+        enum: ['notify', 'client-outreach'],
+        default: []
+      },
+      rateLimitMinutes: { type: Number, default: 60, min: 1, max: 1440 },
+      dailyLimit: { type: Number, default: 10, min: 1, max: 100 },
+      lastSentAt: { type: Date, default: null },
+      sentToday: { type: Number, default: 0 },
+      sentTodayDate: { type: String, default: '' }
+    },
     tier: {
       type: String,
       enum: ['apex', 'executive', 'manager', 'worker'],

@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-03-23T16:54:11.648Z
+Generated: 2026-03-25T07:30:00.019Z
+
+---
+
+## Commit: cleanupday
+
+- **Hash:** `e31eb1a`
+- **Author:** Scott
+- **Date:** 3/23/2026
+- **Changes:** 298 files, +2814/-58965 lines
+
+### Modified Areas:
+
+**Frontend:** 11 files
+**Backend:** 108 files
+**Views:** 104 files
+**Documentation:** 4 files
 
 ---
 
@@ -56,21 +72,6 @@ Generated: 2026-03-23T16:54:11.648Z
 
 **Backend:** 2 files
 **Views:** 2 files
-
----
-
-## Commit: good push
-
-- **Hash:** `8ed786e`
-- **Author:** Scott
-- **Date:** 3/21/2026
-- **Changes:** 37 files, +7967/-95 lines
-
-### Modified Areas:
-
-**Backend:** 8 files
-**Views:** 17 files
-**Documentation:** 7 files
 
 ---
 

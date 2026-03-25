@@ -11,6 +11,12 @@ import sectionsRouter from './admin/sections.js';
 import masterAgentRouter from './admin/masterAgent.js';
 import ttsRouter from './admin/tts.js';
 import assetsRouter from './admin/assets.js';
+import meetingsRouter from './admin/meetings.js';
+import bookkeepingRouter from './admin/bookkeeping.js';
+import emailMarketingRouter from './admin/emailMarketing.js';
+import usersRouter from './admin/users.js';
+import tutorialsRouter from './admin/tutorials.js';
+import profileRouter from './admin/profile.js';
 
 const router = express.Router();
 
@@ -34,7 +40,7 @@ router.get('/', async (req, res) => {
     const [portfolioCount, clientCount, invoiceCount, blogCount, pageCount, rawDesign] = await Promise.all([
       db.collection('w2_portfolio').countDocuments(),
       db.collection('w2_clients').countDocuments(),
-      db.collection('w2_invoices').countDocuments({ status: 'unpaid' }),
+      db.collection('w2_invoices').countDocuments({ status: { $in: ['unpaid', 'sent', 'overdue'] } }),
       db.collection('w2_blog').countDocuments(),
       db.collection('w2_pages').countDocuments(),
       db.collection('w2_design').findOne({ key: 'agent_name' }),
@@ -64,5 +70,11 @@ router.use('/blog', blogRouter);
 router.use('/pages', pagesRouter);
 router.use('/sections', sectionsRouter);
 router.use('/assets', assetsRouter);
+router.use('/meetings', meetingsRouter);
+router.use('/bookkeeping', bookkeepingRouter);
+router.use('/email-marketing', emailMarketingRouter);
+router.use('/users', usersRouter);
+router.use('/tutorials', tutorialsRouter);
+router.use('/profile', profileRouter);
 
 export default router;

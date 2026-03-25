@@ -1,7 +1,10 @@
 import express from "express";
 import axios from "axios";
+import nodemailer from "nodemailer";
+import TelegramBot from "node-telegram-bot-api";
 import { readFile, readdir, stat, writeFile, appendFile, mkdir, unlink } from "fs/promises";
 import { resolve as resolvePath, join, dirname } from "path";
+import { fileURLToPath } from "url";
 import mongoose from "mongoose";
 import { spawn } from "child_process";
 import { uploadToLinode } from "../../lib/linodeStorage.js";
@@ -9,6 +12,111 @@ import { uploadToLinode } from "../../lib/linodeStorage.js";
 import Agent from "../../api/v1/models/Agent.js";
 import AgentAction from "../../api/v1/models/AgentAction.js";
 import { isAdmin } from "./middleware.js";
+
+const __mcpFilename = fileURLToPath(import.meta.url);
+const __mcpDirname = dirname(__mcpFilename);
+const TEMPLATES_DIR = resolvePath(__mcpDirname, '../../plugins/nodemailer/templates');
+
+// ── Zoho SMTP singleton ──
+let _zohoTransporter = null;
+function getZohoTransporter() {
+    if (!_zohoTransporter) {
+        _zohoTransporter = nodemailer.createTransport({
+            host: 'smtp.zoho.com',
+            port: 465,
+            secure: true,
+            auth: { user: process.env.ZOHO_USER, pass: process.env.ZOHO_PASS }
+        });
+    }
+    return _zohoTransporter;
+}
+
+// ── Agent email rate-limit check ──
+async function checkEmailRateLimit(agent) {
+    const cfg = agent.emailConfig || {};
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+
+    // Reset daily counter if new day
+    if (cfg.sentTodayDate !== today) {
+        cfg.sentToday = 0;
+        cfg.sentTodayDate = today;
+    }
+
+    // Check daily cap
+    if (cfg.sentToday >= (cfg.dailyLimit || 10)) {
+        return { allowed: false, reason: `Daily email limit reached (${cfg.dailyLimit || 10}). Resets tomorrow.` };
+    }
+
+    // Check per-send rate limit
+    if (cfg.lastSentAt) {
+        const minsSinceLast = (now - new Date(cfg.lastSentAt)) / 60000;
+        const limitMins = cfg.rateLimitMinutes || 60;
+        if (minsSinceLast < limitMins) {
+            const waitMins = Math.ceil(limitMins - minsSinceLast);
+            return { allowed: false, reason: `Rate limited. Next email allowed in ${waitMins} minute(s).` };
+        }
+    }
+
+    return { allowed: true };
+}
+
+// ── Bump rate-limit counters after send ──
+async function bumpEmailCounters(agentId) {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    await Agent.updateOne({ _id: agentId }, {
+        $set: { 'emailConfig.lastSentAt': now, 'emailConfig.sentTodayDate': today },
+        $inc: { 'emailConfig.sentToday': 1 }
+    });
+}
+
+// ── Telegram bot singleton ──
+let _telegramBot = null;
+function getTelegramBot() {
+    if (!_telegramBot) {
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        if (!token) throw new Error('TELEGRAM_BOT_TOKEN not configured');
+        _telegramBot = new TelegramBot(token, { polling: false });
+    }
+    return _telegramBot;
+}
+
+// ── Agent telegram rate-limit check ──
+async function checkTelegramRateLimit(agent) {
+    const cfg = agent.telegramConfig || {};
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+
+    if (cfg.sentTodayDate !== today) {
+        cfg.sentToday = 0;
+        cfg.sentTodayDate = today;
+    }
+
+    if (cfg.sentToday >= (cfg.dailyLimit || 20)) {
+        return { allowed: false, reason: `Daily Telegram limit reached (${cfg.dailyLimit || 20}). Resets tomorrow.` };
+    }
+
+    if (cfg.lastSentAt) {
+        const minsSinceLast = (now - new Date(cfg.lastSentAt)) / 60000;
+        const limitMins = cfg.rateLimitMinutes || 60;
+        if (minsSinceLast < limitMins) {
+            const waitMins = Math.ceil(limitMins - minsSinceLast);
+            return { allowed: false, reason: `Telegram rate limited. Next message allowed in ${waitMins} minute(s).` };
+        }
+    }
+
+    return { allowed: true };
+}
+
+async function bumpTelegramCounters(agentId) {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    await Agent.updateOne({ _id: agentId }, {
+        $set: { 'telegramConfig.lastSentAt': now, 'telegramConfig.sentTodayDate': today },
+        $inc: { 'telegramConfig.sentToday': 1 }
+    });
+}
 
 // ==================== MCP TOOL DEFINITIONS ====================
 
@@ -344,6 +452,48 @@ export const MCP_TOOL_DEFINITIONS = {
                     message: { type: 'string', description: 'The message or task to send to that agent' }
                 },
                 required: ['agentId', 'message']
+            }
+        }
+    },
+    'send-email': {
+        type: 'function',
+        function: {
+            name: 'send_email',
+            description: 'Send an email via Zoho SMTP. Two types: "notify" sends to the lab owner (scott@madladslab.com) for alerts/reports. "client-outreach" sends a professional email to an external recipient. Rate-limited per agent. Requires email permission to be enabled.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    emailType: { type: 'string', enum: ['notify', 'client-outreach'], description: 'Type of email to send' },
+                    to: { type: 'string', description: 'Recipient email address (ignored for "notify" type — always goes to owner)' },
+                    subject: { type: 'string', description: 'Email subject line' },
+                    body: { type: 'string', description: 'Email body content (plain text, will be placed into HTML template)' },
+                    priority: { type: 'string', enum: ['low', 'normal', 'high'], description: 'Priority level (default "normal", only used for notify type)' },
+                    recipientName: { type: 'string', description: 'Recipient first name (for client-outreach greeting)' },
+                    ctaUrl: { type: 'string', description: 'Optional call-to-action button URL (client-outreach only)' },
+                    ctaText: { type: 'string', description: 'Optional call-to-action button text (client-outreach only, default "Learn More")' }
+                },
+                required: ['emailType', 'subject', 'body']
+            }
+        }
+    },
+    'send-telegram': {
+        type: 'function',
+        function: {
+            name: 'send_telegram',
+            description: 'Send a Telegram message via the lab bot. Actions: "notify" sends to the owner chat, "client" sends to an allowed chat ID, "broadcast" sends to all allowed chat IDs. Supports text messages, photos with captions, and documents. Rate-limited per agent. Requires telegram permission.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    action: { type: 'string', enum: ['notify', 'client', 'broadcast'], description: '"notify" = owner, "client" = specific chatId, "broadcast" = all allowed chatIds' },
+                    chatId: { type: 'string', description: 'Target Telegram chat ID (required for "client" action, ignored for notify/broadcast)' },
+                    message: { type: 'string', description: 'Message text (supports Telegram MarkdownV2 formatting)' },
+                    parseMode: { type: 'string', enum: ['MarkdownV2', 'HTML', 'None'], description: 'Message parse mode (default "HTML")' },
+                    photoUrl: { type: 'string', description: 'URL of photo to send (sends as photo message with caption instead of text)' },
+                    documentUrl: { type: 'string', description: 'URL of document/file to send' },
+                    caption: { type: 'string', description: 'Caption for photo or document (used instead of message when sending media)' },
+                    disableNotification: { type: 'boolean', description: 'Send silently without notification sound (default false)' }
+                },
+                required: ['action', 'message']
             }
         }
     },
@@ -701,6 +851,168 @@ export async function executeMcpTool(toolName, args, agentId = null) {
             if (!resp.data.success) throw new Error(resp.data.error || 'chat-internal failed');
             return { agentName: target.name, response: resp.data.response };
         }
+        case 'send_email': {
+            if (!agentId) throw new Error('send_email requires an agent context');
+            const agent = await Agent.findById(agentId).lean();
+            if (!agent) throw new Error('Agent not found');
+
+            const emailCfg = agent.emailConfig || {};
+            if (!emailCfg.enabled) throw new Error('Email is not enabled for this agent. Ask an admin to enable it.');
+
+            const emailType = args.emailType;
+            if (!emailCfg.allowedTypes?.includes(emailType)) {
+                throw new Error(`This agent does not have permission for "${emailType}" emails. Allowed: ${(emailCfg.allowedTypes || []).join(', ') || 'none'}`);
+            }
+
+            // Rate limit
+            const rateCheck = await checkEmailRateLimit(agent);
+            if (!rateCheck.allowed) throw new Error(rateCheck.reason);
+
+            const subject = (args.subject || '').slice(0, 200);
+            const bodyText = (args.body || '').slice(0, 5000);
+            const priority = args.priority || 'normal';
+
+            let html, to;
+
+            if (emailType === 'notify') {
+                // Always sends to owner
+                to = process.env.ALERT_EMAIL || process.env.ZOHO_USER;
+                const tpl = await readFile(join(TEMPLATES_DIR, 'agentNotify.html'), 'utf-8');
+                const priorityColors = { low: '#8b949e', normal: '#1f6feb', high: '#da3633' };
+                html = tpl
+                    .replace(/{agentName}/g, agent.name || 'Unknown Agent')
+                    .replace(/{subject}/g, subject)
+                    .replace(/{body}/g, bodyText.replace(/\n/g, '<br>'))
+                    .replace(/{priority}/g, priority)
+                    .replace(/{priorityColor}/g, priorityColors[priority] || priorityColors.normal)
+                    .replace(/{agentId}/g, agentId);
+            } else if (emailType === 'client-outreach') {
+                if (!args.to) throw new Error('"to" address is required for client-outreach emails');
+                to = args.to;
+                const tpl = await readFile(join(TEMPLATES_DIR, 'agentClientOutreach.html'), 'utf-8');
+                const senderName = agent.name || 'Mad Lads Lab';
+                const recipientName = args.recipientName || 'there';
+
+                let ctaBlock = '';
+                if (args.ctaUrl) {
+                    const ctaText = args.ctaText || 'Learn More';
+                    ctaBlock = `<a href="${args.ctaUrl}" style="display:inline-block;background:#238636;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:600;">${ctaText}</a>`;
+                }
+
+                html = tpl
+                    .replace(/{senderName}/g, senderName)
+                    .replace(/{recipientName}/g, recipientName)
+                    .replace(/{subject}/g, subject)
+                    .replace(/{body}/g, bodyText.replace(/\n/g, '<br>'))
+                    .replace(/{ctaBlock}/g, ctaBlock);
+            }
+
+            const mailOptions = {
+                from: `"${agent.name || 'Mad Lads Lab Agent'}" <${process.env.ZOHO_USER}>`,
+                to,
+                subject,
+                html
+            };
+
+            await getZohoTransporter().sendMail(mailOptions);
+            await bumpEmailCounters(agentId);
+
+            // Log the action
+            new AgentAction({
+                agentId,
+                type: 'email_sent',
+                title: `Email (${emailType}): ${subject}`,
+                content: `To: ${to}\nType: ${emailType}\nPriority: ${priority}`,
+                metadata: { emailType, to, subject, priority },
+                status: 'complete'
+            }).save().catch(() => {});
+
+            return { sent: true, emailType, to, subject };
+        }
+        case 'send_telegram': {
+            if (!agentId) throw new Error('send_telegram requires an agent context');
+            const agent = await Agent.findById(agentId).lean();
+            if (!agent) throw new Error('Agent not found');
+
+            const tgCfg = agent.telegramConfig || {};
+            if (!tgCfg.enabled) throw new Error('Telegram is not enabled for this agent. Ask an admin to enable it.');
+
+            const action = args.action;
+            const allowedActions = tgCfg.allowedActions || [];
+            if (!allowedActions.includes(action)) {
+                throw new Error(`This agent does not have permission for "${action}" Telegram action. Allowed: ${allowedActions.join(', ') || 'none'}`);
+            }
+
+            // Rate limit
+            const rateCheck = await checkTelegramRateLimit(agent);
+            if (!rateCheck.allowed) throw new Error(rateCheck.reason);
+
+            const bot = getTelegramBot();
+            const ownerChatId = process.env.TELEGRAM_OWNER_CHAT_ID;
+            const allowedChatIds = tgCfg.allowedChatIds || [];
+            const parseMode = args.parseMode === 'None' ? undefined : (args.parseMode || 'HTML');
+            const silent = args.disableNotification || false;
+
+            // Resolve target chat IDs
+            let targetChatIds = [];
+            if (action === 'notify') {
+                if (!ownerChatId) throw new Error('TELEGRAM_OWNER_CHAT_ID not configured');
+                targetChatIds = [ownerChatId];
+            } else if (action === 'client') {
+                if (!args.chatId) throw new Error('"chatId" is required for client action');
+                if (!allowedChatIds.includes(args.chatId)) {
+                    throw new Error(`Chat ID "${args.chatId}" is not in this agent's allowed list. Allowed: ${allowedChatIds.join(', ') || 'none'}`);
+                }
+                targetChatIds = [args.chatId];
+            } else if (action === 'broadcast') {
+                if (allowedChatIds.length === 0) throw new Error('No allowed chat IDs configured for broadcast');
+                targetChatIds = [...allowedChatIds];
+            }
+
+            const message = (args.message || '').slice(0, 4000);
+            const results = [];
+
+            for (const chatId of targetChatIds) {
+                try {
+                    let sent;
+                    if (args.photoUrl) {
+                        sent = await bot.sendPhoto(chatId, args.photoUrl, {
+                            caption: (args.caption || message).slice(0, 1024),
+                            parse_mode: parseMode,
+                            disable_notification: silent
+                        });
+                    } else if (args.documentUrl) {
+                        sent = await bot.sendDocument(chatId, args.documentUrl, {
+                            caption: (args.caption || message).slice(0, 1024),
+                            parse_mode: parseMode,
+                            disable_notification: silent
+                        });
+                    } else {
+                        sent = await bot.sendMessage(chatId, message, {
+                            parse_mode: parseMode,
+                            disable_notification: silent
+                        });
+                    }
+                    results.push({ chatId, success: true, messageId: sent.message_id });
+                } catch (err) {
+                    results.push({ chatId, success: false, error: err.message });
+                }
+            }
+
+            await bumpTelegramCounters(agentId);
+
+            // Log the action
+            new AgentAction({
+                agentId,
+                type: 'telegram_sent',
+                title: `Telegram (${action}): ${message.slice(0, 80)}`,
+                content: `Action: ${action}\nTargets: ${targetChatIds.join(', ')}\nMessage: ${message.slice(0, 300)}`,
+                metadata: { action, targets: targetChatIds, hasPhoto: !!args.photoUrl, hasDoc: !!args.documentUrl },
+                status: 'complete'
+            }).save().catch(() => {});
+
+            return { sent: true, action, results };
+        }
         case 'generate_image': {
             const sdBaseUrl = process.env.OLLAMA_BASE_URL || 'https://ollama.madladslab.com';
             const sdApiKey = process.env.OLLAMA_API_KEY;
@@ -793,6 +1105,8 @@ router.get('/api/mcp/available-tools', isAdmin, async (req, res) => {
             { name: 'npm-run',        description: 'Run safe npm scripts (test, lint, build) in a /srv project', category: 'shell' },
             { name: 'context',        description: 'Get project CLAUDE.md context file', category: 'meta' },
             { name: 'cron-job',       description: 'Manage agent-owned cron jobs in /etc/cron.d/agent-*', category: 'shell' },
+            { name: 'send-email',      description: 'Send email via Zoho SMTP (notify owner or client outreach)', category: 'integrations' },
+            { name: 'send-telegram',   description: 'Send Telegram message (notify owner, client, or broadcast)', category: 'integrations' },
             { name: 'generate-image',  description: 'Generate image from prompt via locally hosted Stable Diffusion', category: 'media' },
             { name: 'message-agent',   description: 'Send a message to another agent and receive their response', category: 'agents' }
         ];

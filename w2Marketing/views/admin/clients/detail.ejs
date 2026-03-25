@@ -1,11 +1,13 @@
-<%- include('../partials/head', { title: client.name }) %>
+<%- include('../partials/head', { title: c.name }) %>
 <%- include('../partials/sidebar', { page: 'clients', user: user }) %>
 
 <div class="topbar">
-  <div class="topbar-title"><%= client.name %></div>
+  <div class="topbar-title"><%= c.name %></div>
   <div class="topbar-actions">
-    <a href="/admin/clients/<%= client._id %>/edit" class="btn btn-ghost btn-sm">Edit</a>
-    <form method="POST" action="/admin/clients/<%= client._id %>/delete" style="display:inline" onsubmit="return confirm('Delete this client?')">
+    <button class="btn btn-navy btn-sm" id="startMeetingBtn" title="Create meeting & email invite to client">Start Meeting</button>
+    <button class="btn btn-ghost btn-sm" id="openAgentBtn" style="border-color:var(--navy);" title="AI-research this client">Research Client</button>
+    <a href="/admin/clients/<%= c._id %>/edit" class="btn btn-ghost btn-sm">Edit</a>
+    <form method="POST" action="/admin/clients/<%= c._id %>/delete" style="display:inline" onsubmit="return confirm('Delete this client?')">
       <button class="btn btn-danger btn-sm">Delete</button>
     </form>
   </div>
@@ -16,23 +18,29 @@
   <div class="card" style="margin-bottom:24px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
       <div>
-        <div style="font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--dark);"><%= client.name %></div>
-        <div style="font-size:0.8rem;color:var(--slate);margin-top:2px;"><%= client.company || '' %><%= client.company && client.email ? ' · ' : '' %><%= client.email || '' %></div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--dark);"><%= c.name %></div>
+        <div style="font-size:0.8rem;color:var(--slate);margin-top:2px;"><%= c.company || '' %><%= c.company && c.email ? ' · ' : '' %><%= c.email || '' %></div>
       </div>
-      <span class="badge badge-<%= client.status %>" style="margin-top:4px;"><%= client.status %></span>
+      <select id="detailStatusToggle" style="padding:5px 10px;font-size:0.75rem;border:1px solid var(--ivory-mid);border-radius:2px;background:var(--white);font-family:'Jost',sans-serif;cursor:pointer;margin-top:4px;">
+        <option value="prospect" <%= c.status === 'prospect' ? 'selected' : '' %>>Prospect</option>
+        <option value="active" <%= c.status === 'active' ? 'selected' : '' %>>Active</option>
+        <option value="inactive" <%= c.status === 'inactive' ? 'selected' : '' %>>Inactive</option>
+      </select>
     </div>
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:16px;">
-      <% if (client.phone) { %><div class="text-slate" style="font-size:0.82rem;"><strong style="font-weight:600;letter-spacing:.06em;">Phone</strong> · <%= client.phone %></div><% } %>
-      <% if (client.website) { %><div class="text-slate" style="font-size:0.82rem;"><a href="<%= client.website %>" target="_blank" style="color:var(--navy);"><%= client.website %></a></div><% } %>
-      <% if (client.address) { %><div class="text-slate" style="font-size:0.82rem;"><%= client.address %></div><% } %>
+      <% if (c.phone) { %><div class="text-slate" style="font-size:0.82rem;"><strong style="font-weight:600;letter-spacing:.06em;">Phone</strong> · <%= c.phone %></div><% } %>
+      <% if (c.website) { %><div class="text-slate" style="font-size:0.82rem;"><a href="<%= c.website %>" target="_blank" style="color:var(--navy);"><%= c.website %></a></div><% } %>
+      <% if (c.address) { %><div class="text-slate" style="font-size:0.82rem;"><%= c.address %></div><% } %>
     </div>
   </div>
 
   <!-- Tabs -->
   <div class="tabs">
     <a href="?tab=overview" class="tab-link <%= tab === 'overview' ? 'active' : '' %>">Overview</a>
-    <a href="?tab=invoices" class="tab-link <%= tab === 'invoices' ? 'active' : '' %>">Invoices (<%= invoices.length %>)</a>
-    <a href="?tab=files" class="tab-link <%= tab === 'files' ? 'active' : '' %>">Files (<%= files.length %>)</a>
+    <a href="?tab=invoices" class="tab-link <%= tab === 'invoices' ? 'active' : '' %>">Invoices (<%= counts.invoices %>)</a>
+    <a href="?tab=assets" class="tab-link <%= tab === 'assets' ? 'active' : '' %>">Assets (<%= counts.assets %>)</a>
+    <a href="?tab=files" class="tab-link <%= tab === 'files' ? 'active' : '' %>">Files (<%= counts.files %>)</a>
+    <a href="?tab=emails" class="tab-link <%= tab === 'emails' ? 'active' : '' %>">Emails (<%= counts.emails %>)</a>
     <a href="?tab=onboarding" class="tab-link <%= tab === 'onboarding' ? 'active' : '' %>">Onboarding</a>
   </div>
 
@@ -40,53 +48,156 @@
   <% if (tab === 'overview') { %>
     <div class="card">
       <div class="card-title">Notes</div>
-      <p style="font-size:0.9rem;font-weight:300;color:var(--slate);line-height:1.7;"><%= client.notes || 'No notes yet.' %></p>
+      <p style="font-size:0.9rem;font-weight:300;color:var(--slate);line-height:1.7;"><%= c.notes || 'No notes yet.' %></p>
     </div>
     <div class="card mt-24">
       <div class="card-title">Summary</div>
       <table>
         <tbody>
-          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;width:140px;">Added</td><td><%= new Date(client.createdAt).toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'}) %></td></tr>
-          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Invoices</td><td><%= invoices.length %> total</td></tr>
-          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Files</td><td><%= files.length %> shared</td></tr>
-          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Onboarding</td><td><%= client.onboarding?.complete ? 'Complete' : `In progress (step ${client.onboarding?.step || 0})` %></td></tr>
+          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;width:140px;">Added</td><td><%= new Date(c.createdAt).toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'}) %></td></tr>
+          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Invoices</td><td><%= counts.invoices %> total</td></tr>
+          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Assets</td><td><%= counts.assets %> attached</td></tr>
+          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Files</td><td><%= counts.files %> shared</td></tr>
+          <tr><td class="text-slate" style="font-size:0.72rem;letter-spacing:.1em;text-transform:uppercase;">Onboarding</td><td><%= c.onboarding?.complete ? 'Complete' : `In progress (step ${c.onboarding?.step || 0})` %></td></tr>
         </tbody>
       </table>
     </div>
+
+    <% if (c.agentReport) { %>
+    <div class="card mt-24">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Agent Research Report</span>
+        <span style="font-size:0.65rem;color:var(--slate);font-weight:400;">Generated <%= new Date(c.agentReport.generatedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) %></span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div>
+          <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Business Type</div>
+          <div style="font-size:0.88rem;color:var(--dark);"><%= c.agentReport.businessType || '—' %></div>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Industry</div>
+          <div style="font-size:0.88rem;color:var(--dark);"><%= c.agentReport.industry || '—' %></div>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Summary</div>
+        <p style="font-size:0.85rem;color:var(--dark);line-height:1.7;font-weight:300;"><%= c.agentReport.summary || '—' %></p>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+        <div>
+          <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">Strengths</div>
+          <% if (Array.isArray(c.agentReport.strengths)) { %>
+            <% for (const s of c.agentReport.strengths) { %><div style="font-size:0.82rem;color:var(--dark);padding:3px 0;">+ <%= s %></div><% } %>
+          <% } else { %><div class="text-slate" style="font-size:0.82rem;">—</div><% } %>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">Opportunities</div>
+          <% if (Array.isArray(c.agentReport.opportunities)) { %>
+            <% for (const o of c.agentReport.opportunities) { %><div style="font-size:0.82rem;color:var(--dark);padding:3px 0;">* <%= o %></div><% } %>
+          <% } else { %><div class="text-slate" style="font-size:0.82rem;">—</div><% } %>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+        <div>
+          <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">Suggested Services</div>
+          <% if (Array.isArray(c.agentReport.suggestedServices)) { %>
+            <% for (const sv of c.agentReport.suggestedServices) { %><div style="font-size:0.82rem;color:var(--navy);padding:3px 0;"><%= sv %></div><% } %>
+          <% } else { %><div class="text-slate" style="font-size:0.82rem;">—</div><% } %>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">Competitors</div>
+          <% if (Array.isArray(c.agentReport.competitors)) { %>
+            <% for (const comp of c.agentReport.competitors) { %><div style="font-size:0.82rem;color:var(--dark);padding:3px 0;"><%= comp %></div><% } %>
+          <% } else { %><div class="text-slate" style="font-size:0.82rem;">—</div><% } %>
+        </div>
+      </div>
+      <% if (c.agentReport.websiteNotes) { %>
+      <div style="margin-top:16px;">
+        <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Website Analysis</div>
+        <p style="font-size:0.82rem;color:var(--dark);line-height:1.6;font-weight:300;"><%= c.agentReport.websiteNotes %></p>
+      </div>
+      <% } %>
+      <% if (c.agentReport.onboardingNotes) { %>
+      <div style="margin-top:16px;">
+        <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Onboarding Notes</div>
+        <p style="font-size:0.82rem;color:var(--dark);line-height:1.6;font-weight:300;"><%= c.agentReport.onboardingNotes %></p>
+      </div>
+      <% } %>
+    </div>
+    <% } %>
   <% } %>
 
   <!-- INVOICES TAB -->
   <% if (tab === 'invoices') { %>
     <div class="card" style="margin-bottom:20px;">
       <div class="card-title">New Invoice</div>
-      <form method="POST" action="/admin/clients/<%= client._id %>/invoices">
+      <form method="POST" action="/admin/clients/<%= c._id %>/invoices" id="invoiceForm">
         <div class="form-grid cols-3">
           <div class="form-field">
             <label>Invoice Title</label>
             <input type="text" name="title" placeholder="Social Media - March" required>
           </div>
           <div class="form-field">
-            <label>Amount ($)</label>
-            <input type="number" name="amount" placeholder="500.00" step="0.01" min="0" required>
-          </div>
-          <div class="form-field">
             <label>Status</label>
             <select name="status">
-              <option value="unpaid">Unpaid</option>
-              <option value="paid">Paid</option>
               <option value="draft">Draft</option>
+              <option value="unpaid" selected>Unpaid</option>
+              <option value="sent">Sent</option>
             </select>
           </div>
           <div class="form-field">
             <label>Due Date</label>
             <input type="date" name="dueDate">
           </div>
-          <div class="form-field span-2">
-            <label>Notes</label>
-            <input type="text" name="notes" placeholder="Optional notes">
+        </div>
+
+        <!-- Line Items -->
+        <div style="margin-top:20px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <label style="font-size:0.82rem;font-weight:500;color:var(--dark);">Line Items</label>
+            <button type="button" onclick="addLineItem()" class="btn btn-ghost btn-sm" style="font-size:0.75rem;">+ Add Item</button>
+          </div>
+          <div id="lineItems">
+            <div class="li-row" style="display:flex;gap:8px;margin-bottom:6px;align-items:center;">
+              <input type="text" name="description[]" placeholder="Description" style="flex:3;padding:6px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.85rem;">
+              <input type="number" name="quantity[]" value="1" min="1" step="1" style="flex:0.7;padding:6px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.85rem;" oninput="calcTotal()">
+              <input type="number" name="unitPrice[]" placeholder="0.00" step="0.01" min="0" style="flex:1;padding:6px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.85rem;" oninput="calcTotal()">
+              <button type="button" onclick="this.closest('.li-row').remove();calcTotal()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:1.1rem;padding:0 4px;">&times;</button>
+            </div>
+          </div>
+          <div style="text-align:right;margin-top:8px;font-size:0.9rem;color:var(--dark);">Total: <strong id="lineTotal">$0.00</strong></div>
+          <input type="hidden" name="amount" id="totalAmount" value="0">
+        </div>
+
+        <!-- Recurring -->
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--ivory-mid);">
+          <label style="font-size:0.82rem;display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" name="recurringEnabled" id="recurToggle" onchange="document.getElementById('recurOpts').style.display=this.checked?'flex':'none'">
+            <span style="font-weight:500;color:var(--dark);">Recurring Invoice</span>
+          </label>
+          <div id="recurOpts" style="display:none;gap:12px;margin-top:10px;flex-wrap:wrap;">
+            <div class="form-field" style="flex:1;min-width:140px;">
+              <label>Frequency</label>
+              <select name="recurringFrequency" style="padding:6px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.85rem;width:100%;">
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Biweekly</option>
+                <option value="monthly" selected>Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--slate);cursor:pointer;margin-top:8px;">
+              <input type="checkbox" name="recurringAutoSend"> Auto-send email
+            </label>
           </div>
         </div>
-        <div style="margin-top:16px;"><button type="submit" class="btn btn-navy btn-sm">Add Invoice</button></div>
+
+        <div class="form-field span-2" style="margin-top:12px;">
+          <label>Notes</label>
+          <input type="text" name="notes" placeholder="Optional notes">
+        </div>
+
+        <div style="margin-top:16px;"><button type="submit" class="btn btn-navy btn-sm">Create Invoice</button></div>
       </form>
     </div>
 
@@ -95,27 +206,41 @@
     <% } else { %>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Title</th><th>Amount</th><th>Status</th><th>Due</th><th>Notes</th><th></th></tr></thead>
+        <thead><tr><th>Invoice #</th><th>Title</th><th>Amount</th><th>Status</th><th>Due</th><th>Sent</th><th></th></tr></thead>
         <tbody>
           <% for (const inv of invoices) { %>
           <tr>
+            <td style="font-size:0.78rem;font-weight:500;color:var(--navy);white-space:nowrap;"><%= inv.invoiceNumber || '—' %><% if (inv.recurring?.enabled) { %> <span title="Recurring" style="color:var(--gold);">&#x21bb;</span><% } %></td>
             <td style="font-weight:500;"><%= inv.title %></td>
             <td>$<%= inv.amount.toFixed(2) %></td>
             <td>
-              <form method="POST" action="/admin/clients/<%= client._id %>/invoices/<%= inv._id %>/status" style="display:inline;">
-                <select name="status" onchange="this.form.submit()" style="padding:4px 8px;font-size:0.75rem;border:1px solid var(--ivory-mid);border-radius:2px;background:var(--white);font-family:'Jost',sans-serif;appearance:none;-webkit-appearance:auto;">
+              <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/status" style="display:inline;">
+                <select name="status" onchange="this.form.submit()" style="padding:4px 8px;font-size:0.75rem;border:1px solid var(--ivory-mid);border-radius:2px;background:var(--white);font-family:'Jost',sans-serif;appearance:auto;">
                   <option value="draft" <%= inv.status === 'draft' ? 'selected' : '' %>>Draft</option>
                   <option value="unpaid" <%= inv.status === 'unpaid' ? 'selected' : '' %>>Unpaid</option>
+                  <option value="sent" <%= inv.status === 'sent' ? 'selected' : '' %>>Sent</option>
                   <option value="paid" <%= inv.status === 'paid' ? 'selected' : '' %>>Paid</option>
+                  <option value="overdue" <%= inv.status === 'overdue' ? 'selected' : '' %>>Overdue</option>
+                  <option value="void" <%= inv.status === 'void' ? 'selected' : '' %>>Void</option>
                 </select>
               </form>
             </td>
-            <td class="text-slate"><%= inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—' %></td>
-            <td class="text-slate" style="font-size:0.82rem;"><%= inv.notes || '—' %></td>
-            <td>
-              <form method="POST" action="/admin/clients/<%= client._id %>/invoices/<%= inv._id %>/delete" onsubmit="return confirm('Delete invoice?')">
-                <button class="btn btn-danger btn-sm">Del</button>
-              </form>
+            <td class="text-slate" style="font-size:0.82rem;"><%= inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—' %></td>
+            <td class="text-slate" style="font-size:0.78rem;"><%= inv.emailSentAt ? new Date(inv.emailSentAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) : '—' %></td>
+            <td style="white-space:nowrap;">
+              <div style="display:flex;gap:4px;align-items:center;">
+                <% if (inv.status !== 'paid' && inv.status !== 'void') { %>
+                <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/send" style="display:inline;" onsubmit="return confirm('Send invoice email to <%= c.email || 'client' %>?')">
+                  <button class="btn btn-ghost btn-sm" style="font-size:0.72rem;" title="Send via email">Email</button>
+                </form>
+                <% } %>
+                <% if (inv.paymentToken) { %>
+                <button class="btn btn-ghost btn-sm" style="font-size:0.72rem;" title="Copy payment link" onclick="navigator.clipboard.writeText(window.location.origin+'/pay/<%= inv.paymentToken %>');this.textContent='Copied!';setTimeout(()=>this.textContent='Link',1500)">Link</button>
+                <% } %>
+                <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/delete" onsubmit="return confirm('Delete invoice?')" style="display:inline;">
+                  <button class="btn btn-danger btn-sm" style="font-size:0.72rem;">Del</button>
+                </form>
+              </div>
             </td>
           </tr>
           <% } %>
@@ -123,13 +248,143 @@
       </table>
     </div>
     <% } %>
+
+    <script>
+    function addLineItem() {
+      const row = document.createElement('div');
+      row.className = 'li-row';
+      row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;';
+      row.innerHTML = '<input type="text" name="description[]" placeholder="Description" style="flex:3;padding:6px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:\'Jost\',sans-serif;font-size:0.85rem;">'
+        + '<input type="number" name="quantity[]" value="1" min="1" step="1" style="flex:0.7;padding:6px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:\'Jost\',sans-serif;font-size:0.85rem;" oninput="calcTotal()">'
+        + '<input type="number" name="unitPrice[]" placeholder="0.00" step="0.01" min="0" style="flex:1;padding:6px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:\'Jost\',sans-serif;font-size:0.85rem;" oninput="calcTotal()">'
+        + '<button type="button" onclick="this.closest(\'.li-row\').remove();calcTotal()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:1.1rem;padding:0 4px;">&times;</button>';
+      document.getElementById('lineItems').appendChild(row);
+    }
+    function calcTotal() {
+      let total = 0;
+      document.querySelectorAll('.li-row').forEach(row => {
+        const q = parseFloat(row.querySelector('[name="quantity[]"]')?.value) || 0;
+        const p = parseFloat(row.querySelector('[name="unitPrice[]"]')?.value) || 0;
+        total += q * p;
+      });
+      document.getElementById('lineTotal').textContent = '$' + total.toFixed(2);
+      document.getElementById('totalAmount').value = total.toFixed(2);
+    }
+    </script>
+  <% } %>
+
+  <!-- ASSETS TAB -->
+  <% if (tab === 'assets') { %>
+    <style>
+      .ca-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+      .ca-card {
+        background: var(--white); border: 2px solid transparent; border-radius: 2px;
+        overflow: hidden; transition: all 0.12s; cursor: pointer;
+      }
+      .ca-card:hover { border-color: var(--ivory-mid); box-shadow: 0 2px 8px rgba(15,27,48,0.08); }
+      .ca-thumb {
+        aspect-ratio: 16/10; background: var(--ivory); overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .ca-thumb img, .ca-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .ca-info { padding: 8px 10px; }
+      .ca-title { font-size: 0.78rem; font-weight: 500; color: var(--dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ca-meta { font-size: 0.65rem; color: var(--slate); margin-top: 2px; display: flex; gap: 6px; align-items: center; }
+      .ca-badge { font-size: 0.55rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 1px 5px; border-radius: 1px; }
+      .ca-badge-image { background: rgba(28,43,74,0.08); color: var(--navy); }
+      .ca-badge-video { background: rgba(201,168,72,0.15); color: #92660F; }
+      .ca-actions { display: flex; gap: 6px; padding: 0 10px 8px; }
+      .ca-empty { text-align: center; padding: 40px; color: var(--slate); font-size: 0.85rem; }
+    </style>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Attached Assets</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" id="pickAssetBtn" style="font-size:0.75rem;">+ From Library</button>
+          <a href="/admin/assets" class="btn btn-ghost btn-sm" style="font-size:0.75rem;">Manage All</a>
+        </div>
+      </div>
+
+      <% if (!assets.length) { %>
+        <div class="ca-empty">No assets attached to this client.<br><small>Click "From Library" to attach existing assets, or upload in the Asset Center with this client selected.</small></div>
+      <% } else { %>
+        <div class="ca-grid">
+          <% for (const a of assets) { %>
+          <div class="ca-card" data-id="<%= a._id %>">
+            <div class="ca-thumb">
+              <% if (a.fileType === 'image') { %>
+                <img src="<%= a.publicUrl %>" alt="<%= a.title %>" loading="lazy">
+              <% } else if (a.fileType === 'video') { %>
+                <video src="<%= a.publicUrl %>" muted preload="metadata"></video>
+              <% } else { %>
+                <span style="font-size:2rem;color:var(--slate);">◻</span>
+              <% } %>
+            </div>
+            <div class="ca-info">
+              <div class="ca-title"><%= a.title || a.originalName %></div>
+              <div class="ca-meta">
+                <span class="ca-badge ca-badge-<%= a.fileType %>"><%= a.fileType %></span>
+                <span><%= a.folder %></span>
+                <span><%= a.size ? (a.size > 1024*1024 ? (a.size/1024/1024).toFixed(1)+' MB' : (a.size/1024).toFixed(0)+' KB') : '' %></span>
+              </div>
+            </div>
+            <div class="ca-actions">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="navigator.clipboard.writeText('<%= a.publicUrl %>');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy URL',1500)">Copy URL</button>
+              <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="window.open('<%= a.publicUrl %>','_blank')">Open</button>
+              <button class="btn btn-danger btn-sm ca-detach-btn" style="font-size:0.68rem;" data-id="<%= a._id %>">Detach</button>
+            </div>
+          </div>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+
+    <script src="/js/assetPicker.js"></script>
+    <script>
+    // "From Library" — open asset picker to attach existing asset
+    document.getElementById('pickAssetBtn')?.addEventListener('click', () => {
+      openAssetPicker({
+        folder: 'all',
+        type: 'all',
+        onSelect: async (asset) => {
+          try {
+            const r = await fetch('/admin/assets/' + asset._id, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ clientId: '<%= c._id %>' }),
+            });
+            const data = await r.json();
+            if (data.success) window.location.reload();
+          } catch (err) { alert('Error attaching asset: ' + err.message); }
+        }
+      });
+    });
+
+    // Detach buttons — remove clientId from asset
+    document.querySelectorAll('.ca-detach-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Detach this asset from the client? (The asset will remain in the library.)')) return;
+        try {
+          const r = await fetch('/admin/assets/' + btn.dataset.id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientId: '' }),
+          });
+          const data = await r.json();
+          if (data.success) window.location.reload();
+        } catch (err) { alert('Error: ' + err.message); }
+      });
+    });
+    </script>
   <% } %>
 
   <!-- FILES TAB -->
   <% if (tab === 'files') { %>
     <div class="card" style="margin-bottom:20px;">
       <div class="card-title">Upload File</div>
-      <form method="POST" action="/admin/clients/<%= client._id %>/files" enctype="multipart/form-data">
+      <form method="POST" action="/admin/clients/<%= c._id %>/files" enctype="multipart/form-data">
         <div class="form-grid">
           <div class="form-field">
             <label>File</label>
@@ -159,7 +414,7 @@
             <td class="text-slate" style="font-size:0.8rem;"><%= f.size ? (f.size / 1024).toFixed(0) + ' KB' : '—' %></td>
             <td class="text-slate"><%= new Date(f.uploadedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) %></td>
             <td>
-              <form method="POST" action="/admin/clients/<%= client._id %>/files/<%= f._id %>/delete" onsubmit="return confirm('Delete file?')">
+              <form method="POST" action="/admin/clients/<%= c._id %>/files/<%= f._id %>/delete" onsubmit="return confirm('Delete file?')">
                 <button class="btn btn-danger btn-sm">Del</button>
               </form>
             </td>
@@ -175,65 +430,443 @@
   <% if (tab === 'onboarding') { %>
     <div class="card">
       <div class="card-title">Client Onboarding</div>
-      <form method="POST" action="/admin/clients/<%= client._id %>/onboarding">
+      <form method="POST" action="/admin/clients/<%= c._id %>/onboarding">
         <div class="form-grid">
           <div class="form-field">
             <label>Business Type</label>
-            <input type="text" name="businessType" value="<%= client.onboarding?.data?.businessType || '' %>" placeholder="e.g. Restaurant, Retail, Salon">
+            <input type="text" name="businessType" value="<%= c.onboarding?.data?.businessType || '' %>" placeholder="e.g. Restaurant, Retail, Salon">
           </div>
           <div class="form-field">
             <label>Budget Range</label>
             <select name="budget">
-              <option value="" <%= !client.onboarding?.data?.budget ? 'selected' : '' %>>Select...</option>
-              <option value="under500" <%= client.onboarding?.data?.budget === 'under500' ? 'selected' : '' %>>Under $500/mo</option>
-              <option value="500-1000" <%= client.onboarding?.data?.budget === '500-1000' ? 'selected' : '' %>>$500–$1,000/mo</option>
-              <option value="1000-2500" <%= client.onboarding?.data?.budget === '1000-2500' ? 'selected' : '' %>>$1,000–$2,500/mo</option>
-              <option value="2500+" <%= client.onboarding?.data?.budget === '2500+' ? 'selected' : '' %>>$2,500+/mo</option>
+              <option value="" <%= !c.onboarding?.data?.budget ? 'selected' : '' %>>Select...</option>
+              <option value="under500" <%= c.onboarding?.data?.budget === 'under500' ? 'selected' : '' %>>Under $500/mo</option>
+              <option value="500-1000" <%= c.onboarding?.data?.budget === '500-1000' ? 'selected' : '' %>>$500–$1,000/mo</option>
+              <option value="1000-2500" <%= c.onboarding?.data?.budget === '1000-2500' ? 'selected' : '' %>>$1,000–$2,500/mo</option>
+              <option value="2500+" <%= c.onboarding?.data?.budget === '2500+' ? 'selected' : '' %>>$2,500+/mo</option>
             </select>
           </div>
           <div class="form-field">
             <label>Timeline</label>
             <select name="timeline">
-              <option value="" <%= !client.onboarding?.data?.timeline ? 'selected' : '' %>>Select...</option>
-              <option value="asap" <%= client.onboarding?.data?.timeline === 'asap' ? 'selected' : '' %>>ASAP</option>
-              <option value="1month" <%= client.onboarding?.data?.timeline === '1month' ? 'selected' : '' %>>Within 1 month</option>
-              <option value="3months" <%= client.onboarding?.data?.timeline === '3months' ? 'selected' : '' %>>1–3 months</option>
-              <option value="flexible" <%= client.onboarding?.data?.timeline === 'flexible' ? 'selected' : '' %>>Flexible</option>
+              <option value="" <%= !c.onboarding?.data?.timeline ? 'selected' : '' %>>Select...</option>
+              <option value="asap" <%= c.onboarding?.data?.timeline === 'asap' ? 'selected' : '' %>>ASAP</option>
+              <option value="1month" <%= c.onboarding?.data?.timeline === '1month' ? 'selected' : '' %>>Within 1 month</option>
+              <option value="3months" <%= c.onboarding?.data?.timeline === '3months' ? 'selected' : '' %>>1–3 months</option>
+              <option value="flexible" <%= c.onboarding?.data?.timeline === 'flexible' ? 'selected' : '' %>>Flexible</option>
             </select>
           </div>
           <div class="form-field">
             <label>Social Platforms</label>
-            <input type="text" name="socialPlatforms" value="<%= client.onboarding?.data?.socialPlatforms || '' %>" placeholder="Instagram, Facebook, TikTok">
+            <input type="text" name="socialPlatforms" value="<%= c.onboarding?.data?.socialPlatforms || '' %>" placeholder="Instagram, Facebook, TikTok">
           </div>
           <div class="form-field">
             <label>Current Website</label>
-            <input type="url" name="currentWebsite" value="<%= client.onboarding?.data?.currentWebsite || '' %>" placeholder="https://...">
+            <input type="url" name="currentWebsite" value="<%= c.onboarding?.data?.currentWebsite || '' %>" placeholder="https://...">
           </div>
           <div class="form-field">
             <label>Progress Step</label>
             <select name="step">
-              <option value="0" <%= !client.onboarding?.step ? 'selected' : '' %>>Not started</option>
-              <option value="1" <%= client.onboarding?.step === 1 ? 'selected' : '' %>>Step 1 — Initial call</option>
-              <option value="2" <%= client.onboarding?.step === 2 ? 'selected' : '' %>>Step 2 — Proposal sent</option>
-              <option value="3" <%= client.onboarding?.step === 3 ? 'selected' : '' %>>Step 3 — Contract signed</option>
-              <option value="done" <%= client.onboarding?.complete ? 'selected' : '' %>>Complete</option>
+              <option value="0" <%= !c.onboarding?.step ? 'selected' : '' %>>Not started</option>
+              <option value="1" <%= c.onboarding?.step === 1 ? 'selected' : '' %>>Step 1 — Initial call</option>
+              <option value="2" <%= c.onboarding?.step === 2 ? 'selected' : '' %>>Step 2 — Proposal sent</option>
+              <option value="3" <%= c.onboarding?.step === 3 ? 'selected' : '' %>>Step 3 — Contract signed</option>
+              <option value="done" <%= c.onboarding?.complete ? 'selected' : '' %>>Complete</option>
             </select>
           </div>
           <div class="form-field span-2">
             <label>Goals</label>
-            <textarea name="goals" placeholder="What does the client want to achieve?"><%= client.onboarding?.data?.goals || '' %></textarea>
+            <textarea name="goals" placeholder="What does the client want to achieve?"><%= c.onboarding?.data?.goals || '' %></textarea>
           </div>
           <div class="form-field span-2">
             <label>Brand Notes</label>
-            <textarea name="brandNotes" placeholder="Brand voice, colors, style preferences..."><%= client.onboarding?.data?.brandNotes || '' %></textarea>
+            <textarea name="brandNotes" placeholder="Brand voice, colors, style preferences..."><%= c.onboarding?.data?.brandNotes || '' %></textarea>
+          </div>
+          <div class="form-field span-2">
+            <label>Brand Colors <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(hex codes, comma separated — used in Social Generator)</span></label>
+            <input type="text" name="brandColors" value="<%= (c.brandColors || []).join(', ') %>" placeholder="#1C2B4A, #C9A848, #F5F3EF">
+            <% if (c.brandColors?.length) { %>
+            <div style="display:flex;gap:4px;margin-top:6px;">
+              <% for (const clr of c.brandColors) { %>
+              <div style="width:28px;height:28px;border-radius:2px;background:<%= clr %>;border:1px solid var(--ivory-mid);" title="<%= clr %>"></div>
+              <% } %>
+            </div>
+            <% } %>
           </div>
         </div>
         <div style="margin-top:24px;"><button type="submit" class="btn btn-navy">Save Onboarding Data</button></div>
       </form>
     </div>
   <% } %>
+
+  <!-- EMAILS TAB -->
+  <% if (tab === 'emails') { %>
+    <style>
+      .thread{border:1px solid var(--ivory-mid);border-radius:3px;margin-bottom:12px;overflow:hidden;}
+      .thread-head{padding:12px 16px;background:var(--ivory);cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;transition:background .12s;}
+      .thread-head:hover{background:var(--ivory-mid);}
+      .thread-subject{font-size:0.88rem;font-weight:500;color:var(--dark);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .thread-meta{font-size:0.68rem;color:var(--slate);white-space:nowrap;}
+      .thread-count{font-size:0.6rem;padding:2px 7px;border-radius:10px;background:var(--navy);color:var(--white);font-weight:600;}
+      .thread-body{display:none;}
+      .thread.open .thread-body{display:block;}
+      .thread.open .thread-head{border-bottom:1px solid var(--ivory-mid);}
+      .msg{padding:14px 16px;border-bottom:1px solid var(--ivory);}
+      .msg:last-child{border-bottom:none;}
+      .msg-bar{display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;}
+      .msg-badge{font-size:0.58rem;padding:2px 7px;border-radius:2px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+      .msg-badge-out{background:rgba(28,43,74,0.08);color:var(--navy);}
+      .msg-badge-in{background:rgba(201,168,72,0.15);color:#92660F;}
+      .msg-from{font-size:0.72rem;color:var(--slate);}
+      .msg-time{font-size:0.68rem;color:var(--slate);margin-left:auto;}
+      .msg-content{font-size:0.84rem;color:var(--dark);line-height:1.6;max-height:180px;overflow-y:auto;}
+      .badge-source{font-size:0.55rem;padding:1px 5px;border-radius:2px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+    </style>
+
+    <!-- Flash -->
+    <% if (qs?.success) { %>
+    <div style="background:rgba(21,128,61,0.08);border:1px solid rgba(21,128,61,0.2);border-radius:3px;padding:10px 16px;margin-bottom:16px;font-size:0.82rem;color:var(--success);"><%= qs.success %></div>
+    <% } %>
+    <% if (qs?.error) { %>
+    <div style="background:rgba(185,28,28,0.08);border:1px solid rgba(185,28,28,0.2);border-radius:3px;padding:10px 16px;margin-bottom:16px;font-size:0.82rem;color:var(--danger);"><%= qs.error %></div>
+    <% } %>
+
+    <!-- Compose -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="document.getElementById('composeForm').style.display=document.getElementById('composeForm').style.display==='none'?'block':'none';this.querySelector('.chevron').textContent=document.getElementById('composeForm').style.display==='none'?'+':'-'">
+        <div class="card-title" style="margin:0;border:none;padding-bottom:0;">Compose Email</div>
+        <span class="chevron" style="font-size:1.2rem;color:var(--slate);font-weight:300;">+</span>
+      </div>
+      <form method="POST" action="/admin/clients/<%= c._id %>/emails/send" id="composeForm" style="display:none;margin-top:16px;">
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="form-field">
+            <label>To</label>
+            <input type="email" name="to" value="<%= c.email || '' %>" required placeholder="client@example.com">
+          </div>
+          <div class="form-field">
+            <label>CC <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(comma separated)</span></label>
+            <input type="text" name="cc" placeholder="other@example.com, team@w2marketing.biz">
+          </div>
+        </div>
+        <div class="form-field" style="margin-top:12px;">
+          <label>Subject *</label>
+          <input type="text" name="subject" required placeholder="e.g. Quick update on your project">
+        </div>
+        <div class="form-field" style="margin-top:12px;">
+          <label>Body *</label>
+          <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="openClientImgPicker()">Image</button>
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="insertAt(clientBody, '&lt;strong&gt;&lt;/strong&gt;')">Bold</button>
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="insertAt(clientBody, '&lt;a href=&quot;https://w2marketing.biz&quot;&gt;link&lt;/a&gt;')">Link</button>
+          </div>
+          <textarea name="body" id="clientBody" rows="6" required placeholder="Hi <%= c.name?.split(' ')[0] || '' %>,"></textarea>
+        </div>
+        <div style="margin-top:12px;">
+          <button type="submit" class="btn btn-navy btn-sm" onclick="return confirm('Send to <%= c.email || 'client' %>?')">Send</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Archive toggle -->
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+      <% if (!showArchived) { %>
+        <span style="font-size:0.78rem;font-weight:500;color:var(--dark);">Inbox</span>
+        <% if (archivedCount) { %>
+        <a href="?tab=emails&showArchived=1" class="btn btn-ghost btn-sm" style="font-size:0.65rem;">Archived (<%= archivedCount %>)</a>
+        <% } %>
+      <% } else { %>
+        <a href="?tab=emails" class="btn btn-ghost btn-sm" style="font-size:0.65rem;">Back to Inbox</a>
+        <span style="font-size:0.78rem;font-weight:500;color:var(--slate);">Archived (<%= archivedCount %>)</span>
+      <% } %>
+    </div>
+
+    <!-- Conversations -->
+    <% if (!threads.length && !unthreaded.length) { %>
+      <div class="card"><div style="text-align:center;padding:24px;color:var(--slate);font-size:0.85rem;"><%= showArchived ? 'No archived emails.' : 'No emails yet.' %></div></div>
+    <% } else { %>
+
+      <!-- Threaded conversations -->
+      <% for (const t of threads) { %>
+      <div class="thread" id="thread-<%= t.root._id %>">
+        <div class="thread-head" onclick="if(!event.target.closest('.arch-btn'))this.parentElement.classList.toggle('open')">
+          <% const hasReply = t.messages.some(m => m.direction === 'inbound'); %>
+          <% if (hasReply) { %><span class="msg-badge msg-badge-in" style="flex-shrink:0;">Has Reply</span><% } %>
+          <div class="thread-subject"><%= t.root.subject %></div>
+          <% if (t.messages.length > 1) { %><span class="thread-count"><%= t.messages.length %></span><% } %>
+          <span class="thread-meta"><%= new Date(t.lastAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
+          <form method="POST" action="/admin/clients/<%= c._id %>/emails/<%= showArchived ? 'unarchive' : 'archive' %>" class="arch-btn" style="margin:0;" onclick="event.stopPropagation()">
+            <% for (const aid of t.allIds) { %><input type="hidden" name="emailIds" value="<%= aid %>"><% } %>
+            <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:2px 8px;color:var(--slate);" title="<%= showArchived ? 'Unarchive' : 'Archive' %> thread"><%= showArchived ? 'Restore' : 'Archive' %></button>
+          </form>
+        </div>
+        <div class="thread-body">
+          <% for (const msg of t.messages) { %>
+          <div class="msg">
+            <div class="msg-bar">
+              <% if (msg.direction === 'inbound') { %>
+                <span class="msg-badge msg-badge-in">Reply</span>
+                <span class="msg-from"><%= msg.from %></span>
+              <% } else { %>
+                <span class="msg-badge msg-badge-out">Sent</span>
+                <span class="msg-from">to <%= msg.to %><% if (msg.cc?.length) { %> &middot; cc: <%= msg.cc.join(', ') %><% } %></span>
+              <% } %>
+              <span class="msg-time"><%= new Date(msg.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) %></span>
+            </div>
+            <div class="msg-content"><%- msg.body %></div>
+          </div>
+          <% } %>
+          <!-- Inline reply bar -->
+          <% if (!showArchived) { %>
+          <div class="msg" style="background:var(--ivory);padding:10px 16px;">
+            <form method="POST" action="/admin/clients/<%= c._id %>/emails/reply" style="display:flex;gap:8px;align-items:flex-start;">
+              <input type="hidden" name="threadId" value="<%= t.root.threadId || t.root._id %>">
+              <input type="hidden" name="subject" value="Re: <%= t.root.subject.replace(/^Re:\s*/i, '') %>">
+              <input type="hidden" name="to" value="<%= c.email %>">
+              <textarea name="body" rows="2" required placeholder="Reply..." style="flex:1;padding:8px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;resize:vertical;min-height:38px;"></textarea>
+              <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.68rem;white-space:nowrap;margin-top:1px;">Send</button>
+            </form>
+          </div>
+          <% } %>
+        </div>
+      </div>
+      <% } %>
+
+      <!-- Unthreaded (standalone emails) -->
+      <% for (const em of unthreaded) { %>
+      <div class="thread">
+        <div class="thread-head" onclick="if(!event.target.closest('.arch-btn'))this.parentElement.classList.toggle('open')">
+          <% if (em.direction === 'inbound') { %>
+            <span class="msg-badge msg-badge-in" style="flex-shrink:0;">Received</span>
+          <% } else { %>
+            <span class="msg-badge msg-badge-out" style="flex-shrink:0;">Sent</span>
+          <% } %>
+          <% if (em.source === 'campaign') { %><span class="badge-source" style="background:rgba(99,91,255,0.1);color:#635bff;">Campaign</span><% } %>
+          <div class="thread-subject"><%= em.subject %></div>
+          <span class="thread-meta"><%= new Date(em.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
+          <form method="POST" action="/admin/clients/<%= c._id %>/emails/<%= showArchived ? 'unarchive' : 'archive' %>" class="arch-btn" style="margin:0;" onclick="event.stopPropagation()">
+            <input type="hidden" name="emailIds" value="<%= em._id %>">
+            <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:2px 8px;color:var(--slate);"><%= showArchived ? 'Restore' : 'Archive' %></button>
+          </form>
+        </div>
+        <div class="thread-body">
+          <div class="msg">
+            <div class="msg-bar">
+              <% if (em.direction === 'inbound') { %>
+                <span class="msg-badge msg-badge-in">Received</span>
+                <span class="msg-from"><%= em.from %></span>
+              <% } else { %>
+                <span class="msg-badge msg-badge-out">Sent</span>
+                <span class="msg-from">to <%= em.to %><% if (em.cc?.length) { %> &middot; cc: <%= em.cc.join(', ') %><% } %></span>
+              <% } %>
+              <span class="msg-time"><%= new Date(em.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) %></span>
+            </div>
+            <div class="msg-content"><%- em.body %></div>
+          </div>
+          <!-- Reply bar for unthreaded emails -->
+          <% if (!showArchived) { %>
+          <div class="msg" style="background:var(--ivory);padding:10px 16px;">
+            <form method="POST" action="/admin/clients/<%= c._id %>/emails/reply" style="display:flex;gap:8px;align-items:flex-start;">
+              <input type="hidden" name="threadId" value="<%= em.threadId || em._id %>">
+              <input type="hidden" name="subject" value="Re: <%= (em.subject || '').replace(/^Re:\s*/i, '') %>">
+              <input type="hidden" name="to" value="<%= em.direction === 'inbound' ? em.from : (c.email || em.to) %>">
+              <textarea name="body" rows="2" required placeholder="Reply..." style="flex:1;padding:8px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;resize:vertical;min-height:38px;"></textarea>
+              <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.68rem;white-space:nowrap;margin-top:1px;">Send</button>
+            </form>
+          </div>
+          <% } %>
+        </div>
+      </div>
+      <% } %>
+
+    <% } %>
+
+    <!-- Image Picker Modal -->
+    <div id="clientImgModal" style="display:none;position:fixed;inset:0;background:rgba(15,27,48,0.5);z-index:500;align-items:center;justify-content:center;">
+      <div style="background:var(--white);border-radius:6px;padding:28px;max-width:560px;width:90%;max-height:70vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.15);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="font-family:'Cormorant Garamond',serif;font-size:1.2rem;">Insert Image</div>
+          <button type="button" onclick="document.getElementById('clientImgModal').style.display='none'" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--slate);">&times;</button>
+        </div>
+        <div id="clientImgGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;"></div>
+        <div style="margin-top:12px;display:flex;gap:6px;">
+          <input type="url" id="clientExtUrl" placeholder="Or paste image URL" style="flex:1;padding:6px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-size:0.82rem;">
+          <button type="button" class="btn btn-navy btn-sm" style="font-size:0.68rem;" onclick="const u=document.getElementById('clientExtUrl').value.trim();if(u){insertAt(clientBody,'<img src=&quot;'+u+'&quot; style=&quot;max-width:100%;height:auto;&quot;>');document.getElementById('clientImgModal').style.display='none';}">Insert</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    const clientBody = document.getElementById('clientBody');
+    function insertAt(ta, text) {
+      if (!ta) return;
+      const s = ta.selectionStart, e = ta.selectionEnd;
+      ta.value = ta.value.substring(0, s) + text + ta.value.substring(e);
+      ta.selectionStart = ta.selectionEnd = s + text.length;
+      ta.focus();
+    }
+    function openClientImgPicker() {
+      const modal = document.getElementById('clientImgModal');
+      modal.style.display = 'flex';
+      const grid = document.getElementById('clientImgGrid');
+      grid.innerHTML = '<div style="color:var(--slate);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:16px;">Loading...</div>';
+      fetch('/admin/design/images/api').then(r => r.json()).then(data => {
+        if (!data.images?.length) { grid.innerHTML = '<div style="color:var(--slate);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:16px;">No images. <a href="/admin/design#brand-images" style="color:var(--navy);">Upload in Design</a></div>'; return; }
+        grid.innerHTML = '';
+        for (const img of data.images) {
+          const d = document.createElement('div');
+          d.style.cssText = 'border:1px solid var(--ivory-mid);border-radius:2px;overflow:hidden;cursor:pointer;';
+          d.innerHTML = '<div style="aspect-ratio:1;background:var(--ivory);display:flex;align-items:center;justify-content:center;overflow:hidden;"><img src="'+img.url+'" style="max-width:100%;max-height:100%;object-fit:cover;"></div><div style="padding:4px 6px;font-size:0.6rem;color:var(--slate);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+( img.label||img.slot)+'</div>';
+          d.onclick = () => { insertAt(clientBody, '<img src="'+img.url+'" alt="'+(img.label||'')+'" style="max-width:100%;height:auto;display:block;margin:12px 0;">'); document.getElementById('clientImgModal').style.display='none'; };
+          grid.appendChild(d);
+        }
+      }).catch(() => { grid.innerHTML = '<div style="color:var(--danger);font-size:0.8rem;grid-column:1/-1;text-align:center;">Failed to load</div>'; });
+    }
+    document.getElementById('clientImgModal')?.addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
+    </script>
+  <% } %>
+
 </div>
 
+<!-- Agent Panel (slide-out) -->
+<div id="agentPanel" style="position:fixed;top:0;right:-420px;width:min(420px,100vw);height:100vh;background:var(--white);box-shadow:-4px 0 24px rgba(15,27,48,0.12);z-index:400;transition:right 0.25s ease;display:flex;flex-direction:column;">
+  <div style="padding:20px 24px;border-bottom:1px solid var(--ivory-mid);display:flex;justify-content:space-between;align-items:center;">
+    <div style="font-family:'Cormorant Garamond',serif;font-size:1.3rem;color:var(--navy);">Client Research Agent</div>
+    <button onclick="document.getElementById('agentPanel').style.right='-420px'" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--slate);line-height:1;">&times;</button>
+  </div>
+  <div style="padding:20px 24px;flex:1;overflow-y:auto;" id="agentContent">
+    <div style="font-size:0.82rem;color:var(--slate);line-height:1.6;margin-bottom:16px;">
+      Researches <strong><%= c.name %></strong><%= c.company ? ` (${c.company})` : '' %> across the web, analyzes their website, and generates an onboarding knowledge base.
+    </div>
+    <div id="agentStatus" style="display:none;padding:12px 16px;background:var(--ivory);border-radius:3px;margin-bottom:16px;">
+      <div style="font-size:0.78rem;color:var(--navy);font-weight:500;" id="agentStatusText">Researching...</div>
+      <div style="margin-top:8px;height:3px;background:var(--ivory-mid);border-radius:2px;overflow:hidden;">
+        <div id="agentProgress" style="height:100%;background:var(--navy);width:0%;transition:width 0.5s;"></div>
+      </div>
+    </div>
+    <div id="agentResult" style="display:none;"></div>
+  </div>
+  <div style="padding:16px 24px;border-top:1px solid var(--ivory-mid);">
+    <button id="runAgentBtn" class="btn btn-navy" style="width:100%;" onclick="runClientAgent()">Research Client</button>
+  </div>
+</div>
+
+<script>
+// ── Start Meeting ──
+document.getElementById('startMeetingBtn')?.addEventListener('click', async function() {
+  if (!confirm('Start a meeting with <%= c.name %>?<%= c.email ? " An invite email will be sent to " + c.email + "." : " No email on file — meeting will be created without an invite." %>')) return;
+  this.disabled = true;
+  this.textContent = 'Creating...';
+  try {
+    const r = await fetch('/admin/clients/<%= c._id %>/start-meeting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await r.json();
+    if (data.success) {
+      window.open(data.meetingUrl, '_blank');
+      this.textContent = 'Meeting Started';
+      this.style.background = 'var(--success)';
+      setTimeout(() => { this.textContent = 'Start Meeting'; this.style.background = ''; this.disabled = false; }, 3000);
+    } else {
+      alert('Error: ' + (data.error || 'Failed'));
+      this.textContent = 'Start Meeting';
+      this.disabled = false;
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+    this.textContent = 'Start Meeting';
+    this.disabled = false;
+  }
+});
+
+// ── Agent Panel ──
+document.getElementById('openAgentBtn')?.addEventListener('click', () => {
+  document.getElementById('agentPanel').style.right = '0';
+});
+
+async function runClientAgent() {
+  const btn = document.getElementById('runAgentBtn');
+  const status = document.getElementById('agentStatus');
+  const statusText = document.getElementById('agentStatusText');
+  const progress = document.getElementById('agentProgress');
+  const result = document.getElementById('agentResult');
+
+  btn.disabled = true;
+  btn.textContent = 'Researching...';
+  status.style.display = 'block';
+  result.style.display = 'none';
+  statusText.textContent = 'Searching the web...';
+  progress.style.width = '20%';
+
+  const steps = [
+    { text: 'Analyzing search results...', pct: '40%', delay: 3000 },
+    { text: 'Reviewing website...', pct: '60%', delay: 5000 },
+    { text: 'Generating knowledge base...', pct: '80%', delay: 8000 },
+  ];
+  const timers = steps.map(s => setTimeout(() => { statusText.textContent = s.text; progress.style.width = s.pct; }, s.delay));
+
+  try {
+    const r = await fetch('/admin/clients/<%= c._id %>/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await r.json();
+    timers.forEach(clearTimeout);
+    progress.style.width = '100%';
+
+    if (data.success && data.report) {
+      statusText.textContent = 'Done!';
+      const rpt = data.report;
+      result.style.display = 'block';
+      result.innerHTML = `
+        <div style="font-size:0.82rem;color:var(--navy);font-weight:500;margin-bottom:12px;">${data.message || 'Research complete.'}</div>
+        ${rpt.summary ? `<div style="font-size:0.82rem;color:var(--dark);line-height:1.6;margin-bottom:14px;">${rpt.summary}</div>` : ''}
+        ${rpt.businessType ? `<div style="margin-bottom:10px;"><span style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);">Type:</span> <span style="font-size:0.82rem;color:var(--dark);">${rpt.businessType}${rpt.industry ? ' / ' + rpt.industry : ''}</span></div>` : ''}
+        ${Array.isArray(rpt.suggestedServices) ? `<div style="margin-bottom:10px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Suggested Services</div>${rpt.suggestedServices.map(s => `<span style="display:inline-block;font-size:0.75rem;padding:3px 10px;margin:2px 4px 2px 0;background:rgba(28,43,74,0.06);border-radius:2px;color:var(--navy);">${s}</span>`).join('')}</div>` : ''}
+        ${Array.isArray(rpt.strengths) ? `<div style="margin-bottom:10px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Strengths</div>${rpt.strengths.map(s => `<div style="font-size:0.8rem;color:var(--dark);padding:2px 0;">+ ${s}</div>`).join('')}</div>` : ''}
+        ${Array.isArray(rpt.opportunities) ? `<div style="margin-bottom:10px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Opportunities</div>${rpt.opportunities.map(o => `<div style="font-size:0.8rem;color:var(--dark);padding:2px 0;">* ${o}</div>`).join('')}</div>` : ''}
+        ${rpt.websiteNotes ? `<div style="margin-bottom:10px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Website Analysis</div><div style="font-size:0.8rem;color:var(--dark);line-height:1.5;">${rpt.websiteNotes}</div></div>` : ''}
+        ${rpt.onboardingNotes ? `<div style="margin-bottom:10px;padding:10px 14px;background:var(--ivory);border-radius:3px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--navy);margin-bottom:4px;">Onboarding Notes</div><div style="font-size:0.8rem;color:var(--dark);line-height:1.5;">${rpt.onboardingNotes}</div></div>` : ''}
+        <div style="margin-top:14px;text-align:center;">
+          <button class="btn btn-ghost btn-sm" style="font-size:0.72rem;" onclick="window.location.reload()">Refresh Page to See Report</button>
+        </div>`;
+      btn.textContent = 'Re-run Research';
+    } else {
+      statusText.textContent = 'Failed';
+      result.style.display = 'block';
+      result.innerHTML = `<div style="color:var(--danger);font-size:0.82rem;">${data.error || 'Agent returned no results.'}</div>`;
+      btn.textContent = 'Retry';
+    }
+  } catch (err) {
+    timers.forEach(clearTimeout);
+    statusText.textContent = 'Error';
+    result.style.display = 'block';
+    result.innerHTML = `<div style="color:var(--danger);font-size:0.82rem;">${err.message}</div>`;
+    btn.textContent = 'Retry';
+  }
+  btn.disabled = false;
+}
+
+// ── Status Toggle ──
+document.getElementById('detailStatusToggle')?.addEventListener('change', async function() {
+  const status = this.value;
+  try {
+    const r = await fetch('/admin/clients/<%= c._id %>/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    const data = await r.json();
+    if (data.success) {
+      this.style.borderColor = 'var(--gold)';
+      setTimeout(() => { this.style.borderColor = ''; }, 1500);
+    } else {
+      alert('Error: ' + (data.error || 'Failed'));
+    }
+  } catch (err) { alert('Error: ' + err.message); }
+});
+</script>
+<script src="/js/tours/clients.js"></script>
 </div></div>
 </body>
 </html>
