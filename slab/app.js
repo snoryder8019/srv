@@ -37,7 +37,12 @@ app.use(
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({ mongoUrl: config.DB_URL, collectionName: 'sessions' }),
-    cookie: { secure: config.NODE_ENV === 'production', httpOnly: true, sameSite: 'lax' },
+    cookie: {
+      secure: config.NODE_ENV === 'production',
+      httpOnly: true,
+      sameSite: 'lax',
+      ...(config.NODE_ENV === 'production' ? { domain: '.madladslab.com' } : {}),
+    },
   })
 );
 

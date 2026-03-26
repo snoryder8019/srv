@@ -1,6 +1,53 @@
 # Recent Changes Summary
 
-Generated: 2026-03-25T07:30:00.019Z
+Generated: 2026-03-26T07:30:00.025Z
+
+---
+
+## Commit: good push
+
+- **Hash:** `ceec56a`
+- **Author:** Scott
+- **Date:** 3/26/2026
+- **Changes:** 134 files, +39743/-1018 lines
+
+### Modified Areas:
+
+**Backend:** 26 files
+**Views:** 52 files
+**Scripts:** 3 files
+**Documentation:** 3 files
+
+---
+
+## Commit: pre migration push
+
+- **Hash:** `04e4132`
+- **Author:** Scott
+- **Date:** 3/25/2026
+- **Changes:** 57 files, +5625/-805 lines
+
+### Modified Areas:
+
+**Frontend:** 1 files
+**Backend:** 10 files
+**Views:** 30 files
+
+---
+
+## Commit: big W2 Update
+
+- **Hash:** `b39c2ce`
+- **Author:** Scott
+- **Date:** 3/25/2026
+- **Changes:** 113 files, +21621/-651 lines
+
+### Modified Areas:
+
+**Frontend:** 2 files
+**Backend:** 21 files
+**Views:** 41 files
+**Documentation:** 4 files
 
 ---
 
@@ -31,47 +78,6 @@ Generated: 2026-03-25T07:30:00.019Z
 
 **Backend:** 1 files
 **Documentation:** 3 files
-
----
-
-## Commit: good push
-
-- **Hash:** `b8ea787`
-- **Author:** Scott
-- **Date:** 3/22/2026
-- **Changes:** 43 files, +5205/-93 lines
-
-### Modified Areas:
-
-**Backend:** 8 files
-**Views:** 11 files
-**Documentation:** 3 files
-
----
-
-## Commit: handodd
-
-- **Hash:** `eafd816`
-- **Author:** Scott
-- **Date:** 3/21/2026
-- **Changes:** 1 files, +1/-1 lines
-
-### Modified Areas:
-
-
----
-
-## Commit: good push
-
-- **Hash:** `c67b166`
-- **Author:** Scott
-- **Date:** 3/21/2026
-- **Changes:** 7 files, +317/-27 lines
-
-### Modified Areas:
-
-**Backend:** 2 files
-**Views:** 2 files
 
 ---
 

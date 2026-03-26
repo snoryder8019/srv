@@ -1,6 +1,8 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config/config.js';
 
+const COOKIE_DOMAIN = config.NODE_ENV === 'production' ? '.madladslab.com' : undefined;
+
 // ── Admin JWT ─────────────────────────────────────────────────────────────────
 
 export function requireAdmin(req, res, next) {
@@ -71,6 +73,7 @@ export function issueAdminJWT(user, res) {
     secure: config.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 8 * 60 * 60 * 1000,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
 }
 
@@ -90,6 +93,7 @@ export function issuePortalJWT(user, res) {
     secure: config.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
 }
 

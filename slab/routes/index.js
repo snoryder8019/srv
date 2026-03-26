@@ -1,11 +1,13 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { getDb } from '../plugins/mongo.js';
 import { getReviews } from '../plugins/reviews.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
+import { config } from '../config/config.js';
 
 const router = express.Router();
 
-// Load nav pages for all public views
+// Load nav pages + superadmin flag for all public views
 router.use(async (req, res, next) => {
   try {
     if (req.db) {
@@ -20,6 +22,14 @@ router.use(async (req, res, next) => {
   } catch {
     res.locals.navPages = [];
   }
+  // Check superadmin cookie (lightweight — link is just a shortcut, /superadmin has its own auth)
+  try {
+    const token = req.cookies?.slab_super;
+    if (token) {
+      const decoded = jwt.verify(token, config.JWT_SECRET);
+      res.locals.isSuperAdmin = !!decoded.isSuperAdmin;
+    }
+  } catch { /* expired or invalid — ignore */ }
   next();
 });
 

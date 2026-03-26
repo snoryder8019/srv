@@ -1,6 +1,8 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config/config.js';
 
+const COOKIE_DOMAIN = config.NODE_ENV === 'production' ? '.madladslab.com' : undefined;
+
 const SUPERADMIN_EMAILS = ['snoryder8019@gmail.com'];
 
 export function requireSuperAdmin(req, res, next) {
@@ -33,6 +35,7 @@ export function issueSuperAdminJWT(user, res) {
     secure: config.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 12 * 60 * 60 * 1000,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
 }
 
