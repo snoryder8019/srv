@@ -1,0 +1,112 @@
+<%- include('../partials/head', { title: item ? 'Edit Portfolio Item' : 'New Portfolio Item' }) %>
+<%- include('../partials/sidebar', { page: 'portfolio', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title"><%= item ? 'Edit Portfolio Item' : 'New Portfolio Item' %></div>
+  <div class="topbar-actions">
+    <a href="/admin/portfolio" class="btn btn-ghost btn-sm">← Back</a>
+  </div>
+</div>
+
+<div class="content">
+  <% if (error) { %>
+    <div class="alert alert-error"><%= error %></div>
+  <% } %>
+
+  <form method="POST" action="<%= item ? `/admin/portfolio/${item._id}` : '/admin/portfolio' %>" enctype="multipart/form-data">
+    <div class="card">
+      <div class="card-title">Project Details</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Title *</label>
+          <input type="text" name="title" value="<%= item?.title || '' %>" placeholder="Project name" required>
+        </div>
+        <div class="form-field">
+          <label>Category</label>
+          <input type="text" name="category" value="<%= item?.category || '' %>" placeholder="e.g. Web Design, Social Media">
+        </div>
+        <div class="form-field">
+          <label>Client Name</label>
+          <input type="text" name="clientName" value="<%= item?.clientName || '' %>" placeholder="Client or business name">
+        </div>
+        <div class="form-field">
+          <label>Project Date</label>
+          <input type="date" name="projectDate" value="<%= item?.projectDate ? item.projectDate.toString().slice(0,10) : '' %>">
+        </div>
+        <div class="form-field span-2">
+          <label>Description</label>
+          <textarea name="description" placeholder="Describe the project..."><%= item?.description || '' %></textarea>
+        </div>
+        <div class="form-field">
+          <label>Tags (comma separated)</label>
+          <input type="text" name="tags" value="<%= item?.tags?.join(', ') || '' %>" placeholder="social, branding, logo">
+        </div>
+        <div class="form-field">
+          <label>Display Order</label>
+          <input type="number" name="order" value="<%= item?.order ?? 0 %>" min="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-24">
+      <div class="card-title">Image</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Upload Image (Linode Bucket)</label>
+          <input type="file" name="image" accept="image/*">
+          <% if (item?.imageUrl) { %>
+            <div style="margin-top:8px;">
+              <img id="portfolioImgPreview" src="<%= item.imageUrl %>" style="max-width:200px;max-height:140px;object-fit:cover;border-radius:2px;border:1px solid var(--ivory-mid);">
+            </div>
+          <% } else { %>
+            <img id="portfolioImgPreview" style="display:none;max-width:200px;max-height:140px;object-fit:cover;border-radius:2px;border:1px solid var(--ivory-mid);margin-top:8px;">
+          <% } %>
+        </div>
+        <div class="form-field">
+          <label>Image URL</label>
+          <input type="url" id="imageUrlManual" name="imageUrlManual" value="<%= item?.imageUrl || '' %>" placeholder="https://...">
+          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Upload takes priority over URL if both provided.</span>
+          <div style="margin-top:8px;">
+            <button type="button" class="btn btn-ghost btn-sm asset-pick-btn"
+                    data-target="imageUrlManual" data-folder="portfolio" data-type="image" data-preview="portfolioImgPreview">
+              ◈ Pick from Assets
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-24">
+      <div class="card-title">Display Options</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Portfolio Layout</label>
+          <select name="displayLayout" style="width:100%;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
+            <option value="grid" <%= (item?.displayLayout||'grid')==='grid' ? 'selected' : '' %>>Grid (default)</option>
+            <option value="masonry" <%= item?.displayLayout==='masonry' ? 'selected' : '' %>>Masonry</option>
+            <option value="carousel" <%= item?.displayLayout==='carousel' ? 'selected' : '' %>>Carousel</option>
+            <option value="text-left" <%= item?.displayLayout==='text-left' ? 'selected' : '' %>>Text Wrap — Image Left</option>
+            <option value="text-right" <%= item?.displayLayout==='text-right' ? 'selected' : '' %>>Text Wrap — Image Right</option>
+          </select>
+          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Controls how this item is rendered in the portfolio section.</span>
+        </div>
+        <div class="form-field" style="display:flex;align-items:flex-end;">
+          <div class="form-check">
+            <input type="checkbox" name="featured" id="featured" <%= item?.featured ? 'checked' : '' %>>
+            <label for="featured">Feature this item on the public portfolio</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap;">
+      <button type="submit" class="btn btn-navy"><%= item ? 'Save Changes' : 'Create Item' %></button>
+      <a href="/admin/portfolio" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script src="/js/assetPicker.js"></script>
+</div></div>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Promos — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; text-decoration:none; } .logo span { color:#c9a848; }
+    .breadcrumb { font-size:13px; color:#525252; } .breadcrumb a { color:#737373; text-decoration:none; } .breadcrumb a:hover { color:#c9a848; }
+    .container { max-width:900px; margin:0 auto; padding:24px; }
+    .card { background:#141414; border:1px solid #262626; border-radius:8px; padding:24px; margin-bottom:20px; }
+    h2 { font-size:16px; font-weight:500; margin-bottom:12px; }
+    label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; margin-bottom:4px; margin-top:12px; }
+    input, textarea, select { width:100%; background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:10px 12px; border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; outline:none; }
+    input:focus, textarea:focus { border-color:#c9a848; }
+    textarea { min-height:120px; resize:vertical; }
+    .btn { padding:10px 20px; border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; font-weight:500; cursor:pointer; border:none; }
+    .btn-gold { background:#c9a848; color:#0a0a0a; } .btn-gold:hover { background:#d4b85c; }
+    .btn-ghost { background:transparent; color:#a3a3a3; border:1px solid #333; } .btn-ghost:hover { border-color:#c9a848; color:#c9a848; }
+    .success { background:#14532d; color:#86efac; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:16px; }
+    .error { background:#451a1a; color:#fca5a5; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:16px; }
+    .templates { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    .tmpl-btn { padding:6px 14px; font-size:12px; border-radius:4px; background:#262626; color:#a3a3a3; border:1px solid #333; cursor:pointer; }
+    .tmpl-btn:hover { border-color:#c9a848; color:#c9a848; }
+    .contacts { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+    .contact-chip { font-size:11px; background:#262626; padding:4px 10px; border-radius:10px; cursor:pointer; color:#a3a3a3; border:1px solid transparent; }
+    .contact-chip:hover, .contact-chip.selected { border-color:#c9a848; color:#c9a848; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; }
+    th { text-align:left; padding:8px 12px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; border-bottom:1px solid #262626; }
+    td { padding:8px 12px; font-size:12px; border-bottom:1px solid #1f1f1f; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/superadmin" class="logo"><span>S</span>lab</a>
+    <div class="breadcrumb"><a href="/superadmin">Dashboard</a> / Promos</div>
+  </div>
+
+  <div class="container">
+    <% if (sent && sent !== 'error' && sent !== 'no-email-config') { %>
+      <div class="success">Promo sent to <%= sent %> recipient(s).</div>
+    <% } else if (sent === 'error') { %>
+      <div class="error">Failed to send promo.</div>
+    <% } else if (sent === 'no-email-config') { %>
+      <div class="error">ZOHO_USER/ZOHO_PASS not set in env. Cannot send emails.</div>
+    <% } %>
+
+    <div class="card">
+      <h2>Send Promo Offer</h2>
+      <form method="POST" action="/superadmin/promos/send" id="promoForm">
+        <label>Recipients (comma-separated emails)</label>
+        <input type="text" name="emails" id="emailsInput" placeholder="john@example.com, jane@example.com" required>
+
+        <div class="contacts" id="contactChips">
+          <% for (const t of previewTenants) { %>
+            <span class="contact-chip" data-email="<%= t.meta?.ownerEmail %>"><%= t.meta?.ownerEmail %></span>
+          <% } %>
+          <% for (const s of signups) { %>
+            <% if (!previewTenants.find(t => t.meta?.ownerEmail === s.email)) { %>
+              <span class="contact-chip" data-email="<%= s.email %>"><%= s.email %></span>
+            <% } %>
+          <% } %>
+        </div>
+
+        <label>Subject</label>
+        <input type="text" name="subject" placeholder="Special offer from Slab" required>
+
+        <label>Offer Plan</label>
+        <select name="plan">
+          <option value="">General promo</option>
+          <option value="30day">30-Day Free Trial</option>
+          <option value="120day">120-Day Promo</option>
+          <option value="annual">1-Year Plan</option>
+          <option value="lifetime">Lifetime Access</option>
+        </select>
+
+        <label>Email Body (HTML)</label>
+        <textarea name="body" placeholder="<h2>Special Offer</h2><p>Your promo details here...</p>" required></textarea>
+
+        <div class="templates">
+          <button type="button" class="tmpl-btn" onclick="fillTemplate('30day')">30-Day Template</button>
+          <button type="button" class="tmpl-btn" onclick="fillTemplate('120day')">120-Day Template</button>
+          <button type="button" class="tmpl-btn" onclick="fillTemplate('annual')">Annual Template</button>
+          <button type="button" class="tmpl-btn" onclick="fillTemplate('lifetime')">Lifetime Template</button>
+        </div>
+
+        <br>
+        <button type="submit" class="btn btn-gold" style="margin-top:16px;">Send Promo</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Manage Plans</h2>
+      <form method="POST" action="/superadmin/plans">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;">
+          <div><label>Slug</label><input type="text" name="slug" placeholder="monthly" required></div>
+          <div><label>Name</label><input type="text" name="name" placeholder="Monthly" required></div>
+          <div><label>Stripe Price ID</label><input type="text" name="stripePriceId" placeholder="price_..."></div>
+          <div><label>Amount ($)</label><input type="text" name="amount" placeholder="50"></div>
+          <button type="submit" class="btn btn-ghost" style="height:40px;">Save</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+          <div><label>Mode</label><select name="mode"><option value="subscription">Subscription</option><option value="payment">One-time</option></select></div>
+          <div><label>Duration</label><input type="text" name="duration" placeholder="30d, 120d, 1y, lifetime"></div>
+        </div>
+      </form>
+
+      <% if (plans.length) { %>
+      <table>
+        <thead><tr><th>Slug</th><th>Name</th><th>Amount</th><th>Mode</th><th>Duration</th><th>Stripe Price</th></tr></thead>
+        <tbody>
+          <% for (const p of plans) { %>
+          <tr>
+            <td><%= p.slug %></td><td><%= p.name %></td><td>$<%= p.amount %></td>
+            <td><%= p.mode %></td><td><%= p.duration || '—' %></td><td style="font-size:10px;color:#525252;"><%= p.stripePriceId || '—' %></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <% } %>
+    </div>
+
+    <% if (promos.length) { %>
+    <div class="card">
+      <h2>Sent Promos</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Subject</th><th>Plan</th><th>Recipients</th><th>By</th></tr></thead>
+        <tbody>
+          <% for (const p of promos) { %>
+          <tr>
+            <td><%= new Date(p.sentAt).toLocaleDateString() %></td>
+            <td><%= p.subject %></td>
+            <td><%= p.plan || '—' %></td>
+            <td><%= p.emails?.length || 0 %></td>
+            <td><%= p.sentBy %></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+
+  <script>
+    // Click contact chips to add to email list
+    document.querySelectorAll('.contact-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const email = chip.dataset.email;
+        const input = document.getElementById('emailsInput');
+        const existing = input.value.split(',').map(e => e.trim()).filter(Boolean);
+        if (existing.includes(email)) {
+          input.value = existing.filter(e => e !== email).join(', ');
+          chip.classList.remove('selected');
+        } else {
+          existing.push(email);
+          input.value = existing.join(', ');
+          chip.classList.add('selected');
+        }
+      });
+    });
+
+    // Email templates
+    const templates = {
+      '30day': {
+        subject: 'Your 30-Day Free Trial — Slab Platform',
+        body: `<div style="font-family:Inter,sans-serif;max-width:520px;margin:0 auto;padding:32px;">
+<h2 style="color:#c9a848;margin-bottom:12px;">Try Slab Free for 30 Days</h2>
+<p style="color:#e5e5e5;line-height:1.6;">Your website is set up and ready. For the next 30 days, your site will be fully live — no credit card needed.</p>
+<p style="color:#a3a3a3;line-height:1.6;">After your trial, keep your site active for just $50/month. Cancel anytime.</p>
+<a href="https://madladslab.com/start" style="display:inline-block;padding:14px 32px;background:#c9a848;color:#0a0a0a;text-decoration:none;border-radius:6px;font-weight:600;margin-top:16px;">Get Started</a>
+</div>`
+      },
+      '120day': {
+        subject: 'Exclusive: 120 Days Free — Slab Platform',
+        body: `<div style="font-family:Inter,sans-serif;max-width:520px;margin:0 auto;padding:32px;">
+<h2 style="color:#c9a848;margin-bottom:12px;">120 Days Free — Early Adopter Offer</h2>
+<p style="color:#e5e5e5;line-height:1.6;">As one of our early users, you get 4 months of full access to Slab — completely free.</p>
+<p style="color:#a3a3a3;line-height:1.6;">Full AI-powered website, admin panel, client management, email campaigns, and more. Go live today.</p>
+<a href="https://madladslab.com/start" style="display:inline-block;padding:14px 32px;background:#c9a848;color:#0a0a0a;text-decoration:none;border-radius:6px;font-weight:600;margin-top:16px;">Claim Your 120 Days</a>
+</div>`
+      },
+      'annual': {
+        subject: 'Save 40% — Annual Plan Now Available',
+        body: `<div style="font-family:Inter,sans-serif;max-width:520px;margin:0 auto;padding:32px;">
+<h2 style="color:#c9a848;margin-bottom:12px;">Go Annual, Save 40%</h2>
+<p style="color:#e5e5e5;line-height:1.6;">Lock in a full year of Slab for <strong>$360/year</strong> — that's just $30/month instead of $50.</p>
+<p style="color:#a3a3a3;line-height:1.6;">Everything included: AI content agents, client management, email campaigns, video meetings, custom domain support.</p>
+<a href="https://madladslab.com/start" style="display:inline-block;padding:14px 32px;background:#c9a848;color:#0a0a0a;text-decoration:none;border-radius:6px;font-weight:600;margin-top:16px;">Get the Annual Plan</a>
+</div>`
+      },
+      'lifetime': {
+        subject: 'Lifetime Access — One-Time Payment',
+        body: `<div style="font-family:Inter,sans-serif;max-width:520px;margin:0 auto;padding:32px;">
+<h2 style="color:#c9a848;margin-bottom:12px;">Lifetime Access — Pay Once, Use Forever</h2>
+<p style="color:#e5e5e5;line-height:1.6;">Get permanent access to Slab for a <strong>one-time payment of $499</strong>. No monthly fees, ever.</p>
+<p style="color:#a3a3a3;line-height:1.6;">Full platform, all updates, all features. Limited availability.</p>
+<a href="https://madladslab.com/start" style="display:inline-block;padding:14px 32px;background:#c9a848;color:#0a0a0a;text-decoration:none;border-radius:6px;font-weight:600;margin-top:16px;">Get Lifetime Access</a>
+</div>`
+      },
+    };
+
+    function fillTemplate(key) {
+      const t = templates[key];
+      if (!t) return;
+      document.querySelector('[name=subject]').value = t.subject;
+      document.querySelector('[name=body]').value = t.body;
+      document.querySelector('[name=plan]').value = key;
+    }
+  </script>
+</body>
+</html>

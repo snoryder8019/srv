@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signups — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; text-decoration:none; } .logo span { color:#c9a848; }
+    .breadcrumb { font-size:13px; color:#525252; } .breadcrumb a { color:#737373; text-decoration:none; } .breadcrumb a:hover { color:#c9a848; }
+    .container { max-width:1000px; margin:0 auto; padding:24px; }
+    h2 { font-size:16px; font-weight:500; margin-bottom:12px; }
+    .stat { font-size:13px; color:#737373; margin-bottom:16px; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:10px 14px; font-size:12px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    .link { color:#c9a848; text-decoration:none; } .link:hover { text-decoration:underline; }
+    .export { margin-bottom:16px; }
+    .btn-ghost { padding:8px 16px; font-size:12px; border-radius:4px; background:transparent; border:1px solid #333; color:#a3a3a3; cursor:pointer; text-decoration:none; }
+    .btn-ghost:hover { border-color:#c9a848; color:#c9a848; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/superadmin" class="logo"><span>S</span>lab</a>
+    <div class="breadcrumb"><a href="/superadmin">Dashboard</a> / Signups</div>
+  </div>
+  <div class="container">
+    <h2>All Signups (<%= signups.length %>)</h2>
+    <div class="export">
+      <button class="btn-ghost" onclick="exportCsv()">Export CSV</button>
+    </div>
+    <table id="signupTable">
+      <thead><tr><th>Email</th><th>Brand</th><th>Subdomain</th><th>Source</th><th>Date</th></tr></thead>
+      <tbody>
+        <% for (const s of signups) { %>
+        <tr>
+          <td><%= s.email %></td>
+          <td><%= s.brandName %></td>
+          <td><a href="https://<%= s.subdomain %>.madladslab.com" target="_blank" class="link"><%= s.subdomain %>.madladslab.com</a></td>
+          <td><%= s.source || 'direct' %></td>
+          <td><%= new Date(s.createdAt).toLocaleString() %></td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <script>
+    function exportCsv() {
+      const rows = [['Email','Brand','Subdomain','Source','Date']];
+      document.querySelectorAll('#signupTable tbody tr').forEach(tr => {
+        const cells = [...tr.querySelectorAll('td')].map(td => '"' + td.textContent.trim().replace(/"/g, '""') + '"');
+        rows.push(cells);
+      });
+      const csv = rows.map(r => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'slab-signups.csv';
+      a.click();
+    }
+  </script>
+</body>
+</html>

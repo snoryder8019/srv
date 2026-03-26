@@ -1,0 +1,422 @@
+<%- include('../partials/head', { title: 'Asset Control Center' }) %>
+<%- include('../partials/sidebar', { page: 'assets', user: user }) %>
+
+<style>
+  /* ── ASSET MANAGER LAYOUT ── */
+  .asset-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr 320px;
+    gap: 0;
+    height: calc(100vh - 64px);
+    overflow: hidden;
+  }
+
+  /* ── FOLDER TREE ── */
+  .folder-panel {
+    background: var(--white);
+    border-right: 1px solid var(--ivory-mid);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .folder-panel-head {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--ivory-mid);
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--slate);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .folder-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .folder-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 20px; cursor: pointer;
+    font-size: 0.8rem; font-weight: 500; color: var(--slate);
+    transition: all 0.12s; border-left: 2px solid transparent;
+    text-decoration: none;
+  }
+  .folder-item:hover { background: var(--ivory); color: var(--dark); }
+  .folder-item.active { color: var(--navy); border-left-color: var(--gold); background: rgba(201,168,72,0.05); font-weight: 600; }
+  .folder-item .fi-icon { font-size: 0.9rem; width: 16px; text-align: center; flex-shrink: 0; }
+  .folder-item .fi-count { margin-left: auto; font-size: 0.65rem; color: var(--slate); background: var(--ivory-mid); padding: 1px 6px; border-radius: 10px; }
+  .folder-stats { padding: 12px 20px; border-top: 1px solid var(--ivory-mid); font-size: 0.7rem; color: var(--slate); }
+
+  /* ── ASSET GRID PANEL ── */
+  .grid-panel {
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--ivory);
+  }
+  .grid-toolbar {
+    background: var(--white); border-bottom: 1px solid var(--ivory-mid);
+    padding: 12px 20px; display: flex; gap: 10px; align-items: center; flex-shrink: 0;
+  }
+  .grid-search {
+    flex: 1; padding: 8px 12px; border: 1.5px solid var(--ivory-mid);
+    border-radius: 2px; font-size: 0.82rem; font-family: 'Jost', sans-serif;
+    background: var(--ivory); color: var(--dark);
+    transition: border-color 0.15s;
+  }
+  .grid-search:focus { outline: none; border-color: var(--navy-mid); }
+  .type-tabs { display: flex; gap: 4px; flex-shrink: 0; }
+  .type-tab {
+    padding: 6px 12px; border-radius: 2px; font-size: 0.7rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+    border: 1.5px solid var(--ivory-mid); background: var(--white);
+    color: var(--slate); transition: all 0.12s;
+  }
+  .type-tab:hover { border-color: var(--navy-mid); color: var(--navy); }
+  .type-tab.active { background: var(--navy); color: var(--white); border-color: var(--navy); }
+
+  /* Upload zone */
+  .upload-zone {
+    margin: 16px 20px 0;
+    border: 2px dashed var(--ivory-mid);
+    border-radius: 2px; padding: 18px 20px;
+    text-align: center; cursor: pointer;
+    background: var(--white); transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--gold); background: rgba(201,168,72,0.04);
+  }
+  .upload-zone-label { font-size: 0.78rem; color: var(--slate); }
+  .upload-zone-label strong { color: var(--navy); }
+  .upload-zone-sub { font-size: 0.68rem; color: var(--slate); margin-top: 3px; }
+  #fileInput { display: none; }
+
+  /* Progress */
+  .upload-progress { margin: 8px 20px 0; display: none; }
+  .progress-bar-outer { background: var(--ivory-mid); border-radius: 2px; height: 4px; }
+  .progress-bar-inner { background: var(--gold); height: 4px; border-radius: 2px; width: 0%; transition: width 0.2s; }
+  .progress-label { font-size: 0.68rem; color: var(--slate); margin-top: 4px; }
+
+  /* Asset grid */
+  .asset-grid {
+    flex: 1; overflow-y: auto;
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    align-content: start;
+  }
+  .asset-card {
+    background: var(--white); border: 2px solid transparent;
+    border-radius: 2px; cursor: pointer;
+    transition: all 0.12s; overflow: hidden;
+    aspect-ratio: 1;
+    display: flex; flex-direction: column;
+  }
+  .asset-card:hover { border-color: var(--ivory-mid); box-shadow: 0 2px 8px rgba(15,27,48,0.08); }
+  .asset-card.selected { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(201,168,72,0.15); }
+  .asset-thumb {
+    flex: 1; overflow: hidden; background: var(--ivory);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .asset-thumb img, .asset-thumb video {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .asset-thumb .asset-icon { font-size: 2rem; color: var(--slate); }
+  .asset-name {
+    padding: 6px 8px; font-size: 0.65rem; font-weight: 500;
+    color: var(--slate); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; background: var(--white);
+    border-top: 1px solid var(--ivory-mid);
+  }
+  .asset-type-badge {
+    display: inline-block; font-size: 0.55rem; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 1px; margin-right: 4px;
+  }
+  .badge-image { background: rgba(28,43,74,0.08); color: var(--navy); }
+  .badge-video { background: rgba(201,168,72,0.15); color: #92660F; }
+
+  .grid-empty { text-align: center; padding: 60px 20px; color: var(--slate); font-size: 0.85rem; }
+  .grid-loading { text-align: center; padding: 40px; color: var(--slate); font-size: 0.82rem; }
+
+  /* Asset client dot */
+  .asset-client-dot { color: var(--gold); font-size: 0.55rem; margin-right: 2px; vertical-align: middle; }
+
+  /* Bulk mode */
+  .bulk-check {
+    position: absolute; top: 6px; left: 6px; z-index: 2;
+    width: 20px; height: 20px; border-radius: 2px;
+    border: 2px solid var(--ivory-mid); background: var(--white);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; color: transparent; transition: all 0.12s;
+  }
+  .bulk-check.checked { background: var(--gold); border-color: var(--gold); color: var(--white); }
+  .asset-card { position: relative; }
+  .bulk-bar {
+    display: none; padding: 8px 20px; background: var(--navy); color: var(--white);
+    font-size: 0.75rem; gap: 10px; align-items: center; flex-shrink: 0;
+  }
+  .bulk-bar select, .bulk-bar button { font-size: 0.72rem; }
+  .bulk-bar select { padding: 4px 8px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: #fff; font-family: 'Jost', sans-serif; }
+  .bulk-bar select option { color: var(--dark); background: var(--white); }
+  .bulk-bar .btn-sm { padding: 4px 10px; }
+
+  /* Sort select in toolbar */
+  .sort-select {
+    padding: 6px 10px; border: 1.5px solid var(--ivory-mid); border-radius: 2px;
+    font-size: 0.72rem; font-family: 'Jost', sans-serif; color: var(--dark);
+    background: var(--white); cursor: pointer; flex-shrink: 0;
+  }
+
+  /* Share link display */
+  .meta-share-active { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .meta-share-label { font-size: 0.68rem; font-weight: 700; color: var(--gold); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* Bulk toggle button */
+  .bulk-toggle-btn {
+    padding: 6px 10px; border: 1.5px solid var(--ivory-mid); border-radius: 2px;
+    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em; cursor: pointer;
+    background: var(--white); color: var(--slate); transition: all 0.12s;
+    text-transform: uppercase;
+  }
+  .bulk-toggle-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+  .bulk-toggle-btn.active { background: var(--navy); color: var(--white); border-color: var(--navy); }
+
+  /* ── METADATA PANEL ── */
+  .meta-panel {
+    background: var(--white); border-left: 1px solid var(--ivory-mid);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .meta-head {
+    padding: 16px 20px 12px; border-bottom: 1px solid var(--ivory-mid);
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--slate);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .meta-body { flex: 1; overflow-y: auto; padding: 20px; }
+  .meta-preview {
+    width: 100%; aspect-ratio: 16/9; background: var(--ivory);
+    border: 1px solid var(--ivory-mid); border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden; margin-bottom: 16px;
+  }
+  .meta-preview img, .meta-preview video {
+    width: 100%; height: 100%; object-fit: contain; display: block;
+  }
+  .meta-preview .no-select { color: var(--slate); font-size: 0.78rem; text-align: center; }
+  .meta-field { margin-bottom: 14px; }
+  .meta-label { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--slate); margin-bottom: 5px; display: block; }
+  .meta-input {
+    width: 100%; padding: 7px 10px; border: 1.5px solid var(--ivory-mid);
+    border-radius: 2px; font-size: 0.82rem; font-family: 'Jost', sans-serif;
+    color: var(--dark); background: var(--ivory);
+    transition: border-color 0.15s;
+  }
+  .meta-input:focus { outline: none; border-color: var(--navy-mid); background: var(--white); }
+  .meta-info { font-size: 0.7rem; color: var(--slate); margin-bottom: 4px; }
+  .meta-url {
+    font-size: 0.65rem; color: var(--navy); word-break: break-all;
+    background: var(--ivory); padding: 6px 8px; border-radius: 2px;
+    border: 1px solid var(--ivory-mid); cursor: pointer;
+    margin-bottom: 12px;
+  }
+  .meta-url:hover { background: rgba(28,43,74,0.04); }
+  .meta-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .meta-footer { padding: 14px 20px; border-top: 1px solid var(--ivory-mid); display: flex; gap: 8px; }
+
+  /* Folder select inside meta */
+  .meta-select {
+    width: 100%; padding: 7px 10px; border: 1.5px solid var(--ivory-mid);
+    border-radius: 2px; font-size: 0.82rem; font-family: 'Jost', sans-serif;
+    color: var(--dark); background: var(--ivory); cursor: pointer;
+  }
+  .meta-select:focus { outline: none; border-color: var(--navy-mid); }
+
+  /* Multi-folder checkbox grid */
+  .meta-folder-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+  }
+  .meta-folder-check {
+    display: flex; align-items: center; gap: 6px; font-size: 0.78rem;
+    color: var(--dark); cursor: pointer; padding: 3px 0;
+  }
+  .meta-folder-check input[type="checkbox"] {
+    accent-color: var(--navy); width: 14px; height: 14px; cursor: pointer;
+  }
+
+  /* Client sub-folder items */
+  .folder-sub {
+    padding-left: 38px !important; font-size: 0.75rem !important;
+  }
+
+  /* Add folder button */
+  .folder-add-btn {
+    background: none; border: 1.5px solid var(--ivory-mid); border-radius: 2px;
+    width: 22px; height: 22px; font-size: 1rem; line-height: 1;
+    color: var(--slate); cursor: pointer; display: flex; align-items: center;
+    justify-content: center; transition: all 0.12s;
+  }
+  .folder-add-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+
+  /* Divider between built-in and custom folders */
+  .folder-divider { height: 1px; background: var(--ivory-mid); margin: 6px 20px; }
+
+  /* Inline new folder input */
+  .folder-create-row {
+    display: flex; align-items: center; gap: 4px; padding: 4px 14px 4px 20px;
+  }
+  .folder-create-input {
+    flex: 1; padding: 5px 8px; border: 1.5px solid var(--ivory-mid); border-radius: 2px;
+    font-size: 0.75rem; font-family: 'Jost', sans-serif; color: var(--dark);
+    background: var(--ivory);
+  }
+  .folder-create-input:focus { outline: none; border-color: var(--navy-mid); }
+  .folder-create-ok, .folder-create-cancel {
+    background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 2px 4px;
+  }
+  .folder-create-ok { color: var(--navy); font-weight: 700; }
+  .folder-create-cancel { color: var(--slate); }
+
+  /* Custom folder action buttons */
+  .folder-rename, .folder-del {
+    background: none; border: none; cursor: pointer; font-size: 0.7rem;
+    color: var(--slate); opacity: 0; transition: opacity 0.12s; padding: 0 2px;
+  }
+  .folder-rename { margin-left: auto; }
+  .folder-item:hover .folder-rename,
+  .folder-item:hover .folder-del { opacity: 1; }
+  .folder-rename:hover { color: var(--navy); }
+  .folder-del:hover { color: var(--danger); }
+  .folder-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1100px) {
+    .asset-layout { grid-template-columns: 180px 1fr 260px; }
+  }
+  @media (max-width: 820px) {
+    .asset-layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; height: auto; }
+    .folder-panel { max-height: 200px; border-right: none; border-bottom: 1px solid var(--ivory-mid); }
+    .meta-panel { max-height: 400px; border-left: none; border-top: 1px solid var(--ivory-mid); }
+    .grid-panel { min-height: 300px; }
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Asset Control Center</div>
+  <div class="topbar-actions">
+    <a href="/admin/assets/social" class="btn btn-ghost btn-sm">Social Generator</a>
+    <a href="/admin/assets/trim" class="btn btn-ghost btn-sm">Video Trimmer</a>
+  </div>
+</div>
+
+<div style="padding:0 16px;">
+  <%- include('../partials/advisory', { needs: 's3' }) %>
+</div>
+<div class="asset-layout">
+
+  <!-- FOLDER TREE -->
+  <div class="folder-panel">
+    <div class="folder-panel-head">
+      Folders
+      <button class="folder-add-btn" id="addFolderBtn" title="New folder">+</button>
+    </div>
+    <div class="folder-list" id="folderList">
+      <div class="folder-item active" data-folder="all">
+        <span class="fi-icon">◈</span> All Assets
+        <span class="fi-count" id="cnt-all">—</span>
+      </div>
+      <div class="folder-item" data-folder="general">
+        <span class="fi-icon">◻</span> General
+        <span class="fi-count" id="cnt-general">—</span>
+      </div>
+      <div class="folder-item" data-folder="sections">
+        <span class="fi-icon">⊞</span> Sections
+        <span class="fi-count" id="cnt-sections">—</span>
+      </div>
+      <div class="folder-item" data-folder="portfolio">
+        <span class="fi-icon">◈</span> Portfolio
+        <span class="fi-count" id="cnt-portfolio">—</span>
+      </div>
+      <div class="folder-item" data-folder="blog">
+        <span class="fi-icon">✍</span> Blog
+        <span class="fi-count" id="cnt-blog">—</span>
+      </div>
+      <div class="folder-item" data-folder="pages">
+        <span class="fi-icon">◻</span> Pages
+        <span class="fi-count" id="cnt-pages">—</span>
+      </div>
+      <div class="folder-item" data-folder="clients">
+        <span class="fi-icon">◉</span> Clients
+        <span class="fi-count" id="cnt-clients">—</span>
+      </div>
+      <div class="folder-divider"></div>
+      <div id="customFolderList"></div>
+    </div>
+    <div class="folder-stats" id="folderStats">Loading...</div>
+  </div>
+
+  <!-- ASSET GRID -->
+  <div class="grid-panel">
+    <div class="grid-toolbar">
+      <input type="text" class="grid-search" id="searchInput" placeholder="Search assets...">
+      <select class="sort-select" id="sortSelect">
+        <option value="newest">Newest</option>
+        <option value="oldest">Oldest</option>
+        <option value="name">Name A-Z</option>
+        <option value="size">Largest</option>
+      </select>
+      <div class="type-tabs">
+        <div class="type-tab active" data-type="all">All</div>
+        <div class="type-tab" data-type="image">Images</div>
+        <div class="type-tab" data-type="video">Videos</div>
+      </div>
+      <button class="bulk-toggle-btn" id="bulkToggle">Select</button>
+    </div>
+    <div class="bulk-bar" id="bulkBar">
+      <span><strong id="bulkCount">0</strong> selected</span>
+      <select id="bulkMoveFolder">
+        <option value="">Move to folder...</option>
+        <option value="general">General</option>
+        <option value="sections">Sections</option>
+        <option value="portfolio">Portfolio</option>
+        <option value="blog">Blog</option>
+        <option value="pages">Pages</option>
+        <option value="clients">Clients</option>
+      </select>
+      <select id="bulkMoveClient">
+        <option value="">Attach to client...</option>
+      </select>
+      <button class="btn btn-gold btn-sm" id="bulkMoveBtn">Move</button>
+      <button class="btn btn-danger btn-sm" id="bulkDeleteBtn">Delete</button>
+    </div>
+
+    <!-- Upload zone -->
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" multiple accept="image/*,video/*">
+      <div class="upload-zone-label">
+        <strong>Drop files here</strong> or click to upload
+      </div>
+      <div class="upload-zone-sub">Images & Videos — up to 200MB each · Folder: <span id="uploadFolderLabel">general</span></div>
+    </div>
+    <div class="upload-progress" id="uploadProgress">
+      <div class="progress-bar-outer"><div class="progress-bar-inner" id="progressBar"></div></div>
+      <div class="progress-label" id="progressLabel">Uploading...</div>
+    </div>
+
+    <div class="asset-grid" id="assetGrid">
+      <div class="grid-loading">Loading assets...</div>
+    </div>
+  </div>
+
+  <!-- METADATA PANEL -->
+  <div class="meta-panel">
+    <div class="meta-head">
+      Asset Details
+      <button class="btn btn-sm btn-ghost" id="copyUrlBtn" style="display:none;" title="Copy URL">⧉ Copy URL</button>
+    </div>
+    <div class="meta-body" id="metaBody">
+      <div class="meta-preview"><div class="no-select">Select an asset<br>to view details</div></div>
+    </div>
+    <div class="meta-footer" id="metaFooter" style="display:none;">
+      <button class="btn btn-navy btn-sm" id="saveMetaBtn">Save</button>
+      <button class="btn btn-danger btn-sm" id="deleteAssetBtn">Delete</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="/js/assetManager.js"></script>
+<script src="/js/tours/assets.js"></script>
+</div></div></body></html>

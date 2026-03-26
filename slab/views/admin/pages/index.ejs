@@ -1,0 +1,79 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Pages</div>
+  <div class="topbar-actions">
+    <a href="/admin/pages/new" class="btn btn-navy">+ New Page</a>
+  </div>
+</div>
+<div class="content">
+
+  <% if (msg === 'created') { %><div class="alert alert-success">Page created successfully.</div><% } %>
+  <% if (msg === 'updated') { %><div class="alert alert-success">Page updated successfully.</div><% } %>
+  <% if (msg === 'deleted') { %><div class="alert alert-success">Page deleted.</div><% } %>
+  <% if (err) { %><div class="alert alert-error">Something went wrong. Please try again.</div><% } %>
+
+  <div style="padding:14px 18px;background:rgba(201,168,72,0.08);border:1px solid rgba(201,168,72,0.3);border-radius:2px;margin-bottom:20px;font-size:0.82rem;color:#92660F;">
+    <strong>Dynamic Routes:</strong> Each published page is accessible at <code style="background:rgba(0,0,0,0.06);padding:1px 5px;border-radius:2px;">/{slug}</code> on your website. Reserved paths (<code style="background:rgba(0,0,0,0.06);padding:1px 5px;border-radius:2px;">blog</code>, <code style="background:rgba(0,0,0,0.06);padding:1px 5px;border-radius:2px;">admin</code>, <code style="background:rgba(0,0,0,0.06);padding:1px 5px;border-radius:2px;">auth</code>) cannot be used.
+  </div>
+
+  <% if (!pages || pages.length === 0) { %>
+    <div class="empty">
+      <div class="empty-icon">◻</div>
+      <p>No custom pages yet. Create a page to add dynamic content to your site.</p>
+      <div style="margin-top:20px;"><a href="/admin/pages/new" class="btn btn-navy">Create Page</a></div>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>URL Path</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>In Nav</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pages.forEach(pg => { %>
+            <tr>
+              <td style="font-weight:500;"><%= pg.title %></td>
+              <td style="font-size:0.82rem;color:var(--slate);">/<%= pg.slug %></td>
+              <td>
+                <% const ptLabels = {'content':'Content','data-list':'Data List','landing':'Landing'}; %>
+                <span class="badge badge-draft" style="background:rgba(46,66,112,0.1);color:#2E4270;">
+                  <%= ptLabels[pg.pageType || 'content'] || pg.pageType %>
+                </span>
+              </td>
+              <td>
+                <span class="badge <%= pg.status === 'published' ? 'badge-active' : 'badge-draft' %>"><%= pg.status %></span>
+              </td>
+              <td style="font-size:0.82rem;color:var(--slate);">
+                <%= pg.showInNav ? '✓ Yes' : '—' %>
+              </td>
+              <td style="font-size:0.82rem;color:var(--slate);">
+                <%= new Date(pg.updatedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) %>
+              </td>
+              <td style="text-align:right;white-space:nowrap;">
+                <% if (pg.status === 'published') { %>
+                  <a href="/<%= pg.slug %>" target="_blank" class="btn btn-ghost btn-sm" style="margin-right:6px;">View</a>
+                <% } %>
+                <a href="/admin/pages/<%= pg._id %>/edit" class="btn btn-ghost btn-sm" style="margin-right:6px;">Edit</a>
+                <form method="POST" action="/admin/pages/<%= pg._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this page?')">
+                  <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+</div>
+<script src="/js/tours/pages.js"></script>
+</div></body></html>

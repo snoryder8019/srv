@@ -1,0 +1,501 @@
+<%- include('../partials/head', { title: 'Site Copy' }) %>
+<%- include('../partials/sidebar', { page: 'copy', user: user }) %>
+
+<style>
+  /* ── AI AGENT BUTTON ── */
+  .agent-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 16px; border-radius: 2px;
+    background: linear-gradient(135deg, #1C2B4A, #2E4270);
+    color: #E8D08A; border: 1px solid rgba(201,168,72,0.3);
+    font-family: 'Jost', sans-serif; font-size: 0.72rem;
+    font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .agent-btn:hover { background: linear-gradient(135deg, #2E4270, #1C2B4A); border-color: rgba(201,168,72,0.6); }
+  .agent-btn .agent-icon { font-size: 1rem; }
+
+  /* ── AGENT PANEL ── */
+  #agentPanel {
+    position: fixed; top: 0; right: -440px; width: 420px; height: 100vh;
+    background: var(--white); border-left: 1px solid var(--ivory-mid);
+    box-shadow: -8px 0 40px rgba(15,27,48,0.12);
+    z-index: 500; display: flex; flex-direction: column;
+    transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  #agentPanel.open { right: 0; }
+
+  .agent-panel-header {
+    padding: 18px 20px; border-bottom: 1px solid var(--ivory-mid);
+    background: linear-gradient(135deg, var(--navy-deep), var(--navy));
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .agent-panel-title {
+    font-family: 'Cormorant Garamond', serif; font-size: 1.2rem;
+    font-weight: 400; color: var(--white); display: flex; align-items: center; gap: 10px;
+  }
+  .agent-panel-title .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #4ADE80;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .agent-panel-close {
+    background: none; border: none; color: rgba(255,255,255,0.5);
+    font-size: 1.3rem; cursor: pointer; padding: 4px; line-height: 1;
+    transition: color 0.15s;
+  }
+  .agent-panel-close:hover { color: var(--white); }
+
+  .agent-panel-sub {
+    padding: 10px 20px; background: rgba(201,168,72,0.08);
+    border-bottom: 1px solid rgba(201,168,72,0.15); flex-shrink: 0;
+    font-size: 0.72rem; color: #92660F; letter-spacing: 0.04em;
+  }
+
+  .agent-msgs {
+    flex: 1; overflow-y: auto; padding: 16px 20px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  .agent-msg { display: flex; flex-direction: column; gap: 4px; }
+  .agent-msg.user { align-items: flex-end; }
+  .agent-msg.assistant { align-items: flex-start; }
+
+  .agent-bubble {
+    max-width: 88%; padding: 10px 14px; border-radius: 4px;
+    font-size: 0.85rem; line-height: 1.5; font-weight: 300;
+  }
+  .agent-msg.user .agent-bubble {
+    background: var(--navy); color: var(--white);
+    border-radius: 4px 4px 1px 4px;
+  }
+  .agent-msg.assistant .agent-bubble {
+    background: var(--ivory); color: var(--dark); border: 1px solid var(--ivory-mid);
+    border-radius: 4px 4px 4px 1px;
+  }
+
+  .agent-fill-notice {
+    font-size: 0.7rem; color: var(--success); font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 5px; margin-top: 4px;
+  }
+
+  .agent-panel-footer { padding: 16px 20px; border-top: 1px solid var(--ivory-mid); flex-shrink: 0; }
+  .agent-quick-btns {
+    display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;
+  }
+  .agent-quick-btn {
+    font-size: 0.67rem; padding: 5px 10px; border-radius: 2px;
+    border: 1px solid var(--ivory-mid); background: var(--white);
+    color: var(--slate); cursor: pointer; font-family: 'Jost', sans-serif;
+    font-weight: 500; letter-spacing: 0.04em; transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .agent-quick-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+  .agent-input-row { display: flex; gap: 8px; }
+  .agent-input {
+    flex: 1; padding: 10px 14px; border: 1px solid var(--ivory-mid);
+    border-radius: 2px; font-family: 'Jost', sans-serif; font-size: 0.88rem;
+    font-weight: 300; color: var(--dark); outline: none; resize: none;
+    transition: border-color 0.15s; min-height: 42px; max-height: 120px;
+  }
+  .agent-input:focus { border-color: var(--navy); }
+  .agent-send {
+    padding: 10px 16px; background: var(--navy); color: var(--white);
+    border: none; border-radius: 2px; cursor: pointer; font-size: 0.9rem;
+    transition: background 0.15s; flex-shrink: 0; align-self: flex-end;
+  }
+  .agent-send:hover { background: var(--navy-deep); }
+  .agent-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── AI-FILLED FIELD HIGHLIGHT ── */
+  .ai-filled {
+    background: rgba(21,128,61,0.08) !important;
+    border-color: rgba(21,128,61,0.5) !important;
+    transition: background 0.4s, border-color 0.4s;
+  }
+  .revert-row {
+    display: flex; align-items: center; gap: 6px; margin-top: 4px;
+  }
+  .revert-btn {
+    font-size: 0.65rem; color: var(--slate); cursor: pointer;
+    background: none; border: none; padding: 0; font-family: 'Jost', sans-serif;
+    text-decoration: underline; letter-spacing: 0.04em;
+    display: none;
+  }
+  .revert-btn.visible { display: inline; }
+  .ai-badge {
+    font-size: 0.6rem; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--success);
+    background: rgba(21,128,61,0.1); padding: 2px 7px; border-radius: 2px;
+    display: none;
+  }
+  .ai-badge.visible { display: inline; }
+
+  /* ── TYPING INDICATOR ── */
+  .typing-indicator {
+    display: flex; gap: 4px; padding: 12px 14px;
+    background: var(--ivory); border: 1px solid var(--ivory-mid);
+    border-radius: 4px 4px 4px 1px; align-self: flex-start;
+  }
+  .typing-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--slate);
+    animation: typingBounce 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingBounce {
+    0%,60%,100%{transform:translateY(0);opacity:0.4;}
+    30%{transform:translateY(-6px);opacity:1;}
+  }
+
+  /* overlay to dim the form while panel is open */
+  #agentOverlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(15,27,48,0.15); z-index: 499;
+  }
+  #agentOverlay.active { display: block; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Site Copy</div>
+  <div class="topbar-actions">
+    <button class="agent-btn" id="agentToggle">
+      <span class="agent-icon">✦</span> Copy Agent
+    </button>
+    <a href="/" target="_blank" class="btn btn-ghost btn-sm">Preview Site ↗</a>
+  </div>
+</div>
+
+<div class="content">
+  <%- include('../partials/advisory', { needs: 'ai' }) %>
+  <% if (flash) { %>
+    <div class="alert alert-success">✓ Copy saved successfully.</div>
+  <% } %>
+
+  <form method="POST" action="/admin/copy" id="copyForm">
+    <%
+    const LABELS = {
+      hero_eyebrow: 'Eyebrow Line',
+      hero_heading: 'Heading (first line)',
+      hero_heading_em: 'Heading (italic line)',
+      hero_sub: 'Subtext',
+      hero_badge: 'Hero Badge Text',
+      services_label: 'Section Label',
+      services_heading: 'Section Heading',
+      services_heading_em: 'Heading Italic',
+      services_sub: 'Section Subtext',
+      service1_title: 'Service 1 Title',
+      service1_desc: 'Service 1 Description',
+      service2_title: 'Service 2 Title',
+      service2_desc: 'Service 2 Description',
+      service3_title: 'Service 3 Title',
+      service3_desc: 'Service 3 Description',
+      about_quote: 'Pull Quote',
+      about_desc: 'Description',
+      about_sig: 'Signature / Name',
+      process_label: 'Section Label',
+      process_heading: 'Section Heading',
+      process_heading_em: 'Heading Italic',
+      contact_sub: 'Contact Subtext',
+      contact_location: 'Location',
+      contact_serving: 'Serving Area',
+    };
+    const SECTION_NAMES = { hero: 'Hero', services: 'Services', about: 'About', process: 'Process', contact: 'Contact' };
+    %>
+
+    <% for (const [section, keys] of Object.entries(sections)) { %>
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title"><%= SECTION_NAMES[section] || section %></div>
+      <div class="form-grid">
+        <% for (const key of keys) { %>
+        <div class="form-field <%= (key.endsWith('_desc') || key.endsWith('_sub') || key.endsWith('_quote')) ? 'span-2' : '' %>">
+          <label>
+            <%= LABELS[key] || key %>
+            <span class="ai-badge" id="badge-<%= key %>">AI</span>
+          </label>
+          <% if (key.endsWith('_desc') || key.endsWith('_sub') || key.endsWith('_quote')) { %>
+            <textarea name="<%= key %>" id="field-<%= key %>" style="min-height:80px;"><%= copy[key] || '' %></textarea>
+          <% } else { %>
+            <input type="text" name="<%= key %>" id="field-<%= key %>" value="<%= copy[key] || '' %>">
+          <% } %>
+          <div class="revert-row">
+            <button type="button" class="revert-btn" id="revert-<%= key %>" data-key="<%= key %>">↩ Revert to original</button>
+          </div>
+        </div>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+
+    <div style="position:sticky;bottom:0;background:var(--ivory);padding:16px 0;border-top:1px solid var(--ivory-mid);margin-top:8px;">
+      <button type="submit" class="btn btn-navy">Save All Copy</button>
+    </div>
+  </form>
+</div>
+
+</div></div>
+
+<!-- Agent Panel -->
+<div id="agentOverlay"></div>
+<div id="agentPanel">
+  <div class="agent-panel-header">
+    <div class="agent-panel-title">
+      <span class="dot"></span>
+      Copy Agent
+    </div>
+    <button class="agent-panel-close" id="agentClose">✕</button>
+  </div>
+  <div class="agent-panel-sub">
+    Powered by Qwen 2.5 · Auto-fills site copy fields
+  </div>
+  <div class="agent-msgs" id="agentMsgs">
+    <div class="agent-msg assistant">
+      <div class="agent-bubble">
+        Hello! I'm your site copy assistant. I can help you write, refine, or completely rewrite any section of your website copy.<br><br>
+        Try: <em>"Write all the hero section copy"</em> or <em>"Make the services descriptions more punchy"</em>
+      </div>
+    </div>
+  </div>
+  <div class="agent-panel-footer">
+    <div class="agent-quick-btns" id="copyQuick"></div>
+    <script>
+    (function(){
+      const pool = [
+        { label: 'Fill Hero', prompt: 'Write compelling copy for all hero section fields' },
+        { label: 'Fill Services', prompt: 'Rewrite all three service titles and descriptions to be more compelling' },
+        { label: 'Fill About', prompt: 'Write all about section copy including a great pull quote' },
+        { label: 'Fill Contact', prompt: 'Fill out all contact section copy fields' },
+        { label: 'Fill Everything', prompt: 'Rewrite all site copy from scratch with fresh, conversion-focused language' },
+        { label: 'Shorten Copy', prompt: 'Make all copy fields shorter and more punchy — trim every field by 20%' },
+        { label: 'Add Urgency', prompt: 'Rewrite the hero and services copy with more urgency and stronger CTAs' },
+        { label: 'Friendly Tone', prompt: 'Rewrite all copy with a warmer, more conversational tone' },
+        { label: 'Fill Process', prompt: 'Write the process section heading and labels' },
+      ];
+      const el=document.getElementById('copyQuick');
+      let idx=0;
+      function render(){
+        el.innerHTML='';
+        const batch=pool.slice(idx,idx+5);
+        if(batch.length<5) batch.push(...pool.slice(0,5-batch.length));
+        batch.forEach(s=>{
+          const b=document.createElement('button');b.className='agent-quick-btn';b.dataset.prompt=s.prompt;b.textContent=s.label;
+          b.onclick=()=>{document.getElementById('agentInput').value=s.prompt;document.getElementById('agentSend').click();};
+          el.appendChild(b);
+        });
+        const cyc=document.createElement('button');cyc.className='ap-cycle-btn';cyc.style.cssText='opacity:0.5;font-size:0.7rem;padding:5px 8px;border:1px solid var(--ivory-mid);background:var(--white);color:var(--slate);cursor:pointer;border-radius:2px;';cyc.textContent='\u267B';cyc.title='More suggestions';
+        cyc.onclick=(e)=>{e.stopPropagation();idx=(idx+3)%pool.length;render();};
+        el.appendChild(cyc);
+      }
+      render();
+    })();
+    </script>
+    <div class="agent-input-row">
+      <textarea class="agent-input" id="agentInput" placeholder="Ask the agent to write or improve copy…" rows="1"></textarea>
+      <button class="agent-send" id="agentSend">↑</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // Store original values for revert
+  const originals = {};
+  document.querySelectorAll('[id^="field-"]').forEach(function(el) {
+    const key = el.id.replace('field-', '');
+    originals[key] = el.tagName === 'TEXTAREA' ? el.value : el.value;
+  });
+
+  const aiFilledKeys = new Set();
+  const messages = [];
+
+  // Panel open/close
+  const panel = document.getElementById('agentPanel');
+  const overlay = document.getElementById('agentOverlay');
+  document.getElementById('agentToggle').addEventListener('click', openPanel);
+  document.getElementById('agentClose').addEventListener('click', closePanel);
+  overlay.addEventListener('click', closePanel);
+
+  function openPanel() {
+    panel.classList.add('open');
+    overlay.classList.add('active');
+  }
+  function closePanel() {
+    panel.classList.remove('open');
+    overlay.classList.remove('active');
+  }
+
+  // Quick prompt buttons
+  document.querySelectorAll('.agent-quick-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.getElementById('agentInput').value = btn.dataset.prompt;
+      sendMessage();
+    });
+  });
+
+  // Send on Enter (not shift+enter), Shift+Enter for newline
+  const input = document.getElementById('agentInput');
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  document.getElementById('agentSend').addEventListener('click', sendMessage);
+
+  // Auto-resize textarea
+  input.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+
+  function getCurrentCopy() {
+    const copy = {};
+    document.querySelectorAll('[id^="field-"]').forEach(function(el) {
+      const key = el.id.replace('field-', '');
+      copy[key] = el.tagName === 'TEXTAREA' ? el.value : el.value;
+    });
+    return copy;
+  }
+
+  function appendMessage(role, text, fillCount) {
+    const msgs = document.getElementById('agentMsgs');
+    const msgEl = document.createElement('div');
+    msgEl.className = 'agent-msg ' + role;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'agent-bubble';
+    bubble.textContent = text;
+    msgEl.appendChild(bubble);
+
+    if (fillCount && fillCount > 0) {
+      const notice = document.createElement('div');
+      notice.className = 'agent-fill-notice';
+      notice.textContent = '✓ ' + fillCount + ' field' + (fillCount > 1 ? 's' : '') + ' filled';
+      msgEl.appendChild(notice);
+    }
+
+    msgs.appendChild(msgEl);
+    msgs.scrollTop = msgs.scrollHeight;
+    return msgEl;
+  }
+
+  function showTyping() {
+    const msgs = document.getElementById('agentMsgs');
+    const el = document.createElement('div');
+    el.id = 'typingIndicator';
+    el.className = 'typing-indicator';
+    el.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function hideTyping() {
+    const el = document.getElementById('typingIndicator');
+    if (el) el.remove();
+  }
+
+  function fillField(key, value) {
+    const el = document.getElementById('field-' + key);
+    if (!el) return;
+
+    // Save original if not yet tracked
+    if (!aiFilledKeys.has(key)) {
+      originals[key] = el.tagName === 'TEXTAREA' ? el.value : el.value;
+    }
+
+    el.value = value;
+    el.classList.add('ai-filled');
+    aiFilledKeys.add(key);
+
+    // Show badge and revert button
+    const badge = document.getElementById('badge-' + key);
+    if (badge) badge.classList.add('visible');
+
+    const revertBtn = document.getElementById('revert-' + key);
+    if (revertBtn) revertBtn.classList.add('visible');
+  }
+
+  // Revert individual field
+  document.querySelectorAll('.revert-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const key = btn.dataset.key;
+      const el = document.getElementById('field-' + key);
+      if (!el) return;
+
+      el.value = originals[key];
+      el.classList.remove('ai-filled');
+      aiFilledKeys.delete(key);
+
+      const badge = document.getElementById('badge-' + key);
+      if (badge) badge.classList.remove('visible');
+      btn.classList.remove('visible');
+    });
+  });
+
+  async function sendMessage() {
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    input.style.height = 'auto';
+    document.getElementById('agentSend').disabled = true;
+
+    // Add user message to history
+    messages.push({ role: 'user', content: text });
+    appendMessage('user', text);
+    showTyping();
+
+    try {
+      const res = await fetch('/admin/copy/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: messages,
+          currentCopy: getCurrentCopy()
+        })
+      });
+
+      const data = await res.json();
+      hideTyping();
+
+      if (data.error) {
+        appendMessage('assistant', 'Error: ' + data.error, 0);
+      } else {
+        // Apply fills
+        const fillKeys = Object.keys(data.fill || {});
+        fillKeys.forEach(function(key) {
+          fillField(key, data.fill[key]);
+        });
+
+        // Add assistant response to history
+        messages.push({ role: 'assistant', content: data.message });
+        appendMessage('assistant', data.message, fillKeys.length);
+      }
+    } catch (err) {
+      hideTyping();
+      appendMessage('assistant', 'Connection error. Please try again.', 0);
+    } finally {
+      document.getElementById('agentSend').disabled = false;
+      input.focus();
+    }
+  }
+})();
+
+// Pre-fill from dashboard master agent
+(function() {
+  try {
+    const raw = sessionStorage.getItem('slab_agent_fill');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.department !== 'copy' || !data.fill) return;
+    sessionStorage.removeItem('slab_agent_fill');
+    Object.entries(data.fill).forEach(([k, v]) => { if (v) fillField(k, v); });
+  } catch { /* ignore */ }
+})();
+</script>
+<script src="/js/tours/copy.js"></script>
+
+</body>
+</html>

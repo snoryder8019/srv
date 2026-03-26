@@ -1,0 +1,494 @@
+<%- include('../partials/head', { title: 'Campaign: ' + campaign.subject }) %>
+<%- include('../partials/sidebar', { page: 'email-marketing', user: user }) %>
+
+<style>
+  .agent-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 16px; border-radius: 2px;
+    background: linear-gradient(135deg, #1C2B4A, #2E4270);
+    color: #E8D08A; border: 1px solid rgba(201,168,72,0.3);
+    font-family: 'Jost', sans-serif; font-size: 0.72rem;
+    font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .agent-btn:hover { border-color: rgba(201,168,72,0.65); }
+
+  #agentPanel {
+    position: fixed; top: 0; right: -440px; width: 420px;
+    height: 100vh; height: 100dvh;
+    background: var(--white); border-left: 1px solid var(--ivory-mid);
+    box-shadow: -8px 0 40px rgba(15,27,48,0.12);
+    z-index: 500; display: flex; flex-direction: column;
+    transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  #agentPanel.open { right: 0; }
+
+  .ap-header {
+    padding: 18px 20px; border-bottom: 1px solid var(--ivory-mid);
+    background: linear-gradient(135deg, var(--navy-deep), var(--navy));
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .ap-title {
+    font-family: 'Cormorant Garamond', serif; font-size: 1.2rem;
+    font-weight: 400; color: var(--white); display: flex; align-items: center; gap: 10px;
+  }
+  .ap-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ADE80; animation: apPulse 2s infinite; }
+  @keyframes apPulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .ap-close { background: none; border: none; color: rgba(255,255,255,0.5); font-size: 1.3rem; cursor: pointer; padding: 4px; transition: color 0.15s; }
+  .ap-close:hover { color: var(--white); }
+
+  .ap-sub {
+    padding: 8px 20px; background: rgba(201,168,72,0.07);
+    border-bottom: 1px solid rgba(201,168,72,0.15); flex-shrink: 0;
+    font-size: 0.7rem; color: #92660F; letter-spacing: 0.04em;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .ap-sub-dot { width: 5px; height: 5px; border-radius: 50%; background: #4ADE80; }
+
+  .ap-msgs { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+
+  .ap-msg { display: flex; flex-direction: column; gap: 4px; }
+  .ap-msg.user { align-items: flex-end; }
+  .ap-msg.assistant { align-items: flex-start; }
+  .ap-bubble {
+    max-width: 88%; padding: 10px 14px; border-radius: 4px;
+    font-size: 0.84rem; line-height: 1.5; font-weight: 300;
+  }
+  .ap-msg.user .ap-bubble { background: var(--navy); color: var(--white); border-radius: 4px 4px 1px 4px; }
+  .ap-msg.assistant .ap-bubble { background: var(--ivory); color: var(--dark); border: 1px solid var(--ivory-mid); border-radius: 4px 4px 4px 1px; }
+  .ap-fill-notice { font-size: 0.68rem; color: var(--success,#15803D); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .ap-footer {
+    padding: 14px 20px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));
+    border-top: 1px solid var(--ivory-mid); flex-shrink: 0;
+  }
+  .ap-quick {
+    display: flex; gap: 6px; margin-bottom: 10px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; flex-wrap: nowrap; padding-bottom: 2px;
+  }
+  .ap-quick::-webkit-scrollbar { display: none; }
+  .ap-quick-btn {
+    font-size: 0.67rem; padding: 5px 10px; border-radius: 2px;
+    border: 1px solid var(--ivory-mid); background: var(--white);
+    color: var(--slate); cursor: pointer; font-family: 'Jost', sans-serif;
+    font-weight: 500; letter-spacing: 0.04em; transition: all 0.15s; white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .ap-quick-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+  .ap-input-row { display: flex; gap: 8px; }
+  .ap-input {
+    flex: 1; padding: 10px 14px; border: 1px solid var(--ivory-mid);
+    border-radius: 2px; font-family: 'Jost', sans-serif; font-size: 0.88rem;
+    font-weight: 300; color: var(--dark); outline: none; resize: none;
+    transition: border-color 0.15s; min-height: 42px; max-height: 120px;
+  }
+  .ap-input:focus { border-color: var(--navy); }
+  .ap-send {
+    padding: 10px 16px; background: var(--navy); color: var(--white);
+    border: none; border-radius: 2px; cursor: pointer; font-size: 0.9rem;
+    transition: background 0.15s; flex-shrink: 0; align-self: flex-end;
+  }
+  .ap-send:hover { background: var(--navy-deep); }
+  .ap-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .ap-typing { display: flex; gap: 4px; padding: 10px 14px; background: var(--ivory); border: 1px solid var(--ivory-mid); border-radius: 4px 4px 4px 1px; align-self: flex-start; }
+  .ap-typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--slate); animation: apBounce 1.2s infinite; }
+  .ap-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .ap-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes apBounce { 0%,60%,100%{transform:translateY(0);opacity:0.4;} 30%{transform:translateY(-5px);opacity:1;} }
+
+  #agentOverlay { display: none; position: fixed; inset: 0; background: rgba(15,27,48,0.15); z-index: 499; }
+  #agentOverlay.active { display: block; }
+
+  .ai-filled { background: rgba(21,128,61,0.07) !important; border-color: rgba(21,128,61,0.45) !important; transition: background 0.4s, border-color 0.4s; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title" style="max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= campaign.subject %></div>
+  <div class="topbar-actions">
+    <% if (campaign.status === 'sent') { %>
+    <button class="agent-btn" id="agentToggle"><span style="font-size:1rem;">&#10022;</span> Marketing Agent</button>
+    <% } %>
+    <a href="/admin/email-marketing?tab=campaigns" class="btn btn-ghost btn-sm">Back</a>
+  </div>
+</div>
+
+<div class="content">
+  <%- include('../partials/advisory', { needs: 'zoho' }) %>
+  <%- include('../partials/advisory', { needs: 'ai' }) %>
+  <!-- Flash messages -->
+  <% if (qs.success) { %>
+  <div style="background:rgba(21,128,61,0.08);border:1px solid rgba(21,128,61,0.2);border-radius:3px;padding:10px 16px;margin-bottom:16px;font-size:0.82rem;color:var(--success);"><%= qs.success %></div>
+  <% } %>
+  <% if (qs.error) { %>
+  <div style="background:rgba(185,28,28,0.08);border:1px solid rgba(185,28,28,0.2);border-radius:3px;padding:10px 16px;margin-bottom:16px;font-size:0.82rem;color:var(--danger);"><%= qs.error %></div>
+  <% } %>
+
+  <!-- Campaign meta -->
+  <div class="card" style="margin-bottom:20px;">
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;">
+      <div>
+        <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Status</div>
+        <%
+          const sc = campaign.status === 'sent' ? 'var(--success)' : 'var(--slate)';
+        %>
+        <span style="display:inline-block;padding:2px 8px;border-radius:2px;font-size:0.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:color-mix(in srgb, <%= sc %> 10%, transparent);color:<%= sc %>;margin-top:4px;"><%= campaign.status %></span>
+      </div>
+      <div>
+        <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Target</div>
+        <div style="font-size:0.85rem;margin-top:4px;">
+          <% if (campaign.parentSegment) { %>
+            <span style="font-size:0.72rem;padding:2px 6px;border-radius:2px;background:rgba(201,168,72,0.12);color:#92660F;">follow-up: <%= campaign.parentSegment %></span>
+          <% } else { %>
+            <%= campaign.targetFunnel === 'all' ? 'All Subscribed' : campaign.targetFunnel %>
+          <% } %>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Sent</div>
+        <div style="font-size:0.85rem;margin-top:4px;"><%= campaign.sentAt ? new Date(campaign.sentAt).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'}) : '---' %></div>
+      </div>
+      <% if (campaign.preheader) { %>
+      <div>
+        <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Preheader</div>
+        <div style="font-size:0.82rem;color:var(--slate);margin-top:4px;"><%= campaign.preheader %></div>
+      </div>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- Engagement segments -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:24px;">
+    <div class="card" style="text-align:center;padding:18px;">
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);margin-bottom:4px;">Sent</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--navy);"><%= campaign.sentCount || 0 %></div>
+    </div>
+    <div class="card" style="text-align:center;padding:18px;">
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);margin-bottom:4px;">Opened</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--success);"><%= segments.opened %></div>
+      <div style="font-size:0.68rem;color:var(--slate);"><%= campaign.sentCount ? Math.round(segments.opened / campaign.sentCount * 100) : 0 %>% rate</div>
+    </div>
+    <div class="card" style="text-align:center;padding:18px;">
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);margin-bottom:4px;">Unopened</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--warn);"><%= segments.unopened %></div>
+    </div>
+    <div class="card" style="text-align:center;padding:18px;">
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);margin-bottom:4px;">Clicked</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--gold);"><%= segments.clicked %></div>
+      <div style="font-size:0.68rem;color:var(--slate);"><%= campaign.sentCount ? Math.round(segments.clicked / campaign.sentCount * 100) : 0 %>% CTR</div>
+    </div>
+    <div class="card" style="text-align:center;padding:18px;">
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);margin-bottom:4px;">Opened, No Click</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--slate);"><%= segments.openedNotClicked %></div>
+    </div>
+  </div>
+
+  <!-- Top Clicked URLs -->
+  <% if (topUrls.length) { %>
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-title">Top Clicked Links</div>
+    <table>
+      <thead><tr><th>URL</th><th style="text-align:right;">Clicks</th></tr></thead>
+      <tbody>
+        <% for (const [url, count] of topUrls) { %>
+        <tr>
+          <td style="font-size:0.78rem;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><a href="<%= url %>" target="_blank" style="color:var(--navy);"><%= url %></a></td>
+          <td style="text-align:right;font-weight:500;"><%= count %></td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+
+  <!-- Follow-up Campaign Builder -->
+  <% if (campaign.status === 'sent') { %>
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--gold);">
+    <div class="card-title">Create Follow-up Campaign</div>
+    <p style="font-size:0.82rem;color:var(--slate);margin-bottom:16px;">Target contacts based on their engagement with this campaign.</p>
+    <form method="POST" action="/admin/email-marketing/campaigns/<%= campaign._id %>/follow-up">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+        <div class="form-field">
+          <label>Segment</label>
+          <select name="segment" id="fuSegment" onchange="updateSegmentCount()">
+            <option value="unopened" data-count="<%= segments.unopened %>">Unopened (<%= segments.unopened %>)</option>
+            <option value="opened" data-count="<%= segments.opened %>">Opened (<%= segments.opened %>)</option>
+            <option value="clicked" data-count="<%= segments.clicked %>">Clicked (<%= segments.clicked %>)</option>
+            <option value="opened_not_clicked" data-count="<%= segments.openedNotClicked %>">Opened but didn't click (<%= segments.openedNotClicked %>)</option>
+            <option value="all" data-count="<%= segments.all %>">All from original (<%= segments.all %>)</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Subject Line *</label>
+          <input type="text" name="subject" id="fuSubject" required placeholder="e.g. Did you see this?">
+        </div>
+        <div class="form-field">
+          <label>Preheader</label>
+          <input type="text" name="preheader" id="fuPreheader" placeholder="Preview text">
+        </div>
+      </div>
+      <div class="form-field" style="margin-top:12px;">
+        <label>Email Body * <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(HTML supported &mdash; {name} for personalization)</span></label>
+        <textarea name="body" id="fuBody" rows="8" required placeholder="Write your follow-up content here..."></textarea>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+        <button type="submit" class="btn btn-navy btn-sm">Create Follow-up Draft</button>
+        <span id="segmentCountLabel" style="font-size:0.75rem;color:var(--slate);">Will target <strong><%= segments.unopened %></strong> contacts</span>
+      </div>
+    </form>
+  </div>
+  <% } %>
+
+  <!-- Per-Contact Engagement Table -->
+  <div class="card">
+    <div class="card-title">Contact Engagement</div>
+    <div style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm engFilter active" style="font-size:0.68rem;" data-filter="all" onclick="filterEngagement('all', this)">All (<%= segments.all %>)</button>
+      <button class="btn btn-ghost btn-sm engFilter" style="font-size:0.68rem;" data-filter="opened" onclick="filterEngagement('opened', this)">Opened (<%= segments.opened %>)</button>
+      <button class="btn btn-ghost btn-sm engFilter" style="font-size:0.68rem;" data-filter="unopened" onclick="filterEngagement('unopened', this)">Unopened (<%= segments.unopened %>)</button>
+      <button class="btn btn-ghost btn-sm engFilter" style="font-size:0.68rem;" data-filter="clicked" onclick="filterEngagement('clicked', this)">Clicked (<%= segments.clicked %>)</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Email</th><th>Name</th><th>Opens</th><th>Clicks</th><th>Status</th></tr></thead>
+        <tbody id="engBody">
+          <% for (const [id, e] of Object.entries(contactEngagement)) { %>
+          <tr data-opened="<%= e.opened %>" data-clicked="<%= e.clicked %>">
+            <td style="font-size:0.82rem;font-weight:500;color:var(--navy);"><%= e.contact.email %></td>
+            <td style="font-size:0.82rem;"><%= e.contact.name || '---' %></td>
+            <td style="font-size:0.82rem;">
+              <% if (e.opened) { %>
+                <span style="color:var(--success);font-weight:500;"><%= e.openCount %></span>
+              <% } else { %>
+                <span style="color:var(--slate);">---</span>
+              <% } %>
+            </td>
+            <td style="font-size:0.82rem;">
+              <% if (e.clicked) { %>
+                <span style="color:var(--gold);font-weight:500;"><%= e.clickCount %></span>
+              <% } else { %>
+                <span style="color:var(--slate);">---</span>
+              <% } %>
+            </td>
+            <td>
+              <% if (e.clicked) { %>
+                <span style="font-size:0.65rem;padding:2px 6px;border-radius:2px;background:rgba(201,168,72,0.12);color:#92660F;font-weight:600;letter-spacing:.04em;">CLICKED</span>
+              <% } else if (e.opened) { %>
+                <span style="font-size:0.65rem;padding:2px 6px;border-radius:2px;background:rgba(21,128,61,0.1);color:var(--success);font-weight:600;letter-spacing:.04em;">OPENED</span>
+              <% } else { %>
+                <span style="font-size:0.65rem;padding:2px 6px;border-radius:2px;background:rgba(107,115,128,0.1);color:var(--slate);font-weight:600;letter-spacing:.04em;">NO OPEN</span>
+              <% } %>
+            </td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function filterEngagement(filter, btn) {
+  document.querySelectorAll('.engFilter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#engBody tr').forEach(row => {
+    const opened = row.dataset.opened === 'true';
+    const clicked = row.dataset.clicked === 'true';
+    if (filter === 'all') row.style.display = '';
+    else if (filter === 'opened') row.style.display = opened ? '' : 'none';
+    else if (filter === 'unopened') row.style.display = !opened ? '' : 'none';
+    else if (filter === 'clicked') row.style.display = clicked ? '' : 'none';
+  });
+}
+
+function updateSegmentCount() {
+  const sel = document.getElementById('fuSegment');
+  const count = sel.options[sel.selectedIndex].dataset.count;
+  document.getElementById('segmentCountLabel').innerHTML = 'Will target <strong>' + count + '</strong> contacts';
+}
+</script>
+
+</div></div>
+
+<!-- Agent Panel -->
+<% if (campaign.status === 'sent') { %>
+<div id="agentOverlay"></div>
+<div id="agentPanel">
+  <div class="ap-header">
+    <div class="ap-title"><span class="ap-dot"></span> Marketing Agent</div>
+    <button class="ap-close" id="agentClose">&#10005;</button>
+  </div>
+  <div class="ap-sub">
+    <span class="ap-sub-dot"></span>
+    Qwen 2.5 &middot; Web search &middot; Auto-fills follow-up fields
+  </div>
+  <div class="ap-msgs" id="agentMsgs">
+    <div class="ap-msg assistant">
+      <div class="ap-bubble">
+        I can help write your follow-up email. I know the original campaign was <strong><%- campaign.subject.replace(/"/g, '&quot;') %></strong> with <strong><%= segments.opened %></strong> opens and <strong><%= segments.clicked %></strong> clicks.<br><br>
+        Select a segment, then ask me to write the follow-up &mdash; or use a quick prompt below.
+      </div>
+    </div>
+  </div>
+  <div class="ap-footer">
+    <div class="ap-quick" id="apQuick">
+      <button class="ap-quick-btn" data-prompt="Write a follow-up email for contacts who didn't open the original campaign about: <%= campaign.subject %>. Make it a fresh angle to re-engage them.">Re-engage Unopened</button>
+      <button class="ap-quick-btn" data-prompt="Write a follow-up for contacts who opened but didn't click. The original campaign was: <%= campaign.subject %>. Add urgency and a stronger CTA.">Nudge Openers</button>
+      <button class="ap-quick-btn" data-prompt="Write a thank-you / next-step email for contacts who clicked in the campaign: <%= campaign.subject %>. Move them down the funnel.">Reward Clickers</button>
+      <button class="ap-quick-btn" data-prompt="Write a follow-up email for the selected segment based on the original campaign: <%= campaign.subject %>">Auto Follow-up</button>
+    </div>
+    <div class="ap-input-row">
+      <textarea class="ap-input" id="agentInput" placeholder="Describe the follow-up email you need..." rows="1"></textarea>
+      <button class="ap-send" id="agentSend">&uarr;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const panel = document.getElementById('agentPanel');
+  const overlay = document.getElementById('agentOverlay');
+  if (!panel || !overlay) return;
+
+  document.getElementById('agentToggle').addEventListener('click', openPanel);
+  document.getElementById('agentClose').addEventListener('click', closePanel);
+  overlay.addEventListener('click', closePanel);
+
+  function openPanel() {
+    panel.classList.add('open');
+    overlay.classList.add('active');
+  }
+  function closePanel() {
+    panel.classList.remove('open');
+    overlay.classList.remove('active');
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+      if (panel.classList.contains('open')) {
+        panel.style.height = window.visualViewport.height + 'px';
+        panel.style.top = window.visualViewport.offsetTop + 'px';
+        document.getElementById('agentMsgs').scrollTop = document.getElementById('agentMsgs').scrollHeight;
+      }
+    });
+  }
+
+  document.getElementById('apQuick').querySelectorAll('.ap-quick-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.getElementById('agentInput').value = this.dataset.prompt;
+      sendAgent();
+    });
+  });
+
+  const agentInput = document.getElementById('agentInput');
+  agentInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAgent(); }
+  });
+  agentInput.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+  document.getElementById('agentSend').addEventListener('click', sendAgent);
+
+  function fillField(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value;
+    el.classList.add('ai-filled');
+  }
+
+  function getSelectedSegment() {
+    const sel = document.getElementById('fuSegment');
+    return sel ? sel.options[sel.selectedIndex].text : '';
+  }
+
+  const agentMessages = [];
+  const parentSubject = <%= JSON.stringify(campaign.subject) %>;
+  const parentBody = <%= JSON.stringify(campaign.body || '') %>;
+
+  function appendMsg(role, text, extra) {
+    const msgs = document.getElementById('agentMsgs');
+    const el = document.createElement('div');
+    el.className = 'ap-msg ' + role;
+    el.innerHTML = '<div class="ap-bubble">' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>';
+    if (extra) el.innerHTML += extra;
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function showTyping() {
+    const msgs = document.getElementById('agentMsgs');
+    const el = document.createElement('div');
+    el.id = 'apTyping';
+    el.className = 'ap-msg assistant';
+    el.innerHTML = '<div class="ap-typing"><div class="ap-typing-dot"></div><div class="ap-typing-dot"></div><div class="ap-typing-dot"></div></div>';
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  function hideTyping() { document.getElementById('apTyping')?.remove(); }
+
+  async function sendAgent() {
+    const text = agentInput.value.trim();
+    if (!text) return;
+    agentInput.value = '';
+    agentInput.style.height = 'auto';
+    document.getElementById('agentSend').disabled = true;
+
+    // Inject parent campaign context into the first message
+    const contextPrefix = agentMessages.length === 0
+      ? '[Follow-up context: original subject="' + parentSubject + '", segment=' + getSelectedSegment() + '] '
+      : '';
+    agentMessages.push({ role: 'user', content: contextPrefix + text });
+    appendMsg('user', text);
+    showTyping();
+
+    try {
+      const res = await fetch('/admin/email-marketing/campaigns/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: agentMessages,
+          currentCampaign: {
+            subject: (document.getElementById('fuSubject') || {}).value || '',
+            preheader: (document.getElementById('fuPreheader') || {}).value || '',
+            body: (document.getElementById('fuBody') || {}).value || '',
+            parentSubject: parentSubject,
+            segment: getSelectedSegment(),
+          },
+        }),
+      });
+      const data = await res.json();
+      hideTyping();
+
+      if (data.error) {
+        appendMsg('assistant', 'Error: ' + data.error);
+      } else {
+        const fill = data.fill || {};
+        const fillCount = Object.keys(fill).length;
+
+        if (fill.subject) fillField('fuSubject', fill.subject);
+        if (fill.preheader) fillField('fuPreheader', fill.preheader);
+        if (fill.body) fillField('fuBody', fill.body);
+
+        agentMessages.push({ role: 'assistant', content: data.message });
+
+        let extra = '';
+        if (fillCount) extra = '<div class="ap-fill-notice" style="margin-top:4px;">&#10003; ' + fillCount + ' field' + (fillCount > 1 ? 's' : '') + ' filled</div>';
+        appendMsg('assistant', data.message, extra);
+      }
+    } catch(e) {
+      hideTyping();
+      appendMsg('assistant', 'Connection error. Please try again.');
+    } finally {
+      document.getElementById('agentSend').disabled = false;
+      agentInput.focus();
+    }
+  }
+})();
+</script>
+<% } %>
+
+</body>
+</html>

@@ -1,0 +1,27 @@
+<%
+// Integration advisory banner partial
+// needs: comma-separated keys — zoho, stripe, paypal, ai, s3, google, oauth
+// any: if true, warn only when ALL listed keys are missing
+var _keys = (typeof needs === 'string' ? needs : '').split(',').map(function(k){ return k.trim(); }).filter(Boolean);
+var _int = typeof integrations === 'object' ? integrations : {};
+var _labels = {
+  zoho:   { name: 'Email (Zoho)',      desc: 'Sending emails, invoices, and campaigns requires Zoho SMTP credentials.' },
+  stripe: { name: 'Stripe Payments',   desc: 'Accepting card payments and processing refunds requires Stripe API keys.' },
+  paypal: { name: 'PayPal Payments',   desc: 'PayPal checkout requires PayPal client ID and secret.' },
+  ai:     { name: 'AI Agent',          desc: 'AI writing and design assistants require the LLM service to be configured.' },
+  s3:     { name: 'File Storage',      desc: 'Uploading images and assets requires cloud storage credentials.' },
+  google: { name: 'Google Reviews',    desc: 'Displaying Google reviews requires a Places API key and Place ID.' },
+  oauth:  { name: 'Google Sign-In',    desc: 'Google OAuth login requires OAuth client ID and secret.' }
+};
+var _missing = _keys.filter(function(k){ return !_int[k]; });
+var _show = (typeof any !== 'undefined' && any) ? _missing.length === _keys.length : _missing.length > 0;
+%><% if (_show && _missing.length) { %>
+<div style="background:linear-gradient(135deg,rgba(251,191,36,0.08),rgba(251,191,36,0.03));border:1px solid rgba(251,191,36,0.25);border-radius:4px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;">
+  <span style="font-size:1.1rem;line-height:1;">&#9888;</span>
+  <div style="flex:1;">
+    <div style="font-size:0.78rem;font-weight:600;color:#92400e;margin-bottom:4px;">Setup Required</div>
+    <% _missing.forEach(function(k) { var l = _labels[k] || { name: k, desc: '' }; %><div style="font-size:0.72rem;color:#78350f;line-height:1.5;"><strong><%= l.name %></strong> &mdash; <%= l.desc %></div><% }); %>
+    <a href="/admin/settings" style="display:inline-block;margin-top:8px;font-size:0.7rem;font-weight:600;color:#92400e;text-decoration:underline;">Go to Settings &rarr;</a>
+  </div>
+</div>
+<% } %>

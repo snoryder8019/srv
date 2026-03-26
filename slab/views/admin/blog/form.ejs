@@ -1,0 +1,857 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+
+<style>
+  /* ── AGENT BUTTON ── */
+  .agent-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 16px; border-radius: 2px;
+    background: linear-gradient(135deg, #1C2B4A, #2E4270);
+    color: #E8D08A; border: 1px solid rgba(201,168,72,0.3);
+    font-family: 'Jost', sans-serif; font-size: 0.72rem;
+    font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .agent-btn:hover { border-color: rgba(201,168,72,0.65); }
+
+  /* ── AGENT PANEL ── */
+  #agentPanel {
+    position: fixed; top: 0; right: -440px; width: 420px;
+    height: 100vh; height: 100dvh;
+    background: var(--white); border-left: 1px solid var(--ivory-mid);
+    box-shadow: -8px 0 40px rgba(15,27,48,0.12);
+    z-index: 500; display: flex; flex-direction: column;
+    transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  #agentPanel.open { right: 0; }
+
+  .ap-header {
+    padding: 18px 20px; border-bottom: 1px solid var(--ivory-mid);
+    background: linear-gradient(135deg, var(--navy-deep), var(--navy));
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .ap-title {
+    font-family: 'Cormorant Garamond', serif; font-size: 1.2rem;
+    font-weight: 400; color: var(--white); display: flex; align-items: center; gap: 10px;
+  }
+  .ap-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ADE80; animation: apPulse 2s infinite; }
+  @keyframes apPulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .ap-close { background: none; border: none; color: rgba(255,255,255,0.5); font-size: 1.3rem; cursor: pointer; padding: 4px; transition: color 0.15s; }
+  .ap-close:hover { color: var(--white); }
+
+  .ap-sub {
+    padding: 8px 20px; background: rgba(201,168,72,0.07);
+    border-bottom: 1px solid rgba(201,168,72,0.15); flex-shrink: 0;
+    font-size: 0.7rem; color: #92660F; letter-spacing: 0.04em;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .ap-sub-dot { width: 5px; height: 5px; border-radius: 50%; background: #4ADE80; }
+
+  .ap-msgs { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+
+  .ap-msg { display: flex; flex-direction: column; gap: 4px; }
+  .ap-msg.user { align-items: flex-end; }
+  .ap-msg.assistant { align-items: flex-start; }
+  .ap-bubble {
+    max-width: 88%; padding: 10px 14px; border-radius: 4px;
+    font-size: 0.84rem; line-height: 1.5; font-weight: 300;
+  }
+  .ap-msg.user .ap-bubble { background: var(--navy); color: var(--white); border-radius: 4px 4px 1px 4px; }
+  .ap-msg.assistant .ap-bubble { background: var(--ivory); color: var(--dark); border: 1px solid var(--ivory-mid); border-radius: 4px 4px 4px 1px; }
+  .ap-fill-notice { font-size: 0.68rem; color: var(--success,#15803D); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .ap-search-notice { font-size: 0.68rem; color: var(--slate); font-style: italic; }
+
+  .ap-footer {
+    padding: 14px 20px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));
+    border-top: 1px solid var(--ivory-mid); flex-shrink: 0;
+  }
+  .ap-quick {
+    display: flex; gap: 6px; margin-bottom: 10px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; flex-wrap: nowrap; padding-bottom: 2px;
+  }
+  .ap-quick::-webkit-scrollbar { display: none; }
+  .ap-quick-btn {
+    font-size: 0.67rem; padding: 5px 10px; border-radius: 2px;
+    border: 1px solid var(--ivory-mid); background: var(--white);
+    color: var(--slate); cursor: pointer; font-family: 'Jost', sans-serif;
+    font-weight: 500; letter-spacing: 0.04em; transition: all 0.15s; white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .ap-quick-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+  .ap-input-row { display: flex; gap: 8px; }
+  .ap-input {
+    flex: 1; padding: 10px 14px; border: 1px solid var(--ivory-mid);
+    border-radius: 2px; font-family: 'Jost', sans-serif; font-size: 0.88rem;
+    font-weight: 300; color: var(--dark); outline: none; resize: none;
+    transition: border-color 0.15s; min-height: 42px; max-height: 120px;
+  }
+  .ap-input:focus { border-color: var(--navy); }
+  .ap-send {
+    padding: 10px 16px; background: var(--navy); color: var(--white);
+    border: none; border-radius: 2px; cursor: pointer; font-size: 0.9rem;
+    transition: background 0.15s; flex-shrink: 0; align-self: flex-end;
+  }
+  .ap-send:hover { background: var(--navy-deep); }
+  .ap-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── TYPING ── */
+  .ap-typing { display: flex; gap: 4px; padding: 10px 14px; background: var(--ivory); border: 1px solid var(--ivory-mid); border-radius: 4px 4px 4px 1px; align-self: flex-start; }
+  .ap-typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--slate); animation: apBounce 1.2s infinite; }
+  .ap-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .ap-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes apBounce { 0%,60%,100%{transform:translateY(0);opacity:0.4;} 30%{transform:translateY(-5px);opacity:1;} }
+
+  #agentOverlay { display: none; position: fixed; inset: 0; background: rgba(15,27,48,0.15); z-index: 499; }
+  #agentOverlay.active { display: block; }
+
+  /* ── AI FIELD STATES ── */
+  .ai-filled { background: rgba(21,128,61,0.07) !important; border-color: rgba(21,128,61,0.45) !important; transition: background 0.4s, border-color 0.4s; }
+
+  .field-revert-row { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+  .revert-orig-btn, .revert-ai-btn {
+    font-size: 0.65rem; color: var(--slate); cursor: pointer;
+    background: none; border: none; padding: 0; font-family: 'Jost', sans-serif;
+    letter-spacing: 0.04em; transition: color 0.15s;
+  }
+  .revert-orig-btn { color: var(--slate); }
+  .revert-orig-btn:hover { color: var(--danger,#B91C1C); text-decoration: underline; }
+  .revert-ai-btn { color: var(--navy-mid); }
+  .revert-ai-btn:hover { color: var(--navy); text-decoration: underline; }
+  .ai-badge {
+    font-size: 0.6rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #15803D; background: rgba(21,128,61,0.1); padding: 2px 7px; border-radius: 2px;
+  }
+
+  /* ── TAG CHIPS INPUT ── */
+  .tag-input-wrap {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 8px 10px; border: 1px solid var(--ivory-mid); border-radius: 3px;
+    background: var(--ivory); min-height: 42px; cursor: text; position: relative;
+    transition: border-color 0.15s;
+  }
+  .tag-input-wrap:focus-within { border-color: var(--navy); }
+  .tag-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 2px;
+    background: var(--navy); color: var(--white);
+    font-size: 0.72rem; font-weight: 500; letter-spacing: 0.03em;
+    font-family: 'Jost', sans-serif; white-space: nowrap;
+  }
+  .tag-chip-x {
+    cursor: pointer; opacity: 0.6; font-size: 0.8rem; line-height: 1;
+    transition: opacity 0.15s; margin-left: 2px;
+  }
+  .tag-chip-x:hover { opacity: 1; }
+  .tag-text-input {
+    border: none; outline: none; background: transparent;
+    font-family: 'Jost', sans-serif; font-size: 0.82rem; color: var(--dark);
+    flex: 1; min-width: 100px; padding: 2px 0;
+  }
+  .tag-text-input::placeholder { color: var(--slate); font-weight: 300; }
+
+  /* ── AUTOCOMPLETE DROPDOWN ── */
+  .tag-suggest, .cat-suggest {
+    display: none; position: absolute; left: 0; right: 0; top: 100%;
+    background: var(--white); border: 1px solid var(--ivory-mid); border-top: none;
+    border-radius: 0 0 3px 3px; box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    z-index: 20; max-height: 160px; overflow-y: auto;
+  }
+  .tag-suggest.open, .cat-suggest.open { display: block; }
+  .tag-suggest-item, .cat-suggest-item {
+    padding: 8px 12px; font-size: 0.78rem; color: var(--dark); cursor: pointer;
+    font-family: 'Jost', sans-serif; transition: background 0.1s;
+  }
+  .tag-suggest-item:hover, .cat-suggest-item:hover { background: var(--ivory); }
+  .tag-suggest-item.active, .cat-suggest-item.active { background: rgba(201,168,72,0.12); }
+
+  /* ── HTML TOGGLE ── */
+  .preview-toggle {
+    font-size: 0.68rem; padding: 4px 10px; border: 1px solid var(--ivory-mid);
+    background: var(--white); color: var(--slate); cursor: pointer; border-radius: 2px;
+    font-family: 'Jost', sans-serif; font-weight: 500; transition: all 0.15s;
+  }
+  .preview-toggle.active { background: var(--navy); color: var(--white); border-color: var(--navy); }
+
+  /* ── QUILL EDITOR ── */
+  #quillEditor {
+    background: var(--white); border: 1px solid var(--ivory-mid); border-top: none;
+    border-radius: 0 0 3px 3px; min-height: 320px; font-family: 'Jost', sans-serif;
+    font-size: 0.95rem; line-height: 1.75; color: var(--dark);
+  }
+  #quillEditor .ql-editor { min-height: 300px; padding: 20px 24px; }
+  #quillEditor .ql-editor p { margin-bottom: 12px; }
+  #quillEditor .ql-editor h2 { font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 600; margin: 24px 0 8px; color: var(--navy); }
+  #quillEditor .ql-editor h3 { font-family: 'Jost', sans-serif; font-size: 1.15rem; font-weight: 600; margin: 18px 0 6px; }
+  #quillEditor .ql-editor blockquote { border-left: 3px solid var(--gold); padding-left: 16px; color: var(--slate); font-style: italic; margin: 16px 0; }
+  #quillEditor .ql-editor a { color: var(--gold); }
+  #quillEditor .ql-editor img { max-width: 100%; border-radius: 3px; }
+  #quillEditor .ql-editor ul, #quillEditor .ql-editor ol { padding-left: 24px; margin-bottom: 12px; }
+  .ql-toolbar.ql-snow { border: 1px solid var(--ivory-mid); border-radius: 3px 3px 0 0; background: var(--white); }
+  .ql-editor.ql-blank::before { font-style: normal; color: var(--slate); font-weight: 300; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title"><%= post && post._id ? 'Edit Post' : 'New Post' %></div>
+  <div class="topbar-actions">
+    <button class="agent-btn" id="agentToggle"><span style="font-size:1rem;">✦</span> Blog Agent</button>
+    <a href="/admin/blog" class="btn btn-ghost btn-sm">← Back</a>
+  </div>
+</div>
+
+<div class="content">
+  <%- include('../partials/advisory', { needs: 'ai' }) %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <form method="POST" action="<%= post && post._id ? '/admin/blog/' + post._id : '/admin/blog' %>">
+    <div class="form-grid">
+      <div class="form-field span-2" style="display:flex;flex-direction:column;gap:20px;">
+
+        <div class="card">
+          <div class="card-title">Post Content</div>
+          <div style="display:flex;flex-direction:column;gap:16px;">
+
+            <div class="form-field">
+              <label>
+                Title <span style="color:var(--danger);">*</span>
+                <span class="ai-badge" id="badge-title" style="display:none;">AI</span>
+              </label>
+              <input type="text" name="title" id="field-title"
+                value="<%= post ? post.title || '' : '' %>"
+                required placeholder="Enter post title…"
+                oninput="autoSlug(this.value)">
+              <div class="field-revert-row" id="revert-row-title"></div>
+            </div>
+
+            <div class="form-field">
+              <label>URL Slug</label>
+              <input type="text" name="slug" id="slug-field"
+                value="<%= post ? post.slug || '' : '' %>"
+                placeholder="auto-generated-from-title">
+              <span style="font-size:0.65rem;color:var(--slate);">Public URL: /blog/<strong id="slug-preview"><%= post ? post.slug || 'your-slug' : 'your-slug' %></strong></span>
+            </div>
+
+            <div class="form-field">
+              <label>
+                Excerpt
+                <span class="ai-badge" id="badge-excerpt" style="display:none;">AI</span>
+              </label>
+              <textarea name="excerpt" id="field-excerpt" rows="3"
+                placeholder="Short description shown in blog listings and previews…"><%= post ? post.excerpt || '' : '' %></textarea>
+              <div class="field-revert-row" id="revert-row-excerpt"></div>
+            </div>
+
+            <div class="form-field">
+              <label style="display:flex;align-items:center;gap:8px;">
+                Content
+                <span class="ai-badge" id="badge-content" style="display:none;">AI</span>
+                <button type="button" class="preview-toggle" id="htmlToggle" style="margin-left:auto;">HTML</button>
+              </label>
+              <textarea name="content" id="field-content" style="display:none;"><%= post ? post.content || '' : '' %></textarea>
+              <div id="quillEditor"></div>
+              <textarea id="htmlEditor" rows="16"
+                style="display:none;font-family:monospace;font-size:0.82rem;line-height:1.6;width:100%;padding:12px;border:1px solid var(--ivory-mid);border-radius:0 0 3px 3px;background:var(--ivory);color:var(--dark);resize:vertical;outline:none;"
+                placeholder="Raw HTML…"></textarea>
+              <div class="field-revert-row" id="revert-row-content"></div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="card mt-24">
+      <div class="card-title">Post Settings</div>
+      <div class="form-grid cols-3">
+        <div class="form-field">
+          <label>Status</label>
+          <select name="status">
+            <option value="draft" <%= !post || post.status === 'draft' ? 'selected' : '' %>>Draft</option>
+            <option value="published" <%= post && post.status === 'published' ? 'selected' : '' %>>Published</option>
+          </select>
+        </div>
+        <div class="form-field" style="position:relative;">
+          <label>
+            Category
+            <span class="ai-badge" id="badge-category" style="display:none;">AI</span>
+          </label>
+          <input type="text" name="category" id="field-category"
+            value="<%= post ? post.category || '' : '' %>"
+            placeholder="e.g. Marketing Tips" autocomplete="off">
+          <div class="cat-suggest" id="catSuggest"></div>
+          <div class="field-revert-row" id="revert-row-category"></div>
+        </div>
+        <div class="form-field">
+          <label>
+            Tags
+            <span class="ai-badge" id="badge-tags" style="display:none;">AI</span>
+          </label>
+          <input type="hidden" name="tags" id="field-tags"
+            value="<%= post && post.tags ? (Array.isArray(post.tags) ? post.tags.join(', ') : post.tags) : '' %>">
+          <div class="tag-input-wrap" id="tagWrap">
+            <div class="tag-chips" id="tagChips"></div>
+            <input type="text" class="tag-text-input" id="tagTextInput"
+              placeholder="Type and press Enter…" autocomplete="off">
+            <div class="tag-suggest" id="tagSuggest"></div>
+          </div>
+          <div class="field-revert-row" id="revert-row-tags"></div>
+        </div>
+        <div class="form-field span-2">
+          <label>Featured Image URL</label>
+          <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+            <div style="flex:1;min-width:200px;">
+              <input type="url" id="featuredImageUrl" name="featuredImageUrl"
+                value="<%= post ? post.featuredImageUrl || '' : '' %>"
+                placeholder="https://…">
+              <span style="font-size:0.65rem;color:var(--slate);">Paste a direct image URL</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding-top:2px;">
+              <button type="button" class="btn btn-ghost btn-sm asset-pick-btn"
+                      data-target="featuredImageUrl" data-folder="blog" data-type="image" data-preview="featuredImgPreview">
+                ◈ Pick from Assets
+              </button>
+              <% if (post?.featuredImageUrl) { %>
+                <img id="featuredImgPreview" src="<%= post.featuredImageUrl %>" style="width:80px;height:52px;object-fit:cover;border-radius:2px;border:1px solid var(--ivory-mid);">
+              <% } else { %>
+                <img id="featuredImgPreview" style="display:none;width:80px;height:52px;object-fit:cover;border-radius:2px;border:1px solid var(--ivory-mid);">
+              <% } %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:24px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <button type="submit" class="btn btn-navy"><%= post && post._id ? 'Save Changes' : 'Create Post' %></button>
+      <a href="/admin/blog" class="btn btn-ghost">Cancel</a>
+      <% if (post && post._id && post.status === 'published') { %>
+        <a href="/blog/<%= post.slug %>" target="_blank" class="btn btn-ghost" style="margin-left:auto;">View Live →</a>
+      <% } %>
+    </div>
+  </form>
+</div>
+
+</div></div>
+
+<!-- Agent Panel -->
+<div id="agentOverlay"></div>
+<div id="agentPanel">
+  <div class="ap-header">
+    <div class="ap-title"><span class="ap-dot"></span> Blog Agent</div>
+    <button class="ap-close" id="agentClose">✕</button>
+  </div>
+  <div class="ap-sub">
+    <span class="ap-sub-dot"></span>
+    Qwen 2.5 · Web search enabled · Auto-fills post fields
+  </div>
+  <div class="ap-msgs" id="agentMsgs">
+    <div class="ap-msg assistant">
+      <div class="ap-bubble">
+        Hi! I'm your blog writing assistant. I can research topics on the web and write full blog posts — title, excerpt, and HTML content.<br><br>
+        Try: <em>"Write a post about social media tips for local restaurants"</em> or <em>"Research and write about SEO basics for small businesses"</em>
+      </div>
+    </div>
+  </div>
+  <div class="ap-footer">
+    <div class="ap-quick" id="apQuick"></div>
+    <script>
+    (function(){
+      const brand = <%- JSON.stringify({ name: brand?.name||'', location: brand?.location||'', businessType: brand?.businessType||'', services: brand?.services||[], targetAudience: brand?.targetAudience||'' }) %>;
+      const svc = brand.services.length ? brand.services[0] : 'your top service';
+      const audience = brand.targetAudience || 'small businesses';
+      const loc = brand.location ? ` in ${brand.location}` : '';
+      const pool = [
+        { label: 'Write from Title', prompt: 'Based on the current title, research the topic and write a complete post' },
+        { label: 'Tips for Audience', prompt: `Research and write a blog post with tips for ${audience}${loc}` },
+        { label: `${svc} Guide`, prompt: `Research and write a complete blog post about ${svc} for ${audience}` },
+        { label: 'SEO Basics', prompt: `Research and write a blog post about SEO basics for ${audience}${loc}` },
+        { label: 'Industry Trends', prompt: `Research current ${brand.businessType || 'industry'} trends and write a post about what ${audience} need to know` },
+        { label: 'Content Strategy', prompt: `Write a blog post about content marketing strategy for ${audience}, with current stats` },
+        { label: 'How-To Post', prompt: `Write a practical how-to blog post relevant to ${brand.name || 'the business'} and ${audience}` },
+        { label: 'Case Study', prompt: `Write a case-study style blog post showcasing results from ${svc}` },
+      ];
+      for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+      const el=document.getElementById('apQuick');
+      let idx=0;
+      function render(){
+        el.innerHTML='';
+        const batch=[];
+        batch.push(pool[0]); // always show "Write from Title"
+        for(let i=0;i<4&&idx<pool.length;i++){idx=(idx+1)%pool.length; if(pool[idx]!==pool[0]) batch.push(pool[idx]);}
+        batch.slice(0,5).forEach(s=>{
+          const b=document.createElement('button');b.className='ap-quick-btn';b.dataset.prompt=s.prompt;b.textContent=s.label;
+          b.onclick=()=>{document.getElementById('agentInput').value=s.prompt;document.getElementById('agentSend').click();};
+          el.appendChild(b);
+        });
+        const cyc=document.createElement('button');cyc.className='ap-cycle-btn';cyc.style.cssText='opacity:0.5;font-size:0.7rem;padding:5px 8px;border:1px solid var(--ivory-mid);background:var(--white);color:var(--slate);cursor:pointer;border-radius:2px;';cyc.textContent='\u267B';cyc.title='More suggestions';
+        cyc.onclick=(e)=>{e.stopPropagation();idx=(idx+2)%pool.length;render();};
+        el.appendChild(cyc);
+      }
+      render();
+    })();
+    </script>
+    <div class="ap-input-row">
+      <textarea class="ap-input" id="agentInput" placeholder="Ask the agent to research and write…" rows="1"></textarea>
+      <button class="ap-send" id="agentSend">↑</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── TAG CHIPS ──
+(function() {
+  var hiddenField = document.getElementById('field-tags');
+  var chipsEl = document.getElementById('tagChips');
+  var textInput = document.getElementById('tagTextInput');
+  var suggestEl = document.getElementById('tagSuggest');
+  var wrapEl = document.getElementById('tagWrap');
+  var existingTags = <%- JSON.stringify(typeof existingTags !== 'undefined' ? existingTags : []) %>;
+  var tags = hiddenField.value ? hiddenField.value.split(',').map(function(t){ return t.trim(); }).filter(Boolean) : [];
+
+  function sync() {
+    hiddenField.value = tags.join(', ');
+  }
+
+  function renderChips() {
+    chipsEl.innerHTML = '';
+    tags.forEach(function(tag, i) {
+      var chip = document.createElement('span');
+      chip.className = 'tag-chip';
+      chip.innerHTML = tag + ' <span class="tag-chip-x" data-idx="' + i + '">&times;</span>';
+      chipsEl.appendChild(chip);
+    });
+    chipsEl.querySelectorAll('.tag-chip-x').forEach(function(x) {
+      x.addEventListener('click', function() {
+        tags.splice(parseInt(this.dataset.idx), 1);
+        renderChips();
+        sync();
+      });
+    });
+  }
+
+  function addTag(val) {
+    var t = val.trim().toLowerCase();
+    if (!t || tags.indexOf(t) !== -1) return;
+    tags.push(t);
+    renderChips();
+    sync();
+    textInput.value = '';
+    closeSuggest();
+  }
+
+  function closeSuggest() { suggestEl.classList.remove('open'); suggestEl.innerHTML = ''; }
+
+  function showSuggest(q) {
+    var lq = q.toLowerCase();
+    var matches = existingTags.filter(function(t) {
+      return t.toLowerCase().indexOf(lq) !== -1 && tags.indexOf(t.toLowerCase()) === -1;
+    }).slice(0, 8);
+    if (!matches.length) { closeSuggest(); return; }
+    suggestEl.innerHTML = '';
+    matches.forEach(function(m) {
+      var d = document.createElement('div');
+      d.className = 'tag-suggest-item';
+      d.textContent = m;
+      d.addEventListener('click', function() { addTag(m); textInput.focus(); });
+      suggestEl.appendChild(d);
+    });
+    suggestEl.classList.add('open');
+  }
+
+  textInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTag(this.value);
+    }
+    if (e.key === 'Backspace' && !this.value && tags.length) {
+      tags.pop();
+      renderChips();
+      sync();
+    }
+    if (e.key === 'Escape') closeSuggest();
+  });
+  textInput.addEventListener('input', function() {
+    var v = this.value.trim();
+    if (v.length >= 1) showSuggest(v); else closeSuggest();
+  });
+  textInput.addEventListener('blur', function() { setTimeout(closeSuggest, 150); });
+  wrapEl.addEventListener('click', function() { textInput.focus(); });
+
+  renderChips();
+
+  // Expose for AI agent fills
+  window._blogTagsRefresh = function() {
+    tags = hiddenField.value ? hiddenField.value.split(',').map(function(t){ return t.trim(); }).filter(Boolean) : [];
+    renderChips();
+  };
+})();
+
+// ── CATEGORY AUTOCOMPLETE ──
+(function() {
+  var catInput = document.getElementById('field-category');
+  var suggestEl = document.getElementById('catSuggest');
+  var existingCats = <%- JSON.stringify(typeof existingCategories !== 'undefined' ? existingCategories : []) %>;
+
+  function closeSuggest() { suggestEl.classList.remove('open'); suggestEl.innerHTML = ''; }
+
+  catInput.addEventListener('input', function() {
+    var v = this.value.trim().toLowerCase();
+    if (!v) { closeSuggest(); return; }
+    var matches = existingCats.filter(function(c) { return c.toLowerCase().indexOf(v) !== -1; }).slice(0, 6);
+    if (!matches.length) { closeSuggest(); return; }
+    suggestEl.innerHTML = '';
+    matches.forEach(function(m) {
+      var d = document.createElement('div');
+      d.className = 'cat-suggest-item';
+      d.textContent = m;
+      d.addEventListener('click', function() { catInput.value = m; closeSuggest(); });
+      suggestEl.appendChild(d);
+    });
+    suggestEl.classList.add('open');
+  });
+  catInput.addEventListener('blur', function() { setTimeout(closeSuggest, 150); });
+  catInput.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeSuggest(); });
+})();
+
+// ── CONTENT PREVIEW (removed — replaced by Quill) ──
+
+// ── SLUG ──
+let slugEdited = <%= post && post.slug ? 'true' : 'false' %>;
+
+function toSlug(str) {
+  return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+function autoSlug(title) {
+  if (slugEdited) return;
+  const s = toSlug(title);
+  document.getElementById('slug-field').value = s;
+  document.getElementById('slug-preview').textContent = s || 'your-slug';
+}
+document.getElementById('slug-field').addEventListener('input', function() {
+  slugEdited = true;
+  document.getElementById('slug-preview').textContent = this.value || 'your-slug';
+});
+
+// ── QUILL RICH TEXT EDITOR ──
+var quill = null;
+var quillReady = false;
+(function() {
+  var hiddenContent = document.getElementById('field-content');
+  var htmlEditor = document.getElementById('htmlEditor');
+  var htmlToggle = document.getElementById('htmlToggle');
+  var editorDiv = document.getElementById('quillEditor');
+  var htmlMode = false;
+
+  // Load Quill from CDN then initialize
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js';
+  s.onload = function() {
+    quill = new Quill('#quillEditor', {
+      theme: 'snow',
+      placeholder: 'Start writing your post...',
+      modules: {
+        toolbar: [
+          [{ header: [2, 3, false] }],
+          ['bold', 'italic', 'underline', 'strike'],
+          ['blockquote'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['link', 'image'],
+          ['clean']
+        ]
+      }
+    });
+
+    // Load existing content
+    if (hiddenContent.value) {
+      quill.root.innerHTML = hiddenContent.value;
+    }
+
+    // Sync to hidden textarea on change
+    quill.on('text-change', function() {
+      var html = quill.root.innerHTML;
+      if (html === '<p><br></p>') html = '';
+      hiddenContent.value = html;
+    });
+
+    quillReady = true;
+  };
+  document.head.appendChild(s);
+
+  // HTML toggle — switch between Quill and raw HTML
+  htmlToggle.addEventListener('click', function() {
+    htmlMode = !htmlMode;
+    htmlToggle.classList.toggle('active', htmlMode);
+
+    if (htmlMode) {
+      // Switch to raw HTML view
+      htmlEditor.value = hiddenContent.value;
+      editorDiv.style.display = 'none';
+      var toolbar = document.querySelector('.ql-toolbar');
+      if (toolbar) toolbar.style.display = 'none';
+      htmlEditor.style.display = 'block';
+    } else {
+      // Switch back to Quill
+      hiddenContent.value = htmlEditor.value;
+      if (quill) quill.root.innerHTML = htmlEditor.value;
+      htmlEditor.style.display = 'none';
+      editorDiv.style.display = '';
+      var toolbar = document.querySelector('.ql-toolbar');
+      if (toolbar) toolbar.style.display = '';
+    }
+  });
+
+  // Sync raw HTML editor on input
+  htmlEditor.addEventListener('input', function() {
+    hiddenContent.value = this.value;
+  });
+
+  // Form submit: ensure latest content is in hidden field
+  var form = hiddenContent.closest('form');
+  if (form) {
+    form.addEventListener('submit', function() {
+      if (htmlMode) {
+        hiddenContent.value = htmlEditor.value;
+      } else if (quill) {
+        var html = quill.root.innerHTML;
+        if (html === '<p><br></p>') html = '';
+        hiddenContent.value = html;
+      }
+    });
+  }
+})();
+
+// Expose for AI agent fills — set content in Quill
+window._blogContentSet = function(html) {
+  var hidden = document.getElementById('field-content');
+  hidden.value = html;
+  if (quill && quillReady) {
+    quill.root.innerHTML = html;
+  }
+};
+
+// ── AGENT PANEL ──
+const panel = document.getElementById('agentPanel');
+const overlay = document.getElementById('agentOverlay');
+document.getElementById('agentToggle').addEventListener('click', openPanel);
+document.getElementById('agentClose').addEventListener('click', closePanel);
+overlay.addEventListener('click', closePanel);
+
+function openPanel() {
+  panel.classList.add('open');
+  overlay.classList.add('active');
+}
+function closePanel() {
+  panel.classList.remove('open');
+  overlay.classList.remove('active');
+}
+
+// Mobile keyboard: keep footer pinned when virtual keyboard opens
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    if (panel.classList.contains('open')) {
+      const vh = window.visualViewport.height;
+      panel.style.height = vh + 'px';
+      panel.style.top = window.visualViewport.offsetTop + 'px';
+      const msgs = document.getElementById('agentMsgs');
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+  });
+}
+
+document.getElementById('apQuick').querySelectorAll('.ap-quick-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.getElementById('agentInput').value = this.dataset.prompt;
+    sendAgent();
+  });
+});
+
+const agentInput = document.getElementById('agentInput');
+agentInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAgent(); }
+});
+agentInput.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+document.getElementById('agentSend').addEventListener('click', sendAgent);
+
+// ── TWO-STATE REVERT ──
+// fieldStates[key] = { original, ai }  (undefined until AI fills the field)
+const fieldStates = {};
+const FIELDS = ['title', 'excerpt', 'content', 'category', 'tags'];
+
+function getFieldEl(key) { return document.getElementById('field-' + key); }
+
+function fillField(key, aiValue) {
+  const el = getFieldEl(key);
+  if (!el) return;
+
+  // Save original on first AI fill only
+  if (!fieldStates[key]) {
+    fieldStates[key] = { original: el.value, ai: aiValue };
+  } else {
+    fieldStates[key].ai = aiValue;
+  }
+
+  el.value = aiValue;
+  el.classList.add('ai-filled');
+
+  const badge = document.getElementById('badge-' + key);
+  if (badge) badge.style.display = 'inline';
+
+  // If title, sync slug
+  if (key === 'title' && !slugEdited) autoSlug(aiValue);
+
+  // If tags, refresh tag chips
+  if (key === 'tags' && typeof window._blogTagsRefresh === 'function') window._blogTagsRefresh();
+
+  // If content, update Quill editor
+  if (key === 'content' && typeof window._blogContentSet === 'function') window._blogContentSet(aiValue);
+
+  renderRevertRow(key, 'ai');
+}
+
+function renderRevertRow(key, state) {
+  const row = document.getElementById('revert-row-' + key);
+  if (!row || !fieldStates[key]) return;
+
+  if (state === 'ai') {
+    row.innerHTML =
+      '<button type="button" class="revert-orig-btn" data-key="' + key + '">↩ Revert to original</button>';
+    row.querySelector('.revert-orig-btn').addEventListener('click', function() {
+      revertToOriginal(this.dataset.key);
+    });
+  } else {
+    // state === 'original'
+    row.innerHTML =
+      '<button type="button" class="revert-ai-btn" data-key="' + key + '">✦ Restore AI suggestion</button>';
+    row.querySelector('.revert-ai-btn').addEventListener('click', function() {
+      restoreAi(this.dataset.key);
+    });
+  }
+}
+
+function revertToOriginal(key) {
+  const el = getFieldEl(key);
+  if (!el || !fieldStates[key]) return;
+  el.value = fieldStates[key].original;
+  el.classList.remove('ai-filled');
+  const badge = document.getElementById('badge-' + key);
+  if (badge) badge.style.display = 'none';
+  if (key === 'title' && !slugEdited) autoSlug(fieldStates[key].original);
+  if (key === 'content' && typeof window._blogContentSet === 'function') window._blogContentSet(fieldStates[key].original);
+  if (key === 'tags' && typeof window._blogTagsRefresh === 'function') window._blogTagsRefresh();
+  renderRevertRow(key, 'original');
+}
+
+function restoreAi(key) {
+  const el = getFieldEl(key);
+  if (!el || !fieldStates[key]) return;
+  el.value = fieldStates[key].ai;
+  el.classList.add('ai-filled');
+  const badge = document.getElementById('badge-' + key);
+  if (badge) badge.style.display = 'inline';
+  if (key === 'title' && !slugEdited) autoSlug(fieldStates[key].ai);
+  if (key === 'content' && typeof window._blogContentSet === 'function') window._blogContentSet(fieldStates[key].ai);
+  if (key === 'tags' && typeof window._blogTagsRefresh === 'function') window._blogTagsRefresh();
+  renderRevertRow(key, 'ai');
+}
+
+// ── MESSAGES ──
+const agentMessages = [];
+
+function appendMsg(role, text, extra) {
+  const msgs = document.getElementById('agentMsgs');
+  const el = document.createElement('div');
+  el.className = 'ap-msg ' + role;
+  el.innerHTML = '<div class="ap-bubble">' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>';
+  if (extra) el.innerHTML += extra;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTyping(isSearching) {
+  const msgs = document.getElementById('agentMsgs');
+  const el = document.createElement('div');
+  el.id = 'apTyping';
+  el.className = 'ap-msg assistant';
+  if (isSearching) {
+    el.innerHTML = '<div class="ap-search-notice">🔍 Searching the web…</div>';
+  } else {
+    el.innerHTML = '<div class="ap-typing"><div class="ap-typing-dot"></div><div class="ap-typing-dot"></div><div class="ap-typing-dot"></div></div>';
+  }
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function hideTyping() { document.getElementById('apTyping')?.remove(); }
+
+function getCurrentPost() {
+  return {
+    title: (getFieldEl('title') || {}).value || '',
+    excerpt: (getFieldEl('excerpt') || {}).value || '',
+    content: (getFieldEl('content') || {}).value || '',
+    category: (getFieldEl('category') || {}).value || '',
+    tags: (getFieldEl('tags') || {}).value || '',
+  };
+}
+
+async function sendAgent() {
+  const text = agentInput.value.trim();
+  if (!text) return;
+  agentInput.value = '';
+  agentInput.style.height = 'auto';
+  document.getElementById('agentSend').disabled = true;
+
+  agentMessages.push({ role: 'user', content: text });
+  appendMsg('user', text);
+  showTyping(false);
+
+  try {
+    const res = await fetch('/admin/blog/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: agentMessages, currentPost: getCurrentPost() }),
+    });
+    const data = await res.json();
+    hideTyping();
+
+    if (data.error) {
+      appendMsg('assistant', 'Error: ' + data.error);
+    } else {
+      const fills = Object.entries(data.fill || {});
+      fills.forEach(([key, val]) => fillField(key, val));
+      agentMessages.push({ role: 'assistant', content: data.message });
+
+      let extra = '';
+      if (fills.length) extra = '<div class="ap-fill-notice" style="margin-top:4px;">✓ ' + fills.length + ' field' + (fills.length > 1 ? 's' : '') + ' filled</div>';
+      appendMsg('assistant', data.message, extra);
+    }
+  } catch(e) {
+    hideTyping();
+    appendMsg('assistant', 'Connection error. Please try again.');
+  } finally {
+    document.getElementById('agentSend').disabled = false;
+    agentInput.focus();
+  }
+}
+
+// Pre-fill from dashboard master agent
+(function() {
+  try {
+    const raw = sessionStorage.getItem('slab_agent_fill');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.department !== 'blog' || !data.fill) return;
+    sessionStorage.removeItem('slab_agent_fill');
+    Object.entries(data.fill).forEach(([k, v]) => { if (v) fillField(k, v); });
+  } catch { /* ignore */ }
+})();
+</script>
+<script src="/js/assetPicker.js"></script>
+<script src="/js/tours/blog.js"></script>
+
+</body>
+</html>

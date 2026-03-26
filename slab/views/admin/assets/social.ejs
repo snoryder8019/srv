@@ -1,0 +1,1489 @@
+<%- include('../partials/head', { title: 'Social Media Generator' }) %>
+<%- include('../partials/sidebar', { page: 'assets', user: user }) %>
+
+<style>
+  /* ── LAYOUT ── */
+  .sg-layout { display: grid; grid-template-columns: 300px 1fr 240px; gap: 0; height: calc(100vh - 64px); overflow: hidden; }
+  .sg-panel { background: var(--white); display: flex; flex-direction: column; overflow: hidden; }
+  .sg-panel-left { border-right: 1px solid var(--ivory-mid); }
+  .sg-panel-right { border-left: 1px solid var(--ivory-mid); }
+  .sg-panel-scroll { flex: 1; overflow-y: auto; padding: 14px; }
+  .sg-panel-head {
+    padding: 10px 14px; border-bottom: 1px solid var(--ivory-mid);
+    font-size: 0.58rem; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--slate);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  /* ── ACCORDION SECTIONS ── */
+  .sg-sec { margin-bottom: 2px; }
+  .sg-sec-head {
+    padding: 8px 0; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--slate); cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--ivory-mid); user-select: none;
+  }
+  .sg-sec-head:hover { color: var(--dark); }
+  .sg-sec-body { padding: 10px 0; }
+  .sg-sec-body.collapsed { display: none; }
+
+  /* ── INPUTS ── */
+  .sg-input {
+    width: 100%; padding: 5px 8px; border: 1.5px solid var(--ivory-mid);
+    border-radius: 2px; font-size: 0.78rem; font-family: 'Jost', sans-serif;
+    color: var(--dark); background: var(--ivory);
+  }
+  .sg-input:focus { outline: none; border-color: var(--navy-mid); background: var(--white); }
+  .sg-select {
+    width: 100%; padding: 5px 8px; border: 1.5px solid var(--ivory-mid);
+    border-radius: 2px; font-size: 0.78rem; font-family: 'Jost', sans-serif;
+    color: var(--dark); background: var(--ivory); cursor: pointer;
+  }
+  .sg-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .sg-lbl { font-size: 0.6rem; font-weight: 600; color: var(--slate); letter-spacing: 0.06em; min-width: 48px; flex-shrink: 0; }
+
+  /* ── SIZE PRESETS ── */
+  .sz-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-bottom: 8px; }
+  .sz-btn {
+    padding: 5px 4px; border: 1.5px solid var(--ivory-mid); border-radius: 2px;
+    text-align: center; cursor: pointer; font-size: 0.58rem; font-weight: 600;
+    color: var(--slate); background: var(--white); transition: all 0.1s;
+    letter-spacing: 0.04em;
+  }
+  .sz-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+  .sz-btn.active { background: var(--navy); color: var(--white); border-color: var(--navy); }
+
+  /* ── TOOL BUTTONS ── */
+  .tool-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+  .tool-btn {
+    padding: 5px 8px; border: 1.5px solid var(--ivory-mid); border-radius: 2px;
+    font-size: 0.68rem; font-weight: 600; cursor: pointer; background: var(--white);
+    color: var(--slate); transition: all 0.1s;
+  }
+  .tool-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+
+  /* ── COLOR PALETTES ── */
+  .pal-row { display: flex; gap: 3px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
+  .pal-label { font-size: 0.55rem; font-weight: 700; color: var(--slate); letter-spacing: 0.1em; text-transform: uppercase; width: 100%; margin-bottom: 2px; }
+  .pal-swatch {
+    width: 24px; height: 24px; border-radius: 2px; cursor: pointer;
+    border: 2px solid transparent; transition: all 0.1s; flex-shrink: 0;
+  }
+  .pal-swatch:hover { border-color: var(--dark); transform: scale(1.15); }
+  .pal-swatch.active { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(201,168,72,0.3); }
+
+  /* ── CANVAS AREA ── */
+  .sg-canvas-area {
+    background: #E8E5DF; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; overflow: auto; padding: 20px;
+    position: relative;
+  }
+  .sg-canvas-wrap { position: relative; box-shadow: 0 4px 24px rgba(15,27,48,0.15); }
+  #sgCanvas { display: block; cursor: default; }
+  .sg-canvas-info {
+    margin-top: 8px; font-size: 0.65rem; color: var(--slate); text-align: center;
+  }
+  .sg-canvas-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+  /* ── LAYERS PANEL ── */
+  .layer-item {
+    display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+    border: 1.5px solid transparent; border-radius: 2px; cursor: pointer;
+    transition: all 0.1s; font-size: 0.72rem; margin-bottom: 2px;
+  }
+  .layer-item:hover { background: var(--ivory); }
+  .layer-item.active { border-color: var(--gold); background: rgba(201,168,72,0.05); }
+  .layer-icon { width: 18px; text-align: center; font-size: 0.7rem; flex-shrink: 0; color: var(--slate); }
+  .layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dark); font-weight: 500; }
+  .layer-actions { display: flex; gap: 2px; flex-shrink: 0; }
+  .layer-btn {
+    width: 20px; height: 20px; border: none; background: none; cursor: pointer;
+    font-size: 0.65rem; color: var(--slate); border-radius: 2px; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .layer-btn:hover { background: var(--ivory-mid); color: var(--dark); }
+  .layer-btn.vis-off { opacity: 0.35; }
+
+  /* ── LAYER PROPS (bottom of right panel) ── */
+  .lp-section { padding: 10px 14px; border-top: 1px solid var(--ivory-mid); }
+  .lp-title { font-size: 0.58rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--slate); margin-bottom: 8px; }
+
+  /* ── PRESETS LIST ── */
+  .preset-item {
+    display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+    border: 1.5px solid var(--ivory-mid); border-radius: 2px; cursor: pointer;
+    margin-bottom: 4px; font-size: 0.72rem; transition: all 0.1s;
+  }
+  .preset-item:hover { border-color: var(--navy-mid); }
+  .preset-item .pi-name { flex: 1; font-weight: 500; color: var(--dark); }
+  .preset-item .pi-size { font-size: 0.6rem; color: var(--slate); }
+  .preset-item .pi-del { color: var(--slate); cursor: pointer; font-size: 0.7rem; }
+  .preset-item .pi-del:hover { color: #c0392b; }
+
+  /* Drop zone overlay */
+  .sg-drop-overlay {
+    display: none; position: absolute; inset: 0; z-index: 10;
+    background: rgba(201,168,72,0.12); border: 3px dashed var(--gold);
+    align-items: center; justify-content: center;
+    font-size: 1rem; color: var(--gold); font-weight: 600;
+  }
+  .sg-drop-overlay.visible { display: flex; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1100px) { .sg-layout { grid-template-columns: 260px 1fr 200px; } }
+  @media (max-width: 820px) {
+    .sg-layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; height: auto; }
+    .sg-panel-left, .sg-panel-right { max-height: 260px; border: none; border-bottom: 1px solid var(--ivory-mid); }
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Social Media Generator</div>
+  <div class="topbar-actions">
+    <a href="/admin/assets" class="btn btn-ghost btn-sm">&larr; Assets</a>
+    <a href="/admin/assets/trim" class="btn btn-ghost btn-sm">Video Trimmer</a>
+    <button class="btn btn-gold btn-sm" id="agentToggleBtn">Asset Agent</button>
+  </div>
+</div>
+
+<div style="padding:0 16px;">
+  <%- include('../partials/advisory', { needs: 'ai,s3' }) %>
+</div>
+<div class="sg-layout">
+
+  <!-- ═══ LEFT PANEL ═══ -->
+  <div class="sg-panel sg-panel-left">
+    <div class="sg-panel-head">Tools</div>
+    <div class="sg-panel-scroll">
+
+      <!-- SIZE -->
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secSize">Canvas Size <span>▾</span></div>
+        <div class="sg-sec-body" id="secSize">
+          <div class="sz-grid" id="sizeGrid">
+            <div class="sz-btn active" data-w="1080" data-h="1080" data-name="ig-post">IG Post<br>1:1</div>
+            <div class="sz-btn" data-w="1080" data-h="1920" data-name="ig-story">Story<br>9:16</div>
+            <div class="sz-btn" data-w="1200" data-h="630" data-name="fb-post">FB Post<br>1.9:1</div>
+            <div class="sz-btn" data-w="1640" data-h="624" data-name="fb-cover">FB Cover<br>2.6:1</div>
+            <div class="sz-btn" data-w="1600" data-h="900" data-name="twitter">X/Twitter<br>16:9</div>
+            <div class="sz-btn" data-w="1000" data-h="1500" data-name="pinterest">Pinterest<br>2:3</div>
+            <div class="sz-btn" data-w="1280" data-h="720" data-name="yt-thumb">YouTube<br>16:9</div>
+            <div class="sz-btn" data-w="1200" data-h="627" data-name="linkedin">LinkedIn<br>1.9:1</div>
+            <div class="sz-btn" data-w="1080" data-h="1350" data-name="ig-portrait">IG Port.<br>4:5</div>
+          </div>
+          <div class="sg-row">
+            <span class="sg-lbl">W</span><input type="number" class="sg-input" id="customW" value="1080" style="width:70px;">
+            <span class="sg-lbl">H</span><input type="number" class="sg-input" id="customH" value="1080" style="width:70px;">
+            <button class="tool-btn" id="applySizeBtn">Set</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADD LAYERS -->
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secAdd">Add Layers <span>▾</span></div>
+        <div class="sg-sec-body" id="secAdd">
+          <div class="tool-bar">
+            <button class="tool-btn" id="addImageBtn">+ Image</button>
+            <button class="tool-btn" id="addLocalBtn">+ Upload</button>
+            <button class="tool-btn" id="addTextBtn">+ Text</button>
+            <button class="tool-btn" id="addRectBtn">+ Rect</button>
+            <button class="tool-btn" id="addCircBtn">+ Circle</button>
+            <button class="tool-btn" id="addLineBtn">+ Line</button>
+          </div>
+          <div style="font-size:0.65rem;color:var(--slate);">Drag & drop images/videos onto the canvas, or use the buttons above.</div>
+          <input type="file" id="localFileInput" accept="image/*,video/*" multiple style="display:none;">
+        </div>
+      </div>
+
+      <!-- BACKGROUND -->
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secBg">Background <span>▾</span></div>
+        <div class="sg-sec-body" id="secBg">
+          <div class="sg-row">
+            <span class="sg-lbl">Color</span>
+            <input type="color" id="bgColor" value="#F5F3EF" style="width:32px;height:28px;border:1px solid var(--ivory-mid);cursor:pointer;">
+            <input type="text" class="sg-input" id="bgColorHex" value="#F5F3EF" style="width:80px;">
+          </div>
+        </div>
+      </div>
+
+      <!-- AI BACKGROUND -->
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secAiBg">AI Background <span>▾</span></div>
+        <div class="sg-sec-body" id="secAiBg">
+          <div style="margin-bottom:6px;">
+            <input type="text" class="sg-input" id="sdPrompt" placeholder="e.g. paintstrokes, St. Patrick's Day, sunset bokeh..." style="width:100%;">
+          </div>
+          <div style="margin-bottom:6px;">
+            <input type="text" class="sg-input" id="sdNegPrompt" placeholder="Negative (auto-filled)" value="text, words, letters, watermark, blurry, low quality" style="width:100%;font-size:0.68rem;color:var(--slate);">
+          </div>
+          <div class="tool-bar">
+            <button class="tool-btn" id="genBgBtn" style="background:var(--gold);color:var(--dark);border-color:var(--gold);flex:1;">Generate Background</button>
+            <button class="tool-btn" id="clearBgBtn" title="Remove AI background">Clear</button>
+          </div>
+          <div id="sdStatus" style="font-size:0.68rem;color:var(--slate);margin-top:4px;"></div>
+          <div style="margin-top:6px;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <span style="font-size:0.55rem;color:var(--slate);letter-spacing:0.1em;text-transform:uppercase;font-weight:700;">Quick Prompts</span>
+              <button id="sdCycleBtn" class="tool-btn" onclick="sdCyclePrompts()" title="More prompts" style="padding:1px 5px;font-size:0.7rem;line-height:1;transition:transform 0.55s cubic-bezier(.2,.8,.3,1.1);">&#x267B;</button>
+            </div>
+            <div id="sdQuickWrap" style="display:flex;gap:3px;flex-wrap:wrap;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PALETTE -->
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secPal">Color Palette <span>▾</span></div>
+        <div class="sg-sec-body" id="secPal">
+          <div class="sg-row" style="margin-bottom:8px;">
+            <span class="sg-lbl">Preset</span>
+            <select class="sg-select" id="palPreset" style="flex:1;">
+              <option value="w2brand">Brand Colors</option>
+              <option value="modern">Modern Dark</option>
+              <option value="warm">Warm Sunset</option>
+              <option value="cool">Cool Blue</option>
+              <option value="earth">Earthy</option>
+              <option value="pastel">Pastel</option>
+              <option value="bold">Bold Pop</option>
+              <option value="mono">Monochrome</option>
+              <option value="client">Client Brand</option>
+            </select>
+          </div>
+          <div id="palSwatches" class="pal-row"></div>
+          <div class="sg-row" style="margin-top:6px;">
+            <span class="sg-lbl">Active</span>
+            <input type="color" id="activeColor" value="#1C2B4A" style="width:32px;height:28px;border:1px solid var(--ivory-mid);cursor:pointer;">
+            <input type="text" class="sg-input" id="activeColorHex" value="#1C2B4A" style="flex:1;">
+            <button class="tool-btn" id="applyFillBtn" title="Apply as fill">Fill</button>
+            <button class="tool-btn" id="applyStrokeBtn" title="Apply as stroke">Strk</button>
+            <button class="tool-btn" id="applyTextClrBtn" title="Apply as text color">Txt</button>
+          </div>
+          <div class="sg-row" style="margin-top:4px;">
+            <span class="sg-lbl">Client</span>
+            <select class="sg-select" id="clientSelect" style="flex:1;">
+              <option value="">— None —</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRESETS -->
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secPresets">Saved Presets <span>▾</span></div>
+        <div class="sg-sec-body" id="secPresets">
+          <div class="sg-row" style="margin-bottom:6px;">
+            <input type="text" class="sg-input" id="presetName" placeholder="Preset name..." style="flex:1;">
+            <button class="tool-btn" id="savePresetBtn">Save</button>
+          </div>
+          <div id="presetList"></div>
+        </div>
+      </div>
+
+      <!-- SAVE/EXPORT -->
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secExport">Export <span>▾</span></div>
+        <div class="sg-sec-body" id="secExport">
+          <div class="sg-row">
+            <span class="sg-lbl">Title</span>
+            <input type="text" class="sg-input" id="exportTitle" placeholder="My post" style="flex:1;">
+          </div>
+          <div class="sg-row">
+            <span class="sg-lbl">Folder</span>
+            <select class="sg-select" id="exportFolder" style="flex:1;">
+              <option value="clients">Clients</option>
+              <option value="general">General</option>
+              <option value="portfolio">Portfolio</option>
+              <option value="blog">Blog</option>
+            </select>
+          </div>
+          <div class="tool-bar" style="margin-top:6px;">
+            <button class="tool-btn" id="downloadPngBtn" style="background:var(--navy);color:#fff;border-color:var(--navy);">Download PNG</button>
+            <button class="tool-btn" id="saveLibBtn" style="background:var(--gold);color:var(--dark);border-color:var(--gold);">Save to Library</button>
+          </div>
+          <div id="exportStatus" style="font-size:0.68rem;color:var(--slate);margin-top:4px;"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ CANVAS ═══ -->
+  <div class="sg-canvas-area" id="canvasArea">
+    <div class="sg-drop-overlay" id="dropOverlay">Drop images here</div>
+    <div class="sg-canvas-wrap" id="canvasWrap">
+      <canvas id="sgCanvas" width="1080" height="1080"></canvas>
+    </div>
+    <div class="sg-canvas-info" id="canvasInfo">1080 x 1080 · ig-post</div>
+  </div>
+
+  <!-- ═══ RIGHT PANEL — LAYERS + PROPS ═══ -->
+  <div class="sg-panel sg-panel-right">
+    <div class="sg-panel-head">Layers <button class="tool-btn" id="layerUpBtn" style="padding:2px 5px;font-size:0.6rem;">&#9650;</button><button class="tool-btn" id="layerDownBtn" style="padding:2px 5px;font-size:0.6rem;">&#9660;</button></div>
+    <div class="sg-panel-scroll" id="layerListWrap">
+      <div id="layerList"></div>
+    </div>
+    <div class="lp-section" id="layerProps" style="display:none;">
+      <div class="lp-title">Properties</div>
+      <div id="propsContent"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/js/assetPicker.js"></script>
+<script>
+(function(){
+'use strict';
+
+// ═══════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════
+let layers = [];
+let selId = null;
+let nextId = 1;
+let canvasW = 1080, canvasH = 1080, sizeName = 'ig-post';
+let bgColor = '#F5F3EF';
+let activeColor = '#1C2B4A';
+let clientsList = [];
+let currentPresetId = null; // id of loaded preset for "update"
+
+// interaction
+let drag = null;   // { id, startX, startY, origX, origY }
+let resize = null; // { id, startX, startY, origW, origH, origX, origY }
+
+const canvas = document.getElementById('sgCanvas');
+const ctx = canvas.getContext('2d');
+
+// ═══════════════════════════════════════════
+//  PALETTES
+// ═══════════════════════════════════════════
+const PALETTES = {
+  w2brand:  ['#1C2B4A','#C9A848','#F5F3EF','#0F1B30','#2E4270','#E6E1D6','#6B7380','#FDFCFA'],
+  modern:   ['#0F0F0F','#1A1A2E','#16213E','#0F3460','#E94560','#ECECEC','#F5F5F5','#533483'],
+  warm:     ['#FF6B35','#F7C59F','#EFEFD0','#004E89','#1A659E','#73454E','#D4A373','#FAEDCD'],
+  cool:     ['#003459','#007EA7','#00A8E8','#E8F1F2','#0C7489','#119DA4','#3D5A80','#98C1D9'],
+  earth:    ['#606C38','#283618','#FEFAE0','#DDA15E','#BC6C25','#8B7355','#CCD5AE','#FAEDCD'],
+  pastel:   ['#FFB5A7','#FCD5CE','#F8EDEB','#F9DCC4','#FEC89A','#D8E2DC','#ECE4DB','#FFE5D9'],
+  bold:     ['#FF0054','#FFBD00','#00F5D4','#9B5DE5','#F15BB5','#FEE440','#00BBF9','#00F5D4'],
+  mono:     ['#000000','#1A1A1A','#333333','#555555','#777777','#999999','#CCCCCC','#FFFFFF'],
+};
+let currentPalette = [...PALETTES.w2brand];
+
+// ═══════════════════════════════════════════
+//  INIT — load clients, presets
+// ═══════════════════════════════════════════
+fetch('/admin/assets/clients').then(r=>r.json()).then(data => {
+  clientsList = data.clients || [];
+  const sel = document.getElementById('clientSelect');
+  clientsList.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c._id;
+    o.textContent = c.company ? `${c.name} (${c.company})` : c.name;
+    sel.appendChild(o);
+  });
+});
+loadPresetList();
+
+// ═══════════════════════════════════════════
+//  ACCORDION
+// ═══════════════════════════════════════════
+document.querySelectorAll('.sg-sec-head').forEach(h => {
+  h.addEventListener('click', () => {
+    const body = document.getElementById(h.dataset.toggle);
+    if (body) body.classList.toggle('collapsed');
+  });
+});
+
+// ═══════════════════════════════════════════
+//  SIZE PRESETS
+// ═══════════════════════════════════════════
+document.querySelectorAll('.sz-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.sz-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    setCanvasSize(+b.dataset.w, +b.dataset.h, b.dataset.name);
+  });
+});
+document.getElementById('applySizeBtn').addEventListener('click', () => {
+  const w = parseInt(document.getElementById('customW').value) || 1080;
+  const h = parseInt(document.getElementById('customH').value) || 1080;
+  document.querySelectorAll('.sz-btn').forEach(x=>x.classList.remove('active'));
+  setCanvasSize(w, h, `${w}x${h}`);
+});
+function setCanvasSize(w, h, name) {
+  canvasW = w; canvasH = h; sizeName = name;
+  canvas.width = w; canvas.height = h;
+  document.getElementById('customW').value = w;
+  document.getElementById('customH').value = h;
+  scaleCanvas();
+  render();
+}
+function scaleCanvas() {
+  const area = document.getElementById('canvasArea');
+  const maxW = area.clientWidth - 60;
+  const maxH = area.clientHeight - 100;
+  const scale = Math.min(1, maxW / canvasW, maxH / canvasH);
+  canvas.style.width = (canvasW * scale) + 'px';
+  canvas.style.height = (canvasH * scale) + 'px';
+  document.getElementById('canvasInfo').textContent = `${canvasW} x ${canvasH} · ${sizeName}`;
+}
+window.addEventListener('resize', scaleCanvas);
+
+// ═══════════════════════════════════════════
+//  BACKGROUND
+// ═══════════════════════════════════════════
+document.getElementById('bgColor').addEventListener('input', e => { bgColor = e.target.value; document.getElementById('bgColorHex').value = bgColor; render(); });
+document.getElementById('bgColorHex').addEventListener('change', e => { bgColor = e.target.value; document.getElementById('bgColor').value = bgColor; render(); });
+
+// ═══════════════════════════════════════════
+//  AI BACKGROUND (Stable Diffusion)
+// ═══════════════════════════════════════════
+async function generateSdBackground(prompt, negPrompt) {
+  const status = document.getElementById('sdStatus');
+  const btn = document.getElementById('genBgBtn');
+  if (!prompt.trim()) { status.textContent = 'Enter a prompt first.'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  status.textContent = 'Calling Stable Diffusion (15-45s)...';
+
+  try {
+    const r = await fetch('/admin/assets/generate-bg', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: prompt.trim(),
+        negative_prompt: negPrompt || 'text, words, letters, watermark, blurry, low quality',
+        sizePreset: sizeName,
+      }),
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error || 'Generation failed');
+
+    // Add as a layer at the bottom of the stack
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Remove any existing AI background layer
+      layers = layers.filter(l => !l._aiBg);
+      const layer = { type:'image', x:0, y:0, w:canvasW, h:canvasH, src:data.url, img, name:'AI Background', _aiBg:true, id:nextId++, visible:true, opacity:1 };
+      layers.unshift(layer);
+      selId = layer.id;
+      renderLayerList();
+      render();
+      status.textContent = 'Background added as layer!';
+      setTimeout(() => { status.textContent = ''; }, 3000);
+    };
+    img.onerror = () => { status.textContent = 'Failed to load generated image.'; };
+    img.src = data.url;
+  } catch (err) {
+    status.textContent = 'Error: ' + err.message;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Generate Background';
+}
+
+document.getElementById('genBgBtn').addEventListener('click', () => {
+  generateSdBackground(
+    document.getElementById('sdPrompt').value,
+    document.getElementById('sdNegPrompt').value
+  );
+});
+document.getElementById('clearBgBtn').addEventListener('click', () => {
+  layers = layers.filter(l => !l._aiBg);
+  document.getElementById('sdPrompt').value = '';
+  document.getElementById('sdStatus').textContent = 'Background cleared.';
+  setTimeout(() => { document.getElementById('sdStatus').textContent = ''; }, 2000);
+  renderLayerList();
+  render();
+});
+// ═══ Cycling Quick Prompts ═══
+const SD_PROMPT_POOL = [
+  { label: 'Paintstrokes', prompt: 'abstract acrylic paint strokes, rich texture, artistic background, navy and gold palette' },
+  { label: "St. Patrick's", prompt: 'green shamrock bokeh background, gold glitter, festive St Patricks Day, soft lighting' },
+  { label: 'Sunset', prompt: 'warm sunset gradient sky, golden hour clouds, orange purple pink, cinematic' },
+  { label: 'Corporate', prompt: 'dark navy blue abstract geometric shapes, gold accents, modern corporate, elegant' },
+  { label: 'Watercolor', prompt: 'soft watercolor wash background, pastel pink blue lavender, dreamy artistic texture' },
+  { label: 'Neon', prompt: 'neon lights bokeh background, cyberpunk city, purple blue glow, futuristic' },
+  { label: 'Marble', prompt: 'marble texture background, white grey gold veins, luxury elegant, high resolution' },
+  { label: 'Spring', prompt: 'spring flowers field, soft depth of field, cherry blossoms, natural light, fresh' },
+  { label: 'Tropical', prompt: 'lush tropical palm leaves, monstera, deep green, moody botanical, natural texture' },
+  { label: 'Galaxy', prompt: 'deep space galaxy nebula, stars, purple blue cosmic, dark dramatic, astrophotography' },
+  { label: 'Vintage', prompt: 'old paper texture, aged parchment, warm sepia tones, vintage retro, subtle grain' },
+  { label: 'Concrete', prompt: 'raw concrete wall texture, industrial, minimalist grey, urban modern, subtle cracks' },
+  { label: 'Ocean', prompt: 'aerial ocean waves, turquoise blue water, white foam, tropical sea, birds eye view' },
+  { label: 'Smoke', prompt: 'colorful smoke plumes, dark background, flowing wisps, red purple blue, dramatic lighting' },
+  { label: 'Floral', prompt: 'dark moody floral arrangement, roses peonies, deep burgundy navy, Dutch master still life' },
+  { label: 'Gradient', prompt: 'smooth gradient background, soft peach to lavender, pastel minimal, clean modern' },
+  { label: 'Bokeh', prompt: 'golden bokeh lights, warm defocused sparkles, festive celebration, black background' },
+  { label: 'Wood', prompt: 'rich dark walnut wood texture, natural grain, warm tones, rustic elegant, detailed' },
+  { label: 'Geometric', prompt: 'abstract geometric pattern, triangles hexagons, teal coral gold, modern art deco' },
+  { label: 'Aurora', prompt: 'northern lights aurora borealis, green purple sky, snowy landscape, night, magical' },
+];
+let _sdPromptIdx = 0;
+let _sdSpinDeg = 0;
+
+// Shuffle on load
+(function() {
+  for (let i = SD_PROMPT_POOL.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [SD_PROMPT_POOL[i], SD_PROMPT_POOL[j]] = [SD_PROMPT_POOL[j], SD_PROMPT_POOL[i]];
+  }
+})();
+
+function sdRenderChips(picks) {
+  const wrap = document.getElementById('sdQuickWrap');
+  wrap.innerHTML = '';
+  picks.forEach((p, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'tool-btn sd-quick';
+    btn.style.cssText = 'font-size:0.6rem;padding:3px 6px;opacity:0;transform:translateY(4px);transition:opacity 0.3s ease,transform 0.3s ease;';
+    btn.textContent = p.label;
+    btn.addEventListener('click', () => {
+      document.getElementById('sdPrompt').value = p.prompt;
+      generateSdBackground(p.prompt, document.getElementById('sdNegPrompt').value);
+    });
+    wrap.appendChild(btn);
+    setTimeout(() => { btn.style.opacity = '1'; btn.style.transform = 'translateY(0)'; }, 40 + idx * 60);
+  });
+}
+
+window.sdCyclePrompts = function() {
+  const wrap = document.getElementById('sdQuickWrap');
+  const old = wrap.querySelectorAll('.sd-quick');
+  old.forEach(b => { b.style.opacity = '0'; b.style.transform = 'translateY(4px)'; });
+
+  _sdSpinDeg += 360;
+  const cycleBtn = document.getElementById('sdCycleBtn');
+  if (cycleBtn) cycleBtn.style.transform = `rotate(${_sdSpinDeg}deg)`;
+
+  const delay = old.length ? 180 : 0;
+  const picks = [];
+  for (let i = 0; i < 4; i++) {
+    picks.push(SD_PROMPT_POOL[(_sdPromptIdx + i) % SD_PROMPT_POOL.length]);
+  }
+  _sdPromptIdx = (_sdPromptIdx + 4) % SD_PROMPT_POOL.length;
+
+  setTimeout(() => sdRenderChips(picks), delay);
+};
+
+// Initial render
+sdCyclePrompts();
+
+// ═══════════════════════════════════════════
+//  PALETTE
+// ═══════════════════════════════════════════
+function renderPalette() {
+  const wrap = document.getElementById('palSwatches');
+  wrap.innerHTML = '';
+  currentPalette.forEach((clr,i) => {
+    const s = document.createElement('div');
+    s.className = 'pal-swatch' + (clr === activeColor ? ' active' : '');
+    s.style.background = clr;
+    s.title = clr;
+    s.addEventListener('click', () => { setActiveColor(clr); });
+    wrap.appendChild(s);
+  });
+}
+function setActiveColor(clr) {
+  activeColor = clr;
+  document.getElementById('activeColor').value = clr;
+  document.getElementById('activeColorHex').value = clr;
+  renderPalette();
+}
+document.getElementById('palPreset').addEventListener('change', e => {
+  const key = e.target.value;
+  if (key === 'client') {
+    const cid = document.getElementById('clientSelect').value;
+    const client = clientsList.find(c => c._id === cid);
+    if (client?.brandColors?.length) {
+      currentPalette = [...client.brandColors];
+    } else {
+      currentPalette = [...PALETTES.w2brand];
+      alert('No brand colors saved for this client. Set them in the client onboarding tab.');
+    }
+  } else {
+    currentPalette = [...(PALETTES[key] || PALETTES.w2brand)];
+  }
+  renderPalette();
+});
+document.getElementById('clientSelect').addEventListener('change', () => {
+  if (document.getElementById('palPreset').value === 'client') {
+    document.getElementById('palPreset').dispatchEvent(new Event('change'));
+  }
+});
+document.getElementById('activeColor').addEventListener('input', e => { setActiveColor(e.target.value); });
+document.getElementById('activeColorHex').addEventListener('change', e => { setActiveColor(e.target.value); });
+renderPalette();
+
+// Apply active color to selected layer
+document.getElementById('applyFillBtn').addEventListener('click', () => { const l = selLayer(); if (l && (l.type==='rect'||l.type==='circle')) { l.fill = activeColor; render(); renderProps(); } });
+document.getElementById('applyStrokeBtn').addEventListener('click', () => { const l = selLayer(); if (l && (l.type==='rect'||l.type==='circle'||l.type==='line')) { l.stroke = activeColor; render(); renderProps(); } });
+document.getElementById('applyTextClrBtn').addEventListener('click', () => { const l = selLayer(); if (l && l.type==='text') { l.color = activeColor; render(); renderProps(); } });
+
+// ═══════════════════════════════════════════
+//  LAYERS — DATA
+// ═══════════════════════════════════════════
+function addLayer(layer) {
+  layer.id = nextId++;
+  layer.visible = true;
+  layer.opacity = layer.opacity ?? 1;
+  layers.push(layer);
+  selId = layer.id;
+  renderLayerList();
+  render();
+  return layer;
+}
+function selLayer() { return layers.find(l => l.id === selId); }
+function removeLayer(id) {
+  layers = layers.filter(l => l.id !== id);
+  if (selId === id) selId = null;
+  renderLayerList();
+  render();
+}
+
+// ═══════════════════════════════════════════
+//  ADD LAYER BUTTONS
+// ═══════════════════════════════════════════
+document.getElementById('addImageBtn').addEventListener('click', () => {
+  openAssetPicker({ type: 'all', onSelect: asset => {
+    if (asset.fileType === 'video') { addVideoLayer(asset.publicUrl, asset.title || 'Video'); }
+    else { addImageLayer(asset.publicUrl, asset.title || 'Image'); }
+  }});
+});
+document.getElementById('addLocalBtn').addEventListener('click', () => document.getElementById('localFileInput').click());
+document.getElementById('localFileInput').addEventListener('change', e => {
+  for (const f of e.target.files) {
+    const url = URL.createObjectURL(f);
+    if (f.type.startsWith('video/')) addVideoLayer(url, f.name);
+    else addImageLayer(url, f.name);
+  }
+  e.target.value = '';
+});
+document.getElementById('addTextBtn').addEventListener('click', () => {
+  addLayer({ type:'text', x: canvasW*0.1, y: canvasH*0.4, w: canvasW*0.8, h: 80, text:'Your Text', fontSize:56, fontFamily:'Jost', color:'#FFFFFF', align:'center', bold:true, italic:false });
+});
+document.getElementById('addRectBtn').addEventListener('click', () => {
+  addLayer({ type:'rect', x: canvasW*0.1, y: canvasH*0.6, w: canvasW*0.8, h: canvasH*0.2, fill: activeColor, stroke:'', strokeWidth:0, radius:0 });
+});
+document.getElementById('addCircBtn').addEventListener('click', () => {
+  const r = Math.min(canvasW, canvasH) * 0.15;
+  addLayer({ type:'circle', x: canvasW/2-r, y: canvasH/2-r, w: r*2, h: r*2, fill: activeColor, stroke:'', strokeWidth:0 });
+});
+document.getElementById('addLineBtn').addEventListener('click', () => {
+  addLayer({ type:'line', x: canvasW*0.1, y: canvasH*0.5, w: canvasW*0.8, h: 0, stroke: activeColor, strokeWidth:4, dash:0 });
+});
+
+function addImageLayer(src, name) {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const scale = Math.min(canvasW / img.naturalWidth, canvasH / img.naturalHeight, 1);
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+    addLayer({ type:'image', x:(canvasW-w)/2, y:(canvasH-h)/2, w, h, src, img, name: name||'Image' });
+  };
+  img.onerror = () => alert('Could not load image');
+  img.src = src;
+}
+function addVideoLayer(src, name) {
+  const vid = document.createElement('video');
+  vid.crossOrigin = 'anonymous';
+  vid.src = src; vid.muted = true; vid.loop = true; vid.playsInline = true;
+  vid.addEventListener('loadedmetadata', () => {
+    const scale = Math.min(canvasW/vid.videoWidth, canvasH/vid.videoHeight, 1);
+    const w = vid.videoWidth*scale, h = vid.videoHeight*scale;
+    const layer = addLayer({ type:'video', x:(canvasW-w)/2, y:(canvasH-h)/2, w, h, src, vid, name: name||'Video' });
+    vid.play().catch(()=>{});
+    // continuous render for video
+    (function tick(){ if(layers.find(l=>l.id===layer.id)) { render(); requestAnimationFrame(tick); } })();
+  });
+  vid.addEventListener('error', () => alert('Could not load video'));
+}
+
+// ═══════════════════════════════════════════
+//  DRAG & DROP onto canvas
+// ═══════════════════════════════════════════
+const canvasArea = document.getElementById('canvasArea');
+const dropOverlay = document.getElementById('dropOverlay');
+canvasArea.addEventListener('dragover', e => { e.preventDefault(); dropOverlay.classList.add('visible'); });
+canvasArea.addEventListener('dragleave', e => { if(!canvasArea.contains(e.relatedTarget)) dropOverlay.classList.remove('visible'); });
+canvasArea.addEventListener('drop', e => {
+  e.preventDefault();
+  dropOverlay.classList.remove('visible');
+  for (const f of e.dataTransfer.files) {
+    const url = URL.createObjectURL(f);
+    if (f.type.startsWith('video/')) addVideoLayer(url, f.name);
+    else if (f.type.startsWith('image/')) addImageLayer(url, f.name);
+  }
+});
+
+// ═══════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════
+function render() {
+  ctx.clearRect(0, 0, canvasW, canvasH);
+  // bg
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  layers.forEach(l => {
+    if (!l.visible) return;
+    ctx.save();
+    ctx.globalAlpha = l.opacity;
+
+    if (l.type === 'image' && l.img) {
+      ctx.drawImage(l.img, l.x, l.y, l.w, l.h);
+    } else if (l.type === 'video' && l.vid) {
+      try { ctx.drawImage(l.vid, l.x, l.y, l.w, l.h); } catch(e){}
+    } else if (l.type === 'rect') {
+      if (l.fill) { ctx.fillStyle = l.fill; if (l.radius) { roundRect(ctx, l.x, l.y, l.w, l.h, l.radius); ctx.fill(); } else ctx.fillRect(l.x, l.y, l.w, l.h); }
+      if (l.stroke && l.strokeWidth) { ctx.strokeStyle = l.stroke; ctx.lineWidth = l.strokeWidth; if (l.radius) { roundRect(ctx, l.x, l.y, l.w, l.h, l.radius); ctx.stroke(); } else ctx.strokeRect(l.x, l.y, l.w, l.h); }
+    } else if (l.type === 'circle') {
+      const rx = l.w/2, ry = l.h/2;
+      ctx.beginPath();
+      ctx.ellipse(l.x+rx, l.y+ry, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI*2);
+      if (l.fill) { ctx.fillStyle = l.fill; ctx.fill(); }
+      if (l.stroke && l.strokeWidth) { ctx.strokeStyle = l.stroke; ctx.lineWidth = l.strokeWidth; ctx.stroke(); }
+    } else if (l.type === 'line') {
+      ctx.beginPath();
+      ctx.moveTo(l.x, l.y);
+      ctx.lineTo(l.x + l.w, l.y + (l.h||0));
+      ctx.strokeStyle = l.stroke || '#000';
+      ctx.lineWidth = l.strokeWidth || 2;
+      if (l.dash) ctx.setLineDash([l.dash, l.dash]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (l.type === 'text') {
+      const fs = l.fontSize || 48;
+      ctx.fillStyle = l.color || '#000';
+      ctx.font = `${l.bold?'bold ':' '}${l.italic?'italic ':''}${fs}px ${l.fontFamily || 'Jost'}, sans-serif`;
+      ctx.textAlign = l.align || 'left';
+      ctx.textBaseline = 'top';
+      // shadow
+      ctx.shadowColor = 'rgba(0,0,0,0.4)';
+      ctx.shadowBlur = 6; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+      const ax = l.align === 'center' ? l.x + l.w/2 : l.align === 'right' ? l.x + l.w : l.x;
+      wrapAndDraw(ctx, l.text, ax, l.y, l.w, fs * 1.2);
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+    }
+
+    ctx.restore();
+  });
+
+  // selection outline
+  if (selId) {
+    const l = selLayer();
+    if (l && l.visible) {
+      ctx.save();
+      ctx.strokeStyle = '#C9A848';
+      ctx.lineWidth = Math.max(2, canvasW * 0.002);
+      ctx.setLineDash([8, 4]);
+      if (l.type === 'line') {
+        ctx.beginPath(); ctx.moveTo(l.x-4, l.y-4); ctx.lineTo(l.x+l.w+4, l.y+(l.h||0)+4); ctx.stroke();
+      } else {
+        ctx.strokeRect(l.x-2, l.y-2, l.w+4, l.h+4);
+      }
+      ctx.setLineDash([]);
+      // resize handle (bottom-right)
+      const hs = Math.max(10, canvasW*0.012);
+      ctx.fillStyle = '#C9A848';
+      ctx.fillRect(l.x+l.w-hs/2, l.y+(l.h||0)-hs/2, hs, hs);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+      ctx.strokeRect(l.x+l.w-hs/2, l.y+(l.h||0)-hs/2, hs, hs);
+      ctx.restore();
+    }
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h); ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y+r); ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+function wrapAndDraw(ctx, text, x, y, maxW, lineH) {
+  const words = text.split(' ');
+  let line = words[0] || '';
+  let cy = y;
+  for (let i=1; i<words.length; i++) {
+    const test = line + ' ' + words[i];
+    if (ctx.measureText(test).width > maxW) { ctx.fillText(line, x, cy); cy += lineH; line = words[i]; }
+    else line = test;
+  }
+  ctx.fillText(line, x, cy);
+}
+
+// ═══════════════════════════════════════════
+//  HIT TESTING & MOUSE
+// ═══════════════════════════════════════════
+function canvasCoords(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * canvasW, y: (e.clientY - r.top) / r.height * canvasH };
+}
+function hitTest(mx, my) {
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const l = layers[i];
+    if (!l.visible) continue;
+    if (l.type === 'line') {
+      // thin rect around line
+      const x1=l.x, y1=l.y, x2=l.x+l.w, y2=l.y+(l.h||0);
+      const d = distToLine(mx, my, x1, y1, x2, y2);
+      if (d < 15) return l;
+    } else {
+      if (mx >= l.x && mx <= l.x+l.w && my >= l.y && my <= l.y+l.h) return l;
+    }
+  }
+  return null;
+}
+function distToLine(px,py,x1,y1,x2,y2) {
+  const A=px-x1, B=py-y1, C=x2-x1, D=y2-y1;
+  const dot=A*C+B*D, len2=C*C+D*D;
+  let t = len2 ? dot/len2 : -1;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px-(x1+t*C), py-(y1+t*D));
+}
+function isOnResizeHandle(l, mx, my) {
+  const hs = Math.max(14, canvasW*0.015);
+  const hx = l.x + l.w, hy = l.y + (l.h||0);
+  return Math.abs(mx-hx) < hs && Math.abs(my-hy) < hs;
+}
+
+canvas.addEventListener('mousedown', e => {
+  const {x,y} = canvasCoords(e);
+  // check resize handle first
+  const sl = selLayer();
+  if (sl && isOnResizeHandle(sl, x, y)) {
+    resize = { id: sl.id, startX: x, startY: y, origW: sl.w, origH: sl.h||0, origX: sl.x, origY: sl.y };
+    return;
+  }
+  const hit = hitTest(x, y);
+  if (hit) {
+    selId = hit.id;
+    drag = { id: hit.id, startX: x, startY: y, origX: hit.x, origY: hit.y };
+    renderLayerList(); renderProps(); render();
+  } else {
+    selId = null;
+    renderLayerList(); renderProps(); render();
+  }
+});
+canvas.addEventListener('mousemove', e => {
+  const {x,y} = canvasCoords(e);
+  if (resize) {
+    const l = layers.find(l=>l.id===resize.id);
+    if (!l) return;
+    l.w = Math.max(20, resize.origW + (x - resize.startX));
+    l.h = Math.max(10, resize.origH + (y - resize.startY));
+    render();
+    return;
+  }
+  if (drag) {
+    const l = layers.find(l=>l.id===drag.id);
+    if (!l) return;
+    l.x = drag.origX + (x - drag.startX);
+    l.y = drag.origY + (y - drag.startY);
+    render();
+    return;
+  }
+  // cursor hint
+  const sl = selLayer();
+  if (sl && isOnResizeHandle(sl, x, y)) { canvas.style.cursor = 'nwse-resize'; }
+  else if (hitTest(x, y)) { canvas.style.cursor = 'move'; }
+  else { canvas.style.cursor = 'default'; }
+});
+canvas.addEventListener('mouseup', () => { drag = null; resize = null; renderProps(); });
+canvas.addEventListener('mouseleave', () => { drag = null; resize = null; });
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selId) { removeLayer(selId); renderProps(); }
+});
+
+// ═══════════════════════════════════════════
+//  LAYER LIST
+// ═══════════════════════════════════════════
+function renderLayerList() {
+  const wrap = document.getElementById('layerList');
+  wrap.innerHTML = '';
+  // render top-to-bottom = last layer first
+  for (let i = layers.length-1; i >= 0; i--) {
+    const l = layers[i];
+    const icons = {image:'🖼',video:'▷',text:'T',rect:'▬',circle:'●',line:'╱'};
+    const div = document.createElement('div');
+    div.className = 'layer-item' + (l.id===selId?' active':'');
+    div.innerHTML = `
+      <span class="layer-icon">${icons[l.type]||'?'}</span>
+      <span class="layer-name">${esc(l.name||l.type+(l.text?' "'+l.text.slice(0,12)+'"':''))}</span>
+      <span class="layer-actions">
+        <button class="layer-btn ${l.visible?'':'vis-off'}" data-vis="${l.id}" title="Toggle visibility">${l.visible?'◉':'◎'}</button>
+        <button class="layer-btn" data-del="${l.id}" title="Delete">✕</button>
+      </span>`;
+    div.addEventListener('click', e => {
+      if (e.target.dataset.vis || e.target.dataset.del) return;
+      selId = l.id; renderLayerList(); renderProps(); render();
+    });
+    div.querySelector('[data-vis]').addEventListener('click', () => { l.visible = !l.visible; renderLayerList(); render(); });
+    div.querySelector('[data-del]').addEventListener('click', () => { removeLayer(l.id); renderProps(); });
+    wrap.appendChild(div);
+  }
+}
+
+// Layer up/down
+document.getElementById('layerUpBtn').addEventListener('click', () => {
+  const idx = layers.findIndex(l=>l.id===selId);
+  if (idx < 0 || idx >= layers.length-1) return;
+  [layers[idx], layers[idx+1]] = [layers[idx+1], layers[idx]];
+  renderLayerList(); render();
+});
+document.getElementById('layerDownBtn').addEventListener('click', () => {
+  const idx = layers.findIndex(l=>l.id===selId);
+  if (idx < 1) return;
+  [layers[idx], layers[idx-1]] = [layers[idx-1], layers[idx]];
+  renderLayerList(); render();
+});
+
+// ═══════════════════════════════════════════
+//  LAYER PROPERTIES
+// ═══════════════════════════════════════════
+function renderProps() {
+  const wrap = document.getElementById('propsContent');
+  const sec = document.getElementById('layerProps');
+  const l = selLayer();
+  if (!l) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+
+  let html = `
+    <div class="sg-row"><span class="sg-lbl">X</span><input type="number" class="sg-input" data-prop="x" value="${Math.round(l.x)}" style="width:60px">
+    <span class="sg-lbl">Y</span><input type="number" class="sg-input" data-prop="y" value="${Math.round(l.y)}" style="width:60px"></div>
+    <div class="sg-row"><span class="sg-lbl">W</span><input type="number" class="sg-input" data-prop="w" value="${Math.round(l.w)}" style="width:60px">
+    <span class="sg-lbl">H</span><input type="number" class="sg-input" data-prop="h" value="${Math.round(l.h||0)}" style="width:60px"></div>
+    <div class="sg-row"><span class="sg-lbl">Opacity</span><input type="range" data-prop="opacity" min="0" max="1" step="0.05" value="${l.opacity}" style="flex:1"></div>`;
+
+  if (l.type === 'text') {
+    html += `
+      <div class="sg-row"><span class="sg-lbl">Text</span><input type="text" class="sg-input" data-prop="text" value="${esc(l.text)}" style="flex:1"></div>
+      <div class="sg-row"><span class="sg-lbl">Size</span><input type="number" class="sg-input" data-prop="fontSize" value="${l.fontSize}" style="width:55px">
+      <span class="sg-lbl">Font</span><select class="sg-select" data-prop="fontFamily" style="flex:1">
+        <option ${l.fontFamily==='Jost'?'selected':''}>Jost</option>
+        <option value="Cormorant Garamond" ${l.fontFamily==='Cormorant Garamond'?'selected':''}>Cormorant</option>
+        <option ${l.fontFamily==='Arial'?'selected':''}>Arial</option>
+        <option value="Georgia" ${l.fontFamily==='Georgia'?'selected':''}>Georgia</option>
+        <option value="Impact" ${l.fontFamily==='Impact'?'selected':''}>Impact</option>
+        <option value="Courier New" ${l.fontFamily==='Courier New'?'selected':''}>Courier</option>
+      </select></div>
+      <div class="sg-row"><span class="sg-lbl">Color</span><input type="color" data-prop="color" value="${l.color}" style="width:32px;height:24px;border:1px solid var(--ivory-mid);cursor:pointer;">
+      <span class="sg-lbl">Align</span><select class="sg-select" data-prop="align" style="width:70px">
+        <option ${l.align==='left'?'selected':''}>left</option><option ${l.align==='center'?'selected':''}>center</option><option ${l.align==='right'?'selected':''}>right</option>
+      </select>
+      <label style="font-size:0.65rem;display:flex;align-items:center;gap:3px;"><input type="checkbox" data-prop="bold" ${l.bold?'checked':''}> B</label>
+      <label style="font-size:0.65rem;display:flex;align-items:center;gap:3px;"><input type="checkbox" data-prop="italic" ${l.italic?'checked':''}> I</label>
+      </div>`;
+  }
+  if (l.type === 'rect') {
+    html += `
+      <div class="sg-row"><span class="sg-lbl">Fill</span><input type="color" data-prop="fill" value="${l.fill||'#000000'}" style="width:32px;height:24px;cursor:pointer;">
+      <span class="sg-lbl">Stroke</span><input type="color" data-prop="stroke" value="${l.stroke||'#000000'}" style="width:32px;height:24px;cursor:pointer;">
+      <input type="number" class="sg-input" data-prop="strokeWidth" value="${l.strokeWidth||0}" style="width:40px" title="Stroke width"></div>
+      <div class="sg-row"><span class="sg-lbl">Radius</span><input type="number" class="sg-input" data-prop="radius" value="${l.radius||0}" style="width:50px"></div>`;
+  }
+  if (l.type === 'circle') {
+    html += `
+      <div class="sg-row"><span class="sg-lbl">Fill</span><input type="color" data-prop="fill" value="${l.fill||'#000000'}" style="width:32px;height:24px;cursor:pointer;">
+      <span class="sg-lbl">Stroke</span><input type="color" data-prop="stroke" value="${l.stroke||'#000000'}" style="width:32px;height:24px;cursor:pointer;">
+      <input type="number" class="sg-input" data-prop="strokeWidth" value="${l.strokeWidth||0}" style="width:40px"></div>`;
+  }
+  if (l.type === 'line') {
+    html += `
+      <div class="sg-row"><span class="sg-lbl">Stroke</span><input type="color" data-prop="stroke" value="${l.stroke||'#000000'}" style="width:32px;height:24px;cursor:pointer;">
+      <input type="number" class="sg-input" data-prop="strokeWidth" value="${l.strokeWidth||2}" style="width:40px">
+      <span class="sg-lbl">Dash</span><input type="number" class="sg-input" data-prop="dash" value="${l.dash||0}" style="width:40px"></div>`;
+  }
+
+  wrap.innerHTML = html;
+
+  // Bind prop inputs
+  wrap.querySelectorAll('[data-prop]').forEach(el => {
+    const ev = (el.type === 'range' || el.type === 'color') ? 'input' : 'change';
+    el.addEventListener(ev, () => {
+      const prop = el.dataset.prop;
+      const numProps = ['x','y','w','h','fontSize','strokeWidth','radius','dash','opacity'];
+      const boolProps = ['bold','italic'];
+      if (boolProps.includes(prop)) l[prop] = el.checked;
+      else if (numProps.includes(prop)) l[prop] = parseFloat(el.value) || 0;
+      else l[prop] = el.value;
+      render();
+    });
+  });
+}
+
+// ═══════════════════════════════════════════
+//  PRESETS — SAVE / LOAD
+// ═══════════════════════════════════════════
+function serializeLayers() {
+  return layers.map(l => {
+    const s = { ...l };
+    delete s.img; delete s.vid; // can't serialize DOM elements
+    return s;
+  });
+}
+
+function deserializeLayers(arr) {
+  layers = [];
+  selId = null;
+  nextId = 1;
+  let loadCount = 0;
+  const total = arr.length;
+  arr.forEach(data => {
+    const l = { ...data, id: nextId++, visible: data.visible !== false, opacity: data.opacity ?? 1 };
+    if (l.type === 'image' && l.src) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => { l.img = img; if(++loadCount >= total) render(); };
+      img.onerror = () => { if(++loadCount >= total) render(); };
+      img.src = l.src;
+    } else if (l.type === 'video' && l.src) {
+      const vid = document.createElement('video');
+      vid.crossOrigin = 'anonymous'; vid.src = l.src; vid.muted = true; vid.loop = true; vid.playsInline = true;
+      vid.addEventListener('loadedmetadata', () => { l.vid = vid; vid.play().catch(()=>{}); if(++loadCount>=total) render(); });
+      vid.addEventListener('error', () => { if(++loadCount>=total) render(); });
+    } else {
+      loadCount++;
+    }
+    layers.push(l);
+  });
+  if (!total) render();
+  renderLayerList();
+}
+
+document.getElementById('savePresetBtn').addEventListener('click', async () => {
+  const name = document.getElementById('presetName').value.trim() || 'Untitled';
+  const body = {
+    name, canvasW, canvasH, sizePreset: sizeName, bgColor,
+    palette: currentPalette,
+    layers: serializeLayers(),
+    clientId: document.getElementById('clientSelect').value || null,
+    folder: document.getElementById('exportFolder').value || 'clients',
+  };
+  try {
+    let r;
+    if (currentPresetId) {
+      r = await fetch(`/admin/assets/social/presets/${currentPresetId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    } else {
+      r = await fetch('/admin/assets/social/presets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    }
+    const data = await r.json();
+    if (data.success) {
+      if (data.preset) currentPresetId = data.preset._id;
+      loadPresetList();
+      document.getElementById('presetName').value = name;
+    }
+  } catch(err) { alert('Error saving preset: '+err.message); }
+});
+
+async function loadPresetList() {
+  try {
+    const r = await fetch('/admin/assets/social/presets');
+    const data = await r.json();
+    const wrap = document.getElementById('presetList');
+    wrap.innerHTML = '';
+    (data.presets || []).forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'preset-item';
+      div.innerHTML = `<span class="pi-name">${esc(p.name)}</span><span class="pi-size">${p.canvasW}x${p.canvasH}</span><span class="pi-del" data-del="${p._id}" title="Delete">✕</span>`;
+      div.addEventListener('click', e => {
+        if (e.target.dataset.del) return;
+        loadPreset(p);
+      });
+      div.querySelector('[data-del]').addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!confirm('Delete preset "'+p.name+'"?')) return;
+        await fetch(`/admin/assets/social/presets/${p._id}`, { method:'DELETE' });
+        loadPresetList();
+      });
+      wrap.appendChild(div);
+    });
+  } catch(e) {}
+}
+
+function loadPreset(p) {
+  currentPresetId = p._id;
+  setCanvasSize(p.canvasW, p.canvasH, p.sizePreset || `${p.canvasW}x${p.canvasH}`);
+  bgColor = p.bgColor || '#F5F3EF';
+  document.getElementById('bgColor').value = bgColor;
+  document.getElementById('bgColorHex').value = bgColor;
+  if (p.palette?.length) { currentPalette = [...p.palette]; renderPalette(); }
+  document.getElementById('presetName').value = p.name;
+  if (p.clientId) document.getElementById('clientSelect').value = p.clientId;
+  if (p.folder) document.getElementById('exportFolder').value = p.folder;
+  // highlight correct size btn
+  document.querySelectorAll('.sz-btn').forEach(b => b.classList.toggle('active', b.dataset.name === p.sizePreset));
+  deserializeLayers(p.layers || []);
+}
+
+// ═══════════════════════════════════════════
+//  EXPORT
+// ═══════════════════════════════════════════
+document.getElementById('downloadPngBtn').addEventListener('click', () => {
+  // render at full res without selection outline
+  const prevSel = selId; selId = null; render();
+  const link = document.createElement('a');
+  const title = document.getElementById('exportTitle').value.trim() || 'social-asset';
+  link.download = `${title}-${sizeName}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  selId = prevSel; render();
+});
+
+document.getElementById('saveLibBtn').addEventListener('click', async () => {
+  const status = document.getElementById('exportStatus');
+  status.textContent = 'Uploading...';
+  const prevSel = selId; selId = null; render();
+  try {
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    selId = prevSel; render();
+    const title = document.getElementById('exportTitle').value.trim() || 'social-asset';
+    const folder = document.getElementById('exportFolder').value;
+    const clientId = document.getElementById('clientSelect').value;
+    const fd = new FormData();
+    fd.append('image', blob, `${title}-${sizeName}.png`);
+    fd.append('folder', folder);
+    fd.append('title', title);
+    fd.append('preset', sizeName);
+    if (clientId) fd.append('clientId', clientId);
+    const r = await fetch('/admin/assets/social-upload', { method:'POST', body: fd });
+    const data = await r.json();
+    status.textContent = data.success ? '✓ Saved to library!' : ('Error: '+(data.error||'Failed'));
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  } catch(err) { selId = prevSel; render(); status.textContent = 'Error: '+err.message; }
+});
+
+// ═══════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ═══════════════════════════════════════════
+//  AGENT → GENERATOR BRIDGE
+//  Called from agent panel to load a design
+//  as editable layers in the canvas
+// ═══════════════════════════════════════════
+window.loadAgentDesign = function(design) {
+  // Set canvas size
+  const DIMS = {
+    'ig-post':[1080,1080],'ig-story':[1080,1920],'fb-post':[1200,630],
+    'fb-cover':[1640,624],'twitter':[1600,900],'pinterest':[1000,1500],
+    'yt-thumb':[1280,720],'linkedin':[1200,627],'ig-portrait':[1080,1350],
+  };
+  const sz = design.size || 'ig-post';
+  const [w, h] = DIMS[sz] || DIMS['ig-post'];
+  setCanvasSize(w, h, sz);
+  // Activate matching size button
+  document.querySelectorAll('.sz-btn').forEach(b => b.classList.toggle('active', b.dataset.name === sz));
+
+  // Set background color
+  bgColor = design.bgColor || '#F5F3EF';
+  document.getElementById('bgColor').value = bgColor;
+  document.getElementById('bgColorHex').value = bgColor;
+
+  // Clear existing layers and load new ones
+  layers = [];
+  selId = null;
+  nextId = 1;
+
+  // Build full layer list: SD background (if any) at bottom, then agent layers on top
+  const allLayers = [];
+  if (design.sdBgUrl) {
+    allLayers.push({ type:'image', x:0, y:0, w, h, src:design.sdBgUrl, name:'AI Background', _aiBg:true });
+  }
+  (design.layers || []).forEach(l => allLayers.push(l));
+
+  let loadPending = 0;
+  const totalImages = allLayers.filter(l => l.type === 'image' && l.src).length;
+
+  allLayers.forEach(data => {
+    const l = { ...data, id: nextId++, visible: true, opacity: data.opacity ?? 1 };
+    if (l.type === 'image' && l.src) {
+      const im = new Image();
+      im.crossOrigin = 'anonymous';
+      im.onload = () => { l.img = im; if (++loadPending >= totalImages) render(); };
+      im.onerror = () => { if (++loadPending >= totalImages) render(); };
+      im.src = l.src;
+    }
+    layers.push(l);
+  });
+
+  renderLayerList();
+  if (!totalImages) render();
+
+  // Close agent panel
+  document.getElementById('agentPanel')?.classList.remove('open');
+};
+
+// init
+scaleCanvas();
+render();
+renderLayerList();
+
+})();
+</script>
+
+<!-- ═══ ASSET AGENT PANEL ═══ -->
+<style>
+  #agentPanel {
+    position: fixed; top: 0; right: -440px; width: 440px; height: 100vh;
+    background: var(--white); border-left: 1px solid var(--ivory-mid);
+    display: flex; flex-direction: column; z-index: 200;
+    transition: right 0.25s ease; box-shadow: -4px 0 24px rgba(15,27,48,0.1);
+  }
+  #agentPanel.open { right: 0; }
+  .ap-head {
+    padding: 16px 20px; border-bottom: 1px solid var(--ivory-mid);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .ap-title { font-family: 'Cormorant Garamond', serif; font-size: 1.2rem; color: var(--dark); }
+  .ap-close { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--slate); padding: 4px; }
+  .ap-close:hover { color: var(--dark); }
+  .ap-messages { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .ap-msg { max-width: 88%; padding: 10px 14px; border-radius: 2px; font-size: 0.82rem; line-height: 1.5; }
+  .ap-msg-user { background: var(--navy); color: var(--white); align-self: flex-end; border-bottom-right-radius: 0; }
+  .ap-msg-agent { background: var(--ivory); color: var(--dark); align-self: flex-start; border-bottom-left-radius: 0; }
+  .ap-msg-agent img.ap-preview { max-width: 100%; border-radius: 2px; margin-top: 8px; border: 1px solid var(--ivory-mid); cursor: pointer; transition: opacity 0.12s; }
+  .ap-msg-agent img.ap-preview:hover { opacity: 0.85; }
+  .ap-msg-loading { color: var(--slate); font-style: italic; }
+  .ap-variations { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .ap-var-card {
+    flex: 1; min-width: 140px; border: 2px solid var(--ivory-mid); border-radius: 2px;
+    overflow: hidden; cursor: pointer; transition: all 0.12s; background: var(--white);
+  }
+  .ap-var-card:hover { border-color: var(--gold); }
+  .ap-var-card.selected { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(201,168,72,0.25); }
+  .ap-var-card img { width: 100%; display: block; }
+  .ap-var-label { padding: 4px 8px; font-size: 0.6rem; font-weight: 600; color: var(--slate); text-align: center; letter-spacing: 0.08em; text-transform: uppercase; }
+  .ap-var-actions { display: flex; gap: 4px; padding: 4px 6px 6px; }
+  .ap-var-btn {
+    flex: 1; padding: 4px 6px; border: 1.5px solid var(--ivory-mid); border-radius: 2px;
+    font-size: 0.6rem; font-weight: 600; cursor: pointer; background: var(--white);
+    color: var(--slate); font-family: 'Jost', sans-serif; transition: all 0.12s;
+    text-align: center; letter-spacing: 0.04em;
+  }
+  .ap-var-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+  .ap-var-btn.edit-btn { background: var(--gold); color: var(--dark); border-color: var(--gold); }
+  .ap-var-btn.edit-btn:hover { background: #b8963f; }
+  .ap-quick { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 20px; border-top: 1px solid var(--ivory-mid); }
+  .ap-quick-btn {
+    padding: 6px 12px; border: 1.5px solid var(--ivory-mid); border-radius: 2px;
+    font-size: 0.7rem; cursor: pointer; background: var(--white); color: var(--slate);
+    font-family: 'Jost', sans-serif; transition: all 0.12s;
+  }
+  .ap-quick-btn:hover { border-color: var(--gold); color: var(--dark); }
+  .ap-input-row {
+    padding: 12px 20px; border-top: 1px solid var(--ivory-mid);
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+  .ap-textarea {
+    flex: 1; padding: 8px 12px; border: 1.5px solid var(--ivory-mid); border-radius: 2px;
+    font-size: 0.82rem; font-family: 'Jost', sans-serif; color: var(--dark);
+    resize: none; min-height: 40px; max-height: 120px; background: var(--ivory);
+  }
+  .ap-textarea:focus { outline: none; border-color: var(--navy-mid); background: var(--white); }
+  .ap-send {
+    padding: 8px 16px; background: var(--navy); color: var(--white); border: none;
+    border-radius: 2px; font-size: 0.75rem; font-weight: 600; cursor: pointer;
+    font-family: 'Jost', sans-serif; letter-spacing: 0.06em; white-space: nowrap;
+  }
+  .ap-send:hover { background: var(--navy-mid); }
+  .ap-send:disabled { opacity: 0.5; cursor: not-allowed; }
+  @media (max-width: 820px) { #agentPanel { width: min(440px, 100vw); } }
+  @media (max-width: 520px) { #agentPanel { width: 100vw; right: -100vw; } #agentPanel.open { right: 0; } }
+</style>
+
+<div id="agentPanel">
+  <div class="ap-head">
+    <span class="ap-title">Asset Agent</span>
+    <button class="ap-close" id="agentCloseBtn">&times;</button>
+  </div>
+  <div class="ap-messages" id="apMessages"></div>
+  <div class="ap-quick" id="apQuick"></div>
+  <script>
+  (function(){
+    const brand = <%- JSON.stringify({ name: brand?.name||'', businessType: brand?.businessType||'', services: brand?.services||[], tagline: brand?.tagline||'' }) %>;
+    const biz = brand.name || 'the business';
+    const svc = brand.services.length ? brand.services[0] : 'our services';
+    const tag = brand.tagline ? ` and tagline "${brand.tagline}"` : '';
+    const pool = [
+      { label: 'IG Promo Post', prompt: `Create an Instagram post promoting ${svc} from ${biz}` },
+      { label: 'FB Cover', prompt: `Design a Facebook cover with ${biz} brand colors${tag}` },
+      { label: 'IG Story Offer', prompt: 'Make an Instagram story announcing a special offer' },
+      { label: 'LinkedIn Banner', prompt: `Create a LinkedIn banner for ${biz}` },
+      { label: 'Twitter Header', prompt: `Design a Twitter/X header image for ${biz}` },
+      { label: 'YouTube Thumb', prompt: `Create a YouTube thumbnail promoting ${svc}` },
+      { label: 'Pinterest Pin', prompt: `Design a Pinterest pin with tips related to ${svc}` },
+      { label: 'Brand Quote', prompt: `Create an Instagram post with an inspirational quote related to ${brand.businessType || 'our industry'}` },
+    ];
+    for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+    const el=document.getElementById('apQuick');
+    let idx=0;
+    function render(){
+      el.innerHTML='';
+      const batch=pool.slice(idx,idx+4);
+      if(batch.length<4) batch.push(...pool.slice(0,4-batch.length));
+      batch.forEach(s=>{
+        const b=document.createElement('button');b.className='ap-quick-btn';b.dataset.prompt=s.prompt;b.textContent=s.label;
+        el.appendChild(b);
+      });
+      const cyc=document.createElement('button');cyc.className='ap-cycle-btn';cyc.style.cssText='opacity:0.5;font-size:0.7rem;padding:5px 8px;border:1px solid var(--ivory-mid);background:var(--white);color:var(--slate);cursor:pointer;border-radius:2px;';cyc.textContent='\u267B';cyc.title='More suggestions';
+      cyc.onclick=(e)=>{e.stopPropagation();idx=(idx+3)%pool.length;render();};
+      el.appendChild(cyc);
+    }
+    render();
+  })();
+  </script>
+  <div class="ap-input-row">
+    <textarea class="ap-textarea" id="apInput" rows="1" placeholder="Describe the image you want..."></textarea>
+    <button class="ap-send" id="apSendBtn">Send</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+  const panel = document.getElementById('agentPanel');
+  const toggleBtn = document.getElementById('agentToggleBtn');
+  const closeBtn = document.getElementById('agentCloseBtn');
+  const messagesEl = document.getElementById('apMessages');
+  const inputEl = document.getElementById('apInput');
+  const sendBtn = document.getElementById('apSendBtn');
+  const quickEl = document.getElementById('apQuick');
+
+  let history = [];
+  let sending = false;
+
+  toggleBtn.addEventListener('click', () => panel.classList.toggle('open'));
+  closeBtn.addEventListener('click', () => panel.classList.remove('open'));
+
+  function addMessage(role, html) {
+    const div = document.createElement('div');
+    div.className = `ap-msg ap-msg-${role}`;
+    div.innerHTML = html;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  let lastDesign = null;  // store last design for retry
+  let lastPrompt = '';
+
+  async function sendMessage(text) {
+    if (!text.trim() || sending) return;
+    sending = true;
+    sendBtn.disabled = true;
+    lastPrompt = text;
+
+    addMessage('user', esc(text));
+    history.push({ role: 'user', content: text });
+    inputEl.value = '';
+
+    const loadingEl = addMessage('agent', '<span class="ap-msg-loading">Designing... (SD backgrounds may take 15-45s)</span>');
+
+    try {
+      const folder = document.getElementById('exportFolder')?.value || 'clients';
+      const clientId = document.getElementById('clientSelect')?.value || '';
+
+      const r = await fetch('/admin/assets/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history, mode: 'generate', folder, clientId }),
+      });
+      const data = await r.json();
+      loadingEl.remove();
+
+      // Store design for retry/edit
+      lastDesign = data.design || null;
+      const variations = data.variations || [];
+
+      let replyHtml = esc(data.message || 'Done.');
+
+      if (variations.length > 1) {
+        // Multiple variations — show cards
+        replyHtml += '<div class="ap-variations">';
+        variations.forEach((v, i) => {
+          replyHtml += `<div class="ap-var-card" data-idx="${i}">`;
+          replyHtml += `<img src="${v.publicUrl}" alt="${esc(v.title)}" loading="lazy">`;
+          replyHtml += `<div class="ap-var-label">Option ${i + 1}</div>`;
+          replyHtml += `<div class="ap-var-actions">`;
+          replyHtml += `<button class="ap-var-btn edit-btn" data-action="edit" data-idx="${i}">Edit Layers</button>`;
+          replyHtml += `<button class="ap-var-btn" data-action="copy" data-url="${v.publicUrl}">Copy URL</button>`;
+          replyHtml += `</div></div>`;
+        });
+        replyHtml += '</div>';
+      } else if (variations.length === 1) {
+        // Single variation
+        replyHtml += `<img class="ap-preview" src="${variations[0].publicUrl}" alt="${esc(variations[0].title)}" loading="lazy">`;
+        replyHtml += `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">`;
+        replyHtml += `<button class="ap-var-btn edit-btn" data-action="edit" data-idx="0">Edit Layers</button>`;
+        replyHtml += `<button class="ap-var-btn" data-action="copy" data-url="${variations[0].publicUrl}">Copy URL</button>`;
+        replyHtml += `<button class="ap-var-btn" data-action="open" data-url="${variations[0].publicUrl}">Open</button>`;
+        replyHtml += `</div>`;
+      }
+
+      // Retry button
+      replyHtml += `<div style="margin-top:8px;"><button class="ap-var-btn" data-action="retry" style="width:auto;padding:4px 12px;">Retry</button></div>`;
+
+      const msgEl = addMessage('agent', replyHtml);
+      history.push({ role: 'assistant', content: data.message || 'Done.' });
+
+      // Wire up buttons inside this message
+      msgEl.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          const idx = parseInt(btn.dataset.idx) || 0;
+          if (action === 'edit') {
+            // Load into social generator with the correct SD bg for this variation
+            if (lastDesign) {
+              const editDesign = { ...lastDesign };
+              if (variations[idx]?.sdBgUrl) editDesign.sdBgUrl = variations[idx].sdBgUrl;
+              window.loadAgentDesign(editDesign);
+            }
+          } else if (action === 'copy') {
+            navigator.clipboard.writeText(btn.dataset.url);
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy URL'; }, 1500);
+          } else if (action === 'open') {
+            window.open(btn.dataset.url, '_blank');
+          } else if (action === 'retry') {
+            sendMessage(lastPrompt);
+          }
+        });
+      });
+
+    } catch (err) {
+      loadingEl.remove();
+      addMessage('agent', 'Error: ' + esc(err.message));
+    }
+
+    sending = false;
+    sendBtn.disabled = false;
+  }
+
+  sendBtn.addEventListener('click', () => sendMessage(inputEl.value));
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(inputEl.value); }
+  });
+
+  // Quick prompts
+  quickEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ap-quick-btn');
+    if (btn?.dataset.prompt) sendMessage(btn.dataset.prompt);
+  });
+
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+})();
+</script>
+</div></div></body></html>

@@ -1,0 +1,714 @@
+<%- include('partials/head', { title: 'Settings' }) %>
+<%- include('partials/sidebar', { page: 'settings', user: user }) %>
+
+<style>
+  .settings-grid { max-width: 720px; }
+  .settings-section { background: var(--white); border: 1px solid var(--ivory-mid); border-radius: 4px; padding: 24px; margin-bottom: 20px; }
+  .settings-section h2 { font-size: 0.88rem; font-weight: 600; letter-spacing: 0.06em; color: var(--navy); margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
+  .settings-section .desc { font-size: 0.75rem; color: var(--slate); margin-bottom: 16px; line-height: 1.5; }
+  .field-row { margin-bottom: 14px; }
+  .field-row label { display: block; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+  .field-row input, .field-row select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--ivory-mid); border-radius: 3px;
+    font-family: 'Jost', sans-serif; font-size: 0.82rem; color: var(--dark); background: var(--ivory);
+    outline: none; transition: border 0.15s;
+  }
+  .field-row input:focus { border-color: var(--gold); }
+  .field-row input[type=password] { font-family: monospace; letter-spacing: 0.1em; }
+  .field-hint { font-size: 0.68rem; color: var(--slate); margin-top: 3px; }
+  .field-set { color: #16a34a; font-size: 0.68rem; font-weight: 500; }
+  .field-row .inline { display: flex; gap: 8px; align-items: center; }
+  .inline input { flex: 1; }
+  .btn-test { padding: 8px 16px; background: var(--navy); color: var(--white); border: none; border-radius: 3px; font-family: 'Jost', sans-serif; font-size: 0.72rem; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .btn-test:hover { background: var(--navy-deep); }
+  .test-result { font-size: 0.72rem; margin-top: 4px; min-height: 18px; }
+  .test-ok { color: #16a34a; } .test-fail { color: #dc2626; }
+  .status-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px; font-size: 0.78rem; flex-wrap: wrap; }
+  .status-preview { background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2); color: #92400e; }
+  .status-active { background: rgba(22,163,74,0.08); border: 1px solid rgba(22,163,74,0.2); color: #166534; }
+  .saved-toast { background: #14532d; color: #86efac; padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 0.78rem; }
+  .error-toast { background: #7f1d1d; color: #fca5a5; padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 0.78rem; }
+
+  /* Guide toggle */
+  .guide-toggle {
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+    font-size: 0.68rem; font-weight: 500; color: var(--gold); background: none;
+    border: 1px solid rgba(201,168,72,0.3); padding: 4px 10px; border-radius: 3px;
+    font-family: 'Jost', sans-serif; transition: all 0.15s; margin-left: auto;
+  }
+  .guide-toggle:hover { background: rgba(201,168,72,0.08); border-color: var(--gold); }
+  .guide-panel {
+    display: none; margin-top: 12px; padding: 16px; border-radius: 4px;
+    background: linear-gradient(135deg, rgba(201,168,72,0.04), rgba(28,43,74,0.03));
+    border: 1px solid rgba(201,168,72,0.15);
+  }
+  .guide-panel.open { display: block; }
+  .guide-panel ol { margin: 0; padding-left: 20px; font-size: 0.75rem; color: var(--dark); line-height: 1.9; }
+  .guide-panel li { margin-bottom: 4px; }
+  .guide-panel code { background: var(--ivory); padding: 1px 6px; border-radius: 2px; font-size: 0.72rem; }
+  .guide-panel a { color: var(--gold); font-weight: 500; }
+  .guide-panel .guide-tip { font-size: 0.68rem; color: var(--slate); font-style: italic; margin-top: 8px; }
+
+  /* Setup CTA */
+  .setup-cta {
+    background: linear-gradient(135deg, #0F1B30 0%, #1C2B4A 50%, #2E4270 100%);
+    border: 1px solid rgba(201,168,72,0.2); border-radius: 4px;
+    padding: 28px; margin-bottom: 24px; position: relative; overflow: hidden;
+  }
+  .setup-cta::before {
+    content: ''; position: absolute; top: -40px; right: -40px;
+    width: 160px; height: 160px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(201,168,72,0.12) 0%, transparent 70%);
+  }
+</style>
+
+<div class="settings-grid">
+  <h1 style="font-size:1.2rem;font-weight:600;margin-bottom:16px;">Settings</h1>
+
+  <% if (saved) { %><div class="saved-toast">Settings saved.</div><% } %>
+  <% if (error) { %><div class="error-toast">Failed to save settings.</div><% } %>
+
+  <div class="status-bar status-<%= settings.status || 'preview' %>">
+    <strong><%= settings.status === 'active' ? 'Live' : 'Preview Mode' %></strong>
+    <span>|</span>
+    <span>Plan: <%= settings.plan %></span>
+    <span>|</span>
+    <span>Domain: <%= settings.domain %></span>
+    <% if (settings.status !== 'active') { %>
+      <a href="/admin?golive=1" style="margin-left:auto;font-weight:600;color:#92400e;">Go Live &rarr;</a>
+    <% } %>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- DONE-FOR-YOU SETUP OFFER                                               -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="setup-cta">
+    <div style="position:relative;z-index:1;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <span style="font-size:1.4rem;">&#9889;</span>
+        <span style="font-size:0.65rem;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;color:rgba(201,168,72,0.8);">Done-For-You Setup</span>
+      </div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:300;color:#FDFCFA;line-height:1.3;margin-bottom:10px;">
+        Skip the technical stuff &mdash; we'll set it all up for you.
+      </div>
+      <p style="font-size:0.82rem;font-weight:300;color:rgba(253,252,250,0.55);line-height:1.7;margin-bottom:20px;max-width:520px;">
+        <span style="text-decoration:line-through;color:rgba(253,252,250,0.35);">$500 value</span> &mdash; yours for a one-time <strong style="color:rgba(201,168,72,0.9);">$299</strong>. Our team will configure every integration below:
+        Stripe &amp; PayPal payments, Zoho email with full DNS (SPF, DKIM, DMARC), Google Reviews,
+        Google OAuth login, custom domain with SSL, and a deliverability test to make sure everything works.
+      </p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+        <a href="mailto:<%= brand?.name ? '' : '' %>support@madladslab.com?subject=Done-For-You%20Setup%20—%20<%= settings.domain %>&body=Hi%2C%20I'd%20like%20to%20purchase%20the%20Done-For-You%20setup%20for%20my%20site%20(<%= settings.domain %>).%0A%0APlease%20send%20me%20the%20next%20steps!"
+           style="display:inline-block;padding:12px 28px;background:rgba(201,168,72,0.9);color:#0F1B30;font-family:'Jost',sans-serif;font-size:0.78rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;text-decoration:none;border-radius:3px;transition:background 0.2s;">
+          Request Setup — $299
+        </a>
+        <span style="font-size:0.7rem;color:rgba(253,252,250,0.35);">One-time &bull; Usually completed within 24 hours</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:20px;">
+        <div style="font-size:0.68rem;color:rgba(253,252,250,0.4);display:flex;align-items:center;gap:5px;"><span style="color:rgba(201,168,72,0.6);">&#10003;</span> Stripe &amp; PayPal</div>
+        <div style="font-size:0.68rem;color:rgba(253,252,250,0.4);display:flex;align-items:center;gap:5px;"><span style="color:rgba(201,168,72,0.6);">&#10003;</span> Zoho Email + DNS</div>
+        <div style="font-size:0.68rem;color:rgba(253,252,250,0.4);display:flex;align-items:center;gap:5px;"><span style="color:rgba(201,168,72,0.6);">&#10003;</span> SPF / DKIM / DMARC</div>
+        <div style="font-size:0.68rem;color:rgba(253,252,250,0.4);display:flex;align-items:center;gap:5px;"><span style="color:rgba(201,168,72,0.6);">&#10003;</span> Google Reviews</div>
+        <div style="font-size:0.68rem;color:rgba(253,252,250,0.4);display:flex;align-items:center;gap:5px;"><span style="color:rgba(201,168,72,0.6);">&#10003;</span> Google OAuth</div>
+        <div style="font-size:0.68rem;color:rgba(253,252,250,0.4);display:flex;align-items:center;gap:5px;"><span style="color:rgba(201,168,72,0.6);">&#10003;</span> Custom Domain + SSL</div>
+        <div style="font-size:0.68rem;color:rgba(253,252,250,0.4);display:flex;align-items:center;gap:5px;"><span style="color:rgba(201,168,72,0.6);">&#10003;</span> Deliverability Test</div>
+      </div>
+    </div>
+  </div>
+
+  <form method="POST" action="/admin/settings">
+
+    <!-- ═══════════ BUSINESS PROFILE ═══════════ -->
+    <div class="settings-section">
+      <h2>&#9672; Business Profile</h2>
+      <p class="desc">This information powers all AI agent prompts across your site. The more you fill in, the better your agents will understand your business.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+        <div class="field-row">
+          <label>Business Name</label>
+          <input type="text" name="brand_name" value="<%= brandProfile.name %>" placeholder="Acme Marketing">
+        </div>
+        <div class="field-row">
+          <label>Business Type</label>
+          <input type="text" name="brand_businessType" value="<%= brandProfile.businessType %>" placeholder="Digital Marketing Agency">
+          <div class="field-hint">e.g. Restaurant, Law Firm, SaaS, Retail, Consulting</div>
+        </div>
+        <div class="field-row">
+          <label>Industry</label>
+          <input type="text" name="brand_industry" value="<%= brandProfile.industry %>" placeholder="Marketing & Advertising">
+        </div>
+        <div class="field-row">
+          <label>Owner / Contact Name</label>
+          <input type="text" name="brand_ownerName" value="<%= brandProfile.ownerName %>" placeholder="Jane Smith">
+        </div>
+        <div class="field-row">
+          <label>Location</label>
+          <input type="text" name="brand_location" value="<%= brandProfile.location %>" placeholder="Denver, CO">
+        </div>
+        <div class="field-row">
+          <label>Service Area</label>
+          <input type="text" name="brand_serviceArea" value="<%= brandProfile.serviceArea %>" placeholder="Denver metro & surrounding areas">
+        </div>
+        <div class="field-row">
+          <label>Phone</label>
+          <input type="text" name="brand_phone" value="<%= brandProfile.phone %>" placeholder="(555) 123-4567">
+        </div>
+        <div class="field-row">
+          <label>Contact Email</label>
+          <input type="text" name="brand_email" value="<%= brandProfile.email %>" placeholder="hello@yourbusiness.com">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <label>Tagline</label>
+        <input type="text" name="brand_tagline" value="<%= brandProfile.tagline %>" placeholder="Growing brands that matter.">
+      </div>
+      <div class="field-row">
+        <label>Business Description</label>
+        <textarea name="brand_description" rows="3" style="width:100%;padding:10px 12px;border:1px solid var(--ivory-mid);border-radius:3px;font-family:'Jost',sans-serif;font-size:0.82rem;color:var(--dark);background:var(--ivory);outline:none;resize:vertical;" placeholder="Brief description of what your business does, who you serve, and what makes you unique."><%= brandProfile.description %></textarea>
+      </div>
+      <div class="field-row">
+        <label>Services Offered</label>
+        <input type="text" name="brand_services" value="<%= brandProfile.services %>" placeholder="Web Design, SEO, Social Media Management, Email Marketing">
+        <div class="field-hint">Comma-separated list of your services</div>
+      </div>
+      <div class="field-row">
+        <label>Pricing Guide</label>
+        <input type="text" name="brand_pricingNotes" value="<%= brandProfile.pricingNotes %>" placeholder="Web design $1500-5000, SEO $500-1500/mo, Social media $400-1200/mo">
+        <div class="field-hint">Approximate pricing ranges for agent-generated invoices and proposals</div>
+      </div>
+      <div class="field-row">
+        <label>Target Audience</label>
+        <input type="text" name="brand_targetAudience" value="<%= brandProfile.targetAudience %>" placeholder="Small to mid-size local businesses">
+      </div>
+      <div class="field-row">
+        <label>Brand Voice / Tone</label>
+        <input type="text" name="brand_brandVoice" value="<%= brandProfile.brandVoice %>" placeholder="Professional but warm, local, trustworthy">
+        <div class="field-hint">How should your AI agents sound? e.g. Casual & friendly, Corporate & formal, Bold & edgy</div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <label style="display:block;font-size:0.7rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Social Media Links</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+          <div class="field-row"><label>Facebook</label><input type="text" name="brand_social_facebook" value="<%= brandProfile.social_facebook %>" placeholder="https://facebook.com/yourbusiness"></div>
+          <div class="field-row"><label>Instagram</label><input type="text" name="brand_social_instagram" value="<%= brandProfile.social_instagram %>" placeholder="https://instagram.com/yourbusiness"></div>
+          <div class="field-row"><label>Twitter / X</label><input type="text" name="brand_social_twitter" value="<%= brandProfile.social_twitter %>" placeholder="https://twitter.com/yourbusiness"></div>
+          <div class="field-row"><label>LinkedIn</label><input type="text" name="brand_social_linkedin" value="<%= brandProfile.social_linkedin %>" placeholder="https://linkedin.com/company/yourbusiness"></div>
+          <div class="field-row"><label>YouTube</label><input type="text" name="brand_social_youtube" value="<%= brandProfile.social_youtube %>" placeholder="https://youtube.com/@yourbusiness"></div>
+          <div class="field-row"><label>TikTok</label><input type="text" name="brand_social_tiktok" value="<%= brandProfile.social_tiktok %>" placeholder="https://tiktok.com/@yourbusiness"></div>
+        </div>
+      </div>
+
+      <button type="submit" style="margin-top:12px;padding:10px 24px;background:var(--gold);color:var(--dark);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Profile</button>
+    </div>
+
+    <!-- ═══════════ CUSTOM DOMAIN ═══════════ -->
+    <div class="settings-section">
+      <h2>
+        &#9672; Custom Domain
+        <button type="button" class="guide-toggle" onclick="toggleGuide('domain')">&#9432; Setup Guide</button>
+      </h2>
+      <p class="desc">Connect your own domain name instead of using <code><%= settings.domain %></code>. <strong>Required to unlock all integrations below.</strong></p>
+
+      <div class="guide-panel" id="guide-domain">
+        <ol>
+          <li>Purchase a domain from any registrar (Namecheap, GoDaddy, Cloudflare, Google Domains, etc.).</li>
+          <li>In your registrar's DNS settings, add an <strong>A Record</strong>:
+            <table style="width:100%;font-size:0.72rem;border-collapse:collapse;margin:8px 0;">
+              <tr style="background:var(--ivory);"><td style="padding:4px 8px;font-weight:600;">Type</td><td style="padding:4px 8px;font-weight:600;">Name</td><td style="padding:4px 8px;font-weight:600;">Value</td></tr>
+              <tr><td style="padding:4px 8px;font-family:monospace;">A</td><td style="padding:4px 8px;font-family:monospace;">@</td><td style="padding:4px 8px;font-family:monospace;">104.237.138.28</td></tr>
+              <tr><td style="padding:4px 8px;font-family:monospace;">A</td><td style="padding:4px 8px;font-family:monospace;">www</td><td style="padding:4px 8px;font-family:monospace;">104.237.138.28</td></tr>
+            </table>
+          </li>
+          <li>Wait for DNS propagation (usually 5&ndash;30 minutes, can take up to 48 hours).</li>
+          <li>Enter your domain below and save. SSL certificate will be provisioned automatically.</li>
+          <li>After saving, your site will be live at both <code><%= settings.domain %></code> and your custom domain.</li>
+        </ol>
+        <div class="guide-tip">If you use Cloudflare: set the proxy status to "DNS only" (grey cloud) for the A records, otherwise SSL provisioning may fail.</div>
+      </div>
+
+      <div class="field-row">
+        <label>Custom Domain</label>
+        <input type="text" name="customDomain" value="<%= settings.customDomain %>" placeholder="yourbusiness.com">
+        <div class="field-hint">Point A records for <code>@</code> and <code>www</code> to <code style="user-select:all;">104.237.138.28</code> first. SSL is provisioned automatically.</div>
+      </div>
+
+      <% if (!settings.customDomain) { %>
+      <button type="submit" style="margin-top:12px;padding:10px 24px;background:var(--gold);color:var(--dark);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Domain</button>
+      <% } %>
+    </div>
+
+    <% if (settings.customDomain) { %>
+
+    <!-- ═══════════ STRIPE ═══════════ -->
+    <div class="settings-section">
+      <h2>
+        &#9672; Payments &mdash; Stripe
+        <button type="button" class="guide-toggle" onclick="toggleGuide('stripe')">&#9432; Setup Guide</button>
+      </h2>
+      <p class="desc">Accept credit card payments for invoices and subscriptions.</p>
+
+      <div class="guide-panel" id="guide-stripe">
+        <ol>
+          <li>Go to <a href="https://dashboard.stripe.com/register" target="_blank">stripe.com</a> and create an account (or log in).</li>
+          <li>Complete Stripe's business verification (name, address, bank account for payouts).</li>
+          <li>Navigate to <a href="https://dashboard.stripe.com/apikeys" target="_blank">Developers &rarr; API Keys</a>.</li>
+          <li>Copy the <strong>Publishable key</strong> (<code>pk_live_...</code>) and paste it below.</li>
+          <li>Click "Reveal" on the <strong>Secret key</strong> (<code>sk_live_...</code>) and paste it below.</li>
+          <li>For webhooks: go to <a href="https://dashboard.stripe.com/webhooks" target="_blank">Developers &rarr; Webhooks</a>.</li>
+          <li>Click <strong>Add endpoint</strong>. Set URL to <code>https://<%= settings.domain %>/webhooks/stripe</code>.</li>
+          <li>Select events: <code>invoice.paid</code>, <code>checkout.session.completed</code>, <code>customer.subscription.deleted</code>.</li>
+          <li>After creating, click the endpoint and copy the <strong>Signing secret</strong> (<code>whsec_...</code>).</li>
+          <li>Paste it below and hit <strong>Save Settings</strong>. Use the <strong>Test</strong> button to verify.</li>
+        </ol>
+        <div class="guide-tip">Tip: Start in Test mode (<code>pk_test_</code> / <code>sk_test_</code>) to verify, then switch to Live keys when ready.</div>
+      </div>
+
+      <div class="field-row">
+        <label>Publishable Key</label>
+        <input type="text" name="stripePublishable" value="<%= settings.stripePublishable %>" placeholder="pk_live_... or pk_test_...">
+        <div class="field-hint">Public key — safe to expose. Starts with <code>pk_live_</code> or <code>pk_test_</code></div>
+      </div>
+      <div class="field-row">
+        <label>Secret Key <% if (settings.stripeSecret_set) { %><span class="field-set">&#9679; configured</span><% } %></label>
+        <div class="inline">
+          <input type="password" name="stripeSecret" value="<%= settings.stripeSecret %>" placeholder="sk_live_... or sk_test_...">
+          <button type="button" class="btn-test" onclick="testStripe()">Test</button>
+        </div>
+        <div class="test-result" id="stripeResult"></div>
+        <div class="field-hint">Secret key — never share this. Encrypted at rest.</div>
+      </div>
+      <div class="field-row">
+        <label>Webhook Secret <% if (settings.stripeWebhookSecret_set) { %><span class="field-set">&#9679; configured</span><% } %></label>
+        <input type="password" name="stripeWebhookSecret" value="<%= settings.stripeWebhookSecret %>" placeholder="whsec_...">
+        <div class="field-hint">From Stripe Dashboard &rarr; Webhooks &rarr; your endpoint &rarr; Signing secret</div>
+      </div>
+    </div>
+
+    <!-- ═══════════ PAYPAL ═══════════ -->
+    <div class="settings-section">
+      <h2>
+        &#9672; Payments &mdash; PayPal
+        <button type="button" class="guide-toggle" onclick="toggleGuide('paypal')">&#9432; Setup Guide</button>
+      </h2>
+      <p class="desc">Accept PayPal payments alongside or instead of Stripe.</p>
+
+      <div class="guide-panel" id="guide-paypal">
+        <ol>
+          <li>Go to <a href="https://developer.paypal.com/dashboard/applications" target="_blank">PayPal Developer Dashboard</a> and log in with your PayPal Business account.</li>
+          <li>Under <strong>Apps &amp; Credentials</strong>, toggle to <strong>Live</strong> (not Sandbox).</li>
+          <li>Click <strong>Create App</strong>. Name it anything (e.g., "<%= brand?.name || 'My Site' %> Payments").</li>
+          <li>Copy the <strong>Client ID</strong> and paste it below.</li>
+          <li>Click "Show" under <strong>Secret</strong>, copy it, and paste it below.</li>
+          <li>Set Mode to <strong>Live</strong> when you're ready to accept real payments.</li>
+        </ol>
+        <div class="guide-tip">Tip: Use Sandbox mode first to test with fake money. Switch to Live only after verifying.</div>
+      </div>
+
+      <div class="field-row">
+        <label>Client ID</label>
+        <input type="text" name="paypalClientId" value="<%= settings.paypalClientId %>" placeholder="PayPal Client ID">
+        <div class="field-hint">Found in PayPal Developer Dashboard &rarr; Apps &rarr; your app &rarr; Client ID</div>
+      </div>
+      <div class="field-row">
+        <label>Secret <% if (settings.paypalSecret_set) { %><span class="field-set">&#9679; configured</span><% } %></label>
+        <input type="password" name="paypalSecret" value="<%= settings.paypalSecret %>" placeholder="PayPal Secret">
+        <div class="field-hint">Secret key — encrypted at rest. Never share this.</div>
+      </div>
+      <div class="field-row">
+        <label>Mode</label>
+        <select name="paypalMode">
+          <option value="sandbox" <%= settings.paypalMode === 'sandbox' ? 'selected' : '' %>>Sandbox (Testing)</option>
+          <option value="live" <%= settings.paypalMode === 'live' ? 'selected' : '' %>>Live</option>
+        </select>
+        <div class="field-hint">Sandbox = test transactions with fake money. Live = real charges.</div>
+      </div>
+    </div>
+
+    <!-- ═══════════ EMAIL (ZOHO) ═══════════ -->
+    <div class="settings-section">
+      <h2>
+        &#9672; Email (Zoho SMTP)
+        <button type="button" class="guide-toggle" onclick="toggleGuide('zoho')">&#9432; Setup Guide</button>
+      </h2>
+      <p class="desc">Send invoices, campaigns, and client emails from your own domain. Requires a Zoho Mail account.</p>
+
+      <div class="guide-panel" id="guide-zoho">
+        <ol>
+          <li>Go to <a href="https://www.zoho.com/mail/zohomail-pricing.html" target="_blank">Zoho Mail</a> and sign up for a plan (Mail Lite works — free plan does NOT include SMTP).</li>
+          <li>During setup, add your domain (e.g., <code><%= settings.domain %></code>) and verify ownership via a TXT record.</li>
+          <li>Create your email address (e.g., <code>hello@<%= settings.domain %></code>).</li>
+          <li>Enable SMTP access: go to <a href="https://accounts.zoho.com/home#security/security_pwd" target="_blank">Zoho Account &rarr; Security</a>.</li>
+          <li>Scroll to <strong>App Passwords</strong> and click <strong>Generate New Password</strong>.</li>
+          <li>Name it (e.g., "Slab Platform") and copy the generated password.</li>
+          <li>Paste your Zoho email address and the app password below.</li>
+          <li>Hit <strong>Test</strong> to verify the SMTP connection works.</li>
+        </ol>
+        <div class="guide-tip">Important: Regular Zoho passwords won't work for SMTP. You must use an App Password. After setup, configure the DNS records in the section below.</div>
+      </div>
+
+      <div class="field-row">
+        <label>Zoho Email Address</label>
+        <input type="email" name="zohoUser" value="<%= settings.zohoUser %>" placeholder="you@yourdomain.com">
+        <div class="field-hint">The "from" address for all outgoing emails (invoices, campaigns, notifications)</div>
+      </div>
+      <div class="field-row">
+        <label>Zoho App Password <% if (settings.zohoPass_set) { %><span class="field-set">&#9679; configured</span><% } %></label>
+        <div class="inline">
+          <input type="password" name="zohoPass" value="<%= settings.zohoPass %>" placeholder="App-specific password">
+          <button type="button" class="btn-test" onclick="testEmail()">Test</button>
+        </div>
+        <div class="test-result" id="emailResult"></div>
+        <div class="field-hint">App password from Zoho Account &rarr; Security &rarr; App Passwords. Not your login password.</div>
+      </div>
+    </div>
+
+    <!-- ═══════════ EMAIL DNS ═══════════ -->
+    <div class="settings-section">
+      <h2>
+        &#9672; Email DNS Records
+        <button type="button" class="guide-toggle" onclick="toggleGuide('dns')">&#9432; What are these?</button>
+      </h2>
+      <p class="desc">These DNS records are <strong>required</strong> for email deliverability. Without them, your emails will land in spam or be rejected.</p>
+
+      <div class="guide-panel" id="guide-dns">
+        <ol>
+          <li><strong>SPF</strong> (Sender Policy Framework) &mdash; Tells receiving mail servers "these IP addresses are allowed to send email for my domain." Without it, servers assume your emails might be forged.</li>
+          <li><strong>DKIM</strong> (DomainKeys Identified Mail) &mdash; Adds a cryptographic signature to every email you send. The receiving server checks it against a public key in your DNS to prove the email wasn't tampered with.</li>
+          <li><strong>DMARC</strong> (Domain-based Message Authentication) &mdash; Ties SPF and DKIM together with a policy. It tells receivers what to do when emails fail authentication (monitor, quarantine, or reject).</li>
+          <li><strong>MX Records</strong> &mdash; Only needed if you receive email on this domain via Zoho. Tells other mail servers where to deliver incoming mail.</li>
+          <li><strong>Return-Path CNAME</strong> &mdash; Handles bounce messages. Zoho manages this, but the CNAME record lets them process bounces for your domain.</li>
+        </ol>
+        <div class="guide-tip">Where to add these: Log in to wherever you bought your domain (GoDaddy, Namecheap, Cloudflare, Google Domains, etc.) and find "DNS Settings" or "DNS Records". Add each record as shown below.</div>
+      </div>
+
+      <%
+        const emailDomain = settings.zohoUser ? settings.zohoUser.split('@')[1] : settings.domain;
+        const isSubdomain = settings.domain.endsWith('.madladslab.com');
+      %>
+
+      <div style="background:var(--ivory);padding:16px;border-radius:4px;margin-bottom:16px;">
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Sending Domain</div>
+        <div style="font-size:0.95rem;font-weight:500;color:var(--navy);"><%= emailDomain || 'Set your Zoho email above' %></div>
+      </div>
+
+      <% if (emailDomain) { %>
+
+      <!-- SPF -->
+      <div style="margin-bottom:16px;padding:16px;border:1px solid var(--ivory-mid);border-radius:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-size:0.78rem;font-weight:600;color:var(--dark);">SPF Record</div>
+          <div class="dns-status" id="spf-status" style="font-size:0.68rem;font-weight:500;">&mdash;</div>
+        </div>
+        <div style="font-size:0.68rem;color:var(--slate);margin-bottom:8px;">Authorizes Zoho's servers to send email on behalf of your domain.</div>
+        <table style="width:100%;font-size:0.75rem;border-collapse:collapse;">
+          <tr style="background:var(--ivory);">
+            <td style="padding:6px 10px;font-weight:600;width:60px;">Type</td>
+            <td style="padding:6px 10px;font-weight:600;width:120px;">Name</td>
+            <td style="padding:6px 10px;font-weight:600;">Value</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 10px;font-family:monospace;">TXT</td>
+            <td style="padding:6px 10px;font-family:monospace;">@</td>
+            <td style="padding:6px 10px;font-family:monospace;word-break:break-all;">v=spf1 include:zoho.com ~all</td>
+          </tr>
+        </table>
+        <div style="font-size:0.65rem;color:var(--slate);margin-top:6px;">If you already have an SPF record, add <code>include:zoho.com</code> before the <code>~all</code></div>
+      </div>
+
+      <!-- DKIM -->
+      <div style="margin-bottom:16px;padding:16px;border:1px solid var(--ivory-mid);border-radius:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-size:0.78rem;font-weight:600;color:var(--dark);">DKIM Record</div>
+          <div class="dns-status" id="dkim-status" style="font-size:0.68rem;font-weight:500;">&mdash;</div>
+        </div>
+        <div style="font-size:0.68rem;color:var(--slate);margin-bottom:8px;">Cryptographic signature proving your emails are authentic.</div>
+        <table style="width:100%;font-size:0.75rem;border-collapse:collapse;">
+          <tr style="background:var(--ivory);">
+            <td style="padding:6px 10px;font-weight:600;width:60px;">Type</td>
+            <td style="padding:6px 10px;font-weight:600;width:120px;">Name</td>
+            <td style="padding:6px 10px;font-weight:600;">Value</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 10px;font-family:monospace;">TXT</td>
+            <td style="padding:6px 10px;font-family:monospace;">zmail._domainkey</td>
+            <td style="padding:6px 10px;font-size:0.68rem;color:var(--slate);font-style:italic;">Unique per domain &mdash; get from Zoho (see steps below)</td>
+          </tr>
+        </table>
+        <div style="font-size:0.65rem;color:var(--slate);margin-top:6px;line-height:1.6;">
+          <strong>How to get your DKIM key:</strong><br>
+          1. Log in to <a href="https://mailadmin.zoho.com" target="_blank" style="color:var(--gold);">Zoho Mail Admin Console</a><br>
+          2. Go to <strong>Domains</strong> &rarr; click <strong><%= emailDomain %></strong><br>
+          3. Click <strong>Email Authentication</strong> &rarr; <strong>DKIM</strong><br>
+          4. Click <strong>Add Selector</strong> (use "zmail" as the selector name)<br>
+          5. Copy the generated TXT record value and add it to your DNS
+        </div>
+      </div>
+
+      <!-- DMARC -->
+      <div style="margin-bottom:16px;padding:16px;border:1px solid var(--ivory-mid);border-radius:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-size:0.78rem;font-weight:600;color:var(--dark);">DMARC Record</div>
+          <div class="dns-status" id="dmarc-status" style="font-size:0.68rem;font-weight:500;">&mdash;</div>
+        </div>
+        <div style="font-size:0.68rem;color:var(--slate);margin-bottom:8px;">Tells mail servers what to do when SPF/DKIM fail. Start with "none" then tighten over time.</div>
+        <table style="width:100%;font-size:0.75rem;border-collapse:collapse;">
+          <tr style="background:var(--ivory);">
+            <td style="padding:6px 10px;font-weight:600;width:60px;">Type</td>
+            <td style="padding:6px 10px;font-weight:600;width:120px;">Name</td>
+            <td style="padding:6px 10px;font-weight:600;">Value</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 10px;font-family:monospace;">TXT</td>
+            <td style="padding:6px 10px;font-family:monospace;">_dmarc</td>
+            <td style="padding:6px 10px;font-family:monospace;word-break:break-all;">v=DMARC1; p=none; rua=mailto:dmarc@<%= emailDomain %></td>
+          </tr>
+        </table>
+        <div style="font-size:0.65rem;color:var(--slate);margin-top:6px;">
+          <strong>DMARC policy progression:</strong>
+          <code>p=none</code> (monitor only, start here) &rarr;
+          <code>p=quarantine</code> (send failures to spam) &rarr;
+          <code>p=reject</code> (block failures entirely)
+        </div>
+      </div>
+
+      <!-- MX -->
+      <div style="margin-bottom:16px;padding:16px;border:1px solid var(--ivory-mid);border-radius:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-size:0.78rem;font-weight:600;color:var(--dark);">MX Records <span style="font-size:0.65rem;font-weight:400;color:var(--slate);">(for receiving email via Zoho)</span></div>
+          <div class="dns-status" id="mx-status" style="font-size:0.68rem;font-weight:500;">&mdash;</div>
+        </div>
+        <div style="font-size:0.68rem;color:var(--slate);margin-bottom:8px;">Required only if you receive email on this domain through Zoho. Skip if you use Gmail/Outlook for incoming.</div>
+        <table style="width:100%;font-size:0.75rem;border-collapse:collapse;">
+          <tr style="background:var(--ivory);">
+            <td style="padding:6px 10px;font-weight:600;width:60px;">Type</td>
+            <td style="padding:6px 10px;font-weight:600;width:60px;">Priority</td>
+            <td style="padding:6px 10px;font-weight:600;width:80px;">Name</td>
+            <td style="padding:6px 10px;font-weight:600;">Value</td>
+          </tr>
+          <tr><td style="padding:4px 10px;font-family:monospace;">MX</td><td style="padding:4px 10px;">10</td><td style="padding:4px 10px;font-family:monospace;">@</td><td style="padding:4px 10px;font-family:monospace;">mx.zoho.com</td></tr>
+          <tr><td style="padding:4px 10px;font-family:monospace;">MX</td><td style="padding:4px 10px;">20</td><td style="padding:4px 10px;font-family:monospace;">@</td><td style="padding:4px 10px;font-family:monospace;">mx2.zoho.com</td></tr>
+          <tr><td style="padding:4px 10px;font-family:monospace;">MX</td><td style="padding:4px 10px;">50</td><td style="padding:4px 10px;font-family:monospace;">@</td><td style="padding:4px 10px;font-family:monospace;">mx3.zoho.com</td></tr>
+        </table>
+      </div>
+
+      <!-- Return-Path -->
+      <div style="margin-bottom:16px;padding:16px;border:1px solid var(--ivory-mid);border-radius:4px;">
+        <div style="font-size:0.78rem;font-weight:600;color:var(--dark);margin-bottom:8px;">Return-Path (Bounce Handling)</div>
+        <div style="font-size:0.68rem;color:var(--slate);margin-bottom:8px;">Lets Zoho process bounced emails for your domain.</div>
+        <table style="width:100%;font-size:0.75rem;border-collapse:collapse;">
+          <tr style="background:var(--ivory);">
+            <td style="padding:6px 10px;font-weight:600;width:60px;">Type</td>
+            <td style="padding:6px 10px;font-weight:600;width:120px;">Name</td>
+            <td style="padding:6px 10px;font-weight:600;">Value</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 10px;font-family:monospace;">CNAME</td>
+            <td style="padding:6px 10px;font-family:monospace;">zb._domainkey</td>
+            <td style="padding:6px 10px;font-family:monospace;">zb._domainkey.zoho.com</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Check DNS / Auto-create -->
+      <button type="button" class="btn-test" onclick="checkDns()" style="padding:10px 24px;font-size:0.78rem;">
+        Check DNS Records
+      </button>
+      <div id="dnsOverall" style="font-size:0.75rem;margin-top:8px;min-height:20px;"></div>
+
+      <% if (isSubdomain) { %>
+      <div style="margin-top:12px;padding:12px 16px;background:rgba(22,163,74,0.06);border:1px solid rgba(22,163,74,0.15);border-radius:4px;">
+        <div style="font-size:0.72rem;color:#166534;">
+          <strong>Subdomain tenant:</strong> SPF and DMARC records for <code><%= emailDomain %></code> can be auto-created.
+          <button type="button" class="btn-test" onclick="autoCreateDns()" style="margin-left:8px;padding:6px 14px;font-size:0.68rem;background:#166534;">Auto-Create DNS</button>
+          <span id="autoCreateResult" style="margin-left:8px;"></span>
+        </div>
+      </div>
+      <% } %>
+
+      <% } else { %>
+        <div style="padding:16px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:4px;font-size:0.78rem;color:#92400e;">
+          Set your Zoho email address above to see the required DNS records for your sending domain.
+        </div>
+      <% } %>
+    </div>
+
+    <!-- ═══════════ GOOGLE REVIEWS ═══════════ -->
+    <div class="settings-section">
+      <h2>
+        &#9672; Google Reviews
+        <button type="button" class="guide-toggle" onclick="toggleGuide('places')">&#9432; Setup Guide</button>
+      </h2>
+      <p class="desc">Display your Google Business reviews on your landing page. Requires a Google Cloud API key.</p>
+
+      <div class="guide-panel" id="guide-places">
+        <ol>
+          <li>Go to <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a> and create a project (or select an existing one).</li>
+          <li>Enable the <strong>Places API</strong>: search "Places API" in the API Library and click <strong>Enable</strong>.</li>
+          <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">APIs &amp; Services &rarr; Credentials</a>.</li>
+          <li>Click <strong>Create Credentials &rarr; API Key</strong>. Copy the key (<code>AIzaSy...</code>).</li>
+          <li><strong>Restrict the key</strong> (recommended): click the key &rarr; under "API restrictions" select "Restrict key" &rarr; choose "Places API" only.</li>
+          <li>Find your <strong>Place ID</strong>: go to <a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank">Place ID Finder</a>, search your business, and copy the ID (<code>ChIJ...</code>).</li>
+          <li>Paste both values below and save. Reviews will appear on your landing page within a few minutes.</li>
+        </ol>
+        <div class="guide-tip">Tip: Google gives $200/month in free API credits, which covers ~40,000 reviews lookups. More than enough for any site.</div>
+      </div>
+
+      <div class="field-row">
+        <label>Google Places API Key</label>
+        <input type="text" name="googlePlacesKey" value="<%= settings.googlePlacesKey %>" placeholder="AIzaSy...">
+        <div class="field-hint">From Google Cloud Console &rarr; Credentials &rarr; API Keys</div>
+      </div>
+      <div class="field-row">
+        <label>Google Place ID</label>
+        <input type="text" name="googlePlaceId" value="<%= settings.googlePlaceId %>" placeholder="ChIJ...">
+        <div class="field-hint">Your business Place ID. Find it at <a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank" style="color:var(--gold);">Place ID Finder</a></div>
+      </div>
+    </div>
+
+    <!-- ═══════════ GOOGLE OAUTH ═══════════ -->
+    <div class="settings-section">
+      <h2>
+        &#9672; Google OAuth (Login)
+        <button type="button" class="guide-toggle" onclick="toggleGuide('oauth')">&#9432; Setup Guide</button>
+      </h2>
+      <p class="desc">Let admins and clients log in with their Google account. Optional but recommended for easier access.</p>
+
+      <div class="guide-panel" id="guide-oauth">
+        <ol>
+          <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console &rarr; Credentials</a> (same project as Places API).</li>
+          <li>Click <strong>Create Credentials &rarr; OAuth client ID</strong>.</li>
+          <li>If prompted, configure the <strong>OAuth consent screen</strong> first:
+            <ul style="margin:4px 0 4px 16px;font-size:0.72rem;">
+              <li>User Type: <strong>External</strong></li>
+              <li>App name: <strong><%= brand?.name || 'Your Brand' %></strong></li>
+              <li>Support email: your Zoho email</li>
+              <li>Authorized domains: <code><%= settings.domain %></code></li>
+            </ul>
+          </li>
+          <li>Back in Credentials, create the OAuth Client ID:
+            <ul style="margin:4px 0 4px 16px;font-size:0.72rem;">
+              <li>Application type: <strong>Web application</strong></li>
+              <li>Authorized redirect URI: <code>https://<%= settings.domain %>/auth/google/callback</code></li>
+            </ul>
+          </li>
+          <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> and paste them below.</li>
+        </ol>
+        <div class="guide-tip">Tip: Add both your subdomain and custom domain as authorized redirect URIs if you use both.</div>
+      </div>
+
+      <div class="field-row">
+        <label>OAuth Client ID</label>
+        <input type="text" name="googleOAuthClientId" value="<%= settings.googleOAuthClientId || '' %>" placeholder="123456789-abc.apps.googleusercontent.com">
+        <div class="field-hint">From Google Cloud Console &rarr; Credentials &rarr; OAuth 2.0 Client IDs</div>
+      </div>
+      <div class="field-row">
+        <label>OAuth Client Secret <% if (settings.googleOAuthSecret_set) { %><span class="field-set">&#9679; configured</span><% } %></label>
+        <input type="password" name="googleOAuthSecret" value="<%= settings.googleOAuthSecret || '' %>" placeholder="GOCSPX-...">
+        <div class="field-hint">Secret key — encrypted at rest. Found next to your Client ID in Google Cloud.</div>
+      </div>
+    </div>
+
+    <button type="submit" style="padding:12px 32px;background:var(--gold);color:var(--dark);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Settings</button>
+
+    <% } else { %>
+
+    <!-- LOCKED STATE — no custom domain yet -->
+    <div class="settings-section" style="text-align:center;padding:48px 24px;opacity:0.7;">
+      <div style="font-size:2rem;margin-bottom:12px;">&#128274;</div>
+      <h2 style="justify-content:center;margin-bottom:8px;">Add Your Domain to Unlock Integrations</h2>
+      <p class="desc" style="max-width:440px;margin:0 auto;">
+        Stripe, PayPal, email, Google Reviews, and OAuth settings will become available once you connect a custom domain above.
+      </p>
+    </div>
+
+    <% } %>
+  </form>
+</div>
+
+</div><!-- close .main from sidebar -->
+
+<script>
+function toggleGuide(id) {
+  const panel = document.getElementById('guide-' + id);
+  if (panel) panel.classList.toggle('open');
+}
+
+async function testStripe() {
+  const el = document.getElementById('stripeResult');
+  el.textContent = 'Testing...'; el.className = 'test-result';
+  try {
+    const r = await fetch('/admin/settings/test-stripe', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) { el.textContent = 'Connected (' + d.currency + ')'; el.className = 'test-result test-ok'; }
+    else { el.textContent = d.error; el.className = 'test-result test-fail'; }
+  } catch { el.textContent = 'Network error'; el.className = 'test-result test-fail'; }
+}
+
+async function testEmail() {
+  const el = document.getElementById('emailResult');
+  el.textContent = 'Testing...'; el.className = 'test-result';
+  try {
+    const r = await fetch('/admin/settings/test-email', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) { el.textContent = 'SMTP connection verified'; el.className = 'test-result test-ok'; }
+    else { el.textContent = d.error; el.className = 'test-result test-fail'; }
+  } catch { el.textContent = 'Network error'; el.className = 'test-result test-fail'; }
+}
+
+async function checkDns() {
+  const overall = document.getElementById('dnsOverall');
+  overall.textContent = 'Checking DNS records...';
+  overall.style.color = 'var(--slate)';
+  ['spf','dkim','dmarc','mx'].forEach(k => {
+    const el = document.getElementById(k + '-status');
+    if (el) { el.textContent = '...'; el.style.color = 'var(--slate)'; }
+  });
+  try {
+    const r = await fetch('/admin/settings/check-dns', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) { overall.textContent = d.error; overall.style.color = '#dc2626'; return; }
+    const res = d.results;
+    let allGood = true;
+    ['spf','dkim','dmarc','mx'].forEach(k => {
+      const el = document.getElementById(k + '-status');
+      if (!el || !res[k]) return;
+      if (res[k].valid) {
+        el.textContent = '\u2713 ' + res[k].message;
+        el.style.color = '#16a34a';
+      } else if (res[k].found) {
+        el.textContent = '\u26A0 ' + res[k].message;
+        el.style.color = '#d97706';
+        allGood = false;
+      } else {
+        el.textContent = '\u2717 ' + res[k].message;
+        el.style.color = '#dc2626';
+        allGood = false;
+      }
+    });
+    if (allGood) {
+      overall.textContent = 'All email DNS records look good!';
+      overall.style.color = '#16a34a';
+    } else {
+      overall.textContent = 'Some records need attention \u2014 see above.';
+      overall.style.color = '#d97706';
+    }
+  } catch { overall.textContent = 'Network error'; overall.style.color = '#dc2626'; }
+}
+
+async function autoCreateDns() {
+  const el = document.getElementById('autoCreateResult');
+  el.textContent = 'Creating records...';
+  el.style.color = 'var(--slate)';
+  try {
+    const r = await fetch('/admin/settings/auto-create-dns', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) { el.textContent = d.error; el.style.color = '#dc2626'; return; }
+    let msg = '';
+    if (d.created.length) msg += 'Created: ' + d.created.join(', ') + '. ';
+    if (d.errors.length) msg += 'Failed: ' + d.errors.join(', ') + '. ';
+    if (d.note) msg += d.note;
+    el.textContent = msg;
+    el.style.color = d.errors.length ? '#d97706' : '#16a34a';
+  } catch { el.textContent = 'Network error'; el.style.color = '#dc2626'; }
+}
+</script>

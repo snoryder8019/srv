@@ -1,0 +1,1604 @@
+<%- include('partials/head', { title: 'Dashboard' }) %>
+<%- include('partials/sidebar', { page: 'dashboard', user: user }) %>
+
+<% if (typeof tenant !== 'undefined' && !tenant?.isPreview) { %>
+<script>
+  if (new URLSearchParams(window.location.search).get('activated') === '1') {
+    setTimeout(() => {
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:10001;background:#14532d;color:#86efac;padding:14px 24px;border-radius:8px;font-family:Inter,sans-serif;font-size:14px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+      d.textContent = 'Your site is live! Visitors can now see your website.';
+      document.body.appendChild(d);
+      setTimeout(() => d.remove(), 5000);
+      const url = new URL(window.location); url.searchParams.delete('activated'); history.replaceState({}, '', url);
+    }, 300);
+  }
+</script>
+<% } %>
+
+<style>
+/* ── Dashboard-specific responsive styles ── */
+.dash-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+/* Agent panel */
+.agent-card { margin-top: 24px; }
+.agent-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.agent-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ai-badge {
+  font-size: 0.63rem; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; background: var(--navy); color: #fff;
+  padding: 2px 8px; border-radius: 2px; white-space: nowrap;
+}
+
+/* Chat messages */
+#ma-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.ma-msg { display: flex; }
+.ma-msg-user  { justify-content: flex-end; }
+.ma-msg-agent { justify-content: flex-start; }
+.ma-bubble {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+.ma-msg-agent .ma-bubble { background: var(--ivory); color: var(--dark); }
+.ma-msg-user  .ma-bubble { background: var(--navy); color: #fff; }
+.ma-bubble a { color: var(--gold); }
+
+/* Quick prompts */
+#ma-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+#ma-cycle-btn {
+  color: var(--gold);
+  font-size: 1rem;
+  transition: transform 0.55s cubic-bezier(.2,.8,.3,1.1), color 0.2s;
+  cursor: pointer;
+}
+#ma-cycle-btn:hover { color: var(--navy); transform: scale(1.15); }
+#ma-cycle-btn:active { transition-duration: 0.15s; }
+
+/* Chip enter animation */
+.ma-quick-btn { transition: opacity 0.35s ease, transform 0.35s cubic-bezier(.4,0,.2,1); }
+.ma-chip-enter { opacity: 0; transform: translateY(6px) scale(0.92); }
+.ma-chip-visible { opacity: 1; transform: translateY(0) scale(1); }
+
+/* Input row */
+.ma-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.ma-input-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--ivory-mid);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+.ma-input-row input:focus { outline: none; border-color: var(--navy); }
+
+/* Result card */
+#ma-result {
+  display: none;
+  margin-top: 16px;
+  border: 1px solid var(--ivory-mid);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.ma-result-header {
+  padding: 12px 14px;
+  background: var(--ivory);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ma-result-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.ma-result-actions { display: flex; gap: 7px; flex-shrink: 0; flex-wrap: wrap; }
+#ma-result-dept {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: #fff;
+  padding: 2px 8px; border-radius: 2px; white-space: nowrap;
+}
+#ma-result-msg {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--dark);
+  word-break: break-word;
+}
+#ma-result-fields {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.ma-field-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ivory-mid);
+  font-size: 0.82rem;
+}
+.ma-field-key {
+  flex-shrink: 0;
+  width: 120px;
+  font-weight: 600;
+  color: var(--slate);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-size: 0.65rem;
+  padding-top: 2px;
+}
+.ma-field-val { color: var(--dark); line-height: 1.4; word-break: break-word; flex: 1; }
+
+/* TTS / STT controls */
+.ma-speak-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--slate); font-size: 0.85rem; padding: 2px 5px;
+  border-radius: 3px; line-height: 1; opacity: 0.6;
+  transition: opacity .15s, color .15s;
+  vertical-align: middle; margin-left: 6px; flex-shrink: 0;
+}
+.ma-speak-btn:hover { opacity: 1; color: var(--navy); }
+.ma-speak-btn.speaking { opacity: 1; color: var(--gold); animation: ma-pulse 1s infinite; }
+@keyframes ma-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.ma-mic-btn {
+  padding: 10px 12px; font-size: 1rem; line-height: 1;
+  border-radius: 4px; border: 1px solid var(--ivory-mid);
+  background: #fff; cursor: pointer; color: var(--slate);
+  transition: background .15s, color .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.ma-mic-btn:hover { border-color: var(--navy); color: var(--navy); }
+.ma-mic-btn.recording { background: #fee; border-color: #c33; color: #c33; animation: ma-pulse 0.8s infinite; }
+
+#ma-voice-select {
+  padding: 6px 8px; font-size: 0.78rem; font-family: inherit;
+  border: 1px solid var(--ivory-mid); border-radius: 4px;
+  background: #fff; color: var(--dark); cursor: pointer;
+  flex-shrink: 0;
+}
+#ma-voice-select:focus { outline: none; border-color: var(--navy); }
+
+/* ── Workflow Checklist ── */
+#ma-workflow {
+  margin-top: 14px;
+  border: 1px solid var(--ivory-mid);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.wf-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--ivory); gap: 8px; flex-wrap: wrap;
+}
+.wf-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wf-icon { font-size: 0.85rem; color: var(--gold); }
+.wf-title { font-weight: 600; font-size: 0.85rem; color: var(--dark); }
+.wf-progress { font-size: 0.7rem; color: var(--slate); font-weight: 500; white-space: nowrap; }
+.wf-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.wf-tasks { display: flex; flex-direction: column; }
+.wf-task {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; border-top: 1px solid var(--ivory-mid);
+  font-size: 0.82rem; transition: background 0.15s;
+}
+.wf-task:hover { background: rgba(201,168,72,0.04); }
+.wf-task-status {
+  flex-shrink: 0; width: 20px; text-align: center;
+  font-size: 0.9rem; line-height: 1;
+}
+.wf-task[data-status="pending"] .wf-task-status { color: #bbb; }
+.wf-task[data-status="running"] .wf-task-status { color: var(--gold); }
+.wf-task[data-status="running"] .wf-task-status span { animation: ma-pulse 1s infinite; display: inline-block; }
+.wf-task[data-status="done"] .wf-task-status { color: #2E7D32; }
+.wf-task[data-status="failed"] .wf-task-status { color: #c33; }
+.wf-task[data-status="applied"] .wf-task-status { color: #2E7D32; }
+.wf-task-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.wf-task-dept {
+  font-size: 0.55rem; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: #fff; padding: 1px 6px;
+  border-radius: 2px; white-space: nowrap; flex-shrink: 0;
+}
+.wf-task-label {
+  color: var(--dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wf-task[data-status="done"] .wf-task-label,
+.wf-task[data-status="applied"] .wf-task-label { text-decoration: line-through; color: var(--slate); }
+.wf-task-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.wf-task-actions .btn-xs {
+  padding: 3px 8px; font-size: 0.62rem; border-radius: 3px; line-height: 1.3;
+}
+.wf-task-msg {
+  font-size: 0.72rem; color: var(--slate); padding: 2px 14px 6px 44px;
+  word-break: break-word;
+}
+
+/* Mobile overrides */
+@media (max-width: 820px) {
+  .dash-two-col { grid-template-columns: 1fr !important; }
+  .agent-header { flex-direction: column; align-items: flex-start; }
+  #ma-messages { max-height: 260px; }
+  .ma-bubble { max-width: 92%; font-size: 0.85rem; }
+  .ma-result-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .ma-result-actions { width: 100%; }
+  .ma-result-actions .btn { flex: 1; justify-content: center; }
+  .ma-field-key { width: 90px; }
+  .wf-header { padding: 8px 12px; }
+  .wf-task { padding: 7px 12px; gap: 8px; font-size: 0.78rem; }
+}
+@media (max-width: 520px) {
+  /* Tighten overall content */
+  .content { padding: 14px 12px; }
+  .agent-card { margin-top: 14px; }
+  .card { padding: 14px 12px; }
+  .card + .card { margin-top: 10px; }
+
+  /* Topbar: hide Edit Copy to reduce crowding, keep + Portfolio */
+  .topbar-hide-mobile { display: none !important; }
+
+  /* Stat grid: horizontal scroll strip */
+  .stat-grid {
+    display: flex !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .stat-grid::-webkit-scrollbar { display: none; }
+  .stat-card {
+    flex: 0 0 auto;
+    min-width: 96px;
+    padding: 10px 12px;
+  }
+  .stat-label { font-size: 0.55rem; }
+  .stat-value { font-size: 1.7rem; }
+
+  /* Agent header */
+  .agent-header { margin-bottom: 10px; }
+  .agent-header p { display: none; }
+  .agent-header a.btn { padding: 5px 10px; font-size: 0.62rem; }
+
+  /* Chat area */
+  #ma-messages { max-height: 200px; margin-bottom: 10px; }
+  .ma-bubble { max-width: 96%; font-size: 0.82rem; padding: 8px 10px; }
+
+  /* Quick chips — horizontal scroll */
+  #ma-quick { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; gap: 5px; margin-bottom: 8px; }
+  #ma-quick .btn { font-size: 0.6rem; padding: 5px 10px; white-space: nowrap; flex-shrink: 0; }
+
+  /* Input row:
+     Row 1: [voice select ──────] [mic]
+     Row 2: [input ──────────────] [send] */
+  .ma-input-row { flex-wrap: wrap; gap: 6px; }
+  #ma-voice-select { order: 1; flex: 1 1 0; min-width: 0; font-size: 0.73rem; padding: 7px 8px; }
+  .ma-mic-btn { order: 2; flex-shrink: 0; padding: 8px 11px; font-size: 0.95rem; }
+  .ma-input-row input { order: 3; flex: 1 1 0; min-width: 0; font-size: 0.85rem; padding: 9px 12px; }
+  .ma-input-row .btn { order: 4; flex-shrink: 0; padding: 9px 14px; font-size: 0.72rem; }
+
+  /* Result card */
+  #ma-result { margin-top: 12px; }
+  .ma-result-header { padding: 10px 12px; }
+  .ma-result-actions { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .ma-result-actions .btn { flex: 1 1 auto; min-width: 0; justify-content: center; font-size: 0.65rem; padding: 7px 10px; }
+  .ma-result-actions .btn:last-child { flex: 0 0 auto; }
+  .ma-field-key { width: 64px; font-size: 0.57rem; }
+  #ma-result-fields { padding: 0 12px 12px; max-height: 180px; }
+  .ma-field-row { font-size: 0.78rem; }
+
+  /* Workflow checklist phone tweaks */
+  #ma-workflow { margin-top: 10px; }
+  .wf-header { padding: 8px 10px; }
+  .wf-task { padding: 6px 10px; gap: 6px; font-size: 0.75rem; }
+  .wf-task-dept { font-size: 0.5rem; padding: 1px 5px; }
+  .wf-task-actions .btn-xs { padding: 2px 6px; font-size: 0.58rem; }
+  .wf-task-msg { padding: 2px 10px 4px 36px; font-size: 0.68rem; }
+
+  /* Quick Actions: 2-col grid on phone */
+  .quick-actions-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .quick-actions-grid .btn { padding: 9px 10px; font-size: 0.65rem; justify-content: center; }
+
+  /* Account table tighten */
+  tbody td { padding: 10px 12px; font-size: 0.82rem; }
+  thead th { padding: 9px 12px; }
+}
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Dashboard</div>
+  <div class="topbar-actions">
+    <a href="/admin/copy" class="btn btn-ghost btn-sm topbar-hide-mobile">Edit Copy</a>
+    <a href="/admin/portfolio/new" class="btn btn-navy btn-sm">+ Portfolio</a>
+  </div>
+</div>
+
+<div class="content">
+  <%- include('partials/advisory', { needs: 'ai' }) %>
+
+  <!-- STATS -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Portfolio</div>
+      <div class="stat-value"><%= stats.portfolioCount %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Clients</div>
+      <div class="stat-value"><%= stats.clientCount %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Open Invoices</div>
+      <div class="stat-value gold"><%= stats.invoiceCount %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Blog Posts</div>
+      <div class="stat-value"><%= stats.blogCount %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Pages</div>
+      <div class="stat-value"><%= stats.pageCount %></div>
+    </div>
+  </div>
+
+  <!-- MASTER AGENT -->
+  <div class="card agent-card">
+    <div class="agent-header">
+      <div>
+        <div class="agent-name-row">
+          <span style="color:var(--gold);font-size:1.05rem;">✦</span>
+          <span class="card-title" style="margin:0;padding:0;border:none;" id="agent-display-name"><%= agentName %></span>
+          <span class="ai-badge">AI</span>
+        </div>
+        <p style="font-size:0.8rem;color:var(--slate);margin-top:4px;">I coordinate your blog, copy, sections, pages, design, and assets agents. Give me a goal and I'll plan the workflow.</p>
+      </div>
+      <a href="/admin/design" class="btn btn-ghost btn-sm" style="white-space:nowrap;">Configure ↗</a>
+    </div>
+
+    <!-- Chat thread -->
+    <div id="ma-messages">
+      <div class="ma-msg ma-msg-agent">
+        <div class="ma-bubble" id="ma-greeting">
+          <%= agentName %> is ready — what would you like to create or update today?
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick prompts — cycling suggestions -->
+    <div id="ma-quick-wrap" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
+      <div id="ma-quick" style="display:flex;flex-wrap:wrap;gap:7px;flex:1;"></div>
+      <button class="btn btn-ghost btn-sm" id="ma-cycle-btn" onclick="maCycleSuggestions()" title="New suggestions" style="flex-shrink:0;padding:6px 10px;font-size:0.85rem;line-height:1;">&#x267B;</button>
+    </div>
+
+    <!-- Input -->
+    <div class="ma-input-row">
+      <select id="ma-voice-select" title="TTS voice" onchange="maSetVoice(this.value)">
+        <option value="lessac">Lessac (F)</option>
+        <option value="ryan">Ryan (M)</option>
+        <option value="slt">SLT (F)</option>
+      </select>
+      <button class="ma-mic-btn" id="ma-mic-btn" title="Speak" onclick="maToggleMic()">🎤</button>
+      <input id="ma-input" type="text" placeholder="Ask <%= agentName %>…" autocomplete="off">
+      <button class="btn btn-navy" id="ma-send" onclick="maSend()">Send</button>
+    </div>
+
+    <!-- Workflow Checklist -->
+    <div id="ma-workflow" style="display:none;">
+      <div class="wf-header">
+        <div class="wf-title-row">
+          <span class="wf-icon">✦</span>
+          <span id="wf-title" class="wf-title">Workflow</span>
+          <span id="wf-progress" class="wf-progress"></span>
+        </div>
+        <div class="wf-actions">
+          <button class="btn btn-gold btn-sm" id="wf-run-btn" onclick="wfRunAll()">Run All</button>
+          <button class="btn btn-ghost btn-sm" onclick="wfClear()">Clear</button>
+        </div>
+      </div>
+      <div id="wf-tasks" class="wf-tasks"></div>
+    </div>
+
+    <!-- Result card -->
+    <div id="ma-result">
+      <div class="ma-result-header">
+        <div class="ma-result-meta">
+          <span id="ma-result-dept"></span>
+          <span id="ma-result-msg"></span>
+        </div>
+        <div class="ma-result-actions">
+          <button id="ma-execute-btn" class="btn btn-gold btn-sm" onclick="maExecute()">Apply Now</button>
+          <button id="ma-editor-btn" class="btn btn-ghost btn-sm" onclick="maOpenEditor()">Open in Editor</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ma-result').style.display='none'">✕</button>
+        </div>
+      </div>
+      <div id="ma-result-fields"></div>
+    </div>
+  </div>
+
+  <!-- ACCOUNT + QUICK ACTIONS -->
+  <div class="dash-two-col">
+    <div class="card">
+      <div class="card-title">Account</div>
+      <table>
+        <tbody>
+          <tr>
+            <td class="text-slate" style="width:110px;font-size:0.68rem;letter-spacing:.1em;text-transform:uppercase;">Name</td>
+            <td><%= user.displayName %></td>
+          </tr>
+          <tr>
+            <td class="text-slate" style="font-size:0.68rem;letter-spacing:.1em;text-transform:uppercase;">Email</td>
+            <td style="font-size:0.85rem;word-break:break-all;"><%= user.email %></td>
+          </tr>
+          <tr>
+            <td class="text-slate" style="font-size:0.68rem;letter-spacing:.1em;text-transform:uppercase;">Role</td>
+            <td><span class="badge badge-active">Admin</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Quick Actions</div>
+      <div class="quick-actions-grid" style="display:flex;flex-direction:column;gap:10px;">
+        <a href="/admin/blog/new" class="btn btn-navy">+ New Blog Post</a>
+        <a href="/admin/pages/new" class="btn btn-navy">+ New Page</a>
+        <a href="/admin/portfolio/new" class="btn btn-ghost">+ Portfolio Item</a>
+        <a href="/admin/copy" class="btn btn-ghost">Edit Site Copy</a>
+        <a href="/admin/design" class="btn btn-ghost">Design &amp; Settings</a>
+        <a href="/" target="_blank" class="btn btn-ghost">View Live Site ↗</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div></div>
+
+<script>
+const AGENT_NAME = '<%= agentName.replace(/\\/g,"\\\\").replace(/'/g,"\\'") %>';
+const DEPT_COLORS = { blog: '#2E4270', copy: '#1C2B4A', section: '#5B3E2B', page: '#2E5B3E', design: '#6B3FA0', asset: '#C9A848', email: '#D4563A', invoice: '#2B7A5B', outreach: '#4A6FA5', navigate: '#555' };
+
+// Conversation history (multi-turn)
+let maHistory = [];
+let maLastResult = null;
+let maExecuting = false;
+
+// Workflow state
+let wf = { title: '', tasks: [], running: false, runAllMode: false };
+
+// ── Cycling Suggestions Pool ──────────────────────────────────────────────────
+const SUGGESTION_POOL = [
+  // Single actions — Copy
+  'Rewrite the hero section with a fresh compelling headline',
+  'Update our services descriptions with current offerings',
+  'Refresh the about section with a new brand story',
+  // Single actions — Blog
+  'Write a blog post about local SEO tips for local businesses',
+  'Write a post about social media trends for small businesses',
+  'Draft a blog about content marketing strategies',
+  // Single actions — Sections
+  'Create an FAQ section about our services and pricing',
+  'Add a CTA banner for free consultation bookings',
+  'Add a feature cards section showcasing key services',
+  // Single actions — Pages
+  'Create a landing page for our SEO services',
+  'Build a content page about our marketing process',
+  // Single actions — Design
+  'Switch to a modern dark blue and coral color palette',
+  'Try a warm earthy tone with serif headings',
+  'Toggle blog section visibility on the homepage',
+  // Single actions — Assets
+  'Design an Instagram post promoting our services',
+  'Create a Facebook cover with our brand colors',
+  'Make a YouTube thumbnail for a marketing tips video',
+  // Single actions — Email Marketing
+  'Draft a monthly newsletter for our subscribers',
+  'Create a re-engagement campaign for inactive leads',
+  'Write a promotional email blast for a seasonal offer',
+  'Draft a welcome email for new subscribers',
+  // Single actions — Invoicing
+  'Create a quick invoice for web design services',
+  'Draft an invoice for a monthly SEO retainer',
+  // Single actions — Client Outreach
+  'Draft a project kickoff email for a new client',
+  'Write a follow-up email checking in on deliverables',
+  'Draft a proposal email for social media management',
+  'Email a client with a project status update',
+  // Navigation
+  'Go to email marketing',
+  'Open the meetings page',
+  'Show me the client list',
+  'Open bookkeeping',
+  'Go to the asset center',
+  'Open the blog editor',
+  // Workflows
+  'Build a spring promotion — update hero, blog, CTA, and social graphic',
+  'Launch a new service — copy, blog, landing page, and email blast',
+  'Client onboarding — welcome email, invoice, and kickoff email',
+];
+let _suggestionIdx = 0;
+
+// ── TTS / STT ─────────────────────────────────────────────────────────────────
+let _maVoice = 'lessac';
+let _maCurrentAudio = null;
+
+function maSetVoice(v) { _maVoice = v; }
+
+function _ttsClean(text, maxChars = 0) {
+  let clean = text
+    .replace(/```[\s\S]*?```/g, 'code block.')
+    .replace(/`[^`]+`/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/#+\s/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, 'link.')
+    .replace(/\n+/g, ' ')
+    .trim();
+  if (maxChars > 0 && clean.length > maxChars) {
+    const cut = clean.search(/[.!?](?:\s|$)/);
+    clean = cut > 0 && cut < maxChars ? clean.slice(0, cut + 1) : clean.slice(0, maxChars);
+  }
+  return clean;
+}
+
+function _ttsSentences(text) {
+  return text.match(/[^.!?]+[.!?]+\s*/g)?.map(s => s.trim()).filter(Boolean) || [text];
+}
+
+async function _ttsFetch(sentence) {
+  const res = await fetch('/admin/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: sentence, voice: _maVoice }),
+  });
+  const ct = res.headers.get('content-type') || '';
+  if (!res.ok || !ct.includes('audio')) throw new Error(`TTS ${res.status}`);
+  return URL.createObjectURL(await res.blob());
+}
+
+function _ttsPlayUrl(url) {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(url);
+    _maCurrentAudio = audio;
+    audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+    audio.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    audio.play().catch(reject);
+  });
+}
+
+function maStopSpeaking() {
+  if (_maCurrentAudio) { _maCurrentAudio.pause(); _maCurrentAudio = null; }
+  document.querySelectorAll('.ma-speak-btn.speaking').forEach(b => b.classList.remove('speaking'));
+}
+
+async function maSpeak(text, btn, autoSpeak = false) {
+  const clean = _ttsClean(text, autoSpeak ? 300 : 0);
+  if (!clean) return;
+  maStopSpeaking();
+  if (btn) btn.classList.add('speaking');
+  const sentences = _ttsSentences(clean);
+  try {
+    let nextFetch = _ttsFetch(sentences[0]);
+    for (let i = 0; i < sentences.length; i++) {
+      const prefetchNext = sentences[i + 1] ? _ttsFetch(sentences[i + 1]) : null;
+      const url = await nextFetch;
+      if (!btn || btn.classList.contains('speaking')) {
+        await _ttsPlayUrl(url);
+      } else {
+        URL.revokeObjectURL(url); break;
+      }
+      nextFetch = prefetchNext;
+    }
+    _maCurrentAudio = null;
+    if (btn) btn.classList.remove('speaking');
+  } catch (err) {
+    console.warn('[TTS] Piper failed, falling back to Web Speech:', err.message);
+    _maCurrentAudio = null;
+    if (window.speechSynthesis) {
+      const utt = new SpeechSynthesisUtterance(clean);
+      utt.rate = 1.0; utt.pitch = 0.95;
+      utt.onend = () => { if (btn) btn.classList.remove('speaking'); };
+      window.speechSynthesis.speak(utt);
+    } else {
+      if (btn) btn.classList.remove('speaking');
+    }
+  }
+}
+
+function maSpeakBtn(btn) {
+  if (btn.classList.contains('speaking')) { maStopSpeaking(); return; }
+  const content = btn.closest('.ma-msg')?.querySelector('.ma-bubble');
+  if (!content) return;
+  maSpeak(content.innerText || content.textContent, btn);
+}
+
+// ── STT (Web Speech API) ──────────────────────────────────────────────────────
+let _maRecognition = null;
+let _maIsRecording = false;
+
+(function initMaSpeech() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) return;
+  _maRecognition = new SpeechRec();
+  _maRecognition.continuous = false;
+  _maRecognition.interimResults = false;
+  _maRecognition.lang = 'en-US';
+  _maRecognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    const input = document.getElementById('ma-input');
+    if (input) { input.value = transcript; maSend(); }
+    maStopMic();
+  };
+  _maRecognition.onerror = (e) => {
+    if (e.error !== 'no-speech') console.warn('[STT]', e.error);
+    maStopMic();
+  };
+  _maRecognition.onend = () => maStopMic();
+})();
+
+function maToggleMic() {
+  if (_maIsRecording) { maStopMic(); return; }
+  if (!_maRecognition) return;
+  _maIsRecording = true;
+  document.getElementById('ma-mic-btn')?.classList.add('recording');
+  try { _maRecognition.start(); } catch(e) { maStopMic(); }
+}
+
+function maStopMic() {
+  _maIsRecording = false;
+  document.getElementById('ma-mic-btn')?.classList.remove('recording');
+  try { if (_maRecognition) _maRecognition.stop(); } catch(e) { /* already stopped */ }
+}
+
+// ── Chat helpers ─────────────────────────────────────────────────────────────
+function maAddMsg(role, html, isHtml) {
+  const box = document.getElementById('ma-messages');
+  const row = document.createElement('div');
+  row.className = `ma-msg ma-msg-${role}`;
+  const bub = document.createElement('div');
+  bub.className = 'ma-bubble';
+  if (isHtml) bub.innerHTML = html;
+  else bub.textContent = html;
+  row.appendChild(bub);
+  if (role === 'agent') {
+    const speakBtn = document.createElement('button');
+    speakBtn.className = 'ma-speak-btn';
+    speakBtn.title = 'Read aloud';
+    speakBtn.textContent = '🔊';
+    speakBtn.onclick = () => maSpeakBtn(speakBtn);
+    row.appendChild(speakBtn);
+  }
+  box.appendChild(row);
+  box.scrollTop = box.scrollHeight;
+  return bub;
+}
+
+function maSetLoading(on) {
+  const btn = document.getElementById('ma-send');
+  btn.disabled = on;
+  btn.textContent = on ? '…' : 'Send';
+}
+
+// ── Workflow: render checklist ─────────────────────────────────────────────────
+function wfRender() {
+  const panel = document.getElementById('ma-workflow');
+  const tasksEl = document.getElementById('wf-tasks');
+  const titleEl = document.getElementById('wf-title');
+  const progEl = document.getElementById('wf-progress');
+  const runBtn = document.getElementById('wf-run-btn');
+
+  if (!wf.tasks.length) { panel.style.display = 'none'; return; }
+
+  panel.style.display = 'block';
+  titleEl.textContent = wf.title || 'Workflow';
+  const done = wf.tasks.filter(t => t.status === 'done' || t.status === 'applied').length;
+  const total = wf.tasks.length;
+  progEl.textContent = `${done} / ${total}`;
+
+  const hasPending = wf.tasks.some(t => t.status === 'pending');
+  runBtn.style.display = hasPending ? '' : 'none';
+  runBtn.disabled = wf.running;
+  runBtn.textContent = wf.running ? 'Running…' : (done > 0 && hasPending ? 'Run Next' : 'Run All');
+
+  const STATUS_ICONS = { pending: '○', running: '◉', done: '✓', failed: '✕', applied: '✓' };
+  tasksEl.innerHTML = '';
+
+  wf.tasks.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'wf-task';
+    row.dataset.id = t.id;
+    row.dataset.status = t.status;
+
+    const deptColor = DEPT_COLORS[t.department] || '#1C2B4A';
+    let actionsHtml = '';
+    if (t.status === 'pending') {
+      actionsHtml = `<button class="btn btn-ghost btn-xs" onclick="wfRunTask(${t.id})" ${wf.running ? 'disabled' : ''}>▶</button>`;
+    } else if (t.status === 'done' && t.result) {
+      actionsHtml = `<button class="btn btn-gold btn-xs" onclick="wfApply(${t.id})">Apply</button><button class="btn btn-ghost btn-xs" onclick="wfShowResult(${t.id})">View</button>`;
+    } else if (t.status === 'applied') {
+      actionsHtml = '<span style="font-size:0.62rem;color:#2E7D32;font-weight:600;">Saved</span>';
+    } else if (t.status === 'failed') {
+      actionsHtml = `<button class="btn btn-ghost btn-xs" onclick="wfRetry(${t.id})">Retry</button>`;
+    }
+
+    row.innerHTML = `
+      <div class="wf-task-status"><span>${STATUS_ICONS[t.status] || '○'}</span></div>
+      <div class="wf-task-info">
+        <span class="wf-task-dept" style="background:${deptColor}">${t.department}</span>
+        <span class="wf-task-label" title="${(t.task||'').replace(/"/g,'&quot;')}">${t.label}</span>
+      </div>
+      <div class="wf-task-actions">${actionsHtml}</div>
+    `;
+    tasksEl.appendChild(row);
+
+    if ((t.status === 'done' || t.status === 'failed') && t.result?.message) {
+      const msgRow = document.createElement('div');
+      msgRow.className = 'wf-task-msg';
+      msgRow.textContent = t.result.message;
+      tasksEl.appendChild(msgRow);
+    }
+  });
+}
+
+// ── Workflow: run a single task ────────────────────────────────────────────────
+async function wfRunTask(id) {
+  const task = wf.tasks.find(t => t.id === id);
+  if (!task || task.status !== 'pending') return;
+
+  wf.running = true;
+  task.status = 'running';
+  wfRender();
+
+  try {
+    const r = await fetch('/admin/master-agent/run-task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department: task.department,
+        task: task.task,
+        section_type: task.section_type,
+        page_type: task.page_type,
+        nav_target: task.nav_target,
+      }),
+    });
+    const data = await r.json();
+
+    // Navigate — auto-redirect immediately
+    if (data.navigate) {
+      task.status = 'done';
+      task.result = data;
+      wf.running = false;
+      wfRender();
+      window.location.href = data.navigate;
+      return;
+    }
+
+    if (data.error) {
+      task.status = 'failed';
+      task.result = { message: data.error };
+      maAddMsg('agent', `✕ ${task.label}: ${data.error}`);
+    } else {
+      task.status = 'done';
+      task.result = data;
+      maHistory.push({ role: 'assistant', content: `✓ ${task.label}: ${data.message}` });
+      maAddMsg('agent', `✓ <strong>${task.label}</strong> — ${data.message}`, true);
+
+      // Single-task workflow: auto-show result card
+      if (wf.tasks.length === 1) {
+        maLastResult = data;
+        maShowResult(data);
+      }
+
+      // Update suggestion chips with latest
+      if (data.suggestions?.length) {
+        _renderChips(data.suggestions);
+      }
+    }
+  } catch (e) {
+    task.status = 'failed';
+    task.result = { message: 'Connection error' };
+    maAddMsg('agent', `✕ ${task.label}: Connection error`);
+  }
+
+  wf.running = false;
+  wfRender();
+
+  // Continue if running all
+  if (wf.runAllMode) wfRunNext();
+}
+
+function wfRunNext() {
+  const next = wf.tasks.find(t => t.status === 'pending');
+  if (next) {
+    wfRunTask(next.id);
+  } else {
+    wf.runAllMode = false;
+    const done = wf.tasks.filter(t => t.status === 'done' || t.status === 'applied').length;
+    const failed = wf.tasks.filter(t => t.status === 'failed').length;
+    if (done + failed === wf.tasks.length) {
+      const msg = failed
+        ? `✦ Workflow done — ${done} completed, ${failed} failed. Review and apply below.`
+        : `✦ All ${done} tasks complete! Review and apply each one below.`;
+      maAddMsg('agent', msg, true);
+    }
+  }
+}
+
+function wfRunAll() {
+  wf.runAllMode = true;
+  wfRunNext();
+}
+
+function wfRetry(id) {
+  const task = wf.tasks.find(t => t.id === id);
+  if (task) { task.status = 'pending'; task.result = null; wfRender(); wfRunTask(id); }
+}
+
+// ── Workflow: apply a task result to DB ────────────────────────────────────────
+async function wfApply(id) {
+  const task = wf.tasks.find(t => t.id === id);
+  if (!task || !task.result || task.status !== 'done') return;
+
+  try {
+    const r = await fetch('/admin/master-agent/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department: task.result.department,
+        fill: task.result.fill,
+        section_type: task.result.section_type,
+        page_type: task.result.page_type,
+        label: task.result.fill?.heading || task.result.fill?.title,
+      }),
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      task.status = 'applied';
+      const linkHtml = data.editUrl ? ` <a href="${data.editUrl}" style="color:var(--gold);">View →</a>` : '';
+      maAddMsg('agent', `✓ Applied: ${data.message}${linkHtml}`, true);
+    } else {
+      maAddMsg('agent', 'Could not apply: ' + (data.message || data.error));
+    }
+  } catch (e) {
+    maAddMsg('agent', 'Save failed — please try again.');
+  }
+  wfRender();
+}
+
+function wfShowResult(id) {
+  const task = wf.tasks.find(t => t.id === id);
+  if (!task || !task.result) return;
+  maLastResult = task.result;
+  maShowResult(task.result);
+}
+
+function wfClear() {
+  wf = { title: '', tasks: [], running: false, runAllMode: false };
+  wfRender();
+  document.getElementById('ma-result').style.display = 'none';
+}
+
+// ── Send (plan → workflow or single-task) ─────────────────────────────────────
+async function maSend() {
+  const input = document.getElementById('ma-input');
+  const text = input.value.trim();
+  if (!text || wf.running) return;
+  input.value = '';
+  document.getElementById('ma-quick-wrap').style.display = 'none';
+  document.getElementById('ma-result').style.display = 'none';
+
+  maHistory.push({ role: 'user', content: text });
+  maAddMsg('user', text);
+  maSetLoading(true);
+
+  // Step 1 — Plan: classify as single task or multi-step workflow
+  const planBub = maAddMsg('agent', '✦ Planning…');
+  planBub.style.opacity = '0.55';
+  planBub.style.fontSize = '0.8rem';
+
+  try {
+    const pr = await fetch('/admin/master-agent/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    const plan = await pr.json();
+    const taskCount = plan.tasks?.length || 1;
+
+    if (taskCount > 1) {
+      // ── Multi-step workflow ──
+      planBub.innerHTML = `✦ Planned <strong>${taskCount} tasks</strong>: <em>${plan.title}</em>`;
+      maHistory.push({ role: 'assistant', content: `Planned workflow: ${plan.title} (${taskCount} tasks)` });
+
+      wf = {
+        title: plan.title || 'Workflow',
+        tasks: plan.tasks.map((t, i) => ({
+          id: i + 1,
+          department: t.department || 'copy',
+          task: t.task || text,
+          label: t.label || (t.task || '').slice(0, 40),
+          section_type: t.section_type || null,
+          page_type: t.page_type || null,
+          nav_target: t.nav_target || null,
+          status: 'pending',
+          result: null,
+        })),
+        running: false,
+        runAllMode: false,
+      };
+      wfRender();
+      maSetLoading(false);
+      return;
+    }
+
+    // ── Navigate — instant redirect, no LLM needed ──
+    const singleTask = plan.tasks?.[0];
+    if (singleTask?.department === 'navigate') {
+      planBub.closest('.ma-msg').remove();
+      maSetLoading(false);
+      try {
+        const nr = await fetch('/admin/master-agent/run-task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ department: 'navigate', task: text, nav_target: singleTask.nav_target }),
+        });
+        const navData = await nr.json();
+        if (navData.navigate) { window.location.href = navData.navigate; return; }
+      } catch { /* fall through */ }
+    }
+
+    // ── Single task — run immediately via research → generate ──
+    planBub.closest('.ma-msg').remove();
+
+    const searchBub = maAddMsg('agent', '🔍 Researching…');
+    searchBub.style.opacity = '0.55';
+    searchBub.style.fontSize = '0.8rem';
+
+    let research = null;
+    try {
+      const rr = await fetch('/admin/master-agent/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: maHistory }),
+      });
+      research = await rr.json();
+      if (research?.searchQuery) {
+        searchBub.innerHTML = `🔍 Searched: <em>${research.searchQuery}</em>`;
+      }
+    } catch { searchBub.textContent = '🔍 Researching…'; }
+
+    const typingBub = maAddMsg('agent', '✦ Writing…');
+    typingBub.style.opacity = '0.5';
+
+    try {
+      const r = await fetch('/admin/master-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: maHistory, research }),
+      });
+      const data = await r.json();
+      typingBub.closest('.ma-msg').remove();
+
+      if (data.error) {
+        maHistory.pop();
+        maAddMsg('agent', 'Error: ' + data.error);
+        return;
+      }
+
+      maLastResult = data;
+      maHistory.push({ role: 'assistant', content: data.message });
+
+      // Show as single-item workflow for consistency
+      wf = {
+        title: plan.title || data.message?.slice(0, 40) || 'Task',
+        tasks: [{
+          id: 1, department: data.department, task: text,
+          label: plan.tasks?.[0]?.label || data.message?.slice(0, 40) || text.slice(0, 40),
+          section_type: data.section_type, page_type: data.page_type,
+          status: 'done', result: data,
+        }],
+        running: false, runAllMode: false,
+      };
+      wfRender();
+
+      const agentBub = maAddMsg('agent', data.message + ' <span style="font-size:0.75rem;color:var(--slate);">See workflow below ↓</span>', true);
+      maShowResult(data);
+      const speakBtn = agentBub.closest('.ma-msg')?.querySelector('.ma-speak-btn');
+      maSpeak(data.message, speakBtn, true);
+    } catch (e) {
+      typingBub.closest('.ma-msg').remove();
+      maHistory.pop();
+      maAddMsg('agent', 'Connection error — please try again.');
+    }
+  } catch (e) {
+    planBub.closest('.ma-msg').remove();
+    maHistory.pop();
+    maAddMsg('agent', 'Connection error — please try again.');
+  } finally {
+    maSetLoading(false);
+  }
+}
+
+// ── Quick send (used by prompt chips) ────────────────────────────────────────
+function maQuickSend(prompt) {
+  document.getElementById('ma-input').value = prompt;
+  maSend();
+}
+
+// ── Result card ──────────────────────────────────────────────────────────────
+function maShowResult(data) {
+  const res      = document.getElementById('ma-result');
+  const deptEl   = document.getElementById('ma-result-dept');
+  const msgEl    = document.getElementById('ma-result-msg');
+  const fieldsEl = document.getElementById('ma-result-fields');
+  const execBtn  = document.getElementById('ma-execute-btn');
+  const editorBtn = document.getElementById('ma-editor-btn');
+
+  deptEl.textContent = data.department;
+  deptEl.style.background = DEPT_COLORS[data.department] || '#1C2B4A';
+  msgEl.textContent = data.message;
+
+  fieldsEl.innerHTML = '';
+  const entries = Object.entries(data.fill || {}).filter(([, v]) => v && String(v).trim());
+  entries.forEach(([k, v]) => {
+    const row = document.createElement('div');
+    row.className = 'ma-field-row';
+    const preview = String(v).replace(/<[^>]+>/g, ' ').trim().slice(0, 160);
+    row.innerHTML = `<span class="ma-field-key">${k.replace(/_/g,' ')}</span><span class="ma-field-val">${preview}${String(v).length > 160 ? '…' : ''}</span>`;
+    fieldsEl.appendChild(row);
+  });
+
+  execBtn.textContent = 'Apply Now';
+  execBtn.disabled = false;
+  editorBtn.textContent = data.action?.label || 'Open in Editor';
+  res.style.display = 'block';
+
+  // Update quick chips with contextual follow-up suggestions
+  const quick = document.getElementById('ma-quick');
+  quick.innerHTML = '';
+  if (Array.isArray(data.suggestions) && data.suggestions.length) {
+    data.suggestions.forEach(s => {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-ghost btn-sm ma-quick-btn';
+      btn.textContent = s;
+      btn.onclick = () => maQuickSend(s);
+      quick.appendChild(btn);
+    });
+    document.getElementById('ma-quick-wrap').style.display = 'flex';
+  }
+}
+
+// ── Apply Now ─────────────────────────────────────────────────────────────────
+async function maExecute() {
+  if (!maLastResult || maExecuting) return;
+  maExecuting = true;
+  const btn = document.getElementById('ma-execute-btn');
+  btn.textContent = 'Saving…';
+  btn.disabled = true;
+
+  try {
+    const r = await fetch('/admin/master-agent/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department: maLastResult.department,
+        fill: maLastResult.fill,
+        section_type: maLastResult.section_type,
+        page_type: maLastResult.page_type,
+        label: maLastResult.fill?.heading || maLastResult.fill?.title,
+      }),
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      document.getElementById('ma-result').style.display = 'none';
+      const linkHtml = data.editUrl
+        ? ` <a href="${data.editUrl}" style="color:var(--gold);text-decoration:underline;">View →</a>`
+        : '';
+      maHistory.push({ role: 'assistant', content: '✓ ' + data.message });
+      maAddMsg('agent', `✓ ${data.message}${linkHtml}`, true);
+      // Sync workflow checklist
+      const wfTask = wf.tasks.find(t => t.result === maLastResult);
+      if (wfTask) { wfTask.status = 'applied'; wfRender(); }
+    } else {
+      maAddMsg('agent', 'Could not apply: ' + (data.message || data.error));
+    }
+  } catch (e) {
+    maAddMsg('agent', 'Save failed — please try again.');
+  } finally {
+    maExecuting = false;
+    btn.textContent = 'Apply Now';
+    btn.disabled = false;
+  }
+}
+
+// ── Open in Editor ───────────────────────────────────────────────────────────
+function maOpenEditor() {
+  if (!maLastResult) return;
+  try { sessionStorage.setItem('slab_agent_fill', JSON.stringify(maLastResult)); } catch {}
+  window.location.href = maLastResult.action?.url || '/admin';
+}
+
+// ── Cycling Suggestions ───────────────────────────────────────────────────────
+let _cycleSpinDeg = 0;
+
+function _renderChips(picks) {
+  const quick = document.getElementById('ma-quick');
+  quick.innerHTML = '';
+  picks.forEach((s, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost btn-sm ma-quick-btn ma-chip-enter';
+    const label = s.length <= 40 ? s : (s.match(/^[^—,]+/)?.[0]?.trim() || s.slice(0, 35)) + '…';
+    btn.textContent = label;
+    btn.title = s;
+    btn.onclick = () => maQuickSend(s);
+    quick.appendChild(btn);
+    setTimeout(() => btn.classList.replace('ma-chip-enter', 'ma-chip-visible'), 40 + idx * 70);
+  });
+  document.getElementById('ma-quick-wrap').style.display = 'flex';
+}
+
+async function maCycleSuggestions() {
+  const quick = document.getElementById('ma-quick');
+
+  // Fade out old chips
+  const oldBtns = quick.querySelectorAll('.ma-quick-btn');
+  oldBtns.forEach(b => { b.classList.remove('ma-chip-visible'); b.classList.add('ma-chip-enter'); });
+
+  // Spin the recycle icon
+  _cycleSpinDeg += 360;
+  const cycleBtn = document.getElementById('ma-cycle-btn');
+  if (cycleBtn) cycleBtn.style.transform = `rotate(${_cycleSpinDeg}deg)`;
+
+  const delay = oldBtns.length ? 180 : 0;
+
+  // Try server first for fresh randoms, fall back to local pool
+  let picks;
+  try {
+    const r = await fetch('/admin/master-agent/suggestions');
+    const data = await r.json();
+    if (data.suggestions?.length) picks = data.suggestions;
+  } catch { /* fall back to local */ }
+
+  if (!picks) {
+    picks = [];
+    for (let i = 0; i < 4; i++) {
+      picks.push(SUGGESTION_POOL[(_suggestionIdx + i) % SUGGESTION_POOL.length]);
+    }
+    _suggestionIdx = (_suggestionIdx + 4) % SUGGESTION_POOL.length;
+  }
+
+  setTimeout(() => _renderChips(picks), delay);
+}
+
+// Shuffle pool on load so each session feels fresh
+(function shufflePool() {
+  for (let i = SUGGESTION_POOL.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [SUGGESTION_POOL[i], SUGGESTION_POOL[j]] = [SUGGESTION_POOL[j], SUGGESTION_POOL[i]];
+  }
+  maCycleSuggestions();
+})();
+
+// ── Enter key ────────────────────────────────────────────────────────────────
+document.getElementById('ma-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); maSend(); }
+});
+</script>
+
+<!-- ── ADMIN ONBOARDING TOUR ─────────────────────────────────────────────── -->
+<style>
+#w2tut-overlay {
+  position: fixed; inset: 0; z-index: 9990;
+  pointer-events: all; /* blocks all page clicks during tour */
+}
+#w2tut-spot {
+  position: fixed; z-index: 9992; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(8,15,32,0.82);
+  transition: left 0.42s cubic-bezier(0.4,0,0.2,1),
+              top  0.42s cubic-bezier(0.4,0,0.2,1),
+              width  0.42s cubic-bezier(0.4,0,0.2,1),
+              height 0.42s cubic-bezier(0.4,0,0.2,1),
+              border-radius 0.42s;
+}
+#w2tut-tip {
+  position: fixed; z-index: 9993; pointer-events: none;
+  background: #fff; border-radius: 4px;
+  padding: 20px 24px; max-width: 360px; min-width: 260px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.35);
+  font-family: 'Jost', sans-serif; font-size: 0.9rem;
+  font-weight: 300; line-height: 1.65; color: #0F1B30;
+  transition: left 0.42s cubic-bezier(0.4,0,0.2,1),
+              top  0.42s cubic-bezier(0.4,0,0.2,1);
+}
+#w2tut-tip strong { font-weight: 600; color: #1C2B4A; }
+#w2tut-step-label {
+  font-size: 0.6rem; font-weight: 600; letter-spacing: 0.22em;
+  text-transform: uppercase; color: #C9A848; margin-bottom: 10px;
+}
+#w2tut-exit {
+  position: fixed; bottom: 32px; left: 32px; z-index: 9993;
+  background: transparent; border: 1px solid rgba(255,255,255,0.22);
+  color: rgba(255,255,255,0.55); padding: 10px 20px;
+  font-family: 'Jost', sans-serif; font-size: 0.76rem; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; border-radius: 2px; transition: all 0.2s;
+}
+#w2tut-exit:hover { border-color: rgba(255,255,255,0.5); color: #fff; }
+#w2tut-next {
+  position: fixed; bottom: 32px; right: 32px; z-index: 9993;
+  background: #C9A848; border: none; color: #0F1B30;
+  padding: 13px 30px; font-family: 'Jost', sans-serif;
+  font-size: 0.82rem; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; cursor: pointer; border-radius: 2px;
+  transition: background 0.2s;
+}
+#w2tut-next:hover { background: #E8D08A; }
+#w2tut-dots {
+  position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+  z-index: 9993; display: flex; gap: 8px; pointer-events: none;
+}
+.w2tut-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.22); transition: background 0.3s;
+}
+.w2tut-dot.active { background: #C9A848; }
+#w2tut-final {
+  position: fixed; z-index: 9993; pointer-events: none;
+  background: #fff; border-radius: 4px;
+  padding: 20px 24px; max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  font-family: 'Jost', sans-serif; font-size: 0.92rem;
+  font-weight: 300; line-height: 1.7; color: #0F1B30;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  text-align: center; display: none;
+}
+#w2tut-final strong { font-weight: 600; color: #1C2B4A; }
+#w2tut-final .tut-final-icon {
+  font-size: 1.6rem; margin-bottom: 8px; display: block;
+}
+/* force hamburger visible during tour */
+.w2tut-active #sidebarToggle { display: flex !important; }
+</style>
+
+<div id="w2tut-overlay" style="display:none;"></div>
+<div id="w2tut-spot" style="display:none;"></div>
+<div id="w2tut-tip" style="display:none;"><div id="w2tut-step-label"></div><div id="w2tut-msg"></div></div>
+<div id="w2tut-dots" style="display:none;"></div>
+<button id="w2tut-exit" style="display:none;">✕ Skip Tour</button>
+<button id="w2tut-next" style="display:none;">Next →</button>
+<div id="w2tut-final"></div>
+
+<script>
+(function() {
+  if (localStorage.getItem('slab_admin_tour_done')) return;
+
+  const STEPS = [
+    {
+      targetId: 'sidebarToggle',
+      shape: 'circle', pad: 18,
+      label: 'Step 1 of 5',
+      msg: 'Welcome! This button opens your <strong>admin navigation menu</strong>. Let\'s explore it together.',
+      onNext() {
+        const s = document.getElementById('sidebar');
+        const o = document.getElementById('sidebarOverlay');
+        const t = document.getElementById('sidebarToggle');
+        s.classList.add('open');
+        if (o) { o.style.display = 'block'; o.classList.add('active'); }
+        t.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
+    },
+    {
+      targetSel: 'a[href="/admin/sections"]',
+      shape: 'rect', pad: 8,
+      label: 'Step 2 of 5',
+      msg: 'Here\'s <strong>Sections</strong> — build and manage custom content blocks like CTAs, cards, FAQs, and image splits for your site.',
+      onNext() {
+        const s = document.getElementById('sidebar');
+        const o = document.getElementById('sidebarOverlay');
+        const t = document.getElementById('sidebarToggle');
+        s.classList.remove('open');
+        if (o) { o.classList.remove('active'); o.style.display = ''; }
+        t.classList.remove('open');
+        document.body.style.overflow = '';
+      }
+    },
+    {
+      targetSel: '.agent-card',
+      shape: 'rect', pad: 0,
+      label: 'Step 3 of 5',
+      msg: 'Here you can fill out your site content manually — or try your <strong>AI suggestion</strong>. Your agent can write copy, blog posts, and build new sections.',
+      onNext() {
+        const el = document.querySelector('.ma-input-row');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    },
+    {
+      targetSel: '#ma-quick',
+      targetSel2: '.ma-input-row',
+      shape: 'rect', pad: 10,
+      label: 'Step 4 of 5',
+      msg: 'Choose a <strong>preset suggestion</strong> to get started quickly, or type any request in the chat bar. Your agent works best with clear, specific instructions.',
+      onNext() {}
+    },
+    {
+      final: true,
+      label: 'Step 5 of 5',
+      msg: 'All your admin tools let you update <strong>copy, images, layout, and page views</strong> of your site. We recommend spending a little time with your agents before using the dashboard AI assistant — it helps you understand exactly what changes are possible.<br><br>Thank you for using the platform! ✦'
+    }
+  ];
+
+  let step = 0;
+
+  // Show tour UI
+  document.body.classList.add('w2tut-active');
+  document.getElementById('w2tut-overlay').style.display = 'block';
+  document.getElementById('w2tut-dots').style.display = 'flex';
+  document.getElementById('w2tut-exit').style.display = 'block';
+  document.getElementById('w2tut-next').style.display = 'block';
+
+  showStep(0);
+
+  function showStep(n) {
+    step = n;
+    const s = STEPS[n];
+
+    // Dots
+    document.getElementById('w2tut-dots').innerHTML =
+      STEPS.map((_, i) => `<div class="w2tut-dot${i === n ? ' active' : ''}"></div>`).join('');
+
+    // Next button label
+    document.getElementById('w2tut-next').textContent = n === STEPS.length - 1 ? 'Done ✓' : 'Next →';
+
+    if (s.final) {
+      document.getElementById('w2tut-spot').style.display = 'none';
+      document.getElementById('w2tut-tip').style.display = 'none';
+      const fin = document.getElementById('w2tut-final');
+      fin.style.display = 'block';
+      fin.innerHTML = `<span class="tut-final-icon">✦</span><strong style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:400;display:block;margin-bottom:10px;">You\'re all set!</strong>${s.msg}`;
+      return;
+    }
+
+    document.getElementById('w2tut-final').style.display = 'none';
+    document.getElementById('w2tut-step-label').textContent = s.label;
+    document.getElementById('w2tut-msg').innerHTML = s.msg;
+
+    // Resolve target element
+    let el;
+    if (s.targetId) {
+      el = document.getElementById(s.targetId);
+    } else {
+      el = document.querySelector(s.targetSel);
+    }
+    if (!el) return;
+
+    // Scroll element into view first (for agent card on scrolled page)
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    setTimeout(function() {
+      const rect = el.getBoundingClientRect();
+      const spot = document.getElementById('w2tut-spot');
+      spot.style.display = 'block';
+      const tip  = document.getElementById('w2tut-tip');
+      tip.style.display = 'block';
+      const pad = s.pad || 0;
+
+      if (s.shape === 'circle') {
+        const size = Math.max(rect.width, rect.height) + pad * 2;
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        spot.style.width  = size + 'px';
+        spot.style.height = size + 'px';
+        spot.style.borderRadius = '50%';
+        spot.style.left = (cx - size / 2) + 'px';
+        spot.style.top  = (cy - size / 2) + 'px';
+      } else {
+        let top    = rect.top    - pad;
+        let left   = rect.left   - pad;
+        let right  = rect.right  + pad;
+        let bottom = rect.bottom + pad;
+        // Union with optional second target
+        if (s.targetSel2) {
+          const el2 = document.querySelector(s.targetSel2);
+          if (el2) {
+            const r2 = el2.getBoundingClientRect();
+            top    = Math.min(top,    r2.top    - pad);
+            left   = Math.min(left,   r2.left   - pad);
+            right  = Math.max(right,  r2.right  + pad);
+            bottom = Math.max(bottom, r2.bottom + pad);
+          }
+        }
+        spot.style.left   = left + 'px';
+        spot.style.top    = top  + 'px';
+        spot.style.width  = (right - left) + 'px';
+        spot.style.height = (bottom - top) + 'px';
+        spot.style.borderRadius = '6px';
+      }
+
+      // Position tooltip
+      const spotR = spot.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const tipW = 360, tipH = 140, margin = 18;
+
+      // Prefer below spotlight
+      let tipTop = spotR.bottom + margin;
+      if (tipTop + tipH > vh - 80) tipTop = spotR.top - tipH - margin;
+      tipTop = Math.max(10, Math.min(tipTop, vh - tipH - 80));
+
+      let tipLeft = spotR.left;
+      if (tipLeft + tipW > vw - 20) tipLeft = vw - tipW - 20;
+      tipLeft = Math.max(16, tipLeft);
+
+      tip.style.left = tipLeft + 'px';
+      tip.style.top  = tipTop  + 'px';
+    }, n === 0 ? 60 : 80);
+  }
+
+  function endTour() {
+    localStorage.setItem('slab_admin_tour_done', '1');
+    document.body.classList.remove('w2tut-active');
+    ['w2tut-overlay','w2tut-spot','w2tut-tip','w2tut-dots',
+     'w2tut-exit','w2tut-next','w2tut-final'].forEach(function(id) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    // Ensure sidebar closed & hamburger reset
+    document.getElementById('sidebar').classList.remove('open');
+    const o = document.getElementById('sidebarOverlay');
+    if (o) { o.classList.remove('active'); o.style.display = ''; }
+    document.getElementById('sidebarToggle').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  document.getElementById('w2tut-next').addEventListener('click', function() {
+    if (step < STEPS.length - 1) {
+      if (STEPS[step].onNext) STEPS[step].onNext();
+      const delay = (step === 0) ? 320 : 60;
+      setTimeout(function() { showStep(step + 1); }, delay);
+    } else {
+      endTour();
+    }
+  });
+
+  document.getElementById('w2tut-exit').addEventListener('click', endTour);
+})();
+</script>
+
+<script src="/js/tours/dashboard.js"></script>
+<script src="/js/tours/master-agent.js"></script>
+
+<% if (typeof tenant !== 'undefined' && tenant?.isPreview) { %>
+<!-- Go Live Modal -->
+<div id="goLiveOverlay" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); display:none; align-items:center; justify-content:center;">
+  <div style="background:#141414; border:1px solid #333; border-radius:12px; max-width:420px; width:calc(100% - 32px); padding:32px; text-align:center; font-family:'Inter',system-ui,sans-serif;">
+    <div style="font-size:28px; margin-bottom:8px;">&#9889;</div>
+    <h2 style="font-size:20px; font-weight:600; color:#fff; margin-bottom:8px;">Go Live</h2>
+    <p style="font-size:13px; color:#a3a3a3; line-height:1.6; margin-bottom:20px;">
+      Make your site public and accessible to visitors. Choose a plan:
+    </p>
+    <div id="goLivePlans" style="display:grid; gap:10px; margin-bottom:20px; text-align:left;">
+      <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#1a1a1a; border:1px solid #333; border-radius:6px; cursor:pointer; transition:border 0.2s;">
+        <input type="radio" name="goPlan" value="monthly" checked style="accent-color:#c9a848;">
+        <div><div style="font-size:14px; font-weight:500; color:#fff;">Monthly — $50/mo</div><div style="font-size:11px; color:#737373;">Cancel anytime</div></div>
+      </label>
+      <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#1a1a1a; border:1px solid #333; border-radius:6px; cursor:pointer; transition:border 0.2s;">
+        <input type="radio" name="goPlan" value="annual" style="accent-color:#c9a848;">
+        <div><div style="font-size:14px; font-weight:500; color:#fff;">Annual — $360/yr</div><div style="font-size:11px; color:#737373;">Save 40% ($30/mo)</div></div>
+      </label>
+      <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#1a1a1a; border:1px solid #333; border-radius:6px; cursor:pointer; transition:border 0.2s;">
+        <input type="radio" name="goPlan" value="lifetime" style="accent-color:#c9a848;">
+        <div><div style="font-size:14px; font-weight:500; color:#fff;">Lifetime — $499 once</div><div style="font-size:11px; color:#737373;">Pay once, use forever</div></div>
+      </label>
+    </div>
+    <button id="goLiveSubmit" style="width:100%; padding:14px; background:#c9a848; color:#0a0a0a; border:none; border-radius:6px; font-family:'Inter',sans-serif; font-size:15px; font-weight:600; cursor:pointer;">Continue to Payment</button>
+    <button id="goLiveCancel" style="width:100%; padding:10px; background:none; border:none; color:#737373; font-size:13px; cursor:pointer; margin-top:8px;">Not yet — keep building</button>
+  </div>
+</div>
+<script>
+(function() {
+  const overlay = document.getElementById('goLiveOverlay');
+  if (!overlay) return;
+
+  function showModal() {
+    overlay.style.display = 'flex';
+  }
+  function hideModal() {
+    overlay.style.display = 'none';
+    // Remove golive param from URL
+    const url = new URL(window.location);
+    url.searchParams.delete('golive');
+    history.replaceState({}, '', url);
+  }
+
+  // Show modal if ?golive=1 in URL
+  if (new URLSearchParams(window.location.search).get('golive') === '1') {
+    showModal();
+  }
+
+  // Also wire up any Go Live buttons on the page
+  document.querySelectorAll('[href*="golive=1"]').forEach(el => {
+    el.addEventListener('click', (e) => { e.preventDefault(); showModal(); });
+  });
+  document.getElementById('goLiveBtn')?.addEventListener('click', (e) => { e.preventDefault(); showModal(); });
+
+  document.getElementById('goLiveCancel').addEventListener('click', hideModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) hideModal(); });
+
+  document.getElementById('goLiveSubmit').addEventListener('click', async () => {
+    const plan = document.querySelector('input[name=goPlan]:checked')?.value || 'monthly';
+    const btn = document.getElementById('goLiveSubmit');
+    btn.disabled = true;
+    btn.textContent = 'Redirecting...';
+    try {
+      const res = await fetch('/start/go-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || 'Could not start checkout. Contact support.');
+        btn.disabled = false;
+        btn.textContent = 'Continue to Payment';
+      }
+    } catch {
+      alert('Network error. Please try again.');
+      btn.disabled = false;
+      btn.textContent = 'Continue to Payment';
+    }
+  });
+})();
+</script>
+<% } %>
+
+<% if (typeof tenant !== 'undefined' && tenant?.isPreview) { %>
+<div style="position:fixed; bottom:0; left:0; right:0; z-index:9998; background:linear-gradient(90deg, #1C2B4A, #2E4270); padding:10px 20px; display:flex; align-items:center; justify-content:center; gap:16px; font-family:'Inter',system-ui,sans-serif; font-size:13px; color:#F5F3EF;">
+  <span style="opacity:0.7;">Your site is in <strong style="color:#c9a848;">preview mode</strong> — only you can see it</span>
+  <a href="/admin?golive=1" style="background:#c9a848; color:#0a0a0a; padding:6px 16px; border-radius:4px; font-weight:600; font-size:12px; text-decoration:none;">Go Live</a>
+</div>
+<% } %>
+</body>
+</html>

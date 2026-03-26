@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get Started — Slab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card { background:#141414; max-width:520px; width:100%; border-radius:12px; overflow:hidden; border:1px solid #262626; }
+    .header { padding:32px 32px 0; text-align:center; }
+    .logo { font-size:28px; font-weight:600; letter-spacing:-0.5px; color:#fff; }
+    .logo span { color:#c9a848; }
+    .tagline { font-size:13px; color:#737373; margin-top:6px; letter-spacing:0.5px; }
+    .body { padding:28px 32px 32px; }
+    .error { background:#451a1a; color:#fca5a5; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:16px; }
+    .success-msg { background:#14532d; color:#86efac; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:16px; }
+    label { display:block; font-size:12px; font-weight:500; color:#a3a3a3; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.8px; }
+    .field { margin-bottom:20px; }
+    input[type=text], input[type=email] {
+      width:100%; padding:12px 14px; background:#1a1a1a; border:1px solid #333; border-radius:6px;
+      font-family:'Inter',sans-serif; font-size:14px; color:#e5e5e5; outline:none; transition:border 0.2s;
+    }
+    input:focus { border-color:#c9a848; }
+    .subdomain-wrap { display:flex; align-items:stretch; gap:0; }
+    .subdomain-wrap input { border-radius:6px 0 0 6px; flex:1; }
+    .subdomain-suffix {
+      background:#262626; border:1px solid #333; border-left:0; border-radius:0 6px 6px 0;
+      padding:12px 12px; font-size:12px; color:#737373; white-space:nowrap; display:flex; align-items:center;
+    }
+    .avail { font-size:12px; margin-top:4px; min-height:18px; }
+    .avail.ok { color:#4ade80; }
+    .avail.no { color:#f87171; }
+    .btn {
+      width:100%; padding:14px; background:#c9a848; color:#0a0a0a; border:none; border-radius:6px;
+      font-family:'Inter',sans-serif; font-size:15px; font-weight:600; cursor:pointer;
+      letter-spacing:0.3px; transition:background 0.2s; margin-top:8px;
+    }
+    .btn:hover { background:#d4b85c; }
+    .btn:disabled { background:#404040; color:#737373; cursor:not-allowed; }
+    .free-badge { text-align:center; margin-top:16px; }
+    .free-badge span { background:#262626; color:#c9a848; font-size:12px; font-weight:500; padding:6px 16px; border-radius:20px; letter-spacing:0.5px; }
+    .features { margin-top:20px; padding-top:20px; border-top:1px solid #262626; }
+    .features ul { list-style:none; display:grid; gap:8px; }
+    .features li { font-size:13px; color:#a3a3a3; padding-left:20px; position:relative; }
+    .features li::before { content:''; position:absolute; left:0; top:6px; width:8px; height:8px; border-radius:50%; background:#c9a848; }
+    .fine { text-align:center; margin-top:16px; font-size:11px; color:#525252; line-height:1.6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="logo"><span>S</span>lab</div>
+      <div class="tagline">Your website, your brand, live in minutes</div>
+    </div>
+    <div class="body">
+      <% if (error) { %><div class="error"><%= error === 'cancelled' ? 'Payment was cancelled.' : error %></div><% } %>
+      <% if (success) { %><div class="success-msg">Your site is ready! Check your email for your admin link.</div><% } %>
+
+      <form id="startForm">
+        <div class="field">
+          <label>Business Name</label>
+          <input type="text" name="brandName" placeholder="Acme Marketing" required>
+        </div>
+
+        <div class="field">
+          <label>Choose Your URL</label>
+          <div class="subdomain-wrap">
+            <input type="text" name="subdomain" placeholder="acme" required maxlength="30" autocomplete="off">
+            <div class="subdomain-suffix">.madladslab.com</div>
+          </div>
+          <div class="avail" id="availMsg"></div>
+        </div>
+
+        <div class="field">
+          <label>Location (optional)</label>
+          <input type="text" name="brandLocation" placeholder="Denver, CO">
+        </div>
+
+        <div class="field">
+          <label>Email</label>
+          <input type="email" name="email" placeholder="you@business.com" required>
+        </div>
+
+        <button type="submit" class="btn" id="submitBtn">Create My Site — Free</button>
+      </form>
+
+      <div class="free-badge"><span>No credit card required</span></div>
+
+      <div class="features">
+        <ul>
+          <li>Full admin panel with AI content agents</li>
+          <li>Build your site before going live</li>
+          <li>Client management, invoicing, email campaigns</li>
+          <li>Video meetings built in</li>
+          <li>Go live anytime for $50/mo</li>
+          <li>Custom domain support when you upgrade</li>
+        </ul>
+      </div>
+
+      <p class="fine">Free preview — explore the full platform. Go live when you're ready.</p>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('startForm');
+    const subInput = form.querySelector('[name=subdomain]');
+    const availMsg = document.getElementById('availMsg');
+    const btn = document.getElementById('submitBtn');
+    let checkTimer = null;
+    let subAvailable = false;
+
+    subInput.addEventListener('input', () => {
+      const val = subInput.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      subInput.value = val;
+      subAvailable = false;
+      clearTimeout(checkTimer);
+      if (val.length < 2) { availMsg.textContent = ''; return; }
+      availMsg.textContent = 'Checking...';
+      availMsg.className = 'avail';
+      checkTimer = setTimeout(async () => {
+        try {
+          const res = await fetch('/start/check-subdomain?s=' + encodeURIComponent(val));
+          const data = await res.json();
+          if (data.available) {
+            availMsg.textContent = data.slug + '.madladslab.com is available';
+            availMsg.className = 'avail ok';
+            subAvailable = true;
+          } else {
+            availMsg.textContent = data.reason || 'Already taken';
+            availMsg.className = 'avail no';
+          }
+        } catch { availMsg.textContent = ''; }
+      }, 400);
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!subAvailable) { availMsg.textContent = 'Choose an available subdomain'; availMsg.className = 'avail no'; return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Setting up your site...';
+
+      try {
+        const body = {
+          subdomain: form.subdomain.value,
+          brandName: form.brandName.value,
+          brandLocation: form.brandLocation.value,
+          email: form.email.value,
+        };
+        const res = await fetch('/start/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          window.location.href = data.adminUrl;
+        } else {
+          alert(data.error || 'Something went wrong');
+          btn.disabled = false;
+          btn.textContent = 'Create My Site — Free';
+        }
+      } catch {
+        alert('Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Create My Site — Free';
+      }
+    });
+  </script>
+</body>
+</html>
