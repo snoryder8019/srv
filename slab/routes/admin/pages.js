@@ -2,7 +2,7 @@ import express from 'express';
 import { getDb } from '../../plugins/mongo.js';
 import { ObjectId } from 'mongodb';
 import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
-import { buildBrandContext } from '../../plugins/brandContext.js';
+import { loadBrandContext } from '../../plugins/brandContext.js';
 
 const router = express.Router();
 
@@ -80,7 +80,7 @@ router.post('/agent', async (req, res) => {
     const isLanding   = (pageType || currentPage?.pageType) === 'landing';
     const isDataList  = (pageType || currentPage?.pageType) === 'data-list';
 
-    const brandCtx = buildBrandContext(req.tenant?.brand || {});
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
 
     let systemPrompt;
     if (isLanding) {

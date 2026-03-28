@@ -1,0 +1,51 @@
+<%- include('../../layout/header') %>
+
+<div class="admin-header">
+  <h1><%= lang === 'es' ? 'Turnos' : 'Shifts' %></h1>
+  <a href="/admin/shifts/command" class="btn btn-primary"><%= lang === 'es' ? 'Comando de Turno' : 'Shift Command' %></a>
+</div>
+
+<div class="filter-bar" style="display:flex;gap:8px;">
+  <form method="GET" action="/admin/shifts" style="display:flex;gap:8px;">
+    <select name="brandId" onchange="this.form.submit()">
+      <option value=""><%= t('admin.allBrands') %></option>
+      <% brands.forEach(b => { %>
+        <option value="<%= b._id %>" <%= selectedBrand === b._id.toString() ? 'selected' : '' %>><%= b.name %></option>
+      <% }) %>
+    </select>
+    <input type="date" name="date" value="<%= selectedDate %>" onchange="this.form.submit()">
+  </form>
+</div>
+
+<% if (shifts.length === 0) { %>
+  <div class="empty-state"><p><%= lang === 'es' ? 'Sin turnos' : 'No shifts' %></p></div>
+<% } else { %>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th><%= lang === 'es' ? 'Fecha' : 'Date' %></th>
+      <th><%= t('fields.brand') %></th>
+      <th><%= t('fields.shift') %></th>
+      <th>Status</th>
+      <th><%= lang === 'es' ? 'Equipo' : 'Crew' %></th>
+      <th><%= lang === 'es' ? 'Presentes' : 'Present' %></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% shifts.forEach(s => { %>
+    <tr>
+      <td><%= s.date %></td>
+      <td><%= s.brand?.name || '—' %></td>
+      <td><span class="badge"><%= s.shiftTime %></span></td>
+      <td><span class="badge cmd-<%= s.status %>"><%= s.status %></span></td>
+      <td><%= s.crew.length %></td>
+      <td><%= s.crew.filter(c => c.present).length %></td>
+      <td><a href="/admin/shifts/command?brandId=<%= s.brand?._id || s.brand %>" class="btn btn-sm"><%= lang === 'es' ? 'Comando' : 'Command' %></a></td>
+    </tr>
+    <% }) %>
+  </tbody>
+</table>
+<% } %>
+
+<%- include('../../layout/footer') %>

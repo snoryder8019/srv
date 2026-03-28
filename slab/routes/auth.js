@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { ObjectId } from 'mongodb';
 import { getSlabDb, getTenantDb } from '../plugins/mongo.js';
 import { issueAdminJWT, issuePortalJWT } from '../middleware/jwtAuth.js';
-import { isSuperAdminEmail, issueSuperAdminJWT } from '../middleware/superadmin.js';
+import { isSuperAdminEmail } from '../middleware/superadmin.js';
 import { config } from '../config/config.js';
 
 const router = express.Router();
@@ -121,6 +121,7 @@ router.get('/google/callback', async (req, res) => {
       linkClientId,
     } = ctx;
 
+
     // 2. Resolve OAuth credentials for token exchange
     let clientId, clientSecret;
     if (oauthSource === 'tenant' && tenantDbName) {
@@ -169,34 +170,46 @@ router.get('/google/callback', async (req, res) => {
       return res.redirect(`https://${returnDomain}/admin/login?error=oauth`);
     }
 
-    // 5. Find or create user in the correct database
+    // 5. Find or create user — link Google to existing local account by email
     const db = tenantDbName ? getTenantDb(tenantDbName) : getSlabDb();
     const users = db.collection('users');
     let user = await users.findOne({ email: profile.email });
 
-    if (!user) {
+    if (user) {
+      // Link Google provider to existing user if not already linked
+      const updates = {};
+      if (!user.googleId) updates.googleId = profile.id;
+      if (!user.providers || !user.providers.includes('google')) {
+        updates.providers = [...(user.providers || []), 'google'].filter((v, i, a) => a.indexOf(v) === i);
+      }
+      if (!user.displayName && profile.name) updates.displayName = profile.name;
+      if (Object.keys(updates).length) {
+        await users.updateOne({ _id: user._id }, { $set: updates });
+        user = { ...user, ...updates };
+      }
+    } else {
       const result = await users.insertOne({
-        providerID: profile.id,
-        provider: 'google',
+        googleId: profile.id,
+        providers: ['google'],
         email: profile.email,
         displayName: profile.name || `${profile.given_name || ''} ${profile.family_name || ''}`.trim(),
         firstName: profile.given_name || '',
         lastName: profile.family_name || '',
         password: '',
         isAdmin: false,
-        isW2Admin: false,
         tutorials: { seen: {}, dismissed: {}, autoPlay: true, lastReset: null },
         createdAt: new Date(),
       });
       user = await users.findOne({ _id: result.insertedId });
     }
 
-    // ── Superadmin flow ──
+    // ── Superadmin flow — issue a normal admin JWT, superadmin derived from email at request time ──
     if (authType === 'superadmin') {
       if (!isSuperAdminEmail(user.email)) {
         return res.redirect(`https://${returnDomain}/superadmin/login?error=unauthorized`);
       }
-      issueSuperAdminJWT(user, res);
+      user.isAdmin = true;
+      issueAdminJWT(user, res, tenantDbName, returnDomain);
       return res.redirect(`https://${returnDomain}/superadmin`);
     }
 
@@ -240,7 +253,7 @@ router.get('/google/callback', async (req, res) => {
     // ── Admin flow ──
     const isSuperUser = isSuperAdminEmail(user.email);
 
-    if (!user.isW2Admin && !user.isAdmin && !isSuperUser) {
+    if (!user.isAdmin && !isSuperUser) {
       return res.redirect(`https://${returnDomain}/admin/login?error=unauthorized`);
     }
 
@@ -249,10 +262,17 @@ router.get('/google/callback', async (req, res) => {
       user.isAdmin = true;
     }
 
-    issueAdminJWT(user, res);
-    if (isSuperUser) {
-      issueSuperAdminJWT(user, res);
+    // Custom domains can't receive cookies from slab.madladslab.com callback.
+    // Redirect with a one-time token — requireAdmin will exchange it for a cookie on the tenant domain.
+    const isCustom = returnDomain && !returnDomain.endsWith('.madladslab.com') && returnDomain !== 'localhost';
+    if (isCustom) {
+      const { createLoginToken } = await import('../middleware/jwtAuth.js');
+      const oneTimeToken = createLoginToken(user, tenantDbName, '2m');
+
+      return res.redirect(`https://${returnDomain}/admin?token=${oneTimeToken}`);
     }
+
+    issueAdminJWT(user, res, tenantDbName, returnDomain);
     res.redirect(`https://${returnDomain}/admin`);
   } catch (err) {
     console.error('[auth] OAuth callback error:', err);
@@ -266,7 +286,9 @@ router.get('/logout', (req, res) => {
   const opts = domain ? { domain } : {};
   res.clearCookie('slab_token', opts);
   res.clearCookie('slab_portal', opts);
-  res.clearCookie('slab_super', opts);
+  // Also clear on exact domain for custom domain tenants
+  res.clearCookie('slab_token');
+  res.clearCookie('slab_portal');
   res.redirect('/admin/login');
 });
 

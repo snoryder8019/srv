@@ -171,15 +171,7 @@ export const MCP_TOOLS = [
       required: ['query'],
     },
   },
-  {
-    name: 'fetch_url',
-    description: 'Fetch and read the text content of a webpage.',
-    inputSchema: {
-      type: 'object',
-      properties: { url: { type: 'string', description: 'URL to fetch' } },
-      required: ['url'],
-    },
-  },
+  // fetch_url removed — agents should not probe arbitrary URLs
   {
     name: 'fill_site_copy',
     description: 'Generate marketing copy for the business website sections (hero, services, about, contact).',
@@ -261,15 +253,12 @@ export const MCP_TOOLS = [
   },
   {
     name: 'manage_assets',
-    description: 'Manage digital assets — list, search, create folders, move assets between folders, update tags, or delete assets.',
+    description: 'Browse and search digital assets (read-only).',
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', description: 'Action: list, search, create_folder, move, tag, delete' },
+        action: { type: 'string', description: 'Action: list or search' },
         query: { type: 'string', description: 'Search query or folder name' },
-        folder: { type: 'string', description: 'Target folder for move/create operations' },
-        folders: { type: 'array', items: { type: 'string' }, description: 'Multiple folder slugs for multi-tag operations' },
-        assetId: { type: 'string', description: 'Specific asset ID to operate on' },
         context: { type: 'string', description: 'Extra context' },
       },
       required: ['action'],
@@ -337,9 +326,9 @@ Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
     "services_heading": "...",
     "services_heading_em": "...",
     "services_sub": "...",
-    "service1_title": "...", "service1_desc": "...",
-    "service2_title": "...", "service2_desc": "...",
-    "service3_title": "...", "service3_desc": "...",
+    "service1_title": "...", "service1_desc": "...", "service1_link": "/page-slug or URL",
+    "service2_title": "...", "service2_desc": "...", "service2_link": "/page-slug or URL",
+    "service3_title": "...", "service3_desc": "...", "service3_link": "/page-slug or URL",
     "about_quote": "...",
     "about_desc": "...",
     "about_sig": "",
@@ -594,8 +583,8 @@ Keep palettes cohesive. Primary/deep/mid should be shades of same hue. Accent sh
   return tryParseAgentResponse(raw);
 }
 
-async function handleManageAssets({ action, query, folder, folders, assetId, context, brandContext }) {
-  // This tool is handled by the asset agent route directly — the LLM just plans the action
+async function handleManageAssets({ action, query, context, brandContext }) {
+  // Read-only: agents can only list or search assets
   const contextNote = context ? `\nContext: ${context}` : '';
   const brand = brandContext ? `\n${brandContext}\n` : '';
   const systemPrompt = `You are an asset management assistant for the business.
@@ -604,24 +593,16 @@ Interpret the user's request and output a structured action plan.
 
 Output ONLY raw JSON — no prose, no fences. Shape:
 {
-  "message": "one sentence describing what you will do",
+  "message": "one sentence describing what you found",
   "fill": {
-    "action": "list | search | create_folder | move | tag | delete",
-    "query": "search term if searching",
-    "folder": "target folder name if moving/creating",
-    "folders": ["array of folder slugs if multi-tagging"],
-    "assetId": "specific asset ID if targeting one",
-    "tags": "comma-separated tags to apply"
+    "action": "list | search",
+    "query": "search term if searching"
   }
 }
 
-Actions:
+Actions (read-only):
 - list: list assets in a folder or all
 - search: search by title/tags
-- create_folder: create a new custom folder
-- move: move asset(s) to folder(s)
-- tag: update tags on asset(s)
-- delete: delete specific asset(s)
 ${contextNote}`;
 
   const raw = await callLLM([{ role: 'user', content: `Asset management request: ${action || query || 'list all'}` }], systemPrompt);
@@ -785,7 +766,6 @@ ${siteContent ? `--- WEBSITE CONTENT ---\n${siteContent}` : ''}`;
 
 const TOOL_HANDLERS = {
   web_search:           ({ query }) => webSearch(query).then(r => ({ result: r })),
-  fetch_url:            ({ url })   => fetchUrl(url).then(r => ({ result: r })),
   fill_site_copy:       handleFillSiteCopy,
   write_blog_post:      handleWriteBlogPost,
   fill_section:         handleFillSection,

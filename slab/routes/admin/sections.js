@@ -5,7 +5,8 @@ import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET } from '../../plugins/s3.js';
 import { ObjectId } from 'mongodb';
 import { config } from '../../config/config.js';
-import { buildBrandContext } from '../../plugins/brandContext.js';
+import { loadBrandContext } from '../../plugins/brandContext.js';
+import { callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
 
 const router = express.Router();
 
@@ -435,7 +436,7 @@ router.post('/agent', async (req, res) => {
     ? `\n\nCurrent values:\n${Object.entries(currentCopy).map(([k,v]) => `  ${k}: "${v}"`).join('\n')}`
     : '';
 
-  const brandCtx = buildBrandContext(req.tenant?.brand || {});
+  const brandCtx = await loadBrandContext(req.tenant, req.db);
 
   const systemPrompt = `You are a professional copywriting assistant for the business.
 
@@ -450,33 +451,11 @@ If chatting only: {"message":"response","fill":{}}
 Fields available for this section: ${fieldList}${copyCtx}`;
 
   try {
-    const llmRes = await fetch(config.OLLAMA_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.OLLAMA_KEY}` },
-      body: JSON.stringify({
-        model: config.OLLAMA_MODEL,
-        messages: [{ role: 'system', content: systemPrompt }, ...messages],
-        stream: false,
-      }),
-    });
-
-    if (!llmRes.ok) return res.status(502).json({ error: 'LLM request failed' });
-
-    const data = await llmRes.json();
-    const raw = data.choices?.[0]?.message?.content || '';
-
-    let parsed;
-    try {
-      const stripped = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
-      const jsonMatch = stripped.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { message: stripped, fill: {} };
-    } catch {
-      parsed = { message: raw, fill: {} };
-    }
-
+    const raw = await callLLM(messages, systemPrompt);
+    const parsed = tryParseAgentResponse(raw);
     res.json(parsed);
   } catch (err) {
-    console.error('Agent error:', err);
+    console.error('Section agent error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -7,7 +7,7 @@ import { s3Client, BUCKET, bucketUrl } from '../../plugins/s3.js';
 import { config } from '../../config/config.js';
 import { callLLM, webSearch, runTool, handleMcpRequest } from '../../plugins/agentMcp.js';
 import { generateInvoiceNumber, generatePaymentToken, calculateTotal } from '../../plugins/invoiceHelpers.js';
-import { buildBrandContext } from '../../plugins/brandContext.js';
+import { loadBrandContext } from '../../plugins/brandContext.js';
 
 const router = express.Router();
 
@@ -374,7 +374,7 @@ router.post('/run-task', async (req, res) => {
     let searchResult = '';
     try { searchResult = await webSearch(task); } catch { /* non-fatal */ }
     const context = searchResult ? '\n\nResearch findings:\n' + searchResult : '';
-    const brandCtx = buildBrandContext(req.tenant?.brand || {});
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
 
     let toolName, toolArgs;
     if (department === 'blog') {
@@ -458,7 +458,7 @@ router.post('/', async (req, res) => {
       ? '\n\nResearch findings:\n' + research.searchResult
       : '';
     const context = historyCtx + researchCtx;
-    const brandCtx = buildBrandContext(req.tenant?.brand || {});
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
 
     // Step 3: Run MCP tool
     let toolName, toolArgs;

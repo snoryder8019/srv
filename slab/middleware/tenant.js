@@ -67,9 +67,13 @@ export function resolveTenant(req, res, next) {
 
 async function lookupTenant(domain) {
   const slab = getSlabDb();
-  // Match active OR preview tenants
+  // Match by primary domain OR custom domain
   const doc = await slab.collection('tenants').findOne({
-    domain,
+    $or: [
+      { domain },
+      { 'meta.customDomain': domain },
+      { 'public.customDomain': domain },
+    ],
     status: { $in: ['active', 'preview'] },
   });
   if (!doc) return null;

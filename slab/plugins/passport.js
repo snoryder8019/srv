@@ -56,8 +56,6 @@ passport.use(
             lastName: profile.name.familyName,
             password: '',
             isAdmin: false,
-            isCandaceAdmin: false,
-            isW2Admin: false,
             tutorials: {
               seen: {},
               dismissed: {},

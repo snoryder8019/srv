@@ -1,15 +1,16 @@
 import express from 'express';
 import { getDb } from '../../plugins/mongo.js';
 import { config } from '../../config/config.js';
-import { buildBrandContext } from '../../plugins/brandContext.js';
+import { loadBrandContext } from '../../plugins/brandContext.js';
+import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
 const router = express.Router();
 
 const SECTIONS = {
   hero: ['hero_eyebrow', 'hero_heading', 'hero_heading_em', 'hero_sub', 'hero_badge'],
   services: ['services_label', 'services_heading', 'services_heading_em', 'services_sub',
-             'service1_title', 'service1_desc',
-             'service2_title', 'service2_desc',
-             'service3_title', 'service3_desc'],
+             'service1_title', 'service1_desc', 'service1_link',
+             'service2_title', 'service2_desc', 'service2_link',
+             'service3_title', 'service3_desc', 'service3_link'],
   about: ['about_quote', 'about_desc', 'about_sig'],
   process: ['process_label', 'process_heading', 'process_heading_em',
            'process1_title', 'process1_desc',
@@ -31,10 +32,13 @@ const COPY_DEFAULTS = {
   services_sub: 'Everything your business needs to build a powerful presence.',
   service1_title: 'Service One',
   service1_desc: 'Description of your first service offering.',
+  service1_link: '',
   service2_title: 'Service Two',
   service2_desc: 'Description of your second service offering.',
+  service2_link: '',
   service3_title: 'Service Three',
   service3_desc: 'Description of your third service offering.',
+  service3_link: '',
   about_quote: '',
   about_desc: '',
   about_sig: '',
@@ -85,17 +89,24 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Agent endpoint — proxies to Ollama LLM with copywriting system prompt
+// Agent endpoint — copywriting assistant with web research
 router.post('/agent', async (req, res) => {
   try {
     const { messages, currentCopy } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages required' });
 
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+    const searchResults = await webSearch(lastUserMsg.slice(0, 200));
+
+    const researchCtx = searchResults && !searchResults.startsWith('Search')
+      ? `\n\n--- WEB RESEARCH ---\n${searchResults}\n--- END RESEARCH ---`
+      : '';
+
     const copyContext = currentCopy
       ? `\n\nCurrent site copy fields:\n${Object.entries(currentCopy).map(([k, v]) => `  ${k}: "${v}"`).join('\n')}`
       : '';
 
-    const brandCtx = buildBrandContext(req.tenant?.brand || {});
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
 
     const systemPrompt = `You are a professional copywriting assistant for the business.
 
@@ -121,52 +132,17 @@ Only include fields in "fill" that you are actually changing. If just having a c
 Available field keys:
 - hero_eyebrow, hero_heading, hero_heading_em, hero_sub, hero_badge
 - services_label, services_heading, services_heading_em, services_sub
-- service1_title, service1_desc, service2_title, service2_desc, service3_title, service3_desc
+- service1_title, service1_desc, service1_link, service2_title, service2_desc, service2_link, service3_title, service3_desc, service3_link
 - about_quote, about_desc, about_sig
 - process_label, process_heading, process_heading_em
 - contact_sub, contact_location, contact_serving
-${copyContext}`;
+${copyContext}${researchCtx}`;
 
-    const payload = {
-      model: 'qwen2.5:7b',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages
-      ],
-      stream: false,
-    };
-
-    const llmRes = await fetch(config.OLLAMA_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.OLLAMA_KEY}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!llmRes.ok) {
-      const errText = await llmRes.text();
-      console.error('LLM error:', errText);
-      return res.status(502).json({ error: 'LLM request failed' });
-    }
-
-    const data = await llmRes.json();
-    const raw = data.choices?.[0]?.message?.content || '';
-
-    // Parse JSON response — Qwen may wrap in markdown code blocks
-    let parsed;
-    try {
-      const stripped = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
-      const jsonMatch = stripped.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { message: stripped, fill: {} };
-    } catch {
-      parsed = { message: raw, fill: {} };
-    }
-
+    const raw = await callLLM(messages, systemPrompt);
+    const parsed = tryParseAgentResponse(raw);
     res.json(parsed);
   } catch (err) {
-    console.error('Agent error:', err);
+    console.error('Copy agent error:', err);
     res.status(500).json({ error: 'Agent error: ' + err.message });
   }
 });

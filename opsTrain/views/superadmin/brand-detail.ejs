@@ -1,0 +1,70 @@
+<%- include('../layout/header') %>
+
+<div class="sa">
+  <div class="sa-top">
+    <h1><span class="sa-color" style="background:<%= brand.color %>"></span> <%= brand.name %></h1>
+    <a href="/superadmin" class="btn btn-sm btn-secondary">&larr; All Tenants</a>
+  </div>
+
+  <div class="sa-stats">
+    <div class="sa-stat"><span class="sa-num"><%= users.length %></span><span class="sa-lbl">Users</span></div>
+    <div class="sa-stat"><span class="sa-num"><%= tasks.filter(t=>t.active).length %></span><span class="sa-lbl">Tasks</span></div>
+    <div class="sa-stat"><span class="sa-num"><%= qrs.filter(q=>q.active).length %></span><span class="sa-lbl">QRs</span></div>
+    <div class="sa-stat"><span class="sa-num"><%= scans30 %></span><span class="sa-lbl">Scans 30d</span></div>
+    <div class="sa-stat"><span class="sa-num"><%= completions30 %></span><span class="sa-lbl">Done 30d</span></div>
+  </div>
+
+  <div class="sa-detail-grid">
+    <!-- Users -->
+    <div class="sa-section">
+      <div class="sa-section-head">Users (<%= users.length %>)</div>
+      <table class="sa-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>PIN</th><th></th></tr></thead>
+        <tbody>
+          <% users.forEach(u => { %>
+          <tr>
+            <td><strong><%= u.displayName %></strong></td>
+            <td class="sa-tz"><%= u.email || '—' %></td>
+            <td>
+              <form method="POST" action="/superadmin/user/<%= u._id %>/role" style="display:inline;">
+                <select name="role" onchange="this.form.submit()" class="sa-role-sel">
+                  <% ['visitor','user','brandAdmin','admin','superadmin'].forEach(r => { %>
+                    <option value="<%= r %>" <%= u.role === r ? 'selected' : '' %>><%= r %></option>
+                  <% }) %>
+                </select>
+              </form>
+            </td>
+            <td><code><%= u.posPin || '—' %></code></td>
+            <td><%= u.provider %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Config -->
+    <div class="sa-section">
+      <div class="sa-section-head">Config</div>
+      <div class="sa-config">
+        <div class="sa-config-row"><span>Slug</span><code><%= brand.slug %></code></div>
+        <div class="sa-config-row"><span>Location</span><span><%= brand.location || '—' %></span></div>
+        <div class="sa-config-row"><span>Timezone</span><span><%= brand.settings?.timezone || 'America/New_York' %></span></div>
+        <div class="sa-config-row"><span>Shift Open</span><span><%= brand.settings?.shiftOpen ?? 6 %>:00</span></div>
+        <div class="sa-config-row"><span>Shift Mid</span><span><%= brand.settings?.shiftMid ?? 14 %>:00</span></div>
+        <div class="sa-config-row"><span>Shift Close</span><span><%= brand.settings?.shiftClose ?? 18 %>:00</span></div>
+        <div class="sa-config-row"><span>Day Ends</span><span><%= brand.settings?.shiftEnd ?? 2 %>:00</span></div>
+        <div class="sa-config-row"><span>PIN Required</span><span><%= brand.settings?.requirePinForTasks ? 'Yes' : 'No' %></span></div>
+        <div class="sa-config-row"><span>Specials</span><span><%= brand.settings?.specialsEnabled !== false ? 'On' : 'Off' %></span></div>
+        <div class="sa-config-row"><span>Webhooks</span><span><%= brand.settings?.webhooksEnabled !== false ? 'On' : 'Off' %></span></div>
+        <div class="sa-config-row"><span>Active</span><span class="sa-status-dot <%= brand.active ? 'sa-on' : 'sa-off' %>"></span> <%= brand.active ? 'Yes' : 'No' %></div>
+      </div>
+      <div style="margin-top:8px;">
+        <a href="/admin/brands/<%= brand._id %>/edit" class="btn btn-sm">Edit Brand</a>
+        <a href="/live?brandId=<%= brand._id %>" class="btn btn-sm">Live View</a>
+        <a href="/admin/analytics?brandId=<%= brand._id %>" class="btn btn-sm">Analytics</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('../layout/footer') %>

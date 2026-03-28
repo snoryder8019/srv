@@ -41,6 +41,7 @@ const SEED_COLLECTIONS = {
   invoices: [],
   themes: [],
   brand_images: [],
+  brand_models: [],
   assets: [],
   contacts: [],
 };
@@ -123,7 +124,6 @@ export async function provisionTenant({
     email: ownerEmail,
     displayName: brandName,
     isAdmin: true,
-    isW2Admin: true,
     provider: 'provisioned',
     createdAt: now,
   });

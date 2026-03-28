@@ -1,0 +1,77 @@
+<%- include('../../admin/partials/head', { title: 'Tenants — Superadmin' }) %>
+<%- include('../../admin/partials/sidebar', { page: 'super-tenants', user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Tenants</div>
+  <div class="topbar-actions">
+    <span style="font-size:13px;color:var(--slate);">
+      <%= stats.active %> active · <%= stats.preview %> preview · <%= stats.suspended %> suspended
+    </span>
+  </div>
+</div>
+
+<div class="content">
+  <style>
+    .tenant-grid { display:grid; gap:12px; }
+    .tenant-card {
+      display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:16px;
+      background:var(--white); border:1px solid var(--ivory-mid);
+      border-radius:2px; padding:16px 20px; transition:all 0.15s;
+      text-decoration:none; color:inherit; cursor:pointer;
+    }
+    .tenant-card:hover { border-color:var(--gold); background:rgba(201,168,72,0.04); }
+    .tenant-name { font-weight:600; font-size:14px; color:var(--dark); }
+    .tenant-domain { font-size:12px; color:var(--slate); margin-top:2px; }
+    .tenant-owner { font-size:11px; color:var(--slate); margin-top:2px; }
+    .tenant-meta { text-align:right; font-size:12px; color:var(--slate); }
+    .badge-preview { background:rgba(180,83,9,0.1); color:var(--warn); }
+    .badge-suspended { background:rgba(185,28,28,0.08); color:var(--danger); }
+    .badge-plan { background:rgba(201,168,72,0.12); color:#92660F; margin-left:6px; }
+    .filter-bar { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+    .filter-btn { padding:6px 14px; border-radius:2px; font-size:0.7rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; background:var(--white); border:1px solid var(--ivory-mid); color:var(--slate); cursor:pointer; transition:all 0.15s; }
+    .filter-btn:hover, .filter-btn.active { border-color:var(--gold); color:var(--navy); background:rgba(201,168,72,0.06); }
+  </style>
+
+  <div class="filter-bar">
+    <button class="filter-btn active" data-filter="all">All (<%= stats.total %>)</button>
+    <button class="filter-btn" data-filter="active">Active (<%= stats.active %>)</button>
+    <button class="filter-btn" data-filter="preview">Preview (<%= stats.preview %>)</button>
+    <button class="filter-btn" data-filter="suspended">Suspended (<%= stats.suspended %>)</button>
+  </div>
+
+  <div class="tenant-grid" id="tenantGrid">
+    <% tenants.forEach(t => { %>
+    <a href="/admin/super/tenants/<%= t._id %>" class="tenant-card" data-status="<%= t.status || 'preview' %>">
+      <div>
+        <div class="tenant-name"><%= t.brand?.name || t.domain %></div>
+        <div class="tenant-domain"><%= t.domain %></div>
+        <div class="tenant-owner"><%= t.meta?.ownerEmail || '' %></div>
+      </div>
+      <div>
+        <span class="badge badge-<%= t.status || 'preview' %>"><%= t.status || 'preview' %></span>
+        <span class="badge badge-plan"><%= t.meta?.plan || 'free' %></span>
+      </div>
+      <div class="tenant-meta">
+        <%= t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '' %>
+      </div>
+    </a>
+    <% }) %>
+  </div>
+
+  <% if (!tenants.length) { %>
+  <div class="empty"><div class="empty-icon">◎</div><p>No tenants yet</p></div>
+  <% } %>
+</div>
+
+<script>
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const filter = btn.dataset.filter;
+    document.querySelectorAll('.tenant-card').forEach(card => {
+      card.style.display = (filter === 'all' || card.dataset.status === filter) ? '' : 'none';
+    });
+  });
+});
+</script>

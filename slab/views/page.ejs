@@ -46,6 +46,9 @@
   * { margin:0; padding:0; box-sizing:border-box; }
   html { scroll-behavior:smooth; }
   body { font-family:var(--font-body); background:var(--white); color:var(--dark); }
+  .reveal { opacity:0; transform:translateY(20px); transition:opacity 0.5s ease, transform 0.5s ease; }
+  .reveal.visible { opacity:1; transform:translateY(0); }
+  nav.scrolled { box-shadow:0 2px 24px rgba(28,43,74,0.1); }
 
   /* ── NAV ── */
   nav { position:fixed;top:0;width:100%;z-index:1000;display:flex;justify-content:space-between;align-items:center;padding:20px 52px;background:rgba(253,252,250,0.95);backdrop-filter:blur(10px);border-bottom:1px solid var(--ivory-mid); }
@@ -186,7 +189,7 @@
 </nav>
 
 <% if (pg.pageType !== 'landing') { %>
-<div class="page-hero">
+<div class="page-hero reveal">
   <div class="page-hero-inner">
     <a href="/" class="back-link">← Home</a>
     <h1 class="page-title"><%= pg.title %></h1>
@@ -196,7 +199,7 @@
 
 <!-- ── CONTENT PAGE ───────────────────────────────────────────── -->
 <% if (!pg.pageType || pg.pageType === 'content') { %>
-<div class="page-content-wrap">
+<div class="page-content-wrap reveal">
   <div class="page-content"><%- pg.content %></div>
 </div>
 
@@ -356,6 +359,19 @@
 document.querySelectorAll('.lb-faq-q').forEach(q => {
   q.addEventListener('click', () => q.closest('.lb-faq-item').classList.toggle('open'));
 });
+
+// Nav scroll + reveal
+(function() {
+  var nav = document.querySelector('nav');
+  if (nav) window.addEventListener('scroll', function() { nav.classList.toggle('scrolled', window.scrollY > 60); });
+  var els = document.querySelectorAll('.reveal');
+  if (els.length && 'IntersectionObserver' in window) {
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(e) { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+    }, { threshold: 0.1 });
+    els.forEach(function(el) { obs.observe(el); });
+  } else { els.forEach(function(el) { el.classList.add('visible'); }); }
+})();
 </script>
 </body>
 </html>

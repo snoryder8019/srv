@@ -1,0 +1,53 @@
+<%- include('../../layout/header') %>
+
+<div class="admin-header">
+  <h1><%= t('nav.users') %></h1>
+  <a href="/admin/users/new<%= selectedBrand ? '?brandId=' + selectedBrand : '' %>" class="btn btn-primary"><%= t('admin.newUser') %></a>
+</div>
+
+<div class="filter-bar">
+  <form method="GET" action="/admin/users">
+    <select name="brandId" onchange="this.form.submit()">
+      <option value=""><%= t('admin.allBrands') %></option>
+      <% brands.forEach(b => { %>
+        <option value="<%= b._id %>" <%= selectedBrand === b._id.toString() ? 'selected' : '' %>><%= b.name %></option>
+      <% }) %>
+    </select>
+  </form>
+</div>
+
+<% if (users.length === 0) { %>
+  <div class="empty-state"><p><%= t('admin.noUsersYet') %></p></div>
+<% } else { %>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th><%= t('fields.name') %></th>
+      <th><%= t('fields.email') %></th>
+      <th><%= t('fields.role') %></th>
+      <th><%= t('fields.brand') %></th>
+      <th><%= t('fields.pin') %></th>
+      <th><%= t('fields.actions') %></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% users.forEach(u => { %>
+    <tr>
+      <td><strong><%= u.displayName || (u.firstName + ' ' + u.lastName).trim() || '—' %></strong></td>
+      <td><%= u.email || '—' %></td>
+      <td><span class="badge badge-<%= u.role %>"><%= u.role %></span></td>
+      <td><%= u.brand?.name || '—' %></td>
+      <td><code><%= u.posPin || '—' %></code></td>
+      <td>
+        <a href="/admin/users/<%= u._id %>/edit" class="btn btn-sm"><%= t('admin.edit') %></a>
+        <form method="POST" action="/admin/users/<%= u._id %>/delete" style="display:inline">
+          <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete?')"><%= t('admin.del') %></button>
+        </form>
+      </td>
+    </tr>
+    <% }) %>
+  </tbody>
+</table>
+<% } %>
+
+<%- include('../../layout/footer') %>

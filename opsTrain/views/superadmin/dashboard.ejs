@@ -1,0 +1,84 @@
+<%- include('../layout/header') %>
+<script>document.querySelector('.container').classList.add('ax');</script>
+
+<div class="sa">
+  <div class="sa-top">
+    <h1>OpsTrain <span class="sa-badge">PLATFORM</span></h1>
+  </div>
+
+  <!-- Platform stats -->
+  <div class="sa-stats">
+    <div class="sa-stat"><span class="sa-num"><%= stats.activeBrands %></span><span class="sa-lbl">Tenants</span></div>
+    <div class="sa-stat"><span class="sa-num"><%= stats.totalUsers %></span><span class="sa-lbl">Users</span></div>
+    <div class="sa-stat"><span class="sa-num"><%= stats.totalTasks %></span><span class="sa-lbl">Tasks</span></div>
+    <div class="sa-stat"><span class="sa-num"><%= stats.totalQRs %></span><span class="sa-lbl">QR Codes</span></div>
+    <div class="sa-stat"><span class="sa-num"><%= stats.totalScans30 %></span><span class="sa-lbl">Scans 30d</span></div>
+    <div class="sa-stat"><span class="sa-num"><%= stats.totalCompletions30 %></span><span class="sa-lbl">Done 30d</span></div>
+  </div>
+
+  <!-- Tenants table -->
+  <div class="sa-section">
+    <div class="sa-section-head">Tenants</div>
+    <table class="sa-table">
+      <thead>
+        <tr>
+          <th>Brand</th>
+          <th>Status</th>
+          <th>Users</th>
+          <th>Tasks</th>
+          <th>QRs</th>
+          <th>Scans 30d</th>
+          <th>Done 30d</th>
+          <th>On Duty</th>
+          <th>TZ</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% brandStats.forEach(b => { %>
+        <tr class="<%= b.active ? '' : 'sa-inactive' %>">
+          <td>
+            <span class="sa-color" style="background:<%= b.color || '#d97706' %>"></span>
+            <strong><%= b.name %></strong>
+            <span class="sa-slug"><%= b.slug %></span>
+          </td>
+          <td><span class="sa-status-dot <%= b.active ? 'sa-on' : 'sa-off' %>"></span> <%= b.active ? 'active' : 'off' %></td>
+          <td><%= b.users %></td>
+          <td><%= b.tasks %></td>
+          <td><%= b.qrs %></td>
+          <td><%= b.scans %></td>
+          <td><%= b.completions %></td>
+          <td><strong><%= b.onDuty %></strong></td>
+          <td class="sa-tz"><%= b.settings?.timezone?.split('/').pop() || 'ET' %></td>
+          <td>
+            <a href="/superadmin/brand/<%= b._id %>" class="btn btn-sm">Detail</a>
+            <a href="/live?brandId=<%= b._id %>" class="btn btn-sm">Live</a>
+            <a href="/admin/shifts/command?brandId=<%= b._id %>" class="btn btn-sm">Shifts</a>
+            <form method="POST" action="/superadmin/brand/<%= b._id %>/toggle" style="display:inline;">
+              <button class="btn btn-sm <%= b.active ? 'btn-danger' : 'btn-check' %>"><%= b.active ? 'Disable' : 'Enable' %></button>
+            </form>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Platform scan volume -->
+  <div class="sa-section">
+    <div class="sa-section-head">Platform Scan Volume — 30 Days</div>
+    <div class="ax-chart-wrap" style="height:120px;"><canvas id="platformChart"></canvas></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+Chart.defaults.color='#6b6b74';Chart.defaults.borderColor='#1e1e24';Chart.defaults.font.size=9;
+var D=<%- JSON.stringify(dailyScans) %>;
+var ctx=document.getElementById('platformChart').getContext('2d');
+var g=ctx.createLinearGradient(0,0,0,120);g.addColorStop(0,'rgba(217,119,6,0.25)');g.addColorStop(1,'rgba(217,119,6,0.02)');
+new Chart(ctx,{type:'line',data:{labels:D.map(function(d){return d._id.slice(5)}),datasets:[{data:D.map(function(d){return d.count}),borderColor:'#d97706',backgroundColor:g,fill:true,tension:.4,pointRadius:1.5,borderWidth:1.5}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#1a1a1f'}},x:{grid:{display:false}}}}});
+</script>
+
+<%- include('../layout/footer') %>

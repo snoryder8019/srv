@@ -22,12 +22,13 @@ router.use(async (req, res, next) => {
   } catch {
     res.locals.navPages = [];
   }
-  // Check superadmin cookie (lightweight — link is just a shortcut, /superadmin has its own auth)
+  // Check if current user is superadmin (from slab_token JWT email)
   try {
-    const token = req.cookies?.slab_super;
+    const token = req.cookies?.slab_token;
     if (token) {
+      const { isSuperAdminEmail } = await import('../middleware/superadmin.js');
       const decoded = jwt.verify(token, config.JWT_SECRET);
-      res.locals.isSuperAdmin = !!decoded.isSuperAdmin;
+      res.locals.isSuperAdmin = isSuperAdminEmail(decoded.email);
     }
   } catch { /* expired or invalid — ignore */ }
   next();
@@ -83,6 +84,13 @@ async function getBrandLogos(db) {
   const logos = {};
   for (const r of rows) logos[r.slot] = r.url;
   return logos;
+}
+
+async function getBrandModels(db) {
+  const rows = await db.collection('brand_models').find({}).toArray();
+  const models = {};
+  for (const r of rows) models[r.slot] = r.url;
+  return models;
 }
 
 function buildVisibility(design) {
@@ -225,11 +233,36 @@ router.get('/sitemap.xml', async (req, res) => {
   }
 });
 
+// ── Contact form submission ────────────────────────────────────────────────
+router.post('/contact', async (req, res) => {
+  try {
+    const db = req.db;
+    const { name, firstName, lastName, email, company, service, message } = req.body;
+    const contactName = name || [firstName, lastName].filter(Boolean).join(' ') || '';
+
+    if (!email) return res.redirect('/#contact');
+
+    await db.collection('inquiries').insertOne({
+      name: contactName.trim(),
+      email: email.toLowerCase().trim(),
+      company: company?.trim() || '',
+      service: service?.trim() || '',
+      message: message?.trim() || '',
+      createdAt: new Date(),
+    });
+
+    res.redirect('/?contacted=1#contact');
+  } catch (err) {
+    console.error('[contact] error:', err);
+    res.redirect('/#contact');
+  }
+});
+
 // Home page
 router.get('/', async (req, res) => {
   try {
     const db = req.db;
-    const [rawCopy, reviews, portfolio, design, rawMedia, customSections, logos] = await Promise.all([
+    const [rawCopy, reviews, portfolio, design, rawMedia, customSections, logos, brandModels] = await Promise.all([
       db.collection('copy').find({}).toArray(),
       getReviews(db, req.tenant),
       db.collection('portfolio').find({}).sort({ order: 1, createdAt: -1 }).toArray(),
@@ -237,6 +270,7 @@ router.get('/', async (req, res) => {
       db.collection('section_media').find({}).toArray(),
       db.collection('custom_sections').find({ visible: { $ne: false } }).sort({ order: 1, createdAt: 1 }).toArray(),
       getBrandLogos(db),
+      getBrandModels(db),
     ]);
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
@@ -248,10 +282,20 @@ router.get('/', async (req, res) => {
       ? await db.collection('blog').find({ status: 'published' }).sort({ publishedAt: -1 }).limit(3).toArray()
       : [];
 
+    // Startup layout → use the templatized landing page (same data scope as index)
+    if (design.landing_layout === 'startup') {
+      return res.render('landing', {
+        design, copy, logos, brandModels, media,
+        reviews, portfolio, customSections,
+        latestPosts, visibility: buildVisibility(design),
+        contacted: req.query.contacted,
+      });
+    }
+
     res.render('index', {
       copy, reviews, portfolio, design, media,
       visibility: buildVisibility(design),
-      latestPosts, customSections, logos,
+      latestPosts, customSections, logos, brandModels,
     });
   } catch (err) {
     console.error(err);
@@ -259,7 +303,7 @@ router.get('/', async (req, res) => {
       copy: COPY_DEFAULTS, reviews: null, portfolio: [],
       design: DESIGN_DEFAULTS, media: {},
       visibility: buildVisibility(DESIGN_DEFAULTS),
-      latestPosts: [], customSections: [], logos: {},
+      latestPosts: [], customSections: [], logos: {}, brandModels: {},
     });
   }
 });

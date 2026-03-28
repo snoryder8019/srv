@@ -1,0 +1,217 @@
+<%- include('../../layout/header') %>
+<script>document.querySelector('.container').classList.add('ax');</script>
+
+<div class="cmd">
+  <div class="cmd-top">
+    <div>
+      <h1 style="color:<%= brand.color || '#d97706' %>"><%= brand.name %></h1>
+      <span class="text-muted"><%= today %></span>
+    </div>
+    <div class="cmd-actions">
+      <% shifts.forEach(s => { %>
+        <span class="cmd-shift-pill cmd-<%= s.status %>"><%= s.shiftTime %> &mdash; <%= s.crew.filter(c => c.present).length %>/<%= s.crew.length %></span>
+      <% }) %>
+      <a href="/admin/roster?brandId=<%= brand._id %>" class="btn btn-sm btn-secondary"><%= lang === 'es' ? 'Escanear Lista' : 'Scan Roster' %></a>
+    </div>
+  </div>
+
+  <!-- Shift tabs -->
+  <div class="cmd-tabs">
+    <% shifts.forEach((s, i) => { const isAct = activeShift && activeShift._id.toString() === s._id.toString(); %>
+      <button class="cmd-tab<%= isAct || (!activeShift && i === 0) ? ' active' : '' %>" onclick="switchShift('<%= s._id %>')" data-shift="<%= s._id %>">
+        <%= s.shiftTime %> <span class="cmd-tab-ct"><%= s.crew.filter(c => c.present).length %></span>
+      </button>
+    <% }) %>
+  </div>
+
+  <% shifts.forEach((s, si) => { const isAct = (activeShift && activeShift._id.toString() === s._id.toString()) || (!activeShift && si === 0); %>
+  <div class="cmd-panel" id="panel-<%= s._id %>" style="<%= isAct ? '' : 'display:none;' %>">
+    <div class="cmd-split">
+
+      <!-- LEFT: Crew -->
+      <div class="cmd-col">
+        <div class="cmd-col-head">
+          <span class="cmd-live-dot"></span>
+          <span><%= lang === 'es' ? 'Equipo' : 'Crew' %> (<%= s.crew.length %>)</span>
+        </div>
+
+        <div class="cmd-crew-list">
+          <% s.crew.forEach(c => { %>
+          <div class="cmd-row<%= c.present ? ' cmd-row-on' : '' %>">
+            <div class="cmd-row-main">
+              <span class="cmd-dot <%= c.present ? 'cmd-dot-on' : (c.clockOut ? 'cmd-dot-off' : '') %>"></span>
+              <strong class="cmd-row-name"><%= c.displayName %></strong>
+              <% if (c.posPin) { %><code class="cmd-pin"><%= c.posPin %></code><% } %>
+            </div>
+            <div class="cmd-row-edit">
+              <select onchange="updateCrew('<%= s._id %>','<%= c._id %>','role',this.value)" class="cmd-inline-sel">
+                <option value="">—</option>
+                <% ['server','cook','bartender','host','busser','dishwasher','expo','manager'].forEach(r => { %>
+                  <option value="<%= r %>" <%= c.role === r ? 'selected' : '' %>><%= r %></option>
+                <% }) %>
+              </select>
+              <input value="<%= c.station || '' %>" placeholder="<%= lang === 'es' ? 'estacion' : 'station' %>"
+                onchange="updateCrew('<%= s._id %>','<%= c._id %>','station',this.value)" class="cmd-inline-input">
+            </div>
+            <div class="cmd-row-actions">
+              <% if (c.present) { %>
+                <small class="text-muted"><%= c.clockIn ? new Date(c.clockIn).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '' %></small>
+                <button class="btn btn-sm btn-danger" onclick="clockOut('<%= s._id %>','<%= c._id %>')">Out</button>
+              <% } else if (c.clockOut) { %>
+                <small class="text-muted">out <%= new Date(c.clockOut).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) %></small>
+              <% } else { %>
+                <button class="btn btn-sm btn-check" onclick="clockIn('<%= s._id %>','<%= c._id %>')"><%= lang === 'es' ? 'In' : 'In' %></button>
+              <% } %>
+              <button class="cmd-x" onclick="removeCrew('<%= s._id %>','<%= c._id %>')">&times;</button>
+            </div>
+          </div>
+          <% }) %>
+        </div>
+
+        <!-- Quick add -->
+        <div class="cmd-quick-add">
+          <select id="addStaff-<%= s._id %>" class="cmd-inline-sel" style="flex:2;">
+            <option value=""><%= lang === 'es' ? 'Agregar...' : 'Add staff...' %></option>
+            <% staff.forEach(u => { %>
+              <option value="<%= u._id %>" data-name="<%= u.displayName %>" data-pin="<%= u.posPin %>"><%= u.displayName %> (<%= u.posPin %>)</option>
+            <% }) %>
+          </select>
+          <select id="addRole-<%= s._id %>" class="cmd-inline-sel"><option value="">role</option><% ['server','cook','bartender','host','busser','dishwasher','expo','manager'].forEach(r => { %><option value="<%= r %>"><%= r %></option><% }) %></select>
+          <input id="addStation-<%= s._id %>" class="cmd-inline-input" placeholder="stn">
+          <button class="btn btn-sm btn-primary" onclick="addCrew('<%= s._id %>')">+</button>
+        </div>
+        <div class="cmd-quick-add" style="margin-top:3px;">
+          <input id="addManualName-<%= s._id %>" class="cmd-inline-input" placeholder="<%= lang === 'es' ? 'nombre' : 'name' %>" style="flex:2;">
+          <input id="addManualPin-<%= s._id %>" class="cmd-inline-input" placeholder="pin" style="width:50px;">
+          <button class="btn btn-sm" onclick="addManual('<%= s._id %>')">+</button>
+        </div>
+      </div>
+
+      <!-- RIGHT: Tasks -->
+      <div class="cmd-col">
+        <div class="cmd-col-head">
+          <span><%= lang === 'es' ? 'Tareas' : 'Tasks' %> (<%= tasks.filter(t => t.completed).length %>/<%= tasks.length %>)</span>
+        </div>
+
+        <div class="cmd-task-list">
+          <% tasks.forEach(tk => { %>
+          <div class="cmd-task-row<%= tk.completed ? ' cmd-task-done' : '' %>" data-task="<%= tk._id %>">
+            <div class="cmd-task-main">
+              <span class="cmd-task-dot <%= tk.completed ? 'done' : '' %>"></span>
+              <span class="cmd-task-title" contenteditable="true" onblur="updateTask('<%= tk._id %>','title',this.textContent)"><%= tk.title %></span>
+            </div>
+            <div class="cmd-task-meta">
+              <select onchange="updateTask('<%= tk._id %>','type',this.value)" class="cmd-inline-sel cmd-inline-tiny">
+                <% ['sidework','prep','cleaning','inspection','custom'].forEach(tp => { %>
+                  <option value="<%= tp %>" <%= tk.type === tp ? 'selected' : '' %>><%= tp %></option>
+                <% }) %>
+              </select>
+              <select onchange="updateTask('<%= tk._id %>','shiftTime',this.value)" class="cmd-inline-sel cmd-inline-tiny">
+                <% ['any','open','mid','close'].forEach(st => { %>
+                  <option value="<%= st %>" <%= tk.shiftTime === st ? 'selected' : '' %>><%= st %></option>
+                <% }) %>
+              </select>
+              <select onchange="updateTask('<%= tk._id %>','imageMode',this.value)" class="cmd-inline-sel cmd-inline-tiny" title="Image">
+                <option value="none" <%= (tk.imageMode || 'none') === 'none' ? 'selected' : '' %>>no img</option>
+                <option value="allowed" <%= tk.imageMode === 'allowed' ? 'selected' : '' %>>img ok</option>
+                <option value="required" <%= tk.imageMode === 'required' ? 'selected' : '' %>>img req</option>
+              </select>
+              <button class="cmd-x" onclick="deleteTask('<%= tk._id %>')">&times;</button>
+            </div>
+            <% if (tk.completions.length > 0) { %>
+            <div class="cmd-task-comps">
+              <% tk.completions.forEach(comp => { %>
+                <div class="cmd-comp">
+                  <button class="cmd-val-btn <%= comp.validated ? 'cmd-val-on' : '' %>" onclick="toggleValidate('<%= comp._id %>',<%= !comp.validated %>)" title="<%= comp.validated ? 'Validated' : 'Validate' %>">
+                    <%= comp.validated ? '&#10003;' : '&#9675;' %>
+                  </button>
+                  <span class="cmd-comp-who"><%= comp.by %></span>
+                  <span class="cmd-comp-time"><%= new Date(comp.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) %></span>
+                  <% if (comp.photo) { %>
+                    <a href="<%= comp.photo %>" target="_blank" class="cmd-comp-photo" title="View photo">&#128247;</a>
+                  <% } else { %>
+                    <button class="cmd-comp-add-photo" onclick="adminPhoto('<%= comp._id %>')" title="Add photo">+&#128247;</button>
+                  <% } %>
+                  <% if (comp.note) { %><span class="cmd-comp-note" title="<%= comp.note %>">&#128172;</span><% } %>
+                </div>
+              <% }) %>
+            </div>
+            <% } %>
+          </div>
+          <% }) %>
+        </div>
+
+        <!-- Quick add task -->
+        <div class="cmd-quick-add">
+          <input id="newTaskTitle" class="cmd-inline-input" placeholder="<%= lang === 'es' ? 'nueva tarea...' : 'new task...' %>" style="flex:3;">
+          <select id="newTaskType" class="cmd-inline-sel cmd-inline-tiny"><% ['sidework','prep','cleaning','inspection','custom'].forEach(tp => { %><option value="<%= tp %>"><%= tp %></option><% }) %></select>
+          <button class="btn btn-sm btn-primary" onclick="addTask()">+</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <% }) %>
+</div>
+
+<script>
+var brandId='<%= brand._id %>';
+function api(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(function(r){return r.json()});}
+function reload(){location.reload();}
+
+function clockIn(s,c){api('/admin/shifts/'+s+'/crew/'+c+'/clockin').then(reload);}
+function clockOut(s,c){api('/admin/shifts/'+s+'/crew/'+c+'/clockout').then(reload);}
+function removeCrew(s,c){if(confirm('Remove?'))api('/admin/shifts/'+s+'/crew/'+c+'/remove').then(reload);}
+function updateCrew(s,c,field,val){var b={};b[field]=val;api('/admin/shifts/'+s+'/crew/'+c+'/update',b);}
+
+function addCrew(sid){
+  var sel=document.getElementById('addStaff-'+sid);var opt=sel.options[sel.selectedIndex];if(!sel.value)return;
+  api('/admin/shifts/'+sid+'/crew',{userId:sel.value,displayName:opt.dataset.name,posPin:opt.dataset.pin,role:document.getElementById('addRole-'+sid).value,station:document.getElementById('addStation-'+sid).value}).then(reload);
+}
+function addManual(sid){
+  var n=document.getElementById('addManualName-'+sid).value;if(!n)return;
+  api('/admin/shifts/'+sid+'/crew',{displayName:n,posPin:document.getElementById('addManualPin-'+sid).value}).then(reload);
+}
+
+function updateTask(id,field,val){var b={};b[field]=val;api('/admin/shifts/tasks/'+id+'/update',b);}
+function deleteTask(id){if(confirm('Remove task?'))api('/admin/shifts/tasks/'+id+'/delete').then(reload);}
+function addTask(){
+  var t=document.getElementById('newTaskTitle').value;if(!t)return;
+  api('/admin/shifts/tasks',{brandId:brandId,title:t,type:document.getElementById('newTaskType').value}).then(reload);
+}
+
+function toggleValidate(compId, val) {
+  var url = val ? '/admin/shifts/completions/'+compId+'/validate' : '/admin/shifts/completions/'+compId+'/unvalidate';
+  api(url).then(reload);
+}
+function adminPhoto(compId) {
+  // Open the scanner modal in photo mode, then attach
+  window._pendingPhotoCompId = compId;
+  if (typeof openModal === 'function') { openModal(); setMode('photo'); }
+  // Override snap to attach
+  var origSnap = window.snapPhoto;
+  window.snapPhoto = function() {
+    origSnap();
+    setTimeout(function() {
+      var photo = window._lastPhoto;
+      if (photo && window._pendingPhotoCompId) {
+        api('/admin/shifts/completions/'+window._pendingPhotoCompId+'/photo', { photo: photo }).then(function() {
+          window._pendingPhotoCompId = null;
+          closeModal();
+          reload();
+        });
+      }
+    }, 300);
+  };
+}
+
+function switchShift(id){
+  document.querySelectorAll('.cmd-panel').forEach(function(p){p.style.display='none';});
+  document.querySelectorAll('.cmd-tab').forEach(function(t){t.classList.remove('active');});
+  document.getElementById('panel-'+id).style.display='block';
+  document.querySelector('.cmd-tab[data-shift="'+id+'"]').classList.add('active');
+}
+</script>
+
+<%- include('../../scan/scanner') %>
+<%- include('../../layout/footer') %>

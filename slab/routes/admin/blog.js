@@ -2,49 +2,8 @@ import express from 'express';
 import { getDb } from '../../plugins/mongo.js';
 import { ObjectId } from 'mongodb';
 import { config } from '../../config/config.js';
-import { buildBrandContext } from '../../plugins/brandContext.js';
-
-const OLLAMA_KEY = config.OLLAMA_KEY;
-const OLLAMA_URL = config.OLLAMA_URL;
-
-async function webSearch(query) {
-  try {
-    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=6&text_decorations=false`;
-    const res = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip',
-        'X-Subscription-Token': config.SEARCH_API_KEY,
-      },
-    });
-    if (!res.ok) return 'Search unavailable.';
-    const data = await res.json();
-    const results = (data.web?.results || []).map(r => `${r.title}\n${r.description || ''}\n${r.url}`);
-    return results.length ? results.join('\n\n') : 'No results found.';
-  } catch (e) {
-    return 'Search failed: ' + e.message;
-  }
-}
-
-async function fetchUrl(url) {
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-      signal: AbortSignal.timeout(8000),
-    });
-    const html = await res.text();
-    const text = html
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 4000);
-    return text || 'Page fetched but no readable content found.';
-  } catch (e) {
-    return 'Fetch failed: ' + e.message;
-  }
-}
+import { loadBrandContext } from '../../plugins/brandContext.js';
+import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
 
 const router = express.Router();
 
@@ -154,9 +113,8 @@ router.post('/agent', async (req, res) => {
       ? `\n\n--- WEB RESEARCH ---\n${searchResults}\n--- END RESEARCH ---`
       : '';
 
-    const brandCtx = buildBrandContext(req.tenant?.brand || {});
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
 
-    // Two-pass approach: first generate content freely, then we wrap it
     const systemPrompt = `You are a blog writing assistant for the business.
 
 ${brandCtx}
@@ -185,81 +143,14 @@ Tailor content to the business and audience described above.
 Tone: practical, approachable, not corporate.
 ${postCtx}${researchCtx}`;
 
-    const llmRes = await fetch(OLLAMA_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OLLAMA_KEY}` },
-      body: JSON.stringify({
-        model: 'qwen2.5:7b',
-        messages: [{ role: 'system', content: systemPrompt }, ...messages],
-        stream: false,
-      }),
-    });
-
-    if (!llmRes.ok) {
-      const errText = await llmRes.text();
-      console.error('LLM error:', errText);
-      return res.status(502).json({ error: 'LLM request failed' });
-    }
-
-    const data = await llmRes.json();
-    const raw = data.choices?.[0]?.message?.content || '';
-    console.log('[blog-agent] raw LLM response length:', raw.length);
-
-    let parsed = tryParseAgentResponse(raw);
-    console.log('[blog-agent] fill keys:', Object.keys(parsed.fill || {}));
-
+    const raw = await callLLM(messages, systemPrompt);
+    const parsed = tryParseAgentResponse(raw);
     res.json(parsed);
   } catch (err) {
     console.error('Blog agent error:', err);
     res.status(500).json({ error: err.message });
   }
 });
-
-function tryParseAgentResponse(raw) {
-  // Strip markdown fences
-  const cleaned = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
-
-  // Attempt 1: standard JSON.parse on the outermost {...}
-  try {
-    const m = cleaned.match(/\{[\s\S]*\}/);
-    if (m) {
-      const p = JSON.parse(m[0]);
-      if (p.fill && typeof p.fill === 'object') return p;
-    }
-  } catch { /* fall through */ }
-
-  // Attempt 2: the model may have emitted literal newlines inside JSON strings —
-  // collapse them inside string values only, then retry
-  try {
-    // Replace newlines that appear between quotes with \n
-    const fixed = cleaned.replace(/("(?:[^"\\]|\\.)*")/g, s => s.replace(/\n/g, '\\n').replace(/\r/g, ''));
-    const m = fixed.match(/\{[\s\S]*\}/);
-    if (m) {
-      const p = JSON.parse(m[0]);
-      if (p.fill && typeof p.fill === 'object') return p;
-    }
-  } catch { /* fall through */ }
-
-  // Attempt 3: pull individual fields out with regex if JSON is too broken
-  const fill = {};
-  const fieldRe = {
-    title:    /"title"\s*:\s*"((?:[^"\\]|\\.)*)"/,
-    excerpt:  /"excerpt"\s*:\s*"((?:[^"\\]|\\.)*)"/,
-    category: /"category"\s*:\s*"((?:[^"\\]|\\.)*)"/,
-    tags:     /"tags"\s*:\s*"((?:[^"\\]|\\.)*)"/,
-    // content is large — grab everything between "content": " ... " (greedy)
-    content:  /"content"\s*:\s*"([\s\S]*?)(?<!\\)"\s*[,}]/,
-  };
-  for (const [key, re] of Object.entries(fieldRe)) {
-    const m = cleaned.match(re);
-    if (m) fill[key] = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-  }
-
-  const msgMatch = cleaned.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-  const message = msgMatch ? msgMatch[1] : (Object.keys(fill).length ? 'Fields filled.' : cleaned.slice(0, 200));
-
-  return { message, fill };
-}
 
 // Update
 router.post('/:id', async (req, res) => {

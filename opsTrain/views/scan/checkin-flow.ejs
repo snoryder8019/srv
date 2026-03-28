@@ -1,0 +1,307 @@
+<%- include('../layout/header') %>
+
+<div class="shift-page">
+  <div class="checkin-header" style="border-color:<%= brand.color || '#d97706' %>">
+    <h1 style="color:<%= brand.color %>"><%= brand.name %></h1>
+    <div class="shift-user-row">
+      <p><%= t('shift.welcome') %>, <strong><%= shiftUser.displayName %></strong> &mdash; <span class="text-muted"><%= today %></span></p>
+      <a href="/auth/not-me?back=<%= encodeURIComponent('/scan/' + qrCode.code) %>" class="btn-not-me"><%= lang === 'es' ? 'No soy yo' : 'Not you?' %></a>
+    </div>
+  </div>
+
+  <!-- Step indicators -->
+  <div class="checkin-steps">
+    <div class="checkin-step active" id="stepInd1">1</div>
+    <div class="checkin-step" id="stepInd2">2</div>
+    <div class="checkin-step" id="stepInd3">3</div>
+    <div class="checkin-step" id="stepInd4">4</div>
+    <div class="checkin-step" id="stepInd5">5</div>
+  </div>
+
+  <!-- All steps in one scrollable column, only one visible at a time -->
+  <div id="stepsContainer">
+
+    <!-- STEP 1: Specials -->
+    <div class="checkin-card step-card active-card" id="step1">
+      <h2><%= lang === 'es' ? 'Especiales de Hoy' : "Today's Specials" %></h2>
+      <% if (specials.length === 0) { %>
+        <p class="text-muted"><%= lang === 'es' ? 'Sin especiales hoy' : 'No specials today' %></p>
+      <% } else { %>
+        <% specials.forEach(s => { %>
+          <div class="ci-special">
+            <strong><%= s.name %></strong>
+            <% if (s.description) { %><span class="text-sm text-muted"> &mdash; <%= s.description %></span><% } %>
+            <% if (s.price) { %> <span class="special-price" style="font-size:14px;"><%= s.price %></span><% } %>
+          </div>
+        <% }) %>
+      <% } %>
+      <button class="ci-next" onclick="goStep(2)"><%= lang === 'es' ? 'Siguiente' : 'Next' %> &rarr;</button>
+    </div>
+
+    <!-- STEP 2: Notes -->
+    <div class="checkin-card step-card" id="step2">
+      <h2><%= lang === 'es' ? 'Notas del Turno' : 'Shift Notes' %></h2>
+      <% if (notes.length === 0) { %>
+        <p class="text-muted"><%= lang === 'es' ? 'Sin notas hoy' : 'No notes today' %></p>
+      <% } else { %>
+        <% notes.forEach(n => { %>
+          <div class="ci-note">
+            <div class="ci-note-head">
+              <span class="badge badge-<%= n.category %>"><%= n.category %></span>
+              <% if (n.pinned) { %><span class="badge badge-pinned">!</span><% } %>
+            </div>
+            <% if (n.title) { %><strong><%= n.title %></strong><% } %>
+            <p style="font-size:12px;margin:4px 0;"><%= n.body %></p>
+            <label class="ci-ack-label"><input type="checkbox" class="note-ack" value="<%= n._id %>"> <span><%= lang === 'es' ? 'Leido' : 'Read' %></span></label>
+          </div>
+        <% }) %>
+      <% } %>
+      <button class="ci-next" onclick="goStep(3)"><%= lang === 'es' ? 'Siguiente' : 'Next' %> &rarr;</button>
+    </div>
+
+    <!-- STEP 3: Section -->
+    <div class="checkin-card step-card" id="step3">
+      <h2><%= lang === 'es' ? 'Tu Seccion' : 'Your Section' %></h2>
+      <div class="ci-sections">
+        <% ['Bar','Patio','Floor 1','Floor 2','Floor 3','Kitchen','Drive-Thru','Host','Expo'].forEach(sec => { %>
+          <label class="ci-sec-btn"><input type="radio" name="section" value="<%= sec.toLowerCase() %>"><span><%= sec %></span></label>
+        <% }) %>
+      </div>
+      <input type="text" id="customSection" class="ci-input" placeholder="<%= lang === 'es' ? 'Otra...' : 'Other...' %>" style="width:100%;margin-top:8px;">
+      <button class="ci-next" onclick="goStep(4)"><%= lang === 'es' ? 'Siguiente' : 'Next' %> &rarr;</button>
+    </div>
+
+    <!-- STEP 4: Sidework -->
+    <div class="checkin-card step-card" id="step4">
+      <h2><%= lang === 'es' ? 'Sidework' : 'Sidework' %></h2>
+      <% if (tasks.length === 0) { %>
+        <p class="text-muted"><%= lang === 'es' ? 'Sin sidework' : 'No sidework tasks' %></p>
+      <% } else { %>
+        <% tasks.forEach(tk => { %>
+          <label class="ci-sw">
+            <input type="checkbox" class="sw-check" value="<%= tk._id %>">
+            <strong><%= tk.title %></strong>
+          </label>
+        <% }) %>
+      <% } %>
+      <button class="ci-next" onclick="goStep(5)"><%= lang === 'es' ? 'Siguiente' : 'Next' %> &rarr;</button>
+    </div>
+
+    <!-- STEP 5: Quiz -->
+    <div class="checkin-card step-card" id="step5">
+      <div id="quizLoading" class="ci-quiz-loading">
+        <div class="ci-pulse"></div>
+        <p class="text-muted" style="font-size:11px;"><%= lang === 'es' ? 'Generando preguntas...' : 'Generating questions...' %></p>
+      </div>
+      <div id="quizContent" style="display:none;"></div>
+      <div id="quizScore" style="display:none;margin-top:10px;" class="ci-quiz-score"></div>
+      <button class="ci-submit" onclick="submitCheckin()" id="submitBtn" style="display:none;"><%= lang === 'es' ? 'Completar Check-In' : 'Complete Check-In' %></button>
+      <div id="checkinResult" style="display:none;margin-top:8px;" class="alert"></div>
+    </div>
+
+  </div>
+</div>
+
+<%- include('scanner') %>
+
+<script>
+var curStep = 1;
+var quizLoaded = false;
+
+function goStep(n) {
+  // Hide current
+  var cur = document.getElementById('step' + curStep);
+  cur.classList.remove('active-card');
+  cur.classList.add('exit-card');
+
+  setTimeout(function() {
+    cur.classList.remove('exit-card');
+
+    // Show next
+    var next = document.getElementById('step' + n);
+    next.classList.add('enter-card');
+
+    // Force reflow
+    void next.offsetHeight;
+
+    next.classList.remove('enter-card');
+    next.classList.add('active-card');
+
+    // Scroll into view
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Update indicators
+    for (var i = 1; i <= 5; i++) {
+      var ind = document.getElementById('stepInd' + i);
+      ind.classList.remove('active', 'done');
+      if (i < n) ind.classList.add('done');
+      if (i === n) ind.classList.add('active');
+    }
+
+    curStep = n;
+
+    // Trigger quiz load when step 5 appears
+    if (n === 5 && !quizLoaded) {
+      quizLoaded = true;
+      loadQuiz();
+    }
+  }, 250);
+}
+
+// Quiz data from steps 1-2
+var quizSpecials = <%- JSON.stringify(specials.map(s => ({ name: s.name, description: s.description || '', price: s.price || '' }))) %>;
+var quizNotes = <%- JSON.stringify(notes.map(n => ({ title: n.title || '', body: n.body }))) %>;
+var quizQuestions = [];
+
+async function loadQuiz() {
+  try {
+    var res = await fetch('/scan/<%= qrCode.code %>/checkin/quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ specials: quizSpecials, notes: quizNotes })
+    });
+    var data = await res.json();
+    quizQuestions = data.questions || [];
+
+    if (quizQuestions.length === 0) {
+      // No quiz — go straight to submit
+      document.getElementById('quizLoading').style.display = 'none';
+      document.getElementById('quizScore').style.display = 'block';
+      document.getElementById('quizScore').textContent = '<%= lang === "es" ? "Sin preguntas — listo para enviar" : "No questions — ready to submit" %>';
+      document.getElementById('submitBtn').style.display = 'block';
+      return;
+    }
+
+    renderQuiz(quizQuestions);
+  } catch (err) {
+    // Fail gracefully — allow submit
+    document.getElementById('quizLoading').style.display = 'none';
+    document.getElementById('submitBtn').style.display = 'block';
+  }
+}
+
+function renderQuiz(questions) {
+  document.getElementById('quizLoading').style.display = 'none';
+  var container = document.getElementById('quizContent');
+  container.style.display = 'block';
+  container.innerHTML = '';
+
+  questions.forEach(function(q, qi) {
+    var qEl = document.createElement('div');
+    qEl.className = 'ci-quiz-q';
+    qEl.innerHTML = '<p class="ci-quiz-question"><strong>' + (qi + 1) + '.</strong> ' + esc(q.q) + '</p>';
+
+    var opts = document.createElement('div');
+    opts.className = 'ci-quiz-opts';
+
+    q.options.forEach(function(opt, oi) {
+      var btn = document.createElement('button');
+      btn.className = 'ci-quiz-opt';
+      btn.textContent = opt;
+      btn.onclick = function() {
+        // Disable all options for this question
+        opts.querySelectorAll('.ci-quiz-opt').forEach(function(b) { b.disabled = true; });
+        if (oi === q.correct) {
+          btn.classList.add('ci-quiz-right');
+          qEl.dataset.correct = '1';
+        } else {
+          btn.classList.add('ci-quiz-wrong');
+          opts.querySelectorAll('.ci-quiz-opt')[q.correct].classList.add('ci-quiz-right');
+          qEl.dataset.correct = '0';
+        }
+        qEl.dataset.answered = '1';
+        checkAllAnswered();
+      };
+      opts.appendChild(btn);
+    });
+
+    qEl.appendChild(opts);
+    container.appendChild(qEl);
+  });
+}
+
+function checkAllAnswered() {
+  var allQs = document.querySelectorAll('.ci-quiz-q');
+  var total = allQs.length;
+  var answeredCount = 0;
+  var score = 0;
+  allQs.forEach(function(q) {
+    if (q.dataset.answered === '1') answeredCount++;
+    if (q.dataset.correct === '1') score++;
+  });
+  if (answeredCount < total) return;
+
+  var scoreEl = document.getElementById('quizScore');
+  scoreEl.style.display = 'block';
+  var msg;
+  if (score === total) msg = '<%= lang === "es" ? "Perfecto!" : "Perfect!" %>';
+  else if (score >= total - 1) msg = '<%= lang === "es" ? "Casi!" : "Almost!" %>';
+  else msg = '<%= lang === "es" ? "Repasa las notas" : "Review the notes" %>';
+  scoreEl.innerHTML = '<strong>' + score + '/' + total + '</strong> ' + msg;
+  document.getElementById('submitBtn').style.display = 'block';
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function submitCheckin() {
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '<%= lang === "es" ? "Enviando..." : "Submitting..." %>';
+
+  var section = '';
+  var checked = document.querySelector('input[name="section"]:checked');
+  if (checked) section = checked.value;
+  var custom = document.getElementById('customSection').value.trim();
+  if (custom) section = custom;
+
+  var noteIds = Array.from(document.querySelectorAll('.note-ack:checked')).map(function(el) { return el.value; });
+  var sideworkIds = Array.from(document.querySelectorAll('.sw-check:checked')).map(function(el) { return el.value; });
+
+  var resultEl = document.getElementById('checkinResult');
+
+  try {
+    var res = await fetch('/scan/<%= qrCode.code %>/checkin/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shiftId: '<%= activeShift ? activeShift._id : "" %>',
+        section: section,
+        noteIds: noteIds,
+        sideworkIds: sideworkIds
+      })
+    });
+    var data = await res.json();
+    resultEl.style.display = 'block';
+    if (data.success) {
+      resultEl.className = 'alert alert-success';
+      resultEl.innerHTML = '<%= lang === "es" ? "Check-in completo! Buen turno." : "Check-in complete! Have a great shift." %>' +
+        '<div class="ci-countdown"><div class="ci-countdown-ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" class="ci-cd-bg"/><circle cx="18" cy="18" r="16" class="ci-cd-fill" id="cdRing"/></svg><span id="cdNum">3</span></div></div>';
+      btn.style.display = 'none';
+      // Countdown 3..2..1
+      var count = 3;
+      var cdNum = document.getElementById('cdNum');
+      var cdRing = document.getElementById('cdRing');
+      var iv = setInterval(function() {
+        count--;
+        if (count > 0) {
+          cdNum.textContent = count;
+        } else {
+          clearInterval(iv);
+          window.location.href = '/scan/<%= qrCode.code %>/shift';
+        }
+      }, 1000);
+    } else {
+      resultEl.className = 'alert alert-error';
+      resultEl.textContent = 'Error';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    resultEl.style.display = 'block';
+    resultEl.className = 'alert alert-error';
+    resultEl.textContent = 'Connection error';
+    btn.disabled = false;
+  }
+}
+</script>
+
+<%- include('../layout/footer') %>

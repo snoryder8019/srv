@@ -36,11 +36,11 @@ router.post('/:id/role', async (req, res) => {
 
     const updates = { role };
 
-    // If promoting to admin, set isW2Admin flag
+    // Grant or revoke admin access
     if (role === 'admin') {
-      updates.isW2Admin = true;
+      updates.isAdmin = true;
     } else {
-      updates.isW2Admin = false;
+      updates.isAdmin = false;
     }
 
     await db.collection('users').updateOne({ _id: userId }, { $set: updates });

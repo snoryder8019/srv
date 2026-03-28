@@ -7,7 +7,7 @@ import { getDb } from '../../plugins/mongo.js';
 import { s3Client, BUCKET, bucketUrl } from '../../plugins/s3.js';
 import { config } from '../../config/config.js';
 import { callLLM, webSearch, tryParseAgentResponse, runTool, generateSdImage } from '../../plugins/agentMcp.js';
-import { buildBrandContext } from '../../plugins/brandContext.js';
+import { loadBrandContext } from '../../plugins/brandContext.js';
 
 const router = express.Router();
 
@@ -190,7 +190,7 @@ router.post('/agent', express.json({ limit: '2mb' }), async (req, res) => {
 
     if (isImageRequest) {
       // Step 1: Get LLM to design the image (now may include sd_prompt)
-      const result = await runTool('generate_social_image', { prompt: lastMsg, brandContext: buildBrandContext(req.tenant?.brand || {}) });
+      const result = await runTool('generate_social_image', { prompt: lastMsg, brandContext: await loadBrandContext(req.tenant, req.db) });
       const fill = result.fill || {};
       const sizeKey = fill.size || 'ig-post';
       const title = fill.title || 'Social Asset';
@@ -274,7 +274,7 @@ router.post('/agent', express.json({ limit: '2mb' }), async (req, res) => {
       });
     } else {
       // Asset management chat — use manage_assets tool
-      const result = await runTool('manage_assets', { action: lastMsg, query: lastMsg, brandContext: buildBrandContext(req.tenant?.brand || {}) });
+      const result = await runTool('manage_assets', { action: lastMsg, query: lastMsg, brandContext: await loadBrandContext(req.tenant, req.db) });
       const planned = result.fill || {};
 
       // Execute the planned action

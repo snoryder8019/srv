@@ -1,0 +1,83 @@
+<%- include('../../layout/header') %>
+
+<div class="admin-header">
+  <h1><%= brand ? t('admin.edit') : t('admin.create') %> <%= t('nav.brands') %></h1>
+</div>
+
+<form method="POST" action="<%= brand ? '/admin/brands/' + brand._id : '/admin/brands' %>" class="form-card">
+  <div class="form-group">
+    <label><%= t('fields.name') %> *</label>
+    <input type="text" name="name" value="<%= brand ? brand.name : '' %>" required>
+  </div>
+  <div class="form-group">
+    <label><%= t('fields.location') %></label>
+    <input type="text" name="location" value="<%= brand ? brand.location : '' %>">
+  </div>
+  <div class="form-group">
+    <label><%= t('fields.address') %></label>
+    <input type="text" name="address" value="<%= brand ? brand.address : '' %>">
+  </div>
+  <div class="form-group">
+    <label><%= t('fields.phone') %></label>
+    <input type="text" name="phone" value="<%= brand ? brand.phone : '' %>">
+  </div>
+  <div class="form-group">
+    <label><%= t('fields.color') %></label>
+    <input type="color" name="color" value="<%= brand ? brand.color : '#d97706' %>">
+  </div>
+  <div class="form-group">
+    <label><%= t('fields.description') %></label>
+    <textarea name="description" rows="3"><%= brand ? brand.description : '' %></textarea>
+  </div>
+
+  <h3><%= lang === 'es' ? 'Configuracion' : 'Settings' %></h3>
+  <div class="form-check">
+    <label><input type="checkbox" name="requirePinForTasks" <%= (brand && brand.settings && brand.settings.requirePinForTasks) ? 'checked' : '' %>> <%= t('settings.requirePin') %></label>
+  </div>
+  <div class="form-check">
+    <label><input type="checkbox" name="shiftNoteRequired" <%= (brand && brand.settings && brand.settings.shiftNoteRequired) ? 'checked' : '' %>> <%= t('settings.shiftNoteReq') %></label>
+  </div>
+  <div class="form-check">
+    <label><input type="checkbox" name="specialsEnabled" <%= (!brand || (brand.settings && brand.settings.specialsEnabled)) ? 'checked' : '' %>> <%= t('settings.enableSpecials') %></label>
+  </div>
+  <div class="form-check">
+    <label><input type="checkbox" name="webhooksEnabled" <%= (!brand || (brand.settings && brand.settings.webhooksEnabled)) ? 'checked' : '' %>> <%= t('settings.enableWebhooks') %></label>
+  </div>
+
+  <h3><%= lang === 'es' ? 'Horarios de Turno' : 'Shift Hours' %></h3>
+  <div class="form-group">
+    <label><%= lang === 'es' ? 'Zona Horaria' : 'Timezone' %></label>
+    <select name="timezone">
+      <% const tzs = ['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix','America/Anchorage','Pacific/Honolulu','America/Puerto_Rico','America/Mexico_City','America/Bogota','America/Sao_Paulo','Europe/London','Europe/Madrid']; %>
+      <% const curTz = (brand && brand.settings && brand.settings.timezone) || 'America/New_York'; %>
+      <% tzs.forEach(tz => { %>
+        <option value="<%= tz %>" <%= curTz === tz ? 'selected' : '' %>><%= tz %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label><%= lang === 'es' ? 'Apertura (hora)' : 'Open starts (hour)' %></label>
+      <input type="number" name="shiftOpen" min="0" max="23" value="<%= (brand && brand.settings && brand.settings.shiftOpen != null) ? brand.settings.shiftOpen : 6 %>">
+    </div>
+    <div class="form-group">
+      <label><%= lang === 'es' ? 'Medio (hora)' : 'Mid starts (hour)' %></label>
+      <input type="number" name="shiftMid" min="0" max="23" value="<%= (brand && brand.settings && brand.settings.shiftMid != null) ? brand.settings.shiftMid : 14 %>">
+    </div>
+    <div class="form-group">
+      <label><%= lang === 'es' ? 'Cierre (hora)' : 'Close starts (hour)' %></label>
+      <input type="number" name="shiftClose" min="0" max="23" value="<%= (brand && brand.settings && brand.settings.shiftClose != null) ? brand.settings.shiftClose : 18 %>">
+    </div>
+    <div class="form-group">
+      <label><%= lang === 'es' ? 'Fin del dia (hora)' : 'Day ends (hour)' %></label>
+      <input type="number" name="shiftEnd" min="0" max="6" value="<%= (brand && brand.settings && brand.settings.shiftEnd != null) ? brand.settings.shiftEnd : 2 %>">
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary"><%= brand ? t('admin.update') : t('admin.create') %></button>
+    <a href="/admin/brands" class="btn btn-secondary"><%= t('admin.cancel') %></a>
+  </div>
+</form>
+
+<%- include('../../layout/footer') %>

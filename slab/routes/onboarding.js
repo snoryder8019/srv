@@ -24,6 +24,40 @@ function getStripe() {
   return new Stripe(config.SLAB_STRIPE_SECRET);
 }
 
+// ── Platform-level PayPal helpers ──────────────────────────────────────────
+const PP_PLANS = {
+  starter:  { label: 'Starter',  amount: '1.00',   days: 30 },
+  monthly:  { label: 'Monthly',  amount: '50.00',  days: 30 },
+  annual:   { label: 'Annual',   amount: '360.00', days: 365 },
+  lifetime: { label: 'Lifetime', amount: '499.00', days: null },
+};
+
+let _ppToken = null;
+let _ppTokenExp = 0;
+
+function ppBase() {
+  return config.PAYPAL_MODE === 'live'
+    ? 'https://api-m.paypal.com'
+    : 'https://api-m.sandbox.paypal.com';
+}
+
+async function ppAccessToken() {
+  if (_ppToken && Date.now() < _ppTokenExp) return _ppToken;
+  const res = await fetch(`${ppBase()}/v1/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Basic ' + Buffer.from(`${config.PAYPAL_CID}:${config.PAYPAL_SEC}`).toString('base64'),
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials',
+  });
+  if (!res.ok) throw new Error(`PayPal auth failed: ${res.status}`);
+  const data = await res.json();
+  _ppToken = data.access_token;
+  _ppTokenExp = Date.now() + (data.expires_in - 60) * 1000;
+  return _ppToken;
+}
+
 // ── Signup form (free) ──────────────────────────────────────────────────────
 router.get('/', (req, res) => {
   res.render('onboarding/start', {
@@ -107,14 +141,14 @@ router.post('/signup', async (req, res) => {
         });
 
         await transporter.sendMail({
-          from: `"Slab" <${zohoUser}>`,
+          from: `"sLab" <${zohoUser}>`,
           to: email.trim(),
           subject: `Your site is ready — ${brandName.trim()}`,
           html: `<div style="font-family:Inter,system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#0a0a0a;color:#e5e5e5;">
   <div style="text-align:center;margin-bottom:24px;">
-    <span style="font-size:28px;font-weight:700;color:#fff;"><span style="color:#c9a848;">S</span>lab</span>
+    <span style="font-size:28px;font-weight:700;color:#fff;"><span style="color:#c9a848;">s</span>Lab</span>
   </div>
-  <h1 style="font-size:22px;font-weight:600;color:#fff;margin-bottom:12px;">Welcome to Slab!</h1>
+  <h1 style="font-size:22px;font-weight:600;color:#fff;margin-bottom:12px;">Welcome to sLab!</h1>
   <p style="font-size:14px;color:#a3a3a3;line-height:1.7;margin-bottom:20px;">
     Your site <strong style="color:#c9a848;">${result.domain}</strong> is set up and ready. You have full access to the admin panel — build your site, add content, and go live when you're ready.
   </p>
@@ -127,7 +161,7 @@ router.post('/signup', async (req, res) => {
     This login link expires in 24 hours. After that, sign in with Google from your admin page.
   </p>
   <hr style="border:none;border-top:1px solid #262626;margin:24px 0;">
-  <p style="font-size:11px;color:#525252;text-align:center;">Slab — Built by MadLadsLab</p>
+  <p style="font-size:11px;color:#525252;text-align:center;">sLab — Built by MadLadsLab</p>
 </div>`,
         });
         console.log(`[onboarding] Welcome email sent to ${email}`);
@@ -145,91 +179,125 @@ router.post('/signup', async (req, res) => {
   }
 });
 
-// ── Go Live — Stripe checkout to activate ───────────────────────────────────
+// ── Go Live — PayPal checkout to activate ───────────────────────────────────
 router.post('/go-live', async (req, res) => {
-  const stripe = getStripe();
-  if (!stripe) return res.status(500).json({ error: 'Billing not configured' });
+  if (!config.PAYPAL_CID || !config.PAYPAL_SEC) {
+    return res.status(500).json({ error: 'Billing not configured' });
+  }
 
   const { plan } = req.body;
+  const planInfo = PP_PLANS[plan || 'starter'];
+  if (!planInfo) return res.status(400).json({ error: 'Unknown plan' });
+
   const tenant = req.tenant;
   if (!tenant) return res.status(400).json({ error: 'No tenant context' });
 
-  // Plan → Stripe price mapping (set these in env or slab.plans collection)
-  const slab = getSlabDb();
-  const planDoc = await slab.collection('plans').findOne({ slug: plan || 'monthly' });
-  if (!planDoc) return res.status(400).json({ error: 'Unknown plan' });
-
   try {
-    const sessionParams = {
-      payment_method_types: ['card'],
-      customer_email: tenant.meta?.ownerEmail,
-      metadata: {
-        tenantDomain: tenant.domain,
-        plan: planDoc.slug,
-      },
-      success_url: `https://${tenant.domain}/admin?activated=1`,
-      cancel_url: `https://${tenant.domain}/admin?cancelled=1`,
-    };
+    const token = await ppAccessToken();
+    const returnUrl = `https://${tenant.domain}/start/paypal-return`;
+    const cancelUrl = `https://${tenant.domain}/admin?cancelled=1`;
 
-    if (planDoc.mode === 'subscription') {
-      sessionParams.mode = 'subscription';
-      sessionParams.line_items = [{ price: planDoc.stripePriceId, quantity: 1 }];
-    } else {
-      // One-time payment (lifetime, promo)
-      sessionParams.mode = 'payment';
-      sessionParams.line_items = [{ price: planDoc.stripePriceId, quantity: 1 }];
+    const orderRes = await fetch(`${ppBase()}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        intent: 'CAPTURE',
+        purchase_units: [{
+          reference_id: tenant.domain,
+          description: `sLab ${planInfo.label} — Go Live`,
+          custom_id: JSON.stringify({ domain: tenant.domain, plan: plan || 'starter' }),
+          amount: { currency_code: 'USD', value: planInfo.amount },
+        }],
+        payment_source: {
+          paypal: {
+            experience_context: {
+              return_url: returnUrl,
+              cancel_url: cancelUrl,
+              brand_name: 'sLab by MadLadsLab',
+              user_action: 'PAY_NOW',
+            },
+          },
+        },
+      }),
+    });
+
+    if (!orderRes.ok) {
+      const err = await orderRes.text();
+      console.error('[onboarding] PayPal order error:', err);
+      return res.status(500).json({ error: 'Payment setup failed' });
     }
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
-    res.json({ url: session.url });
+    const order = await orderRes.json();
+    const approveLink = order.links?.find(l => l.rel === 'payer-action' || l.rel === 'approve');
+    if (!approveLink) return res.status(500).json({ error: 'No PayPal approval link' });
+
+    res.json({ url: approveLink.href });
   } catch (err) {
-    console.error('[onboarding] Stripe session error:', err);
+    console.error('[onboarding] PayPal session error:', err);
     res.status(500).json({ error: 'Payment setup failed' });
   }
 });
 
-// ── Stripe Webhook — activates tenant on payment ───────────────────────────
-router.post('/webhook', async (req, res) => {
-  const stripe = getStripe();
-  if (!stripe) return res.status(400).send('Not configured');
+// ── PayPal Return — capture payment & activate tenant ──────────────────────
+router.get('/paypal-return', async (req, res) => {
+  const orderId = req.query.token; // PayPal sends ?token=ORDER_ID
+  if (!orderId) return res.redirect('/admin?error=missing_token');
 
-  let event;
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      req.headers['stripe-signature'],
-      config.SLAB_STRIPE_WEBHOOK_SECRET,
-    );
-  } catch (err) {
-    console.error('[onboarding] Webhook sig failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
+    const token = await ppAccessToken();
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const { tenantDomain, plan } = session.metadata || {};
+    // Capture the order
+    const captureRes = await fetch(`${ppBase()}/v2/checkout/orders/${orderId}/capture`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!captureRes.ok) {
+      const err = await captureRes.text();
+      console.error('[onboarding] PayPal capture failed:', err);
+      return res.redirect('/admin?error=payment_failed');
+    }
+
+    const capture = await captureRes.json();
+    const customId = capture.purchase_units?.[0]?.payments?.captures?.[0]?.custom_id
+      || capture.purchase_units?.[0]?.custom_id;
+
+    let tenantDomain, plan;
+    try {
+      const meta = JSON.parse(customId);
+      tenantDomain = meta.domain;
+      plan = meta.plan;
+    } catch {
+      tenantDomain = req.tenant?.domain;
+      plan = 'starter';
+    }
 
     if (tenantDomain) {
       const slab = getSlabDb();
       const now = new Date();
+      const planInfo = PP_PLANS[plan] || PP_PLANS.starter;
 
-      // Calculate expiry based on plan
-      let expiresAt = null;
-      if (plan === 'monthly') {
-        expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      } else if (plan === 'annual') {
-        expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
-      }
-      // lifetime = no expiry
+      const expiresAt = planInfo.days
+        ? new Date(now.getTime() + planInfo.days * 24 * 60 * 60 * 1000)
+        : null;
+
+      const captureId = capture.purchase_units?.[0]?.payments?.captures?.[0]?.id || orderId;
 
       await slab.collection('tenants').updateOne(
         { domain: tenantDomain },
         {
           $set: {
             status: 'active',
+            isPreview: false,
             'meta.plan': plan,
-            'meta.stripeCustomerId': session.customer,
-            'meta.stripeSubscriptionId': session.subscription || null,
+            'meta.paypalOrderId': orderId,
+            'meta.paypalCaptureId': captureId,
             'meta.activatedAt': now,
             'meta.expiresAt': expiresAt,
             updatedAt: now,
@@ -238,28 +306,14 @@ router.post('/webhook', async (req, res) => {
       );
 
       bustTenantCache(tenantDomain);
-      console.log(`[onboarding] Tenant activated: ${tenantDomain} (${plan})`);
+      console.log(`[onboarding] Tenant activated via PayPal: ${tenantDomain} (${plan} — $${planInfo.amount})`);
     }
-  }
 
-  // Handle subscription cancellation
-  if (event.type === 'customer.subscription.deleted') {
-    const sub = event.data.object;
-    const slab = getSlabDb();
-    const tenant = await slab.collection('tenants').findOne({
-      'meta.stripeSubscriptionId': sub.id,
-    });
-    if (tenant) {
-      await slab.collection('tenants').updateOne(
-        { _id: tenant._id },
-        { $set: { status: 'suspended', 'meta.suspendedAt': new Date(), updatedAt: new Date() } }
-      );
-      bustTenantCache(tenant.domain);
-      console.log(`[onboarding] Tenant suspended: ${tenant.domain}`);
-    }
+    res.redirect('/admin?activated=1');
+  } catch (err) {
+    console.error('[onboarding] PayPal return error:', err);
+    res.redirect('/admin?error=payment_error');
   }
-
-  res.json({ received: true });
 });
 
 // ── Success redirect ────────────────────────────────────────────────────────

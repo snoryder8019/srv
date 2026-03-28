@@ -1,0 +1,141 @@
+<%- include('../layout/header') %>
+<script>document.querySelector('.container').classList.add('ax');</script>
+
+<div class="kds">
+  <!-- Header strip -->
+  <div class="kds-bar">
+    <div class="kds-bar-left">
+      <span class="kds-brand" style="color:<%= brand.color %>"><%= brand.name %></span>
+      <% if (isToday) { %><span class="kds-live"><span class="kds-live-dot"></span>LIVE</span><% } %>
+    </div>
+    <div class="kds-bar-mid">
+      <a href="/live?brandId=<%= brand._id %>&date=<%= (function(){var d=new Date(viewDate);d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);})() %>" class="kds-nav">&lsaquo;</a>
+      <span class="kds-date"><%= viewDate %></span>
+      <% if (!isToday) { %>
+        <a href="/live?brandId=<%= brand._id %>&date=<%= (function(){var d=new Date(viewDate);d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);})() %>" class="kds-nav">&rsaquo;</a>
+        <a href="/live?brandId=<%= brand._id %>" class="kds-now"><%= lang==='es'?'HOY':'NOW' %></a>
+      <% } %>
+    </div>
+    <div class="kds-bar-right">
+      <% shifts.forEach(s => { const act = currentShift && currentShift._id.toString()===s._id.toString(); %>
+        <a href="/live?brandId=<%= brand._id %>&date=<%= viewDate %>&shift=<%= s.shiftTime %>" class="kds-shift<%= act?' kds-shift-on':'' %>">
+          <%= s.shiftTime %> <strong><%= s.crew.filter(c=>c.present).length %></strong>
+        </a>
+      <% }) %>
+    </div>
+  </div>
+
+  <!-- Main: 3 zones -->
+  <div class="kds-main">
+
+    <!-- ZONE 1: Floor map / crew -->
+    <div class="kds-zone">
+      <div class="kds-zone-head"><%= lang==='es'?'EN PISO':'ON FLOOR' %> &mdash; <%= currentShift ? currentShift.crew.filter(c=>c.present).length : 0 %></div>
+      <div class="kds-floor">
+        <% if (currentShift) { %>
+          <% const stns = {}; currentShift.crew.forEach(c => { const k = c.station||'floor'; if(!stns[k])stns[k]=[]; stns[k].push(c); }); %>
+          <% Object.keys(stns).forEach(stn => { %>
+            <div class="kds-stn">
+              <div class="kds-stn-label"><%= stn %></div>
+              <% stns[stn].forEach(c => { %>
+                <div class="kds-person<%= c.present ? ' kds-in' : '' %><%= c.clockOut && !c.present ? ' kds-out' : '' %>">
+                  <span class="kds-dot"></span>
+                  <span class="kds-name"><%= c.displayName.split(' ')[0] %></span>
+                  <span class="kds-role"><%= c.role||'' %></span>
+                  <% if (c.present && c.clockIn) { %>
+                    <span class="kds-clock"><%= new Date(c.clockIn).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) %></span>
+                  <% } %>
+                </div>
+              <% }) %>
+            </div>
+          <% }) %>
+        <% } %>
+        <% if (!currentShift || currentShift.crew.length === 0) { %>
+          <div class="kds-empty"><%= lang==='es'?'Sin equipo':'No crew' %></div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- ZONE 2: Tasks / ticket board -->
+    <div class="kds-zone kds-zone-wide">
+      <div class="kds-zone-head">
+        <span><%= lang==='es'?'TAREAS':'TASKS' %></span>
+        <span class="kds-pct"><%= doneCount %>/<%= totalTasks %></span>
+        <div class="kds-pct-bar"><div class="kds-pct-fill" style="width:<%= pct %>%"></div></div>
+      </div>
+      <div class="kds-tickets">
+        <% const todo = tasks.filter(t => !completions.find(c=>c.task.toString()===t._id.toString())); %>
+        <% const done = tasks.filter(t => completions.find(c=>c.task.toString()===t._id.toString())); %>
+
+        <% if (todo.length > 0) { %>
+          <div class="kds-ticket-col">
+            <div class="kds-ticket-label kds-open-label"><%= lang==='es'?'PENDIENTE':'OPEN' %> (<%= todo.length %>)</div>
+            <% todo.forEach(tk => { %>
+              <div class="kds-ticket kds-ticket-open">
+                <span class="kds-ticket-type"><%= tk.type %></span>
+                <span class="kds-ticket-title"><%= tk.title %></span>
+                <span class="kds-ticket-shift"><%= tk.shiftTime %></span>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+
+        <% if (done.length > 0) { %>
+          <div class="kds-ticket-col">
+            <div class="kds-ticket-label kds-done-label"><%= lang==='es'?'LISTO':'DONE' %> (<%= done.length %>)</div>
+            <% done.forEach(tk => { const comp = completions.find(c=>c.task.toString()===tk._id.toString()); %>
+              <div class="kds-ticket kds-ticket-done">
+                <span class="kds-ticket-type"><%= tk.type %></span>
+                <span class="kds-ticket-title"><%= tk.title %></span>
+                <span class="kds-ticket-by"><%= comp?.user?.displayName || comp?.posPin || '' %></span>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- ZONE 3: Feed -->
+    <div class="kds-zone">
+      <div class="kds-zone-head"><%= lang==='es'?'ACTIVIDAD':'FEED' %></div>
+      <div class="kds-feed">
+        <% recentScans.forEach(s => { %>
+          <div class="kds-feed-row">
+            <span class="kds-feed-t"><%= new Date(s.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}) %></span>
+            <span class="kds-feed-w"><%= s.user?s.user.displayName:'?' %></span>
+            <span class="kds-feed-tag"><%= s.type %></span>
+            <span class="kds-feed-q"><%= s.qrCode?s.qrCode.label:'' %></span>
+          </div>
+        <% }) %>
+        <% if (recentScans.length===0) { %>
+          <div class="kds-empty"><%= lang==='es'?'Sin actividad':'Quiet' %></div>
+        <% } %>
+      </div>
+
+      <% if (specials.length > 0) { %>
+        <div class="kds-zone-head" style="margin-top:8px;"><%= lang==='es'?'ESPECIALES':'SPECIALS' %></div>
+        <% specials.forEach(s => { %>
+          <div class="kds-special"><strong><%= s.name %></strong> <% if (s.price) { %><span><%= s.price %></span><% } %></div>
+        <% }) %>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- History strip -->
+  <div class="kds-history">
+    <% history.forEach(h => { const sel = h._id===viewDate; %>
+      <a href="/live?brandId=<%= brand._id %>&date=<%= h._id %>" class="kds-h-day<%= sel?' kds-h-sel':'' %>">
+        <span class="kds-h-d"><%= h._id.slice(5) %></span>
+        <div class="kds-h-dots">
+          <% h.shifts.forEach(s => { %><span class="kds-h-dot kds-h-<%= s.shiftTime %>" title="<%= s.shiftTime %>: <%= s.present %>/<%= s.crewCount %>"></span><% }) %>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+</div>
+
+<% if (isToday) { %>
+<script>setTimeout(function(){ location.reload(); }, 30000);</script>
+<% } %>
+
+<%- include('../layout/footer') %>

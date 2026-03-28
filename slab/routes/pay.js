@@ -8,7 +8,7 @@ import { config } from '../config/config.js';
 const router = express.Router();
 
 /** Lookup invoice by payment token — shared helper */
-async function findPayableInvoice(token) {
+async function findPayableInvoice(req, token) {
   const db = req.db;
   const invoice = await db.collection('invoices').findOne({ paymentToken: token });
   if (!invoice) return { invoice: null, clientDoc: null, error: 'not_found' };
@@ -20,14 +20,14 @@ async function findPayableInvoice(token) {
 // ── Public invoice payment page ──
 router.get('/:token', async (req, res) => {
   try {
-    const { invoice, clientDoc, error } = await findPayableInvoice(req.params.token);
+    const { invoice, clientDoc, error } = await findPayableInvoice(req, req.params.token);
     if (error === 'not_found') return res.status(404).render('pay-error', { message: 'Invoice not found or link has expired.' });
     res.render('pay', {
       inv: invoice,
       cl: clientDoc,
       paid: error === 'already_paid',
-      stripeKey: config.STRIPE_PUBLISHABLE_KEY || null,
-      paypalId: config.PAYPAL_CLIENT_ID || null,
+      stripeKey: req.tenant?.public?.stripePublishable || null,
+      paypalId: req.tenant?.public?.paypalClientId || null,
       domain: req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN,
     });
   } catch (err) {
@@ -39,7 +39,7 @@ router.get('/:token', async (req, res) => {
 // ── Stripe Checkout ──
 router.post('/:token/stripe', async (req, res) => {
   try {
-    const { invoice, clientDoc, error } = await findPayableInvoice(req.params.token);
+    const { invoice, clientDoc, error } = await findPayableInvoice(req, req.params.token);
     if (error) return res.status(400).render('pay-error', { message: 'This invoice cannot be paid.' });
     const domain = req.tenant?.domain ? `https://${req.tenant.domain}` : config.DOMAIN;
     const session = await createCheckoutSession(
@@ -59,7 +59,7 @@ router.post('/:token/stripe', async (req, res) => {
 // ── PayPal Checkout ──
 router.post('/:token/paypal', async (req, res) => {
   try {
-    const { invoice, clientDoc, error } = await findPayableInvoice(req.params.token);
+    const { invoice, clientDoc, error } = await findPayableInvoice(req, req.params.token);
     if (error) return res.status(400).render('pay-error', { message: 'This invoice cannot be paid.' });
     const domain = req.tenant?.domain ? `https://${req.tenant.domain}` : config.DOMAIN;
     const order = await createOrder(

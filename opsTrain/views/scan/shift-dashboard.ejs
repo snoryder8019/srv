@@ -1,0 +1,182 @@
+<%- include('../layout/header') %>
+
+<div class="my-dash">
+  <!-- Header -->
+  <div class="my-top" style="border-color:<%= brand.color || '#d97706' %>">
+    <div>
+      <h1 style="color:<%= brand.color %>"><%= brand.name %></h1>
+      <div class="shift-user-row">
+        <span class="text-muted"><%= today %></span>
+        <a href="/auth/not-me?back=<%= encodeURIComponent('/scan/' + qrCode.code) %>" class="btn-not-me"><%= lang === 'es' ? 'No soy yo' : 'Not you?' %></a>
+      </div>
+    </div>
+    <div class="my-user-badge"><%= shiftUser?.displayName || '' %></div>
+  </div>
+
+  <% if (webhookLogged) { %>
+    <div class="alert alert-success" style="margin-bottom:8px;padding:6px 10px;font-size:12px;">
+      <strong><%= t('scan.scanLogged') %>:</strong> <%= qrCode.label %><% if (qrCode.webhookCategory) { %> — <%= qrCode.webhookCategory %><% } %>
+    </div>
+  <% } %>
+
+  <% if (qrCode.type === 'prep-log') { %>
+    <div class="scan-context-card" style="margin-bottom:8px;">
+      <h3><%= t('scan.prepLog') %>: <%= qrCode.label %></h3>
+      <form id="prepForm" style="margin-top:6px;display:flex;gap:6px;">
+        <input type="text" name="note" placeholder="<%= t('scan.whatPrepped') %>" required class="checkin-input" style="flex:1;">
+        <button type="submit" class="btn btn-sm btn-primary"><%= t('scan.logPrep') %></button>
+      </form>
+      <div id="prepResult" style="display:none;margin-top:4px;" class="alert"></div>
+    </div>
+  <% } %>
+  <% if (qrCode.type === 'task-checkin' && qrCode.task) { %>
+    <div class="scan-context-card" style="margin-bottom:8px;">
+      <h3><%= t('scan.taskCheckin') %>: <%= qrCode.task.title %></h3>
+      <form id="taskConfirmForm" style="margin-top:6px;display:flex;gap:6px;">
+        <input type="hidden" name="taskId" value="<%= qrCode.task._id %>">
+        <input type="text" name="note" placeholder="<%= t('scan.noteOptional') %>" class="checkin-input" style="flex:1;">
+        <button type="submit" class="btn btn-sm btn-primary"><%= t('scan.markComplete') %></button>
+      </form>
+      <div id="taskConfirmResult" style="display:none;margin-top:4px;" class="alert"></div>
+    </div>
+  <% } %>
+
+  <!-- Personal stats row -->
+  <div class="my-stats">
+    <div class="my-stat">
+      <div class="my-stat-ring">
+        <svg viewBox="0 0 36 36"><path class="rg-bg" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0-31.831"/><path class="rg-fill" stroke-dasharray="<%= me.todayPct %>,100" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0-31.831"/><text x="18" y="20.5" class="rg-txt"><%= me.todayPct %>%</text></svg>
+      </div>
+      <div><span class="my-stat-num"><%= me.todayCount %>/<%= me.todayTotal %></span><span class="my-stat-lbl"><%= lang === 'es' ? 'Hoy' : 'Today' %></span></div>
+    </div>
+    <div class="my-stat">
+      <span class="my-stat-num my-stat-fire"><%= me.streak %></span>
+      <span class="my-stat-lbl"><%= lang === 'es' ? 'Racha' : 'Streak' %></span>
+    </div>
+    <div class="my-stat">
+      <span class="my-stat-num"><%= me.scansToday %></span>
+      <span class="my-stat-lbl"><%= lang === 'es' ? 'Escaneos' : 'Scans' %></span>
+    </div>
+    <div class="my-stat">
+      <span class="my-stat-num"><%= me.total30 %></span>
+      <span class="my-stat-lbl">30d</span>
+    </div>
+    <div class="my-stat">
+      <span class="my-stat-num"><%= me.rank || '—' %><small>/<%= me.totalStaff %></small></span>
+      <span class="my-stat-lbl"><%= lang === 'es' ? 'Rango' : 'Rank' %></span>
+    </div>
+  </div>
+
+  <!-- Charts row: 7-day + type breakdown -->
+  <div class="my-charts">
+    <div class="my-chart-card">
+      <div class="ax-h"><%= lang === 'es' ? '7 Dias' : '7 Days' %></div>
+      <div class="ax-chart-wrap" style="height:100px;"><canvas id="myWeekChart"></canvas></div>
+    </div>
+    <div class="my-chart-card">
+      <div class="ax-h"><%= lang === 'es' ? 'Por Tipo' : 'By Type' %></div>
+      <div class="ax-chart-wrap" style="height:100px;"><canvas id="myTypeChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Task checklist -->
+  <div class="my-tasks">
+    <div class="ax-h"><%= t('shift.taskChecklist') %> <small class="text-muted">(<%= me.todayCount %>/<%= me.todayTotal %>)</small></div>
+    <% if (tasks.length === 0) { %>
+      <p class="text-muted" style="font-size:12px;"><%= t('shift.noTasks') %></p>
+    <% } else { %>
+      <% tasks.forEach(tk => { %>
+        <% if (tk.completedByMe) { %>
+          <div class="my-task my-task-done">
+            <span class="my-task-icon done">&#10003;</span>
+            <div class="my-task-body">
+              <span class="my-task-title"><%= tk.title %></span>
+              <span class="my-task-sub"><%= lang === 'es' ? 'Tu' : 'You' %> &mdash; <%= tk.completion ? new Date(tk.completion.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '' %></span>
+            </div>
+          </div>
+        <% } else if (tk.completed) { %>
+          <div class="my-task my-task-other">
+            <span class="my-task-icon other">&#10003;</span>
+            <div class="my-task-body">
+              <span class="my-task-title"><%= tk.title %></span>
+              <span class="my-task-sub"><%= tk.completedBy %> &mdash; <%= tk.completion ? new Date(tk.completion.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '' %></span>
+            </div>
+          </div>
+        <% } else { %>
+          <button class="my-task my-task-open" onclick="completeTask('<%= tk._id %>')" data-task-id="<%= tk._id %>">
+            <span class="my-task-icon open"></span>
+            <div class="my-task-body">
+              <span class="my-task-title"><%= tk.title %></span>
+              <span class="my-task-sub"><%= tk.type %></span>
+            </div>
+            <span class="my-task-arrow">&rsaquo;</span>
+          </button>
+        <% } %>
+      <% }) %>
+    <% } %>
+  </div>
+
+  <!-- Leaderboard -->
+  <% if (me.leaderboard && me.leaderboard.length > 0) { %>
+  <div class="my-board">
+    <div class="ax-h"><%= lang === 'es' ? 'Tabla de Lideres — 30 Dias' : 'Leaderboard — 30 Days' %></div>
+    <% me.leaderboard.forEach((entry, i) => { const isMe = entry._id?.toString() === shiftUser._id?.toString(); const topCount = me.leaderboard[0].count || 1; %>
+      <div class="my-board-row<%= isMe ? ' my-board-me' : '' %>">
+        <span class="my-board-rank my-board-rank-<%= i < 3 ? i+1 : 'n' %>"><%= i + 1 %></span>
+        <span class="my-board-name"><%= entry.u ? entry.u.displayName : '?' %><%= isMe ? ' ★' : '' %></span>
+        <div class="my-board-bar"><div style="width:<%= (entry.count / topCount * 100) %>%"></div></div>
+        <span class="my-board-ct"><%= entry.count %></span>
+      </div>
+    <% }) %>
+  </div>
+  <% } %>
+</div>
+
+<%- include('scanner') %>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+Chart.defaults.color='#6b6b74';Chart.defaults.borderColor='#1e1e24';Chart.defaults.font.size=9;
+var qrCode='<%=qrCode.code%>',brandId='<%=brand._id%>';
+
+// 7-day bar
+(function(){
+  var D=<%- JSON.stringify(me.week) %>;
+  var ctx=document.getElementById('myWeekChart').getContext('2d');
+  var g=ctx.createLinearGradient(0,100,0,0);g.addColorStop(0,'rgba(34,197,94,0.15)');g.addColorStop(1,'#22c55e');
+  new Chart(ctx,{type:'bar',data:{labels:D.map(function(d){return d._id?d._id.slice(5):''}),datasets:[{data:D.map(function(d){return d.count}),backgroundColor:g,borderRadius:3,barPercentage:.6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#1a1a1f'},ticks:{font:{size:8}}},x:{grid:{display:false},ticks:{font:{size:7}}}}}});
+})();
+
+// Type doughnut
+(function(){
+  var D=<%- JSON.stringify(me.typeBreakdown) %>;
+  var P=['#d97706','#22c55e','#60a5fa','#f472b6','#a78bfa','#fbbf24','#f87171','#2dd4bf'];
+  new Chart(document.getElementById('myTypeChart'),{type:'doughnut',data:{labels:D.map(function(d){return d._id||'?'}),datasets:[{data:D.map(function(d){return d.count}),backgroundColor:P.slice(0,D.length),borderColor:'#111113',borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'45%',plugins:{legend:{position:'right',labels:{boxWidth:8,padding:4,font:{size:8}}}}}});
+})();
+
+function completeTask(taskId){
+  // If task has image mode, grab last photo
+  var photo = window._lastPhoto || '';
+  fetch('/scan/'+qrCode+'/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taskId:taskId,photo:photo})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(!d.success) return;
+      location.reload();
+    });
+}
+
+var pf=document.getElementById('prepForm');
+if(pf)pf.addEventListener('submit',function(e){e.preventDefault();var n=e.target.querySelector('[name=note]').value;
+  fetch('/scan/'+qrCode+'/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:n})})
+    .then(function(r){return r.json()}).then(function(d){var el=document.getElementById('prepResult');el.style.display='block';el.className='alert '+(d.success?'alert-success':'alert-error');el.textContent=d.success?'<%=t("scan.prepLogged")%>':'Error';});
+});
+
+var tf=document.getElementById('taskConfirmForm');
+if(tf)tf.addEventListener('submit',function(e){e.preventDefault();var tid=e.target.querySelector('[name=taskId]').value;var n=e.target.querySelector('[name=note]').value;
+  fetch('/scan/'+qrCode+'/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taskId:tid,note:n})})
+    .then(function(r){return r.json()}).then(function(d){var el=document.getElementById('taskConfirmResult');el.style.display='block';el.className='alert '+(d.success?'alert-success':'alert-error');el.textContent=d.success?'<%=t("scan.taskCompleted")%>':'Error';});
+});
+</script>
+
+<%- include('../layout/footer') %>

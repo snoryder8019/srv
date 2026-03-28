@@ -344,6 +344,7 @@
             { value: 'minimal',  label: 'Minimal',  desc: 'Centered hero, airy whitespace, clean lines', icon: '○' },
             { value: 'magazine', label: 'Magazine',  desc: 'Background hero with overlapping content card', icon: '◨' },
             { value: 'dark',     label: 'Dark',     desc: 'Dark-themed throughout with accent highlights', icon: '◉' },
+            { value: 'startup',  label: 'Startup',  desc: 'SaaS pitch page — features grid, steps, pricing card', icon: '◆' },
           ];
         %>
         <% layouts.forEach(l => { %>
@@ -364,12 +365,23 @@
       <div class="form-grid cols-3">
         <div class="form-field">
           <label>Navbar Logo <span class="ai-badge" id="badge-nav_logo_display">AI</span></label>
-          <select name="nav_logo_display" id="field-nav_logo_display" style="width:100%;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
-            <option value="text" <%= design.nav_logo_display === 'text' ? 'selected' : '' %>>Text only</option>
-            <option value="image" <%= design.nav_logo_display === 'image' ? 'selected' : '' %>>Image only</option>
-            <option value="both" <%= design.nav_logo_display === 'both' ? 'selected' : '' %>>Image + Text</option>
-          </select>
-          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">How your brand appears in the navbar. Upload a logo in Brand Images below.</span>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <select name="nav_logo_display" id="field-nav_logo_display" style="flex:1;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
+              <option value="text" <%= design.nav_logo_display === 'text' ? 'selected' : '' %>>Text only</option>
+              <option value="image" <%= design.nav_logo_display === 'image' ? 'selected' : '' %>>Image only</option>
+              <option value="both" <%= design.nav_logo_display === 'both' ? 'selected' : '' %>>Image + Text</option>
+            </select>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <label style="font-size:0.68rem;white-space:nowrap;margin:0;">Split</label>
+              <input type="number" name="nav_logo_split" id="field-nav_logo_split" min="0" max="10" value="<%= design.nav_logo_split || 0 %>" style="width:52px;padding:8px 6px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);text-align:center;">
+            </div>
+          </div>
+          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Logo display + color split position (0 = off, 1 = 1st char accented). Name is in <a href="/admin/settings" style="color:var(--navy);">Settings</a>.</span>
+        </div>
+        <div class="form-field">
+          <label>Hero Large Text <span class="ai-badge" id="badge-hero_name_large">AI</span></label>
+          <input type="text" name="hero_name_large" id="field-hero_name_large" value="<%= design.hero_name_large || '' %>" placeholder="Auto (brand initials)" style="width:100%;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
+          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Large watermark text in the hero section. Leave blank for auto-generated brand initials.</span>
         </div>
         <div class="form-field">
           <label>Portfolio Layout <span class="ai-badge" id="badge-portfolio_layout">AI</span></label>
@@ -571,6 +583,66 @@
     </form>
   </div>
 
+  <!-- ═══════════ 3D BRAND MODELS ═══════════ -->
+  <div id="brand-models" class="card" style="margin-top:24px;">
+    <div class="card-title">3D Brand Models (GLTF)</div>
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(201,168,72,0.12);border:1px solid rgba(201,168,72,0.3);border-radius:2px;margin-bottom:16px;">
+      <span style="font-size:1rem;">&#9888;</span>
+      <span style="font-size:0.72rem;font-weight:600;color:var(--dark);letter-spacing:0.06em;text-transform:uppercase;">Caution: Experimental</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--slate);font-weight:300;margin-bottom:20px;">Upload branded 3D models (.glb or .gltf), or enable for an auto-generated 3D text fallback. The <strong>Header</strong> displays the brand name as a wide banner with particles and light effects. The <strong>Logo</strong> displays the leading letter in a square canvas. This feature is experimental — GLTF uploads will override the text fallback.</p>
+
+    <!-- Enable toggles -->
+    <div style="display:flex;gap:24px;margin-bottom:20px;flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="toggle_model_header" <%= design.model_header_enabled === 'true' ? 'checked' : '' %> style="width:16px;height:16px;accent-color:var(--navy);" onchange="toggleModel('model_header_enabled', this.checked)">
+        <span style="font-size:0.82rem;font-weight:600;color:var(--dark);">Enable 3D Header</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="toggle_model_logo" <%= design.model_logo_enabled === 'true' ? 'checked' : '' %> style="width:16px;height:16px;accent-color:var(--navy);" onchange="toggleModel('model_logo_enabled', this.checked)">
+        <span style="font-size:0.82rem;font-weight:600;color:var(--dark);">Enable 3D Logo</span>
+      </label>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;">
+      <%
+        const modelSlots = [
+          { slot: 'model_header', label: 'Header / Banner Model', desc: 'Wide banner — 3D text logo with particles & ambient light', aspect: '3/1', mode: 'header' },
+          { slot: 'model_logo',   label: 'Logo Model',            desc: 'Square — contour mark, auto-rotates on the page',          aspect: '1/1', mode: 'logo' },
+        ];
+      %>
+      <% for (const ms of modelSlots) { %>
+        <% const existing = brandModels.find(m => m.slot === ms.slot); %>
+        <div style="border:1px solid var(--ivory-mid);border-radius:2px;overflow:hidden;">
+          <div style="aspect-ratio:<%= ms.aspect %>;background:var(--navy-deep);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;">
+            <div class="gltf-viewer" <%= existing ? 'data-model-url="' + existing.url + '"' : '' %> data-brand-name="<%= (typeof brand !== 'undefined' && brand?.name) || 'Brand' %>" data-mode="<%= ms.mode %>" data-bg-color="<%= design.color_primary_deep %>" data-accent-color="<%= design.color_accent %>" data-primary-color="<%= design.color_primary %>" data-debug="true" style="width:100%;height:100%;"></div>
+          </div>
+          <div style="padding:10px 12px;">
+            <div style="font-size:0.78rem;font-weight:600;color:var(--dark);margin-bottom:2px;"><%= ms.label %></div>
+            <div style="font-size:0.65rem;color:var(--slate);margin-bottom:8px;"><%= ms.desc %></div>
+            <form method="POST" action="/admin/design/models" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <input type="hidden" name="slot" value="<%= ms.slot %>">
+              <input type="hidden" name="label" value="<%= ms.label %>">
+              <input type="file" name="model" accept=".glb,.gltf" required style="font-size:0.72rem;max-width:200px;">
+              <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.65rem;"><%= existing ? 'Replace' : 'Upload' %></button>
+              <% if (existing) { %>
+              </form>
+              <form method="POST" action="/admin/design/models/<%= existing._id %>/delete" onsubmit="return confirm('Remove this 3D model?')" style="display:inline;">
+                <button class="btn btn-danger btn-sm" style="font-size:0.65rem;">Remove</button>
+              </form>
+              <% } else { %>
+              </form>
+              <% } %>
+          </div>
+        </div>
+      <% } %>
+    </div>
+
+    <p style="margin-top:12px;font-size:0.72rem;color:var(--slate);">
+      Tip: Use <strong>.glb</strong> format for best compatibility. Max 20MB per file. When no model is uploaded, the brand name renders as 3D text with radiant lights and particles. Upload a custom GLTF to replace the text fallback.
+    </p>
+  </div>
+
 </div>
 
 </div></div>
@@ -637,10 +709,29 @@
       <textarea class="agent-input" id="agentInput" placeholder="Ask the agent to update design settings..." rows="1"></textarea>
       <button class="agent-send" id="agentSend">&#8593;</button>
     </div>
+    <span id="ai-status"></span>
   </div>
 </div>
 
+<script src="/js/gltfViewer.js"></script>
 <script>
+// ── Toggle 3D model enable/disable ──
+function toggleModel(key, enabled) {
+  fetch('/admin/design/toggle-model', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: key, value: enabled ? 'true' : 'false' })
+  }).then(function(r) { return r.json(); }).then(function() {
+    var label = key === 'model_header_enabled' ? '3D Header' : '3D Logo';
+    var badge = document.createElement('span');
+    badge.textContent = (enabled ? 'Enabled' : 'Disabled') + ' ' + label;
+    badge.style.cssText = 'font-size:0.72rem;color:var(--success);font-weight:600;margin-left:12px;';
+    var parent = document.getElementById('toggle_' + key.replace('_enabled', '')).parentElement;
+    parent.appendChild(badge);
+    setTimeout(function() { badge.remove(); }, 2000);
+  });
+}
+
 // ── Preview viewport switcher ──
 function setViewport(mode) {
   var vp = document.getElementById('previewViewport');
@@ -866,6 +957,7 @@ document.querySelectorAll('input[type=color]').forEach(function(picker) {
   } catch(ex) { /* ignore */ }
 })();
 </script>
+<script src="/js/agentHealth.js"></script>
 <script src="/js/tours/design.js"></script>
 
 </body>

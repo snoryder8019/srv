@@ -11,70 +11,97 @@ export function requireAdmin(req, res, next) {
   if (loginToken) {
     try {
       const decoded = jwt.verify(loginToken, config.JWT_SECRET);
-      if (decoded.oneTime && (decoded.isAdmin || decoded.isW2Admin)) {
-        // Issue real session cookie and redirect to clean URL
+      if (decoded.oneTime && decoded.isAdmin) {
         const payload = { ...decoded };
         delete payload.oneTime;
         delete payload.iat;
         delete payload.exp;
         const sessionToken = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '8h' });
-        res.cookie('slab_token', sessionToken, {
+        // Set cookie on THIS domain (works for custom domains since we're responding from their host)
+        const opts = {
           httpOnly: true,
           secure: config.NODE_ENV === 'production',
           sameSite: 'lax',
           maxAge: 8 * 60 * 60 * 1000,
-        });
-        // Strip token from URL and redirect
+        };
+        // Only set .madladslab.com domain for subdomain hosts
+        if (COOKIE_DOMAIN && req.hostname.endsWith('.madladslab.com')) {
+          opts.domain = COOKIE_DOMAIN;
+        }
+    
+        res.cookie('slab_token', sessionToken, opts);
         const cleanUrl = req.originalUrl.split('?')[0];
         return res.redirect(cleanUrl);
       }
-    } catch {}
+    } catch (err) {
+
+    }
   }
 
   const token = req.cookies?.slab_token;
-  if (!token) return res.redirect('/admin/login');
+  if (!token) {
+
+    return res.redirect('/admin/login');
+  }
   try {
     const decoded = jwt.verify(token, config.JWT_SECRET);
-    if (!decoded.isW2Admin && !decoded.isAdmin) {
+
+    if (!decoded.isAdmin) {
+  
+      res.clearCookie('slab_token');
+      return res.redirect('/admin/login?error=unauthorized');
+    }
+    // Tenant isolation — JWT must match this tenant's database
+    if (decoded.tenantDb && req.tenant?.db && decoded.tenantDb !== req.tenant.db) {
+  
       res.clearCookie('slab_token');
       return res.redirect('/admin/login?error=unauthorized');
     }
     req.adminUser = decoded;
     next();
-  } catch {
+  } catch (err) {
+
     res.clearCookie('slab_token');
     res.redirect('/admin/login');
   }
 }
 
 /** Generate a one-time login token (for signup redirects and email links) */
-export function createLoginToken(user, expiresIn = '5m') {
+export function createLoginToken(user, tenantDb, expiresIn = '5m') {
   return jwt.sign({
     id: user._id.toString(),
     email: user.email,
     displayName: user.displayName,
-    isW2Admin: user.isW2Admin || false,
     isAdmin: user.isAdmin || false,
+    tenantDb: tenantDb || null,
     oneTime: true,
   }, config.JWT_SECRET, { expiresIn });
 }
 
-export function issueAdminJWT(user, res) {
+export function issueAdminJWT(user, res, tenantDb, returnDomain) {
   const payload = {
     id: user._id.toString(),
     email: user.email,
     displayName: user.displayName,
-    isW2Admin: user.isW2Admin,
-    isAdmin: user.isAdmin,
+    isAdmin: user.isAdmin || false,
+    tenantDb: tenantDb || null,
   };
   const token = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '8h' });
-  res.cookie('slab_token', token, {
+
+  // Custom domains (not *.madladslab.com) need cookie on their own domain
+  const isCustomDomain = returnDomain && !returnDomain.endsWith('.madladslab.com') && returnDomain !== 'localhost';
+  const cookieDomain = isCustomDomain ? undefined : COOKIE_DOMAIN;
+
+  const opts = {
     httpOnly: true,
     secure: config.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 8 * 60 * 60 * 1000,
-    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-  });
+  };
+  if (cookieDomain) opts.domain = cookieDomain;
+
+
+  res.cookie('slab_token', token, opts);
 }
 
 // ── Portal JWT (clients / collaborators) ──────────────────────────────────────

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register — <%= brand?.name || 'Admin' %></title>
+  <%
+    const _bd = typeof brandDesign !== 'undefined' ? brandDesign : {};
+    const _hFont = _bd.font_heading || 'Cormorant Garamond';
+    const _bFont = _bd.font_body || 'Jost';
+    const _fontMap = {
+      'Cormorant Garamond': 'Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400',
+      'Playfair Display': 'Playfair+Display:wght@400;600;700',
+      'Lora': 'Lora:wght@400;600;700', 'Merriweather': 'Merriweather:wght@300;400;700',
+      'Libre Baskerville': 'Libre+Baskerville:wght@400;700',
+      'Jost': 'Jost:wght@300;400;500;600', 'Inter': 'Inter:wght@300;400;500;600;700',
+      'Poppins': 'Poppins:wght@300;400;500;600;700', 'Raleway': 'Raleway:wght@300;400;500;600;700',
+      'Nunito': 'Nunito:wght@300;400;500;600;700', 'DM Sans': 'DM+Sans:wght@300;400;500;600;700',
+    };
+    const _hFU = _fontMap[_hFont] || _fontMap['Cormorant Garamond'];
+    const _bFU = _fontMap[_bFont] || _fontMap['Jost'];
+    const _fp = _hFU === _bFU ? _hFU : _hFU + '&family=' + _bFU;
+  %>
+  <link href="https://fonts.googleapis.com/css2?family=<%= _fp %>&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root { --navy: <%= _bd.color_primary || '#1C2B4A' %>; --navy-deep: <%= _bd.color_primary_deep || '#0F1B30' %>; --gold: <%= _bd.color_accent || '#C9A848' %>; --gold-light: <%= _bd.color_accent_light || '#E8D08A' %>; --ivory: <%= _bd.color_bg || '#F5F3EF' %>; --ivory-mid: #E6E1D6; --slate: #6B7380; --dark: #0F1B30; --white: #FDFCFA; --danger: #B91C1C; --success: #15803D; --font-heading: '<%= _hFont %>', serif; --font-body: '<%= _bFont %>', sans-serif; }
+    body { font-family: var(--font-body); background: var(--navy-deep); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .reg-wrap { display: grid; grid-template-columns: 1fr 1fr; max-width: 780px; width: 100%; margin: 24px; box-shadow: 0 32px 80px rgba(0,0,0,0.5); }
+    .reg-left { background: var(--ivory); padding: 48px 44px; display: flex; flex-direction: column; justify-content: center; }
+    .reg-brand { font-family: var(--font-heading); font-size: 2rem; font-weight: 300; color: var(--dark); margin-bottom: 2px; }
+    .reg-brand-sub { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase; color: var(--navy); margin-bottom: 32px; }
+    .reg-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--slate); margin-bottom: 6px; }
+    .reg-desc { font-size: 0.85rem; font-weight: 300; color: var(--slate); line-height: 1.7; margin-bottom: 24px; }
+    .error-msg { background: rgba(185,28,28,0.07); border: 1px solid rgba(185,28,28,0.2); color: var(--danger); padding: 12px 14px; font-size: 0.82rem; margin-bottom: 16px; border-radius: 2px; }
+    .reg-form input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--ivory-mid); border-radius: 2px; font-family: var(--font-body); font-size: 0.85rem; font-weight: 300; color: var(--dark); background: var(--white); margin-bottom: 10px; outline: none; }
+    .reg-form input:focus { border-color: var(--navy); }
+    .reg-form button { width: 100%; padding: 13px; background: var(--navy); color: var(--white); border: none; border-radius: 2px; font-family: var(--font-body); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; transition: background 0.15s; margin-top: 4px; }
+    .reg-form button:hover { background: var(--navy-deep); }
+    .pw-rules { font-size: 0.7rem; color: var(--slate); margin: -4px 0 12px; line-height: 1.6; }
+    .pw-rules span { display: inline-block; margin-right: 10px; }
+    .reg-links { margin-top: 16px; font-size: 0.72rem; text-align: center; }
+    .reg-links a { color: var(--navy); text-decoration: none; }
+    .reg-right { background: var(--navy-deep); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+    .reg-right-text { font-family: var(--font-heading); font-size: 9rem; font-weight: 300; font-style: italic; color: rgba(201,168,72,0.1); line-height: 1; user-select: none; }
+    @media (max-width: 600px) { .reg-wrap { grid-template-columns: 1fr; } .reg-right { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="reg-wrap">
+    <div class="reg-left">
+      <div class="reg-brand"><%- brand?.name || '' %></div>
+      <div class="reg-brand-sub">Admin Registration</div>
+      <div class="reg-title">Create your account</div>
+      <p class="reg-desc">After registering, an existing administrator must grant you admin access before you can sign in.</p>
+
+      <% if (errorMsg) { %>
+        <div class="error-msg"><%= errorMsg %></div>
+      <% } %>
+
+      <form method="POST" action="/admin/register" class="reg-form">
+        <input type="text" name="displayName" placeholder="Full name" value="<%= formData.displayName || '' %>" autocomplete="name">
+        <input type="email" name="email" placeholder="Email address" required value="<%= formData.email || '' %>" autocomplete="email">
+        <input type="password" name="password" placeholder="Password" required autocomplete="new-password" minlength="12">
+        <div class="pw-rules">
+          <span>12+ chars</span><span>Uppercase</span><span>Lowercase</span><span>Number</span><span>Special char</span>
+        </div>
+        <input type="password" name="password_confirm" placeholder="Confirm password" required autocomplete="new-password">
+        <button type="submit">Create Account</button>
+      </form>
+
+      <div class="reg-links">
+        <a href="/admin/login">Already have an account? Sign in</a>
+      </div>
+    </div>
+    <div class="reg-right">
+      <div class="reg-right-text"><%- (brand?.name || 'S')[0] %></div>
+    </div>
+  </div>
+</body>
+</html>

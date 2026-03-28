@@ -78,8 +78,35 @@ app.use('/start', onboardingRouter);
 app.use('/superadmin', superadminRouter);
 
 // ── Platform landing page (slab.madladslab.com) ─────────────────────────────
-app.get('/', (req, res, next) => {
-  if (!req.tenant) return res.render('landing');
+app.get('/', async (req, res, next) => {
+  if (!req.tenant) {
+    // Load slab tenant's design + copy so the platform landing uses admin settings
+    try {
+      const { getSlabDb, getTenantDb } = await import('./plugins/mongo.js');
+      const slab = getSlabDb();
+      const tenant = await slab.collection('tenants').findOne({ 'meta.subdomain': 'slab' });
+      if (tenant) {
+        const tdb = getTenantDb(tenant.db);
+        const [rawDesign, rawCopy, rawLogos, rawModels] = await Promise.all([
+          tdb.collection('design').find({}).toArray(),
+          tdb.collection('copy').find({}).toArray(),
+          tdb.collection('brand_images').find({}).toArray(),
+          tdb.collection('brand_models').find({}).toArray(),
+        ]);
+        const { DESIGN_DEFAULTS } = await import('./routes/admin/design.js');
+        const design = { ...DESIGN_DEFAULTS };
+        for (const d of rawDesign) design[d.key] = d.value;
+        const copy = {};
+        for (const c of rawCopy) copy[c.key] = c.value;
+        const logos = {};
+        for (const l of rawLogos) logos[l.slot] = l.url;
+        const brandModels = {};
+        for (const m of rawModels) brandModels[m.slot] = m.url;
+        return res.render('landing', { brand: tenant.brand, design, copy, logos, brandModels });
+      }
+    } catch (err) { console.error('[platform-landing]', err.message); }
+    return res.render('landing');
+  }
   next();
 });
 

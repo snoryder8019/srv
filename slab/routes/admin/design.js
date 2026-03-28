@@ -1,9 +1,9 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../../plugins/mongo.js';
-import { brandUpload } from '../../middleware/upload.js';
+import { brandUpload, modelUpload } from '../../middleware/upload.js';
 import { callLLM, tryParseAgentResponse, webSearch } from '../../plugins/agentMcp.js';
-import { buildBrandContext } from '../../plugins/brandContext.js';
+import { loadBrandContext } from '../../plugins/brandContext.js';
 
 const router = express.Router();
 
@@ -29,7 +29,11 @@ export const DESIGN_DEFAULTS = {
   portfolio_layout:    'grid',
   blog_layout:         'grid',
   nav_logo_display:    'text',
+  nav_logo_split:      '0',
   landing_layout:      'classic',
+  hero_name_large:     '',
+  model_header_enabled: 'false',
+  model_logo_enabled:   'false',
 };
 
 // ── Theme-saveable design keys (excludes agent settings / visibility) ──
@@ -37,22 +41,23 @@ const THEME_KEYS = [
   'color_primary', 'color_primary_deep', 'color_primary_mid',
   'color_accent', 'color_accent_light', 'color_bg',
   'font_heading', 'font_body',
-  'portfolio_layout', 'blog_layout', 'nav_logo_display', 'landing_layout',
+  'portfolio_layout', 'blog_layout', 'nav_logo_display', 'nav_logo_split', 'landing_layout',
 ];
 
 router.get('/', async (req, res) => {
   try {
     const db = req.db;
-    const [rawDesign, brandImages, themes] = await Promise.all([
+    const [rawDesign, brandImages, themes, brandModels] = await Promise.all([
       db.collection('design').find({}).toArray(),
       db.collection('brand_images').find({}).sort({ slot: 1, uploadedAt: -1 }).toArray(),
       db.collection('themes').find({}).sort({ createdAt: -1 }).toArray(),
+      db.collection('brand_models').find({}).sort({ slot: 1 }).toArray(),
     ]);
     const design = { ...DESIGN_DEFAULTS };
     for (const item of rawDesign) design[item.key] = item.value;
     res.render('admin/design/index', {
       user: req.adminUser, page: 'design', title: 'Design & Settings',
-      design, brandImages, themes, saved: req.query.saved === '1', error: req.query.error === '1',
+      design, brandImages, themes, brandModels, saved: req.query.saved === '1', error: req.query.error === '1',
     });
   } catch (err) {
     console.error(err);
@@ -64,9 +69,9 @@ router.post('/', async (req, res) => {
   try {
     const db = req.db;
     const ops = Object.keys(DESIGN_DEFAULTS).map(key => {
-      const value = key.startsWith('vis_')
+      const value = (key.startsWith('vis_') || key.startsWith('model_'))
         ? (req.body[key] === 'on' ? 'true' : 'false')
-        : (req.body[key] || DESIGN_DEFAULTS[key]);
+        : (req.body[key] !== undefined && req.body[key] !== '' ? req.body[key] : DESIGN_DEFAULTS[key]);
       return db.collection('design').updateOne(
         { key },
         { $set: { key, value, updatedAt: new Date() } },
@@ -137,6 +142,60 @@ router.post('/images/:id/delete', async (req, res) => {
     res.redirect('/admin/design?saved=1#brand-images');
   } catch (err) {
     console.error('Brand image delete error:', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+// ── Toggle 3D model enable/disable (AJAX) ──
+router.post('/toggle-model', async (req, res) => {
+  try {
+    const db = req.db;
+    const { key, value } = req.body;
+    if (!['model_header_enabled', 'model_logo_enabled'].includes(key)) return res.status(400).json({ error: 'Invalid key' });
+    await db.collection('design').updateOne(
+      { key },
+      { $set: { key, value: value === 'true' ? 'true' : 'false', updatedAt: new Date() } },
+      { upsert: true }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Toggle model error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Upload 3D model (header or logo slot) ──
+router.post('/models', modelUpload.single('model'), async (req, res) => {
+  try {
+    const db = req.db;
+    const slot = req.body.slot; // model_header or model_logo
+    if (!['model_header', 'model_logo'].includes(slot)) return res.redirect('/admin/design?error=1');
+    const label = req.body.label || slot;
+    const url = req.file?.location || req.file?.path;
+    if (!url) return res.redirect('/admin/design?error=1');
+
+    await db.collection('brand_models').updateOne(
+      { slot },
+      { $set: { slot, label, url, originalName: req.file.originalname, uploadedAt: new Date() } },
+      { upsert: true }
+    );
+
+    console.log(`[Design] 3D model uploaded: ${slot} → ${url}`);
+    res.redirect('/admin/design?saved=1#brand-models');
+  } catch (err) {
+    console.error('3D model upload error:', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+// ── Delete 3D model ──
+router.post('/models/:id/delete', async (req, res) => {
+  try {
+    const db = req.db;
+    await db.collection('brand_models').deleteOne({ _id: new ObjectId(req.params.id) });
+    res.redirect('/admin/design?saved=1#brand-models');
+  } catch (err) {
+    console.error('3D model delete error:', err);
     res.redirect('/admin/design?error=1');
   }
 });
@@ -256,7 +315,7 @@ router.post('/agent', async (req, res) => {
       ? `\n\nCurrent design settings:\n${Object.entries(currentDesign).map(([k, v]) => `  ${k}: "${v}"`).join('\n')}`
       : '';
 
-    const brandCtx = buildBrandContext(req.tenant?.brand || {});
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
 
     const systemPrompt = `You are a design and branding assistant for the business.
 
@@ -293,7 +352,7 @@ FONT FIELDS:
 - font_body: One of: Jost, Inter, Poppins, Raleway, Nunito, DM Sans
 
 LAYOUT FIELDS:
-- landing_layout: classic, bold, minimal, magazine, or dark (overall landing page layout)
+- landing_layout: classic, bold, minimal, magazine, dark, or startup (overall landing page layout)
 - portfolio_layout: grid, masonry, carousel, or list
 - blog_layout: grid, list, masonry, or featured
 - nav_logo_display: text, image, or both

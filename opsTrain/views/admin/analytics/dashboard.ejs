@@ -1,0 +1,175 @@
+<%- include('../../layout/header') %>
+<script>document.querySelector('.container').classList.add('ax');</script>
+<div class="ax">
+<!-- Top bar: title + filters + stats inline -->
+<div class="ax-top">
+  <div class="ax-top-left">
+    <h1><%= t('analytics.title') %></h1>
+    <form method="GET" action="/admin/analytics" class="ax-filters">
+      <select name="brandId" onchange="this.form.submit()">
+        <option value=""><%=t('admin.allBrands')%></option>
+        <%brands.forEach(b=>{%><option value="<%=b._id%>" <%=selectedBrand===b._id.toString()?'selected':''%>><%=b.name%></option><%})%>
+      </select>
+      <select name="range" onchange="this.form.submit()">
+        <option value="7" <%=range===7?'selected':''%>>7d</option>
+        <option value="14" <%=range===14?'selected':''%>>14d</option>
+        <option value="30" <%=range===30?'selected':''%>>30d</option>
+        <option value="90" <%=range===90?'selected':''%>>90d</option>
+      </select>
+    </form>
+  </div>
+  <div class="ax-stats">
+    <div class="ax-stat"><span class="ax-num ax-amber"><%= stats.totalScans %></span><span class="ax-lbl"><%= t('analytics.qrScans') %></span></div>
+    <div class="ax-stat"><span class="ax-num ax-green"><%= stats.totalCompletions %></span><span class="ax-lbl"><%= t('analytics.tasksCompleted') %></span></div>
+    <div class="ax-stat"><span class="ax-num ax-blue"><%= stats.completionRate %>%</span><span class="ax-lbl"><%= t('analytics.todayRate') %></span></div>
+    <div class="ax-stat"><span class="ax-num ax-purple"><%= stats.totalUsers %></span><span class="ax-lbl"><%= t('analytics.users') %></span></div>
+  </div>
+</div>
+
+<!-- Heatmap -->
+<div class="ax-heat">
+  <div class="ax-heat-grid" id="heatmapGrid"></div>
+  <div class="ax-heat-legend">
+    <span><%=lang==='es'?'Menos':'Less'%></span>
+    <span class="hs" style="background:#161618"></span><span class="hs" style="background:#4a3000"></span><span class="hs" style="background:#7c4d00"></span><span class="hs" style="background:#b45309"></span><span class="hs" style="background:#d97706"></span><span class="hs" style="background:#fbbf24"></span>
+    <span><%=lang==='es'?'Mas':'More'%></span>
+  </div>
+</div>
+
+<!-- Main 3-col chart grid -->
+<div class="ax-grid3">
+  <div class="ax-card"><div class="ax-h"><%=t('analytics.scanActivity')%></div><div class="ax-chart-wrap"><canvas id="scanChart"></canvas></div></div>
+  <div class="ax-card"><div class="ax-h"><%=t('analytics.taskCompletions')%></div><div class="ax-chart-wrap"><canvas id="completionChart"></canvas></div></div>
+  <div class="ax-card"><div class="ax-h"><%=lang==='es'?'Actividad por Hora':'Hourly'%></div><div class="ax-chart-wrap"><canvas id="radarChart"></canvas></div></div>
+</div>
+
+<!-- 3-col: nested doughnut + top QR + performers -->
+<div class="ax-grid3">
+  <div class="ax-card"><div class="ax-h"><%=lang==='es'?'Tipo & Area':'Type & Area'%></div><div class="ax-chart-wrap ax-chart-tall"><canvas id="nestedChart"></canvas></div></div>
+  <div class="ax-card"><div class="ax-h"><%=t('analytics.topQRCodes')%></div>
+    <%if(topQRs.length===0){%><p class="ax-empty">—</p><%}else{%><div class="ax-chart-wrap ax-chart-tall"><canvas id="topQRChart"></canvas></div><%}%>
+  </div>
+  <div class="ax-card"><div class="ax-h"><%=t('analytics.topPerformers')%></div>
+    <%if(topUsers.length===0){%><p class="ax-empty">—</p><%}else{%>
+    <div class="ax-perf">
+      <%topUsers.forEach((u,i)=>{const w=topUsers[0].completions>0?(u.completions/topUsers[0].completions*100):0;%>
+      <div class="ax-perf-row"><span class="ax-rank ax-rank-<%=i<3?i+1:'n'%>"><%=i+1%></span><span class="ax-perf-name"><%=u.user?u.user.displayName:'?'%></span><div class="ax-perf-bar"><div style="width:<%=w%>%"></div></div><span class="ax-perf-n"><%=u.completions%></span></div>
+      <%})%>
+    </div><%}%>
+  </div>
+</div>
+
+<!-- Station cards -->
+<div class="ax-section-h"><%=lang==='es'?'Estaciones':'Stations'%></div>
+<div class="ax-stations">
+  <%Object.keys(stationCards).forEach(area=>{const sc=stationCards[area];const pct=sc.total>0?Math.round(sc.completed/sc.total*100):0;%>
+  <div class="ax-stn">
+    <div class="ax-stn-top">
+      <span class="ax-stn-name"><%=area%></span>
+      <div class="ax-ring"><svg viewBox="0 0 36 36"><path class="rg-bg" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0-31.831"/><path class="rg-fill" stroke-dasharray="<%=pct%>,100" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0-31.831"/><text x="18" y="20.5" class="rg-txt"><%=pct%>%</text></svg></div>
+    </div>
+    <div class="ax-stn-shifts">
+      <%Object.keys(sc.byShift).forEach(shift=>{const s=sc.byShift[shift];const sp=s.total>0?Math.round(s.done/s.total*100):0;%>
+      <div class="ax-stn-row"><span class="ax-stn-lbl"><%=shift%></span><div class="ax-stn-bar"><div class="ax-stn-fill ax-sh-<%=shift%>" style="width:<%=sp%>%"></div></div><span class="ax-stn-pct"><%=sp%>%</span></div>
+      <%})%>
+    </div>
+  </div>
+  <%})%>
+</div>
+
+<!-- Compact tables: webhook + recent side by side -->
+<div class="ax-grid2">
+  <div class="ax-card ax-tbl-card">
+    <div class="ax-h"><%=t('analytics.webhookLog')%></div>
+    <%if(webhookScans.length===0){%><p class="ax-empty">—</p><%}else{%>
+    <div class="ax-tbl-wrap"><table class="ax-tbl">
+      <thead><tr><th><%=t('analytics.time')%></th><th>QR</th><th><%=t('fields.category')%></th><th><%=t('analytics.user')%></th></tr></thead>
+      <tbody><%webhookScans.slice(0,15).forEach(s=>{%>
+        <tr><td><%=new Date(s.createdAt).toLocaleTimeString()%></td><td><%=s.qrCode?s.qrCode.label:'—'%></td><td><span class="badge"><%=s.qrCode?s.qrCode.webhookCategory:'—'%></span></td><td><%=s.user?s.user.displayName:(s.posPin||'?')%></td></tr>
+      <%})%></tbody>
+    </table></div><%}%>
+  </div>
+  <div class="ax-card ax-tbl-card">
+    <div class="ax-h"><%=t('analytics.recentScans')%></div>
+    <%if(recentScans.length===0){%><p class="ax-empty">—</p><%}else{%>
+    <div class="ax-tbl-wrap"><table class="ax-tbl">
+      <thead><tr><th><%=t('analytics.time')%></th><th>QR</th><th><%=t('fields.type')%></th><th><%=t('analytics.user')%></th></tr></thead>
+      <tbody><%recentScans.slice(0,15).forEach(s=>{%>
+        <tr><td><%=new Date(s.createdAt).toLocaleTimeString()%></td><td><%=s.qrCode?s.qrCode.label:'—'%></td><td><span class="badge"><%=s.type||'—'%></span></td><td><%=s.user?s.user.displayName:(s.posPin||'?')%></td></tr>
+      <%})%></tbody>
+    </table></div><%}%>
+  </div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+Chart.defaults.color='#6b6b74';Chart.defaults.borderColor='#1e1e24';
+Chart.defaults.font.family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+Chart.defaults.font.size=10;
+const tt={backgroundColor:'rgba(17,17,19,0.95)',borderWidth:1,cornerRadius:4,padding:6,titleFont:{size:10},bodyFont:{size:10}};
+const amber='#d97706',amberL='rgba(217,119,6,0.2)',amberG='rgba(217,119,6,0.02)';
+const green='#22c55e',greenL='rgba(34,197,94,0.2)';
+const blue='#60a5fa',purple='#a78bfa',pink='#f472b6',cyan='#2dd4bf',yellow='#fbbf24',red='#f87171';
+const P=[amber,green,blue,pink,purple,yellow,red,cyan,'#818cf8','#fb923c'];
+const noLeg={legend:{display:false}};
+const gridY={beginAtZero:true,grid:{color:'#1a1a1f'},ticks:{font:{size:9}}};
+const gridXoff={grid:{display:false},ticks:{font:{size:8},maxRotation:0}};
+
+// HEATMAP
+(function(){
+  const D=<%- JSON.stringify(heatmap) %>;
+  const g=document.getElementById('heatmapGrid');
+  const mx=Math.max(...D.map(d=>d.count),1);
+  const lv=[0,mx*.15,mx*.35,mx*.6,mx*.8];
+  const cs=['#161618','#4a3000','#7c4d00','#b45309','#d97706','#fbbf24'];
+  D.forEach(d=>{const e=document.createElement('div');e.className='hc';
+    let c=cs[0];if(d.count>0){for(let i=lv.length-1;i>=0;i--){if(d.count>=lv[i]){c=cs[Math.min(i+1,5)];break;}}}
+    e.style.background=c;e.title=d.date+': '+d.count;g.appendChild(e);});
+})();
+
+// SCAN LINE
+(function(){const c=document.getElementById('scanChart').getContext('2d');
+  const g=c.createLinearGradient(0,0,0,140);g.addColorStop(0,amberL);g.addColorStop(1,amberG);
+  const D=<%- JSON.stringify(scansByDay) %>;
+  new Chart(c,{type:'line',data:{labels:D.map(d=>d._id.slice(5)),datasets:[{data:D.map(d=>d.count),borderColor:amber,backgroundColor:g,fill:true,tension:.4,pointRadius:1.5,pointHoverRadius:4,borderWidth:1.5}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{...noLeg,tooltip:{...tt,borderColor:amber}},scales:{y:gridY,x:gridXoff},interaction:{intersect:false,mode:'index'}}});
+})();
+
+// COMPLETION BAR
+(function(){const c=document.getElementById('completionChart').getContext('2d');
+  const g=c.createLinearGradient(0,140,0,0);g.addColorStop(0,greenL);g.addColorStop(1,green);
+  const D=<%- JSON.stringify(completionsByDay) %>;
+  new Chart(c,{type:'bar',data:{labels:D.map(d=>d._id?d._id.slice(5):'—'),datasets:[{data:D.map(d=>d.count),backgroundColor:g,borderRadius:3,borderSkipped:false,barPercentage:.7}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{...noLeg,tooltip:{...tt,borderColor:green}},scales:{y:gridY,x:gridXoff}}});
+})();
+
+// RADAR
+(function(){const c=document.getElementById('radarChart').getContext('2d');
+  const g=c.createRadialGradient(75,70,5,75,70,60);g.addColorStop(0,'rgba(96,165,250,0.35)');g.addColorStop(1,'rgba(96,165,250,0.01)');
+  const H=<%- JSON.stringify(hourlyData) %>;const lb=[];for(let i=0;i<24;i++)lb.push(i+'h');
+  new Chart(c,{type:'radar',data:{labels:lb,datasets:[{data:H,borderColor:blue,backgroundColor:g,pointRadius:1,pointHoverRadius:3,borderWidth:1.5}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{...noLeg,tooltip:{...tt,borderColor:blue}},scales:{r:{grid:{color:'#1e1e24'},angleLines:{color:'#1e1e24'},ticks:{display:false},pointLabels:{font:{size:7},color:'#555'}}}}});
+})();
+
+// NESTED DOUGHNUT
+(function(){const M=<%- JSON.stringify(typeMap) %>;const types=Object.keys(M);
+  const od=types.map(t=>M[t].total),oc=types.map((_,i)=>P[i%P.length]);
+  const il=[],id=[],ic=[];
+  types.forEach((t,ti)=>{Object.keys(M[t].areas).forEach((a,ai)=>{il.push(t+'/'+a);id.push(M[t].areas[a]);ic.push(P[ti%P.length]+(ai%2===0?'cc':'77'));});});
+  new Chart(document.getElementById('nestedChart'),{type:'doughnut',
+    data:{labels:types,datasets:[{data:od,backgroundColor:oc,borderColor:'#111113',borderWidth:2,hoverOffset:6},{data:id,backgroundColor:ic,borderColor:'#111113',borderWidth:1,hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'28%',plugins:{legend:{position:'right',labels:{boxWidth:8,padding:6,font:{size:9}}},
+      tooltip:{...tt,borderColor:amber,callbacks:{label:function(c){const ds=c.dataset,tot=ds.data.reduce((a,b)=>a+b,0),p=tot>0?((c.raw/tot)*100).toFixed(0):'0';return(c.datasetIndex===1?il[c.dataIndex]:c.label)+': '+c.raw+' ('+p+'%)'}}}},
+    animation:{animateRotate:true,animateScale:true}}});
+})();
+
+// TOP QR
+<%if(topQRs.length>0){%>(function(){const D=<%- JSON.stringify(topQRs) %>;
+  new Chart(document.getElementById('topQRChart'),{type:'bar',
+    data:{labels:D.map(d=>d.qr?(d.qr.label.length>18?d.qr.label.slice(0,18)+'…':d.qr.label):'?'),datasets:[{data:D.map(d=>d.count),backgroundColor:amberL,borderColor:amber,borderWidth:1,borderRadius:2,barPercentage:.6}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{...noLeg,tooltip:{...tt,borderColor:amber}},scales:{x:{beginAtZero:true,grid:{color:'#1a1a1f'},ticks:{font:{size:8}}},y:{grid:{display:false},ticks:{font:{size:8}}}}}});
+})();<%}%>
+</script>
+
+<%- include('../../layout/footer') %>

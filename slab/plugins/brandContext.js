@@ -55,6 +55,20 @@ export function buildBrandContext(brand = {}, design = {}) {
     lines.push(`Agent Name: ${design.agent_name}`);
   }
 
+  // Color palette
+  const colorKeys = ['color_primary', 'color_primary_deep', 'color_primary_mid', 'color_accent', 'color_accent_light', 'color_bg'];
+  const colors = colorKeys.filter(k => design[k]).map(k => `${k.replace('color_', '')}: ${design[k]}`);
+  if (colors.length) lines.push(`Color Palette: ${colors.join(', ')}`);
+
+  // Fonts
+  if (design.font_heading) lines.push(`Heading Font: ${design.font_heading}`);
+  if (design.font_body) lines.push(`Body Font: ${design.font_body}`);
+
+  // Layouts
+  if (design.landing_layout) lines.push(`Landing Layout: ${design.landing_layout}`);
+  if (design.portfolio_layout) lines.push(`Portfolio Layout: ${design.portfolio_layout}`);
+  if (design.blog_layout) lines.push(`Blog Layout: ${design.blog_layout}`);
+
   lines.push('--- END BRAND CONTEXT ---');
 
   return lines.join('\n');

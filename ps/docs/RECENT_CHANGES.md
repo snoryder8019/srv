@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-03-26T07:30:00.025Z
+Generated: 2026-03-28T20:02:24.823Z
+
+---
+
+## Commit: docs push
+
+- **Hash:** `4982e52`
+- **Author:** Scott
+- **Date:** 3/26/2026
+- **Changes:** 43 files, +2763/-1679 lines
+
+### Modified Areas:
+
+**Backend:** 3 files
+**Views:** 1 files
+**Scripts:** 2 files
+**Documentation:** 31 files
 
 ---
 
@@ -64,20 +80,6 @@ Generated: 2026-03-26T07:30:00.025Z
 **Backend:** 108 files
 **Views:** 104 files
 **Documentation:** 4 files
-
----
-
-## Commit: game server push
-
-- **Hash:** `4a36771`
-- **Author:** Scott
-- **Date:** 3/23/2026
-- **Changes:** 125 files, +2300/-41 lines
-
-### Modified Areas:
-
-**Backend:** 1 files
-**Documentation:** 3 files
 
 ---
 

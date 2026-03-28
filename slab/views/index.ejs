@@ -23,7 +23,8 @@
     const _hF = _FM[design.font_heading] || _FM['Cormorant Garamond'];
     const _bF = _FM[design.font_body] || _FM['Jost'];
     const _fp = design.font_heading === design.font_body ? _hF : _hF + '&family=' + _bF;
-    const _BI = (brand?.name || '').split(/\s+/).map(w => w[0]).join('').toUpperCase();
+    const _BI_auto = (brand?.name || '').split(/\s+/).map(w => w[0]).join('').toUpperCase();
+    const _BI = (design.hero_name_large && design.hero_name_large.trim()) || _BI_auto;
   %>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=<%= _fp %>&display=swap" rel="stylesheet">
@@ -1116,7 +1117,9 @@
 <!-- NAV -->
 <nav id="main-nav">
   <a href="#" class="nav-wordmark">
-    <% if (logos.logo_primary && (design.nav_logo_display === 'image' || design.nav_logo_display === 'both')) { %>
+    <% if (design.model_logo_enabled === 'true') { %>
+      <div class="gltf-viewer" <%= (typeof brandModels !== 'undefined' && brandModels.model_logo) ? 'data-model-url="' + brandModels.model_logo + '"' : '' %> data-brand-name="<%= brand?.name || '' %>" data-mode="logo" data-bg-color="transparent" data-accent-color="<%= design.color_accent %>" data-primary-color="<%= design.color_primary %>" style="width:48px;height:48px;"></div>
+    <% } else if (logos.logo_primary && (design.nav_logo_display === 'image' || design.nav_logo_display === 'both')) { %>
       <img src="<%= logos.logo_primary %>" alt="<%= brand?.name || 'Home' %>" class="nav-logo">
     <% } %>
     <% if (design.nav_logo_display !== 'image' || !logos.logo_primary) { %>
@@ -1149,10 +1152,14 @@
       </div>
     </div>
   </div>
-  <div class="hero-right"<% if (media.hero_image) { %> style="background-image:url('<%= media.hero_image %>');background-size:cover;background-position:center;"<% } %>>
-    <% if (!media.hero_image) { %><div class="hero-circle"></div><% } %>
-    <div class="hero-right-content">
-      <% if (!media.hero_image) { %><div class="hero-name-large"><%= _BI %></div><% } %>
+  <div class="hero-right"<% if (media.hero_image && design.model_header_enabled !== 'true') { %> style="background-image:url('<%= media.hero_image %>');background-size:cover;background-position:center;"<% } %>>
+    <% if (design.model_header_enabled === 'true') { %>
+      <div class="gltf-viewer" <%= (typeof brandModels !== 'undefined' && brandModels.model_header) ? 'data-model-url="' + brandModels.model_header + '"' : '' %> data-brand-name="<%= brand?.name || '' %>" data-mode="header" data-bg-color="<%= design.color_primary_deep %>" data-accent-color="<%= design.color_accent %>" data-primary-color="<%= design.color_primary %>" <% if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) { %>data-debug="true"<% } %> style="width:100%;height:100%;position:absolute;inset:0;"></div>
+    <% } else { %>
+      <% if (!media.hero_image) { %><div class="hero-circle"></div><% } %>
+    <% } %>
+    <div class="hero-right-content" style="position:relative;z-index:1;">
+      <% if (!media.hero_image && design.model_header_enabled !== 'true') { %><div class="hero-name-large"><%= _BI %></div><% } %>
       <div class="hero-badge">
         <div class="hero-badge-dot"></div>
         <span class="hero-badge-text"><%= copy.hero_badge %></span>
@@ -1203,21 +1210,19 @@
   </div>
 
   <div class="services-grid">
-    <div class="service-card">
-      <div class="service-num">01</div>
-      <h3 class="service-title"><%= copy.service1_title %></h3>
-      <p class="service-desc"><%= copy.service1_desc %></p>
-    </div>
-    <div class="service-card">
-      <div class="service-num">02</div>
-      <h3 class="service-title"><%= copy.service2_title %></h3>
-      <p class="service-desc"><%= copy.service2_desc %></p>
-    </div>
-    <div class="service-card">
-      <div class="service-num">03</div>
-      <h3 class="service-title"><%= copy.service3_title %></h3>
-      <p class="service-desc"><%= copy.service3_desc %></p>
-    </div>
+    <% [[1, copy.service1_title, copy.service1_desc, copy.service1_link],
+        [2, copy.service2_title, copy.service2_desc, copy.service2_link],
+        [3, copy.service3_title, copy.service3_desc, copy.service3_link]].forEach(([n, title, desc, link]) => { %>
+      <% if (link) { %>
+      <a href="<%= link %>" class="service-card" style="text-decoration:none;color:inherit;cursor:pointer;">
+      <% } else { %>
+      <div class="service-card">
+      <% } %>
+        <div class="service-num">0<%= n %></div>
+        <h3 class="service-title"><%= title %></h3>
+        <p class="service-desc"><%= desc %></p>
+      <% if (link) { %></a><% } else { %></div><% } %>
+    <% }) %>
   </div>
 </section>
 <% } %>
@@ -1437,7 +1442,7 @@
     </div>
   </div>
   <div class="contact-right">
-    <form class="contact-form" id="contact-form">
+    <form class="contact-form" id="contact-form" method="POST" action="/contact">
       <div class="form-row">
         <div class="form-field">
           <label>First Name</label>
@@ -1607,16 +1612,17 @@
     nav.classList.toggle('scrolled', window.scrollY > 60);
   });
 
-  document.getElementById('contact-form').addEventListener('submit', (e) => {
-    e.preventDefault();
+  // Show success message if redirected back after contact form submission
+  if (new URLSearchParams(window.location.search).get('contacted')) {
     const msg = document.getElementById('form-msg');
-    msg.style.display = 'block';
-    msg.style.color = 'var(--navy)';
-    msg.style.fontSize = '0.85rem';
-    msg.style.marginTop = '8px';
-    msg.textContent = '✓ Message received! We\'ll be in touch within 1 business day.';
-    e.target.reset();
-  });
+    if (msg) {
+      msg.style.display = 'block';
+      msg.style.color = 'var(--navy)';
+      msg.style.fontSize = '0.85rem';
+      msg.style.marginTop = '8px';
+      msg.textContent = '✓ Message received! We\'ll be in touch within 1 business day.';
+    }
+  }
 
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
@@ -1697,5 +1703,8 @@
   document.getElementById('w2-cookie-decline').addEventListener('click', function() { dismiss(false); });
 })();
 </script>
+<% if (design.model_header_enabled === 'true' || design.model_logo_enabled === 'true') { %>
+<script src="/js/gltfViewer.js"></script>
+<% } %>
 </body>
 </html>

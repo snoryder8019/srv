@@ -1,0 +1,64 @@
+<%- include('../../layout/header') %>
+
+<div class="admin-header">
+  <h1><%= t('nav.qrCodes') %></h1>
+  <div>
+    <a href="/admin/qr/new<%= selectedBrand ? '?brandId=' + selectedBrand : '' %>" class="btn btn-primary"><%= t('admin.newQR') %></a>
+    <% if (selectedBrand) { %>
+      <a href="/admin/qr/print?brandId=<%= selectedBrand %>" class="btn btn-secondary"><%= t('admin.printAll') %></a>
+    <% } %>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <form method="GET" action="/admin/qr">
+    <select name="brandId" onchange="this.form.submit()">
+      <option value=""><%= t('admin.allBrands') %></option>
+      <% brands.forEach(b => { %>
+        <option value="<%= b._id %>" <%= selectedBrand === b._id.toString() ? 'selected' : '' %>><%= b.name %></option>
+      <% }) %>
+    </select>
+  </form>
+</div>
+
+<% if (qrCodes.length === 0) { %>
+  <div class="empty-state"><p><%= t('admin.noQRYet') %></p></div>
+<% } else { %>
+
+  <% const areas = Object.keys(grouped); %>
+  <% areas.forEach(area => { %>
+    <div class="qr-area-group">
+      <h2 class="area-heading"><%= area %></h2>
+
+      <% const stations = Object.keys(grouped[area]); %>
+      <% stations.forEach(station => { %>
+        <div class="qr-station-group">
+          <h3 class="station-heading"><%= station %></h3>
+          <div class="qr-grid">
+            <% grouped[area][station].forEach(qr => { %>
+              <div class="qr-card">
+                <% if (qr.dataUrl) { %>
+                  <img src="<%= qr.dataUrl %>" alt="<%= qr.label %>" class="qr-img">
+                <% } %>
+                <h3><%= qr.label %></h3>
+                <p class="text-muted"><span class="badge"><%= qr.type %></span></p>
+                <% if (qr.brand) { %><p class="text-sm"><%= qr.brand.name %></p><% } %>
+                <% if (qr.task) { %><p class="text-sm"><%= t('nav.tasks') %>: <%= qr.task.title %></p><% } %>
+                <% if (qr.webhookCategory) { %><p class="text-sm">Webhook: <%= qr.webhookCategory %></p><% } %>
+                <div class="qr-actions">
+                  <a href="/admin/qr/<%= qr._id %>/edit" class="btn btn-sm"><%= t('admin.edit') %></a>
+                  <form method="POST" action="/admin/qr/<%= qr._id %>/delete" style="display:inline">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete?')"><%= t('admin.del') %></button>
+                  </form>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% }) %>
+
+<% } %>
+
+<%- include('../../layout/footer') %>

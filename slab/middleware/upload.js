@@ -38,3 +38,16 @@ export const clientFileUpload = s3Storage('clients');
 export const sectionUpload = s3Storage('sections', imageFilter);
 export const meetingAssetUpload = s3Storage('meetings');
 export const brandUpload = s3Storage('brand', imageFilter);
+
+const modelFilter = (req, file, cb) => {
+  const allowed = [
+    'model/gltf-binary', 'model/gltf+json',
+    'application/octet-stream', 'application/json',
+  ];
+  const ext = file.originalname.toLowerCase();
+  if (allowed.includes(file.mimetype) || ext.endsWith('.glb') || ext.endsWith('.gltf'))
+    cb(null, true);
+  else cb(new Error('Only .glb or .gltf files allowed'), false);
+};
+
+export const modelUpload = s3Storage('models', modelFilter);

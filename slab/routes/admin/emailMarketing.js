@@ -5,7 +5,7 @@ import { getDb } from '../../plugins/mongo.js';
 import { sendCampaignEmail } from '../../plugins/mailer.js';
 import { config } from '../../config/config.js';
 import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
-import { buildBrandContext } from '../../plugins/brandContext.js';
+import { loadBrandContext } from '../../plugins/brandContext.js';
 
 const router = express.Router();
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -253,7 +253,7 @@ router.post('/campaigns/agent', async (req, res) => {
       ? `\n\n--- WEB RESEARCH ---\n${searchResults}\n--- END RESEARCH ---`
       : '';
 
-    const brandCtx = buildBrandContext(req.tenant?.brand || {});
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
 
     const systemPrompt = `You are a marketing email writing assistant for ${agentName}.
 

@@ -49,4 +49,9 @@ export const config = {
   SLAB_STRIPE_PUBLISHABLE: process.env.SLAB_STRIPE_PUBLISHABLE,
   SLAB_STRIPE_WEBHOOK_SECRET: process.env.SLAB_STRIPE_WEBHOOK_SECRET,
   SLAB_STRIPE_PRICE_ID: process.env.SLAB_STRIPE_PRICE_ID,  // $50/mo price ID
+
+  // Slab platform PayPal (for go-live activation payments)
+  PAYPAL_CID: process.env.PAYPAL_CID,
+  PAYPAL_SEC: process.env.PAYPAL_SEC,
+  PAYPAL_MODE: process.env.PAYPAL_MODE || 'live',
 };

@@ -1,0 +1,53 @@
+<%- include('../../layout/header') %>
+
+<div class="admin-header">
+  <h1><%= t('nav.tasks') %></h1>
+  <a href="/admin/tasks/new<%= selectedBrand ? '?brandId=' + selectedBrand : '' %>" class="btn btn-primary"><%= t('admin.newTask') %></a>
+</div>
+
+<div class="filter-bar">
+  <form method="GET" action="/admin/tasks">
+    <select name="brandId" onchange="this.form.submit()">
+      <option value=""><%= t('admin.allBrands') %></option>
+      <% brands.forEach(b => { %>
+        <option value="<%= b._id %>" <%= selectedBrand === b._id.toString() ? 'selected' : '' %>><%= b.name %></option>
+      <% }) %>
+    </select>
+  </form>
+</div>
+
+<% if (tasks.length === 0) { %>
+  <div class="empty-state"><p><%= t('admin.noTasksYet') %></p></div>
+<% } else { %>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th><%= t('fields.title') %></th>
+      <th><%= t('fields.brand') %></th>
+      <th><%= t('fields.type') %></th>
+      <th><%= t('fields.frequency') %></th>
+      <th><%= t('fields.shift') %></th>
+      <th><%= t('fields.actions') %></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% tasks.forEach(t2 => { %>
+    <tr>
+      <td><strong><%= t2.title %></strong></td>
+      <td><%= t2.brand?.name || '—' %></td>
+      <td><span class="badge"><%= t2.type %></span></td>
+      <td><%= t2.frequency %></td>
+      <td><%= t2.shiftTime %></td>
+      <td>
+        <a href="/admin/tasks/<%= t2._id %>/edit" class="btn btn-sm"><%= t('admin.edit') %></a>
+        <form method="POST" action="/admin/tasks/<%= t2._id %>/delete" style="display:inline">
+          <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete?')"><%= t('admin.del') %></button>
+        </form>
+      </td>
+    </tr>
+    <% }) %>
+  </tbody>
+</table>
+<% } %>
+
+<%- include('../../layout/footer') %>

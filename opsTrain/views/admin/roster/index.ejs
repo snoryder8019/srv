@@ -1,0 +1,228 @@
+<%- include('../../layout/header') %>
+
+<div class="admin-header">
+  <h1><%= lang === 'es' ? 'Escaner de Lista' : 'Roster Scanner' %></h1>
+</div>
+
+<div class="roster-layout">
+  <!-- Left: capture/upload -->
+  <div class="roster-input">
+    <div class="form-card">
+      <div class="form-group">
+        <label><%= t('fields.brand') %></label>
+        <select id="rosterBrand">
+          <option value=""><%= t('fields.selectBrand') %></option>
+          <% brands.forEach(b => { %>
+            <option value="<%= b._id %>" <%= brandId === b._id.toString() ? 'selected' : '' %>><%= b.name %></option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label><%= lang === 'es' ? 'Idioma OCR' : 'OCR Language' %></label>
+        <select id="ocrLang">
+          <option value="eng">English</option>
+          <option value="spa">Espanol</option>
+          <option value="eng+spa">Both</option>
+        </select>
+      </div>
+
+      <!-- Camera capture -->
+      <div class="roster-capture">
+        <label class="btn btn-primary btn-lg" style="margin-bottom:8px;text-align:center;">
+          <input type="file" id="rosterFile" accept="image/*" capture="environment" style="display:none;">
+          <%= lang === 'es' ? 'Tomar Foto / Subir' : 'Take Photo / Upload' %>
+        </label>
+        <div id="previewWrap" style="display:none;">
+          <img id="preview" style="max-width:100%;border-radius:6px;border:1px solid var(--border);">
+        </div>
+      </div>
+
+      <button id="scanBtn" class="btn btn-primary" style="width:100%;margin-top:10px;" disabled>
+        <%= lang === 'es' ? 'Escanear Texto' : 'Scan Text' %>
+      </button>
+
+      <div id="scanProgress" style="display:none;margin-top:10px;">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <p class="text-sm text-muted" id="progressText" style="margin-top:4px;"></p>
+      </div>
+    </div>
+
+    <!-- Raw OCR output -->
+    <div id="rawPanel" class="form-card" style="display:none;margin-top:10px;">
+      <label style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700;">
+        <%= lang === 'es' ? 'Texto Detectado' : 'Detected Text' %> (<span id="ocrConf">0</span>%)
+      </label>
+      <pre id="rawText" style="font-size:11px;color:var(--text);background:var(--input-bg);padding:8px;border-radius:4px;max-height:200px;overflow:auto;white-space:pre-wrap;margin-top:4px;"></pre>
+    </div>
+  </div>
+
+  <!-- Right: parsed roster -->
+  <div class="roster-results">
+    <div id="resultsPanel" style="display:none;">
+      <h3 style="font-size:14px;margin-bottom:10px;"><%= lang === 'es' ? 'Lista Analizada' : 'Parsed Roster' %></h3>
+      <div id="rosterEntries"></div>
+      <button id="saveRosterBtn" class="btn btn-primary" style="width:100%;margin-top:12px;">
+        <%= lang === 'es' ? 'Guardar como Nota de Turno' : 'Save as Shift Note' %>
+      </button>
+      <div id="saveResult" style="display:none;margin-top:8px;" class="alert"></div>
+    </div>
+
+    <!-- Known staff reference -->
+    <% if (users.length > 0) { %>
+    <div style="margin-top:12px;">
+      <h4 style="font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;"><%= lang === 'es' ? 'Personal Registrado' : 'Known Staff' %></h4>
+      <div class="roster-staff-list">
+        <% users.forEach(u => { %>
+          <span class="roster-staff-chip"><%= u.displayName %> <code><%= u.posPin %></code></span>
+        <% }) %>
+      </div>
+    </div>
+    <% } %>
+  </div>
+</div>
+
+<script>
+var fileInput = document.getElementById('rosterFile');
+var preview = document.getElementById('preview');
+var previewWrap = document.getElementById('previewWrap');
+var scanBtn = document.getElementById('scanBtn');
+var selectedFile = null;
+
+fileInput.addEventListener('change', function(e) {
+  var f = e.target.files[0];
+  if (!f) return;
+  selectedFile = f;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    preview.src = ev.target.result;
+    previewWrap.style.display = 'block';
+    scanBtn.disabled = false;
+  };
+  reader.readAsDataURL(f);
+});
+
+scanBtn.addEventListener('click', async function() {
+  if (!selectedFile) return;
+  var brandId = document.getElementById('rosterBrand').value;
+  var ocrLang = document.getElementById('ocrLang').value;
+  var prog = document.getElementById('scanProgress');
+  var fill = document.getElementById('progressFill');
+  var txt = document.getElementById('progressText');
+
+  prog.style.display = 'block';
+  scanBtn.disabled = true;
+  fill.style.width = '10%';
+  txt.textContent = '<%= lang === "es" ? "Procesando..." : "Processing..." %>';
+
+  var fd = new FormData();
+  fd.append('roster', selectedFile);
+  fd.append('brandId', brandId);
+  fd.append('ocrLang', ocrLang);
+
+  // Animate progress
+  var pct = 10;
+  var iv = setInterval(function() { pct = Math.min(pct + 3, 90); fill.style.width = pct + '%'; }, 300);
+
+  try {
+    var res = await fetch('/admin/roster/scan', { method: 'POST', body: fd });
+    clearInterval(iv);
+    fill.style.width = '100%';
+    var data = await res.json();
+
+    if (data.success) {
+      txt.textContent = '<%= lang === "es" ? "Completado" : "Done" %> — ' + data.confidence + '% confidence';
+
+      // Show raw text
+      document.getElementById('rawPanel').style.display = 'block';
+      document.getElementById('rawText').textContent = data.rawText;
+      document.getElementById('ocrConf').textContent = data.confidence;
+
+      // Build roster entries
+      renderEntries(data.staffMatches || [], data.lines || []);
+    } else {
+      txt.textContent = data.message || 'Error';
+    }
+  } catch (err) {
+    clearInterval(iv);
+    txt.textContent = 'Connection error';
+  }
+  scanBtn.disabled = false;
+});
+
+function renderEntries(matches, lines) {
+  var panel = document.getElementById('resultsPanel');
+  var container = document.getElementById('rosterEntries');
+  panel.style.display = 'block';
+  container.innerHTML = '';
+
+  var entries = matches.length > 0 ? matches : lines.map(function(l) { return { line: l, matched: false }; });
+
+  entries.forEach(function(e, i) {
+    var el = document.createElement('div');
+    el.className = 'roster-entry' + (e.matched ? ' roster-matched' : '');
+    el.innerHTML =
+      '<div class="roster-entry-line">' +
+        '<span class="roster-idx">' + (i + 1) + '</span>' +
+        '<span class="roster-text">' + esc(e.line) + '</span>' +
+      '</div>' +
+      '<div class="roster-entry-fields">' +
+        (e.matched
+          ? '<span class="badge badge-brandAdmin">' + esc(e.displayName) + '</span>'
+          : '<input type="text" class="roster-name-input" placeholder="Name" value="' + esc(e.displayName || '') + '" data-idx="' + i + '">') +
+        '<select class="roster-shift-select" data-idx="' + i + '">' +
+          '<option value=""' + (!e.shiftTime ? ' selected' : '') + '>—</option>' +
+          '<option value="open"' + (e.shiftTime === 'open' ? ' selected' : '') + '>Open</option>' +
+          '<option value="mid"' + (e.shiftTime === 'mid' ? ' selected' : '') + '>Mid</option>' +
+          '<option value="close"' + (e.shiftTime === 'close' ? ' selected' : '') + '>Close</option>' +
+        '</select>' +
+        (e.role ? '<span class="badge">' + esc(e.role) + '</span>' : '') +
+      '</div>';
+    container.appendChild(el);
+  });
+
+  // Store for save
+  window._rosterEntries = entries;
+}
+
+document.getElementById('saveRosterBtn').addEventListener('click', async function() {
+  var brandId = document.getElementById('rosterBrand').value;
+  if (!brandId) { alert('<%= lang === "es" ? "Selecciona una marca" : "Select a brand" %>'); return; }
+
+  var entries = (window._rosterEntries || []).map(function(e, i) {
+    var nameInput = document.querySelector('.roster-name-input[data-idx="' + i + '"]');
+    var shiftSel = document.querySelector('.roster-shift-select[data-idx="' + i + '"]');
+    return {
+      userId: e.userId || null,
+      displayName: nameInput ? nameInput.value : e.displayName,
+      posPin: e.posPin || '',
+      shiftTime: shiftSel ? shiftSel.value : e.shiftTime,
+      role: e.role || ''
+    };
+  }).filter(function(e) { return e.displayName; });
+
+  var resultEl = document.getElementById('saveResult');
+  try {
+    var res = await fetch('/admin/roster/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brandId: brandId, entries: entries })
+    });
+    var data = await res.json();
+    resultEl.style.display = 'block';
+    resultEl.className = 'alert ' + (data.success ? 'alert-success' : 'alert-error');
+    resultEl.textContent = data.message;
+    if (data.success && data.redirect) {
+      setTimeout(function() { window.location.href = data.redirect; }, 1200);
+    }
+  } catch (err) {
+    resultEl.style.display = 'block';
+    resultEl.className = 'alert alert-error';
+    resultEl.textContent = 'Error';
+  }
+});
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+</script>
+
+<%- include('../../layout/footer') %>

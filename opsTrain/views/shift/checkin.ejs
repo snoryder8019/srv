@@ -1,0 +1,54 @@
+<%- include('../layout/header') %>
+
+<div class="shift-page">
+  <div class="shift-card">
+    <% if (typeof brand !== 'undefined' && brand) { %>
+      <h2 style="color: <%= brand.color || '#d97706' %>"><%= brand.name %></h2>
+      <p class="text-muted"><%= brand.location || '' %></p>
+    <% } else { %>
+      <h2><%= t('shift.checkin') %></h2>
+    <% } %>
+
+    <p><%= t('shift.enterPin') %></p>
+
+    <form id="pinForm" class="pin-form">
+      <input type="hidden" name="brandId" value="<%= (typeof brand !== 'undefined' && brand) ? brand._id : '' %>">
+      <div class="pin-input-group">
+        <input type="tel" name="pin" id="pinInput" maxlength="6" pattern="[0-9]{4,6}" placeholder="PIN" autofocus required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg"><%= t('shift.clockIn') %></button>
+    </form>
+
+    <div id="pinError" class="alert alert-error" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+document.getElementById('pinForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const pin = document.getElementById('pinInput').value;
+  const brandId = e.target.querySelector('[name=brandId]').value;
+  const errEl = document.getElementById('pinError');
+  errEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/auth/pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin, brandId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      window.location.href = data.redirect;
+    } else {
+      errEl.textContent = data.message || '<%= t('shift.invalidPin') %>';
+      errEl.style.display = 'block';
+    }
+  } catch (err) {
+    errEl.textContent = 'Connection error';
+    errEl.style.display = 'block';
+  }
+});
+</script>
+
+<%- include('../layout/footer') %>

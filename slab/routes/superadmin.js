@@ -12,12 +12,74 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import { getSlabDb, getTenantDb } from '../plugins/mongo.js';
-import { requireSuperAdmin, issueSuperAdminJWT, isSuperAdminEmail } from '../middleware/superadmin.js';
+import { requireSuperAdmin, isSuperAdminEmail } from '../middleware/superadmin.js';
 import { bustTenantCache } from '../middleware/tenant.js';
 import { config } from '../config/config.js';
 import nodemailer from 'nodemailer';
 
 const router = express.Router();
+
+// ── Subscription-change courtesy email ──────────────────────────────────────
+const PLAN_LABELS = {
+  free: 'Free',
+  monthly: 'Monthly',
+  '30day': '30-Day',
+  '120day': '120-Day',
+  annual: 'Annual',
+  lifetime: 'Lifetime',
+};
+
+async function sendSubscriptionEmail(tenant, action, plan) {
+  const to = tenant.meta?.ownerEmail;
+  if (!to) return;
+  const zohoUser = process.env.ZOHO_USER;
+  const zohoPass = process.env.ZOHO_PASS;
+  if (!zohoUser || !zohoPass) return;
+
+  const brandName = tenant.brand?.name || tenant.domain || 'your site';
+  const planLabel = PLAN_LABELS[plan] || plan;
+
+  let subject, body;
+  if (action === 'activated') {
+    subject = `Your sLab subscription is now active — ${planLabel} plan`;
+    body = `<p>Hi there,</p>
+<p>Great news! Your site <strong>${brandName}</strong> has been activated on the <strong>${planLabel}</strong> plan.</p>
+<p>You now have full access to all features included in your plan. Log in to your admin panel to get started.</p>
+<p>If you have any questions, just reply to this email.</p>
+<p>— The sLab Team</p>`;
+  } else if (action === 'plan-changed') {
+    subject = `Your sLab plan has been updated to ${planLabel}`;
+    body = `<p>Hi there,</p>
+<p>This is a courtesy notice that the subscription plan for <strong>${brandName}</strong> has been changed to <strong>${planLabel}</strong>.</p>
+${plan === 'free' ? '<p>Your site has been moved to preview mode. Upgrade anytime from your admin panel.</p>' : '<p>Your new plan is effective immediately.</p>'}
+<p>If you have questions or believe this was a mistake, just reply to this email.</p>
+<p>— The sLab Team</p>`;
+  } else if (action === 'suspended') {
+    subject = 'Your sLab subscription has been suspended';
+    body = `<p>Hi there,</p>
+<p>This is to let you know that your site <strong>${brandName}</strong> has been suspended.</p>
+<p>If you believe this is an error or would like to reactivate your account, please reply to this email and we'll get it sorted out.</p>
+<p>— The sLab Team</p>`;
+  } else {
+    return;
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN',
+      auth: { user: zohoUser, pass: zohoPass },
+    });
+    await transporter.sendMail({
+      from: `"sLab Platform" <${zohoUser}>`,
+      to,
+      subject,
+      html: body,
+    });
+    console.log(`[superadmin] Subscription email sent to ${to} (${action})`);
+  } catch (err) {
+    console.error(`[superadmin] Subscription email failed for ${to}:`, err.message);
+  }
+}
 
 // ── Login ───────────────────────────────────────────────────────────────────
 router.get('/login', (req, res) => {
@@ -30,7 +92,9 @@ router.get('/auth/google', (req, res) => {
 });
 
 router.get('/logout', (req, res) => {
-  res.clearCookie('slab_super');
+  const domain = config.NODE_ENV === 'production' ? '.madladslab.com' : undefined;
+  if (domain) res.clearCookie('slab_token', { domain });
+  res.clearCookie('slab_token');
   res.redirect('/superadmin/login');
 });
 
@@ -119,6 +183,43 @@ router.post('/tenants/:id/activate', async (req, res) => {
     }
   );
   bustTenantCache(tenant.domain);
+  sendSubscriptionEmail(tenant, 'activated', plan).catch(() => {});
+  res.redirect(`/superadmin/tenants/${req.params.id}`);
+});
+
+router.post('/tenants/:id/change-plan', async (req, res) => {
+  const slab = getSlabDb();
+  const tenant = await slab.collection('tenants').findOne({ _id: new ObjectId(req.params.id) });
+  if (!tenant) return res.redirect('/superadmin');
+
+  const plan = req.body.plan || 'monthly';
+  let expiresAt = null;
+  const now = new Date();
+  if (plan === 'monthly') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === '30day') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === '120day') expiresAt = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
+  else if (plan === 'annual') expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+  // lifetime = null (no expiry), free = null + deactivate
+
+  const update = {
+    'meta.plan': plan,
+    'meta.expiresAt': expiresAt,
+    updatedAt: now,
+  };
+
+  // Downgrading to free → set status back to preview
+  if (plan === 'free') {
+    update.status = 'preview';
+    update['meta.plan'] = 'free';
+    update['meta.expiresAt'] = null;
+  }
+
+  await slab.collection('tenants').updateOne(
+    { _id: tenant._id },
+    { $set: update }
+  );
+  bustTenantCache(tenant.domain);
+  sendSubscriptionEmail(tenant, 'plan-changed', plan).catch(() => {});
   res.redirect(`/superadmin/tenants/${req.params.id}`);
 });
 
@@ -131,6 +232,7 @@ router.post('/tenants/:id/suspend', async (req, res) => {
     { $set: { status: 'suspended', updatedAt: new Date() } }
   );
   bustTenantCache(tenant.domain);
+  sendSubscriptionEmail(tenant, 'suspended', null).catch(() => {});
   res.redirect(`/superadmin/tenants/${req.params.id}`);
 });
 
@@ -186,7 +288,7 @@ router.post('/promos/send', async (req, res) => {
 
     for (const to of emailList) {
       await transporter.sendMail({
-        from: `"Slab Platform" <${zohoUser}>`,
+        from: `"sLab Platform" <${zohoUser}>`,
         to,
         subject,
         html: body,

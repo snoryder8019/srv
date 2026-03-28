@@ -1,0 +1,62 @@
+<%- include('../layout/header') %>
+
+<div class="shift-page">
+  <div class="shift-card">
+    <% if (brand) { %>
+      <h2 style="color: <%= brand.color || '#d97706' %>"><%= brand.name %></h2>
+    <% } %>
+
+    <h3><%= t('scan.taskCheckin') %></h3>
+    <% if (task) { %>
+      <div class="task-detail">
+        <h2><%= task.title %></h2>
+        <% if (task.description) { %><p><%= task.description %></p><% } %>
+        <span class="badge"><%= task.type %></span>
+      </div>
+    <% } %>
+
+    <form id="confirmForm">
+      <input type="hidden" name="code" value="<%= qrCode.code %>">
+      <div class="form-group">
+        <label><%= t('scan.noteOptional') %></label>
+        <textarea name="note" rows="2"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg"><%= t('scan.markComplete') %></button>
+    </form>
+
+    <div id="confirmResult" style="display:none;" class="alert"></div>
+  </div>
+</div>
+
+<script>
+document.getElementById('confirmForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = e.target.querySelector('[name=code]').value;
+  const note = e.target.querySelector('[name=note]').value;
+  const resultEl = document.getElementById('confirmResult');
+
+  try {
+    const res = await fetch('/scan/' + code + '/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note })
+    });
+    const data = await res.json();
+    resultEl.style.display = 'block';
+    if (data.success) {
+      resultEl.className = 'alert alert-success';
+      resultEl.textContent = '<%= t("scan.taskCompleted") %>';
+      e.target.querySelector('button').disabled = true;
+    } else {
+      resultEl.className = 'alert alert-error';
+      resultEl.textContent = data.message || 'Error';
+    }
+  } catch (err) {
+    resultEl.style.display = 'block';
+    resultEl.className = 'alert alert-error';
+    resultEl.textContent = 'Connection error';
+  }
+});
+</script>
+
+<%- include('../layout/footer') %>

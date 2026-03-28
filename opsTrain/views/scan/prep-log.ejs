@@ -1,0 +1,56 @@
+<%- include('../layout/header') %>
+
+<div class="shift-page">
+  <div class="shift-card">
+    <% if (brand) { %>
+      <h2 style="color: <%= brand.color || '#d97706' %>"><%= brand.name %></h2>
+    <% } %>
+    <h3><%= t('scan.prepLog') %></h3>
+    <p><strong><%= qrCode.label %></strong></p>
+
+    <form id="prepForm">
+      <input type="hidden" name="code" value="<%= qrCode.code %>">
+      <div class="form-group">
+        <label><%= t('scan.whatPrepped') %></label>
+        <textarea name="note" rows="3" required></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg"><%= t('scan.logPrep') %></button>
+    </form>
+
+    <div id="prepResult" style="display:none;" class="alert"></div>
+  </div>
+</div>
+
+<script>
+document.getElementById('prepForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = e.target.querySelector('[name=code]').value;
+  const note = e.target.querySelector('[name=note]').value;
+  const resultEl = document.getElementById('prepResult');
+
+  try {
+    const res = await fetch('/scan/' + code + '/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note })
+    });
+    const data = await res.json();
+    resultEl.style.display = 'block';
+    if (data.success) {
+      resultEl.className = 'alert alert-success';
+      resultEl.textContent = '<%= t("scan.prepLogged") %>';
+      e.target.querySelector('button').disabled = true;
+    } else {
+      resultEl.className = 'alert alert-error';
+      resultEl.textContent = data.message || 'Error';
+    }
+  } catch (err) {
+    resultEl.style.display = 'block';
+    resultEl.className = 'alert alert-error';
+    resultEl.textContent = 'Connection error';
+  }
+});
+</script>
+
+<%- include('scanner') %>
+<%- include('../layout/footer') %>

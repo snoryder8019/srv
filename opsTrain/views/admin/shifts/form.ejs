@@ -1,0 +1,57 @@
+<%- include('../../layout/header') %>
+
+<div class="admin-header">
+  <h1><%= note ? t('admin.edit') : t('admin.create') %> <%= t('nav.shiftNotes') %></h1>
+</div>
+
+<form method="POST" action="<%= note ? '/admin/shifts/' + note._id : '/admin/shifts' %>" class="form-card">
+  <div class="form-group">
+    <label><%= t('fields.brand') %> *</label>
+    <select name="brandId" required>
+      <option value=""><%= t('fields.selectBrand') %></option>
+      <% brands.forEach(b => { %>
+        <option value="<%= b._id %>" <%= brandId === b._id.toString() ? 'selected' : '' %>><%= b.name %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="form-group">
+    <label><%= t('fields.title') %></label>
+    <input type="text" name="title" value="<%= note ? note.title : '' %>">
+  </div>
+  <div class="form-group">
+    <label><%= t('fields.noteBody') %> *</label>
+    <textarea name="body" rows="4" required><%= note ? note.body : '' %></textarea>
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label><%= t('fields.category') %></label>
+      <select name="category">
+        <% ['announcement','uniform','specials','safety','custom'].forEach(c => { %>
+          <option value="<%= c %>" <%= (note && note.category === c) ? 'selected' : '' %>><%= c %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="form-group">
+      <label><%= t('fields.shiftDate') %></label>
+      <input type="date" name="shiftDate" value="<%= note ? note.shiftDate : new Date().toISOString().slice(0,10) %>">
+    </div>
+    <div class="form-group">
+      <label><%= t('fields.shiftTime') %></label>
+      <select name="shiftTime">
+        <% ['all','open','mid','close'].forEach(s => { %>
+          <option value="<%= s %>" <%= (note && note.shiftTime === s) ? 'selected' : '' %>><%= s %></option>
+        <% }) %>
+      </select>
+    </div>
+  </div>
+  <div class="form-check">
+    <label><input type="checkbox" name="pinned" <%= (note && note.pinned) ? 'checked' : '' %>> <%= t('settings.pinThis') %></label>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary"><%= note ? t('admin.update') : t('admin.create') %></button>
+    <a href="/admin/shifts" class="btn btn-secondary"><%= t('admin.cancel') %></a>
+  </div>
+</form>
+
+<%- include('../../layout/footer') %>

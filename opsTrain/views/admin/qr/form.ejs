@@ -1,0 +1,70 @@
+<%- include('../../layout/header') %>
+
+<div class="admin-header">
+  <h1><%= qr ? t('admin.edit') : t('admin.create') %> <%= t('nav.qrCodes') %></h1>
+</div>
+
+<form method="POST" action="<%= qr ? '/admin/qr/' + qr._id : '/admin/qr' %>" class="form-card">
+  <div class="form-group">
+    <label><%= t('fields.brand') %> *</label>
+    <select name="brandId" required>
+      <option value=""><%= t('fields.selectBrand') %></option>
+      <% brands.forEach(b => { %>
+        <option value="<%= b._id %>" <%= brandId === b._id.toString() ? 'selected' : '' %>><%= b.name %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="form-group">
+    <label><%= t('fields.label') %> *</label>
+    <input type="text" name="label" value="<%= qr ? qr.label : '' %>" required>
+  </div>
+  <div class="form-group">
+    <label><%= t('fields.qrType') %> *</label>
+    <select name="type">
+      <% ['task-checkin','shift-login','webhook','task-list','prep-log','custom'].forEach(tp => { %>
+        <option value="<%= tp %>" <%= (qr && qr.type === tp) ? 'selected' : '' %>><%= tp %></option>
+      <% }) %>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label><%= t('fields.linkedTask') %></label>
+    <select name="taskId">
+      <option value=""><%= t('fields.none') %></option>
+      <% tasks.forEach(tk => { %>
+        <option value="<%= tk._id %>" <%= (qr && qr.task && qr.task.toString() === tk._id.toString()) ? 'selected' : '' %>><%= tk.title %></option>
+      <% }) %>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label><%= t('fields.webhookCategory') %></label>
+    <input type="text" name="webhookCategory" value="<%= qr ? qr.webhookCategory : '' %>">
+  </div>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label><%= t('fields.area') %></label>
+      <input type="text" name="area" value="<%= qr ? qr.area : '' %>">
+    </div>
+    <div class="form-group">
+      <label><%= t('fields.position') %></label>
+      <input type="text" name="position" value="<%= qr ? qr.position : '' %>">
+    </div>
+  </div>
+
+  <% if (qr && qr.dataUrl) { %>
+    <div class="form-group">
+      <label><%= t('fields.currentQR') %></label>
+      <img src="<%= qr.dataUrl %>" alt="QR" style="width:200px">
+      <p class="text-muted">Code: <code><%= qr.code %></code></p>
+    </div>
+  <% } %>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary"><%= qr ? t('admin.update') : t('admin.create') %></button>
+    <a href="/admin/qr" class="btn btn-secondary"><%= t('admin.cancel') %></a>
+  </div>
+</form>
+
+<%- include('../../layout/footer') %>

@@ -1,0 +1,117 @@
+<!-- Floating action button + modal for scan/photo -->
+<div id="fabWrap" class="fab-wrap">
+  <button id="fabBtn" class="fab" onclick="openModal()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 7V4h3M20 7V4h-3M4 17v3h3M20 17v3h-3"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
+  </button>
+</div>
+
+<!-- Modal -->
+<div id="scanModal" class="scan-modal" style="display:none;">
+  <div class="scan-modal-inner">
+    <div class="scan-modal-head">
+      <div class="scan-modal-tabs">
+        <button class="scan-tab active" data-mode="scan" onclick="setMode('scan')"><%= lang === 'es' ? 'Escanear' : 'Scan QR' %></button>
+        <button class="scan-tab" data-mode="photo" onclick="setMode('photo')"><%= lang === 'es' ? 'Foto' : 'Photo' %></button>
+      </div>
+      <button class="scan-modal-close" onclick="closeModal()">&times;</button>
+    </div>
+
+    <!-- Scan mode -->
+    <div id="modeScanning" class="scan-mode">
+      <div id="scannerView" style="width:100%;border-radius:8px;overflow:hidden;"></div>
+      <p class="text-muted" style="text-align:center;font-size:10px;margin-top:4px;"><%= lang === 'es' ? 'Apunta al codigo QR' : 'Point at QR code' %></p>
+    </div>
+
+    <!-- Photo mode -->
+    <div id="modePhoto" class="scan-mode" style="display:none;">
+      <video id="photoPreview" autoplay playsinline style="width:100%;border-radius:8px;background:#000;"></video>
+      <canvas id="photoCanvas" style="display:none;"></canvas>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="snapPhoto()"><%= lang === 'es' ? 'Capturar' : 'Capture' %></button>
+      </div>
+      <div id="photoResult" style="display:none;margin-top:6px;">
+        <img id="photoThumb" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+        <input type="hidden" id="photoData">
+        <p class="text-muted" style="font-size:10px;text-align:center;margin-top:3px;"><%= lang === 'es' ? 'Foto lista' : 'Photo ready' %></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+var scanner = null, photoStream = null, currentMode = null;
+
+function openModal() {
+  document.getElementById('scanModal').style.display = 'flex';
+  setMode('scan');
+}
+
+function closeModal() {
+  stopAll();
+  document.getElementById('scanModal').style.display = 'none';
+  currentMode = null;
+}
+
+function setMode(mode) {
+  stopAll();
+  currentMode = mode;
+  document.querySelectorAll('.scan-tab').forEach(function(t) { t.classList.toggle('active', t.dataset.mode === mode); });
+  document.getElementById('modeScanning').style.display = mode === 'scan' ? 'block' : 'none';
+  document.getElementById('modePhoto').style.display = mode === 'photo' ? 'block' : 'none';
+  document.getElementById('photoResult').style.display = 'none';
+
+  if (mode === 'scan') startScanner();
+  if (mode === 'photo') startCamera();
+}
+
+function stopAll() {
+  if (scanner) { try { scanner.stop().then(function(){ scanner.clear(); }); } catch(e){} scanner = null; }
+  if (photoStream) { photoStream.getTracks().forEach(function(t){ t.stop(); }); photoStream = null; }
+}
+
+function startScanner() {
+  scanner = new Html5Qrcode('scannerView');
+  scanner.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 200, height: 200 }, aspectRatio: 1.0 },
+    function(decoded) {
+      scanner.stop().then(function() { scanner.clear(); scanner = null;
+        if (decoded.startsWith('http')) window.location.href = decoded;
+        else window.location.href = decoded;
+      });
+    },
+    function() {}
+  ).catch(function(err) {
+    document.getElementById('modeScanning').innerHTML = '<p style="color:var(--muted);font-size:11px;text-align:center;padding:20px;">' + (err.message || 'Camera error') + '</p>';
+  });
+}
+
+function startCamera() {
+  var vid = document.getElementById('photoPreview');
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(function(stream) { photoStream = stream; vid.srcObject = stream; })
+    .catch(function(err) {
+      document.getElementById('modePhoto').innerHTML = '<p style="color:var(--muted);font-size:11px;text-align:center;padding:20px;">' + err.message + '</p>';
+    });
+}
+
+function snapPhoto() {
+  var vid = document.getElementById('photoPreview');
+  var canvas = document.getElementById('photoCanvas');
+  canvas.width = vid.videoWidth;
+  canvas.height = vid.videoHeight;
+  canvas.getContext('2d').drawImage(vid, 0, 0);
+  var dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+  document.getElementById('photoThumb').src = dataUrl;
+  document.getElementById('photoData').value = dataUrl;
+  document.getElementById('photoResult').style.display = 'block';
+  // Make available globally for task completion forms
+  window._lastPhoto = dataUrl;
+}
+
+// Close on backdrop click
+document.getElementById('scanModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+</script>

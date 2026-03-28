@@ -1,0 +1,132 @@
+<%- include('../../admin/partials/head', { title: (tenant.brand?.name || tenant.domain) + ' — Superadmin' }) %>
+<%- include('../../admin/partials/sidebar', { page: 'super-tenants', user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">
+    <a href="/admin/super/tenants" style="color:var(--slate);text-decoration:none;font-weight:400;">Tenants</a>
+    <span style="color:var(--ivory-mid);margin:0 8px;">/</span>
+    <%= tenant.brand?.name || tenant.domain %>
+  </div>
+  <div class="topbar-actions">
+    <a href="https://<%= tenant.domain %>" target="_blank" class="btn btn-ghost btn-sm"><%= tenant.domain %> ↗</a>
+  </div>
+</div>
+
+<div class="content">
+  <style>
+    .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+    @media(max-width:600px) { .detail-grid { grid-template-columns:1fr; } }
+    .detail-card { background:var(--white); border:1px solid var(--ivory-mid); border-radius:2px; padding:20px; }
+    .detail-label { font-size:0.62rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--slate); margin-bottom:4px; }
+    .detail-value { font-size:14px; color:var(--dark); font-weight:500; }
+    .detail-value.muted { color:var(--slate); font-weight:400; }
+    .badge-preview { background:rgba(180,83,9,0.1); color:var(--warn); }
+    .badge-suspended { background:rgba(185,28,28,0.08); color:var(--danger); }
+    .section-title { font-size:0.62rem; font-weight:600; letter-spacing:0.2em; text-transform:uppercase; color:var(--slate); margin-bottom:12px; margin-top:28px; }
+    .actions-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .action-form { display:inline-flex; align-items:center; gap:8px; }
+    .super-select { background:var(--white); border:1px solid var(--ivory-mid); color:var(--dark); padding:9px 14px; border-radius:2px; font-family:'Jost',sans-serif; font-size:0.85rem; }
+    .super-select:focus { border-color:var(--navy); outline:none; }
+    .danger-card { border-color:rgba(185,28,28,0.25); }
+  </style>
+
+  <% if (error === 'no-admin-user') { %>
+  <div class="alert alert-error">No admin user found for this tenant — cannot impersonate.</div>
+  <% } %>
+
+  <!-- Info Grid -->
+  <div class="detail-grid">
+    <div class="detail-card">
+      <div class="detail-label">Status</div>
+      <div class="detail-value"><span class="badge badge-<%= tenant.status || 'preview' %>"><%= tenant.status || 'preview' %></span></div>
+    </div>
+    <div class="detail-card">
+      <div class="detail-label">Plan</div>
+      <div class="detail-value"><%= tenant.meta?.plan || 'free' %></div>
+    </div>
+    <div class="detail-card">
+      <div class="detail-label">Owner</div>
+      <div class="detail-value"><%= tenant.meta?.ownerEmail || '—' %></div>
+    </div>
+    <div class="detail-card">
+      <div class="detail-label">Domain</div>
+      <div class="detail-value"><a href="https://<%= tenant.domain %>" target="_blank" style="color:var(--gold);text-decoration:none;"><%= tenant.domain %></a></div>
+    </div>
+    <div class="detail-card">
+      <div class="detail-label">Database</div>
+      <div class="detail-value muted"><%= tenant.db %></div>
+    </div>
+    <div class="detail-card">
+      <div class="detail-label">S3 Prefix</div>
+      <div class="detail-value muted"><%= tenant.s3Prefix %></div>
+    </div>
+    <div class="detail-card">
+      <div class="detail-label">Created</div>
+      <div class="detail-value muted"><%= tenant.createdAt ? new Date(tenant.createdAt).toLocaleString() : '—' %></div>
+    </div>
+    <div class="detail-card">
+      <div class="detail-label">Expires</div>
+      <div class="detail-value muted"><%= tenant.meta?.expiresAt ? new Date(tenant.meta.expiresAt).toLocaleDateString() : 'Never' %></div>
+    </div>
+  </div>
+
+  <!-- Content Stats -->
+  <div class="section-title">Content</div>
+  <div class="stat-grid" style="margin-bottom:24px;">
+    <div class="stat-card"><div class="stat-label">Users</div><div class="stat-value"><%= dbStats.userCount %></div></div>
+    <div class="stat-card"><div class="stat-label">Blog Posts</div><div class="stat-value"><%= dbStats.blogCount %></div></div>
+    <div class="stat-card"><div class="stat-label">Clients</div><div class="stat-value"><%= dbStats.clientCount %></div></div>
+    <div class="stat-card"><div class="stat-label">Pages</div><div class="stat-value"><%= dbStats.pageCount %></div></div>
+    <div class="stat-card"><div class="stat-label">Invoices</div><div class="stat-value"><%= dbStats.invoiceCount %></div></div>
+  </div>
+
+  <!-- Actions -->
+  <div class="section-title">Actions</div>
+  <div class="actions-bar" style="margin-bottom:24px;">
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/impersonate" style="display:inline;">
+      <button type="submit" class="btn btn-gold">Login as Admin ↗</button>
+    </form>
+    <a href="https://<%= tenant.domain %>" target="_blank" class="btn btn-ghost">View Site ↗</a>
+    <a href="https://<%= tenant.domain %>/admin" target="_blank" class="btn btn-ghost">Open Admin ↗</a>
+  </div>
+
+  <!-- Plan Management -->
+  <div class="section-title">Plan Management</div>
+  <div class="actions-bar" style="margin-bottom:24px;">
+    <% if (tenant.status !== 'active') { %>
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/activate" class="action-form">
+      <select name="plan" class="super-select">
+        <option value="30day">30-Day Trial</option>
+        <option value="120day">120-Day Promo</option>
+        <option value="monthly">Monthly ($50/mo)</option>
+        <option value="annual">Annual</option>
+        <option value="lifetime">Lifetime</option>
+      </select>
+      <button type="submit" class="btn btn-navy btn-sm">Activate</button>
+    </form>
+    <% } else { %>
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/change-plan" class="action-form">
+      <select name="plan" class="super-select">
+        <option value="free" <%= tenant.meta?.plan === 'free' ? 'selected' : '' %>>Free (Preview)</option>
+        <option value="30day" <%= tenant.meta?.plan === '30day' ? 'selected' : '' %>>30-Day Trial</option>
+        <option value="120day" <%= tenant.meta?.plan === '120day' ? 'selected' : '' %>>120-Day Promo</option>
+        <option value="monthly" <%= tenant.meta?.plan === 'monthly' ? 'selected' : '' %>>Monthly ($50/mo)</option>
+        <option value="annual" <%= tenant.meta?.plan === 'annual' ? 'selected' : '' %>>Annual</option>
+        <option value="lifetime" <%= tenant.meta?.plan === 'lifetime' ? 'selected' : '' %>>Lifetime</option>
+      </select>
+      <button type="submit" class="btn btn-gold btn-sm" onclick="return confirm('Change plan to ' + this.form.plan.value + '?')">Change Plan</button>
+    </form>
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/suspend" style="display:inline;">
+      <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Suspend this tenant?')">Suspend</button>
+    </form>
+    <% } %>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="section-title" style="color:var(--danger);">Danger Zone</div>
+  <div class="detail-card danger-card">
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/delete" style="display:inline;">
+      <button type="submit" class="btn btn-danger" onclick="return confirm('DELETE this tenant and all data? This cannot be undone.')">Delete Tenant</button>
+    </form>
+  </div>
+</div>

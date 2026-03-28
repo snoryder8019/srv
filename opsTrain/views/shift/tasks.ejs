@@ -1,0 +1,106 @@
+<%- include('../layout/header') %>
+
+<div class="shift-page">
+  <% if (brand) { %>
+    <div class="shift-header" style="border-color: <%= brand.color || '#d97706' %>">
+      <h1 style="color: <%= brand.color || '#d97706' %>"><%= brand.name %></h1>
+      <p class="text-muted"><%= today %> — <%= t('shift.welcome') %>, <%= shiftUser?.displayName || '' %></p>
+    </div>
+  <% } %>
+
+  <% if (notes && notes.length > 0) { %>
+  <section class="shift-section">
+    <h2><%= t('shift.shiftNotes') %></h2>
+    <% notes.forEach(n => { %>
+      <div class="shift-note<%= n.pinned ? ' pinned' : '' %>">
+        <div class="note-badge">
+          <span class="badge badge-<%= n.category %>"><%= n.category %></span>
+          <% if (n.pinned) { %><span class="badge badge-pinned"><%= lang === 'es' ? 'Fijado' : 'Pinned' %></span><% } %>
+        </div>
+        <% if (n.title) { %><h3><%= n.title %></h3><% } %>
+        <p><%= n.body %></p>
+        <button class="btn btn-sm btn-ack" data-note-id="<%= n._id %>" onclick="ackNote(this)"><%= t('shift.acknowledge') %></button>
+      </div>
+    <% }) %>
+  </section>
+  <% } %>
+
+  <% if (specials && specials.length > 0) { %>
+  <section class="shift-section">
+    <h2><%= t('shift.todaySpecials') %></h2>
+    <div class="specials-grid">
+      <% specials.forEach(s => { %>
+        <div class="special-card">
+          <h3><%= s.name %></h3>
+          <% if (s.description) { %><p><%= s.description %></p><% } %>
+          <% if (s.price) { %><p class="special-price"><%= s.price %></p><% } %>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="shift-section">
+    <h2><%= t('shift.taskChecklist') %></h2>
+    <% if (tasks.length === 0) { %>
+      <p class="text-muted"><%= t('shift.noTasks') %></p>
+    <% } else { %>
+    <div class="task-list">
+      <% tasks.forEach(tk => { %>
+        <div class="task-item<%= tk.completed ? ' completed' : '' %>" data-task-id="<%= tk._id %>">
+          <div class="task-check">
+            <% if (tk.completed) { %>
+              <span class="check-done"><%= t('shift.done') %></span>
+            <% } else { %>
+              <button class="btn btn-check" onclick="completeTask('<%= tk._id %>', '<%= brand._id %>')"><%= t('shift.complete') %></button>
+            <% } %>
+          </div>
+          <div class="task-info">
+            <strong><%= tk.title %></strong>
+            <% if (tk.description) { %><p class="text-sm text-muted"><%= tk.description %></p><% } %>
+            <span class="badge"><%= tk.type %></span>
+            <% if (tk.completion) { %>
+              <span class="text-sm text-muted"><%= new Date(tk.completion.createdAt).toLocaleTimeString() %></span>
+            <% } %>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+    <% } %>
+  </section>
+</div>
+
+<%- include('../scan/scanner') %>
+
+<script>
+async function completeTask(taskId, brandId) {
+  try {
+    const res = await fetch('/shift/tasks/' + taskId + '/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brandId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const el = document.querySelector('[data-task-id="' + taskId + '"]');
+      el.classList.add('completed');
+      el.querySelector('.task-check').innerHTML = '<span class="check-done"><%= t("shift.done") %></span>';
+    }
+  } catch (err) { alert('Error'); }
+}
+
+async function ackNote(btn) {
+  const noteId = btn.dataset.noteId;
+  try {
+    const res = await fetch('/shift/notes/' + noteId + '/ack', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      btn.textContent = '<%= t("shift.acknowledged") %>';
+      btn.disabled = true;
+      btn.classList.add('acked');
+    }
+  } catch (err) { alert('Error'); }
+}
+</script>
+
+<%- include('../layout/footer') %>

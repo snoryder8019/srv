@@ -7,7 +7,7 @@ import { sendInvoiceEmail, sendClientEmail } from '../../plugins/mailer.js';
 import { config } from '../../config/config.js';
 import { normalizeSubject } from '../../plugins/imapPoller.js';
 import { handleResearchClient } from '../../plugins/agentMcp.js';
-import { buildBrandContext } from '../../plugins/brandContext.js';
+import { loadBrandContext } from '../../plugins/brandContext.js';
 import crypto from 'crypto';
 
 const router = express.Router();
@@ -130,7 +130,7 @@ router.post('/:id/agent', express.json(), async (req, res) => {
       website: client.website,
       notes: client.notes,
       email: client.email,
-      brandContext: buildBrandContext(req.tenant?.brand || {}),
+      brandContext: await loadBrandContext(req.tenant, req.db),
     });
 
     // Persist agent report to client record

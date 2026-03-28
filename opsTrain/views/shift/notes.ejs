@@ -1,0 +1,67 @@
+<%- include('../layout/header') %>
+
+<div class="shift-page">
+  <% if (brand) { %>
+    <div class="shift-header" style="border-color:<%= brand.color || '#d97706' %>">
+      <h1 style="color:<%= brand.color %>"><%= brand.name %></h1>
+      <span class="text-muted"><%= today %></span>
+    </div>
+  <% } %>
+
+  <% if (specials && specials.length > 0) { %>
+  <section class="shift-section">
+    <h2><%= t('shift.todaySpecials') %></h2>
+    <div class="specials-grid">
+      <% specials.forEach(s => { %>
+        <div class="special-card">
+          <h3><%= s.name %></h3>
+          <% if (s.description) { %><p><%= s.description %></p><% } %>
+          <% if (s.price) { %><p class="special-price"><%= s.price %></p><% } %>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="shift-section">
+    <h2><%= t('shift.shiftNotes') %></h2>
+    <% if (notes.length === 0) { %>
+      <p class="text-muted"><%= lang === 'es' ? 'Sin notas' : 'No notes today' %></p>
+    <% } else { %>
+      <% notes.forEach(n => { %>
+        <div class="shift-note<%= n.pinned ? ' pinned' : '' %>">
+          <div class="note-badge">
+            <span class="badge badge-<%= n.category %>"><%= n.category %></span>
+            <% if (n.pinned) { %><span class="badge badge-pinned"><%= lang === 'es' ? 'Fijado' : 'Pinned' %></span><% } %>
+          </div>
+          <% if (n.title) { %><h3><%= n.title %></h3><% } %>
+          <p><%= n.body %></p>
+          <div style="margin-top:6px;display:flex;align-items:center;gap:8px;">
+            <span class="text-sm text-muted"><%= n.author?.displayName || '' %></span>
+            <span class="text-sm text-muted">Ack: <%= n.acknowledgedBy ? n.acknowledgedBy.length : 0 %></span>
+            <button class="btn btn-sm btn-ack" data-note-id="<%= n._id %>" onclick="ackNote(this)"><%= t('shift.acknowledge') %></button>
+          </div>
+        </div>
+      <% }) %>
+    <% } %>
+  </section>
+</div>
+
+<%- include('../scan/scanner') %>
+
+<script>
+async function ackNote(btn) {
+  var noteId = btn.dataset.noteId;
+  try {
+    var res = await fetch('/shift/notes/' + noteId + '/ack', { method: 'POST' });
+    var data = await res.json();
+    if (data.success) {
+      btn.textContent = '<%= t("shift.acknowledged") %>';
+      btn.disabled = true;
+      btn.classList.add('acked');
+    }
+  } catch (err) { alert('Error'); }
+}
+</script>
+
+<%- include('../layout/footer') %>

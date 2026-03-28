@@ -25,7 +25,7 @@ export function initSocketIO(server) {
       const match = cookies.match(/slab_token=([^;]+)/);
       if (match) {
         const decoded = jwt.verify(match[1], config.JWT_SECRET);
-        if (decoded.isW2Admin || decoded.isAdmin) {
+        if (decoded.isAdmin) {
           adminUser = decoded;
         }
       }
