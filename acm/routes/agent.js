@@ -47,7 +47,7 @@ router.post('/admin/agent/chat', async (req, res) => {
 
     task.response = result.content;
     task.status = result.success ? 'completed' : 'failed';
-    task.metadata = { model: 'deepseek-r1:7b', tokens: result.tokens, duration: Date.now() - start };
+    task.metadata = { tokens: result.tokens, duration: Date.now() - start };
     task.completedAt = new Date();
     await task.save();
 
@@ -73,7 +73,7 @@ router.post('/admin/agent/generate', async (req, res) => {
 
     task.response = result.content;
     task.status = result.success ? 'completed' : 'failed';
-    task.metadata = { model: 'deepseek-r1:7b', tokens: result.tokens };
+    task.metadata = { tokens: result.tokens };
     task.completedAt = new Date();
     await task.save();
 

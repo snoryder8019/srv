@@ -25,6 +25,7 @@
     const _fp = design.font_heading === design.font_body ? _hF : _hF + '&family=' + _bF;
     const _BI_auto = (brand?.name || '').split(/\s+/).map(w => w[0]).join('').toUpperCase();
     const _BI = (design.hero_name_large && design.hero_name_large.trim()) || _BI_auto;
+    const _sp = (brand?.name || '').indexOf(' ') > 0 ? (brand.name.indexOf(' ')) : 0;
   %>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=<%= _fp %>&display=swap" rel="stylesheet">
@@ -45,6 +46,13 @@
     --section-pad: 100px 52px;
     --font-heading: '<%= design.font_heading %>', serif;
     --font-body:    '<%= design.font_body %>', sans-serif;
+    /* aliases for shared header partial */
+    --primary:      var(--navy);
+    --primary-deep: var(--navy-deep);
+    --primary-mid:  var(--navy-mid);
+    --accent:       var(--gold);
+    --accent-light: var(--gold-light);
+    --bg:           var(--ivory);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -57,84 +65,7 @@
     overflow-x: hidden;
   }
 
-  /* ── NAV ── */
-  nav {
-    position: fixed;
-    top: 0;
-    width: 100%;
-    z-index: 1000;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 52px;
-    background: rgba(253,252,250,0.92);
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid transparent;
-    transition: border-color 0.3s, box-shadow 0.3s;
-  }
-
-  nav.scrolled {
-    border-color: var(--ivory-mid);
-    box-shadow: 0 2px 24px rgba(28,43,74,0.1);
-  }
-
-  .nav-wordmark {
-    display: flex;
-    flex-direction: column;
-    line-height: 1;
-    text-decoration: none;
-  }
-
-  .nav-logo {
-    height: 48px;
-    width: auto;
-    object-fit: contain;
-  }
-
-  .nav-wordmark-top {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 1.5rem;
-    font-weight: 400;
-    color: var(--dark);
-    letter-spacing: 0.04em;
-  }
-
-  .nav-wordmark-sub {
-    font-size: 0.58rem;
-    font-weight: 600;
-    letter-spacing: 0.28em;
-    text-transform: uppercase;
-    color: var(--navy);
-    margin-top: 2px;
-  }
-
-  .nav-links {
-    display: flex;
-    gap: 2.4rem;
-    list-style: none;
-    align-items: center;
-  }
-
-  .nav-links a {
-    font-size: 0.82rem;
-    font-weight: 500;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--slate);
-    text-decoration: none;
-    transition: color 0.2s;
-  }
-
-  .nav-links a:hover { color: var(--navy); }
-
-  .nav-cta {
-    background: var(--navy) !important;
-    color: var(--white) !important;
-    padding: 10px 24px;
-    border-radius: 2px;
-  }
-
-  .nav-cta:hover { background: var(--navy-deep) !important; }
+  /* nav styles provided by partials/header.ejs */
 
   /* ── HERO ── */
   .hero {
@@ -530,7 +461,7 @@
     font-size: 18rem;
     font-weight: 300;
     font-style: italic;
-    color: rgba(28,43,74,0.35);
+    color: color-mix(in srgb, var(--navy) 35%, transparent);
     line-height: 1;
     user-select: none;
     position: absolute;
@@ -597,7 +528,7 @@
     transition: background 0.2s;
   }
 
-  .process-item:hover { background: rgba(28,43,74,0.04); margin: 0 -20px; padding: 36px 20px; }
+  .process-item:hover { background: color-mix(in srgb, var(--navy) 4%, transparent); margin: 0 -20px; padding: 36px 20px; }
 
   .process-num {
     font-family: 'Cormorant Garamond', serif;
@@ -873,8 +804,6 @@
 
   /* ── RESPONSIVE ── */
   @media (max-width: 900px) {
-    nav { padding: 16px 24px; }
-    .nav-links { display: none; }
     .hero { grid-template-columns: 1fr; }
     .hero-right { min-height: 380px; }
     .hero-left { padding: 120px 32px 60px; }
@@ -1024,13 +953,7 @@
      LAYOUT: DARK — dark-themed throughout with accent highlights
      ═══════════════════════════════════════════════════════════════════════════ */
   [data-layout="dark"] { background: var(--navy-deep); color: rgba(253,252,250,0.85); }
-  [data-layout="dark"] nav { background: rgba(15,27,48,0.95); }
-  [data-layout="dark"] nav.scrolled { border-color: rgba(201,168,72,0.15); box-shadow: 0 2px 24px rgba(0,0,0,0.3); }
-  [data-layout="dark"] .nav-wordmark-top { color: var(--white); }
-  [data-layout="dark"] .nav-wordmark-sub { color: var(--gold); }
-  [data-layout="dark"] .nav-links a { color: rgba(253,252,250,0.5); }
-  [data-layout="dark"] .nav-links a:hover { color: var(--gold-light); }
-  [data-layout="dark"] .nav-cta { background: var(--gold) !important; color: var(--dark) !important; }
+  /* dark nav overrides provided by partials/header.ejs */
 
   [data-layout="dark"] .hero-left { background: var(--navy-deep); }
   [data-layout="dark"] .hero-heading { color: var(--white); }
@@ -1111,34 +1034,8 @@
 </style>
 </head>
 <body data-layout="<%= design.landing_layout || 'classic' %>">
-<%- include('partials/preview-banner') %>
-<%- include('partials/maintenance-banner') %>
-
 <!-- NAV -->
-<nav id="main-nav">
-  <a href="#" class="nav-wordmark">
-    <% if (design.model_logo_enabled === 'true') { %>
-      <div class="gltf-viewer" <%= (typeof brandModels !== 'undefined' && brandModels.model_logo) ? 'data-model-url="' + brandModels.model_logo + '"' : '' %> data-brand-name="<%= brand?.name || '' %>" data-mode="logo" data-bg-color="transparent" data-accent-color="<%= design.color_accent %>" data-primary-color="<%= design.color_primary %>" style="width:48px;height:48px;"></div>
-    <% } else if (logos.logo_primary && (design.nav_logo_display === 'image' || design.nav_logo_display === 'both')) { %>
-      <img src="<%= logos.logo_primary %>" alt="<%= brand?.name || 'Home' %>" class="nav-logo">
-    <% } %>
-    <% if (design.nav_logo_display !== 'image' || !logos.logo_primary) { %>
-      <span class="nav-wordmark-top"><%- brand?.name || '' %></span>
-      <span class="nav-wordmark-sub"><%= brand?.tagline || '' %> &nbsp;&mdash;&nbsp; <%= brand?.location || '' %></span>
-    <% } %>
-  </a>
-  <ul class="nav-links">
-    <li><a href="#services">Services</a></li>
-    <% if (portfolio && portfolio.length) { %><li><a href="#portfolio">Work</a></li><% } %>
-    <li><a href="#about">About</a></li>
-    <% if (typeof navPages !== 'undefined' && navPages.length) { %>
-      <% navPages.forEach(function(pg) { %>
-        <li><a href="/<%= pg.slug %>"><%- pg.title %></a></li>
-      <% }); %>
-    <% } %>
-    <li><a href="#contact" class="nav-cta">Get Started</a></li>
-  </ul>
-</nav>
+<%- include('partials/header', { activePage: 'home' }) %>
 
 <!-- HERO -->
 <% if (visibility.hero) { %>
@@ -1147,8 +1044,8 @@
     <div class="hero-text">
       <h1 class="hero-heading"><%= copy.hero_heading %></h1>
       <div class="hero-btns">
-        <a href="#contact" class="btn-primary">Start a Project</a>
-        <a href="#services" class="btn-ghost">Our Services</a>
+        <a href="<%= copy.hero_cta_primary_link || '#contact' %>" class="btn-primary"><%= copy.hero_cta_primary || 'Start a Project' %></a>
+        <a href="<%= copy.hero_cta_secondary_link || '#services' %>" class="btn-ghost"><%= copy.hero_cta_secondary || 'Our Services' %></a>
       </div>
     </div>
   </div>
@@ -1245,8 +1142,8 @@
             <img src="<%= item.imageUrl %>" alt="<%= item.title %>" style="width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.5s ease;" onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
           </div>
         <% } else { %>
-          <div style="aspect-ratio:16/10;background:rgba(28,43,74,0.6);display:flex;align-items:center;justify-content:center;">
-            <span style="font-family:'Cormorant Garamond',serif;font-size:3rem;font-weight:300;font-style:italic;color:rgba(201,168,72,0.2);"><%= item.title.charAt(0) %></span>
+          <div style="aspect-ratio:16/10;background:color-mix(in srgb, var(--navy) 60%, transparent);display:flex;align-items:center;justify-content:center;">
+            <span style="font-family:var(--font-heading);font-size:3rem;font-weight:300;font-style:italic;color:color-mix(in srgb, var(--gold) 20%, transparent);"><%= item.title.charAt(0) %></span>
           </div>
         <% } %>
         <div style="padding:28px 28px 32px;">
@@ -1274,7 +1171,7 @@
 <section class="advisor-section" id="about">
   <div class="advisor-left">
     <div class="advisor-text">
-      <p class="section-eyebrow">About Us</p>
+      <p class="section-eyebrow"><%= copy.about_eyebrow %></p>
       <blockquote class="advisor-quote">
         <%= copy.about_quote %>
       </blockquote>
@@ -1283,25 +1180,33 @@
     </div>
   </div>
   <div class="advisor-right">
-    <div class="advisor-initial">W</div>
+    <% if (copy.about_initial) { %><div class="advisor-initial"><%= copy.about_initial %></div><% } %>
     <div class="advisor-right-inner">
       <div class="advisor-stats">
+        <% if (copy.about_stat1_num) { %>
         <div class="stat-box">
-          <div class="stat-num">50+</div>
-          <div class="stat-label">Clients Served</div>
+          <div class="stat-num"><%= copy.about_stat1_num %></div>
+          <div class="stat-label"><%= copy.about_stat1_label %></div>
         </div>
+        <% } %>
+        <% if (copy.about_stat2_num) { %>
         <div class="stat-box">
-          <div class="stat-num">3x</div>
-          <div class="stat-label">Avg. Engagement Lift</div>
+          <div class="stat-num"><%= copy.about_stat2_num %></div>
+          <div class="stat-label"><%= copy.about_stat2_label %></div>
         </div>
+        <% } %>
+        <% if (copy.about_stat3_num) { %>
         <div class="stat-box">
-          <div class="stat-num">5</div>
-          <div class="stat-label">Years Active</div>
+          <div class="stat-num"><%= copy.about_stat3_num %></div>
+          <div class="stat-label"><%= copy.about_stat3_label %></div>
         </div>
+        <% } %>
+        <% if (copy.about_stat4_num) { %>
         <div class="stat-box">
-          <div class="stat-num">100%</div>
-          <div class="stat-label">Local Focus</div>
+          <div class="stat-num"><%= copy.about_stat4_num %></div>
+          <div class="stat-label"><%= copy.about_stat4_label %></div>
         </div>
+        <% } %>
       </div>
     </div>
   </div>
@@ -1445,41 +1350,41 @@
     <form class="contact-form" id="contact-form" method="POST" action="/contact">
       <div class="form-row">
         <div class="form-field">
-          <label>First Name</label>
-          <input type="text" name="firstName" placeholder="Jane" required>
+          <label><%= copy.contact_fname_label %></label>
+          <input type="text" name="firstName" placeholder="<%= copy.contact_fname_placeholder %>" required>
         </div>
         <div class="form-field">
-          <label>Last Name</label>
-          <input type="text" name="lastName" placeholder="Smith" required>
+          <label><%= copy.contact_lname_label %></label>
+          <input type="text" name="lastName" placeholder="<%= copy.contact_lname_placeholder %>" required>
         </div>
       </div>
       <div class="form-field">
-        <label>Email</label>
-        <input type="email" name="email" placeholder="jane@yourbusiness.com" required>
+        <label><%= copy.contact_email_label %></label>
+        <input type="email" name="email" placeholder="<%= copy.contact_email_placeholder %>" required>
       </div>
       <div class="form-field">
-        <label>Business Name</label>
-        <input type="text" name="company" placeholder="Your Business LLC">
+        <label><%= copy.contact_company_label %></label>
+        <input type="text" name="company" placeholder="<%= copy.contact_company_placeholder %>">
       </div>
       <div class="form-field">
-        <label>Service Interested In</label>
+        <label><%= copy.contact_service_label %></label>
         <select name="service">
-          <option value="">Select a service...</option>
+          <option value=""><%= copy.contact_service_placeholder %></option>
           <% if (brand?.services?.length) { %>
             <% brand.services.forEach(function(svc) { %>
               <option><%- svc %></option>
             <% }); %>
-            <option>Full Package</option>
+            <option><%= copy.contact_service_extra %></option>
           <% } else { %>
-            <option>General Inquiry</option>
+            <option><%= copy.contact_service_fallback %></option>
           <% } %>
         </select>
       </div>
       <div class="form-field">
-        <label>Tell Us About Your Needs</label>
-        <textarea name="message" placeholder="A quick idea of your needs — what are you trying to achieve?"></textarea>
+        <label><%= copy.contact_message_label %></label>
+        <textarea name="message" placeholder="<%= copy.contact_message_placeholder %>"></textarea>
       </div>
-      <button type="submit" class="btn-submit">Send Message</button>
+      <button type="submit" class="btn-submit"><%= copy.contact_btn %></button>
       <div id="form-msg"></div>
     </form>
   </div>
@@ -1578,7 +1483,7 @@
         <img src="<%= footerLogo %>" alt="<%= brand?.name || 'Home' %>" class="footer-logo">
       <% } %>
       <% if (design.nav_logo_display !== 'image' || !footerLogo) { %>
-        <div class="footer-brand-name"><%- brand?.name || '' %></div>
+        <div class="footer-brand-name"><% if (_sp > 0) { %><span style="color:var(--gold-light);"><%- (brand?.name||'').slice(0,_sp) %></span><%- (brand?.name||'').slice(_sp) %><% } else { %><%- brand?.name || '' %><% } %></div>
       <% } %>
       <div class="footer-brand-sub"><%= brand?.services?.length ? brand.services.slice(0,3).join(' &bull; ') : (brand?.businessType || '') %><%= brand?.location ? ' &bull; ' + brand.location : '' %></div>
     </div>
@@ -1607,11 +1512,6 @@
 </footer>
 
 <script>
-  const nav = document.getElementById('main-nav');
-  window.addEventListener('scroll', () => {
-    nav.classList.toggle('scrolled', window.scrollY > 60);
-  });
-
   // Show success message if redirected back after contact form submission
   if (new URLSearchParams(window.location.search).get('contacted')) {
     const msg = document.getElementById('form-msg');

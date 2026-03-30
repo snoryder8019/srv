@@ -1,0 +1,63 @@
+<%
+  /* ── Shared tenant header — one source of truth for all public pages ── */
+  const _hdr_sp = parseInt(design.nav_logo_split) || 0;
+  const _hdr_pre = _hdr_sp > 0 ? (brand?.name||'').slice(0,_hdr_sp) : '';
+  const _hdr_post = _hdr_sp > 0 ? (brand?.name||'').slice(_hdr_sp) : (brand?.name||'');
+  const _hdr_active = typeof activePage !== 'undefined' ? activePage : '';
+%>
+<style>
+  /* ── NAV (shared header) ── */
+  #main-nav { position:fixed;top:0;width:100%;z-index:1000;display:flex;justify-content:space-between;align-items:center;padding:20px 52px;background:color-mix(in srgb, var(--bg, var(--ivory)) 95%, transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--ivory-mid);transition:border-color 0.3s, box-shadow 0.3s; }
+  #main-nav.scrolled { border-color:var(--ivory-mid);box-shadow:0 2px 24px color-mix(in srgb, var(--primary, var(--navy)) 10%, transparent); }
+  #main-nav .nav-wordmark { display:flex;flex-direction:column;line-height:1;text-decoration:none; }
+  #main-nav .nav-wordmark-top { font-family:var(--font-heading);font-size:1.4rem;font-weight:400;color:var(--dark);letter-spacing:0.04em;display:block; }
+  #main-nav .nav-wordmark-sub { font-size:0.58rem;font-weight:600;letter-spacing:0.28em;text-transform:uppercase;color:var(--primary, var(--navy));margin-top:2px;display:block; }
+  #main-nav .nav-logo { height:48px;width:auto;object-fit:contain; }
+  #main-nav .nav-links { display:flex;gap:2rem;list-style:none;align-items:center; }
+  #main-nav .nav-links a { font-size:0.82rem;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);text-decoration:none;transition:color 0.2s; }
+  #main-nav .nav-links a:hover, #main-nav .nav-links a.active { color:var(--primary, var(--navy)); }
+
+  /* dark layout overrides */
+  [data-layout="dark"] #main-nav { background:rgba(15,27,48,0.95); }
+  [data-layout="dark"] #main-nav.scrolled { border-color:rgba(201,168,72,0.15);box-shadow:0 2px 24px rgba(0,0,0,0.3); }
+  [data-layout="dark"] #main-nav .nav-wordmark-top { color:var(--white); }
+  [data-layout="dark"] #main-nav .nav-wordmark-sub { color:var(--accent, var(--gold)); }
+  [data-layout="dark"] #main-nav .nav-links a { color:rgba(253,252,250,0.5); }
+  [data-layout="dark"] #main-nav .nav-links a:hover, [data-layout="dark"] #main-nav .nav-links a.active { color:var(--accent-light, var(--gold-light)); }
+
+  @media (max-width:900px) {
+    #main-nav { padding:16px 20px; }
+    #main-nav .nav-links { display:none; }
+  }
+</style>
+
+<%- include('preview-banner') %>
+<%- include('maintenance-banner') %>
+
+<nav id="main-nav">
+  <a href="/" class="nav-wordmark">
+    <% if (design.model_logo_enabled === 'true' && typeof brandModels !== 'undefined' && brandModels?.model_logo) { %>
+      <div class="gltf-viewer" data-model-url="<%= brandModels.model_logo %>" data-brand-name="<%= brand?.name || '' %>" data-mode="logo" data-bg-color="transparent" data-accent-color="<%= design.color_accent %>" data-primary-color="<%= design.color_primary %>" style="width:48px;height:48px;"></div>
+    <% } else if (logos && logos.logo_primary && (design.nav_logo_display === 'image' || design.nav_logo_display === 'both')) { %>
+      <img src="<%= logos.logo_primary %>" alt="<%= brand?.name || 'Home' %>" class="nav-logo">
+    <% } %>
+    <% if (design.nav_logo_display !== 'image' || !logos || !logos.logo_primary) { %>
+      <span class="nav-wordmark-top"><% if (_hdr_pre) { %><span style="color:var(--accent, var(--gold))"><%= _hdr_pre %></span><% } %><%- _hdr_post %></span>
+      <span class="nav-wordmark-sub"><%= brand?.tagline ? brand.tagline + ' &mdash; ' : '' %><%= brand?.location || '' %></span>
+    <% } %>
+  </a>
+  <ul class="nav-links">
+    <li><a href="/" <%= _hdr_active === 'home' ? 'class="active"' : '' %>>Home</a></li>
+    <% if (typeof navPages !== 'undefined' && navPages.length) { %>
+      <% navPages.forEach(function(p) { %>
+        <li><a href="/<%= p.slug %>" <%= _hdr_active === p.slug ? 'class="active"' : '' %>><%- p.title %></a></li>
+      <% }); %>
+    <% } %>
+    <li><a href="/blog" <%= _hdr_active === 'blog' ? 'class="active"' : '' %>>Blog</a></li>
+    <li><a href="/#contact">Get Started</a></li>
+  </ul>
+</nav>
+
+<script>
+(function(){var n=document.getElementById('main-nav');if(n)window.addEventListener('scroll',function(){n.classList.toggle('scrolled',window.scrollY>60)});})();
+</script>

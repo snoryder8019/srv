@@ -7,7 +7,48 @@ import { ObjectId } from 'mongodb';
 import { summarizeChunk } from './meetingNotetaker.js';
 
 const activeRooms = new Map(); // token -> Map<socketId, { displayName, isHost }>
+const roomTranscripts = new Map(); // token -> { lines: [], timer: null, tenantDb: '' }
 const MAX_PARTICIPANTS = 5;
+const TRANSCRIPT_FLUSH_INTERVAL = 120000; // 2 minutes
+
+// Server-side transcript flush — summarizes accumulated lines from ALL participants
+async function flushRoomTranscript(token, nsp) {
+  const rt = roomTranscripts.get(token);
+  if (!rt || !rt.lines.length) return;
+
+  const lines = rt.lines.splice(0); // take all, clear buffer
+  const transcript = lines.join('\n');
+  if (transcript.length < 30) return;
+
+  let meetingTitle = 'Meeting';
+  try {
+    const db = rt.tenantDb ? getTenantDb(rt.tenantDb) : getDb();
+    const meeting = await db.collection('meetings').findOne({ token }, { projection: { title: 1 } });
+    if (meeting) meetingTitle = meeting.title || meetingTitle;
+
+    nsp.to(token).emit('notetaker-status', { status: 'summarizing' });
+
+    const summary = await summarizeChunk(transcript, 'Meeting participants', meetingTitle);
+
+    if (summary) {
+      const noteId = 'ai-' + Date.now() + '-' + crypto.randomBytes(4).toString('hex');
+      const note = {
+        _noteId: noteId,
+        author: 'AI Notetaker',
+        text: summary,
+        createdAt: new Date(),
+        isAI: true,
+      };
+      await db.collection('meetings').updateOne({ token }, { $push: { notes: note } });
+      nsp.to(token).emit('meeting-note-added', note);
+    }
+
+    nsp.to(token).emit('notetaker-status', { status: 'listening' });
+  } catch (err) {
+    console.error('[notetaker] server flush error:', err);
+    nsp.to(token).emit('notetaker-status', { status: 'listening' });
+  }
+}
 
 export function initSocketIO(server) {
   const io = new Server(server, {
@@ -275,21 +316,69 @@ export function initSocketIO(server) {
         text: data.text.slice(0, 2000),
         isFinal: !!data.isFinal,
       });
+
+      // Accumulate final lines server-side for TLDR (captures ALL participants)
+      if (data.isFinal && roomTranscripts.has(token)) {
+        roomTranscripts.get(token).lines.push(
+          (socket.meetingName || 'Unknown') + ': ' + data.text.slice(0, 2000)
+        );
+      }
     });
 
-    // --- Transcription chunk → AI summarize → auto-note ---
+    // --- Notetaker activation: start server-side accumulation + tell peers to start speech recognition ---
+    socket.on('notetaker-activate', () => {
+      const token = socket.meetingToken;
+      if (!token) return;
+
+      if (!roomTranscripts.has(token)) {
+        roomTranscripts.set(token, { lines: [], timer: null, tenantDb: socket.tenantDb || '' });
+      }
+      const rt = roomTranscripts.get(token);
+
+      // Start server-side flush timer if not already running
+      if (!rt.timer) {
+        rt.timer = setInterval(() => flushRoomTranscript(token, meetings), TRANSCRIPT_FLUSH_INTERVAL);
+      }
+
+      // Tell all other peers to auto-start their speech recognition
+      socket.to(token).emit('notetaker-activate', { activatedBy: socket.meetingName });
+      meetings.to(token).emit('notetaker-status', { status: 'listening' });
+    });
+
+    // --- Notetaker deactivation: flush remaining + stop timer ---
+    socket.on('notetaker-deactivate', () => {
+      const token = socket.meetingToken;
+      if (!token) return;
+
+      flushRoomTranscript(token, meetings);
+
+      const rt = roomTranscripts.get(token);
+      if (rt && rt.timer) {
+        clearInterval(rt.timer);
+        rt.timer = null;
+      }
+
+      socket.to(token).emit('notetaker-deactivate');
+    });
+
+    // --- Manual TLDR flush (from "TLDR Now" button) ---
+    socket.on('notetaker-flush', () => {
+      const token = socket.meetingToken;
+      if (!token) return;
+      flushRoomTranscript(token, meetings);
+    });
+
+    // --- Legacy: client-side transcription chunk (fallback) ---
     socket.on('transcription-chunk', async (data) => {
       const token = socket.meetingToken;
       if (!token || !data.transcript) return;
 
-      // Get meeting title from DB
       let meetingTitle = 'Meeting';
       try {
         const db = socket.tenantDb ? getTenantDb(socket.tenantDb) : getDb();
         const meeting = await db.collection('meetings').findOne({ token }, { projection: { title: 1 } });
         if (meeting) meetingTitle = meeting.title || meetingTitle;
 
-        // Notify room that AI is summarizing
         meetings.to(token).emit('notetaker-status', { status: 'summarizing' });
 
         const summary = await summarizeChunk(
@@ -331,6 +420,13 @@ export function initSocketIO(server) {
         room.delete(socket.id);
         if (room.size === 0) {
           activeRooms.delete(token);
+          // Final flush + cleanup of transcript buffer when room empties
+          const rt = roomTranscripts.get(token);
+          if (rt) {
+            if (rt.timer) clearInterval(rt.timer);
+            flushRoomTranscript(token, meetings);
+            roomTranscripts.delete(token);
+          }
         }
       }
       socket.to(token).emit('room-peer-left', { peerId: socket.id });

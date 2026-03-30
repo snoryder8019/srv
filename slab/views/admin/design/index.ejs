@@ -49,19 +49,19 @@
   display: inline-flex; align-items: center; gap: 7px;
   padding: 8px 16px; border-radius: 2px;
   background: linear-gradient(135deg, #6B3FA0, #8B5FC0);
-  color: #E8D08A; border: 1px solid rgba(201,168,72,0.3);
-  font-family: 'Jost', sans-serif; font-size: 0.72rem;
+  color: var(--gold-light); border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+  font-family: var(--font-body); font-size: 0.72rem;
   font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
   cursor: pointer; transition: all 0.2s;
 }
-.agent-btn:hover { background: linear-gradient(135deg, #8B5FC0, #6B3FA0); border-color: rgba(201,168,72,0.6); }
+.agent-btn:hover { background: linear-gradient(135deg, #8B5FC0, #6B3FA0); border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
 .agent-btn .agent-icon { font-size: 1rem; }
 
 /* ── AGENT PANEL ── */
 #agentPanel {
   position: fixed; top: 0; right: -440px; width: 420px; height: 100vh;
   background: var(--white); border-left: 1px solid var(--ivory-mid);
-  box-shadow: -8px 0 40px rgba(15,27,48,0.12);
+  box-shadow: -8px 0 40px color-mix(in srgb, var(--navy-deep) 12%, transparent);
   z-index: 500; display: flex; flex-direction: column;
   transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
 }
@@ -87,7 +87,7 @@
   font-size: 1.3rem; cursor: pointer; padding: 4px; line-height: 1;
   transition: color 0.15s;
 }
-.agent-panel-close:hover { color: var(--white); }
+.agent-panel-close:hover { color: #FDFCFA; }
 
 .agent-panel-sub {
   padding: 10px 20px; background: rgba(107,63,160,0.08);
@@ -109,7 +109,7 @@
   font-size: 0.85rem; line-height: 1.5; font-weight: 300;
 }
 .agent-msg.user .agent-bubble {
-  background: #6B3FA0; color: var(--white);
+  background: #6B3FA0; color: #FDFCFA;
   border-radius: 4px 4px 1px 4px;
 }
 .agent-msg.assistant .agent-bubble {
@@ -143,7 +143,7 @@
 }
 .agent-input:focus { border-color: #6B3FA0; }
 .agent-send {
-  width: 40px; flex-shrink: 0; background: #6B3FA0; color: var(--white);
+  width: 40px; flex-shrink: 0; background: #6B3FA0; color: #FDFCFA;
   border: none; border-radius: 2px; font-size: 1.1rem; cursor: pointer;
   transition: background 0.15s;
 }
@@ -271,6 +271,36 @@
           <div class="swatch" style="background:<%= design.color_bg %>;border:1px solid var(--ivory-mid);" title="Background"></div>
         </div>
       </div>
+
+      <!-- Contrast check -->
+      <% if (design._contrast) { %>
+      <div style="margin-top:20px;">
+        <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:10px;">Contrast Check (WCAG AA)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+          <%
+            const checks = [
+              { label: 'Body text on page', key: 'text_on_bg', bg: design.color_bg, fg: design._on_bg },
+              { label: 'Primary on page', key: 'primary_on_bg', bg: design.color_bg, fg: design.color_primary },
+              { label: 'Accent on page', key: 'accent_on_bg', bg: design.color_bg, fg: design.color_accent },
+              { label: 'Text on primary', key: 'text_on_primary', bg: design.color_primary, fg: design._on_primary },
+              { label: 'Text on footer', key: 'text_on_deep', bg: design.color_primary_deep, fg: design._on_primary_deep },
+              { label: 'Accent on footer', key: 'accent_on_deep', bg: design.color_primary_deep, fg: design.color_accent_light },
+            ];
+          %>
+          <% checks.forEach(c => { const d = design._contrast[c.key]; if (!d) return; %>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--ivory);border:1px solid var(--ivory-mid);border-radius:2px;">
+            <div style="width:36px;height:36px;border-radius:2px;background:<%= c.bg %>;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.75rem;color:<%= c.fg %>;flex-shrink:0;border:1px solid rgba(0,0,0,0.08);">Aa</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.72rem;font-weight:500;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= c.label %></div>
+              <div style="font-size:0.65rem;color:<%= d.aa ? 'var(--success, #15803D)' : '#B91C1C' %>;font-weight:600;">
+                <%= d.ratio %>:1 — <%= d.aa ? 'Pass' : (d.aaLarge ? 'Large only' : 'Fail') %>
+              </div>
+            </div>
+          </div>
+          <% }) %>
+        </div>
+      </div>
+      <% } %>
     </div>
 
     <!-- FONTS -->

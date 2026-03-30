@@ -5,8 +5,26 @@ import { getDb } from '../plugins/mongo.js';
 import { config } from '../config/config.js';
 import { meetingAssetUpload } from '../middleware/upload.js';
 import { bucketUrl } from '../plugins/s3.js';
+import { DESIGN_DEFAULTS } from './admin/design.js';
+import { enrichDesignContrast } from '../plugins/colorContrast.js';
 
 const router = express.Router();
+
+/** Load tenant design settings with defaults + contrast vars */
+async function loadDesign(db) {
+  const design = { ...DESIGN_DEFAULTS };
+  try {
+    const rows = await db.collection('design').find({}).toArray();
+    for (const r of rows) design[r.key] = r.value;
+  } catch { /* use defaults */ }
+  return enrichDesignContrast(design);
+}
+
+// Inject design settings into all meeting views
+router.use(async (req, res, next) => {
+  res.locals.design = await loadDesign(req.db);
+  next();
+});
 
 // GET /meeting/:token — public meeting room
 router.get('/:token', async (req, res) => {

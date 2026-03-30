@@ -8,7 +8,7 @@ const AgentTask = require('../models/AgentTask');
 
 const API_BASE = process.env.LLM_API_BASE || 'https://ollama.madladslab.com';
 const API_KEY = process.env.LLM_API_KEY || '';
-const MODEL = process.env.LLM_MODEL || 'deepseek-r1:7b';
+
 
 const SYSTEM_PROMPT = `You are the ACM Hospitality Group Assistant. You help manage three restaurants:
 - The Nook (Light Farms, Celina, TX) — a cocktail kitchen & market café
@@ -63,7 +63,6 @@ async function chat(messages, systemPrompt) {
 
   try {
     const result = await apiRequest('/v1/chat/completions', {
-      model: MODEL,
       messages: allMessages,
       temperature: 0.7,
       max_tokens: 2048
@@ -121,7 +120,6 @@ async function processTask(taskId) {
     task.response = result.content;
     task.status = result.success ? 'completed' : 'failed';
     task.metadata = {
-      model: MODEL,
       tokens: result.tokens,
       duration: Date.now() - start
     };
@@ -133,7 +131,7 @@ async function processTask(taskId) {
     task.status = 'failed';
     task.response = err.message;
     task.completedAt = new Date();
-    task.metadata = { model: MODEL, duration: Date.now() - start };
+    task.metadata = { duration: Date.now() - start };
     await task.save();
     return task;
   }

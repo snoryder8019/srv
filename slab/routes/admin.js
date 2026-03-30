@@ -6,6 +6,7 @@ import { isSuperAdminEmail } from '../middleware/superadmin.js';
 import { getDb } from '../plugins/mongo.js';
 import { config } from '../config/config.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
+import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import portfolioRouter from './admin/portfolio.js';
 import clientsRouter from './admin/clients.js';
 import copyRouter from './admin/copy.js';
@@ -23,7 +24,9 @@ import usersRouter from './admin/users.js';
 import tutorialsRouter from './admin/tutorials.js';
 import profileRouter from './admin/profile.js';
 import settingsRouter from './admin/settings.js';
+import docsRouter from './admin/docs.js';
 import superRouter from './admin/super.js';
+import huginnRouter from './admin/huginn.js';
 
 const router = express.Router();
 
@@ -56,9 +59,9 @@ router.use(async (req, res, next) => {
       const rows = await req.db.collection('design').find({}).toArray();
       for (const r of rows) design[r.key] = r.value;
     }
-    res.locals.brandDesign = design;
+    res.locals.brandDesign = enrichDesignContrast(design);
   } catch {
-    res.locals.brandDesign = { ...DESIGN_DEFAULTS };
+    res.locals.brandDesign = enrichDesignContrast({ ...DESIGN_DEFAULTS });
   }
 
   next();
@@ -242,6 +245,8 @@ router.use('/users', usersRouter);
 router.use('/tutorials', tutorialsRouter);
 router.use('/profile', profileRouter);
 router.use('/settings', settingsRouter);
+router.use('/docs', docsRouter);
+router.use('/huginn', huginnRouter);
 router.use('/super', superRouter);
 
 export default router;

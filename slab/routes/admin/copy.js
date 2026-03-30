@@ -6,18 +6,28 @@ import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMc
 const router = express.Router();
 
 const SECTIONS = {
-  hero: ['hero_eyebrow', 'hero_heading', 'hero_heading_em', 'hero_sub', 'hero_badge'],
+  hero: ['hero_eyebrow', 'hero_heading', 'hero_heading_em', 'hero_sub', 'hero_badge',
+         'hero_cta_primary', 'hero_cta_primary_link', 'hero_cta_secondary', 'hero_cta_secondary_link'],
   services: ['services_label', 'services_heading', 'services_heading_em', 'services_sub',
              'service1_title', 'service1_desc', 'service1_link',
              'service2_title', 'service2_desc', 'service2_link',
              'service3_title', 'service3_desc', 'service3_link'],
-  about: ['about_quote', 'about_desc', 'about_sig'],
+  about: ['about_quote', 'about_desc', 'about_sig', 'about_eyebrow', 'about_initial',
+         'about_stat1_num', 'about_stat1_label', 'about_stat2_num', 'about_stat2_label',
+         'about_stat3_num', 'about_stat3_label', 'about_stat4_num', 'about_stat4_label'],
   process: ['process_label', 'process_heading', 'process_heading_em',
            'process1_title', 'process1_desc',
            'process2_title', 'process2_desc',
            'process3_title', 'process3_desc',
            'process4_title', 'process4_desc'],
-  contact: ['contact_sub', 'contact_location', 'contact_serving', 'contact_services'],
+  contact: ['contact_sub', 'contact_location', 'contact_serving', 'contact_services',
+           'contact_btn', 'contact_fname_label', 'contact_fname_placeholder',
+           'contact_lname_label', 'contact_lname_placeholder',
+           'contact_email_label', 'contact_email_placeholder',
+           'contact_company_label', 'contact_company_placeholder',
+           'contact_service_label', 'contact_service_placeholder',
+           'contact_message_label', 'contact_message_placeholder',
+           'contact_service_fallback', 'contact_service_extra'],
 };
 
 const COPY_DEFAULTS = {

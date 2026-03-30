@@ -4,6 +4,7 @@ import { getDb } from '../../plugins/mongo.js';
 import { brandUpload, modelUpload } from '../../middleware/upload.js';
 import { callLLM, tryParseAgentResponse, webSearch } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import { enrichDesignContrast } from '../../plugins/colorContrast.js';
 
 const router = express.Router();
 
@@ -55,9 +56,10 @@ router.get('/', async (req, res) => {
     ]);
     const design = { ...DESIGN_DEFAULTS };
     for (const item of rawDesign) design[item.key] = item.value;
+    const enriched = enrichDesignContrast(design);
     res.render('admin/design/index', {
       user: req.adminUser, page: 'design', title: 'Design & Settings',
-      design, brandImages, themes, brandModels, saved: req.query.saved === '1', error: req.query.error === '1',
+      design: enriched, brandImages, themes, brandModels, saved: req.query.saved === '1', error: req.query.error === '1',
     });
   } catch (err) {
     console.error(err);

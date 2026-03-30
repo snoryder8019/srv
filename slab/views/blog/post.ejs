@@ -22,6 +22,9 @@
     const hF = FONT_MAP[design.font_heading] || FONT_MAP['Cormorant Garamond'];
     const bF = FONT_MAP[design.font_body] || FONT_MAP['Jost'];
     const fontsParam = design.font_heading === design.font_body ? hF : hF + '&family=' + bF;
+    const _sp = parseInt(design.nav_logo_split) || 0;
+    const _brandPre = _sp > 0 ? (brand?.name||'').slice(0,_sp) : '';
+    const _brandPost = _sp > 0 ? (brand?.name||'').slice(_sp) : (brand?.name||'');
   %>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=<%= fontsParam %>&display=swap" rel="stylesheet">
@@ -34,7 +37,8 @@
       --accent-light: <%= design.color_accent_light %>;
       --bg:           <%= design.color_bg %>;
       --navy: var(--primary); --gold: var(--accent);
-      --ivory: var(--bg); --ivory-mid: #E6E1D6; --slate: #6B7380; --dark: #0F1B30; --white: #FDFCFA;
+      --ivory: var(--bg); --ivory-mid: #E6E1D6; --slate: #6B7380; --dark: <%= design.color_primary_deep %>; --white: #FDFCFA;
+      --on-primary: <%= design._on_primary || '#FDFCFA' %>; --on-primary-deep: <%= design._on_primary_deep || '#FDFCFA' %>; --on-bg: <%= design._on_bg || '#0F1B30' %>;
       --font-heading: '<%= design.font_heading %>', serif;
       --font-body: '<%= design.font_body %>', sans-serif;
     }
@@ -43,20 +47,13 @@
     body { font-family:var(--font-body); background:var(--white); color:var(--dark); }
     .reveal { opacity:0; transform:translateY(20px); transition:opacity 0.5s ease, transform 0.5s ease; }
     .reveal.visible { opacity:1; transform:translateY(0); }
-    nav.scrolled { box-shadow:0 2px 24px rgba(28,43,74,0.1); }
-    nav { position:fixed; top:0; width:100%; z-index:1000; display:flex; justify-content:space-between; align-items:center; padding:20px 52px; background:rgba(253,252,250,0.95); backdrop-filter:blur(10px); border-bottom:1px solid var(--ivory-mid); }
-    .nav-wordmark { text-decoration:none; }
-    .nav-wordmark-top { font-family:var(--font-heading); font-size:1.4rem; font-weight:400; color:var(--dark); letter-spacing:0.04em; display:block; }
-    .nav-wordmark-sub { font-size:0.58rem; font-weight:600; letter-spacing:0.28em; text-transform:uppercase; color:var(--primary); margin-top:2px; display:block; }
-    .nav-links { display:flex; gap:2rem; list-style:none; align-items:center; }
-    .nav-links a { font-size:0.82rem; font-weight:500; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); text-decoration:none; transition:color 0.2s; }
-    .nav-links a:hover { color:var(--primary); }
+    /* nav styles provided by partials/header.ejs */
     .post-hero { padding:140px 52px 64px; background:var(--bg); }
     .post-hero-inner { max-width:800px; margin:0 auto; }
     .back-link { font-size:0.75rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); text-decoration:none; display:inline-flex; align-items:center; gap:6px; margin-bottom:32px; }
     .back-link:hover { color:var(--primary); }
     .post-meta { display:flex; gap:16px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
-    .post-category { font-size:0.65rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--accent); background:rgba(201,168,72,0.12); border:1px solid rgba(201,168,72,0.3); padding:4px 12px; border-radius:2px; }
+    .post-category { font-size:0.65rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); padding:4px 12px; border-radius:2px; }
     .post-date { font-size:0.75rem; color:var(--slate); font-weight:300; }
     .post-title { font-family:var(--font-heading); font-size:clamp(2rem,4.5vw,3.6rem); font-weight:300; line-height:1.1; color:var(--dark); margin-bottom:20px; }
     .post-excerpt-lead { font-size:1.1rem; font-weight:300; color:var(--slate); line-height:1.8; margin-bottom:32px; border-left:3px solid var(--accent); padding-left:20px; }
@@ -78,36 +75,14 @@
     .post-content blockquote { border-left:3px solid var(--accent); padding:16px 24px; margin:32px 0; background:var(--bg); font-style:italic; color:var(--slate); }
     .post-footer { margin-top:60px; padding-top:32px; border-top:1px solid var(--ivory-mid); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
     footer { background:var(--primary-deep); padding:48px 52px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:24px; }
-    .footer-brand { font-family:var(--font-heading); font-size:1.3rem; font-weight:300; color:rgba(255,255,255,0.6); }
+    .footer-brand { font-family:var(--font-heading); font-size:1.3rem; font-weight:300; color:color-mix(in srgb, var(--on-primary-deep) 60%, transparent); }
     .footer-links { list-style:none; display:flex; gap:24px; }
-    .footer-links a { font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,0.35); text-decoration:none; transition:color 0.2s; }
+    .footer-links a { font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase; color:color-mix(in srgb, var(--on-primary-deep) 35%, transparent); text-decoration:none; transition:color 0.2s; }
     .footer-links a:hover { color:var(--accent-light); }
   </style>
 </head>
 <body>
-<%- include("../partials/preview-banner") %>
-<%- include('../partials/maintenance-banner') %>
-<nav>
-  <a href="/" class="nav-wordmark">
-    <% if (logos && logos.logo_primary && (design.nav_logo_display === 'image' || design.nav_logo_display === 'both')) { %>
-      <img src="<%= logos.logo_primary %>" alt="<%= brand?.name || 'Home' %>" style="height:42px;width:auto;object-fit:contain;">
-    <% } %>
-    <% if (!logos || !logos.logo_primary || design.nav_logo_display !== 'image') { %>
-      <span class="nav-wordmark-top"><%- brand?.name || '' %></span>
-      <span class="nav-wordmark-sub"><%= brand?.location || '' %></span>
-    <% } %>
-  </a>
-  <ul class="nav-links">
-    <li><a href="/">Home</a></li>
-    <% if (typeof navPages !== 'undefined' && navPages.length) { %>
-      <% navPages.forEach(function(p) { %>
-        <li><a href="/<%= p.slug %>"><%- p.title %></a></li>
-      <% }); %>
-    <% } %>
-    <li><a href="/blog">Blog</a></li>
-    <li><a href="/#contact">Get Started</a></li>
-  </ul>
-</nav>
+<%- include("../partials/header", { activePage: 'blog' }) %>
 
 <div class="post-hero reveal">
   <div class="post-hero-inner">
@@ -139,7 +114,7 @@
 </div>
 
 <footer>
-  <div class="footer-brand"><%- brand?.name || '' %></div>
+  <div class="footer-brand"><% if (_brandPre) { %><span style="color:var(--accent-light)"><%= _brandPre %></span><% } %><%- _brandPost %></div>
   <ul class="footer-links">
     <li><a href="/">Home</a></li>
     <li><a href="/#services">Services</a></li>
@@ -149,8 +124,6 @@
 </footer>
 <script>
 (function() {
-  var nav = document.querySelector('nav');
-  if (nav) window.addEventListener('scroll', function() { nav.classList.toggle('scrolled', window.scrollY > 60); });
   var els = document.querySelectorAll('.reveal');
   if (els.length && 'IntersectionObserver' in window) {
     var obs = new IntersectionObserver(function(entries) {

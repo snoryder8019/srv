@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { getDb } from '../plugins/mongo.js';
 import { getReviews } from '../plugins/reviews.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
+import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { config } from '../config/config.js';
 
 const router = express.Router();
@@ -40,6 +41,10 @@ const COPY_DEFAULTS = {
   hero_heading_em: 'online.',
   hero_sub: 'Professional services tailored to your business needs.',
   hero_badge: '',
+  hero_cta_primary: 'Start a Project',
+  hero_cta_primary_link: '#contact',
+  hero_cta_secondary: 'Our Services',
+  hero_cta_secondary_link: '#services',
   services_label: 'What We Do',
   services_heading: 'Our',
   services_heading_em: 'Services',
@@ -53,6 +58,16 @@ const COPY_DEFAULTS = {
   about_quote: '',
   about_desc: '',
   about_sig: '',
+  about_eyebrow: 'About Us',
+  about_initial: '',
+  about_stat1_num: '50+',
+  about_stat1_label: 'Clients Served',
+  about_stat2_num: '3x',
+  about_stat2_label: 'Avg. Engagement Lift',
+  about_stat3_num: '5',
+  about_stat3_label: 'Years Active',
+  about_stat4_num: '100%',
+  about_stat4_label: 'Local Focus',
   process_label: 'How It Works',
   process_heading: 'Simple',
   process_heading_em: 'Process',
@@ -68,13 +83,28 @@ const COPY_DEFAULTS = {
   contact_location: '',
   contact_serving: '',
   contact_services: '',
+  contact_btn: 'Send Message',
+  contact_fname_label: 'First Name',
+  contact_fname_placeholder: 'Jane',
+  contact_lname_label: 'Last Name',
+  contact_lname_placeholder: 'Smith',
+  contact_email_label: 'Email',
+  contact_email_placeholder: 'jane@yourbusiness.com',
+  contact_company_label: 'Business Name',
+  contact_company_placeholder: 'Your Business LLC',
+  contact_service_label: 'Service Interested In',
+  contact_service_placeholder: 'Select a service...',
+  contact_message_label: 'Tell Us About Your Needs',
+  contact_message_placeholder: 'A quick idea of your needs — what are you trying to achieve?',
+  contact_service_fallback: 'General Inquiry',
+  contact_service_extra: 'Full Package',
 };
 
 async function getDesign(db) {
   const rawDesign = await db.collection('design').find({}).toArray();
   const design = { ...DESIGN_DEFAULTS };
   for (const item of rawDesign) design[item.key] = item.value;
-  return design;
+  return enrichDesignContrast(design);
 }
 
 async function getBrandLogos(db) {
@@ -312,15 +342,16 @@ router.get('/', async (req, res) => {
 router.get('/blog', async (req, res) => {
   try {
     const db = req.db;
-    const [posts, design, rawCopy, logos] = await Promise.all([
+    const [posts, design, rawCopy, logos, brandModels] = await Promise.all([
       db.collection('blog').find({ status: 'published' }).sort({ publishedAt: -1 }).toArray(),
       getDesign(db),
       db.collection('copy').find({}).toArray(),
       getBrandLogos(db),
+      getBrandModels(db),
     ]);
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
-    res.render('blog/index', { posts, design, copy, logos });
+    res.render('blog/index', { posts, design, copy, logos, brandModels });
   } catch (err) {
     console.error(err);
     res.status(500).send('Error loading blog');
@@ -331,16 +362,17 @@ router.get('/blog', async (req, res) => {
 router.get('/blog/:slug', async (req, res) => {
   try {
     const db = req.db;
-    const [post, design, rawCopy, logos] = await Promise.all([
+    const [post, design, rawCopy, logos, brandModels] = await Promise.all([
       db.collection('blog').findOne({ slug: req.params.slug, status: 'published' }),
       getDesign(db),
       db.collection('copy').find({}).toArray(),
       getBrandLogos(db),
+      getBrandModels(db),
     ]);
     if (!post) return res.status(404).render('404', { message: 'Post not found', design });
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
-    res.render('blog/post', { post, design, copy, logos });
+    res.render('blog/post', { post, design, copy, logos, brandModels });
   } catch (err) {
     console.error(err);
     res.status(500).send('Error loading post');

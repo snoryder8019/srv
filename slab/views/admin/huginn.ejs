@@ -1,0 +1,721 @@
+<%- include('partials/head', { title: 'Huginn' }) %>
+<%- include('partials/sidebar', { page: 'huginn', user: user }) %>
+
+<style>
+/* ── Huginn Chat ── */
+.huginn-wrap {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 57px);
+  overflow: hidden;
+}
+.huginn-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 36px 16px;
+  flex-shrink: 0;
+}
+.huginn-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.huginn-badge {
+  font-size: 0.58rem; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; background: #6B3FA0; color: #fff;
+  padding: 2px 8px; border-radius: 2px; white-space: nowrap;
+}
+.huginn-status {
+  font-size: 0.72rem; font-weight: 500; padding: 3px 10px;
+  border-radius: 10px; display: inline-flex; align-items: center; gap: 5px;
+}
+.huginn-status .dot {
+  width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+}
+.huginn-status.online  { background: rgba(21,128,61,0.1); color: #15803D; }
+.huginn-status.online .dot  { background: #15803D; }
+.huginn-status.offline { background: rgba(185,28,28,0.08); color: #B91C1C; }
+.huginn-status.offline .dot { background: #B91C1C; }
+.huginn-status.busy    { background: rgba(180,83,9,0.1); color: #B45309; }
+.huginn-status.busy .dot    { background: #B45309; animation: hg-pulse 1s infinite; }
+.huginn-status.loading { background: rgba(201,168,72,0.12); color: var(--gold); }
+.huginn-status.loading .dot { background: var(--gold); animation: hg-pulse 1s infinite; }
+@keyframes hg-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* Header actions */
+.huginn-actions {
+  display: flex; align-items: center; gap: 8px;
+}
+.hg-action-btn {
+  padding: 6px 14px; font-size: 0.72rem; font-weight: 600;
+  letter-spacing: .06em; border: 1px solid var(--ivory-mid);
+  border-radius: 4px; background: var(--white); color: var(--dark);
+  cursor: pointer; transition: all 0.15s; display: inline-flex;
+  align-items: center; gap: 5px;
+}
+.hg-action-btn:hover { border-color: var(--navy); color: var(--navy); }
+.hg-action-btn .hg-icon { font-size: 0.85rem; }
+
+/* Messages */
+.huginn-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 36px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hg-msg { display: flex; max-width: 100%; }
+.hg-msg-user  { justify-content: flex-end; }
+.hg-msg-agent { justify-content: flex-start; }
+.hg-bubble {
+  max-width: 72%;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.hg-msg-agent .hg-bubble {
+  background: var(--white);
+  color: var(--dark);
+  border: 1px solid var(--ivory-mid);
+}
+.hg-msg-user .hg-bubble {
+  background: var(--navy);
+  color: var(--on-navy);
+}
+.hg-bubble code {
+  background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px;
+  font-size: 0.82em; font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.hg-bubble pre {
+  background: var(--navy-deep); color: #e0e0e0;
+  padding: 12px; border-radius: 4px; overflow-x: auto;
+  margin: 8px 0; font-size: 0.8rem; line-height: 1.5;
+}
+.hg-bubble pre code { background: none; padding: 0; color: inherit; }
+.hg-thinking {
+  font-size: 0.78rem; color: var(--slate); font-style: italic;
+  border-left: 2px solid var(--gold); padding-left: 10px;
+  margin-bottom: 6px; opacity: 0.7;
+}
+.hg-time {
+  font-size: 0.62rem; color: var(--slate); margin-top: 4px;
+  text-align: right;
+}
+.hg-typing {
+  display: inline-flex; gap: 4px; padding: 12px 16px;
+  background: var(--white); border: 1px solid var(--ivory-mid); border-radius: 6px;
+}
+.hg-typing span {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--slate);
+  animation: hg-bounce 1.2s infinite;
+}
+.hg-typing span:nth-child(2) { animation-delay: 0.15s; }
+.hg-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes hg-bounce {
+  0%,60%,100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* Input bar */
+.huginn-input-bar {
+  padding: 16px 36px 20px;
+  border-top: 1px solid var(--ivory-mid);
+  background: var(--white);
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.huginn-input-bar textarea {
+  flex: 1;
+  min-height: 44px;
+  max-height: 160px;
+  padding: 11px 14px;
+  border: 1px solid var(--ivory-mid);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+}
+.huginn-input-bar textarea:focus { outline: none; border-color: var(--navy); }
+.huginn-input-bar .btn { padding: 11px 20px; flex-shrink: 0; }
+
+/* Session bar */
+.huginn-session-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 36px 0; flex-shrink: 0;
+}
+.huginn-session-bar label {
+  font-size: 0.68rem; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--slate); white-space: nowrap;
+}
+.huginn-session-bar input {
+  flex: 1; max-width: 280px; padding: 5px 10px;
+  border: 1px solid var(--ivory-mid); border-radius: 3px;
+  font-size: 0.8rem; font-family: inherit;
+}
+.huginn-session-bar input:focus { outline: none; border-color: var(--navy); }
+.huginn-session-bar .btn-xs {
+  padding: 4px 10px; font-size: 0.62rem;
+}
+
+/* ── Modal ── */
+.hg-modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(15,27,48,0.55); z-index: 500;
+  align-items: center; justify-content: center;
+}
+.hg-modal-overlay.open { display: flex; }
+.hg-modal {
+  background: var(--white); border-radius: 8px;
+  width: 92%; max-width: 680px; max-height: 82vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+}
+.hg-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; border-bottom: 1px solid var(--ivory-mid);
+}
+.hg-modal-head h3 {
+  font-family: var(--font-heading); font-size: 1.15rem;
+  font-weight: 400; margin: 0;
+}
+.hg-modal-close {
+  background: none; border: none; font-size: 1.2rem;
+  color: var(--slate); cursor: pointer; padding: 4px;
+}
+.hg-modal-close:hover { color: var(--dark); }
+.hg-modal-body {
+  flex: 1; overflow-y: auto; padding: 20px 24px;
+}
+.hg-modal-loading {
+  text-align: center; padding: 40px 0; color: var(--slate);
+  font-size: 0.85rem;
+}
+
+/* Status card grid */
+.hg-stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px; margin-bottom: 20px;
+}
+.hg-stat-card {
+  background: var(--ivory); border-radius: 6px; padding: 16px;
+  text-align: center;
+}
+.hg-stat-card .hg-stat-val {
+  font-family: var(--font-heading); font-size: 1.3rem; font-weight: 600;
+  color: var(--navy);
+}
+.hg-stat-card .hg-stat-label {
+  font-size: 0.62rem; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--slate); margin-top: 4px;
+}
+
+/* Insights list */
+.hg-insight-item {
+  border: 1px solid var(--ivory-mid); border-radius: 6px;
+  padding: 14px 18px; margin-bottom: 10px;
+}
+.hg-insight-item .hg-insight-time {
+  font-size: 0.66rem; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--slate); margin-bottom: 6px;
+}
+.hg-insight-item .hg-insight-body {
+  font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap;
+}
+
+/* Sessions list */
+.hg-session-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border: 1px solid var(--ivory-mid);
+  border-radius: 6px; margin-bottom: 8px; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.hg-session-row:hover { border-color: var(--navy); }
+.hg-session-id {
+  font-weight: 600; font-size: 0.88rem;
+}
+.hg-session-meta {
+  display: flex; align-items: center; gap: 12px; font-size: 0.74rem;
+  color: var(--slate);
+}
+.hg-session-badge {
+  font-size: 0.58rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 2px;
+}
+.hg-session-badge.has-summary { background: rgba(21,128,61,0.1); color: #15803D; }
+.hg-session-badge.no-summary  { background: rgba(107,115,128,0.1); color: var(--slate); }
+
+/* Session detail */
+.hg-session-detail-msg {
+  padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;
+  font-size: 0.84rem; line-height: 1.55; white-space: pre-wrap;
+}
+.hg-session-detail-msg.role-user {
+  background: var(--navy); color: var(--on-navy); margin-left: 40px;
+}
+.hg-session-detail-msg.role-assistant {
+  background: var(--white); border: 1px solid var(--ivory-mid); margin-right: 40px;
+}
+.hg-session-detail-msg .hg-msg-role {
+  font-size: 0.6rem; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; opacity: 0.6; margin-bottom: 4px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 820px) {
+  .huginn-header { padding: 16px 20px 12px; flex-wrap: wrap; }
+  .huginn-messages { padding: 0 20px 12px; }
+  .huginn-input-bar { padding: 12px 20px 16px; }
+  .huginn-session-bar { padding: 0 20px; }
+  .hg-bubble { max-width: 90%; font-size: 0.84rem; }
+  .hg-modal { width: 96%; max-height: 88vh; }
+}
+@media (max-width: 520px) {
+  .hg-bubble { max-width: 96%; }
+  .huginn-actions { flex-wrap: wrap; }
+}
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Huginn</div>
+  <div class="topbar-actions">
+    <span id="hg-status" class="huginn-status loading">
+      <span class="dot"></span> checking...
+    </span>
+  </div>
+</div>
+
+<div class="huginn-wrap">
+  <div class="huginn-header">
+    <div>
+      <div class="huginn-name-row">
+        <span style="color:#6B3FA0;font-size:1.1rem;">&#x16B6;</span>
+        <span class="card-title" style="margin:0;padding:0;border:none;">Huginn</span>
+        <span class="huginn-badge">Superadmin Agent</span>
+      </div>
+      <p style="font-size:0.78rem;color:var(--slate);margin-top:4px;">
+        Persistent deepseek-r1:7b agent on GPU 0 &mdash; session memory across conversations
+      </p>
+    </div>
+    <div class="huginn-actions">
+      <button class="hg-action-btn" onclick="hgOpenStatus()">
+        <span class="hg-icon">&#x2139;</span> Status
+      </button>
+      <button class="hg-action-btn" onclick="hgOpenInsights()">
+        <span class="hg-icon">&#x1F4CB;</span> Insights
+      </button>
+      <button class="hg-action-btn" onclick="hgOpenSessions()">
+        <span class="hg-icon">&#x1F5C2;</span> Sessions
+      </button>
+    </div>
+  </div>
+
+  <!-- Session selector -->
+  <div class="huginn-session-bar">
+    <label>Session</label>
+    <input type="text" id="hg-session" value="superadmin" placeholder="session name">
+    <button class="btn btn-ghost btn-xs" onclick="hgNewSession()">New</button>
+  </div>
+
+  <!-- Messages -->
+  <div class="huginn-messages" id="hg-messages">
+    <div class="hg-msg hg-msg-agent">
+      <div class="hg-bubble">Huginn is ready. I'm your persistent superadmin agent running deepseek-r1:7b on GPU 0. Session memory is maintained across conversations.</div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="huginn-input-bar">
+    <textarea id="hg-input" placeholder="Message Huginn..." rows="1"></textarea>
+    <button class="btn btn-navy" id="hg-send" onclick="hgSend()">Send</button>
+  </div>
+</div>
+</div></div>
+
+<!-- ── Modal ── -->
+<div class="hg-modal-overlay" id="hg-modal">
+  <div class="hg-modal">
+    <div class="hg-modal-head">
+      <h3 id="hg-modal-title">Status</h3>
+      <button class="hg-modal-close" onclick="hgCloseModal()">&times;</button>
+    </div>
+    <div class="hg-modal-body" id="hg-modal-body">
+      <div class="hg-modal-loading">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const messagesEl = document.getElementById('hg-messages');
+  const inputEl    = document.getElementById('hg-input');
+  const sendBtn    = document.getElementById('hg-send');
+  const statusEl   = document.getElementById('hg-status');
+  const sessionEl  = document.getElementById('hg-session');
+  const modalEl    = document.getElementById('hg-modal');
+  const modalTitle = document.getElementById('hg-modal-title');
+  const modalBody  = document.getElementById('hg-modal-body');
+
+  let sending = false;
+
+  // ── Auto-resize textarea ──────────────────────────────────────────────────
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
+  });
+
+  // ── Enter to send (Shift+Enter for newline) ──────────────────────────────
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      hgSend();
+    }
+  });
+
+  // ── Close modal on overlay click / Escape ─────────────────────────────────
+  modalEl.addEventListener('click', (e) => {
+    if (e.target === modalEl) hgCloseModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hgCloseModal();
+  });
+
+  // ── Health check ──────────────────────────────────────────────────────────
+  async function checkHealth() {
+    try {
+      const r = await fetch('/admin/huginn/health');
+      const d = await r.json();
+      if (d.ok && !d.busy) {
+        statusEl.className = 'huginn-status online';
+        statusEl.innerHTML = '<span class="dot"></span> online';
+      } else if (d.ok && d.busy) {
+        statusEl.className = 'huginn-status busy';
+        statusEl.innerHTML = '<span class="dot"></span> busy' + (d.busyTask ? ': ' + d.busyTask : '');
+      } else {
+        statusEl.className = 'huginn-status offline';
+        statusEl.innerHTML = '<span class="dot"></span> offline';
+      }
+    } catch {
+      statusEl.className = 'huginn-status offline';
+      statusEl.innerHTML = '<span class="dot"></span> offline';
+    }
+  }
+  checkHealth();
+  setInterval(checkHealth, 30000);
+
+  // ── Modal helpers ─────────────────────────────────────────────────────────
+  window.hgCloseModal = function() { modalEl.classList.remove('open'); };
+
+  function openModal(title, html) {
+    modalTitle.textContent = title;
+    modalBody.innerHTML = html;
+    modalEl.classList.add('open');
+  }
+  function openModalLoading(title) {
+    openModal(title, '<div class="hg-modal-loading">Loading...</div>');
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return 'never';
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    return Math.floor(hrs / 24) + 'd ago';
+  }
+
+  function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // ── Status modal ──────────────────────────────────────────────────────────
+  window.hgOpenStatus = async function() {
+    openModalLoading('Huginn Status');
+    try {
+      const r = await fetch('/admin/huginn/status');
+      const d = await r.json();
+      openModal('Huginn Status', `
+        <div class="hg-stat-grid">
+          <div class="hg-stat-card">
+            <div class="hg-stat-val">${d.busy ? 'Busy' : 'Idle'}</div>
+            <div class="hg-stat-label">State</div>
+          </div>
+          <div class="hg-stat-card">
+            <div class="hg-stat-val">${escHtml(d.model || '—')}</div>
+            <div class="hg-stat-label">Model</div>
+          </div>
+          <div class="hg-stat-card">
+            <div class="hg-stat-val">GPU ${d.gpu ?? '?'}</div>
+            <div class="hg-stat-label">Device</div>
+          </div>
+          <div class="hg-stat-card">
+            <div class="hg-stat-val">${d.totalInsights ?? '—'}</div>
+            <div class="hg-stat-label">Total Insights</div>
+          </div>
+        </div>
+        ${d.busyTask ? '<p style="font-size:0.84rem;color:var(--warn);margin-bottom:12px;">Currently working on: <strong>' + escHtml(d.busyTask) + '</strong></p>' : ''}
+        <p style="font-size:0.78rem;color:var(--slate);">Last digest: ${timeAgo(d.lastDigest)}</p>
+      `);
+    } catch (err) {
+      openModal('Huginn Status', '<p style="color:var(--danger);">Failed to load status: ' + escHtml(err.message) + '</p>');
+    }
+  };
+
+  // ── Insights modal ────────────────────────────────────────────────────────
+  window.hgOpenInsights = async function() {
+    openModalLoading('Huginn Insights');
+    try {
+      const r = await fetch('/admin/huginn/insights');
+      const data = await r.json();
+      const items = Array.isArray(data) ? data : (data.insights || data.entries || []);
+      if (items.length === 0) {
+        openModal('Huginn Insights', '<p style="color:var(--slate);text-align:center;padding:30px 0;">No insights yet.</p>');
+        return;
+      }
+      const html = items.map(item => {
+        const time = item.timestamp || item.createdAt || item.time || '';
+        const body = item.report || item.content || item.body || item.text || JSON.stringify(item, null, 2);
+        return `<div class="hg-insight-item">
+          <div class="hg-insight-time">${time ? new Date(time).toLocaleString() : 'Unknown time'}</div>
+          <div class="hg-insight-body">${escHtml(body)}</div>
+        </div>`;
+      }).join('');
+      openModal('Huginn Insights (' + items.length + ')', html);
+    } catch (err) {
+      openModal('Huginn Insights', '<p style="color:var(--danger);">Failed to load insights: ' + escHtml(err.message) + '</p>');
+    }
+  };
+
+  // ── Sessions modal ────────────────────────────────────────────────────────
+  window.hgOpenSessions = async function() {
+    openModalLoading('Huginn Sessions');
+    try {
+      const r = await fetch('/admin/huginn/sessions');
+      const data = await r.json();
+      const sessions = data.sessions || (Array.isArray(data) ? data : []);
+      if (sessions.length === 0) {
+        openModal('Huginn Sessions', '<p style="color:var(--slate);text-align:center;padding:30px 0;">No sessions found.</p>');
+        return;
+      }
+      const html = sessions.map(s => `
+        <div class="hg-session-row" onclick="hgViewSession('${escHtml(s.id)}')">
+          <div>
+            <div class="hg-session-id">${escHtml(s.id)}</div>
+          </div>
+          <div class="hg-session-meta">
+            <span>${s.messageCount || 0} msgs</span>
+            <span class="hg-session-badge ${s.hasSummary ? 'has-summary' : 'no-summary'}">${s.hasSummary ? 'Summarized' : 'Raw'}</span>
+          </div>
+        </div>
+      `).join('');
+      openModal('Huginn Sessions (' + sessions.length + ')', html);
+    } catch (err) {
+      openModal('Huginn Sessions', '<p style="color:var(--danger);">Failed to load sessions: ' + escHtml(err.message) + '</p>');
+    }
+  };
+
+  // ── Session detail view ───────────────────────────────────────────────────
+  window.hgViewSession = async function(id) {
+    openModalLoading('Session: ' + id);
+    try {
+      const r = await fetch('/admin/huginn/sessions/' + encodeURIComponent(id));
+      const data = await r.json();
+      const messages = data.messages || [];
+      let html = '<button class="hg-action-btn" style="margin-bottom:16px;" onclick="hgOpenSessions()">&larr; Back to Sessions</button>';
+      if (data.summary) {
+        html += '<div class="hg-insight-item" style="margin-bottom:16px;border-color:var(--gold);"><div class="hg-insight-time">Summary</div><div class="hg-insight-body">' + escHtml(data.summary) + '</div></div>';
+      }
+      if (messages.length === 0) {
+        html += '<p style="color:var(--slate);text-align:center;padding:20px 0;">No messages in this session.</p>';
+      } else {
+        html += messages.map(m => {
+          const role = m.role || 'unknown';
+          return `<div class="hg-session-detail-msg role-${role}">
+            <div class="hg-msg-role">${escHtml(role)}</div>
+            ${escHtml(m.content || '')}
+          </div>`;
+        }).join('');
+      }
+      // Button to load this session into the chat
+      html += `<button class="btn btn-navy" style="margin-top:16px;width:100%;" onclick="hgLoadSession('${escHtml(id)}')">Chat in this session</button>`;
+      openModal('Session: ' + id, html);
+    } catch (err) {
+      openModal('Session: ' + id, '<p style="color:var(--danger);">Failed to load session: ' + escHtml(err.message) + '</p>');
+    }
+  };
+
+  // ── Load session into chat input ──────────────────────────────────────────
+  window.hgLoadSession = function(id) {
+    sessionEl.value = id;
+    hgCloseModal();
+    // Clear chat display
+    messagesEl.innerHTML = '';
+    addMessage('assistant', 'Switched to session: ' + id);
+    inputEl.focus();
+  };
+
+  // ── Scroll to bottom ──────────────────────────────────────────────────────
+  function scrollBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // ── Format message ────────────────────────────────────────────────────────
+  function formatMessage(text) {
+    let thinking = '';
+    let content = text;
+    const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
+    if (thinkMatch) {
+      thinking = thinkMatch[1].trim();
+      content = text.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+    }
+
+    let html = content
+      .replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+
+    let result = '';
+    if (thinking) {
+      result += '<div class="hg-thinking">' + thinking.replace(/\n/g, '<br>') + '</div>';
+    }
+    result += html;
+    return result;
+  }
+
+  // ── Add message bubble ────────────────────────────────────────────────────
+  function addMessage(role, content) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'hg-msg ' + (role === 'user' ? 'hg-msg-user' : 'hg-msg-agent');
+    const bubble = document.createElement('div');
+    bubble.className = 'hg-bubble';
+    if (role === 'user') {
+      bubble.textContent = content;
+    } else {
+      bubble.innerHTML = formatMessage(content);
+    }
+    wrapper.appendChild(bubble);
+    messagesEl.appendChild(wrapper);
+    scrollBottom();
+    return bubble;
+  }
+
+  // ── Typing indicator ──────────────────────────────────────────────────────
+  function showTyping() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'hg-msg hg-msg-agent';
+    wrapper.id = 'hg-typing';
+    wrapper.innerHTML = '<div class="hg-typing"><span></span><span></span><span></span></div>';
+    messagesEl.appendChild(wrapper);
+    scrollBottom();
+  }
+  function hideTyping() {
+    const el = document.getElementById('hg-typing');
+    if (el) el.remove();
+  }
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  window.hgSend = async function() {
+    const text = inputEl.value.trim();
+    if (!text || sending) return;
+
+    sending = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = '...';
+
+    addMessage('user', text);
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+
+    showTyping();
+
+    try {
+      const r = await fetch('/admin/huginn/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: text }],
+          session: sessionEl.value.trim() || 'superadmin',
+        }),
+      });
+
+      hideTyping();
+
+      const ct = r.headers.get('content-type') || '';
+
+      if (ct.includes('text/event-stream')) {
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let full = '';
+        const bubble = addMessage('assistant', '');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+
+          for (const line of chunk.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const j = JSON.parse(payload);
+              const delta = j.choices?.[0]?.delta?.content;
+              if (delta) {
+                full += delta;
+                bubble.innerHTML = formatMessage(full);
+                scrollBottom();
+              }
+            } catch { /* partial JSON, skip */ }
+          }
+        }
+      } else {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+          addMessage('assistant', 'Error: ' + (err.error || err.detail || 'Request failed'));
+        } else {
+          const data = await r.json();
+          const reply = data.choices?.[0]?.message?.content
+                     || data.message?.content
+                     || data.content
+                     || JSON.stringify(data);
+          addMessage('assistant', reply);
+        }
+      }
+    } catch (err) {
+      hideTyping();
+      addMessage('assistant', 'Connection error: ' + err.message);
+    }
+
+    sending = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send';
+    inputEl.focus();
+  };
+
+  // ── New session ───────────────────────────────────────────────────────────
+  window.hgNewSession = function() {
+    const name = prompt('New session name:', 'session-' + Date.now().toString(36));
+    if (!name) return;
+    sessionEl.value = name;
+    messagesEl.innerHTML = '';
+    addMessage('assistant', 'New session started: ' + name);
+  };
+
+  inputEl.focus();
+})();
+</script>
