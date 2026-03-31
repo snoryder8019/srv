@@ -1,9 +1,10 @@
 #!/bin/bash
 # Valheim Dedicated Server Startup Script
-# Runs inside tmux session "valheim"
+# Runs inside tmux session "valheim" as gs-valheim user
 
 VALHEIM_DIR="/srv/games/valheim"
 SESSION="valheim"
+GS_USER="gs-valheim"
 
 # Server config — edit these
 SERVER_NAME="MadLadsLab Valheim"
@@ -13,14 +14,14 @@ GAME_PORT=2456
 SAVE_DIR="$VALHEIM_DIR/worlds"
 
 # Kill existing session if running
-tmux kill-session -t $SESSION 2>/dev/null
+sudo -u $GS_USER tmux kill-session -t $SESSION 2>/dev/null
 
-tmux new-session -d -s $SESSION -x 220 -y 50
+sudo -u $GS_USER tmux new-session -d -s $SESSION -x 220 -y 50
 
-tmux send-keys -t $SESSION "cd $VALHEIM_DIR && bash start_server_bepinex.sh 2>&1 | tee -a $VALHEIM_DIR/logs/server.log" Enter
+sudo -u $GS_USER tmux send-keys -t $SESSION "cd $VALHEIM_DIR && bash start_server_bepinex.sh 2>&1 | tee -a $VALHEIM_DIR/logs/server.log" Enter
 
-echo "Valheim server started in tmux session '$SESSION'"
-echo "Attach with: tmux attach -t $SESSION"
+echo "Valheim server started in tmux session '$SESSION' (user: $GS_USER)"
+echo "Attach with: sudo -u $GS_USER tmux attach -t $SESSION"
 echo ""
 echo "Ports:"
 echo "  Game:  $GAME_PORT (UDP)"

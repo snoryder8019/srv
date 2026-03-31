@@ -11,13 +11,21 @@ function requireAuth(req, res, next) {
   res.status(401).json({ error: 'Login required' });
 }
 
+function requireAdmin(req, res, next) {
+  if (!req.isAuthenticated()) return res.status(401).json({ error: 'Login required' });
+  const u = req.user;
+  const gp = u.permissions && u.permissions['games'];
+  if (u.isAdmin || gp === 'admin') return next();
+  res.status(403).json({ error: 'Admin access required' });
+}
+
 function requireSuperAdmin(req, res, next) {
   if (!req.isAuthenticated()) return res.status(401).json({ error: 'Login required' });
   if (req.user.isAdmin !== true) return res.status(403).json({ error: 'Superadmin only' });
   next();
 }
 
-// ── Community server request — starts the server immediately ──
+// ── Community server request — admin only (controls server starts + Linode provisioning) ──
 const GAME_LIBS = {
   rust: () => require('../lib/rust'),
   valheim: () => require('../lib/valheim'),
@@ -25,7 +33,7 @@ const GAME_LIBS = {
   '7dtd': () => require('../lib/7dtd'),
 };
 
-router.post('/api/request', requireAuth, async (req, res) => {
+router.post('/api/request', requireAdmin, async (req, res) => {
   try {
     const { game } = req.body;
     const validGames = ['rust', 'valheim', 'l4d2', '7dtd'];

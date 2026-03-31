@@ -54,10 +54,14 @@ router.get('/api/games/users', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-router.put('/api/games/users/:id', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/games/users/:id', requireSuperAdmin, async (req, res) => {
   try {
     const db = req.app.locals.db;
     const { isAdmin, permissions } = req.body;
+    // Prevent setting isAdmin on your own account (safety net)
+    if (req.params.id === req.user._id.toString() && isAdmin) {
+      return res.status(403).json({ error: 'Cannot modify your own superadmin status' });
+    }
     await db.collection('users').updateOne(
       { _id: new ObjectId(req.params.id) },
       { $set: { isAdmin: !!isAdmin, permissions: permissions || {} } }

@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SESSION = '7dtd';
+const GS_USER = 'gs-7dtd';
 const START_SCRIPT = path.join(__dirname, '..', 'start-7dtd.sh');
 const SDTD_DIR = '/srv/games/7dtd';
 const LOG_FILE = path.join(SDTD_DIR, 'logs', 'output_log.txt');
@@ -25,7 +26,7 @@ let inactivityTimer = null;
 
 function isRunning() {
   try {
-    execSync(`tmux has-session -t ${SESSION} 2>/dev/null`);
+    execSync(`sudo -u ${GS_USER} tmux has-session -t ${SESSION} 2>/dev/null`);
     return true;
   } catch {
     return false;
@@ -47,7 +48,7 @@ function startServer() {
 function stopServer(reason) {
   if (!isRunning()) return { ok: false, message: 'Server not running' };
   try {
-    execSync(`tmux kill-session -t ${SESSION} 2>/dev/null`);
+    execSync(`sudo -u ${GS_USER} tmux kill-session -t ${SESSION} 2>/dev/null`);
     clearInactivityTimer();
     console.log(`[games] 7DTD server stopped${reason ? ': ' + reason : ''}`);
     return { ok: true, message: 'Server stopped' };

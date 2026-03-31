@@ -276,29 +276,53 @@
       <% if (design._contrast) { %>
       <div style="margin-top:20px;">
         <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:10px;">Contrast Check (WCAG AA)</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">
           <%
             const checks = [
-              { label: 'Body text on page', key: 'text_on_bg', bg: design.color_bg, fg: design._on_bg },
-              { label: 'Primary on page', key: 'primary_on_bg', bg: design.color_bg, fg: design.color_primary },
-              { label: 'Accent on page', key: 'accent_on_bg', bg: design.color_bg, fg: design.color_accent },
-              { label: 'Text on primary', key: 'text_on_primary', bg: design.color_primary, fg: design._on_primary },
-              { label: 'Text on footer', key: 'text_on_deep', bg: design.color_primary_deep, fg: design._on_primary_deep },
-              { label: 'Accent on footer', key: 'accent_on_deep', bg: design.color_primary_deep, fg: design.color_accent_light },
+              { label: 'Headings on Background', key: 'text_on_bg', bg: design.color_bg, fg: design._on_bg,
+                where: 'Hero title, about quote, login brand name' },
+              { label: 'Secondary text on Background', key: 'muted_on_bg', bg: design.color_bg, fg: design._on_bg_muted,
+                where: 'Subtitles, form labels, nav links, descriptions' },
+              { label: 'Primary color on Background', key: 'primary_on_bg', bg: design.color_bg, fg: design.color_primary,
+                where: 'Eyebrow labels, links, emphasis text' },
+              { label: 'Accent on Background', key: 'accent_on_bg', bg: design.color_bg, fg: design.color_accent,
+                where: 'Accent highlights, review stars' },
+              { label: 'Text on Primary', key: 'text_on_primary', bg: design.color_primary, fg: design._on_primary,
+                where: 'Button labels, marquee text' },
+              { label: 'Text on Footer', key: 'text_on_deep', bg: design.color_primary_deep, fg: design._on_primary_deep,
+                where: 'Footer text, hero right panel' },
+              { label: 'Accent on Footer', key: 'accent_on_deep', bg: design.color_primary_deep, fg: design.color_accent_light,
+                where: 'Footer brand tagline, badge labels' },
             ];
+            const failCount = checks.filter(c => { const d = design._contrast[c.key]; return d && !d.aa; }).length;
           %>
           <% checks.forEach(c => { const d = design._contrast[c.key]; if (!d) return; %>
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--ivory);border:1px solid var(--ivory-mid);border-radius:2px;">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--ivory);border:1px solid <%= d.aa ? 'var(--ivory-mid)' : 'rgba(185,28,28,0.3)' %>;border-radius:2px;">
             <div style="width:36px;height:36px;border-radius:2px;background:<%= c.bg %>;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.75rem;color:<%= c.fg %>;flex-shrink:0;border:1px solid rgba(0,0,0,0.08);">Aa</div>
             <div style="flex:1;min-width:0;">
               <div style="font-size:0.72rem;font-weight:500;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= c.label %></div>
               <div style="font-size:0.65rem;color:<%= d.aa ? 'var(--success, #15803D)' : '#B91C1C' %>;font-weight:600;">
-                <%= d.ratio %>:1 — <%= d.aa ? 'Pass' : (d.aaLarge ? 'Large only' : 'Fail') %>
+                <%= d.ratio %>:1 &mdash; <%= d.aa ? 'Pass' : (d.aaLarge ? 'Large only' : 'Fail') %>
               </div>
+              <div style="font-size:0.6rem;color:var(--slate);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<%= c.where %>"><%= c.where %></div>
             </div>
           </div>
           <% }) %>
         </div>
+        <% if (failCount > 0) { %>
+        <div style="margin-top:14px;padding:14px 16px;background:rgba(185,28,28,0.05);border:1px solid rgba(185,28,28,0.15);border-radius:2px;">
+          <div style="font-size:0.72rem;font-weight:600;color:#B91C1C;margin-bottom:6px;"><%= failCount %> contrast issue<%= failCount > 1 ? 's' : '' %> detected</div>
+          <div style="font-size:0.78rem;color:var(--dark);line-height:1.7;">
+            Failing checks mean text may be hard to read on your site. To fix:
+            <ul style="margin:6px 0 0 16px;padding:0;">
+              <li><strong>Background too close to Primary?</strong> &mdash; lighten or darken your Background color so it contrasts with your Primary.</li>
+              <li><strong>Accent invisible on Background?</strong> &mdash; pick a bolder Accent that stands out from your Background.</li>
+              <li><strong>Text on buttons unreadable?</strong> &mdash; adjust Primary to be clearly light or dark (avoid mid-tones).</li>
+            </ul>
+            <div style="margin-top:8px;font-size:0.72rem;color:var(--slate);">Tip: WCAG AA requires at least 4.5:1 contrast for normal text and 3:1 for large text (18px+ bold).</div>
+          </div>
+        </div>
+        <% } %>
       </div>
       <% } %>
     </div>

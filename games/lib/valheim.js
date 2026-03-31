@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SESSION = 'valheim';
+const GS_USER = 'gs-valheim';
 const START_SCRIPT = path.join(__dirname, '..', 'start-valheim.sh');
 const VALHEIM_DIR = '/srv/games/valheim';
 const LOG_FILE = path.join(VALHEIM_DIR, 'logs', 'server.log');
@@ -26,7 +27,7 @@ let inactivityTimer = null;
 
 function isRunning() {
   try {
-    execSync(`tmux has-session -t ${SESSION} 2>/dev/null`);
+    execSync(`sudo -u ${GS_USER} tmux has-session -t ${SESSION} 2>/dev/null`);
     return true;
   } catch {
     return false;
@@ -47,7 +48,7 @@ function startServer() {
 function stopServer(reason) {
   if (!isRunning()) return { ok: false, message: 'Server not running' };
   try {
-    execSync(`tmux kill-session -t ${SESSION} 2>/dev/null`);
+    execSync(`sudo -u ${GS_USER} tmux kill-session -t ${SESSION} 2>/dev/null`);
     clearInactivityTimer();
     console.log(`[games] Valheim server stopped${reason ? ': ' + reason : ''}`);
     return { ok: true, message: 'Server stopped' };

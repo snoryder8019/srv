@@ -1,0 +1,99 @@
+<%- include('../partials/head', { title: 'Support Tickets' }) %>
+<div class="layout">
+<%- include('../partials/sidebar', { page: 'tickets', user, brand: typeof brand !== 'undefined' ? brand : null, tenant: typeof tenant !== 'undefined' ? tenant : null, isSuperAdmin: typeof isSuperAdmin !== 'undefined' ? isSuperAdmin : false, brandDesign: typeof brandDesign !== 'undefined' ? brandDesign : {} }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Support Tickets</div>
+  <div class="topbar-actions">
+    <a href="/admin/tickets/new" class="btn btn-navy">+ New Ticket</a>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Stats -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Open</div>
+      <div class="stat-value<%= stats.open > 0 ? ' gold' : '' %>"><%= stats.open %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">In Progress</div>
+      <div class="stat-value"><%= stats.inProgress %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Escalated</div>
+      <div class="stat-value" style="<%= stats.escalated > 0 ? 'color:var(--danger)' : '' %>"><%= stats.escalated %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Resolved</div>
+      <div class="stat-value"><%= stats.resolved %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Closed</div>
+      <div class="stat-value"><%= stats.closed %></div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+    <a href="/admin/tickets" class="btn btn-sm <%= !filters.status ? 'btn-navy' : 'btn-ghost' %>">All</a>
+    <a href="/admin/tickets?status=open" class="btn btn-sm <%= filters.status === 'open' ? 'btn-navy' : 'btn-ghost' %>">Open</a>
+    <a href="/admin/tickets?status=in-progress" class="btn btn-sm <%= filters.status === 'in-progress' ? 'btn-navy' : 'btn-ghost' %>">In Progress</a>
+    <a href="/admin/tickets?status=escalated" class="btn btn-sm <%= filters.status === 'escalated' ? 'btn-navy' : 'btn-ghost' %>">Escalated</a>
+    <a href="/admin/tickets?status=resolved" class="btn btn-sm <%= filters.status === 'resolved' ? 'btn-navy' : 'btn-ghost' %>">Resolved</a>
+    <a href="/admin/tickets?status=closed" class="btn btn-sm <%= filters.status === 'closed' ? 'btn-navy' : 'btn-ghost' %>">Closed</a>
+  </div>
+
+  <% if (!tickets.length) { %>
+    <div class="card" style="text-align:center;padding:48px;">
+      <div style="font-size:2rem;margin-bottom:12px;opacity:0.3;">&#9744;</div>
+      <div style="font-size:0.9rem;color:var(--slate);">No tickets found.</div>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Subject</th>
+            <th>Category</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Submitted By</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const t of tickets) { %>
+            <tr style="cursor:pointer;" onclick="window.location='/admin/tickets/<%= t._id %>'">
+              <td style="font-family:monospace;font-size:0.78rem;color:var(--slate);"><%= t.ticketNumber %></td>
+              <td>
+                <strong><%= t.subject %></strong>
+                <% if (t.replies?.length) { %>
+                  <span style="font-size:0.7rem;color:var(--slate);margin-left:6px;">(<%= t.replies.length %> replies)</span>
+                <% } %>
+                <% if (t.debugData) { %>
+                  <span style="font-size:0.7rem;color:var(--warn);margin-left:6px;" title="Has debug data">&#128027;</span>
+                <% } %>
+              </td>
+              <td><span class="badge badge-draft"><%= t.category %></span></td>
+              <td>
+                <span class="badge <%= t.priority === 'critical' ? 'badge-inactive' : t.priority === 'high' ? 'badge-unpaid' : t.priority === 'low' ? 'badge-draft' : 'badge-prospect' %>"><%= t.priority %></span>
+              </td>
+              <td>
+                <% const sc = { open: 'badge-prospect', 'in-progress': 'badge-featured', escalated: 'badge-inactive', resolved: 'badge-active', closed: 'badge-draft' }; %>
+                <span class="badge <%= sc[t.status] || 'badge-draft' %>"><%= t.status %></span>
+              </td>
+              <td style="font-size:0.82rem;"><%= t.submittedBy?.displayName || t.submittedBy?.email || 'Unknown' %></td>
+              <td style="font-size:0.78rem;color:var(--slate);white-space:nowrap;"><%= t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '' %></td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+</div><!-- layout -->
+</body>
+</html>

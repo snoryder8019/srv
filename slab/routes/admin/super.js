@@ -176,4 +176,106 @@ router.post('/tenants/:id/impersonate', async (req, res) => {
   res.redirect(`${protocol}://${tenant.domain}/admin?token=${token}`);
 });
 
+// ── Escalated Tickets ──────────────────────────────────────────────────────
+
+router.get('/tickets', async (req, res) => {
+  const slab = getSlabDb();
+  const filter = {};
+  if (req.query.status) filter.status = req.query.status;
+  else filter.status = { $ne: 'closed' };
+
+  const tickets = await slab.collection('escalated_tickets')
+    .find(filter).sort({ escalatedAt: -1 }).toArray();
+
+  const stats = await Promise.all([
+    slab.collection('escalated_tickets').countDocuments({ status: 'escalated' }),
+    slab.collection('escalated_tickets').countDocuments({ status: 'resolved' }),
+    slab.collection('escalated_tickets').countDocuments({ status: 'closed' }),
+  ]).then(([active, resolved, closed]) => ({ active, resolved, closed, total: active + resolved + closed }));
+
+  res.render('admin/super/tickets', {
+    user: req.adminUser,
+    page: 'super-tickets',
+    tickets,
+    stats,
+    filters: { status: req.query.status || '' },
+  });
+});
+
+router.get('/tickets/:tenantDb/:ticketId', async (req, res) => {
+  try {
+    const tenantDb = getTenantDb(req.params.tenantDb);
+    const ticket = await tenantDb.collection('tickets').findOne({ _id: new ObjectId(req.params.ticketId) });
+    if (!ticket) return res.redirect('/admin/super/tickets');
+
+    res.render('admin/super/ticket-detail', {
+      user: req.adminUser,
+      page: 'super-tickets',
+      ticket,
+      tenantDbName: req.params.tenantDb,
+    });
+  } catch {
+    res.redirect('/admin/super/tickets');
+  }
+});
+
+router.post('/tickets/:tenantDb/:ticketId/reply', async (req, res) => {
+  const { body } = req.body;
+  if (!body?.trim()) return res.redirect(`/admin/super/tickets/${req.params.tenantDb}/${req.params.ticketId}`);
+
+  const tenantDb = getTenantDb(req.params.tenantDb);
+  const reply = {
+    _id: new ObjectId(),
+    author: {
+      type: 'superadmin',
+      email: req.adminUser.email,
+      displayName: req.adminUser.displayName + ' (Platform)',
+    },
+    body: body.trim(),
+    attachments: [],
+    createdAt: new Date(),
+  };
+
+  await tenantDb.collection('tickets').updateOne(
+    { _id: new ObjectId(req.params.ticketId) },
+    { $push: { replies: reply }, $set: { updatedAt: new Date() } },
+  );
+  res.redirect(`/admin/super/tickets/${req.params.tenantDb}/${req.params.ticketId}`);
+});
+
+router.post('/tickets/:tenantDb/:ticketId/resolve', async (req, res) => {
+  const now = new Date();
+  const tenantDb = getTenantDb(req.params.tenantDb);
+
+  await tenantDb.collection('tickets').updateOne(
+    { _id: new ObjectId(req.params.ticketId) },
+    { $set: { status: 'resolved', escalated: false, resolvedAt: now, updatedAt: now } },
+  );
+
+  const slab = getSlabDb();
+  await slab.collection('escalated_tickets').updateOne(
+    { ticketId: req.params.ticketId, tenantDbName: req.params.tenantDb },
+    { $set: { status: 'resolved', resolvedAt: now } },
+  );
+
+  res.redirect('/admin/super/tickets');
+});
+
+router.post('/tickets/:tenantDb/:ticketId/de-escalate', async (req, res) => {
+  const now = new Date();
+  const tenantDb = getTenantDb(req.params.tenantDb);
+
+  await tenantDb.collection('tickets').updateOne(
+    { _id: new ObjectId(req.params.ticketId) },
+    { $set: { status: 'open', escalated: false, updatedAt: now } },
+  );
+
+  const slab = getSlabDb();
+  await slab.collection('escalated_tickets').deleteOne({
+    ticketId: req.params.ticketId, tenantDbName: req.params.tenantDb,
+  });
+
+  res.redirect('/admin/super/tickets');
+});
+
 export default router;

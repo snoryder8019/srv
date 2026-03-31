@@ -19,6 +19,7 @@ import webhooksRouter from './routes/webhooks.js';
 import trackingRouter from './routes/tracking.js';
 import onboardingRouter from './routes/onboarding.js';
 import superadminRouter from './routes/superadmin.js';
+import ticketApiRouter from './routes/ticketApi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -110,6 +111,7 @@ app.get('/', async (req, res, next) => {
   next();
 });
 
+app.use('/api/tickets', ticketApiRouter);
 app.use('/t', trackingRouter);
 app.use('/meeting', meetingsRouter);
 app.use('/pay', payRouter);

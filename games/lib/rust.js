@@ -11,6 +11,7 @@ const WebSocket = require('ws');
 const path = require('path');
 
 const SESSION = 'rust';
+const GS_USER = 'gs-rust';
 const START_SCRIPT = path.join(__dirname, '..', 'start-rust.sh');
 const RCON_HOST = process.env.RUST_RCON_HOST || '127.0.0.1';
 const RCON_PORT = process.env.RUST_RCON_PORT || 28016;
@@ -25,7 +26,7 @@ let inactivityTimer = null;
 
 function isRunning() {
   try {
-    execSync(`tmux has-session -t ${SESSION} 2>/dev/null`);
+    execSync(`sudo -u ${GS_USER} tmux has-session -t ${SESSION} 2>/dev/null`);
     return true;
   } catch {
     return false;
@@ -46,7 +47,7 @@ function startServer() {
 function stopServer(reason) {
   if (!isRunning()) return { ok: false, message: 'Server not running' };
   try {
-    execSync(`tmux kill-session -t ${SESSION} 2>/dev/null`);
+    execSync(`sudo -u ${GS_USER} tmux kill-session -t ${SESSION} 2>/dev/null`);
     clearInactivityTimer();
     console.log(`[games] Rust server stopped${reason ? ': ' + reason : ''}`);
     return { ok: true, message: 'Server stopped' };

@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SESSION = 'l4d2';
+const GS_USER = 'gs-l4d2';
 const START_SCRIPT = path.join(__dirname, '..', 'start-l4d2.sh');
 const L4D2_DIR = '/srv/games/l4d2';
 const LOG_FILE = path.join(L4D2_DIR, 'logs', 'console.log');
@@ -25,7 +26,7 @@ let inactivityTimer = null;
 
 function isRunning() {
   try {
-    execSync(`tmux has-session -t ${SESSION} 2>/dev/null`);
+    execSync(`sudo -u ${GS_USER} tmux has-session -t ${SESSION} 2>/dev/null`);
     return true;
   } catch {
     return false;
@@ -47,7 +48,7 @@ function startServer() {
 function stopServer(reason) {
   if (!isRunning()) return { ok: false, message: 'Server not running' };
   try {
-    execSync(`tmux kill-session -t ${SESSION} 2>/dev/null`);
+    execSync(`sudo -u ${GS_USER} tmux kill-session -t ${SESSION} 2>/dev/null`);
     clearInactivityTimer();
     console.log(`[games] L4D2 server stopped${reason ? ': ' + reason : ''}`);
     return { ok: true, message: 'Server stopped' };

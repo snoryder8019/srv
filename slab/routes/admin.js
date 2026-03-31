@@ -27,6 +27,7 @@ import settingsRouter from './admin/settings.js';
 import docsRouter from './admin/docs.js';
 import superRouter from './admin/super.js';
 import huginnRouter from './admin/huginn.js';
+import ticketsRouter from './admin/tickets.js';
 
 const router = express.Router();
 
@@ -205,24 +206,25 @@ router.get('/ai-health', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const db = req.db;
-    const [portfolioCount, clientCount, invoiceCount, blogCount, pageCount, rawDesign] = await Promise.all([
+    const [portfolioCount, clientCount, invoiceCount, blogCount, pageCount, openTicketCount, rawDesign] = await Promise.all([
       db.collection('portfolio').countDocuments(),
       db.collection('clients').countDocuments(),
       db.collection('invoices').countDocuments({ status: { $in: ['unpaid', 'sent', 'overdue'] } }),
       db.collection('blog').countDocuments(),
       db.collection('pages').countDocuments(),
+      db.collection('tickets').countDocuments({ status: { $in: ['open', 'in-progress', 'escalated'] } }),
       db.collection('design').findOne({ key: 'agent_name' }),
     ]);
     const agentName = rawDesign?.value || 'Assistant';
     res.render('admin/dashboard', {
       user: req.adminUser,
-      stats: { portfolioCount, clientCount, invoiceCount, blogCount, pageCount },
+      stats: { portfolioCount, clientCount, invoiceCount, blogCount, pageCount, openTicketCount },
       agentName,
     });
   } catch {
     res.render('admin/dashboard', {
       user: req.adminUser,
-      stats: { portfolioCount: 0, clientCount: 0, invoiceCount: 0, blogCount: 0, pageCount: 0 },
+      stats: { portfolioCount: 0, clientCount: 0, invoiceCount: 0, blogCount: 0, pageCount: 0, openTicketCount: 0 },
       agentName: 'Assistant',
     });
   }
@@ -246,6 +248,7 @@ router.use('/tutorials', tutorialsRouter);
 router.use('/profile', profileRouter);
 router.use('/settings', settingsRouter);
 router.use('/docs', docsRouter);
+router.use('/tickets', ticketsRouter);
 router.use('/huginn', huginnRouter);
 router.use('/super', superRouter);
 

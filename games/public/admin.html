@@ -18,8 +18,7 @@
     .nav-links { display: flex; gap: 16px; align-items: center; }
     .nav-links a { color: var(--muted); font-size: 0.8rem; text-decoration: none; }
     .nav-links a:hover { color: var(--text); }
-    .layout { display: flex; height: calc(100vh - 52px); flex-direction: column; }
-    .layout-top { display: flex; flex: 1; overflow: hidden; }
+    .layout { display: flex; height: calc(100vh - 52px); }
     .sidebar { width: 200px; background: var(--surface); border-right: 1px solid var(--border); padding: 16px 0; flex-shrink: 0; }
     .sidebar-section { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.1em; padding: 8px 16px 4px; }
     .sidebar-item { display: block; padding: 8px 16px; font-size: 0.82rem; color: var(--muted); cursor: pointer; border-left: 2px solid transparent; transition: all 0.15s; }
@@ -176,56 +175,36 @@
     }
     .rcon-min-tab:hover { background: #1a1a1a; }
 
-    /* Log Viewer */
-    .log-panel {
-      border-top: 1px solid var(--border); background: #080808;
-      display: flex; flex-direction: column; height: 0; transition: height 0.2s;
-      flex-shrink: 0; overflow: hidden;
-    }
-    .log-panel.open { height: 260px; }
-    .log-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 6px 14px; background: #0e0e0e; border-bottom: 1px solid #1a1a1a;
-      flex-shrink: 0; cursor: pointer;
-    }
-    .log-header:hover { background: #121212; }
-    .log-header-left { display: flex; align-items: center; gap: 10px; }
-    .log-title { font-size: 0.62rem; color: var(--green); text-transform: uppercase; letter-spacing: 0.1em; font-weight: bold; }
-    .log-game-tabs { display: flex; gap: 3px; }
-    .log-game-tab {
-      font-family: inherit; font-size: 0.55rem; padding: 2px 8px; border-radius: 2px;
+    /* Terminal tab switcher */
+    .term-tab {
+      font-family: inherit; font-size: 0.58rem; font-weight: bold;
+      padding: 2px 10px; border-radius: 2px; cursor: pointer;
       border: 1px solid var(--border); background: transparent; color: var(--muted);
-      cursor: pointer; transition: all 0.15s;
+      letter-spacing: 0.04em; transition: all 0.15s;
     }
-    .log-game-tab:hover { border-color: var(--green); color: var(--green); }
-    .log-game-tab.active { border-color: var(--green); color: var(--green); background: rgba(76,175,130,0.1); }
-    .log-toggle { font-family: inherit; font-size: 0.65rem; background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px 6px; }
-    .log-output {
-      flex: 1; overflow-y: auto; padding: 8px 14px;
-      font-size: 0.68rem; line-height: 1.5; color: #888;
-      white-space: pre-wrap; word-break: break-all;
-    }
-    .log-output .log-line { }
-    .log-output .log-line:hover { background: rgba(255,255,255,0.02); }
-    .log-output .log-err { color: #e57373; }
-    .log-output .log-warn { color: #e6b800; }
-    .log-output .log-info { color: #4caf82; }
+    .term-tab:hover { border-color: var(--text); color: var(--text); }
+    .term-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(205,65,43,0.1); }
+
+    /* Log line styles (used in terminal log output) */
+    .log-line { }
+    .log-line:hover { background: rgba(255,255,255,0.02); }
+    .log-err { color: #e57373; }
+    .log-warn { color: #e6b800; }
+    .log-info { color: #4caf82; }
   </style>
 </head>
 <body>
 
 <nav>
-  <div class="nav-brand">MadLadsLab <span>Admin</span></div>
+  <div class="nav-brand">MadLadsLab <span>Admin</span> <span id="appVersion" style="color:var(--muted);font-size:0.6rem;opacity:0.6"></span></div>
   <div class="nav-links">
     <a href="/dashboard">Dashboard</a>
-    <button class="btn sa-only" style="padding:4px 10px;border-color:var(--accent);color:var(--accent)" onclick="openRcon()">CONSOLE</button>
-    <button class="btn sa-only" style="padding:4px 10px;border-color:var(--green);color:var(--green)" onclick="toggleLogPanel()">LOGS</button>
+    <button class="btn sa-only" style="padding:4px 10px;border-color:var(--accent);color:var(--accent)" onclick="openTerm()">TERMINAL</button>
     <form method="POST" action="/logout" style="margin:0"><button class="btn" style="padding:4px 10px">Logout</button></form>
   </div>
 </nav>
 
 <div class="layout">
- <div class="layout-top">
   <div class="sidebar">
     <div class="sidebar-section">GAMES</div>
     <div class="sidebar-item active" onclick="show('servers')">Server Control</div>
@@ -458,60 +437,54 @@
     </div>
 
   </div>
- </div><!-- /layout-top -->
-
- <!-- Log Viewer (persistent bottom panel) -->
- <div class="log-panel sa-only" id="logPanel">
-  <div class="log-header" onclick="toggleLogPanel()">
-    <div class="log-header-left">
-      <span class="log-title">SERVER LOGS</span>
-      <div class="log-game-tabs">
-        <button class="log-game-tab" id="lt-rust" onclick="event.stopPropagation();subscribeLog('rust')">RUST</button>
-        <button class="log-game-tab" id="lt-valheim" onclick="event.stopPropagation();subscribeLog('valheim')">VALHEIM</button>
-        <button class="log-game-tab" id="lt-l4d2" onclick="event.stopPropagation();subscribeLog('l4d2')">L4D2</button>
-        <button class="log-game-tab" id="lt-7dtd" onclick="event.stopPropagation();subscribeLog('7dtd')">7DTD</button>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <button class="log-toggle" onclick="event.stopPropagation();clearLog()" title="Clear">CLR</button>
-      <span class="log-toggle" id="logToggleIcon">&#9650;</span>
-    </div>
-  </div>
-  <div class="log-output" id="logOutput"><span style="color:var(--muted);font-style:italic;">Select a game server to stream logs...</span></div>
- </div>
 </div><!-- /layout -->
 
-<!-- RCON Floating Console (draggable + minimizable) -->
-<div id="rconWindow" class="rcon-window" style="display:none;">
-  <div class="rcon-titlebar" id="rconTitlebar">
+<!-- Unified Terminal (draggable + minimizable) -->
+<div id="termWindow" class="rcon-window" style="display:none;">
+  <div class="rcon-titlebar" id="termTitlebar">
     <div class="rcon-titlebar-left">
       <span class="rcon-dot red"></span>
       <span class="rcon-dot yellow"></span>
       <span class="rcon-dot green"></span>
-      <span class="rcon-title">RUNTIME CONSOLE</span>
+      <span class="rcon-title">TERMINAL</span>
     </div>
     <div class="rcon-titlebar-right">
-      <select id="rconGame" class="rcon-game-select">
+      <!-- Tab switcher -->
+      <button class="term-tab active" id="termTabConsole" onclick="switchTermTab('console')">CONSOLE</button>
+      <button class="term-tab" id="termTabLogs" onclick="switchTermTab('logs')">LOGS</button>
+      <span style="width:1px;height:16px;background:#2a2a2a;margin:0 4px;"></span>
+      <!-- Game selector -->
+      <select id="termGame" class="rcon-game-select" onchange="onTermGameChange()">
         <option value="rust">RUST</option>
+        <option value="valheim">VALHEIM</option>
+        <option value="l4d2">L4D2</option>
+        <option value="7dtd">7DTD</option>
       </select>
-      <button class="rcon-win-btn" onclick="minimizeRcon()" title="Minimize">&#9472;</button>
-      <button class="rcon-win-btn" onclick="maximizeRcon()" title="Maximize">&#9633;</button>
-      <button class="rcon-win-btn close" onclick="closeRcon()" title="Close">&#10005;</button>
+      <button class="rcon-win-btn" onclick="minimizeTerm()" title="Minimize">&#9472;</button>
+      <button class="rcon-win-btn" onclick="maximizeTerm()" title="Maximize">&#9633;</button>
+      <button class="rcon-win-btn close" onclick="closeTerm()" title="Close">&#10005;</button>
     </div>
   </div>
-  <div class="rcon-body" id="rconBody">
-    <div id="rconConsoleOutput" class="rcon-output"></div>
-    <div class="rcon-input-row">
-      <span class="rcon-prompt">&gt;</span>
-      <input id="rconConsoleInput" type="text" class="rcon-input" placeholder="status, playerlist, c.reload PluginName ..." onkeydown="if(event.key==='Enter')sendRconConsole()" autocomplete="off">
-      <button class="rcon-send-btn" onclick="sendRconConsole()">SEND</button>
+  <div class="rcon-body" id="termBody">
+    <!-- Console pane -->
+    <div id="termConsolePane" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+      <div id="termConsoleOutput" class="rcon-output"></div>
+      <div class="rcon-input-row">
+        <span class="rcon-prompt">&gt;</span>
+        <input id="termConsoleInput" type="text" class="rcon-input" placeholder="status, playerlist, c.reload PluginName ..." onkeydown="if(event.key==='Enter')sendTermConsole()" autocomplete="off">
+        <button class="rcon-send-btn" onclick="sendTermConsole()">SEND</button>
+      </div>
+    </div>
+    <!-- Logs pane -->
+    <div id="termLogsPane" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+      <div id="termLogOutput" class="rcon-output" style="flex:1;"></div>
     </div>
   </div>
 </div>
-<!-- Minimized RCON tab -->
-<div id="rconMinTab" class="rcon-min-tab" style="display:none;" onclick="restoreRcon()">
+<!-- Minimized tab -->
+<div id="termMinTab" class="rcon-min-tab" style="display:none;" onclick="restoreTerm()">
   <span class="rcon-dot red" style="width:6px;height:6px;"></span>
-  CONSOLE
+  TERMINAL
 </div>
 
 <!-- Edit User Modal -->
@@ -570,6 +543,8 @@
 <div class="toast" id="toast"></div>
 
 <script>
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
 const GAMES = ['rust', 'valheim', 'l4d2', '7dtd'];
 let guserData = [], buserData = [];
 let isSuperAdmin = false;
@@ -672,17 +647,17 @@ function renderUserRow(u, scope) {
 
   // Subscription tag
   const subClass = { free: 'tag-free', player: 'tag-player', admin: 'tag-admin', lifetime: 'tag-lifetime' }[sub] || 'tag-free';
-  const subLabel = { free: 'FREE', player: '$2/mo', admin: '$12/mo', lifetime: 'LIFETIME' }[sub] || sub;
+  const subLabel = { free: 'FREE', player: '$2/mo', admin: '$12/mo', lifetime: 'LIFETIME' }[sub] || esc(sub);
   const subTag = '<span class="tag ' + subClass + '">' + subLabel + '</span>';
 
   // Permission tags
   let permTags = '';
-  if (gamePerm) permTags += '<span class="tag">' + gamePerm + '</span>';
+  if (gamePerm) permTags += '<span class="tag">' + esc(gamePerm) + '</span>';
   if (!permTags) permTags = '<span class="tag tag-free">—</span>';
 
   const searchStr = ((u.displayName||u.email||'') + ' ' + (u.email||'')).toLowerCase();
 
-  return '<tr data-search="' + searchStr + '" data-user=\'' + JSON.stringify({
+  var userJson = JSON.stringify({
     id: u._id || u.id,
     email: u.email,
     name: u.displayName || u.firstName || '',
@@ -692,9 +667,11 @@ function renderUserRow(u, scope) {
     subscriptionExpiry: u.subscriptionExpiry || '',
     gamePerm: gamePerm,
     scope: scope,
-  }).replace(/'/g, '&#39;') + '\'>' +
-    '<td>' + (u.displayName || u.firstName || '—') + '</td>' +
-    '<td style="color:var(--muted)">' + (u.email || '') + '</td>' +
+  });
+
+  return '<tr data-search="' + esc(searchStr) + '" data-user="' + esc(userJson) + '">' +
+    '<td>' + esc(u.displayName || u.firstName || '—') + '</td>' +
+    '<td style="color:var(--muted)">' + esc(u.email || '') + '</td>' +
     '<td>' + roleTags + '</td>' +
     '<td>' + subTag + '</td>' +
     '<td>' + permTags + '</td>' +
@@ -732,19 +709,24 @@ async function loadTickets() {
       const user = t.user ? (t.user.displayName || t.user.email || '?') : '?';
       const stClass = { open: 'st-open', 'in-progress': 'st-in-progress', closed: 'st-closed' }[t.status] || '';
       const date = new Date(t.createdAt).toLocaleDateString();
-      return `<tr data-search="${t.subject.toLowerCase()}">
-        <td>${t.subject}</td>
-        <td style="color:var(--muted)">${user}</td>
-        <td><span class="ticket-status ${stClass}">${t.status}</span></td>
-        <td style="color:var(--muted)">${date}</td>
-        <td><button class="btn" onclick="showTicket(${JSON.stringify(t)})">View</button></td>
+      return `<tr data-search="${esc(t.subject.toLowerCase())}" data-ticket="${esc(JSON.stringify(t))}">
+        <td>${esc(t.subject)}</td>
+        <td style="color:var(--muted)">${esc(user)}</td>
+        <td><span class="ticket-status ${esc(stClass)}">${esc(t.status)}</span></td>
+        <td style="color:var(--muted)">${esc(date)}</td>
+        <td><button class="btn" onclick="showTicketFromRow(this)">View</button></td>
       </tr>`;
     }).join('');
   } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="color:#cd412b">Error loading tickets</td></tr>'; }
 }
 
+function showTicketFromRow(btn) {
+  var t = JSON.parse(btn.closest('tr').dataset.ticket);
+  showTicket(t);
+}
+
 function showTicket(t) {
-  alert(`Subject: ${t.subject}\n\n${t.message}\n\nStatus: ${t.status}\nActions: ${t.actions ? t.actions.length : 0}`);
+  alert('Subject: ' + (t.subject||'') + '\n\n' + (t.message||'') + '\n\nStatus: ' + (t.status||'') + '\nActions: ' + (t.actions ? t.actions.length : 0));
 }
 
 // --- Modal ---
@@ -907,10 +889,10 @@ function pRenderLib() {
     }
     return '<div class="card" style="padding:14px;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
-        '<strong style="font-size:0.85rem;">' + (p.name || p.filename) + '</strong> ' + badge +
+        '<strong style="font-size:0.85rem;">' + esc(p.name || p.filename) + '</strong> ' + badge +
       '</div>' +
-      '<div style="color:var(--muted);font-size:0.7rem;margin-bottom:6px;">' + (p.description || 'No description') + '</div>' +
-      '<div style="color:var(--muted);font-size:0.58rem;margin-bottom:8px;">' + (PGAMES[p.game]||p.game) + ' &middot; ' + kb + ' KB &middot; ' + (p.installs||0) + ' installs</div>' +
+      '<div style="color:var(--muted);font-size:0.7rem;margin-bottom:6px;">' + esc(p.description || 'No description') + '</div>' +
+      '<div style="color:var(--muted);font-size:0.58rem;margin-bottom:8px;">' + esc(PGAMES[p.game]||p.game) + ' &middot; ' + kb + ' KB &middot; ' + (p.installs||0) + ' installs</div>' +
       '<div class="btn-row">' + actions + '</div>' +
     '</div>';
   }).join('');
@@ -930,16 +912,18 @@ async function pLoadInstalled() {
   var list = document.getElementById('pInstalledList');
   if (!all.length) { list.innerHTML = '<div style="color:var(--muted);font-size:0.78rem;">No plugins installed</div>'; return; }
   list.innerHTML = all.map(function(p) {
-    var fw = p._fw !== p._game ? ' <span style="font-size:0.5rem;color:#e6b800;text-transform:uppercase;">' + p._fw + '</span>' : '';
-    var btns = '<button class="btn" style="padding:2px 8px;font-size:0.58rem;" onclick="event.stopPropagation();openConfig(\'' + p._game + '\',\'' + p.name + '\')">CONFIG</button>';
+    var fw = p._fw !== p._game ? ' <span style="font-size:0.5rem;color:#e6b800;text-transform:uppercase;">' + esc(p._fw) + '</span>' : '';
+    var safeGame = esc(p._game);
+    var safeName = esc(p.name);
+    var btns = '<button class="btn" style="padding:2px 8px;font-size:0.58rem;" data-game="' + safeGame + '" data-plugin="' + safeName + '" onclick="event.stopPropagation();openConfig(this.dataset.game,this.dataset.plugin)">CONFIG</button>';
     if (p._game === 'rust') {
-      btns += ' <button class="btn btn-yellow" style="padding:2px 8px;font-size:0.58rem;" onclick="event.stopPropagation();reloadPlugin(\'' + p.name + '\')">RELOAD</button>';
+      btns += ' <button class="btn btn-yellow" style="padding:2px 8px;font-size:0.58rem;" data-plugin="' + safeName + '" onclick="event.stopPropagation();reloadPlugin(this.dataset.plugin)">RELOAD</button>';
     }
-    return '<div style="display:flex;align-items:center;justify-content:space-between;background:#111;border:1px solid #2a2a2a;border-radius:3px;padding:7px 12px;margin-bottom:4px;font-size:0.78rem;cursor:pointer;transition:border-color 0.15s;" onclick="openConfig(\'' + p._game + '\',\'' + p.name + '\')" onmouseover="this.style.borderColor=\'#e6b800\'" onmouseout="this.style.borderColor=\'#2a2a2a\'">' +
-      '<span style="' + (p.enabled ? '' : 'color:#555;text-decoration:line-through;') + '">' + p.name + fw + '</span>' +
+    return '<div style="display:flex;align-items:center;justify-content:space-between;background:#111;border:1px solid #2a2a2a;border-radius:3px;padding:7px 12px;margin-bottom:4px;font-size:0.78rem;cursor:pointer;transition:border-color 0.15s;" data-game="' + safeGame + '" data-plugin="' + safeName + '" onclick="openConfig(this.dataset.game,this.dataset.plugin)" onmouseover="this.style.borderColor=\'#e6b800\'" onmouseout="this.style.borderColor=\'#2a2a2a\'">' +
+      '<span style="' + (p.enabled ? '' : 'color:#555;text-decoration:line-through;') + '">' + safeName + fw + '</span>' +
       '<div style="display:flex;align-items:center;gap:6px;">' +
         btns +
-        '<span style="font-size:0.6rem;color:var(--muted)">' + (PGAMES[p._game]||p._game) + '</span>' +
+        '<span style="font-size:0.6rem;color:var(--muted)">' + esc(PGAMES[p._game]||p._game) + '</span>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -1006,13 +990,13 @@ async function loadProvisioner() {
         var idle = Math.round((Date.now() - new Date(s.lastActivity).getTime()) / 60000);
         return '<div class="card" style="padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">' +
           '<div>' +
-            '<div style="font-size:0.82rem;font-weight:bold;">' + s.label + '</div>' +
-            '<div style="font-size:0.65rem;color:var(--muted);">' + (PGAMES[s.game]||s.game) + ' &middot; ' + (s.ip||'pending') + ' &middot; ' + s.status + '</div>' +
+            '<div style="font-size:0.82rem;font-weight:bold;">' + esc(s.label) + '</div>' +
+            '<div style="font-size:0.65rem;color:var(--muted);">' + esc(PGAMES[s.game]||s.game) + ' &middot; ' + esc(s.ip||'pending') + ' &middot; ' + esc(s.status) + '</div>' +
             '<div style="font-size:0.58rem;color:var(--muted);">Up ' + age + 'min &middot; Idle ' + idle + 'min</div>' +
           '</div>' +
           '<div class="btn-row">' +
-            '<button class="btn" onclick="checkProvStatus(' + s.linodeId + ')">STATUS</button>' +
-            '<button class="btn btn-red" onclick="destroyServer(' + s.linodeId + ')">DESTROY</button>' +
+            '<button class="btn" onclick="checkProvStatus(' + parseInt(s.linodeId) + ')">STATUS</button>' +
+            '<button class="btn btn-red" onclick="destroyServer(' + parseInt(s.linodeId) + ')">DESTROY</button>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -1028,12 +1012,12 @@ async function loadProvisioner() {
         var date = new Date(s.createdAt).toLocaleString();
         var statusColor = s.status === 'running' ? 'var(--green)' : s.status === 'destroyed' ? 'var(--muted)' : 'var(--yellow)';
         return '<tr>' +
-          '<td>' + s.label + '</td>' +
-          '<td>' + (PGAMES[s.game]||s.game) + '</td>' +
-          '<td style="color:var(--muted)">' + (s.ip||'—') + '</td>' +
-          '<td style="color:' + statusColor + '">' + s.status + '</td>' +
-          '<td style="color:var(--muted)">' + date + '</td>' +
-          '<td>' + (s.status !== 'destroyed' ? '<button class="btn btn-red" onclick="destroyServer(' + s.linodeId + ')">DESTROY</button>' : '—') + '</td>' +
+          '<td>' + esc(s.label) + '</td>' +
+          '<td>' + esc(PGAMES[s.game]||s.game) + '</td>' +
+          '<td style="color:var(--muted)">' + esc(s.ip||'—') + '</td>' +
+          '<td style="color:' + statusColor + '">' + esc(s.status) + '</td>' +
+          '<td style="color:var(--muted)">' + esc(date) + '</td>' +
+          '<td>' + (s.status !== 'destroyed' ? '<button class="btn btn-red" onclick="destroyServer(' + parseInt(s.linodeId) + ')">DESTROY</button>' : '—') + '</td>' +
         '</tr>';
       }).join('');
     }
@@ -1052,10 +1036,10 @@ async function loadProvisioner() {
     } else {
       reqBody.innerHTML = reqs.map(function(r) {
         return '<tr>' +
-          '<td>' + (r.userName || '?') + '</td>' +
-          '<td>' + (PGAMES[r.game]||r.game) + '</td>' +
-          '<td>' + r.status + '</td>' +
-          '<td style="color:var(--muted)">' + new Date(r.createdAt).toLocaleString() + '</td>' +
+          '<td>' + esc(r.userName || '?') + '</td>' +
+          '<td>' + esc(PGAMES[r.game]||r.game) + '</td>' +
+          '<td>' + esc(r.status) + '</td>' +
+          '<td style="color:var(--muted)">' + esc(new Date(r.createdAt).toLocaleString()) + '</td>' +
         '</tr>';
       }).join('');
     }
@@ -1123,49 +1107,97 @@ async function sendMaintenance() {
   } catch (e) { toast('Request failed', false); }
 }
 
-// --- Log Viewer ---
+// --- Admin Socket ---
 var adminSocket = null;
-var logPanelOpen = false;
-var currentLogGame = null;
-var logAutoScroll = true;
 
 function initAdminSocket() {
   if (adminSocket) return;
   adminSocket = io('/admin', { transports: ['websocket', 'polling'] });
   adminSocket.on('connect_error', function() {}); // non-SA won't connect, that's fine
   adminSocket.on('logs:lines', function(data) {
-    appendLogLines(data.game, data.lines);
+    appendTermLogLines(data.game, data.lines);
   });
   adminSocket.on('logs:subscribed', function(data) {
-    appendLogLines(data.game, ['[log] Connected to ' + data.game + ' log stream']);
+    appendTermLogLines(data.game, ['[log] Connected to ' + data.game + ' log stream']);
   });
 }
 
-function toggleLogPanel() {
-  var panel = document.getElementById('logPanel');
-  logPanelOpen = !logPanelOpen;
-  panel.classList.toggle('open', logPanelOpen);
-  document.getElementById('logToggleIcon').innerHTML = logPanelOpen ? '&#9660;' : '&#9650;';
-  if (logPanelOpen && !adminSocket) initAdminSocket();
+// --- Unified Terminal ---
+var termMaximized = false;
+var termSavedPos = null;
+var termCurrentTab = 'console';
+var termCurrentGame = 'rust';
+var termLogGame = null; // currently subscribed log game
+
+function openTerm() {
+  var win = document.getElementById('termWindow');
+  win.style.display = 'flex';
+  document.getElementById('termMinTab').style.display = 'none';
+  if (termCurrentTab === 'console') document.getElementById('termConsoleInput').focus();
+  initTermDrag();
+  // Auto-subscribe to logs for current game
+  if (!termLogGame) subscribeTermLog(termCurrentGame);
+}
+function closeTerm() {
+  document.getElementById('termWindow').style.display = 'none';
+  document.getElementById('termMinTab').style.display = 'none';
+  termMaximized = false;
+}
+function minimizeTerm() {
+  document.getElementById('termWindow').style.display = 'none';
+  document.getElementById('termMinTab').style.display = 'flex';
+}
+function restoreTerm() {
+  document.getElementById('termWindow').style.display = 'flex';
+  document.getElementById('termMinTab').style.display = 'none';
+  if (termCurrentTab === 'console') document.getElementById('termConsoleInput').focus();
+}
+function maximizeTerm() {
+  var win = document.getElementById('termWindow');
+  if (termMaximized) {
+    if (termSavedPos) {
+      win.style.top = termSavedPos.top;
+      win.style.left = termSavedPos.left;
+      win.style.width = termSavedPos.width;
+      win.style.height = '';
+      win.style.maxHeight = '80vh';
+      win.style.borderRadius = '8px';
+    }
+    termMaximized = false;
+  } else {
+    termSavedPos = { top: win.style.top, left: win.style.left, width: win.style.width };
+    win.style.top = '0'; win.style.left = '0';
+    win.style.width = '100vw'; win.style.height = '100vh';
+    win.style.maxHeight = '100vh'; win.style.borderRadius = '0';
+    termMaximized = true;
+  }
 }
 
-function subscribeLog(game) {
+function switchTermTab(tab) {
+  termCurrentTab = tab;
+  document.getElementById('termTabConsole').classList.toggle('active', tab === 'console');
+  document.getElementById('termTabLogs').classList.toggle('active', tab === 'logs');
+  document.getElementById('termConsolePane').style.display = tab === 'console' ? 'flex' : 'none';
+  document.getElementById('termLogsPane').style.display = tab === 'logs' ? 'flex' : 'none';
+  if (tab === 'console') document.getElementById('termConsoleInput').focus();
+}
+
+function onTermGameChange() {
+  termCurrentGame = document.getElementById('termGame').value;
+  // When switching game, re-subscribe logs
+  subscribeTermLog(termCurrentGame);
+}
+
+function subscribeTermLog(game) {
   if (!adminSocket) initAdminSocket();
-  // Unsubscribe current
-  if (currentLogGame) adminSocket.emit('logs:unsubscribe', currentLogGame);
-  currentLogGame = game;
-  // Update tab styling
-  document.querySelectorAll('.log-game-tab').forEach(function(t) { t.classList.remove('active'); });
-  var tab = document.getElementById('lt-' + game);
-  if (tab) tab.classList.add('active');
-  // Clear and subscribe
-  document.getElementById('logOutput').innerHTML = '<span style="color:var(--muted)">Connecting to ' + game + ' logs...</span>\n';
+  if (termLogGame) adminSocket.emit('logs:unsubscribe', termLogGame);
+  termLogGame = game;
+  document.getElementById('termLogOutput').innerHTML = '<span style="color:var(--muted)">Connecting to ' + esc(game) + ' logs...</span>\n';
   adminSocket.emit('logs:subscribe', game);
-  if (!logPanelOpen) toggleLogPanel();
 }
 
-function appendLogLines(game, lines) {
-  var output = document.getElementById('logOutput');
+function appendTermLogLines(game, lines) {
+  var output = document.getElementById('termLogOutput');
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
     var cls = 'log-line';
@@ -1178,76 +1210,19 @@ function appendLogLines(game, lines) {
     el.textContent = line;
     output.appendChild(el);
   }
-  // Keep max 2000 lines
   while (output.children.length > 2000) output.removeChild(output.firstChild);
-  // Auto-scroll
-  if (logAutoScroll) output.scrollTop = output.scrollHeight;
-}
-
-function clearLog() {
-  document.getElementById('logOutput').innerHTML = '';
-}
-
-// --- RCON Floating Console (drag + minimize + maximize) ---
-var rconMaximized = false;
-var rconSavedPos = null;
-
-function openRcon() {
-  var win = document.getElementById('rconWindow');
-  win.style.display = 'flex';
-  document.getElementById('rconMinTab').style.display = 'none';
-  document.getElementById('rconConsoleInput').focus();
-  initDrag();
-}
-function closeRcon() {
-  document.getElementById('rconWindow').style.display = 'none';
-  document.getElementById('rconMinTab').style.display = 'none';
-  rconMaximized = false;
-}
-function minimizeRcon() {
-  document.getElementById('rconWindow').style.display = 'none';
-  document.getElementById('rconMinTab').style.display = 'flex';
-}
-function restoreRcon() {
-  document.getElementById('rconWindow').style.display = 'flex';
-  document.getElementById('rconMinTab').style.display = 'none';
-  document.getElementById('rconConsoleInput').focus();
-}
-function maximizeRcon() {
-  var win = document.getElementById('rconWindow');
-  if (rconMaximized) {
-    // Restore
-    if (rconSavedPos) {
-      win.style.top = rconSavedPos.top;
-      win.style.left = rconSavedPos.left;
-      win.style.width = rconSavedPos.width;
-      win.style.height = '';
-      win.style.maxHeight = '80vh';
-      win.style.borderRadius = '8px';
-    }
-    rconMaximized = false;
-  } else {
-    // Save current position
-    rconSavedPos = { top: win.style.top, left: win.style.left, width: win.style.width };
-    win.style.top = '0';
-    win.style.left = '0';
-    win.style.width = '100vw';
-    win.style.height = '100vh';
-    win.style.maxHeight = '100vh';
-    win.style.borderRadius = '0';
-    rconMaximized = true;
-  }
+  output.scrollTop = output.scrollHeight;
 }
 
 // Drag support
-function initDrag() {
-  var titlebar = document.getElementById('rconTitlebar');
-  var win = document.getElementById('rconWindow');
+function initTermDrag() {
+  var titlebar = document.getElementById('termTitlebar');
+  var win = document.getElementById('termWindow');
   var dragging = false, startX, startY, origX, origY;
 
   titlebar.onmousedown = function(e) {
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return;
-    if (rconMaximized) return;
+    if (termMaximized) return;
     dragging = true;
     startX = e.clientX;
     startY = e.clientY;
@@ -1267,7 +1242,7 @@ function initDrag() {
   // Touch support for mobile
   titlebar.ontouchstart = function(e) {
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return;
-    if (rconMaximized) return;
+    if (termMaximized) return;
     var touch = e.touches[0];
     dragging = true;
     startX = touch.clientX;
@@ -1286,12 +1261,12 @@ function initDrag() {
   document.addEventListener('touchend', function() { dragging = false; });
 }
 
-async function sendRconConsole() {
-  var input = document.getElementById('rconConsoleInput');
+async function sendTermConsole() {
+  var input = document.getElementById('termConsoleInput');
   var cmd = input.value.trim();
   if (!cmd) return;
   input.value = '';
-  var output = document.getElementById('rconConsoleOutput');
+  var output = document.getElementById('termConsoleOutput');
 
   var cmdEl = document.createElement('div');
   cmdEl.style.color = 'var(--green)';
@@ -1299,7 +1274,7 @@ async function sendRconConsole() {
   output.appendChild(cmdEl);
   output.scrollTop = output.scrollHeight;
 
-  var game = document.getElementById('rconGame').value;
+  var game = document.getElementById('termGame').value;
   try {
     var r = await fetch('/api/' + game + '/rcon', {
       method: 'POST',
@@ -1321,7 +1296,7 @@ async function sendRconConsole() {
 }
 
 // Init drag on page load
-setTimeout(initDrag, 500);
+setTimeout(initTermDrag, 500);
 
 // --- Config Editor ---
 var configCurrentGame = null;
@@ -1348,7 +1323,7 @@ async function openConfig(game, pluginName) {
     }
 
     fileList.innerHTML = d.configs.map(function(c) {
-      return '<button class="config-file-btn" onclick="loadConfig(\'' + game + '\',\'' + c.path.replace(/'/g, "\\'") + '\', this)">' + c.name + ' <span style="color:var(--muted);font-size:0.5rem;">(' + Math.round(c.size/1024) + 'KB)</span></button>';
+      return '<button class="config-file-btn" data-game="' + esc(game) + '" data-path="' + esc(c.path) + '" onclick="loadConfig(this.dataset.game, this.dataset.path, this)">' + esc(c.name) + ' <span style="color:var(--muted);font-size:0.5rem;">(' + Math.round(c.size/1024) + 'KB)</span></button>';
     }).join('');
 
     document.getElementById('configStatus').textContent = d.configs.length + ' config file(s) found — click one to edit';
@@ -1449,5 +1424,6 @@ if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin && typeof initAdminSocke
   initAdminSocket();
 }
 </script>
+<script>fetch('/api/version').then(r=>r.json()).then(d=>{document.getElementById('appVersion').textContent='v'+d.version}).catch(()=>{})</script>
 </body>
 </html>

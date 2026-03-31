@@ -51,3 +51,4 @@ const modelFilter = (req, file, cb) => {
 };
 
 export const modelUpload = s3Storage('models', modelFilter);
+export const ticketUpload = s3Storage('tickets');

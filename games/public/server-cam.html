@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server Cam — MadLadsLab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #0a0a0a; --accent: #cd412b; --green: #4caf82; --yellow: #e6b800; --text: #e0e0e0; --muted: #555; }
+    body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; overflow: hidden; }
+
+    .cam-container { position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+    /* Map canvas */
+    #mapCanvas { background: #0d1117; border: 1px solid #1a1a1a; }
+
+    /* HUD overlay */
+    .hud { position: absolute; pointer-events: none; }
+    .hud-top {
+      top: 12px; left: 12px; right: 12px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+    }
+    .hud-brand {
+      font-size: 0.7rem; font-weight: bold; color: var(--accent);
+      letter-spacing: 0.08em; opacity: 0.8;
+    }
+    .hud-brand span { color: var(--muted); font-size: 0.55rem; }
+    .hud-stats {
+      text-align: right; font-size: 0.6rem; color: var(--muted);
+      line-height: 1.6;
+    }
+    .hud-stats .live { color: var(--accent); font-weight: bold; animation: pulse 2s infinite; }
+
+    /* Event feed */
+    .hud-events {
+      position: absolute; bottom: 12px; left: 12px; width: 320px;
+      font-size: 0.6rem; line-height: 1.5;
+    }
+    .event-line { color: var(--muted); opacity: 0.9; padding: 1px 0; }
+    .event-line.kill { color: var(--accent); }
+    .event-line.chat { color: var(--green); }
+
+    /* Player list */
+    .hud-players {
+      position: absolute; bottom: 12px; right: 12px;
+      font-size: 0.6rem; text-align: right; color: var(--muted);
+    }
+    .player-entry { padding: 1px 0; }
+    .player-entry .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--green); margin-right: 4px; }
+
+    /* Game selector */
+    .game-tabs {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 4px; pointer-events: auto;
+    }
+    .game-tab {
+      font-family: inherit; font-size: 0.55rem; font-weight: bold;
+      padding: 4px 14px; border: 1px solid #222; border-radius: 2px;
+      background: transparent; color: var(--muted); cursor: pointer;
+      letter-spacing: 0.04em; transition: all 0.15s;
+    }
+    .game-tab:hover { border-color: var(--text); color: var(--text); }
+    .game-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(205,65,43,0.1); }
+
+    .offline-msg {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 0.9rem; color: var(--muted); text-align: center;
+    }
+    .offline-msg .big { font-size: 1.4rem; color: var(--accent); margin-bottom: 8px; }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  </style>
+</head>
+<body>
+<div class="cam-container">
+  <canvas id="mapCanvas" width="800" height="800"></canvas>
+
+  <!-- HUD -->
+  <div class="hud hud-top">
+    <div class="hud-brand">MADLADSLAB <span>// SERVER CAM</span></div>
+    <div class="hud-stats" id="hudStats">
+      <div class="live">LIVE</div>
+      <div id="hudPlayers">0 PLAYERS</div>
+      <div id="hudWorld">---</div>
+    </div>
+  </div>
+
+  <div class="game-tabs">
+    <button class="game-tab active" id="tab-rust" onclick="switchGame('rust')">RUST</button>
+    <button class="game-tab" id="tab-7dtd" onclick="switchGame('7dtd')">7DTD</button>
+    <button class="game-tab" id="tab-l4d2" onclick="switchGame('l4d2')">L4D2</button>
+  </div>
+
+  <div class="hud hud-events" id="eventFeed"></div>
+  <div class="hud hud-players" id="playerList"></div>
+  <div class="offline-msg" id="offlineMsg" style="display:none;">
+    <div class="big">SERVER OFFLINE</div>
+    <div>Waiting for server to come online...</div>
+  </div>
+</div>
+
+<script>
+var canvas = document.getElementById('mapCanvas');
+var ctx = canvas.getContext('2d');
+var currentGame = 'rust';
+var mapState = null;
+var pollTimer = null;
+
+// Load map background image
+var mapImg = new Image();
+var mapImgLoaded = false;
+mapImg.onload = function() { mapImgLoaded = true; if (mapState) renderRustMap(); };
+mapImg.src = '/static/img/rust-map.png';
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function switchGame(game) {
+  currentGame = game;
+  document.querySelectorAll('.game-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.getElementById('tab-' + game).classList.add('active');
+
+  if (game === '7dtd') {
+    document.getElementById('offlineMsg').style.display = 'block';
+    document.querySelector('.offline-msg .big').textContent = '7DTD LIVE MAP';
+    document.querySelector('.offline-msg div:last-child').textContent = 'Web dashboard available at port 8080 when server is running';
+    canvas.style.display = 'none';
+  } else if (game === 'l4d2') {
+    document.getElementById('offlineMsg').style.display = 'block';
+    document.querySelector('.offline-msg .big').textContent = 'L4D2 SOURCETV';
+    document.querySelector('.offline-msg div:last-child').textContent = 'Connect via game client: connect ' + window.location.hostname + ':27020';
+    canvas.style.display = 'none';
+  } else {
+    canvas.style.display = 'block';
+    document.getElementById('offlineMsg').style.display = 'none';
+    pollRust();
+  }
+}
+
+// Rust map rendering
+function pollRust() {
+  fetch('/server-cam/rust').then(function(r) { return r.json(); }).then(function(data) {
+    mapState = data;
+    renderRustMap();
+    updateHUD();
+  }).catch(function() {});
+}
+
+function worldToCanvas(x, z, worldSize) {
+  // Rust world: -worldSize/2 to +worldSize/2 on X and Z
+  var half = worldSize / 2;
+  var cx = ((x + half) / worldSize) * canvas.width;
+  var cy = ((half - z) / worldSize) * canvas.height; // Z is flipped
+  return { x: cx, y: cy };
+}
+
+function renderRustMap() {
+  if (!mapState) return;
+
+  var w = canvas.width;
+  var h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  if (!mapState.serverRunning) {
+    document.getElementById('offlineMsg').style.display = 'block';
+    canvas.style.display = 'none';
+    return;
+  }
+
+  document.getElementById('offlineMsg').style.display = 'none';
+  canvas.style.display = 'block';
+
+  // Background — real map image or dark fallback
+  if (mapImgLoaded) {
+    ctx.drawImage(mapImg, 0, 0, w, h);
+    // Slight dark overlay for contrast with markers
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // Grid overlay
+  var gridCount = 10;
+  ctx.strokeStyle = mapImgLoaded ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (var i = 1; i < gridCount; i++) {
+    var gx = (i / gridCount) * w;
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, gx); ctx.lineTo(w, gx); ctx.stroke();
+  }
+
+  // Axis labels
+  ctx.fillStyle = mapImgLoaded ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.15)';
+  ctx.font = 'bold 9px Courier New';
+  var half = mapState.worldSize / 2;
+  for (var i = 0; i <= gridCount; i++) {
+    var val = Math.round(-half + (i / gridCount) * mapState.worldSize);
+    ctx.fillText(val, (i / gridCount) * w + 2, h - 3);
+    ctx.fillText(val, 2, h - (i / gridCount) * h - 3);
+  }
+
+  // Draw events (kill markers fade over time)
+  var now = Date.now();
+  (mapState.events || []).forEach(function(ev) {
+    if (ev.x == null || ev.z == null) return;
+    var age = now - new Date(ev.ts).getTime();
+    if (age > 120000) return; // fade after 2 min
+    var alpha = Math.max(0.1, 1 - age / 120000);
+    var pos = worldToCanvas(ev.x, ev.z, mapState.worldSize);
+    if (ev.type === 'kill' || ev.type === 'death') {
+      // Skull glow
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(205,65,43,' + (alpha * 0.2) + ')';
+      ctx.fill();
+      // X marker with shadow
+      ctx.font = 'bold 16px Courier New';
+      ctx.fillStyle = 'rgba(0,0,0,' + alpha + ')';
+      ctx.fillText('\u2620', pos.x - 6, pos.y + 6);
+      ctx.fillStyle = 'rgba(205,65,43,' + alpha + ')';
+      ctx.fillText('\u2620', pos.x - 7, pos.y + 5);
+    }
+  });
+
+  // Draw players
+  (mapState.players || []).forEach(function(p) {
+    var pos = worldToCanvas(p.x, p.z, mapState.worldSize);
+
+    // Outer pulse glow
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(76,175,130,0.12)';
+    ctx.fill();
+
+    // Mid glow
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 7, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(76,175,130,0.25)';
+    ctx.fill();
+
+    // Player dot
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#4caf82';
+    ctx.fill();
+
+    // White core
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+    // Name label with shadow for readability on map
+    ctx.font = 'bold 10px Courier New';
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillText(p.name, pos.x + 9, pos.y + 4);
+    ctx.fillStyle = '#e0e0e0';
+    ctx.fillText(p.name, pos.x + 8, pos.y + 3);
+  });
+}
+
+function updateHUD() {
+  if (!mapState) return;
+  var count = (mapState.players || []).length;
+  document.getElementById('hudPlayers').textContent = count + ' PLAYER' + (count !== 1 ? 'S' : '');
+  document.getElementById('hudWorld').textContent = mapState.worldSize + ' MAP / SEED ' + mapState.seed;
+
+  // Player list
+  var listEl = document.getElementById('playerList');
+  if (!count) {
+    listEl.innerHTML = '<div style="color:var(--muted);font-style:italic;">No players online</div>';
+  } else {
+    listEl.innerHTML = mapState.players.map(function(p) {
+      return '<div class="player-entry"><span class="dot"></span>' + esc(p.name) + '</div>';
+    }).join('');
+  }
+
+  // Event feed
+  var feedEl = document.getElementById('eventFeed');
+  var events = (mapState.events || []).slice(-8).reverse();
+  feedEl.innerHTML = events.map(function(ev) {
+    var cls = 'event-line';
+    var text = '';
+    if (ev.type === 'kill') { cls += ' kill'; text = (ev.name || '?') + ' killed ' + (ev.victim || '?'); }
+    else if (ev.type === 'death') { cls += ' kill'; text = (ev.name || '?') + ' died'; }
+    else if (ev.type === 'chat') { cls += ' chat'; text = (ev.name || '?') + ': ' + (ev.message || ''); }
+    else { text = ev.type + ': ' + (ev.name || ''); }
+    return '<div class="' + cls + '">' + esc(text) + '</div>';
+  }).join('');
+}
+
+// Resize canvas to fill viewport
+function resizeCanvas() {
+  var size = Math.min(window.innerWidth, window.innerHeight) - 24;
+  canvas.width = size;
+  canvas.height = size;
+  if (mapState) renderRustMap();
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// Poll loop
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollRust();
+  pollTimer = setInterval(function() {
+    if (currentGame === 'rust') pollRust();
+  }, 3000);
+}
+startPolling();
+</script>
+</body>
+</html>

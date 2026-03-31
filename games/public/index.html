@@ -376,7 +376,7 @@
 <body>
 
 <nav>
-  <div class="nav-brand">MadLadsLab <span>// GAME SERVERS</span></div>
+  <div class="nav-brand">MadLadsLab <span>// GAME SERVERS</span> <span id="appVersion" style="color:var(--muted);font-size:0.6rem;opacity:0.6"></span></div>
   <div class="nav-right">
     <a href="/" style="color:var(--muted);font-size:0.75rem;text-decoration:none;border:1px solid var(--border);padding:5px 12px;border-radius:3px;">BROADCASTS</a>
     <a href="/suggest" style="color:var(--muted);font-size:0.75rem;text-decoration:none;border:1px solid var(--border);padding:5px 12px;border-radius:3px;">SUGGEST</a>
@@ -783,9 +783,9 @@ async function loadPlugins() {
   }
   list.innerHTML = plugins.map(p => `
     <div class="plugin-item">
-      <span class="plugin-name ${p.enabled ? 'enabled' : 'disabled'}">${p.name}</span>
+      <span class="plugin-name ${p.enabled ? 'enabled' : 'disabled'}">${esc(p.name)}</span>
       <label class="toggle">
-        <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="togglePlugin('${p.file}', this.checked)">
+        <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="togglePlugin('${esc(p.file).replace(/'/g, "\\'")}', this.checked)">
         <span class="toggle-track"></span>
       </label>
     </div>
@@ -806,8 +806,8 @@ function joinServer(el) {
     el.textContent = 'COPIED! LAUNCHING...';
     setTimeout(function() { el.textContent = 'JOIN SERVER'; }, 2500);
   });
-  // Open Steam
-  if (steamUrl) window.location.href = steamUrl;
+  // Open Steam (only allow steam:// protocol)
+  if (steamUrl && /^steam:\/\//i.test(steamUrl)) window.location.href = steamUrl;
   return false;
 }
 
@@ -922,9 +922,9 @@ async function loadValheimPlugins() {
   }
   list.innerHTML = plugins.map(p => `
     <div class="plugin-item">
-      <span class="plugin-name ${p.enabled ? 'enabled' : 'disabled'}">${p.name}</span>
+      <span class="plugin-name ${p.enabled ? 'enabled' : 'disabled'}">${esc(p.name)}</span>
       <label class="toggle">
-        <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="toggleValheimPlugin('${p.file}', this.checked)">
+        <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="toggleValheimPlugin('${esc(p.file).replace(/'/g, "\\'")}', this.checked)">
         <span class="toggle-track"></span>
       </label>
     </div>
@@ -1087,9 +1087,9 @@ async function loadL4D2Plugins() {
   }
   list.innerHTML = plugins.map(p => `
     <div class="plugin-item">
-      <span class="plugin-name ${p.enabled ? 'enabled' : 'disabled'}">${p.name}</span>
+      <span class="plugin-name ${p.enabled ? 'enabled' : 'disabled'}">${esc(p.name)}</span>
       <label class="toggle">
-        <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="toggleL4D2Plugin('${p.file}', this.checked)">
+        <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="toggleL4D2Plugin('${esc(p.file).replace(/'/g, "\\'")}', this.checked)">
         <span class="toggle-track"></span>
       </label>
     </div>
@@ -1157,9 +1157,9 @@ async function loadSdtdMods() {
   }
   list.innerHTML = mods.map(m => `
     <div class="plugin-item">
-      <span class="plugin-name ${m.enabled ? 'enabled' : 'disabled'}">${m.name}</span>
+      <span class="plugin-name ${m.enabled ? 'enabled' : 'disabled'}">${esc(m.name)}</span>
       <label class="toggle">
-        <input type="checkbox" ${m.enabled ? 'checked' : ''} onchange="toggleSdtdMod('${m.file}', this.checked)">
+        <input type="checkbox" ${m.enabled ? 'checked' : ''} onchange="toggleSdtdMod('${esc(m.file).replace(/'/g, "\\'")}', this.checked)">
         <span class="toggle-track"></span>
       </label>
     </div>
@@ -1230,7 +1230,7 @@ function renderEventItem(ev) {
   const time = new Date(ev.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const icon = EVENT_ICONS[ev.type] || '\u{2022}';
   const gameClass = GAME_CSS[ev.game] || 'rust';
-  const gameName = GAME_NAMES[ev.game] || ev.game;
+  const gameName = GAME_NAMES[ev.game] || esc(ev.game);
   let text = '';
 
   switch (ev.type) {
@@ -1253,7 +1253,7 @@ function renderEventItem(ev) {
       text = 'Server started';
       break;
     default:
-      text = ev.type;
+      text = esc(ev.type);
   }
 
   return '<div class="event-item">' +
@@ -1296,5 +1296,6 @@ setInterval(loadStats24h, 60000); // refresh 24h stats every minute
 </script>
 <script src="/static/js/socket.io.min.js" onload="connectStatsFeed()"></script>
 <script src="/static/js/maintenance.js"></script>
+<script>fetch('/api/version').then(r=>r.json()).then(d=>{document.getElementById('appVersion').textContent='v'+d.version}).catch(()=>{})</script>
 </body>
 </html>

@@ -1,0 +1,182 @@
+<%- include('../../admin/partials/head', { title: 'Ticket ' + ticket.ticketNumber + ' — Superadmin' }) %>
+<%- include('../../admin/partials/sidebar', { page: 'super-tickets', user }) %>
+
+<style>
+  .ticket-meta { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:16px; margin-bottom:24px; }
+  .ticket-meta-item label { display:block; margin-bottom:4px; }
+  .ticket-meta-item .val { font-size:0.92rem; font-weight:500; color:var(--dark); }
+  .reply-thread { margin-top:16px; }
+  .reply-item { padding:16px 0; border-bottom:1px solid var(--ivory); }
+  .reply-item:last-child { border-bottom:none; }
+  .reply-author { font-weight:600; font-size:0.85rem; color:var(--navy); }
+  .reply-time { font-size:0.72rem; color:var(--slate); margin-left:8px; }
+  .reply-body { margin-top:8px; font-size:0.9rem; line-height:1.6; white-space:pre-wrap; }
+  .debug-pre { background:var(--navy-deep); color:#a3e635; font-family:monospace; font-size:0.72rem; padding:12px; border-radius:2px; max-height:300px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  .debug-section { margin-bottom:12px; }
+  .debug-section-title { font-size:0.65rem; font-weight:600; letter-spacing:0.16em; text-transform:uppercase; color:var(--slate); margin-bottom:6px; cursor:pointer; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title"><%= ticket.ticketNumber %> — <%= ticket.subject %></div>
+  <div class="topbar-actions">
+    <a href="/admin/super/tickets" class="btn btn-ghost btn-sm">Back</a>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Actions -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+    <% if (ticket.status !== 'resolved' && ticket.status !== 'closed') { %>
+      <form method="POST" action="/admin/super/tickets/<%= tenantDbName %>/<%= ticket._id %>/resolve" style="display:inline;">
+        <button class="btn btn-sm btn-navy" onclick="return confirm('Resolve this escalated ticket?')">Resolve</button>
+      </form>
+      <form method="POST" action="/admin/super/tickets/<%= tenantDbName %>/<%= ticket._id %>/de-escalate" style="display:inline;">
+        <button class="btn btn-sm btn-ghost" onclick="return confirm('De-escalate and return to tenant admin?')">De-escalate</button>
+      </form>
+    <% } %>
+  </div>
+
+  <!-- Ticket Info -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="ticket-meta">
+      <div class="ticket-meta-item">
+        <label>Tenant</label>
+        <div class="val"><%= ticket.tenantBrandName || ticket.tenantDomain %></div>
+        <div style="font-size:0.72rem;color:var(--slate);"><%= ticket.tenantDomain %></div>
+      </div>
+      <div class="ticket-meta-item">
+        <label>Status</label>
+        <div>
+          <% const sc = { open: 'badge-prospect', 'in-progress': 'badge-featured', escalated: 'badge-inactive', resolved: 'badge-active', closed: 'badge-draft' }; %>
+          <span class="badge <%= sc[ticket.status] || 'badge-draft' %>"><%= ticket.status %></span>
+        </div>
+      </div>
+      <div class="ticket-meta-item">
+        <label>Priority</label>
+        <div>
+          <span class="badge <%= ticket.priority === 'critical' ? 'badge-inactive' : ticket.priority === 'high' ? 'badge-unpaid' : ticket.priority === 'low' ? 'badge-draft' : 'badge-prospect' %>"><%= ticket.priority %></span>
+        </div>
+      </div>
+      <div class="ticket-meta-item">
+        <label>Category</label>
+        <div class="val"><%= ticket.category %></div>
+      </div>
+      <div class="ticket-meta-item">
+        <label>Submitted By</label>
+        <div class="val"><%= ticket.submittedBy?.displayName || ticket.submittedBy?.email || 'Unknown' %></div>
+      </div>
+      <div class="ticket-meta-item">
+        <label>Escalated By</label>
+        <div class="val"><%= ticket.escalatedBy || 'N/A' %></div>
+      </div>
+    </div>
+
+    <% if (ticket.escalationNotes) { %>
+      <div style="background:rgba(185,28,28,0.06);border:1px solid rgba(185,28,28,0.2);border-radius:2px;padding:12px;margin-bottom:16px;">
+        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--danger);margin-bottom:4px;">Escalation Notes</div>
+        <div style="font-size:0.85rem;"><%= ticket.escalationNotes %></div>
+      </div>
+    <% } %>
+
+    <% if (ticket.description) { %>
+      <div style="font-size:0.92rem;line-height:1.7;white-space:pre-wrap;"><%= ticket.description %></div>
+    <% } %>
+
+    <% if (ticket.attachments?.length) { %>
+      <div style="margin-top:16px;">
+        <label>Attachments</label>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;">
+          <% for (const att of ticket.attachments) { %>
+            <a href="<%= att.url %>" target="_blank" style="display:block;text-decoration:none;">
+              <% if (att.type?.startsWith('image/')) { %>
+                <img src="<%= att.url %>" alt="<%= att.name %>" style="max-width:200px;max-height:150px;border:1px solid var(--ivory-mid);border-radius:2px;">
+              <% } else { %>
+                <div style="padding:10px 16px;background:var(--ivory);border:1px solid var(--ivory-mid);border-radius:2px;font-size:0.8rem;"><%= att.name %></div>
+              <% } %>
+            </a>
+          <% } %>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Debug Data -->
+  <% if (ticket.debugData) { %>
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title" style="display:flex;align-items:center;gap:8px;">
+        <span>&#128027;</span> Debug Data
+        <span style="font-size:0.72rem;color:var(--slate);font-weight:400;font-family:var(--font-body);">Captured <%= ticket.debugData.capturedAt ? new Date(ticket.debugData.capturedAt).toLocaleString() : '' %></span>
+      </div>
+
+      <div class="ticket-meta" style="margin-bottom:16px;">
+        <% if (ticket.debugData.currentUrl) { %>
+          <div class="ticket-meta-item"><label>URL</label><div class="val" style="font-size:0.8rem;word-break:break-all;"><%= ticket.debugData.currentUrl %></div></div>
+        <% } %>
+        <% if (ticket.debugData.userAgent) { %>
+          <div class="ticket-meta-item"><label>User Agent</label><div class="val" style="font-size:0.75rem;word-break:break-all;"><%= ticket.debugData.userAgent %></div></div>
+        <% } %>
+        <% if (ticket.debugData.screenSize) { %>
+          <div class="ticket-meta-item"><label>Screen</label><div class="val"><%= ticket.debugData.screenSize %></div></div>
+        <% } %>
+      </div>
+
+      <% if (ticket.debugData.consoleErrors?.length) { %>
+        <div class="debug-section">
+          <div class="debug-section-title" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Console Errors (<%= ticket.debugData.consoleErrors.length %>) &#9660;</div>
+          <div class="debug-pre" style="display:none;"><% for (const e of ticket.debugData.consoleErrors) { %><%= e %>
+<% } %></div>
+        </div>
+      <% } %>
+
+      <% if (ticket.debugData.tmuxLog) { %>
+        <div class="debug-section">
+          <div class="debug-section-title" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Tmux Log &#9660;</div>
+          <div class="debug-pre" style="display:none;"><%= ticket.debugData.tmuxLog %></div>
+        </div>
+      <% } %>
+
+      <% if (ticket.debugData.apacheErrorLog) { %>
+        <div class="debug-section">
+          <div class="debug-section-title" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Apache Error Log &#9660;</div>
+          <div class="debug-pre" style="display:none;"><%= ticket.debugData.apacheErrorLog %></div>
+        </div>
+      <% } %>
+    </div>
+  <% } %>
+
+  <!-- Reply Thread -->
+  <div class="card">
+    <div class="card-title">Replies (<%= ticket.replies?.length || 0 %>)</div>
+
+    <% if (ticket.replies?.length) { %>
+      <div class="reply-thread">
+        <% for (const r of ticket.replies) { %>
+          <div class="reply-item">
+            <span class="reply-author"><%= r.author?.displayName || r.author?.email || 'Unknown' %></span>
+            <span class="reply-time"><%= r.createdAt ? new Date(r.createdAt).toLocaleString() : '' %></span>
+            <% if (r.author?.type === 'superadmin') { %>
+              <span class="badge badge-inactive" style="margin-left:6px;font-size:0.55rem;">Platform</span>
+            <% } %>
+            <div class="reply-body"><%= r.body %></div>
+          </div>
+        <% } %>
+      </div>
+    <% } %>
+
+    <!-- Reply form (superadmin) -->
+    <% if (ticket.status !== 'closed') { %>
+      <form method="POST" action="/admin/super/tickets/<%= tenantDbName %>/<%= ticket._id %>/reply" style="margin-top:20px;padding-top:20px;border-top:1px solid var(--ivory);">
+        <div class="form-field" style="margin-bottom:12px;">
+          <label>Reply as Platform Support</label>
+          <textarea name="body" rows="4" required placeholder="Your reply to this tenant's ticket..."></textarea>
+        </div>
+        <button type="submit" class="btn btn-sm btn-navy">Send Reply</button>
+      </form>
+    <% } %>
+  </div>
+</div>
+
+</div><!-- main -->
+</div><!-- layout -->
+</body>
+</html>

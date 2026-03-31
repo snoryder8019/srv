@@ -16,14 +16,25 @@ const sfu = require('./lib/sfu');
 const provisioner = require('./lib/linode-provisioner');
 const playtime = require('./lib/playtime');
 const worldBackup = require('./lib/world-backup');
+const serverCam = require('./lib/server-cam');
 
 const app = express();
 const server = http.createServer(app);
-const io = new SocketIO(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
+const ALLOWED_ORIGINS = [
+  'https://games.madladslab.com',
+  'https://madladslab.com',
+  'https://www.madladslab.com',
+  'https://bih.madladslab.com',
+];
+const io = new SocketIO(server, { cors: { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST'], credentials: true } });
 app.set('io', io);
 const PORT = process.env.GAMES_PORT || 3500;
 const DB_URL = process.env.DB_URL;
-const SESSION_SECRET = process.env.SESHSEC || 'dev-secret';
+const SESSION_SECRET = process.env.SESHSEC;
+if (!SESSION_SECRET) {
+  console.error('[games] FATAL: SESHSEC environment variable is required');
+  process.exit(1);
+}
 
 // --- MongoDB ---
 let db;
@@ -35,6 +46,7 @@ client.connect().then(() => {
   provisioner.init(db);
   playtime.init(db);
   worldBackup.init(db);
+  serverCam.init();
   sfu.init().catch(e => console.error('[sfu] Init failed:', e.message));
   // Check for inactive provisioned servers every 10 minutes
   setInterval(() => provisioner.checkInactivity().catch(() => {}), 10 * 60 * 1000);
@@ -107,6 +119,7 @@ passport.deserializeUser(async (id, done) => {
 });
 
 // --- Middleware ---
+app.set('trust proxy', 1); // Trust Apache reverse proxy for secure cookies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -118,7 +131,7 @@ const sessionMiddleware = session({
     mongoUrl: DB_URL,
     collectionName: 'sessions',
   }),
-  cookie: { secure: false, httpOnly: true, sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 },
+  cookie: { secure: true, httpOnly: true, sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 },
 });
 app.use(sessionMiddleware);
 
@@ -138,6 +151,11 @@ app.use('/stats', require('./routes/stats'));
 app.use('/suggest', require('./routes/suggest'));
 app.use('/plugins', require('./routes/plugins'));
 app.use('/servers', require('./routes/servers'));
+
+// --- Server Camera (2D map overlay) ---
+app.get('/server-cam', (req, res) => res.sendFile('server-cam.html', { root: __dirname + '/public' }));
+app.get('/server-cam/status', (req, res) => res.json(serverCam.getCamStatus()));
+app.get('/server-cam/rust', (req, res) => res.json(serverCam.getRustMapState()));
 
 // --- Socket.IO (shared session for optional auth) ---
 io.engine.use(sessionMiddleware);
@@ -211,6 +229,7 @@ statsNs.on('connection', (socket) => {
 
 // Pipe stats collector events to Socket.IO
 statsCollector.emitter.on('event', (event) => {
+  serverCam.addEvent(event);
   const safeEvent = {
     game: event.game,
     type: event.type,
@@ -408,8 +427,10 @@ broadcastNs.on('connection', (socket) => {
   // ── Mediasoup SFU signaling ──
   // Broadcaster: get router capabilities → create send transport → produce
   // Viewer: get router capabilities → create recv transport → consume
+  // All SFU events require authentication to prevent anonymous resource abuse
 
   socket.on('sfu:getCapabilities', async (code, cb) => {
+    if (!uid) return typeof cb === 'function' && cb({ error: 'Login required' });
     try {
       await sfu.createRoom(code);
       const caps = sfu.getRouterCapabilities(code);
@@ -420,6 +441,10 @@ broadcastNs.on('connection', (socket) => {
   });
 
   socket.on('sfu:createSendTransport', async (code, cb) => {
+    if (!uid) return typeof cb === 'function' && cb({ error: 'Login required' });
+    // Only the broadcast host can create a send transport
+    const b = broadcasts.getBroadcast(code);
+    if (!b || b.host.id !== uid) return typeof cb === 'function' && cb({ error: 'Not authorized' });
     try {
       const tData = await sfu.setupBroadcaster(code);
       if (typeof cb === 'function') cb({ ok: true, transport: tData });
@@ -429,6 +454,7 @@ broadcastNs.on('connection', (socket) => {
   });
 
   socket.on('sfu:connectTransport', async (data, cb) => {
+    if (!uid) return typeof cb === 'function' && cb({ error: 'Login required' });
     try {
       await sfu.connectTransport(data.code, data.transportId, data.dtlsParameters, data.role);
       if (typeof cb === 'function') cb({ ok: true });
@@ -438,6 +464,10 @@ broadcastNs.on('connection', (socket) => {
   });
 
   socket.on('sfu:produce', async (data, cb) => {
+    if (!uid) return typeof cb === 'function' && cb({ error: 'Login required' });
+    // Only broadcast host can produce
+    const b = broadcasts.getBroadcast(data.code);
+    if (!b || b.host.id !== uid) return typeof cb === 'function' && cb({ error: 'Not authorized' });
     try {
       const result = await sfu.produce(data.code, data.transportId, data.kind, data.rtpParameters);
       if (typeof cb === 'function') cb({ ok: true, id: result.id });
@@ -449,6 +479,7 @@ broadcastNs.on('connection', (socket) => {
   });
 
   socket.on('sfu:createRecvTransport', async (code, cb) => {
+    if (!uid) return typeof cb === 'function' && cb({ error: 'Login required' });
     try {
       const tData = await sfu.setupViewer(code, socket.id);
       if (typeof cb === 'function') cb({ ok: true, transport: tData });
@@ -458,6 +489,7 @@ broadcastNs.on('connection', (socket) => {
   });
 
   socket.on('sfu:consume', async (data, cb) => {
+    if (!uid) return typeof cb === 'function' && cb({ error: 'Login required' });
     try {
       const consumers = await sfu.consume(data.code, socket.id, data.rtpCapabilities);
       if (typeof cb === 'function') cb({ ok: true, consumers: consumers });

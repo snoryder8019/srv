@@ -1,0 +1,70 @@
+<%- include('../../admin/partials/head', { title: 'Escalated Tickets — Superadmin' }) %>
+<%- include('../../admin/partials/sidebar', { page: 'super-tickets', user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Escalated Tickets</div>
+  <div class="topbar-actions">
+    <span style="font-size:13px;color:var(--slate);">
+      <%= stats.active %> active · <%= stats.resolved %> resolved · <%= stats.closed %> closed
+    </span>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Filters -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+    <a href="/admin/super/tickets" class="btn btn-sm <%= !filters.status ? 'btn-navy' : 'btn-ghost' %>">Active</a>
+    <a href="/admin/super/tickets?status=escalated" class="btn btn-sm <%= filters.status === 'escalated' ? 'btn-navy' : 'btn-ghost' %>">Escalated</a>
+    <a href="/admin/super/tickets?status=resolved" class="btn btn-sm <%= filters.status === 'resolved' ? 'btn-navy' : 'btn-ghost' %>">Resolved</a>
+    <a href="/admin/super/tickets?status=closed" class="btn btn-sm <%= filters.status === 'closed' ? 'btn-navy' : 'btn-ghost' %>">Closed</a>
+  </div>
+
+  <% if (!tickets.length) { %>
+    <div class="card" style="text-align:center;padding:48px;">
+      <div style="font-size:2rem;margin-bottom:12px;opacity:0.3;">&#9873;</div>
+      <div style="font-size:0.9rem;color:var(--slate);">No escalated tickets.</div>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Subject</th>
+            <th>Tenant</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Escalated By</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const t of tickets) { %>
+            <tr style="cursor:pointer;" onclick="window.location='/admin/super/tickets/<%= t.tenantDbName %>/<%= t.ticketId %>'">
+              <td style="font-family:monospace;font-size:0.78rem;color:var(--slate);"><%= t.ticketNumber %></td>
+              <td><strong><%= t.subject %></strong></td>
+              <td>
+                <div style="font-size:0.85rem;font-weight:500;"><%= t.tenantBrandName || t.tenantDomain %></div>
+                <div style="font-size:0.72rem;color:var(--slate);"><%= t.tenantDomain %></div>
+              </td>
+              <td>
+                <span class="badge <%= t.priority === 'critical' ? 'badge-inactive' : t.priority === 'high' ? 'badge-unpaid' : t.priority === 'low' ? 'badge-draft' : 'badge-prospect' %>"><%= t.priority %></span>
+              </td>
+              <td>
+                <% const sc = { escalated: 'badge-inactive', resolved: 'badge-active', closed: 'badge-draft' }; %>
+                <span class="badge <%= sc[t.status] || 'badge-draft' %>"><%= t.status %></span>
+              </td>
+              <td style="font-size:0.82rem;"><%= t.escalatedBy %></td>
+              <td style="font-size:0.78rem;color:var(--slate);white-space:nowrap;"><%= t.escalatedAt ? new Date(t.escalatedAt).toLocaleDateString() : '' %></td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+</div><!-- main -->
+</div><!-- layout -->
+</body>
+</html>

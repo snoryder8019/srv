@@ -12,6 +12,14 @@ export function hexToRgb(hex) {
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
+/** Mix two hex colors: mixHex('#000', '#FFF', 0.5) → '#808080' */
+export function mixHex(hex1, hex2, weight = 0.5) {
+  const a = hexToRgb(hex1), b = hexToRgb(hex2);
+  const mix = (c1, c2) => Math.round(c1 * weight + c2 * (1 - weight));
+  const r = mix(a.r, b.r), g = mix(a.g, b.g), bl = mix(a.b, b.b);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1).toUpperCase();
+}
+
 /** WCAG 2.1 relative luminance (0 = black, 1 = white) */
 export function relativeLuminance(hex) {
   const { r, g, b } = hexToRgb(hex);
@@ -58,11 +66,14 @@ export function enrichDesignContrast(design) {
     d._on_accent_light = readableTextColor(d.color_accent_light);
     d._on_bg           = readableTextColor(d.color_bg);
     d._on_white        = readableTextColor('#FDFCFA');  // page bg is always near-white
+    // Muted secondary text: 55% text color mixed with the background
+    d._on_bg_muted     = mixHex(d._on_bg, d.color_bg, 0.6);
 
     // Contrast checks for common pairings
     d._contrast = {
       text_on_page:       wcagAA(d.color_primary_deep, '#FDFCFA'),
       text_on_bg:         wcagAA(d._on_bg, d.color_bg),
+      muted_on_bg:        wcagAA(d._on_bg_muted, d.color_bg),
       accent_on_bg:       wcagAA(d.color_accent, d.color_bg),
       primary_on_bg:      wcagAA(d.color_primary, d.color_bg),
       text_on_primary:    wcagAA(d._on_primary, d.color_primary),
@@ -73,6 +84,7 @@ export function enrichDesignContrast(design) {
     // If any color is malformed, fall back to safe defaults
     d._on_primary = d._on_primary_deep = d._on_primary_mid = '#FDFCFA';
     d._on_accent = d._on_accent_light = d._on_bg = '#0F1B30';
+    d._on_bg_muted = '#6B7380';
     d._contrast = {};
   }
   return d;
