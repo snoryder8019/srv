@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MadLadsLab — Plugin Control Center</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0d0d; --surface: #111; --card: #1a1a1a; --border: #2a2a2a;
+      --accent: #cd412b; --green: #4caf82; --yellow: #e6b800; --text: #e0e0e0; --muted: #555;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; min-height: 100vh; }
+
+    nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 50px; }
+    .nav-brand { color: var(--accent); font-size: 0.9rem; font-weight: bold; letter-spacing: 0.06em; }
+    .nav-brand span { color: var(--muted); font-size: 0.65rem; margin-left: 8px; }
+    .nav-right { display: flex; gap: 8px; align-items: center; }
+    .nav-btn { color: var(--muted); font-family: inherit; font-size: 0.68rem; border: 1px solid var(--border); padding: 4px 12px; border-radius: 3px; text-decoration: none; transition: all 0.2s; background: none; cursor: pointer; }
+    .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .nav-btn.active { border-color: var(--accent); color: var(--accent); }
+    .nav-btn.yellow { border-color: var(--yellow); color: var(--yellow); }
+
+    .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px; }
+    .page-title { font-size: 1rem; color: var(--accent); letter-spacing: 0.06em; margin-bottom: 4px; }
+    .page-sub { font-size: 0.68rem; color: var(--muted); margin-bottom: 24px; }
+
+    /* Game filter tabs */
+    .game-tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+    .game-tab { background: var(--card); border: 1px solid var(--border); color: var(--muted); font-family: inherit; font-size: 0.68rem; font-weight: bold; padding: 6px 14px; border-radius: 3px; cursor: pointer; letter-spacing: 0.06em; transition: all 0.15s; }
+    .game-tab:hover { border-color: var(--accent); color: var(--text); }
+    .game-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(205,65,43,0.08); }
+
+    /* Sections */
+    .section { margin-bottom: 32px; }
+    .section-title { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .section-count { font-size: 0.6rem; color: var(--muted); background: var(--card); padding: 1px 7px; border-radius: 2px; }
+
+    /* Plugin cards */
+    .plugin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .plugin-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; transition: border-color 0.2s; }
+    .plugin-card:hover { border-color: #444; }
+    .plugin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .plugin-name { font-size: 0.85rem; font-weight: bold; }
+    .plugin-badge { font-size: 0.5rem; font-weight: bold; padding: 2px 7px; border-radius: 2px; letter-spacing: 0.08em; }
+    .badge-approved { background: rgba(76,175,130,0.15); color: var(--green); border: 1px solid rgba(76,175,130,0.3); }
+    .badge-pending { background: rgba(230,184,0,0.1); color: var(--yellow); border: 1px solid rgba(230,184,0,0.2); }
+    .badge-installed { background: rgba(205,65,43,0.1); color: var(--accent); border: 1px solid rgba(205,65,43,0.2); }
+    .plugin-desc { font-size: 0.7rem; color: var(--muted); margin-bottom: 10px; line-height: 1.4; }
+    .plugin-meta { font-size: 0.58rem; color: var(--muted); margin-bottom: 10px; }
+    .plugin-meta span { margin-right: 12px; }
+    .plugin-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+    .p-btn { font-family: inherit; font-size: 0.62rem; font-weight: bold; padding: 4px 10px; border-radius: 3px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--muted); transition: all 0.15s; letter-spacing: 0.04em; }
+    .p-btn:hover { border-color: var(--green); color: var(--green); }
+    .p-btn.danger:hover { border-color: var(--accent); color: var(--accent); }
+    .p-btn.primary { border-color: var(--green); color: var(--green); }
+    .p-btn.yellow { border-color: var(--yellow); color: var(--yellow); }
+
+    /* Upload panel */
+    .upload-panel { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 20px; margin-bottom: 24px; }
+    .upload-title { font-size: 0.72rem; color: var(--accent); margin-bottom: 12px; letter-spacing: 0.06em; }
+    .upload-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+    .upload-field { display: flex; flex-direction: column; gap: 4px; }
+    .upload-field label { font-size: 0.55rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .upload-field input, .upload-field select, .upload-field textarea {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      font-family: inherit; font-size: 0.75rem; padding: 7px 10px; border-radius: 3px; outline: none;
+    }
+    .upload-field input:focus, .upload-field select:focus { border-color: var(--accent); }
+    .upload-field input[type="file"] { font-size: 0.65rem; }
+    .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--text); cursor: pointer; }
+
+    /* Installed section */
+    .installed-list { display: flex; flex-direction: column; gap: 4px; }
+    .installed-item { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; font-size: 0.78rem; }
+    .installed-name { flex: 1; }
+    .installed-name.disabled { color: var(--muted); text-decoration: line-through; }
+    .installed-framework { font-size: 0.55rem; color: var(--yellow); margin-left: 8px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .empty { color: var(--muted); font-size: 0.75rem; padding: 16px 0; font-style: italic; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: var(--card); border: 1px solid var(--green); color: var(--text); font-family: inherit; font-size: 0.75rem; padding: 10px 18px; border-radius: 4px; z-index: 600; display: none; }
+
+    @media (max-width: 600px) { .plugin-grid { grid-template-columns: 1fr; } .upload-row { flex-direction: column; } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div><span class="nav-brand">MADLADSLAB</span><span class="nav-brand"> <span>PLUGIN CENTER</span></span></div>
+  <div class="nav-right">
+    <a href="/dashboard" class="nav-btn">DASHBOARD</a>
+    <a href="/admin" class="nav-btn yellow" id="adminLink" style="display:none">ADMIN</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="page-title">PLUGIN CONTROL CENTER</div>
+  <div class="page-sub" id="pageSub">Manage and install game server plugins</div>
+
+  <!-- Game filter tabs -->
+  <div class="game-tabs">
+    <button class="game-tab active" onclick="filterGame(null, this)">ALL</button>
+    <button class="game-tab" onclick="filterGame('rust', this)">RUST (Carbon)</button>
+    <button class="game-tab" onclick="filterGame('valheim', this)">VALHEIM</button>
+    <button class="game-tab" onclick="filterGame('l4d2', this)">L4D2</button>
+    <button class="game-tab" onclick="filterGame('7dtd', this)">7DTD</button>
+  </div>
+
+  <!-- Upload panel (superadmin only) -->
+  <div class="upload-panel" id="uploadPanel" style="display:none">
+    <div class="upload-title">UPLOAD PLUGIN TO LIBRARY</div>
+    <div class="upload-row">
+      <div class="upload-field">
+        <label>Game</label>
+        <select id="uploadGame">
+          <option value="rust">Rust (.cs)</option>
+          <option value="valheim">Valheim (.dll)</option>
+          <option value="l4d2">L4D2 (.smx)</option>
+          <option value="7dtd">7DTD (folder)</option>
+        </select>
+      </div>
+      <div class="upload-field" style="flex:1">
+        <label>Plugin File</label>
+        <input type="file" id="uploadFile">
+      </div>
+    </div>
+    <div class="upload-row">
+      <div class="upload-field" style="flex:1">
+        <label>Description</label>
+        <input type="text" id="uploadDesc" placeholder="Brief description of what this plugin does" style="width:100%">
+      </div>
+    </div>
+    <div class="upload-row" style="justify-content:space-between;align-items:center;">
+      <label class="checkbox-label"><input type="checkbox" id="uploadApproved" checked> Pre-approve for subscribers</label>
+      <button class="p-btn primary" onclick="uploadPlugin()">UPLOAD</button>
+    </div>
+  </div>
+
+  <!-- Plugin Library -->
+  <div class="section">
+    <div class="section-title">PLUGIN LIBRARY <span class="section-count" id="libCount">0</span></div>
+    <div class="plugin-grid" id="pluginGrid"></div>
+  </div>
+
+  <!-- Installed on Server -->
+  <div class="section">
+    <div class="section-title">INSTALLED ON SERVER <span class="section-count" id="installedCount">0</span></div>
+    <div id="installedList" class="installed-list"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var me = null;
+var isSA = false;
+var currentGame = null;
+var libraryData = [];
+
+var GAME_NAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7DTD' };
+
+async function init() {
+  try {
+    var r = await fetch('/broadcasts/api/me');
+    me = await r.json();
+    if (!me.authed) return window.location.href = '/login?next=/plugins';
+    isSA = me.role === 'superadmin';
+    if (isSA) {
+      document.getElementById('uploadPanel').style.display = '';
+      document.getElementById('pageSub').textContent = 'Upload, approve, and manage plugins across all game servers';
+    } else {
+      document.getElementById('pageSub').textContent = 'Browse and install approved plugins to game servers';
+    }
+    if (me.role === 'superadmin' || me.role === 'admin') {
+      document.getElementById('adminLink').style.display = '';
+    }
+  } catch (e) { return window.location.href = '/login?next=/plugins'; }
+
+  loadLibrary();
+  loadInstalled();
+}
+
+function filterGame(game, btn) {
+  currentGame = game;
+  document.querySelectorAll('.game-tab').forEach(function(t) { t.classList.remove('active'); });
+  btn.classList.add('active');
+  renderLibrary();
+  loadInstalled();
+}
+
+async function loadLibrary() {
+  try {
+    var r = await fetch('/plugins/api/library');
+    var data = await r.json();
+    libraryData = data.plugins || [];
+    renderLibrary();
+  } catch (e) {}
+}
+
+function renderLibrary() {
+  var grid = document.getElementById('pluginGrid');
+  var filtered = currentGame
+    ? libraryData.filter(function(p) { return p.game === currentGame; })
+    : libraryData;
+
+  document.getElementById('libCount').textContent = filtered.length;
+
+  if (!filtered.length) {
+    grid.innerHTML = '<div class="empty">No plugins in library' + (currentGame ? ' for ' + (GAME_NAMES[currentGame] || currentGame) : '') + '</div>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map(function(p) {
+    var badges = '';
+    if (p.approved) badges += '<span class="plugin-badge badge-approved">APPROVED</span> ';
+    else badges += '<span class="plugin-badge badge-pending">PENDING</span> ';
+
+    var sizeKB = Math.round((p.fileSize || 0) / 1024);
+    var gameName = GAME_NAMES[p.game] || p.game;
+    var date = new Date(p.uploadedAt).toLocaleDateString();
+
+    var actions = '';
+    // Install button (subscribers: approved only, SA: any)
+    if (isSA || p.approved) {
+      actions += '<button class="p-btn primary" onclick="installPlugin(\'' + p._id + '\')">INSTALL</button>';
+    }
+    if (isSA) {
+      if (!p.approved) actions += '<button class="p-btn yellow" onclick="approvePlugin(\'' + p._id + '\', true)">APPROVE</button>';
+      else actions += '<button class="p-btn" onclick="approvePlugin(\'' + p._id + '\', false)">REVOKE</button>';
+      actions += '<button class="p-btn danger" onclick="deletePlugin(\'' + p._id + '\')">DELETE</button>';
+    }
+
+    return '<div class="plugin-card">' +
+      '<div class="plugin-header">' +
+        '<span class="plugin-name">' + esc(p.name) + '</span>' + badges +
+      '</div>' +
+      '<div class="plugin-desc">' + esc(p.description || 'No description') + '</div>' +
+      '<div class="plugin-meta">' +
+        '<span>' + gameName + '</span>' +
+        '<span>' + sizeKB + ' KB</span>' +
+        '<span>' + p.installs + ' installs</span>' +
+        '<span>' + date + '</span>' +
+      '</div>' +
+      '<div class="plugin-actions">' + actions + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function loadInstalled() {
+  var games = currentGame ? [currentGame] : ['rust', 'valheim', 'l4d2', '7dtd'];
+  var list = document.getElementById('installedList');
+  var allPlugins = [];
+
+  for (var i = 0; i < games.length; i++) {
+    try {
+      var r = await fetch('/plugins/api/installed/' + games[i]);
+      var data = await r.json();
+      (data.plugins || []).forEach(function(p) {
+        p._game = games[i];
+        p._framework = data.framework || games[i];
+        allPlugins.push(p);
+      });
+    } catch (e) {}
+  }
+
+  document.getElementById('installedCount').textContent = allPlugins.length;
+
+  if (!allPlugins.length) {
+    list.innerHTML = '<div class="empty">No plugins installed' + (currentGame ? ' for ' + (GAME_NAMES[currentGame] || currentGame) : '') + '</div>';
+    return;
+  }
+
+  list.innerHTML = allPlugins.map(function(p) {
+    var gameName = GAME_NAMES[p._game] || p._game;
+    var fwBadge = p._framework !== p._game ? '<span class="installed-framework">' + p._framework + '</span>' : '';
+    return '<div class="installed-item">' +
+      '<span class="installed-name ' + (p.enabled ? '' : 'disabled') + '">' +
+        esc(p.name) + fwBadge +
+      '</span>' +
+      '<span style="color:var(--muted);font-size:0.6rem;margin-right:10px">' + gameName + '</span>' +
+      '<span style="color:' + (p.enabled ? 'var(--green)' : 'var(--muted)') + ';font-size:0.6rem;margin-right:8px">' + (p.enabled ? 'ON' : 'OFF') + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+async function uploadPlugin() {
+  var fileInput = document.getElementById('uploadFile');
+  var game = document.getElementById('uploadGame').value;
+  var desc = document.getElementById('uploadDesc').value;
+  var approved = document.getElementById('uploadApproved').checked;
+
+  if (!fileInput.files.length) return toast('Select a file', false);
+  var file = fileInput.files[0];
+  if (file.size > 2 * 1024 * 1024) return toast('File too large (max 2MB)', false);
+
+  var buf = await file.arrayBuffer();
+  try {
+    var r = await fetch('/plugins/api/upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-Game': game,
+        'X-Filename': file.name,
+        'X-Description': desc,
+        'X-Approved': approved ? 'true' : 'false',
+      },
+      body: buf,
+    });
+    var d = await r.json();
+    if (d.ok) {
+      toast(d.name + ' uploaded');
+      fileInput.value = '';
+      document.getElementById('uploadDesc').value = '';
+      loadLibrary();
+    } else toast(d.error || 'Upload failed', false);
+  } catch (e) { toast('Upload failed', false); }
+}
+
+async function installPlugin(id) {
+  try {
+    var r = await fetch('/plugins/api/' + id + '/install', { method: 'POST' });
+    var d = await r.json();
+    if (d.ok) { toast(d.message); loadInstalled(); loadLibrary(); }
+    else toast(d.error || 'Install failed', false);
+  } catch (e) { toast('Install failed', false); }
+}
+
+async function approvePlugin(id, approve) {
+  try {
+    var r = await fetch('/plugins/api/' + id + '/approve', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved: approve }),
+    });
+    var d = await r.json();
+    if (d.ok) { toast(approve ? 'Approved' : 'Approval revoked'); loadLibrary(); }
+    else toast(d.error, false);
+  } catch (e) { toast('Failed', false); }
+}
+
+async function deletePlugin(id) {
+  if (!confirm('Delete this plugin from the library?')) return;
+  try {
+    var r = await fetch('/plugins/api/' + id, { method: 'DELETE' });
+    var d = await r.json();
+    if (d.ok) { toast('Deleted'); loadLibrary(); }
+    else toast(d.error, false);
+  } catch (e) { toast('Failed', false); }
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function toast(msg, ok) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = (ok === false) ? 'var(--accent)' : 'var(--green)';
+  t.style.display = 'block';
+  setTimeout(function() { t.style.display = 'none'; }, 3000);
+}
+
+init();
+</script>
+</body>
+</html>

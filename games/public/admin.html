@@ -18,7 +18,8 @@
     .nav-links { display: flex; gap: 16px; align-items: center; }
     .nav-links a { color: var(--muted); font-size: 0.8rem; text-decoration: none; }
     .nav-links a:hover { color: var(--text); }
-    .layout { display: flex; height: calc(100vh - 52px); }
+    .layout { display: flex; height: calc(100vh - 52px); flex-direction: column; }
+    .layout-top { display: flex; flex: 1; overflow: hidden; }
     .sidebar { width: 200px; background: var(--surface); border-right: 1px solid var(--border); padding: 16px 0; flex-shrink: 0; }
     .sidebar-section { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.1em; padding: 8px 16px 4px; }
     .sidebar-item { display: block; padding: 8px 16px; font-size: 0.82rem; color: var(--muted); cursor: pointer; border-left: 2px solid transparent; transition: all 0.15s; }
@@ -48,6 +49,14 @@
     tr:hover td { background: rgba(255,255,255,0.02); }
     .tag { display: inline-block; background: #222; border: 1px solid var(--border); border-radius: 2px; padding: 1px 6px; font-size: 0.7rem; color: var(--muted); margin: 1px; }
     .tag-admin { border-color: var(--accent); color: var(--accent); }
+    .tag-sa { border-color: var(--accent); color: var(--accent); background: rgba(205,65,43,0.15); }
+    .tag-broadcaster { border-color: #9c27b0; color: #ce93d8; }
+    .tag-player { border-color: var(--green); color: var(--green); }
+    .tag-lifetime { border-color: var(--yellow); color: var(--yellow); background: rgba(230,184,0,0.1); }
+    .tag-free { border-color: var(--border); color: var(--muted); }
+    .field-row { display: flex; gap: 12px; }
+    .field-row .field { flex: 1; }
+    select.full { width: 100%; }
     input[type="text"], select { background: #111; border: 1px solid var(--border); color: var(--text); font-family: inherit; font-size: 0.82rem; padding: 5px 10px; border-radius: 3px; outline: none; }
     input[type="text"]:focus, select:focus { border-color: var(--accent); }
     .toast { position: fixed; bottom: 20px; right: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 10px 16px; font-size: 0.82rem; display: none; z-index: 999; }
@@ -65,6 +74,142 @@
     .st-in-progress { background: #2a2a1a; color: var(--yellow); }
     .st-closed { background: #1e1e1e; color: var(--muted); }
     .loading { color: var(--muted); font-size: 0.82rem; padding: 20px 0; }
+
+    /* Config Editor */
+    .config-panel {
+      background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+      margin-top: 16px; overflow: hidden; display: none;
+    }
+    .config-panel.open { display: block; }
+    .config-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-bottom: 1px solid var(--border); background: #111;
+    }
+    .config-header-title { font-size: 0.72rem; color: var(--yellow); font-weight: bold; }
+    .config-file-list { display: flex; gap: 4px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    .config-file-btn {
+      font-family: inherit; font-size: 0.62rem; padding: 4px 10px; border-radius: 3px;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .config-file-btn:hover { border-color: var(--yellow); color: var(--yellow); }
+    .config-file-btn.active { border-color: var(--yellow); color: var(--yellow); background: rgba(230,184,0,0.08); }
+    .config-editor {
+      width: 100%; min-height: 300px; max-height: 500px; background: #080808;
+      border: none; color: #aaa; font-family: 'Courier New', monospace;
+      font-size: 0.72rem; padding: 12px 14px; resize: vertical; outline: none;
+      line-height: 1.5;
+    }
+    .config-footer {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 14px; border-top: 1px solid var(--border);
+    }
+    .config-status { font-size: 0.62rem; color: var(--muted); }
+
+    /* RCON Floating Window */
+    .rcon-window {
+      position: fixed; z-index: 300;
+      top: 80px; left: calc(50% - 300px);
+      width: 600px; min-width: 340px;
+      background: #0a0a0a; border: 1px solid var(--accent);
+      border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+      display: flex; flex-direction: column; overflow: hidden;
+      resize: both; max-width: 95vw; max-height: 80vh;
+    }
+    .rcon-titlebar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; background: #111; border-bottom: 1px solid #222;
+      cursor: grab; user-select: none; flex-shrink: 0;
+    }
+    .rcon-titlebar:active { cursor: grabbing; }
+    .rcon-titlebar-left { display: flex; align-items: center; gap: 8px; }
+    .rcon-titlebar-right { display: flex; align-items: center; gap: 4px; }
+    .rcon-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .rcon-dot.red { background: #e53935; }
+    .rcon-dot.yellow { background: #e6b800; }
+    .rcon-dot.green { background: #4caf82; }
+    .rcon-title { font-size: 0.68rem; color: var(--accent); font-weight: bold; letter-spacing: 0.06em; }
+    .rcon-game-select {
+      background: #0a0a0a; border: 1px solid #2a2a2a; color: var(--yellow);
+      font-family: inherit; font-size: 0.6rem; padding: 2px 6px; border-radius: 3px;
+    }
+    .rcon-win-btn {
+      background: none; border: 1px solid #2a2a2a; color: var(--muted);
+      font-size: 0.72rem; width: 24px; height: 20px; border-radius: 3px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s; font-family: inherit;
+    }
+    .rcon-win-btn:hover { border-color: var(--text); color: var(--text); }
+    .rcon-win-btn.close:hover { border-color: #e53935; color: #e53935; }
+    .rcon-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .rcon-output {
+      flex: 1; overflow-y: auto; padding: 10px 14px;
+      font-size: 0.7rem; color: #777; white-space: pre-wrap;
+      min-height: 160px; line-height: 1.5;
+    }
+    .rcon-input-row {
+      display: flex; align-items: center; gap: 0;
+      border-top: 1px solid #1a1a1a; background: #0e0e0e;
+    }
+    .rcon-prompt { color: var(--green); font-size: 0.78rem; padding: 0 4px 0 12px; font-weight: bold; }
+    .rcon-input {
+      flex: 1; background: transparent; border: none; color: var(--text);
+      font-family: inherit; font-size: 0.75rem; padding: 10px 8px; outline: none;
+    }
+    .rcon-send-btn {
+      background: var(--green); color: #0a0a0a; border: none; font-family: inherit;
+      font-size: 0.65rem; font-weight: bold; padding: 10px 14px; cursor: pointer;
+      letter-spacing: 0.04em;
+    }
+    .rcon-send-btn:hover { background: #5cc892; }
+
+    /* Minimized tab */
+    .rcon-min-tab {
+      position: fixed; bottom: 0; right: 20px; z-index: 300;
+      background: #111; border: 1px solid var(--accent); border-bottom: none;
+      border-radius: 6px 6px 0 0; padding: 6px 16px;
+      font-size: 0.65rem; font-weight: bold; color: var(--accent);
+      letter-spacing: 0.06em; cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      box-shadow: 0 -4px 16px rgba(0,0,0,0.4);
+      transition: all 0.15s;
+    }
+    .rcon-min-tab:hover { background: #1a1a1a; }
+
+    /* Log Viewer */
+    .log-panel {
+      border-top: 1px solid var(--border); background: #080808;
+      display: flex; flex-direction: column; height: 0; transition: height 0.2s;
+      flex-shrink: 0; overflow: hidden;
+    }
+    .log-panel.open { height: 260px; }
+    .log-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 14px; background: #0e0e0e; border-bottom: 1px solid #1a1a1a;
+      flex-shrink: 0; cursor: pointer;
+    }
+    .log-header:hover { background: #121212; }
+    .log-header-left { display: flex; align-items: center; gap: 10px; }
+    .log-title { font-size: 0.62rem; color: var(--green); text-transform: uppercase; letter-spacing: 0.1em; font-weight: bold; }
+    .log-game-tabs { display: flex; gap: 3px; }
+    .log-game-tab {
+      font-family: inherit; font-size: 0.55rem; padding: 2px 8px; border-radius: 2px;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .log-game-tab:hover { border-color: var(--green); color: var(--green); }
+    .log-game-tab.active { border-color: var(--green); color: var(--green); background: rgba(76,175,130,0.1); }
+    .log-toggle { font-family: inherit; font-size: 0.65rem; background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px 6px; }
+    .log-output {
+      flex: 1; overflow-y: auto; padding: 8px 14px;
+      font-size: 0.68rem; line-height: 1.5; color: #888;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    .log-output .log-line { }
+    .log-output .log-line:hover { background: rgba(255,255,255,0.02); }
+    .log-output .log-err { color: #e57373; }
+    .log-output .log-warn { color: #e6b800; }
+    .log-output .log-info { color: #4caf82; }
   </style>
 </head>
 <body>
@@ -72,16 +217,24 @@
 <nav>
   <div class="nav-brand">MadLadsLab <span>Admin</span></div>
   <div class="nav-links">
-    <a href="/">Portal</a>
+    <a href="/dashboard">Dashboard</a>
+    <button class="btn sa-only" style="padding:4px 10px;border-color:var(--accent);color:var(--accent)" onclick="openRcon()">CONSOLE</button>
+    <button class="btn sa-only" style="padding:4px 10px;border-color:var(--green);color:var(--green)" onclick="toggleLogPanel()">LOGS</button>
     <form method="POST" action="/logout" style="margin:0"><button class="btn" style="padding:4px 10px">Logout</button></form>
   </div>
 </nav>
 
 <div class="layout">
+ <div class="layout-top">
   <div class="sidebar">
     <div class="sidebar-section">GAMES</div>
     <div class="sidebar-item active" onclick="show('servers')">Server Control</div>
+    <div class="sidebar-item" onclick="show('plugins')">Plugin Center</div>
     <div class="sidebar-item" onclick="show('gusers')">Users</div>
+    <div class="sidebar-section sa-only">INFRASTRUCTURE</div>
+    <div class="sidebar-item sa-only" onclick="show('provisioner')">Server Provisioner</div>
+    <div class="sidebar-section sa-only">SYSTEM</div>
+    <div class="sidebar-item sa-only" onclick="show('maintenance')">Maintenance</div>
     <div class="sidebar-section">BIH</div>
     <div class="sidebar-item" onclick="show('busers')">Users</div>
     <div class="sidebar-item" onclick="show('tickets')">Tickets</div>
@@ -92,20 +245,7 @@
     <!-- Game Server Control -->
     <div class="panel active" id="panel-servers">
       <h2>Game Server Control</h2>
-      <div class="server-grid" id="server-grid">
-        <% ;['rust','valheim','l4d2','7dtd'].forEach(g => { %>
-        <div class="card" id="sc-GAME">
-          <div class="card-title">GAME</div>
-          <div class="badge badge-load" id="badge-GAME">LOADING...</div>
-          <div class="card-info" id="info-GAME">—</div>
-          <div class="btn-row">
-            <button class="btn btn-green" onclick="serverAction('GAME','start')">Start</button>
-            <button class="btn btn-red" onclick="serverAction('GAME','stop')">Stop</button>
-            <button class="btn btn-yellow" onclick="serverAction('GAME','restart')">Restart</button>
-          </div>
-        </div>
-        <% }) %>
-      </div>
+      <div class="server-grid" id="server-grid"></div>
     </div>
 
     <!-- Games Users -->
@@ -113,8 +253,8 @@
       <h2>Games Users</h2>
       <div class="search-bar"><input type="text" id="guser-search" placeholder="Search email or name..." oninput="filterTable('guser-tbody', this.value)"></div>
       <table>
-        <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Permissions</th><th>Action</th></tr></thead>
-        <tbody id="guser-tbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Subscription</th><th>Permissions</th><th>Action</th></tr></thead>
+        <tbody id="guser-tbody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
       </table>
     </div>
 
@@ -128,6 +268,185 @@
       </table>
     </div>
 
+    <!-- Plugin Center -->
+    <div class="panel" id="panel-plugins">
+      <h2>Plugin Control Center</h2>
+
+      <!-- Game filter tabs -->
+      <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn" id="pt-all" onclick="pluginFilter(null)" style="border-color:var(--accent);color:var(--accent)">ALL</button>
+        <button class="btn" id="pt-rust" onclick="pluginFilter('rust')">RUST</button>
+        <button class="btn" id="pt-valheim" onclick="pluginFilter('valheim')">VALHEIM</button>
+        <button class="btn" id="pt-l4d2" onclick="pluginFilter('l4d2')">L4D2</button>
+        <button class="btn" id="pt-7dtd" onclick="pluginFilter('7dtd')">7DTD</button>
+      </div>
+
+      <!-- Upload (superadmin only) -->
+      <div class="card sa-only" style="margin-bottom:20px;padding:16px;">
+        <div style="font-size:0.72rem;color:var(--accent);margin-bottom:10px;letter-spacing:0.06em;">UPLOAD PLUGIN</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px;">
+          <div class="field" style="margin:0"><label>Game</label>
+            <select id="pUploadGame"><option value="rust">Rust (.cs)</option><option value="valheim">Valheim (.dll)</option><option value="l4d2">L4D2 (.smx)</option><option value="7dtd">7DTD</option></select>
+          </div>
+          <div class="field" style="margin:0;flex:1"><label>File</label><input type="file" id="pUploadFile" style="width:100%"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;">
+          <div class="field" style="margin:0;flex:1"><label>Description</label><input type="text" id="pUploadDesc" placeholder="What does this plugin do?" style="width:100%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label style="font-size:0.78rem;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pUploadApproved" checked> Pre-approve for admins</label>
+          <button class="btn btn-green" onclick="pUpload()">UPLOAD</button>
+        </div>
+      </div>
+
+      <!-- Library -->
+      <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">PLUGIN LIBRARY <span id="pLibCount" style="margin-left:6px;background:#222;padding:1px 6px;border-radius:2px;">0</span></div>
+      <div id="pLibGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-bottom:24px;"></div>
+
+      <!-- Installed -->
+      <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">INSTALLED ON SERVER <span id="pInstalledCount" style="margin-left:6px;background:#222;padding:1px 6px;border-radius:2px;">0</span></div>
+      <div id="pInstalledList"></div>
+
+      <!-- Config Editor (opens when plugin clicked) -->
+      <div class="config-panel" id="configPanel">
+        <div class="config-header">
+          <span class="config-header-title" id="configTitle">Plugin Config</span>
+          <button class="btn" style="padding:2px 10px;font-size:0.6rem;" onclick="closeConfig()">CLOSE</button>
+        </div>
+        <div class="config-file-list" id="configFileList"></div>
+        <textarea class="config-editor" id="configEditor" spellcheck="false"></textarea>
+        <div class="config-footer">
+          <span class="config-status" id="configStatus">Select a config file above</span>
+          <button class="btn btn-green sa-only" style="padding:5px 16px;font-size:0.65rem;" onclick="saveConfig()">SAVE CONFIG</button>
+        </div>
+      </div>
+
+      <!-- Carbon/Mod Setup Guide (superadmin) -->
+      <div class="sa-only" style="margin-top:28px;border-top:1px solid #2a2a2a;padding-top:20px;">
+        <div style="font-size:0.65rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">MOD FRAMEWORK SETUP</div>
+
+        <div class="card" style="padding:16px;margin-bottom:12px;">
+          <div style="font-size:0.82rem;font-weight:bold;color:var(--yellow);margin-bottom:8px;">RUST — Carbon (Preferred)</div>
+          <div style="font-size:0.72rem;color:var(--muted);line-height:1.6;">
+            <strong style="color:var(--text);">Install Carbon:</strong><br>
+            <code style="background:#111;padding:2px 6px;border-radius:2px;font-size:0.68rem;">curl -sSL https://github.com/CarbonCommunity/Carbon/releases/latest/download/Carbon.Linux.Release.tar.gz | tar xz -C /srv/games/rust/</code><br><br>
+            <strong style="color:var(--text);">Directory Structure:</strong><br>
+            <code style="font-size:0.65rem;color:var(--green);">
+            /srv/games/rust/carbon/<br>
+            &nbsp;&nbsp;plugins/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← .cs plugin files go here<br>
+            &nbsp;&nbsp;plugins/disabled/ ← disabled plugins<br>
+            &nbsp;&nbsp;configs/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← per-plugin JSON configs<br>
+            &nbsp;&nbsp;data/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← plugin data storage<br>
+            &nbsp;&nbsp;logs/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← Carbon logs<br>
+            </code><br>
+            <strong style="color:var(--text);">Auto-detection:</strong> When <code>/srv/games/rust/carbon/</code> exists, the system uses Carbon paths. Otherwise falls back to Oxide (<code>/srv/games/rust/oxide/plugins/</code>).<br><br>
+            <strong style="color:var(--text);">Plugin hot-reload:</strong> Carbon auto-compiles .cs files on drop. No restart needed.<br>
+            <strong style="color:var(--text);">RCON plugin management:</strong> <code>c.load PluginName</code> / <code>c.unload PluginName</code> / <code>c.reload PluginName</code>
+          </div>
+        </div>
+
+        <div class="card" style="padding:16px;margin-bottom:12px;">
+          <div style="font-size:0.82rem;font-weight:bold;color:#4a7c9e;margin-bottom:8px;">VALHEIM — BepInEx</div>
+          <div style="font-size:0.72rem;color:var(--muted);line-height:1.6;">
+            <strong style="color:var(--text);">Plugins:</strong> <code>/srv/games/valheim/BepInEx/plugins/*.dll</code><br>
+            <strong style="color:var(--text);">Configs:</strong> <code>/srv/games/valheim/BepInEx/config/</code><br>
+            <strong style="color:var(--text);">Requires restart</strong> after adding/removing plugins.
+          </div>
+        </div>
+
+        <div class="card" style="padding:16px;margin-bottom:12px;">
+          <div style="font-size:0.82rem;font-weight:bold;color:#4caf50;margin-bottom:8px;">L4D2 — SourceMod</div>
+          <div style="font-size:0.72rem;color:var(--muted);line-height:1.6;">
+            <strong style="color:var(--text);">Plugins:</strong> <code>/srv/games/l4d2/addons/sourcemod/plugins/*.smx</code><br>
+            <strong style="color:var(--text);">Configs:</strong> <code>/srv/games/l4d2/addons/sourcemod/configs/</code><br>
+            <strong style="color:var(--text);">Hot-reload:</strong> <code>sm plugins refresh</code> in server console.
+          </div>
+        </div>
+
+        <div class="card" style="padding:16px;">
+          <div style="font-size:0.82rem;font-weight:bold;color:#c46200;margin-bottom:8px;">7DTD — Mod SDK</div>
+          <div style="font-size:0.72rem;color:var(--muted);line-height:1.6;">
+            <strong style="color:var(--text);">Mods:</strong> <code>/srv/games/7dtd/Mods/&lt;ModName&gt;/</code> (folder-based)<br>
+            <strong style="color:var(--text);">Each mod has:</strong> ModInfo.xml + DLLs + assets<br>
+            <strong style="color:var(--text);">Requires restart</strong> after adding/removing mods.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Server Provisioner -->
+    <div class="panel" id="panel-provisioner">
+      <h2>Server Provisioner</h2>
+
+      <!-- Spin up -->
+      <div class="card" style="margin-bottom:16px;padding:16px;">
+        <div style="font-size:0.72rem;color:var(--accent);margin-bottom:10px;letter-spacing:0.06em;">SPIN UP NEW LINODE</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div class="field" style="margin:0">
+            <label>Game</label>
+            <select id="provGame">
+              <option value="rust">Rust</option>
+              <option value="valheim">Valheim</option>
+              <option value="l4d2">Left 4 Dead 2</option>
+              <option value="7dtd">7 Days to Die</option>
+            </select>
+          </div>
+          <div style="font-size:0.62rem;color:var(--muted);padding-bottom:6px;">g6-standard-2 &middot; 4GB RAM &middot; 2 vCPU &middot; $0.036/hr</div>
+          <button class="btn btn-green" onclick="provisionServer()">PROVISION</button>
+        </div>
+      </div>
+
+      <!-- Active servers -->
+      <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">ACTIVE PROVISIONED SERVERS <span id="provActiveCount" style="margin-left:6px;background:#222;padding:1px 6px;border-radius:2px;">0</span></div>
+      <div id="provActiveList" style="margin-bottom:24px;"></div>
+
+      <!-- History -->
+      <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">HISTORY</div>
+      <table style="font-size:0.75rem;">
+        <thead><tr><th>Label</th><th>Game</th><th>IP</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+        <tbody id="provHistoryBody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+      </table>
+
+      <!-- Community requests -->
+      <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin:24px 0 10px;">COMMUNITY REQUESTS</div>
+      <table style="font-size:0.75rem;">
+        <thead><tr><th>User</th><th>Game</th><th>Status</th><th>Requested</th></tr></thead>
+        <tbody id="provRequestsBody"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
+      </table>
+
+      <!-- Cleanup -->
+      <div style="margin-top:20px;">
+        <button class="btn btn-yellow" onclick="forceCleanup()">FORCE INACTIVITY CHECK</button>
+        <span style="font-size:0.62rem;color:var(--muted);margin-left:8px;">Destroys servers idle for 1hr+</span>
+      </div>
+    </div>
+
+    <!-- Maintenance -->
+    <div class="panel" id="panel-maintenance">
+      <h2>Maintenance Notification</h2>
+      <div class="card" style="max-width:400px;">
+        <div class="card-title">Send Countdown Warning</div>
+        <p style="color:var(--muted);font-size:0.78rem;margin:10px 0;">
+          Sends a banner to ALL connected users with a countdown timer. They'll see:
+        </p>
+        <div style="background:#1a1a00;border:1px solid #e6b800;border-radius:4px;padding:10px;color:#e6b800;font-size:0.75rem;text-align:center;margin-bottom:16px;">
+          The server is undergoing maintenance. You may notice odd behavior or disconnections. Thanks for your patience!<br>
+          <span style="font-size:1.1rem;font-weight:bold;">05:00</span>
+        </div>
+        <div class="field">
+          <label>Countdown (minutes)</label>
+          <select id="maint-minutes" style="width:100%;">
+            <option value="2">2 minutes</option>
+            <option value="5" selected>5 minutes</option>
+            <option value="10">10 minutes</option>
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+          </select>
+        </div>
+        <button class="btn btn-yellow" style="width:100%;margin-top:8px;" onclick="sendMaintenance()">SEND MAINTENANCE WARNING</button>
+      </div>
+    </div>
+
     <!-- bih Tickets -->
     <div class="panel" id="panel-tickets">
       <h2>bih Tickets</h2>
@@ -139,6 +458,60 @@
     </div>
 
   </div>
+ </div><!-- /layout-top -->
+
+ <!-- Log Viewer (persistent bottom panel) -->
+ <div class="log-panel sa-only" id="logPanel">
+  <div class="log-header" onclick="toggleLogPanel()">
+    <div class="log-header-left">
+      <span class="log-title">SERVER LOGS</span>
+      <div class="log-game-tabs">
+        <button class="log-game-tab" id="lt-rust" onclick="event.stopPropagation();subscribeLog('rust')">RUST</button>
+        <button class="log-game-tab" id="lt-valheim" onclick="event.stopPropagation();subscribeLog('valheim')">VALHEIM</button>
+        <button class="log-game-tab" id="lt-l4d2" onclick="event.stopPropagation();subscribeLog('l4d2')">L4D2</button>
+        <button class="log-game-tab" id="lt-7dtd" onclick="event.stopPropagation();subscribeLog('7dtd')">7DTD</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="log-toggle" onclick="event.stopPropagation();clearLog()" title="Clear">CLR</button>
+      <span class="log-toggle" id="logToggleIcon">&#9650;</span>
+    </div>
+  </div>
+  <div class="log-output" id="logOutput"><span style="color:var(--muted);font-style:italic;">Select a game server to stream logs...</span></div>
+ </div>
+</div><!-- /layout -->
+
+<!-- RCON Floating Console (draggable + minimizable) -->
+<div id="rconWindow" class="rcon-window" style="display:none;">
+  <div class="rcon-titlebar" id="rconTitlebar">
+    <div class="rcon-titlebar-left">
+      <span class="rcon-dot red"></span>
+      <span class="rcon-dot yellow"></span>
+      <span class="rcon-dot green"></span>
+      <span class="rcon-title">RUNTIME CONSOLE</span>
+    </div>
+    <div class="rcon-titlebar-right">
+      <select id="rconGame" class="rcon-game-select">
+        <option value="rust">RUST</option>
+      </select>
+      <button class="rcon-win-btn" onclick="minimizeRcon()" title="Minimize">&#9472;</button>
+      <button class="rcon-win-btn" onclick="maximizeRcon()" title="Maximize">&#9633;</button>
+      <button class="rcon-win-btn close" onclick="closeRcon()" title="Close">&#10005;</button>
+    </div>
+  </div>
+  <div class="rcon-body" id="rconBody">
+    <div id="rconConsoleOutput" class="rcon-output"></div>
+    <div class="rcon-input-row">
+      <span class="rcon-prompt">&gt;</span>
+      <input id="rconConsoleInput" type="text" class="rcon-input" placeholder="status, playerlist, c.reload PluginName ..." onkeydown="if(event.key==='Enter')sendRconConsole()" autocomplete="off">
+      <button class="rcon-send-btn" onclick="sendRconConsole()">SEND</button>
+    </div>
+  </div>
+</div>
+<!-- Minimized RCON tab -->
+<div id="rconMinTab" class="rcon-min-tab" style="display:none;" onclick="restoreRcon()">
+  <span class="rcon-dot red" style="width:6px;height:6px;"></span>
+  CONSOLE
 </div>
 
 <!-- Edit User Modal -->
@@ -147,15 +520,46 @@
     <h3 id="modal-title">Edit User</h3>
     <input type="hidden" id="modal-uid">
     <input type="hidden" id="modal-scope">
-    <div class="field">
-      <label>PERMISSIONS (comma-separated, e.g. games, games:admin)</label>
-      <input type="text" id="modal-perms" style="width:100%">
+    <div id="modal-user-info" style="color:var(--muted);font-size:0.72rem;margin-bottom:16px;"></div>
+
+    <div class="field-row sa-only">
+      <div class="field">
+        <label>SUBSCRIPTION</label>
+        <select id="modal-sub" class="full">
+          <option value="free">Free</option>
+          <option value="player">Player ($2/mo)</option>
+          <option value="admin">Admin ($12/mo)</option>
+          <option value="lifetime">Lifetime ($80)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>EXPIRY (optional)</label>
+        <input type="date" id="modal-expiry" style="width:100%">
+      </div>
     </div>
-    <div class="field">
+
+    <div class="field sa-only">
+      <label>GAME PERMISSIONS</label>
+      <select id="modal-game-perm" class="full">
+        <option value="">None</option>
+        <option value="player">Player (play only)</option>
+        <option value="admin">Admin (servers + broadcasts)</option>
+      </select>
+    </div>
+
+    <div class="field sa-only" style="display:flex;gap:20px;">
       <label class="checkbox-row">
-        <input type="checkbox" id="modal-admin"> Admin
+        <input type="checkbox" id="modal-admin"> Superadmin
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="modal-broadcaster"> Broadcaster
       </label>
     </div>
+
+    <div id="modal-readonly" style="display:none;color:var(--muted);font-size:0.72rem;padding:8px 0;">
+      Only superadmins can change subscriptions and permissions.
+    </div>
+
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn btn-green" onclick="saveUser()">Save</button>
@@ -168,6 +572,21 @@
 <script>
 const GAMES = ['rust', 'valheim', 'l4d2', '7dtd'];
 let guserData = [], buserData = [];
+let isSuperAdmin = false;
+
+// Check if current user is superadmin
+async function checkSuperAdmin() {
+  try {
+    const r = await fetch('/api/me');
+    const me = await r.json();
+    isSuperAdmin = !!me.isAdmin;
+    // Hide superadmin-only controls for regular admins
+    if (!isSuperAdmin) {
+      document.querySelectorAll('.sa-only').forEach(el => el.style.display = 'none');
+    }
+  } catch (e) {}
+}
+checkSuperAdmin();
 
 // --- Nav ---
 function show(id) {
@@ -175,9 +594,12 @@ function show(id) {
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   document.getElementById('panel-' + id).classList.add('active');
   event.currentTarget.classList.add('active');
+  if (id === 'servers') loadServerStatuses();
   if (id === 'gusers' && !guserData.length) loadGUsers();
   if (id === 'busers' && !buserData.length) loadBUsers();
   if (id === 'tickets') loadTickets();
+  if (id === 'plugins') { pLoadLib(); pLoadInstalled(); }
+  if (id === 'provisioner') loadProvisioner();
 }
 
 // --- Toast ---
@@ -238,16 +660,46 @@ function buildServerGrid() {
 
 // --- Users ---
 function renderUserRow(u, scope) {
-  const perms = Array.isArray(u.permissions) ? u.permissions : Object.keys(u.permissions || {});
-  const permTags = perms.length ? perms.map(p => `<span class="tag">${p}</span>`).join('') : '<span class="tag">—</span>';
-  const adminTag = u.isAdmin ? '<span class="tag tag-admin">admin</span>' : '';
-  return `<tr data-search="${(u.displayName||u.email||'').toLowerCase()} ${(u.email||'').toLowerCase()}">
-    <td>${u.displayName || u.firstName || '—'}</td>
-    <td style="color:var(--muted)">${u.email}</td>
-    <td>${adminTag}</td>
-    <td>${permTags}</td>
-    <td><button class="btn" onclick='openModal(${JSON.stringify(u._id||u.id)}, "${scope}", ${JSON.stringify(perms)}, ${!!u.isAdmin})'>Edit</button></td>
-  </tr>`;
+  const perms = u.permissions || {};
+  const gamePerm = perms.games || '';
+  const sub = u.subscription || 'free';
+
+  // Role tags
+  let roleTags = '';
+  if (u.isAdmin) roleTags += '<span class="tag tag-sa">SA</span>';
+  if (u.isBroadcaster) roleTags += '<span class="tag tag-broadcaster">BC</span>';
+  if (!u.isAdmin && !u.isBroadcaster) roleTags = '<span class="tag">user</span>';
+
+  // Subscription tag
+  const subClass = { free: 'tag-free', player: 'tag-player', admin: 'tag-admin', lifetime: 'tag-lifetime' }[sub] || 'tag-free';
+  const subLabel = { free: 'FREE', player: '$2/mo', admin: '$12/mo', lifetime: 'LIFETIME' }[sub] || sub;
+  const subTag = '<span class="tag ' + subClass + '">' + subLabel + '</span>';
+
+  // Permission tags
+  let permTags = '';
+  if (gamePerm) permTags += '<span class="tag">' + gamePerm + '</span>';
+  if (!permTags) permTags = '<span class="tag tag-free">—</span>';
+
+  const searchStr = ((u.displayName||u.email||'') + ' ' + (u.email||'')).toLowerCase();
+
+  return '<tr data-search="' + searchStr + '" data-user=\'' + JSON.stringify({
+    id: u._id || u.id,
+    email: u.email,
+    name: u.displayName || u.firstName || '',
+    isAdmin: !!u.isAdmin,
+    isBroadcaster: !!u.isBroadcaster,
+    subscription: sub,
+    subscriptionExpiry: u.subscriptionExpiry || '',
+    gamePerm: gamePerm,
+    scope: scope,
+  }).replace(/'/g, '&#39;') + '\'>' +
+    '<td>' + (u.displayName || u.firstName || '—') + '</td>' +
+    '<td style="color:var(--muted)">' + (u.email || '') + '</td>' +
+    '<td>' + roleTags + '</td>' +
+    '<td>' + subTag + '</td>' +
+    '<td>' + permTags + '</td>' +
+    '<td><button class="btn" onclick="openModalFromRow(this)">Edit</button></td>' +
+  '</tr>';
 }
 
 async function loadGUsers() {
@@ -296,37 +748,110 @@ function showTicket(t) {
 }
 
 // --- Modal ---
-function openModal(uid, scope, perms, isAdmin) {
-  document.getElementById('modal-uid').value = uid;
-  document.getElementById('modal-scope').value = scope;
-  document.getElementById('modal-perms').value = Array.isArray(perms) ? perms.join(', ') : '';
-  document.getElementById('modal-admin').checked = isAdmin;
-  document.getElementById('modal-title').textContent = 'Edit ' + scope + ' User';
+let currentEditUser = null;
+
+function openModalFromRow(btn) {
+  const tr = btn.closest('tr');
+  currentEditUser = JSON.parse(tr.dataset.user);
+  const u = currentEditUser;
+
+  document.getElementById('modal-uid').value = u.id;
+  document.getElementById('modal-scope').value = u.scope;
+  document.getElementById('modal-title').textContent = 'Edit User';
+  document.getElementById('modal-user-info').textContent = u.name + ' — ' + u.email;
+  document.getElementById('modal-sub').value = u.subscription || 'free';
+  document.getElementById('modal-expiry').value = u.subscriptionExpiry ? u.subscriptionExpiry.split('T')[0] : '';
+  document.getElementById('modal-game-perm').value = u.gamePerm || '';
+  document.getElementById('modal-admin').checked = u.isAdmin;
+  document.getElementById('modal-broadcaster').checked = u.isBroadcaster;
+
+  // Show/hide superadmin controls
+  if (!isSuperAdmin) {
+    document.querySelectorAll('.sa-only').forEach(el => el.style.display = 'none');
+    document.getElementById('modal-readonly').style.display = 'block';
+  } else {
+    document.querySelectorAll('.sa-only').forEach(el => el.style.display = '');
+    document.getElementById('modal-readonly').style.display = 'none';
+  }
+
   document.getElementById('modal-overlay').style.display = 'flex';
 }
-function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+
+function openModal(uid, scope, perms, isAdmin) {
+  // Legacy fallback for bih users
+  currentEditUser = { id: uid, scope: scope, isAdmin: isAdmin };
+  document.getElementById('modal-uid').value = uid;
+  document.getElementById('modal-scope').value = scope;
+  document.getElementById('modal-title').textContent = 'Edit ' + scope + ' User';
+  document.getElementById('modal-user-info').textContent = '';
+  document.getElementById('modal-admin').checked = isAdmin;
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').style.display = 'none';
+  currentEditUser = null;
+}
 
 async function saveUser() {
   const id = document.getElementById('modal-uid').value;
   const scope = document.getElementById('modal-scope').value;
-  const raw = document.getElementById('modal-perms').value;
-  const permissions = raw.split(',').map(s => s.trim()).filter(Boolean);
+
+  if (scope === 'bih') {
+    // BIH user — simple permission save
+    const isAdmin = document.getElementById('modal-admin').checked;
+    try {
+      const r = await fetch('/admin/api/bih/users/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isAdmin }),
+      });
+      const d = await r.json();
+      if (d.ok) { toast('Saved'); closeModal(); buserData = []; loadBUsers(); }
+      else toast(d.error || 'Error', false);
+    } catch (e) { toast('Request failed', false); }
+    return;
+  }
+
+  if (!isSuperAdmin) {
+    toast('Superadmin required', false);
+    return;
+  }
+
+  // Games user — full save (role + subscription + permissions)
   const isAdmin = document.getElementById('modal-admin').checked;
-  const url = scope === 'games' ? `/admin/api/games/users/${id}` : `/admin/api/bih/users/${id}`;
+  const isBroadcaster = document.getElementById('modal-broadcaster').checked;
+  const sub = document.getElementById('modal-sub').value;
+  const expiry = document.getElementById('modal-expiry').value;
+  const gamePerm = document.getElementById('modal-game-perm').value;
+
+  const permissions = {};
+  if (gamePerm) permissions.games = gamePerm;
+
   try {
-    const r = await fetch(url, {
+    // Save role + permissions
+    const r1 = await fetch('/admin/api/games/users/' + id + '/role', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ permissions: scope === 'games' ? permissions.reduce((a, p) => ({ ...a, [p]: 'admin' }), {}) : permissions, isAdmin }),
+      body: JSON.stringify({ isAdmin, isBroadcaster, permissions }),
     });
-    const d = await r.json();
-    if (d.ok) {
+
+    // Save subscription
+    const r2 = await fetch('/admin/api/games/users/' + id + '/subscription', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub, subscriptionExpiry: expiry || null }),
+    });
+
+    const d1 = await r1.json();
+    const d2 = await r2.json();
+
+    if (d1.ok && d2.ok) {
       toast('Saved');
       closeModal();
-      if (scope === 'games') { guserData = []; loadGUsers(); }
-      else { buserData = []; loadBUsers(); }
+      guserData = []; loadGUsers();
     } else {
-      toast(d.error || 'Error', false);
+      toast(d1.error || d2.error || 'Error', false);
     }
   } catch (e) { toast('Request failed', false); }
 }
@@ -338,10 +863,591 @@ function filterTable(tbodyId, q) {
   rows.forEach(r => r.style.display = r.dataset.search.includes(term) ? '' : 'none');
 }
 
+// --- Plugin Center ---
+var pCurrentGame = null;
+var pLibrary = [];
+var PGAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7DTD' };
+
+function pluginFilter(game) {
+  pCurrentGame = game;
+  document.querySelectorAll('[id^="pt-"]').forEach(function(b) { b.style.borderColor = ''; b.style.color = ''; });
+  var active = document.getElementById('pt-' + (game || 'all'));
+  if (active) { active.style.borderColor = '#cd412b'; active.style.color = '#cd412b'; }
+  pRenderLib();
+  pLoadInstalled();
+}
+
+async function pLoadLib() {
+  try {
+    var r = await fetch('/plugins/api/library');
+    var d = await r.json();
+    pLibrary = d.plugins || [];
+    pRenderLib();
+  } catch (e) {}
+}
+
+function pRenderLib() {
+  var grid = document.getElementById('pLibGrid');
+  var list = pCurrentGame ? pLibrary.filter(function(p) { return p.game === pCurrentGame; }) : pLibrary;
+  document.getElementById('pLibCount').textContent = list.length;
+
+  if (!list.length) { grid.innerHTML = '<div style="color:var(--muted);font-size:0.78rem;">No plugins in library</div>'; return; }
+
+  grid.innerHTML = list.map(function(p) {
+    var badge = p.approved
+      ? '<span style="font-size:0.5rem;background:rgba(76,175,130,0.15);color:#4caf82;border:1px solid rgba(76,175,130,0.3);padding:1px 6px;border-radius:2px;">APPROVED</span>'
+      : '<span style="font-size:0.5rem;background:rgba(230,184,0,0.1);color:#e6b800;border:1px solid rgba(230,184,0,0.2);padding:1px 6px;border-radius:2px;">PENDING</span>';
+    var kb = Math.round((p.fileSize || 0) / 1024);
+    var actions = '<button class="btn btn-green" onclick="pInstall(\'' + p._id + '\')">Install</button>';
+    if (isSuperAdmin) {
+      actions += p.approved
+        ? ' <button class="btn" onclick="pApprove(\'' + p._id + '\',false)">Revoke</button>'
+        : ' <button class="btn btn-yellow" onclick="pApprove(\'' + p._id + '\',true)">Approve</button>';
+      actions += ' <button class="btn btn-red" onclick="pDelete(\'' + p._id + '\')">Delete</button>';
+    }
+    return '<div class="card" style="padding:14px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+        '<strong style="font-size:0.85rem;">' + (p.name || p.filename) + '</strong> ' + badge +
+      '</div>' +
+      '<div style="color:var(--muted);font-size:0.7rem;margin-bottom:6px;">' + (p.description || 'No description') + '</div>' +
+      '<div style="color:var(--muted);font-size:0.58rem;margin-bottom:8px;">' + (PGAMES[p.game]||p.game) + ' &middot; ' + kb + ' KB &middot; ' + (p.installs||0) + ' installs</div>' +
+      '<div class="btn-row">' + actions + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function pLoadInstalled() {
+  var games = pCurrentGame ? [pCurrentGame] : ['rust', 'valheim', 'l4d2', '7dtd'];
+  var all = [];
+  for (var i = 0; i < games.length; i++) {
+    try {
+      var r = await fetch('/plugins/api/installed/' + games[i]);
+      var d = await r.json();
+      (d.plugins || []).forEach(function(p) { p._game = games[i]; p._fw = d.framework || games[i]; all.push(p); });
+    } catch (e) {}
+  }
+  document.getElementById('pInstalledCount').textContent = all.length;
+  var list = document.getElementById('pInstalledList');
+  if (!all.length) { list.innerHTML = '<div style="color:var(--muted);font-size:0.78rem;">No plugins installed</div>'; return; }
+  list.innerHTML = all.map(function(p) {
+    var fw = p._fw !== p._game ? ' <span style="font-size:0.5rem;color:#e6b800;text-transform:uppercase;">' + p._fw + '</span>' : '';
+    var btns = '<button class="btn" style="padding:2px 8px;font-size:0.58rem;" onclick="event.stopPropagation();openConfig(\'' + p._game + '\',\'' + p.name + '\')">CONFIG</button>';
+    if (p._game === 'rust') {
+      btns += ' <button class="btn btn-yellow" style="padding:2px 8px;font-size:0.58rem;" onclick="event.stopPropagation();reloadPlugin(\'' + p.name + '\')">RELOAD</button>';
+    }
+    return '<div style="display:flex;align-items:center;justify-content:space-between;background:#111;border:1px solid #2a2a2a;border-radius:3px;padding:7px 12px;margin-bottom:4px;font-size:0.78rem;cursor:pointer;transition:border-color 0.15s;" onclick="openConfig(\'' + p._game + '\',\'' + p.name + '\')" onmouseover="this.style.borderColor=\'#e6b800\'" onmouseout="this.style.borderColor=\'#2a2a2a\'">' +
+      '<span style="' + (p.enabled ? '' : 'color:#555;text-decoration:line-through;') + '">' + p.name + fw + '</span>' +
+      '<div style="display:flex;align-items:center;gap:6px;">' +
+        btns +
+        '<span style="font-size:0.6rem;color:var(--muted)">' + (PGAMES[p._game]||p._game) + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function pUpload() {
+  var fileInput = document.getElementById('pUploadFile');
+  if (!fileInput.files.length) return toast('Select a file', false);
+  var file = fileInput.files[0];
+  if (file.size > 2 * 1024 * 1024) return toast('Max 2MB', false);
+  var buf = await file.arrayBuffer();
+  try {
+    var r = await fetch('/plugins/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Game': document.getElementById('pUploadGame').value, 'X-Filename': file.name, 'X-Description': document.getElementById('pUploadDesc').value, 'X-Approved': document.getElementById('pUploadApproved').checked ? 'true' : 'false' },
+      body: buf,
+    });
+    var d = await r.json();
+    if (d.ok) { toast(d.name + ' uploaded'); fileInput.value = ''; document.getElementById('pUploadDesc').value = ''; pLoadLib(); }
+    else toast(d.error, false);
+  } catch (e) { toast('Upload failed', false); }
+}
+
+async function pInstall(id) {
+  try {
+    var r = await fetch('/plugins/api/' + id + '/install', { method: 'POST' });
+    var d = await r.json();
+    if (d.ok) { toast(d.message); pLoadInstalled(); pLoadLib(); } else toast(d.error, false);
+  } catch (e) { toast('Failed', false); }
+}
+
+async function pApprove(id, approve) {
+  try {
+    var r = await fetch('/plugins/api/' + id + '/approve', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved: approve }) });
+    var d = await r.json();
+    if (d.ok) { toast(approve ? 'Approved' : 'Revoked'); pLoadLib(); } else toast(d.error, false);
+  } catch (e) { toast('Failed', false); }
+}
+
+async function pDelete(id) {
+  if (!confirm('Delete this plugin from the library?')) return;
+  try {
+    var r = await fetch('/plugins/api/' + id, { method: 'DELETE' });
+    var d = await r.json();
+    if (d.ok) { toast('Deleted'); pLoadLib(); } else toast(d.error, false);
+  } catch (e) { toast('Failed', false); }
+}
+
+// --- Provisioner ---
+async function loadProvisioner() {
+  // Active servers
+  try {
+    var r = await fetch('/servers/api/provisioned');
+    var d = await r.json();
+    var activeList = document.getElementById('provActiveList');
+    var active = d.active || [];
+    document.getElementById('provActiveCount').textContent = active.length;
+
+    if (!active.length) {
+      activeList.innerHTML = '<div style="color:var(--muted);font-size:0.75rem;">No active provisioned servers</div>';
+    } else {
+      activeList.innerHTML = active.map(function(s) {
+        var age = Math.round((Date.now() - new Date(s.createdAt).getTime()) / 60000);
+        var idle = Math.round((Date.now() - new Date(s.lastActivity).getTime()) / 60000);
+        return '<div class="card" style="padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">' +
+          '<div>' +
+            '<div style="font-size:0.82rem;font-weight:bold;">' + s.label + '</div>' +
+            '<div style="font-size:0.65rem;color:var(--muted);">' + (PGAMES[s.game]||s.game) + ' &middot; ' + (s.ip||'pending') + ' &middot; ' + s.status + '</div>' +
+            '<div style="font-size:0.58rem;color:var(--muted);">Up ' + age + 'min &middot; Idle ' + idle + 'min</div>' +
+          '</div>' +
+          '<div class="btn-row">' +
+            '<button class="btn" onclick="checkProvStatus(' + s.linodeId + ')">STATUS</button>' +
+            '<button class="btn btn-red" onclick="destroyServer(' + s.linodeId + ')">DESTROY</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    // History table
+    var history = d.history || [];
+    var tbody = document.getElementById('provHistoryBody');
+    if (!history.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">No provisioning history</td></tr>';
+    } else {
+      tbody.innerHTML = history.map(function(s) {
+        var date = new Date(s.createdAt).toLocaleString();
+        var statusColor = s.status === 'running' ? 'var(--green)' : s.status === 'destroyed' ? 'var(--muted)' : 'var(--yellow)';
+        return '<tr>' +
+          '<td>' + s.label + '</td>' +
+          '<td>' + (PGAMES[s.game]||s.game) + '</td>' +
+          '<td style="color:var(--muted)">' + (s.ip||'—') + '</td>' +
+          '<td style="color:' + statusColor + '">' + s.status + '</td>' +
+          '<td style="color:var(--muted)">' + date + '</td>' +
+          '<td>' + (s.status !== 'destroyed' ? '<button class="btn btn-red" onclick="destroyServer(' + s.linodeId + ')">DESTROY</button>' : '—') + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+  } catch (e) {
+    document.getElementById('provActiveList').innerHTML = '<div style="color:#e57373;">Error loading servers</div>';
+  }
+
+  // Community requests
+  try {
+    var r2 = await fetch('/servers/api/requests');
+    var d2 = await r2.json();
+    var reqBody = document.getElementById('provRequestsBody');
+    var reqs = d2.requests || [];
+    if (!reqs.length) {
+      reqBody.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">No requests</td></tr>';
+    } else {
+      reqBody.innerHTML = reqs.map(function(r) {
+        return '<tr>' +
+          '<td>' + (r.userName || '?') + '</td>' +
+          '<td>' + (PGAMES[r.game]||r.game) + '</td>' +
+          '<td>' + r.status + '</td>' +
+          '<td style="color:var(--muted)">' + new Date(r.createdAt).toLocaleString() + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+  } catch (e) {}
+}
+
+async function provisionServer() {
+  var game = document.getElementById('provGame').value;
+  if (!confirm('Provision a new Linode for ' + game.toUpperCase() + '?\n\nThis will cost ~$0.036/hr until destroyed.')) return;
+  toast('Provisioning...');
+  try {
+    var r = await fetch('/servers/api/provision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game: game }),
+    });
+    var d = await r.json();
+    if (d.ok) {
+      toast('Linode created: ' + d.server.label + ' (' + (d.server.ip||'IP pending') + ')');
+      loadProvisioner();
+    } else toast(d.error, false);
+  } catch (e) { toast('Provision failed', false); }
+}
+
+async function destroyServer(linodeId) {
+  if (!confirm('DESTROY Linode ' + linodeId + '?\n\nThis cannot be undone.')) return;
+  try {
+    var r = await fetch('/servers/api/destroy/' + linodeId, { method: 'POST' });
+    var d = await r.json();
+    if (d.ok) { toast('Linode destroyed'); loadProvisioner(); }
+    else toast(d.error, false);
+  } catch (e) { toast('Destroy failed', false); }
+}
+
+async function checkProvStatus(linodeId) {
+  try {
+    var r = await fetch('/servers/api/provisioned/' + linodeId + '/status');
+    var d = await r.json();
+    alert('Linode ' + linodeId + '\nStatus: ' + (d.status || '?') + '\nIP: ' + (d.ipv4 ? d.ipv4.join(', ') : '?') + '\nType: ' + (d.type || '?') + '\nRegion: ' + (d.region || '?'));
+  } catch (e) { toast('Status check failed', false); }
+}
+
+async function forceCleanup() {
+  try {
+    var r = await fetch('/servers/api/cleanup', { method: 'POST' });
+    var d = await r.json();
+    toast('Cleanup complete — ' + (d.destroyed || 0) + ' server(s) destroyed');
+    loadProvisioner();
+  } catch (e) { toast('Cleanup failed', false); }
+}
+
+// --- Maintenance ---
+async function sendMaintenance() {
+  if (!confirm('Send maintenance warning to ALL connected users?')) return;
+  var mins = document.getElementById('maint-minutes').value;
+  try {
+    var r = await fetch('/admin/api/maintenance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ minutes: parseInt(mins) }),
+    });
+    var d = await r.json();
+    if (d.ok) toast('Maintenance notification sent');
+    else toast(d.error || 'Error', false);
+  } catch (e) { toast('Request failed', false); }
+}
+
+// --- Log Viewer ---
+var adminSocket = null;
+var logPanelOpen = false;
+var currentLogGame = null;
+var logAutoScroll = true;
+
+function initAdminSocket() {
+  if (adminSocket) return;
+  adminSocket = io('/admin', { transports: ['websocket', 'polling'] });
+  adminSocket.on('connect_error', function() {}); // non-SA won't connect, that's fine
+  adminSocket.on('logs:lines', function(data) {
+    appendLogLines(data.game, data.lines);
+  });
+  adminSocket.on('logs:subscribed', function(data) {
+    appendLogLines(data.game, ['[log] Connected to ' + data.game + ' log stream']);
+  });
+}
+
+function toggleLogPanel() {
+  var panel = document.getElementById('logPanel');
+  logPanelOpen = !logPanelOpen;
+  panel.classList.toggle('open', logPanelOpen);
+  document.getElementById('logToggleIcon').innerHTML = logPanelOpen ? '&#9660;' : '&#9650;';
+  if (logPanelOpen && !adminSocket) initAdminSocket();
+}
+
+function subscribeLog(game) {
+  if (!adminSocket) initAdminSocket();
+  // Unsubscribe current
+  if (currentLogGame) adminSocket.emit('logs:unsubscribe', currentLogGame);
+  currentLogGame = game;
+  // Update tab styling
+  document.querySelectorAll('.log-game-tab').forEach(function(t) { t.classList.remove('active'); });
+  var tab = document.getElementById('lt-' + game);
+  if (tab) tab.classList.add('active');
+  // Clear and subscribe
+  document.getElementById('logOutput').innerHTML = '<span style="color:var(--muted)">Connecting to ' + game + ' logs...</span>\n';
+  adminSocket.emit('logs:subscribe', game);
+  if (!logPanelOpen) toggleLogPanel();
+}
+
+function appendLogLines(game, lines) {
+  var output = document.getElementById('logOutput');
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var cls = 'log-line';
+    var lower = line.toLowerCase();
+    if (lower.includes('error') || lower.includes('exception') || lower.includes('fail')) cls += ' log-err';
+    else if (lower.includes('warn')) cls += ' log-warn';
+    else if (lower.includes('connect') || lower.includes('start') || lower.includes('loaded')) cls += ' log-info';
+    var el = document.createElement('div');
+    el.className = cls;
+    el.textContent = line;
+    output.appendChild(el);
+  }
+  // Keep max 2000 lines
+  while (output.children.length > 2000) output.removeChild(output.firstChild);
+  // Auto-scroll
+  if (logAutoScroll) output.scrollTop = output.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('logOutput').innerHTML = '';
+}
+
+// --- RCON Floating Console (drag + minimize + maximize) ---
+var rconMaximized = false;
+var rconSavedPos = null;
+
+function openRcon() {
+  var win = document.getElementById('rconWindow');
+  win.style.display = 'flex';
+  document.getElementById('rconMinTab').style.display = 'none';
+  document.getElementById('rconConsoleInput').focus();
+  initDrag();
+}
+function closeRcon() {
+  document.getElementById('rconWindow').style.display = 'none';
+  document.getElementById('rconMinTab').style.display = 'none';
+  rconMaximized = false;
+}
+function minimizeRcon() {
+  document.getElementById('rconWindow').style.display = 'none';
+  document.getElementById('rconMinTab').style.display = 'flex';
+}
+function restoreRcon() {
+  document.getElementById('rconWindow').style.display = 'flex';
+  document.getElementById('rconMinTab').style.display = 'none';
+  document.getElementById('rconConsoleInput').focus();
+}
+function maximizeRcon() {
+  var win = document.getElementById('rconWindow');
+  if (rconMaximized) {
+    // Restore
+    if (rconSavedPos) {
+      win.style.top = rconSavedPos.top;
+      win.style.left = rconSavedPos.left;
+      win.style.width = rconSavedPos.width;
+      win.style.height = '';
+      win.style.maxHeight = '80vh';
+      win.style.borderRadius = '8px';
+    }
+    rconMaximized = false;
+  } else {
+    // Save current position
+    rconSavedPos = { top: win.style.top, left: win.style.left, width: win.style.width };
+    win.style.top = '0';
+    win.style.left = '0';
+    win.style.width = '100vw';
+    win.style.height = '100vh';
+    win.style.maxHeight = '100vh';
+    win.style.borderRadius = '0';
+    rconMaximized = true;
+  }
+}
+
+// Drag support
+function initDrag() {
+  var titlebar = document.getElementById('rconTitlebar');
+  var win = document.getElementById('rconWindow');
+  var dragging = false, startX, startY, origX, origY;
+
+  titlebar.onmousedown = function(e) {
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return;
+    if (rconMaximized) return;
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    origX = win.offsetLeft;
+    origY = win.offsetTop;
+    e.preventDefault();
+  };
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var dx = e.clientX - startX;
+    var dy = e.clientY - startY;
+    win.style.left = Math.max(0, origX + dx) + 'px';
+    win.style.top = Math.max(0, origY + dy) + 'px';
+  });
+  document.addEventListener('mouseup', function() { dragging = false; });
+
+  // Touch support for mobile
+  titlebar.ontouchstart = function(e) {
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return;
+    if (rconMaximized) return;
+    var touch = e.touches[0];
+    dragging = true;
+    startX = touch.clientX;
+    startY = touch.clientY;
+    origX = win.offsetLeft;
+    origY = win.offsetTop;
+  };
+  document.addEventListener('touchmove', function(e) {
+    if (!dragging) return;
+    var touch = e.touches[0];
+    var dx = touch.clientX - startX;
+    var dy = touch.clientY - startY;
+    win.style.left = Math.max(0, origX + dx) + 'px';
+    win.style.top = Math.max(0, origY + dy) + 'px';
+  });
+  document.addEventListener('touchend', function() { dragging = false; });
+}
+
+async function sendRconConsole() {
+  var input = document.getElementById('rconConsoleInput');
+  var cmd = input.value.trim();
+  if (!cmd) return;
+  input.value = '';
+  var output = document.getElementById('rconConsoleOutput');
+
+  var cmdEl = document.createElement('div');
+  cmdEl.style.color = 'var(--green)';
+  cmdEl.textContent = '> ' + cmd;
+  output.appendChild(cmdEl);
+  output.scrollTop = output.scrollHeight;
+
+  var game = document.getElementById('rconGame').value;
+  try {
+    var r = await fetch('/api/' + game + '/rcon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cmd: cmd }),
+    });
+    var d = await r.json();
+    var resEl = document.createElement('div');
+    resEl.style.color = d.error ? '#e57373' : '#888';
+    resEl.textContent = d.output || d.error || '(no output)';
+    output.appendChild(resEl);
+  } catch (e) {
+    var errEl = document.createElement('div');
+    errEl.style.color = '#e57373';
+    errEl.textContent = '[error] ' + e.message;
+    output.appendChild(errEl);
+  }
+  output.scrollTop = output.scrollHeight;
+}
+
+// Init drag on page load
+setTimeout(initDrag, 500);
+
+// --- Config Editor ---
+var configCurrentGame = null;
+var configCurrentFile = null;
+
+async function openConfig(game, pluginName) {
+  configCurrentGame = game;
+  configCurrentFile = null;
+  document.getElementById('configTitle').textContent = pluginName + ' — ' + (PGAMES[game]||game) + ' Config';
+  document.getElementById('configEditor').value = '';
+  document.getElementById('configStatus').textContent = 'Loading config files...';
+  document.getElementById('configPanel').classList.add('open');
+  document.getElementById('configPanel').scrollIntoView({ behavior: 'smooth' });
+
+  try {
+    var r = await fetch('/plugins/api/configs/' + game + '?plugin=' + encodeURIComponent(pluginName));
+    var d = await r.json();
+    var fileList = document.getElementById('configFileList');
+
+    if (!d.configs || !d.configs.length) {
+      fileList.innerHTML = '<span style="color:var(--muted);font-size:0.68rem;">No config files found for this plugin</span>';
+      document.getElementById('configStatus').textContent = 'No configs available';
+      return;
+    }
+
+    fileList.innerHTML = d.configs.map(function(c) {
+      return '<button class="config-file-btn" onclick="loadConfig(\'' + game + '\',\'' + c.path.replace(/'/g, "\\'") + '\', this)">' + c.name + ' <span style="color:var(--muted);font-size:0.5rem;">(' + Math.round(c.size/1024) + 'KB)</span></button>';
+    }).join('');
+
+    document.getElementById('configStatus').textContent = d.configs.length + ' config file(s) found — click one to edit';
+  } catch (e) {
+    document.getElementById('configFileList').innerHTML = '<span style="color:#e57373;font-size:0.68rem;">Error loading configs</span>';
+  }
+}
+
+async function loadConfig(game, filePath, btn) {
+  configCurrentGame = game;
+  configCurrentFile = filePath;
+
+  // Highlight active button
+  document.querySelectorAll('.config-file-btn').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+
+  document.getElementById('configStatus').textContent = 'Loading ' + filePath + '...';
+
+  try {
+    var r = await fetch('/plugins/api/configs/' + game + '/read?file=' + encodeURIComponent(filePath));
+    var d = await r.json();
+    if (d.ok) {
+      document.getElementById('configEditor').value = d.content;
+      document.getElementById('configStatus').textContent = filePath + ' — ' + d.size + ' chars';
+    } else {
+      document.getElementById('configEditor').value = '// Error: ' + (d.error || 'Could not load');
+      document.getElementById('configStatus').textContent = d.error || 'Error';
+    }
+  } catch (e) {
+    document.getElementById('configEditor').value = '// Network error';
+    document.getElementById('configStatus').textContent = 'Failed to load';
+  }
+}
+
+async function saveConfig() {
+  if (!configCurrentGame || !configCurrentFile) return toast('No config file selected', false);
+  var content = document.getElementById('configEditor').value;
+
+  try {
+    var r = await fetch('/plugins/api/configs/' + configCurrentGame + '/write', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: configCurrentFile, content: content }),
+    });
+    var d = await r.json();
+    if (d.ok) {
+      toast('Config saved (backup created)');
+      document.getElementById('configStatus').textContent = 'Saved — ' + configCurrentFile;
+    } else {
+      toast(d.error || 'Save failed', false);
+    }
+  } catch (e) { toast('Save failed', false); }
+}
+
+async function reloadPlugin(pluginName) {
+  toast('Reloading ' + pluginName + '...');
+  try {
+    var r = await fetch('/plugins/api/reload/rust/' + encodeURIComponent(pluginName), { method: 'POST' });
+    var d = await r.json();
+    if (d.ok) {
+      var msg = d.message;
+      if (d.configReady) msg += ' — config ready';
+      else msg += ' — no config generated (check RCON output)';
+      toast(msg);
+      // Auto-open config if it was generated
+      if (d.configReady) {
+        setTimeout(function() { openConfig('rust', pluginName); }, 500);
+      }
+    } else {
+      toast(d.error, false);
+    }
+  } catch (e) { toast('Reload failed', false); }
+}
+
+function closeConfig() {
+  document.getElementById('configPanel').classList.remove('open');
+  configCurrentGame = null;
+  configCurrentFile = null;
+}
+
+// Auto-open log panel for superadmins
+if (isSuperAdmin) {
+  // Small delay to let SA check complete
+  setTimeout(function() {
+    if (isSuperAdmin) initAdminSocket();
+  }, 1500);
+}
+
 // Init
 buildServerGrid();
 loadServerStatuses();
-setInterval(loadServerStatuses, 30000);
+setInterval(loadServerStatuses, 10000);
+</script>
+<script src="/static/js/socket.io.min.js"></script>
+<script>
+// Re-init admin socket now that io is available
+if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin && typeof initAdminSocket === 'function') {
+  initAdminSocket();
+}
 </script>
 </body>
 </html>

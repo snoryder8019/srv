@@ -8,8 +8,13 @@ function requireAuth(req, res, next) {
   res.redirect('/login');
 }
 
-// Dashboard
-router.get('/', requireAuth, (req, res) => {
+// Public landing page — live broadcasts (no auth)
+router.get('/', (req, res) => {
+  res.sendFile('landing.html', { root: __dirname + '/../public' });
+});
+
+// Authenticated dashboard — server management
+router.get('/dashboard', requireAuth, (req, res) => {
   res.sendFile('index.html', { root: __dirname + '/../public' });
 });
 
@@ -18,7 +23,7 @@ router.get('/login', (req, res) => {
   if (req.isAuthenticated()) {
     const next = req.session.loginNext;
     if (next) { delete req.session.loginNext; return res.redirect(next); }
-    return res.redirect('/');
+    return res.redirect('/dashboard');
   }
   if (req.query.next) req.session.loginNext = req.query.next;
   res.sendFile('login.html', { root: __dirname + '/../public' });
@@ -31,7 +36,7 @@ router.post('/login', (req, res, next) => {
     if (!user) return res.redirect('/login?error=1');
     req.login(user, (loginErr) => {
       if (loginErr) return next(loginErr);
-      const dest = req.session.loginNext || '/';
+      const dest = req.session.loginNext || '/dashboard';
       delete req.session.loginNext;
       res.redirect(dest);
     });
@@ -43,7 +48,7 @@ router.get('/auth/google', passport.authenticate('google', { scope: ['profile', 
 router.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/login?error=1' }),
   (req, res) => {
-    const dest = req.session.loginNext || '/';
+    const dest = req.session.loginNext || '/dashboard';
     delete req.session.loginNext;
     res.redirect(dest);
   }
@@ -51,7 +56,7 @@ router.get('/auth/google/callback',
 
 // Logout
 router.post('/logout', (req, res) => {
-  req.logout(() => res.redirect('/login'));
+  req.logout(() => res.redirect('/'));
 });
 
 // Auth bridge — issues a short-lived JWT for cross-site SSO (bih uses this)

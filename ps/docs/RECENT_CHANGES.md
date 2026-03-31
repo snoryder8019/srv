@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-03-30T07:30:00.020Z
+Generated: 2026-03-31T07:30:00.054Z
+
+---
+
+## Commit: platform updates on v0.9
+
+- **Hash:** `b6e30d6`
+- **Author:** Scott
+- **Date:** 3/30/2026
+- **Changes:** 49 files, +3185/-1507 lines
+
+### Modified Areas:
+
+**Backend:** 10 files
+**Views:** 27 files
+**Scripts:** 1 files
+**Documentation:** 4 files
 
 ---
 
@@ -65,22 +81,6 @@ Generated: 2026-03-30T07:30:00.020Z
 **Frontend:** 1 files
 **Backend:** 10 files
 **Views:** 30 files
-
----
-
-## Commit: big W2 Update
-
-- **Hash:** `b39c2ce`
-- **Author:** Scott
-- **Date:** 3/25/2026
-- **Changes:** 113 files, +21621/-651 lines
-
-### Modified Areas:
-
-**Frontend:** 2 files
-**Backend:** 21 files
-**Views:** 41 files
-**Documentation:** 4 files
 
 ---
 

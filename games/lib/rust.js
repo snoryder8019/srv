@@ -154,43 +154,74 @@ function parseStatus(raw, running) {
   return out;
 }
 
-// --- Plugin management ---
+// --- Plugin management (Carbon ONLY) ---
 
-const PLUGINS_DIR = '/srv/games/rust/oxide/plugins';
-const PLUGINS_DISABLED_DIR = '/srv/games/rust/oxide/plugins/disabled';
+const fs = require('fs');
+
+const CARBON_PLUGINS_DIR = '/srv/games/rust/carbon/plugins';
+const CARBON_DISABLED_DIR = '/srv/games/rust/carbon/plugins/disabled';
+const CARBON_DATA_DIR = '/srv/games/rust/carbon/data';
+const CARBON_CONFIGS_DIR = '/srv/games/rust/carbon/configs';
+
+function getPluginFramework() {
+  return 'carbon';
+}
 
 function getPlugins() {
-  const fs = require('fs');
   const plugins = [];
 
   try {
-    fs.mkdirSync(PLUGINS_DISABLED_DIR, { recursive: true });
-    const files = fs.readdirSync(PLUGINS_DIR).filter(f => f.endsWith('.cs'));
-    files.forEach(f => plugins.push({ name: f.replace('.cs', ''), file: f, enabled: true }));
+    fs.mkdirSync(CARBON_DISABLED_DIR, { recursive: true });
+    fs.mkdirSync(CARBON_PLUGINS_DIR, { recursive: true });
+    const files = fs.readdirSync(CARBON_PLUGINS_DIR).filter(f => f.endsWith('.cs'));
+    files.forEach(f => plugins.push({
+      name: f.replace('.cs', ''), file: f, enabled: true, framework: 'carbon',
+    }));
   } catch {}
 
   try {
-    const disabled = require('fs').readdirSync(PLUGINS_DISABLED_DIR).filter(f => f.endsWith('.cs'));
-    disabled.forEach(f => plugins.push({ name: f.replace('.cs', ''), file: f, enabled: false }));
+    const disabled = fs.readdirSync(CARBON_DISABLED_DIR).filter(f => f.endsWith('.cs'));
+    disabled.forEach(f => plugins.push({
+      name: f.replace('.cs', ''), file: f, enabled: false, framework: 'carbon',
+    }));
   } catch {}
 
   return plugins;
 }
 
 function togglePlugin(filename, enable) {
-  const fs = require('fs');
-  fs.mkdirSync(PLUGINS_DISABLED_DIR, { recursive: true });
+  fs.mkdirSync(CARBON_DISABLED_DIR, { recursive: true });
 
   const src = enable
-    ? path.join(PLUGINS_DISABLED_DIR, filename)
-    : path.join(PLUGINS_DIR, filename);
+    ? path.join(CARBON_DISABLED_DIR, filename)
+    : path.join(CARBON_PLUGINS_DIR, filename);
   const dst = enable
-    ? path.join(PLUGINS_DIR, filename)
-    : path.join(PLUGINS_DISABLED_DIR, filename);
+    ? path.join(CARBON_PLUGINS_DIR, filename)
+    : path.join(CARBON_DISABLED_DIR, filename);
 
   if (!fs.existsSync(src)) return { ok: false, message: 'Plugin not found' };
   fs.renameSync(src, dst);
-  return { ok: true };
+  return { ok: true, framework: 'carbon' };
+}
+
+function installPlugin(filename, content) {
+  fs.mkdirSync(CARBON_PLUGINS_DIR, { recursive: true });
+  fs.mkdirSync(CARBON_DATA_DIR, { recursive: true });
+  const dest = path.join(CARBON_PLUGINS_DIR, filename);
+  fs.writeFileSync(dest, content);
+  // Pre-create data dir for the plugin (fixes NPC/data registration issue)
+  const pluginName = filename.replace('.cs', '');
+  const dataDir = path.join(CARBON_DATA_DIR, pluginName);
+  fs.mkdirSync(dataDir, { recursive: true });
+  return { ok: true, path: dest, framework: 'carbon' };
+}
+
+function removePlugin(filename) {
+  const activePath = path.join(CARBON_PLUGINS_DIR, filename);
+  const disabledPath = path.join(CARBON_DISABLED_DIR, filename);
+  if (fs.existsSync(activePath)) { fs.unlinkSync(activePath); return { ok: true }; }
+  if (fs.existsSync(disabledPath)) { fs.unlinkSync(disabledPath); return { ok: true }; }
+  return { ok: false, message: 'Plugin not found' };
 }
 
 // --- Auto-shutdown ---
@@ -235,6 +266,9 @@ module.exports = {
   getStatus,
   getPlugins,
   togglePlugin,
+  installPlugin,
+  removePlugin,
+  getPluginFramework,
   resetInactivityTimer,
   rconCommand,
 };

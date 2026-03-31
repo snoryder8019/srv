@@ -59,12 +59,28 @@
       overflow: hidden;
       margin-bottom: 24px;
     }
+    .card-banner {
+      width: 100%;
+      height: 120px;
+      background-size: cover;
+      background-position: center;
+      position: relative;
+    }
+    .card-banner::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(26,26,26,1) 100%);
+    }
     .card-header {
       padding: 18px 24px;
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       gap: 12px;
+      margin-top: -32px;
+      position: relative;
+      z-index: 1;
     }
     .game-badge {
       font-size: 0.65rem;
@@ -144,6 +160,19 @@
     }
     .btn-copy:hover { border-color: var(--green); color: var(--green); }
     .btn-copy.copied { border-color: var(--green); color: var(--green); }
+    .btn-join {
+      background: var(--green); color: #0d0d0d; font-family: inherit;
+      font-size: 0.75rem; font-weight: bold; padding: 8px 16px; border-radius: 3px;
+      text-decoration: none; letter-spacing: 0.05em; transition: all 0.15s; white-space: nowrap;
+    }
+    .btn-join:hover { background: #5cc892; }
+    .btn-request {
+      background: transparent; border: 1px solid var(--yellow); color: var(--yellow);
+      font-family: inherit; font-size: 0.72rem; font-weight: bold; padding: 7px 14px;
+      border-radius: 3px; cursor: pointer; letter-spacing: 0.05em; transition: all 0.15s; white-space: nowrap;
+    }
+    .btn-request:hover { background: rgba(230,184,0,0.1); }
+    .btn-request.sent { border-color: var(--green); color: var(--green); cursor: default; }
 
     /* Admin controls */
     .admin-panel {
@@ -278,6 +307,63 @@
     /* No plugins empty state */
     .empty { color: var(--muted); font-size: 0.8rem; padding: 12px 0; }
 
+    /* === 24h Stats Row === */
+    .stats-24h {
+      display: flex; gap: 1px; background: var(--border);
+      border-top: 1px solid var(--border);
+    }
+    .stat-24h {
+      flex: 1; background: #111; padding: 10px 16px; text-align: center;
+    }
+    .stat-24h-label { font-size: 0.55rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 3px; }
+    .stat-24h-value { font-size: 0.95rem; color: var(--text); }
+    .stat-24h-value.accent { color: var(--accent); }
+    .stat-24h-value.green { color: var(--green); }
+    .stat-24h-value.yellow { color: var(--yellow); }
+
+    /* === Live Event Feed === */
+    .event-feed-section {
+      margin-top: 32px; margin-bottom: 32px;
+    }
+    .event-feed {
+      background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+      overflow: hidden;
+    }
+    .event-feed-header {
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .event-feed-title {
+      font-size: 0.68rem; color: var(--accent); text-transform: uppercase;
+      letter-spacing: 0.1em; display: flex; align-items: center; gap: 8px;
+    }
+    .feed-live-dot {
+      width: 6px; height: 6px; background: var(--accent); border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    .event-feed-count { font-size: 0.65rem; color: var(--muted); }
+    .event-list {
+      max-height: 320px; overflow-y: auto; padding: 8px 0;
+    }
+    .event-item {
+      padding: 6px 20px; font-size: 0.75rem; display: flex;
+      align-items: baseline; gap: 10px; border-bottom: 1px solid rgba(42,42,42,0.3);
+    }
+    .event-item:last-child { border-bottom: none; }
+    .event-time { color: var(--muted); font-size: 0.62rem; white-space: nowrap; flex-shrink: 0; }
+    .event-game {
+      font-size: 0.55rem; font-weight: bold; text-transform: uppercase;
+      letter-spacing: 0.08em; padding: 1px 6px; border-radius: 2px;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .event-game.rust { background: rgba(205,65,43,0.2); color: var(--accent); }
+    .event-game.valheim { background: rgba(74,124,158,0.2); color: #4a7c9e; }
+    .event-game.l4d2 { background: rgba(46,125,50,0.2); color: #4caf50; }
+    .event-game.sdtd { background: rgba(123,53,0,0.2); color: #c46200; }
+    .event-icon { font-size: 0.85rem; flex-shrink: 0; }
+    .event-text { color: var(--text); flex: 1; }
+    .event-text .name { color: var(--yellow); font-weight: bold; }
+
     /* Offline overlay */
     .offline-msg {
       padding: 40px 24px;
@@ -292,6 +378,9 @@
 <nav>
   <div class="nav-brand">MadLadsLab <span>// GAME SERVERS</span></div>
   <div class="nav-right">
+    <a href="/" style="color:var(--muted);font-size:0.75rem;text-decoration:none;border:1px solid var(--border);padding:5px 12px;border-radius:3px;">BROADCASTS</a>
+    <a href="/suggest" style="color:var(--muted);font-size:0.75rem;text-decoration:none;border:1px solid var(--border);padding:5px 12px;border-radius:3px;">SUGGEST</a>
+    <a href="/admin" id="adminLink" style="display:none;color:var(--yellow);font-size:0.75rem;font-weight:bold;text-decoration:none;border:1px solid var(--yellow);padding:5px 12px;border-radius:3px;">ADMIN</a>
     <span class="nav-user" id="navUser"></span>
     <form method="POST" action="/logout" style="margin:0">
       <button class="btn-logout" type="submit">LOGOUT</button>
@@ -304,6 +393,7 @@
 
   <!-- RUST SERVER CARD -->
   <div class="server-card">
+    <div class="card-banner" style="background-image:url('/static/img/rust.jpg')"></div>
     <div class="card-header">
       <span class="game-badge">RUST</span>
       <span class="card-title">MadLadsLab Rust</span>
@@ -339,10 +429,17 @@
     </div>
 
     <!-- Connect bar -->
-    <div class="connect-bar">
-      <span class="connect-label">CONNECT:</span>
-      <span class="connect-cmd" id="connectCmd">client.connect games.madladslab.com:28015</span>
-      <button class="btn-copy" id="copyBtn" onclick="copyConnect()">COPY</button>
+    <div class="connect-bar" data-connect="client.connect games.madladslab.com:28015" data-steam="steam://connect/games.madladslab.com:28015">
+      <a href="#" class="btn-join" id="rustJoin" onclick="return joinServer(this)">JOIN SERVER</a>
+      <button class="btn-request" id="rustRequest" onclick="requestServer('rust')" style="display:none">START SERVER</button>
+    </div>
+
+    <!-- 24h Stats -->
+    <div class="stats-24h" id="rustStats24h">
+      <div class="stat-24h"><div class="stat-24h-label">PEAK 24H</div><div class="stat-24h-value" id="rustPeak">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">UNIQUE 24H</div><div class="stat-24h-value green" id="rustUnique">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">JOINS 24H</div><div class="stat-24h-value" id="rustJoins">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">KILLS 24H</div><div class="stat-24h-value accent" id="rustKills">—</div></div>
     </div>
 
     <!-- Admin panel -->
@@ -352,6 +449,7 @@
         <button class="btn btn-start" id="btnStart" onclick="rustAction('start')">▶ START</button>
         <button class="btn btn-stop" id="btnStop" onclick="rustAction('stop')">■ STOP</button>
         <button class="btn btn-restart" id="btnRestart" onclick="rustAction('restart')">↺ RESTART</button>
+        <button class="btn btn-play" id="btnPlayRust" onclick="playBroadcast('rust')" style="background:#cd412b;margin-left:auto;">&#9654; PLAY</button>
       </div>
 
       <!-- RCON console -->
@@ -376,6 +474,7 @@
 
   <!-- LEFT 4 DEAD 2 SERVER CARD -->
   <div class="server-card">
+    <div class="card-banner" style="background-image:url('/static/img/l4d2.jpg')"></div>
     <div class="card-header">
       <span class="game-badge" style="background:#2e7d32;">L4D2</span>
       <span class="card-title">MadLadsLab Left 4 Dead 2</span>
@@ -398,9 +497,15 @@
     </div>
 
     <div class="connect-bar">
-      <span class="connect-label">CONNECT:</span>
-      <span class="connect-cmd" id="l4d2ConnectCmd">connect games.madladslab.com:27015</span>
-      <button class="btn-copy" id="l4d2CopyBtn" onclick="copyL4D2()">COPY</button>
+      <a href="#" class="btn-join" id="l4d2Join" onclick="return joinServer(this)" data-connect="connect games.madladslab.com:27015" data-steam="steam://connect/games.madladslab.com:27015">JOIN SERVER</a>
+      <button class="btn-request" id="l4d2Request" onclick="requestServer('l4d2')" style="display:none">START SERVER</button>
+    </div>
+
+    <div class="stats-24h">
+      <div class="stat-24h"><div class="stat-24h-label">PEAK 24H</div><div class="stat-24h-value" id="l4d2Peak">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">UNIQUE 24H</div><div class="stat-24h-value green" id="l4d2Unique">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">JOINS 24H</div><div class="stat-24h-value" id="l4d2Joins">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">KILLS 24H</div><div class="stat-24h-value accent" id="l4d2Kills">—</div></div>
     </div>
 
     <div class="admin-panel" id="l4d2AdminPanel">
@@ -409,6 +514,7 @@
         <button class="btn btn-start" id="l4d2BtnStart" onclick="l4d2Action('start')">▶ START</button>
         <button class="btn btn-stop" id="l4d2BtnStop" onclick="l4d2Action('stop')">■ STOP</button>
         <button class="btn btn-restart" id="l4d2BtnRestart" onclick="l4d2Action('restart')">↺ RESTART</button>
+        <button class="btn btn-play" onclick="playBroadcast('l4d2')" style="background:#cd412b;margin-left:auto;">&#9654; PLAY</button>
       </div>
 
       <div class="plugins-section">
@@ -422,6 +528,7 @@
 
   <!-- 7 DAYS TO DIE SERVER CARD -->
   <div class="server-card">
+    <div class="card-banner" style="background-image:url('/static/img/7dtd.jpg')"></div>
     <div class="card-header">
       <span class="game-badge" style="background:#7b3500;">7DTD</span>
       <span class="card-title">MadLadsLab 7 Days to Die</span>
@@ -448,9 +555,15 @@
     </div>
 
     <div class="connect-bar">
-      <span class="connect-label">CONNECT:</span>
-      <span class="connect-cmd" id="sdtdConnectCmd">games.madladslab.com:26900</span>
-      <button class="btn-copy" id="sdtdCopyBtn" onclick="copySdtd()">COPY</button>
+      <a href="#" class="btn-join" id="sdtdJoin" onclick="return joinServer(this)" data-connect="games.madladslab.com:26900" data-steam="steam://connect/games.madladslab.com:26900">JOIN SERVER</a>
+      <button class="btn-request" id="sdtdRequest" onclick="requestServer('7dtd')" style="display:none">START SERVER</button>
+    </div>
+
+    <div class="stats-24h">
+      <div class="stat-24h"><div class="stat-24h-label">PEAK 24H</div><div class="stat-24h-value" id="sdtdPeak">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">UNIQUE 24H</div><div class="stat-24h-value green" id="sdtdUnique">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">JOINS 24H</div><div class="stat-24h-value" id="sdtdJoins">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">KILLS 24H</div><div class="stat-24h-value accent" id="sdtdKills">—</div></div>
     </div>
 
     <div class="admin-panel" id="sdtdAdminPanel">
@@ -459,6 +572,7 @@
         <button class="btn btn-start" id="sdtdBtnStart" onclick="sdtdAction('start')">▶ START</button>
         <button class="btn btn-stop" id="sdtdBtnStop" onclick="sdtdAction('stop')">■ STOP</button>
         <button class="btn btn-restart" id="sdtdBtnRestart" onclick="sdtdAction('restart')">↺ RESTART</button>
+        <button class="btn btn-play" onclick="playBroadcast('7dtd')" style="background:#cd412b;margin-left:auto;">&#9654; PLAY</button>
       </div>
 
       <div class="plugins-section">
@@ -472,6 +586,7 @@
 
   <!-- VALHEIM SERVER CARD -->
   <div class="server-card">
+    <div class="card-banner" style="background-image:url('/static/img/valheim.jpg')"></div>
     <div class="card-header">
       <span class="game-badge" style="background:#4a7c9e;">VALHEIM</span>
       <span class="card-title">MadLadsLab Valheim</span>
@@ -498,9 +613,15 @@
     </div>
 
     <div class="connect-bar">
-      <span class="connect-label">CONNECT:</span>
-      <span class="connect-cmd" id="vConnectCmd">games.madladslab.com:2456</span>
-      <button class="btn-copy" id="vCopyBtn" onclick="copyValheim()">COPY</button>
+      <a href="#" class="btn-join" id="vJoin" onclick="return joinServer(this)" data-connect="games.madladslab.com:2456" data-steam="steam://connect/games.madladslab.com:2456">JOIN SERVER</a>
+      <button class="btn-request" id="vRequest" onclick="requestServer('valheim')" style="display:none">START SERVER</button>
+    </div>
+
+    <div class="stats-24h">
+      <div class="stat-24h"><div class="stat-24h-label">PEAK 24H</div><div class="stat-24h-value" id="vPeak">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">UNIQUE 24H</div><div class="stat-24h-value green" id="vUnique">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">JOINS 24H</div><div class="stat-24h-value" id="vJoins">—</div></div>
+      <div class="stat-24h"><div class="stat-24h-label">KILLS 24H</div><div class="stat-24h-value accent" id="vKills">—</div></div>
     </div>
 
     <div class="admin-panel" id="vAdminPanel">
@@ -509,6 +630,7 @@
         <button class="btn btn-start" id="vBtnStart" onclick="valheimAction('start')">▶ START</button>
         <button class="btn btn-stop" id="vBtnStop" onclick="valheimAction('stop')">■ STOP</button>
         <button class="btn btn-restart" id="vBtnRestart" onclick="valheimAction('restart')">↺ RESTART</button>
+        <button class="btn btn-play" onclick="playBroadcast('valheim')" style="background:#cd412b;margin-left:auto;">&#9654; PLAY</button>
       </div>
 
       <div class="plugins-section">
@@ -516,6 +638,20 @@
         <div class="plugin-list" id="vPluginList">
           <div class="empty">Loading plugins...</div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIVE EVENT FEED -->
+  <div class="event-feed-section">
+    <h2>Live Feed</h2>
+    <div class="event-feed">
+      <div class="event-feed-header">
+        <div class="event-feed-title"><span class="feed-live-dot"></span>SERVER EVENTS</div>
+        <div class="event-feed-count" id="feedCount"></div>
+      </div>
+      <div class="event-list" id="eventList">
+        <div class="event-item"><span class="event-text" style="color:var(--muted);font-style:italic;">Connecting to event stream...</span></div>
       </div>
     </div>
   </div>
@@ -534,6 +670,9 @@ async function init() {
   if (!me) return (location.href = '/login');
   document.getElementById('navUser').textContent = me.displayName || me.email;
   isAdmin = me.isAdmin;
+  if (isAdmin || (me.permissions && me.permissions.games === 'admin')) {
+    document.getElementById('adminLink').style.display = '';
+  }
   if (isAdmin) {
     document.getElementById('adminPanel').classList.add('visible');
     document.getElementById('vAdminPanel').classList.add('visible');
@@ -546,6 +685,26 @@ async function init() {
   }
   await Promise.all([pollStatus(), pollValheim(), pollL4D2(), pollSdtd()]);
   pollInterval = setInterval(() => { pollStatus(); pollValheim(); pollL4D2(); pollSdtd(); }, 15000);
+}
+
+// --- PLAY: Start server + create broadcast ---
+async function playBroadcast(game) {
+  toast('Starting server + broadcast...', true);
+  // Map game to its API action function
+  const actionMap = { rust: 'rust', l4d2: 'l4d2', '7dtd': '7dtd', valheim: 'valheim' };
+  const g = actionMap[game];
+  if (!g) return toast('Unknown game', false);
+
+  // Start the game server
+  const startRes = await api('POST', '/api/' + g + '/start');
+  if (startRes && !startRes.ok) toast(startRes.message || 'Server start failed', false);
+
+  // Create broadcast session
+  const bcRes = await api('POST', '/broadcasts/api/create', { game: game });
+  if (!bcRes || bcRes.error) return toast(bcRes ? bcRes.error : 'Failed to create broadcast', false);
+
+  // Redirect to broadcast page with auto-start flag
+  window.location.href = '/broadcasts/' + bcRes.broadcast.code + '?broadcast=start';
 }
 
 // --- Status polling ---
@@ -585,6 +744,9 @@ async function pollStatus() {
     document.getElementById('btnStop').disabled = !s.running;
     document.getElementById('btnRestart').disabled = !s.running;
   }
+  // Join/Request toggle
+  document.getElementById('rustJoin').style.display = (s.running && !s.booting) ? '' : 'none';
+  document.getElementById('rustRequest').style.display = (!s.running) ? '' : 'none';
 }
 
 // --- Server actions ---
@@ -635,15 +797,54 @@ async function togglePlugin(file, enable) {
   if (res) toast(res.ok ? `Plugin ${enable ? 'enabled' : 'disabled'}` : (res.message || 'Error'), res.ok);
 }
 
-// --- Copy ---
-function copyConnect() {
-  const txt = document.getElementById('connectCmd').textContent;
-  navigator.clipboard.writeText(txt).then(() => {
-    const btn = document.getElementById('copyBtn');
-    btn.textContent = 'COPIED';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
+// --- Join / Request ---
+function joinServer(el) {
+  var connectCmd = el.dataset.connect || el.closest('.connect-bar').dataset.connect;
+  var steamUrl = el.dataset.steam || el.closest('.connect-bar').dataset.steam;
+  // Copy connect info to clipboard
+  navigator.clipboard.writeText(connectCmd).then(function() {
+    el.textContent = 'COPIED! LAUNCHING...';
+    setTimeout(function() { el.textContent = 'JOIN SERVER'; }, 2500);
   });
+  // Open Steam
+  if (steamUrl) window.location.href = steamUrl;
+  return false;
+}
+
+async function requestServer(game) {
+  var btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'STARTING...';
+  try {
+    var r = await fetch('/servers/api/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game: game }),
+    });
+    var d = await r.json();
+    if (d.ok) {
+      toast(d.message, true);
+      if (d.status === 'running') {
+        btn.textContent = 'ALREADY RUNNING';
+      } else if (d.status === 'provisioning') {
+        btn.textContent = 'PROVISIONING...';
+        startProvisionPoller(game, btn);
+      } else {
+        btn.textContent = 'BOOTING...';
+      }
+      btn.classList.add('sent');
+      setTimeout(function() { pollStatus(); pollValheim(); pollL4D2(); pollSdtd(); }, 5000);
+      setTimeout(function() { pollStatus(); pollValheim(); pollL4D2(); pollSdtd(); }, 15000);
+    } else {
+      toast(d.error, false);
+      btn.textContent = 'START SERVER';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    toast('Request failed', false);
+    btn.textContent = 'START SERVER';
+    btn.disabled = false;
+  }
 }
 
 // --- Helpers ---
@@ -702,6 +903,8 @@ async function pollValheim() {
     document.getElementById('vBtnStop').disabled = !s.running;
     document.getElementById('vBtnRestart').disabled = !s.running;
   }
+  document.getElementById('vJoin').style.display = (s.running && !s.booting) ? '' : 'none';
+  document.getElementById('vRequest').style.display = (!s.running) ? '' : 'none';
 }
 
 async function valheimAction(action) {
@@ -733,15 +936,103 @@ async function toggleValheimPlugin(file, enable) {
   if (res) toast(res.ok ? `Plugin ${enable ? 'enabled' : 'disabled'}` : (res.message || 'Error'), res.ok);
 }
 
-function copyValheim() {
-  const txt = document.getElementById('vConnectCmd').textContent;
-  navigator.clipboard.writeText(txt).then(() => {
-    const btn = document.getElementById('vCopyBtn');
-    btn.textContent = 'COPIED';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
-  });
+function copyValheim() {} // deprecated
+
+// --- Provision Status Poller ---
+var provisionPollers = {};
+
+function startProvisionPoller(game, btn) {
+  if (provisionPollers[game]) return; // already polling
+  var attempts = 0;
+  var maxAttempts = 60; // poll for 10 minutes (every 10s)
+
+  provisionPollers[game] = setInterval(async function() {
+    attempts++;
+    try {
+      var r = await fetch('/servers/api/provisioned-status/' + game);
+      var d = await r.json();
+
+      if (!d.active) {
+        // Server was destroyed or doesn't exist
+        btn.textContent = 'START SERVER';
+        btn.disabled = false;
+        btn.classList.remove('sent');
+        clearInterval(provisionPollers[game]);
+        delete provisionPollers[game];
+        return;
+      }
+
+      if (d.ready && d.connect) {
+        // Server is ready — show JOIN
+        clearInterval(provisionPollers[game]);
+        delete provisionPollers[game];
+        toast(game.toUpperCase() + ' server is LIVE at ' + d.connect, true);
+
+        // Replace button with join link
+        var parent = btn.parentElement;
+        btn.style.display = 'none';
+        var joinBtn = document.createElement('a');
+        joinBtn.href = '#';
+        joinBtn.className = 'btn-join';
+        joinBtn.textContent = 'JOIN SERVER';
+        joinBtn.dataset.connect = d.connect;
+        joinBtn.dataset.steam = d.steam;
+        joinBtn.onclick = function() { return joinServer(joinBtn); };
+        parent.appendChild(joinBtn);
+        return;
+      }
+
+      // Still provisioning — update button text
+      var dots = '.'.repeat((attempts % 3) + 1);
+      btn.textContent = d.ip ? 'INSTALLING' + dots : 'PROVISIONING' + dots;
+
+    } catch (e) {}
+
+    if (attempts >= maxAttempts) {
+      btn.textContent = 'TIMEOUT — CHECK ADMIN';
+      clearInterval(provisionPollers[game]);
+      delete provisionPollers[game];
+    }
+  }, 10000);
 }
+
+// Check for any active provisioned servers on page load
+async function checkProvisionedServers() {
+  var games = ['rust', 'valheim', 'l4d2', '7dtd'];
+  for (var i = 0; i < games.length; i++) {
+    try {
+      var r = await fetch('/servers/api/provisioned-status/' + games[i]);
+      var d = await r.json();
+      if (d.active) {
+        var btnId = { rust: 'rustRequest', valheim: 'vRequest', l4d2: 'l4d2Request', '7dtd': 'sdtdRequest' }[games[i]];
+        var btn = document.getElementById(btnId);
+        if (!btn) continue;
+        btn.style.display = '';
+        if (d.ready && d.connect) {
+          // Already ready — show join
+          var parent = btn.parentElement;
+          btn.style.display = 'none';
+          var joinBtn = document.createElement('a');
+          joinBtn.href = '#';
+          joinBtn.className = 'btn-join';
+          joinBtn.textContent = 'JOIN COMMUNITY SERVER';
+          joinBtn.dataset.connect = d.connect;
+          joinBtn.dataset.steam = d.steam;
+          joinBtn.onclick = function() { return joinServer(joinBtn); };
+          parent.appendChild(joinBtn);
+        } else {
+          btn.textContent = 'PROVISIONING...';
+          btn.disabled = true;
+          btn.classList.add('sent');
+          startProvisionPoller(games[i], btn);
+        }
+      }
+    } catch (e) {}
+  }
+}
+
+// Run on page load
+setTimeout(checkProvisionedServers, 2000);
 
 // --- Left 4 Dead 2 ---
 
@@ -777,6 +1068,8 @@ async function pollL4D2() {
     document.getElementById('l4d2BtnStop').disabled = !s.running;
     document.getElementById('l4d2BtnRestart').disabled = !s.running;
   }
+  document.getElementById('l4d2Join').style.display = (s.running && !s.booting) ? '' : 'none';
+  document.getElementById('l4d2Request').style.display = (!s.running) ? '' : 'none';
 }
 
 async function l4d2Action(action) {
@@ -808,15 +1101,7 @@ async function toggleL4D2Plugin(file, enable) {
   if (res) toast(res.ok ? `Plugin ${enable ? 'enabled' : 'disabled'}` : (res.message || 'Error'), res.ok);
 }
 
-function copyL4D2() {
-  const txt = document.getElementById('l4d2ConnectCmd').textContent;
-  navigator.clipboard.writeText(txt).then(() => {
-    const btn = document.getElementById('l4d2CopyBtn');
-    btn.textContent = 'COPIED';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
-  });
-}
+function copyL4D2() {} // deprecated
 
 // --- 7 Days to Die ---
 
@@ -853,6 +1138,8 @@ async function pollSdtd() {
     document.getElementById('sdtdBtnStop').disabled = !s.running;
     document.getElementById('sdtdBtnRestart').disabled = !s.running;
   }
+  document.getElementById('sdtdJoin').style.display = (s.running && !s.booting) ? '' : 'none';
+  document.getElementById('sdtdRequest').style.display = (!s.running) ? '' : 'none';
 }
 
 async function sdtdAction(action) {
@@ -884,15 +1171,130 @@ async function toggleSdtdMod(modname, enable) {
   if (res) toast(res.ok ? `Mod ${enable ? 'enabled' : 'disabled'}` : (res.message || 'Error'), res.ok);
 }
 
-function copySdtd() {
-  const txt = document.getElementById('sdtdConnectCmd').textContent;
-  navigator.clipboard.writeText(txt).then(() => {
-    const btn = document.getElementById('sdtdCopyBtn');
-    btn.textContent = 'COPIED';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
+function copySdtd() {} // deprecated
+// --- Stats & Live Event Feed ---
+
+const EVENT_ICONS = {
+  player_join: '\u{1F7E2}', player_leave: '\u{1F534}',
+  chat: '\u{1F4AC}', kill: '\u{1F480}',
+  map_change: '\u{1F5FA}', server_start: '\u{26A1}',
+};
+const GAME_CSS = { rust: 'rust', valheim: 'valheim', l4d2: 'l4d2', '7dtd': 'sdtd' };
+const GAME_NAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7DTD' };
+
+let feedEvents = [];
+
+// Load 24h summaries for each server card
+async function loadStats24h() {
+  const data = await api('GET', '/stats/summary');
+  if (!data) return;
+
+  const map = {
+    rust:    { peak: 'rustPeak', unique: 'rustUnique', joins: 'rustJoins', kills: 'rustKills' },
+    valheim: { peak: 'vPeak', unique: 'vUnique', joins: 'vJoins', kills: 'vKills' },
+    l4d2:    { peak: 'l4d2Peak', unique: 'l4d2Unique', joins: 'l4d2Joins', kills: 'l4d2Kills' },
+    '7dtd':  { peak: 'sdtdPeak', unique: 'sdtdUnique', joins: 'sdtdJoins', kills: 'sdtdKills' },
+  };
+
+  for (const [game, ids] of Object.entries(map)) {
+    const s = data[game];
+    if (!s) continue;
+    const el = (id) => document.getElementById(id);
+    el(ids.peak).textContent = s.peakPlayers24h || 0;
+    el(ids.unique).textContent = s.uniquePlayers24h || 0;
+    el(ids.joins).textContent = (s.events && s.events.player_join) || 0;
+    el(ids.kills).textContent = (s.events && s.events.kill) || 0;
+  }
+}
+
+// Load recent events into the feed
+async function loadRecentEvents() {
+  const data = await api('GET', '/stats/events?limit=30');
+  if (!data || !data.events) return;
+  feedEvents = data.events.reverse(); // oldest first
+  renderFeed();
+}
+
+function renderFeed() {
+  const list = document.getElementById('eventList');
+  if (!feedEvents.length) {
+    list.innerHTML = '<div class="event-item"><span class="event-text" style="color:var(--muted);font-style:italic;">No events yet</span></div>';
+    return;
+  }
+  list.innerHTML = feedEvents.map(renderEventItem).join('');
+  list.scrollTop = list.scrollHeight;
+  document.getElementById('feedCount').textContent = feedEvents.length + ' events';
+}
+
+function renderEventItem(ev) {
+  const time = new Date(ev.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const icon = EVENT_ICONS[ev.type] || '\u{2022}';
+  const gameClass = GAME_CSS[ev.game] || 'rust';
+  const gameName = GAME_NAMES[ev.game] || ev.game;
+  let text = '';
+
+  switch (ev.type) {
+    case 'player_join':
+      text = '<span class="name">' + esc(ev.name || ev.steamId || 'Player') + '</span> joined';
+      break;
+    case 'player_leave':
+      text = '<span class="name">' + esc(ev.name || ev.steamId || 'Player') + '</span> left';
+      break;
+    case 'chat':
+      text = '<span class="name">' + esc(ev.name || 'Player') + '</span>: ' + esc(ev.message || '');
+      break;
+    case 'kill':
+      text = '<span class="name">' + esc(ev.attacker || '?') + '</span> killed <span class="name">' + esc(ev.victim || '?') + '</span>';
+      break;
+    case 'map_change':
+      text = 'Map changed to <span class="name">' + esc(ev.map || '?') + '</span>';
+      break;
+    case 'server_start':
+      text = 'Server started';
+      break;
+    default:
+      text = ev.type;
+  }
+
+  return '<div class="event-item">' +
+    '<span class="event-time">' + time + '</span>' +
+    '<span class="event-game ' + gameClass + '">' + gameName + '</span>' +
+    '<span class="event-icon">' + icon + '</span>' +
+    '<span class="event-text">' + text + '</span>' +
+    '</div>';
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// Socket.IO live feed
+function connectStatsFeed() {
+  var statsSocket = io('/stats', { transports: ['websocket', 'polling'] });
+  statsSocket.on('connect', function() {
+    statsSocket.emit('stats:subscribe', null); // subscribe to all games
+  });
+
+  statsSocket.on('stats:event', function(ev) {
+    feedEvents.push(ev);
+    if (feedEvents.length > 100) feedEvents = feedEvents.slice(-100);
+    var list = document.getElementById('eventList');
+    list.insertAdjacentHTML('beforeend', renderEventItem(ev));
+    list.scrollTop = list.scrollHeight;
+    document.getElementById('feedCount').textContent = feedEvents.length + ' events';
+  });
+
+  statsSocket.on('stats:snapshot', function(snap) {
+    // Could update live stats here in future
   });
 }
+
+// Load stats on init
+loadStats24h();
+loadRecentEvents();
+setInterval(loadStats24h, 60000); // refresh 24h stats every minute
+
+// Connect live feed (needs socket.io client)
 </script>
+<script src="/static/js/socket.io.min.js" onload="connectStatsFeed()"></script>
+<script src="/static/js/maintenance.js"></script>
 </body>
 </html>

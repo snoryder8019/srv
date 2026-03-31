@@ -24,7 +24,7 @@ tmux kill-session -t $SESSION 2>/dev/null
 
 tmux new-session -d -s $SESSION -x 220 -y 50
 
-tmux send-keys -t $SESSION "cd $RUST_DIR && ./RustDedicated \
+tmux send-keys -t $SESSION "export HOME=/root && export TERM=xterm && export DOORSTOP_ENABLED=1 && export DOORSTOP_TARGET_ASSEMBLY=$RUST_DIR/carbon/managed/Carbon.Preloader.dll && export LD_PRELOAD=$RUST_DIR/libdoorstop.so && export LD_LIBRARY_PATH=$RUST_DIR:$RUST_DIR/RustDedicated_Data/Plugins/x86_64:\$LD_LIBRARY_PATH && cd $RUST_DIR && ./RustDedicated \
   -batchmode \
   -nographics \
   +server.identity \"$SERVER_IDENTITY\" \

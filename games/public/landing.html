@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MadLadsLab — Game Servers & Live Broadcasts</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0a; --surface: #111; --card: #151515; --border: #222;
+      --accent: #cd412b; --accent-glow: rgba(205,65,43,0.4);
+      --green: #4caf82; --yellow: #e6b800; --text: #e8e8e8; --muted: #555;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; overflow-x: hidden; }
+    a { text-decoration: none; }
+
+    /* ═══ NAV ═══ */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10,10,10,0.85); backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(205,65,43,0.15);
+      padding: 0 24px; display: flex; align-items: center;
+      justify-content: space-between; height: 50px;
+    }
+    .nav-brand { color: var(--accent); font-size: 0.95rem; font-weight: bold; letter-spacing: 0.08em; }
+    .nav-sub { color: var(--muted); font-size: 0.6rem; margin-left: 8px; letter-spacing: 0.05em; }
+    .nav-right { display: flex; align-items: center; gap: 10px; }
+    .nav-btn {
+      color: var(--muted); font-family: inherit; font-size: 0.7rem; font-weight: bold;
+      border: 1px solid var(--border); padding: 5px 14px; border-radius: 3px;
+      transition: all 0.2s; background: transparent;
+    }
+    .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .nav-btn.accent { border-color: var(--accent); color: var(--accent); }
+    .nav-btn.accent:hover { background: var(--accent); color: #fff; }
+
+    /* ═══ HERO ═══ */
+    .hero {
+      position: relative; height: 55vh; min-height: 360px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; margin-top: 50px;
+    }
+    .hero-bg {
+      position: absolute; inset: 0;
+      display: flex; animation: heroSlide 24s infinite;
+    }
+    .hero-slide {
+      min-width: 100%; height: 100%;
+      background-size: cover; background-position: center;
+    }
+    @keyframes heroSlide {
+      0%, 22% { transform: translateX(0); }
+      25%, 47% { transform: translateX(-100%); }
+      50%, 72% { transform: translateX(-200%); }
+      75%, 97% { transform: translateX(-300%); }
+      100% { transform: translateX(0); }
+    }
+    .hero-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(
+        to bottom,
+        rgba(10,10,10,0.3) 0%,
+        rgba(10,10,10,0.6) 50%,
+        rgba(10,10,10,1) 100%
+      );
+    }
+    .hero-content {
+      position: relative; z-index: 2; text-align: center; padding: 0 20px;
+    }
+    .hero-tag {
+      display: inline-block; font-size: 0.55rem; color: var(--accent);
+      letter-spacing: 0.2em; text-transform: uppercase;
+      border: 1px solid rgba(205,65,43,0.3); padding: 4px 14px;
+      border-radius: 2px; margin-bottom: 16px;
+    }
+    .hero-title {
+      font-size: 2.4rem; color: #fff; letter-spacing: 0.1em;
+      text-shadow: 0 0 40px var(--accent-glow);
+      margin-bottom: 12px;
+    }
+    .hero-desc {
+      color: var(--muted); font-size: 0.82rem; max-width: 480px;
+      margin: 0 auto 28px; line-height: 1.6;
+    }
+    .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .hero-btn {
+      font-family: inherit; font-size: 0.78rem; font-weight: bold;
+      padding: 12px 28px; border-radius: 4px; cursor: pointer;
+      letter-spacing: 0.08em; transition: all 0.25s; border: none;
+    }
+    .hero-btn-primary {
+      background: var(--accent); color: #fff;
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .hero-btn-primary:hover { background: #e04530; box-shadow: 0 0 30px var(--accent-glow); transform: translateY(-1px); }
+    .hero-btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .hero-btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ═══ LIVE SECTION (shown when broadcasts active) ═══ */
+    .live-section {
+      padding: 40px 20px; display: none;
+    }
+    .live-section.active { display: block; }
+    .live-header {
+      max-width: 960px; margin: 0 auto 20px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .live-dot { width: 10px; height: 10px; background: var(--accent); border-radius: 50%; animation: pulse 1.4s infinite; box-shadow: 0 0 8px var(--accent-glow); }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    .live-label { font-size: 0.75rem; color: var(--accent); letter-spacing: 0.15em; text-transform: uppercase; font-weight: bold; }
+    .live-count { font-size: 0.65rem; color: var(--muted); margin-left: auto; }
+
+    .live-grid {
+      max-width: 960px; margin: 0 auto;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
+    }
+    .live-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      overflow: hidden; cursor: pointer; transition: all 0.25s;
+    }
+    .live-card:hover { border-color: var(--accent); box-shadow: 0 0 24px var(--accent-glow); transform: translateY(-2px); }
+    .live-preview {
+      aspect-ratio: 16/9; position: relative; overflow: hidden;
+      background: #000; background-size: cover; background-position: center;
+    }
+    .live-preview::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.7) 100%);
+    }
+    .live-preview-badge {
+      position: absolute; top: 10px; left: 10px; z-index: 1;
+      background: var(--accent); color: #fff; font-size: 0.55rem; font-weight: bold;
+      padding: 3px 10px; border-radius: 2px; letter-spacing: 0.12em;
+      animation: pulse 1.4s infinite;
+    }
+    .live-preview-game {
+      position: absolute; top: 10px; right: 10px; z-index: 1;
+      background: rgba(0,0,0,0.7); color: var(--yellow); font-size: 0.58rem; font-weight: bold;
+      padding: 3px 8px; border-radius: 2px; letter-spacing: 0.08em;
+    }
+    .live-preview-cta {
+      position: absolute; bottom: 14px; left: 0; right: 0; z-index: 1;
+      text-align: center; color: #fff; font-size: 0.72rem;
+      letter-spacing: 0.1em; text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+    }
+    .live-info { padding: 14px 16px; }
+    .live-host { font-size: 0.88rem; margin-bottom: 4px; }
+    .live-meta { display: flex; gap: 14px; font-size: 0.65rem; color: var(--muted); }
+    .live-viewers { color: var(--green); }
+
+    /* ═══ GAMES SHOWCASE (shown when no live broadcasts) ═══ */
+    .games-section {
+      padding: 0 20px 60px; display: none;
+    }
+    .games-section.active { display: block; }
+    .games-header {
+      max-width: 960px; margin: 0 auto 24px;
+      font-size: 0.65rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+    .games-grid {
+      max-width: 960px; margin: 0 auto;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px;
+    }
+    .game-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      overflow: hidden; transition: all 0.25s; position: relative;
+    }
+    .game-card:hover { border-color: var(--accent); box-shadow: 0 0 20px var(--accent-glow); transform: translateY(-2px); }
+    .game-card-img {
+      width: 100%; aspect-ratio: 460/215; object-fit: cover;
+      display: block; filter: brightness(0.8);
+    }
+    .game-card:hover .game-card-img { filter: brightness(1); }
+    .game-card-info {
+      padding: 12px 14px;
+    }
+    .game-card-name { font-size: 0.85rem; font-weight: bold; margin-bottom: 4px; }
+    .game-card-status { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .game-card-status.online { color: var(--green); }
+
+    /* ═══ FEATURES STRIP ═══ */
+    .features {
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      padding: 36px 20px; background: var(--surface);
+    }
+    .features-grid {
+      max-width: 960px; margin: 0 auto;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 28px;
+    }
+    .feature { text-align: center; }
+    .feature-icon { font-size: 1.6rem; margin-bottom: 8px; }
+    .feature-title { font-size: 0.78rem; font-weight: bold; margin-bottom: 4px; color: var(--text); }
+    .feature-desc { font-size: 0.65rem; color: var(--muted); line-height: 1.5; }
+
+    /* ═══ FOOTER ═══ */
+    footer {
+      padding: 28px 20px; text-align: center;
+      font-size: 0.6rem; color: var(--muted); letter-spacing: 0.05em;
+    }
+    footer a { color: var(--accent); }
+
+    /* ═══ MOBILE ═══ */
+    @media (max-width: 600px) {
+      .hero { height: 50vh; min-height: 300px; }
+      .hero-title { font-size: 1.5rem; }
+      .live-grid { grid-template-columns: 1fr; }
+      .games-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .features-grid { grid-template-columns: 1fr 1fr; gap: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div>
+    <span class="nav-brand">MADLADSLAB</span>
+    <span class="nav-sub">GAME SERVERS</span>
+  </div>
+  <div class="nav-right" id="navRight">
+    <a href="/login" class="nav-btn accent">LOGIN</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg">
+    <div class="hero-slide" style="background-image:url('/static/img/rust.jpg')"></div>
+    <div class="hero-slide" style="background-image:url('/static/img/valheim.jpg')"></div>
+    <div class="hero-slide" style="background-image:url('/static/img/l4d2.jpg')"></div>
+    <div class="hero-slide" style="background-image:url('/static/img/7dtd.jpg')"></div>
+  </div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <div class="hero-tag">DEDICATED GAME SERVERS</div>
+    <h1 class="hero-title">PLAY. BROADCAST. DOMINATE.</h1>
+    <p class="hero-desc">Dedicated Rust, Valheim, L4D2, and 7 Days to Die servers. Watch live broadcasts, jump into voice chat, or spin up your own game.</p>
+    <div class="hero-actions">
+      <a href="/login" class="hero-btn hero-btn-primary" id="heroCta">JOIN NOW</a>
+      <a href="#games" class="hero-btn hero-btn-ghost">VIEW SERVERS</a>
+    </div>
+  </div>
+</section>
+
+<!-- LIVE BROADCASTS (shown dynamically) -->
+<section class="live-section" id="liveSection">
+  <div class="live-header">
+    <div class="live-dot"></div>
+    <span class="live-label">LIVE NOW</span>
+    <span class="live-count" id="liveCount"></span>
+  </div>
+  <div class="live-grid" id="liveGrid"></div>
+</section>
+
+<!-- GAME SERVERS SHOWCASE -->
+<section class="games-section active" id="gamesSection">
+  <div class="games-header" id="gamesHeader">OUR SERVERS</div>
+  <div class="games-grid" id="gamesGrid"></div>
+</section>
+
+<!-- FEATURES -->
+<section class="features">
+  <div class="features-grid">
+    <div class="feature">
+      <div class="feature-icon">&#128308;</div>
+      <div class="feature-title">LIVE BROADCASTS</div>
+      <div class="feature-desc">Watch gameplay live from our dedicated servers. Screen share + voice chat.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#127918;</div>
+      <div class="feature-title">4 GAME SERVERS</div>
+      <div class="feature-desc">Rust, Valheim, L4D2, 7 Days to Die. Modded and ready to play.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#127908;</div>
+      <div class="feature-title">VOICE CHAT</div>
+      <div class="feature-desc">Built-in team voice with push-to-talk. Talk while you watch or play.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">&#128274;</div>
+      <div class="feature-title">PRIVATE SERVERS</div>
+      <div class="feature-desc">Spin up your own dedicated server. Full mod control. Starting at $12/mo.</div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  MADLADSLAB &copy; 2026 &mdash; <a href="/suggest">Suggestions</a> &middot; <a href="/login">Login</a>
+</footer>
+
+<script>
+(function() {
+  var GAMES = [
+    { id: 'rust', name: 'RUST', img: '/static/img/rust.jpg' },
+    { id: 'valheim', name: 'VALHEIM', img: '/static/img/valheim.jpg' },
+    { id: 'l4d2', name: 'LEFT 4 DEAD 2', img: '/static/img/l4d2.jpg' },
+    { id: '7dtd', name: '7 DAYS TO DIE', img: '/static/img/7dtd.jpg' },
+  ];
+  var GAME_LABELS = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7 DAYS' };
+
+  // Build game showcase cards
+  var gGrid = document.getElementById('gamesGrid');
+  GAMES.forEach(function(g) {
+    var card = document.createElement('div');
+    card.className = 'game-card';
+    card.id = 'game-card-' + g.id;
+    card.innerHTML =
+      '<img class="game-card-img" src="' + g.img + '" alt="' + g.name + '">' +
+      '<div class="game-card-info">' +
+        '<div class="game-card-name">' + g.name + '</div>' +
+        '<div class="game-card-status" id="game-status-' + g.id + '">CHECKING...</div>' +
+      '</div>';
+    gGrid.appendChild(card);
+  });
+
+  // Poll server statuses
+  async function pollStatuses() {
+    for (var i = 0; i < GAMES.length; i++) {
+      var g = GAMES[i];
+      try {
+        var r = await fetch('/stats/summary/' + g.id);
+        var data = await r.json();
+        var el = document.getElementById('game-status-' + g.id);
+        if (data.latest && data.latest.players !== undefined && !data.latest.booting) {
+          el.textContent = data.latest.players + ' PLAYERS ONLINE';
+          el.className = 'game-card-status' + (data.latest.players > 0 ? ' online' : '');
+        } else if (data.latest && data.latest.booting) {
+          el.textContent = 'BOOTING...';
+          el.className = 'game-card-status';
+        } else {
+          el.textContent = 'OFFLINE';
+          el.className = 'game-card-status';
+        }
+      } catch (e) {
+        var el2 = document.getElementById('game-status-' + g.id);
+        if (el2) { el2.textContent = 'OFFLINE'; el2.className = 'game-card-status'; }
+      }
+    }
+  }
+
+  // Check for live broadcasts
+  async function checkLive() {
+    try {
+      var r = await fetch('/broadcasts/api/list');
+      var data = await r.json();
+      var live = data.broadcasts.filter(function(b) { return b.live; });
+
+      var liveSection = document.getElementById('liveSection');
+      var gamesSection = document.getElementById('gamesSection');
+
+      if (live.length > 0) {
+        liveSection.classList.add('active');
+        document.getElementById('liveCount').textContent = live.length + ' broadcast' + (live.length > 1 ? 's' : '');
+        var grid = document.getElementById('liveGrid');
+        grid.innerHTML = '';
+        live.forEach(function(b) {
+          var card = document.createElement('div');
+          card.className = 'live-card';
+          card.onclick = function() { window.location.href = '/broadcasts/' + b.code; };
+          var img = { rust: '/static/img/rust.jpg', valheim: '/static/img/valheim.jpg', l4d2: '/static/img/l4d2.jpg', '7dtd': '/static/img/7dtd.jpg' }[b.game] || '';
+          card.innerHTML =
+            '<div class="live-preview" style="background-image:url(' + img + ')">' +
+              '<span class="live-preview-badge">LIVE</span>' +
+              '<span class="live-preview-game">' + (GAME_LABELS[b.game] || b.game) + '</span>' +
+              '<div class="live-preview-cta">CLICK TO WATCH</div>' +
+            '</div>' +
+            '<div class="live-info">' +
+              '<div class="live-host">' + esc(b.host) + '</div>' +
+              '<div class="live-meta">' +
+                '<span class="live-viewers">' + b.viewers + ' watching</span>' +
+                '<span>' + (GAME_LABELS[b.game] || b.game) + '</span>' +
+              '</div>' +
+            '</div>';
+          grid.appendChild(card);
+        });
+        // Still show games section below
+        document.getElementById('gamesHeader').textContent = 'OUR SERVERS';
+      } else {
+        liveSection.classList.remove('active');
+      }
+      gamesSection.classList.add('active');
+    } catch (e) {}
+  }
+
+  // Auth check
+  async function checkAuth() {
+    try {
+      var r = await fetch('/broadcasts/api/me');
+      var me = await r.json();
+      if (me.authed) {
+        var adminLink = (me.role === 'superadmin' || me.role === 'admin')
+          ? '<a href="/admin" class="nav-btn" style="border-color:var(--yellow);color:var(--yellow)">ADMIN</a>' : '';
+        document.getElementById('navRight').innerHTML =
+          '<a href="/suggest" class="nav-btn">SUGGEST</a>' +
+          adminLink +
+          '<a href="/dashboard" class="nav-btn accent">DASHBOARD</a>';
+        document.getElementById('heroCta').textContent = 'DASHBOARD';
+        document.getElementById('heroCta').href = '/dashboard';
+      }
+    } catch (e) {}
+  }
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  checkAuth();
+  pollStatuses();
+  checkLive();
+  setInterval(pollStatuses, 30000);
+  setInterval(checkLive, 15000);
+})();
+</script>
+<script src="/static/js/socket.io.min.js"></script>
+<script src="/static/js/maintenance.js"></script>
+</body>
+</html>

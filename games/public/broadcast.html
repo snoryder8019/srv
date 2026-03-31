@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MadLadsLab — Live Broadcast</title>
+  <link rel="stylesheet" href="/static/css/broadcasts.css">
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="bc-nav">
+    <div class="bc-nav-left">
+      <a href="/" class="bc-nav-brand">MADLADSLAB</a>
+      <span id="navGame" class="bc-nav-game hidden"></span>
+      <span id="navLive" class="bc-nav-live hidden"><span class="dot"></span>LIVE</span>
+    </div>
+    <div class="bc-nav-right">
+      <a href="/dashboard" id="navDashboard" class="btn btn-sm btn-outline hidden">DASHBOARD</a>
+      <a href="/admin" id="navAdmin" class="btn btn-sm hidden" style="border-color:var(--yellow);color:var(--yellow)">ADMIN</a>
+      <button id="btnShare" class="btn btn-sm btn-outline hidden">SHARE</button>
+      <button id="btnEndBroadcast" class="btn btn-sm hidden" style="background:#e53935">END</button>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="bc-main">
+
+    <!-- Video Panel -->
+    <div class="video-panel">
+      <div class="video-container">
+        <video id="videoPlayer" autoplay playsinline muted></video>
+        <div id="videoOffline" class="video-offline">
+          <div class="video-offline-icon">&#127918;</div>
+          <div>Waiting for broadcast...</div>
+        </div>
+        <!-- Broadcaster launch panel (shown only to host before going live) -->
+        <div id="launchPanel" class="launch-panel hidden">
+          <div class="launch-title">GET IN THE GAME</div>
+          <div class="launch-steps">
+            <div class="launch-step">
+              <span class="launch-step-num">1</span>
+              <a id="btnLaunchGame" class="launch-btn" href="#">&#9654; LAUNCH GAME</a>
+            </div>
+            <div class="launch-step">
+              <span class="launch-step-num">2</span>
+              <button id="btnGoLive" class="launch-btn live-btn" onclick="window.startBroadcastStream()">&#128308; GO LIVE</button>
+            </div>
+          </div>
+          <div class="launch-hint">Launch connects via Steam. Go Live shares your screen.</div>
+        </div>
+        <div class="video-overlay">
+          <span id="overlayHost" class="overlay-host hidden"></span>
+          <span id="overlayViewers" class="overlay-viewers hidden"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Sidebar -->
+    <div class="chat-sidebar">
+      <!-- Voice Bar -->
+      <div id="voiceBar" class="voice-bar">
+        <div class="voice-header">
+          <span class="voice-title">VOICE CHAT</span>
+          <span class="voice-hint" id="voiceHint">Hold V = push-to-talk</span>
+        </div>
+        <div class="voice-controls">
+          <button id="btnVoiceJoin" class="voice-btn join" onclick="bcVoice.join()">JOIN VOICE</button>
+          <button id="btnVoiceLeave" class="voice-btn leave hidden" onclick="bcVoice.leave()">LEAVE</button>
+          <button id="btnVoiceMute" class="voice-btn hidden" onclick="bcVoice.mute()">MUTE</button>
+          <button id="btnVoicePTT" class="voice-btn hidden" onclick="bcVoice.ptt()">PTT: OFF</button>
+        </div>
+        <div id="voiceParticipants" class="voice-participants"></div>
+      </div>
+      <div id="voiceAudioContainer" style="display:none"></div>
+
+      <div class="chat-header">
+        <span class="chat-header-title">LIVE CHAT</span>
+        <span id="chatViewerCount" class="chat-header-count"></span>
+      </div>
+      <div id="chatMessages" class="chat-messages"></div>
+      <div id="emojiTray" class="emoji-tray"></div>
+
+      <!-- Auth'd chat input -->
+      <div id="chatInputBar" class="chat-input-bar hidden">
+        <button id="btnEmojiToggle" class="emoji-toggle" title="Emoji">&#127918;</button>
+        <textarea id="chatInput" class="chat-input" rows="1" placeholder="Say something..." maxlength="500"></textarea>
+        <button id="btnSend" class="btn btn-sm">SEND</button>
+      </div>
+      <!-- Unauth'd prompt -->
+      <div id="chatLoginPrompt" class="chat-login-prompt hidden">
+        <a href="/login">Log in</a> to chat
+      </div>
+    </div>
+  </div>
+
+  <!-- SHARE MODAL -->
+  <div id="shareOverlay" class="share-overlay">
+    <div class="share-modal">
+      <div class="share-title">SHARE THIS BROADCAST</div>
+      <div class="share-qr"><img id="shareQrImg" src="" alt="QR"></div>
+      <div class="share-link-row">
+        <input id="shareLinkInput" class="share-link-input" readonly>
+        <button id="btnCopyLink" class="btn-copy">COPY</button>
+      </div>
+      <button id="btnShareClose" class="btn btn-ghost" style="margin-top:6px">CLOSE</button>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast"></div>
+
+  <script src="/static/js/socket.io.min.js" onerror="
+    var s=document.createElement('script');
+    s.src='https://cdn.socket.io/4.7.5/socket.io.min.js';
+    document.head.appendChild(s);
+  "></script>
+  <script src="/static/js/mediasoup-client.min.js"></script>
+  <script src="/static/js/broadcasts.js"></script>
+  <script src="/static/js/maintenance.js"></script>
+</body>
+</html>
