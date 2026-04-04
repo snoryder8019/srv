@@ -1,0 +1,105 @@
+<%- include('../partials/head', { title: 'Manage Delegates' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main admin-main">
+  <%- include('../partials/flash') %>
+
+  <div class="admin-header">
+    <h1>Parent Delegates</h1>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <a href="/admin" class="btn btn-outline btn-sm">&larr; Dashboard</a>
+      <a href="/admin/delegates/games" class="btn btn-primary btn-sm">Game Events</a>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span class="stat-num"><%= counts.pending %></span>
+      <span class="stat-label">Pending</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= counts.approved %></span>
+      <span class="stat-label">Approved</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= counts.rejected %></span>
+      <span class="stat-label">Rejected</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= counts.suspended %></span>
+      <span class="stat-label">Suspended</span>
+    </div>
+  </div>
+
+  <section class="admin-section">
+    <h2>All Delegates</h2>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Delegate</th>
+          <th>Email</th>
+          <th>Relation</th>
+          <th>Schools</th>
+          <th>Agreement</th>
+          <th>Games</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% delegates.forEach(d => { %>
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:.5rem">
+                <% if (d.user && d.user.avatar) { %><img src="<%= d.user.avatar %>" class="meta-avatar"><% } %>
+                <div>
+                  <strong><%= d.fullName %></strong>
+                  <% if (d.phone) { %><br><small><%= d.phone %></small><% } %>
+                </div>
+              </div>
+            </td>
+            <td><%= d.user ? d.user.email : '—' %></td>
+            <td><%= d.relation %></td>
+            <td><% d.schools.forEach(s => { %><span class="tag" style="margin:.1rem;"><%= s %></span><% }) %></td>
+            <td>
+              <% if (d.agreementSigned) { %>
+                <span class="status-badge status-green">Signed</span>
+                <br><small><%= d.agreementDate ? new Date(d.agreementDate).toLocaleDateString() : '' %></small>
+              <% } else { %>
+                <span class="status-badge status-gray">No</span>
+              <% } %>
+            </td>
+            <td><%= d.gamesRecorded %></td>
+            <td>
+              <span class="status-badge
+                <%= d.status === 'approved' ? 'status-green' : d.status === 'pending' ? 'status-gold' : d.status === 'suspended' ? 'status-red' : 'status-gray' %>">
+                <%= d.status %>
+              </span>
+            </td>
+            <td class="action-cell">
+              <% if (d.status === 'pending') { %>
+                <form action="/admin/delegates/<%= d._id %>/approve" method="POST" style="display:inline">
+                  <button class="btn btn-primary btn-xs">Approve</button>
+                </form>
+                <form action="/admin/delegates/<%= d._id %>/reject" method="POST" style="display:inline">
+                  <button class="btn btn-outline btn-xs">Reject</button>
+                </form>
+              <% } else if (d.status === 'approved') { %>
+                <form action="/admin/delegates/<%= d._id %>/suspend" method="POST" style="display:inline">
+                  <button class="btn btn-danger btn-xs">Suspend</button>
+                </form>
+              <% } else { %>
+                <form action="/admin/delegates/<%= d._id %>/approve" method="POST" style="display:inline">
+                  <button class="btn btn-primary btn-xs">Re-approve</button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% if (!delegates.length) { %>
+      <p class="empty-state" style="padding:1rem;">No delegate applications yet.</p>
+    <% } %>
+  </section>
+</main>
+<%- include('../partials/footer') %>

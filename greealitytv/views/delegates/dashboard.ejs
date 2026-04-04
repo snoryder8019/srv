@@ -1,0 +1,129 @@
+<%- include('../partials/head', { title: 'Delegate Dashboard' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main admin-main">
+  <%- include('../partials/flash') %>
+
+  <div class="admin-header">
+    <h1>Delegate Dashboard</h1>
+    <div>
+      <span class="status-badge <%= delegate.status === 'approved' ? 'status-green' : delegate.status === 'pending' ? 'status-gold' : 'status-gray' %>">
+        <%= delegate.status.toUpperCase() %>
+      </span>
+    </div>
+  </div>
+
+  <!-- Delegate Profile -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span class="stat-num"><%= delegate.gamesRecorded %></span>
+      <span class="stat-label">Games Recorded</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= delegate.schools.length %></span>
+      <span class="stat-label">Schools Covered</span>
+      <span class="stat-sub"><%= delegate.schools.join(', ') %></span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= delegate.totalViewership %></span>
+      <span class="stat-label">Total Views</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-num"><%= delegate.equipment.length %></span>
+      <span class="stat-label">Equipment Issued</span>
+    </div>
+  </div>
+
+  <% if (delegate.status !== 'approved') { %>
+  <section class="admin-section">
+    <div class="d6-cta-box" style="background:var(--navy);">
+      <h3>Application Under Review</h3>
+      <p>Your delegate application is currently <strong><%= delegate.status %></strong>. Once approved, you'll see your assigned games and can submit recordings here.</p>
+    </div>
+  </section>
+  <% } else { %>
+
+  <!-- Upcoming Games -->
+  <section class="admin-section">
+    <h2>Your Upcoming Games</h2>
+    <% if (upcomingGames.length) { %>
+    <table class="admin-table">
+      <thead><tr><th>Event</th><th>Date</th><th>Time</th><th>Venue</th><th>Broadcast</th><th>Status</th></tr></thead>
+      <tbody>
+        <% upcomingGames.forEach(g => { %>
+          <tr>
+            <td><strong><%= g.title %></strong><br><small><%= g.homeTeam %> vs <%= g.awayTeam %></small></td>
+            <td><%= new Date(g.gameDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) %></td>
+            <td><%= g.gameTime || 'TBD' %></td>
+            <td><%= g.venue %></td>
+            <td><span class="tag"><%= g.broadcastType %></span></td>
+            <td><span class="status-badge <%= g.status === 'live' ? 'status-red' : 'status-green' %>"><%= g.status %></span></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } else { %>
+    <p class="empty-state">No upcoming games assigned yet. Check back soon!</p>
+    <% } %>
+  </section>
+
+  <!-- Past Games (submit recordings) -->
+  <section class="admin-section">
+    <h2>Past Games & Recordings</h2>
+    <% if (pastGames.length) { %>
+    <table class="admin-table">
+      <thead><tr><th>Event</th><th>Date</th><th>Recording</th><th>Views</th><th>Submit</th></tr></thead>
+      <tbody>
+        <% pastGames.forEach(g => { %>
+          <tr>
+            <td><strong><%= g.title %></strong></td>
+            <td><%= new Date(g.gameDate).toLocaleDateString() %></td>
+            <td>
+              <% if (g.recordingUrl) { %>
+                <a href="<%= g.recordingUrl %>" target="_blank" class="btn btn-outline btn-xs">Watch</a>
+              <% } else { %>
+                <span class="status-badge status-gold">Needs Recording</span>
+              <% } %>
+            </td>
+            <td><%= g.viewCount %></td>
+            <td>
+              <% if (!g.recordingUrl) { %>
+              <form action="/delegates/games/<%= g._id %>/recording" method="POST" style="display:flex;gap:.25rem;">
+                <input type="url" name="recordingUrl" placeholder="Video URL" class="form-input" style="font-size:.8rem;padding:.3rem .5rem;" required>
+                <button class="btn btn-primary btn-xs">Submit</button>
+              </form>
+              <% } else { %>
+                Done
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } else { %>
+    <p class="empty-state">No completed games yet.</p>
+    <% } %>
+  </section>
+
+  <!-- Equipment -->
+  <% if (delegate.equipment.length) { %>
+  <section class="admin-section">
+    <h2>Your Equipment</h2>
+    <table class="admin-table">
+      <thead><tr><th>Item</th><th>Serial #</th><th>Issued</th><th>Status</th></tr></thead>
+      <tbody>
+        <% delegate.equipment.forEach(eq => { %>
+          <tr>
+            <td><%= eq.item %></td>
+            <td><%= eq.serialNumber || '—' %></td>
+            <td><%= eq.issuedDate ? new Date(eq.issuedDate).toLocaleDateString() : '—' %></td>
+            <td><span class="status-badge <%= eq.returnedDate ? 'status-gray' : 'status-green' %>"><%= eq.returnedDate ? 'Returned' : 'Active' %></span></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+  <% } %>
+
+  <% } %>
+</main>
+<%- include('../partials/footer') %>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= agreement.title %> — <%= brand?.name || 'Agreement' %></title>
+  <%
+    const _FM = {
+      'Cormorant Garamond': 'Cormorant+Garamond:wght@300;400;600',
+      'Playfair Display': 'Playfair+Display:wght@400;600;700',
+      'Lora': 'Lora:wght@400;600;700', 'Merriweather': 'Merriweather:wght@300;400;700',
+      'Libre Baskerville': 'Libre+Baskerville:wght@400;700',
+      'Jost': 'Jost:wght@300;400;500;600', 'Inter': 'Inter:wght@300;400;500;600',
+      'Poppins': 'Poppins:wght@300;400;500;600', 'Raleway': 'Raleway:wght@300;400;500;600',
+      'Nunito': 'Nunito:wght@300;400;500;600', 'DM Sans': 'DM+Sans:wght@300;400;500;600',
+    };
+    const _hF = _FM[design.font_heading] || _FM['Cormorant Garamond'];
+    const _bF = _FM[design.font_body] || _FM['Jost'];
+    const _fp = _hF === _bF ? _hF : _hF + '&family=' + _bF;
+  %>
+  <link href="https://fonts.googleapis.com/css2?family=<%= _fp %>&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy: <%= design.color_primary %>;
+      --navy-deep: <%= design.color_primary_deep %>;
+      --gold: <%= design.color_accent %>;
+      --gold-light: <%= design.color_accent_light %>;
+      --ivory: <%= design.color_bg %>;
+      --font-heading: '<%= design.font_heading || 'Cormorant Garamond' %>', serif;
+      --font-body: '<%= design.font_body || 'Jost' %>', sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      background: var(--ivory);
+      color: #1C2B4A;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .agreement-card {
+      background: #fff;
+      border-radius: 6px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      max-width: 560px;
+      width: 100%;
+      padding: 40px 36px;
+    }
+    .agreement-brand {
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+    .agreement-title {
+      font-family: var(--font-heading);
+      font-size: 1.6rem;
+      font-weight: 400;
+      color: var(--navy-deep);
+      margin-bottom: 24px;
+    }
+    .agreement-body {
+      font-size: 0.92rem;
+      line-height: 1.7;
+      color: #374151;
+      margin-bottom: 28px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .agreement-meta {
+      font-size: 0.75rem;
+      color: #9ca3af;
+      margin-bottom: 24px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 16px;
+    }
+    .agreement-meta span { display: block; margin-bottom: 4px; }
+    .btn-agree {
+      display: block;
+      width: 100%;
+      padding: 14px 24px;
+      background: var(--gold);
+      color: #0F1B30;
+      border: none;
+      border-radius: 3px;
+      font-family: var(--font-body);
+      font-size: 0.88rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-agree:hover { opacity: 0.85; }
+    .btn-agree:disabled { opacity: 0.5; cursor: not-allowed; }
+    .disclaimer {
+      font-size: 0.72rem;
+      color: #9ca3af;
+      text-align: center;
+      margin-top: 12px;
+      line-height: 1.5;
+    }
+    .accepted-banner {
+      background: rgba(5,150,105,0.08);
+      border: 1px solid rgba(5,150,105,0.2);
+      border-radius: 4px;
+      padding: 16px 20px;
+      text-align: center;
+      color: #059669;
+      font-weight: 600;
+      font-size: 0.88rem;
+    }
+    .accepted-banner small {
+      display: block;
+      font-weight: 400;
+      font-size: 0.75rem;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="agreement-card">
+    <div class="agreement-brand"><%= brand?.name || '' %></div>
+    <h1 class="agreement-title"><%= agreement.title %></h1>
+    <div class="agreement-body"><%= agreement.body %></div>
+
+    <div class="agreement-meta">
+      <% if (agreement.recipientName) { %><span>Recipient: <%= agreement.recipientName %></span><% } %>
+      <span>Sent: <%= new Date(agreement.sentAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %></span>
+    </div>
+
+    <% if (agreement.status === 'accepted') { %>
+      <div class="accepted-banner">
+        Accepted
+        <small><%= new Date(agreement.acceptedAt).toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }) %></small>
+      </div>
+    <% } else { %>
+      <form method="POST" action="/meeting/agreement/<%= agreement.token %>/accept" id="agree-form">
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.84rem;cursor:pointer;margin-bottom:16px;">
+          <input type="checkbox" id="agree-check" style="accent-color:var(--gold);width:16px;height:16px;">
+          I have read and agree to the terms above
+        </label>
+        <button type="submit" class="btn-agree" id="agree-btn" disabled>I Agree</button>
+      </form>
+      <p class="disclaimer">By clicking "I Agree" you acknowledge that you have read, understood, and accept the terms described above. Your acceptance will be recorded.</p>
+      <script>
+        document.getElementById('agree-check').addEventListener('change', function() {
+          document.getElementById('agree-btn').disabled = !this.checked;
+        });
+      </script>
+    <% } %>
+  </div>
+</body>
+</html>

@@ -19,6 +19,7 @@ import webhooksRouter from './routes/webhooks.js';
 import trackingRouter from './routes/tracking.js';
 import onboardingRouter from './routes/onboarding.js';
 import superadminRouter from './routes/superadmin.js';
+import delegatesRouter from './routes/delegates.js';
 import ticketApiRouter from './routes/ticketApi.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -77,6 +78,7 @@ connectDB();
 
 app.use('/start', onboardingRouter);
 app.use('/superadmin', superadminRouter);
+app.use('/delegates', delegatesRouter);
 
 // ── Platform landing page (slab.madladslab.com) ─────────────────────────────
 app.get('/', async (req, res, next) => {

@@ -466,6 +466,111 @@ router.get('/login', (req, res) => {
   res.render('auth/central-login', { oauthCid: config.GGLCID || '', errorMsg });
 });
 
+// ── Central email/password login — find slab by email, verify, redirect ─────
+router.post('/login', express.json(), async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+    const cleanEmail = email.toLowerCase().trim();
+    const slabs = await findSlabsForEmail(cleanEmail);
+
+    if (slabs.length === 0) {
+      return res.status(401).json({ error: 'No workspace found for this email.' });
+    }
+
+    // Try to verify password against each slab the user belongs to
+    const bcrypt = (await import('bcrypt')).default;
+    let matchedSlab = null;
+    let matchedUser = null;
+
+    for (const slab of slabs) {
+      try {
+        const db = getTenantDb(slab.tenantDb);
+        const user = await db.collection('users').findOne({ email: cleanEmail });
+        if (user && user.password) {
+          const valid = await bcrypt.compare(password, user.password);
+          if (valid) {
+            matchedSlab = slab;
+            matchedUser = user;
+            break;
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    if (!matchedUser) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    // Issue a one-time token to redirect into the matched slab
+    const isSuperUser = isSuperAdminEmail(matchedUser.email);
+    if ((isSuperUser || matchedUser.isOwner) && !matchedUser.isAdmin) matchedUser.isAdmin = true;
+
+    if (!matchedUser.isAdmin && !isSuperUser && !matchedUser.isOwner) {
+      return res.status(403).json({ error: 'Your account does not have admin access to that workspace.' });
+    }
+
+    const token = createLoginToken(matchedUser, matchedSlab.tenantDb, '2m');
+    const targetDomain = matchedSlab.domain.includes('://') ? matchedSlab.domain : `https://${matchedSlab.domain}`;
+
+    // If user has multiple slabs, return them all so frontend can show picker
+    if (slabs.length > 1) {
+      return res.json({
+        ok: true,
+        multiple: true,
+        redirect: `${targetDomain}/admin?token=${token}`,
+        slabs: slabs.map(s => ({
+          domain: s.domain,
+          brandName: s.brandName,
+          tenantDb: s.tenantDb,
+        })),
+        email: cleanEmail,
+      });
+    }
+
+    res.json({ ok: true, redirect: `${targetDomain}/admin?token=${token}` });
+  } catch (err) {
+    console.error('[auth] Central login error:', err);
+    res.status(500).json({ error: 'Login failed. Please try again.' });
+  }
+});
+
+// ── Central email login — pick a specific slab (for multi-slab users) ──────
+router.post('/login/pick-slab', express.json(), async (req, res) => {
+  try {
+    const { email, password, tenantDb } = req.body;
+    if (!email || !password || !tenantDb) return res.status(400).json({ error: 'Missing fields' });
+
+    const cleanEmail = email.toLowerCase().trim();
+    const bcrypt = (await import('bcrypt')).default;
+    const db = getTenantDb(tenantDb);
+    const user = await db.collection('users').findOne({ email: cleanEmail });
+
+    if (!user || !user.password) return res.status(401).json({ error: 'Invalid credentials' });
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const isSuperUser = isSuperAdminEmail(user.email);
+    if ((isSuperUser || user.isOwner) && !user.isAdmin) user.isAdmin = true;
+    if (!user.isAdmin && !isSuperUser && !user.isOwner) {
+      return res.status(403).json({ error: 'No admin access to this workspace.' });
+    }
+
+    // Look up the domain for this tenantDb
+    const slab = getSlabDb();
+    const tenantDoc = await slab.collection('tenants').findOne({ db: tenantDb });
+    if (!tenantDoc) return res.status(404).json({ error: 'Workspace not found' });
+
+    const token = createLoginToken(user, tenantDb, '2m');
+    const targetDomain = tenantDoc.domain.includes('://') ? tenantDoc.domain : `https://${tenantDoc.domain}`;
+    res.json({ ok: true, redirect: `${targetDomain}/admin?token=${token}` });
+  } catch (err) {
+    console.error('[auth] Pick-slab login error:', err);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
 // ── Central Google OAuth redirect — always uses platform creds ──────────────
 router.get('/google/central', (req, res) => {
   const callbackUrl = `${config.DOMAIN}/auth/google/callback`;

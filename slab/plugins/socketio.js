@@ -73,7 +73,7 @@ export function initSocketIO(server) {
     } catch {}
 
     socket.on('join-room', async (data) => {
-      const { token, displayName, db: dbName } = data || {};
+      const { token, displayName, db: dbName, consentAgreedAt } = data || {};
       if (!token || !displayName) {
         return socket.emit('room-error', { message: 'Name and meeting link required.' });
       }
@@ -100,9 +100,16 @@ export function initSocketIO(server) {
           return socket.emit('room-error', { message: 'This meeting is full (max 5 participants).' });
         }
 
+        // Consent gate — require acknowledgment if meeting has consent settings (hosts skip)
+        const consent = meeting.consent || {};
+        const consentRequired = consent.recordingNotice || consent.transcriptionDisclaimer || consent.customText;
+        const isHost = !!adminUser;
+        if (consentRequired && !isHost && !consentAgreedAt) {
+          return socket.emit('room-error', { message: 'You must accept the meeting terms before joining.' });
+        }
+
         // Resolve participant identity for auto-tagging
         let finalName = displayName.trim();
-        const isHost = !!adminUser;
         const autoTag = { $addToSet: {} };
 
         if (adminUser && adminUser.id) {
@@ -143,7 +150,11 @@ export function initSocketIO(server) {
         // Build the update — always inc useCount + push participant
         const updateOps = {
           $inc: { useCount: 1 },
-          $push: { participants: { name: finalName, joinedAt: new Date() } },
+          $push: { participants: {
+            name: finalName,
+            joinedAt: new Date(),
+            consentAgreedAt: consentAgreedAt ? new Date(consentAgreedAt) : null,
+          } },
         };
 
         // Merge $addToSet if we have any auto-tags

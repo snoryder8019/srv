@@ -19,6 +19,8 @@
   var callSeconds = 0;
   var previewStream = null;
   var inCall = false;
+  var consentAgreed = false;
+  var consentAgreedAt = null;
 
   // --- Audio level monitoring ---
   var audioContext = null;
@@ -168,9 +170,82 @@
 
   // ==================== JOIN ====================
 
+  // ==================== CONSENT ====================
+
+  function hasConsentRequirements() {
+    var d = document.body.dataset;
+    return !!(d.consentRecording || d.consentTranscription || d.consentCustom);
+  }
+
+  function showConsentModal() {
+    var d = document.body.dataset;
+    var items = document.getElementById('consent-items');
+    if (!items) return;
+    items.innerHTML = '';
+
+    if (d.consentRecording) {
+      items.innerHTML += '<div style="background:rgba(28,43,74,0.06);border-radius:4px;padding:12px 14px;font-size:0.84rem;color:var(--navy-deep,#0F1B30);line-height:1.5;">'
+        + '<strong style="font-size:0.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate,#6b7280);display:block;margin-bottom:4px;">Recording Notice</strong>'
+        + 'This meeting may be recorded for reference and quality purposes.</div>';
+    }
+    if (d.consentTranscription) {
+      items.innerHTML += '<div style="background:rgba(28,43,74,0.06);border-radius:4px;padding:12px 14px;font-size:0.84rem;color:var(--navy-deep,#0F1B30);line-height:1.5;">'
+        + '<strong style="font-size:0.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate,#6b7280);display:block;margin-bottom:4px;">Transcription Disclaimer</strong>'
+        + 'This meeting may be transcribed using automated speech recognition.</div>';
+    }
+    if (d.consentCustom) {
+      items.innerHTML += '<div style="background:rgba(28,43,74,0.06);border-radius:4px;padding:12px 14px;font-size:0.84rem;color:var(--navy-deep,#0F1B30);line-height:1.5;">'
+        + '<strong style="font-size:0.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate,#6b7280);display:block;margin-bottom:4px;">Additional Terms</strong>'
+        + d.consentCustom.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+    }
+
+    var modal = document.getElementById('consent-modal');
+    var agreeBox = document.getElementById('consent-agree');
+    var acceptBtn = document.getElementById('consent-accept');
+    var declineBtn = document.getElementById('consent-decline');
+
+    if (modal) modal.style.display = 'flex';
+    if (agreeBox) {
+      agreeBox.checked = false;
+      agreeBox.onchange = function () {
+        if (acceptBtn) {
+          acceptBtn.disabled = !agreeBox.checked;
+          acceptBtn.style.opacity = agreeBox.checked ? '1' : '0.5';
+          acceptBtn.style.cursor = agreeBox.checked ? 'pointer' : 'not-allowed';
+        }
+      };
+    }
+    if (acceptBtn) {
+      acceptBtn.onclick = function () {
+        consentAgreed = true;
+        consentAgreedAt = new Date().toISOString();
+        if (modal) modal.style.display = 'none';
+        joinMeeting();
+      };
+    }
+    if (declineBtn) {
+      declineBtn.onclick = function () {
+        if (modal) modal.style.display = 'none';
+        showError('You must accept the meeting terms to join.');
+        joinBtn.disabled = false;
+        joinBtn.textContent = 'Join Meeting';
+      };
+    }
+  }
+
+  // ==================== JOIN ====================
+
   function joinMeeting() {
     var name = (nameInput ? nameInput.value.trim() : '') || 'Guest';
     if (!name) return;
+
+    // Show consent gate if required and not yet agreed
+    if (hasConsentRequirements() && !consentAgreed) {
+      joinBtn.disabled = true;
+      joinBtn.textContent = 'Connecting...';
+      showConsentModal();
+      return;
+    }
 
     joinBtn.disabled = true;
     joinBtn.textContent = 'Connecting...';
@@ -188,7 +263,10 @@
     socket = io('/meetings');
 
     socket.on('connect', function () {
-      socket.emit('join-room', { token: token, displayName: name, db: tenantDb });
+      socket.emit('join-room', {
+        token: token, displayName: name, db: tenantDb,
+        consentAgreedAt: consentAgreedAt
+      });
     });
 
     socket.on('room-joined', function (data) {

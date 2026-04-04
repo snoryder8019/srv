@@ -39,4 +39,8 @@ router.get('/feed', async (req, res) => {
   }
 });
 
+router.get('/d6sports', (req, res) => {
+  res.render('d6sports', { page: 'd6sports' });
+});
+
 module.exports = router;

@@ -30,6 +30,7 @@ import superRouter from './admin/super.js';
 import huginnRouter from './admin/huginn.js';
 import ticketsRouter from './admin/tickets.js';
 import onboardingRouter from './admin/onboarding.js';
+import brandBuilderRouter from './admin/brandBuilder.js';
 
 const router = express.Router();
 
@@ -253,6 +254,11 @@ router.get('/ai-health', async (req, res) => {
 });
 
 router.get('/', async (req, res) => {
+  // Redirect to brand builder if setup is incomplete (skip if ?setup=complete or returning from wizard)
+  if (req.tenant && !req.tenant.brandSetupComplete && !req.query.setup && !req.query.activated) {
+    return res.redirect('/admin/brand-builder');
+  }
+
   try {
     const db = req.db;
     const [portfolioCount, clientCount, invoiceCount, blogCount, pageCount, openTicketCount, rawDesign] = await Promise.all([
@@ -355,5 +361,6 @@ router.use('/tickets', ticketsRouter);
 router.use('/huginn', huginnRouter);
 router.use('/super', superRouter);
 router.use('/onboarding', onboardingRouter);
+router.use('/brand-builder', brandBuilderRouter);
 
 export default router;

@@ -4,9 +4,10 @@ const TaskCompletion = require('../models/TaskCompletion');
 const ShiftNote = require('../models/ShiftNote');
 const Special = require('../models/Special');
 const Brand = require('../models/Brand');
+const { requireShiftUser } = require('../middleware/roles');
 const router = express.Router();
 
-// Shift check-in page (enter PIN)
+// Shift check-in page (enter PIN) — intentionally public (staff scan QR to get here)
 router.get('/checkin', async (req, res) => {
   const brandId = req.query.brandId;
   let brand = null;
@@ -17,6 +18,9 @@ router.get('/checkin', async (req, res) => {
     qrCode: null
   });
 });
+
+// All routes below require a shift user (PIN login) or admin session
+router.use(requireShiftUser);
 
 // Task list for a brand
 router.get('/tasks', async (req, res) => {

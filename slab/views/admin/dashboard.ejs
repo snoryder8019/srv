@@ -1,6 +1,21 @@
 <%- include('partials/head', { title: 'Dashboard' }) %>
 <%- include('partials/sidebar', { page: 'dashboard', user: user }) %>
 
+<% if (typeof tenant !== 'undefined') { %>
+<script>
+  const _urlP = new URLSearchParams(window.location.search);
+  if (_urlP.get('setup') === 'complete') {
+    setTimeout(() => {
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:10001;background:#14532d;color:#86efac;padding:14px 24px;border-radius:8px;font-family:Inter,sans-serif;font-size:14px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+      d.textContent = 'Brand profile saved! Your site is taking shape.';
+      document.body.appendChild(d);
+      setTimeout(() => d.remove(), 5000);
+      const url = new URL(window.location); url.searchParams.delete('setup'); history.replaceState({}, '', url);
+    }, 300);
+  }
+</script>
+<% } %>
 <% if (typeof tenant !== 'undefined' && !tenant?.isPreview) { %>
 <script>
   if (new URLSearchParams(window.location.search).get('activated') === '1') {
@@ -348,14 +363,54 @@
 
 <div class="topbar">
   <div class="topbar-title">Dashboard</div>
-  <div class="topbar-actions">
-    <a href="/admin/copy" class="btn btn-ghost btn-sm topbar-hide-mobile">Edit Copy</a>
-    <a href="/admin/portfolio/new" class="btn btn-navy btn-sm">+ Portfolio</a>
-  </div>
 </div>
 
 <div class="content">
   <%- include('partials/advisory', { needs: 'ai' }) %>
+
+  <% if (typeof tenant !== 'undefined' && tenant?.isPreview) { %>
+  <%
+    const _pvExp = tenant.previewExpiresAt ? new Date(tenant.previewExpiresAt) : null;
+    const _pvDays = _pvExp ? Math.max(0, Math.ceil((_pvExp.getTime() - Date.now()) / 86400000)) : null;
+    const _pvExpired = _pvDays !== null && _pvDays <= 0;
+    const _pvUrgent = _pvDays !== null && _pvDays <= 2;
+  %>
+  <div class="card" style="margin-bottom:16px;padding:18px 22px;border-left:4px solid <%= _pvExpired ? 'var(--danger)' : _pvUrgent ? 'var(--warn)' : 'var(--gold)' %>;background:<%= _pvExpired ? 'rgba(185,28,28,0.04)' : 'rgba(201,168,72,0.04)' %>;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-size:0.85rem;font-weight:600;color:<%= _pvExpired ? 'var(--danger)' : 'var(--dark)' %>;">
+          <% if (_pvExpired) { %>
+            Preview Expired — Go Live to Keep Your Site
+          <% } else { %>
+            Preview Mode — <%= _pvDays %> day<%= _pvDays !== 1 ? 's' : '' %> remaining
+          <% } %>
+        </div>
+        <div style="font-size:0.72rem;color:var(--slate);margin-top:4px;">
+          <% if (_pvExpired) { %>
+            Your preview period has ended. Your site is not visible to the public. Activate a plan to go live.
+          <% } else { %>
+            Your site is in preview mode. Visitors can see it, but you need to activate a plan to keep it live after your trial.
+          <% } %>
+        </div>
+      </div>
+      <a href="#" onclick="document.getElementById('goLiveModal')?.showModal();return false;" class="btn <%= _pvExpired || _pvUrgent ? 'btn-gold' : 'btn-navy' %>" style="white-space:nowrap;">
+        Go Live
+      </a>
+    </div>
+  </div>
+  <% } %>
+
+  <% if (typeof tenant !== 'undefined' && tenant?.status === 'suspended') { %>
+  <div class="card" style="margin-bottom:16px;padding:18px 22px;border-left:4px solid var(--danger);background:rgba(185,28,28,0.04);">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-size:0.85rem;font-weight:600;color:var(--danger);">Site Suspended</div>
+        <div style="font-size:0.72rem;color:var(--slate);margin-top:4px;">Your preview period has ended and your site is no longer visible. Activate a plan to restore access.</div>
+      </div>
+      <a href="#" onclick="document.getElementById('goLiveModal')?.showModal();return false;" class="btn btn-gold" style="white-space:nowrap;">Activate Now</a>
+    </div>
+  </div>
+  <% } %>
 
   <!-- STORAGE METER -->
   <div class="card" style="margin-bottom:16px;padding:16px 20px;">

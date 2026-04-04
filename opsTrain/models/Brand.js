@@ -28,7 +28,20 @@ const brandSchema = new mongoose.Schema({
     shiftEnd:   { type: Number, default: 2 }      // day rolls over at 2am
   },
 
-  active: { type: Boolean, default: true }
+  active: { type: Boolean, default: true },
+
+  // SaaS status: preview (trial) → active (paid) → suspended (expired/cancelled)
+  status: {
+    type: String,
+    enum: ['preview', 'active', 'suspended', 'cancelled'],
+    default: 'preview'
+  },
+  trialExpiresAt: { type: Date },
+
+  // Payment tracking
+  plan: { type: String, enum: ['free', 'monthly', 'annual'], default: 'free' },
+  activatedAt: { type: Date },
+  paymentId: { type: String }
 
 }, { timestamps: true });
 

@@ -105,6 +105,7 @@ export async function provisionTenant({
       stripeCustomerId: stripeCustomerId || null,
       plan: 'free',       // free | monthly | annual | lifetime
       provisionedAt: now,
+      previewExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // 7-day preview
     },
     createdAt: now,
   };

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sales Delegates — Superadmin — sLab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#c9a848; background:#262626; padding:3px 8px; border-radius:4px; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; color:#737373; flex-wrap:wrap; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1100px; margin:0 auto; padding:24px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:16px; margin-bottom:28px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; }
+    .stat-label { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:6px; }
+    .stat-value { font-size:28px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; }
+    .stat-value.green { color:#4ade80; }
+    h2 { font-size:16px; font-weight:500; margin-bottom:16px; }
+    .section { margin-bottom:32px; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
+    .status-active { background:#14532d; color:#86efac; }
+    .status-pending { background:#422006; color:#fdba74; }
+    .status-suspended { background:#451a1a; color:#fca5a5; }
+    .link { color:#c9a848; text-decoration:none; } .link:hover { text-decoration:underline; }
+    .btn-sm { padding:5px 12px; font-size:12px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; text-decoration:none; display:inline-block; }
+    .btn-sm:hover { border-color:#c9a848; color:#c9a848; }
+    .empty { color:#525252; font-size:13px; padding:20px; text-align:center; }
+    .share-box { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; margin-bottom:28px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+    .share-box label { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; font-weight:600; }
+    .share-url { background:#1a1a1a; border:1px solid #333; color:#c9a848; padding:8px 14px; border-radius:4px; font-family:monospace; font-size:13px; flex:1; min-width:200px; word-break:break-all; }
+    .btn-copy { padding:8px 16px; background:#c9a848; color:#0a0a0a; border:none; border-radius:4px; font-family:'Inter',sans-serif; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .btn-copy:hover { background:#d4b85c; }
+    .btn-qr { padding:8px 16px; background:transparent; color:#a3a3a3; border:1px solid #333; border-radius:4px; font-family:'Inter',sans-serif; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .btn-qr:hover { border-color:#c9a848; color:#c9a848; }
+    #qrModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center; }
+    #qrModal.open { display:flex; }
+    #qrModal .modal-content { background:#141414; border:1px solid #262626; border-radius:8px; padding:32px; text-align:center; max-width:360px; }
+    #qrModal .modal-content h3 { font-size:14px; margin-bottom:16px; color:#fff; }
+    #qrModal canvas { margin:0 auto; }
+    #qrModal .close-btn { margin-top:16px; padding:8px 24px; background:#262626; color:#a3a3a3; border:1px solid #333; border-radius:4px; cursor:pointer; font-size:12px; }
+    @media (max-width:600px) { .stats { grid-template-columns:1fr 1fr; } .container { padding:16px; } .share-box { flex-direction:column; align-items:stretch; } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo"><span>s</span>Lab</div>
+      <span class="badge">Superadmin</span>
+    </div>
+    <div class="topbar-right">
+      <span><%= user.email %></span>
+      <a href="/superadmin">Dashboard</a>
+      <a href="/superadmin/promos">Promos</a>
+      <a href="/delegates/admin">Delegates</a>
+      <a href="/superadmin/logout">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Total Delegates</div>
+        <div class="stat-value"><%= stats.total %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Active</div>
+        <div class="stat-value" style="color:#4ade80;"><%= stats.active %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Pending Review</div>
+        <div class="stat-value" style="color:#fdba74;"><%= stats.pending %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Total Accounts</div>
+        <div class="stat-value"><%= stats.totalAccounts %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Total Paid Out</div>
+        <div class="stat-value gold">$<%= stats.totalPaid.toFixed(2) %></div>
+      </div>
+    </div>
+
+    <div class="share-box">
+      <div>
+        <label>Delegate Signup Link</label>
+        <div class="share-url" id="signupUrl"><%= signupUrl %></div>
+      </div>
+      <button class="btn-copy" onclick="copyUrl()">Copy Link</button>
+      <button class="btn-qr" onclick="showQR()">Show QR</button>
+    </div>
+
+    <div class="section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h2>All Delegates</h2>
+        <form method="POST" action="/delegates/admin/calculate-commissions" style="display:inline;">
+          <button type="submit" class="btn-sm" onclick="return confirm('Calculate commissions for all active delegates this month?')">Calculate Commissions</button>
+        </form>
+      </div>
+      <% if (delegates.length) { %>
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Ref Code</th><th>Status</th><th>Accounts</th><th>Total Paid</th><th>Joined</th><th></th></tr></thead>
+        <tbody>
+          <% for (const d of delegates) { %>
+          <tr>
+            <td><%= d.firstName %> <%= d.lastName %></td>
+            <td><%= d.email %></td>
+            <td style="font-family:monospace;color:#c9a848;"><%= d.refCode %></td>
+            <td><span class="status status-<%= d.status %>"><%= d.status %></span></td>
+            <td><%= d.tenants?.length || 0 %></td>
+            <td>$<%= (d.totalPaid || 0).toFixed(2) %></td>
+            <td><%= new Date(d.createdAt).toLocaleDateString() %></td>
+            <td><a href="/delegates/admin/<%= d._id %>" class="btn-sm">Manage</a></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <% } else { %>
+        <div class="empty">No delegates yet. Share the signup link to recruit.</div>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- QR Modal -->
+  <div id="qrModal">
+    <div class="modal-content">
+      <h3>Delegate Signup QR Code</h3>
+      <canvas id="qrCanvas"></canvas>
+      <br>
+      <button class="close-btn" onclick="closeQR()">Close</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script>
+    function copyUrl() {
+      var url = document.getElementById('signupUrl').textContent;
+      navigator.clipboard.writeText(url).then(function() {
+        var btn = document.querySelector('.btn-copy');
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy Link'; }, 2000);
+      });
+    }
+    function showQR() {
+      var url = document.getElementById('signupUrl').textContent;
+      var canvas = document.getElementById('qrCanvas');
+      QRCode.toCanvas(canvas, url, { width: 256, margin: 2, color: { dark: '#c9a848', light: '#141414' } });
+      document.getElementById('qrModal').classList.add('open');
+    }
+    function closeQR() {
+      document.getElementById('qrModal').classList.remove('open');
+    }
+    document.getElementById('qrModal').addEventListener('click', function(e) {
+      if (e.target === this) closeQR();
+    });
+  </script>
+</body>
+</html>

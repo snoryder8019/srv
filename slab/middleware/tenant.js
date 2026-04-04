@@ -74,18 +74,35 @@ async function lookupTenant(domain) {
       { 'meta.customDomain': domain },
       { 'public.customDomain': domain },
     ],
-    status: { $in: ['active', 'preview'] },
+    status: { $in: ['active', 'preview', 'suspended'] },
   });
   if (!doc) return null;
 
+  // Check if preview has expired — mark as suspended
+  if (doc.status === 'preview' && doc.meta?.previewExpiresAt) {
+    const expires = new Date(doc.meta.previewExpiresAt);
+    if (Date.now() > expires.getTime()) {
+      await slab.collection('tenants').updateOne(
+        { _id: doc._id },
+        { $set: { status: 'suspended', 'meta.suspendReason': 'preview_expired', updatedAt: new Date() } },
+      );
+      doc.status = 'suspended';
+    }
+  }
+
   // Decrypt secrets once, store decrypted in cache (memory only)
+  // Check if brand setup wizard is complete (has required fields filled)
+  const brand = doc.brand || {};
+  const brandSetupComplete = !!(brand.name && brand.businessType && brand.industry && brand.description);
+
   return {
     _id: doc._id,
     domain: doc.domain,
     db: doc.db,
     status: doc.status || 'active',
     isPreview: doc.status === 'preview',
-    brand: doc.brand || {},
+    brand,
+    brandSetupComplete,
     s3Prefix: doc.s3Prefix || doc.db,
     public: doc.public || {},
     secrets: decryptSecrets(doc.secrets),
@@ -106,6 +123,9 @@ function applyTenant(req, res, tenant) {
     s3Prefix: tenant.s3Prefix,
     isPreview: tenant.isPreview,
     status: tenant.status,
+    brandSetupComplete: tenant.brandSetupComplete,
+    previewExpiresAt: tenant.meta?.previewExpiresAt || null,
+    plan: tenant.meta?.plan || 'free',
   };
 }
 

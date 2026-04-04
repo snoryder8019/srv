@@ -1,0 +1,322 @@
+<%- include('partials/head', { title: 'Brand Builder' }) %>
+<%- include('partials/sidebar', { page: 'brand-builder', user: user }) %>
+
+<div class="main">
+  <div class="topbar">
+    <h1 class="topbar-title">Build Your Brand</h1>
+    <div class="topbar-actions">
+      <% if (tenant?.isPreview && tenant?.previewExpiresAt) { %>
+        <% const daysLeft = Math.max(0, Math.ceil((new Date(tenant.previewExpiresAt).getTime() - Date.now()) / 86400000)); %>
+        <span style="font-size:0.72rem;color:var(--slate);font-weight:500;"><%= daysLeft %> day<%= daysLeft !== 1 ? 's' : '' %> left in preview</span>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Step indicator -->
+    <div class="bb-steps" id="bbSteps">
+      <div class="bb-step active" data-step="1"><span class="bb-step-num">1</span> Industry</div>
+      <div class="bb-step" data-step="2"><span class="bb-step-num">2</span> Identity</div>
+      <div class="bb-step" data-step="3"><span class="bb-step-num">3</span> Details</div>
+      <div class="bb-step" data-step="4"><span class="bb-step-num">4</span> Voice & Audience</div>
+    </div>
+
+    <!-- STEP 1: Industry Preset -->
+    <div class="bb-panel active" id="step1">
+      <div class="card">
+        <h2 class="card-title">Choose Your Industry</h2>
+        <p style="font-size:0.85rem;color:var(--slate);margin-bottom:20px;">
+          Select a preset to auto-fill your brand profile with industry-specific defaults. You can customize everything in the next steps.
+        </p>
+        <div class="bb-preset-grid">
+          <% const presetEntries = Object.entries(presets); %>
+          <% for (const [key, p] of presetEntries) { %>
+            <button class="bb-preset-card" data-preset="<%= key %>" onclick="selectPreset('<%= key %>')">
+              <div class="bb-preset-label"><%= p.label %></div>
+              <div class="bb-preset-services"><%= p.services.slice(0, 3).join(' / ') %></div>
+            </button>
+          <% } %>
+          <button class="bb-preset-card" data-preset="custom" onclick="selectPreset('custom')">
+            <div class="bb-preset-label">Something Else</div>
+            <div class="bb-preset-services">Start from scratch</div>
+          </button>
+        </div>
+        <div style="margin-top:20px;text-align:right;">
+          <button class="btn btn-navy" onclick="goStep(2)" id="step1Next" disabled>Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2: Business Identity -->
+    <div class="bb-panel" id="step2">
+      <div class="card">
+        <h2 class="card-title">Business Identity</h2>
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Business Name *</label>
+            <input type="text" id="bb-name" value="<%= brand.name || '' %>" placeholder="Acme Marketing">
+          </div>
+          <div class="form-field">
+            <label>Owner / Contact Name</label>
+            <input type="text" id="bb-ownerName" value="<%= brand.ownerName || '' %>" placeholder="Jane Smith">
+          </div>
+          <div class="form-field">
+            <label>Business Type *</label>
+            <input type="text" id="bb-businessType" value="<%= brand.businessType || '' %>" placeholder="Agency, Restaurant, Salon...">
+          </div>
+          <div class="form-field">
+            <label>Industry *</label>
+            <input type="text" id="bb-industry" value="<%= brand.industry || '' %>" placeholder="Marketing & Advertising">
+          </div>
+          <div class="form-field span-2">
+            <label>Tagline</label>
+            <input type="text" id="bb-tagline" value="<%= brand.tagline || '' %>" placeholder="A short, memorable phrase">
+          </div>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-ghost" onclick="goStep(1)">Back</button>
+          <button class="btn btn-navy" onclick="goStep(3)">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 3: Contact & Services -->
+    <div class="bb-panel" id="step3">
+      <div class="card">
+        <h2 class="card-title">Details & Services</h2>
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Location</label>
+            <input type="text" id="bb-location" value="<%= brand.location || '' %>" placeholder="Denver, CO">
+          </div>
+          <div class="form-field">
+            <label>Service Area</label>
+            <input type="text" id="bb-serviceArea" value="<%= brand.serviceArea || '' %>" placeholder="Greater Denver Metro">
+          </div>
+          <div class="form-field">
+            <label>Phone</label>
+            <input type="text" id="bb-phone" value="<%= brand.phone || '' %>" placeholder="(555) 123-4567">
+          </div>
+          <div class="form-field">
+            <label>Email</label>
+            <input type="text" id="bb-email" value="<%= brand.email || '' %>" placeholder="hello@acme.com">
+          </div>
+          <div class="form-field span-2">
+            <label>Services (comma-separated)</label>
+            <input type="text" id="bb-services" value="<%= (brand.services || []).join(', ') %>" placeholder="Web Design, SEO, Social Media">
+          </div>
+          <div class="form-field span-2">
+            <label>Description</label>
+            <textarea id="bb-description" rows="3" placeholder="Tell us about your business..."><%= brand.description || '' %></textarea>
+          </div>
+          <div class="form-field span-2">
+            <label>Pricing Notes</label>
+            <input type="text" id="bb-pricingNotes" value="<%= brand.pricingNotes || '' %>" placeholder="Starting at $X, free consultations, etc.">
+          </div>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-ghost" onclick="goStep(2)">Back</button>
+          <button class="btn btn-navy" onclick="goStep(4)">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 4: Brand Voice & Social -->
+    <div class="bb-panel" id="step4">
+      <div class="card">
+        <h2 class="card-title">Brand Voice & Audience</h2>
+        <div class="form-grid">
+          <div class="form-field span-2">
+            <label>Brand Voice</label>
+            <input type="text" id="bb-brandVoice" value="<%= brand.brandVoice || '' %>" placeholder="Professional, warm, authoritative...">
+            <span style="font-size:0.7rem;color:var(--slate);">Describes the tone your AI assistant and copy will use.</span>
+          </div>
+          <div class="form-field span-2">
+            <label>Target Audience</label>
+            <input type="text" id="bb-targetAudience" value="<%= brand.targetAudience || '' %>" placeholder="Small businesses, homeowners, families...">
+          </div>
+        </div>
+
+        <h3 style="font-family:var(--font-heading);font-size:1rem;margin:24px 0 12px;color:var(--dark);">Social Links (optional)</h3>
+        <div class="form-grid cols-3">
+          <div class="form-field">
+            <label>Facebook</label>
+            <input type="url" id="bb-social-facebook" value="<%= brand.socialLinks?.facebook || '' %>" placeholder="https://facebook.com/...">
+          </div>
+          <div class="form-field">
+            <label>Instagram</label>
+            <input type="url" id="bb-social-instagram" value="<%= brand.socialLinks?.instagram || '' %>" placeholder="https://instagram.com/...">
+          </div>
+          <div class="form-field">
+            <label>Twitter / X</label>
+            <input type="url" id="bb-social-twitter" value="<%= brand.socialLinks?.twitter || '' %>" placeholder="https://twitter.com/...">
+          </div>
+          <div class="form-field">
+            <label>LinkedIn</label>
+            <input type="url" id="bb-social-linkedin" value="<%= brand.socialLinks?.linkedin || '' %>" placeholder="https://linkedin.com/in/...">
+          </div>
+          <div class="form-field">
+            <label>YouTube</label>
+            <input type="url" id="bb-social-youtube" value="<%= brand.socialLinks?.youtube || '' %>" placeholder="https://youtube.com/...">
+          </div>
+          <div class="form-field">
+            <label>TikTok</label>
+            <input type="url" id="bb-social-tiktok" value="<%= brand.socialLinks?.tiktok || '' %>" placeholder="https://tiktok.com/@...">
+          </div>
+        </div>
+
+        <!-- Google OAuth hint -->
+        <div style="margin-top:24px;padding:14px 18px;background:var(--ivory);border:1px solid var(--ivory-mid);border-radius:4px;">
+          <div style="font-size:0.78rem;font-weight:600;color:var(--dark);margin-bottom:4px;">Google Sign-In for Your Brand</div>
+          <div style="font-size:0.72rem;color:var(--slate);line-height:1.6;">
+            Want your clients and team to sign in with Google on your domain? After setup, go to
+            <a href="/admin/settings" style="color:var(--gold);font-weight:500;">Settings &rarr; Integrations</a>
+            and add your own Google OAuth Client ID and Secret. This gives your brand its own Google consent screen.
+          </div>
+        </div>
+
+        <div style="margin-top:20px;display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-ghost" onclick="goStep(3)">Back</button>
+          <button class="btn btn-gold" onclick="saveBrand()" id="bbSaveBtn">Launch My Brand</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .bb-steps { display:flex; gap:4px; margin-bottom:24px; }
+  .bb-step { flex:1; padding:12px 16px; background:var(--white); border:1px solid var(--ivory-mid); font-size:0.75rem; font-weight:500; color:var(--slate); display:flex; align-items:center; gap:8px; cursor:pointer; transition:all 0.15s; }
+  .bb-step:first-child { border-radius:2px 0 0 2px; }
+  .bb-step:last-child { border-radius:0 2px 2px 0; }
+  .bb-step.active { background:var(--navy); color:var(--on-navy); border-color:var(--navy); }
+  .bb-step.done { background:rgba(21,128,61,0.06); border-color:rgba(21,128,61,0.2); color:var(--success); }
+  .bb-step-num { width:22px; height:22px; border-radius:50%; background:rgba(0,0,0,0.08); display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; }
+  .bb-step.active .bb-step-num { background:rgba(255,255,255,0.2); }
+  .bb-step.done .bb-step-num { background:rgba(21,128,61,0.15); }
+
+  .bb-panel { display:none; }
+  .bb-panel.active { display:block; }
+
+  .bb-preset-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; }
+  .bb-preset-card { background:var(--white); border:2px solid var(--ivory-mid); border-radius:4px; padding:16px; text-align:left; cursor:pointer; transition:all 0.15s; font-family:var(--font-body); }
+  .bb-preset-card:hover { border-color:var(--navy-mid); }
+  .bb-preset-card.selected { border-color:var(--gold); background:rgba(201,168,72,0.04); }
+  .bb-preset-label { font-size:0.85rem; font-weight:600; color:var(--dark); margin-bottom:4px; }
+  .bb-preset-services { font-size:0.7rem; color:var(--slate); }
+
+  @media (max-width: 820px) {
+    .bb-steps { flex-wrap:wrap; }
+    .bb-step { font-size:0.65rem; padding:8px 10px; }
+    .bb-preset-grid { grid-template-columns:1fr 1fr; }
+  }
+  @media (max-width: 520px) {
+    .bb-preset-grid { grid-template-columns:1fr; }
+  }
+</style>
+
+<script>
+let currentStep = 1;
+let selectedPreset = null;
+
+function goStep(n) {
+  currentStep = n;
+  document.querySelectorAll('.bb-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('step' + n)?.classList.add('active');
+
+  document.querySelectorAll('.bb-step').forEach(s => {
+    const sn = parseInt(s.dataset.step);
+    s.classList.remove('active', 'done');
+    if (sn === n) s.classList.add('active');
+    else if (sn < n) s.classList.add('done');
+  });
+}
+
+function selectPreset(key) {
+  selectedPreset = key;
+  document.querySelectorAll('.bb-preset-card').forEach(c => c.classList.remove('selected'));
+  const btn = document.querySelector(`[data-preset="${key}"]`);
+  if (btn) btn.classList.add('selected');
+  document.getElementById('step1Next').disabled = false;
+
+  if (key !== 'custom') {
+    // Apply preset via API, then fill form fields
+    fetch('/admin/brand-builder/preset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presetKey: key }),
+    }).then(r => r.json()).then(data => {
+      if (!data.ok) return;
+    });
+
+    // Fill form fields from preset data embedded in page
+    const presets = <%- JSON.stringify(presets) %>;
+    const p = presets[key];
+    if (p) {
+      if (p.businessType) document.getElementById('bb-businessType').value = p.businessType;
+      if (p.industry) document.getElementById('bb-industry').value = p.industry;
+      if (p.brandVoice) document.getElementById('bb-brandVoice').value = p.brandVoice;
+      if (p.targetAudience) document.getElementById('bb-targetAudience').value = p.targetAudience;
+      if (p.services) document.getElementById('bb-services').value = p.services.join(', ');
+    }
+  }
+}
+
+async function saveBrand() {
+  const btn = document.getElementById('bbSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  const body = {
+    name: document.getElementById('bb-name').value,
+    ownerName: document.getElementById('bb-ownerName').value,
+    businessType: document.getElementById('bb-businessType').value,
+    industry: document.getElementById('bb-industry').value,
+    tagline: document.getElementById('bb-tagline').value,
+    description: document.getElementById('bb-description').value,
+    location: document.getElementById('bb-location').value,
+    serviceArea: document.getElementById('bb-serviceArea').value,
+    phone: document.getElementById('bb-phone').value,
+    email: document.getElementById('bb-email').value,
+    services: document.getElementById('bb-services').value,
+    pricingNotes: document.getElementById('bb-pricingNotes').value,
+    brandVoice: document.getElementById('bb-brandVoice').value,
+    targetAudience: document.getElementById('bb-targetAudience').value,
+    socialLinks: {
+      facebook: document.getElementById('bb-social-facebook').value,
+      instagram: document.getElementById('bb-social-instagram').value,
+      twitter: document.getElementById('bb-social-twitter').value,
+      linkedin: document.getElementById('bb-social-linkedin').value,
+      youtube: document.getElementById('bb-social-youtube').value,
+      tiktok: document.getElementById('bb-social-tiktok').value,
+    },
+  };
+
+  try {
+    const res = await fetch('/admin/brand-builder/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.href = '/admin?setup=complete';
+    } else {
+      alert(data.error || 'Failed to save');
+      btn.disabled = false;
+      btn.textContent = 'Launch My Brand';
+    }
+  } catch (err) {
+    alert('Network error — please try again');
+    btn.disabled = false;
+    btn.textContent = 'Launch My Brand';
+  }
+}
+
+// If brand already has data, allow skipping steps
+<% if (brand.businessType) { %>goStep(2);<% } %>
+</script>
+
+</div><!-- .layout -->
+</body>
+</html>

@@ -1,0 +1,162 @@
+<%- include('../partials/head', { title: 'Manage Game Events' }) %>
+<%- include('../partials/nav') %>
+<main class="page-main admin-main">
+  <%- include('../partials/flash') %>
+
+  <div class="admin-header">
+    <h1>Game Events</h1>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <a href="/admin/delegates" class="btn btn-outline btn-sm">&larr; Delegates</a>
+      <a href="/admin" class="btn btn-outline btn-sm">&larr; Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Create New Game -->
+  <section class="admin-section">
+    <h2>Schedule a Game</h2>
+    <form action="/admin/delegates/games" method="POST" class="form-stack" style="max-width:700px;">
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Event Title</label>
+          <input type="text" name="title" class="form-input" placeholder="e.g. Greeley Central vs Northridge — Varsity Football" required>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Sport</label>
+          <select name="sport" class="form-input" required>
+            <% sports.forEach(s => { %>
+              <option value="<%= s %>"><%= s %></option>
+            <% }) %>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Home Team</label>
+          <select name="homeTeam" class="form-input" required>
+            <% schools.forEach(s => { %>
+              <option value="<%= s %>"><%= s %></option>
+            <% }) %>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Away Team</label>
+          <input type="text" name="awayTeam" class="form-input" placeholder="Away team name">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Venue</label>
+          <select name="venue" class="form-input" required>
+            <% venues.forEach(v => { %>
+              <option value="<%= v %>"><%= v %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Venue Address (optional)</label>
+          <input type="text" name="venueAddress" class="form-input" placeholder="If away game or other">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Game Date</label>
+          <input type="date" name="gameDate" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label>Game Time</label>
+          <input type="time" name="gameTime" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Broadcast Type</label>
+          <select name="broadcastType" class="form-input">
+            <option value="delegate-mobile">Delegate (Mobile)</option>
+            <option value="hardware-fixed">Hardware (Fixed)</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="none">None (Record Only)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Assign Delegates</label>
+        <div class="checkbox-grid">
+          <% approvedDelegates.forEach(d => { %>
+            <label class="checkbox-label">
+              <input type="checkbox" name="delegates" value="<%= d._id %>">
+              <span><%= d.fullName %> (<%= d.schools.join(', ') %>)</span>
+            </label>
+          <% }) %>
+          <% if (!approvedDelegates.length) { %>
+            <p class="empty-state">No approved delegates yet.</p>
+          <% } %>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Create Game Event</button>
+    </form>
+  </section>
+
+  <!-- Game List -->
+  <section class="admin-section">
+    <h2>All Games</h2>
+    <% if (games.length) { %>
+    <table class="admin-table">
+      <thead>
+        <tr><th>Event</th><th>Sport</th><th>Date</th><th>Venue</th><th>Broadcast</th><th>Delegates</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        <% games.forEach(g => { %>
+          <tr>
+            <td><strong><%= g.title %></strong><br><small><%= g.homeTeam %> vs <%= g.awayTeam %></small></td>
+            <td><span class="tag"><%= g.sport %></span></td>
+            <td>
+              <%= new Date(g.gameDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) %>
+              <% if (g.gameTime) { %><br><small><%= g.gameTime %></small><% } %>
+            </td>
+            <td><%= g.venue %></td>
+            <td><span class="tag"><%= g.broadcastType %></span></td>
+            <td>
+              <% if (g.delegates && g.delegates.length) { %>
+                <% g.delegates.forEach(d => { %>
+                  <span class="tag" style="margin:.1rem;"><%= d.fullName %></span>
+                <% }) %>
+              <% } else { %>
+                <span class="status-badge status-gold">Unassigned</span>
+              <% } %>
+            </td>
+            <td>
+              <span class="status-badge
+                <%= g.status === 'live' ? 'status-red' : g.status === 'completed' ? 'status-green' : g.status === 'cancelled' ? 'status-gray' : 'status-gold' %>">
+                <%= g.status %>
+              </span>
+            </td>
+            <td class="action-cell">
+              <% if (g.status === 'scheduled') { %>
+                <form action="/admin/delegates/games/<%= g._id %>/status" method="POST" style="display:inline">
+                  <input type="hidden" name="status" value="live">
+                  <button class="btn btn-primary btn-xs">Go Live</button>
+                </form>
+              <% } else if (g.status === 'live') { %>
+                <form action="/admin/delegates/games/<%= g._id %>/status" method="POST" style="display:inline">
+                  <input type="hidden" name="status" value="completed">
+                  <button class="btn btn-outline btn-xs">Complete</button>
+                </form>
+              <% } %>
+              <form action="/admin/delegates/games/<%= g._id %>?_method=DELETE" method="POST" style="display:inline" onsubmit="return confirm('Delete this game?')">
+                <button class="btn btn-danger btn-xs">Del</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } else { %>
+      <p class="empty-state" style="padding:1rem;">No games scheduled yet.</p>
+    <% } %>
+  </section>
+</main>
+<%- include('../partials/footer') %>

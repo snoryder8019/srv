@@ -35,10 +35,17 @@ router.get('/', async (req, res) => {
     qrCount = await QRCode.countDocuments({ brand: req.user.brand, active: true });
   }
 
+  // Get trial info for the user's brand
+  let trialBrand = null;
+  if (req.user.brand) {
+    trialBrand = await Brand.findById(req.user.brand).select('status trialExpiresAt plan name').lean();
+  }
+
   res.render('admin/dashboard', {
     title: 'Admin Dashboard',
     brands,
-    stats: { userCount, taskCount, qrCount, brandCount: brands.length }
+    stats: { userCount, taskCount, qrCount, brandCount: brands.length },
+    trialBrand,
   });
 });
 

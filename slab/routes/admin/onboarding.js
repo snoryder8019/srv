@@ -89,6 +89,66 @@ router.get('/:id/preview', async (req, res) => {
   });
 });
 
+// ── AGENT — suggest fields for NEW form (no ID yet) ────────────────────────
+router.post('/agent/suggest', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const brandContext = await loadBrandContext(req.tenant, db, DESIGN_DEFAULTS);
+    const prompt = req.body.prompt || 'Suggest onboarding form fields for this business';
+
+    const systemPrompt = `You are a form design assistant for a business onboarding platform.
+${brandContext}
+
+Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
+{
+  "message": "one sentence describing the suggested fields",
+  "fill": {
+    "fields": [
+      {
+        "key": "field_key_snake_case",
+        "label": "Human Readable Label",
+        "type": "text|textarea|select|checkbox|radio|number|email|url|date|color|heading",
+        "placeholder": "hint text",
+        "helpText": "optional guidance for the respondent",
+        "required": true,
+        "options": [{"label": "Option A", "value": "a"}],
+        "width": "full|half",
+        "section": "Section Name"
+      }
+    ]
+  }
+}
+
+Field types: text, textarea, select, checkbox, radio, number, email, url, date, color, heading (section divider).
+Only include "options" for select/radio/checkbox types.
+Generate 4-8 useful fields based on the business type and user prompt.`;
+
+    const raw = await callLLM(
+      [{ role: 'user', content: prompt }],
+      systemPrompt,
+    );
+    const parsed = tryParseAgentResponse(raw);
+    res.json({ success: true, message: parsed.message || 'Fields suggested', fields: parsed.fill?.fields || [] });
+  } catch (err) {
+    console.error('[Onboarding] Agent suggest error:', err);
+    res.status(500).json({ error: err.message || 'Agent failed' });
+  }
+});
+
+// ── API: get forms assigned to a page slug ──────────────────────────────────
+router.get('/api/by-page/:pageSlug', async (req, res) => {
+  try {
+    const db = req.db;
+    const forms = await db.collection('onboarding_forms')
+      .find({ status: 'active', assignTo: req.params.pageSlug })
+      .sort({ updatedAt: -1 })
+      .toArray();
+    res.json({ forms });
+  } catch (err) {
+    res.json({ forms: [] });
+  }
+});
+
 // ── CREATE form ─────────────────────────────────────────────────────────────
 router.post('/', express.json({ limit: '1mb' }), async (req, res) => {
   try {
@@ -341,66 +401,6 @@ Do NOT duplicate fields that already exist on the form.`;
   } catch (err) {
     console.error('[Onboarding] Agent error:', err);
     res.status(500).json({ error: err.message || 'Agent failed' });
-  }
-});
-
-// ── AGENT — suggest fields for NEW form (no ID yet) ────────────────────────
-router.post('/agent/suggest', express.json(), async (req, res) => {
-  try {
-    const db = req.db;
-    const brandContext = await loadBrandContext(req.tenant, db, DESIGN_DEFAULTS);
-    const prompt = req.body.prompt || 'Suggest onboarding form fields for this business';
-
-    const systemPrompt = `You are a form design assistant for a business onboarding platform.
-${brandContext}
-
-Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
-{
-  "message": "one sentence describing the suggested fields",
-  "fill": {
-    "fields": [
-      {
-        "key": "field_key_snake_case",
-        "label": "Human Readable Label",
-        "type": "text|textarea|select|checkbox|radio|number|email|url|date|color|heading",
-        "placeholder": "hint text",
-        "helpText": "optional guidance for the respondent",
-        "required": true,
-        "options": [{"label": "Option A", "value": "a"}],
-        "width": "full|half",
-        "section": "Section Name"
-      }
-    ]
-  }
-}
-
-Field types: text, textarea, select, checkbox, radio, number, email, url, date, color, heading (section divider).
-Only include "options" for select/radio/checkbox types.
-Generate 4-8 useful fields based on the business type and user prompt.`;
-
-    const raw = await callLLM(
-      [{ role: 'user', content: prompt }],
-      systemPrompt,
-    );
-    const parsed = tryParseAgentResponse(raw);
-    res.json({ success: true, message: parsed.message || 'Fields suggested', fields: parsed.fill?.fields || [] });
-  } catch (err) {
-    console.error('[Onboarding] Agent suggest error:', err);
-    res.status(500).json({ error: err.message || 'Agent failed' });
-  }
-});
-
-// ── API: get forms assigned to a page slug ──────────────────────────────────
-router.get('/api/by-page/:pageSlug', async (req, res) => {
-  try {
-    const db = req.db;
-    const forms = await db.collection('onboarding_forms')
-      .find({ status: 'active', assignTo: req.params.pageSlug })
-      .sort({ updatedAt: -1 })
-      .toArray();
-    res.json({ forms });
-  } catch (err) {
-    res.json({ forms: [] });
   }
 });
 

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delegate Panel — sLab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#c9a848; background:#262626; padding:3px 8px; border-radius:4px; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; color:#737373; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:900px; margin:0 auto; padding:24px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:16px; margin-bottom:28px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; }
+    .stat-label { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:6px; }
+    .stat-value { font-size:28px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; }
+    .stat-value.green { color:#4ade80; }
+    h2 { font-size:16px; font-weight:500; margin-bottom:16px; }
+    .section { margin-bottom:32px; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
+    .status-active { background:#14532d; color:#86efac; }
+    .status-pending { background:#422006; color:#fdba74; }
+    .status-suspended { background:#451a1a; color:#fca5a5; }
+    .empty { color:#525252; font-size:13px; padding:20px; text-align:center; }
+    .ref-code { font-family:monospace; font-size:14px; color:#c9a848; background:#1a1a1a; padding:6px 12px; border-radius:4px; display:inline-block; }
+    .commission-info { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; margin-bottom:20px; }
+    .commission-info h3 { font-size:12px; color:#c9a848; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:8px; }
+    .commission-row { display:flex; justify-content:space-between; padding:3px 0; font-size:13px; }
+    .commission-row .label { color:#a3a3a3; } .commission-row .value { color:#fff; font-weight:600; }
+    .tax-warning { background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.2); color:#fbbf24; padding:12px 16px; border-radius:6px; font-size:13px; margin-bottom:20px; line-height:1.6; }
+    @media (max-width:600px) { .stats { grid-template-columns:1fr 1fr; } .container { padding:16px; } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo"><span>s</span>Lab</div>
+      <span class="badge">Delegate</span>
+    </div>
+    <div class="topbar-right">
+      <span><%= delegate.firstName %> <%= delegate.lastName %></span>
+      <a href="/delegates/panel/settings">Settings</a>
+      <a href="/delegates/logout">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <% if (!delegate.taxInfoProvided) { %>
+    <div class="tax-warning">
+      <strong>Tax info required:</strong> You must provide valid tax information (W-9) before receiving your first payout. Please update your contact details in <a href="/delegates/panel/settings" style="color:#c9a848;">Settings</a> and contact support to submit your tax forms.
+    </div>
+    <% } %>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Status</div>
+        <div class="stat-value"><span class="status status-<%= delegate.status %>"><%= delegate.status %></span></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Assigned Accounts</div>
+        <div class="stat-value"><%= delegate.tenants?.length || 0 %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Total Earned</div>
+        <div class="stat-value gold">$<%= (delegate.totalEarned || 0).toFixed(2) %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Total Paid</div>
+        <div class="stat-value green">$<%= (delegate.totalPaid || 0).toFixed(2) %></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h2>Your Referral Code</h2>
+      </div>
+      <div class="ref-code"><%= delegate.refCode %></div>
+    </div>
+
+    <div class="commission-info">
+      <h3>Commission Schedule</h3>
+      <div class="commission-row"><span class="label">Year 1</span><span class="value">$5.00 / account / month</span></div>
+      <div class="commission-row"><span class="label">Year 2</span><span class="value">$2.50 / account / month</span></div>
+      <div class="commission-row"><span class="label">Year 3+ (Lifetime)</span><span class="value">$2.00 / account / month</span></div>
+    </div>
+
+    <div class="section">
+      <h2>Assigned Accounts</h2>
+      <% if (tenantDetails.length) { %>
+      <table>
+        <thead><tr><th>Domain</th><th>Attached</th><th>Year</th><th>Monthly Rate</th></tr></thead>
+        <tbody>
+          <% for (const t of tenantDetails) { %>
+          <tr>
+            <td><%= t.tenantDomain %></td>
+            <td><%= new Date(t.attachedAt).toLocaleDateString() %></td>
+            <td>Yr <%= t.year %></td>
+            <td style="color:#c9a848;font-weight:600;">$<%= t.rate.toFixed(2) %></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <% } else { %>
+        <div class="empty">No accounts assigned yet. Your admin will attach accounts as they come in.</div>
+      <% } %>
+    </div>
+
+    <div class="section">
+      <h2>Payout History</h2>
+      <% if (payouts.length) { %>
+      <table>
+        <thead><tr><th>Date</th><th>Period</th><th>Amount</th><th>Method</th><th>Note</th></tr></thead>
+        <tbody>
+          <% for (const p of payouts) { %>
+          <tr>
+            <td><%= new Date(p.createdAt).toLocaleDateString() %></td>
+            <td><%= p.period %></td>
+            <td style="color:#4ade80;font-weight:600;">$<%= p.amount.toFixed(2) %></td>
+            <td><%= p.method %></td>
+            <td style="color:#737373;"><%= p.note || '—' %></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <% } else { %>
+        <div class="empty">No payouts yet.</div>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

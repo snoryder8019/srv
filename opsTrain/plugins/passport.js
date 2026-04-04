@@ -1,6 +1,7 @@
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const LocalStrategy = require('passport-local').Strategy;
+const bcrypt = require('bcrypt');
 const User = require('../models/User');
 
 // Serialize / Deserialize
@@ -43,6 +44,31 @@ passport.use(new GoogleStrategy({
       role: 'visitor',
       provider: 'google'
     });
+    done(null, user);
+  } catch (err) {
+    done(err);
+  }
+}));
+
+// Local strategy — email + password login for brandAdmin+ roles
+passport.use('local', new LocalStrategy({
+  usernameField: 'email',
+  passwordField: 'password',
+}, async (email, password, done) => {
+  try {
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return done(null, false, { message: 'Invalid email or password' });
+    if (!user.password) return done(null, false, { message: 'No password set. Sign in with Google or ask your admin.' });
+
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return done(null, false, { message: 'Invalid email or password' });
+
+    // Must be brandAdmin or higher to use the admin login
+    const adminRoles = ['superadmin', 'admin', 'brandAdmin'];
+    if (!adminRoles.includes(user.role)) {
+      return done(null, false, { message: 'Your account does not have admin access. Staff use QR + PIN.' });
+    }
+
     done(null, user);
   } catch (err) {
     done(err);

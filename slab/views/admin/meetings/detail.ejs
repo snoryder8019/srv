@@ -41,6 +41,20 @@
         This meeting has ended. The record below is preserved for reference.
       </div>
     <% } %>
+    <% const mc = meeting.consent || {}; %>
+    <% if (mc.recordingNotice || mc.transcriptionDisclaimer || mc.customText) { %>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;">
+        <% if (mc.recordingNotice) { %>
+          <span style="display:inline-block;padding:3px 10px;font-size:0.72rem;font-weight:600;border-radius:2px;background:rgba(201,168,72,0.12);color:var(--gold-dark,#8B7230);">Recording Notice</span>
+        <% } %>
+        <% if (mc.transcriptionDisclaimer) { %>
+          <span style="display:inline-block;padding:3px 10px;font-size:0.72rem;font-weight:600;border-radius:2px;background:rgba(201,168,72,0.12);color:var(--gold-dark,#8B7230);">Transcription Disclaimer</span>
+        <% } %>
+        <% if (mc.customText) { %>
+          <span style="display:inline-block;padding:3px 10px;font-size:0.72rem;font-weight:600;border-radius:2px;background:rgba(201,168,72,0.12);color:var(--gold-dark,#8B7230);" title="<%= mc.customText %>">Custom Consent</span>
+        <% } %>
+      </div>
+    <% } %>
   </div>
 
   <div class="meet-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
@@ -68,7 +82,7 @@
         <div style="max-height:200px;overflow-y:auto;">
           <% (meeting.participants || []).forEach(function(p) { %>
             <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--ivory-mid);font-size:0.82rem;">
-              <span><%= p.name %></span>
+              <span><%= p.name %><% if (p.consentAgreedAt) { %> <span title="Consent agreed <%= new Date(p.consentAgreedAt).toLocaleString() %>" style="color:#059669;font-size:0.75rem;">&#10003;</span><% } %></span>
               <span style="color:var(--slate);"><%= p.joinedAt ? new Date(p.joinedAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : '' %></span>
             </div>
           <% }) %>
@@ -142,6 +156,74 @@
       <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
         <button class="btn btn-ghost btn-sm" id="tags-cancel-btn">Cancel</button>
         <button class="btn btn-gold btn-sm" id="tags-save-btn">Save Tags</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AGREEMENTS -->
+  <div class="card" style="margin-top:24px;">
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+      Agreements (<%= (agreements || []).length %>)
+      <button class="btn btn-gold btn-sm" onclick="document.getElementById('agreementModal').style.display='flex'">Send Agreement</button>
+    </div>
+    <% if ((agreements || []).length === 0) { %>
+      <p style="color:var(--slate);font-size:0.85rem;">No agreements sent for this meeting.</p>
+    <% } else { %>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <% (agreements || []).forEach(function(a) { %>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--ivory);border-radius:4px;font-size:0.82rem;flex-wrap:wrap;gap:8px;">
+            <div>
+              <strong><%= a.title %></strong>
+              <span style="color:var(--slate);margin-left:6px;"><%= a.recipientName || '' %> &lt;<%= a.recipientEmail %>&gt;</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <% if (a.status === 'accepted') { %>
+                <span style="display:inline-block;padding:2px 10px;font-size:0.72rem;font-weight:600;border-radius:2px;background:rgba(5,150,105,0.1);color:#059669;">Accepted</span>
+              <% } else if (a.status === 'viewed') { %>
+                <span style="display:inline-block;padding:2px 10px;font-size:0.72rem;font-weight:600;border-radius:2px;background:rgba(201,168,72,0.15);color:#8B7230;">Viewed</span>
+              <% } else { %>
+                <span style="display:inline-block;padding:2px 10px;font-size:0.72rem;font-weight:600;border-radius:2px;background:rgba(107,115,128,0.1);color:var(--slate);">Sent</span>
+              <% } %>
+              <span style="font-size:0.72rem;color:var(--slate);"><%= new Date(a.sentAt).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) %></span>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Send Agreement Modal -->
+  <div id="agreementModal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(15,27,48,0.55);backdrop-filter:blur(3px);align-items:center;justify-content:center;">
+    <div class="card" style="width:500px;max-width:92vw;">
+      <div class="card-title">Send Agreement</div>
+      <div class="form-grid cols-1" style="gap:14px;">
+        <div class="form-field">
+          <label>Agreement Type</label>
+          <select id="agr-type" onchange="agrTypeChanged()">
+            <% Object.entries(agreementTemplates || {}).forEach(function([key, tmpl]) { %>
+              <option value="<%= key %>"><%= tmpl.title %></option>
+            <% }) %>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="form-grid" style="gap:14px;">
+          <div class="form-field">
+            <label>Recipient Name</label>
+            <input type="text" id="agr-name" placeholder="e.g. John Smith">
+          </div>
+          <div class="form-field">
+            <label>Recipient Email</label>
+            <input type="email" id="agr-email" placeholder="email@example.com" required>
+          </div>
+        </div>
+        <div class="form-field">
+          <label>Agreement Text <span style="color:var(--slate);font-weight:300;">(editable)</span></label>
+          <textarea id="agr-body" rows="5" style="font-size:0.82rem;resize:vertical;line-height:1.6;"></textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:20px;justify-content:flex-end;">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('agreementModal').style.display='none'">Cancel</button>
+        <button type="button" class="btn btn-gold" id="agr-send-btn" onclick="sendAgreement()">Send Agreement</button>
       </div>
     </div>
   </div>
@@ -381,6 +463,61 @@ document.getElementById('tags-save-btn').addEventListener('click', function() {
 });
 </script>
 
+<script>
+// Agreement templates
+var agrTemplates = <%- JSON.stringify(agreementTemplates || {}) %>;
+var meetingTitle = '<%= meeting.title.replace(/'/g, "\\'") %>';
+var brandName = '<%= (brand && brand.name ? brand.name : "Our Team").replace(/\x27/g, "\\x27") %>';
+
+function agrTypeChanged() {
+  var type = document.getElementById('agr-type').value;
+  var bodyEl = document.getElementById('agr-body');
+  if (type === 'custom') {
+    bodyEl.value = '';
+  } else if (agrTemplates[type]) {
+    bodyEl.value = agrTemplates[type].body
+      .replace(/\{brandName\}/g, brandName)
+      .replace(/\{meetingTitle\}/g, meetingTitle)
+      .replace(/\{recipientName\}/g, document.getElementById('agr-name').value || 'Participant');
+  }
+}
+// Init first template
+agrTypeChanged();
+
+function sendAgreement() {
+  var type = document.getElementById('agr-type').value;
+  var email = document.getElementById('agr-email').value.trim();
+  var name = document.getElementById('agr-name').value.trim();
+  var body = document.getElementById('agr-body').value.trim();
+  if (!email) { alert('Recipient email is required'); return; }
+  if (!body) { alert('Agreement text is required'); return; }
+
+  var btn = document.getElementById('agr-send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  fetch('/admin/meetings/<%= meeting._id %>/agreements', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: type, recipientEmail: email, recipientName: name, customBody: body })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        location.reload();
+      } else {
+        alert(data.error || 'Failed to send agreement');
+        btn.disabled = false;
+        btn.textContent = 'Send Agreement';
+      }
+    })
+    .catch(function() {
+      alert('Failed to send agreement');
+      btn.disabled = false;
+      btn.textContent = 'Send Agreement';
+    });
+}
+</script>
 <script src="/js/tours/meetings.js"></script>
 </div><!-- .main -->
 </div><!-- .layout -->

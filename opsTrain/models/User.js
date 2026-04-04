@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema({
   lastName:    { type: String, default: '' },
   avatar:      { type: String, default: '' },
   googleId:    { type: String, sparse: true },
+  password:    { type: String, default: '' },
   provider:    { type: String, default: 'local' },
 
   // Role hierarchy: superadmin > admin > brandAdmin > user > visitor

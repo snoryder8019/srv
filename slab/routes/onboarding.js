@@ -293,7 +293,15 @@ router.post('/google-signup', async (req, res) => {
       }
     } catch(e) {}
 
-    res.json({ ok: true, domain: result.domain });
+    // Build auto-login URL so user lands directly in admin → brand builder
+    let adminUrl = `https://${result.domain}/admin`;
+    const updatedUser = await tenantDb.collection('users').findOne({ email: profile.email });
+    if (updatedUser) {
+      const token = createLoginToken({ ...updatedUser, isAdmin: true, isOwner: true }, result.dbName, '24h');
+      adminUrl = `https://${result.domain}/admin?token=${token}`;
+    }
+
+    res.json({ ok: true, domain: result.domain, adminUrl });
   } catch (err) {
     console.error('[onboarding] Google signup failed:', err);
     res.status(500).json({ error: err.message || 'Signup failed' });
@@ -378,7 +386,7 @@ router.post('/signup', async (req, res) => {
 
     let adminUrl = `https://${result.domain}/admin`;
     if (newUser) {
-      const token = createLoginToken(newUser);
+      const token = createLoginToken({ ...newUser, isAdmin: true, isOwner: true }, result.dbName, '24h');
       adminUrl = `https://${result.domain}/admin?token=${token}`;
     }
 

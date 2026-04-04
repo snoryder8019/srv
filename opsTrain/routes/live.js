@@ -6,7 +6,11 @@ const TaskCompletion = require('../models/TaskCompletion');
 const QRScan = require('../models/QRScan');
 const Special = require('../models/Special');
 const { getShiftInfo } = require('../plugins/shiftTime');
+const { requireRole } = require('../middleware/roles');
 const router = express.Router();
+
+// Live dashboard requires brandAdmin+ access
+router.use(requireRole('brandAdmin'));
 
 // GET /live?brandId=xxx&date=YYYY-MM-DD
 router.get('/', async (req, res) => {

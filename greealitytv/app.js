@@ -51,6 +51,8 @@ app.use('/gigs', require('./routes/gigs'));
 app.use('/profile', require('./routes/profile'));
 app.use('/shares', require('./routes/shares'));
 app.use('/admin', require('./routes/admin'));
+app.use('/admin/delegates', require('./routes/admin/delegates'));
+app.use('/delegates', require('./routes/delegates'));
 
 const PORT = process.env.PORT || 3400;
 app.listen(PORT, () => console.log(`GreeAlityTV running on port ${PORT}`));

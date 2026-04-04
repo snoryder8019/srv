@@ -63,6 +63,7 @@ router.get('/:token', async (req, res) => {
       title: meeting.title,
       domain: req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN,
       tenantDb: req.tenant?.db || '',
+      consent: meeting.consent || {},
     });
   } catch (err) {
     console.error('[meetings] public route error:', err);
@@ -208,6 +209,67 @@ router.get('/:token/data', async (req, res) => {
   } catch (err) {
     console.error('[meetings] data fetch error:', err);
     res.status(500).json({ error: 'Failed to load data' });
+  }
+});
+
+// ── Agreements ──
+
+// GET /agreement/:token — view agreement
+router.get('/agreement/:token', async (req, res) => {
+  try {
+    const db = req.db;
+    const agreement = await db.collection('agreements').findOne({ token: req.params.token });
+    if (!agreement) {
+      return res.status(404).render('meeting-error', { message: 'This agreement link is invalid.' });
+    }
+
+    // Mark as viewed on first visit
+    if (!agreement.viewedAt) {
+      await db.collection('agreements').updateOne(
+        { _id: agreement._id },
+        { $set: { viewedAt: new Date(), status: 'viewed' } }
+      );
+      agreement.viewedAt = new Date();
+      agreement.status = 'viewed';
+    }
+
+    const design = res.locals.design;
+    const brand = req.tenant?.brand || {};
+    res.render('agreement', { agreement, design, brand });
+  } catch (err) {
+    console.error('[agreements] view error:', err);
+    res.status(500).render('meeting-error', { message: 'Something went wrong.' });
+  }
+});
+
+// POST /agreement/:token/accept — record acceptance
+router.post('/agreement/:token/accept', express.urlencoded({ extended: false }), async (req, res) => {
+  try {
+    const db = req.db;
+    const agreement = await db.collection('agreements').findOne({ token: req.params.token });
+    if (!agreement) {
+      return res.status(404).render('meeting-error', { message: 'This agreement link is invalid.' });
+    }
+
+    if (!agreement.acceptedAt) {
+      await db.collection('agreements').updateOne(
+        { _id: agreement._id },
+        { $set: {
+          acceptedAt: new Date(),
+          acceptedIp: req.ip,
+          status: 'accepted',
+        } }
+      );
+      agreement.acceptedAt = new Date();
+      agreement.status = 'accepted';
+    }
+
+    const design = res.locals.design;
+    const brand = req.tenant?.brand || {};
+    res.render('agreement', { agreement, design, brand });
+  } catch (err) {
+    console.error('[agreements] accept error:', err);
+    res.status(500).render('meeting-error', { message: 'Something went wrong.' });
   }
 });
 
