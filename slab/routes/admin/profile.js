@@ -1,6 +1,8 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
+import { execSync } from 'child_process';
 import { getDb } from '../../plugins/mongo.js';
+import { config } from '../../config/config.js';
 
 const router = express.Router();
 
@@ -32,11 +34,34 @@ router.get('/', async (req, res) => {
     // Ensure tutorials sub-doc exists
     const tutorials = user.tutorials || { seen: {}, dismissed: {}, autoPlay: true, lastReset: null };
 
+    // Load git commits for What's New
+    let whatsNew = [];
+    try {
+      const gitLog = execSync(
+        'git log main --pretty=format:"%H|%h|%s|%ai|%an" -15',
+        { encoding: 'utf8', timeout: 5000, cwd: process.cwd() }
+      ).trim();
+      if (gitLog) {
+        for (const line of gitLog.split('\n')) {
+          const [hash, short, message, dateStr, author] = line.split('|');
+          if (!message) continue;
+          const d = new Date(dateStr);
+          whatsNew.push({
+            short, message, hash,
+            date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            version: message.match(/v\s*[\d.]+/i)?.[0]?.trim() || null,
+          });
+        }
+      }
+    } catch { /* ignore */ }
+
     res.render('admin/profile/index', {
       user: req.adminUser,
       dbUser: user,
       tutorials,
       tutorialPages: TUTORIAL_PAGES,
+      whatsNew,
+      platformEnv: config.NODE_ENV,
       success: req.query.success || null,
       error: req.query.error || null,
     });
@@ -50,13 +75,14 @@ router.get('/', async (req, res) => {
 router.post('/update', async (req, res) => {
   try {
     const db = req.db;
-    const { displayName, tutorialAutoPlay } = req.body;
+    const { displayName, tutorialAutoPlay, tutorialCollapsed } = req.body;
 
     const updates = {};
     if (displayName && displayName.trim()) {
       updates.displayName = displayName.trim();
     }
     updates['tutorials.autoPlay'] = tutorialAutoPlay === 'on';
+    updates['tutorials.collapsed'] = tutorialCollapsed === 'on';
 
     await db.collection('users').updateOne(
       { _id: new ObjectId(req.adminUser.id) },

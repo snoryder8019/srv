@@ -48,11 +48,16 @@ class AdminTour {
       } catch (e2) { /* ignore */ }
     }
 
-    // Add the floating help button (with state)
-    AdminTour._addHelpButton(pageName, pageSeen);
+    // Check if tutorials are collapsed (fully hidden)
+    var collapsed = AdminTour._tutorialState ? !!AdminTour._tutorialState.collapsed : false;
 
-    // If already seen or autoPlay is off, don't auto-play
-    if (pageSeen || !autoPlay) return;
+    // Add the floating help button (with state) — skip if collapsed
+    if (!collapsed) {
+      AdminTour._addHelpButton(pageName, pageSeen);
+    }
+
+    // If collapsed, seen, or autoPlay is off, don't auto-play
+    if (collapsed || pageSeen || !autoPlay) return;
 
     // Small delay to let the page render
     setTimeout(function() {
@@ -103,6 +108,57 @@ class AdminTour {
 
     // Update help button to reflect stopped state
     AdminTour._updateHelpButton(true);
+  }
+
+  /**
+   * Collapse tutorials — hide help button entirely, stop all tours.
+   */
+  static async collapseAll() {
+    if (AdminTour._driver) {
+      try { AdminTour._driver.destroy(); } catch (e) { /* ignore */ }
+      AdminTour._driver = null;
+    }
+
+    try {
+      await fetch('/admin/tutorials/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ collapsed: true, autoPlay: false })
+      });
+    } catch (e) { /* ignore */ }
+
+    if (AdminTour._tutorialState) {
+      AdminTour._tutorialState.collapsed = true;
+      AdminTour._tutorialState.autoPlay = false;
+    }
+
+    var btn = document.getElementById('tour-help-btn');
+    if (btn) btn.remove();
+  }
+
+  /**
+   * Expand tutorials — show help button, re-enable.
+   */
+  static async expandAll() {
+    try {
+      await fetch('/admin/tutorials/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ collapsed: false, autoPlay: true })
+      });
+    } catch (e) { /* ignore */ }
+
+    if (AdminTour._tutorialState) {
+      AdminTour._tutorialState.collapsed = false;
+      AdminTour._tutorialState.autoPlay = true;
+    }
+
+    // Re-add help button if not present
+    if (!document.getElementById('tour-help-btn') && AdminTour._currentPage) {
+      var seen = AdminTour._tutorialState?.seen?.[AdminTour._currentPage] || false;
+      AdminTour._addHelpButton(AdminTour._currentPage, seen);
+    }
+    AdminTour._updateHelpButton(false);
   }
 
   /**

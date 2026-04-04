@@ -80,6 +80,96 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- TUTORIALS SETTINGS                                                      -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="settings-section">
+    <h2>Tutorials
+      <span style="font-size:0.65rem;font-weight:400;color:var(--slate);margin-left:auto;" id="tutProgress"></span>
+    </h2>
+    <div class="desc">Control guided tours and onboarding walkthroughs across the admin panel.</div>
+
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;">
+        <input type="checkbox" id="tutAutoPlay" style="accent-color:var(--navy);"> Auto-play on first visit
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;">
+        <input type="checkbox" id="tutCollapsed" style="accent-color:var(--navy);"> Collapse tutorials <span style="font-size:0.68rem;color:var(--slate);">(hide help button)</span>
+      </label>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button type="button" class="btn-test" onclick="resetAllTutorials()">Reset All Tutorials</button>
+      <button type="button" class="btn-test" style="background:var(--slate);" onclick="window.location='/admin/profile'">View Tutorial Progress</button>
+    </div>
+    <div id="tutResult" class="test-result"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- WHAT'S NEW / CHANGELOG                                                  -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="settings-section">
+    <h2>What's New
+      <span style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;background:var(--navy);color:var(--gold);padding:2px 8px;border-radius:2px;margin-left:8px;">v<%= typeof platformVersion !== 'undefined' ? platformVersion : '1.0.0' %></span>
+      <span style="font-size:0.62rem;font-weight:500;padding:2px 8px;border-radius:2px;margin-left:4px;<%= typeof platformEnv !== 'undefined' && platformEnv === 'production' ? 'background:rgba(22,163,74,0.1);color:#16a34a;' : 'background:rgba(234,88,12,0.1);color:#ea580c;' %>"><%= typeof platformEnv !== 'undefined' ? platformEnv : 'development' %></span>
+    </h2>
+    <div class="desc">Platform version history and environment status. Helps coordinate prod/dev deployments.</div>
+
+    <div style="display:flex;gap:16px;margin-bottom:16px;font-size:0.78rem;">
+      <div style="flex:1;padding:12px;background:var(--ivory);border-radius:4px;">
+        <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--slate);margin-bottom:4px;">Environment</div>
+        <strong><%= typeof platformEnv !== 'undefined' ? platformEnv : 'development' %></strong>
+      </div>
+      <div style="flex:1;padding:12px;background:var(--ivory);border-radius:4px;">
+        <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--slate);margin-bottom:4px;">Version</div>
+        <strong><%= typeof platformVersion !== 'undefined' ? platformVersion : '1.0.0' %></strong>
+      </div>
+      <div style="flex:1;padding:12px;background:var(--ivory);border-radius:4px;">
+        <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--slate);margin-bottom:4px;">Node</div>
+        <strong><%= typeof nodeVersion !== 'undefined' ? nodeVersion : process.version %></strong>
+      </div>
+    </div>
+
+    <div id="changelogList" style="border:1px solid var(--ivory-mid);border-radius:4px;overflow:hidden;max-height:500px;overflow-y:auto;">
+      <% const commits = typeof whatsNew !== 'undefined' ? whatsNew : []; %>
+      <% const notes = typeof pinnedNotes !== 'undefined' ? pinnedNotes : {}; %>
+      <% if (commits.length === 0) { %>
+        <div style="padding:16px;text-align:center;font-size:0.82rem;color:var(--slate);">No git history available.</div>
+      <% } %>
+      <% for (const c of commits) { %>
+        <div style="padding:10px 16px;border-bottom:1px solid var(--ivory-mid);<%= c.version ? 'background:rgba(201,168,72,0.04);' : '' %>" data-hash="<%= c.hash %>">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <code style="font-size:0.68rem;color:var(--gold);background:var(--ivory);padding:1px 6px;border-radius:2px;"><%= c.short %></code>
+            <% if (c.version) { %>
+              <span style="font-size:0.62rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;background:var(--navy);color:var(--gold);padding:1px 6px;border-radius:2px;"><%= c.version %></span>
+            <% } %>
+            <span style="font-size:0.82rem;font-weight:500;color:var(--dark);flex:1;"><%= c.message %></span>
+            <span style="font-size:0.65rem;color:var(--slate);white-space:nowrap;"><%= c.date %></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+            <span style="font-size:0.65rem;color:var(--slate);"><%= c.author %></span>
+            <span style="font-size:0.65rem;color:var(--slate);"><%= c.time %></span>
+          </div>
+          <% if (notes[c.hash]) { %>
+            <div style="margin-top:6px;padding:8px 10px;background:rgba(201,168,72,0.06);border-radius:3px;font-size:0.75rem;line-height:1.5;color:var(--dark);"><%- notes[c.hash] %></div>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+
+    <% if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) { %>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ivory-mid);">
+      <div style="font-weight:600;font-size:0.78rem;margin-bottom:8px;">Pin a Note to a Commit (Superadmin)</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <input type="text" id="clHash" placeholder="commit hash (click a row above)" style="flex:1;padding:8px;border:1px solid var(--ivory-mid);border-radius:3px;font-size:0.78rem;font-family:monospace;">
+      </div>
+      <textarea id="clNotes" rows="2" placeholder="Pinned note for this commit (supports HTML)" style="width:100%;padding:8px;border:1px solid var(--ivory-mid);border-radius:3px;font-size:0.78rem;font-family:'Jost',sans-serif;resize:vertical;"></textarea>
+      <button type="button" class="btn-test" style="margin-top:8px;" onclick="addChangelog()">Pin Note</button>
+      <div id="clResult" class="test-result"></div>
+    </div>
+    <% } %>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- DONE-FOR-YOU SETUP OFFER                                               -->
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <div class="setup-cta">
@@ -710,6 +800,97 @@ async function autoCreateDns() {
     el.textContent = msg;
     el.style.color = d.errors.length ? '#d97706' : '#16a34a';
   } catch { el.textContent = 'Network error'; el.style.color = '#dc2626'; }
+}
+</script>
+<script>
+// ── Tutorial settings ────────────────────────────────────────────────────────
+(async function() {
+  try {
+    const r = await fetch('/admin/tutorials/status');
+    if (!r.ok) return;
+    const d = await r.json();
+    const t = d.tutorials || {};
+    document.getElementById('tutAutoPlay').checked = t.autoPlay !== false;
+    document.getElementById('tutCollapsed').checked = !!t.collapsed;
+  } catch {}
+
+  // Fetch progress
+  try {
+    const r = await fetch('/admin/tutorials/progress');
+    if (r.ok) {
+      const d = await r.json();
+      document.getElementById('tutProgress').textContent = d.completed + '/' + d.total + ' completed (' + d.percentage + '%)';
+    }
+  } catch {}
+
+  // Toggle handlers
+  document.getElementById('tutAutoPlay').addEventListener('change', async function() {
+    await fetch('/admin/tutorials/preferences', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autoPlay: this.checked })
+    });
+    if (this.checked && typeof AdminTour !== 'undefined') AdminTour.resumeAll();
+  });
+
+  document.getElementById('tutCollapsed').addEventListener('change', async function() {
+    await fetch('/admin/tutorials/preferences', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ collapsed: this.checked })
+    });
+    if (typeof AdminTour !== 'undefined') {
+      if (this.checked) AdminTour.collapseAll();
+      else AdminTour.expandAll();
+    }
+  });
+})();
+
+async function resetAllTutorials() {
+  const el = document.getElementById('tutResult');
+  try {
+    const r = await fetch('/admin/tutorials/reset', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const d = await r.json();
+    if (d.success) {
+      el.textContent = 'All tutorials reset — they will auto-play again on each page.';
+      el.className = 'test-result test-ok';
+      document.getElementById('tutProgress').textContent = '0/' + (document.getElementById('tutProgress').textContent.split('/')[1] || '27');
+    }
+  } catch(e) { el.textContent = 'Error: ' + e.message; el.className = 'test-result test-fail'; }
+}
+
+// ── Changelog ────────────────────────────────────────────────────────────────
+// Click commit row to select its hash
+document.querySelectorAll('#changelogList [data-hash]').forEach(function(row) {
+  row.style.cursor = 'pointer';
+  row.addEventListener('click', function() {
+    var hashInput = document.getElementById('clHash');
+    if (hashInput) {
+      hashInput.value = row.dataset.hash;
+      hashInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+});
+
+async function addChangelog() {
+  var el = document.getElementById('clResult');
+  var commitHash = document.getElementById('clHash').value.trim();
+  var notes = document.getElementById('clNotes').value.trim();
+  if (!notes) { el.textContent = 'Notes required'; el.className = 'test-result test-fail'; return; }
+
+  try {
+    var r = await fetch('/admin/settings/changelog', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commitHash: commitHash, notes: notes })
+    });
+    var d = await r.json();
+    if (d.ok) {
+      el.textContent = 'Pinned!'; el.className = 'test-result test-ok';
+      setTimeout(function() { location.reload(); }, 800);
+    } else {
+      el.textContent = d.error || 'Failed'; el.className = 'test-result test-fail';
+    }
+  } catch(e) { el.textContent = e.message; el.className = 'test-result test-fail'; }
 }
 </script>
 <script src="/js/tours/settings.js"></script>

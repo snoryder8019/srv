@@ -16,7 +16,7 @@ const TUTORIAL_PAGES = [
 
 // Default tutorials object for users who don't have one yet
 function getDefaults() {
-  return { seen: {}, dismissed: {}, autoPlay: true, lastReset: null };
+  return { seen: {}, dismissed: {}, autoPlay: true, collapsed: false, lastReset: null };
 }
 
 // Helper: get user's tutorials field (handles missing/legacy users)
@@ -26,6 +26,7 @@ function getTutorials(user) {
     seen: user.tutorials.seen || {},
     dismissed: user.tutorials.dismissed || {},
     autoPlay: user.tutorials.autoPlay !== false,
+    collapsed: !!user.tutorials.collapsed,
     lastReset: user.tutorials.lastReset || null,
   };
 }
@@ -160,18 +161,23 @@ router.post('/reset', express.json(), async (req, res) => {
 // PUT /admin/tutorials/preferences — update tutorial preferences
 router.put('/preferences', express.json(), async (req, res) => {
   try {
-    const { autoPlay } = req.body;
-    if (typeof autoPlay !== 'boolean') {
-      return res.status(400).json({ error: '"autoPlay" must be a boolean' });
+    const { autoPlay, collapsed } = req.body;
+    const updates = {};
+
+    if (typeof autoPlay === 'boolean') updates['tutorials.autoPlay'] = autoPlay;
+    if (typeof collapsed === 'boolean') updates['tutorials.collapsed'] = collapsed;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'Provide "autoPlay" or "collapsed" (boolean)' });
     }
 
     const db = req.db;
     await db.collection('users').updateOne(
       { _id: new ObjectId(req.adminUser.id) },
-      { $set: { 'tutorials.autoPlay': autoPlay } }
+      { $set: updates }
     );
 
-    res.json({ success: true, autoPlay });
+    res.json({ success: true, ...req.body });
   } catch (err) {
     console.error('[tutorials] preferences error:', err);
     res.status(500).json({ error: err.message || 'Failed to update preferences' });

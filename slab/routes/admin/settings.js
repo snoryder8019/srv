@@ -1,4 +1,5 @@
 import express from 'express';
+import { execSync } from 'child_process';
 import { getSlabDb } from '../../plugins/mongo.js';
 import { encrypt, decrypt } from '../../plugins/crypto.js';
 import { bustTenantCache } from '../../middleware/tenant.js';
@@ -92,6 +93,47 @@ router.get('/', async (req, res) => {
     social_tiktok:    brand.socialLinks?.tiktok || '',
   };
 
+  // Load What's New from git commits on main
+  let whatsNew = [];
+  try {
+    const gitLog = execSync(
+      'git log main --pretty=format:"%H|%h|%s|%ai|%an" -30 -- slab/',
+      { encoding: 'utf8', timeout: 5000, cwd: '/srv' }
+    ).trim();
+    if (gitLog) {
+      const lines = gitLog.split('\n');
+      for (const line of lines) {
+        const [hash, short, message, dateStr, author] = line.split('|');
+        if (!message) continue;
+        const d = new Date(dateStr);
+        whatsNew.push({
+          hash, short, message,
+          date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          author,
+          // Detect version tags in commit message
+          version: message.match(/v\s*[\d.]+/i)?.[0]?.trim() || null,
+          env: config.NODE_ENV,
+        });
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Also load pinned notes from DB (superadmin annotations on specific versions)
+  let pinnedNotes = {};
+  try {
+    const slab = getSlabDb();
+    const notes = await slab.collection('changelog').find({}).toArray();
+    for (const n of notes) pinnedNotes[n.commitHash || n.version || ''] = n.notes;
+  } catch { /* ignore */ }
+
+  // Read package.json version
+  let platformVersion = '1.0.0';
+  try {
+    const pkg = await import('../../package.json', { assert: { type: 'json' } });
+    platformVersion = pkg.default?.version || '1.0.0';
+  } catch { /* ignore */ }
+
   res.render('admin/settings', {
     user: req.adminUser,
     page: 'settings',
@@ -99,6 +141,11 @@ router.get('/', async (req, res) => {
     brandProfile,
     saved: req.query.saved || null,
     error: req.query.error || null,
+    whatsNew,
+    pinnedNotes,
+    platformVersion,
+    platformEnv: config.NODE_ENV,
+    nodeVersion: process.version,
   });
 });
 
@@ -443,6 +490,36 @@ router.post('/auto-create-dns', async (req, res) => {
       error: err.message, ip: req.ip,
     });
     res.json({ ok: false, error: err.message });
+  }
+});
+
+// ── Changelog / What's New ──────────────────────────────────────────────────
+
+// Superadmin can add a pinned note to any commit hash
+router.post('/changelog', async (req, res) => {
+  if (!req.isSuperAdmin) return res.status(403).json({ error: 'Superadmin required' });
+
+  const { commitHash, notes } = req.body;
+  if (!notes) return res.status(400).json({ error: 'notes required' });
+
+  try {
+    const slab = getSlabDb();
+    await slab.collection('changelog').updateOne(
+      { commitHash: commitHash || 'general' },
+      {
+        $set: {
+          commitHash: commitHash || 'general',
+          notes: notes.trim(),
+          updatedAt: new Date(),
+          addedBy: req.adminUser?.email || 'unknown',
+        },
+      },
+      { upsert: true },
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

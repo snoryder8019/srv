@@ -278,10 +278,19 @@ router.get('/', async (req, res) => {
     const storageQuota = getQuotaBytes(req.tenant);
     const storagePct = usagePercent(storageUsed, req.tenant);
 
+    // What's New TLDR (latest AI-generated summary)
+    let whatsNewTldr = null;
+    try {
+      const slab = getSlabDb();
+      whatsNewTldr = await slab.collection('changelog')
+        .findOne({ type: 'tldr' }, { sort: { updatedAt: -1 } });
+    } catch { /* ignore */ }
+
     res.render('admin/dashboard', {
       user: req.adminUser,
       stats: { portfolioCount, clientCount, invoiceCount, blogCount, pageCount, openTicketCount },
       agentName,
+      whatsNewTldr,
       storage: {
         used: formatBytes(storageUsed),
         quota: getQuotaLabel(req.tenant),
@@ -294,6 +303,7 @@ router.get('/', async (req, res) => {
       user: req.adminUser,
       stats: { portfolioCount: 0, clientCount: 0, invoiceCount: 0, blogCount: 0, pageCount: 0, openTicketCount: 0 },
       agentName: 'Assistant',
+      whatsNewTldr: null,
       storage: { used: '0 B', quota: '1 GB', pct: 0, plan: 'free' },
     });
   }
