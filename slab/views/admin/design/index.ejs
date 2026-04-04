@@ -166,6 +166,32 @@
   z-index: 499; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
 }
 #agentOverlay.active { display: block; }
+
+/* ── DESIGN PAGE RESPONSIVE ── */
+@media (max-width: 820px) {
+  .form-grid.cols-3 { grid-template-columns: 1fr !important; }
+  .form-grid { grid-template-columns: 1fr !important; }
+  .preview-iframe { height: 320px; }
+  .preview-toolbar { flex-wrap: wrap; gap: 6px; }
+  .preview-toolbar span { order: 10; width: 100%; margin-left: 0; font-size: 0.6rem; }
+  .swatch-row { gap: 6px; }
+  .swatch { width: 44px; height: 30px; }
+  .theme-grid { grid-template-columns: 1fr 1fr !important; }
+  .color-row input[type=color] { width: 40px; height: 34px; }
+  #agentPanel { width: min(380px, 92vw); }
+  .agent-quick-btn { font-size: 0.62rem; padding: 6px 8px; }
+}
+@media (max-width: 520px) {
+  .preview-iframe { height: 260px; }
+  .vis-grid { grid-template-columns: 1fr !important; }
+  .theme-grid { grid-template-columns: 1fr !important; }
+  .form-actions { flex-direction: column; }
+  .form-actions .btn { width: 100%; text-align: center; }
+  #agentPanel { width: 100vw; right: -100vw; }
+  #agentPanel.open { right: 0; }
+  .agent-input { font-size: 0.88rem; padding: 12px 14px; }
+  .card-title { font-size: 0.95rem; }
+}
 </style>
 
 <div class="topbar">
@@ -372,6 +398,7 @@
             { key: 'vis_reviews',   label: 'Reviews', desc: 'Google reviews' },
             { key: 'vis_contact',   label: 'Contact', desc: 'Contact form' },
             { key: 'vis_blog',      label: 'Blog Section', desc: 'Latest posts on home' },
+            { key: 'vis_qr',        label: 'QR Code', desc: 'Shareable QR code on landing page' },
           ];
         %>
         <% sections.forEach(s => { %>
@@ -389,26 +416,16 @@
     <!-- LANDING PAGE LAYOUT -->
     <div class="card mt-24">
       <div class="card-title">Landing Page Layout <span class="ai-badge" id="badge-landing_layout">AI</span></div>
-      <p style="font-size:0.85rem;color:var(--slate);font-weight:300;margin-bottom:20px;">Choose a layout for your landing page. Each layout rearranges the hero, services, and sections with a distinct look and feel.</p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;">
-        <%
-          const layouts = [
-            { value: 'classic',  label: 'Classic',  desc: 'Split hero, 3-column services, editorial feel', icon: '◧' },
-            { value: 'bold',     label: 'Bold',     desc: 'Full-width hero overlay, large service cards', icon: '◼' },
-            { value: 'minimal',  label: 'Minimal',  desc: 'Centered hero, airy whitespace, clean lines', icon: '○' },
-            { value: 'magazine', label: 'Magazine',  desc: 'Background hero with overlapping content card', icon: '◨' },
-            { value: 'dark',     label: 'Dark',     desc: 'Dark-themed throughout with accent highlights', icon: '◉' },
-            { value: 'startup',  label: 'Startup',  desc: 'SaaS pitch page — features grid, steps, pricing card', icon: '◆' },
-          ];
-        %>
-        <% layouts.forEach(l => { %>
-          <label style="display:flex;flex-direction:column;padding:20px 16px;border:2px solid <%= design.landing_layout === l.value ? 'var(--navy)' : 'var(--ivory-mid)' %>;border-radius:2px;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s;background:<%= design.landing_layout === l.value ? 'var(--ivory)' : 'var(--white)' %>;<%= design.landing_layout === l.value ? 'box-shadow:0 2px 12px rgba(28,43,74,0.1);' : '' %>" onmouseover="if(!this.querySelector('input').checked)this.style.borderColor='var(--navy-mid)'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='var(--ivory-mid)'">
-            <input type="radio" name="landing_layout" value="<%= l.value %>" id="field-landing_layout-<%= l.value %>" <%= design.landing_layout === l.value ? 'checked' : '' %> style="display:none;" onchange="this.closest('.card').querySelectorAll('label[style]').forEach(el=>{el.style.borderColor='var(--ivory-mid)';el.style.background='var(--white)';el.style.boxShadow='none'});this.closest('label').style.borderColor='var(--navy)';this.closest('label').style.background='var(--ivory)';this.closest('label').style.boxShadow='0 2px 12px rgba(28,43,74,0.1)'">
-            <div style="font-size:2rem;text-align:center;margin-bottom:8px;color:var(--navy);"><%= l.icon %></div>
-            <div style="font-size:0.82rem;font-weight:600;color:var(--dark);text-align:center;margin-bottom:4px;"><%= l.label %></div>
-            <div style="font-size:0.68rem;color:var(--slate);text-align:center;line-height:1.5;"><%= l.desc %></div>
-          </label>
-        <% }) %>
+      <div class="form-field">
+        <select name="landing_layout" id="field-landing_layout" style="width:100%;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
+          <option value="classic"  <%= design.landing_layout === 'classic'  ? 'selected' : '' %>>Classic — Split hero, 3-column services, editorial feel</option>
+          <option value="bold"     <%= design.landing_layout === 'bold'     ? 'selected' : '' %>>Bold — Full-width hero overlay, large service cards</option>
+          <option value="minimal"  <%= design.landing_layout === 'minimal'  ? 'selected' : '' %>>Minimal — Centered hero, airy whitespace, clean lines</option>
+          <option value="magazine" <%= design.landing_layout === 'magazine' ? 'selected' : '' %>>Magazine — Background hero with overlapping content card</option>
+          <option value="dark"     <%= design.landing_layout === 'dark'     ? 'selected' : '' %>>Dark — Dark-themed throughout with accent highlights</option>
+          <option value="startup"  <%= design.landing_layout === 'startup'  ? 'selected' : '' %>>Startup — SaaS pitch page, features grid, steps, pricing</option>
+        </select>
+        <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Rearranges the hero, services, and sections with a distinct look and feel.</span>
       </div>
     </div>
 

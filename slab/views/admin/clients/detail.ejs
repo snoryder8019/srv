@@ -36,6 +36,40 @@
     </div>
   </div>
 
+  <!-- Tags -->
+  <style>
+    .tag-bar { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+    .tag-toggle { padding:4px 14px; border-radius:14px; font-size:11px; font-weight:600; border:1px solid var(--ivory-mid); cursor:pointer; font-family:'Jost',sans-serif; transition:all 0.15s; background:var(--white); color:var(--slate); }
+    .tag-toggle:hover { opacity:0.85; }
+    .tag-toggle.on { border-color:transparent; }
+    .cfg-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:20px; align-items:center; }
+    .cfg-chip { display:inline-flex; align-items:center; gap:4px; padding:4px 12px; border-radius:2px; font-size:11px; font-weight:600; border:1px solid var(--ivory-mid); background:var(--white); }
+    .cfg-chip.cfg-yes { color:#059669; background:rgba(16,185,129,0.06); border-color:rgba(16,185,129,0.2); }
+    .cfg-chip.cfg-no { color:#bbb; }
+  </style>
+  <div class="tag-bar">
+    <% const activeTags = c.tags || []; %>
+    <% for (const [slug, def] of Object.entries(tagDefs)) { %>
+      <% const isOn = activeTags.includes(slug); %>
+      <form method="POST" action="/admin/clients/<%= c._id %>/tags" style="display:inline;">
+        <input type="hidden" name="tag" value="<%= slug %>">
+        <input type="hidden" name="action" value="<%= isOn ? 'remove' : 'add' %>">
+        <button type="submit" class="tag-toggle<%= isOn ? ' on' : '' %>"
+          style="<%= isOn ? 'color:' + def.color + ';background:' + def.bg + ';' : '' %>">
+          <%= isOn ? '✓ ' : '' %><%= def.label %>
+        </button>
+      </form>
+    <% } %>
+  </div>
+
+  <!-- Profile Completeness -->
+  <div class="cfg-bar">
+    <% for (const [key, check] of Object.entries(configChecks)) { %>
+    <span class="cfg-chip <%= configStatus[key] ? 'cfg-yes' : 'cfg-no' %>"><%= check.icon %> <%= check.label %></span>
+    <% } %>
+    <span style="font-size:10px;color:var(--slate);font-weight:600;margin-left:4px;"><%= configStatus._count %>/<%= configStatus._total %></span>
+  </div>
+
   <!-- Tabs -->
   <div class="tabs">
     <a href="?tab=overview" class="tab-link <%= tab === 'overview' ? 'active' : '' %>">Overview</a>
@@ -71,6 +105,8 @@
         <span>Agent Research Report</span>
         <span style="font-size:0.65rem;color:var(--slate);font-weight:400;">Generated <%= new Date(c.agentReport.generatedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) %></span>
       </div>
+
+      <!-- Type / Industry row -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <div>
           <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Business Type</div>
@@ -81,10 +117,14 @@
           <div style="font-size:0.88rem;color:var(--dark);"><%= c.agentReport.industry || '—' %></div>
         </div>
       </div>
-      <div style="margin-top:16px;">
+
+      <!-- Summary — own block -->
+      <div style="margin-top:16px;padding:14px 16px;background:var(--ivory);border-radius:3px;">
         <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Summary</div>
-        <p style="font-size:0.85rem;color:var(--dark);line-height:1.7;font-weight:300;"><%= c.agentReport.summary || '—' %></p>
+        <p style="font-size:0.85rem;color:var(--dark);line-height:1.7;font-weight:300;margin:0;"><%= c.agentReport.summary || '—' %></p>
       </div>
+
+      <!-- Strengths / Opportunities -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
         <div>
           <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">Strengths</div>
@@ -99,20 +139,31 @@
           <% } else { %><div class="text-slate" style="font-size:0.82rem;">—</div><% } %>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
-        <div>
-          <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">Suggested Services</div>
-          <% if (Array.isArray(c.agentReport.suggestedServices)) { %>
-            <% for (const sv of c.agentReport.suggestedServices) { %><div style="font-size:0.82rem;color:var(--navy);padding:3px 0;"><%= sv %></div><% } %>
-          <% } else { %><div class="text-slate" style="font-size:0.82rem;">—</div><% } %>
+
+      <!-- Suggested Services — wrapping chips, own block -->
+      <div style="margin-top:16px;padding:14px 16px;border:1px solid var(--ivory-mid);border-radius:3px;">
+        <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Suggested Services</div>
+        <% if (Array.isArray(c.agentReport.suggestedServices) && c.agentReport.suggestedServices.length) { %>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          <% for (const sv of c.agentReport.suggestedServices) { %>
+          <span style="display:inline-block;font-size:0.75rem;padding:4px 12px;background:rgba(28,43,74,0.06);border-radius:2px;color:var(--navy);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;"><%= sv %></span>
+          <% } %>
         </div>
-        <div>
-          <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">Competitors</div>
-          <% if (Array.isArray(c.agentReport.competitors)) { %>
-            <% for (const comp of c.agentReport.competitors) { %><div style="font-size:0.82rem;color:var(--dark);padding:3px 0;"><%= comp %></div><% } %>
-          <% } else { %><div class="text-slate" style="font-size:0.82rem;">—</div><% } %>
-        </div>
+        <% } else { %><div class="text-slate" style="font-size:0.82rem;">—</div><% } %>
       </div>
+
+      <!-- Competitors — own block -->
+      <div style="margin-top:16px;padding:14px 16px;border:1px solid var(--ivory-mid);border-radius:3px;">
+        <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Competitors</div>
+        <% if (Array.isArray(c.agentReport.competitors) && c.agentReport.competitors.length) { %>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          <% for (const comp of c.agentReport.competitors) { %>
+          <span style="display:inline-block;font-size:0.75rem;padding:4px 12px;background:rgba(100,100,100,0.06);border-radius:2px;color:var(--dark);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;"><%= comp %></span>
+          <% } %>
+        </div>
+        <% } else { %><div class="text-slate" style="font-size:0.82rem;">—</div><% } %>
+      </div>
+
       <% if (c.agentReport.websiteNotes) { %>
       <div style="margin-top:16px;">
         <div style="font-size:0.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Website Analysis</div>
@@ -430,75 +481,214 @@
 
   <!-- ONBOARDING TAB -->
   <% if (tab === 'onboarding') { %>
-    <div class="card">
-      <div class="card-title">Client Onboarding</div>
-      <form method="POST" action="/admin/clients/<%= c._id %>/onboarding">
-        <div class="form-grid">
-          <div class="form-field">
-            <label>Business Type</label>
-            <input type="text" name="businessType" value="<%= c.onboarding?.data?.businessType || '' %>" placeholder="e.g. Restaurant, Retail, Salon">
+
+    <% if (typeof onboardingForms !== 'undefined' && onboardingForms.length) { %>
+      <!-- Dynamic custom forms -->
+      <% onboardingForms.forEach(function(obForm) {
+        const existingResponse = (typeof onboardingResponses !== 'undefined' ? onboardingResponses : [])
+          .find(r => r.formId.toString() === obForm._id.toString());
+        const savedData = existingResponse?.data || {};
+      %>
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <%= obForm.name %>
+          <% if (existingResponse) { %>
+            <span style="font-size:0.72rem;color:var(--slate);">Last submitted: <%= new Date(existingResponse.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) %></span>
+          <% } %>
+        </div>
+        <% if (obForm.description) { %><p style="color:var(--slate);font-size:0.85rem;margin-bottom:16px;"><%= obForm.description %></p><% } %>
+        <form class="ob-dynamic-form form-grid" data-form-id="<%= obForm._id %>" style="gap:12px 16px;">
+          <% (obForm.fields || []).forEach(function(f) { %>
+            <% if (f.type === 'heading') { %>
+              <div style="grid-column:span 2;margin-top:8px;padding-bottom:4px;border-bottom:1px solid var(--ivory-mid);">
+                <strong style="font-size:0.82rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--slate);"><%= f.label %></strong>
+              </div>
+            <% } else { %>
+              <div class="form-field" style="<%= f.width === 'half' ? '' : 'grid-column:span 2;' %>"
+                   <% if (f.conditional?.fieldKey) { %>data-cond-field="<%= f.conditional.fieldKey %>" data-cond-op="<%= f.conditional.operator %>" data-cond-val="<%= f.conditional.value %>"<% } %>>
+                <label><%= f.label %><% if (f.required) { %> <span style="color:var(--danger);">*</span><% } %>
+                  <% if (f.pipeFrom?.formSlug) { %><span style="font-size:0.65rem;background:var(--gold-light);color:var(--navy);padding:1px 5px;border-radius:3px;margin-left:4px;">piped</span><% } %>
+                </label>
+                <% if (f.helpText) { %><div style="font-size:0.72rem;color:var(--slate);margin-bottom:4px;"><%= f.helpText %></div><% } %>
+                <% if (f.type === 'textarea') { %>
+                  <textarea name="<%= f.key %>" placeholder="<%= f.placeholder || '' %>" <%= f.required ? 'required' : '' %>><%= savedData[f.key] || '' %></textarea>
+                <% } else if (f.type === 'select') { %>
+                  <select name="<%= f.key %>" <%= f.required ? 'required' : '' %>>
+                    <option value="">Select...</option>
+                    <% (f.options || []).forEach(function(o) { %>
+                      <option value="<%= o.value %>" <%= savedData[f.key] === o.value ? 'selected' : '' %>><%= o.label %></option>
+                    <% }) %>
+                  </select>
+                <% } else if (f.type === 'radio') { %>
+                  <% (f.options || []).forEach(function(o) { %>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:400;margin-bottom:4px;">
+                      <input type="radio" name="<%= f.key %>" value="<%= o.value %>" <%= savedData[f.key] === o.value ? 'checked' : '' %>> <%= o.label %>
+                    </label>
+                  <% }) %>
+                <% } else if (f.type === 'checkbox') { %>
+                  <% const checkedVals = Array.isArray(savedData[f.key]) ? savedData[f.key] : (savedData[f.key] ? [savedData[f.key]] : []); %>
+                  <% (f.options || []).forEach(function(o) { %>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:400;margin-bottom:4px;">
+                      <input type="checkbox" name="<%= f.key %>" value="<%= o.value %>" <%= checkedVals.includes(o.value) ? 'checked' : '' %>> <%= o.label %>
+                    </label>
+                  <% }) %>
+                <% } else { %>
+                  <input type="<%= f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : f.type === 'date' ? 'date' : f.type === 'color' ? 'color' : 'text' %>"
+                         name="<%= f.key %>" placeholder="<%= f.placeholder || '' %>" value="<%= savedData[f.key] || '' %>" <%= f.required ? 'required' : '' %>>
+                <% } %>
+              </div>
+            <% } %>
+          <% }) %>
+          <div style="grid-column:span 2;margin-top:12px;">
+            <button type="submit" class="btn btn-navy ob-submit-btn">Save Response</button>
           </div>
-          <div class="form-field">
-            <label>Budget Range</label>
-            <select name="budget">
-              <option value="" <%= !c.onboarding?.data?.budget ? 'selected' : '' %>>Select...</option>
-              <option value="under500" <%= c.onboarding?.data?.budget === 'under500' ? 'selected' : '' %>>Under $500/mo</option>
-              <option value="500-1000" <%= c.onboarding?.data?.budget === '500-1000' ? 'selected' : '' %>>$500–$1,000/mo</option>
-              <option value="1000-2500" <%= c.onboarding?.data?.budget === '1000-2500' ? 'selected' : '' %>>$1,000–$2,500/mo</option>
-              <option value="2500+" <%= c.onboarding?.data?.budget === '2500+' ? 'selected' : '' %>>$2,500+/mo</option>
-            </select>
-          </div>
-          <div class="form-field">
-            <label>Timeline</label>
-            <select name="timeline">
-              <option value="" <%= !c.onboarding?.data?.timeline ? 'selected' : '' %>>Select...</option>
-              <option value="asap" <%= c.onboarding?.data?.timeline === 'asap' ? 'selected' : '' %>>ASAP</option>
-              <option value="1month" <%= c.onboarding?.data?.timeline === '1month' ? 'selected' : '' %>>Within 1 month</option>
-              <option value="3months" <%= c.onboarding?.data?.timeline === '3months' ? 'selected' : '' %>>1–3 months</option>
-              <option value="flexible" <%= c.onboarding?.data?.timeline === 'flexible' ? 'selected' : '' %>>Flexible</option>
-            </select>
-          </div>
-          <div class="form-field">
-            <label>Social Platforms</label>
-            <input type="text" name="socialPlatforms" value="<%= c.onboarding?.data?.socialPlatforms || '' %>" placeholder="Instagram, Facebook, TikTok">
-          </div>
-          <div class="form-field">
-            <label>Current Website</label>
-            <input type="url" name="currentWebsite" value="<%= c.onboarding?.data?.currentWebsite || '' %>" placeholder="https://...">
-          </div>
-          <div class="form-field">
-            <label>Progress Step</label>
-            <select name="step">
-              <option value="0" <%= !c.onboarding?.step ? 'selected' : '' %>>Not started</option>
-              <option value="1" <%= c.onboarding?.step === 1 ? 'selected' : '' %>>Step 1 — Initial call</option>
-              <option value="2" <%= c.onboarding?.step === 2 ? 'selected' : '' %>>Step 2 — Proposal sent</option>
-              <option value="3" <%= c.onboarding?.step === 3 ? 'selected' : '' %>>Step 3 — Contract signed</option>
-              <option value="done" <%= c.onboarding?.complete ? 'selected' : '' %>>Complete</option>
-            </select>
-          </div>
-          <div class="form-field span-2">
-            <label>Goals</label>
-            <textarea name="goals" placeholder="What does the client want to achieve?"><%= c.onboarding?.data?.goals || '' %></textarea>
-          </div>
-          <div class="form-field span-2">
-            <label>Brand Notes</label>
-            <textarea name="brandNotes" placeholder="Brand voice, colors, style preferences..."><%= c.onboarding?.data?.brandNotes || '' %></textarea>
-          </div>
-          <div class="form-field span-2">
-            <label>Brand Colors <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(hex codes, comma separated — used in Social Generator)</span></label>
-            <input type="text" name="brandColors" value="<%= (c.brandColors || []).join(', ') %>" placeholder="#1C2B4A, #C9A848, #F5F3EF">
-            <% if (c.brandColors?.length) { %>
-            <div style="display:flex;gap:4px;margin-top:6px;">
-              <% for (const clr of c.brandColors) { %>
-              <div style="width:28px;height:28px;border-radius:2px;background:<%= clr %>;border:1px solid var(--ivory-mid);" title="<%= clr %>"></div>
+        </form>
+      </div>
+      <% }) %>
+
+      <script>
+      (function() {
+        document.querySelectorAll('.ob-dynamic-form').forEach(function(form) {
+          // Conditionals
+          function evalConds() {
+            form.querySelectorAll('[data-cond-field]').forEach(function(el) {
+              var fk = el.dataset.condField, op = el.dataset.condOp, val = el.dataset.condVal;
+              var inp = form.querySelector('[name="' + fk + '"]');
+              var actual = inp ? inp.value : '';
+              var show = op === 'eq' ? actual === val : op === 'neq' ? actual !== val : actual.toLowerCase().indexOf(val.toLowerCase()) >= 0;
+              el.style.display = show ? '' : 'none';
+            });
+          }
+          form.addEventListener('input', evalConds);
+          form.addEventListener('change', evalConds);
+          evalConds();
+
+          // Submit
+          form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var data = {};
+            new FormData(form).forEach(function(v, k) {
+              if (data[k]) { if (!Array.isArray(data[k])) data[k] = [data[k]]; data[k].push(v); }
+              else data[k] = v;
+            });
+            var btn = form.querySelector('.ob-submit-btn');
+            btn.disabled = true; btn.textContent = 'Saving...';
+            fetch('/admin/onboarding/' + form.dataset.formId + '/submit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ data: data, clientId: '<%= c._id %>' }),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+              btn.disabled = false;
+              if (res.ok) { btn.textContent = 'Saved!'; setTimeout(function() { btn.textContent = 'Save Response'; }, 1500); }
+              else { btn.textContent = 'Save Response'; alert(res.error || 'Save failed'); }
+            })
+            .catch(function() { btn.disabled = false; btn.textContent = 'Save Response'; alert('Save failed'); });
+          });
+        });
+      })();
+      </script>
+
+      <div style="margin-top:8px;text-align:right;">
+        <a href="/admin/onboarding" style="font-size:0.78rem;color:var(--slate);">Manage onboarding forms &rarr;</a>
+      </div>
+
+    <% } else { %>
+      <!-- Fallback: original hardcoded onboarding form -->
+      <div class="card">
+        <div class="card-title">Client Onboarding
+          <a href="/admin/onboarding" style="font-size:0.72rem;font-weight:400;color:var(--gold);margin-left:12px;">Create custom forms &rarr;</a>
+        </div>
+        <form method="POST" action="/admin/clients/<%= c._id %>/onboarding">
+          <div class="form-grid">
+            <div class="form-field">
+              <label>Business Type</label>
+              <input type="text" name="businessType" value="<%= c.onboarding?.data?.businessType || '' %>" placeholder="e.g. Restaurant, Retail, Salon">
+            </div>
+            <div class="form-field">
+              <label>Budget Range</label>
+              <select name="budget">
+                <option value="" <%= !c.onboarding?.data?.budget ? 'selected' : '' %>>Select...</option>
+                <option value="under500" <%= c.onboarding?.data?.budget === 'under500' ? 'selected' : '' %>>Under $500/mo</option>
+                <option value="500-1000" <%= c.onboarding?.data?.budget === '500-1000' ? 'selected' : '' %>>$500–$1,000/mo</option>
+                <option value="1000-2500" <%= c.onboarding?.data?.budget === '1000-2500' ? 'selected' : '' %>>$1,000–$2,500/mo</option>
+                <option value="2500+" <%= c.onboarding?.data?.budget === '2500+' ? 'selected' : '' %>>$2,500+/mo</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Timeline</label>
+              <select name="timeline">
+                <option value="" <%= !c.onboarding?.data?.timeline ? 'selected' : '' %>>Select...</option>
+                <option value="asap" <%= c.onboarding?.data?.timeline === 'asap' ? 'selected' : '' %>>ASAP</option>
+                <option value="1month" <%= c.onboarding?.data?.timeline === '1month' ? 'selected' : '' %>>Within 1 month</option>
+                <option value="3months" <%= c.onboarding?.data?.timeline === '3months' ? 'selected' : '' %>>1–3 months</option>
+                <option value="flexible" <%= c.onboarding?.data?.timeline === 'flexible' ? 'selected' : '' %>>Flexible</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Social Platforms</label>
+              <input type="text" name="socialPlatforms" value="<%= c.onboarding?.data?.socialPlatforms || '' %>" placeholder="Instagram, Facebook, TikTok">
+            </div>
+            <div class="form-field">
+              <label>Current Website</label>
+              <input type="url" name="currentWebsite" value="<%= c.onboarding?.data?.currentWebsite || '' %>" placeholder="https://...">
+            </div>
+            <div class="form-field">
+              <label>Progress Step</label>
+              <select name="step">
+                <option value="0" <%= !c.onboarding?.step ? 'selected' : '' %>>Not started</option>
+                <option value="1" <%= c.onboarding?.step === 1 ? 'selected' : '' %>>Step 1 — Initial call</option>
+                <option value="2" <%= c.onboarding?.step === 2 ? 'selected' : '' %>>Step 2 — Proposal sent</option>
+                <option value="3" <%= c.onboarding?.step === 3 ? 'selected' : '' %>>Step 3 — Contract signed</option>
+                <option value="done" <%= c.onboarding?.complete ? 'selected' : '' %>>Complete</option>
+              </select>
+            </div>
+            <div class="form-field span-2">
+              <label>Goals</label>
+              <textarea name="goals" placeholder="What does the client want to achieve?"><%= c.onboarding?.data?.goals || '' %></textarea>
+            </div>
+            <div class="form-field span-2">
+              <label>Brand Notes</label>
+              <textarea name="brandNotes" placeholder="Brand voice, colors, style preferences..."><%= c.onboarding?.data?.brandNotes || '' %></textarea>
+            </div>
+            <div class="form-field span-2">
+              <label>Brand Colors <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(hex codes, comma separated — used in Social Generator)</span></label>
+              <input type="text" name="brandColors" value="<%= (c.brandColors || []).join(', ') %>" placeholder="#1C2B4A, #C9A848, #F5F3EF">
+              <% if (c.brandColors?.length) { %>
+              <div style="display:flex;gap:4px;margin-top:6px;">
+                <% for (const clr of c.brandColors) { %>
+                <div style="width:28px;height:28px;border-radius:2px;background:<%= clr %>;border:1px solid var(--ivory-mid);" title="<%= clr %>"></div>
+                <% } %>
+              </div>
               <% } %>
             </div>
-            <% } %>
+            <div class="form-field">
+              <label>Brand Font — Heading</label>
+              <select name="brandFontHeading">
+                <option value="">— Use tenant default —</option>
+                <% const hFonts = ['Cormorant Garamond','Playfair Display','Lora','Merriweather','Libre Baskerville','Jost','Inter','Poppins','Raleway','Nunito','DM Sans']; %>
+                <% for (const f of hFonts) { %>
+                <option value="<%= f %>" <%= c.brandFonts?.heading === f ? 'selected' : '' %>><%= f %></option>
+                <% } %>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Brand Font — Body</label>
+              <select name="brandFontBody">
+                <option value="">— Use tenant default —</option>
+                <% const bFonts = ['Jost','Inter','Poppins','Raleway','Nunito','DM Sans','Cormorant Garamond','Playfair Display','Lora','Merriweather','Libre Baskerville']; %>
+                <% for (const f of bFonts) { %>
+                <option value="<%= f %>" <%= c.brandFonts?.body === f ? 'selected' : '' %>><%= f %></option>
+                <% } %>
+              </select>
+            </div>
           </div>
-        </div>
-        <div style="margin-top:24px;"><button type="submit" class="btn btn-navy">Save Onboarding Data</button></div>
-      </form>
-    </div>
+          <div style="margin-top:24px;"><button type="submit" class="btn btn-navy">Save Onboarding Data</button></div>
+        </form>
+      </div>
+    <% } %>
+
   <% } %>
 
   <!-- EMAILS TAB -->
@@ -739,21 +929,52 @@
     <div style="font-size:0.82rem;color:var(--slate);line-height:1.6;margin-bottom:16px;">
       Researches <strong><%= c.name %></strong><%= c.company ? ` (${c.company})` : '' %> across the web, analyzes their website, and generates an onboarding knowledge base.
     </div>
+
+    <!-- Quick suggestions — wrapping -->
+    <div style="margin-bottom:16px;">
+      <div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Quick Prompts</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <button type="button" class="ai-suggest-btn" onclick="setAgentPrompt('Full research — website, competitors, and services')">Full Research</button>
+        <button type="button" class="ai-suggest-btn" onclick="setAgentPrompt('Analyze their website for UX and SEO issues')">Website Audit</button>
+        <button type="button" class="ai-suggest-btn" onclick="setAgentPrompt('Identify competitors and market positioning')">Competitors</button>
+        <button type="button" class="ai-suggest-btn" onclick="setAgentPrompt('Suggest services based on their business type')">Service Fit</button>
+        <button type="button" class="ai-suggest-btn" onclick="setAgentPrompt('Generate onboarding checklist and notes')">Onboarding Plan</button>
+      </div>
+    </div>
+
+    <!-- Text input — own block -->
+    <div style="margin-bottom:16px;padding:12px 14px;background:var(--ivory);border-radius:3px;">
+      <label style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);display:block;margin-bottom:6px;">Custom Prompt</label>
+      <textarea id="agentPromptInput" rows="2" placeholder="e.g. Research their social media presence and suggest a content strategy..." style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;resize:vertical;background:var(--white);color:var(--dark);"></textarea>
+    </div>
+
     <div id="agentStatus" style="display:none;padding:12px 16px;background:var(--ivory);border-radius:3px;margin-bottom:16px;">
       <div style="font-size:0.78rem;color:var(--navy);font-weight:500;" id="agentStatusText">Researching...</div>
       <div style="margin-top:8px;height:3px;background:var(--ivory-mid);border-radius:2px;overflow:hidden;">
         <div id="agentProgress" style="height:100%;background:var(--navy);width:0%;transition:width 0.5s;"></div>
       </div>
     </div>
-    <div id="agentResult" style="display:none;"></div>
+    <div id="agentResult" style="display:none;overflow:hidden;"></div>
   </div>
   <div style="padding:16px 24px;border-top:1px solid var(--ivory-mid);">
     <button id="runAgentBtn" class="btn btn-navy" style="width:100%;" onclick="runClientAgent()">Research Client</button>
-    <span id="ai-status" style="display:block;margin-top:8px;text-align:center;"></span>
+    <span id="ai-status" style="display:block;margin-top:8px;text-align:center;font-size:0.75rem;color:var(--slate);"></span>
   </div>
 </div>
 
+<style>
+  .ai-suggest-btn {
+    padding:5px 12px;font-size:0.72rem;font-weight:500;font-family:'Jost',sans-serif;
+    border:1px solid var(--ivory-mid);border-radius:2px;background:var(--white);
+    color:var(--navy);cursor:pointer;transition:all 0.15s;white-space:nowrap;
+  }
+  .ai-suggest-btn:hover { background:rgba(28,43,74,0.06);border-color:var(--navy); }
+</style>
 <script>
+function setAgentPrompt(text) {
+  const ta = document.getElementById('agentPromptInput');
+  if (ta) { ta.value = text; ta.focus(); }
+}
 // ── Start Meeting ──
 document.getElementById('startMeetingBtn')?.addEventListener('click', async function() {
   if (!confirm('Start a meeting with <%= c.name %>?<%= c.email ? " An invite email will be sent to " + c.email + "." : " No email on file — meeting will be created without an invite." %>')) return;
@@ -809,9 +1030,11 @@ async function runClientAgent() {
   const timers = steps.map(s => setTimeout(() => { statusText.textContent = s.text; progress.style.width = s.pct; }, s.delay));
 
   try {
+    const promptVal = document.getElementById('agentPromptInput')?.value?.trim() || '';
     const r = await fetch('/admin/clients/<%= c._id %>/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: promptVal }),
     });
     const data = await r.json();
     timers.forEach(clearTimeout);
@@ -825,7 +1048,7 @@ async function runClientAgent() {
         <div style="font-size:0.82rem;color:var(--navy);font-weight:500;margin-bottom:12px;">${data.message || 'Research complete.'}</div>
         ${rpt.summary ? `<div style="font-size:0.82rem;color:var(--dark);line-height:1.6;margin-bottom:14px;">${rpt.summary}</div>` : ''}
         ${rpt.businessType ? `<div style="margin-bottom:10px;"><span style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);">Type:</span> <span style="font-size:0.82rem;color:var(--dark);">${rpt.businessType}${rpt.industry ? ' / ' + rpt.industry : ''}</span></div>` : ''}
-        ${Array.isArray(rpt.suggestedServices) ? `<div style="margin-bottom:10px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Suggested Services</div>${rpt.suggestedServices.map(s => `<span style="display:inline-block;font-size:0.75rem;padding:3px 10px;margin:2px 4px 2px 0;background:rgba(28,43,74,0.06);border-radius:2px;color:var(--navy);">${s}</span>`).join('')}</div>` : ''}
+        ${Array.isArray(rpt.suggestedServices) ? `<div style="margin-bottom:10px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">Suggested Services</div><div style="display:flex;flex-wrap:wrap;gap:6px;">${rpt.suggestedServices.map(s => `<span style="display:inline-block;font-size:0.75rem;padding:4px 10px;background:rgba(28,43,74,0.06);border-radius:2px;color:var(--navy);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;">${s}</span>`).join('')}</div></div>` : ''}
         ${Array.isArray(rpt.strengths) ? `<div style="margin-bottom:10px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Strengths</div>${rpt.strengths.map(s => `<div style="font-size:0.8rem;color:var(--dark);padding:2px 0;">+ ${s}</div>`).join('')}</div>` : ''}
         ${Array.isArray(rpt.opportunities) ? `<div style="margin-bottom:10px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Opportunities</div>${rpt.opportunities.map(o => `<div style="font-size:0.8rem;color:var(--dark);padding:2px 0;">* ${o}</div>`).join('')}</div>` : ''}
         ${rpt.websiteNotes ? `<div style="margin-bottom:10px;"><div style="font-size:0.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Website Analysis</div><div style="font-size:0.8rem;color:var(--dark);line-height:1.5;">${rpt.websiteNotes}</div></div>` : ''}

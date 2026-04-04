@@ -1,0 +1,1 @@
+cd /srv/games/l4d2 && ./srcds_run   -game left4dead2   -console   -usercon   -port 27015   -maxplayers 8   +hostname "MadLadsLab L4D2"   +sv_lan 0   +map c1m1_hotel   +tv_enable 1   +tv_port 27020   +tv_name "MadLadsLab TV"   +tv_delay 15   +tv_maxclients 32   +tv_autodirector 1   +tv_autorecord 1   2>&1 | tee -a /srv/games/l4d2/logs/console.log

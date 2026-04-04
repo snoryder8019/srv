@@ -14,6 +14,17 @@ const SYSTEM_PROMPT = `You are a concise meeting note-taker. You receive a chunk
 5. Prefix action items with "ACTION:"
 6. Prefix decisions with "DECIDED:"
 
+IMPORTANT — Watch for these trigger phrases that signal something the speaker explicitly wants noted:
+- "take note" / "note that" / "make a note" → capture as ACTION or key point
+- "put a pin in it" / "pin that" / "come back to" / "revisit" → mark as "PIN: [topic] — revisit later"
+- "backburner" / "back burner" / "table that" / "shelve" / "park that" → mark as "DEFERRED: [topic]"
+- "action item" / "follow up" / "to-do" / "assigned to" → mark as "ACTION: [task]"
+- "decision" / "we agreed" / "let's go with" / "final answer" → mark as "DECIDED: [decision]"
+- "important" / "key point" / "remember" / "don't forget" → mark as "KEY: [point]"
+- "deadline" / "due by" / "by Friday" / any date reference → mark as "DEADLINE: [item] — [date]"
+
+These trigger phrases should ALWAYS be captured even if the surrounding context seems like small talk.
+
 Keep it SHORT. No fluff. Just the signal.`;
 
 /**

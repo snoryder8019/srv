@@ -7,9 +7,11 @@ const router = express.Router();
 // All known tutorial pages — used for progress calculations
 const TUTORIAL_PAGES = [
   'dashboard', 'blog', 'blog-form', 'pages', 'pages-form',
-  'copy', 'design', 'sections', 'portfolio', 'clients',
-  'client-detail', 'assets', 'meetings', 'bookkeeping',
-  'email-marketing', 'users', 'master-agent',
+  'copy', 'design', 'sections', 'portfolio', 'portfolio-form',
+  'clients', 'client-detail', 'assets', 'meetings', 'meeting-detail',
+  'bookkeeping', 'email-marketing', 'campaign-detail', 'users',
+  'master-agent', 'tickets', 'ticket-detail', 'settings', 'profile',
+  'social-generator', 'video-trimmer', 'whats-new',
 ];
 
 // Default tutorials object for users who don't have one yet

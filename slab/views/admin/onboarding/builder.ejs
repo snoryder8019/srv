@@ -1,0 +1,715 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<div class="topbar">
+  <div class="topbar-title"><%= form ? 'Edit Form' : 'New Onboarding Form' %></div>
+  <div class="topbar-actions">
+    <button class="btn btn-ghost" id="btnPreview">Preview</button>
+    <button class="btn btn-navy" id="btnSave">Save Form</button>
+  </div>
+</div>
+<div class="content">
+  <% if (err) { %><div class="alert alert-error">Something went wrong.</div><% } %>
+
+  <style>
+    .fb-wrap{display:grid;grid-template-columns:220px 1fr 280px;gap:20px;min-height:60vh;}
+    .fb-panel{background:var(--white);border:1px solid var(--ivory-mid);border-radius:6px;padding:16px;}
+    .fb-panel h3{font-size:0.78rem;text-transform:uppercase;letter-spacing:0.8px;color:var(--slate);margin:0 0 12px;}
+
+    /* Palette */
+    .fb-type{padding:8px 10px;border:1px solid var(--ivory-mid);border-radius:4px;margin-bottom:6px;cursor:grab;font-size:0.82rem;display:flex;align-items:center;gap:8px;transition:background 0.1s;user-select:none;}
+    .fb-type:hover{background:var(--ivory);}
+    .fb-type .ft-icon{width:18px;text-align:center;opacity:0.5;}
+
+    /* Canvas */
+    .fb-canvas{min-height:200px;position:relative;}
+    .fb-canvas-empty{text-align:center;color:var(--slate);padding:40px 20px;border:2px dashed var(--ivory-mid);border-radius:6px;}
+    .fb-field{border:1px solid var(--ivory-mid);border-radius:4px;padding:10px 12px;margin-bottom:8px;cursor:grab;position:relative;transition:border-color 0.15s,box-shadow 0.15s;}
+    .fb-field:hover{border-color:var(--navy-light);}
+    .fb-field.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,168,72,0.2);}
+    .fb-field.dragging{opacity:0.4;}
+    .fb-field-head{display:flex;justify-content:space-between;align-items:center;}
+    .fb-field-label{font-weight:500;font-size:0.85rem;}
+    .fb-field-type{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--slate);background:var(--ivory);padding:2px 6px;border-radius:3px;}
+    .fb-field-meta{font-size:0.75rem;color:var(--slate);margin-top:4px;display:flex;gap:10px;}
+    .fb-field-actions{position:absolute;top:8px;right:8px;display:none;gap:4px;}
+    .fb-field:hover .fb-field-actions{display:flex;}
+    .fb-field-actions button{background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--slate);padding:2px 6px;border-radius:3px;}
+    .fb-field-actions button:hover{background:var(--ivory);color:var(--navy);}
+    .fb-field-actions .btn-del:hover{color:var(--danger);}
+    .fb-drop-zone{height:4px;border-radius:2px;margin:2px 0;transition:all 0.15s;}
+    .fb-drop-zone.over{height:24px;background:rgba(201,168,72,0.15);border:2px dashed var(--gold);}
+
+    /* Section divider in canvas */
+    .fb-field.is-heading{background:var(--ivory);border-style:dashed;}
+    .fb-field.is-heading .fb-field-label{font-size:0.78rem;text-transform:uppercase;letter-spacing:0.6px;color:var(--slate);}
+
+    /* Piped badge */
+    .pipe-badge{font-size:0.65rem;background:var(--gold-light);color:var(--navy);padding:1px 5px;border-radius:3px;margin-left:6px;}
+
+    /* Settings panel */
+    .fb-settings .form-field{margin-bottom:12px;}
+    .fb-settings label{font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--slate);margin-bottom:4px;display:block;}
+    .fb-settings input,.fb-settings select,.fb-settings textarea{width:100%;font-size:0.82rem;}
+    .fb-settings textarea{min-height:60px;}
+    .fb-settings .opts-list{margin-top:6px;}
+    .fb-settings .opt-row{display:flex;gap:6px;margin-bottom:4px;align-items:center;}
+    .fb-settings .opt-row input{flex:1;}
+    .fb-settings .opt-row button{background:none;border:none;cursor:pointer;color:var(--danger);font-size:0.9rem;}
+
+    /* Top meta */
+    .fb-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+    .fb-meta .form-field{margin:0;}
+    .fb-meta .span-2{grid-column:span 2;}
+
+    /* Assign checkboxes */
+    .assign-list label{display:flex;align-items:center;gap:6px;font-size:0.82rem;margin-bottom:6px;cursor:pointer;}
+    .assign-list input[type=checkbox]{accent-color:var(--gold);}
+
+    /* Agent bar */
+    .fb-agent{display:flex;gap:8px;margin-bottom:16px;}
+    .fb-agent input{flex:1;font-size:0.85rem;}
+    .fb-agent button{white-space:nowrap;}
+
+    /* Conditional row */
+    .cond-row{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;margin-top:6px;}
+    .cond-row select,.cond-row input{font-size:0.78rem;}
+
+    /* Preview overlay */
+    .fb-preview-overlay{display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.5);}
+    .fb-preview-overlay.open{display:flex;align-items:center;justify-content:center;}
+    .fb-preview-modal{background:var(--white);border-radius:8px;width:90%;max-width:700px;max-height:85vh;overflow:auto;padding:32px;}
+    .fb-preview-modal h2{margin:0 0 20px;}
+    .fb-preview-close{position:absolute;top:12px;right:16px;font-size:1.5rem;background:none;border:none;cursor:pointer;}
+
+    @media(max-width:960px){
+      .fb-wrap{grid-template-columns:1fr;gap:12px;}
+    }
+  </style>
+
+  <!-- Form meta -->
+  <div class="fb-meta">
+    <div class="form-field">
+      <label>Form Name</label>
+      <input type="text" id="formName" value="<%= form?.name || '' %>" placeholder="e.g. Initial Client Intake">
+    </div>
+    <div class="form-field">
+      <label>Status</label>
+      <select id="formStatus">
+        <option value="draft" <%= form?.status === 'draft' || !form ? 'selected' : '' %>>Draft</option>
+        <option value="active" <%= form?.status === 'active' ? 'selected' : '' %>>Active</option>
+      </select>
+    </div>
+    <div class="form-field span-2">
+      <label>Description</label>
+      <input type="text" id="formDesc" value="<%= form?.description || '' %>" placeholder="Short description of this form's purpose">
+    </div>
+    <div class="form-field span-2">
+      <label>Assign to Pages</label>
+      <div class="assign-list">
+        <% const assigns = form?.assignTo || [];
+           const pageOpts = [
+             { slug: 'client-onboarding', label: 'Client Onboarding Tab' },
+             { slug: 'public-intake', label: 'Public Intake Page' },
+             { slug: 'post-signup', label: 'Post-Signup Questionnaire' },
+           ];
+        %>
+        <% pageOpts.forEach(p => { %>
+          <label><input type="checkbox" class="assignCheck" value="<%= p.slug %>" <%= assigns.includes(p.slug) ? 'checked' : '' %>> <%= p.label %></label>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Agent bar -->
+  <div class="fb-agent">
+    <input type="text" id="agentPrompt" placeholder="Describe what fields you need, e.g. 'questions about their social media goals'">
+    <button class="btn btn-navy" id="btnAgent" <% if (!form) { %>data-new="1"<% } %>>AI Suggest Fields</button>
+  </div>
+
+  <!-- Three-column builder -->
+  <div class="fb-wrap">
+    <!-- Left: Field Palette -->
+    <div class="fb-panel" id="palette">
+      <h3>Field Types</h3>
+      <div class="fb-type" draggable="true" data-type="text"><span class="ft-icon">Aa</span> Text</div>
+      <div class="fb-type" draggable="true" data-type="textarea"><span class="ft-icon">&#9776;</span> Text Area</div>
+      <div class="fb-type" draggable="true" data-type="select"><span class="ft-icon">&#9660;</span> Dropdown</div>
+      <div class="fb-type" draggable="true" data-type="radio"><span class="ft-icon">&#9673;</span> Radio</div>
+      <div class="fb-type" draggable="true" data-type="checkbox"><span class="ft-icon">&#9745;</span> Checkbox</div>
+      <div class="fb-type" draggable="true" data-type="number"><span class="ft-icon">#</span> Number</div>
+      <div class="fb-type" draggable="true" data-type="email"><span class="ft-icon">@</span> Email</div>
+      <div class="fb-type" draggable="true" data-type="url"><span class="ft-icon">&#128279;</span> URL</div>
+      <div class="fb-type" draggable="true" data-type="date"><span class="ft-icon">&#128197;</span> Date</div>
+      <div class="fb-type" draggable="true" data-type="color"><span class="ft-icon">&#9632;</span> Color</div>
+      <div class="fb-type" draggable="true" data-type="heading"><span class="ft-icon">&#9644;</span> Section Heading</div>
+    </div>
+
+    <!-- Center: Canvas -->
+    <div class="fb-panel fb-canvas" id="canvas">
+      <h3>Form Fields <span id="fieldCount" style="font-weight:400;color:var(--slate-light);">(0)</span></h3>
+      <div id="fieldList"></div>
+    </div>
+
+    <!-- Right: Field Settings -->
+    <div class="fb-panel fb-settings" id="settingsPanel">
+      <h3>Field Settings</h3>
+      <div id="settingsEmpty" style="color:var(--slate);font-size:0.82rem;">Click a field to edit its settings.</div>
+      <div id="settingsForm" style="display:none;">
+        <div class="form-field">
+          <label>Label</label>
+          <input type="text" id="sLabel">
+        </div>
+        <div class="form-field">
+          <label>Key <span style="font-weight:400;font-size:0.7rem;">(auto)</span></label>
+          <input type="text" id="sKey" style="font-family:monospace;font-size:0.78rem;" readonly>
+        </div>
+        <div class="form-field">
+          <label>Type</label>
+          <select id="sType">
+            <option value="text">Text</option>
+            <option value="textarea">Text Area</option>
+            <option value="select">Dropdown</option>
+            <option value="radio">Radio</option>
+            <option value="checkbox">Checkbox</option>
+            <option value="number">Number</option>
+            <option value="email">Email</option>
+            <option value="url">URL</option>
+            <option value="date">Date</option>
+            <option value="color">Color</option>
+            <option value="heading">Section Heading</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Placeholder</label>
+          <input type="text" id="sPlaceholder">
+        </div>
+        <div class="form-field">
+          <label>Help Text</label>
+          <input type="text" id="sHelpText">
+        </div>
+        <div class="form-field">
+          <label>Section Group</label>
+          <input type="text" id="sSection" placeholder="e.g. Brand Info">
+        </div>
+        <div class="form-field">
+          <label>Width</label>
+          <select id="sWidth">
+            <option value="full">Full</option>
+            <option value="half">Half</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label><input type="checkbox" id="sRequired" style="width:auto;margin-right:6px;">Required</label>
+        </div>
+
+        <!-- Options (for select/radio/checkbox) -->
+        <div class="form-field" id="sOptionsWrap" style="display:none;">
+          <label>Options</label>
+          <div id="sOptionsList" class="opts-list"></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnAddOption" style="margin-top:4px;">+ Add Option</button>
+        </div>
+
+        <!-- Piping -->
+        <div class="form-field">
+          <label>Pipe From</label>
+          <select id="sPipeForm">
+            <option value="">— None —</option>
+            <% (typeof otherForms !== 'undefined' ? otherForms : []).forEach(of => { %>
+              <option value="<%= of.slug %>"><%= of.name %></option>
+            <% }) %>
+          </select>
+          <select id="sPipeField" style="margin-top:4px;display:none;">
+            <option value="">— Select field —</option>
+          </select>
+        </div>
+
+        <!-- Conditional -->
+        <div class="form-field">
+          <label>Conditional (show when)</label>
+          <div class="cond-row">
+            <select id="sCondField">
+              <option value="">— Always show —</option>
+            </select>
+            <select id="sCondOp">
+              <option value="eq">=</option>
+              <option value="neq">!=</option>
+              <option value="contains">contains</option>
+            </select>
+            <input type="text" id="sCondVal" placeholder="value">
+          </div>
+        </div>
+
+        <div style="margin-top:16px;display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm btn-del" id="btnDeleteField" style="color:var(--danger);">Delete Field</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview overlay -->
+  <div class="fb-preview-overlay" id="previewOverlay">
+    <div class="fb-preview-modal" style="position:relative;">
+      <button class="fb-preview-close" id="previewClose">&times;</button>
+      <h2 id="previewTitle">Form Preview</h2>
+      <div id="previewBody"></div>
+    </div>
+  </div>
+
+</div><!-- .content -->
+
+<script>
+(function() {
+  // ── State ──
+  var fields = <%= form ? JSON.stringify(form.fields || []) : '[]' %>;
+  var activeIdx = -1;
+  var formId = '<%= form?._id || '' %>';
+  var otherForms = <%- JSON.stringify((typeof otherForms !== 'undefined' ? otherForms : []).map(f => ({ slug: f.slug, name: f.name, fields: (f.fields || []).map(ff => ({ key: ff.key, label: ff.label })) }))) %>;
+
+  var canvas = document.getElementById('fieldList');
+  var countEl = document.getElementById('fieldCount');
+
+  // ── Render canvas ──
+  function render() {
+    countEl.textContent = '(' + fields.length + ')';
+    var html = '';
+    if (!fields.length) {
+      html = '<div class="fb-canvas-empty">Drag field types here to build your form</div>';
+    } else {
+      fields.forEach(function(f, i) {
+        var cls = 'fb-field' + (i === activeIdx ? ' active' : '') + (f.type === 'heading' ? ' is-heading' : '');
+        var meta = [];
+        if (f.required) meta.push('required');
+        if (f.width === 'half') meta.push('half-width');
+        if (f.pipeFrom?.formSlug) meta.push('<span class="pipe-badge">piped</span>');
+        if (f.conditional?.fieldKey) meta.push('conditional');
+        html += '<div class="fb-drop-zone" data-pos="' + i + '"></div>';
+        html += '<div class="fb-field ' + cls + '" draggable="true" data-idx="' + i + '">';
+        html += '<div class="fb-field-head"><span class="fb-field-label">' + esc(f.label || '(untitled)') + '</span>';
+        html += '<span class="fb-field-type">' + f.type + '</span></div>';
+        if (meta.length) html += '<div class="fb-field-meta">' + meta.join(' &middot; ') + '</div>';
+        html += '<div class="fb-field-actions">';
+        html += '<button data-action="up" data-idx="' + i + '" title="Move up">&uarr;</button>';
+        html += '<button data-action="down" data-idx="' + i + '" title="Move down">&darr;</button>';
+        html += '<button data-action="del" data-idx="' + i + '" class="btn-del" title="Delete">&times;</button>';
+        html += '</div></div>';
+      });
+      html += '<div class="fb-drop-zone" data-pos="' + fields.length + '"></div>';
+    }
+    canvas.innerHTML = html;
+    bindCanvasEvents();
+  }
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  // ── Slugify ──
+  function slugKey(s) {
+    return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+  }
+
+  // ── Add field ──
+  function addField(type, pos, extra) {
+    var f = Object.assign({
+      key: '', label: type === 'heading' ? 'Section' : '', type: type,
+      placeholder: '', helpText: '', required: false,
+      options: [], validation: {}, pipeFrom: null, width: 'full',
+      order: 0, section: '', conditional: null,
+    }, extra || {});
+    if (typeof pos === 'number' && pos <= fields.length) {
+      fields.splice(pos, 0, f);
+    } else {
+      fields.push(f);
+    }
+    activeIdx = typeof pos === 'number' ? pos : fields.length - 1;
+    reorder();
+    render();
+    showSettings();
+  }
+
+  function reorder() { fields.forEach(function(f, i) { f.order = i; }); }
+
+  // ── Canvas events ──
+  function bindCanvasEvents() {
+    // Click to select
+    canvas.querySelectorAll('.fb-field').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        if (e.target.closest('.fb-field-actions')) return;
+        activeIdx = parseInt(el.dataset.idx);
+        render();
+        showSettings();
+      });
+    });
+
+    // Action buttons (up/down/del)
+    canvas.querySelectorAll('.fb-field-actions button').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var i = parseInt(btn.dataset.idx);
+        var act = btn.dataset.action;
+        if (act === 'del') {
+          fields.splice(i, 1);
+          if (activeIdx >= fields.length) activeIdx = fields.length - 1;
+          reorder(); render(); showSettings();
+        } else if (act === 'up' && i > 0) {
+          var tmp = fields[i]; fields[i] = fields[i-1]; fields[i-1] = tmp;
+          activeIdx = i - 1; reorder(); render(); showSettings();
+        } else if (act === 'down' && i < fields.length - 1) {
+          var tmp = fields[i]; fields[i] = fields[i+1]; fields[i+1] = tmp;
+          activeIdx = i + 1; reorder(); render(); showSettings();
+        }
+      });
+    });
+
+    // Drag reorder within canvas
+    canvas.querySelectorAll('.fb-field[draggable]').forEach(function(el) {
+      el.addEventListener('dragstart', function(e) {
+        e.dataTransfer.setData('text/plain', 'field:' + el.dataset.idx);
+        el.classList.add('dragging');
+      });
+      el.addEventListener('dragend', function() { el.classList.remove('dragging'); });
+    });
+
+    // Drop zones
+    canvas.querySelectorAll('.fb-drop-zone').forEach(function(zone) {
+      zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('over'); });
+      zone.addEventListener('dragleave', function() { zone.classList.remove('over'); });
+      zone.addEventListener('drop', function(e) {
+        e.preventDefault(); zone.classList.remove('over');
+        var data = e.dataTransfer.getData('text/plain');
+        var pos = parseInt(zone.dataset.pos);
+        if (data.startsWith('type:')) {
+          addField(data.split(':')[1], pos);
+        } else if (data.startsWith('field:')) {
+          var from = parseInt(data.split(':')[1]);
+          if (from === pos || from === pos - 1) return;
+          var f = fields.splice(from, 1)[0];
+          var insertAt = from < pos ? pos - 1 : pos;
+          fields.splice(insertAt, 0, f);
+          activeIdx = insertAt;
+          reorder(); render(); showSettings();
+        }
+      });
+    });
+  }
+
+  // ── Palette drag ──
+  document.querySelectorAll('#palette .fb-type').forEach(function(el) {
+    el.addEventListener('dragstart', function(e) {
+      e.dataTransfer.setData('text/plain', 'type:' + el.dataset.type);
+    });
+    // Click to add at end
+    el.addEventListener('click', function() {
+      addField(el.dataset.type);
+    });
+  });
+
+  // Also allow dropping on canvas itself
+  var canvasPanel = document.querySelector('.fb-canvas');
+  canvasPanel.addEventListener('dragover', function(e) { e.preventDefault(); });
+  canvasPanel.addEventListener('drop', function(e) {
+    var data = e.dataTransfer.getData('text/plain');
+    if (data.startsWith('type:')) {
+      e.preventDefault();
+      addField(data.split(':')[1]);
+    }
+  });
+
+  // ── Settings panel ──
+  function showSettings() {
+    var empty = document.getElementById('settingsEmpty');
+    var form = document.getElementById('settingsForm');
+    if (activeIdx < 0 || activeIdx >= fields.length) {
+      empty.style.display = ''; form.style.display = 'none'; return;
+    }
+    empty.style.display = 'none'; form.style.display = '';
+    var f = fields[activeIdx];
+
+    document.getElementById('sLabel').value = f.label || '';
+    document.getElementById('sKey').value = f.key || '';
+    document.getElementById('sType').value = f.type;
+    document.getElementById('sPlaceholder').value = f.placeholder || '';
+    document.getElementById('sHelpText').value = f.helpText || '';
+    document.getElementById('sSection').value = f.section || '';
+    document.getElementById('sWidth').value = f.width || 'full';
+    document.getElementById('sRequired').checked = !!f.required;
+
+    // Options
+    var needsOpts = ['select', 'radio', 'checkbox'].includes(f.type);
+    document.getElementById('sOptionsWrap').style.display = needsOpts ? '' : 'none';
+    if (needsOpts) renderOptions(f.options || []);
+
+    // Pipe
+    document.getElementById('sPipeForm').value = f.pipeFrom?.formSlug || '';
+    updatePipeFields();
+    document.getElementById('sPipeField').value = f.pipeFrom?.fieldKey || '';
+
+    // Conditional
+    updateCondFields();
+    document.getElementById('sCondField').value = f.conditional?.fieldKey || '';
+    document.getElementById('sCondOp').value = f.conditional?.operator || 'eq';
+    document.getElementById('sCondVal').value = f.conditional?.value || '';
+  }
+
+  function renderOptions(opts) {
+    var list = document.getElementById('sOptionsList');
+    var html = '';
+    (opts || []).forEach(function(o, i) {
+      html += '<div class="opt-row"><input type="text" data-oi="' + i + '" data-of="label" value="' + esc(o.label || '') + '" placeholder="Label">';
+      html += '<input type="text" data-oi="' + i + '" data-of="value" value="' + esc(o.value || '') + '" placeholder="Value" style="max-width:100px;">';
+      html += '<button type="button" data-oi="' + i + '" class="opt-del">&times;</button></div>';
+    });
+    list.innerHTML = html;
+    list.querySelectorAll('input').forEach(function(inp) {
+      inp.addEventListener('input', function() {
+        var f = fields[activeIdx];
+        if (!f.options) f.options = [];
+        var idx = parseInt(inp.dataset.oi);
+        if (!f.options[idx]) f.options[idx] = { label: '', value: '' };
+        f.options[idx][inp.dataset.of] = inp.value;
+      });
+    });
+    list.querySelectorAll('.opt-del').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var f = fields[activeIdx];
+        f.options.splice(parseInt(btn.dataset.oi), 1);
+        renderOptions(f.options);
+      });
+    });
+  }
+
+  document.getElementById('btnAddOption').addEventListener('click', function() {
+    if (activeIdx < 0) return;
+    var f = fields[activeIdx];
+    if (!f.options) f.options = [];
+    f.options.push({ label: '', value: '' });
+    renderOptions(f.options);
+  });
+
+  function updatePipeFields() {
+    var sel = document.getElementById('sPipeField');
+    var formSlug = document.getElementById('sPipeForm').value;
+    sel.style.display = formSlug ? '' : 'none';
+    sel.innerHTML = '<option value="">— Select field —</option>';
+    if (!formSlug) return;
+    var src = otherForms.find(function(f) { return f.slug === formSlug; });
+    if (src) {
+      src.fields.forEach(function(ff) {
+        sel.innerHTML += '<option value="' + esc(ff.key) + '">' + esc(ff.label || ff.key) + '</option>';
+      });
+    }
+  }
+
+  function updateCondFields() {
+    var sel = document.getElementById('sCondField');
+    sel.innerHTML = '<option value="">— Always show —</option>';
+    fields.forEach(function(f, i) {
+      if (i !== activeIdx && f.key) {
+        sel.innerHTML += '<option value="' + esc(f.key) + '">' + esc(f.label || f.key) + '</option>';
+      }
+    });
+  }
+
+  // ── Settings change handlers ──
+  document.getElementById('sLabel').addEventListener('input', function() {
+    if (activeIdx < 0) return;
+    fields[activeIdx].label = this.value;
+    if (!fields[activeIdx]._keyManual) {
+      fields[activeIdx].key = slugKey(this.value);
+      document.getElementById('sKey').value = fields[activeIdx].key;
+    }
+    render();
+  });
+  document.getElementById('sType').addEventListener('change', function() {
+    if (activeIdx < 0) return;
+    fields[activeIdx].type = this.value;
+    var needsOpts = ['select', 'radio', 'checkbox'].includes(this.value);
+    document.getElementById('sOptionsWrap').style.display = needsOpts ? '' : 'none';
+    render();
+  });
+  ['sPlaceholder', 'sHelpText', 'sSection'].forEach(function(id) {
+    document.getElementById(id).addEventListener('input', function() {
+      if (activeIdx < 0) return;
+      var prop = id.replace('s', '').replace(/^./, function(c) { return c.toLowerCase(); });
+      if (id === 'sPlaceholder') prop = 'placeholder';
+      if (id === 'sHelpText') prop = 'helpText';
+      if (id === 'sSection') prop = 'section';
+      fields[activeIdx][prop] = this.value;
+    });
+  });
+  document.getElementById('sWidth').addEventListener('change', function() {
+    if (activeIdx < 0) return; fields[activeIdx].width = this.value; render();
+  });
+  document.getElementById('sRequired').addEventListener('change', function() {
+    if (activeIdx < 0) return; fields[activeIdx].required = this.checked; render();
+  });
+  document.getElementById('sPipeForm').addEventListener('change', function() {
+    if (activeIdx < 0) return;
+    updatePipeFields();
+    if (!this.value) { fields[activeIdx].pipeFrom = null; return; }
+    fields[activeIdx].pipeFrom = { formSlug: this.value, fieldKey: '' };
+    render();
+  });
+  document.getElementById('sPipeField').addEventListener('change', function() {
+    if (activeIdx < 0 || !fields[activeIdx].pipeFrom) return;
+    fields[activeIdx].pipeFrom.fieldKey = this.value;
+    render();
+  });
+  document.getElementById('sCondField').addEventListener('change', function() {
+    if (activeIdx < 0) return;
+    if (!this.value) { fields[activeIdx].conditional = null; return; }
+    fields[activeIdx].conditional = {
+      fieldKey: this.value,
+      operator: document.getElementById('sCondOp').value,
+      value: document.getElementById('sCondVal').value,
+    };
+  });
+  document.getElementById('sCondOp').addEventListener('change', function() {
+    if (activeIdx < 0 || !fields[activeIdx].conditional) return;
+    fields[activeIdx].conditional.operator = this.value;
+  });
+  document.getElementById('sCondVal').addEventListener('input', function() {
+    if (activeIdx < 0 || !fields[activeIdx].conditional) return;
+    fields[activeIdx].conditional.value = this.value;
+  });
+  document.getElementById('btnDeleteField').addEventListener('click', function() {
+    if (activeIdx < 0) return;
+    fields.splice(activeIdx, 1);
+    if (activeIdx >= fields.length) activeIdx = fields.length - 1;
+    reorder(); render(); showSettings();
+  });
+
+  // ── Save ──
+  document.getElementById('btnSave').addEventListener('click', function() {
+    var name = document.getElementById('formName').value.trim();
+    if (!name) { alert('Form name is required.'); return; }
+    var assigns = [];
+    document.querySelectorAll('.assignCheck:checked').forEach(function(cb) { assigns.push(cb.value); });
+
+    var payload = {
+      name: name,
+      description: document.getElementById('formDesc').value.trim(),
+      status: document.getElementById('formStatus').value,
+      fields: fields,
+      assignTo: assigns,
+    };
+
+    var url = formId ? '/admin/onboarding/' + formId : '/admin/onboarding';
+    var btn = document.getElementById('btnSave');
+    btn.disabled = true; btn.textContent = 'Saving...';
+
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false; btn.textContent = 'Save Form';
+      if (data.ok) {
+        if (!formId && data.id) {
+          window.location.href = '/admin/onboarding/' + data.id;
+        } else {
+          // Flash success
+          btn.textContent = 'Saved!';
+          setTimeout(function() { btn.textContent = 'Save Form'; }, 1500);
+        }
+      } else {
+        alert(data.error || 'Save failed');
+      }
+    })
+    .catch(function() { btn.disabled = false; btn.textContent = 'Save Form'; alert('Save failed'); });
+  });
+
+  // ── Agent ──
+  document.getElementById('btnAgent').addEventListener('click', function() {
+    var prompt = document.getElementById('agentPrompt').value.trim();
+    if (!prompt) { alert('Enter a description of what fields you need.'); return; }
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Thinking...';
+
+    var url = formId ? '/admin/onboarding/' + formId + '/agent' : '/admin/onboarding/agent/suggest';
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: prompt }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false; btn.textContent = 'AI Suggest Fields';
+      if (data.fields && data.fields.length) {
+        var count = data.fields.length;
+        if (confirm('Agent suggests ' + count + ' field(s):\n\n' + data.fields.map(function(f) { return f.label; }).join('\n') + '\n\nAdd them to your form?')) {
+          data.fields.forEach(function(f) {
+            f.key = f.key || slugKey(f.label);
+            f.order = fields.length;
+            if (!f.width) f.width = 'full';
+            if (!f.options) f.options = [];
+            if (!f.pipeFrom) f.pipeFrom = null;
+            if (!f.conditional) f.conditional = null;
+            fields.push(f);
+          });
+          reorder(); render();
+        }
+      } else {
+        alert(data.message || 'No fields suggested.');
+      }
+    })
+    .catch(function() { btn.disabled = false; btn.textContent = 'AI Suggest Fields'; alert('Agent request failed'); });
+  });
+
+  // ── Preview ──
+  document.getElementById('btnPreview').addEventListener('click', function() {
+    var overlay = document.getElementById('previewOverlay');
+    var body = document.getElementById('previewBody');
+    document.getElementById('previewTitle').textContent = document.getElementById('formName').value || 'Form Preview';
+    var html = '<form class="form-grid" onsubmit="return false;" style="gap:12px 16px;">';
+    fields.forEach(function(f) {
+      if (f.type === 'heading') {
+        html += '<div style="grid-column:span 2;margin-top:12px;padding-bottom:4px;border-bottom:1px solid var(--ivory-mid);">';
+        html += '<strong style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--slate);">' + esc(f.label) + '</strong></div>';
+        return;
+      }
+      var span = f.width === 'half' ? '' : 'grid-column:span 2;';
+      html += '<div class="form-field" style="' + span + '">';
+      html += '<label>' + esc(f.label) + (f.required ? ' <span style="color:var(--danger);">*</span>' : '') + '</label>';
+      if (f.helpText) html += '<div style="font-size:0.72rem;color:var(--slate);margin-bottom:4px;">' + esc(f.helpText) + '</div>';
+
+      if (f.type === 'textarea') {
+        html += '<textarea placeholder="' + esc(f.placeholder || '') + '"></textarea>';
+      } else if (f.type === 'select') {
+        html += '<select><option value="">Select...</option>';
+        (f.options || []).forEach(function(o) { html += '<option value="' + esc(o.value) + '">' + esc(o.label) + '</option>'; });
+        html += '</select>';
+      } else if (f.type === 'radio') {
+        (f.options || []).forEach(function(o) {
+          html += '<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:400;margin-bottom:4px;"><input type="radio" name="' + esc(f.key) + '" value="' + esc(o.value) + '"> ' + esc(o.label) + '</label>';
+        });
+      } else if (f.type === 'checkbox') {
+        (f.options || []).forEach(function(o) {
+          html += '<label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:400;margin-bottom:4px;"><input type="checkbox" value="' + esc(o.value) + '"> ' + esc(o.label) + '</label>';
+        });
+      } else {
+        html += '<input type="' + (f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : f.type === 'date' ? 'date' : f.type === 'color' ? 'color' : 'text') + '" placeholder="' + esc(f.placeholder || '') + '">';
+      }
+      html += '</div>';
+    });
+    html += '<div style="grid-column:span 2;margin-top:12px;"><button type="button" class="btn btn-navy" disabled>Submit (preview only)</button></div>';
+    html += '</form>';
+    body.innerHTML = html;
+    overlay.classList.add('open');
+  });
+  document.getElementById('previewClose').addEventListener('click', function() {
+    document.getElementById('previewOverlay').classList.remove('open');
+  });
+  document.getElementById('previewOverlay').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+
+  // ── Init ──
+  render();
+})();
+</script>
+
+</div><!-- .main -->
+</body>
+</html>

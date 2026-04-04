@@ -1,0 +1,127 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Preview: <%= form.name %></div>
+  <div class="topbar-actions">
+    <a href="/admin/onboarding/<%= form._id %>" class="btn btn-ghost">Edit</a>
+    <a href="/admin/onboarding/<%= form._id %>/responses" class="btn btn-ghost">Responses</a>
+  </div>
+</div>
+<div class="content">
+
+  <% if (form.description) { %>
+    <p style="color:var(--slate);margin-bottom:20px;"><%= form.description %></p>
+  <% } %>
+
+  <div class="card">
+    <form id="previewForm" class="form-grid" style="gap:12px 16px;">
+      <% (form.fields || []).forEach(function(f) { %>
+        <% if (f.type === 'heading') { %>
+          <div style="grid-column:span 2;margin-top:12px;padding-bottom:4px;border-bottom:1px solid var(--ivory-mid);">
+            <strong style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--slate);"><%= f.label %></strong>
+          </div>
+        <% } else { %>
+          <div class="form-field" style="<%= f.width === 'half' ? '' : 'grid-column:span 2;' %>"
+               data-key="<%= f.key %>"
+               <% if (f.conditional?.fieldKey) { %>data-cond-field="<%= f.conditional.fieldKey %>" data-cond-op="<%= f.conditional.operator %>" data-cond-val="<%= f.conditional.value %>"<% } %>>
+            <label><%= f.label %><% if (f.required) { %> <span style="color:var(--danger);">*</span><% } %></label>
+            <% if (f.helpText) { %><div style="font-size:0.72rem;color:var(--slate);margin-bottom:4px;"><%= f.helpText %></div><% } %>
+            <% if (f.type === 'textarea') { %>
+              <textarea name="<%= f.key %>" placeholder="<%= f.placeholder || '' %>" <%= f.required ? 'required' : '' %>></textarea>
+            <% } else if (f.type === 'select') { %>
+              <select name="<%= f.key %>" <%= f.required ? 'required' : '' %>>
+                <option value="">Select...</option>
+                <% (f.options || []).forEach(function(o) { %>
+                  <option value="<%= o.value %>"><%= o.label %></option>
+                <% }) %>
+              </select>
+            <% } else if (f.type === 'radio') { %>
+              <% (f.options || []).forEach(function(o) { %>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:400;margin-bottom:4px;">
+                  <input type="radio" name="<%= f.key %>" value="<%= o.value %>"> <%= o.label %>
+                </label>
+              <% }) %>
+            <% } else if (f.type === 'checkbox') { %>
+              <% (f.options || []).forEach(function(o) { %>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:400;margin-bottom:4px;">
+                  <input type="checkbox" name="<%= f.key %>" value="<%= o.value %>"> <%= o.label %>
+                </label>
+              <% }) %>
+            <% } else { %>
+              <input type="<%= f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : f.type === 'date' ? 'date' : f.type === 'color' ? 'color' : 'text' %>"
+                     name="<%= f.key %>" placeholder="<%= f.placeholder || '' %>" <%= f.required ? 'required' : '' %>>
+            <% } %>
+          </div>
+        <% } %>
+      <% }) %>
+      <div style="grid-column:span 2;margin-top:16px;">
+        <button type="submit" class="btn btn-navy" id="btnSubmit">Submit Test Response</button>
+      </div>
+    </form>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  // Conditional visibility
+  var form = document.getElementById('previewForm');
+  function evalConds() {
+    form.querySelectorAll('[data-cond-field]').forEach(function(el) {
+      var fk = el.dataset.condField;
+      var op = el.dataset.condOp;
+      var val = el.dataset.condVal;
+      var inp = form.querySelector('[name="' + fk + '"]');
+      var actual = inp ? inp.value : '';
+      var show = false;
+      if (op === 'eq') show = actual === val;
+      else if (op === 'neq') show = actual !== val;
+      else if (op === 'contains') show = actual.toLowerCase().indexOf(val.toLowerCase()) >= 0;
+      el.style.display = show ? '' : 'none';
+    });
+  }
+  form.addEventListener('input', evalConds);
+  form.addEventListener('change', evalConds);
+  evalConds();
+
+  // Submit
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var data = {};
+    new FormData(form).forEach(function(v, k) {
+      if (data[k]) {
+        if (!Array.isArray(data[k])) data[k] = [data[k]];
+        data[k].push(v);
+      } else {
+        data[k] = v;
+      }
+    });
+
+    var btn = document.getElementById('btnSubmit');
+    btn.disabled = true; btn.textContent = 'Submitting...';
+
+    fetch('/admin/onboarding/<%= form._id %>/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: data, respondentName: 'Admin Preview', respondentEmail: '<%= user.email || '' %>' }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      btn.disabled = false;
+      if (res.ok) {
+        btn.textContent = 'Submitted!';
+        setTimeout(function() { btn.textContent = 'Submit Test Response'; }, 2000);
+      } else {
+        btn.textContent = 'Submit Test Response';
+        alert(res.error || 'Submit failed');
+      }
+    })
+    .catch(function() { btn.disabled = false; btn.textContent = 'Submit Test Response'; alert('Submit failed'); });
+  });
+})();
+</script>
+
+</div><!-- .main -->
+</body>
+</html>

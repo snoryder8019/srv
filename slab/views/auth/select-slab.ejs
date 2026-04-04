@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Select Workspace — Slab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    :root { --navy:#1C2B4A; --navy-deep:#0F1B30; --gold:#C9A848; --gold-light:#E8D08A; --ivory:#F5F3EF; --ivory-mid:#E6E1D6; --dark:#0F1B30; --white:#FDFCFA; --on-ivory:#0F1B30; --on-ivory-muted:#6B7380; --font-heading:'Cormorant Garamond',serif; --font-body:'Jost',sans-serif; }
+    body { font-family:var(--font-body); background:var(--navy-deep); min-height:100vh; display:flex; align-items:center; justify-content:center; }
+    .auth-backdrop { position:fixed; inset:0; background:rgba(15,27,48,0.85); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:999; display:flex; align-items:center; justify-content:center; }
+    .auth-modal { background:var(--ivory); max-width:480px; width:100%; margin:24px; border-radius:4px; box-shadow:0 32px 80px rgba(0,0,0,0.5); overflow:hidden; position:relative; z-index:1000; animation:authSlideIn 0.3s ease; }
+    @keyframes authSlideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    .auth-header { padding:32px 32px 0; text-align:center; }
+    .auth-brand { font-family:var(--font-heading); font-size:1.8rem; font-weight:300; color:var(--on-ivory); margin-bottom:2px; }
+    .auth-sub { font-size:0.62rem; font-weight:600; letter-spacing:0.22em; text-transform:uppercase; color:var(--on-ivory-muted); margin-bottom:8px; }
+    .auth-email { font-size:0.82rem; color:var(--navy); font-weight:500; margin-bottom:20px; }
+    .auth-body { padding:16px 32px 32px; }
+    .slab-list { list-style:none; display:flex; flex-direction:column; gap:10px; }
+    .slab-item { display:flex; align-items:center; gap:14px; padding:14px 16px; background:var(--white); border:1.5px solid var(--ivory-mid); border-radius:3px; cursor:pointer; transition:all 0.15s; text-decoration:none; color:inherit; }
+    .slab-item:hover { border-color:var(--navy); background:var(--ivory); }
+    .slab-icon { width:40px; height:40px; border-radius:3px; background:var(--navy); color:var(--gold); display:flex; align-items:center; justify-content:center; font-family:var(--font-heading); font-size:1.2rem; font-weight:600; flex-shrink:0; }
+    .slab-info { flex:1; min-width:0; }
+    .slab-name { font-size:0.88rem; font-weight:500; color:var(--dark); margin-bottom:2px; }
+    .slab-domain { font-size:0.68rem; color:var(--on-ivory-muted); letter-spacing:0.02em; }
+    .slab-role { font-size:0.58rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; padding:3px 8px; border-radius:2px; background:rgba(28,43,74,0.08); color:var(--navy); flex-shrink:0; }
+    .slab-role.owner { background:rgba(201,168,72,0.15); color:#8B7225; }
+    .msg-info { font-size:0.72rem; color:var(--on-ivory-muted); text-align:center; margin-top:18px; line-height:1.6; }
+    .auth-footer { padding:0 32px 24px; text-align:center; }
+    .auth-footer a { font-size:0.72rem; color:var(--on-ivory-muted); text-decoration:none; }
+    .auth-footer a:hover { color:var(--navy); }
+    @media (max-width:480px) { .auth-modal { margin:12px; } .auth-body { padding:12px 20px 24px; } .auth-header { padding:24px 20px 0; } .auth-footer { padding:0 20px 20px; } }
+  </style>
+</head>
+<body>
+
+<div class="auth-backdrop">
+<div class="auth-modal">
+  <div class="auth-header">
+    <div class="auth-brand">Slab</div>
+    <div class="auth-sub">Select Workspace</div>
+    <div class="auth-email"><%= email %></div>
+  </div>
+
+  <div class="auth-body">
+    <ul class="slab-list">
+      <% slabs.forEach(function(s) { %>
+      <li>
+        <a href="/auth/enter-slab?t=<%= encodeURIComponent(pickerToken) %>&slab=<%= encodeURIComponent(s.tenantDb) %>" class="slab-item">
+          <div class="slab-icon"><%= (s.brandName || s.domain || '?')[0].toUpperCase() %></div>
+          <div class="slab-info">
+            <div class="slab-name"><%= s.brandName || s.domain %></div>
+            <div class="slab-domain"><%= s.domain %></div>
+          </div>
+          <span class="slab-role<%= s.isOwner ? ' owner' : '' %>"><%= s.isOwner ? 'Owner' : (s.isAdmin ? 'Admin' : 'Member') %></span>
+        </a>
+      </li>
+      <% }); %>
+    </ul>
+
+    <p class="msg-info">Choose a workspace to continue to its admin panel.</p>
+  </div>
+
+  <div class="auth-footer">
+    <a href="/auth/login">← Sign in with a different account</a>
+  </div>
+</div>
+</div>
+
+</body>
+</html>

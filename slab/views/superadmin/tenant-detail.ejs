@@ -37,6 +37,22 @@
     select { background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:8px 12px; border-radius:4px; font-family:'Inter',sans-serif; font-size:13px; }
     .action-form { display:inline-flex; align-items:center; gap:8px; }
     .danger-zone { border-color:#7f1d1d; }
+    .log-row { display:flex; align-items:flex-start; gap:12px; padding:10px 14px; border-bottom:1px solid #1f1f1f; font-size:13px; }
+    .log-row:last-child { border-bottom:0; }
+    .log-icon { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; }
+    .log-body { flex:1; min-width:0; }
+    .log-action { color:#e5e5e5; font-weight:500; }
+    .log-detail { color:#737373; font-size:12px; margin-top:2px; }
+    .log-time { color:#525252; font-size:11px; white-space:nowrap; flex-shrink:0; }
+    .log-badge { display:inline-block; padding:1px 6px; border-radius:8px; font-size:10px; font-weight:500; }
+    .log-badge-success { background:#14532d; color:#86efac; }
+    .log-badge-failed { background:#451a1a; color:#fca5a5; }
+    .log-badge-partial { background:#422006; color:#fdba74; }
+    .log-table { background:#1a1a1a; border-radius:6px; overflow:hidden; max-height:400px; overflow-y:auto; }
+    .tag-grid { display:flex; flex-wrap:wrap; gap:8px; }
+    .tag-btn { padding:6px 14px; border-radius:16px; font-size:12px; font-weight:500; border:1px solid #333; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.15s; }
+    .tag-btn:hover { opacity:0.85; }
+    .tag-btn.active { border-color:transparent; }
   </style>
 </head>
 <body>
@@ -87,6 +103,27 @@
     </div>
 
     <div class="card">
+      <h2>Tags</h2>
+      <div class="tag-grid">
+        <% const activeTags = tenant.tags || []; %>
+        <% for (const [slug, def] of Object.entries(tagDefs)) { %>
+          <% const isActive = activeTags.includes(slug); %>
+          <form method="POST" action="/superadmin/tenants/<%= tenant._id %>/tags" style="display:inline;">
+            <input type="hidden" name="tag" value="<%= slug %>">
+            <input type="hidden" name="action" value="<%= isActive ? 'remove' : 'add' %>">
+            <button type="submit"
+              class="tag-btn<%= isActive ? ' active' : '' %>"
+              style="<%= isActive
+                ? 'color:' + def.color + ';background:' + def.bg + ';'
+                : 'color:#525252;background:transparent;' %>">
+              <%= isActive ? '✓ ' : '' %><%= def.label %>
+            </button>
+          </form>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Content Stats</h2>
       <div class="stats-row">
         <div class="mini-stat"><div class="mini-stat-val"><%= dbStats.blogCount %></div><div class="mini-stat-label">Blog Posts</div></div>
@@ -132,6 +169,65 @@
         </form>
         <% } %>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>Activity Log</h2>
+      <% if (activityLogs && activityLogs.length) { %>
+      <%
+        const logIcons = {
+          registration: { icon: '&#128100;', bg: '#1e3a5f' },
+          settings:     { icon: '&#9881;',  bg: '#2a2410' },
+          payment:      { icon: '&#128179;', bg: '#14532d' },
+          admin_action: { icon: '&#9889;',  bg: '#3b1764' },
+        };
+        const actionLabels = {
+          signup: 'Signed up',
+          go_live_initiated: 'Go-live initiated',
+          payment_captured: 'Payment captured',
+          settings_saved: 'Settings saved',
+          stripe_test: 'Stripe test',
+          email_test: 'Email test',
+          dns_check: 'DNS check',
+          dns_auto_create: 'DNS auto-create',
+          activated: 'Activated by superadmin',
+          plan_changed: 'Plan changed by superadmin',
+          suspended: 'Suspended by superadmin',
+          deleted: 'Deleted by superadmin',
+        };
+      %>
+      <div class="log-table">
+        <% for (const log of activityLogs) { %>
+          <% const iconDef = logIcons[log.category] || { icon: '&#8226;', bg: '#262626' }; %>
+          <div class="log-row">
+            <div class="log-icon" style="background:<%= iconDef.bg %>"><%- iconDef.icon %></div>
+            <div class="log-body">
+              <div>
+                <span class="log-action"><%= actionLabels[log.action] || log.action %></span>
+                <span class="log-badge log-badge-<%= log.status %>"><%= log.status %></span>
+              </div>
+              <% if (log.actor?.email) { %>
+                <div class="log-detail">by <%= log.actor.email %><%= log.actor.role ? ' (' + log.actor.role + ')' : '' %></div>
+              <% } %>
+              <% if (log.error) { %>
+                <div class="log-detail" style="color:#f87171;">Error: <%= log.error %></div>
+              <% } %>
+              <% if (log.details) { %>
+                <% if (log.details.plan || log.details.newPlan) { %><div class="log-detail">Plan: <%= log.details.newPlan || log.details.plan %><%= log.details.previousPlan ? ' (was: ' + log.details.previousPlan + ')' : '' %></div><% } %>
+                <% if (log.details.amount) { %><div class="log-detail">Amount: $<%= log.details.amount %></div><% } %>
+                <% if (log.details.fieldsUpdated) { %><div class="log-detail">Fields: <%= log.details.fieldsUpdated.slice(0, 5).join(', ') %><%= log.details.fieldsUpdated.length > 5 ? ' +' + (log.details.fieldsUpdated.length - 5) + ' more' : '' %></div><% } %>
+                <% if (log.details.spf) { %><div class="log-detail">SPF: <%= log.details.spf %> | DKIM: <%= log.details.dkim %> | DMARC: <%= log.details.dmarc %> | MX: <%= log.details.mx %></div><% } %>
+                <% if (log.details.created) { %><div class="log-detail">Created: <%= log.details.created.join(', ') %></div><% } %>
+                <% if (log.details.errors && log.details.errors.length) { %><div class="log-detail" style="color:#f87171;">Errors: <%= log.details.errors.join(', ') %></div><% } %>
+              <% } %>
+            </div>
+            <div class="log-time"><%= log.timestamp ? new Date(log.timestamp).toLocaleString() : '—' %></div>
+          </div>
+        <% } %>
+      </div>
+      <% } else { %>
+        <div style="color:#525252;font-size:13px;padding:12px 0;">No activity recorded for this tenant yet.</div>
+      <% } %>
     </div>
 
     <div class="card danger-zone">

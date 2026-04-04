@@ -9,19 +9,61 @@
 </div>
 
 <div class="content">
+  <style>
+    .client-filters { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+    .client-filters label { font-size:0.65rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--slate); }
+    .client-filters select { background:var(--white); border:1px solid var(--ivory-mid); color:var(--dark); padding:6px 10px; border-radius:2px; font-family:'Jost',sans-serif; font-size:0.8rem; }
+    .filter-btn { padding:6px 14px; border-radius:2px; font-size:0.7rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; background:var(--white); border:1px solid var(--ivory-mid); color:var(--slate); cursor:pointer; transition:all 0.15s; }
+    .filter-btn:hover, .filter-btn.active { border-color:var(--gold); color:var(--navy); background:rgba(201,168,72,0.06); }
+    .ctag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:10px; font-weight:600; letter-spacing:0.02em; white-space:nowrap; }
+    .cfg-row { display:flex; gap:4px; margin-top:5px; flex-wrap:wrap; }
+    .cfg-pip { display:inline-flex; align-items:center; gap:2px; padding:1px 6px; border-radius:8px; font-size:9px; font-weight:600; }
+    .cfg-on { background:rgba(16,185,129,0.12); color:#059669; }
+    .cfg-off { background:rgba(0,0,0,0.04); color:#bbb; }
+    .cfg-count { font-size:10px; color:var(--slate); margin-left:4px; font-weight:600; }
+  </style>
+
   <% if (!clients.length) { %>
     <div class="empty">
       <div class="empty-icon">◉</div>
       <p>No clients yet. <a href="/admin/clients/new" style="color:var(--navy)">Add your first client.</a></p>
     </div>
   <% } else { %>
+
+  <!-- Filters -->
+  <div class="client-filters">
+    <button class="filter-btn active" data-filter="all">All (<%= clients.length %>)</button>
+    <button class="filter-btn" data-filter="prospect">Prospect</button>
+    <button class="filter-btn" data-filter="active">Active</button>
+    <button class="filter-btn" data-filter="inactive">Inactive</button>
+  </div>
+  <div class="client-filters">
+    <label>Tag:</label>
+    <select id="tagFilter">
+      <option value="">All</option>
+      <option value="__none">No tags</option>
+      <% for (const [slug, def] of Object.entries(tagDefs)) { %>
+      <option value="<%= slug %>"><%= def.label %></option>
+      <% } %>
+    </select>
+    <label style="margin-left:12px;">Profile:</label>
+    <select id="cfgFilter">
+      <option value="">All</option>
+      <option value="__none">No info</option>
+      <option value="__all">Complete</option>
+      <% for (const [key, check] of Object.entries(configChecks)) { %>
+      <option value="has:<%= key %>">Has <%= check.label %></option>
+      <option value="no:<%= key %>">Missing <%= check.label %></option>
+      <% } %>
+    </select>
+  </div>
+
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
           <th>Name</th>
-          <th>Company</th>
-          <th>Email</th>
+          <th>Tags / Profile</th>
           <th>Status</th>
           <th>Onboarding</th>
           <th>Added</th>
@@ -30,10 +72,28 @@
       </thead>
       <tbody>
         <% for (const c of clients) { %>
-        <tr>
-          <td style="font-weight:500;"><a href="/admin/clients/<%= c._id %>" style="color:var(--navy);text-decoration:none;"><%= c.name %></a></td>
-          <td class="text-slate"><%= c.company || '—' %></td>
-          <td class="text-slate"><%= c.email || '—' %></td>
+        <% const cfg = configMap[c._id.toString()]; %>
+        <% const cfgKeys = Object.keys(configChecks).filter(k => cfg[k]).join(','); %>
+        <tr data-status="<%= c.status || 'prospect' %>" data-tags="<%= (c.tags || []).join(',') %>" data-cfg="<%= cfgKeys %>" data-cfg-count="<%= cfg._count %>" data-cfg-total="<%= cfg._total %>">
+          <td>
+            <a href="/admin/clients/<%= c._id %>" style="color:var(--navy);text-decoration:none;font-weight:500;"><%= c.name %></a>
+            <div class="text-slate" style="font-size:0.75rem;"><%= c.company || '' %><%= c.company && c.email ? ' · ' : '' %><%= c.email || '' %></div>
+          </td>
+          <td>
+            <% if (c.tags && c.tags.length) { %>
+            <div style="margin-bottom:4px;">
+              <% for (const tag of c.tags) { const def = tagDefs[tag]; if (def) { %>
+              <span class="ctag" style="color:<%= def.color %>;background:<%= def.bg %>"><%= def.label %></span>
+              <% } } %>
+            </div>
+            <% } %>
+            <div class="cfg-row">
+              <% for (const [key, check] of Object.entries(configChecks)) { %>
+              <span class="cfg-pip <%= cfg[key] ? 'cfg-on' : 'cfg-off' %>" title="<%= check.label %>: <%= cfg[key] ? 'yes' : 'no' %>"><%= check.icon %></span>
+              <% } %>
+              <span class="cfg-count"><%= cfg._count %>/<%= cfg._total %></span>
+            </div>
+          </td>
           <td>
             <select class="status-toggle" data-id="<%= c._id %>" style="padding:4px 8px;font-size:0.72rem;border:1px solid var(--ivory-mid);border-radius:2px;background:var(--white);font-family:'Jost',sans-serif;cursor:pointer;">
               <option value="prospect" <%= c.status === 'prospect' ? 'selected' : '' %>>Prospect</option>
@@ -61,6 +121,39 @@
 </div>
 
 <script>
+function applyFilters() {
+  var statusFilter = document.querySelector('.filter-btn.active').dataset.filter;
+  var tagFilter = document.getElementById('tagFilter').value;
+  var cfgFilter = document.getElementById('cfgFilter').value;
+  document.querySelectorAll('tbody tr[data-status]').forEach(function(row) {
+    var statusOk = (statusFilter === 'all' || row.dataset.status === statusFilter);
+    var tags = row.dataset.tags || '';
+    var tagOk = true;
+    if (tagFilter === '__none') tagOk = !tags;
+    else if (tagFilter) tagOk = tags.split(',').indexOf(tagFilter) !== -1;
+    var cfgOk = true;
+    if (cfgFilter) {
+      var cfg = row.dataset.cfg || '';
+      var count = parseInt(row.dataset.cfgCount) || 0;
+      var total = parseInt(row.dataset.cfgTotal) || 0;
+      if (cfgFilter === '__none') cfgOk = count === 0;
+      else if (cfgFilter === '__all') cfgOk = count === total;
+      else if (cfgFilter.indexOf('has:') === 0) cfgOk = cfg.split(',').indexOf(cfgFilter.slice(4)) !== -1;
+      else if (cfgFilter.indexOf('no:') === 0) cfgOk = cfg.split(',').indexOf(cfgFilter.slice(3)) === -1;
+    }
+    row.style.display = (statusOk && tagOk && cfgOk) ? '' : 'none';
+  });
+}
+document.querySelectorAll('.filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    applyFilters();
+  });
+});
+document.getElementById('tagFilter')?.addEventListener('change', applyFilters);
+document.getElementById('cfgFilter')?.addEventListener('change', applyFilters);
+
 document.querySelectorAll('.status-toggle').forEach(sel => {
   sel.addEventListener('change', async function() {
     const id = this.dataset.id;

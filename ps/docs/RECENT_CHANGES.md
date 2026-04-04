@@ -1,6 +1,48 @@
 # Recent Changes Summary
 
-Generated: 2026-03-31T07:30:00.054Z
+Generated: 2026-04-04T07:30:00.026Z
+
+---
+
+## Commit: v0.9 — security hardening, sandboxed game users, server-cam, unified terminal
+
+- **Hash:** `34d6674`
+- **Author:** Scott
+- **Date:** 3/31/2026
+- **Changes:** 42 files, +2701/-319 lines
+
+### Modified Areas:
+
+**Backend:** 7 files
+**Views:** 12 files
+**Scripts:** 1 files
+**Documentation:** 1 files
+
+---
+
+## Commit: games - plugins
+
+- **Hash:** `e52f870`
+- **Author:** Scott
+- **Date:** 3/31/2026
+- **Changes:** 35 files, +9876/-163 lines
+
+### Modified Areas:
+
+**Backend:** 7 files
+**Documentation:** 4 files
+
+---
+
+## Commit: plugins - games
+
+- **Hash:** `90b06bd`
+- **Author:** Scott
+- **Date:** 3/31/2026
+
+### Modified Areas:
+
+**Scripts:** 1 files
 
 ---
 
@@ -34,53 +76,6 @@ Generated: 2026-03-31T07:30:00.054Z
 **Views:** 71 files
 **Scripts:** 5 files
 **Documentation:** 3 files
-
----
-
-## Commit: docs push
-
-- **Hash:** `4982e52`
-- **Author:** Scott
-- **Date:** 3/26/2026
-- **Changes:** 43 files, +2763/-1679 lines
-
-### Modified Areas:
-
-**Backend:** 3 files
-**Views:** 1 files
-**Scripts:** 2 files
-**Documentation:** 31 files
-
----
-
-## Commit: good push
-
-- **Hash:** `ceec56a`
-- **Author:** Scott
-- **Date:** 3/26/2026
-- **Changes:** 134 files, +39743/-1018 lines
-
-### Modified Areas:
-
-**Backend:** 26 files
-**Views:** 52 files
-**Scripts:** 3 files
-**Documentation:** 3 files
-
----
-
-## Commit: pre migration push
-
-- **Hash:** `04e4132`
-- **Author:** Scott
-- **Date:** 3/25/2026
-- **Changes:** 57 files, +5625/-805 lines
-
-### Modified Areas:
-
-**Frontend:** 1 files
-**Backend:** 10 files
-**Views:** 30 files
 
 ---
 

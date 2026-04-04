@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Activity Log — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; text-decoration:none; } .logo span { color:#c9a848; }
+    .badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#c9a848; background:#262626; padding:3px 8px; border-radius:4px; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; color:#737373; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1100px; margin:0 auto; padding:24px; }
+    h1 { font-size:20px; font-weight:600; margin-bottom:20px; }
+    .log-row { display:flex; align-items:flex-start; gap:12px; padding:12px 16px; border-bottom:1px solid #1f1f1f; font-size:13px; }
+    .log-row:last-child { border-bottom:0; }
+    .log-icon { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; margin-top:1px; }
+    .log-body { flex:1; min-width:0; }
+    .log-action { color:#e5e5e5; font-weight:500; }
+    .log-tenant { color:#c9a848; font-size:12px; }
+    .log-tenant a { color:#c9a848; text-decoration:none; } .log-tenant a:hover { text-decoration:underline; }
+    .log-detail { color:#737373; font-size:12px; margin-top:2px; }
+    .log-time { color:#525252; font-size:11px; white-space:nowrap; flex-shrink:0; }
+    .log-badge { display:inline-block; padding:1px 6px; border-radius:8px; font-size:10px; font-weight:500; }
+    .log-badge-success { background:#14532d; color:#86efac; }
+    .log-badge-failed { background:#451a1a; color:#fca5a5; }
+    .log-badge-partial { background:#422006; color:#fdba74; }
+    .log-table { background:#141414; border:1px solid #262626; border-radius:8px; overflow:hidden; }
+    .log-filter-bar { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+    .log-filter-btn { padding:6px 14px; font-size:12px; border-radius:14px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.15s; }
+    .log-filter-btn:hover, .log-filter-btn.active { border-color:#c9a848; color:#c9a848; }
+    .empty { color:#525252; font-size:13px; padding:24px; text-align:center; }
+    .search-bar { margin-bottom:16px; }
+    .search-bar input { background:#141414; border:1px solid #333; color:#e5e5e5; padding:8px 14px; border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; width:300px; }
+    .search-bar input::placeholder { color:#525252; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <a href="/superadmin" class="logo"><span>s</span>Lab</a>
+      <span class="badge">Activity Log</span>
+    </div>
+    <div class="topbar-right">
+      <span><%= user.email %></span>
+      <a href="/superadmin">Dashboard</a>
+      <a href="/superadmin/promos">Promos</a>
+      <a href="/superadmin/signups">Signups</a>
+      <a href="/superadmin/logout">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>Activity Log</h1>
+
+    <div class="search-bar">
+      <input type="text" id="logSearch" placeholder="Search by tenant, email, action..." oninput="searchLogs(this.value)">
+    </div>
+
+    <div class="log-filter-bar">
+      <button class="log-filter-btn active" onclick="filterLogs('', this)">All</button>
+      <button class="log-filter-btn" onclick="filterLogs('registration', this)">Registration</button>
+      <button class="log-filter-btn" onclick="filterLogs('settings', this)">Settings</button>
+      <button class="log-filter-btn" onclick="filterLogs('payment', this)">Payment</button>
+      <button class="log-filter-btn" onclick="filterLogs('admin_action', this)">Admin Actions</button>
+      <button class="log-filter-btn" onclick="filterLogs('failed', this)">Failures Only</button>
+    </div>
+
+    <% if (activityLogs && activityLogs.length) { %>
+    <%
+      const logIcons = {
+        registration: { icon: '&#128100;', bg: '#1e3a5f' },
+        settings:     { icon: '&#9881;',  bg: '#2a2410' },
+        payment:      { icon: '&#128179;', bg: '#14532d' },
+        admin_action: { icon: '&#9889;',  bg: '#3b1764' },
+      };
+      const actionLabels = {
+        signup: 'Signed up',
+        go_live_initiated: 'Go-live initiated',
+        payment_captured: 'Payment captured',
+        settings_saved: 'Settings saved',
+        stripe_test: 'Stripe test',
+        email_test: 'Email test',
+        dns_check: 'DNS check',
+        dns_auto_create: 'DNS auto-create',
+        activated: 'Activated by superadmin',
+        plan_changed: 'Plan changed by superadmin',
+        suspended: 'Suspended by superadmin',
+        deleted: 'Deleted by superadmin',
+      };
+    %>
+    <div class="log-table">
+      <% for (const log of activityLogs) { %>
+        <% const iconDef = logIcons[log.category] || { icon: '&#8226;', bg: '#262626' }; %>
+        <div class="log-row" data-category="<%= log.category %>" data-status="<%= log.status %>" data-search="<%= [log.tenantDomain, log.actor?.email, log.action, log.error].filter(Boolean).join(' ').toLowerCase() %>">
+          <div class="log-icon" style="background:<%= iconDef.bg %>"><%- iconDef.icon %></div>
+          <div class="log-body">
+            <div>
+              <span class="log-action"><%= actionLabels[log.action] || log.action %></span>
+              <span class="log-badge log-badge-<%= log.status %>"><%= log.status %></span>
+            </div>
+            <div class="log-tenant"><%= log.tenantDomain || '—' %></div>
+            <% if (log.actor?.email) { %>
+              <div class="log-detail">by <%= log.actor.email %><%= log.actor.role ? ' (' + log.actor.role + ')' : '' %></div>
+            <% } %>
+            <% if (log.error) { %>
+              <div class="log-detail" style="color:#f87171;">Error: <%= log.error %></div>
+            <% } %>
+            <% if (log.details) { %>
+              <% if (log.details.plan || log.details.newPlan) { %><div class="log-detail">Plan: <%= log.details.newPlan || log.details.plan %><%= log.details.previousPlan ? ' (was: ' + log.details.previousPlan + ')' : '' %></div><% } %>
+              <% if (log.details.amount) { %><div class="log-detail">Amount: $<%= log.details.amount %></div><% } %>
+              <% if (log.details.fieldsUpdated) { %><div class="log-detail">Fields: <%= log.details.fieldsUpdated.slice(0, 8).join(', ') %><%= log.details.fieldsUpdated.length > 8 ? ' +' + (log.details.fieldsUpdated.length - 8) + ' more' : '' %></div><% } %>
+              <% if (log.details.spf) { %><div class="log-detail">SPF: <%= log.details.spf %> | DKIM: <%= log.details.dkim %> | DMARC: <%= log.details.dmarc %> | MX: <%= log.details.mx %></div><% } %>
+              <% if (log.details.created) { %><div class="log-detail">Created: <%= log.details.created.join(', ') %></div><% } %>
+              <% if (log.details.errors && log.details.errors.length) { %><div class="log-detail" style="color:#f87171;">Errors: <%= log.details.errors.join(', ') %></div><% } %>
+              <% if (log.details.previousStatus) { %><div class="log-detail">Was: <%= log.details.previousStatus %></div><% } %>
+              <% if (log.details.brandName) { %><div class="log-detail">Brand: <%= log.details.brandName %></div><% } %>
+            <% } %>
+            <% if (log.ip) { %><div class="log-detail">IP: <%= log.ip %></div><% } %>
+          </div>
+          <div class="log-time"><%= log.timestamp ? new Date(log.timestamp).toLocaleString() : '—' %></div>
+        </div>
+      <% } %>
+    </div>
+    <% } else { %>
+      <div class="empty">No activity recorded yet. Events will appear as tenants register and configure.</div>
+    <% } %>
+  </div>
+
+  <script>
+    var activeFilter = '';
+    var activeSearch = '';
+
+    function filterLogs(val, btn) {
+      activeFilter = val;
+      document.querySelectorAll('.log-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      if (btn) btn.classList.add('active');
+      applyFilters();
+    }
+
+    function searchLogs(val) {
+      activeSearch = val.toLowerCase().trim();
+      applyFilters();
+    }
+
+    function applyFilters() {
+      document.querySelectorAll('.log-row').forEach(function(row) {
+        var catMatch = true;
+        var searchMatch = true;
+
+        if (activeFilter === 'failed') {
+          catMatch = row.dataset.status === 'failed';
+        } else if (activeFilter) {
+          catMatch = row.dataset.category === activeFilter;
+        }
+
+        if (activeSearch) {
+          searchMatch = (row.dataset.search || '').indexOf(activeSearch) !== -1;
+        }
+
+        row.style.display = (catMatch && searchMatch) ? '' : 'none';
+      });
+    }
+  </script>
+</body>
+</html>

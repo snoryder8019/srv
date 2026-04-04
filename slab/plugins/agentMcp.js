@@ -701,7 +701,7 @@ HTML body rules:
 }
 
 // ── Client Research Agent ────────────────────────────────────────────────────
-export async function handleResearchClient({ clientName, company, website, notes, email, brandContext }) {
+export async function handleResearchClient({ clientName, company, website, notes, email, prompt, brandContext }) {
   // Step 1: Web search for the business
   const searchQuery = company
     ? `${company} ${clientName || ''} business`
@@ -754,7 +754,7 @@ Company: ${company || 'Unknown'}
 Email: ${email || 'N/A'}
 Website: ${website || 'None provided'}
 Notes: ${notes || 'None'}
-
+${prompt ? `\nUser focus: ${prompt}\n` : ''}
 --- WEB SEARCH RESULTS ---
 ${searchResults}
 

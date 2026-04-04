@@ -7,6 +7,18 @@
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
 <aside class="sidebar" id="sidebar">
+  <!-- Slab Switcher -->
+  <div class="slab-switcher" id="slabSwitcher">
+    <button class="slab-switcher-btn" id="slabSwitcherBtn" title="Switch workspace">
+      <span class="slab-switcher-icon"><%= (brand?.name || '?')[0].toUpperCase() %></span>
+      <span class="slab-switcher-name"><%= brand?.name || 'Workspace' %></span>
+      <span class="slab-switcher-arrow">&#9662;</span>
+    </button>
+    <div class="slab-switcher-dropdown" id="slabDropdown">
+      <div class="slab-switcher-loading">Loading workspaces...</div>
+    </div>
+  </div>
+
   <div class="sidebar-brand">
     <a href="/admin" class="sidebar-brand-name"><% const _bsp = parseInt((typeof brandDesign !== 'undefined' ? brandDesign : {}).nav_logo_split) || 0; if (_bsp > 0) { %><span style="color:var(--gold)"><%- (brand?.name||'').slice(0,_bsp) %></span><%- (brand?.name||'').slice(_bsp) %><% } else { %><%- brand?.name || '' %><% } %></a>
     <div class="sidebar-brand-sub">Admin Portal</div>
@@ -41,6 +53,9 @@
     <span class="sidebar-section">Business</span>
     <a href="/admin/clients" class="<%= page === 'clients' ? 'active' : '' %>">
       <span class="icon">◉</span> Clients
+    </a>
+    <a href="/admin/onboarding" class="<%= page === 'onboarding' ? 'active' : '' %>">
+      <span class="icon">&#9638;</span> Onboarding
     </a>
     <a href="/admin/meetings" class="<%= page === 'meetings' ? 'active' : '' %>">
       <span class="icon">◫</span> Meetings
@@ -129,5 +144,68 @@
       if (window.innerWidth <= 820) close();
     });
   });
+
+  // ── Slab Switcher ──
+  var switcherBtn = document.getElementById('slabSwitcherBtn');
+  var dropdown = document.getElementById('slabDropdown');
+  var loaded = false;
+
+  switcherBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    var isOpen = dropdown.classList.toggle('open');
+    switcherBtn.classList.toggle('open', isOpen);
+    if (isOpen && !loaded) loadSlabs();
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.slab-switcher')) {
+      dropdown.classList.remove('open');
+      switcherBtn.classList.remove('open');
+    }
+  });
+
+  function loadSlabs() {
+    fetch('/admin/api/my-slabs')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        loaded = true;
+        var slabs = data.slabs || [];
+        var html = '';
+
+        slabs.forEach(function(s) {
+          var cls = 'slab-dd-item' + (s.isCurrent ? ' current' : '');
+          var url = 'https://' + s.domain + '/admin';
+          html += '<a href="' + url + '" class="' + cls + '">'
+            + '<span class="slab-dd-icon">' + (s.brandName || '?')[0].toUpperCase() + '</span>'
+            + '<span class="slab-dd-info">'
+            +   '<span class="slab-dd-name">' + (s.brandName || s.domain) + '</span>'
+            +   '<span class="slab-dd-domain">' + s.domain + '</span>'
+            + '</span>'
+            + (s.isCurrent ? '<span class="slab-dd-check">&#10003;</span>' : '')
+            + '</a>';
+        });
+
+        // "+ Create New Slab" button
+        html += '<div class="slab-dd-divider"></div>';
+        html += '<a href="/start?add=1" class="slab-dd-item slab-dd-add">'
+          + '<span class="slab-dd-icon slab-dd-plus">+</span>'
+          + '<span class="slab-dd-info">'
+          +   '<span class="slab-dd-name">Create New Slab</span>'
+          +   '<span class="slab-dd-domain">' + discountLabel(slabs.length) + '</span>'
+          + '</span>'
+          + '</a>';
+
+        dropdown.innerHTML = html;
+      })
+      .catch(function() {
+        dropdown.innerHTML = '<div class="slab-switcher-loading">Failed to load</div>';
+      });
+  }
+
+  function discountLabel(count) {
+    if (count === 0) return 'Full price';
+    if (count === 1) return '15% off your second slab';
+    return '18% off additional slabs';
+  }
 })();
 </script>

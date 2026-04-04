@@ -33,6 +33,7 @@ export const DESIGN_DEFAULTS = {
   nav_logo_split:      '0',
   landing_layout:      'classic',
   hero_name_large:     '',
+  vis_qr:               'false',
   model_header_enabled: 'false',
   model_logo_enabled:   'false',
 };

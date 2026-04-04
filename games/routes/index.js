@@ -95,7 +95,7 @@ router.get('/auth/google/callback',
   (req, res) => {
     const dest = req.session.loginNext || '/dashboard';
     delete req.session.loginNext;
-    res.redirect(dest);
+    req.session.save(() => res.redirect(dest));
   }
 );
 

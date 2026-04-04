@@ -3,6 +3,7 @@ import { getSlabDb } from '../../plugins/mongo.js';
 import { encrypt, decrypt } from '../../plugins/crypto.js';
 import { bustTenantCache } from '../../middleware/tenant.js';
 import { config } from '../../config/config.js';
+import { logActivity } from '../../plugins/activityLog.js';
 
 const router = express.Router();
 
@@ -160,9 +161,25 @@ router.post('/', async (req, res) => {
       );
       bustTenantCache(tenant.meta.customDomain);
     }
+
+    // Build a readable list of what changed
+    const changedFields = Object.keys(updates).filter(k => k !== 'updatedAt');
+    logActivity({
+      category: 'settings', action: 'settings_saved',
+      tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      details: { fieldsUpdated: changedFields },
+      ip: req.ip,
+    });
     res.redirect('/admin/settings?saved=1');
   } catch (err) {
     console.error('[settings] save error:', err);
+    logActivity({
+      category: 'settings', action: 'settings_saved',
+      tenantDomain: tenant.domain, tenantId: tenant._id, status: 'failed',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      error: err.message, ip: req.ip,
+    });
     res.redirect('/admin/settings?error=save');
   }
 });
@@ -175,8 +192,19 @@ router.post('/test-stripe', async (req, res) => {
     const Stripe = (await import('stripe')).default;
     const stripe = new Stripe(key);
     const balance = await stripe.balance.retrieve();
+    logActivity({
+      category: 'settings', action: 'stripe_test',
+      tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' }, ip: req.ip,
+    });
     res.json({ ok: true, currency: balance.available?.[0]?.currency || 'usd' });
   } catch (err) {
+    logActivity({
+      category: 'settings', action: 'stripe_test',
+      tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: 'failed',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      error: err.message, ip: req.ip,
+    });
     res.json({ ok: false, error: err.message });
   }
 });
@@ -193,8 +221,19 @@ router.post('/test-email', async (req, res) => {
       auth: { user: zohoUser, pass: zohoPass },
     });
     await transporter.verify();
+    logActivity({
+      category: 'settings', action: 'email_test',
+      tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' }, ip: req.ip,
+    });
     res.json({ ok: true });
   } catch (err) {
+    logActivity({
+      category: 'settings', action: 'email_test',
+      tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: 'failed',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      error: err.message, ip: req.ip,
+    });
     res.json({ ok: false, error: err.message });
   }
 });
@@ -279,6 +318,19 @@ router.post('/check-dns', async (req, res) => {
       results.mx = { found: false, valid: false, message: 'No MX records found' };
     }
 
+    logActivity({
+      category: 'settings', action: 'dns_check',
+      tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      details: {
+        domain: results.domain,
+        spf: results.spf?.valid ? 'pass' : 'fail',
+        dkim: results.dkim?.valid ? 'pass' : 'fail',
+        dmarc: results.dmarc?.valid ? 'pass' : 'fail',
+        mx: results.mx?.valid ? 'pass' : 'fail',
+      },
+      ip: req.ip,
+    });
     res.json({ ok: true, results });
   } catch (err) {
     res.json({ ok: false, error: err.message });
@@ -368,6 +420,15 @@ router.post('/auto-create-dns', async (req, res) => {
 
     console.log(`[settings] Auto-created DNS for ${emailDomain}: ${created.join(', ')} | Errors: ${errors.join(', ') || 'none'}`);
 
+    logActivity({
+      category: 'settings', action: 'dns_auto_create',
+      tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id,
+      status: errors.length ? 'partial' : 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      details: { emailDomain, created, errors },
+      ip: req.ip,
+    });
+
     res.json({
       ok: true,
       created,
@@ -375,6 +436,12 @@ router.post('/auto-create-dns', async (req, res) => {
       note: 'DKIM must still be added manually — get the key from Zoho Mail Admin → DKIM. DNS changes take up to 5 minutes to propagate.',
     });
   } catch (err) {
+    logActivity({
+      category: 'settings', action: 'dns_auto_create',
+      tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: 'failed',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      error: err.message, ip: req.ip,
+    });
     res.json({ ok: false, error: err.message });
   }
 });

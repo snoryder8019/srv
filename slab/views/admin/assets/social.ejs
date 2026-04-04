@@ -37,8 +37,10 @@
   .sg-select {
     width: 100%; padding: 5px 8px; border: 1.5px solid var(--ivory-mid);
     border-radius: 2px; font-size: 0.78rem; font-family: 'Jost', sans-serif;
-    color: var(--dark); background: var(--ivory); cursor: pointer;
+    color: #0F1B30; background: #F5F3EF; cursor: pointer;
   }
+  .sg-select option { color: #0F1B30; background: #FDFCFA; }
+  .sg-select option:disabled { color: #6B7380; background: #E6E1D6; }
   .sg-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
   .sg-lbl { font-size: 0.6rem; font-weight: 600; color: var(--slate); letter-spacing: 0.06em; min-width: 48px; flex-shrink: 0; }
 
@@ -129,11 +131,79 @@
   }
   .sg-drop-overlay.visible { display: flex; }
 
+  /* ── FLOATING TOOL RAIL (mobile) ── */
+  .sg-fab-rail {
+    display: none; position: fixed; left: 8px; top: 50%; transform: translateY(-50%);
+    z-index: 50; flex-direction: column; gap: 8px;
+  }
+  .sg-fab {
+    width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--navy); color: var(--white); font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 10px rgba(15,27,48,0.25); transition: all 0.15s;
+    font-family: 'Jost', sans-serif; position: relative;
+  }
+  .sg-fab:hover, .sg-fab.active { background: var(--gold); color: var(--dark); }
+  .sg-fab-label {
+    display: none; position: absolute; left: 52px; top: 50%; transform: translateY(-50%);
+    background: var(--navy); color: var(--white); padding: 4px 10px; border-radius: 2px;
+    font-size: 0.65rem; font-weight: 600; letter-spacing: 0.06em; white-space: nowrap;
+    pointer-events: none;
+  }
+  .sg-fab:hover .sg-fab-label { display: block; }
+
+  /* ── MOBILE OVERLAY PANEL ── */
+  .sg-mob-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: min(320px, 88vw); height: 100vh;
+    background: var(--white); z-index: 60; flex-direction: column;
+    box-shadow: 4px 0 24px rgba(15,27,48,0.18);
+    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+  }
+  .sg-mob-overlay.open { display: flex; }
+  .sg-mob-overlay-head {
+    padding: 14px 16px; border-bottom: 1px solid var(--ivory-mid);
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--slate); flex-shrink: 0;
+  }
+  .sg-mob-overlay-close {
+    background: none; border: none; font-size: 1.3rem; cursor: pointer;
+    color: var(--slate); padding: 4px; line-height: 1;
+  }
+  .sg-mob-overlay-close:hover { color: var(--dark); }
+  .sg-mob-overlay-body { flex: 1; overflow-y: auto; padding: 14px; }
+  .sg-mob-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 55;
+    background: rgba(15,27,48,0.3); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  }
+  .sg-mob-backdrop.open { display: block; }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 1100px) { .sg-layout { grid-template-columns: 260px 1fr 200px; } }
   @media (max-width: 820px) {
-    .sg-layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; height: auto; }
-    .sg-panel-left, .sg-panel-right { max-height: 260px; border: none; border-bottom: 1px solid var(--ivory-mid); }
+    .sg-fab-rail { display: flex; }
+    .sg-layout {
+      grid-template-columns: 1fr; grid-template-rows: 1fr;
+      height: calc(100vh - 64px); height: calc(100dvh - 64px); overflow: hidden;
+    }
+    .sg-panel-left, .sg-panel-right { display: none !important; }
+    .sg-canvas-area {
+      display: flex; overflow: auto; padding: 10px 10px 10px 60px;
+      height: 100%; width: 100%; box-sizing: border-box;
+    }
+    .sg-canvas-wrap { max-width: calc(100vw - 70px); max-height: calc(100vh - 100px); max-height: calc(100dvh - 100px); }
+    .sg-canvas-wrap canvas { max-width: 100%; max-height: 100%; height: auto; width: auto; object-fit: contain; }
+    .sg-canvas-info { font-size: 0.6rem; }
+    .topbar-actions .btn { font-size: 0.62rem; padding: 4px 6px; }
+  }
+  @media (max-width: 520px) {
+    .sg-fab { width: 40px; height: 40px; font-size: 0.9rem; }
+    .sg-fab-rail { left: 6px; gap: 6px; }
+    .sg-canvas-area { padding-left: 52px; padding-right: 6px; }
+    .sg-canvas-wrap { max-width: calc(100vw - 58px); }
+    .sg-mob-overlay { width: min(300px, 92vw); }
+    .sg-mob-overlay-body .sg-input, .sg-mob-overlay-body .sg-select { font-size: 0.82rem; padding: 8px 10px; }
+    .sg-mob-overlay-body .tool-btn { padding: 10px 14px; }
   }
 </style>
 
@@ -149,17 +219,36 @@
 <div style="padding:0 16px;">
   <%- include('../partials/advisory', { needs: 'ai,s3' }) %>
 </div>
+<!-- Mobile floating tool rail -->
+<div class="sg-fab-rail" id="sgFabRail">
+  <button class="sg-fab" data-fab="size" title="Canvas Size">⊞<span class="sg-fab-label">Size</span></button>
+  <button class="sg-fab" data-fab="layers" title="Layers">◫<span class="sg-fab-label">Layers</span></button>
+  <button class="sg-fab" data-fab="add" title="Add Layer">+<span class="sg-fab-label">Add</span></button>
+  <button class="sg-fab" data-fab="bg" title="Background">◐<span class="sg-fab-label">BG</span></button>
+  <button class="sg-fab" data-fab="palette" title="Colors">◈<span class="sg-fab-label">Colors</span></button>
+  <button class="sg-fab" data-fab="export" title="Export">↓<span class="sg-fab-label">Export</span></button>
+  <button class="sg-fab" data-fab="tools" title="All Tools" style="background:var(--gold);color:var(--dark);">≡<span class="sg-fab-label">All Tools</span></button>
+</div>
+<div class="sg-mob-backdrop" id="sgMobBackdrop"></div>
+<div class="sg-mob-overlay" id="sgMobOverlay">
+  <div class="sg-mob-overlay-head">
+    <span id="sgMobOverlayTitle">Tools</span>
+    <button class="sg-mob-overlay-close" id="sgMobOverlayClose">&times;</button>
+  </div>
+  <div class="sg-mob-overlay-body" id="sgMobOverlayBody"></div>
+</div>
+
 <div class="sg-layout">
 
   <!-- ═══ LEFT PANEL ═══ -->
-  <div class="sg-panel sg-panel-left">
+  <div class="sg-panel sg-panel-left" id="sgPanelLeft">
     <div class="sg-panel-head">Tools</div>
     <div class="sg-panel-scroll">
 
       <!-- SIZE -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secSize">Canvas Size <span>▾</span></div>
-        <div class="sg-sec-body" id="secSize">
+        <div class="sg-sec-head" data-toggle="secSize">Canvas Size <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secSize">
           <div class="sz-grid" id="sizeGrid">
             <div class="sz-btn active" data-w="1080" data-h="1080" data-name="ig-post">IG Post<br>1:1</div>
             <div class="sz-btn" data-w="1080" data-h="1920" data-name="ig-story">Story<br>9:16</div>
@@ -181,8 +270,8 @@
 
       <!-- ADD LAYERS -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secAdd">Add Layers <span>▾</span></div>
-        <div class="sg-sec-body" id="secAdd">
+        <div class="sg-sec-head" data-toggle="secAdd">Add Layers <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secAdd">
           <div class="tool-bar">
             <button class="tool-btn" id="addImageBtn">+ Image</button>
             <button class="tool-btn" id="addLocalBtn">+ Upload</button>
@@ -198,8 +287,8 @@
 
       <!-- BACKGROUND -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secBg">Background <span>▾</span></div>
-        <div class="sg-sec-body" id="secBg">
+        <div class="sg-sec-head" data-toggle="secBg">Background <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secBg">
           <div class="sg-row">
             <span class="sg-lbl">Color</span>
             <input type="color" id="bgColor" value="#F5F3EF" style="width:32px;height:28px;border:1px solid var(--ivory-mid);cursor:pointer;">
@@ -210,8 +299,8 @@
 
       <!-- AI BACKGROUND -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secAiBg">AI Background <span>▾</span></div>
-        <div class="sg-sec-body" id="secAiBg">
+        <div class="sg-sec-head" data-toggle="secAiBg">AI Background <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secAiBg">
           <div style="margin-bottom:6px;">
             <input type="text" class="sg-input" id="sdPrompt" placeholder="e.g. paintstrokes, St. Patrick's Day, sunset bokeh..." style="width:100%;">
           </div>
@@ -233,14 +322,28 @@
         </div>
       </div>
 
+      <!-- BUILD FOR -->
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secBuildFor">Build For <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secBuildFor">
+          <div class="sg-row" style="margin-bottom:6px;">
+            <select class="sg-select" id="buildForSelect" style="flex:1;">
+              <option value="tenant">My Brand</option>
+            </select>
+            <button class="tool-btn" id="loadBrandKitBtn" title="Load brand kit">Load</button>
+          </div>
+          <div id="buildForInfo" style="font-size:0.62rem;color:var(--slate);margin-bottom:4px;"></div>
+        </div>
+      </div>
+
       <!-- PALETTE -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secPal">Color Palette <span>▾</span></div>
-        <div class="sg-sec-body" id="secPal">
-          <div class="sg-row" style="margin-bottom:8px;">
+        <div class="sg-sec-head" data-toggle="secPal">Color Palette <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secPal">
+          <div class="sg-row" style="margin-bottom:4px;">
             <span class="sg-lbl">Preset</span>
             <select class="sg-select" id="palPreset" style="flex:1;">
-              <option value="w2brand">Brand Colors</option>
+              <option value="brand">Brand Kit</option>
               <option value="modern">Modern Dark</option>
               <option value="warm">Warm Sunset</option>
               <option value="cool">Cool Blue</option>
@@ -248,10 +351,19 @@
               <option value="pastel">Pastel</option>
               <option value="bold">Bold Pop</option>
               <option value="mono">Monochrome</option>
-              <option value="client">Client Brand</option>
             </select>
           </div>
           <div id="palSwatches" class="pal-row"></div>
+          <!-- Inline palette editor -->
+          <div id="palEditor" style="margin-top:6px;">
+            <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center;" id="palEditorSwatches"></div>
+            <div class="sg-row" style="margin-top:4px;">
+              <input type="color" id="palEditColor" value="#1C2B4A" style="width:28px;height:24px;border:1px solid var(--ivory-mid);cursor:pointer;">
+              <input type="text" class="sg-input" id="palEditHex" value="#1C2B4A" placeholder="#hex" style="width:72px;">
+              <button class="tool-btn" id="palAddBtn" title="Add color to palette" style="font-size:0.6rem;">+ Add</button>
+              <button class="tool-btn" id="palSaveBtn" title="Save palette back to brand" style="font-size:0.6rem;background:var(--gold);color:var(--dark);border-color:var(--gold);">Save</button>
+            </div>
+          </div>
           <div class="sg-row" style="margin-top:6px;">
             <span class="sg-lbl">Active</span>
             <input type="color" id="activeColor" value="#1C2B4A" style="width:32px;height:28px;border:1px solid var(--ivory-mid);cursor:pointer;">
@@ -260,19 +372,53 @@
             <button class="tool-btn" id="applyStrokeBtn" title="Apply as stroke">Strk</button>
             <button class="tool-btn" id="applyTextClrBtn" title="Apply as text color">Txt</button>
           </div>
-          <div class="sg-row" style="margin-top:4px;">
-            <span class="sg-lbl">Client</span>
-            <select class="sg-select" id="clientSelect" style="flex:1;">
-              <option value="">— None —</option>
+        </div>
+      </div>
+
+      <!-- FONTS (from brand kit) -->
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secFonts">Brand Fonts <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secFonts">
+          <div class="sg-row">
+            <span class="sg-lbl">Heading</span>
+            <select class="sg-select" id="brandFontHeading" style="flex:1;">
+              <option value="Cormorant Garamond">Cormorant Garamond</option>
+              <option value="Playfair Display">Playfair Display</option>
+              <option value="Lora">Lora</option>
+              <option value="Merriweather">Merriweather</option>
+              <option value="Libre Baskerville">Libre Baskerville</option>
+              <option value="Jost">Jost</option>
+              <option value="Inter">Inter</option>
+              <option value="Poppins">Poppins</option>
+              <option value="Raleway">Raleway</option>
+              <option value="Nunito">Nunito</option>
+              <option value="DM Sans">DM Sans</option>
             </select>
           </div>
+          <div class="sg-row">
+            <span class="sg-lbl">Body</span>
+            <select class="sg-select" id="brandFontBody" style="flex:1;">
+              <option value="Jost">Jost</option>
+              <option value="Inter">Inter</option>
+              <option value="Poppins">Poppins</option>
+              <option value="Raleway">Raleway</option>
+              <option value="Nunito">Nunito</option>
+              <option value="DM Sans">DM Sans</option>
+              <option value="Cormorant Garamond">Cormorant Garamond</option>
+              <option value="Playfair Display">Playfair Display</option>
+              <option value="Lora">Lora</option>
+              <option value="Merriweather">Merriweather</option>
+              <option value="Libre Baskerville">Libre Baskerville</option>
+            </select>
+          </div>
+          <div style="font-size:0.6rem;color:var(--slate);margin-top:2px;">New text layers will use these fonts.</div>
         </div>
       </div>
 
       <!-- PRESETS -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secPresets">Saved Presets <span>▾</span></div>
-        <div class="sg-sec-body" id="secPresets">
+        <div class="sg-sec-head" data-toggle="secPresets">Saved Presets <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secPresets">
           <div class="sg-row" style="margin-bottom:6px;">
             <input type="text" class="sg-input" id="presetName" placeholder="Preset name..." style="flex:1;">
             <button class="tool-btn" id="savePresetBtn">Save</button>
@@ -283,8 +429,8 @@
 
       <!-- SAVE/EXPORT -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secExport">Export <span>▾</span></div>
-        <div class="sg-sec-body" id="secExport">
+        <div class="sg-sec-head" data-toggle="secExport">Export <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secExport">
           <div class="sg-row">
             <span class="sg-lbl">Title</span>
             <input type="text" class="sg-input" id="exportTitle" placeholder="My post" style="flex:1;">
@@ -298,6 +444,7 @@
               <option value="blog">Blog</option>
             </select>
           </div>
+          <input type="hidden" id="clientSelect" value="">
           <div class="tool-bar" style="margin-top:6px;">
             <button class="tool-btn" id="downloadPngBtn" style="background:var(--navy);color:#fff;border-color:var(--navy);">Download PNG</button>
             <button class="tool-btn" id="saveLibBtn" style="background:var(--gold);color:var(--dark);border-color:var(--gold);">Save to Library</button>
@@ -319,7 +466,7 @@
   </div>
 
   <!-- ═══ RIGHT PANEL — LAYERS + PROPS ═══ -->
-  <div class="sg-panel sg-panel-right">
+  <div class="sg-panel sg-panel-right" id="sgPanelRight">
     <div class="sg-panel-head">Layers <button class="tool-btn" id="layerUpBtn" style="padding:2px 5px;font-size:0.6rem;">&#9650;</button><button class="tool-btn" id="layerDownBtn" style="padding:2px 5px;font-size:0.6rem;">&#9660;</button></div>
     <div class="sg-panel-scroll" id="layerListWrap">
       <div id="layerList"></div>
@@ -336,6 +483,121 @@
 <script>
 (function(){
 'use strict';
+
+// ═══════════════════════════════════════════
+//  MOBILE FLOATING TOOL RAIL
+// ═══════════════════════════════════════════
+const sgMobOverlay = document.getElementById('sgMobOverlay');
+const sgMobBackdrop = document.getElementById('sgMobBackdrop');
+const sgMobBody = document.getElementById('sgMobOverlayBody');
+const sgMobTitle = document.getElementById('sgMobOverlayTitle');
+
+// Map FAB ids to which accordion section(s) to clone into the overlay
+const fabSectionMap = {
+  size:    ['secSize'],
+  add:     ['secAdd'],
+  bg:      ['secBg', 'secAiBg'],
+  palette: ['secPal'],
+  export:  ['secExport'],
+  layers:  '_layers',
+  tools:   '_all',
+};
+const fabTitleMap = {
+  size: 'Canvas Size', add: 'Add Layers', bg: 'Background',
+  palette: 'Colors', export: 'Export', layers: 'Layers', tools: 'All Tools',
+};
+
+function sgMobOpen(fabKey) {
+  if (!sgMobOverlay) return;
+  sgMobTitle.textContent = fabTitleMap[fabKey] || 'Tools';
+  sgMobBody.innerHTML = '';
+
+  const mapping = fabSectionMap[fabKey];
+  if (mapping === '_layers') {
+    // Clone layers panel content
+    const rp = document.getElementById('sgPanelRight');
+    if (rp) sgMobBody.innerHTML = rp.querySelector('.sg-panel-scroll')?.innerHTML || '';
+    const lp = document.getElementById('layerProps');
+    if (lp && lp.style.display !== 'none') sgMobBody.innerHTML += lp.outerHTML;
+  } else if (mapping === '_all') {
+    // Clone entire tools panel
+    const lp = document.getElementById('sgPanelLeft');
+    if (lp) sgMobBody.innerHTML = lp.querySelector('.sg-panel-scroll')?.innerHTML || '';
+  } else if (Array.isArray(mapping)) {
+    mapping.forEach(secId => {
+      const sec = document.getElementById(secId);
+      if (sec) sgMobBody.innerHTML += sec.parentElement.outerHTML;
+    });
+  }
+
+  // Wire up accordion toggles inside overlay
+  sgMobBody.querySelectorAll('.sg-sec-head[data-toggle]').forEach(h => {
+    h.addEventListener('click', () => {
+      const body = h.nextElementSibling;
+      if (body) body.classList.toggle('collapsed');
+      const arrow = h.querySelector('span');
+      if (arrow) arrow.textContent = body?.classList.contains('collapsed') ? '▸' : '▾';
+    });
+  });
+
+  // Event delegation for size preset buttons in overlay
+  sgMobBody.querySelectorAll('.sz-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      sgMobBody.querySelectorAll('.sz-btn').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.sz-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      if (typeof setCanvasSize === 'function') setCanvasSize(+b.dataset.w, +b.dataset.h, b.dataset.name);
+    });
+  });
+
+  // Event delegation for tool-btn clicks (add layer, generate, etc.)
+  sgMobBody.querySelectorAll('.tool-btn').forEach(btn => {
+    if (btn.id) {
+      const orig = document.getElementById(btn.id);
+      if (orig && orig !== btn) btn.addEventListener('click', (e) => { e.preventDefault(); orig.click(); });
+    }
+  });
+
+  // Sync inputs back: listen for changes in overlay and relay to real panel
+  sgMobBody.querySelectorAll('input, select, textarea').forEach(el => {
+    if (!el.id) return;
+    const orig = document.getElementById(el.id);
+    if (!orig || orig === el) return;
+    // Sync current value from original to overlay copy
+    el.value = orig.value;
+    el.addEventListener('input', () => { orig.value = el.value; orig.dispatchEvent(new Event('input', {bubbles:true})); });
+    el.addEventListener('change', () => { orig.value = el.value; orig.dispatchEvent(new Event('change', {bubbles:true})); });
+  });
+  sgMobBody.querySelectorAll('button').forEach(btn => {
+    if (btn.id && !btn.classList.contains('tool-btn')) {
+      const orig = document.getElementById(btn.id);
+      if (orig && orig !== btn) btn.addEventListener('click', () => orig.click());
+    }
+  });
+
+  sgMobOverlay.classList.add('open');
+  sgMobBackdrop.classList.add('open');
+  document.querySelectorAll('.sg-fab').forEach(f => f.classList.toggle('active', f.dataset.fab === fabKey));
+}
+
+function sgMobClose() {
+  if (sgMobOverlay) sgMobOverlay.classList.remove('open');
+  if (sgMobBackdrop) sgMobBackdrop.classList.remove('open');
+  document.querySelectorAll('.sg-fab').forEach(f => f.classList.remove('active'));
+}
+
+document.querySelectorAll('.sg-fab').forEach(fab => {
+  fab.addEventListener('click', () => {
+    const key = fab.dataset.fab;
+    if (sgMobOverlay?.classList.contains('open') && fab.classList.contains('active')) {
+      sgMobClose();
+    } else {
+      sgMobOpen(key);
+    }
+  });
+});
+document.getElementById('sgMobOverlayClose')?.addEventListener('click', sgMobClose);
+document.getElementById('sgMobBackdrop')?.addEventListener('click', sgMobClose);
 
 // ═══════════════════════════════════════════
 //  STATE
@@ -360,7 +622,7 @@ const ctx = canvas.getContext('2d');
 //  PALETTES
 // ═══════════════════════════════════════════
 const PALETTES = {
-  w2brand:  ['#1C2B4A','#C9A848','#F5F3EF','#0F1B30','#2E4270','#E6E1D6','#6B7380','#FDFCFA'],
+  brand:    [], // loaded from brand kit
   modern:   ['#0F0F0F','#1A1A2E','#16213E','#0F3460','#E94560','#ECECEC','#F5F5F5','#533483'],
   warm:     ['#FF6B35','#F7C59F','#EFEFD0','#004E89','#1A659E','#73454E','#D4A373','#FAEDCD'],
   cool:     ['#003459','#007EA7','#00A8E8','#E8F1F2','#0C7489','#119DA4','#3D5A80','#98C1D9'],
@@ -369,21 +631,36 @@ const PALETTES = {
   bold:     ['#FF0054','#FFBD00','#00F5D4','#9B5DE5','#F15BB5','#FEE440','#00BBF9','#00F5D4'],
   mono:     ['#000000','#1A1A1A','#333333','#555555','#777777','#999999','#CCCCCC','#FFFFFF'],
 };
-let currentPalette = [...PALETTES.w2brand];
+let currentPalette = [];
+let currentBrandKit = null;  // { type, name, colors, fonts, presets }
+let buildForType = 'tenant';
+let buildForId = null;
 
 // ═══════════════════════════════════════════
-//  INIT — load clients, presets
+//  INIT — load clients into Build For dropdown, then load tenant brand kit
 // ═══════════════════════════════════════════
-fetch('/admin/assets/clients').then(r=>r.json()).then(data => {
-  clientsList = data.clients || [];
-  const sel = document.getElementById('clientSelect');
-  clientsList.forEach(c => {
-    const o = document.createElement('option');
-    o.value = c._id;
-    o.textContent = c.company ? `${c.name} (${c.company})` : c.name;
-    sel.appendChild(o);
-  });
-});
+async function initBuildFor() {
+  try {
+    const data = await fetch('/admin/assets/clients').then(r => r.json());
+    clientsList = data.clients || [];
+    const sel = document.getElementById('buildForSelect');
+    if (clientsList.length) {
+      const sep = document.createElement('option');
+      sep.disabled = true;
+      sep.textContent = '── Clients ──';
+      sel.appendChild(sep);
+    }
+    clientsList.forEach(c => {
+      const o = document.createElement('option');
+      o.value = 'client:' + c._id;
+      o.textContent = c.company ? `${c.name} (${c.company})` : c.name;
+      sel.appendChild(o);
+    });
+  } catch(e) {}
+  // Auto-load tenant brand kit on init
+  await loadBrandKit('tenant', null);
+}
+initBuildFor();
 loadPresetList();
 
 // ═══════════════════════════════════════════
@@ -422,11 +699,14 @@ function setCanvasSize(w, h, name) {
 }
 function scaleCanvas() {
   const area = document.getElementById('canvasArea');
-  const maxW = area.clientWidth - 60;
-  const maxH = area.clientHeight - 100;
+  const isMob = window.innerWidth <= 820;
+  const padX = isMob ? 20 : 60;
+  const padY = isMob ? 40 : 100;
+  const maxW = area.clientWidth - padX;
+  const maxH = area.clientHeight - padY;
   const scale = Math.min(1, maxW / canvasW, maxH / canvasH);
-  canvas.style.width = (canvasW * scale) + 'px';
-  canvas.style.height = (canvasH * scale) + 'px';
+  canvas.style.width = Math.max(60, canvasW * scale) + 'px';
+  canvas.style.height = Math.max(60, canvasH * scale) + 'px';
   document.getElementById('canvasInfo').textContent = `${canvasW} x ${canvasH} · ${sizeName}`;
 }
 window.addEventListener('resize', scaleCanvas);
@@ -573,12 +853,61 @@ window.sdCyclePrompts = function() {
 sdCyclePrompts();
 
 // ═══════════════════════════════════════════
+//  BRAND KIT LOADER
+// ═══════════════════════════════════════════
+async function loadBrandKit(type, id) {
+  try {
+    const url = type === 'tenant' ? '/admin/assets/brand-kit/tenant' : `/admin/assets/brand-kit/client/${id}`;
+    const data = await fetch(url).then(r => r.json());
+    currentBrandKit = data;
+    buildForType = type;
+    buildForId = id;
+
+    // Update hidden clientSelect for export tagging
+    document.getElementById('clientSelect').value = type === 'client' ? id : '';
+
+    // Set brand palette
+    PALETTES.brand = data.colors?.length ? [...data.colors] : ['#1C2B4A','#C9A848','#F5F3EF'];
+    currentPalette = [...PALETTES.brand];
+
+    // Set font dropdowns
+    if (data.fonts?.heading) document.getElementById('brandFontHeading').value = data.fonts.heading;
+    if (data.fonts?.body) document.getElementById('brandFontBody').value = data.fonts.body;
+
+    // Force palette preset to "brand"
+    document.getElementById('palPreset').value = 'brand';
+
+    // Info label
+    document.getElementById('buildForInfo').textContent =
+      `${data.name} — ${data.colors?.length || 0} colors · ${data.fonts?.heading || 'default'} / ${data.fonts?.body || 'default'}`;
+
+    renderPalette();
+    renderPalEditor();
+    loadPresetList(); // re-filter presets
+  } catch(err) {
+    console.error('[brand-kit] load error:', err);
+  }
+}
+
+document.getElementById('buildForSelect').addEventListener('change', e => {
+  const val = e.target.value;
+  if (val === 'tenant') {
+    loadBrandKit('tenant', null);
+  } else if (val.startsWith('client:')) {
+    loadBrandKit('client', val.replace('client:', ''));
+  }
+});
+document.getElementById('loadBrandKitBtn').addEventListener('click', () => {
+  document.getElementById('buildForSelect').dispatchEvent(new Event('change'));
+});
+
+// ═══════════════════════════════════════════
 //  PALETTE
 // ═══════════════════════════════════════════
 function renderPalette() {
   const wrap = document.getElementById('palSwatches');
   wrap.innerHTML = '';
-  currentPalette.forEach((clr,i) => {
+  currentPalette.forEach((clr) => {
     const s = document.createElement('div');
     s.className = 'pal-swatch' + (clr === activeColor ? ' active' : '');
     s.style.background = clr;
@@ -595,28 +924,88 @@ function setActiveColor(clr) {
 }
 document.getElementById('palPreset').addEventListener('change', e => {
   const key = e.target.value;
-  if (key === 'client') {
-    const cid = document.getElementById('clientSelect').value;
-    const client = clientsList.find(c => c._id === cid);
-    if (client?.brandColors?.length) {
-      currentPalette = [...client.brandColors];
-    } else {
-      currentPalette = [...PALETTES.w2brand];
-      alert('No brand colors saved for this client. Set them in the client onboarding tab.');
-    }
+  if (key === 'brand') {
+    currentPalette = PALETTES.brand.length ? [...PALETTES.brand] : ['#1C2B4A','#C9A848','#F5F3EF'];
   } else {
-    currentPalette = [...(PALETTES[key] || PALETTES.w2brand)];
+    currentPalette = [...(PALETTES[key] || PALETTES.brand)];
   }
   renderPalette();
-});
-document.getElementById('clientSelect').addEventListener('change', () => {
-  if (document.getElementById('palPreset').value === 'client') {
-    document.getElementById('palPreset').dispatchEvent(new Event('change'));
-  }
+  renderPalEditor();
 });
 document.getElementById('activeColor').addEventListener('input', e => { setActiveColor(e.target.value); });
 document.getElementById('activeColorHex').addEventListener('change', e => { setActiveColor(e.target.value); });
+
+// ═══════════════════════════════════════════
+//  INLINE PALETTE EDITOR
+// ═══════════════════════════════════════════
+function renderPalEditor() {
+  const wrap = document.getElementById('palEditorSwatches');
+  wrap.innerHTML = '';
+  currentPalette.forEach((clr, i) => {
+    const s = document.createElement('div');
+    s.style.cssText = 'position:relative;display:inline-block;';
+    s.innerHTML = `
+      <div class="pal-swatch" style="background:${clr}" title="${clr}"></div>
+      <span style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#c0392b;color:#fff;border-radius:50%;font-size:9px;line-height:14px;text-align:center;cursor:pointer;display:none;" class="pal-rm">x</span>`;
+    s.addEventListener('mouseenter', () => s.querySelector('.pal-rm').style.display = 'block');
+    s.addEventListener('mouseleave', () => s.querySelector('.pal-rm').style.display = 'none');
+    s.querySelector('.pal-swatch').addEventListener('click', () => {
+      setActiveColor(clr);
+      document.getElementById('palEditColor').value = clr;
+      document.getElementById('palEditHex').value = clr;
+    });
+    s.querySelector('.pal-rm').addEventListener('click', (e) => {
+      e.stopPropagation();
+      currentPalette.splice(i, 1);
+      PALETTES.brand = [...currentPalette];
+      renderPalette();
+      renderPalEditor();
+    });
+    wrap.appendChild(s);
+  });
+}
+document.getElementById('palEditColor').addEventListener('input', e => {
+  document.getElementById('palEditHex').value = e.target.value;
+});
+document.getElementById('palEditHex').addEventListener('change', e => {
+  if (/^#[0-9a-fA-F]{3,8}$/.test(e.target.value)) {
+    document.getElementById('palEditColor').value = e.target.value;
+  }
+});
+document.getElementById('palAddBtn').addEventListener('click', () => {
+  const clr = document.getElementById('palEditHex').value.trim();
+  if (/^#[0-9a-fA-F]{3,8}$/.test(clr) && !currentPalette.includes(clr)) {
+    currentPalette.push(clr);
+    PALETTES.brand = [...currentPalette];
+    renderPalette();
+    renderPalEditor();
+  }
+});
+document.getElementById('palSaveBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('palSaveBtn');
+  btn.textContent = 'Saving...';
+  try {
+    const url = buildForType === 'tenant'
+      ? '/admin/assets/brand-kit/tenant'
+      : `/admin/assets/brand-kit/client/${buildForId}`;
+    const body = {
+      colors: [...currentPalette],
+      fonts: {
+        heading: document.getElementById('brandFontHeading').value,
+        body: document.getElementById('brandFontBody').value,
+      },
+    };
+    const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await r.json();
+    btn.textContent = data.success ? 'Saved!' : 'Error';
+    PALETTES.brand = [...currentPalette];
+  } catch(err) {
+    btn.textContent = 'Error';
+  }
+  setTimeout(() => { btn.textContent = 'Save'; }, 2000);
+});
 renderPalette();
+renderPalEditor();
 
 // Apply active color to selected layer
 document.getElementById('applyFillBtn').addEventListener('click', () => { const l = selLayer(); if (l && (l.type==='rect'||l.type==='circle')) { l.fill = activeColor; render(); renderProps(); } });
@@ -663,7 +1052,8 @@ document.getElementById('localFileInput').addEventListener('change', e => {
   e.target.value = '';
 });
 document.getElementById('addTextBtn').addEventListener('click', () => {
-  addLayer({ type:'text', x: canvasW*0.1, y: canvasH*0.4, w: canvasW*0.8, h: 80, text:'Your Text', fontSize:56, fontFamily:'Jost', color:'#FFFFFF', align:'center', bold:true, italic:false });
+  const headingFont = document.getElementById('brandFontHeading').value || 'Jost';
+  addLayer({ type:'text', x: canvasW*0.1, y: canvasH*0.4, w: canvasW*0.8, h: 80, text:'Your Text', fontSize:56, fontFamily: headingFont, color:'#FFFFFF', align:'center', bold:true, italic:false });
 });
 document.getElementById('addRectBtn').addEventListener('click', () => {
   addLayer({ type:'rect', x: canvasW*0.1, y: canvasH*0.6, w: canvasW*0.8, h: canvasH*0.2, fill: activeColor, stroke:'', strokeWidth:0, radius:0 });
@@ -971,12 +1361,8 @@ function renderProps() {
       <div class="sg-row"><span class="sg-lbl">Text</span><input type="text" class="sg-input" data-prop="text" value="${esc(l.text)}" style="flex:1"></div>
       <div class="sg-row"><span class="sg-lbl">Size</span><input type="number" class="sg-input" data-prop="fontSize" value="${l.fontSize}" style="width:55px">
       <span class="sg-lbl">Font</span><select class="sg-select" data-prop="fontFamily" style="flex:1">
-        <option ${l.fontFamily==='Jost'?'selected':''}>Jost</option>
-        <option value="Cormorant Garamond" ${l.fontFamily==='Cormorant Garamond'?'selected':''}>Cormorant</option>
-        <option ${l.fontFamily==='Arial'?'selected':''}>Arial</option>
-        <option value="Georgia" ${l.fontFamily==='Georgia'?'selected':''}>Georgia</option>
-        <option value="Impact" ${l.fontFamily==='Impact'?'selected':''}>Impact</option>
-        <option value="Courier New" ${l.fontFamily==='Courier New'?'selected':''}>Courier</option>
+        ${['Cormorant Garamond','Playfair Display','Lora','Merriweather','Libre Baskerville','Jost','Inter','Poppins','Raleway','Nunito','DM Sans','Arial','Georgia','Impact','Courier New']
+          .map(f => '<option value="'+f+'" '+(l.fontFamily===f?'selected':'')+'>'+f+'</option>').join('')}
       </select></div>
       <div class="sg-row"><span class="sg-lbl">Color</span><input type="color" data-prop="color" value="${l.color}" style="width:32px;height:24px;border:1px solid var(--ivory-mid);cursor:pointer;">
       <span class="sg-lbl">Align</span><select class="sg-select" data-prop="align" style="width:70px">
@@ -1068,7 +1454,8 @@ document.getElementById('savePresetBtn').addEventListener('click', async () => {
     name, canvasW, canvasH, sizePreset: sizeName, bgColor,
     palette: currentPalette,
     layers: serializeLayers(),
-    clientId: document.getElementById('clientSelect').value || null,
+    clientId: buildForType === 'client' ? buildForId : null,
+    brandTarget: buildForType === 'client' ? buildForId : 'tenant',
     folder: document.getElementById('exportFolder').value || 'clients',
   };
   try {
@@ -1089,14 +1476,27 @@ document.getElementById('savePresetBtn').addEventListener('click', async () => {
 
 async function loadPresetList() {
   try {
-    const r = await fetch('/admin/assets/social/presets');
-    const data = await r.json();
+    // If brand kit is loaded, show its presets; otherwise fetch all
+    let presets = [];
+    if (currentBrandKit?.presets?.length) {
+      presets = currentBrandKit.presets;
+    } else {
+      const qs = buildForType === 'client' && buildForId ? `?clientId=${buildForId}` : '';
+      const r = await fetch('/admin/assets/social/presets' + qs);
+      const data = await r.json();
+      presets = data.presets || [];
+    }
     const wrap = document.getElementById('presetList');
     wrap.innerHTML = '';
-    (data.presets || []).forEach(p => {
+    if (!presets.length) {
+      wrap.innerHTML = '<div style="font-size:0.65rem;color:var(--slate);">No saved presets for this brand.</div>';
+      return;
+    }
+    presets.forEach(p => {
       const div = document.createElement('div');
       div.className = 'preset-item';
-      div.innerHTML = `<span class="pi-name">${esc(p.name)}</span><span class="pi-size">${p.canvasW}x${p.canvasH}</span><span class="pi-del" data-del="${p._id}" title="Delete">✕</span>`;
+      const owner = p.clientId ? (clientsList.find(c => c._id === p.clientId)?.name || 'Client') : 'Brand';
+      div.innerHTML = `<span class="pi-name">${esc(p.name)}</span><span class="pi-size" style="opacity:0.6;">${owner} · ${p.canvasW}x${p.canvasH}</span><span class="pi-del" data-del="${p._id}" title="Delete">✕</span>`;
       div.addEventListener('click', e => {
         if (e.target.dataset.del) return;
         loadPreset(p);
@@ -1105,6 +1505,7 @@ async function loadPresetList() {
         e.stopPropagation();
         if (!confirm('Delete preset "'+p.name+'"?')) return;
         await fetch(`/admin/assets/social/presets/${p._id}`, { method:'DELETE' });
+        currentBrandKit = null; // force refetch
         loadPresetList();
       });
       wrap.appendChild(div);
@@ -1300,8 +1701,8 @@ renderLayerList();
   }
   .ap-send:hover { background: var(--navy-mid); }
   .ap-send:disabled { opacity: 0.5; cursor: not-allowed; }
-  @media (max-width: 820px) { #agentPanel { width: min(440px, 100vw); } }
-  @media (max-width: 520px) { #agentPanel { width: 100vw; right: -100vw; } #agentPanel.open { right: 0; } }
+  @media (max-width: 820px) { #agentPanel { width: min(380px, 92vw); } .ap-quick-btns { gap: 4px; } .ap-quick-btn { font-size: 0.65rem; padding: 6px 8px; } }
+  @media (max-width: 520px) { #agentPanel { width: 100vw; right: -100vw; } #agentPanel.open { right: 0; } .ap-input { font-size: 0.88rem; padding: 12px 14px; } }
 </style>
 
 <div id="agentPanel">
@@ -1488,4 +1889,5 @@ renderLayerList();
 })();
 </script>
 <script src="/js/agentHealth.js"></script>
+<script src="/js/tours/social-generator.js"></script>
 </div></div></body></html>

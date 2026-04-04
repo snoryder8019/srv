@@ -16,6 +16,38 @@ import { bustTenantCache } from '../../middleware/tenant.js';
 
 const router = express.Router();
 
+// ── Tenant tag definitions ─────────────────────────────────────────────────
+const TENANT_TAGS = {
+  vip:              { label: 'VIP',              color: '#c9a848', bg: 'rgba(201,168,72,0.12)' },
+  'hot-lead':       { label: 'Hot Lead',         color: '#f97316', bg: 'rgba(249,115,22,0.10)' },
+  'needs-onboarding': { label: 'Needs Onboarding', color: '#0ea5e9', bg: 'rgba(14,165,233,0.10)' },
+  'needs-design':   { label: 'Needs Design',     color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },
+  'needs-content':  { label: 'Needs Content',    color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
+  'at-risk':        { label: 'At Risk',          color: '#ef4444', bg: 'rgba(239,68,68,0.10)' },
+  enterprise:       { label: 'Enterprise',       color: '#1e293b', bg: 'rgba(30,41,59,0.10)' },
+  'power-user':     { label: 'Power User',       color: '#eab308', bg: 'rgba(234,179,8,0.10)' },
+};
+
+// ── Integration checks (works on raw tenant docs, encrypted secrets are still truthy)
+const CONFIG_CHECKS = {
+  email:    { label: 'Email',     icon: '✉', test: t => !!(t.public?.zohoUser || t.secrets?.zohoUser) && !!t.secrets?.zohoPass },
+  stripe:   { label: 'Stripe',    icon: '💳', test: t => !!t.secrets?.stripeSecret },
+  paypal:   { label: 'PayPal',    icon: 'PP', test: t => !!t.public?.paypalClientId && !!t.secrets?.paypalSecret },
+  google:   { label: 'Google',    icon: 'G',  test: t => !!t.public?.googlePlacesKey },
+  oauth:    { label: 'OAuth',     icon: '🔑', test: t => !!t.public?.googleOAuthClientId && !!t.secrets?.googleOAuthSecret },
+  domain:   { label: 'Custom Domain', icon: '🌐', test: t => !!t.meta?.customDomain || !!t.public?.customDomain },
+};
+
+function getConfigStatus(tenant) {
+  const out = {};
+  for (const [key, check] of Object.entries(CONFIG_CHECKS)) {
+    out[key] = check.test(tenant);
+  }
+  out._count = Object.values(out).filter(Boolean).length;
+  out._total = Object.keys(CONFIG_CHECKS).length;
+  return out;
+}
+
 // All routes require superadmin
 router.use(requireSuperInAdmin);
 
@@ -32,11 +64,18 @@ router.get('/tenants', async (req, res) => {
     ]).then(([total, active, preview, suspended]) => ({ total, active, preview, suspended })),
   ]);
 
+  // Compute config status per tenant
+  const configMap = {};
+  for (const t of tenants) configMap[t._id.toString()] = getConfigStatus(t);
+
   res.render('admin/super/tenants', {
     user: req.adminUser,
     page: 'super-tenants',
     tenants,
     stats,
+    tagDefs: TENANT_TAGS,
+    configMap,
+    configChecks: CONFIG_CHECKS,
   });
 });
 
@@ -65,6 +104,9 @@ router.get('/tenants/:id', async (req, res) => {
     tenant,
     dbStats: { blogCount, clientCount, pageCount, invoiceCount, userCount },
     error: req.query.error || null,
+    tagDefs: TENANT_TAGS,
+    configStatus: getConfigStatus(tenant),
+    configChecks: CONFIG_CHECKS,
   });
 });
 
@@ -153,6 +195,24 @@ router.post('/tenants/:id/delete', async (req, res) => {
   res.redirect('/admin/super/tenants');
 });
 
+// ── Toggle Tenant Tags ─────────────────────────────────────────────────────
+router.post('/tenants/:id/tags', async (req, res) => {
+  const { tag, action } = req.body;
+  if (!tag || !TENANT_TAGS[tag]) return res.redirect(`/admin/super/tenants/${req.params.id}`);
+
+  const slab = getSlabDb();
+  const tenant = await slab.collection('tenants').findOne({ _id: new ObjectId(req.params.id) });
+  if (!tenant) return res.redirect('/admin/super/tenants');
+
+  const op = action === 'remove'
+    ? { $pull: { tags: tag }, $set: { updatedAt: new Date() } }
+    : { $addToSet: { tags: tag }, $set: { updatedAt: new Date() } };
+
+  await slab.collection('tenants').updateOne({ _id: tenant._id }, op);
+  bustTenantCache(tenant.domain);
+  res.redirect(`/admin/super/tenants/${req.params.id}`);
+});
+
 // ── Impersonate (Login as Tenant Admin) ─────────────────────────────────────
 router.post('/tenants/:id/impersonate', async (req, res) => {
   const slab = getSlabDb();
@@ -182,7 +242,7 @@ router.get('/tickets', async (req, res) => {
   const slab = getSlabDb();
   const filter = {};
   if (req.query.status) filter.status = req.query.status;
-  else filter.status = { $ne: 'closed' };
+  else filter.status = 'escalated';
 
   const tickets = await slab.collection('escalated_tickets')
     .find(filter).sort({ escalatedAt: -1 }).toArray();

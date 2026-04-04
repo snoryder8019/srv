@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config/config.js';
 
-const SUPERADMIN_EMAILS = ['snoryder8019@gmail.com'];
+const SUPERADMIN_EMAILS = ['snoryder8019@gmail.com', 'scott@madladslab.com'];
 
 export function isSuperAdminEmail(email) {
   return SUPERADMIN_EMAILS.includes(email?.toLowerCase());

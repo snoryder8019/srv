@@ -20,6 +20,7 @@
       text-decoration:none; color:inherit; cursor:pointer;
     }
     .tenant-card:hover { border-color:var(--gold); background:rgba(201,168,72,0.04); }
+    .tenant-card:hover .tenant-name { color:var(--gold); }
     .tenant-name { font-weight:600; font-size:14px; color:var(--dark); }
     .tenant-domain { font-size:12px; color:var(--slate); margin-top:2px; }
     .tenant-owner { font-size:11px; color:var(--slate); margin-top:2px; }
@@ -30,6 +31,16 @@
     .filter-bar { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
     .filter-btn { padding:6px 14px; border-radius:2px; font-size:0.7rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; background:var(--white); border:1px solid var(--ivory-mid); color:var(--slate); cursor:pointer; transition:all 0.15s; }
     .filter-btn:hover, .filter-btn.active { border-color:var(--gold); color:var(--navy); background:rgba(201,168,72,0.06); }
+    .tenant-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+    .ttag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:10px; font-weight:600; letter-spacing:0.02em; white-space:nowrap; }
+    .tag-filter-bar { display:flex; gap:6px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+    .tag-filter-bar label { font-size:0.65rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--slate); }
+    .tag-filter-bar select { background:var(--white); border:1px solid var(--ivory-mid); color:var(--dark); padding:6px 10px; border-radius:2px; font-family:'Jost',sans-serif; font-size:0.8rem; }
+    .cfg-row { display:flex; gap:4px; margin-top:5px; flex-wrap:wrap; }
+    .cfg-pip { display:inline-flex; align-items:center; gap:2px; padding:1px 6px; border-radius:8px; font-size:9px; font-weight:600; letter-spacing:0.02em; }
+    .cfg-on { background:rgba(16,185,129,0.12); color:#059669; }
+    .cfg-off { background:rgba(0,0,0,0.04); color:#bbb; }
+    .cfg-count { font-size:10px; color:var(--slate); margin-left:4px; font-weight:600; }
   </style>
 
   <div class="filter-bar">
@@ -39,13 +50,49 @@
     <button class="filter-btn" data-filter="suspended">Suspended (<%= stats.suspended %>)</button>
   </div>
 
+  <div class="tag-filter-bar">
+    <label>Tag:</label>
+    <select id="tagFilter">
+      <option value="">All</option>
+      <option value="__none">No tags</option>
+      <% for (const [slug, def] of Object.entries(tagDefs)) { %>
+      <option value="<%= slug %>"><%= def.label %></option>
+      <% } %>
+    </select>
+    <label style="margin-left:12px;">Config:</label>
+    <select id="cfgFilter">
+      <option value="">All</option>
+      <option value="__none">No integrations</option>
+      <option value="__all">Fully configured</option>
+      <% for (const [key, check] of Object.entries(configChecks)) { %>
+      <option value="has:<%= key %>">Has <%= check.label %></option>
+      <option value="no:<%= key %>">Missing <%= check.label %></option>
+      <% } %>
+    </select>
+  </div>
+
   <div class="tenant-grid" id="tenantGrid">
     <% tenants.forEach(t => { %>
-    <a href="/admin/super/tenants/<%= t._id %>" class="tenant-card" data-status="<%= t.status || 'preview' %>">
+    <% const cfgKeys = Object.keys(configChecks).filter(k => configMap[t._id.toString()][k]).join(','); %>
+    <a href="/admin/super/tenants/<%= t._id %>" class="tenant-card" data-status="<%= t.status || 'preview' %>" data-tags="<%= (t.tags || []).join(',') %>" data-cfg="<%= cfgKeys %>" data-cfg-count="<%= configMap[t._id.toString()]._count %>" data-cfg-total="<%= configMap[t._id.toString()]._total %>">
       <div>
         <div class="tenant-name"><%= t.brand?.name || t.domain %></div>
         <div class="tenant-domain"><%= t.domain %></div>
         <div class="tenant-owner"><%= t.meta?.ownerEmail || '' %></div>
+        <% if (t.tags && t.tags.length) { %>
+        <div class="tenant-tags">
+          <% for (const tag of t.tags) { const def = tagDefs[tag]; if (def) { %>
+          <span class="ttag" style="color:<%= def.color %>;background:<%= def.bg %>"><%= def.label %></span>
+          <% } } %>
+        </div>
+        <% } %>
+        <% const cfg = configMap[t._id.toString()]; %>
+        <div class="cfg-row">
+          <% for (const [key, check] of Object.entries(configChecks)) { %>
+          <span class="cfg-pip <%= cfg[key] ? 'cfg-on' : 'cfg-off' %>" title="<%= check.label %>: <%= cfg[key] ? 'configured' : 'not set' %>"><%= check.icon %></span>
+          <% } %>
+          <span class="cfg-count"><%= cfg._count %>/<%= cfg._total %></span>
+        </div>
       </div>
       <div>
         <span class="badge badge-<%= t.status || 'preview' %>"><%= t.status || 'preview' %></span>
@@ -64,14 +111,36 @@
 </div>
 
 <script>
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+function applyFilters() {
+  var statusFilter = document.querySelector('.filter-btn.active').dataset.filter;
+  var tagFilter = document.getElementById('tagFilter').value;
+  var cfgFilter = document.getElementById('cfgFilter').value;
+  document.querySelectorAll('.tenant-card').forEach(function(card) {
+    var statusOk = (statusFilter === 'all' || card.dataset.status === statusFilter);
+    var tags = card.dataset.tags || '';
+    var tagOk = true;
+    if (tagFilter === '__none') tagOk = !tags;
+    else if (tagFilter) tagOk = tags.split(',').indexOf(tagFilter) !== -1;
+    var cfgOk = true;
+    if (cfgFilter) {
+      var cfg = card.dataset.cfg || '';
+      var count = parseInt(card.dataset.cfgCount) || 0;
+      var total = parseInt(card.dataset.cfgTotal) || 0;
+      if (cfgFilter === '__none') cfgOk = count === 0;
+      else if (cfgFilter === '__all') cfgOk = count === total;
+      else if (cfgFilter.indexOf('has:') === 0) cfgOk = cfg.split(',').indexOf(cfgFilter.slice(4)) !== -1;
+      else if (cfgFilter.indexOf('no:') === 0) cfgOk = cfg.split(',').indexOf(cfgFilter.slice(3)) === -1;
+    }
+    card.style.display = (statusOk && tagOk && cfgOk) ? '' : 'none';
+  });
+}
+document.querySelectorAll('.filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
     btn.classList.add('active');
-    const filter = btn.dataset.filter;
-    document.querySelectorAll('.tenant-card').forEach(card => {
-      card.style.display = (filter === 'all' || card.dataset.status === filter) ? '' : 'none';
-    });
+    applyFilters();
   });
 });
+document.getElementById('tagFilter').addEventListener('change', applyFilters);
+document.getElementById('cfgFilter').addEventListener('change', applyFilters);
 </script>

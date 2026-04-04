@@ -1,0 +1,81 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Onboarding Forms</div>
+  <div class="topbar-actions">
+    <a href="/admin/onboarding/new" class="btn btn-navy">+ New Form</a>
+  </div>
+</div>
+<div class="content">
+
+  <% if (msg === 'duplicated') { %><div class="alert alert-success">Form duplicated.</div><% } %>
+  <% if (msg === 'archived') { %><div class="alert alert-success">Form archived.</div><% } %>
+  <% if (err) { %><div class="alert alert-error">Something went wrong. Please try again.</div><% } %>
+
+  <% if (!forms || forms.length === 0) { %>
+    <div class="empty">
+      <div class="empty-icon">&#9638;</div>
+      <p>No onboarding forms yet. Create your first form to start collecting client intake data.</p>
+      <div style="margin-top:20px;"><a href="/admin/onboarding/new" class="btn btn-navy">Create Form</a></div>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Fields</th>
+            <th>Assigned To</th>
+            <th>Status</th>
+            <th>Responses</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% forms.forEach(f => { %>
+            <tr>
+              <td>
+                <div style="font-weight:500;"><%= f.name %></div>
+                <div style="font-size:0.75rem;color:var(--slate);margin-top:2px;"><%= f.description || '—' %></div>
+              </td>
+              <td><%= f.fields?.length || 0 %></td>
+              <td>
+                <% if (f.assignTo?.length) { %>
+                  <% f.assignTo.forEach(a => { %>
+                    <span class="badge" style="margin-right:4px;"><%= a %></span>
+                  <% }) %>
+                <% } else { %>
+                  <span style="color:var(--slate);">—</span>
+                <% } %>
+              </td>
+              <td>
+                <span class="badge <%= f.status === 'active' ? 'badge-active' : 'badge-draft' %>"><%= f.status %></span>
+              </td>
+              <td><%= countMap[f._id.toString()] || 0 %></td>
+              <td style="font-size:0.82rem;color:var(--slate);">
+                <%= new Date(f.updatedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) %>
+              </td>
+              <td style="text-align:right;white-space:nowrap;">
+                <a href="/admin/onboarding/<%= f._id %>/responses" class="btn btn-ghost btn-sm" style="margin-right:4px;">Responses</a>
+                <a href="/admin/onboarding/<%= f._id %>" class="btn btn-ghost btn-sm" style="margin-right:4px;">Edit</a>
+                <form method="POST" action="/admin/onboarding/<%= f._id %>/duplicate" style="display:inline;">
+                  <button type="submit" class="btn btn-ghost btn-sm" style="margin-right:4px;">Duplicate</button>
+                </form>
+                <form method="POST" action="/admin/onboarding/<%= f._id %>/delete" style="display:inline;"
+                      onsubmit="return confirm('Archive this form?')">
+                  <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--danger);">Archive</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+</div><!-- .main -->
+</body>
+</html>

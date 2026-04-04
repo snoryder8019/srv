@@ -7,28 +7,11 @@
   <meta property="og:description" content="Social media management, website design, and content creation for local businesses in <%= brand?.location || '' %>." />
   <title><%= brand?.name || 'Home' %> | <%= brand?.location || '' %></title>
   <%
-    const _FM = {
-      'Cormorant Garamond': 'Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400',
-      'Playfair Display': 'Playfair+Display:ital,wght@0,400;0,600;1,400',
-      'Lora': 'Lora:ital,wght@0,400;0,600;1,400',
-      'Merriweather': 'Merriweather:ital,wght@0,300;0,400;0,700;1,300',
-      'Libre Baskerville': 'Libre+Baskerville:ital,wght@0,400;0,700;1,400',
-      'Jost': 'Jost:wght@300;400;500;600',
-      'Inter': 'Inter:wght@300;400;500;600',
-      'Poppins': 'Poppins:wght@300;400;500;600',
-      'Raleway': 'Raleway:wght@300;400;500;600',
-      'Nunito': 'Nunito:wght@300;400;500;600',
-      'DM Sans': 'DM+Sans:wght@300;400;500;600',
-    };
-    const _hF = _FM[design.font_heading] || _FM['Cormorant Garamond'];
-    const _bF = _FM[design.font_body] || _FM['Jost'];
-    const _fp = design.font_heading === design.font_body ? _hF : _hF + '&family=' + _bF;
     const _BI_auto = (brand?.name || '').split(/\s+/).map(w => w[0]).join('').toUpperCase();
     const _BI = (design.hero_name_large && design.hero_name_large.trim()) || _BI_auto;
     const _sp = (brand?.name || '').indexOf(' ') > 0 ? (brand.name.indexOf(' ')) : 0;
   %>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=<%= _fp %>&display=swap" rel="stylesheet">
+  <%- include('partials/font-vars') %>
 <style>
   /* ── PALETTE (dynamic from admin) ── */
   :root {
@@ -1482,6 +1465,48 @@
 <% } %>
 
 <!-- FOOTER -->
+<% if (visibility.qr) { %>
+<!-- QR CODE SHARE WIDGET -->
+<div id="qr-share-widget" style="position:fixed;bottom:24px;left:24px;z-index:7500;">
+  <button id="qr-toggle-btn" aria-label="Show QR Code" style="width:48px;height:48px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,0.25);transition:transform 0.2s,background 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--white)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="2" height="2"/><rect x="20" y="14" width="2" height="2"/><rect x="14" y="20" width="2" height="2"/><rect x="20" y="20" width="2" height="2"/><rect x="17" y="17" width="2" height="2"/></svg>
+  </button>
+  <div id="qr-popup" style="display:none;position:absolute;bottom:60px;left:0;background:var(--white);border:1px solid var(--ivory-mid);border-radius:6px;padding:20px;box-shadow:0 8px 40px rgba(0,0,0,0.18);min-width:200px;text-align:center;transform:translateY(10px);opacity:0;transition:transform 0.25s ease,opacity 0.25s ease;">
+    <div style="font-family:var(--font-heading),serif;font-size:0.9rem;font-weight:600;color:var(--dark);margin-bottom:12px;">Share This Page</div>
+    <div id="qr-canvas" style="display:inline-block;padding:8px;background:#fff;border-radius:4px;"></div>
+    <div style="font-size:0.68rem;color:var(--on-ivory-muted);margin-top:10px;font-weight:300;"><%= brand?.name || '' %></div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+(function() {
+  var btn = document.getElementById('qr-toggle-btn');
+  var popup = document.getElementById('qr-popup');
+  var canvas = document.getElementById('qr-canvas');
+  var open = false, generated = false;
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    open = !open;
+    if (open) {
+      if (!generated) {
+        new QRCode(canvas, { text: window.location.origin, width: 160, height: 160, colorDark: '<%= design.color_primary %>', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+        generated = true;
+      }
+      popup.style.display = 'block';
+      requestAnimationFrame(function() { popup.style.opacity = '1'; popup.style.transform = 'translateY(0)'; });
+    } else {
+      popup.style.opacity = '0'; popup.style.transform = 'translateY(10px)';
+      setTimeout(function() { popup.style.display = 'none'; }, 260);
+    }
+  });
+  document.addEventListener('click', function() {
+    if (open) { open = false; popup.style.opacity = '0'; popup.style.transform = 'translateY(10px)'; setTimeout(function() { popup.style.display = 'none'; }, 260); }
+  });
+  popup.addEventListener('click', function(e) { e.stopPropagation(); });
+})();
+</script>
+<% } %>
+
 <footer>
   <div class="footer-top">
     <div>

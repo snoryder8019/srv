@@ -44,6 +44,8 @@ const SEED_COLLECTIONS = {
   brand_models: [],
   assets: [],
   contacts: [],
+  onboarding_forms: [],
+  onboarding_responses: [],
 };
 
 // ── Main provisioning function ──────────────────────────────────────────────
@@ -119,11 +121,12 @@ export async function provisionTenant({
     }
   }
 
-  // Create admin user
+  // Create admin user (tenant owner = superadmin of this tenant)
   await tenantDb.collection('users').insertOne({
     email: ownerEmail,
     displayName: brandName,
     isAdmin: true,
+    isOwner: true,
     provider: 'provisioned',
     createdAt: now,
   });

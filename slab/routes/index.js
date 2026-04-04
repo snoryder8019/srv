@@ -133,6 +133,7 @@ function buildVisibility(design) {
     reviews:   design.vis_reviews   !== 'false',
     contact:   design.vis_contact   !== 'false',
     blog:      design.vis_blog      === 'true',
+    qr:        design.vis_qr        === 'true',
   };
 }
 
@@ -286,6 +287,26 @@ router.post('/contact', async (req, res) => {
     console.error('[contact] error:', err);
     res.redirect('/#contact');
   }
+});
+
+// Terms & Conditions
+router.get('/terms', async (req, res) => {
+  const brand = res.locals.brand || {};
+  if (req.db) {
+    const doc = await req.db.collection('copy').findOne({ key: 'terms_content' });
+    if (doc?.value) return res.render('legal/custom', { brand, title: 'Terms & Conditions', content: doc.value });
+  }
+  res.render('legal/terms', { brand });
+});
+
+// Privacy Policy
+router.get('/privacy', async (req, res) => {
+  const brand = res.locals.brand || {};
+  if (req.db) {
+    const doc = await req.db.collection('copy').findOne({ key: 'privacy_content' });
+    if (doc?.value) return res.render('legal/custom', { brand, title: 'Privacy Policy', content: doc.value });
+  }
+  res.render('legal/privacy', { brand });
 });
 
 // Home page

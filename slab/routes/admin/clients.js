@@ -12,11 +12,48 @@ import crypto from 'crypto';
 
 const router = express.Router();
 
+// ── Client tag definitions ─────────────────────────────────────────────────
+const CLIENT_TAGS = {
+  vip:            { label: 'VIP',           color: '#c9a848', bg: 'rgba(201,168,72,0.12)' },
+  'high-value':   { label: 'High Value',    color: '#eab308', bg: 'rgba(234,179,8,0.10)' },
+  'needs-followup': { label: 'Follow-Up',   color: '#f97316', bg: 'rgba(249,115,22,0.10)' },
+  'at-risk':      { label: 'At Risk',       color: '#ef4444', bg: 'rgba(239,68,68,0.10)' },
+  referral:       { label: 'Referral',      color: '#0ea5e9', bg: 'rgba(14,165,233,0.10)' },
+  recurring:      { label: 'Recurring',     color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
+  'new-lead':     { label: 'New Lead',      color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },
+  priority:       { label: 'Priority',      color: '#1e293b', bg: 'rgba(30,41,59,0.10)' },
+};
+
+// ── Client profile completeness checks ─────────────────────────────────────
+const CLIENT_CONFIG = {
+  email:       { label: 'Email',      icon: '✉', test: c => !!c.email },
+  phone:       { label: 'Phone',      icon: '☎', test: c => !!c.phone },
+  company:     { label: 'Company',    icon: '◼', test: c => !!c.company },
+  website:     { label: 'Website',    icon: '🌐', test: c => !!c.website },
+  address:     { label: 'Address',    icon: '📍', test: c => !!c.address },
+  onboarding:  { label: 'Onboarded',  icon: '✓', test: c => !!c.onboarding?.complete },
+};
+
+function getClientConfig(client) {
+  const out = {};
+  for (const [key, check] of Object.entries(CLIENT_CONFIG)) {
+    out[key] = check.test(client);
+  }
+  out._count = Object.values(out).filter(Boolean).length;
+  out._total = Object.keys(CLIENT_CONFIG).length;
+  return out;
+}
+
 // List
 router.get('/', async (req, res) => {
   const db = req.db;
   const clients = await db.collection('clients').find({}).sort({ createdAt: -1 }).toArray();
-  res.render('admin/clients/index', { user: req.adminUser, clients });
+  const configMap = {};
+  for (const c of clients) configMap[c._id.toString()] = getClientConfig(c);
+  res.render('admin/clients/index', {
+    user: req.adminUser, clients,
+    tagDefs: CLIENT_TAGS, configMap, configChecks: CLIENT_CONFIG,
+  });
 });
 
 // New form
@@ -68,8 +105,18 @@ router.get('/:id', async (req, res) => {
   // Only load full data for the active tab
   let invoices = [], files = [], assets = [], emails = [];
   let threads = [], unthreaded = [], showArchived = false, archivedCount = 0;
+  let onboardingForms = [], onboardingResponses = [];
 
-  if (tab === 'invoices') {
+  if (tab === 'onboarding') {
+    onboardingForms = await db.collection('onboarding_forms')
+      .find({ status: 'active', assignTo: 'client-onboarding' })
+      .sort({ updatedAt: -1 }).toArray();
+    if (onboardingForms.length) {
+      onboardingResponses = await db.collection('onboarding_responses')
+        .find({ clientId: client._id, formId: { $in: onboardingForms.map(f => f._id) } })
+        .sort({ createdAt: -1 }).toArray();
+    }
+  } else if (tab === 'invoices') {
     invoices = await db.collection('invoices').find({ clientId: cid }).sort({ createdAt: -1 }).toArray();
   } else if (tab === 'files') {
     files = await db.collection('files').find({ clientId: cid }).sort({ uploadedAt: -1 }).toArray();
@@ -106,6 +153,8 @@ router.get('/:id', async (req, res) => {
     user: req.adminUser, c: client, invoices, files, assets, emails,
     threads, unthreaded, tab, qs: req.query, showArchived, archivedCount,
     counts: { invoices: invoiceCount, files: fileCount, assets: assetCount, emails: emailCount },
+    tagDefs: CLIENT_TAGS, configStatus: getClientConfig(client), configChecks: CLIENT_CONFIG,
+    onboardingForms, onboardingResponses,
   });
 });
 
@@ -130,6 +179,7 @@ router.post('/:id/agent', express.json(), async (req, res) => {
       website: client.website,
       notes: client.notes,
       email: client.email,
+      prompt: req.body.prompt || '',
       brandContext: await loadBrandContext(req.tenant, req.db),
     });
 
@@ -211,6 +261,19 @@ router.post('/:id', async (req, res) => {
     const client = await db.collection('clients').findOne({ _id: new ObjectId(req.params.id) });
     res.render('admin/clients/form', { user: req.adminUser, c: client, error: err.message });
   }
+});
+
+// Toggle client tag
+router.post('/:id/tags', async (req, res) => {
+  const { tag, action } = req.body;
+  if (!tag || !CLIENT_TAGS[tag]) return res.redirect(`/admin/clients/${req.params.id}`);
+  const db = req.db;
+  const op = action === 'remove'
+    ? { $pull: { tags: tag }, $set: { updatedAt: new Date() } }
+    : { $addToSet: { tags: tag }, $set: { updatedAt: new Date() } };
+  await db.collection('clients').updateOne({ _id: new ObjectId(req.params.id) }, op);
+  if (req.headers.accept?.includes('application/json')) return res.json({ ok: true });
+  res.redirect(`/admin/clients/${req.params.id}`);
 });
 
 // Toggle client status (AJAX)
@@ -508,6 +571,11 @@ router.post('/:id/onboarding', async (req, res) => {
     // Parse brand colors from comma/space separated input
     const rawColors = req.body.brandColors || '';
     const brandColors = rawColors.split(/[,\s]+/).map(c => c.trim()).filter(c => /^#[0-9a-fA-F]{3,8}$/.test(c));
+    // Brand fonts
+    const brandFonts = {
+      heading: (req.body.brandFontHeading || '').trim(),
+      body: (req.body.brandFontBody || '').trim(),
+    };
     await db.collection('clients').updateOne(
       { _id: new ObjectId(req.params.id) },
       { $set: {
@@ -516,6 +584,7 @@ router.post('/:id/onboarding', async (req, res) => {
         'onboarding.complete': step === 'done',
         'onboarding.updatedAt': new Date(),
         brandColors,
+        brandFonts,
       }}
     );
     res.redirect(`/admin/clients/${req.params.id}?tab=onboarding`);

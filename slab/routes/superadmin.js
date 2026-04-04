@@ -16,8 +16,21 @@ import { requireSuperAdmin, isSuperAdminEmail } from '../middleware/superadmin.j
 import { bustTenantCache } from '../middleware/tenant.js';
 import { config } from '../config/config.js';
 import nodemailer from 'nodemailer';
+import { logActivity, getActivityLogs } from '../plugins/activityLog.js';
 
 const router = express.Router();
+
+// ── Tenant tag definitions ─────────────────────────────────────────────────
+const TENANT_TAGS = {
+  vip:              { label: 'VIP',              color: '#c9a848', bg: '#2a2410' },
+  'hot-lead':       { label: 'Hot Lead',         color: '#f97316', bg: '#431407' },
+  'needs-onboarding': { label: 'Needs Onboarding', color: '#38bdf8', bg: '#0c2d48' },
+  'needs-design':   { label: 'Needs Design',     color: '#a78bfa', bg: '#1e1540' },
+  'needs-content':  { label: 'Needs Content',    color: '#34d399', bg: '#052e1c' },
+  'at-risk':        { label: 'At Risk',          color: '#f87171', bg: '#451a1a' },
+  enterprise:       { label: 'Enterprise',       color: '#e2e8f0', bg: '#1e293b' },
+  'power-user':     { label: 'Power User',       color: '#facc15', bg: '#362f05' },
+};
 
 // ── Subscription-change courtesy email ──────────────────────────────────────
 const PLAN_LABELS = {
@@ -111,6 +124,7 @@ router.get('/', async (req, res) => {
     suspendedTenants,
     recentSignups,
     allTenants,
+    activityLogs,
   ] = await Promise.all([
     slab.collection('tenants').countDocuments(),
     slab.collection('tenants').countDocuments({ status: 'active' }),
@@ -118,6 +132,7 @@ router.get('/', async (req, res) => {
     slab.collection('tenants').countDocuments({ status: 'suspended' }),
     slab.collection('signups').find().sort({ createdAt: -1 }).limit(10).toArray(),
     slab.collection('tenants').find().sort({ createdAt: -1 }).toArray(),
+    getActivityLogs({ limit: 30 }),
   ]);
 
   const monthlyRevenue = activeTenants * 50; // rough estimate
@@ -127,6 +142,8 @@ router.get('/', async (req, res) => {
     stats: { totalTenants, activeTenants, previewTenants, suspendedTenants, monthlyRevenue },
     tenants: allTenants,
     recentSignups,
+    tagDefs: TENANT_TAGS,
+    activityLogs,
   });
 });
 
@@ -139,19 +156,22 @@ router.get('/tenants/:id', async (req, res) => {
   } catch { return res.redirect('/superadmin'); }
   if (!tenant) return res.redirect('/superadmin');
 
-  // Get tenant DB stats
+  // Get tenant DB stats + activity logs in parallel
   const tenantDb = getTenantDb(tenant.db);
-  const [blogCount, clientCount, pageCount, invoiceCount] = await Promise.all([
+  const [blogCount, clientCount, pageCount, invoiceCount, activityLogs] = await Promise.all([
     tenantDb.collection('blog').countDocuments().catch(() => 0),
     tenantDb.collection('clients').countDocuments().catch(() => 0),
     tenantDb.collection('pages').countDocuments().catch(() => 0),
     tenantDb.collection('invoices').countDocuments().catch(() => 0),
+    getActivityLogs({ tenantDomain: tenant.domain, limit: 30 }),
   ]);
 
   res.render('superadmin/tenant-detail', {
     user: req.superAdmin,
     tenant,
     dbStats: { blogCount, clientCount, pageCount, invoiceCount },
+    tagDefs: TENANT_TAGS,
+    activityLogs,
   });
 });
 
@@ -184,6 +204,12 @@ router.post('/tenants/:id/activate', async (req, res) => {
   );
   bustTenantCache(tenant.domain);
   sendSubscriptionEmail(tenant, 'activated', plan).catch(() => {});
+  logActivity({
+    category: 'admin_action', action: 'activated',
+    tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+    details: { plan, expiresAt, previousStatus: tenant.status },
+  });
   res.redirect(`/superadmin/tenants/${req.params.id}`);
 });
 
@@ -220,6 +246,12 @@ router.post('/tenants/:id/change-plan', async (req, res) => {
   );
   bustTenantCache(tenant.domain);
   sendSubscriptionEmail(tenant, 'plan-changed', plan).catch(() => {});
+  logActivity({
+    category: 'admin_action', action: 'plan_changed',
+    tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+    details: { newPlan: plan, previousPlan: tenant.meta?.plan },
+  });
   res.redirect(`/superadmin/tenants/${req.params.id}`);
 });
 
@@ -233,6 +265,12 @@ router.post('/tenants/:id/suspend', async (req, res) => {
   );
   bustTenantCache(tenant.domain);
   sendSubscriptionEmail(tenant, 'suspended', null).catch(() => {});
+  logActivity({
+    category: 'admin_action', action: 'suspended',
+    tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+    details: { previousStatus: tenant.status, previousPlan: tenant.meta?.plan },
+  });
   res.redirect(`/superadmin/tenants/${req.params.id}`);
 });
 
@@ -242,7 +280,36 @@ router.post('/tenants/:id/delete', async (req, res) => {
   if (!tenant) return res.redirect('/superadmin');
   await slab.collection('tenants').deleteOne({ _id: tenant._id });
   bustTenantCache(tenant.domain);
+  logActivity({
+    category: 'admin_action', action: 'deleted',
+    tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+    details: { brandName: tenant.brand?.name, plan: tenant.meta?.plan },
+  });
   res.redirect('/superadmin');
+});
+
+// ── Tenant tags ────────────────────────────────────────────────────────────
+router.post('/tenants/:id/tags', async (req, res) => {
+  const { tag, action } = req.body;
+  if (!tag || !TENANT_TAGS[tag]) return res.redirect(`/superadmin/tenants/${req.params.id}`);
+
+  const slab = getSlabDb();
+  const tenant = await slab.collection('tenants').findOne({ _id: new ObjectId(req.params.id) });
+  if (!tenant) return res.redirect('/superadmin');
+
+  const op = action === 'remove'
+    ? { $pull: { tags: tag }, $set: { updatedAt: new Date() } }
+    : { $addToSet: { tags: tag }, $set: { updatedAt: new Date() } };
+
+  await slab.collection('tenants').updateOne({ _id: tenant._id }, op);
+  bustTenantCache(tenant.domain);
+
+  // Support AJAX toggle from dashboard (returns JSON) or form post from detail page
+  if (req.headers.accept?.includes('application/json')) {
+    return res.json({ ok: true });
+  }
+  res.redirect(`/superadmin/tenants/${req.params.id}`);
 });
 
 // ── Promos ──────────────────────────────────────────────────────────────────
@@ -311,6 +378,12 @@ router.post('/promos/send', async (req, res) => {
     console.error('[superadmin] Promo send failed:', err);
     res.redirect('/superadmin/promos?sent=error');
   }
+});
+
+// ── Activity Log (full page) ────────────────────────────────────────────────
+router.get('/activity', async (req, res) => {
+  const logs = await getActivityLogs({ limit: 200 });
+  res.render('superadmin/activity', { user: req.superAdmin, activityLogs: logs });
 });
 
 // ── Signups (marketing data) ────────────────────────────────────────────────

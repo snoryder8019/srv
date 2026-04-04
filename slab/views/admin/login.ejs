@@ -24,82 +24,217 @@
     const _hFU = _fontMap[_hFont] || _fontMap['Cormorant Garamond'];
     const _bFU = _fontMap[_bFont] || _fontMap['Jost'];
     const _fp = _hFU === _bFU ? _hFU : _hFU + '&family=' + _bFU;
+    const oauthCid = (typeof tenant !== 'undefined' && tenant?.public?.googleOAuthClientId)
+      || (typeof platformGoogleCid !== 'undefined' && platformGoogleCid)
+      || '';
+    const _centralAuthUrl = typeof centralAuthUrl !== 'undefined' ? centralAuthUrl : '';
   %>
   <link href="https://fonts.googleapis.com/css2?family=<%= _fp %>&display=swap" rel="stylesheet">
+  <% /* Google One-Tap only loads on slab.madladslab.com (central auth page handles it) */ %>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    :root { --navy: <%= _bd.color_primary || '#1C2B4A' %>; --navy-deep: <%= _bd.color_primary_deep || '#0F1B30' %>; --gold: <%= _bd.color_accent || '#C9A848' %>; --gold-light: <%= _bd.color_accent_light || '#E8D08A' %>; --ivory: <%= _bd.color_bg || '#F5F3EF' %>; --ivory-mid: #E6E1D6; --dark: #0F1B30; --white: #FDFCFA; --on-ivory: <%= _bd._on_bg || '#0F1B30' %>; --on-ivory-muted: <%= _bd._on_bg_muted || '#6B7380' %>; --on-navy: <%= _bd._on_primary || '#FDFCFA' %>; --on-navy-deep: <%= _bd._on_primary_deep || '#FDFCFA' %>; --on-gold: <%= _bd._on_accent || '#0F1B30' %>; --font-heading: '<%= _hFont %>', serif; --font-body: '<%= _bFont %>', sans-serif; }
-    body { font-family: var(--font-body); background: var(--navy-deep); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .login-wrap { display: grid; grid-template-columns: 1fr 1fr; max-width: 780px; width: 100%; margin: 24px; box-shadow: 0 32px 80px rgba(0,0,0,0.5); }
-    .login-left { background: var(--ivory); padding: 60px 48px; display: flex; flex-direction: column; justify-content: center; }
-    .login-brand { font-family: var(--font-heading); font-size: 2rem; font-weight: 300; color: var(--on-ivory); margin-bottom: 2px; }
-    .login-brand-sub { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase; color: var(--navy); margin-bottom: 40px; }
-    .login-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--on-ivory-muted); margin-bottom: 6px; }
-    .login-desc { font-size: 0.88rem; font-weight: 300; color: var(--on-ivory-muted); line-height: 1.7; margin-bottom: 32px; }
-    .error-msg { background: rgba(185,28,28,0.07); border: 1px solid rgba(185,28,28,0.2); color: #B91C1C; padding: 12px 14px; font-size: 0.82rem; margin-bottom: 20px; border-radius: 2px; }
-    .success-msg { background: rgba(21,128,61,0.07); border: 1px solid rgba(21,128,61,0.2); color: #15803D; padding: 12px 14px; font-size: 0.82rem; margin-bottom: 20px; border-radius: 2px; }
-    .login-form { margin-bottom: 24px; }
-    .login-form input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--ivory-mid); border-radius: 2px; font-family: var(--font-body); font-size: 0.85rem; font-weight: 300; color: var(--dark); background: var(--white); margin-bottom: 10px; outline: none; }
-    .login-form input:focus { border-color: var(--navy); }
-    .login-form button { width: 100%; padding: 13px; background: var(--navy); color: var(--white); border: none; border-radius: 2px; font-family: var(--font-body); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; transition: background 0.15s; }
-    .login-form button:hover { background: var(--navy-deep); }
-    .login-divider { display: flex; align-items: center; gap: 14px; margin: 20px 0; font-size: 0.68rem; color: var(--on-ivory-muted); letter-spacing: 0.1em; text-transform: uppercase; }
-    .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--ivory-mid); }
-    .btn-google { display: flex; align-items: center; justify-content: center; gap: 12px; background: var(--white); color: var(--on-ivory); text-decoration: none; padding: 13px 28px; font-size: 0.78rem; font-weight: 500; letter-spacing: 0.06em; transition: all 0.15s; border-radius: 2px; border: 1.5px solid var(--ivory-mid); }
-    .btn-google:hover { border-color: var(--navy); background: var(--ivory); }
-    .btn-google svg { width: 18px; height: 18px; flex-shrink: 0; }
-    .login-back { margin-top: 20px; font-size: 0.72rem; color: var(--on-ivory-muted); text-align: center; }
-    .login-back a { color: var(--navy); text-decoration: none; }
-    .login-links { display: flex; justify-content: space-between; margin-top: 14px; font-size: 0.72rem; }
-    .login-links a { color: var(--navy); text-decoration: none; }
-    .login-right { background: var(--navy-deep); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
-    .login-right-text { font-family: var(--font-heading); font-size: 9rem; font-weight: 300; font-style: italic; color: rgba(201,168,72,0.1); line-height: 1; user-select: none; }
-    .login-badge { position: absolute; bottom: 40px; left: 40px; display: flex; align-items: center; gap: 10px; }
-    .login-badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
-    .login-badge-text { font-size: 0.68rem; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(232,208,138,0.5); }
-    @media (max-width: 600px) { .login-wrap { grid-template-columns: 1fr; } .login-right { display: none; } }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    :root { --navy: <%= _bd.color_primary || '#1C2B4A' %>; --navy-deep: <%= _bd.color_primary_deep || '#0F1B30' %>; --gold: <%= _bd.color_accent || '#C9A848' %>; --gold-light: <%= _bd.color_accent_light || '#E8D08A' %>; --ivory: <%= _bd.color_bg || '#F5F3EF' %>; --ivory-mid: #E6E1D6; --dark: #0F1B30; --white: #FDFCFA; --on-ivory: <%= _bd._on_bg || '#0F1B30' %>; --on-ivory-muted: <%= _bd._on_bg_muted || '#6B7380' %>; --font-heading: '<%= _hFont %>', serif; --font-body: '<%= _bFont %>', sans-serif; }
+    body { font-family:var(--font-body); background:transparent; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+
+    /* ── Floating backdrop ── */
+    .auth-backdrop { position:fixed; inset:0; background:rgba(15,27,48,0.65); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:999; display:flex; align-items:center; justify-content:center; }
+
+    /* ── Modal card ── */
+    .auth-modal { background:var(--ivory); max-width:420px; width:100%; margin:24px; border-radius:4px; box-shadow:0 32px 80px rgba(0,0,0,0.5); overflow:hidden; position:relative; z-index:1000; animation:authSlideIn 0.3s ease; }
+    @keyframes authSlideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    .auth-header { padding:32px 32px 0; text-align:center; }
+    .auth-brand { font-family:var(--font-heading); font-size:1.8rem; font-weight:300; color:var(--on-ivory); margin-bottom:2px; }
+    .auth-sub { font-size:0.62rem; font-weight:600; letter-spacing:0.22em; text-transform:uppercase; color:var(--on-ivory-muted); margin-bottom:20px; }
+
+    /* ── Tabs ── */
+    .auth-tabs { display:flex; border-bottom:1px solid var(--ivory-mid); margin:0 32px; }
+    .auth-tab { flex:1; padding:10px 0; text-align:center; font-size:0.7rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--on-ivory-muted); cursor:pointer; border-bottom:2px solid transparent; transition:all 0.15s; background:none; border-top:none; border-left:none; border-right:none; font-family:var(--font-body); }
+    .auth-tab:hover { color:var(--dark); }
+    .auth-tab.active { color:var(--navy); border-bottom-color:var(--gold); }
+
+    /* ── Panels ── */
+    .auth-body { padding:24px 32px 32px; }
+    .auth-panel { display:none; }
+    .auth-panel.active { display:block; }
+
+    /* ── Form elements ── */
+    .field { margin-bottom:14px; }
+    .field label { display:block; font-size:0.62rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--on-ivory-muted); margin-bottom:5px; }
+    .field input { width:100%; padding:11px 14px; border:1.5px solid var(--ivory-mid); border-radius:2px; font-family:var(--font-body); font-size:0.85rem; font-weight:300; color:var(--dark); background:var(--white); outline:none; }
+    .field input:focus { border-color:var(--navy); }
+    .hint { font-size:0.62rem; color:var(--on-ivory-muted); margin-top:3px; }
+    .btn-submit { width:100%; padding:13px; background:var(--navy); color:var(--white); border:none; border-radius:2px; font-family:var(--font-body); font-size:0.78rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; cursor:pointer; transition:background 0.15s; margin-top:6px; }
+    .btn-submit:hover { background:var(--navy-deep); }
+    .btn-submit:disabled { background:var(--ivory-mid); color:var(--on-ivory-muted); cursor:not-allowed; }
+
+    /* ── Divider ── */
+    .divider { display:flex; align-items:center; gap:14px; margin:18px 0; font-size:0.62rem; color:var(--on-ivory-muted); letter-spacing:0.1em; text-transform:uppercase; }
+    .divider::before, .divider::after { content:''; flex:1; height:1px; background:var(--ivory-mid); }
+
+    /* ── Google button ── */
+    .btn-google { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; background:var(--white); color:var(--on-ivory); text-decoration:none; padding:12px; font-size:0.78rem; font-weight:500; letter-spacing:0.04em; transition:all 0.15s; border-radius:2px; border:1.5px solid var(--ivory-mid); cursor:pointer; font-family:var(--font-body); }
+    .btn-google:hover { border-color:var(--navy); background:var(--ivory); }
+    .btn-google svg { width:18px; height:18px; flex-shrink:0; }
+
+    /* ── Messages ── */
+    .msg-error { background:rgba(185,28,28,0.07); border:1px solid rgba(185,28,28,0.2); color:#B91C1C; padding:10px 12px; font-size:0.78rem; margin-bottom:14px; border-radius:2px; }
+    .msg-success { background:rgba(21,128,61,0.07); border:1px solid rgba(21,128,61,0.2); color:#15803D; padding:10px 12px; font-size:0.78rem; margin-bottom:14px; border-radius:2px; }
+    .msg-info { font-size:0.72rem; color:var(--on-ivory-muted); text-align:center; margin-top:14px; line-height:1.6; }
+    .msg-info a { color:var(--navy); text-decoration:none; }
+
+    .auth-footer { padding:0 32px 24px; text-align:center; }
+    .auth-footer a { font-size:0.72rem; color:var(--on-ivory-muted); text-decoration:none; }
+    .auth-footer a:hover { color:var(--navy); }
+
+    /* One Tap container */
+    #oneTapWrap { display:flex; justify-content:center; margin-bottom:12px; }
+
+    @media (max-width:480px) { .auth-modal { margin:12px; } .auth-body { padding:20px 20px 24px; } .auth-tabs { margin:0 20px; } .auth-header { padding:24px 20px 0; } .auth-footer { padding:0 20px 20px; } }
   </style>
 </head>
 <body>
 <%- include('../partials/maintenance-banner') %>
-  <div class="login-wrap">
-    <div class="login-left">
-      <div class="login-brand"><%- brand?.name || '' %></div>
-      <div class="login-brand-sub">Admin Portal</div>
-      <div class="login-title">Sign in to continue</div>
-      <p class="login-desc">Restricted to authorized administrators.</p>
-      <% if (errorMsg) { %>
-        <div class="error-msg"><%= errorMsg %></div>
-      <% } %>
-      <% if (typeof successMsg !== 'undefined' && successMsg) { %>
-        <div class="success-msg"><%= successMsg %></div>
-      <% } %>
 
-      <form method="POST" action="/admin/login" class="login-form">
-        <input type="email" name="email" placeholder="Email address" required autocomplete="email">
-        <input type="password" name="password" placeholder="Password" required autocomplete="current-password">
-        <button type="submit">Sign In</button>
-      </form>
+<div class="auth-backdrop" id="authBackdrop">
+<div class="auth-modal">
+  <div class="auth-header">
+    <div class="auth-brand"><%- brand?.name || 'Admin' %></div>
+    <div class="auth-sub">Admin Portal</div>
+  </div>
 
-      <div class="login-divider">or</div>
+  <div class="auth-tabs">
+    <button class="auth-tab active" data-tab="login">Sign In</button>
+    <button class="auth-tab" data-tab="register">Register</button>
+    <button class="auth-tab" data-tab="recover">Recover</button>
+  </div>
 
-      <a href="/auth/google" class="btn-google">
+  <div class="auth-body">
+    <% if (errorMsg) { %><div class="msg-error"><%= errorMsg %></div><% } %>
+    <% if (typeof successMsg !== 'undefined' && successMsg) { %><div class="msg-success"><%= successMsg %></div><% } %>
+
+    <!-- ═══ SIGN IN ═══ -->
+    <div class="auth-panel active" id="panel-login">
+      <% if (oauthCid && _centralAuthUrl) { %>
+      <a href="<%= _centralAuthUrl %>" class="btn-google">
         <svg viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
         Sign in with Google
       </a>
+      <div class="divider">or sign in with email</div>
+      <% } %>
 
-      <div class="login-links">
-        <a href="/admin/register">Create account</a>
-        <a href="/">← Back to site</a>
-      </div>
+      <form method="POST" action="/admin/login">
+        <div class="field">
+          <label>Email</label>
+          <input type="email" name="email" placeholder="you@business.com" required autocomplete="email">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" name="password" placeholder="Your password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn-submit">Sign In</button>
+      </form>
+
+      <%/* Google button is now at the top, pointing to central auth */%>
+
+      <p class="msg-info">
+        Don't have an account? <a href="#" onclick="switchTab('register');return false;">Register</a>
+        &middot; <a href="#" onclick="switchTab('recover');return false;">Forgot password?</a>
+      </p>
     </div>
-    <div class="login-right">
-      <div class="login-right-text"><%- (brand?.name || 'S')[0] %></div>
-      <div class="login-badge">
-        <div class="login-badge-dot"></div>
-        <span class="login-badge-text">Secure Admin Access</span>
-      </div>
+
+    <!-- ═══ REGISTER ═══ -->
+    <div class="auth-panel" id="panel-register">
+      <form method="POST" action="/admin/register">
+        <div class="field">
+          <label>Display Name</label>
+          <input type="text" name="displayName" placeholder="Your name">
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" name="email" placeholder="you@business.com" required>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" name="password" placeholder="Create a password" required minlength="8">
+          <div class="hint">Min 8 characters, one uppercase, one number</div>
+        </div>
+        <div class="field">
+          <label>Confirm Password</label>
+          <input type="password" name="password_confirm" placeholder="Confirm password" required>
+        </div>
+        <button type="submit" class="btn-submit">Create Account</button>
+      </form>
+
+      <% if (oauthCid && _centralAuthUrl) { %>
+      <div class="divider">or</div>
+      <a href="<%= _centralAuthUrl %>" class="btn-google">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Register with Google
+      </a>
+      <% } %>
+
+      <p class="msg-info">Already have an account? <a href="#" onclick="switchTab('login');return false;">Sign in</a></p>
+    </div>
+
+    <!-- ═══ RECOVER ═══ -->
+    <div class="auth-panel" id="panel-recover">
+      <p style="font-size:0.82rem;color:var(--on-ivory-muted);margin-bottom:16px;line-height:1.6;">Enter your email and we'll send you a link to reset your password.</p>
+      <form id="recoverForm">
+        <div class="field">
+          <label>Email</label>
+          <input type="email" name="email" placeholder="you@business.com" required id="recoverEmail">
+        </div>
+        <button type="submit" class="btn-submit" id="recoverBtn">Send Recovery Link</button>
+      </form>
+      <div id="recoverMsg" style="display:none;margin-top:12px;"></div>
+      <p class="msg-info"><a href="#" onclick="switchTab('login');return false;">Back to sign in</a></p>
     </div>
   </div>
+
+  <div class="auth-footer">
+    <a href="/" id="backToSite">← Back to site</a>
+  </div>
+</div>
+</div><!-- /auth-backdrop -->
+
+<script>
+// Click backdrop (outside modal) to go back to site
+document.getElementById('authBackdrop').addEventListener('click', function(e) {
+  if (e.target === this) window.location.href = '/';
+});
+
+// Tab switching
+function switchTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach(function(t) { t.classList.toggle('active', t.dataset.tab === tab); });
+  document.querySelectorAll('.auth-panel').forEach(function(p) { p.classList.toggle('active', p.id === 'panel-' + tab); });
+}
+document.querySelectorAll('.auth-tab').forEach(function(t) {
+  t.addEventListener('click', function() { switchTab(t.dataset.tab); });
+});
+
+// Password recovery
+var recoverForm = document.getElementById('recoverForm');
+if (recoverForm) {
+  recoverForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var email = document.getElementById('recoverEmail').value.trim();
+    var btn = document.getElementById('recoverBtn');
+    var msg = document.getElementById('recoverMsg');
+    btn.disabled = true; btn.textContent = 'Sending...';
+    try {
+      var res = await fetch('/admin/recover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email }) });
+      var data = await res.json();
+      msg.style.display = 'block';
+      msg.className = data.ok ? 'msg-success' : 'msg-error';
+      msg.textContent = data.ok ? 'Recovery email sent. Check your inbox.' : (data.error || 'Error sending recovery email.');
+    } catch(err) {
+      msg.style.display = 'block'; msg.className = 'msg-error'; msg.textContent = 'Network error.';
+    }
+    btn.disabled = false; btn.textContent = 'Send Recovery Link';
+  });
+}
+
+<%/* Google One-Tap removed from tenant pages — all Google auth goes through central (slab.madladslab.com/auth/login) */%>
+</script>
 </body>
 </html>

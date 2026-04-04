@@ -651,6 +651,12 @@
   var MIN_CHUNK_LENGTH = 80;   // minimum chars before sending to AI
 
   function startNotetaker() {
+    // Desktop only — mobile browsers can't reliably run Web Speech API alongside WebRTC
+    if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
+      showError('Transcription is available on desktop Chrome or Safari.');
+      return false;
+    }
+
     var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       showError('Speech recognition not supported in this browser. Use Chrome or Edge.');
@@ -729,6 +735,7 @@
 
     return true;
   }
+
 
   function stopNotetaker() {
     notetakerActive = false;

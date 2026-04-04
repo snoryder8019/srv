@@ -2,6 +2,33 @@ import multer from 'multer';
 import multerS3 from 'multer-s3';
 import { s3Client, BUCKET } from '../plugins/s3.js';
 import { config } from '../config/config.js';
+import { wouldExceedQuota, formatBytes, getQuotaLabel } from '../plugins/storage.js';
+
+/**
+ * Middleware: check storage quota before upload.
+ * Attach after tenant resolution. Use before any multer middleware.
+ * `estimateBytes` can be a number or a function(req) → number.
+ */
+export function checkStorageQuota(estimateBytes = 20 * 1024 * 1024) {
+  return async (req, res, next) => {
+    if (!req.db || !req.tenant) return next();
+    try {
+      const size = typeof estimateBytes === 'function' ? estimateBytes(req) : estimateBytes;
+      const exceeded = await wouldExceedQuota(req.db, req.tenant, size);
+      if (exceeded) {
+        const label = getQuotaLabel(req.tenant);
+        return res.status(413).json({
+          error: `Storage limit reached (${label}). Delete files or upgrade your plan for more space.`,
+          code: 'STORAGE_QUOTA_EXCEEDED',
+        });
+      }
+      next();
+    } catch (err) {
+      console.error('[storage-check] Error:', err.message);
+      next(); // fail open — don't block uploads on aggregation errors
+    }
+  };
+}
 
 const imageFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) cb(null, true);

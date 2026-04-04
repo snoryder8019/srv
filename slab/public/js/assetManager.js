@@ -681,6 +681,46 @@
     });
   }
 
+  /* ── MOBILE DRAWERS ── */
+  const folderPanel = document.querySelector('.folder-panel');
+  const metaPanel = document.querySelector('.meta-panel');
+  const drawerOverlay = document.getElementById('drawerOverlay');
+  const mobFolderBtn = document.getElementById('mobFolderBtn');
+  const mobInfoBtn = document.getElementById('mobInfoBtn');
+  const mobUploadBtn = document.getElementById('mobUploadBtn');
+
+  function isMobile() { return window.innerWidth <= 820; }
+
+  function openDrawer(panel) {
+    if (!panel) return;
+    panel.classList.add('drawer-mode', 'open');
+    if (drawerOverlay) drawerOverlay.classList.add('active');
+  }
+  function closeDrawers() {
+    [folderPanel, metaPanel].forEach(p => {
+      if (p) { p.classList.remove('open'); setTimeout(() => p.classList.remove('drawer-mode'), 300); }
+    });
+    if (drawerOverlay) drawerOverlay.classList.remove('active');
+  }
+
+  if (mobFolderBtn) mobFolderBtn.addEventListener('click', () => { closeDrawers(); openDrawer(folderPanel); });
+  if (mobInfoBtn) mobInfoBtn.addEventListener('click', () => { closeDrawers(); openDrawer(metaPanel); });
+  if (mobUploadBtn) mobUploadBtn.addEventListener('click', () => {
+    closeDrawers();
+    const uz = document.getElementById('uploadZone');
+    if (uz) { uz.scrollIntoView({ behavior: 'smooth', block: 'center' }); uz.click(); }
+  });
+  if (drawerOverlay) drawerOverlay.addEventListener('click', closeDrawers);
+  document.getElementById('closeFolderDrawer')?.addEventListener('click', closeDrawers);
+  document.getElementById('closeMetaDrawer')?.addEventListener('click', closeDrawers);
+
+  // Auto-open meta drawer on mobile when asset selected
+  const origSelectAsset = selectAsset;
+  selectAsset = function(asset, card) {
+    origSelectAsset(asset, card);
+    if (isMobile()) openDrawer(metaPanel);
+  };
+
   /* ── INIT ── */
   // Read initial folder/client from URL params (sidebar deep links)
   const urlParams = new URLSearchParams(window.location.search);

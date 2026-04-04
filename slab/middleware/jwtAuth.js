@@ -84,6 +84,7 @@ export function issueAdminJWT(user, res, tenantDb, returnDomain) {
     email: user.email,
     displayName: user.displayName,
     isAdmin: user.isAdmin || false,
+    isOwner: user.isOwner || false,
     tenantDb: tenantDb || null,
   };
   const token = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '8h' });

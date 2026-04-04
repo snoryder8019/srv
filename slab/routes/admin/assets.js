@@ -8,6 +8,7 @@ import { s3Client, BUCKET, bucketUrl } from '../../plugins/s3.js';
 import { config } from '../../config/config.js';
 import { callLLM, webSearch, tryParseAgentResponse, runTool, generateSdImage } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import { wouldExceedQuota, getQuotaLabel } from '../../plugins/storage.js';
 
 const router = express.Router();
 
@@ -369,14 +370,127 @@ router.get('/export', async (req, res) => {
   }
 });
 
-// GET /admin/assets/clients — lightweight client list for dropdowns (includes brand colors + status)
+// GET /admin/assets/clients — lightweight client list for dropdowns (includes brand colors/fonts + status)
 router.get('/clients', async (req, res) => {
   try {
     const db = req.db;
     const clients = await db.collection('clients')
-      .find({}, { projection: { name: 1, company: 1, brandColors: 1, status: 1 } })
+      .find({}, { projection: { name: 1, company: 1, brandColors: 1, brandFonts: 1, status: 1 } })
       .sort({ name: 1 }).toArray();
     res.json({ clients });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/assets/brand-kit/:type/:id — unified brand kit for tenant or client
+// type = "tenant" (id ignored) or "client" (id = client _id)
+router.get('/brand-kit/:type/:id?', async (req, res) => {
+  try {
+    const db = req.db;
+    const { type } = req.params;
+
+    if (type === 'tenant') {
+      // Load tenant design settings
+      const rawDesign = await db.collection('design').find({}).toArray();
+      const design = {};
+      for (const item of rawDesign) design[item.key] = item.value;
+      const brand = req.tenant?.brand || {};
+
+      // Build palette from design colors
+      const colors = [
+        design.color_primary || '#1C2B4A',
+        design.color_accent || '#C9A848',
+        design.color_bg || '#F5F3EF',
+        design.color_primary_deep || '#0F1B30',
+        design.color_primary_mid || '#2E4270',
+        design.color_accent_light || '#E8D08A',
+      ].filter(Boolean);
+
+      // Load brand images for logo
+      const brandImages = await db.collection('brand_images').find({}).toArray();
+      const logo = brandImages.find(b => b.slot === 'logo_primary')?.url || null;
+
+      // Load presets tagged to tenant (no clientId)
+      const presets = await db.collection('social_presets')
+        .find({ $or: [{ clientId: null }, { clientId: '' }, { clientId: { $exists: false } }, { brandTarget: 'tenant' }] })
+        .sort({ updatedAt: -1 }).toArray();
+
+      res.json({
+        type: 'tenant',
+        name: brand.name || 'My Brand',
+        colors,
+        fonts: {
+          heading: design.font_heading || 'Cormorant Garamond',
+          body: design.font_body || 'Jost',
+        },
+        logo,
+        presets,
+      });
+    } else if (type === 'client') {
+      const clientId = req.params.id;
+      if (!clientId) return res.status(400).json({ error: 'Client ID required' });
+      const client = await db.collection('clients').findOne({ _id: new ObjectId(clientId) });
+      if (!client) return res.status(404).json({ error: 'Client not found' });
+
+      const presets = await db.collection('social_presets')
+        .find({ $or: [{ clientId }, { brandTarget: clientId }] })
+        .sort({ updatedAt: -1 }).toArray();
+
+      res.json({
+        type: 'client',
+        _id: client._id,
+        name: client.company || client.name,
+        colors: client.brandColors || [],
+        fonts: client.brandFonts || { heading: '', body: '' },
+        presets,
+      });
+    } else {
+      res.status(400).json({ error: 'Type must be "tenant" or "client"' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /admin/assets/brand-kit/:type/:id? — save brand colors/fonts back
+router.put('/brand-kit/:type/:id?', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const { type } = req.params;
+    const { colors, fonts } = req.body;
+
+    if (type === 'tenant') {
+      // Update design color settings
+      if (colors?.length >= 3) {
+        const colorKeys = ['color_primary', 'color_accent', 'color_bg', 'color_primary_deep', 'color_primary_mid', 'color_accent_light'];
+        const ops = colors.slice(0, 6).map((val, i) =>
+          db.collection('design').updateOne(
+            { key: colorKeys[i] },
+            { $set: { key: colorKeys[i], value: val, updatedAt: new Date() } },
+            { upsert: true }
+          )
+        );
+        await Promise.all(ops);
+      }
+      if (fonts) {
+        const fontOps = [];
+        if (fonts.heading) fontOps.push(db.collection('design').updateOne({ key: 'font_heading' }, { $set: { key: 'font_heading', value: fonts.heading, updatedAt: new Date() } }, { upsert: true }));
+        if (fonts.body) fontOps.push(db.collection('design').updateOne({ key: 'font_body' }, { $set: { key: 'font_body', value: fonts.body, updatedAt: new Date() } }, { upsert: true }));
+        if (fontOps.length) await Promise.all(fontOps);
+      }
+      res.json({ success: true });
+    } else if (type === 'client') {
+      const clientId = req.params.id;
+      if (!clientId) return res.status(400).json({ error: 'Client ID required' });
+      const $set = { updatedAt: new Date() };
+      if (colors) $set.brandColors = colors;
+      if (fonts) $set.brandFonts = fonts;
+      await db.collection('clients').updateOne({ _id: new ObjectId(clientId) }, { $set });
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ error: 'Type must be "tenant" or "client"' });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -537,7 +651,7 @@ router.get('/social/presets', async (req, res) => {
 router.post('/social/presets', express.json({ limit: '5mb' }), async (req, res) => {
   try {
     const db = req.db;
-    const { name, canvasW, canvasH, sizePreset, bgColor, palette, layers, clientId, folder } = req.body;
+    const { name, canvasW, canvasH, sizePreset, bgColor, palette, layers, clientId, folder, brandTarget } = req.body;
     const doc = {
       name: name || 'Untitled',
       canvasW: canvasW || 1080,
@@ -547,6 +661,7 @@ router.post('/social/presets', express.json({ limit: '5mb' }), async (req, res) 
       palette: palette || [],
       layers: layers || [],
       clientId: clientId || null,
+      brandTarget: brandTarget || 'tenant',
       folder: folder || 'clients',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -574,7 +689,7 @@ router.get('/social/presets/:id', async (req, res) => {
 router.put('/social/presets/:id', express.json({ limit: '5mb' }), async (req, res) => {
   try {
     const db = req.db;
-    const { name, canvasW, canvasH, sizePreset, bgColor, palette, layers, clientId, folder } = req.body;
+    const { name, canvasW, canvasH, sizePreset, bgColor, palette, layers, clientId, folder, brandTarget } = req.body;
     const $set = { updatedAt: new Date() };
     if (name !== undefined) $set.name = name;
     if (canvasW !== undefined) $set.canvasW = canvasW;
@@ -584,6 +699,7 @@ router.put('/social/presets/:id', express.json({ limit: '5mb' }), async (req, re
     if (palette !== undefined) $set.palette = palette;
     if (layers !== undefined) $set.layers = layers;
     if (clientId !== undefined) $set.clientId = clientId || null;
+    if (brandTarget !== undefined) $set.brandTarget = brandTarget || 'tenant';
     if (folder !== undefined) $set.folder = folder;
     await db.collection('social_presets').updateOne({ _id: new ObjectId(req.params.id) }, { $set });
     res.json({ success: true });
@@ -657,6 +773,13 @@ router.post('/upload', assetMem.array('files', 20), async (req, res) => {
       return res.status(500).json({ error: 'S3 storage not configured' });
     }
 
+    // Storage quota check
+    const totalUploadSize = req.files.reduce((sum, f) => sum + (f.size || 0), 0);
+    if (req.tenant && await wouldExceedQuota(db, req.tenant, totalUploadSize)) {
+      const label = getQuotaLabel(req.tenant);
+      return res.status(413).json({ error: `Storage limit reached (${label}). Delete files or upgrade your plan.`, code: 'STORAGE_QUOTA_EXCEEDED' });
+    }
+
     const results = [];
     for (const file of req.files) {
       const fileType = file.mimetype.startsWith('video/') ? 'video' : 'image';
@@ -694,6 +817,9 @@ router.post('/trim-upload', assetMem.single('video'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file provided' });
     if (!config.LINODE_KEY || !config.LINODE_SECRET) {
       return res.status(500).json({ error: 'S3 storage not configured' });
+    }
+    if (req.tenant && await wouldExceedQuota(db, req.tenant, req.file.size || 0)) {
+      return res.status(413).json({ error: `Storage limit reached (${getQuotaLabel(req.tenant)}). Delete files or upgrade.`, code: 'STORAGE_QUOTA_EXCEEDED' });
     }
 
     const name = customName || req.file.originalname;
@@ -756,6 +882,9 @@ router.post('/social-upload', assetMem.single('image'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file provided' });
     if (!config.LINODE_KEY || !config.LINODE_SECRET) {
       return res.status(500).json({ error: 'S3 storage not configured' });
+    }
+    if (req.tenant && await wouldExceedQuota(db, req.tenant, req.file.size || 0)) {
+      return res.status(413).json({ error: `Storage limit reached (${getQuotaLabel(req.tenant)}). Delete files or upgrade.`, code: 'STORAGE_QUOTA_EXCEEDED' });
     }
 
     const name = title ? `${title.replace(/\s+/g, '-')}-${preset || 'social'}.png` : req.file.originalname;

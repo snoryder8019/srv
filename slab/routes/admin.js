@@ -3,10 +3,11 @@ import bcrypt from 'bcrypt';
 import { requireAdmin, issueAdminJWT } from '../middleware/jwtAuth.js';
 import { checkSuperAdmin } from '../middleware/superadmin.js';
 import { isSuperAdminEmail } from '../middleware/superadmin.js';
-import { getDb } from '../plugins/mongo.js';
+import { getDb, getSlabDb, getTenantDb } from '../plugins/mongo.js';
 import { config } from '../config/config.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
+import { getUsageBytes, getQuotaBytes, formatBytes, usagePercent, getQuotaLabel } from '../plugins/storage.js';
 import portfolioRouter from './admin/portfolio.js';
 import clientsRouter from './admin/clients.js';
 import copyRouter from './admin/copy.js';
@@ -28,6 +29,7 @@ import docsRouter from './admin/docs.js';
 import superRouter from './admin/super.js';
 import huginnRouter from './admin/huginn.js';
 import ticketsRouter from './admin/tickets.js';
+import onboardingRouter from './admin/onboarding.js';
 
 const router = express.Router();
 
@@ -89,7 +91,9 @@ router.get('/login', (req, res) => {
   if (error === 'unauthorized') errorMsg = 'Your account does not have admin access.';
   if (error === 'oauth') errorMsg = 'Google sign-in failed. Please try again.';
   if (error === 'credentials') errorMsg = 'Invalid email or password.';
-  res.render('admin/login', { errorMsg });
+  // Central auth URL — tenant login pages redirect Google auth to slab.madladslab.com
+  const centralAuthUrl = config.DOMAIN + '/auth/login';
+  res.render('admin/login', { errorMsg, platformGoogleCid: config.GGLCID || '', centralAuthUrl });
 });
 
 // ── Local login POST ─────────────────────────────────────────────────────────
@@ -151,7 +155,7 @@ router.post('/register', async (req, res) => {
       await db.collection('users').updateOne({ _id: existing._id }, {
         $set: { password: hash, providers },
       });
-      res.render('admin/login', { errorMsg: null, successMsg: 'Password added to your account. You can now sign in with email or Google.' });
+      res.render('admin/login', { errorMsg: null, successMsg: 'Password added to your account. You can now sign in with email or Google.', platformGoogleCid: config.GGLCID || '', centralAuthUrl: config.DOMAIN + '/auth/login' });
     } else {
       await db.collection('users').insertOne({
         email: cleanEmail,
@@ -163,11 +167,56 @@ router.post('/register', async (req, res) => {
         createdAt: new Date(),
       });
       // New registrations are NOT auto-admin — an existing admin must grant access
-      res.render('admin/login', { errorMsg: null, successMsg: 'Account created. An administrator must grant you access before you can sign in.' });
+      res.render('admin/login', { errorMsg: null, successMsg: 'Account created. An administrator must grant you access before you can sign in.', platformGoogleCid: config.GGLCID || '', centralAuthUrl: config.DOMAIN + '/auth/login' });
     }
   } catch (err) {
     console.error('[admin] register error:', err);
     res.render('admin/register', { errorMsg: 'Something went wrong. Please try again.', formData: req.body });
+  }
+});
+
+// ── Password recovery ─────────────────────────────────────────────────────────
+router.post('/recover', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.json({ ok: false, error: 'Email required' });
+  try {
+    const db = req.db;
+    if (!db) return res.json({ ok: false, error: 'Service unavailable' });
+    const user = await db.collection('users').findOne({ email: email.toLowerCase().trim() });
+    // Always return success to prevent email enumeration
+    if (!user) return res.json({ ok: true });
+
+    const { createLoginToken } = await import('../middleware/jwtAuth.js');
+    const resetToken = createLoginToken(user, req.tenant?.db, '1h');
+    const domain = req.hostname;
+
+    // Send recovery email
+    const zohoUser = req.tenant?.public?.zohoUser || process.env.ZOHO_USER;
+    const zohoPass = req.tenant?.secrets?.zohoPass || process.env.ZOHO_PASS;
+    if (zohoUser && zohoPass) {
+      const nodemailer = (await import('nodemailer')).default;
+      const transporter = nodemailer.createTransport({
+        host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN',
+        auth: { user: zohoUser, pass: zohoPass },
+      });
+      const resetUrl = `https://${domain}/admin/login?token=${resetToken}`;
+      const brandName = req.tenant?.brand?.name || 'Admin';
+      await transporter.sendMail({
+        from: `"${brandName}" <${zohoUser}>`,
+        to: email.trim(),
+        subject: `Password recovery — ${brandName}`,
+        html: `<div style="font-family:Inter,system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px;">
+  <h2 style="font-size:18px;margin-bottom:12px;">Password Recovery</h2>
+  <p style="font-size:14px;color:#555;line-height:1.7;margin-bottom:20px;">Click the button below to access your admin panel. Once logged in, you can set a new password from your profile.</p>
+  <a href="${resetUrl}" style="display:inline-block;padding:12px 28px;background:#1C2B4A;color:#fff;text-decoration:none;border-radius:4px;font-size:14px;font-weight:600;">Access Admin Panel</a>
+  <p style="font-size:12px;color:#999;margin-top:20px;">This link expires in 1 hour. If you didn't request this, ignore this email.</p>
+</div>`,
+      });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[admin] recover error:', err);
+    res.json({ ok: false, error: 'Error sending recovery email' });
   }
 });
 
@@ -216,17 +265,71 @@ router.get('/', async (req, res) => {
       db.collection('design').findOne({ key: 'agent_name' }),
     ]);
     const agentName = rawDesign?.value || 'Assistant';
+
+    // Storage usage
+    const storageUsed = await getUsageBytes(db);
+    const storageQuota = getQuotaBytes(req.tenant);
+    const storagePct = usagePercent(storageUsed, req.tenant);
+
     res.render('admin/dashboard', {
       user: req.adminUser,
       stats: { portfolioCount, clientCount, invoiceCount, blogCount, pageCount, openTicketCount },
       agentName,
+      storage: {
+        used: formatBytes(storageUsed),
+        quota: getQuotaLabel(req.tenant),
+        pct: storagePct,
+        plan: req.tenant?.meta?.plan || 'free',
+      },
     });
   } catch {
     res.render('admin/dashboard', {
       user: req.adminUser,
       stats: { portfolioCount: 0, clientCount: 0, invoiceCount: 0, blogCount: 0, pageCount: 0, openTicketCount: 0 },
       agentName: 'Assistant',
+      storage: { used: '0 B', quota: '1 GB', pct: 0, plan: 'free' },
     });
+  }
+});
+
+// ── My Slabs API — returns all slabs this admin email belongs to ─────────────
+router.get('/api/my-slabs', async (req, res) => {
+  try {
+    const email = req.adminUser.email?.toLowerCase();
+    if (!email) return res.json({ slabs: [] });
+
+    const slab = getSlabDb();
+    const tenants = await slab.collection('tenants').find({
+      status: { $in: ['active', 'preview'] },
+    }).toArray();
+
+    const slabs = [];
+    for (const t of tenants) {
+      try {
+        const db = getTenantDb(t.db);
+        const user = await db.collection('users').findOne({ email });
+        if (user && (user.isAdmin || user.isOwner)) {
+          slabs.push({
+            tenantDb: t.db,
+            domain: t.domain,
+            brandName: t.brand?.name || t.domain,
+            isOwner: user.isOwner || false,
+            isAdmin: user.isAdmin || false,
+            plan: t.meta?.plan || 'free',
+            isPreview: t.status === 'preview',
+            isCurrent: t.db === req.tenant?.db,
+          });
+        }
+      } catch { /* skip */ }
+    }
+
+    // Sort: current first, then by name
+    slabs.sort((a, b) => (b.isCurrent ? 1 : 0) - (a.isCurrent ? 1 : 0) || a.brandName.localeCompare(b.brandName));
+
+    res.json({ slabs, currentDb: req.tenant?.db || null });
+  } catch (err) {
+    console.error('[admin] my-slabs error:', err);
+    res.json({ slabs: [] });
   }
 });
 
@@ -251,5 +354,6 @@ router.use('/docs', docsRouter);
 router.use('/tickets', ticketsRouter);
 router.use('/huginn', huginnRouter);
 router.use('/super', superRouter);
+router.use('/onboarding', onboardingRouter);
 
 export default router;

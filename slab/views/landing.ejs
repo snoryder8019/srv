@@ -56,6 +56,23 @@
     const priceNote    = c.startup_price_note    || '';
     const priceFeats   = c.startup_price_features ? c.startup_price_features.split(',') : [];
 
+    // Extra pricing tiers (tenant-configurable)
+    const tiers = [];
+    if (priceAmount) tiers.push({ label: priceLabel || 'Plan', amount: priceAmount, unit: priceUnit, equiv: '', featured: false });
+    if (c.pricing_tier2_amount) tiers.push({ label: c.pricing_tier2_label, amount: c.pricing_tier2_amount, unit: c.pricing_tier2_unit, equiv: c.pricing_tier2_equiv, featured: false });
+    if (c.pricing_tier3_amount) tiers.push({ label: c.pricing_tier3_label, amount: c.pricing_tier3_amount, unit: c.pricing_tier3_unit, equiv: c.pricing_tier3_equiv, featured: c.pricing_tier3_featured === 'yes' });
+    if (c.pricing_tier4_amount) tiers.push({ label: c.pricing_tier4_label, amount: c.pricing_tier4_amount, unit: c.pricing_tier4_unit, equiv: c.pricing_tier4_equiv, featured: false });
+    const multiTier = tiers.length > 1;
+
+    // Promo banner
+    const promoOn = c.promo_enabled === 'yes';
+    const promoBadge = c.promo_badge || 'NEW';
+    const promoHeading = c.promo_heading || '';
+    const promoText = c.promo_text || '';
+
+    // Footer legal
+    const footerLegal = c.footer_legal || '';
+
     const ctaHeading = c.contact_heading    || '';
     const ctaSub     = c.contact_subheading || c.contact_sub || '';
     const ctaBtn     = c.hero_cta           || 'Get Started';
@@ -158,9 +175,22 @@
     /* ── Pricing ── */
     .pricing { padding:80px 24px; }
     .pricing-inner { max-width:500px; margin:0 auto; text-align:center; }
-    .price-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:40px; margin-top:40px; }
-    .price-amount { font-size:56px; font-weight:800; color:#fff; line-height:1; }
-    .price-amount span { font-size:18px; font-weight:400; color:var(--muted); }
+    .price-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:40px; margin-top:40px; position:relative; transition:border-color 0.2s; }
+    .price-card:hover { border-color:var(--accent); }
+    .price-card.featured { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent),0 8px 32px rgba(201,168,72,0.15); }
+    .price-card-label { font-size:11px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--accent); margin-bottom:8px; }
+    .price-amount { font-size:42px; font-weight:800; color:#fff; line-height:1; }
+    .price-amount span { font-size:15px; font-weight:400; color:var(--muted); }
+    .price-equiv { font-size:12px; color:var(--muted); margin-top:4px; }
+    .price-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-top:40px; }
+    .price-grid .price-card { margin-top:0; padding:28px 24px; }
+    .btn-outline { display:block; padding:12px; border-radius:6px; font-size:13px; font-weight:600; border:1px solid var(--border); color:#e5e5e5; background:transparent; transition:all 0.2s; text-decoration:none; }
+    .btn-outline:hover { border-color:var(--accent); color:var(--accent); }
+    .promo-ribbon { position:relative; overflow:hidden; background:linear-gradient(135deg,var(--card) 0%,#1a1a1a 100%); border:1px solid var(--accent); border-radius:12px; padding:24px 28px 24px 100px; margin-top:40px; margin-bottom:0; text-align:left; }
+    .promo-ribbon-badge { position:absolute; top:16px; left:-34px; width:130px; text-align:center; transform:rotate(-45deg); background:var(--accent); color:#0a0a0a; font-size:10px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; padding:5px 0; box-shadow:0 2px 6px rgba(0,0,0,0.3); }
+    .promo-ribbon h3 { font-size:16px; font-weight:700; color:#fff; margin-bottom:4px; }
+    .promo-ribbon p { font-size:13px; color:var(--muted); line-height:1.6; }
+    @media (max-width:520px) { .promo-ribbon { padding:20px 16px 20px 80px; } .promo-ribbon-badge { left:-38px; top:14px; } }
     .price-desc { font-size:14px; color:var(--subtle); margin:12px 0 24px; }
     .price-features { list-style:none; text-align:left; margin-bottom:28px; }
     .price-features li { font-size:13px; color:#d4d4d4; padding:8px 0; border-bottom:1px solid #1f1f1f; display:flex; align-items:center; gap:10px; }
@@ -262,22 +292,42 @@
 
 <% if (priceAmount) { %>
 <section class="pricing" id="pricing">
-  <div class="pricing-inner">
-    <% if (priceLabel) { %><div class="section-label"><%= priceLabel %></div><% } %>
+  <div class="pricing-inner" style="<%= multiTier ? 'max-width:960px;' : '' %>">
     <% if (priceHeading) { %><div class="section-title"><%= priceHeading %></div><% } %>
+    <% if (priceDesc) { %><p style="color:var(--muted);font-size:14px;margin-top:8px;"><%= priceDesc %></p><% } %>
+
+    <% if (promoOn && promoHeading) { %>
+    <div class="promo-ribbon">
+      <div class="promo-ribbon-badge"><%= promoBadge %></div>
+      <h3><%= promoHeading %></h3>
+      <p><%= promoText %></p>
+    </div>
+    <% } %>
+
+    <% if (multiTier) { %>
+    <div class="price-grid">
+      <% tiers.forEach(t => { %>
+      <div class="price-card<%= t.featured ? ' featured' : '' %>">
+        <% if (t.label) { %><div class="price-card-label"><%= t.label %></div><% } %>
+        <div class="price-amount"><%= t.amount %><% if (t.unit) { %><span><%= t.unit %></span><% } %></div>
+        <% if (t.equiv) { %><div class="price-equiv"><%= t.equiv %></div><% } %>
+        <a href="<%= heroCta === priceCta ? '#contact' : '/start' %>" class="<%= t.featured ? 'btn-lg btn-primary' : 'btn-outline' %>" style="width:100%;text-align:center;"><%= priceCta %></a>
+      </div>
+      <% }) %>
+    </div>
+    <% } else { %>
     <div class="price-card">
       <div class="price-amount"><%= priceAmount %><span><%= priceUnit %></span></div>
-      <% if (priceDesc) { %><p class="price-desc"><%= priceDesc %></p><% } %>
       <% if (priceFeats.length) { %>
       <ul class="price-features">
-        <% priceFeats.forEach(f => { %>
-        <li><%= f.trim() %></li>
-        <% }) %>
+        <% priceFeats.forEach(f => { %><li><%= f.trim() %></li><% }) %>
       </ul>
       <% } %>
-      <a href="/start" class="btn-lg btn-primary" style="width:100%;text-align:center;"><%= priceCta %></a>
-      <% if (priceNote) { %><p class="free-note"><%= priceNote %></p><% } %>
+      <a href="<%= heroCta === priceCta ? '#contact' : '/start' %>" class="btn-lg btn-primary" style="width:100%;text-align:center;"><%= priceCta %></a>
     </div>
+    <% } %>
+
+    <% if (priceNote) { %><p class="free-note" style="margin-top:16px;"><%= priceNote %></p><% } %>
   </div>
 </section>
 <% } %>
@@ -440,8 +490,58 @@
 </section>
 <% } %>
 
+<% if (_vis.qr) { %>
+<!-- QR CODE SHARE WIDGET -->
+<div id="qr-share-widget" style="position:fixed;bottom:24px;left:24px;z-index:7500;">
+  <button id="qr-toggle-btn" aria-label="Show QR Code" style="width:48px;height:48px;border-radius:50%;background:var(--accent);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,0.25);transition:transform 0.2s,background 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0F1B30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="2" height="2"/><rect x="20" y="14" width="2" height="2"/><rect x="14" y="20" width="2" height="2"/><rect x="20" y="20" width="2" height="2"/><rect x="17" y="17" width="2" height="2"/></svg>
+  </button>
+  <div id="qr-popup" style="display:none;position:absolute;bottom:60px;left:0;background:#fff;border:1px solid var(--border);border-radius:8px;padding:20px;box-shadow:0 8px 40px rgba(0,0,0,0.18);min-width:200px;text-align:center;transform:translateY(10px);opacity:0;transition:transform 0.25s ease,opacity 0.25s ease;">
+    <div style="font-family:var(--font-heading),serif;font-size:0.9rem;font-weight:600;color:#111;margin-bottom:12px;">Share This Page</div>
+    <div id="qr-canvas" style="display:inline-block;padding:8px;background:#fff;border-radius:4px;"></div>
+    <div style="font-size:0.68rem;color:#525252;margin-top:10px;font-weight:300;"><%= b.name || '' %></div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+(function() {
+  var btn = document.getElementById('qr-toggle-btn');
+  var popup = document.getElementById('qr-popup');
+  var canvas = document.getElementById('qr-canvas');
+  var open = false, generated = false;
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    open = !open;
+    if (open) {
+      if (!generated) {
+        new QRCode(canvas, { text: window.location.origin, width: 160, height: 160, colorDark: '<%= d.color_primary || "#1C2B4A" %>', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+        generated = true;
+      }
+      popup.style.display = 'block';
+      requestAnimationFrame(function() { popup.style.opacity = '1'; popup.style.transform = 'translateY(0)'; });
+    } else {
+      popup.style.opacity = '0'; popup.style.transform = 'translateY(10px)';
+      setTimeout(function() { popup.style.display = 'none'; }, 260);
+    }
+  });
+  document.addEventListener('click', function() {
+    if (open) { open = false; popup.style.opacity = '0'; popup.style.transform = 'translateY(10px)'; setTimeout(function() { popup.style.display = 'none'; }, 260); }
+  });
+  popup.addEventListener('click', function(e) { e.stopPropagation(); });
+})();
+</script>
+<% } %>
+
 <footer class="footer">
-  &copy; <%= new Date().getFullYear() %> <% if (logoPre) { %><span style="color:var(--accent)"><%= logoPre %></span><% } %><%= logoPost %>
+  <div>&copy; <%= new Date().getFullYear() %> <% if (logoPre) { %><span style="color:var(--accent)"><%= logoPre %></span><% } %><%= logoPost %></div>
+  <% if (footerLegal) { %>
+  <div style="margin-top:10px;font-size:10px;color:#404040;line-height:1.8;max-width:600px;margin-left:auto;margin-right:auto;">
+    <%= footerLegal %>
+    <% if (c.terms_content) { %> <a href="/terms" style="color:#525252;text-decoration:underline;">Terms</a><% } %>
+    <% if (c.privacy_content) { %> <a href="/privacy" style="color:#525252;text-decoration:underline;">Privacy</a><% } %>
+  </div>
+  <% } %>
+  <div style="margin-top:12px;"><a href="/admin/login" style="color:rgba(82,82,82,0.3);text-decoration:none;font-size:9px;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(82,82,82,0.7)'" onmouseout="this.style.color='rgba(82,82,82,0.3)'">Admin</a></div>
 </footer>
 
 <% if (d.model_header_enabled === 'true' || d.model_logo_enabled === 'true') { %>

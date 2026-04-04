@@ -34,9 +34,9 @@
   // ── Inject styles ───────────────────────────────────────────────────────────
   var css = document.createElement('style');
   css.textContent = [
-    '#slab-bug-btn{position:fixed;bottom:24px;right:24px;z-index:99999;width:48px;height:48px;border-radius:50%;',
-    'background:#1C2B4A;color:#fff;border:2px solid #C9A848;cursor:pointer;display:flex;align-items:center;',
-    'justify-content:center;font-size:22px;box-shadow:0 4px 16px rgba(0,0,0,0.2);transition:transform 0.15s,box-shadow 0.15s;}',
+    '#slab-bug-btn{position:fixed;bottom:72px;right:24px;z-index:99999;width:40px;height:40px;border-radius:50%;',
+    'background:#1C2B4A;color:#C9A848;border:1.5px solid rgba(201,168,72,0.3);cursor:pointer;display:flex;align-items:center;',
+    'justify-content:center;font-size:16px;box-shadow:0 2px 12px rgba(0,0,0,0.15);transition:transform 0.15s,box-shadow 0.15s;}',
     '#slab-bug-btn:hover{transform:scale(1.1);box-shadow:0 6px 24px rgba(0,0,0,0.3);}',
     '#slab-bug-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.5);backdrop-filter:blur(2px);',
     'display:none;align-items:center;justify-content:center;padding:20px;}',
@@ -79,7 +79,7 @@
   // ── Create floating button ──────────────────────────────────────────────────
   var btn = document.createElement('button');
   btn.id = 'slab-bug-btn';
-  btn.innerHTML = '&#128027;';
+  btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
   btn.title = 'Report an Issue';
   document.body.appendChild(btn);
 
@@ -89,7 +89,7 @@
   overlay.innerHTML = [
     '<div id="slab-bug-modal" style="position:relative;">',
     '  <button class="bb-close" id="bbClose">&times;</button>',
-    '  <h2>&#128027; Report an Issue</h2>',
+    '  <h2>Report an Issue</h2>',
     '  <div id="bbStatus" class="bb-status"></div>',
     isAdmin ? '  <button class="bb-btn bb-btn-debug" id="bbCapture">&#9889; Capture Debug Data</button>' : '',
     isAdmin ? '  <div id="bbDebugPreview" class="bb-debug-preview"></div>' : '',

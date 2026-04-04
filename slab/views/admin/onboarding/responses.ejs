@@ -1,0 +1,78 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Responses: <%= form.name %></div>
+  <div class="topbar-actions">
+    <a href="/admin/onboarding/<%= form._id %>" class="btn btn-ghost">Edit Form</a>
+    <a href="/admin/onboarding" class="btn btn-ghost">All Forms</a>
+  </div>
+</div>
+<div class="content">
+
+  <% if (!responses || responses.length === 0) { %>
+    <div class="empty">
+      <div class="empty-icon">&#9744;</div>
+      <p>No responses yet for this form.</p>
+    </div>
+  <% } else { %>
+
+    <div style="margin-bottom:16px;font-size:0.85rem;color:var(--slate);">
+      <%= responses.length %> response<%= responses.length === 1 ? '' : 's' %>
+    </div>
+
+    <% responses.forEach((r, idx) => { %>
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div>
+            <strong>
+              <% if (r.clientId && clientMap[r.clientId.toString()]) { %>
+                <a href="/admin/clients/<%= r.clientId %>"><%= clientMap[r.clientId.toString()].name %></a>
+              <% } else if (r.respondentName) { %>
+                <%= r.respondentName %>
+              <% } else if (r.respondentEmail) { %>
+                <%= r.respondentEmail %>
+              <% } else { %>
+                Anonymous
+              <% } %>
+            </strong>
+            <% if (r.respondentEmail && !(r.clientId && clientMap[r.clientId.toString()]?.email === r.respondentEmail)) { %>
+              <span style="color:var(--slate);font-size:0.82rem;margin-left:8px;"><%= r.respondentEmail %></span>
+            <% } %>
+          </div>
+          <div style="font-size:0.78rem;color:var(--slate);">
+            <%= new Date(r.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) %>
+          </div>
+        </div>
+
+        <div class="form-grid" style="gap:8px 16px;">
+          <% const fieldMap = {};
+             (form.fields || []).forEach(f => { fieldMap[f.key] = f; });
+          %>
+          <% Object.entries(r.data || {}).forEach(([key, val]) => { %>
+            <div class="form-field" style="<%= fieldMap[key]?.width === 'half' ? '' : 'grid-column:span 2;' %>">
+              <label style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--slate);margin-bottom:2px;">
+                <%= fieldMap[key]?.label || key %>
+                <% if (r.pipedData?.[key]) { %>
+                  <span style="font-size:0.65rem;background:var(--gold-light);color:var(--navy);padding:1px 5px;border-radius:3px;margin-left:4px;">piped</span>
+                <% } %>
+              </label>
+              <div style="font-size:0.88rem;line-height:1.5;">
+                <% if (Array.isArray(val)) { %>
+                  <%= val.join(', ') %>
+                <% } else { %>
+                  <%- (val || '').toString().replace(/\n/g, '<br>') %>
+                <% } %>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% }) %>
+
+  <% } %>
+</div>
+
+</div><!-- .main -->
+</body>
+</html>
