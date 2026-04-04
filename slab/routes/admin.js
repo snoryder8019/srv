@@ -31,6 +31,7 @@ import huginnRouter from './admin/huginn.js';
 import ticketsRouter from './admin/tickets.js';
 import onboardingRouter from './admin/onboarding.js';
 import brandBuilderRouter from './admin/brandBuilder.js';
+import scannerRouter from './admin/scanner.js';
 
 const router = express.Router();
 
@@ -362,5 +363,6 @@ router.use('/huginn', huginnRouter);
 router.use('/super', superRouter);
 router.use('/onboarding', onboardingRouter);
 router.use('/brand-builder', brandBuilderRouter);
+router.use('/scanner', scannerRouter);
 
 export default router;

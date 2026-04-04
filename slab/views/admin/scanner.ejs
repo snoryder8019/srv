@@ -1,0 +1,273 @@
+<%- include('partials/head', { title: 'Site Scanner' }) %>
+<div class="layout">
+<%- include('partials/sidebar', { page: 'scanner', user, brand: typeof brand !== 'undefined' ? brand : null, tenant: typeof tenant !== 'undefined' ? tenant : null, isSuperAdmin: typeof isSuperAdmin !== 'undefined' ? isSuperAdmin : false, brandDesign: typeof brandDesign !== 'undefined' ? brandDesign : {} }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Site Scanner</div>
+  <div class="topbar-actions">
+    <button id="runScan" class="btn btn-navy">Run Full Scan</button>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Module picker -->
+  <div class="card" style="margin-bottom:20px;padding:20px;">
+    <div style="font-weight:600;margin-bottom:12px;font-size:0.88rem;">Scan Modules</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <label class="scan-check"><input type="checkbox" class="mod-check" value="contrast" checked> Contrast (WCAG)</label>
+      <label class="scan-check"><input type="checkbox" class="mod-check" value="modals" checked> Modals</label>
+      <label class="scan-check"><input type="checkbox" class="mod-check" value="modules" checked> Modules / Components</label>
+      <label class="scan-check"><input type="checkbox" class="mod-check" value="redundancy" checked> Redundancy</label>
+      <label class="scan-check"><input type="checkbox" class="mod-check" value="security" checked> Security / Auth</label>
+      <label class="scan-check"><input type="checkbox" class="mod-check" value="routes" checked> Route Health</label>
+    </div>
+    <div style="margin-top:14px;">
+      <div style="font-weight:600;margin-bottom:8px;font-size:0.88rem;">Pages to scan <span style="font-weight:400;color:var(--slate);font-size:0.78rem;">(one per line, paths like /admin/blog)</span></div>
+      <textarea id="scanPages" rows="3" style="width:100%;font-family:monospace;font-size:0.82rem;padding:8px;border:1px solid var(--border);border-radius:4px;resize:vertical;">/
+/admin/login
+/admin</textarea>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div id="scanProgress" class="card" style="display:none;margin-bottom:20px;padding:20px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="scan-spinner"></div>
+      <div>
+        <div style="font-weight:600;" id="scanStatus">Scanning...</div>
+        <div style="font-size:0.78rem;color:var(--slate);" id="scanDetail">This may take 30-60 seconds</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results summary -->
+  <div id="scanSummary" style="display:none;">
+    <div class="stat-grid" style="margin-bottom:20px;">
+      <div class="stat-card" id="sumCritical">
+        <div class="stat-label">Critical</div>
+        <div class="stat-value" style="color:#dc2626;">0</div>
+      </div>
+      <div class="stat-card" id="sumHigh">
+        <div class="stat-label">High</div>
+        <div class="stat-value" style="color:#ea580c;">0</div>
+      </div>
+      <div class="stat-card" id="sumMedium">
+        <div class="stat-label">Medium</div>
+        <div class="stat-value" style="color:#ca8a04;">0</div>
+      </div>
+      <div class="stat-card" id="sumLow">
+        <div class="stat-label">Low</div>
+        <div class="stat-value" style="color:#2563eb;">0</div>
+      </div>
+      <div class="stat-card" id="sumTotal">
+        <div class="stat-label">Total</div>
+        <div class="stat-value">0</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:16px;">
+      <button id="toTickets" class="btn btn-navy" style="display:none;">Create Tickets from Findings</button>
+      <span id="ticketResult" style="font-size:0.82rem;color:var(--success);align-self:center;"></span>
+      <span id="scanDuration" style="font-size:0.78rem;color:var(--slate);align-self:center;margin-left:auto;"></span>
+    </div>
+  </div>
+
+  <!-- Findings table -->
+  <div id="findingsWrap" style="display:none;">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px;">Severity</th>
+            <th>Finding</th>
+            <th>Detail</th>
+            <th>URL</th>
+          </tr>
+        </thead>
+        <tbody id="findingsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Previous scan history -->
+  <% if (results.length > 0) { %>
+  <div style="margin-top:32px;">
+    <div style="font-weight:600;margin-bottom:12px;font-size:0.88rem;">Scan History</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Modules</th>
+            <th>Findings</th>
+            <th>Critical</th>
+            <th>High</th>
+            <th>Duration</th>
+            <th>Ticketed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const r of results) { %>
+          <tr style="cursor:pointer;" onclick="loadResult('<%= r._id %>')">
+            <td style="font-size:0.78rem;white-space:nowrap;"><%= r.summary?.scannedAt ? new Date(r.summary.scannedAt).toLocaleString() : '' %></td>
+            <td style="font-size:0.78rem;"><%= (r.summary?.modules || []).join(', ') %></td>
+            <td><%= r.summary?.total || 0 %></td>
+            <td style="color:#dc2626;font-weight:600;"><%= r.summary?.counts?.critical || 0 %></td>
+            <td style="color:#ea580c;"><%= r.summary?.counts?.high || 0 %></td>
+            <td style="font-size:0.78rem;"><%= r.summary?.duration ? Math.round(r.summary.duration / 1000) + 's' : '' %></td>
+            <td><%= r.ticketed ? 'Yes (' + r.ticketCount + ')' : '' %></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <% } %>
+</div>
+
+<style>
+.scan-check { display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer; }
+.scan-check input { accent-color:var(--navy, #1C2B4A); }
+.scan-spinner {
+  width:20px; height:20px; border:3px solid var(--border); border-top-color:var(--navy,#1C2B4A);
+  border-radius:50%; animation:scan-spin 0.8s linear infinite;
+}
+@keyframes scan-spin { to { transform:rotate(360deg); } }
+.sev-critical { background:#fef2f2; color:#dc2626; font-weight:700; }
+.sev-high     { background:#fff7ed; color:#ea580c; font-weight:600; }
+.sev-medium   { background:#fefce8; color:#ca8a04; }
+.sev-low      { background:#eff6ff; color:#2563eb; }
+.sev-info     { background:#f0fdf4; color:#16a34a; }
+.badge-sev {
+  display:inline-block; padding:2px 8px; border-radius:3px;
+  font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; font-weight:600;
+}
+</style>
+
+<script>
+(function(){
+  const runBtn = document.getElementById('runScan');
+  const progress = document.getElementById('scanProgress');
+  const summary = document.getElementById('scanSummary');
+  const findingsWrap = document.getElementById('findingsWrap');
+  const findingsBody = document.getElementById('findingsBody');
+  const toTicketsBtn = document.getElementById('toTickets');
+  let currentScanId = null;
+
+  const sevClass = { critical:'sev-critical', high:'sev-high', medium:'sev-medium', low:'sev-low', info:'sev-info' };
+
+  function renderFindings(findings) {
+    findingsBody.innerHTML = '';
+    for (const f of findings) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="badge-sev ${sevClass[f.severity] || ''}">${f.severity}</span></td>
+        <td style="font-size:0.82rem;font-weight:500;">${esc(f.title)}</td>
+        <td style="font-size:0.78rem;color:var(--slate);max-width:400px;word-break:break-word;">${esc(f.detail)}</td>
+        <td style="font-size:0.72rem;"><a href="${esc(f.url)}" target="_blank" style="color:var(--navy);">${esc(f.url?.replace(/^https?:\/\//, ''))}</a></td>
+      `;
+      findingsBody.appendChild(tr);
+    }
+    findingsWrap.style.display = findings.length ? '' : 'none';
+  }
+
+  function renderSummary(sum) {
+    document.querySelector('#sumCritical .stat-value').textContent = sum.counts?.critical || 0;
+    document.querySelector('#sumHigh .stat-value').textContent = sum.counts?.high || 0;
+    document.querySelector('#sumMedium .stat-value').textContent = sum.counts?.medium || 0;
+    document.querySelector('#sumLow .stat-value').textContent = sum.counts?.low || 0;
+    document.querySelector('#sumTotal .stat-value').textContent = sum.total || 0;
+    document.getElementById('scanDuration').textContent = sum.duration ? `Completed in ${Math.round(sum.duration/1000)}s` : '';
+    summary.style.display = '';
+  }
+
+  function esc(s) { if (!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+  runBtn.addEventListener('click', async () => {
+    const modules = [...document.querySelectorAll('.mod-check:checked')].map(c => c.value);
+    const pages = document.getElementById('scanPages').value.split('\n').map(p => p.trim()).filter(Boolean);
+
+    if (!modules.length) return alert('Select at least one module');
+
+    runBtn.disabled = true;
+    progress.style.display = '';
+    summary.style.display = 'none';
+    findingsWrap.style.display = 'none';
+    toTicketsBtn.style.display = 'none';
+    document.getElementById('ticketResult').textContent = '';
+
+    try {
+      const r = await fetch('/admin/scanner/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modules, pages }),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Scan failed');
+
+      currentScanId = data.scanId;
+      renderSummary(data.summary);
+      renderFindings(data.findings);
+
+      if (data.findings.length > 0) {
+        toTicketsBtn.style.display = '';
+      }
+
+      document.getElementById('scanStatus').textContent = 'Scan complete';
+      document.getElementById('scanDetail').textContent = `${data.findings.length} findings across ${modules.length} modules`;
+    } catch (err) {
+      document.getElementById('scanStatus').textContent = 'Scan failed';
+      document.getElementById('scanDetail').textContent = err.message;
+    } finally {
+      runBtn.disabled = false;
+      setTimeout(() => { progress.style.display = 'none'; }, 2000);
+    }
+  });
+
+  toTicketsBtn.addEventListener('click', async () => {
+    if (!currentScanId) return;
+    toTicketsBtn.disabled = true;
+    try {
+      const r = await fetch('/admin/scanner/to-tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scanId: currentScanId }),
+      });
+      const data = await r.json();
+      if (data.ok) {
+        document.getElementById('ticketResult').textContent = `Created ${data.ticketCount} ticket(s)`;
+        toTicketsBtn.style.display = 'none';
+      } else {
+        document.getElementById('ticketResult').textContent = 'Error: ' + (data.error || 'Unknown');
+        document.getElementById('ticketResult').style.color = 'var(--danger)';
+      }
+    } catch (err) {
+      document.getElementById('ticketResult').textContent = err.message;
+    } finally {
+      toTicketsBtn.disabled = false;
+    }
+  });
+
+  window.loadResult = async function(id) {
+    try {
+      const r = await fetch('/admin/scanner/results/' + id);
+      const data = await r.json();
+      if (data.summary) {
+        renderSummary(data.summary);
+        renderFindings(data.findings || []);
+        currentScanId = id;
+        if ((data.findings || []).length > 0 && !data.ticketed) {
+          toTicketsBtn.style.display = '';
+        } else {
+          toTicketsBtn.style.display = 'none';
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch (err) { alert('Failed to load: ' + err.message); }
+  };
+})();
+</script>
+
+</div><!-- layout -->
+</body>
+</html>

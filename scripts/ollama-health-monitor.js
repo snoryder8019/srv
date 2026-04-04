@@ -10,6 +10,9 @@
 const https = require('https');
 const nodemailer = require('/srv/madladslab/node_modules/nodemailer');
 require('/srv/madladslab/node_modules/dotenv').config({ path: '/srv/madladslab/.env' });
+require('/srv/madladslab/node_modules/dotenv').config({ path: '/srv/slab/.env' }); // picks up SLAB_DB if missing
+
+const { MongoClient } = require('/srv/madladslab/node_modules/mongodb');
 
 const HEALTH_URL = 'https://ollama.madladslab.com/health';
 const TO = 'scott@madladslab.com';
@@ -64,11 +67,7 @@ function evaluateHealth(h) {
   if (!h.sd || h.sd.status !== 'up')
     issues.push({ component: 'Stable Diffusion', status: h.sd?.status || 'unknown' });
 
-  // Watchdog
-  const wd = h.watchdog || {};
-  const wdDown = !wd.lastRun || wd.lastRun === null;
-  if (wdDown)
-    issues.push({ component: 'Watchdog', status: 'no recent run' });
+  // Watchdog — removed: not running is expected / normal state
 
   return issues;
 }
@@ -90,7 +89,7 @@ function buildSummaryHtml(h, issues) {
       <tr><td style="padding:8px;">Tunnel</td><td style="padding:8px;">${statusIcon(h.tunnel?.status)} ${h.tunnel?.status || 'unknown'}</td></tr>
       <tr><td style="padding:8px;">Load Balancer</td><td style="padding:8px;">${statusIcon(h.lb?.status)} ${h.lb?.status || 'unknown'} (port ${h.lb?.port || '?'})</td></tr>
       <tr><td style="padding:8px;">Stable Diffusion</td><td style="padding:8px;">${statusIcon(h.sd?.status)} ${h.sd?.status || 'unknown'} (port ${h.sd?.port || '?'})</td></tr>
-      <tr><td style="padding:8px;">Watchdog</td><td style="padding:8px;">${h.watchdog?.lastRun ? '✅ last: ' + h.watchdog.lastRun : '🔴 no recent run'}</td></tr>
+      <tr><td style="padding:8px;">Watchdog</td><td style="padding:8px;">N/A (retired)</td></tr>
     </table>
 
     <h3>GPU Status</h3>
@@ -130,6 +129,86 @@ async function sendEmail(subject, html) {
   console.log(`Email sent: ${subject}`);
 }
 
+// ── Scan report fetcher ─────────────────────────────────────────────────────
+async function fetchLatestScanReport() {
+  if (!process.env.DB_URL) return null;
+  let client;
+  try {
+    client = new MongoClient(process.env.DB_URL);
+    await client.connect();
+    // Check all tenant DBs for recent scan results (last 24h)
+    const slab = client.db(process.env.SLAB_DB || 'slab');
+    const tenants = await slab.collection('tenants').find({ status: { $in: ['active', 'preview'] } }).toArray();
+
+    const allScans = [];
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    for (const t of tenants) {
+      try {
+        const tdb = client.db(t.db);
+        const scans = await tdb.collection('scan_results')
+          .find({ 'summary.scannedAt': { $gte: cutoff } })
+          .sort({ 'summary.scannedAt': -1 })
+          .limit(1)
+          .toArray();
+        if (scans.length > 0) {
+          allScans.push({ tenant: t.brand?.name || t.domain, ...scans[0] });
+        }
+      } catch { /* skip */ }
+    }
+    return allScans;
+  } catch (e) {
+    console.error('Scan report fetch error:', e.message);
+    return null;
+  } finally {
+    if (client) await client.close();
+  }
+}
+
+function buildScanReportHtml(scans) {
+  if (!scans || scans.length === 0) return '';
+
+  let html = `
+  <div style="margin-top:24px;border-top:2px solid #e5e7eb;padding-top:20px;">
+    <h3 style="color:#1a1a2e;">Site Scanner Report (last 24h)</h3>`;
+
+  for (const scan of scans) {
+    const c = scan.summary?.counts || {};
+    const total = scan.summary?.total || 0;
+    const badgeColor = c.critical > 0 ? '#dc2626' : c.high > 0 ? '#ea580c' : '#16a34a';
+
+    html += `
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:14px;margin:10px 0;">
+      <div style="font-weight:600;font-size:14px;">${scan.tenant}</div>
+      <div style="font-size:12px;color:#666;margin-top:4px;">
+        Scanned: ${scan.summary?.scannedAt ? new Date(scan.summary.scannedAt).toLocaleString('en-US', { timeZone: 'America/New_York' }) : 'unknown'} |
+        Duration: ${scan.summary?.duration ? Math.round(scan.summary.duration / 1000) + 's' : '?'}
+      </div>
+      <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:12px;"><strong style="color:${badgeColor};">${total}</strong> total</span>
+        ${c.critical ? `<span style="font-size:12px;color:#dc2626;font-weight:600;">${c.critical} critical</span>` : ''}
+        ${c.high ? `<span style="font-size:12px;color:#ea580c;">${c.high} high</span>` : ''}
+        ${c.medium ? `<span style="font-size:12px;color:#ca8a04;">${c.medium} medium</span>` : ''}
+        ${c.low ? `<span style="font-size:12px;color:#2563eb;">${c.low} low</span>` : ''}
+      </div>`;
+
+    // Show top critical/high findings inline
+    const topFindings = (scan.findings || []).filter(f => f.severity === 'critical' || f.severity === 'high').slice(0, 5);
+    if (topFindings.length > 0) {
+      html += `<div style="margin-top:8px;font-size:11px;"><strong>Top issues:</strong><ul style="margin:4px 0;padding-left:16px;">`;
+      for (const f of topFindings) {
+        const icon = f.severity === 'critical' ? '🔴' : '🟠';
+        html += `<li>${icon} ${f.title}</li>`;
+      }
+      html += `</ul></div>`;
+    }
+
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
 async function runReport() {
   let h, issues = [], fetchError = null;
   try {
@@ -141,12 +220,19 @@ async function runReport() {
     issues = [{ component: 'Health Endpoint', status: 'unreachable: ' + e.message }];
   }
 
+  // Fetch latest scan reports to attach
+  const scans = await fetchLatestScanReport();
+  const scanHtml = buildScanReportHtml(scans);
+
   const allGood = issues.length === 0;
-  const subject = allGood
+  const hasScanIssues = scans && scans.some(s => (s.summary?.counts?.critical || 0) > 0 || (s.summary?.counts?.high || 0) > 0);
+  const subject = allGood && !hasScanIssues
     ? '✅ Ollama Health Report — All Systems OK'
+    : allGood && hasScanIssues
+    ? `⚠️ Ollama Health Report — OK + Scanner Findings`
     : `⚠️ Ollama Health Report — ${issues.length} issue(s)`;
 
-  await sendEmail(subject, buildSummaryHtml(h, issues));
+  await sendEmail(subject, buildSummaryHtml(h, issues) + scanHtml);
 }
 
 async function runAlert() {
