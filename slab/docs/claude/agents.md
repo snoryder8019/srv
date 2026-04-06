@@ -57,8 +57,81 @@ Every editor gets a slide-in `#agentPanel`:
 - `sessionStorage('slab_agent_fill')` for cross-page relay
 - Responsive: 420px panel → full-screen at 520px
 
+## Huginn — Platform Intelligence
+
+Huginn is the superadmin AI assistant. Two-sided architecture: **input** (Huginn Chat) and **output** (Control Center).
+
+### Routes
+
+| Route | File | Purpose |
+|-------|------|---------|
+| `GET /superadmin/huginn` | `routes/superadmin.js` | Chat UI — text + voice input, 3D orb, task sidebar |
+| `POST /superadmin/huginn/chat` | `routes/superadmin.js` | Streaming LLM proxy — injects platform context |
+| `GET /superadmin/control-center` | `routes/superadmin.js` | Output display — full-screen orb, message panel, weather |
+| `POST /huginn/mcp` | `routes/huginn-mcp.js` | JSON-RPC 2.0 for LLM machine tool calls |
+| `POST /huginn/webhook` | `routes/huginn-webhook.js` | External event ingestion → Socket.IO broadcast |
+| `GET /huginn/health` | `routes/huginn-webhook.js` | Display/operator connection status |
+
+### Plugin: `plugins/huginnMcp.js`
+Provides Huginn's data layer — CRUD for `huginn_tasks`, `huginn_notes`, `huginn_conversations` (all in slab registry DB), plus read-only access to platform DB and codebase.
+
+Key exports:
+- `createTask()`, `updateTask()`, `listTasks()`, `getTask()` — task CRUD
+- `saveNote()`, `searchNotes()`, `listNotes()` — note CRUD
+- `logConversation()`, `getConversationHistory()` — chat log
+- `readSlabCollection()`, `readTenantCollection()` — DB read (capped at 100 docs)
+- `readFile()`, `listDir()` — sandboxed codebase read (blocks `.env`)
+- `buildHuginnContext()` — assembles live platform stats, tasks, notes, tenants, weather for LLM system prompt
+- `parseAndSaveIntents()` — detects `TASK:` and `NOTE:` lines in LLM responses and auto-saves them
+- `fetchWeather()` — ip-api geolocation → open-meteo forecast
+
+### MCP Tool Registry (`routes/huginn-mcp.js`)
+JSON-RPC 2.0 at `POST /huginn/mcp`. Auth: Bearer `OLLAMA_KEY` or superadmin cookie.
+
+| Tool | Description |
+|------|-------------|
+| `huginn.tasks.*` | Task CRUD (create, update, list, get) |
+| `huginn.notes.*` | Note CRUD (save, search, list) |
+| `huginn.conversations.*` | Conversation log/history |
+| `slab.*` | Registry DB read (collections, read, stats) |
+| `slab.tenant.*` | Tenant DB read (collections, read) |
+| `codebase.*` | Sandboxed file/dir read |
+| `platform.*` | Passthrough to madladslab.com MCP (tmux, services, files, execute) |
+| `huginn.weather` | Current weather via open-meteo |
+| `tools.list` | Discovery — lists all available tools |
+
+REST shortcuts: `GET /huginn/mcp/tasks`, `POST /huginn/mcp/tasks`, `PATCH /huginn/mcp/tasks/:id`, `GET /huginn/mcp/notes`, `GET /huginn/mcp/stats`, `GET /huginn/mcp/context`, `GET /huginn/mcp/weather`
+
+### Socket.IO: `/huginn` Namespace (`plugins/socketio.js`)
+
+| Event | Direction | Purpose |
+|-------|-----------|---------|
+| `join-huginn` | client→server | Operator joins chat room |
+| `join-control-center` | client→server | Display joins viewer room |
+| `deploy` | operator→displays | Push message to Control Center |
+| `deploy-ack` | server→operator | Deployment confirmation |
+| `huginn-state` | operator→displays | Orb state (thinking/speaking/idle/dreaming) |
+| `clear-display` | operator→displays | Clear all messages |
+| `displays-updated` | server→operator | Connected display list |
+| `operator-status` | server→displays | Operator online/offline |
+
+Auth: JWT verification in handshake — requires `isAdmin` flag + superadmin email.
+
+### Webhook (`POST /huginn/webhook`)
+Receives external events (e.g. from SSH tunnel). Optional `HUGINN_WEBHOOK_SECRET` validation. Broadcasts to Control Center via Socket.IO `/huginn` namespace.
+
+### Data Flow
+```
+Operator (Huginn Chat)
+  → POST /superadmin/huginn/chat (streaming)
+  → buildHuginnContext() injects live platform data
+  → Proxied to LLM (deepseek-r1:7b via OLLAMA_URL)
+  → Response streamed back + intents parsed (TASK:/NOTE:)
+  → Socket.IO deploy → Control Center displays
+```
+
 ## LLM Config
 - Endpoint: `OLLAMA_URL` (default: `https://ollama.madladslab.com/v1/chat/completions`)
-- Model: `OLLAMA_MODEL` (default: `qwen2.5:7b`)
+- Model: `OLLAMA_MODEL` (default: `qwen2.5:7b`) — Huginn uses `deepseek-r1:7b`
 - Auth: Bearer `OLLAMA_KEY`
 - Search: Brave Search via `SEARCH_API_KEY`

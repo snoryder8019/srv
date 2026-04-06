@@ -186,7 +186,7 @@ adminNs.use((socket, next) => {
 adminNs.on('connection', (socket) => {
   // Subscribe to game log stream
   socket.on('logs:subscribe', (game) => {
-    const validGames = ['rust', 'valheim', 'l4d2', '7dtd'];
+    const validGames = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
     if (!validGames.includes(game)) return socket.emit('logs:error', 'Invalid game');
 
     // Stop any existing stream for this socket
@@ -207,7 +207,7 @@ adminNs.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    ['rust', 'valheim', 'l4d2', '7dtd'].forEach(g => {
+    ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'].forEach(g => {
       logStreamer.stopStream(socket.id + ':' + g);
     });
   });

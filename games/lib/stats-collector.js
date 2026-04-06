@@ -20,6 +20,8 @@ const LOG_PATHS = {
   valheim: path.join(__dirname, '..', 'valheim', 'logs', 'server.log'),
   l4d2:    path.join(__dirname, '..', 'l4d2', 'logs', 'console.log'),
   '7dtd':  path.join(__dirname, '..', '7dtd', 'logs', 'output_log.txt'),
+  se:      path.join(__dirname, '..', 'se', 'logs', 'server.log'),
+  palworld: path.join(__dirname, '..', 'palworld', 'logs', 'server.log'),
 };
 
 // Fallback log paths
@@ -51,6 +53,16 @@ const PATTERNS = {
     { type: 'chat', re: /Chat.*'(.+?)': (.+)/, fields: ['name', 'message'] },
     { type: 'kill', re: /Player '(.+?)' killed by '(.+?)'/, fields: ['victim', 'attacker'] },
     { type: 'server_start', re: /GameManager Awake done/, fields: [] },
+  ],
+  se: [
+    { type: 'player_join', re: /Player connected.*?:\s*(.+?)\s*\((\d{17})\)/, fields: ['name', 'steamId'] },
+    { type: 'player_leave', re: /Player disconnected.*?:\s*(.+?)\s*\((\d{17})\)/, fields: ['name', 'steamId'] },
+    { type: 'server_start', re: /Game ready|Server started/, fields: [] },
+  ],
+  palworld: [
+    { type: 'player_join', re: /Login.*?:\s*(.+?)\s*.*?SteamID:\s*(\d{17})/, fields: ['name', 'steamId'] },
+    { type: 'player_leave', re: /Logout.*?:\s*(.+?)\s*.*?SteamID:\s*(\d{17})/, fields: ['name', 'steamId'] },
+    { type: 'server_start', re: /Setting breakpad|Server started/, fields: [] },
   ],
 };
 

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Superadmin — sLab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#c9a848; background:#262626; padding:3px 8px; border-radius:4px; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; color:#737373; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1100px; margin:0 auto; padding:24px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:16px; margin-bottom:28px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; }
+    .stat-label { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:6px; }
+    .stat-value { font-size:28px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; }
+    .nav-tabs { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid #262626; padding-bottom:-1px; }
+    .nav-tab { padding:10px 16px; font-size:13px; color:#737373; text-decoration:none; border-bottom:2px solid transparent; transition:all 0.2s; }
+    .nav-tab:hover { color:#e5e5e5; } .nav-tab.active { color:#c9a848; border-bottom-color:#c9a848; }
+    h2 { font-size:16px; font-weight:500; margin-bottom:16px; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
+    .status-active { background:#14532d; color:#86efac; }
+    .status-preview { background:#422006; color:#fdba74; }
+    .status-suspended { background:#451a1a; color:#fca5a5; }
+    .link { color:#c9a848; text-decoration:none; } .link:hover { text-decoration:underline; }
+    .btn-sm { padding:5px 12px; font-size:12px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; text-decoration:none; display:inline-block; }
+    .btn-sm:hover { border-color:#c9a848; color:#c9a848; }
+    .section { margin-bottom:32px; }
+    .empty { color:#525252; font-size:13px; padding:20px; text-align:center; }
+    .tag { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:500; margin-right:3px; white-space:nowrap; }
+    .tags-cell { max-width:200px; }
+    .filter-bar { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+    .filter-bar select { background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:6px 10px; border-radius:4px; font-family:'Inter',sans-serif; font-size:12px; }
+    .filter-bar label { font-size:12px; color:#737373; }
+    .log-row { display:flex; align-items:flex-start; gap:12px; padding:10px 14px; border-bottom:1px solid #1f1f1f; font-size:13px; }
+    .log-row:last-child { border-bottom:0; }
+    .log-icon { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; margin-top:1px; }
+    .log-body { flex:1; min-width:0; }
+    .log-action { color:#e5e5e5; font-weight:500; }
+    .log-tenant { color:#c9a848; font-size:12px; }
+    .log-detail { color:#737373; font-size:12px; margin-top:2px; }
+    .log-time { color:#525252; font-size:11px; white-space:nowrap; flex-shrink:0; }
+    .log-badge { display:inline-block; padding:1px 6px; border-radius:8px; font-size:10px; font-weight:500; }
+    .log-badge-success { background:#14532d; color:#86efac; }
+    .log-badge-failed { background:#451a1a; color:#fca5a5; }
+    .log-badge-partial { background:#422006; color:#fdba74; }
+    .log-table { background:#141414; border:1px solid #262626; border-radius:8px; overflow:hidden; max-height:500px; overflow-y:auto; }
+    .log-filter-bar { display:flex; gap:8px; margin-bottom:12px; }
+    .log-filter-btn { padding:4px 10px; font-size:11px; border-radius:12px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; }
+    .log-filter-btn:hover, .log-filter-btn.active { border-color:#c9a848; color:#c9a848; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo"><span>s</span>Lab</div>
+      <span class="badge">Superadmin</span>
+    </div>
+    <div class="topbar-right">
+      <span><%= user.email %></span>
+      <a href="/superadmin/huginn">Huginn</a>
+      <a href="/superadmin/control-center" target="_blank">Control Center</a>
+      <a href="/superadmin/promos">Promos</a>
+      <a href="/delegates/admin">Delegates</a>
+      <a href="/superadmin/signups">Signups</a>
+      <a href="/superadmin/activity">Activity Log</a>
+      <a href="/superadmin/logout">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Total Tenants</div>
+        <div class="stat-value"><%= stats.totalTenants %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Active (Paying)</div>
+        <div class="stat-value" style="color:#4ade80;"><%= stats.activeTenants %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Preview (Free)</div>
+        <div class="stat-value" style="color:#fdba74;"><%= stats.previewTenants %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Suspended</div>
+        <div class="stat-value" style="color:#f87171;"><%= stats.suspendedTenants %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Est. MRR</div>
+        <div class="stat-value gold">$<%= stats.monthlyRevenue %></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>All Tenants</h2>
+      <div class="filter-bar">
+        <label>Filter by tag:</label>
+        <select id="tagFilter" onchange="filterByTag(this.value)">
+          <option value="">All</option>
+          <option value="__none">No tags</option>
+          <% for (const [slug, def] of Object.entries(tagDefs)) { %>
+          <option value="<%= slug %>"><%= def.label %></option>
+          <% } %>
+        </select>
+      </div>
+      <% if (tenants.length) { %>
+      <table>
+        <thead><tr><th>Domain</th><th>Brand</th><th>Tags</th><th>Status</th><th>Plan</th><th>Owner</th><th>Created</th><th></th></tr></thead>
+        <tbody>
+          <% for (const t of tenants) { %>
+          <tr data-tags="<%= (t.tags || []).join(',') %>">
+            <td><a href="https://<%= t.domain %>" target="_blank" class="link"><%= t.domain %></a></td>
+            <td><%= t.brand?.name || '—' %></td>
+            <td class="tags-cell">
+              <% if (t.tags && t.tags.length) { %>
+                <% for (const tag of t.tags) { %>
+                  <% const def = tagDefs[tag]; if (def) { %>
+                  <span class="tag" style="color:<%= def.color %>;background:<%= def.bg %>"><%= def.label %></span>
+                  <% } } %>
+              <% } else { %>
+                <span style="color:#525252;font-size:11px;">—</span>
+              <% } %>
+            </td>
+            <td><span class="status status-<%= t.status || 'preview' %>"><%= t.status || 'preview' %></span></td>
+            <td><%= t.meta?.plan || 'free' %></td>
+            <td><%= t.meta?.ownerEmail || '—' %></td>
+            <td><%= t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—' %></td>
+            <td><a href="/superadmin/tenants/<%= t._id %>" class="btn-sm">Manage</a></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <% } else { %>
+        <div class="empty">No tenants yet. Share /start to get signups.</div>
+      <% } %>
+    </div>
+
+    <div class="section">
+      <h2>Recent Signups</h2>
+      <% if (recentSignups.length) { %>
+      <table>
+        <thead><tr><th>Email</th><th>Brand</th><th>Subdomain</th><th>Date</th></tr></thead>
+        <tbody>
+          <% for (const s of recentSignups) { %>
+          <tr>
+            <td><%= s.email %></td>
+            <td><%= s.brandName %></td>
+            <td><%= s.subdomain %>.madladslab.com</td>
+            <td><%= new Date(s.createdAt).toLocaleString() %></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <% } else { %>
+        <div class="empty">No signups yet.</div>
+      <% } %>
+    </div>
+
+    <div class="section">
+      <h2>Activity Log</h2>
+      <div class="log-filter-bar">
+        <button class="log-filter-btn active" onclick="filterLogs('')">All</button>
+        <button class="log-filter-btn" onclick="filterLogs('registration')">Registration</button>
+        <button class="log-filter-btn" onclick="filterLogs('settings')">Settings</button>
+        <button class="log-filter-btn" onclick="filterLogs('payment')">Payment</button>
+        <button class="log-filter-btn" onclick="filterLogs('admin_action')">Admin</button>
+        <button class="log-filter-btn" onclick="filterLogs('failed')">Failures Only</button>
+      </div>
+      <% if (activityLogs && activityLogs.length) { %>
+      <div class="log-table">
+        <%
+          const logIcons = {
+            registration: { icon: '&#128100;', bg: '#1e3a5f' },
+            settings:     { icon: '&#9881;',  bg: '#2a2410' },
+            payment:      { icon: '&#128179;', bg: '#14532d' },
+            admin_action: { icon: '&#9889;',  bg: '#3b1764' },
+          };
+          const actionLabels = {
+            signup: 'Signed up',
+            go_live_initiated: 'Go-live initiated',
+            payment_captured: 'Payment captured',
+            settings_saved: 'Settings saved',
+            stripe_test: 'Stripe test',
+            email_test: 'Email test',
+            dns_check: 'DNS check',
+            dns_auto_create: 'DNS auto-create',
+            activated: 'Activated',
+            plan_changed: 'Plan changed',
+            suspended: 'Suspended',
+            deleted: 'Deleted',
+          };
+        %>
+        <% for (const log of activityLogs) { %>
+          <% const iconDef = logIcons[log.category] || { icon: '&#8226;', bg: '#262626' }; %>
+          <div class="log-row" data-category="<%= log.category %>" data-status="<%= log.status %>">
+            <div class="log-icon" style="background:<%= iconDef.bg %>"><%- iconDef.icon %></div>
+            <div class="log-body">
+              <div>
+                <span class="log-action"><%= actionLabels[log.action] || log.action %></span>
+                <span class="log-badge log-badge-<%= log.status %>"><%= log.status %></span>
+              </div>
+              <div class="log-tenant"><%= log.tenantDomain || '—' %></div>
+              <% if (log.actor?.email) { %>
+                <div class="log-detail">by <%= log.actor.email %></div>
+              <% } %>
+              <% if (log.error) { %>
+                <div class="log-detail" style="color:#f87171;">Error: <%= log.error %></div>
+              <% } %>
+              <% if (log.details) { %>
+                <% if (log.details.plan) { %><div class="log-detail">Plan: <%= log.details.plan %></div><% } %>
+                <% if (log.details.amount) { %><div class="log-detail">Amount: $<%= log.details.amount %></div><% } %>
+                <% if (log.details.fieldsUpdated) { %><div class="log-detail">Fields: <%= log.details.fieldsUpdated.slice(0, 5).join(', ') %><%= log.details.fieldsUpdated.length > 5 ? ' +' + (log.details.fieldsUpdated.length - 5) + ' more' : '' %></div><% } %>
+                <% if (log.details.spf) { %><div class="log-detail">SPF: <%= log.details.spf %> | DKIM: <%= log.details.dkim %> | DMARC: <%= log.details.dmarc %> | MX: <%= log.details.mx %></div><% } %>
+              <% } %>
+            </div>
+            <div class="log-time"><%= log.timestamp ? new Date(log.timestamp).toLocaleString() : '—' %></div>
+          </div>
+        <% } %>
+      </div>
+      <% } else { %>
+        <div class="empty">No activity recorded yet. Events will appear as tenants register and configure.</div>
+      <% } %>
+    </div>
+    </div>
+  <script>
+    function filterByTag(val) {
+      document.querySelectorAll('tbody tr[data-tags]').forEach(function(row) {
+        var tags = row.getAttribute('data-tags');
+        if (!val) { row.style.display = ''; return; }
+        if (val === '__none') { row.style.display = tags ? 'none' : ''; return; }
+        row.style.display = tags.split(',').indexOf(val) !== -1 ? '' : 'none';
+      });
+    }
+    function filterLogs(val) {
+      document.querySelectorAll('.log-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      event.target.classList.add('active');
+      document.querySelectorAll('.log-row').forEach(function(row) {
+        if (!val) { row.style.display = ''; return; }
+        if (val === 'failed') { row.style.display = row.dataset.status === 'failed' ? '' : 'none'; return; }
+        row.style.display = row.dataset.category === val ? '' : 'none';
+      });
+    }
+  </script>
+</body>
+</html>

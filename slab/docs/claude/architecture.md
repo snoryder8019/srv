@@ -43,6 +43,9 @@ updated: 2026-03-26
 `assets`, `asset_folders`, `contacts`, `campaigns`, `campaign_events`,
 `client_emails`, `meetings`, `reviews_cache`, `sessions`, `users`
 
+## Collections (slab registry — Huginn)
+`huginn_tasks`, `huginn_notes`, `huginn_conversations` — superadmin AI assistant data, stored in the slab registry DB (not per-tenant)
+
 ## S3 Isolation
 - Shared bucket: `madladslab` on Linode Object Storage
 - Per-tenant prefix: `{s3Prefix}/portfolio/`, `{s3Prefix}/clients/`, etc.
@@ -66,7 +69,8 @@ updated: 2026-03-26
 `PORT`, `NODE_ENV`, `DB_URL`, `SLAB_DB`, `JWT_SECRET`, `SESHSEC`, `MASTER_KEY`,
 `LINODE_ACCESS`, `LINODE_SECRET`, `LINODE_BUCKET`, `LINODE_URL`, `LINODE_REGION`,
 `OLLAMA_URL`, `OLLAMA_KEY`, `OLLAMA_MODEL`, `SEARCH_API_KEY`,
-`GGLCID`, `GGLSEC`, `DOMAIN`
+`GGLCID`, `GGLSEC`, `DOMAIN`,
+`HUGINN_WEBHOOK_SECRET` (optional — validates inbound webhook events)
 
 Per-tenant keys live in `slab.tenants` document, encrypted.
 
@@ -88,6 +92,9 @@ middleware/jwtAuth.js      Admin/portal JWT
 middleware/superadmin.js   Superadmin auth
 routes/auth.js            Google OAuth (custom, not Passport)
 routes/admin.js           Admin router
-routes/superadmin.js       Platform management
+routes/superadmin.js       Platform management + Huginn chat/control-center views
+routes/huginn-mcp.js       Huginn MCP (JSON-RPC 2.0 + REST shortcuts)
+routes/huginn-webhook.js   Huginn webhook (external event ingestion)
+plugins/huginnMcp.js       Huginn data layer (tasks, notes, conversations, context)
 plugins/provision.js       Tenant provisioning
 ```

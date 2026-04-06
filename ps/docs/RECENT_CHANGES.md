@@ -1,6 +1,66 @@
 # Recent Changes Summary
 
-Generated: 2026-04-04T07:30:00.026Z
+Generated: 2026-04-06T20:14:54.597Z
+
+---
+
+## Commit: whats new v 1.0 tunning. shippit
+
+- **Hash:** `4d7acb6`
+- **Author:** Scott
+- **Date:** 4/4/2026
+- **Changes:** 9 files, +588/-12 lines
+
+### Modified Areas:
+
+**Backend:** 4 files
+**Views:** 3 files
+**Scripts:** 1 files
+
+---
+
+## Commit: tests scans V1.0
+
+- **Hash:** `63c05d5`
+- **Author:** Scott
+- **Date:** 4/4/2026
+- **Changes:** 12 files, +3496/-8 lines
+
+### Modified Areas:
+
+**Backend:** 2 files
+**Views:** 2 files
+**Scripts:** 4 files
+**Documentation:** 1 files
+
+---
+
+## Commit: updates meetings
+
+- **Hash:** `cff709e`
+- **Author:** Scott
+- **Date:** 4/4/2026
+- **Changes:** 59 files, +4957/-178 lines
+
+### Modified Areas:
+
+**Backend:** 16 files
+**Views:** 29 files
+
+---
+
+## Commit: v 0.91.1 ouath bug 0.1.0 jwt into multiple slabs. design updates. some games updates srv whoah
+
+- **Hash:** `a278271`
+- **Author:** Scott
+- **Date:** 4/4/2026
+- **Changes:** 125 files, +7800/-790 lines
+
+### Modified Areas:
+
+**Backend:** 14 files
+**Views:** 42 files
+**Documentation:** 3 files
 
 ---
 
@@ -17,65 +77,6 @@ Generated: 2026-04-04T07:30:00.026Z
 **Views:** 12 files
 **Scripts:** 1 files
 **Documentation:** 1 files
-
----
-
-## Commit: games - plugins
-
-- **Hash:** `e52f870`
-- **Author:** Scott
-- **Date:** 3/31/2026
-- **Changes:** 35 files, +9876/-163 lines
-
-### Modified Areas:
-
-**Backend:** 7 files
-**Documentation:** 4 files
-
----
-
-## Commit: plugins - games
-
-- **Hash:** `90b06bd`
-- **Author:** Scott
-- **Date:** 3/31/2026
-
-### Modified Areas:
-
-**Scripts:** 1 files
-
----
-
-## Commit: platform updates on v0.9
-
-- **Hash:** `b6e30d6`
-- **Author:** Scott
-- **Date:** 3/30/2026
-- **Changes:** 49 files, +3185/-1507 lines
-
-### Modified Areas:
-
-**Backend:** 10 files
-**Views:** 27 files
-**Scripts:** 1 files
-**Documentation:** 4 files
-
----
-
-## Commit: good push.....llm health check....agent gueardrails, style consistency
-
-- **Hash:** `52a60c9`
-- **Author:** Scott
-- **Date:** 3/28/2026
-- **Changes:** 153 files, +14659/-1678 lines
-
-### Modified Areas:
-
-**Frontend:** 1 files
-**Backend:** 33 files
-**Views:** 71 files
-**Scripts:** 5 files
-**Documentation:** 3 files
 
 ---
 

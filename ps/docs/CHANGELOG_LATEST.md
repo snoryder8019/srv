@@ -1,8 +1,8 @@
-## Latest Changes (4/4/2026)
+## Latest Changes (4/6/2026)
 
+- **whats new v 1.0 tunning. shippit** (4d7acb6) - Scott
+- **tests scans V1.0** (63c05d5) - Scott
+- **updates meetings** (cff709e) - Scott
+- **v 0.91.1 ouath bug 0.1.0 jwt into multiple slabs. design updates. some games updates srv whoah** (a278271) - Scott
 - **v0.9 — security hardening, sandboxed game users, server-cam, unified terminal** (34d6674) - Scott
-- **games - plugins** (e52f870) - Scott
-- **plugins - games** (90b06bd) - Scott
-- **platform updates on v0.9** (b6e30d6) - Scott
-- **good push.....llm health check....agent gueardrails, style consistency** (52a60c9) - Scott
 

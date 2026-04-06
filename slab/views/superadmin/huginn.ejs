@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Huginn — sLab Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+    /* Topbar */
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:12px 24px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+    .topbar-left { display:flex; align-items:center; gap:14px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#c9a848; background:#262626; padding:3px 8px; border-radius:4px; }
+    .huginn-badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#fff; background:#6B3FA0; padding:3px 8px; border-radius:4px; }
+    .topbar-right { display:flex; align-items:center; gap:14px; font-size:12px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; } .topbar-right a:hover { color:#c9a848; }
+
+    /* Status dot */
+    .status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .status-dot.online { background:#4ade80; }
+    .status-dot.offline { background:#f87171; }
+    .status-dot.busy { background:#fbbf24; animation:pulse 1s infinite; }
+    .status-dot.loading { background:#c9a848; animation:pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .status-label { font-size:11px; color:#737373; display:flex; align-items:center; gap:5px; }
+
+    /* Layout: sidebar + chat */
+    .main { flex:1; display:flex; overflow:hidden; }
+    .sidebar { width:240px; background:#111; border-right:1px solid #262626; display:flex; flex-direction:column; flex-shrink:0; position:relative; }
+    .sidebar-header { padding:16px; border-bottom:1px solid #262626; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#737373; }
+    .sidebar-section { padding:12px 16px; }
+    .sidebar-section h4 { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#525252; margin-bottom:8px; }
+
+    /* Displays list */
+    .display-item { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:4px; font-size:12px; margin-bottom:4px; cursor:pointer; border:1px solid transparent; }
+    .display-item:hover { background:#1a1a1a; }
+    .display-item.active { border-color:#c9a848; background:#1a1a0a; }
+    .display-icon { width:20px; height:20px; background:#262626; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:10px; }
+
+    /* Session bar */
+    .session-bar { padding:10px 16px; border-bottom:1px solid #262626; display:flex; align-items:center; gap:8px; }
+    .session-bar label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#525252; white-space:nowrap; }
+    .session-bar input { flex:1; background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:5px 10px; border-radius:3px; font-size:12px; font-family:inherit; }
+    .session-bar input:focus { outline:none; border-color:#c9a848; }
+    .btn-xs { padding:4px 10px; font-size:10px; border-radius:3px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:inherit; }
+    .btn-xs:hover { border-color:#c9a848; color:#c9a848; }
+
+    /* Chat area — input only, no messages */
+    .chat-area { flex:1; display:flex; flex-direction:column; overflow:hidden; position:relative; }
+    .orb-display { flex:1; display:flex; align-items:center; justify-content:center; background:#0a0a0a; position:relative; }
+    .orb-info {
+      text-align:center; color:#737373; padding:40px;
+      max-width:500px; line-height:1.8;
+    }
+    .orb-info h2 {
+      font-size:18px; font-weight:600; color:#e5e5e5; margin-bottom:12px;
+      display:flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .orb-info p { font-size:13px; margin-bottom:16px; }
+    .orb-link { color:#c9a848; text-decoration:none; }
+    .orb-link:hover { text-decoration:underline; }
+
+    /* Message bubbles */
+    .msg { display:flex; max-width:100%; }
+    .msg-user { justify-content:flex-end; }
+    .msg-agent { justify-content:flex-start; }
+    .bubble { max-width:72%; padding:12px 16px; border-radius:6px; font-size:13px; line-height:1.65; word-break:break-word; white-space:pre-wrap; position:relative; }
+    .msg-agent .bubble { background:#1a1a1a; border:1px solid #262626; color:#e5e5e5; }
+    .msg-user .bubble { background:#c9a848; color:#0a0a0a; }
+    .bubble code { background:rgba(255,255,255,0.08); padding:1px 5px; border-radius:3px; font-size:0.85em; font-family:'SF Mono','Fira Code',monospace; }
+    .bubble pre { background:#0a0a0a; color:#e0e0e0; padding:12px; border-radius:4px; overflow-x:auto; margin:8px 0; font-size:12px; line-height:1.5; }
+    .bubble pre code { background:none; padding:0; color:inherit; }
+    .thinking { font-size:12px; color:#525252; font-style:italic; border-left:2px solid #c9a848; padding-left:10px; margin-bottom:6px; opacity:0.7; }
+
+    /* Deploy button on messages */
+    .deploy-bar { display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid #333; }
+    .btn-deploy { padding:4px 12px; font-size:10px; font-weight:600; letter-spacing:.06em; border:1px solid #6B3FA0; border-radius:3px; background:transparent; color:#a78bfa; cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:4px; transition:all .15s; }
+    .btn-deploy:hover { background:#6B3FA0; color:#fff; }
+    .btn-deploy.deployed { border-color:#4ade80; color:#4ade80; pointer-events:none; }
+
+    /* Typing indicator */
+    .typing { display:inline-flex; gap:4px; padding:12px 16px; background:#1a1a1a; border:1px solid #262626; border-radius:6px; }
+    .typing span { width:6px; height:6px; border-radius:50%; background:#525252; animation:bounce 1.2s infinite; }
+    .typing span:nth-child(2) { animation-delay:.15s; }
+    .typing span:nth-child(3) { animation-delay:.3s; }
+    @keyframes bounce { 0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-5px);opacity:1} }
+
+    /* Voice controls bar */
+    .voice-controls-bar { padding:8px 24px; border-top:1px solid #262626; background:#111; display:flex; gap:10px; align-items:center; }
+    .voice-controls-bar label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#525252; }
+
+    /* Input bar */
+    .input-bar { padding:12px 24px 16px; background:#111; display:flex; gap:10px; align-items:flex-end; flex-shrink:0; }
+    .input-bar textarea { flex:1; min-height:42px; max-height:140px; padding:10px 14px; background:#1a1a1a; border:1px solid #333; border-radius:4px; color:#e5e5e5; font-size:14px; font-family:inherit; line-height:1.5; resize:none; overflow-y:auto; }
+    .input-bar textarea:focus { outline:none; border-color:#c9a848; }
+    .btn-send { padding:10px 20px; background:#c9a848; color:#0a0a0a; border:none; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; flex-shrink:0; }
+    .btn-send:hover { background:#d4b054; }
+    .btn-send:disabled { opacity:.4; cursor:default; }
+
+    /* Deploy targets select */
+    .deploy-target { font-size:10px; padding:3px 8px; background:#1a1a1a; border:1px solid #333; color:#a3a3a3; border-radius:3px; font-family:inherit; }
+    .deploy-target:focus { outline:none; border-color:#c9a848; }
+
+    /* TTS / STT controls */
+    .voice-bar { display:flex; align-items:center; gap:6px; }
+    .voice-select { padding:8px 10px; background:#1a1a1a; border:1px solid #333; color:#a3a3a3; border-radius:4px; font-size:11px; font-family:inherit; cursor:pointer; }
+    .voice-select:focus { outline:none; border-color:#c9a848; }
+    .btn-mic { width:40px; height:40px; border-radius:50%; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; transition:all .2s; flex-shrink:0; }
+    .btn-mic:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-mic.recording { border-color:#f87171; color:#f87171; background:rgba(248,113,113,0.1); animation:micPulse 1s infinite; }
+    @keyframes micPulse { 0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.3)} 50%{box-shadow:0 0 0 8px rgba(248,113,113,0)} }
+
+    .btn-speak { background:none; border:none; cursor:pointer; font-size:13px; color:#525252; padding:2px 4px; transition:color .15s; }
+    .btn-speak:hover { color:#c9a848; }
+    .btn-speak.speaking { color:#c9a848; animation:speakPulse 1s infinite; }
+    @keyframes speakPulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* Speak button in deploy bar */
+    .deploy-bar .btn-speak { font-size:12px; border:1px solid #333; border-radius:3px; padding:3px 10px; display:flex; align-items:center; gap:4px; color:#737373; }
+    .deploy-bar .btn-speak:hover { border-color:#c9a848; color:#c9a848; }
+    .deploy-bar .btn-speak.speaking { border-color:#c9a848; color:#c9a848; }
+
+    @media (max-width:768px) {
+      .sidebar { width:100%; border-right:none; border-bottom:1px solid #262626; }
+      .main { flex-direction:column; }
+      .orb-info { padding:20px; }
+      .orb-info h2 { font-size:16px; }
+      .orb-info p { font-size:12px; }
+      .session-bar { flex-wrap:wrap; }
+      .voice-controls-bar { padding:8px 16px; flex-wrap:wrap; }
+      .input-bar { padding:10px 16px 14px; }
+      .input-bar textarea { font-size:14px; min-height:38px; }
+      .btn-mic { width:38px; height:38px; font-size:14px; }
+      .btn-send { padding:9px 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <a href="/superadmin" style="text-decoration:none;"><div class="logo"><span>s</span>Lab</div></a>
+      <span class="badge">Superadmin</span>
+      <span class="huginn-badge">&#x16B6; Huginn</span>
+      <span class="status-label" id="hg-status"><span class="status-dot loading"></span> checking...</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin/control-center" target="_blank">Control Center</a>
+      <a href="/superadmin">Dashboard</a>
+      <span style="color:#525252;"><%= user.email %></span>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Sidebar: connected displays -->
+    <div class="sidebar">
+      <div class="sidebar-header">Connected Displays</div>
+      <div class="sidebar-section" id="displays-list">
+        <div style="color:#525252;font-size:11px;">No displays connected.<br><br>Open <a href="/superadmin/control-center" target="_blank" style="color:#c9a848;">Control Center</a> on a display.</div>
+      </div>
+      <!-- Huginn Tasks -->
+      <div class="sidebar-section" style="border-top:1px solid #262626;">
+        <h4>Huginn Tasks</h4>
+        <div id="huginn-tasks" style="max-height:200px;overflow-y:auto;">
+          <div style="color:#525252;font-size:11px;">Loading tasks...</div>
+        </div>
+      </div>
+
+      <!-- Conversation log indicator -->
+      <div class="sidebar-section" style="border-top:1px solid #262626;">
+        <h4>Context</h4>
+        <div id="context-status" style="font-size:11px;color:#525252;">
+          <span class="status-dot" style="background:#525252;"></span> idle
+        </div>
+        <div style="margin-top:6px;font-size:10px;color:#404040;">
+          MCP reads: <span id="mcp-reads" style="color:#c9a848;">slab DB + codebase</span>
+        </div>
+        <div style="margin-top:4px;font-size:10px;color:#404040;">
+          Collections: <span style="color:#6B3FA0;">huginn_tasks, huginn_notes, huginn_conversations</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section" style="margin-top:auto; border-top:1px solid #262626;">
+        <h4>Deploy Target</h4>
+        <select id="deploy-target" class="deploy-target" style="width:100%;padding:6px 10px;font-size:12px;">
+          <option value="all">All Displays</option>
+        </select>
+        <button class="btn-xs" style="width:100%;margin-top:8px;" onclick="clearDisplay()">Clear Display</button>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div class="chat-area">
+      <div class="session-bar">
+        <label>Session</label>
+        <input type="text" id="hg-session" value="superadmin" placeholder="session name">
+        <button class="btn-xs" onclick="newSession()">New</button>
+      </div>
+
+      <div class="orb-display" style="flex-direction:column;overflow-y:auto;">
+        <div class="orb-info" style="flex-shrink:0;">
+          <h2>&#x16B6; Huginn Control Panel</h2>
+          <p>Type or speak below. Huginn sees live Slab DB context (tenants, stats, tasks) with every message. Responses deploy to <a href="/superadmin/control-center" target="_blank" class="orb-link">Control Center</a>.</p>
+          <p style="font-size:12px;color:#525252;">Say <strong style="color:#c9a848;">TASK:</strong> to create a task or <strong style="color:#6B3FA0;">NOTE:</strong> to save a note. Huginn stores these in its own <code>huginn_*</code> collections.</p>
+        </div>
+        <div id="chat-messages" style="flex:1;width:100%;max-width:720px;padding:0 24px 16px;"></div>
+      </div>
+
+      <div class="voice-controls-bar">
+        <label>TTS Voice</label>
+        <select id="voice-select" class="voice-select" onchange="setVoice(this.value)" title="TTS voice">
+          <option value="lessac">Lessac (F)</option>
+          <option value="ryan">Ryan (M)</option>
+          <option value="slt">SLT (F)</option>
+        </select>
+      </div>
+
+      <div class="input-bar">
+        <textarea id="input" placeholder="Message Huginn..." rows="1"></textarea>
+        <button class="btn-mic" id="mic-btn" onclick="toggleMic()" title="Voice input">&#x1F3A4;</button>
+        <button class="btn-send" id="send-btn" onclick="sendMsg()">Send</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  const inputEl    = document.getElementById('input');
+  const sendBtn    = document.getElementById('send-btn');
+  const statusEl   = document.getElementById('hg-status');
+  const sessionEl  = document.getElementById('hg-session');
+  const targetEl   = document.getElementById('deploy-target');
+  const displaysEl = document.getElementById('displays-list');
+
+  let sending = false;
+  const chatEl = document.getElementById('chat-messages');
+  const tasksEl = document.getElementById('huginn-tasks');
+  const ctxEl  = document.getElementById('context-status');
+
+  // ── Load Huginn tasks ────────────────────────────────────────────────────
+  function loadTasks() {
+    fetch('/superadmin/huginn/tasks').then(r => r.json()).then(d => {
+      if (!d.ok || !d.tasks.length) {
+        tasksEl.innerHTML = '<div style="color:#525252;font-size:11px;">No tasks yet.</div>';
+        return;
+      }
+      tasksEl.innerHTML = d.tasks.map(t => {
+        const colors = { pending: '#fbbf24', in_progress: '#38bdf8', done: '#4ade80', blocked: '#f87171' };
+        const dot = '<span class="status-dot" style="background:' + (colors[t.status] || '#525252') + ';"></span>';
+        return '<div style="font-size:11px;padding:4px 0;display:flex;align-items:center;gap:6px;">'
+          + dot + '<span style="flex:1;">' + escHtml(t.title).slice(0, 60) + '</span>'
+          + '<span style="color:#525252;font-size:9px;">' + t.status + '</span></div>';
+      }).join('');
+    }).catch(() => {});
+  }
+  loadTasks();
+  setInterval(loadTasks, 30000);
+
+  function setCtx(state) {
+    const states = {
+      idle:     '<span class="status-dot" style="background:#525252;"></span> idle',
+      building: '<span class="status-dot busy"></span> building context...',
+      sending:  '<span class="status-dot" style="background:#c9a848;animation:pulse 1s infinite;"></span> sending to LLM...',
+      parsing:  '<span class="status-dot" style="background:#6B3FA0;animation:pulse 1s infinite;"></span> parsing intents...',
+    };
+    ctxEl.innerHTML = states[state] || states.idle;
+  }
+
+  function addMsg(role, html) {
+    var div = document.createElement('div');
+    div.className = 'msg msg-' + (role === 'user' ? 'user' : 'agent');
+    div.innerHTML = '<div class="bubble">' + html + '</div>';
+    chatEl.appendChild(div);
+    chatEl.parentElement.scrollTop = chatEl.parentElement.scrollHeight;
+  }
+
+  // ── Socket.IO — /huginn namespace ─────────────────────────────────────────
+  const socket = io('/huginn');
+  socket.on('connect', function() { socket.emit('join-huginn'); });
+
+  socket.on('displays-updated', function(list) {
+    if (!list || !list.length) {
+      displaysEl.innerHTML = '<div style="color:#525252;font-size:11px;">No displays connected.<br><br>Open <a href="/superadmin/control-center" target="_blank" style="color:#c9a848;">Control Center</a> on a display.</div>';
+      targetEl.innerHTML = '<option value="all">All Displays</option>';
+      return;
+    }
+    displaysEl.innerHTML = list.map(function(d) {
+      return '<div class="display-item" onclick="selectDisplay(\'' + d.displayId + '\')">' +
+        '<div class="display-icon">&#x1F5B5;</div>' +
+        '<span>' + escHtml(d.displayId) + '</span>' +
+        '<span style="margin-left:auto;font-size:10px;color:#525252;">' + d.connections + ' conn</span>' +
+      '</div>';
+    }).join('');
+    targetEl.innerHTML = '<option value="all">All Displays</option>' +
+      list.map(function(d) { return '<option value="' + escHtml(d.displayId) + '">' + escHtml(d.displayId) + '</option>'; }).join('');
+  });
+
+  socket.on('deploy-ack', function(data) {
+    // Find the deploy button and mark it
+    var btn = document.getElementById('deploy-' + data.id);
+    if (btn) {
+      btn.classList.add('deployed');
+      btn.innerHTML = '&#x2713; Deployed';
+    }
+  });
+
+  window.selectDisplay = function(id) {
+    targetEl.value = id;
+    document.querySelectorAll('.display-item').forEach(function(el) { el.classList.remove('active'); });
+    event.currentTarget.classList.add('active');
+  };
+
+  // ── Health check ──────────────────────────────────────────────────────────
+  function checkHealth() {
+    fetch('/superadmin/huginn/health').then(function(r) { return r.json(); }).then(function(d) {
+      if (d.ok && !d.busy) {
+        statusEl.innerHTML = '<span class="status-dot online"></span> online';
+      } else if (d.ok && d.busy) {
+        statusEl.innerHTML = '<span class="status-dot busy"></span> busy';
+      } else {
+        statusEl.innerHTML = '<span class="status-dot offline"></span> offline';
+      }
+    }).catch(function() {
+      statusEl.innerHTML = '<span class="status-dot offline"></span> offline';
+    });
+  }
+  checkHealth();
+  setInterval(checkHealth, 30000);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  // ── TTS / STT ──────────────────────────────────────────────────────────────
+  let _voice = 'lessac';
+  let _currentAudio = null;
+  let _recognition = null;
+  let _isRecording = false;
+
+  window.setVoice = function(v) { _voice = v; };
+
+  function _ttsClean(text, maxChars) {
+    var clean = text
+      .replace(/<think>[\s\S]*?<\/think>/g, '')
+      .replace(/```[\s\S]*?```/g, 'code block.')
+      .replace(/`[^`]+`/g, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/#+\s/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, 'link.')
+      .replace(/\n+/g, ' ')
+      .trim();
+    if (maxChars && clean.length > maxChars) {
+      var cut = clean.search(/[.!?](?:\s|$)/);
+      clean = cut > 0 && cut < maxChars ? clean.slice(0, cut + 1) : clean.slice(0, maxChars);
+    }
+    return clean;
+  }
+
+  function _ttsSentences(text) {
+    return text.match(/[^.!?]+[.!?]+\s*/g)?.map(function(s) { return s.trim(); }).filter(Boolean) || [text];
+  }
+
+  async function _ttsFetch(sentence) {
+    var res = await fetch('/admin/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: sentence, voice: _voice }),
+    });
+    var ct = res.headers.get('content-type') || '';
+    if (!res.ok || !ct.includes('audio')) throw new Error('TTS ' + res.status);
+    return URL.createObjectURL(await res.blob());
+  }
+
+  function _ttsPlayUrl(url) {
+    return new Promise(function(resolve, reject) {
+      var audio = new Audio(url);
+      _currentAudio = audio;
+      audio.onended = function() { URL.revokeObjectURL(url); resolve(); };
+      audio.onerror = function(e) { URL.revokeObjectURL(url); reject(e); };
+      audio.play().catch(reject);
+    });
+  }
+
+  function stopSpeaking() {
+    if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
+    document.querySelectorAll('.btn-speak.speaking').forEach(function(b) { b.classList.remove('speaking'); });
+  }
+
+  async function speak(text, btn) {
+    var clean = _ttsClean(text);
+    if (!clean) return;
+    stopSpeaking();
+    if (btn) btn.classList.add('speaking');
+
+    var sentences = _ttsSentences(clean);
+    try {
+      var nextFetch = _ttsFetch(sentences[0]);
+      for (var i = 0; i < sentences.length; i++) {
+        var prefetchNext = sentences[i + 1] ? _ttsFetch(sentences[i + 1]) : null;
+        var url = await nextFetch;
+        if (!btn || btn.classList.contains('speaking')) {
+          await _ttsPlayUrl(url);
+        } else {
+          URL.revokeObjectURL(url); break;
+        }
+        nextFetch = prefetchNext;
+      }
+      _currentAudio = null;
+      if (btn) btn.classList.remove('speaking');
+    } catch (err) {
+      console.warn('[TTS] Piper failed, falling back to Web Speech:', err.message);
+      _currentAudio = null;
+      if (window.speechSynthesis) {
+        var utt = new SpeechSynthesisUtterance(clean);
+        utt.rate = 1.0; utt.pitch = 0.95;
+        utt.onend = function() {
+          if (btn) btn.classList.remove('speaking');
+        };
+        window.speechSynthesis.speak(utt);
+      } else {
+        if (btn) btn.classList.remove('speaking');
+      }
+    }
+  }
+
+  function _ttsPlayUrl(url) {
+    return new Promise(function(resolve, reject) {
+      var audio = new Audio(url);
+      _currentAudio = audio;
+      audio.onended = function() { URL.revokeObjectURL(url); resolve(); };
+      audio.onerror = function(e) { URL.revokeObjectURL(url); reject(e); };
+      audio.play().catch(reject);
+    });
+  }
+
+  window.speakBtn = function(btn) {
+    if (btn.classList.contains('speaking')) { stopSpeaking(); return; }
+    var bubble = btn.closest('.bubble') || btn.parentElement.previousElementSibling;
+    if (!bubble) return;
+    // Get raw text from data attribute or innerText
+    var rawText = bubble.dataset.rawContent || bubble.innerText || bubble.textContent;
+    speak(rawText, btn);
+  };
+
+  // ── STT (Web Speech API) ──────────────────────────────────────────────────
+  (function initSTT() {
+    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) return;
+    _recognition = new SpeechRec();
+    _recognition.continuous = false;
+    _recognition.interimResults = false;
+    _recognition.lang = 'en-US';
+    _recognition.onresult = function(e) {
+      var transcript = e.results[0][0].transcript;
+      inputEl.value = transcript;
+      stopMic();
+      sendMsg();
+    };
+    _recognition.onerror = function(e) {
+      if (e.error !== 'no-speech') console.warn('[STT]', e.error);
+      stopMic();
+    };
+    _recognition.onend = function() { stopMic(); };
+  })();
+
+  window.toggleMic = function() {
+    if (_isRecording) { stopMic(); return; }
+    if (!_recognition) return;
+    _isRecording = true;
+    document.getElementById('mic-btn').classList.add('recording');
+    try { _recognition.start(); } catch(e) { stopMic(); }
+  };
+
+  function stopMic() {
+    _isRecording = false;
+    document.getElementById('mic-btn').classList.remove('recording');
+    try { if (_recognition) _recognition.stop(); } catch(e) {}
+  }
+
+  // ── Clear display ─────────────────────────────────────────────────────────
+  window.clearDisplay = function() {
+    socket.emit('clear-display', { displayId: targetEl.value });
+  };
+
+  // ── Auto-resize textarea ──────────────────────────────────────────────────
+  inputEl.addEventListener('input', function() {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 140) + 'px';
+  });
+  inputEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  });
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  window.sendMsg = async function() {
+    var text = inputEl.value.trim();
+    if (!text || sending) return;
+    sending = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = '...';
+
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+
+    // Show user message inline
+    addMsg('user', escHtml(text));
+
+    // Deploy user's message to Control Center
+    socket.emit('deploy', {
+      content: '**You:** ' + text,
+      type: 'text',
+      displayId: targetEl.value || 'all',
+    });
+
+    setCtx('building');
+    socket.emit('huginn-state', { state: 'thinking', detail: 'building context...' });
+
+    // Create streaming bubble for assistant
+    var agentDiv = document.createElement('div');
+    agentDiv.className = 'msg msg-agent';
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+    agentDiv.appendChild(bubble);
+    chatEl.appendChild(agentDiv);
+
+    try {
+      setCtx('sending');
+      socket.emit('huginn-state', { state: 'thinking', detail: 'sending to LLM...' });
+      var r = await fetch('/superadmin/huginn/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: text }],
+          session: sessionEl.value.trim() || 'superadmin',
+        }),
+      });
+
+      var ct = r.headers.get('content-type') || '';
+      var full = '';
+
+      if (ct.includes('text/event-stream')) {
+        var reader = r.body.getReader();
+        var decoder = new TextDecoder();
+        bubble.textContent = '';
+
+        while (true) {
+          var result = await reader.read();
+          if (result.done) break;
+          var chunk = decoder.decode(result.value, { stream: true });
+          var lines = chunk.split('\n');
+          for (var i = 0; i < lines.length; i++) {
+            if (!lines[i].startsWith('data: ')) continue;
+            var payload = lines[i].slice(6).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              var j = JSON.parse(payload);
+              var delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+              if (delta) {
+                full += delta;
+                bubble.textContent = full;
+                chatEl.parentElement.scrollTop = chatEl.parentElement.scrollHeight;
+              }
+            } catch(e) {}
+          }
+        }
+      } else if (!r.ok) {
+        var errData = await r.json().catch(function() { return { error: 'HTTP ' + r.status }; });
+        bubble.textContent = 'Error: ' + (errData.error || errData.detail || r.status);
+        bubble.style.color = '#f87171';
+      } else {
+        var data = await r.json();
+        full = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content)
+             || (data.message && data.message.content)
+             || data.content
+             || JSON.stringify(data);
+        bubble.textContent = full;
+      }
+
+      // Deploy response to Control Center
+      if (full) {
+        socket.emit('deploy', {
+          content: '**Huginn:** ' + full,
+          type: 'alert',
+          displayId: targetEl.value || 'all',
+        });
+        // Add deploy + speak buttons
+        var bar = document.createElement('div');
+        bar.className = 'deploy-bar';
+        bar.innerHTML = '<button class="btn-speak" onclick="speakBtn(this)" title="Speak">&#x1F50A;</button>';
+        bubble.appendChild(bar);
+        bubble.dataset.rawContent = full;
+      }
+
+      setCtx('parsing');
+      socket.emit('huginn-state', { state: 'speaking', detail: 'responding' });
+      // Refresh tasks (intents may have been saved server-side)
+      setTimeout(function() {
+        loadTasks();
+        setCtx('idle');
+        socket.emit('huginn-state', { state: 'listening' });
+      }, 1500);
+
+    } catch(err) {
+      console.error('[Huginn] Connection error:', err.message);
+      bubble.textContent = 'Connection error: ' + err.message;
+      bubble.style.color = '#f87171';
+      setCtx('idle');
+      socket.emit('huginn-state', { state: 'alert', detail: 'connection error' });
+      setTimeout(function() { socket.emit('huginn-state', { state: 'listening' }); }, 3000);
+    }
+
+    sending = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send';
+    inputEl.focus();
+    chatEl.parentElement.scrollTop = chatEl.parentElement.scrollHeight;
+  };
+
+  // ── New session ───────────────────────────────────────────────────────────
+  window.newSession = function() {
+    var name = prompt('New session name:', 'session-' + Date.now().toString(36));
+    if (!name) return;
+    sessionEl.value = name;
+  };
+
+  inputEl.focus();
+})();
+</script>
+</body>
+</html>

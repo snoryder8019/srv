@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control Center — sLab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    :root {
+      --bg: #030306;
+      --surface: #0d0d12;
+      --border: #1a1a24;
+      --gold: #c9a848;
+      --purple: #6B3FA0;
+      --purple-light: #9b6fd4;
+      --purple-glow: rgba(107,63,160,0.25);
+      --green: #4ade80;
+      --red: #f87171;
+      --cyan: #22d3ee;
+      --text: #e5e5e5;
+      --muted: #525264;
+    }
+    body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; overflow:hidden; cursor:none; }
+
+    /* Custom cursor — orb tracks it */
+    .cursor-glow {
+      position:fixed; width:20px; height:20px; border-radius:50%; pointer-events:none;
+      background:radial-gradient(circle, rgba(107,63,160,0.3), transparent 70%);
+      transform:translate(-50%,-50%); z-index:9999; transition:width 0.3s, height 0.3s;
+    }
+    body:hover .cursor-glow { width:30px; height:30px; }
+
+    /* Topbar */
+    .cc-topbar {
+      background:rgba(3,3,6,0.75); backdrop-filter:blur(20px); border-bottom:1px solid rgba(107,63,160,0.15);
+      padding:10px 24px; display:flex; align-items:center; justify-content:space-between;
+      position:fixed; top:0; left:0; right:0; z-index:100;
+    }
+    .cc-topbar-left { display:flex; align-items:center; gap:14px; }
+    .cc-logo { font-size:18px; font-weight:600; color:#fff; letter-spacing:-.02em; }
+    .cc-logo span { color:var(--gold); }
+    .cc-badge { font-size:9px; text-transform:uppercase; letter-spacing:1.4px; padding:3px 10px; border-radius:3px; font-weight:600; }
+    .cc-badge-cc { background:var(--purple); color:#fff; }
+    .cc-topbar-right { display:flex; align-items:center; gap:16px; }
+    .cc-conn { display:flex; align-items:center; gap:6px; font-size:11px; }
+    .cc-conn-dot { width:7px; height:7px; border-radius:50%; }
+    .cc-conn-dot.connected { background:var(--green); box-shadow:0 0 8px rgba(74,222,128,0.5); }
+    .cc-conn-dot.disconnected { background:var(--red); }
+    .cc-display-id { font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+    .cc-time { font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+    .cc-operator { display:flex; align-items:center; gap:6px; font-size:11px; }
+    .cc-operator-dot { width:6px; height:6px; border-radius:50%; }
+    .cc-operator-dot.online { background:var(--green); box-shadow:0 0 6px rgba(74,222,128,0.4); }
+    .cc-operator-dot.offline { background:#525252; }
+    .cc-weather { font-size:10px; color:var(--muted); font-family:'JetBrains Mono',monospace; display:flex; align-items:center; gap:6px; }
+
+    /* Three.js canvas — full background */
+    #three-canvas { position:fixed; top:0; left:0; width:100%; height:100%; z-index:0; }
+
+    /* HUD */
+    .cc-hud { position:fixed; top:48px; left:0; right:0; bottom:0; z-index:10; display:flex; flex-direction:column; pointer-events:none; }
+    .cc-hud > * { pointer-events:auto; }
+
+    /* State label — center bottom */
+    .cc-state-label {
+      position:fixed; bottom:60px; left:0; right:0; text-align:center; z-index:20;
+      pointer-events:none; transition:all 0.6s ease;
+    }
+    .cc-state-text {
+      font-size:10px; text-transform:uppercase; letter-spacing:4px;
+      color:var(--purple-light); opacity:0.6;
+      transition:all 0.4s ease;
+    }
+    .cc-state-text.thinking { color:var(--cyan); opacity:0.9; letter-spacing:6px; animation:stateGlow 1.5s ease-in-out infinite; }
+    .cc-state-text.speaking { color:var(--green); opacity:0.9; animation:stateGlow 0.8s ease-in-out infinite; }
+    .cc-state-text.listening { color:var(--gold); opacity:0.8; animation:stateGlow 2s ease-in-out infinite; }
+    .cc-state-text.dreaming { color:var(--purple-light); opacity:0.5; animation:stateGlow 4s ease-in-out infinite; }
+    .cc-state-text.alert { color:var(--red); opacity:1; animation:stateGlow 0.4s ease-in-out infinite; }
+    @keyframes stateGlow { 0%,100%{opacity:0.4;text-shadow:none;} 50%{opacity:1;text-shadow:0 0 20px currentColor;} }
+
+    .cc-state-detail {
+      font-size:9px; color:var(--muted); margin-top:4px; letter-spacing:1px;
+      opacity:0; transition:opacity 0.3s;
+    }
+    .cc-state-detail.visible { opacity:1; }
+
+    /* Idle overlay */
+    .cc-idle-overlay {
+      position:absolute; bottom:100px; left:0; right:0; text-align:center; z-index:20;
+      transition:opacity 0.8s ease, transform 0.8s ease;
+    }
+    .cc-idle-overlay.hidden { opacity:0; transform:translateY(20px); pointer-events:none; }
+    .cc-idle-label { font-size:11px; text-transform:uppercase; letter-spacing:3px; color:var(--purple-light); opacity:0.7; animation:idlePulse 3s ease-in-out infinite; }
+    .cc-idle-sub { font-size:10px; color:var(--muted); margin-top:6px; letter-spacing:1px; }
+    @keyframes idlePulse { 0%,100%{opacity:0.4} 50%{opacity:0.8} }
+
+    /* Stats bar */
+    .cc-stats { display:flex; justify-content:space-between; padding:20px 32px 0; opacity:0; transition:opacity 0.6s ease 0.2s; }
+    .cc-stats.visible { opacity:1; }
+    .cc-stat-group { display:flex; gap:24px; }
+    .cc-stat { text-align:center; opacity:0; transform:translateY(-10px); transition:opacity 0.4s ease, transform 0.4s ease; }
+    .cc-stat.in { opacity:1; transform:translateY(0); }
+    .cc-stat-val { font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; color:#fff; line-height:1; }
+    .cc-stat-val.purple { color:var(--purple-light); }
+    .cc-stat-val.gold { color:var(--gold); }
+    .cc-stat-val.green { color:var(--green); }
+    .cc-stat-label { font-size:8px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); margin-top:4px; }
+
+    /* Content feed — side panel */
+    .cc-feed {
+      position:fixed; right:0; top:48px; bottom:40px; width:420px;
+      background:rgba(3,3,6,0.8); backdrop-filter:blur(20px);
+      border-left:1px solid rgba(107,63,160,0.15);
+      padding:12px; overflow-y:auto; display:none; flex-direction:column; gap:8px;
+      z-index:30; transform:translateX(100%); transition:transform 0.3s ease;
+    }
+    .cc-feed.visible { display:flex; transform:translateX(0); }
+
+    /* Cards */
+    .cc-card {
+      background:rgba(13,13,18,0.9); backdrop-filter:blur(8px);
+      border:1px solid var(--border); border-radius:6px;
+      overflow:hidden; animation:cardSlideIn 0.3s ease-out;
+      position:relative; cursor:pointer; transition:all 0.2s ease;
+    }
+    .cc-card:hover { background:rgba(18,18,24,0.95); border-color:var(--purple); }
+    .cc-card.type-alert { border-left:3px solid var(--purple); }
+    .cc-card.type-text { border-left:3px solid var(--green); }
+    .cc-card.type-code { border-left:3px solid #60a5fa; }
+    .cc-card.type-weather { border-left:3px solid var(--cyan); }
+    .cc-card.type-proactive { border-left:3px solid var(--gold); }
+    .cc-card.collapsed .cc-card-body { display:none; }
+    .cc-card.expanded .cc-card-body { display:block; }
+    @keyframes cardSlideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+
+    .cc-card-header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px; user-select:none; }
+    .cc-card.collapsed .cc-card-header { border-bottom:none; }
+    .cc-card.expanded .cc-card-header { border-bottom:1px solid rgba(255,255,255,0.04); }
+    .cc-card-meta { display:flex; align-items:center; gap:8px; flex:1; min-width:0; }
+    .cc-card-preview { flex:1; font-size:11px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0.8; }
+    .cc-card.expanded .cc-card-preview { display:none; }
+    .cc-card-type { font-size:7px; text-transform:uppercase; letter-spacing:1.2px; font-weight:600; padding:2px 6px; border-radius:2px; flex-shrink:0; }
+    .cc-card-type.text { background:rgba(74,222,128,0.1); color:var(--green); }
+    .cc-card-type.code { background:rgba(96,165,250,0.1); color:#60a5fa; }
+    .cc-card-type.alert { background:rgba(107,63,160,0.15); color:#c4b5fd; }
+    .cc-card-type.weather { background:rgba(34,211,238,0.1); color:var(--cyan); }
+    .cc-card-type.proactive { background:rgba(201,168,72,0.15); color:var(--gold); }
+    .cc-card-time { font-size:9px; color:var(--muted); font-family:'JetBrains Mono',monospace; flex-shrink:0; }
+    .cc-card-actions { display:flex; gap:4px; align-items:center; }
+    .cc-card-expand { width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--muted); transition:transform 0.2s; }
+    .cc-card.expanded .cc-card-expand { transform:rotate(180deg); }
+    .cc-btn-speak {
+      background:none; border:1px solid var(--border); border-radius:3px;
+      width:22px; height:22px; display:flex; align-items:center; justify-content:center;
+      color:var(--muted); cursor:pointer; font-size:11px; transition:all 0.15s; padding:0;
+    }
+    .cc-btn-speak:hover { border-color:var(--purple); color:var(--purple); }
+    .cc-btn-speak.speaking { border-color:var(--green); color:var(--green); animation:speakPulse 1s infinite; }
+    @keyframes speakPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    .cc-card-body { padding:12px; font-size:12px; line-height:1.6; white-space:pre-wrap; word-break:break-word; max-height:400px; overflow-y:auto; }
+    .cc-card-body code { background:rgba(255,255,255,0.06); padding:1px 4px; border-radius:2px; font-family:'JetBrains Mono',monospace; font-size:0.9em; }
+    .cc-card-body pre { background:rgba(8,8,12,0.8); border:1px solid var(--border); border-radius:4px; padding:10px; overflow-x:auto; margin:8px 0; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.5; }
+    .cc-card-body pre code { background:none; padding:0; }
+    .cc-card-body strong { color:#fff; }
+
+    /* Shockwave ring overlay */
+    .shockwave-ring {
+      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+      width:0; height:0; border-radius:50%;
+      border:2px solid var(--purple-light);
+      pointer-events:none; z-index:5; opacity:0;
+    }
+    @keyframes shockwave {
+      0% { width:0; height:0; opacity:0.35; border-width:2px; }
+      100% { width:600px; height:600px; opacity:0; border-width:1px; }
+    }
+
+    /* Toolbar */
+    .cc-toolbar {
+      background:rgba(3,3,6,0.85); backdrop-filter:blur(16px);
+      border-top:1px solid rgba(107,63,160,0.15);
+      padding:8px 16px; display:flex; align-items:center; gap:12px;
+      font-size:11px; position:fixed; bottom:0; left:0; right:0; z-index:60;
+    }
+    .cc-toolbar-btn {
+      padding:5px 14px; font-size:10px; border:1px solid var(--border); border-radius:3px;
+      background:transparent; color:var(--muted); cursor:pointer; font-family:inherit;
+      transition:all 0.2s; white-space:nowrap;
+    }
+    .cc-toolbar-btn:hover { border-color:var(--gold); color:var(--gold); }
+    .cc-toolbar-btn.active { border-color:var(--purple); color:var(--purple-light); background:rgba(107,63,160,0.1); }
+    .cc-count { color:var(--muted); font-family:'JetBrains Mono',monospace; margin-left:auto; }
+    .cc-voice-select { padding:5px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border); color:var(--text); border-radius:3px; font-size:10px; font-family:inherit; cursor:pointer; }
+    .cc-voice-select:focus { outline:none; border-color:var(--purple); }
+    .cc-auto-tts { display:flex; align-items:center; gap:6px; font-size:10px; cursor:pointer; padding:4px 10px; border:1px solid var(--border); border-radius:3px; transition:all 0.2s; user-select:none; }
+    .cc-auto-tts:hover { border-color:var(--gold); }
+    .cc-auto-tts.active { border-color:var(--purple); background:rgba(107,63,160,0.1); color:var(--purple-light); }
+    .cc-auto-tts input[type="checkbox"] { width:14px; height:14px; cursor:pointer; margin:0; }
+  </style>
+</head>
+<body>
+  <div class="cursor-glow" id="cursor-glow"></div>
+
+  <div class="cc-topbar">
+    <div class="cc-topbar-left">
+      <div class="cc-logo"><span>s</span>Lab</div>
+      <span class="cc-badge cc-badge-cc">Control Center</span>
+      <div class="cc-operator" id="operator-status">
+        <span class="cc-operator-dot offline"></span>
+        <span>Huginn offline</span>
+      </div>
+    </div>
+    <div class="cc-topbar-right">
+      <div class="cc-weather" id="weather-info"></div>
+      <span class="cc-display-id" id="display-id"></span>
+      <div class="cc-conn" id="conn-status">
+        <span class="cc-conn-dot disconnected"></span>
+        <span>disconnected</span>
+      </div>
+      <span class="cc-time" id="clock"></span>
+    </div>
+  </div>
+
+  <canvas id="three-canvas"></canvas>
+
+  <div class="cc-hud">
+    <div class="cc-stats" id="stats-bar">
+      <div class="cc-stat-group" id="stats-left"></div>
+      <div class="cc-stat-group" id="stats-right"></div>
+    </div>
+    <div class="cc-feed" id="feed"></div>
+    <div class="cc-idle-overlay" id="idle-overlay">
+      <div class="cc-idle-label">Awaiting Huginn</div>
+      <div class="cc-idle-sub">The eye watches. Speak and it shall listen.</div>
+    </div>
+    <div class="cc-state-label" id="state-label">
+      <div class="cc-state-text" id="state-text">idle</div>
+      <div class="cc-state-detail" id="state-detail"></div>
+    </div>
+    <div class="cc-toolbar">
+      <button class="cc-toolbar-btn active" id="btn-toggle" onclick="toggleFeed()">Messages</button>
+      <button class="cc-toolbar-btn" onclick="expandAll()">Expand All</button>
+      <button class="cc-toolbar-btn" onclick="collapseAll()">Collapse All</button>
+      <button class="cc-toolbar-btn" onclick="clearFeed()">Clear</button>
+      <label class="cc-auto-tts" id="auto-tts-label">
+        <input type="checkbox" id="auto-tts-checkbox" onchange="toggleAutoTTS()">
+        <span>Auto TTS</span>
+      </label>
+      <select id="voice-select" class="cc-voice-select" onchange="setVoice(this.value)" title="TTS Voice">
+        <option value="lessac">Lessac (F)</option>
+        <option value="ryan">Ryan (M)</option>
+        <option value="slt">SLT (F)</option>
+      </select>
+      <span class="cc-count" id="card-count">0 items</span>
+    </div>
+  </div>
+
+<script>
+// ===========================================================================
+// THREE.JS — HUGINN ORB: THE LIVING EYE
+// ===========================================================================
+(function() {
+  var canvas = document.getElementById('three-canvas');
+  var renderer = new THREE.WebGLRenderer({ canvas:canvas, antialias:true, alpha:false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x030306);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.7;
+
+  var scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x030306, 0.08);
+
+  var camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.set(0, 0.2, 4.2);
+  camera.lookAt(0, 0, 0);
+
+  var clock = new THREE.Clock();
+
+  // ── STATE ENGINE ─────────────────────────────────────────────────────────
+  var STATE = {
+    current: 'idle',       // idle | thinking | speaking | listening | dreaming | alert
+    intensity: 0.3,
+    targetIntensity: 0.3,
+    breathPhase: 0,
+    pulseAccum: 0,
+    mouseX: 0, mouseY: 0, // normalized -1 to 1
+    audioLevel: 0,         // 0-1, for speaking mouth simulation
+    shockwaveTime: -1,
+    operatorOnline: false,
+  };
+
+  var STATE_CONFIGS = {
+    idle:      { intensity:0.25, speed:0.3,  color1:0x6B3FA0, color2:0xc9a848, boltRate:0.3,  particleSpeed:0.5, breathRate:0.8 },
+    thinking:  { intensity:0.7,  speed:1.8,  color1:0x22d3ee, color2:0x6B3FA0, boltRate:3.0,  particleSpeed:2.5, breathRate:2.0 },
+    speaking:  { intensity:0.55, speed:1.0,  color1:0x4ade80, color2:0x22d3ee, boltRate:1.0,  particleSpeed:1.5, breathRate:1.2 },
+    listening: { intensity:0.4,  speed:0.5,  color1:0xc9a848, color2:0x6B3FA0, boltRate:0.5,  particleSpeed:0.8, breathRate:1.5 },
+    dreaming:  { intensity:0.3,  speed:0.15, color1:0x9b6fd4, color2:0x1e1b4b, boltRate:0.1,  particleSpeed:0.3, breathRate:0.4 },
+    alert:     { intensity:0.85, speed:3.0,  color1:0xf87171, color2:0xfbbf24, boltRate:5.0,  particleSpeed:4.0, breathRate:3.0 },
+  };
+
+  var currentConfig = STATE_CONFIGS.idle;
+  var lerpedConfig = Object.assign({}, currentConfig);
+
+  function setState(newState, detail) {
+    if (!STATE_CONFIGS[newState]) return;
+    STATE.current = newState;
+    currentConfig = STATE_CONFIGS[newState];
+
+    // Update DOM
+    var stateText = document.getElementById('state-text');
+    var stateDetail = document.getElementById('state-detail');
+    stateText.textContent = newState;
+    stateText.className = 'cc-state-text ' + newState;
+    if (detail) {
+      stateDetail.textContent = detail;
+      stateDetail.classList.add('visible');
+    } else {
+      stateDetail.classList.remove('visible');
+    }
+  }
+
+  window.setHuginnState = setState;
+
+  // ── MOUSE TRACKING (orb follows cursor) ──────────────────────────────────
+  var cursorGlow = document.getElementById('cursor-glow');
+  document.addEventListener('mousemove', function(e) {
+    STATE.mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+    STATE.mouseY = -((e.clientY / window.innerHeight) * 2 - 1);
+    cursorGlow.style.left = e.clientX + 'px';
+    cursorGlow.style.top = e.clientY + 'px';
+  });
+
+  // ── CORE ORB — multi-layer shader sphere ─────────────────────────────────
+  var orbGeo = new THREE.SphereGeometry(0.65, 128, 128);
+  var orbMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:       { value:0 },
+      uIntensity:  { value:0.3 },
+      uSpeed:      { value:0.3 },
+      uColor1:     { value:new THREE.Color(0x6B3FA0) },
+      uColor2:     { value:new THREE.Color(0xc9a848) },
+      uMouse:      { value:new THREE.Vector2(0,0) },
+      uBreath:     { value:0 },
+      uAudio:      { value:0 },
+    },
+    vertexShader: [
+      'varying vec3 vNormal;',
+      'varying vec3 vPosition;',
+      'varying vec2 vUv;',
+      'uniform float uTime;',
+      'uniform float uIntensity;',
+      'uniform float uSpeed;',
+      'uniform float uBreath;',
+      'uniform float uAudio;',
+      '',
+      '// Simplex-like noise',
+      'vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}',
+      'vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}',
+      'vec4 perm(vec4 x){return mod289(((x*34.0)+1.0)*x);}',
+      'float noise(vec3 p){',
+      '  vec3 a=floor(p);vec3 d=p-a;d=d*d*(3.0-2.0*d);',
+      '  vec4 b=a.xxyy+vec4(0,1,0,1);vec4 k1=perm(b.xyxy);',
+      '  vec4 k2=perm(k1.xyxy+b.zzww);',
+      '  vec4 c=k2+a.zzzz;vec4 k3=perm(c);vec4 k4=perm(c+1.0);',
+      '  vec4 o1=fract(k3*(1.0/41.0));vec4 o2=fract(k4*(1.0/41.0));',
+      '  vec4 o3=o2*d.z+o1*(1.0-d.z);',
+      '  vec2 o4=o3.yw*d.x+o3.xz*(1.0-d.x);',
+      '  return o4.y*d.y+o4.x*(1.0-d.y);',
+      '}',
+      '',
+      'void main() {',
+      '  vNormal = normal;',
+      '  vPosition = position;',
+      '  vUv = uv;',
+      '  float t = uTime * uSpeed;',
+      '',
+      '  // Multi-octave displacement',
+      '  float n1 = noise(position * 3.0 + t * 0.8) * 0.12;',
+      '  float n2 = noise(position * 6.0 - t * 1.2) * 0.06;',
+      '  float n3 = noise(position * 12.0 + t * 2.0) * 0.02;',
+      '  float disp = (n1 + n2 + n3) * uIntensity;',
+      '',
+      '  // Breathing: rhythmic scale pulse',
+      '  float breath = sin(uBreath) * 0.04 * uIntensity;',
+      '',
+      '  // Audio reactivity: speaking makes it throb',
+      '  float audioPulse = uAudio * 0.08 * (0.5 + 0.5 * sin(position.y * 8.0 + uTime * 6.0));',
+      '',
+      '  vec3 newPos = position * (1.0 + breath) + normal * (disp + audioPulse);',
+      '  gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);',
+      '}',
+    ].join('\n'),
+    fragmentShader: [
+      'varying vec3 vNormal;',
+      'varying vec3 vPosition;',
+      'varying vec2 vUv;',
+      'uniform float uTime;',
+      'uniform float uIntensity;',
+      'uniform float uSpeed;',
+      'uniform vec3 uColor1;',
+      'uniform vec3 uColor2;',
+      'uniform vec2 uMouse;',
+      'uniform float uAudio;',
+      '',
+      'void main() {',
+      '  float t = uTime * uSpeed;',
+      '  vec3 viewDir = normalize(vec3(0.0, 0.0, 1.0));',
+      '',
+      '  // Fresnel rim',
+      '  float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 3.0);',
+      '',
+      '  // Swirling noise pattern',
+      '  float pattern = sin(vPosition.x * 6.0 + t * 1.5) * sin(vPosition.y * 7.0 - t * 1.1) * sin(vPosition.z * 5.0 + t * 0.9);',
+      '  pattern = pattern * 0.5 + 0.5;',
+      '',
+      '  // Deep interior glow',
+      '  float core = smoothstep(0.8, 0.0, length(vPosition)) * 0.4;',
+      '',
+      '  // Color mixing — noise + fresnel driven',
+      '  vec3 color = mix(uColor1, uColor2, pattern * 0.6 + fresnel * 0.3);',
+      '',
+      '  // Mouse-reactive hotspot: orb glows toward mouse',
+      '  float mouseDist = length(vNormal.xy - uMouse * 0.8);',
+      '  float mouseGlow = smoothstep(1.2, 0.0, mouseDist) * 0.12 * uIntensity;',
+      '',
+      '  // Sub-surface scattering fake',
+      '  float sss = pow(max(0.0, dot(vNormal, vec3(0.3, 0.6, 0.5))), 2.0) * 0.08;',
+      '',
+      '  // Final composite — hard clamped to prevent white blowout',
+      '  float glow = fresnel * uIntensity * 0.7 + core + mouseGlow + sss + 0.04;',
+      '  glow = min(glow, 0.85);',
+      '',
+      '  // Audio speaking pulse — ripple bands',
+      '  float speakRipple = uAudio * 0.1 * sin(vPosition.y * 20.0 + uTime * 8.0);',
+      '',
+      '  gl_FragColor = vec4(color * min(glow + speakRipple, 0.9), 1.0);',
+      '}',
+    ].join('\n'),
+  });
+  var orb = new THREE.Mesh(orbGeo, orbMat);
+  scene.add(orb);
+
+  // ── OUTER ATMOSPHERE — double glow shell ─────────────────────────────────
+  var atmosGeo = new THREE.SphereGeometry(0.95, 64, 64);
+  var atmosMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value:0 }, uIntensity: { value:0.3 },
+      uColor: { value:new THREE.Color(0x6B3FA0) },
+    },
+    vertexShader: 'varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader: [
+      'varying vec3 vN;uniform float uTime;uniform float uIntensity;uniform vec3 uColor;',
+      'void main(){',
+      '  float rim=pow(1.0-abs(dot(vN,vec3(0,0,1))),3.5);',
+      '  float pulse=0.6+0.4*sin(uTime*2.5);',
+      '  float flicker=0.9+0.1*sin(uTime*17.0);',  // high-freq flicker
+      '  float a=rim*uIntensity*pulse*flicker*0.2; gl_FragColor=vec4(uColor*0.5,min(a,0.35));',
+      '}',
+    ].join('\n'),
+    transparent:true, blending:THREE.AdditiveBlending, side:THREE.BackSide, depthWrite:false,
+  });
+  var atmosMesh = new THREE.Mesh(atmosGeo, atmosMat);
+  scene.add(atmosMesh);
+
+  // Second wider atmosphere
+  var atmos2Geo = new THREE.SphereGeometry(1.4, 32, 32);
+  var atmos2Mat = new THREE.ShaderMaterial({
+    uniforms: { uTime:{value:0}, uIntensity:{value:0.3}, uColor:{value:new THREE.Color(0x6B3FA0)} },
+    vertexShader: 'varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader: 'varying vec3 vN;uniform float uTime;uniform float uIntensity;uniform vec3 uColor;void main(){float rim=pow(1.0-abs(dot(vN,vec3(0,0,1))),5.0);gl_FragColor=vec4(uColor*0.35,min(rim*uIntensity*0.12,0.2));}',
+    transparent:true, blending:THREE.AdditiveBlending, side:THREE.BackSide, depthWrite:false,
+  });
+  scene.add(new THREE.Mesh(atmos2Geo, atmos2Mat));
+
+  // ── LIGHTNING SYSTEM — dynamic bolt spawner ──────────────────────────────
+  var lightningGroup = new THREE.Group();
+  scene.add(lightningGroup);
+  var BOLT_POOL = [];
+  var MAX_BOLTS = 24;
+
+  function spawnBolt() {
+    var segments = 14 + Math.floor(Math.random() * 10);
+    var theta = Math.random() * Math.PI * 2;
+    var phi = Math.random() * Math.PI;
+    var dx = Math.sin(phi)*Math.cos(theta), dy = Math.sin(phi)*Math.sin(theta), dz = Math.cos(phi);
+    var len = 0.6 + Math.random() * 1.8 * lerpedConfig.intensity;
+
+    var points = [];
+    for (var i = 0; i <= segments; i++) {
+      var t = i / segments;
+      var jitter = (1.0 - t * 0.5) * 0.2;
+      // Forking: occasional branch offset
+      var fork = (i > segments * 0.6 && Math.random() > 0.7) ? 0.3 : 0;
+      points.push(new THREE.Vector3(
+        dx*0.65 + dx*t*len + (Math.random()-0.5)*jitter + fork,
+        dy*0.65 + dy*t*len + (Math.random()-0.5)*jitter,
+        dz*0.65 + dz*t*len + (Math.random()-0.5)*jitter
+      ));
+    }
+    var geo = new THREE.BufferGeometry().setFromPoints(points);
+    var hue = STATE.current === 'thinking' ? 0.52 : STATE.current === 'alert' ? 0.05 : 0.75;
+    var mat = new THREE.LineBasicMaterial({
+      color: new THREE.Color().setHSL(hue, 0.7, 0.6 + Math.random()*0.3),
+      transparent:true, opacity:0, blending:THREE.AdditiveBlending, linewidth:1,
+    });
+    var line = new THREE.Line(geo, mat);
+    line.userData = { life:0, maxLife:0.15 + Math.random()*0.35, born:clock.getElapsedTime() };
+    lightningGroup.add(line);
+    BOLT_POOL.push(line);
+  }
+
+  // ── PARTICLE NEBULA — orbital dust cloud ─────────────────────────────────
+  var PARTICLE_COUNT = 2000;
+  var pGeo = new THREE.BufferGeometry();
+  var pPos = new Float32Array(PARTICLE_COUNT * 3);
+  var pColors = new Float32Array(PARTICLE_COUNT * 3);
+  var pSizes = new Float32Array(PARTICLE_COUNT);
+  var pData = []; // angle, radius, speed, yOff, phase
+
+  for (var i = 0; i < PARTICLE_COUNT; i++) {
+    var angle = Math.random() * Math.PI * 2;
+    var radius = 0.9 + Math.random() * 4.0;
+    var y = (Math.random() - 0.5) * 3.0;
+    pPos[i*3] = Math.cos(angle) * radius;
+    pPos[i*3+1] = y;
+    pPos[i*3+2] = Math.sin(angle) * radius;
+
+    // Color: mix of purple, gold, cyan
+    var hue = [0.75, 0.12, 0.52][Math.floor(Math.random()*3)];
+    var c = new THREE.Color().setHSL(hue, 0.5 + Math.random()*0.3, 0.4 + Math.random()*0.3);
+    pColors[i*3] = c.r; pColors[i*3+1] = c.g; pColors[i*3+2] = c.b;
+    pSizes[i] = 1.0 + Math.random() * 3.0;
+
+    pData.push({ angle:angle, radius:radius, speed:0.05 + Math.random()*0.4, yOff:y, phase:Math.random()*Math.PI*2 });
+  }
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+  pGeo.setAttribute('color', new THREE.BufferAttribute(pColors, 3));
+  pGeo.setAttribute('size', new THREE.BufferAttribute(pSizes, 1));
+
+  var pMat = new THREE.ShaderMaterial({
+    uniforms: { uTime:{value:0}, uIntensity:{value:0.3}, uPixelRatio:{value:renderer.getPixelRatio()} },
+    vertexShader: [
+      'attribute float size;',
+      'varying vec3 vColor;',
+      'uniform float uTime;',
+      'uniform float uIntensity;',
+      'uniform float uPixelRatio;',
+      'void main(){',
+      '  vColor=color;',
+      '  vec4 mvPos=modelViewMatrix*vec4(position,1.0);',
+      '  gl_PointSize=size*uPixelRatio*(1.0+uIntensity*0.5)*(200.0/(-mvPos.z));',
+      '  gl_Position=projectionMatrix*mvPos;',
+      '}',
+    ].join('\n'),
+    fragmentShader: [
+      'varying vec3 vColor;',
+      'uniform float uIntensity;',
+      'void main(){',
+      '  float d=length(gl_PointCoord-0.5)*2.0;',
+      '  if(d>1.0)discard;',
+      '  float alpha=smoothstep(1.0,0.0,d)*uIntensity*0.35;',
+      '  float glow=exp(-d*d*3.0)*0.15;',
+      '  gl_FragColor=vec4(vColor*(0.6+glow),min(alpha,0.4));',
+      '}',
+    ].join('\n'),
+    transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, vertexColors:true,
+  });
+  var particles = new THREE.Points(pGeo, pMat);
+  scene.add(particles);
+
+  // ── RUNE RING — floating glyphs ──────────────────────────────────────────
+  var RUNES = '\u16B1\u16B2\u16B6\u16B7\u16BA\u16BE\u16C1\u16C3\u16C7\u16C8\u16CB\u16CF\u16D2\u16D6\u16DA\u16DE';
+  var runeGroup = new THREE.Group();
+  scene.add(runeGroup);
+
+  function makeRune(char, angle, radius, yOff) {
+    var cv = document.createElement('canvas'); cv.width=128; cv.height=128;
+    var cx = cv.getContext('2d');
+    cx.font = '64px serif'; cx.textAlign='center'; cx.textBaseline='middle';
+    cx.shadowColor = 'rgba(155,111,212,0.8)'; cx.shadowBlur = 20;
+    cx.fillStyle = 'rgba(155,111,212,0.5)';
+    cx.fillText(char, 64, 64);
+    var tex = new THREE.CanvasTexture(cv);
+    var mat = new THREE.SpriteMaterial({ map:tex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false });
+    var sprite = new THREE.Sprite(mat);
+    sprite.scale.set(0.4, 0.4, 1);
+    sprite.position.set(Math.cos(angle)*radius, yOff, Math.sin(angle)*radius);
+    sprite.userData = { angle:angle, radius:radius, speed:0.03+Math.random()*0.06, yOff:yOff, baseOpacity:0.3 };
+    return sprite;
+  }
+  for (var r = 0; r < 16; r++) {
+    var a = (r/16)*Math.PI*2;
+    runeGroup.add(makeRune(RUNES[r], a, 2.0 + Math.random()*0.8, (Math.random()-0.5)*1.5));
+  }
+
+  // ── ENERGY TENDRILS — organic flowing lines ──────────────────────────────
+  var tendrilGroup = new THREE.Group();
+  scene.add(tendrilGroup);
+  var TENDRIL_COUNT = 6;
+  var tendrils = [];
+
+  for (var ti = 0; ti < TENDRIL_COUNT; ti++) {
+    var tSegs = 60;
+    var tPositions = new Float32Array(tSegs * 3);
+    var tGeo = new THREE.BufferGeometry();
+    tGeo.setAttribute('position', new THREE.BufferAttribute(tPositions, 3));
+    var tHue = [0.75, 0.12, 0.52, 0.75, 0.35, 0.85][ti];
+    var tMat = new THREE.LineBasicMaterial({
+      color: new THREE.Color().setHSL(tHue, 0.6, 0.5),
+      transparent:true, opacity:0.3, blending:THREE.AdditiveBlending,
+    });
+    var tLine = new THREE.Line(tGeo, tMat);
+    tLine.userData = {
+      baseAngle: (ti / TENDRIL_COUNT) * Math.PI * 2,
+      segments: tSegs,
+      phaseX: Math.random() * 10,
+      phaseY: Math.random() * 10,
+      phaseZ: Math.random() * 10,
+    };
+    tendrilGroup.add(tLine);
+    tendrils.push(tLine);
+  }
+
+  // ── SHOCKWAVE (CSS ring + Three.js flash) ────────────────────────────────
+  function fireShockwave() {
+    STATE.shockwaveTime = clock.getElapsedTime();
+    // CSS ring
+    var ring = document.createElement('div');
+    ring.className = 'shockwave-ring';
+    ring.style.animation = 'shockwave 0.8s ease-out forwards';
+    document.body.appendChild(ring);
+    setTimeout(function() { ring.remove(); }, 900);
+  }
+  window.fireShockwave = fireShockwave;
+
+  // ── ANIMATION LOOP ───────────────────────────────────────────────────────
+  function animate() {
+    requestAnimationFrame(animate);
+    var t = clock.getElapsedTime();
+    var dt = Math.min(clock.getDelta(), 0.05);
+
+    // Lerp config values
+    var lerpSpeed = 0.03;
+    lerpedConfig.intensity += (currentConfig.intensity - lerpedConfig.intensity) * lerpSpeed;
+    lerpedConfig.speed += (currentConfig.speed - lerpedConfig.speed) * lerpSpeed;
+    lerpedConfig.boltRate += (currentConfig.boltRate - lerpedConfig.boltRate) * lerpSpeed;
+    lerpedConfig.particleSpeed += (currentConfig.particleSpeed - lerpedConfig.particleSpeed) * lerpSpeed;
+    lerpedConfig.breathRate += (currentConfig.breathRate - lerpedConfig.breathRate) * lerpSpeed;
+
+    // Color lerp
+    var tc1 = new THREE.Color(currentConfig.color1);
+    var tc2 = new THREE.Color(currentConfig.color2);
+    orbMat.uniforms.uColor1.value.lerp(tc1, 0.02);
+    orbMat.uniforms.uColor2.value.lerp(tc2, 0.02);
+    atmosMat.uniforms.uColor.value.lerp(tc1, 0.02);
+
+    // Breathing
+    STATE.breathPhase += dt * lerpedConfig.breathRate * Math.PI * 2;
+
+    // Audio simulation (pseudo for speaking state)
+    if (STATE.current === 'speaking') {
+      STATE.audioLevel += (0.3 + Math.random() * 0.7 - STATE.audioLevel) * 0.15;
+    } else {
+      STATE.audioLevel *= 0.9;
+    }
+
+    // ── Orb update
+    orbMat.uniforms.uTime.value = t;
+    orbMat.uniforms.uIntensity.value = lerpedConfig.intensity;
+    orbMat.uniforms.uSpeed.value = lerpedConfig.speed;
+    orbMat.uniforms.uMouse.value.set(STATE.mouseX, STATE.mouseY);
+    orbMat.uniforms.uBreath.value = STATE.breathPhase;
+    orbMat.uniforms.uAudio.value = STATE.audioLevel;
+
+    // Orb follows mouse subtly (eye tracking)
+    var targetRotY = STATE.mouseX * 0.3;
+    var targetRotX = -STATE.mouseY * 0.15;
+    orb.rotation.y += (targetRotY + t * 0.08 - orb.rotation.y) * 0.04;
+    orb.rotation.x += (targetRotX + Math.sin(t * 0.1) * 0.05 - orb.rotation.x) * 0.04;
+
+    // Scale: breathing + intensity
+    var breathScale = 1.0 + Math.sin(STATE.breathPhase) * 0.03 * lerpedConfig.intensity;
+    orb.scale.setScalar(breathScale);
+
+    // ── Atmosphere
+    atmosMat.uniforms.uTime.value = t;
+    atmosMat.uniforms.uIntensity.value = lerpedConfig.intensity;
+    var gs = 0.95 + lerpedConfig.intensity * 0.3 + Math.sin(STATE.breathPhase) * 0.05;
+    atmosMesh.scale.setScalar(gs);
+
+    // ── Lightning
+    // Spawn new bolts based on rate
+    STATE.pulseAccum += dt * lerpedConfig.boltRate;
+    while (STATE.pulseAccum > 1 && BOLT_POOL.length < MAX_BOLTS) {
+      spawnBolt();
+      STATE.pulseAccum -= 1;
+    }
+    STATE.pulseAccum = Math.min(STATE.pulseAccum, 2);
+
+    // Update bolts
+    for (var bi = BOLT_POOL.length - 1; bi >= 0; bi--) {
+      var bolt = BOLT_POOL[bi];
+      bolt.userData.life += dt;
+      var frac = bolt.userData.life / bolt.userData.maxLife;
+      if (frac < 0.1) {
+        bolt.material.opacity = Math.min((frac / 0.1) * lerpedConfig.intensity, 0.5);
+      } else if (frac < 0.4) {
+        bolt.material.opacity = Math.min(lerpedConfig.intensity * (0.4 + Math.random() * 0.2), 0.5);
+      } else {
+        bolt.material.opacity = Math.min(Math.max(0, (1.0 - frac) * lerpedConfig.intensity * 0.4), 0.4);
+      }
+      if (frac >= 1.0) {
+        lightningGroup.remove(bolt);
+        bolt.geometry.dispose();
+        bolt.material.dispose();
+        BOLT_POOL.splice(bi, 1);
+      }
+    }
+
+    // ── Particles
+    var positions = particles.geometry.attributes.position.array;
+    for (var p = 0; p < PARTICLE_COUNT; p++) {
+      var pd = pData[p];
+      pd.angle += pd.speed * 0.003 * (1 + lerpedConfig.particleSpeed);
+      // Slight inward pull when thinking
+      var pullRadius = pd.radius;
+      if (STATE.current === 'thinking') pullRadius *= 0.85 + 0.15 * Math.sin(t * 2 + pd.phase);
+      if (STATE.current === 'alert') pullRadius *= 0.7 + 0.3 * Math.sin(t * 4 + pd.phase);
+
+      positions[p*3]   = Math.cos(pd.angle) * pullRadius;
+      positions[p*3+1] = pd.yOff + Math.sin(t * 0.4 + pd.angle + pd.phase) * 0.25;
+      positions[p*3+2] = Math.sin(pd.angle) * pullRadius;
+    }
+    particles.geometry.attributes.position.needsUpdate = true;
+    pMat.uniforms.uTime.value = t;
+    pMat.uniforms.uIntensity.value = lerpedConfig.intensity;
+
+    // ── Runes
+    runeGroup.children.forEach(function(s) {
+      s.userData.angle += s.userData.speed * 0.003 * (1 + lerpedConfig.intensity * 0.5);
+      s.position.x = Math.cos(s.userData.angle) * s.userData.radius;
+      s.position.z = Math.sin(s.userData.angle) * s.userData.radius;
+      s.position.y = s.userData.yOff + Math.sin(t * 0.3 + s.userData.angle) * 0.15;
+      s.material.opacity = Math.min(s.userData.baseOpacity + lerpedConfig.intensity * 0.2, 0.5);
+      // Thinking: runes pulse
+      if (STATE.current === 'thinking') {
+        s.material.opacity = Math.min(0.25 + 0.25 * Math.sin(t * 3 + s.userData.angle), 0.5);
+      }
+    });
+
+    // ── Tendrils
+    tendrils.forEach(function(tl) {
+      var pos = tl.geometry.attributes.position.array;
+      var d = tl.userData;
+      for (var si = 0; si < d.segments; si++) {
+        var frac = si / d.segments;
+        var r = 0.65 + frac * 2.5 * lerpedConfig.intensity;
+        var a = d.baseAngle + frac * 2.0 + t * 0.2 * lerpedConfig.speed;
+        var noiseY = Math.sin(frac * 8 + t * lerpedConfig.speed + d.phaseY) * 0.3 * frac;
+        var noiseR = Math.sin(frac * 6 + t * 0.7 + d.phaseX) * 0.3 * frac;
+        pos[si*3]   = Math.cos(a) * (r + noiseR);
+        pos[si*3+1] = noiseY;
+        pos[si*3+2] = Math.sin(a) * (r + noiseR);
+      }
+      tl.geometry.attributes.position.needsUpdate = true;
+      tl.material.opacity = Math.min(0.1 + lerpedConfig.intensity * 0.12, 0.3);
+    });
+
+    // ── Post-shockwave (no background flash — only CSS ring)
+    if (STATE.shockwaveTime > 0 && (t - STATE.shockwaveTime) > 0.8) {
+      STATE.shockwaveTime = -1;
+    }
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', function() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Legacy compat
+  window.setOrbOnline = function(online) {
+    STATE.operatorOnline = online;
+    if (online) setState('listening', 'operator connected');
+    else setState('idle');
+  };
+  window.pulseOrb = function() {
+    fireShockwave();
+    // Brief intensity spike
+    var prev = currentConfig.intensity;
+    currentConfig.intensity = Math.min(prev + 0.3, 1.0);
+    setTimeout(function() { currentConfig.intensity = prev; }, 500);
+  };
+})();
+
+
+// ===========================================================================
+// CONTROL CENTER LOGIC
+// ===========================================================================
+(function() {
+  var feed        = document.getElementById('feed');
+  var idleOverlay = document.getElementById('idle-overlay');
+  var connEl      = document.getElementById('conn-status');
+  var operatorEl  = document.getElementById('operator-status');
+  var displayIdEl = document.getElementById('display-id');
+  var clockEl     = document.getElementById('clock');
+  var countEl     = document.getElementById('card-count');
+  var statsBar    = document.getElementById('stats-bar');
+  var statsLeft   = document.getElementById('stats-left');
+  var statsRight  = document.getElementById('stats-right');
+  var btnToggle   = document.getElementById('btn-toggle');
+  var weatherEl   = document.getElementById('weather-info');
+
+  var cardCount = 0;
+  var isOnline  = false;
+
+  // Display ID
+  var params = new URLSearchParams(window.location.search);
+  var displayId = params.get('display') || 'display-' + Math.random().toString(36).slice(2, 6);
+  displayIdEl.textContent = displayId;
+
+  // Clock
+  function updateClock() {
+    clockEl.textContent = new Date().toLocaleTimeString('en-US', { hour12:false });
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // ── Weather (fetches locale weather for ambient awareness) ──────────────
+  function fetchWeather() {
+    fetch('/huginn/mcp/weather').then(function(r) { return r.json(); }).then(function(d) {
+      if (d.ok && d.weather) {
+        weatherEl.innerHTML = d.weather.icon + ' ' + d.weather.temp + ' ' + d.weather.condition + ' — ' + d.weather.location;
+      }
+    }).catch(function() {});
+  }
+  fetchWeather();
+  setInterval(fetchWeather, 600000); // every 10min
+
+  // ── Socket.IO ─────────────────────────────────────────────────────────────
+  var socket = io('/huginn');
+
+  socket.on('connect', function() {
+    connEl.innerHTML = '<span class="cc-conn-dot connected"></span><span>connected</span>';
+    socket.emit('join-control-center', { displayId:displayId });
+  });
+  socket.on('disconnect', function() {
+    connEl.innerHTML = '<span class="cc-conn-dot disconnected"></span><span>disconnected</span>';
+  });
+
+  socket.on('operator-status', function(data) {
+    isOnline = !!data.online;
+    window.setOrbOnline(isOnline);
+    if (isOnline) {
+      operatorEl.innerHTML = '<span class="cc-operator-dot online"></span><span>Huginn online — ' + escHtml(data.email || '') + '</span>';
+      showStats();
+    } else {
+      operatorEl.innerHTML = '<span class="cc-operator-dot offline"></span><span>Huginn offline</span>';
+      hideStats();
+    }
+  });
+
+  // ── Huginn state changes → orb animations ────────────────────────────────
+  socket.on('huginn-state', function(data) {
+    window.setHuginnState(data.state, data.detail);
+    if (data.state === 'thinking' || data.state === 'alert') {
+      window.fireShockwave();
+    }
+  });
+
+  socket.on('deploy', function(data) {
+    window.pulseOrb();
+    addCard(data);
+    // Auto-switch to speaking state when Huginn responds
+    if ((data.content || '').startsWith('**Huginn:**')) {
+      window.setHuginnState('speaking', 'responding');
+      // Return to listening after estimated read time
+      var words = (data.content || '').split(/\s+/).length;
+      var readTime = Math.max(3000, words * 200); // ~200ms per word
+      setTimeout(function() {
+        if (isOnline) window.setHuginnState('listening');
+      }, readTime);
+    }
+  });
+
+  socket.on('clear', function() { clearFeed(); });
+
+  // ── Proactive Huginn — periodic self-check + intervene ────────────────────
+  var proactiveInterval = null;
+  function startProactive() {
+    if (proactiveInterval) return;
+    proactiveInterval = setInterval(function() {
+      // Huginn "dreams" when idle for a while — ambient state
+      if (isOnline && cardCount > 0) return; // busy
+      if (isOnline) window.setHuginnState('dreaming', 'ambient awareness');
+    }, 60000);
+  }
+  startProactive();
+
+  // ── Stats ────────────────────────────────────────────────────────────────
+  function showStats() {
+    statsLeft.innerHTML =
+      '<div class="cc-stat" id="stat-0"><div class="cc-stat-val purple">0</div><div class="cc-stat-label">Deployments</div></div>' +
+      '<div class="cc-stat" id="stat-1"><div class="cc-stat-val gold">' + new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'}) + '</div><div class="cc-stat-label">Session</div></div>';
+    statsRight.innerHTML =
+      '<div class="cc-stat" id="stat-2"><div class="cc-stat-val green">LIVE</div><div class="cc-stat-label">Status</div></div>';
+    statsBar.classList.add('visible');
+    var stats = document.querySelectorAll('.cc-stat');
+    stats.forEach(function(s, i) {
+      setTimeout(function() { s.classList.add('in'); }, 100 + i * 150);
+    });
+  }
+  function hideStats() { statsBar.classList.remove('visible'); }
+  function updateDeployCount() {
+    var el = document.querySelector('#stat-0 .cc-stat-val');
+    if (el) el.textContent = cardCount;
+  }
+
+  // ── Cards ────────────────────────────────────────────────────────────────
+  function addCard(data) {
+    cardCount++;
+    idleOverlay.classList.add('hidden');
+    feed.classList.add('visible');
+
+    var card = document.createElement('div');
+    var cardId = 'card-' + cardCount;
+    var bodyId = 'card-body-' + cardCount;
+    card.id = cardId;
+    card.className = 'cc-card collapsed type-' + (data.type || 'text');
+    var time = data.deployedAt ? new Date(data.deployedAt).toLocaleTimeString('en-US',{hour12:false}) : '';
+
+    var content = data.content || '';
+    var preview = content.replace(/[*`#\n]/g, '').slice(0, 60);
+    if (content.length > 60) preview += '...';
+
+    card.innerHTML =
+      '<div class="cc-card-header" onclick="toggleCard(\'' + cardId + '\')">' +
+        '<div class="cc-card-meta">' +
+          '<span class="cc-card-type ' + (data.type || 'text') + '">' + (data.type || 'text').toUpperCase() + '</span>' +
+          '<span class="cc-card-preview">' + escHtml(preview) + '</span>' +
+          '<span class="cc-card-time">' + time + '</span>' +
+        '</div>' +
+        '<div class="cc-card-actions">' +
+          '<button class="cc-btn-speak" onclick="event.stopPropagation(); speakCard(\'' + bodyId + '\')">&#x1F50A;</button>' +
+          '<div class="cc-card-expand">&#x25BC;</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="cc-card-body" id="' + bodyId + '"></div>';
+
+    card.dataset.rawContent = content;
+
+    if (feed.firstChild) feed.insertBefore(card, feed.firstChild);
+    else feed.appendChild(card);
+
+    countEl.textContent = cardCount + ' item' + (cardCount === 1 ? '' : 's');
+    updateDeployCount();
+
+    var bodyEl = document.getElementById(bodyId);
+    if (bodyEl) bodyEl.innerHTML = formatContent(content, data.type);
+
+    if (data.type === 'alert') {
+      setTimeout(function() { toggleCard(cardId); }, 100);
+    }
+
+    if (_autoTTS) {
+      setTimeout(function() {
+        var btn = card.querySelector('.cc-btn-speak');
+        if (btn) speak(content, btn);
+      }, 200);
+    }
+  }
+
+  // Card controls
+  window.toggleCard = function(cardId) {
+    var card = document.getElementById(cardId);
+    if (!card) return;
+    card.classList.toggle('collapsed');
+    card.classList.toggle('expanded');
+  };
+  window.expandAll = function() {
+    document.querySelectorAll('.cc-card.collapsed').forEach(function(c) { c.classList.remove('collapsed'); c.classList.add('expanded'); });
+  };
+  window.collapseAll = function() {
+    document.querySelectorAll('.cc-card.expanded').forEach(function(c) { c.classList.remove('expanded'); c.classList.add('collapsed'); });
+  };
+
+  function formatContent(text, type) {
+    if (!text) return '';
+    var html = escHtml(text)
+      .replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    html = html.replace(/&lt;think&gt;[\s\S]*?&lt;\/think&gt;/g, '');
+    return html;
+  }
+
+  function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  window.toggleFeed = function() {
+    feed.classList.toggle('visible');
+    btnToggle.classList.toggle('active');
+  };
+
+  window.clearFeed = function() {
+    feed.innerHTML = '';
+    cardCount = 0;
+    countEl.textContent = '0 items';
+    updateDeployCount();
+    idleOverlay.classList.remove('hidden');
+    feed.classList.remove('visible');
+  };
+
+  // ── TTS ──────────────────────────────────────────────────────────────────
+  var _voice = 'lessac';
+  var _currentAudio = null;
+  var _autoTTS = localStorage.getItem('cc-auto-tts') === 'true';
+
+  window.setVoice = function(v) { _voice = v; };
+
+  window.toggleAutoTTS = function() {
+    var checkbox = document.getElementById('auto-tts-checkbox');
+    var label = document.getElementById('auto-tts-label');
+    _autoTTS = checkbox.checked;
+    localStorage.setItem('cc-auto-tts', _autoTTS ? 'true' : 'false');
+    label.classList.toggle('active', _autoTTS);
+  };
+
+  (function() {
+    var checkbox = document.getElementById('auto-tts-checkbox');
+    var label = document.getElementById('auto-tts-label');
+    checkbox.checked = _autoTTS;
+    if (_autoTTS) label.classList.add('active');
+  })();
+
+  function _ttsClean(text, maxChars) {
+    var clean = text
+      .replace(/<think>[\s\S]*?<\/think>/g, '')
+      .replace(/```[\s\S]*?```/g, 'code block.')
+      .replace(/`[^`]+`/g, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/#+\s/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, 'link.')
+      .replace(/\n+/g, ' ')
+      .trim();
+    if (maxChars && clean.length > maxChars) {
+      var cut = clean.search(/[.!?](?:\s|$)/);
+      clean = cut > 0 && cut < maxChars ? clean.slice(0, cut + 1) : clean.slice(0, maxChars);
+    }
+    return clean;
+  }
+
+  function _ttsSentences(text) {
+    return text.match(/[^.!?]+[.!?]+\s*/g)?.map(function(s) { return s.trim(); }).filter(Boolean) || [text];
+  }
+
+  async function _ttsFetch(sentence) {
+    var res = await fetch('/admin/tts', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ text:sentence, voice:_voice }),
+    });
+    var ct = res.headers.get('content-type') || '';
+    if (!res.ok || !ct.includes('audio')) throw new Error('TTS ' + res.status);
+    return URL.createObjectURL(await res.blob());
+  }
+
+  function _ttsPlayUrl(url) {
+    return new Promise(function(resolve, reject) {
+      var audio = new Audio(url);
+      _currentAudio = audio;
+      audio.onended = function() { URL.revokeObjectURL(url); resolve(); };
+      audio.onerror = function(e) { URL.revokeObjectURL(url); reject(e); };
+      audio.play().catch(reject);
+    });
+  }
+
+  function stopSpeaking() {
+    if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
+    document.querySelectorAll('.cc-btn-speak.speaking').forEach(function(b) { b.classList.remove('speaking'); });
+  }
+
+  async function speak(text, btn) {
+    var clean = _ttsClean(text);
+    if (!clean) return;
+    stopSpeaking();
+    if (btn) btn.classList.add('speaking');
+    // Set orb to speaking
+    window.setHuginnState('speaking', 'TTS active');
+
+    var sentences = _ttsSentences(clean);
+    try {
+      var nextFetch = _ttsFetch(sentences[0]);
+      for (var i = 0; i < sentences.length; i++) {
+        var prefetchNext = sentences[i + 1] ? _ttsFetch(sentences[i + 1]) : null;
+        var url = await nextFetch;
+        if (!btn || btn.classList.contains('speaking')) {
+          await _ttsPlayUrl(url);
+        } else {
+          URL.revokeObjectURL(url); break;
+        }
+        nextFetch = prefetchNext;
+      }
+      _currentAudio = null;
+      if (btn) btn.classList.remove('speaking');
+      if (isOnline) window.setHuginnState('listening');
+    } catch(err) {
+      console.warn('[TTS] Piper failed, falling back:', err.message);
+      _currentAudio = null;
+      if (window.speechSynthesis) {
+        var utt = new SpeechSynthesisUtterance(clean);
+        utt.rate = 1.0; utt.pitch = 0.95;
+        utt.onend = function() {
+          if (btn) btn.classList.remove('speaking');
+          if (isOnline) window.setHuginnState('listening');
+        };
+        window.speechSynthesis.speak(utt);
+      } else {
+        if (btn) btn.classList.remove('speaking');
+      }
+    }
+  }
+
+  window.speakCard = function(bodyId) {
+    var bodyEl = document.getElementById(bodyId);
+    if (!bodyEl) return;
+    var card = bodyEl.closest('.cc-card');
+    if (!card) return;
+    var btn = card.querySelector('.cc-btn-speak');
+    if (!btn) return;
+    if (btn.classList.contains('speaking')) { stopSpeaking(); return; }
+    speak(card.dataset.rawContent || bodyEl.textContent, btn);
+  };
+})();
+</script>
+</body>
+</html>

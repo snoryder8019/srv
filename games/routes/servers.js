@@ -31,12 +31,14 @@ const GAME_LIBS = {
   valheim: () => require('../lib/valheim'),
   l4d2: () => require('../lib/l4d2'),
   '7dtd': () => require('../lib/7dtd'),
+  se: () => require('../lib/se'),
+  palworld: () => require('../lib/palworld'),
 };
 
 router.post('/api/request', requireAdmin, async (req, res) => {
   try {
     const { game } = req.body;
-    const validGames = ['rust', 'valheim', 'l4d2', '7dtd'];
+    const validGames = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
     if (!game || !validGames.includes(game)) {
       return res.status(400).json({ error: 'Invalid game. Choose: ' + validGames.join(', ') });
     }
@@ -121,7 +123,7 @@ router.get('/api/provisioned-status/:game', requireAuth, async (req, res) => {
       .findOne({ game: req.params.game, status: { $in: ['provisioning', 'running'] } }, { sort: { createdAt: -1 } });
     if (!server) return res.json({ active: false });
 
-    const GAME_PORTS_MAP = { rust: 28015, valheim: 2456, l4d2: 27015, '7dtd': 26900 };
+    const GAME_PORTS_MAP = { rust: 28015, valheim: 2456, l4d2: 27015, '7dtd': 26900, se: 27016, palworld: 8211 };
     const port = GAME_PORTS_MAP[server.game] || '';
 
     // Check Linode API for actual status

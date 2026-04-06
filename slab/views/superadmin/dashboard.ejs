@@ -3,252 +3,830 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Superadmin — sLab</title>
+  <title>Superadmin — MadLabs Platform</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
-    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+
+    /* ── TOPBAR ── */
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
     .topbar-left { display:flex; align-items:center; gap:16px; }
     .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
     .badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#c9a848; background:#262626; padding:3px 8px; border-radius:4px; }
+    .badge-overseer { background:linear-gradient(135deg, #c9a848 0%, #b8860b 100%); color:#0a0a0a; font-weight:700; }
     .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; color:#737373; }
     .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
-    .container { max-width:1100px; margin:0 auto; padding:24px; }
+
+    /* ── SERVICE DROPDOWN ── */
+    .service-select { background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:8px 14px; border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; min-width:220px; cursor:pointer; }
+    .service-select:focus { border-color:#c9a848; outline:none; }
+    .service-select option { background:#1a1a1a; }
+    .service-select optgroup { color:#c9a848; font-weight:600; }
+
+    /* ── LAYOUT ── */
+    .main-grid { display:grid; grid-template-columns:260px 1fr; min-height:calc(100vh - 57px); }
+    .sidebar { background:#111; border-right:1px solid #262626; padding:16px 0; overflow-y:auto; }
+    .content { padding:24px; overflow-y:auto; }
+
+    /* ── SIDEBAR NAV ── */
+    .nav-section { margin-bottom:20px; }
+    .nav-section-label { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#525252; padding:0 16px; margin-bottom:8px; }
+    .nav-item { display:flex; align-items:center; gap:10px; padding:8px 16px; font-size:13px; color:#a3a3a3; text-decoration:none; cursor:pointer; border-left:2px solid transparent; transition:all 0.15s; }
+    .nav-item:hover { color:#e5e5e5; background:#1a1a1a; }
+    .nav-item.active { color:#c9a848; border-left-color:#c9a848; background:#1a1a1a; }
+    .nav-icon { font-size:15px; width:20px; text-align:center; }
+    .nav-count { margin-left:auto; font-size:11px; background:#262626; padding:1px 6px; border-radius:8px; color:#737373; }
+
+    /* ── STATS ── */
     .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:16px; margin-bottom:28px; }
     .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; }
     .stat-label { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:6px; }
     .stat-value { font-size:28px; font-weight:700; color:#fff; }
     .stat-value.gold { color:#c9a848; }
-    .nav-tabs { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid #262626; padding-bottom:-1px; }
-    .nav-tab { padding:10px 16px; font-size:13px; color:#737373; text-decoration:none; border-bottom:2px solid transparent; transition:all 0.2s; }
-    .nav-tab:hover { color:#e5e5e5; } .nav-tab.active { color:#c9a848; border-bottom-color:#c9a848; }
+    .stat-value.green { color:#34d399; }
+    .stat-value.red { color:#f87171; }
+
+    /* ── SERVICE GRID ── */
+    .service-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; margin-bottom:28px; }
+    .svc-card { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; position:relative; transition:border-color 0.2s; }
+    .svc-card:hover { border-color:#333; }
+    .svc-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .svc-name { font-size:14px; font-weight:600; color:#fff; }
+    .svc-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .svc-dot.alive { background:#34d399; box-shadow:0 0 6px #34d399; }
+    .svc-dot.dead { background:#f87171; box-shadow:0 0 6px #f87171; }
+    .svc-dot.unknown { background:#525252; }
+    .svc-desc { font-size:12px; color:#737373; margin-bottom:8px; }
+    .svc-meta { display:flex; gap:12px; font-size:11px; color:#525252; }
+    .svc-meta span { display:flex; align-items:center; gap:4px; }
+    .svc-actions { display:flex; gap:6px; margin-top:10px; }
+    .svc-category-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#525252; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+    .svc-category-label span { color:#c9a848; }
+
+    /* ── PANELS (tab content) ── */
+    .panel { display:none; }
+    .panel.active { display:block; }
+    .panel-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+    .panel-title { font-size:18px; font-weight:600; }
     h2 { font-size:16px; font-weight:500; margin-bottom:16px; }
+    h3 { font-size:14px; font-weight:500; margin-bottom:12px; color:#a3a3a3; }
+
+    /* ── TABLES ── */
     table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
     th { text-align:left; padding:10px 14px; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
     td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
     tr:last-child td { border-bottom:0; }
+
+    /* ── STATUS BADGES ── */
     .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
     .status-active { background:#14532d; color:#86efac; }
     .status-preview { background:#422006; color:#fdba74; }
     .status-suspended { background:#451a1a; color:#fca5a5; }
+
+    /* ── BUTTONS ── */
     .link { color:#c9a848; text-decoration:none; } .link:hover { text-decoration:underline; }
-    .btn-sm { padding:5px 12px; font-size:12px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; text-decoration:none; display:inline-block; }
+    .btn { padding:8px 16px; font-size:13px; border-radius:6px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; text-decoration:none; display:inline-flex; align-items:center; gap:6px; transition:all 0.15s; }
+    .btn:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-sm { padding:4px 10px; font-size:11px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; text-decoration:none; display:inline-block; }
     .btn-sm:hover { border-color:#c9a848; color:#c9a848; }
-    .section { margin-bottom:32px; }
-    .empty { color:#525252; font-size:13px; padding:20px; text-align:center; }
-    .tag { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:500; margin-right:3px; white-space:nowrap; }
-    .tags-cell { max-width:200px; }
-    .filter-bar { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
-    .filter-bar select { background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:6px 10px; border-radius:4px; font-family:'Inter',sans-serif; font-size:12px; }
-    .filter-bar label { font-size:12px; color:#737373; }
+    .btn-gold { background:#c9a848; color:#0a0a0a; border-color:#c9a848; font-weight:600; } .btn-gold:hover { background:#b8960b; }
+
+    /* ── LOG ROWS ── */
+    .log-table { background:#141414; border:1px solid #262626; border-radius:8px; overflow:hidden; max-height:500px; overflow-y:auto; }
     .log-row { display:flex; align-items:flex-start; gap:12px; padding:10px 14px; border-bottom:1px solid #1f1f1f; font-size:13px; }
     .log-row:last-child { border-bottom:0; }
-    .log-icon { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; margin-top:1px; }
+    .log-icon { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
     .log-body { flex:1; min-width:0; }
     .log-action { color:#e5e5e5; font-weight:500; }
     .log-tenant { color:#c9a848; font-size:12px; }
     .log-detail { color:#737373; font-size:12px; margin-top:2px; }
     .log-time { color:#525252; font-size:11px; white-space:nowrap; flex-shrink:0; }
-    .log-badge { display:inline-block; padding:1px 6px; border-radius:8px; font-size:10px; font-weight:500; }
-    .log-badge-success { background:#14532d; color:#86efac; }
-    .log-badge-failed { background:#451a1a; color:#fca5a5; }
-    .log-badge-partial { background:#422006; color:#fdba74; }
-    .log-table { background:#141414; border:1px solid #262626; border-radius:8px; overflow:hidden; max-height:500px; overflow-y:auto; }
-    .log-filter-bar { display:flex; gap:8px; margin-bottom:12px; }
-    .log-filter-btn { padding:4px 10px; font-size:11px; border-radius:12px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; }
-    .log-filter-btn:hover, .log-filter-btn.active { border-color:#c9a848; color:#c9a848; }
+
+    /* ── PERMISSION GRID ── */
+    .perm-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+    .perm-card { background:#141414; border:1px solid #262626; border-radius:8px; padding:14px; }
+    .perm-card h4 { font-size:13px; font-weight:600; color:#fff; margin-bottom:6px; }
+    .perm-card p { font-size:12px; color:#737373; }
+    .perm-level { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; margin-top:6px; }
+    .perm-overseer { background:#c9a848; color:#0a0a0a; }
+    .perm-superadmin { background:#38bdf8; color:#0a0a0a; }
+    .perm-admin { background:#34d399; color:#0a0a0a; }
+
+    /* ── EMPTY STATE ── */
+    .empty { color:#525252; font-size:13px; padding:20px; text-align:center; }
+    .section { margin-bottom:28px; }
+
+    /* ── TAG ── */
+    .tag { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:500; margin-right:3px; }
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="topbar-left">
-      <div class="logo"><span>s</span>Lab</div>
-      <span class="badge">Superadmin</span>
+
+<!-- ── TOPBAR ──────────────────────────────────────────────────────────────── -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">s<span>Lab</span></div>
+    <span class="badge badge-overseer">SUPERADMIN</span>
+    <select class="service-select" id="serviceSelector" onchange="switchService(this.value)">
+      <option value="all">All Services</option>
+      <% for (const [cat, group] of Object.entries(servicesByCategory)) { %>
+        <optgroup label="<%= group.icon %> <%= group.label %>">
+          <% for (const svc of group.services) { %>
+            <option value="<%= svc.name %>" <%= selectedService === svc.name ? 'selected' : '' %>>
+              <%= svc.alive ? '●' : '○' %> <%= svc.name %> <% if (svc.port) { %>(:<%=svc.port%>)<% } %>
+            </option>
+          <% } %>
+        </optgroup>
+      <% } %>
+    </select>
+  </div>
+  <div class="topbar-right">
+    <span><%= user.email %></span>
+    <a href="/superadmin/huginn">Huginn</a>
+    <a href="/superadmin/control-center" target="_blank">Control Center</a>
+    <a href="/superadmin/promos">Promos</a>
+    <a href="/superadmin/logout">Logout</a>
+  </div>
+</div>
+
+<!-- ── MAIN LAYOUT ────────────────────────────────────────────────────────── -->
+<div class="main-grid">
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar">
+    <div class="nav-section">
+      <div class="nav-section-label">Overview</div>
+      <a class="nav-item active" data-panel="services" onclick="showPanel('services', this)">
+        <span class="nav-icon">&#9632;</span> Services
+        <span class="nav-count"><%= totalServices %></span>
+      </a>
+      <a class="nav-item" data-panel="tenants" onclick="showPanel('tenants', this)">
+        <span class="nav-icon">&#9830;</span> Tenants
+        <span class="nav-count"><%= stats.total %></span>
+      </a>
+      <a class="nav-item" data-panel="analytics" onclick="showPanel('analytics', this)">
+        <span class="nav-icon">&#9650;</span> Analytics
+      </a>
     </div>
-    <div class="topbar-right">
-      <span><%= user.email %></span>
-      <a href="/superadmin/promos">Promos</a>
-      <a href="/delegates/admin">Delegates</a>
-      <a href="/superadmin/signups">Signups</a>
-      <a href="/superadmin/activity">Activity Log</a>
-      <a href="/superadmin/logout">Logout</a>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Tools</div>
+      <a class="nav-item" data-panel="tooling" onclick="showPanel('tooling', this)">
+        <span class="nav-icon">&#9881;</span> System Tools
+      </a>
+      <a class="nav-item" data-panel="agents" onclick="showPanel('agents', this)">
+        <span class="nav-icon">&#10047;</span> Agent Hub
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Lifecycle</div>
+      <a class="nav-item" data-panel="deprecation" onclick="showPanel('deprecation', this)">
+        <span class="nav-icon">&#128465;</span> Deprecation
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Security</div>
+      <a class="nav-item" data-panel="permissions" onclick="showPanel('permissions', this)">
+        <span class="nav-icon">&#128274;</span> Permissions
+      </a>
+      <a class="nav-item" data-panel="activity" onclick="showPanel('activity', this)">
+        <span class="nav-icon">&#9998;</span> Activity Log
+        <span class="nav-count"><%= activityLogs.length %></span>
+      </a>
     </div>
   </div>
 
-  <div class="container">
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-label">Total Tenants</div>
-        <div class="stat-value"><%= stats.totalTenants %></div>
+  <!-- ── CONTENT AREA ── -->
+  <div class="content">
+
+    <!-- ══════ SERVICES PANEL ══════ -->
+    <div class="panel active" id="panel-services">
+      <div class="panel-header">
+        <div class="panel-title">Service Overview</div>
+        <div style="display:flex; gap:10px; font-size:13px;">
+          <span style="color:#34d399;"><%= aliveCount %> alive</span>
+          <span style="color:#f87171;"><%= deadCount %> down</span>
+        </div>
       </div>
-      <div class="stat">
-        <div class="stat-label">Active (Paying)</div>
-        <div class="stat-value" style="color:#4ade80;"><%= stats.activeTenants %></div>
+
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Total Services</div><div class="stat-value"><%= totalServices %></div></div>
+        <div class="stat"><div class="stat-label">Running</div><div class="stat-value green"><%= aliveCount %></div></div>
+        <div class="stat"><div class="stat-label">Down</div><div class="stat-value red"><%= deadCount %></div></div>
+        <div class="stat"><div class="stat-label">Tenants</div><div class="stat-value gold"><%= stats.total %></div></div>
+        <div class="stat"><div class="stat-label">Est. MRR</div><div class="stat-value gold">$<%= stats.mrr %></div></div>
       </div>
-      <div class="stat">
-        <div class="stat-label">Preview (Free)</div>
-        <div class="stat-value" style="color:#fdba74;"><%= stats.previewTenants %></div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Suspended</div>
-        <div class="stat-value" style="color:#f87171;"><%= stats.suspendedTenants %></div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Est. MRR</div>
-        <div class="stat-value gold">$<%= stats.monthlyRevenue %></div>
-      </div>
+
+      <% for (const [cat, group] of Object.entries(servicesByCategory)) { %>
+        <div class="section">
+          <div class="svc-category-label"><span><%= group.icon %></span> <%= group.label %></div>
+          <div class="service-grid">
+            <% for (const svc of group.services) { %>
+              <div class="svc-card">
+                <div class="svc-card-header">
+                  <span class="svc-name"><%= svc.name %></span>
+                  <span class="svc-dot <%= svc.alive ? 'alive' : (svc.alive === false ? 'dead' : 'unknown') %>"></span>
+                </div>
+                <div class="svc-desc"><%= svc.description %></div>
+                <div class="svc-meta">
+                  <% if (svc.port) { %><span>:<%= svc.port %></span><% } %>
+                  <% if (svc.domain) { %><span><a href="https://<%= svc.domain %>" target="_blank" class="link" style="font-size:11px;"><%= svc.domain %></a></span><% } %>
+                  <% if (svc.tmux) { %><span>tmux: <%= svc.tmux %></span><% } %>
+                </div>
+                <div class="svc-actions">
+                  <% if (svc.domain) { %><a href="https://<%= svc.domain %>" target="_blank" class="btn-sm">Visit</a><% } %>
+                  <% if (svc.tmux) { %><button class="btn-sm" onclick="svcAction('<%= svc.name %>', 'status')">Status</button><% } %>
+                </div>
+              </div>
+            <% } %>
+          </div>
+        </div>
+      <% } %>
     </div>
 
-    <div class="section">
-      <h2>All Tenants</h2>
-      <div class="filter-bar">
-        <label>Filter by tag:</label>
-        <select id="tagFilter" onchange="filterByTag(this.value)">
-          <option value="">All</option>
-          <option value="__none">No tags</option>
-          <% for (const [slug, def] of Object.entries(tagDefs)) { %>
-          <option value="<%= slug %>"><%= def.label %></option>
-          <% } %>
-        </select>
+    <!-- ══════ TENANTS PANEL ══════ -->
+    <div class="panel" id="panel-tenants">
+      <div class="panel-header">
+        <div class="panel-title">All Tenants</div>
+        <span style="font-size:12px;color:#525252;">Manage tenants below or via detail pages</span>
       </div>
-      <% if (tenants.length) { %>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Total</div><div class="stat-value"><%= stats.total %></div></div>
+        <div class="stat"><div class="stat-label">Active</div><div class="stat-value green"><%= stats.active %></div></div>
+        <div class="stat"><div class="stat-label">Preview</div><div class="stat-value gold"><%= stats.preview %></div></div>
+        <div class="stat"><div class="stat-label">Suspended</div><div class="stat-value red"><%= stats.suspended %></div></div>
+      </div>
       <table>
-        <thead><tr><th>Domain</th><th>Brand</th><th>Tags</th><th>Status</th><th>Plan</th><th>Owner</th><th>Created</th><th></th></tr></thead>
+        <thead><tr><th>Domain</th><th>Brand</th><th>Status</th><th>Plan</th><th>Owner</th><th></th></tr></thead>
         <tbody>
           <% for (const t of tenants) { %>
-          <tr data-tags="<%= (t.tags || []).join(',') %>">
-            <td><a href="https://<%= t.domain %>" target="_blank" class="link"><%= t.domain %></a></td>
-            <td><%= t.brand?.name || '—' %></td>
-            <td class="tags-cell">
-              <% if (t.tags && t.tags.length) { %>
-                <% for (const tag of t.tags) { %>
-                  <% const def = tagDefs[tag]; if (def) { %>
-                  <span class="tag" style="color:<%= def.color %>;background:<%= def.bg %>"><%= def.label %></span>
-                  <% } } %>
-              <% } else { %>
-                <span style="color:#525252;font-size:11px;">—</span>
-              <% } %>
-            </td>
-            <td><span class="status status-<%= t.status || 'preview' %>"><%= t.status || 'preview' %></span></td>
-            <td><%= t.meta?.plan || 'free' %></td>
-            <td><%= t.meta?.ownerEmail || '—' %></td>
-            <td><%= t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—' %></td>
-            <td><a href="/superadmin/tenants/<%= t._id %>" class="btn-sm">Manage</a></td>
-          </tr>
+            <tr>
+              <td><a href="https://<%= t.domain %>" class="link" target="_blank"><%= t.domain %></a></td>
+              <td><%= t.brand?.name || '—' %></td>
+              <td><span class="status status-<%= t.status || 'preview' %>"><%= t.status || 'preview' %></span></td>
+              <td><%= t.meta?.plan || 'free' %></td>
+              <td style="color:#737373; font-size:12px;"><%= t.meta?.ownerEmail || '—' %></td>
+              <td><a href="/superadmin/tenants/<%= t._id %>" class="btn-sm">Manage</a></td>
+            </tr>
           <% } %>
         </tbody>
       </table>
-      <% } else { %>
-        <div class="empty">No tenants yet. Share /start to get signups.</div>
-      <% } %>
     </div>
 
-    <div class="section">
-      <h2>Recent Signups</h2>
-      <% if (recentSignups.length) { %>
-      <table>
-        <thead><tr><th>Email</th><th>Brand</th><th>Subdomain</th><th>Date</th></tr></thead>
-        <tbody>
-          <% for (const s of recentSignups) { %>
-          <tr>
-            <td><%= s.email %></td>
-            <td><%= s.brandName %></td>
-            <td><%= s.subdomain %>.madladslab.com</td>
-            <td><%= new Date(s.createdAt).toLocaleString() %></td>
-          </tr>
-          <% } %>
-        </tbody>
-      </table>
-      <% } else { %>
-        <div class="empty">No signups yet.</div>
-      <% } %>
-    </div>
-
-    <div class="section">
-      <h2>Activity Log</h2>
-      <div class="log-filter-bar">
-        <button class="log-filter-btn active" onclick="filterLogs('')">All</button>
-        <button class="log-filter-btn" onclick="filterLogs('registration')">Registration</button>
-        <button class="log-filter-btn" onclick="filterLogs('settings')">Settings</button>
-        <button class="log-filter-btn" onclick="filterLogs('payment')">Payment</button>
-        <button class="log-filter-btn" onclick="filterLogs('admin_action')">Admin</button>
-        <button class="log-filter-btn" onclick="filterLogs('failed')">Failures Only</button>
+    <!-- ══════ ANALYTICS PANEL ══════ -->
+    <div class="panel" id="panel-analytics">
+      <div class="panel-header">
+        <div class="panel-title">Analytics</div>
       </div>
-      <% if (activityLogs && activityLogs.length) { %>
-      <div class="log-table">
-        <%
-          const logIcons = {
-            registration: { icon: '&#128100;', bg: '#1e3a5f' },
-            settings:     { icon: '&#9881;',  bg: '#2a2410' },
-            payment:      { icon: '&#128179;', bg: '#14532d' },
-            admin_action: { icon: '&#9889;',  bg: '#3b1764' },
-          };
-          const actionLabels = {
-            signup: 'Signed up',
-            go_live_initiated: 'Go-live initiated',
-            payment_captured: 'Payment captured',
-            settings_saved: 'Settings saved',
-            stripe_test: 'Stripe test',
-            email_test: 'Email test',
-            dns_check: 'DNS check',
-            dns_auto_create: 'DNS auto-create',
-            activated: 'Activated',
-            plan_changed: 'Plan changed',
-            suspended: 'Suspended',
-            deleted: 'Deleted',
-          };
-        %>
-        <% for (const log of activityLogs) { %>
-          <% const iconDef = logIcons[log.category] || { icon: '&#8226;', bg: '#262626' }; %>
-          <div class="log-row" data-category="<%= log.category %>" data-status="<%= log.status %>">
-            <div class="log-icon" style="background:<%= iconDef.bg %>"><%- iconDef.icon %></div>
-            <div class="log-body">
-              <div>
-                <span class="log-action"><%= actionLabels[log.action] || log.action %></span>
-                <span class="log-badge log-badge-<%= log.status %>"><%= log.status %></span>
-              </div>
-              <div class="log-tenant"><%= log.tenantDomain || '—' %></div>
-              <% if (log.actor?.email) { %>
-                <div class="log-detail">by <%= log.actor.email %></div>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Services</div><div class="stat-value"><%= totalServices %></div></div>
+        <div class="stat"><div class="stat-label">Tenants</div><div class="stat-value"><%= stats.total %></div></div>
+        <div class="stat"><div class="stat-label">Active Paying</div><div class="stat-value green"><%= stats.active %></div></div>
+        <div class="stat"><div class="stat-label">Est. MRR</div><div class="stat-value gold">$<%= stats.mrr %></div></div>
+      </div>
+      <div class="section">
+        <h2>Recent Signups</h2>
+        <% if (recentSignups.length) { %>
+          <table>
+            <thead><tr><th>Email</th><th>Brand</th><th>Subdomain</th><th>Date</th></tr></thead>
+            <tbody>
+              <% for (const s of recentSignups) { %>
+                <tr>
+                  <td><%= s.email %></td>
+                  <td><%= s.brandName || '—' %></td>
+                  <td><%= s.subdomain || '—' %></td>
+                  <td style="color:#525252; font-size:12px;"><%= new Date(s.createdAt).toLocaleDateString() %></td>
+                </tr>
               <% } %>
-              <% if (log.error) { %>
-                <div class="log-detail" style="color:#f87171;">Error: <%= log.error %></div>
-              <% } %>
-              <% if (log.details) { %>
-                <% if (log.details.plan) { %><div class="log-detail">Plan: <%= log.details.plan %></div><% } %>
-                <% if (log.details.amount) { %><div class="log-detail">Amount: $<%= log.details.amount %></div><% } %>
-                <% if (log.details.fieldsUpdated) { %><div class="log-detail">Fields: <%= log.details.fieldsUpdated.slice(0, 5).join(', ') %><%= log.details.fieldsUpdated.length > 5 ? ' +' + (log.details.fieldsUpdated.length - 5) + ' more' : '' %></div><% } %>
-                <% if (log.details.spf) { %><div class="log-detail">SPF: <%= log.details.spf %> | DKIM: <%= log.details.dkim %> | DMARC: <%= log.details.dmarc %> | MX: <%= log.details.mx %></div><% } %>
-              <% } %>
-            </div>
-            <div class="log-time"><%= log.timestamp ? new Date(log.timestamp).toLocaleString() : '—' %></div>
-          </div>
+            </tbody>
+          </table>
+        <% } else { %>
+          <div class="empty">No recent signups</div>
         <% } %>
       </div>
-      <% } else { %>
-        <div class="empty">No activity recorded yet. Events will appear as tenants register and configure.</div>
-      <% } %>
     </div>
+
+    <!-- ══════ TOOLING PANEL ══════ -->
+    <div class="panel" id="panel-tooling">
+      <div class="panel-header">
+        <div class="panel-title">System Tools</div>
+      </div>
+      <div class="service-grid">
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">Service Health</span></div>
+          <div class="svc-desc">Check all tmux sessions and port bindings</div>
+          <div class="svc-actions"><button class="btn-sm" onclick="runTool('health')">Run Check</button></div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">Apache Configs</span></div>
+          <div class="svc-desc">View/validate virtual host configurations</div>
+          <div class="svc-actions"><button class="btn-sm" onclick="runTool('apache')">View Configs</button></div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">SSL Certs</span></div>
+          <div class="svc-desc">Let's Encrypt certificate status</div>
+          <div class="svc-actions"><button class="btn-sm" onclick="runTool('ssl')">Check Certs</button></div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">MongoDB Status</span></div>
+          <div class="svc-desc">Database connection and collection stats</div>
+          <div class="svc-actions"><button class="btn-sm" onclick="runTool('mongo')">Check DB</button></div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">Disk Usage</span></div>
+          <div class="svc-desc">Storage breakdown across /srv</div>
+          <div class="svc-actions"><button class="btn-sm" onclick="runTool('disk')">Check Disk</button></div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">Scanner</span></div>
+          <div class="svc-desc">Run the Slab platform scanner</div>
+          <div class="svc-actions"><a href="/superadmin/control-center" class="btn-sm">Control Center</a></div>
+        </div>
+      </div>
+      <div class="section" style="margin-top:20px;">
+        <h2>Tool Output</h2>
+        <pre id="toolOutput" style="background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; font-size:12px; color:#a3a3a3; min-height:100px; max-height:400px; overflow-y:auto; white-space:pre-wrap;">Select a tool to run...</pre>
+      </div>
     </div>
-  <script>
-    function filterByTag(val) {
-      document.querySelectorAll('tbody tr[data-tags]').forEach(function(row) {
-        var tags = row.getAttribute('data-tags');
-        if (!val) { row.style.display = ''; return; }
-        if (val === '__none') { row.style.display = tags ? 'none' : ''; return; }
-        row.style.display = tags.split(',').indexOf(val) !== -1 ? '' : 'none';
-      });
+
+    <!-- ══════ AGENTS PANEL ══════ -->
+    <div class="panel" id="panel-agents">
+      <div class="panel-header">
+        <div class="panel-title">Agent Hub</div>
+      </div>
+      <div class="service-grid">
+        <div class="svc-card">
+          <div class="svc-card-header">
+            <span class="svc-name">Huginn</span>
+            <span class="svc-dot" id="huginnDot"></span>
+          </div>
+          <div class="svc-desc">DeepSeek R1 — platform AI assistant with live Slab context</div>
+          <div class="svc-actions">
+            <a href="/superadmin/huginn" class="btn-sm">Open Chat</a>
+            <button class="btn-sm" onclick="checkHuginn()">Health Check</button>
+          </div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">OpenClaw</span></div>
+          <div class="svc-desc">Agent orchestration gateway (WhatsApp, Claude, threads)</div>
+          <div class="svc-meta"><span>Ports: 18789, 18792</span></div>
+          <div class="svc-actions"><button class="btn-sm" onclick="svcAction('openclaw', 'status')">Status</button></div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">MCP Server</span></div>
+          <div class="svc-desc">Model Context Protocol — Claude Android app bridge</div>
+          <div class="svc-actions"><button class="btn-sm" onclick="svcAction('mcp', 'status')">Status</button></div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">Piper TTS</span></div>
+          <div class="svc-desc">OpenAI-compatible text-to-speech</div>
+          <div class="svc-actions"><button class="btn-sm" onclick="svcAction('piper-tts', 'status')">Status</button></div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header"><span class="svc-name">Ollama (AI API)</span></div>
+          <div class="svc-desc">SD v1.5 image gen + DeepSeek chat at ollama.madladslab.com</div>
+          <div class="svc-actions"><button class="btn-sm" onclick="checkOllama()">Health</button></div>
+        </div>
+      </div>
+      <div class="section" style="margin-top:20px;">
+        <h2>Agent Output</h2>
+        <pre id="agentOutput" style="background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; font-size:12px; color:#a3a3a3; min-height:100px; max-height:400px; overflow-y:auto; white-space:pre-wrap;">Select an agent to check...</pre>
+      </div>
+    </div>
+
+    <!-- ══════ PERMISSIONS PANEL ══════ -->
+    <div class="panel" id="panel-permissions">
+      <div class="panel-header">
+        <div class="panel-title">Permissions &amp; Roles</div>
+      </div>
+      <div class="section">
+        <h2>Access Tiers</h2>
+        <div class="perm-grid">
+          <div class="perm-card">
+            <h4>Superadmin (You)</h4>
+            <p>Full platform control — all services, all tenants, system tools, agent hub, permissions management</p>
+            <div class="perm-level perm-overseer">snoryder8019@gmail.com</div>
+          </div>
+          <div class="perm-card">
+            <h4>Tenant Admin</h4>
+            <p>Standard admin panel access — blog, clients, pages, invoicing, settings within their tenant</p>
+            <div class="perm-level perm-admin">JWT via slab_token</div>
+          </div>
+          <div class="perm-card">
+            <h4>Portal User</h4>
+            <p>Client-facing portal — view invoices, upload files, communicate with their tenant admin</p>
+            <div class="perm-level perm-superadmin">JWT via slab_portal</div>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <h2>Authorized Emails</h2>
+        <table>
+          <thead><tr><th>Email</th><th>Role</th><th>Scope</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>snoryder8019@gmail.com</td>
+              <td><span class="perm-level perm-overseer" style="font-size:10px;">Superadmin</span></td>
+              <td>All services, all tenants, full platform</td>
+            </tr>
+            <tr>
+              <td>scott@madladslab.com</td>
+              <td><span class="perm-level perm-overseer" style="font-size:10px;">Superadmin</span></td>
+              <td>Alias — same access</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════ ACTIVITY LOG PANEL ══════ -->
+    <div class="panel" id="panel-activity">
+      <div class="panel-header">
+        <div class="panel-title">Activity Log</div>
+        <a href="/superadmin/activity" class="btn-sm">Full Log</a>
+      </div>
+      <div class="log-table">
+        <% if (activityLogs.length) { %>
+          <% for (const log of activityLogs) { %>
+            <div class="log-row">
+              <div class="log-icon" style="background:#262626;">
+                <% if (log.category === 'registration') { %>&#128100;<% } %>
+                <% if (log.category === 'settings') { %>&#9881;<% } %>
+                <% if (log.category === 'payment') { %>&#128176;<% } %>
+                <% if (log.category === 'admin_action') { %>&#9889;<% } %>
+              </div>
+              <div class="log-body">
+                <div class="log-action"><%= log.action %></div>
+                <% if (log.tenantDomain) { %><div class="log-tenant"><%= log.tenantDomain %></div><% } %>
+                <% if (log.actor?.email) { %><div class="log-detail"><%= log.actor.email %></div><% } %>
+              </div>
+              <div class="log-time"><%= new Date(log.timestamp).toLocaleString() %></div>
+            </div>
+          <% } %>
+        <% } else { %>
+          <div class="empty">No activity yet</div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- ══════ DEPRECATION PIPELINE PANEL ══════ -->
+    <div class="panel" id="panel-deprecation">
+      <div class="panel-header">
+        <div class="panel-title">Deprecation Pipeline</div>
+        <button class="btn" onclick="loadDeprecationPipeline()">Refresh</button>
+      </div>
+
+      <!-- Deprecate new project -->
+      <div class="section">
+        <h2>Deprecate a Project</h2>
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:16px;">
+          <select id="deprProjectSelect" class="service-select" style="min-width:260px;">
+            <option value="">Loading...</option>
+          </select>
+          <button class="btn btn-gold" onclick="deprAdvance(document.getElementById('deprProjectSelect').value, 'deprecate')">Deprecate</button>
+        </div>
+      </div>
+
+      <!-- Pipeline stages -->
+      <div class="stats" id="deprStats">
+        <div class="stat"><div class="stat-label">New (Staging)</div><div class="stat-value" id="deprCountNew">-</div></div>
+        <div class="stat"><div class="stat-label">Cleansed</div><div class="stat-value" id="deprCountCleansed">-</div></div>
+        <div class="stat"><div class="stat-label">Deconstructed</div><div class="stat-value" id="deprCountDeconstructed">-</div></div>
+        <div class="stat"><div class="stat-label">Deletion Stage</div><div class="stat-value red" id="deprCountDeletion">-</div></div>
+      </div>
+
+      <!-- Stage: new -->
+      <div class="section" id="deprStageNew">
+        <h2 style="color:#c9a848;">Stage: New (Staging)</h2>
+        <div class="service-grid" id="deprGridNew"></div>
+      </div>
+
+      <!-- Stage: cleansed -->
+      <div class="section" id="deprStageCleansed">
+        <h2 style="color:#38bdf8;">Stage: Cleansed</h2>
+        <div class="service-grid" id="deprGridCleansed"></div>
+      </div>
+
+      <!-- Stage: deconstructed -->
+      <div class="section" id="deprStageDeconstructed">
+        <h2 style="color:#a78bfa;">Stage: Deconstructed</h2>
+        <div class="service-grid" id="deprGridDeconstructed"></div>
+      </div>
+
+      <!-- Stage: deletion-stage -->
+      <div class="section" id="deprStageDeletion">
+        <h2 style="color:#f87171;">Stage: Deletion Stage</h2>
+        <div class="service-grid" id="deprGridDeletion"></div>
+      </div>
+
+      <!-- Detail / output area -->
+      <div class="section">
+        <h2>Pipeline Output</h2>
+        <pre id="deprOutput" style="background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; font-size:12px; color:#a3a3a3; min-height:120px; max-height:500px; overflow-y:auto; white-space:pre-wrap;">Select a project or run an action...</pre>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main-grid -->
+
+<script>
+  function showPanel(id, el) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('panel-' + id).classList.add('active');
+    if (el) el.classList.add('active');
+  }
+
+  function switchService(name) {
+    if (name === 'all') {
+      showPanel('services', document.querySelector('[data-panel="services"]'));
+    } else {
+      // TODO: drill into individual service detail view
+      window.location.href = '/superadmin/service/' + name;
     }
-    function filterLogs(val) {
-      document.querySelectorAll('.log-filter-btn').forEach(function(b) { b.classList.remove('active'); });
-      event.target.classList.add('active');
-      document.querySelectorAll('.log-row').forEach(function(row) {
-        if (!val) { row.style.display = ''; return; }
-        if (val === 'failed') { row.style.display = row.dataset.status === 'failed' ? '' : 'none'; return; }
-        row.style.display = row.dataset.category === val ? '' : 'none';
-      });
+  }
+
+  async function runTool(tool) {
+    const out = document.getElementById('toolOutput');
+    out.textContent = 'Running ' + tool + '...';
+    try {
+      const res = await fetch('/superadmin/api/tool/' + tool);
+      const data = await res.json();
+      out.textContent = data.output || JSON.stringify(data, null, 2);
+    } catch (e) {
+      out.textContent = 'Error: ' + e.message;
     }
-  </script>
+  }
+
+  async function svcAction(name, action) {
+    const out = document.getElementById('toolOutput') || document.getElementById('agentOutput');
+    out.textContent = 'Checking ' + name + '...';
+    try {
+      const res = await fetch('/superadmin/api/service/' + name + '/' + action);
+      const data = await res.json();
+      out.textContent = data.output || JSON.stringify(data, null, 2);
+    } catch (e) {
+      out.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  async function checkHuginn() {
+    const out = document.getElementById('agentOutput');
+    const dot = document.getElementById('huginnDot');
+    out.textContent = 'Checking Huginn...';
+    try {
+      const res = await fetch('/superadmin/huginn/health');
+      const data = await res.json();
+      dot.className = 'svc-dot ' + (data.status === 'ok' ? 'alive' : 'dead');
+      out.textContent = JSON.stringify(data, null, 2);
+    } catch (e) {
+      dot.className = 'svc-dot dead';
+      out.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  async function checkOllama() {
+    const out = document.getElementById('agentOutput');
+    out.textContent = 'Checking Ollama...';
+    try {
+      const res = await fetch('/superadmin/api/tool/ollama');
+      const data = await res.json();
+      out.textContent = data.output || JSON.stringify(data, null, 2);
+    } catch (e) {
+      out.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  // ── Deprecation Pipeline ──
+  const STAGE_COLORS = { 'new': '#c9a848', 'cleansed': '#38bdf8', 'deconstructed': '#a78bfa', 'deletion-stage': '#f87171' };
+  const STAGE_NEXT = { 'new': 'cleanse', 'cleansed': 'deconstruct', 'deconstructed': 'stage-delete' };
+  const STAGE_LABELS = { 'new': 'Cleanse', 'cleansed': 'Deconstruct', 'deconstructed': 'Stage for Delete' };
+
+  async function loadDeprecationPipeline() {
+    try {
+      const res = await fetch('/superadmin/api/deprecation/pipeline');
+      const data = await res.json();
+      if (!data.ok) return;
+
+      // Populate project dropdown
+      const sel = document.getElementById('deprProjectSelect');
+      sel.innerHTML = '<option value="">— select project —</option>';
+      data.available.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p; opt.textContent = p;
+        sel.appendChild(opt);
+      });
+
+      // Update counts
+      document.getElementById('deprCountNew').textContent = data.pipeline['new']?.length || 0;
+      document.getElementById('deprCountCleansed').textContent = data.pipeline['cleansed']?.length || 0;
+      document.getElementById('deprCountDeconstructed').textContent = data.pipeline['deconstructed']?.length || 0;
+      document.getElementById('deprCountDeletion').textContent = data.pipeline['deletion-stage']?.length || 0;
+
+      // Render cards for each stage
+      renderDeprStage('new', data.pipeline['new'] || [], 'deprGridNew');
+      renderDeprStage('cleansed', data.pipeline['cleansed'] || [], 'deprGridCleansed');
+      renderDeprStage('deconstructed', data.pipeline['deconstructed'] || [], 'deprGridDeconstructed');
+      renderDeprStage('deletion-stage', data.pipeline['deletion-stage'] || [], 'deprGridDeletion');
+    } catch (e) {
+      document.getElementById('deprOutput').textContent = 'Error loading pipeline: ' + e.message;
+    }
+  }
+
+  function renderDeprStage(stage, projects, gridId) {
+    const grid = document.getElementById(gridId);
+    if (!projects.length) {
+      grid.innerHTML = '<div class="empty">No projects in this stage</div>';
+      return;
+    }
+    grid.innerHTML = projects.map(p => {
+      const color = STAGE_COLORS[stage];
+      const nextAction = STAGE_NEXT[stage];
+      const nextLabel = STAGE_LABELS[stage];
+      const receipt = p.receipt || {};
+      const dateStr = receipt.deprecatedAt ? new Date(receipt.deprecatedAt).toLocaleDateString() : '—';
+
+      // Config manifest summary
+      let manifestHint = '';
+      if (p.manifest && p.manifest.totalSensitiveFiles > 0) {
+        manifestHint = '<div style="margin-top:6px;font-size:11px;color:#c9a848;">Config manifest: ' + p.manifest.totalSensitiveFiles + ' sensitive file(s) documented</div>';
+      }
+
+      // Deletion review flags
+      let reviewHint = '';
+      if (p.review) {
+        const flags = p.review.flags || {};
+        const ext = p.review.external || {};
+        const items = [];
+        if (flags.apacheConfs?.length) items.push(flags.apacheConfs.length + ' Apache conf(s)');
+        if (flags.cronEntries?.length) items.push(flags.cronEntries.length + ' cron ref(s)');
+        if (flags.stillInAutostart) items.push('still in autostart!');
+        if (flags.inServiceRegistry) items.push('in service registry');
+        if (ext.database?.found) {
+          const dbs = ext.database.liveMatches || [];
+          const colCount = dbs.reduce((s, d) => s + d.collectionCount, 0);
+          items.push(dbs.length + ' DB(s), ' + colCount + ' collection(s)');
+        }
+        if (ext.bucket?.found) items.push('bucket refs found');
+        if (ext.localFiles?.found) items.push(ext.localFiles.totalFiles + ' local file(s)');
+        if (items.length) reviewHint = '<div style="margin-top:6px;font-size:11px;color:#f87171;">Flags: ' + items.join(', ') + '</div>';
+      }
+
+      let actions = '';
+      if (nextAction) {
+        actions += '<button class="btn-sm" onclick="deprAdvance(\'' + p.name + '\', \'' + nextAction + '\')" style="border-color:' + color + ';color:' + color + ';">' + nextLabel + '</button>';
+      }
+      if (p.manifest) {
+        actions += ' <button class="btn-sm" onclick="deprViewManifest(\'' + p.name + '\')">Manifest</button>';
+      }
+      if (p.hasReport) {
+        actions += ' <button class="btn-sm" onclick="deprViewReport(\'' + p.name + '\')">Report</button>';
+      }
+      if (p.review) {
+        actions += ' <button class="btn-sm" onclick="deprViewReview(\'' + p.name + '\')" style="border-color:#f87171;color:#f87171;">Review</button>';
+      }
+
+      return '<div class="svc-card">' +
+        '<div class="svc-card-header"><span class="svc-name">' + p.name + '</span><span style="font-size:11px;color:' + color + ';">' + p.size + '</span></div>' +
+        '<div class="svc-meta"><span>Deprecated: ' + dateStr + '</span></div>' +
+        manifestHint + reviewHint +
+        '<div class="svc-actions" style="margin-top:8px;">' + actions + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  async function deprAdvance(project, action) {
+    if (!project) return alert('Select a project first');
+    const out = document.getElementById('deprOutput');
+    out.textContent = 'Running ' + action + ' on ' + project + '...';
+    try {
+      const res = await fetch('/superadmin/api/deprecation/advance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project, action }),
+      });
+      const data = await res.json();
+      out.textContent = JSON.stringify(data, null, 2);
+      loadDeprecationPipeline();
+    } catch (e) {
+      out.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  async function deprViewManifest(project) {
+    const out = document.getElementById('deprOutput');
+    out.textContent = 'Loading config manifest for ' + project + '...';
+    try {
+      const res = await fetch('/superadmin/api/deprecation/manifest/' + project);
+      const data = await res.json();
+      if (data.manifest) {
+        let txt = '=== CONFIG MANIFEST: ' + project + ' ===\n\n';
+        txt += 'Sensitive files removed: ' + (data.manifest.totalSensitiveFiles || 0) + '\n\n';
+        (data.manifest.sensitiveFiles || []).forEach(f => {
+          txt += '--- ' + f.path + ' (' + f.type + ') ---\n';
+          if (f.keys?.length) txt += '  Keys: ' + f.keys.join(', ') + '\n';
+          if (f.flags) txt += '  Flags: API=' + (f.flags.api_keys||0) + ' Email=' + (f.flags.email_config||0) + ' DB=' + (f.flags.database||0) + '\n';
+          if (f.exports) txt += '  Exports: ' + f.exports + '\n';
+          if (f.env_refs?.length) txt += '  Env refs: ' + f.env_refs.join(', ') + '\n';
+          txt += '\n';
+        });
+        out.textContent = txt;
+      } else {
+        out.textContent = JSON.stringify(data, null, 2);
+      }
+    } catch (e) { out.textContent = 'Error: ' + e.message; }
+  }
+
+  async function deprViewReport(project) {
+    const out = document.getElementById('deprOutput');
+    out.textContent = 'Loading deconstruction report for ' + project + '...';
+    try {
+      const res = await fetch('/superadmin/api/deprecation/report/' + project);
+      const data = await res.json();
+      out.textContent = data.report || JSON.stringify(data, null, 2);
+    } catch (e) { out.textContent = 'Error: ' + e.message; }
+  }
+
+  async function deprViewReview(project) {
+    const out = document.getElementById('deprOutput');
+    out.textContent = 'Loading deletion review for ' + project + '...';
+    try {
+      const res = await fetch('/superadmin/api/deprecation/review/' + project);
+      const data = await res.json();
+      if (data.review) {
+        let txt = '=== DELETION REVIEW: ' + project + ' ===\n\n';
+        txt += 'Staged for deletion: ' + (data.review.stagedForDeletionAt || '?') + '\n\n';
+
+        // System references
+        const flags = data.review.flags || {};
+        txt += '── SYSTEM REFERENCES ──\n';
+        if (flags.apacheConfs?.length) txt += 'APACHE CONFS:\n' + flags.apacheConfs.map(c => '  - ' + c).join('\n') + '\n';
+        if (flags.cronEntries?.length) txt += 'CRON ENTRIES:\n' + flags.cronEntries.map(c => '  - ' + c).join('\n') + '\n';
+        if (flags.stillInAutostart) txt += '!! STILL IN AUTO-START-NPM.JSON !!\n';
+        if (flags.inServiceRegistry) txt += '!! STILL IN SERVICE REGISTRY !!\n';
+        if (!flags.apacheConfs?.length && !flags.cronEntries?.length && !flags.stillInAutostart && !flags.inServiceRegistry) {
+          txt += 'None found.\n';
+        }
+        txt += '\n';
+
+        // External resources
+        const ext = data.review.external || {};
+        txt += '── DATABASE ──\n';
+        if (ext.database?.found && ext.database.liveMatches?.length) {
+          ext.database.liveMatches.forEach(db => {
+            txt += 'DB: ' + db.name + ' (' + db.sizeMB + ' MB, ' + db.collectionCount + ' collections)\n';
+            db.collections.forEach(c => { txt += '  - ' + c + '\n'; });
+          });
+        } else if (ext.database?.codeRefs?.dbNames?.length) {
+          txt += 'Code references DB names: ' + ext.database.codeRefs.dbNames.join(', ') + '\n';
+          txt += 'No live DB match found (may use different name).\n';
+        } else {
+          txt += 'No database references detected.\n';
+        }
+        if (ext.database?.codeRefs?.collections?.length) {
+          txt += 'Collections referenced in code: ' + ext.database.codeRefs.collections.join(', ') + '\n';
+        }
+        txt += '\n';
+
+        txt += '── LINODE BUCKET / S3 ──\n';
+        if (ext.bucket?.found) {
+          txt += 'Bucket references found in code:\n';
+          [...new Set(ext.bucket.references)].forEach(r => { txt += '  - ' + r + '\n'; });
+          if (ext.bucket.prefixes?.length) {
+            txt += 'Bucket prefixes/paths:\n';
+            ext.bucket.prefixes.forEach(p => { txt += '  - ' + p + '\n'; });
+          }
+        } else {
+          txt += 'No bucket/S3 references detected.\n';
+        }
+        txt += '\n';
+
+        txt += '── LOCAL FILES (uploads/media/assets) ──\n';
+        if (ext.localFiles?.found) {
+          txt += 'Total: ' + ext.localFiles.totalFiles + ' files (' + ext.localFiles.totalSizeMB + ' MB)\n';
+          (ext.localFiles.directories || []).forEach(d => {
+            txt += '  ' + d.path + ': ' + d.files + ' files (' + d.sizeMB + ' MB)\n';
+          });
+        } else {
+          txt += 'No local asset files detected.\n';
+        }
+
+        out.textContent = txt;
+      } else {
+        out.textContent = JSON.stringify(data, null, 2);
+      }
+    } catch (e) { out.textContent = 'Error: ' + e.message; }
+  }
+
+  // Auto-load pipeline when tab is shown
+  const origShowPanel = showPanel;
+  showPanel = function(id, el) {
+    origShowPanel(id, el);
+    if (id === 'deprecation') loadDeprecationPipeline();
+  };
+</script>
 </body>
 </html>

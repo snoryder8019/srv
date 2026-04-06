@@ -4,13 +4,15 @@ const rust = require('../lib/rust');
 const valheim = require('../lib/valheim');
 const l4d2 = require('../lib/l4d2');
 const sdtd = require('../lib/7dtd');
+const se = require('../lib/se');
+const palworld = require('../lib/palworld');
 
 function requireInternal(req, res, next) {
   if (req.headers['x-bridge-secret'] === process.env.BRIDGE_SECRET) return next();
   res.status(401).json({ error: 'Unauthorized' });
 }
 
-const libs = { rust, valheim, l4d2, '7dtd': sdtd };
+const libs = { rust, valheim, l4d2, '7dtd': sdtd, se, palworld };
 
 router.get('/:game/status', requireInternal, async (req, res) => {
   const lib = libs[req.params.game];

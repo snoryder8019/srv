@@ -9,7 +9,7 @@ scope: full platform
 - [conventions.md](conventions.md) — Code patterns, rules, anti-patterns
 
 ## AI System
-- [agents.md](agents.md) — Agent architecture, MCP, LLM patterns, brand context
+- [agents.md](agents.md) — Agent architecture, MCP, LLM patterns, brand context, Huginn platform intelligence
 
 ## Module Context
 Module-specific CLAUDE.md files live in their own directories:

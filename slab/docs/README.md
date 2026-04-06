@@ -22,3 +22,6 @@
 - [Meetings](modules/meetings.md) — Video meetings with AI notes
 - [Assets](modules/assets.md) — File library and media management
 - [Users](modules/users.md) — Team members and permissions
+
+## Superadmin
+- [Huginn](modules/huginn.md) — Platform AI assistant (chat, control center, MCP, webhooks)

@@ -17,6 +17,10 @@ import { bustTenantCache } from '../middleware/tenant.js';
 import { config } from '../config/config.js';
 import nodemailer from 'nodemailer';
 import { logActivity, getActivityLogs } from '../plugins/activityLog.js';
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { getServices, getServicesByCategory, getService } from '../plugins/serviceRegistry.js';
 
 const router = express.Router();
 
@@ -114,36 +118,37 @@ router.get('/logout', (req, res) => {
 // ── All routes below require superadmin ─────────────────────────────────────
 router.use(requireSuperAdmin);
 
-// ── Dashboard ───────────────────────────────────────────────────────────────
+// ── Dashboard (unified panel — services, tenants, tools, agents, activity) ──
 router.get('/', async (req, res) => {
   const slab = getSlabDb();
-  const [
-    totalTenants,
-    activeTenants,
-    previewTenants,
-    suspendedTenants,
-    recentSignups,
-    allTenants,
-    activityLogs,
-  ] = await Promise.all([
-    slab.collection('tenants').countDocuments(),
-    slab.collection('tenants').countDocuments({ status: 'active' }),
-    slab.collection('tenants').countDocuments({ status: 'preview' }),
-    slab.collection('tenants').countDocuments({ status: 'suspended' }),
-    slab.collection('signups').find().sort({ createdAt: -1 }).limit(10).toArray(),
+  const [tenants, recentSignups, activityLogs] = await Promise.all([
     slab.collection('tenants').find().sort({ createdAt: -1 }).toArray(),
+    slab.collection('signups').find().sort({ createdAt: -1 }).limit(10).toArray(),
     getActivityLogs({ limit: 30 }),
   ]);
 
-  const monthlyRevenue = activeTenants * 50; // rough estimate
+  const active = tenants.filter(t => t.status === 'active').length;
+  const preview = tenants.filter(t => t.status === 'preview' || !t.status).length;
+  const suspended = tenants.filter(t => t.status === 'suspended').length;
+
+  const services = getServices();
+  const servicesByCategory = getServicesByCategory();
+  const aliveCount = services.filter(s => s.alive === true).length;
+  const deadCount = services.filter(s => s.alive === false).length;
 
   res.render('superadmin/dashboard', {
     user: req.superAdmin,
-    stats: { totalTenants, activeTenants, previewTenants, suspendedTenants, monthlyRevenue },
-    tenants: allTenants,
+    services,
+    servicesByCategory,
+    totalServices: services.length,
+    aliveCount,
+    deadCount,
+    tenants,
+    stats: { total: tenants.length, active, preview, suspended, mrr: active * 50 },
     recentSignups,
     tagDefs: TENANT_TAGS,
     activityLogs,
+    selectedService: req.query.service || 'all',
   });
 });
 
@@ -393,6 +398,152 @@ router.get('/signups', async (req, res) => {
   res.render('superadmin/signups', { user: req.superAdmin, signups });
 });
 
+// ── Huginn Chat (superadmin) — context-enriched ────────────────────────────
+import {
+  buildHuginnContext, logConversation, parseAndSaveIntents,
+  listTasks as huginnListTasks,
+} from '../plugins/huginnMcp.js';
+
+const HUGINN_BASE = (config.OLLAMA_URL || '').replace(/\/v1\/chat\/completions$/, '');
+
+async function huginnGet(path, timeoutMs = 8000) {
+  const r = await fetch(`${HUGINN_BASE}/huginn${path}`, {
+    headers: { 'Authorization': `Bearer ${config.OLLAMA_KEY}` },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!r.ok) throw new Error(`Huginn ${r.status}`);
+  return r.json();
+}
+
+router.get('/huginn', (req, res) => {
+  res.render('superadmin/huginn', { user: req.superAdmin });
+});
+
+router.post('/huginn/chat', async (req, res) => {
+  try {
+    const { messages, session } = req.body;
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages array required' });
+    }
+    const sessionId = session || `sa-${req.superAdmin?.email || 'default'}`;
+    const userMsg = messages[messages.length - 1]?.content || '';
+
+    // Log user message
+    logConversation(sessionId, 'user', userMsg).catch(() => {});
+
+    // Build live context from Slab DB and inject as system message
+    let contextBlock = '';
+    try { contextBlock = await buildHuginnContext(userMsg); } catch (e) {
+      console.warn('[huginn] context build failed:', e.message);
+    }
+
+    const enrichedMessages = [
+      ...(contextBlock ? [{ role: 'system', content: contextBlock }] : []),
+      ...messages,
+    ];
+
+    const upstream = await fetch(`${HUGINN_BASE}/huginn/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.OLLAMA_KEY}`,
+        'X-Huginn-Session': sessionId,
+      },
+      body: JSON.stringify({ messages: enrichedMessages }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!upstream.ok) {
+      const text = await upstream.text().catch(() => '');
+      return res.status(upstream.status).json({ error: `Huginn ${upstream.status}`, detail: text });
+    }
+    const ct = upstream.headers.get('content-type') || '';
+    if (ct.includes('text/event-stream')) {
+      // Stream through, collect full response for intent parsing
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      const reader = upstream.body.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          res.write(chunk);
+          // Collect for intent parsing
+          for (const line of chunk.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const j = JSON.parse(payload);
+              const delta = j.choices?.[0]?.delta?.content;
+              if (delta) fullResponse += delta;
+            } catch {}
+          }
+        }
+      } catch { /* client disconnect */ }
+      res.end();
+
+      // Post-stream: log + parse intents (fire-and-forget)
+      if (fullResponse) {
+        logConversation(sessionId, 'assistant', fullResponse).catch(() => {});
+        parseAndSaveIntents(fullResponse, sessionId).catch(() => {});
+      }
+    } else {
+      const data = await upstream.json();
+      res.json(data);
+
+      // Log + parse intents from JSON response
+      const reply = data.choices?.[0]?.message?.content || '';
+      if (reply) {
+        logConversation(sessionId, 'assistant', reply).catch(() => {});
+        parseAndSaveIntents(reply, sessionId).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error('[huginn] proxy error:', err.message);
+    res.status(502).json({ error: 'Huginn unreachable', detail: err.message });
+  }
+});
+
+router.get('/huginn/health', async (req, res) => {
+  try {
+    const data = await huginnGet('/status');
+    res.json({ ok: data.model === 'deepseek-r1:7b', busy: !!data.busy, busyTask: data.busyTask || null });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+router.get('/huginn/tasks', async (req, res) => {
+  try {
+    const tasks = await huginnListTasks({
+      status: req.query.status || undefined,
+      limit: parseInt(req.query.limit) || 50,
+    });
+    res.json({ ok: true, tasks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/huginn/sessions', async (req, res) => {
+  try { res.json(await huginnGet('/sessions')); }
+  catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+router.get('/huginn/sessions/:id', async (req, res) => {
+  try { res.json(await huginnGet(`/sessions/${encodeURIComponent(req.params.id)}`)); }
+  catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+// ── Control Center ─────────────────────────────────────────────────────────
+router.get('/control-center', (req, res) => {
+  res.render('superadmin/control-center', { user: req.superAdmin });
+});
+
 // ── Plans management ────────────────────────────────────────────────────────
 router.post('/plans', async (req, res) => {
   const { slug, name, mode, stripePriceId, amount, duration, order } = req.body;
@@ -415,6 +566,204 @@ router.post('/plans', async (req, res) => {
     { upsert: true }
   );
   res.redirect('/superadmin/promos');
+});
+
+// ── API: System tools (called from dashboard panels) ────────────────────────
+function safeExec(cmd) {
+  try { return execSync(cmd, { encoding: 'utf8', timeout: 10000 }); }
+  catch (e) { return e.stdout || e.message || 'Command failed'; }
+}
+
+router.get('/api/tool/:tool', async (req, res) => {
+  const { tool } = req.params;
+  try {
+    let output = '';
+    switch (tool) {
+      case 'health': {
+        const sessions = safeExec('tmux list-sessions 2>/dev/null');
+        const ports = safeExec('ss -tlnp 2>/dev/null | grep LISTEN | head -40');
+        output = '=== TMUX SESSIONS ===\n' + sessions + '\n=== LISTENING PORTS ===\n' + ports;
+        break;
+      }
+      case 'apache':
+        output = safeExec('apache2ctl -S 2>&1 | head -60');
+        break;
+      case 'ssl':
+        output = safeExec('certbot certificates 2>&1 | head -40');
+        break;
+      case 'mongo': {
+        const slab = getSlabDb();
+        const collections = await slab.listCollections().toArray();
+        output = 'Slab DB collections:\n' + collections.map(c => '  - ' + c.name).join('\n');
+        break;
+      }
+      case 'disk':
+        output = safeExec('df -h / && echo "" && du -sh /srv/*/ 2>/dev/null | sort -rh | head -20');
+        break;
+      case 'ollama': {
+        const url = (config.OLLAMA_URL || 'https://ollama.madladslab.com/v1/chat/completions').replace('/v1/chat/completions', '/health');
+        output = safeExec(`curl -s --max-time 5 ${url} 2>&1`);
+        break;
+      }
+      default:
+        output = 'Unknown tool: ' + tool;
+    }
+    res.json({ ok: true, tool, output });
+  } catch (err) {
+    res.json({ ok: false, tool, output: 'Error: ' + err.message });
+  }
+});
+
+router.get('/api/service/:name/:action', (req, res) => {
+  const svc = getService(req.params.name);
+  if (!svc) return res.json({ ok: false, output: 'Unknown service' });
+  try {
+    const parts = [`Service: ${svc.name}`, `Dir: ${svc.dir}`, `Port: ${svc.port || 'n/a'}`,
+      `Domain: ${svc.domain || 'n/a'}`, `tmux: ${svc.tmux || 'n/a'}`,
+      `Alive: ${svc.alive ? 'YES' : 'NO'}`, `Port open: ${svc.portOpen === null ? 'n/a' : svc.portOpen ? 'YES' : 'NO'}`];
+    if (svc.tmux && svc.alive) {
+      const log = safeExec(`tmux capture-pane -t ${svc.tmux} -p 2>/dev/null | tail -15`);
+      if (log.trim()) parts.push('\n=== RECENT OUTPUT ===\n' + log);
+    }
+    res.json({ ok: true, service: svc.name, output: parts.join('\n') });
+  } catch (err) {
+    res.json({ ok: false, output: 'Error: ' + err.message });
+  }
+});
+
+router.get('/service/:name', (req, res) => {
+  const svc = getService(req.params.name);
+  if (!svc) return res.status(404).send('Service not found');
+  res.redirect('/superadmin?service=' + req.params.name);
+});
+
+// ── Deprecation Pipeline API ──────────────────────────────────────────────
+const DEPR_ROOT = '/srv/depricated';
+const DEPR_STAGES = ['new', 'cleansed', 'deconstructed', 'deletion-stage'];
+
+function readJsonFile(filePath) {
+  try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return null; }
+}
+
+function getDeprecationPipeline() {
+  const pipeline = {};
+  for (const stage of DEPR_STAGES) {
+    const dir = path.join(DEPR_ROOT, stage);
+    if (!fs.existsSync(dir)) { pipeline[stage] = []; continue; }
+    const entries = fs.readdirSync(dir).filter(f => {
+      const full = path.join(dir, f);
+      return fs.statSync(full).isDirectory() && !f.startsWith('.');
+    });
+    pipeline[stage] = entries.map(name => {
+      const base = path.join(dir, name);
+      const receipt = readJsonFile(path.join(base, '_deprecation_receipt.json'));
+      const manifest = readJsonFile(path.join(base, '_config_manifest.json'));
+      const review = readJsonFile(path.join(base, '_deletion_review.json'));
+      const report = fs.existsSync(path.join(base, '_deconstruction_report.md'));
+      let size = '?';
+      try { size = execSync(`du -sh "${base}" 2>/dev/null | cut -f1`, { encoding: 'utf8' }).trim(); } catch {}
+      return { name, stage, receipt, manifest, review, hasReport: report, size };
+    });
+  }
+  return pipeline;
+}
+
+// List all projects available for deprecation (dirs in /srv with package.json, not already deprecated)
+function getDeprecatableSrvProjects() {
+  const existing = new Set();
+  for (const stage of DEPR_STAGES) {
+    const dir = path.join(DEPR_ROOT, stage);
+    if (fs.existsSync(dir)) {
+      fs.readdirSync(dir).forEach(f => existing.add(f));
+    }
+  }
+  const skip = new Set(['depricated', 'node_modules', 'lost+found']);
+  try {
+    return fs.readdirSync('/srv').filter(f => {
+      if (skip.has(f) || existing.has(f)) return false;
+      const full = path.join('/srv', f);
+      return fs.statSync(full).isDirectory() && fs.existsSync(path.join(full, 'package.json'));
+    });
+  } catch { return []; }
+}
+
+router.get('/api/deprecation/pipeline', (req, res) => {
+  const pipeline = getDeprecationPipeline();
+  const available = getDeprecatableSrvProjects();
+  res.json({ ok: true, pipeline, available });
+});
+
+router.get('/api/deprecation/report/:project', (req, res) => {
+  const { project } = req.params;
+  // Search all stages for the report
+  for (const stage of DEPR_STAGES) {
+    const reportPath = path.join(DEPR_ROOT, stage, project, '_deconstruction_report.md');
+    if (fs.existsSync(reportPath)) {
+      return res.json({ ok: true, project, report: fs.readFileSync(reportPath, 'utf8') });
+    }
+  }
+  res.json({ ok: false, error: 'No report found for ' + project });
+});
+
+router.get('/api/deprecation/manifest/:project', (req, res) => {
+  const { project } = req.params;
+  for (const stage of DEPR_STAGES) {
+    const mPath = path.join(DEPR_ROOT, stage, project, '_config_manifest.json');
+    if (fs.existsSync(mPath)) {
+      return res.json({ ok: true, project, manifest: readJsonFile(mPath) });
+    }
+  }
+  res.json({ ok: false, error: 'No manifest found for ' + project });
+});
+
+router.get('/api/deprecation/review/:project', (req, res) => {
+  const { project } = req.params;
+  const rPath = path.join(DEPR_ROOT, 'deletion-stage', project, '_deletion_review.json');
+  if (fs.existsSync(rPath)) {
+    return res.json({ ok: true, project, review: readJsonFile(rPath) });
+  }
+  res.json({ ok: false, error: 'No review found for ' + project });
+});
+
+router.post('/api/deprecation/advance', (req, res) => {
+  const { project, action } = req.body;
+  if (!project) return res.status(400).json({ ok: false, error: 'project required' });
+
+  const scriptMap = {
+    deprecate:    path.join(DEPR_ROOT, 'deprecate.sh'),
+    cleanse:      path.join(DEPR_ROOT, 'cleanse.sh'),
+    deconstruct:  path.join(DEPR_ROOT, 'deconstruct.sh'),
+    'stage-delete': path.join(DEPR_ROOT, 'stage-delete.sh'),
+  };
+
+  const script = scriptMap[action];
+  if (!script) return res.status(400).json({ ok: false, error: 'Invalid action: ' + action });
+
+  try {
+    const output = execSync(`bash "${script}" "${project}" 2>&1`, {
+      encoding: 'utf8', timeout: 30000,
+    });
+    // Try to parse JSON output from scripts
+    try {
+      const result = JSON.parse(output.trim().split('\n').pop());
+      logActivity({
+        category: 'admin_action', action: `deprecation_${action}`,
+        tenantDomain: project, status: result.ok ? 'success' : 'error',
+        actor: { email: req.superAdmin.email, role: 'superadmin' },
+        details: result,
+      });
+      return res.json(result);
+    } catch {
+      return res.json({ ok: true, output });
+    }
+  } catch (err) {
+    const errOutput = err.stdout || err.stderr || err.message;
+    try {
+      return res.json(JSON.parse(errOutput.trim().split('\n').pop()));
+    } catch {
+      return res.json({ ok: false, error: errOutput });
+    }
+  }
 });
 
 export default router;

@@ -16,6 +16,8 @@ const LOG_PATHS = {
   valheim: ['/srv/games/valheim/logs/server.log'],
   l4d2: ['/srv/games/l4d2/logs/console.log'],
   '7dtd': ['/srv/games/7dtd/logs/output_log.txt'],
+  se: ['/srv/games/se/logs/server.log'],
+  palworld: ['/srv/games/palworld/logs/server.log'],
 };
 
 // Active streamers: { streamId: { timer, game, position } }
