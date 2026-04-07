@@ -1,1031 +1,1682 @@
 <%- include('../partials/head', { title }) %>
-<%- include('../partials/sidebar', { user, page }) %>
+</div><!-- close .layout from head.ejs -->
 
 <style>
-/* Color picker rows — color swatch + hex input side by side, always fits */
-.color-row { display: flex; gap: 10px; align-items: center; }
-.color-row input[type=color] { width: 44px; height: 38px; flex-shrink: 0; padding: 2px; border-radius: 2px; cursor: pointer; }
-.color-row input[type=text] { flex: 1; min-width: 0; }
+/* ── Editor split layout ── */
+.layout { display: none !important; }
+.editor-layout { display: flex; height: 100vh; position: fixed; inset: 0; z-index: 60; }
+.editor-panel { width: 340px; flex-shrink: 0; overflow-y: auto; background: var(--white); border-right: 1px solid var(--ivory-mid); padding: 0; }
+.editor-preview { flex: 1; min-width: 320px; background: var(--ivory); display: flex; flex-direction: column; }
+.editor-preview iframe { flex: 1; border: none; width: 100%; }
 
-/* Section visibility grid — minimum 2 cols on very small screens */
-.vis-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
-@media (max-width: 420px) {
-  .vis-grid { grid-template-columns: 1fr; }
-}
-
-/* Swatch preview row wraps */
-.swatch-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
-.swatch { width: 52px; height: 36px; border-radius: 2px; flex-shrink: 0; }
-
-/* Theme cards */
-.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-.theme-card { border: 1px solid var(--ivory-mid); border-radius: 2px; overflow: hidden; background: var(--white); }
-.theme-card-swatches { display: flex; height: 32px; }
-.theme-card-swatches div { flex: 1; }
-.theme-card-body { padding: 12px; }
-.theme-card-name { font-size: 0.85rem; font-weight: 600; color: var(--dark); margin-bottom: 4px; }
-.theme-card-meta { font-size: 0.65rem; color: var(--slate); margin-bottom: 10px; }
-.theme-card-actions { display: flex; gap: 6px; }
-
-/* Site preview */
-.preview-wrap { position: relative; border: 1px solid var(--ivory-mid); border-radius: 2px; overflow: hidden; background: var(--white); }
-.preview-toolbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--ivory); border-bottom: 1px solid var(--ivory-mid); }
-.preview-toolbar .btn { padding: 5px 10px; font-size: 0.65rem; }
-.preview-viewport { width: 100%; transition: all 0.3s; margin: 0 auto; display: block; }
-.preview-viewport.mobile { max-width: 375px; }
-.preview-viewport.tablet { max-width: 768px; }
-.preview-iframe { width: 100%; height: 500px; border: none; background: var(--white); }
-
-/* AI-filled indicator */
-.ai-filled { border-color: var(--success) !important; background: rgba(21,128,61,0.04) !important; }
-.ai-badge { display: none; font-size: 0.6rem; background: rgba(21,128,61,0.12); color: var(--success); padding: 2px 6px; border-radius: 2px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
-.ai-badge.visible { display: inline-block; }
-.revert-btn { display: none; font-size: 0.6rem; color: var(--slate); cursor: pointer; background: none; border: 1px solid var(--ivory-mid); padding: 2px 6px; border-radius: 2px; font-family: 'Jost',sans-serif; }
-.revert-btn.visible { display: inline-block; }
-.revert-btn:hover { color: var(--danger); border-color: rgba(185,28,28,0.3); }
-
-/* ── AI AGENT BUTTON ── */
-.agent-btn {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 8px 16px; border-radius: 2px;
-  background: linear-gradient(135deg, #6B3FA0, #8B5FC0);
-  color: var(--gold-light); border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
-  font-family: var(--font-body); font-size: 0.72rem;
-  font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
-  cursor: pointer; transition: all 0.2s;
-}
-.agent-btn:hover { background: linear-gradient(135deg, #8B5FC0, #6B3FA0); border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
-.agent-btn .agent-icon { font-size: 1rem; }
-
-/* ── AGENT PANEL ── */
-#agentPanel {
-  position: fixed; top: 0; right: -440px; width: 420px; height: 100vh;
-  background: var(--white); border-left: 1px solid var(--ivory-mid);
-  box-shadow: -8px 0 40px color-mix(in srgb, var(--navy-deep) 12%, transparent);
-  z-index: 500; display: flex; flex-direction: column;
-  transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
-}
-#agentPanel.open { right: 0; }
-
-.agent-panel-header {
-  padding: 18px 20px; border-bottom: 1px solid var(--ivory-mid);
-  background: linear-gradient(135deg, #4A2078, #6B3FA0);
+/* ── Accordion sections ── */
+.editor-section { border-bottom: 1px solid var(--ivory-mid); }
+.editor-section-toggle {
   display: flex; align-items: center; justify-content: space-between;
-  flex-shrink: 0;
+  padding: 14px 20px; cursor: pointer; font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--slate);
+  background: none; border: none; width: 100%; text-align: left;
+  font-family: var(--font-body); transition: color 0.15s;
 }
-.agent-panel-title {
-  font-family: 'Cormorant Garamond', serif; font-size: 1.2rem;
-  font-weight: 400; color: var(--white); display: flex; align-items: center; gap: 10px;
-}
-.agent-panel-title .dot {
-  width: 8px; height: 8px; border-radius: 50%; background: #4ADE80;
-  animation: pulse 2s infinite;
-}
-@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
-.agent-panel-close {
-  background: none; border: none; color: rgba(255,255,255,0.5);
-  font-size: 1.3rem; cursor: pointer; padding: 4px; line-height: 1;
-  transition: color 0.15s;
-}
-.agent-panel-close:hover { color: #FDFCFA; }
+.editor-section-toggle:hover { color: var(--dark); }
+.editor-section-body { display: none; padding: 0 20px 20px; }
+.editor-section.open .editor-section-body { display: block; }
+.editor-section.open .editor-section-toggle .arrow { transform: rotate(90deg); }
+.arrow { transition: transform 0.2s; font-size: 0.6rem; }
 
-.agent-panel-sub {
-  padding: 10px 20px; background: rgba(107,63,160,0.08);
-  border-bottom: 1px solid rgba(107,63,160,0.15); flex-shrink: 0;
-  font-size: 0.72rem; color: #6B3FA0; letter-spacing: 0.04em;
+/* ── Compact form controls ── */
+.ep-field { margin-bottom: 10px; }
+.ep-field label { display: block; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--slate); margin-bottom: 4px; }
+.ep-field input[type=text], .ep-field input[type=number], .ep-field textarea, .ep-field select {
+  width: 100%; padding: 7px 8px; border: 1px solid var(--ivory-mid); border-radius: 2px;
+  font-family: var(--font-body); font-size: 0.78rem; color: var(--dark); background: var(--ivory);
+  box-sizing: border-box;
 }
+.ep-field textarea { resize: vertical; min-height: 52px; }
+.ep-field select { appearance: auto; -webkit-appearance: auto; }
+.ep-hint { font-size: 0.62rem; color: var(--slate); margin-top: 2px; }
+.ep-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ep-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 
-.agent-msgs {
-  flex: 1; overflow-y: auto; padding: 16px 20px;
-  display: flex; flex-direction: column; gap: 12px;
-}
+/* ── Color picker compact ── */
+.color-row { display: flex; gap: 6px; align-items: center; }
+.color-row input[type=color] { width: 36px; height: 30px; flex-shrink: 0; padding: 1px; border: 1px solid var(--ivory-mid); border-radius: 2px; cursor: pointer; }
+.color-row input[type=text] { flex: 1; min-width: 0; padding: 6px 8px; font-size: 0.75rem; border: 1px solid var(--ivory-mid); border-radius: 2px; color: var(--slate); background: var(--ivory); }
 
-.agent-msg { display: flex; flex-direction: column; gap: 4px; }
-.agent-msg.user { align-items: flex-end; }
-.agent-msg.assistant { align-items: flex-start; }
+/* ── Swatch preview ── */
+.swatch-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; }
+.swatch { width: 40px; height: 26px; border-radius: 2px; flex-shrink: 0; }
 
-.agent-bubble {
-  max-width: 88%; padding: 10px 14px; border-radius: 4px;
-  font-size: 0.85rem; line-height: 1.5; font-weight: 300;
-}
-.agent-msg.user .agent-bubble {
-  background: #6B3FA0; color: #FDFCFA;
-  border-radius: 4px 4px 1px 4px;
-}
-.agent-msg.assistant .agent-bubble {
-  background: var(--ivory); color: var(--dark); border: 1px solid var(--ivory-mid);
-  border-radius: 4px 4px 4px 1px;
-}
+/* ── Visibility grid ── */
+.vis-grid-compact { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.vis-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--ivory); border: 1px solid var(--ivory-mid); border-radius: 2px; cursor: pointer; font-size: 0.72rem; color: var(--dark); }
+.vis-item input { width: 14px; height: 14px; accent-color: var(--navy); flex-shrink: 0; }
 
-.agent-fill-notice {
-  font-size: 0.7rem; color: var(--success); font-weight: 600;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  display: flex; align-items: center; gap: 5px; margin-top: 4px;
-}
+/* ── Theme cards ── */
+.theme-card { border: 1px solid var(--ivory-mid); border-radius: 2px; overflow: hidden; background: var(--white); margin-bottom: 8px; }
+.theme-card-swatches { display: flex; height: 20px; }
+.theme-card-swatches div { flex: 1; }
+.theme-card-body { padding: 8px 10px; }
+.theme-card-name { font-size: 0.75rem; font-weight: 600; color: var(--dark); }
+.theme-card-meta { font-size: 0.6rem; color: var(--slate); margin-bottom: 6px; }
+.theme-card-actions { display: flex; gap: 4px; }
 
-.agent-panel-footer { padding: 16px 20px; border-top: 1px solid var(--ivory-mid); flex-shrink: 0; }
-.agent-quick-btns {
-  display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;
-}
-.agent-quick-btn {
-  font-size: 0.67rem; padding: 5px 10px; border-radius: 2px;
-  border: 1px solid var(--ivory-mid); background: var(--white);
-  color: var(--slate); cursor: pointer; font-family: 'Jost', sans-serif;
-  font-weight: 500; letter-spacing: 0.04em; transition: all 0.15s;
-  white-space: nowrap;
-}
-.agent-quick-btn:hover { border-color: #6B3FA0; color: #6B3FA0; }
-.agent-input-row { display: flex; gap: 8px; }
-.agent-input {
-  flex: 1; padding: 10px 14px; border: 1px solid var(--ivory-mid);
-  border-radius: 2px; font-family: 'Jost', sans-serif; font-size: 0.88rem;
-  font-weight: 300; color: var(--dark); outline: none; resize: none;
-}
-.agent-input:focus { border-color: #6B3FA0; }
-.agent-send {
-  width: 40px; flex-shrink: 0; background: #6B3FA0; color: #FDFCFA;
-  border: none; border-radius: 2px; font-size: 1.1rem; cursor: pointer;
-  transition: background 0.15s;
-}
-.agent-send:hover { background: #8B5FC0; }
-.agent-send:disabled { opacity: 0.4; cursor: default; }
+/* ── Preview toolbar ── */
+.preview-bar { padding: 8px 16px; background: var(--white); border-bottom: 1px solid var(--ivory-mid); display: flex; gap: 8px; align-items: center; }
+.preview-bar .btn { padding: 4px 10px; font-size: 0.65rem; }
 
-.typing-indicator {
-  display: flex; gap: 4px; padding: 12px 14px; align-self: flex-start;
-}
-.typing-dot {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--slate);
-  animation: typingBounce 1.2s infinite;
-}
-.typing-dot:nth-child(2) { animation-delay: 0.15s; }
-.typing-dot:nth-child(3) { animation-delay: 0.3s; }
-@keyframes typingBounce { 0%,60%,100%{transform:translateY(0);opacity:0.3;} 30%{transform:translateY(-6px);opacity:1;} }
+/* ── Success/error banners ── */
+.save-banner { padding: 10px 20px; font-size: 0.78rem; font-weight: 500; }
+.save-banner.success { background: rgba(21,128,61,0.08); color: var(--success, #15803D); border-bottom: 1px solid rgba(21,128,61,0.2); }
+.save-banner.error { background: rgba(185,28,28,0.08); color: #B91C1C; border-bottom: 1px solid rgba(185,28,28,0.2); }
 
-#agentOverlay {
-  display: none; position: fixed; inset: 0; background: rgba(15,27,48,0.35);
-  z-index: 499; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+/* ── Agent btn ── */
+.agent-btn {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 2px;
+  background: linear-gradient(135deg, #6B3FA0, #8B5FC0); color: var(--gold-light);
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+  font-family: var(--font-body); font-size: 0.65rem; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;
 }
+.agent-btn:hover { background: linear-gradient(135deg, #8B5FC0, #6B3FA0); }
+
+/* ── Agent chat panel (matches blog/pages pattern) ── */
+#agentPanel { position: fixed; top: 0; right: -440px; width: 420px; height: 100vh; height: 100dvh; background: var(--white); border-left: 1px solid var(--ivory-mid); box-shadow: -8px 0 40px rgba(15,27,48,0.12); z-index: 500; display: flex; flex-direction: column; transition: right 0.3s cubic-bezier(0.4,0,0.2,1); }
+#agentPanel.open { right: 0; }
+#agentOverlay { display: none; position: fixed; inset: 0; background: rgba(15,27,48,0.15); z-index: 499; }
 #agentOverlay.active { display: block; }
+.ap-header { padding: 18px 20px; border-bottom: 1px solid var(--ivory-mid); background: linear-gradient(135deg, var(--navy-deep), var(--navy)); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.ap-title { font-family: var(--font-heading); font-size: 1.2rem; font-weight: 400; color: var(--gold-light); display: flex; align-items: center; gap: 10px; }
+.ap-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ADE80; animation: apPulse 2s infinite; }
+@keyframes apPulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+.ap-close { background: none; border: none; color: rgba(253,252,250,0.5); font-size: 1.3rem; cursor: pointer; padding: 4px; transition: color 0.15s; }
+.ap-close:hover { color: var(--gold-light); }
+.ap-sub { padding: 8px 20px; background: rgba(201,168,72,0.07); border-bottom: 1px solid rgba(201,168,72,0.15); flex-shrink: 0; font-size: 0.7rem; color: var(--slate); letter-spacing: 0.04em; display: flex; align-items: center; gap: 6px; }
+.ap-sub-dot { width: 5px; height: 5px; border-radius: 50%; background: #4ADE80; }
+.ap-msgs { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.ap-msg { display: flex; flex-direction: column; gap: 4px; }
+.ap-msg.user { align-items: flex-end; }
+.ap-msg.assistant { align-items: flex-start; }
+.ap-bubble { max-width: 88%; padding: 10px 14px; border-radius: 4px; font-size: 0.84rem; line-height: 1.5; font-weight: 300; }
+.ap-msg.user .ap-bubble { background: var(--navy); color: var(--gold-light); border-radius: 4px 4px 1px 4px; }
+.ap-msg.assistant .ap-bubble { background: var(--ivory); color: var(--dark); border: 1px solid var(--ivory-mid); border-radius: 4px 4px 4px 1px; }
+.ap-typing { display: flex; gap: 4px; padding: 10px 14px; background: var(--ivory); border: 1px solid var(--ivory-mid); border-radius: 4px 4px 4px 1px; align-self: flex-start; }
+.ap-typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--slate); animation: apBounce 1.2s infinite; }
+.ap-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.ap-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes apBounce { 0%,60%,100%{transform:translateY(0);opacity:0.4;} 30%{transform:translateY(-5px);opacity:1;} }
+.ap-fill-notice { font-size: 0.68rem; color: #15803D; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 4px; }
+.ap-search-notice { font-size: 0.68rem; color: var(--slate); font-style: italic; }
+.ap-footer { padding: 14px 20px; padding-bottom: max(14px, env(safe-area-inset-bottom, 14px)); border-top: 1px solid var(--ivory-mid); flex-shrink: 0; }
+.ap-quick { display: flex; gap: 6px; margin-bottom: 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; flex-wrap: nowrap; padding-bottom: 2px; }
+.ap-quick::-webkit-scrollbar { display: none; }
+.ap-quick-btn { font-size: 0.67rem; padding: 5px 10px; border-radius: 2px; border: 1px solid var(--ivory-mid); background: var(--white); color: var(--slate); cursor: pointer; font-family: var(--font-body); font-weight: 500; letter-spacing: 0.04em; transition: all 0.15s; white-space: nowrap; flex-shrink: 0; }
+.ap-quick-btn:hover { border-color: var(--navy-mid); color: var(--navy); }
+.ap-input-row { display: flex; gap: 8px; }
+.ap-input { flex: 1; padding: 10px 14px; border: 1px solid var(--ivory-mid); border-radius: 2px; font-family: var(--font-body); font-size: 0.88rem; font-weight: 300; color: var(--dark); outline: none; resize: none; transition: border-color 0.15s; min-height: 42px; max-height: 120px; }
+.ap-input:focus { border-color: var(--navy); }
+.ap-send { padding: 10px 16px; background: var(--navy); color: var(--gold-light); border: none; border-radius: 2px; cursor: pointer; font-size: 0.9rem; transition: background 0.15s; flex-shrink: 0; align-self: flex-end; }
+.ap-send:hover { background: var(--navy-deep); }
+.ap-send:disabled { opacity: 0.4; cursor: not-allowed; }
+.ai-filled { background: rgba(21,128,61,0.07) !important; border-color: rgba(21,128,61,0.45) !important; transition: background 0.4s, border-color 0.4s; }
 
-/* ── DESIGN PAGE RESPONSIVE ── */
+/* ── Brand image compact ── */
+.brand-img-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.brand-img-slot { border: 1px solid var(--ivory-mid); border-radius: 2px; overflow: hidden; }
+.brand-img-slot img { width: 100%; height: 60px; object-fit: contain; background: var(--ivory); }
+.brand-img-slot .lbl { padding: 4px 6px; font-size: 0.62rem; color: var(--slate); }
+
+/* ── Mobile gate ── */
+.mobile-gate { display: none; }
 @media (max-width: 820px) {
-  .form-grid.cols-3 { grid-template-columns: 1fr !important; }
-  .form-grid { grid-template-columns: 1fr !important; }
-  .preview-iframe { height: 320px; }
-  .preview-toolbar { flex-wrap: wrap; gap: 6px; }
-  .preview-toolbar span { order: 10; width: 100%; margin-left: 0; font-size: 0.6rem; }
-  .swatch-row { gap: 6px; }
-  .swatch { width: 44px; height: 30px; }
-  .theme-grid { grid-template-columns: 1fr 1fr !important; }
-  .color-row input[type=color] { width: 40px; height: 34px; }
-  #agentPanel { width: min(380px, 92vw); }
-  .agent-quick-btn { font-size: 0.62rem; padding: 6px 8px; }
-}
-@media (max-width: 520px) {
-  .preview-iframe { height: 260px; }
-  .vis-grid { grid-template-columns: 1fr !important; }
-  .theme-grid { grid-template-columns: 1fr !important; }
-  .form-actions { flex-direction: column; }
-  .form-actions .btn { width: 100%; text-align: center; }
-  #agentPanel { width: 100vw; right: -100vw; }
-  #agentPanel.open { right: 0; }
-  .agent-input { font-size: 0.88rem; padding: 12px 14px; }
-  .card-title { font-size: 0.95rem; }
+  .editor-layout { display: none !important; }
+  .mobile-gate {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 80vh; padding: 40px 24px; text-align: center; color: var(--slate);
+  }
+  .mobile-gate .icon { font-size: 2.4rem; margin-bottom: 16px; }
+  .mobile-gate h2 { font-size: 1.1rem; font-weight: 600; color: var(--dark); margin: 0 0 8px; }
+  .mobile-gate p { font-size: 0.82rem; line-height: 1.5; max-width: 320px; margin: 0 0 20px; }
 }
 </style>
 
-<div class="topbar">
-  <div class="topbar-title">Design & Settings</div>
-  <div class="topbar-actions">
-    <button type="button" class="agent-btn" id="agentToggle">
-      <span class="agent-icon">&#9830;</span> Design Agent
-    </button>
+<div class="mobile-gate">
+  <div class="icon">&#128421;</div>
+  <h2>Desktop Only</h2>
+  <p>The Design Editor requires a larger screen with the side-by-side preview. Please switch to a desktop or tablet in landscape mode.</p>
+  <a href="/admin" class="btn btn-navy" style="font-size:0.75rem;padding:8px 20px;">&larr; Back to Admin</a>
+</div>
+
+<div class="editor-layout">
+
+<%# ═══════════ LEFT PANEL — FORM ═══════════ %>
+<div class="editor-panel">
+<form method="POST" action="/admin/design" id="designForm">
+
+<div style="padding:10px 20px;border-bottom:1px solid var(--ivory-mid);display:flex;align-items:center;justify-content:space-between;gap:8px;">
+  <a href="/admin" style="font-size:0.72rem;color:var(--slate);text-decoration:none;">&larr; Admin</a>
+  <span style="font-size:0.72rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--dark);flex:1;text-align:center;">Design & Content</span>
+  <button type="submit" class="btn btn-navy" style="font-size:0.62rem;padding:6px 14px;letter-spacing:0.08em;white-space:nowrap;border-radius:2px;">Save All</button>
+</div>
+<% if (saved) { %><div class="save-banner success">Settings saved.</div><% } %>
+<% if (error) { %><div class="save-banner error">Failed to save.</div><% } %>
+
+<%# ─── 1. LAYOUT & TEMPLATE ─── %>
+<div class="editor-section open">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Layout & Template <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Landing Layout</label>
+      <select name="landing_layout" id="field-landing_layout">
+        <option value="classic"    <%= design.landing_layout === 'classic'    ? 'selected' : '' %>>Classic</option>
+        <option value="bold"       <%= design.landing_layout === 'bold'       ? 'selected' : '' %>>Bold</option>
+        <option value="minimal"    <%= design.landing_layout === 'minimal'    ? 'selected' : '' %>>Minimal</option>
+        <option value="magazine"   <%= design.landing_layout === 'magazine'   ? 'selected' : '' %>>Magazine</option>
+        <option value="dark"       <%= design.landing_layout === 'dark'       ? 'selected' : '' %>>Dark</option>
+        <option value="startup"    <%= design.landing_layout === 'startup'    ? 'selected' : '' %>>Startup</option>
+        <option value="showcase"   <%= design.landing_layout === 'showcase'   ? 'selected' : '' %>>Showcase</option>
+        <option value="industrial" <%= design.landing_layout === 'industrial' ? 'selected' : '' %>>Industrial</option>
+        <option value="split"      <%= design.landing_layout === 'split'      ? 'selected' : '' %>>Split</option>
+        <option value="editorial"  <%= design.landing_layout === 'editorial'  ? 'selected' : '' %>>Editorial</option>
+        <option value="agency"     <%= design.landing_layout === 'agency'     ? 'selected' : '' %>>Agency</option>
+        <option value="clean"      <%= design.landing_layout === 'clean'      ? 'selected' : '' %>>Clean</option>
+        <option value="brutalist"  <%= design.landing_layout === 'brutalist'  ? 'selected' : '' %>>Brutalist</option>
+      </select>
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Animation</label>
+        <select name="section_animation" id="field-section_animation">
+          <option value="none" <%= design.section_animation === 'none' ? 'selected' : '' %>>None</option>
+          <option value="fade" <%= design.section_animation === 'fade' ? 'selected' : '' %>>Fade up</option>
+          <option value="slide" <%= design.section_animation === 'slide' ? 'selected' : '' %>>Slide in</option>
+          <option value="zoom" <%= design.section_animation === 'zoom' ? 'selected' : '' %>>Zoom in</option>
+          <option value="flip" <%= design.section_animation === 'flip' ? 'selected' : '' %>>Flip in</option>
+          <option value="stagger" <%= design.section_animation === 'stagger' ? 'selected' : '' %>>Stagger</option>
+          <option value="blur" <%= design.section_animation === 'blur' ? 'selected' : '' %>>Blur in</option>
+        </select>
+      </div>
+      <div class="ep-field">
+        <label style="margin-bottom:10px;">&nbsp;</label>
+        <label style="font-size:0.75rem;text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" name="snap_enabled" id="field-snap_enabled" <%= design.snap_enabled === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);"> Scroll snap
+        </label>
+      </div>
+    </div>
   </div>
 </div>
-<div class="content">
-  <%- include('../partials/advisory', { needs: 'ai' }) %>
 
-  <% if (saved) { %>
-    <div class="alert alert-success">Settings saved successfully.</div>
-  <% } %>
-  <% if (error) { %>
-    <div class="alert alert-error">Failed to save settings. Please try again.</div>
-  <% } %>
-
-  <!-- ═══════════ SITE PREVIEW ═══════════ -->
-  <div class="card" style="margin-bottom:24px;">
-    <div class="card-title">Site Preview</div>
-    <div class="preview-wrap">
-      <div class="preview-toolbar">
-        <button type="button" class="btn btn-ghost" onclick="setViewport('desktop')" id="vpDesktop" style="border-color:var(--navy);">Desktop</button>
-        <button type="button" class="btn btn-ghost" onclick="setViewport('tablet')" id="vpTablet">Tablet</button>
-        <button type="button" class="btn btn-ghost" onclick="setViewport('mobile')" id="vpMobile">Mobile</button>
-        <span style="margin-left:auto;font-size:0.65rem;color:var(--slate);">Live preview — save settings to update</span>
-        <button type="button" class="btn btn-ghost" onclick="document.getElementById('previewFrame').src=document.getElementById('previewFrame').src" style="font-size:0.6rem;">Refresh</button>
+<%# ─── 2. COLORS ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Colors <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <%
+      const colorFields = [
+        { name: 'color_primary',      label: 'Primary' },
+        { name: 'color_primary_deep', label: 'Primary Deep' },
+        { name: 'color_primary_mid',  label: 'Primary Mid' },
+        { name: 'color_accent',       label: 'Accent' },
+        { name: 'color_accent_light', label: 'Accent Light' },
+        { name: 'color_bg',           label: 'Background' },
+      ];
+    %>
+    <% colorFields.forEach(cf => { %>
+    <div class="ep-field">
+      <label><%= cf.label %></label>
+      <div class="color-row">
+        <input type="color" name="<%= cf.name %>" id="field-<%= cf.name %>" value="<%= design[cf.name] %>">
+        <input type="text" value="<%= design[cf.name] %>" readonly>
       </div>
-      <div class="preview-viewport" id="previewViewport">
-        <iframe src="/" class="preview-iframe" id="previewFrame" sandbox="allow-same-origin allow-scripts"></iframe>
+    </div>
+    <% }) %>
+
+    <div class="ep-field" style="margin-top:6px;">
+      <label>Secondary Accent</label>
+      <div class="color-row">
+        <input type="color" name="color_accent_2" id="field-color_accent_2" value="<%= design.color_accent_2 || design.color_accent %>">
+        <input type="text" value="<%= design.color_accent_2 || '' %>" placeholder="(primary)" readonly>
+      </div>
+    </div>
+    <div class="ep-field">
+      <label>Tertiary Accent</label>
+      <div class="color-row">
+        <input type="color" name="color_accent_3" id="field-color_accent_3" value="<%= design.color_accent_3 || design.color_accent %>">
+        <input type="text" value="<%= design.color_accent_3 || '' %>" placeholder="(primary)" readonly>
+      </div>
+    </div>
+
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--ivory-mid);">
+      <div style="font-size:0.6rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">CONTRAST & UTILITY</div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Text Dark</label>
+          <div class="color-row">
+            <input type="color" name="color_dark" id="field-color_dark" value="<%= design.color_dark %>">
+            <input type="text" value="<%= design.color_dark %>" readonly>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>White / Surface</label>
+          <div class="color-row">
+            <input type="color" name="color_white" id="field-color_white" value="<%= design.color_white %>">
+            <input type="text" value="<%= design.color_white %>" readonly>
+          </div>
+        </div>
+      </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Muted Text</label>
+          <div class="color-row">
+            <input type="color" name="color_muted" id="field-color_muted" value="<%= design.color_muted || '#6B7380' %>">
+            <input type="text" value="<%= design.color_muted || '' %>" placeholder="(auto)" readonly>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Border</label>
+          <div class="color-row">
+            <input type="color" name="color_border" id="field-color_border" value="<%= design.color_border || '#E5E7EB' %>">
+            <input type="text" value="<%= design.color_border || '' %>" placeholder="(auto)" readonly>
+          </div>
+        </div>
+      </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Success</label>
+          <div class="color-row">
+            <input type="color" name="color_success" id="field-color_success" value="<%= design.color_success %>">
+            <input type="text" value="<%= design.color_success %>" readonly>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Danger</label>
+          <div class="color-row">
+            <input type="color" name="color_danger" id="field-color_danger" value="<%= design.color_danger %>">
+            <input type="text" value="<%= design.color_danger %>" readonly>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="font-size:0.6rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-top:12px;margin-bottom:6px;">Palette Preview</div>
+    <div class="swatch-row" id="swatch-preview">
+      <% colorFields.forEach(cf => { %>
+      <div class="swatch" style="background:<%= design[cf.name] %>;<%= cf.name === 'color_bg' ? 'border:1px solid var(--ivory-mid);' : '' %>" title="<%= cf.label %>"></div>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<%# ─── 3. TYPOGRAPHY ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Typography <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Heading Font</label>
+      <select name="font_heading" id="field-font_heading">
+        <% ['Cormorant Garamond','Playfair Display','Lora','Merriweather','Libre Baskerville','DM Serif Display','Fraunces','Sora','Space Grotesk','Outfit','Bebas Neue','Oswald'].forEach(f => { %>
+        <option value="<%= f %>" <%= design.font_heading === f ? 'selected' : '' %>><%= f %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="ep-field">
+      <label>Body Font</label>
+      <select name="font_body" id="field-font_body">
+        <% ['Jost','Inter','Poppins','Raleway','Nunito','DM Sans','Work Sans','Source Sans 3','IBM Plex Sans','Manrope','Figtree','Outfit','Sora','Karla','Rubik','Cabin','Barlow','Lexend','Geist'].forEach(f => { %>
+        <option value="<%= f %>" <%= design.font_body === f ? 'selected' : '' %>><%= f %></option>
+        <% }) %>
+      </select>
+    </div>
+  </div>
+</div>
+
+<%# ─── 4. SECTION VISIBILITY ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Section Visibility <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <%
+      const visSections = [
+        { key: 'vis_header',    label: 'Header' },
+        { key: 'vis_hero',      label: 'Hero' },
+        { key: 'vis_marquee',   label: 'Marquee' },
+        { key: 'vis_services',  label: 'Services' },
+        { key: 'vis_portfolio', label: 'Portfolio' },
+        { key: 'vis_about',     label: 'About' },
+        { key: 'vis_process',   label: 'Process' },
+        { key: 'vis_reviews',   label: 'Reviews' },
+        { key: 'vis_contact',   label: 'Contact' },
+        { key: 'vis_blog',      label: 'Blog' },
+        { key: 'vis_footer',    label: 'Footer' },
+        { key: 'vis_qr',        label: 'QR Code' },
+      ];
+    %>
+    <div class="vis-grid-compact">
+      <% visSections.forEach(s => { %>
+      <label class="vis-item">
+        <input type="checkbox" name="<%= s.key %>" id="field-<%= s.key %>"
+          <%= (s.key === 'vis_blog' || s.key === 'vis_qr') ? (design[s.key] === 'true' ? 'checked' : '') : (design[s.key] !== 'false' ? 'checked' : '') %>>
+        <%= s.label %>
+      </label>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<%# ─── 5. HERO COPY ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Hero Copy <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Eyebrow</label>
+      <input type="text" name="hero_eyebrow" value="<%= copy.hero_eyebrow || '' %>" placeholder="e.g. Welcome to...">
+    </div>
+    <div class="ep-field">
+      <label>Heading</label>
+      <input type="text" name="hero_heading" value="<%= copy.hero_heading || '' %>" placeholder="Main headline">
+    </div>
+    <div class="ep-field">
+      <label>Heading Emphasis</label>
+      <input type="text" name="hero_heading_em" value="<%= copy.hero_heading_em || '' %>" placeholder="Italic/accent word">
+    </div>
+    <div class="ep-field">
+      <label>Subheading</label>
+      <textarea name="hero_sub" rows="2" placeholder="Supporting text"><%= copy.hero_sub || '' %></textarea>
+    </div>
+    <div class="ep-field">
+      <label>Badge</label>
+      <input type="text" name="hero_badge" value="<%= copy.hero_badge || '' %>" placeholder="e.g. Est. 2020">
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>CTA Primary</label>
+        <input type="text" name="hero_cta_primary" value="<%= copy.hero_cta_primary || '' %>" placeholder="Button text">
+      </div>
+      <div class="ep-field">
+        <label>CTA Link</label>
+        <input type="text" name="hero_cta_primary_link" value="<%= copy.hero_cta_primary_link || '' %>" placeholder="/contact">
+      </div>
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>CTA Secondary</label>
+        <input type="text" name="hero_cta_secondary" value="<%= copy.hero_cta_secondary || '' %>" placeholder="Button text">
+      </div>
+      <div class="ep-field">
+        <label>CTA Link</label>
+        <input type="text" name="hero_cta_secondary_link" value="<%= copy.hero_cta_secondary_link || '' %>" placeholder="/portfolio">
       </div>
     </div>
   </div>
+</div>
 
-  <form method="POST" action="/admin/design" id="designForm">
-
-    <!-- COLOR PALETTE -->
-    <div class="card">
-      <div class="card-title">Color Palette</div>
-      <div class="form-grid cols-3">
-        <div class="form-field">
-          <label>Primary Color <span class="ai-badge" id="badge-color_primary">AI</span> <button type="button" class="revert-btn" id="revert-color_primary" data-key="color_primary">Revert</button></label>
-          <div class="color-row">
-            <input type="color" name="color_primary" value="<%= design.color_primary %>" id="field-color_primary">
-            <input type="text" value="<%= design.color_primary %>" readonly onfocus="this.select()">
-          </div>
-          <span style="font-size:0.65rem;color:var(--slate);">Main brand color — navs, headings, buttons</span>
-        </div>
-        <div class="form-field">
-          <label>Primary Deep <span class="ai-badge" id="badge-color_primary_deep">AI</span> <button type="button" class="revert-btn" id="revert-color_primary_deep" data-key="color_primary_deep">Revert</button></label>
-          <div class="color-row">
-            <input type="color" name="color_primary_deep" value="<%= design.color_primary_deep %>" id="field-color_primary_deep">
-            <input type="text" value="<%= design.color_primary_deep %>" readonly>
-          </div>
-          <span style="font-size:0.65rem;color:var(--slate);">Darkest shade — hero bg, footer</span>
-        </div>
-        <div class="form-field">
-          <label>Primary Mid <span class="ai-badge" id="badge-color_primary_mid">AI</span> <button type="button" class="revert-btn" id="revert-color_primary_mid" data-key="color_primary_mid">Revert</button></label>
-          <div class="color-row">
-            <input type="color" name="color_primary_mid" value="<%= design.color_primary_mid %>" id="field-color_primary_mid">
-            <input type="text" value="<%= design.color_primary_mid %>" readonly>
-          </div>
-          <span style="font-size:0.65rem;color:var(--slate);">Mid-tone — borders, hover states</span>
-        </div>
-        <div class="form-field">
-          <label>Accent Color <span class="ai-badge" id="badge-color_accent">AI</span> <button type="button" class="revert-btn" id="revert-color_accent" data-key="color_accent">Revert</button></label>
-          <div class="color-row">
-            <input type="color" name="color_accent" value="<%= design.color_accent %>" id="field-color_accent">
-            <input type="text" value="<%= design.color_accent %>" readonly>
-          </div>
-          <span style="font-size:0.65rem;color:var(--slate);">Gold accent — highlights, badges, CTA accents</span>
-        </div>
-        <div class="form-field">
-          <label>Accent Light <span class="ai-badge" id="badge-color_accent_light">AI</span> <button type="button" class="revert-btn" id="revert-color_accent_light" data-key="color_accent_light">Revert</button></label>
-          <div class="color-row">
-            <input type="color" name="color_accent_light" value="<%= design.color_accent_light %>" id="field-color_accent_light">
-            <input type="text" value="<%= design.color_accent_light %>" readonly>
-          </div>
-          <span style="font-size:0.65rem;color:var(--slate);">Light accent — text on dark backgrounds</span>
-        </div>
-        <div class="form-field">
-          <label>Background Color <span class="ai-badge" id="badge-color_bg">AI</span> <button type="button" class="revert-btn" id="revert-color_bg" data-key="color_bg">Revert</button></label>
-          <div class="color-row">
-            <input type="color" name="color_bg" value="<%= design.color_bg %>" id="field-color_bg">
-            <input type="text" value="<%= design.color_bg %>" readonly>
-          </div>
-          <span style="font-size:0.65rem;color:var(--slate);">Section backgrounds — ivory/cream tones</span>
-        </div>
-      </div>
-
-      <!-- Live preview swatches -->
-      <div style="margin-top:20px;">
-        <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:10px;">Live Palette Preview</div>
-        <div class="swatch-row" id="swatch-preview">
-          <div class="swatch" style="background:<%= design.color_primary %>;" title="Primary"></div>
-          <div class="swatch" style="background:<%= design.color_primary_deep %>;" title="Primary Deep"></div>
-          <div class="swatch" style="background:<%= design.color_primary_mid %>;" title="Primary Mid"></div>
-          <div class="swatch" style="background:<%= design.color_accent %>;" title="Accent"></div>
-          <div class="swatch" style="background:<%= design.color_accent_light %>;" title="Accent Light"></div>
-          <div class="swatch" style="background:<%= design.color_bg %>;border:1px solid var(--ivory-mid);" title="Background"></div>
-        </div>
-      </div>
-
-      <!-- Contrast check -->
-      <% if (design._contrast) { %>
-      <div style="margin-top:20px;">
-        <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:10px;">Contrast Check (WCAG AA)</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">
-          <%
-            const checks = [
-              { label: 'Headings on Background', key: 'text_on_bg', bg: design.color_bg, fg: design._on_bg,
-                where: 'Hero title, about quote, login brand name' },
-              { label: 'Secondary text on Background', key: 'muted_on_bg', bg: design.color_bg, fg: design._on_bg_muted,
-                where: 'Subtitles, form labels, nav links, descriptions' },
-              { label: 'Primary color on Background', key: 'primary_on_bg', bg: design.color_bg, fg: design.color_primary,
-                where: 'Eyebrow labels, links, emphasis text' },
-              { label: 'Accent on Background', key: 'accent_on_bg', bg: design.color_bg, fg: design.color_accent,
-                where: 'Accent highlights, review stars' },
-              { label: 'Text on Primary', key: 'text_on_primary', bg: design.color_primary, fg: design._on_primary,
-                where: 'Button labels, marquee text' },
-              { label: 'Text on Footer', key: 'text_on_deep', bg: design.color_primary_deep, fg: design._on_primary_deep,
-                where: 'Footer text, hero right panel' },
-              { label: 'Accent on Footer', key: 'accent_on_deep', bg: design.color_primary_deep, fg: design.color_accent_light,
-                where: 'Footer brand tagline, badge labels' },
-            ];
-            const failCount = checks.filter(c => { const d = design._contrast[c.key]; return d && !d.aa; }).length;
-          %>
-          <% checks.forEach(c => { const d = design._contrast[c.key]; if (!d) return; %>
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--ivory);border:1px solid <%= d.aa ? 'var(--ivory-mid)' : 'rgba(185,28,28,0.3)' %>;border-radius:2px;">
-            <div style="width:36px;height:36px;border-radius:2px;background:<%= c.bg %>;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.75rem;color:<%= c.fg %>;flex-shrink:0;border:1px solid rgba(0,0,0,0.08);">Aa</div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:0.72rem;font-weight:500;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= c.label %></div>
-              <div style="font-size:0.65rem;color:<%= d.aa ? 'var(--success, #15803D)' : '#B91C1C' %>;font-weight:600;">
-                <%= d.ratio %>:1 &mdash; <%= d.aa ? 'Pass' : (d.aaLarge ? 'Large only' : 'Fail') %>
-              </div>
-              <div style="font-size:0.6rem;color:var(--slate);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<%= c.where %>"><%= c.where %></div>
-            </div>
-          </div>
-          <% }) %>
-        </div>
-        <% if (failCount > 0) { %>
-        <div style="margin-top:14px;padding:14px 16px;background:rgba(185,28,28,0.05);border:1px solid rgba(185,28,28,0.15);border-radius:2px;">
-          <div style="font-size:0.72rem;font-weight:600;color:#B91C1C;margin-bottom:6px;"><%= failCount %> contrast issue<%= failCount > 1 ? 's' : '' %> detected</div>
-          <div style="font-size:0.78rem;color:var(--dark);line-height:1.7;">
-            Failing checks mean text may be hard to read on your site. To fix:
-            <ul style="margin:6px 0 0 16px;padding:0;">
-              <li><strong>Background too close to Primary?</strong> &mdash; lighten or darken your Background color so it contrasts with your Primary.</li>
-              <li><strong>Accent invisible on Background?</strong> &mdash; pick a bolder Accent that stands out from your Background.</li>
-              <li><strong>Text on buttons unreadable?</strong> &mdash; adjust Primary to be clearly light or dark (avoid mid-tones).</li>
-            </ul>
-            <div style="margin-top:8px;font-size:0.72rem;color:var(--slate);">Tip: WCAG AA requires at least 4.5:1 contrast for normal text and 3:1 for large text (18px+ bold).</div>
-          </div>
-        </div>
-        <% } %>
-      </div>
-      <% } %>
+<%# ─── 6. SERVICES COPY ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Services <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Section Label</label>
+      <input type="text" name="services_label" value="<%= copy.services_label || '' %>" placeholder="e.g. What We Do">
     </div>
-
-    <!-- FONTS -->
-    <div class="card mt-24">
-      <div class="card-title">Typography</div>
-      <div class="form-grid">
-        <div class="form-field">
-          <label>Heading Font <span class="ai-badge" id="badge-font_heading">AI</span> <button type="button" class="revert-btn" id="revert-font_heading" data-key="font_heading">Revert</button></label>
-          <select name="font_heading" id="field-font_heading">
-            <% ['Cormorant Garamond','Playfair Display','Lora','Merriweather','Libre Baskerville'].forEach(f => { %>
-              <option value="<%= f %>" <%= design.font_heading === f ? 'selected' : '' %>><%= f %></option>
-            <% }) %>
-          </select>
-          <span style="font-size:0.65rem;color:var(--slate);">Used for page titles, section headings, hero text</span>
-        </div>
-        <div class="form-field">
-          <label>Body Font <span class="ai-badge" id="badge-font_body">AI</span> <button type="button" class="revert-btn" id="revert-font_body" data-key="font_body">Revert</button></label>
-          <select name="font_body" id="field-font_body">
-            <% ['Jost','Inter','Poppins','Raleway','Nunito','DM Sans'].forEach(f => { %>
-              <option value="<%= f %>" <%= design.font_body === f ? 'selected' : '' %>><%= f %></option>
-            <% }) %>
-          </select>
-          <span style="font-size:0.65rem;color:var(--slate);">Used for body text, navigation, UI elements</span>
-        </div>
+    <div class="ep-field">
+      <label>Heading</label>
+      <input type="text" name="services_heading" value="<%= copy.services_heading || '' %>">
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Heading Emphasis</label>
+        <input type="text" name="services_heading_em" value="<%= copy.services_heading_em || '' %>">
       </div>
-      <div style="margin-top:20px;padding:20px;background:var(--ivory);border-radius:2px;border:1px solid var(--ivory-mid);">
-        <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:12px;">Font Preview (after save)</div>
-        <div style="font-size:1.4rem;color:var(--dark);margin-bottom:6px;"><em>Heading: <%= design.font_heading %></em></div>
-        <div style="font-size:0.9rem;color:var(--slate);font-weight:300;">Body: <%= design.font_body %> — The quick brown fox jumps over the lazy dog</div>
+      <div class="ep-field">
+        <label>Subheading</label>
+        <input type="text" name="services_sub" value="<%= copy.services_sub || '' %>">
       </div>
     </div>
-
-    <!-- SECTION VISIBILITY -->
-    <div class="card mt-24">
-      <div class="card-title">Section Visibility</div>
-      <p style="font-size:0.85rem;color:var(--slate);font-weight:300;margin-bottom:24px;">Control which sections appear on your landing page. Hidden sections are completely removed from the public page.</p>
-      <div class="vis-grid">
-        <%
-          const sections = [
-            { key: 'vis_hero',      label: 'Hero', desc: 'Top banner / headline' },
-            { key: 'vis_services',  label: 'Services', desc: 'Service cards section' },
-            { key: 'vis_portfolio', label: 'Portfolio', desc: 'Work showcase grid' },
-            { key: 'vis_about',     label: 'About', desc: 'Agency intro & stats' },
-            { key: 'vis_process',   label: 'Process', desc: 'How it works steps' },
-            { key: 'vis_reviews',   label: 'Reviews', desc: 'Google reviews' },
-            { key: 'vis_contact',   label: 'Contact', desc: 'Contact form' },
-            { key: 'vis_blog',      label: 'Blog Section', desc: 'Latest posts on home' },
-            { key: 'vis_qr',        label: 'QR Code', desc: 'Shareable QR code on landing page' },
-          ];
-        %>
-        <% sections.forEach(s => { %>
-          <label style="display:flex;align-items:flex-start;gap:12px;padding:16px;background:var(--ivory);border:1px solid var(--ivory-mid);border-radius:2px;cursor:pointer;transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--navy-mid)'" onmouseout="this.style.borderColor='var(--ivory-mid)'">
-            <input type="checkbox" name="<%= s.key %>" id="field-<%= s.key %>" <%= design[s.key] !== 'false' && (s.key !== 'vis_blog' || design[s.key] === 'true') ? 'checked' : '' %> style="margin-top:2px;width:16px;height:16px;accent-color:var(--navy);flex-shrink:0;appearance:auto;-webkit-appearance:auto;">
-            <div>
-              <div style="font-size:0.82rem;font-weight:600;color:var(--dark);margin-bottom:2px;"><%= s.label %> <span class="ai-badge" id="badge-<%= s.key %>">AI</span></div>
-              <div style="font-size:0.72rem;color:var(--slate);font-weight:300;"><%= s.desc %></div>
-            </div>
-          </label>
-        <% }) %>
+    <% for (let i = 1; i <= 3; i++) { %>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--ivory-mid);">
+      <div style="font-size:0.62rem;font-weight:600;color:var(--slate);letter-spacing:0.1em;margin-bottom:6px;">SERVICE <%= i %></div>
+      <div class="ep-field">
+        <label>Title</label>
+        <input type="text" name="service<%= i %>_title" value="<%= copy['service' + i + '_title'] || '' %>">
       </div>
-    </div>
-
-    <!-- LANDING PAGE LAYOUT -->
-    <div class="card mt-24">
-      <div class="card-title">Landing Page Layout <span class="ai-badge" id="badge-landing_layout">AI</span></div>
-      <div class="form-field">
-        <select name="landing_layout" id="field-landing_layout" style="width:100%;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
-          <option value="classic"  <%= design.landing_layout === 'classic'  ? 'selected' : '' %>>Classic — Split hero, 3-column services, editorial feel</option>
-          <option value="bold"     <%= design.landing_layout === 'bold'     ? 'selected' : '' %>>Bold — Full-width hero overlay, large service cards</option>
-          <option value="minimal"  <%= design.landing_layout === 'minimal'  ? 'selected' : '' %>>Minimal — Centered hero, airy whitespace, clean lines</option>
-          <option value="magazine" <%= design.landing_layout === 'magazine' ? 'selected' : '' %>>Magazine — Background hero with overlapping content card</option>
-          <option value="dark"     <%= design.landing_layout === 'dark'     ? 'selected' : '' %>>Dark — Dark-themed throughout with accent highlights</option>
-          <option value="startup"  <%= design.landing_layout === 'startup'  ? 'selected' : '' %>>Startup — SaaS pitch page, features grid, steps, pricing</option>
-        </select>
-        <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Rearranges the hero, services, and sections with a distinct look and feel.</span>
+      <div class="ep-field">
+        <label>Description</label>
+        <textarea name="service<%= i %>_desc" rows="2"><%= copy['service' + i + '_desc'] || '' %></textarea>
       </div>
-    </div>
-
-    <!-- DISPLAY LAYOUTS -->
-    <div class="card" style="margin-top:24px;">
-      <div class="card-title">Display Layouts</div>
-      <p style="font-size:0.85rem;color:var(--slate);margin-bottom:20px;">Control how portfolio items and blog posts are displayed in their listing sections.</p>
-      <div class="form-grid cols-3">
-        <div class="form-field">
-          <label>Navbar Logo <span class="ai-badge" id="badge-nav_logo_display">AI</span></label>
-          <div style="display:flex;gap:10px;align-items:flex-start;">
-            <select name="nav_logo_display" id="field-nav_logo_display" style="flex:1;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
-              <option value="text" <%= design.nav_logo_display === 'text' ? 'selected' : '' %>>Text only</option>
-              <option value="image" <%= design.nav_logo_display === 'image' ? 'selected' : '' %>>Image only</option>
-              <option value="both" <%= design.nav_logo_display === 'both' ? 'selected' : '' %>>Image + Text</option>
-            </select>
-            <div style="display:flex;align-items:center;gap:4px;">
-              <label style="font-size:0.68rem;white-space:nowrap;margin:0;">Split</label>
-              <input type="number" name="nav_logo_split" id="field-nav_logo_split" min="0" max="10" value="<%= design.nav_logo_split || 0 %>" style="width:52px;padding:8px 6px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);text-align:center;">
-            </div>
-          </div>
-          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Logo display + color split position (0 = off, 1 = 1st char accented). Name is in <a href="/admin/settings" style="color:var(--navy);">Settings</a>.</span>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Link</label>
+          <input type="text" name="service<%= i %>_link" value="<%= copy['service' + i + '_link'] || '' %>" placeholder="/services">
         </div>
-        <div class="form-field">
-          <label>Hero Large Text <span class="ai-badge" id="badge-hero_name_large">AI</span></label>
-          <input type="text" name="hero_name_large" id="field-hero_name_large" value="<%= design.hero_name_large || '' %>" placeholder="Auto (brand initials)" style="width:100%;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
-          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Large watermark text in the hero section. Leave blank for auto-generated brand initials.</span>
-        </div>
-        <div class="form-field">
-          <label>Portfolio Layout <span class="ai-badge" id="badge-portfolio_layout">AI</span></label>
-          <select name="portfolio_layout" id="field-portfolio_layout" style="width:100%;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
-            <option value="grid" <%= design.portfolio_layout === 'grid' ? 'selected' : '' %>>Grid (equal columns)</option>
-            <option value="masonry" <%= design.portfolio_layout === 'masonry' ? 'selected' : '' %>>Masonry (variable height)</option>
-            <option value="carousel" <%= design.portfolio_layout === 'carousel' ? 'selected' : '' %>>Carousel (horizontal scroll)</option>
-            <option value="list" <%= design.portfolio_layout === 'list' ? 'selected' : '' %>>List (text wrap)</option>
-          </select>
-          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">How portfolio items appear on the public site.</span>
-        </div>
-        <div class="form-field">
-          <label>Blog Listing Layout <span class="ai-badge" id="badge-blog_layout">AI</span></label>
-          <select name="blog_layout" id="field-blog_layout" style="width:100%;padding:8px 10px;border:1.5px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;background:var(--ivory);color:var(--dark);">
-            <option value="grid" <%= design.blog_layout === 'grid' ? 'selected' : '' %>>Grid (card columns)</option>
-            <option value="list" <%= design.blog_layout === 'list' ? 'selected' : '' %>>List (image + text rows)</option>
-            <option value="masonry" <%= design.blog_layout === 'masonry' ? 'selected' : '' %>>Masonry (variable height cards)</option>
-            <option value="featured" <%= design.blog_layout === 'featured' ? 'selected' : '' %>>Featured (first post large)</option>
-          </select>
-          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">How blog posts appear on the public site.</span>
+        <div class="ep-field">
+          <label>Image URL</label>
+          <input type="text" name="service<%= i %>_image" value="<%= copy['service' + i + '_image'] || '' %>" placeholder="/images/...">
         </div>
       </div>
     </div>
-
-    <!-- AI ASSISTANT -->
-    <div class="card" style="margin-top:24px;">
-      <div class="card-title">AI Assistant</div>
-      <p style="font-size:0.85rem;color:var(--slate);margin-bottom:20px;">Configure the master agent that appears on your dashboard.</p>
-      <div class="form-grid">
-        <div class="form-field">
-          <label>Agent Name <span class="ai-badge" id="badge-agent_name">AI</span></label>
-          <input type="text" name="agent_name" id="field-agent_name" value="<%= design.agent_name %>" placeholder="Assistant">
-        </div>
-        <div class="form-field">
-          <label>Greeting Message <span class="ai-badge" id="badge-agent_greeting">AI</span></label>
-          <input type="text" name="agent_greeting" id="field-agent_greeting" value="<%= design.agent_greeting %>" placeholder="Hi! What would you like to create?">
-        </div>
-      </div>
-      <p style="margin-top:12px;font-size:0.78rem;color:var(--slate);">MCP endpoint: <code style="background:var(--ivory);padding:2px 6px;border-radius:3px;">/admin/master-agent/mcp</code> — compatible with Claude Desktop &amp; Claude Code.</p>
-    </div>
-
-    <!-- SAVE -->
-    <div class="form-actions" style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap;">
-      <button type="submit" class="btn btn-navy">Save Settings</button>
-      <a href="/admin" class="btn btn-ghost">Cancel</a>
-    </div>
-
-  </form>
-
-  <!-- ═══════════ SAVED THEMES ═══════════ -->
-  <div id="themes" class="card" style="margin-top:24px;">
-    <div class="card-title">Saved Themes</div>
-    <p style="font-size:0.85rem;color:var(--slate);font-weight:300;margin-bottom:20px;">Save your current color palette and layout as a theme. Apply saved themes to quickly switch between looks.</p>
-
-    <!-- Save current as theme -->
-    <form method="POST" action="/admin/design/themes" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:20px;">
-      <input type="text" name="theme_name" placeholder="Theme name (e.g. Summer Vibes)" required style="padding:8px 12px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.85rem;max-width:260px;flex:1;">
-      <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.68rem;">Save Current as Theme</button>
-    </form>
-
-    <% if (themes && themes.length) { %>
-      <div class="theme-grid">
-        <% for (const t of themes) { %>
-          <div class="theme-card">
-            <div class="theme-card-swatches">
-              <div style="background:<%= t.settings.color_primary || '#1C2B4A' %>;"></div>
-              <div style="background:<%= t.settings.color_primary_deep || '#0F1B30' %>;"></div>
-              <div style="background:<%= t.settings.color_primary_mid || '#2E4270' %>;"></div>
-              <div style="background:<%= t.settings.color_accent || '#C9A848' %>;"></div>
-              <div style="background:<%= t.settings.color_accent_light || '#E8D08A' %>;"></div>
-              <div style="background:<%= t.settings.color_bg || '#F5F3EF' %>;"></div>
-            </div>
-            <div class="theme-card-body">
-              <div class="theme-card-name"><%= t.name %></div>
-              <div class="theme-card-meta"><%= t.settings.font_heading || 'Default' %> / <%= t.settings.font_body || 'Default' %> &middot; <%= new Date(t.createdAt).toLocaleDateString() %></div>
-              <div class="theme-card-actions">
-                <form method="POST" action="/admin/design/themes/<%= t._id %>/apply" style="display:inline;">
-                  <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.6rem;" onclick="return confirm('Apply this theme? Current unsaved changes will be lost.')">Apply</button>
-                </form>
-                <form method="POST" action="/admin/design/themes/<%= t._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this theme?')">
-                  <button type="submit" class="btn btn-danger btn-sm" style="font-size:0.6rem;">Delete</button>
-                </form>
-              </div>
-            </div>
-          </div>
-        <% } %>
-      </div>
-    <% } else { %>
-      <div class="empty" style="padding:32px;">
-        <div class="empty-icon">&#127912;</div>
-        <p>No saved themes yet. Save your current settings as a theme above.</p>
-      </div>
     <% } %>
   </div>
+</div>
 
-  <!-- ═══════════ BRAND IMAGES ═══════════ -->
-  <div id="brand-images" class="card" style="margin-top:24px;">
-    <div class="card-title">Brand Images</div>
-    <p style="font-size:0.85rem;color:var(--slate);font-weight:300;margin-bottom:20px;">Upload logos, banners, and support images. These are available site-wide and in the email campaign builder.</p>
+<%# ─── 7. ABOUT COPY ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    About <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Eyebrow</label>
+      <input type="text" name="about_eyebrow" value="<%= copy.about_eyebrow || '' %>">
+    </div>
+    <div class="ep-field">
+      <label>Quote</label>
+      <textarea name="about_quote" rows="2"><%= copy.about_quote || '' %></textarea>
+    </div>
+    <div class="ep-field">
+      <label>Description</label>
+      <textarea name="about_desc" rows="3"><%= copy.about_desc || '' %></textarea>
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Signature</label>
+        <input type="text" name="about_sig" value="<%= copy.about_sig || '' %>" placeholder="Founder name">
+      </div>
+      <div class="ep-field">
+        <label>Initial</label>
+        <input type="text" name="about_initial" value="<%= copy.about_initial || '' %>" placeholder="Large letter">
+      </div>
+    </div>
+    <% for (let i = 1; i <= 4; i++) { %>
+    <div class="ep-row" style="margin-top:6px;">
+      <div class="ep-field">
+        <label>Stat <%= i %> Number</label>
+        <input type="text" name="about_stat<%= i %>_num" value="<%= copy['about_stat' + i + '_num'] || '' %>" placeholder="e.g. 150+">
+      </div>
+      <div class="ep-field">
+        <label>Stat <%= i %> Label</label>
+        <input type="text" name="about_stat<%= i %>_label" value="<%= copy['about_stat' + i + '_label'] || '' %>" placeholder="e.g. Projects">
+      </div>
+    </div>
+    <% } %>
+  </div>
+</div>
 
-    <!-- Logo slots -->
-    <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:12px;">Logos</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+<%# ─── 8. PROCESS COPY ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Process <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Section Label</label>
+      <input type="text" name="process_label" value="<%= copy.process_label || '' %>">
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Heading</label>
+        <input type="text" name="process_heading" value="<%= copy.process_heading || '' %>">
+      </div>
+      <div class="ep-field">
+        <label>Heading Emphasis</label>
+        <input type="text" name="process_heading_em" value="<%= copy.process_heading_em || '' %>">
+      </div>
+    </div>
+    <% for (let i = 1; i <= 4; i++) { %>
+    <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--ivory-mid);">
+      <div style="font-size:0.62rem;font-weight:600;color:var(--slate);letter-spacing:0.1em;margin-bottom:4px;">STEP <%= i %></div>
+      <div class="ep-field">
+        <label>Title</label>
+        <input type="text" name="process<%= i %>_title" value="<%= copy['process' + i + '_title'] || '' %>">
+      </div>
+      <div class="ep-field">
+        <label>Description</label>
+        <textarea name="process<%= i %>_desc" rows="2"><%= copy['process' + i + '_desc'] || '' %></textarea>
+      </div>
+    </div>
+    <% } %>
+  </div>
+</div>
+
+<%# ─── 9. CONTACT COPY ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Contact <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Eyebrow</label>
+      <input type="text" name="contact_eyebrow" value="<%= copy.contact_eyebrow || '' %>">
+    </div>
+    <div class="ep-field">
+      <label>Heading</label>
+      <input type="text" name="contact_heading" value="<%= copy.contact_heading || '' %>">
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Heading Emphasis</label>
+        <input type="text" name="contact_heading_em" value="<%= copy.contact_heading_em || '' %>">
+      </div>
+      <div class="ep-field">
+        <label>Subheading</label>
+        <input type="text" name="contact_sub" value="<%= copy.contact_sub || '' %>">
+      </div>
+    </div>
+    <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--ivory-mid);">
+      <div style="font-size:0.62rem;font-weight:600;color:var(--slate);letter-spacing:0.1em;margin-bottom:6px;">DETAIL ITEMS</div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Location Title</label>
+          <input type="text" name="contact_location_label" value="<%= copy.contact_location_label || '' %>" placeholder="Location">
+        </div>
+        <div class="ep-field">
+          <label>Location Value</label>
+          <input type="text" name="contact_location" value="<%= copy.contact_location || '' %>">
+        </div>
+      </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Serving Title</label>
+          <input type="text" name="contact_serving_label" value="<%= copy.contact_serving_label || '' %>" placeholder="Serving">
+        </div>
+        <div class="ep-field">
+          <label>Serving Value</label>
+          <input type="text" name="contact_serving" value="<%= copy.contact_serving || '' %>">
+        </div>
+      </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Services Title</label>
+          <input type="text" name="contact_services_label" value="<%= copy.contact_services_label || '' %>" placeholder="Services">
+        </div>
+        <div class="ep-field">
+          <label>Services Value</label>
+          <input type="text" name="contact_services" value="<%= copy.contact_services || '' %>">
+        </div>
+      </div>
+    </div>
+    <div class="ep-field">
+      <label>Submit Button</label>
+      <input type="text" name="contact_btn" value="<%= copy.contact_btn || '' %>" placeholder="Send Message">
+    </div>
+    <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--ivory-mid);">
+      <div style="font-size:0.62rem;font-weight:600;color:var(--slate);letter-spacing:0.1em;margin-bottom:6px;">SECTION COLORS</div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Left Panel BG</label>
+          <div class="color-row">
+            <input type="color" name="contact_bg" value="<%= design.contact_bg || design.color_primary_deep %>">
+            <input type="text" value="<%= design.contact_bg || '' %>" placeholder="(primary deep)" readonly>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Form Panel BG</label>
+          <div class="color-row">
+            <input type="color" name="contact_form_bg" value="<%= design.contact_form_bg || design.color_bg %>">
+            <input type="text" value="<%= design.contact_form_bg || '' %>" placeholder="(bg)" readonly>
+          </div>
+        </div>
+      </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Heading</label>
+          <div class="color-row">
+            <input type="color" name="contact_heading_color" value="<%= design.contact_heading_color || '#FFFFFF' %>">
+            <input type="text" value="<%= design.contact_heading_color || '' %>" placeholder="(white)" readonly>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Eyebrow</label>
+          <div class="color-row">
+            <input type="color" name="contact_eyebrow_color" value="<%= design.contact_eyebrow_color || design.color_accent_light %>">
+            <input type="text" value="<%= design.contact_eyebrow_color || '' %>" placeholder="(accent light)" readonly>
+          </div>
+        </div>
+      </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Body Text</label>
+          <div class="color-row">
+            <input type="color" name="contact_text_color" value="<%= design.contact_text_color || '#FDFCFA' %>">
+            <input type="text" value="<%= design.contact_text_color || '' %>" placeholder="(auto)" readonly>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Detail Labels</label>
+          <div class="color-row">
+            <input type="color" name="contact_label_color" value="<%= design.contact_label_color || design.color_accent %>">
+            <input type="text" value="<%= design.contact_label_color || '' %>" placeholder="(accent)" readonly>
+          </div>
+        </div>
+      </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Detail Values</label>
+          <div class="color-row">
+            <input type="color" name="contact_value_color" value="<%= design.contact_value_color || '#FDFCFA' %>">
+            <input type="text" value="<%= design.contact_value_color || '' %>" placeholder="(auto)" readonly>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Form Labels</label>
+          <div class="color-row">
+            <input type="color" name="contact_form_label_color" value="<%= design.contact_form_label_color || '#6B7380' %>">
+            <input type="text" value="<%= design.contact_form_label_color || '' %>" placeholder="(muted)" readonly>
+          </div>
+        </div>
+      </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Button BG</label>
+          <div class="color-row">
+            <input type="color" name="contact_btn_bg" value="<%= design.contact_btn_bg || design.color_primary %>">
+            <input type="text" value="<%= design.contact_btn_bg || '' %>" placeholder="(primary)" readonly>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Button Text</label>
+          <div class="color-row">
+            <input type="color" name="contact_btn_color" value="<%= design.contact_btn_color || '#FFFFFF' %>">
+            <input type="text" value="<%= design.contact_btn_color || '' %>" placeholder="(white)" readonly>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--ivory-mid);">
+      <div style="font-size:0.62rem;font-weight:600;color:var(--slate);letter-spacing:0.1em;margin-bottom:6px;">FORM FIELDS</div>
       <%
-        const logoSlots = [
-          { slot: 'logo_primary', label: 'Primary Logo', desc: 'Main full-color logo' },
-          { slot: 'logo_white', label: 'White Logo', desc: 'For dark backgrounds' },
-          { slot: 'logo_icon', label: 'Icon / Favicon', desc: 'Square mark or favicon' },
+        const contactFormFields = [
+          { prefix: 'contact_fname',    lbl: 'First Name' },
+          { prefix: 'contact_lname',    lbl: 'Last Name' },
+          { prefix: 'contact_email',    lbl: 'Email' },
+          { prefix: 'contact_company',  lbl: 'Company' },
+          { prefix: 'contact_service',  lbl: 'Service' },
+          { prefix: 'contact_message',  lbl: 'Message' },
         ];
       %>
-      <% for (const ls of logoSlots) { %>
-        <% const existing = brandImages.find(i => i.slot === ls.slot); %>
-        <div style="border:1px solid var(--ivory-mid);border-radius:2px;overflow:hidden;">
-          <div style="aspect-ratio:16/10;background:var(--ivory);display:flex;align-items:center;justify-content:center;overflow:hidden;<%= ls.slot === 'logo_white' ? 'background:var(--navy-deep);' : '' %>">
-            <% if (existing) { %>
-              <img src="<%= existing.url %>" alt="<%= ls.label %>" style="max-width:100%;max-height:100%;object-fit:contain;">
-            <% } else { %>
-              <span style="font-size:0.78rem;color:var(--slate);">No image</span>
-            <% } %>
-          </div>
-          <div style="padding:10px 12px;">
-            <div style="font-size:0.78rem;font-weight:600;color:var(--dark);margin-bottom:2px;"><%= ls.label %></div>
-            <div style="font-size:0.65rem;color:var(--slate);margin-bottom:8px;"><%= ls.desc %></div>
-            <form method="POST" action="/admin/design/images" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-              <input type="hidden" name="slot" value="<%= ls.slot %>">
-              <input type="hidden" name="label" value="<%= ls.label %>">
-              <input type="file" name="image" accept="image/*" required style="font-size:0.72rem;max-width:160px;">
-              <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.65rem;"><%= existing ? 'Replace' : 'Upload' %></button>
-              <% if (existing) { %>
-              </form>
-              <form method="POST" action="/admin/design/images/<%= existing._id %>/delete" onsubmit="return confirm('Remove this logo?')" style="display:inline;">
-                <button class="btn btn-danger btn-sm" style="font-size:0.65rem;">Remove</button>
-              </form>
-              <% } else { %>
-              </form>
-              <% } %>
-          </div>
+      <% contactFormFields.forEach(cf => { %>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label><%= cf.lbl %> Label</label>
+          <input type="text" name="<%= cf.prefix %>_label" value="<%= copy[cf.prefix + '_label'] || '' %>">
         </div>
-      <% } %>
+        <div class="ep-field">
+          <label><%= cf.lbl %> Placeholder</label>
+          <input type="text" name="<%= cf.prefix %>_placeholder" value="<%= copy[cf.prefix + '_placeholder'] || '' %>">
+        </div>
+      </div>
+      <% }) %>
+      <div class="ep-row" style="margin-top:6px;">
+        <div class="ep-field">
+          <label>Service Fallback</label>
+          <input type="text" name="contact_service_fallback" value="<%= copy.contact_service_fallback || '' %>">
+        </div>
+        <div class="ep-field">
+          <label>Service Extra</label>
+          <input type="text" name="contact_service_extra" value="<%= copy.contact_service_extra || '' %>">
+        </div>
+      </div>
     </div>
+  </div>
+</div>
 
-    <!-- Banner slot -->
-    <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:12px;">Banner</div>
+<%# ─── 10. HERO & SECTION STYLING ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Hero & Section Styling <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Text Align</label>
+        <select name="hero_text_align">
+          <option value="left" <%= design.hero_text_align === 'left' ? 'selected' : '' %>>Left</option>
+          <option value="center" <%= design.hero_text_align === 'center' ? 'selected' : '' %>>Center</option>
+          <option value="right" <%= design.hero_text_align === 'right' ? 'selected' : '' %>>Right</option>
+        </select>
+      </div>
+      <div class="ep-field">
+        <label>Hero Height</label>
+        <select name="hero_height">
+          <option value="100vh" <%= design.hero_height === '100vh' ? 'selected' : '' %>>Full (100vh)</option>
+          <option value="80vh" <%= design.hero_height === '80vh' ? 'selected' : '' %>>80%</option>
+          <option value="60vh" <%= design.hero_height === '60vh' ? 'selected' : '' %>>60%</option>
+          <option value="auto" <%= design.hero_height === 'auto' ? 'selected' : '' %>>Auto</option>
+        </select>
+      </div>
+    </div>
+    <div class="ep-field">
+      <label>Overlay Opacity (<%= design.hero_overlay_opacity || '55' %>%)</label>
+      <input type="range" name="hero_overlay_opacity" min="0" max="100" value="<%= design.hero_overlay_opacity || '55' %>" style="width:100%;">
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Overlay Color</label>
+        <div class="color-row">
+          <input type="color" name="hero_overlay_color" value="<%= design.hero_overlay_color || design.color_primary_deep %>">
+        </div>
+      </div>
+      <div class="ep-field">
+        <label>BG Pattern</label>
+        <select name="hero_bg_pattern">
+          <option value="none" <%= design.hero_bg_pattern === 'none' ? 'selected' : '' %>>None</option>
+          <option value="grid" <%= design.hero_bg_pattern === 'grid' ? 'selected' : '' %>>Grid</option>
+          <option value="diagonal" <%= design.hero_bg_pattern === 'diagonal' ? 'selected' : '' %>>Diagonal</option>
+          <option value="dots" <%= design.hero_bg_pattern === 'dots' ? 'selected' : '' %>>Dots</option>
+        </select>
+      </div>
+    </div>
+    <div class="ep-field">
+      <label>Card Radius (<%= design.card_border_radius || '2' %>px)</label>
+      <input type="range" name="card_border_radius" min="0" max="16" value="<%= design.card_border_radius || '2' %>" style="width:100%;">
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Gradient Angle (<%= design.gradient_angle || '135' %>&deg;)</label>
+        <input type="range" name="gradient_angle" min="0" max="360" value="<%= design.gradient_angle || '135' %>" style="width:100%;">
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+      <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" name="gradient_enabled" id="field-gradient_enabled" <%= design.gradient_enabled === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);"> Gradient backgrounds
+      </label>
+      <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" name="card_hover_accent" id="field-card_hover_accent" <%= design.card_hover_accent === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);"> Card hover accents
+      </label>
+    </div>
+  </div>
+</div>
+
+<%# ─── 11. DISPLAY LAYOUTS ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Display Layouts <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Navbar Logo</label>
+      <select name="nav_logo_display" id="field-nav_logo_display">
+        <option value="text" <%= design.nav_logo_display === 'text' ? 'selected' : '' %>>Text only</option>
+        <option value="image" <%= design.nav_logo_display === 'image' ? 'selected' : '' %>>Image only</option>
+        <option value="both" <%= design.nav_logo_display === 'both' ? 'selected' : '' %>>Image + Text</option>
+      </select>
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Logo Split</label>
+        <input type="number" name="nav_logo_split" id="field-nav_logo_split" min="0" max="10" value="<%= design.nav_logo_split || 0 %>">
+      </div>
+      <div class="ep-field">
+        <label>Hero Large Text</label>
+        <input type="text" name="hero_name_large" id="field-hero_name_large" value="<%= design.hero_name_large || '' %>" placeholder="Auto">
+      </div>
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Portfolio Layout</label>
+        <select name="portfolio_layout" id="field-portfolio_layout">
+          <option value="grid" <%= design.portfolio_layout === 'grid' ? 'selected' : '' %>>Grid</option>
+          <option value="masonry" <%= design.portfolio_layout === 'masonry' ? 'selected' : '' %>>Masonry</option>
+          <option value="carousel" <%= design.portfolio_layout === 'carousel' ? 'selected' : '' %>>Carousel</option>
+          <option value="list" <%= design.portfolio_layout === 'list' ? 'selected' : '' %>>List</option>
+        </select>
+      </div>
+      <div class="ep-field">
+        <label>Blog Layout</label>
+        <select name="blog_layout" id="field-blog_layout">
+          <option value="grid" <%= design.blog_layout === 'grid' ? 'selected' : '' %>>Grid</option>
+          <option value="list" <%= design.blog_layout === 'list' ? 'selected' : '' %>>List</option>
+          <option value="masonry" <%= design.blog_layout === 'masonry' ? 'selected' : '' %>>Masonry</option>
+          <option value="featured" <%= design.blog_layout === 'featured' ? 'selected' : '' %>>Featured</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%# ─── 12. AI ASSISTANT ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    AI Assistant <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Agent Name</label>
+      <input type="text" name="agent_name" id="field-agent_name" value="<%= design.agent_name %>" placeholder="Assistant">
+    </div>
+    <div class="ep-field">
+      <label>Greeting</label>
+      <textarea name="agent_greeting" id="field-agent_greeting" rows="2" placeholder="Hi! What would you like to create?"><%= design.agent_greeting %></textarea>
+    </div>
+    <div class="ep-hint">MCP endpoint: <code>/admin/master-agent/mcp</code></div>
+  </div>
+</div>
+
+</form>
+<%# ─── 13. BRAND IMAGES ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Brand Images <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
     <%
-      const bannerImg = brandImages.find(i => i.slot === 'banner');
+      const logoSlots = [
+        { slot: 'logo_primary', label: 'Primary Logo' },
+        { slot: 'logo_white',   label: 'White Logo' },
+        { slot: 'logo_icon',    label: 'Icon/Favicon' },
+        { slot: 'banner',       label: 'Banner' },
+      ];
     %>
-    <div style="border:1px solid var(--ivory-mid);border-radius:2px;overflow:hidden;margin-bottom:24px;">
-      <div style="aspect-ratio:3/1;background:var(--ivory);display:flex;align-items:center;justify-content:center;overflow:hidden;">
-        <% if (bannerImg) { %>
-          <img src="<%= bannerImg.url %>" alt="Banner" style="width:100%;height:100%;object-fit:cover;">
-        <% } else { %>
-          <span style="font-size:0.78rem;color:var(--slate);">No banner uploaded</span>
-        <% } %>
-      </div>
-      <div style="padding:10px 12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-        <form method="POST" action="/admin/design/images" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          <input type="hidden" name="slot" value="banner">
-          <input type="hidden" name="label" value="Banner">
-          <input type="file" name="image" accept="image/*" required style="font-size:0.72rem;max-width:200px;">
-          <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.65rem;"><%= bannerImg ? 'Replace' : 'Upload' %></button>
-        </form>
-        <% if (bannerImg) { %>
-        <form method="POST" action="/admin/design/images/<%= bannerImg._id %>/delete" onsubmit="return confirm('Remove banner?')" style="display:inline;">
-          <button class="btn btn-danger btn-sm" style="font-size:0.65rem;">Remove</button>
-        </form>
-        <% } %>
-        <span style="font-size:0.65rem;color:var(--slate);margin-left:auto;">Recommended: 1200x400 or wider</span>
-      </div>
+    <div class="brand-img-grid">
+      <% logoSlots.forEach(ls => { %>
+        <% const existing = brandImages.find(i => i.slot === ls.slot); %>
+        <div class="brand-img-slot">
+          <% if (existing) { %>
+            <img src="<%= existing.url %>" alt="<%= ls.label %>" style="<%= ls.slot === 'logo_white' ? 'background:var(--navy-deep);' : '' %>">
+          <% } else { %>
+            <div style="height:60px;background:var(--ivory);display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:var(--slate);">None</div>
+          <% } %>
+          <div class="lbl"><%= ls.label %></div>
+        </div>
+      <% }) %>
+    </div>
+    <div style="margin-top:10px;">
+      <div class="ep-hint" style="margin-bottom:6px;">Upload and manage images on the brand images page.</div>
+      <% const supportCount = brandImages.filter(i => i.slot === 'support').length; %>
+      <div class="ep-hint"><%= supportCount %> support image<%= supportCount !== 1 ? 's' : '' %> uploaded.</div>
     </div>
 
-    <!-- Support images -->
-    <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--slate);margin-bottom:12px;">Support Images</div>
-    <p style="font-size:0.78rem;color:var(--slate);margin-bottom:12px;">Extra images for emails, social, and marketing materials. Upload as many as needed.</p>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
-      <% const supportImages = brandImages.filter(i => i.slot === 'support'); %>
-      <% for (const si of supportImages) { %>
-      <div style="border:1px solid var(--ivory-mid);border-radius:2px;overflow:hidden;">
-        <div style="aspect-ratio:1/1;background:var(--ivory);display:flex;align-items:center;justify-content:center;overflow:hidden;">
-          <img src="<%= si.url %>" alt="<%= si.label %>" style="width:100%;height:100%;object-fit:cover;">
+    <%# Inline upload forms for logos %>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--ivory-mid);">
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin-bottom:8px;">UPLOAD / REPLACE</div>
+      <% logoSlots.forEach(ls => { %>
+        <% const existing = brandImages.find(i => i.slot === ls.slot); %>
+        <div style="margin-bottom:8px;">
+          <div style="font-size:0.68rem;color:var(--dark);margin-bottom:4px;"><%= ls.label %></div>
+          <form method="POST" action="/admin/design/images" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+            <input type="hidden" name="slot" value="<%= ls.slot %>">
+            <input type="hidden" name="label" value="<%= ls.label %>">
+            <input type="file" name="image" accept="image/*" required style="font-size:0.65rem;max-width:160px;">
+            <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:3px 8px;"><%= existing ? 'Replace' : 'Upload' %></button>
+          </form>
         </div>
-        <div style="padding:8px 10px;">
-          <div style="font-size:0.72rem;font-weight:500;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<%= si.label %>"><%= si.label %></div>
-          <div style="display:flex;gap:4px;margin-top:6px;align-items:center;">
-            <button class="btn btn-ghost btn-sm" style="font-size:0.6rem;" onclick="navigator.clipboard.writeText('<%= si.url %>');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy URL',1500)">Copy URL</button>
-            <form method="POST" action="/admin/design/images/<%= si._id %>/delete" onsubmit="return confirm('Delete this image?')" style="display:inline;">
-              <button class="btn btn-danger btn-sm" style="font-size:0.6rem;">Del</button>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<%# ─── 14. 3D MODELS (collapsed) ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    3D Models <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
+      <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="toggle_model_header" <%= design.model_header_enabled === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);" onchange="toggleModel('model_header_enabled', this.checked)"> 3D Header
+      </label>
+      <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="toggle_model_logo" <%= design.model_logo_enabled === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);" onchange="toggleModel('model_logo_enabled', this.checked)"> 3D Logo
+      </label>
+    </div>
+    <%
+      const modelSlots = [
+        { slot: 'model_header', label: 'Header Model' },
+        { slot: 'model_logo',   label: 'Logo Model' },
+      ];
+    %>
+    <% modelSlots.forEach(ms => { %>
+      <% const existing = brandModels.find(m => m.slot === ms.slot); %>
+      <div style="margin-bottom:8px;">
+        <div style="font-size:0.68rem;color:var(--dark);margin-bottom:4px;"><%= ms.label %> <% if (existing) { %><span style="color:var(--success);font-size:0.6rem;">uploaded</span><% } %></div>
+        <form method="POST" action="/admin/design/models" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+          <input type="hidden" name="slot" value="<%= ms.slot %>">
+          <input type="hidden" name="label" value="<%= ms.label %>">
+          <input type="file" name="model" accept=".glb,.gltf" required style="font-size:0.65rem;max-width:160px;">
+          <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:3px 8px;"><%= existing ? 'Replace' : 'Upload' %></button>
+        </form>
+      </div>
+    <% }) %>
+    <div class="ep-hint">GLB format recommended. Max 20MB.</div>
+  </div>
+</div>
+
+<%# ─── 15. THEMES ─── %>
+<div class="editor-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Themes <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <%# Save current as theme — separate form target %>
+    <div style="margin-bottom:12px;">
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin-bottom:6px;">SAVE CURRENT</div>
+    </div>
+    <!-- This is a nested form workaround: we use formaction on the button -->
+    <div style="display:flex;gap:6px;margin-bottom:14px;">
+      <input type="text" id="themeNameInput" placeholder="Theme name" style="flex:1;padding:6px 8px;border:1px solid var(--ivory-mid);border-radius:2px;font-size:0.75rem;font-family:var(--font-body);">
+      <button type="button" class="btn btn-navy btn-sm" style="font-size:0.62rem;white-space:nowrap;" onclick="saveTheme()">Save Theme</button>
+    </div>
+
+    <% if (themes && themes.length) { %>
+      <% for (const t of themes) { %>
+      <div class="theme-card">
+        <div class="theme-card-swatches">
+          <div style="background:<%= t.settings.color_primary || '#1C2B4A' %>;"></div>
+          <div style="background:<%= t.settings.color_primary_deep || '#0F1B30' %>;"></div>
+          <div style="background:<%= t.settings.color_accent || '#C9A848' %>;"></div>
+          <div style="background:<%= t.settings.color_bg || '#F5F3EF' %>;"></div>
+        </div>
+        <div class="theme-card-body">
+          <div class="theme-card-name"><%= t.name %></div>
+          <div class="theme-card-meta"><%= t.settings.font_heading || 'Default' %> / <%= t.settings.font_body || 'Default' %> &middot; <%= new Date(t.createdAt).toLocaleDateString() %></div>
+          <div class="theme-card-actions">
+            <form method="POST" action="/admin/design/themes/<%= t._id %>/apply" style="display:inline;">
+              <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.58rem;padding:3px 8px;" onclick="return confirm('Apply this theme?')">Apply</button>
+            </form>
+            <form method="POST" action="/admin/design/themes/<%= t._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete?')">
+              <button type="submit" class="btn btn-danger btn-sm" style="font-size:0.58rem;padding:3px 8px;">Del</button>
             </form>
           </div>
         </div>
       </div>
       <% } %>
-    </div>
-
-    <form method="POST" action="/admin/design/images/support" enctype="multipart/form-data" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <input type="file" name="image" accept="image/*" required style="font-size:0.72rem;max-width:200px;">
-      <input type="text" name="label" placeholder="Image label" style="padding:6px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;max-width:180px;">
-      <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.68rem;">Upload Support Image</button>
-    </form>
+    <% } else { %>
+      <div style="font-size:0.75rem;color:var(--slate);padding:12px 0;">No saved themes yet.</div>
+    <% } %>
   </div>
+</div>
 
-  <!-- ═══════════ 3D BRAND MODELS ═══════════ -->
-  <div id="brand-models" class="card" style="margin-top:24px;">
-    <div class="card-title">3D Brand Models (GLTF)</div>
-    <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(201,168,72,0.12);border:1px solid rgba(201,168,72,0.3);border-radius:2px;margin-bottom:16px;">
-      <span style="font-size:1rem;">&#9888;</span>
-      <span style="font-size:0.72rem;font-weight:600;color:var(--dark);letter-spacing:0.06em;text-transform:uppercase;">Caution: Experimental</span>
-    </div>
-    <p style="font-size:0.85rem;color:var(--slate);font-weight:300;margin-bottom:20px;">Upload branded 3D models (.glb or .gltf), or enable for an auto-generated 3D text fallback. The <strong>Header</strong> displays the brand name as a wide banner with particles and light effects. The <strong>Logo</strong> displays the leading letter in a square canvas. This feature is experimental — GLTF uploads will override the text fallback.</p>
+</div><!-- /.editor-panel -->
 
-    <!-- Enable toggles -->
-    <div style="display:flex;gap:24px;margin-bottom:20px;flex-wrap:wrap;">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="checkbox" id="toggle_model_header" <%= design.model_header_enabled === 'true' ? 'checked' : '' %> style="width:16px;height:16px;accent-color:var(--navy);" onchange="toggleModel('model_header_enabled', this.checked)">
-        <span style="font-size:0.82rem;font-weight:600;color:var(--dark);">Enable 3D Header</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="checkbox" id="toggle_model_logo" <%= design.model_logo_enabled === 'true' ? 'checked' : '' %> style="width:16px;height:16px;accent-color:var(--navy);" onchange="toggleModel('model_logo_enabled', this.checked)">
-        <span style="font-size:0.82rem;font-weight:600;color:var(--dark);">Enable 3D Logo</span>
-      </label>
-    </div>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;">
-      <%
-        const modelSlots = [
-          { slot: 'model_header', label: 'Header / Banner Model', desc: 'Wide banner — 3D text logo with particles & ambient light', aspect: '3/1', mode: 'header' },
-          { slot: 'model_logo',   label: 'Logo Model',            desc: 'Square — contour mark, auto-rotates on the page',          aspect: '1/1', mode: 'logo' },
-        ];
-      %>
-      <% for (const ms of modelSlots) { %>
-        <% const existing = brandModels.find(m => m.slot === ms.slot); %>
-        <div style="border:1px solid var(--ivory-mid);border-radius:2px;overflow:hidden;">
-          <div style="aspect-ratio:<%= ms.aspect %>;background:var(--navy-deep);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;">
-            <div class="gltf-viewer" <%= existing ? 'data-model-url="' + existing.url + '"' : '' %> data-brand-name="<%= (typeof brand !== 'undefined' && brand?.name) || 'Brand' %>" data-mode="<%= ms.mode %>" data-bg-color="<%= design.color_primary_deep %>" data-accent-color="<%= design.color_accent %>" data-primary-color="<%= design.color_primary %>" data-debug="true" style="width:100%;height:100%;"></div>
-          </div>
-          <div style="padding:10px 12px;">
-            <div style="font-size:0.78rem;font-weight:600;color:var(--dark);margin-bottom:2px;"><%= ms.label %></div>
-            <div style="font-size:0.65rem;color:var(--slate);margin-bottom:8px;"><%= ms.desc %></div>
-            <form method="POST" action="/admin/design/models" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-              <input type="hidden" name="slot" value="<%= ms.slot %>">
-              <input type="hidden" name="label" value="<%= ms.label %>">
-              <input type="file" name="model" accept=".glb,.gltf" required style="font-size:0.72rem;max-width:200px;">
-              <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.65rem;"><%= existing ? 'Replace' : 'Upload' %></button>
-              <% if (existing) { %>
-              </form>
-              <form method="POST" action="/admin/design/models/<%= existing._id %>/delete" onsubmit="return confirm('Remove this 3D model?')" style="display:inline;">
-                <button class="btn btn-danger btn-sm" style="font-size:0.65rem;">Remove</button>
-              </form>
-              <% } else { %>
-              </form>
-              <% } %>
-          </div>
-        </div>
-      <% } %>
-    </div>
-
-    <p style="margin-top:12px;font-size:0.72rem;color:var(--slate);">
-      Tip: Use <strong>.glb</strong> format for best compatibility. Max 20MB per file. When no model is uploaded, the brand name renders as 3D text with radiant lights and particles. Upload a custom GLTF to replace the text fallback.
-    </p>
+<%# ═══════════ RIGHT PANEL — PREVIEW ═══════════ %>
+<div class="editor-preview">
+  <div class="preview-bar">
+    <button type="button" class="btn btn-ghost" onclick="setViewport('desktop')" id="vpDesktop" style="border-color:var(--navy);">Desktop</button>
+    <button type="button" class="btn btn-ghost" onclick="setViewport('tablet')" id="vpTablet">Tablet</button>
+    <button type="button" class="btn btn-ghost" onclick="setViewport('mobile')" id="vpMobile">Mobile</button>
+    <button type="button" class="btn btn-ghost" onclick="previewReload()">Refresh</button>
+    <span style="margin-left:auto;font-size:0.65rem;color:var(--slate);">Live Preview</span>
+    <button type="button" class="agent-btn" id="agentToggle">
+      <span style="font-size:0.85rem;">&#9830;</span> Agent
+    </button>
   </div>
+  <div id="previewViewport" style="flex:1;display:flex;justify-content:center;overflow:hidden;">
+    <iframe id="previewFrame" src="/" style="width:100%;height:100%;border:none;background:var(--white);"></iframe>
+  </div>
+</div>
 
 </div>
 
-</div></div>
-
-<!-- Agent Panel -->
+<!-- AI Agent Panel -->
 <div id="agentOverlay"></div>
 <div id="agentPanel">
-  <div class="agent-panel-header">
-    <div class="agent-panel-title">
-      <span class="dot"></span>
-      Design Agent
-    </div>
-    <button class="agent-panel-close" id="agentClose">&#10005;</button>
+  <div class="ap-header">
+    <div class="ap-title"><span class="ap-dot"></span> Design Agent</div>
+    <button class="ap-close" id="agentClose">&times;</button>
   </div>
-  <div class="agent-panel-sub">
-    Powered by Qwen 2.5 &middot; Updates colors, fonts, layouts & visibility
+  <div class="ap-sub">
+    <span class="ap-sub-dot"></span>
+    AI design assistant &middot; Auto-fills fields &middot; Live preview
   </div>
-  <div class="agent-msgs" id="agentMsgs">
-    <div class="agent-msg assistant">
-      <div class="agent-bubble">
-        Hello! I'm your design assistant. I can help you tweak colors, switch fonts, change layouts, or configure section visibility.<br><br>
-        Try: <em>"Switch to a modern teal and coral palette"</em> or <em>"Use Playfair Display for headings"</em>
+  <div class="ap-msgs" id="agentMsgs">
+    <div class="ap-msg assistant">
+      <div class="ap-bubble">
+        Hi! I can help you with colors, fonts, layouts, copy, and visibility settings.
+        Try asking me to change colors, write hero copy, suggest a bold palette, or toggle sections.
+        Changes preview live &mdash; save when you're happy.
       </div>
     </div>
   </div>
-  <div class="agent-panel-footer">
-    <div class="agent-quick-btns" id="designQuick"></div>
-    <script>
-    (function(){
-      const pool = [
-        { label: 'Earthy Palette', prompt: 'Create a warm, earthy color palette with terracotta and sage tones' },
-        { label: 'Modern Blue', prompt: 'Switch to a clean modern blue and white palette' },
-        { label: 'Classic Fonts', prompt: 'Set fonts to Playfair Display headings and Inter body text' },
-        { label: 'Show All Sections', prompt: 'Show all sections on the homepage including blog' },
-        { label: 'Luxury Dark', prompt: 'Suggest a professional, luxury-feel color scheme with dark tones' },
-        { label: 'Minimal Light', prompt: 'Create a minimal, airy palette with lots of white space and soft grays' },
-        { label: 'Bold & Vibrant', prompt: 'Switch to a bold, vibrant color palette with high contrast' },
-        { label: 'Ocean Tones', prompt: 'Create a coastal color palette with deep navy and seafoam green' },
-        { label: 'Modern Sans', prompt: 'Set fonts to DM Sans for headings and Nunito for body text' },
-        { label: 'Grid Portfolio', prompt: 'Switch portfolio layout to grid and blog to featured' },
-        { label: 'Hide Reviews', prompt: 'Hide the reviews section and show the blog section' },
-        { label: 'Magazine Layout', prompt: 'Switch the landing layout to magazine style' },
-      ];
-      for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
-      const el=document.getElementById('designQuick');
-      let idx=0;
-      function render(){
-        el.innerHTML='';
-        const batch=pool.slice(idx,idx+5);
-        if(batch.length<5) batch.push(...pool.slice(0,5-batch.length));
-        batch.forEach(s=>{
-          const b=document.createElement('button');b.className='agent-quick-btn';b.dataset.prompt=s.prompt;b.textContent=s.label;
-          b.onclick=()=>{document.getElementById('agentInput').value=s.prompt;document.getElementById('agentSend').click();};
-          el.appendChild(b);
-        });
-        const cyc=document.createElement('button');cyc.className='ap-cycle-btn';cyc.style.cssText='opacity:0.5;font-size:0.7rem;padding:5px 8px;border:1px solid var(--ivory-mid);background:var(--white);color:var(--slate);cursor:pointer;border-radius:2px;';cyc.textContent='\u267B';cyc.title='More suggestions';
-        cyc.onclick=(e)=>{e.stopPropagation();idx=(idx+3)%pool.length;render();};
-        el.appendChild(cyc);
-      }
-      render();
-    })();
-    </script>
-    <div class="agent-input-row">
-      <textarea class="agent-input" id="agentInput" placeholder="Ask the agent to update design settings..." rows="1"></textarea>
-      <button class="agent-send" id="agentSend">&#8593;</button>
+  <div class="ap-footer">
+    <div class="ap-quick" id="apQuick"></div>
+    <div class="ap-input-row">
+      <textarea class="ap-input" id="agentInput" rows="1" placeholder="Ask the design agent..."></textarea>
+      <button class="ap-send" id="agentSend">&uarr;</button>
     </div>
-    <span id="ai-status"></span>
+    <span id="ai-status" style="font-size:0.6rem;color:var(--slate);margin-top:4px;display:block;"></span>
   </div>
 </div>
 
-<script src="/js/gltfViewer.js"></script>
 <script>
-// ── Toggle 3D model enable/disable ──
+// ── Accordion toggle ──
+function toggleSection(btn) {
+  var section = btn.closest('.editor-section');
+  section.classList.toggle('open');
+}
+
+// ── Preview ──
+function previewReload() {
+  var f = document.getElementById('previewFrame');
+  f.src = f.src;
+}
+
+function setViewport(mode) {
+  var vp = document.getElementById('previewViewport');
+  var frame = document.getElementById('previewFrame');
+  frame.style.maxWidth = mode === 'tablet' ? '768px' : mode === 'mobile' ? '375px' : '100%';
+  ['Desktop','Tablet','Mobile'].forEach(function(m) {
+    var btn = document.getElementById('vp' + m);
+    if (btn) btn.style.borderColor = m.toLowerCase() === mode ? 'var(--navy)' : '';
+  });
+}
+
+// ── Reload preview after save ──
+<% if (saved) { %>
+(function() {
+  var f = document.getElementById('previewFrame');
+  f.onload = function() {}; // already loaded, just ensure fresh
+  f.src = '/?t=' + Date.now();
+})();
+<% } %>
+
+// ── Live preview engine ──
+// Maps design field → CSS variable names (covers both index.ejs and landing.ejs)
+var cssVarMap = {
+  color_primary:      ['--navy'],
+  color_primary_deep: ['--navy-deep', '--bg'],
+  color_primary_mid:  ['--navy-mid', '--card'],
+  color_accent:       ['--gold', '--accent'],
+  color_accent_light: ['--gold-light', '--accent-hover'],
+  color_bg:           ['--ivory'],
+  color_accent_2:     ['--accent-2'],
+  color_accent_3:     ['--accent-3'],
+  color_dark:         ['--dark'],
+  color_white:        ['--white'],
+  color_muted:        ['--muted'],
+  color_border:       ['--ivory-mid'],
+  color_success:      ['--success'],
+  color_danger:       ['--crimson'],
+  hero_overlay_color:      ['--hero-overlay'],
+  contact_bg:              ['--contact-bg'],
+  contact_heading_color:   ['--contact-heading'],
+  contact_eyebrow_color:   ['--contact-eyebrow'],
+  contact_text_color:      ['--contact-text'],
+  contact_label_color:     ['--contact-label'],
+  contact_value_color:     ['--contact-value'],
+  contact_form_bg:         ['--contact-form-bg'],
+  contact_form_label_color:['--contact-form-label'],
+  contact_btn_bg:          ['--contact-btn-bg'],
+  contact_btn_color:       ['--contact-btn-color'],
+};
+// Range/select inputs that map to CSS vars but need special transforms
+var cssVarTransform = {
+  hero_overlay_opacity: { vars: ['--hero-overlay-alpha'], transform: function(v) { return (parseInt(v,10)||55)/100; } },
+  card_border_radius:   { vars: ['--card-radius'],        transform: function(v) { return v + 'px'; } },
+  gradient_angle:       { vars: ['--gradient-angle'],     transform: function(v) { return v + 'deg'; } },
+};
+var fontMap = {
+  font_heading: '--font-heading', font_body: '--font-body',
+};
+// Google Fonts URL map (for loading fonts in iframe)
+var _GF = {
+  // Heading / serif / display
+  'Cormorant Garamond': 'Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400',
+  'Playfair Display': 'Playfair+Display:ital,wght@0,400;0,600;1,400',
+  'Lora': 'Lora:ital,wght@0,400;0,600;1,400',
+  'Merriweather': 'Merriweather:ital,wght@0,300;0,400;0,700;1,300',
+  'Libre Baskerville': 'Libre+Baskerville:ital,wght@0,400;0,700;1,400',
+  'DM Serif Display': 'DM+Serif+Display:ital@0;1',
+  'Fraunces': 'Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,400',
+  'Sora': 'Sora:wght@300;400;500;600;700',
+  'Space Grotesk': 'Space+Grotesk:wght@300;400;500;600;700',
+  'Outfit': 'Outfit:wght@300;400;500;600;700',
+  'Bebas Neue': 'Bebas+Neue&display=swap',
+  'Oswald': 'Oswald:wght@300;400;500;600;700',
+  // Body / sans-serif
+  'Jost': 'Jost:wght@300;400;500;600',
+  'Inter': 'Inter:wght@300;400;500;600',
+  'Poppins': 'Poppins:wght@300;400;500;600',
+  'Raleway': 'Raleway:wght@300;400;500;600',
+  'Nunito': 'Nunito:wght@300;400;500;600',
+  'DM Sans': 'DM+Sans:wght@300;400;500;600',
+  'Work Sans': 'Work+Sans:wght@300;400;500;600',
+  'Source Sans 3': 'Source+Sans+3:wght@300;400;500;600',
+  'IBM Plex Sans': 'IBM+Plex+Sans:wght@300;400;500;600',
+  'Manrope': 'Manrope:wght@300;400;500;600;700',
+  'Figtree': 'Figtree:wght@300;400;500;600;700',
+  'Karla': 'Karla:wght@300;400;500;600;700',
+  'Rubik': 'Rubik:wght@300;400;500;600',
+  'Cabin': 'Cabin:wght@400;500;600;700',
+  'Barlow': 'Barlow:wght@300;400;500;600',
+  'Lexend': 'Lexend:wght@300;400;500;600;700',
+  'Geist': 'Geist:wght@300;400;500;600;700',
+};
+function loadFontInIframe(doc, fontName) {
+  if (!doc || !doc.head || !fontName || !_GF[fontName]) return;
+  var id = 'slab-font-' + fontName.replace(/\s+/g, '-').toLowerCase();
+  if (doc.getElementById(id)) return; // already loaded
+  var link = doc.createElement('link');
+  link.id = id;
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=' + _GF[fontName] + '&display=swap';
+  doc.head.appendChild(link);
+}
+
+// Map form field names → iframe CSS selectors + property to set
+var copyMap = {
+  // ── Hero ──
+  // index.ejs: .hero-eyebrow, .hero-heading, .hero-btns, .hero-badge-text
+  // landing.ejs: .hero-badge, .hero-content h1, .hero-content > p, .hero-actions
+  hero_eyebrow:          { sel: '.hero-eyebrow', prop: 'textContent' },
+  hero_heading:          { sel: '.hero-heading,.hero-content h1', prop: 'heroHeading' },
+  hero_heading_em:       { sel: '.hero-heading,.hero-content h1', prop: 'heroHeading' },
+  hero_sub:              { sel: '.hero-content > p', prop: 'textContent' },
+  hero_badge:            { sel: '.hero-badge-text,.hero-content .hero-badge', prop: 'textContent' },
+  hero_cta_primary:      { sel: '.hero-btns .btn-primary,.hero-actions .btn-primary', prop: 'textContent' },
+  hero_cta_secondary:    { sel: '.hero-btns .btn-ghost,.hero-actions .btn-outline', prop: 'textContent' },
+  hero_cta_primary_link: { sel: '.hero-btns .btn-primary,.hero-actions .btn-primary', prop: 'href' },
+  hero_cta_secondary_link:{ sel: '.hero-btns .btn-ghost,.hero-actions .btn-outline', prop: 'href' },
+
+  // ── Services ──
+  // index.ejs: #services .section-eyebrow, .section-heading, .service-card
+  // landing.ejs: #features .section-label, .section-title, .feature-card
+  services_label:        { sel: '#services .section-eyebrow,#features .section-label', prop: 'textContent' },
+  services_heading:      { sel: '#services .section-heading,#features .section-title', prop: 'childText' },
+  services_heading_em:   { sel: '#services .section-heading em,#features .section-title em', prop: 'textContent' },
+  services_sub:          { sel: '#services .section-sub', prop: 'textContent' },
+  service1_title:        { sel: '.service-card:nth-child(1) .service-title,.feature-card:nth-child(1) h3', prop: 'textContent' },
+  service1_desc:         { sel: '.service-card:nth-child(1) .service-desc,.feature-card:nth-child(1) p', prop: 'textContent' },
+  service2_title:        { sel: '.service-card:nth-child(2) .service-title,.feature-card:nth-child(2) h3', prop: 'textContent' },
+  service2_desc:         { sel: '.service-card:nth-child(2) .service-desc,.feature-card:nth-child(2) p', prop: 'textContent' },
+  service3_title:        { sel: '.service-card:nth-child(3) .service-title,.feature-card:nth-child(3) h3', prop: 'textContent' },
+  service3_desc:         { sel: '.service-card:nth-child(3) .service-desc,.feature-card:nth-child(3) p', prop: 'textContent' },
+
+  // ── About ──
+  about_eyebrow:         { sel: '#about .section-eyebrow', prop: 'textContent' },
+  about_quote:           { sel: '.advisor-quote', prop: 'textContent' },
+  about_desc:            { sel: '.advisor-desc', prop: 'textContent' },
+  about_sig:             { sel: '.advisor-sig', prop: 'textContent' },
+  about_initial:         { sel: '.advisor-initial', prop: 'textContent' },
+  about_stat1_num:       { sel: '.stat-box:nth-child(1) .stat-num', prop: 'textContent' },
+  about_stat1_label:     { sel: '.stat-box:nth-child(1) .stat-label', prop: 'textContent' },
+  about_stat2_num:       { sel: '.stat-box:nth-child(2) .stat-num', prop: 'textContent' },
+  about_stat2_label:     { sel: '.stat-box:nth-child(2) .stat-label', prop: 'textContent' },
+  about_stat3_num:       { sel: '.stat-box:nth-child(3) .stat-num', prop: 'textContent' },
+  about_stat3_label:     { sel: '.stat-box:nth-child(3) .stat-label', prop: 'textContent' },
+  about_stat4_num:       { sel: '.stat-box:nth-child(4) .stat-num', prop: 'textContent' },
+  about_stat4_label:     { sel: '.stat-box:nth-child(4) .stat-label', prop: 'textContent' },
+
+  // ── Process ──
+  // index.ejs: #process .section-eyebrow, .process-item .process-title/.process-desc
+  // landing.ejs: #how .section-label, .step .step-text h3/p
+  process_label:         { sel: '#process .section-eyebrow,#how .section-label', prop: 'textContent' },
+  process_heading:       { sel: '#process .section-heading,#how .section-title', prop: 'childText' },
+  process_heading_em:    { sel: '#process .section-heading em,#how .section-title em', prop: 'textContent' },
+  process1_title:        { sel: '.process-list .process-item:nth-child(1) .process-title,.steps .step:nth-child(1) .step-text h3', prop: 'innerHTML' },
+  process1_desc:         { sel: '.process-list .process-item:nth-child(1) .process-desc,.steps .step:nth-child(1) .step-text p', prop: 'innerHTML' },
+  process2_title:        { sel: '.process-list .process-item:nth-child(2) .process-title,.steps .step:nth-child(2) .step-text h3', prop: 'innerHTML' },
+  process2_desc:         { sel: '.process-list .process-item:nth-child(2) .process-desc,.steps .step:nth-child(2) .step-text p', prop: 'innerHTML' },
+  process3_title:        { sel: '.process-list .process-item:nth-child(3) .process-title,.steps .step:nth-child(3) .step-text h3', prop: 'innerHTML' },
+  process3_desc:         { sel: '.process-list .process-item:nth-child(3) .process-desc,.steps .step:nth-child(3) .step-text p', prop: 'innerHTML' },
+  process4_title:        { sel: '.process-list .process-item:nth-child(4) .process-title,.steps .step:nth-child(4) .step-text h3', prop: 'innerHTML' },
+  process4_desc:         { sel: '.process-list .process-item:nth-child(4) .process-desc,.steps .step:nth-child(4) .step-text p', prop: 'innerHTML' },
+
+  // ── Contact ──
+  // index.ejs: #contact .section-eyebrow, .section-heading, .contact-sub, .contact-detail-item, .contact-form, .btn-submit
+  // landing.ejs: #contact .section-label, .section-title, inline form (no .contact-form)
+  contact_eyebrow:       { sel: '#contact .section-eyebrow,#contact .section-label', prop: 'textContent' },
+  contact_heading:       { sel: '#contact .section-heading,#contact .section-title', prop: 'headingBrEm', pair: 'contact_heading_em' },
+  contact_heading_em:    { sel: '#contact .section-heading,#contact .section-title', prop: 'headingBrEm', pair: 'contact_heading' },
+  contact_sub:           { sel: '.contact-sub,#contact .section-title + p', prop: 'textContent' },
+  contact_location_label:{ sel: '.contact-detail-item:nth-child(1) .detail-label', prop: 'textContent' },
+  contact_location:      { sel: '.contact-detail-item:nth-child(1) .detail-value', prop: 'textContent' },
+  contact_serving_label: { sel: '.contact-detail-item:nth-child(2) .detail-label', prop: 'textContent' },
+  contact_serving:       { sel: '.contact-detail-item:nth-child(2) .detail-value', prop: 'textContent' },
+  contact_services_label:{ sel: '.contact-detail-item:nth-child(3) .detail-label', prop: 'textContent' },
+  contact_services:      { sel: '.contact-detail-item:nth-child(3) .detail-value', prop: 'textContent' },
+  contact_btn:           { sel: '.btn-submit,#contact .btn-lg', prop: 'textContent' },
+  // Contact form placeholders (index.ejs uses .contact-form, landing.ejs uses #contact form)
+  contact_fname_placeholder: { sel: '.contact-form input[name="firstName"],#contact input[name="name"]', prop: 'placeholder' },
+  contact_lname_placeholder: { sel: '.contact-form input[name="lastName"]', prop: 'placeholder' },
+  contact_email_placeholder: { sel: '.contact-form input[name="email"],#contact input[name="email"]', prop: 'placeholder' },
+  contact_company_placeholder:{ sel: '.contact-form input[name="company"]', prop: 'placeholder' },
+  contact_message_placeholder:{ sel: '.contact-form textarea[name="message"],#contact textarea[name="message"]', prop: 'placeholder' },
+  // Contact form labels (formLabel — finds label in parent .form-field)
+  contact_fname_label:       { sel: '.contact-form input[name="firstName"]', prop: 'formLabel' },
+  contact_lname_label:       { sel: '.contact-form input[name="lastName"]', prop: 'formLabel' },
+  contact_email_label:       { sel: '.contact-form input[name="email"]', prop: 'formLabel' },
+  contact_company_label:     { sel: '.contact-form input[name="company"]', prop: 'formLabel' },
+  contact_service_label:     { sel: '.contact-form select[name="service"]', prop: 'formLabel' },
+  contact_message_label:     { sel: '.contact-form textarea[name="message"]', prop: 'formLabel' },
+};
+
+// Map vis_ checkboxes → iframe section selectors
+var visMap = {
+  vis_header:    '#main-nav,.nav',
+  vis_hero:      '.hero',
+  vis_marquee:   '.marquee-bar',
+  vis_services:  '#services,.services,#features,.features',
+  vis_portfolio: '#portfolio',
+  vis_about:     '#about,.advisor-section',
+  vis_process:   '#process,.process,#how,.how',
+  vis_reviews:   '[id*="review"]',
+  vis_contact:   '#contact,.contact',
+  vis_blog:      '[id*="blog"],[class*="blog-section"]',
+  vis_footer:    'footer',
+  vis_qr:        '#qr-share-widget',
+};
+
+var _previewReady = false;
+function pushToPreview() {
+  var frame = document.getElementById('previewFrame');
+  if (!frame) return;
+
+  // Try both: direct DOM access AND postMessage
+  var doc = null;
+  try { doc = frame.contentDocument || frame.contentWindow.document; } catch(x) {}
+
+  // ── 1) CSS variables + fonts ──
+  var fontBodyVal = '', fontHeadVal = '';
+  var css = ':root{';
+  Object.keys(cssVarMap).forEach(function(name) {
+    var inp = document.querySelector('input[name="' + name + '"]');
+    if (!inp) return;
+    var vars = cssVarMap[name];
+    if (!inp.value) return; // skip empty — prevents invalid CSS like "--var: !important;"
+    for (var vi = 0; vi < vars.length; vi++) css += vars[vi] + ':' + inp.value + ' !important;';
+  });
+  // Range/select inputs with transforms
+  Object.keys(cssVarTransform).forEach(function(name) {
+    var inp = document.querySelector('[name="' + name + '"]');
+    if (!inp) return;
+    var t = cssVarTransform[name];
+    var val = t.transform(inp.value);
+    for (var vi = 0; vi < t.vars.length; vi++) css += t.vars[vi] + ':' + val + ' !important;';
+  });
+  Object.keys(fontMap).forEach(function(name) {
+    var sel = document.querySelector('select[name="' + name + '"]');
+    if (!sel) return;
+    css += fontMap[name] + ":'" + sel.value + "',sans-serif !important;";
+    if (name === 'font_body') fontBodyVal = sel.value;
+    if (name === 'font_heading') fontHeadVal = sel.value;
+  });
+  css += '}';
+  // Force font on body + headings for templates that hardcode font-family (landing.ejs)
+  if (fontBodyVal) css += " body,p,a,span,div,li,input,textarea,select,button{font-family:'" + fontBodyVal + "',sans-serif !important;}";
+  if (fontHeadVal) css += " h1,h2,h3,h4,h5,h6{font-family:'" + fontHeadVal + "',serif !important;}";
+
+  // ── 2) Layout ──
+  var layoutSel = document.querySelector('select[name="landing_layout"]');
+  var layout = layoutSel ? layoutSel.value : '';
+
+  // ── Direct DOM approach ──
+  if (doc && doc.body) {
+    // CSS vars
+    var style = doc.getElementById('slab-live-vars');
+    if (!style) { style = doc.createElement('style'); style.id = 'slab-live-vars'; doc.head.appendChild(style); }
+    style.textContent = css;
+
+    // Load Google Fonts in iframe so font-family changes are visible
+    if (fontBodyVal) loadFontInIframe(doc, fontBodyVal);
+    if (fontHeadVal) loadFontInIframe(doc, fontHeadVal);
+
+    // Layout
+    if (layout) doc.body.setAttribute('data-layout', layout);
+
+    // Copy fields — skip empty values to preserve server-rendered defaults
+    var _doneHeroHeading = false, _doneContactHeading = false;
+    Object.keys(copyMap).forEach(function(name) {
+      var field = document.querySelector('[name="' + name + '"]');
+      if (!field) return;
+      var val = field.value;
+      var m = copyMap[name];
+
+      // Deduplicate: heroHeading/headingBrEm process both fields in one pass
+      if (m.prop === 'heroHeading') {
+        if (_doneHeroHeading) return;
+        _doneHeroHeading = true;
+        var hVal = (document.querySelector('[name="hero_heading"]') || {}).value || '';
+        var emVal = (document.querySelector('[name="hero_heading_em"]') || {}).value || '';
+        if (!hVal && !emVal) return; // no data — keep server defaults
+        var el = doc.querySelector(m.sel);
+        if (el) el.innerHTML = hVal + (emVal ? ' <em>' + emVal + '</em>' : '');
+        return;
+      }
+      if (m.prop === 'headingBrEm') {
+        if (_doneContactHeading) return;
+        _doneContactHeading = true;
+        var mf = document.querySelector('[name="contact_heading"]');
+        var ef = document.querySelector('[name="contact_heading_em"]');
+        var mVal = mf ? mf.value : '', eVal = ef ? ef.value : '';
+        if (!mVal && !eVal) return;
+        var el = doc.querySelector(m.sel);
+        if (el) el.innerHTML = mVal + (eVal ? '<br><em>' + eVal + '</em>' : '');
+        return;
+      }
+
+      // Skip empty values — don't wipe server-rendered content
+      if (!val && m.prop !== 'href' && m.prop !== 'placeholder' && m.prop !== 'formLabel') return;
+
+      var el = doc.querySelector(m.sel);
+      if (!el) return;
+
+      if (m.prop === 'childText') {
+        var emInput = document.querySelector('[name="' + name + '_em"]');
+        if (emInput && emInput.value) { el.innerHTML = val + ' <em>' + emInput.value + '</em>'; }
+        else if (val) { el.textContent = val; }
+      } else if (m.prop === 'textContent') { el.textContent = val; }
+      else if (m.prop === 'innerHTML') { el.innerHTML = val; }
+      else if (m.prop === 'href') { el.setAttribute('href', val || '#'); }
+      else if (m.prop === 'placeholder') { el.setAttribute('placeholder', val); }
+      else if (m.prop === 'formLabel') {
+        var ff = el.closest ? el.closest('.form-field') : null;
+        var lbl = ff ? ff.querySelector('label') : null;
+        if (lbl) lbl.textContent = val;
+      }
+    });
+
+    // Visibility
+    Object.keys(visMap).forEach(function(key) {
+      var cb = document.querySelector('input[name="' + key + '"]');
+      if (!cb) return;
+      visMap[key].split(',').forEach(function(s) {
+        var els = doc.querySelectorAll(s.trim());
+        for (var i = 0; i < els.length; i++) els[i].style.display = cb.checked ? '' : 'none';
+      });
+    });
+
+    _previewReady = true;
+    return;
+  }
+
+  // ── Fallback: postMessage ──
+  if (frame.contentWindow) {
+    var msgCopy = [];
+    var _pmDoneHero = false, _pmDoneContact = false;
+    Object.keys(copyMap).forEach(function(name) {
+      var field = document.querySelector('[name="' + name + '"]');
+      if (!field) return;
+      var val = field.value, m = copyMap[name];
+      if (m.prop === 'heroHeading') {
+        if (_pmDoneHero) return; _pmDoneHero = true;
+        var hVal = (document.querySelector('[name="hero_heading"]') || {}).value || '';
+        var emVal = (document.querySelector('[name="hero_heading_em"]') || {}).value || '';
+        if (hVal || emVal) msgCopy.push({ sel: m.sel, prop: 'innerHTML', val: hVal + (emVal ? ' <em>' + emVal + '</em>' : '') });
+        return;
+      }
+      if (m.prop === 'headingBrEm') {
+        if (_pmDoneContact) return; _pmDoneContact = true;
+        var mf = document.querySelector('[name="contact_heading"]');
+        var ef = document.querySelector('[name="contact_heading_em"]');
+        var mVal = mf ? mf.value : '', eVal = ef ? ef.value : '';
+        if (mVal || eVal) msgCopy.push({ sel: m.sel, prop: 'innerHTML', val: mVal + (eVal ? '<br><em>' + eVal + '</em>' : '') });
+        return;
+      }
+      if (!val && m.prop !== 'href' && m.prop !== 'placeholder' && m.prop !== 'formLabel') return;
+      if (m.prop === 'childText') {
+        var ei = document.querySelector('[name="' + name + '_em"]');
+        if (ei && ei.value) msgCopy.push({ sel: m.sel, prop: 'innerHTML', val: val + ' <em>' + ei.value + '</em>' });
+        else if (val) msgCopy.push({ sel: m.sel, prop: 'textContent', val: val });
+      } else if (m.prop === 'formLabel') {
+        msgCopy.push({ sel: m.sel, prop: 'formLabel', val: val });
+      } else {
+        msgCopy.push({ sel: m.sel, prop: m.prop, val: val });
+      }
+    });
+    var vis = {};
+    Object.keys(visMap).forEach(function(key) {
+      var cb = document.querySelector('input[name="' + key + '"]');
+      if (cb) vis[visMap[key]] = cb.checked;
+    });
+    var cssVarsObj = {};
+    Object.keys(cssVarMap).forEach(function(n) { var inp = document.querySelector('input[name="' + n + '"]'); if (inp) { var vars = cssVarMap[n]; for (var vi = 0; vi < vars.length; vi++) cssVarsObj[vars[vi]] = inp.value; } });
+    Object.keys(cssVarTransform).forEach(function(n) { var inp = document.querySelector('[name="' + n + '"]'); if (inp) { var t = cssVarTransform[n]; var val = t.transform(inp.value); for (var vi = 0; vi < t.vars.length; vi++) cssVarsObj[t.vars[vi]] = val; } });
+    Object.keys(fontMap).forEach(function(n) { var sel = document.querySelector('select[name="' + n + '"]'); if (sel) cssVarsObj[fontMap[n]] = "'" + sel.value + "',sans-serif"; });
+    var extraCss = '';
+    if (fontBodyVal) extraCss += " body,p,a,span,div,li,input,textarea,select,button{font-family:'" + fontBodyVal + "',sans-serif !important;}";
+    if (fontHeadVal) extraCss += " h1,h2,h3,h4,h5,h6{font-family:'" + fontHeadVal + "',serif !important;}";
+    var fonts = [];
+    if (fontBodyVal && _GF[fontBodyVal]) fonts.push('https://fonts.googleapis.com/css2?family=' + _GF[fontBodyVal] + '&display=swap');
+    if (fontHeadVal && _GF[fontHeadVal]) fonts.push('https://fonts.googleapis.com/css2?family=' + _GF[fontHeadVal] + '&display=swap');
+    frame.contentWindow.postMessage({ type: 'slab-live-preview', cssVars: cssVarsObj, extraCss: extraCss, layout: layout, copy: msgCopy, visibility: vis, fonts: fonts }, '*');
+  }
+}
+
+// Debounced push
+var pushTimer;
+function debouncedPush() {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushToPreview, 80);
+}
+
+// ── Layout change → preview-only reload (no save until "Save All") ──
+var _layoutSelect = document.querySelector('select[name="landing_layout"]');
+if (_layoutSelect) {
+  _layoutSelect.addEventListener('change', function() {
+    var val = _layoutSelect.value;
+    var f = document.getElementById('previewFrame');
+    f.src = '/?preview_layout=' + val + '&t=' + Date.now();
+  });
+}
+
+// Listen to all form changes
+document.querySelectorAll('.editor-panel input, .editor-panel select, .editor-panel textarea').forEach(function(el) {
+  el.addEventListener('input', debouncedPush);
+  el.addEventListener('change', debouncedPush);
+});
+
+// Push once iframe loads — retry to handle slow renders
+var _pvFrame = document.getElementById('previewFrame');
+var _pvStatus = document.querySelector('.preview-bar span[style*="auto"]');
+_pvFrame.addEventListener('load', function() {
+  setTimeout(function() {
+    pushToPreview();
+    if (_pvStatus) _pvStatus.textContent = _previewReady ? 'Live Preview' : 'Preview (no DOM access — using postMessage)';
+  }, 300);
+  setTimeout(pushToPreview, 1000);
+});
+// Initial push after page load
+setTimeout(function() {
+  pushToPreview();
+  if (_pvStatus) _pvStatus.textContent = _previewReady ? 'Live Preview' : 'Preview (connecting...)';
+}, 500);
+
+// ── Sync color pickers with hex display + swatches ──
+document.querySelectorAll('input[type=color]').forEach(function(picker) {
+  var textInput = picker.parentElement.querySelector('input[type=text]');
+  picker.addEventListener('input', function() {
+    if (textInput) textInput.value = picker.value;
+    var swatches = document.querySelectorAll('#swatch-preview .swatch');
+    var names = ['color_primary','color_primary_deep','color_primary_mid','color_accent','color_accent_light','color_bg'];
+    names.forEach(function(n, i) {
+      var inp = document.querySelector('input[name="' + n + '"]');
+      if (inp && swatches[i]) swatches[i].style.background = inp.value;
+    });
+  });
+});
+
+// ── 3D model toggle ──
 function toggleModel(key, enabled) {
   fetch('/admin/design/toggle-model', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: key, value: enabled ? 'true' : 'false' })
-  }).then(function(r) { return r.json(); }).then(function() {
-    var label = key === 'model_header_enabled' ? '3D Header' : '3D Logo';
-    var badge = document.createElement('span');
-    badge.textContent = (enabled ? 'Enabled' : 'Disabled') + ' ' + label;
-    badge.style.cssText = 'font-size:0.72rem;color:var(--success);font-weight:600;margin-left:12px;';
-    var parent = document.getElementById('toggle_' + key.replace('_enabled', '')).parentElement;
-    parent.appendChild(badge);
-    setTimeout(function() { badge.remove(); }, 2000);
-  });
+  }).then(function(r) { return r.json(); });
 }
 
-// ── Preview viewport switcher ──
-function setViewport(mode) {
-  var vp = document.getElementById('previewViewport');
-  vp.classList.remove('mobile', 'tablet');
-  if (mode !== 'desktop') vp.classList.add(mode);
-  ['Desktop','Tablet','Mobile'].forEach(function(m) {
-    var btn = document.getElementById('vp' + m);
-    btn.style.borderColor = m.toLowerCase() === mode ? 'var(--navy)' : '';
-  });
+// ── Save theme via fetch (avoids nested form issue) ──
+function saveTheme() {
+  var name = document.getElementById('themeNameInput').value.trim();
+  if (!name) { alert('Enter a theme name'); return; }
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/admin/design/themes';
+  var inp = document.createElement('input');
+  inp.type = 'hidden'; inp.name = 'theme_name'; inp.value = name;
+  form.appendChild(inp);
+  document.body.appendChild(form);
+  form.submit();
 }
 
-// ── Sync color inputs with hex display + swatches ──
-document.querySelectorAll('input[type=color]').forEach(function(picker) {
-  var textInput = picker.nextElementSibling;
-  picker.addEventListener('input', function() {
-    if (textInput) textInput.value = picker.value;
-    var swatches = document.querySelectorAll('#swatch-preview div');
-    var inputs = document.querySelectorAll('input[type=color]');
-    inputs.forEach(function(p, i) { if (swatches[i]) swatches[i].style.background = p.value; });
-  });
-});
-
-// ── Agent panel logic ──
+// ══════════════════════════════════════════════════════════════════════════════
+// DESIGN AGENT — chat panel (matches blog/pages pattern)
+// ══════════════════════════════════════════════════════════════════════════════
 (function() {
-  var originals = {};
-  document.querySelectorAll('[id^="field-"]').forEach(function(el) {
-    var key = el.id.replace('field-', '');
-    if (el.type === 'checkbox') originals[key] = el.checked;
-    else if (el.tagName === 'SELECT') originals[key] = el.value;
-    else originals[key] = el.value;
-  });
+  var panel    = document.getElementById('agentPanel');
+  var overlay  = document.getElementById('agentOverlay');
+  var toggle   = document.getElementById('agentToggle');
+  var closeBtn = document.getElementById('agentClose');
+  var msgs     = document.getElementById('agentMsgs');
+  var input    = document.getElementById('agentInput');
+  var sendBtn  = document.getElementById('agentSend');
+  var agentMessages = [];
 
-  var aiFilledKeys = new Set();
-  var messages = [];
-
-  // Panel open/close
-  var panel = document.getElementById('agentPanel');
-  var overlay = document.getElementById('agentOverlay');
-  document.getElementById('agentToggle').addEventListener('click', openPanel);
-  document.getElementById('agentClose').addEventListener('click', closePanel);
-  overlay.addEventListener('click', closePanel);
-
-  function openPanel() { panel.classList.add('open'); overlay.classList.add('active'); }
+  // ── Open / close ──
+  function openPanel()  { panel.classList.add('open'); overlay.classList.add('active'); input.focus(); }
   function closePanel() { panel.classList.remove('open'); overlay.classList.remove('active'); }
+  if (toggle)  toggle.addEventListener('click', openPanel);
+  if (closeBtn) closeBtn.addEventListener('click', closePanel);
+  if (overlay) overlay.addEventListener('click', closePanel);
 
-  // Quick prompt buttons
-  document.querySelectorAll('.agent-quick-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      document.getElementById('agentInput').value = btn.dataset.prompt;
-      sendMessage();
-    });
-  });
-
-  // Send on Enter (not shift+enter)
-  var input = document.getElementById('agentInput');
-  input.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  });
-  document.getElementById('agentSend').addEventListener('click', sendMessage);
-
-  // Auto-resize textarea
-  input.addEventListener('input', function() {
-    this.style.height = 'auto';
-    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-  });
-
-  function getCurrentDesign() {
-    var d = {};
-    document.querySelectorAll('[id^="field-"]').forEach(function(el) {
-      var key = el.id.replace('field-', '');
-      if (el.type === 'checkbox') d[key] = el.checked ? 'true' : 'false';
-      else d[key] = el.value;
-    });
-    return d;
-  }
-
-  function appendMessage(role, text, fillCount) {
-    var msgs = document.getElementById('agentMsgs');
-    var msgEl = document.createElement('div');
-    msgEl.className = 'agent-msg ' + role;
-    var bubble = document.createElement('div');
-    bubble.className = 'agent-bubble';
-    bubble.textContent = text;
-    msgEl.appendChild(bubble);
-    if (fillCount && fillCount > 0) {
-      var notice = document.createElement('div');
-      notice.className = 'agent-fill-notice';
-      notice.textContent = '\u2713 ' + fillCount + ' setting' + (fillCount > 1 ? 's' : '') + ' updated';
-      msgEl.appendChild(notice);
-    }
-    msgs.appendChild(msgEl);
-    msgs.scrollTop = msgs.scrollHeight;
-    return msgEl;
-  }
-
-  function showTyping() {
-    var msgs = document.getElementById('agentMsgs');
+  // ── Message display ──
+  function appendMsg(role, text, extra) {
     var el = document.createElement('div');
-    el.id = 'typingIndicator';
-    el.className = 'typing-indicator';
-    el.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+    el.className = 'ap-msg ' + role;
+    el.innerHTML = '<div class="ap-bubble">' + text + '</div>';
+    if (extra) el.innerHTML += extra;
     msgs.appendChild(el);
     msgs.scrollTop = msgs.scrollHeight;
   }
 
-  function hideTyping() {
-    var el = document.getElementById('typingIndicator');
-    if (el) el.remove();
+  function showTyping() {
+    var el = document.createElement('div');
+    el.id = 'apTyping'; el.className = 'ap-msg assistant';
+    el.innerHTML = '<div class="ap-typing"><div class="ap-typing-dot"></div><div class="ap-typing-dot"></div><div class="ap-typing-dot"></div></div>';
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
   }
+  function hideTyping() { var t = document.getElementById('apTyping'); if (t) t.remove(); }
 
-  function fillField(key, value) {
-    var el = document.getElementById('field-' + key);
-    if (!el) return;
-
-    if (!aiFilledKeys.has(key)) {
-      if (el.type === 'checkbox') originals[key] = el.checked;
-      else originals[key] = el.value;
-    }
-
-    if (el.type === 'checkbox') {
-      el.checked = (value === 'true' || value === true);
-    } else if (el.type === 'color') {
-      el.value = value;
-      // Also update the hex text input next to it
-      var txt = el.nextElementSibling;
-      if (txt) txt.value = value;
-    } else if (el.tagName === 'SELECT') {
-      el.value = value;
-    } else {
-      el.value = value;
-    }
-
-    el.classList.add('ai-filled');
-    aiFilledKeys.add(key);
-
-    var badge = document.getElementById('badge-' + key);
-    if (badge) badge.classList.add('visible');
-    var revertBtn = document.getElementById('revert-' + key);
-    if (revertBtn) revertBtn.classList.add('visible');
-
-    // Update swatches if color field
-    if (key.startsWith('color_')) {
-      var swatches = document.querySelectorAll('#swatch-preview div');
-      var colorInputs = document.querySelectorAll('input[type=color]');
-      colorInputs.forEach(function(p, i) { if (swatches[i]) swatches[i].style.background = p.value; });
-    }
-  }
-
-  // Revert individual field
-  document.querySelectorAll('.revert-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var key = btn.dataset.key;
-      var el = document.getElementById('field-' + key);
-      if (!el) return;
-
-      if (el.type === 'checkbox') el.checked = originals[key];
-      else if (el.type === 'color') {
-        el.value = originals[key];
-        var txt = el.nextElementSibling;
-        if (txt) txt.value = originals[key];
-      } else el.value = originals[key];
-
-      el.classList.remove('ai-filled');
-      aiFilledKeys.delete(key);
-      var badge = document.getElementById('badge-' + key);
-      if (badge) badge.classList.remove('visible');
-      btn.classList.remove('visible');
-
-      // Update swatches
-      var swatches = document.querySelectorAll('#swatch-preview div');
-      var colorInputs = document.querySelectorAll('input[type=color]');
-      colorInputs.forEach(function(p, i) { if (swatches[i]) swatches[i].style.background = p.value; });
+  // ── Collect current design state ──
+  function getCurrentDesign() {
+    var d = {};
+    document.querySelectorAll('.editor-panel input, .editor-panel select, .editor-panel textarea').forEach(function(el) {
+      if (!el.name) return;
+      if (el.type === 'checkbox') d[el.name] = el.checked ? 'true' : 'false';
+      else d[el.name] = el.value;
     });
-  });
+    return d;
+  }
 
-  async function sendMessage() {
+  // ── Fill form fields + trigger live preview ──
+  function fillField(key, val) {
+    var el = document.querySelector('[name="' + key + '"]');
+    if (!el) return;
+    if (el.type === 'checkbox') {
+      el.checked = val === 'true';
+    } else {
+      el.value = val;
+      if (el.type === 'color') {
+        var textInput = el.parentElement && el.parentElement.querySelector('input[type=text]');
+        if (textInput) textInput.value = val;
+      }
+    }
+    el.classList.add('ai-filled');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // ── Send to agent ──
+  async function sendAgent() {
     var text = input.value.trim();
     if (!text) return;
     input.value = '';
     input.style.height = 'auto';
-    document.getElementById('agentSend').disabled = true;
+    sendBtn.disabled = true;
 
-    messages.push({ role: 'user', content: text });
-    appendMessage('user', text);
+    agentMessages.push({ role: 'user', content: text });
+    appendMsg('user', text.replace(/&/g,'&amp;').replace(/</g,'&lt;'));
     showTyping();
 
     try {
       var res = await fetch('/admin/design/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: messages, currentDesign: getCurrentDesign() })
+        body: JSON.stringify({
+          messages: agentMessages,
+          currentDesign: getCurrentDesign()
+        })
       });
       var data = await res.json();
       hideTyping();
 
       if (data.error) {
-        appendMessage('assistant', 'Error: ' + data.error, 0);
-      } else {
-        var fillKeys = Object.keys(data.fill || {});
-        fillKeys.forEach(function(key) { fillField(key, data.fill[key]); });
-        messages.push({ role: 'assistant', content: data.message });
-        appendMessage('assistant', data.message, fillKeys.length);
+        appendMsg('assistant', 'Error: ' + data.error);
+        return;
       }
-    } catch (err) {
+
+      var fills = Object.entries(data.fill || {});
+      fills.forEach(function(pair) { fillField(pair[0], pair[1]); });
+      agentMessages.push({ role: 'assistant', content: data.message });
+
+      var extra = '';
+      if (fills.length) {
+        var details = fills.map(function(pair) {
+          var k = pair[0], v = pair[1];
+          var isColor = k.indexOf('color_') === 0;
+          var swatch = isColor
+            ? '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + v + ';vertical-align:middle;margin-right:3px;border:1px solid rgba(0,0,0,0.1);"></span>'
+            : '';
+          return '<span style="font-size:0.65rem;color:var(--slate);">' + k + ': ' + swatch + v + '</span>';
+        }).join('<br>');
+        extra = '<div class="ap-fill-notice" style="margin-top:4px;">&#10003; ' +
+          fills.length + ' field' + (fills.length > 1 ? 's' : '') + ' updated</div>' +
+          '<div style="margin-top:2px;">' + details + '</div>';
+      }
+      appendMsg('assistant', data.message, extra);
+    } catch(e) {
       hideTyping();
-      appendMessage('assistant', 'Connection error. Please try again.', 0);
+      appendMsg('assistant', 'Connection error. Please try again.');
     } finally {
-      document.getElementById('agentSend').disabled = false;
+      sendBtn.disabled = false;
       input.focus();
     }
   }
-})();
 
-// Pre-fill from dashboard master agent
-(function() {
-  try {
-    var raw = sessionStorage.getItem('slab_agent_fill');
-    if (!raw) return;
-    var data = JSON.parse(raw);
-    if (data.department !== 'design' || !data.fill) return;
-    sessionStorage.removeItem('slab_agent_fill');
-    Object.entries(data.fill).forEach(function(e) { if (e[1]) fillField(e[0], e[1]); });
-  } catch(ex) { /* ignore */ }
+  // ── Input handlers ──
+  sendBtn.addEventListener('click', sendAgent);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAgent(); }
+  });
+  input.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+
+  // ── Quick prompts ──
+  var quickPrompts = [
+    'Bold dark palette',
+    'Warm earthy tones',
+    'Write hero copy',
+    'Modern minimal look',
+    'Toggle off blog & QR',
+    'Suggest all service copy'
+  ];
+  var quickContainer = document.getElementById('apQuick');
+  if (quickContainer) {
+    // Shuffle and pick 4
+    var shuffled = quickPrompts.sort(function() { return 0.5 - Math.random(); }).slice(0, 4);
+    shuffled.forEach(function(q) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ap-quick-btn';
+      btn.textContent = q;
+      btn.addEventListener('click', function() {
+        input.value = q;
+        sendAgent();
+      });
+      quickContainer.appendChild(btn);
+    });
+  }
 })();
 </script>
 <script src="/js/agentHealth.js"></script>

@@ -17,7 +17,16 @@ export const DESIGN_DEFAULTS = {
   color_bg:            '#F5F3EF',
   font_heading:        'Cormorant Garamond',
   font_body:           'Jost',
+  // ── Contrast / utility colors ──
+  color_dark:          '#0F1B30',       // main text color
+  color_white:         '#FDFCFA',       // page background / white surface
+  color_muted:         '',              // secondary text (auto-computed if empty)
+  color_border:        '',              // borders / dividers (auto-computed if empty)
+  color_success:       '#15803D',       // success state
+  color_danger:        '#8B1C1C',       // error / danger state
+  vis_header:          'true',
   vis_hero:            'true',
+  vis_marquee:         'true',
   vis_services:        'true',
   vis_portfolio:       'true',
   vis_about:           'true',
@@ -25,6 +34,7 @@ export const DESIGN_DEFAULTS = {
   vis_reviews:         'true',
   vis_contact:         'true',
   vis_blog:            'false',
+  vis_footer:          'true',
   agent_name:          'Assistant',
   agent_greeting:      'Hi! I can write blog posts, update site copy, or build new sections. What would you like to create?',
   portfolio_layout:    'grid',
@@ -36,31 +46,98 @@ export const DESIGN_DEFAULTS = {
   vis_qr:               'false',
   model_header_enabled: 'false',
   model_logo_enabled:   'false',
+  // ── Hero & section styling ──
+  hero_overlay_opacity: '55',          // 0-100, darkness of overlay on hero bg image
+  hero_overlay_color:   '',            // hex — defaults to color_primary_deep if empty
+  hero_text_align:      'left',        // left, center, right
+  hero_height:          '100vh',       // 100vh, 80vh, 60vh, auto
+  section_animation:    'fade',        // none, fade, slide
+  // ── Scroll-snap layout ──
+  snap_enabled:         'false',       // full-page snap scrolling (ACM-style)
+  // ── Industrial/service styling ──
+  hero_bg_pattern:      'none',        // none, grid, diagonal, dots — subtle overlay pattern
+  card_hover_accent:    'true',        // accent-colored top border on card hover
+  card_border_radius:   '2',           // 0-16 px
+  // ── Color accents (secondary + tertiary for multi-brand) ──
+  color_accent_2:       '',            // secondary accent (e.g. ACM Heyday gold)
+  color_accent_3:       '',            // tertiary accent (e.g. ACM Graffiti lime)
+  // ── Gradient backgrounds ──
+  gradient_enabled:     'false',       // enable section gradient backgrounds
+  gradient_angle:       '135',         // 0-360 degrees
+  // ── Contact section colors ──
+  contact_bg:           '',            // left panel bg (defaults to --navy-deep)
+  contact_heading_color:'',            // heading color (defaults to white)
+  contact_eyebrow_color:'',            // eyebrow color (defaults to --gold-light)
+  contact_text_color:   '',            // sub/body text color
+  contact_label_color:  '',            // detail label color (defaults to --gold)
+  contact_value_color:  '',            // detail value color
+  contact_form_bg:      '',            // form/right panel bg (defaults to --ivory)
+  contact_form_label_color:'',         // form field label color
+  contact_btn_bg:       '',            // submit button bg (defaults to --navy)
+  contact_btn_color:    '',            // submit button text color
 };
 
 // ── Theme-saveable design keys (excludes agent settings / visibility) ──
 const THEME_KEYS = [
   'color_primary', 'color_primary_deep', 'color_primary_mid',
   'color_accent', 'color_accent_light', 'color_bg',
+  'color_accent_2', 'color_accent_3',
+  'color_dark', 'color_white', 'color_muted', 'color_border',
+  'color_success', 'color_danger',
   'font_heading', 'font_body',
   'portfolio_layout', 'blog_layout', 'nav_logo_display', 'nav_logo_split', 'landing_layout',
+  'hero_overlay_opacity', 'hero_text_align', 'hero_height',
+  'snap_enabled', 'gradient_enabled', 'gradient_angle',
+  'hero_bg_pattern', 'card_hover_accent', 'card_border_radius',
+  'section_animation',
 ];
+
+// Copy section field map — shared with copy.js
+export const COPY_SECTIONS = {
+  hero: ['hero_eyebrow', 'hero_heading', 'hero_heading_em', 'hero_sub', 'hero_badge',
+         'hero_cta_primary', 'hero_cta_primary_link', 'hero_cta_secondary', 'hero_cta_secondary_link'],
+  services: ['services_label', 'services_heading', 'services_heading_em', 'services_sub',
+             'service1_title', 'service1_desc', 'service1_link', 'service1_image',
+             'service2_title', 'service2_desc', 'service2_link', 'service2_image',
+             'service3_title', 'service3_desc', 'service3_link', 'service3_image'],
+  about: ['about_quote', 'about_desc', 'about_sig', 'about_eyebrow', 'about_initial',
+         'about_stat1_num', 'about_stat1_label', 'about_stat2_num', 'about_stat2_label',
+         'about_stat3_num', 'about_stat3_label', 'about_stat4_num', 'about_stat4_label'],
+  process: ['process_label', 'process_heading', 'process_heading_em',
+           'process1_title', 'process1_desc', 'process2_title', 'process2_desc',
+           'process3_title', 'process3_desc', 'process4_title', 'process4_desc'],
+  contact: ['contact_eyebrow', 'contact_heading', 'contact_heading_em',
+           'contact_sub', 'contact_location', 'contact_location_label',
+           'contact_serving', 'contact_serving_label',
+           'contact_services', 'contact_services_label',
+           'contact_btn', 'contact_fname_label', 'contact_fname_placeholder',
+           'contact_lname_label', 'contact_lname_placeholder',
+           'contact_email_label', 'contact_email_placeholder',
+           'contact_company_label', 'contact_company_placeholder',
+           'contact_service_label', 'contact_service_placeholder',
+           'contact_message_label', 'contact_message_placeholder',
+           'contact_service_fallback', 'contact_service_extra'],
+};
 
 router.get('/', async (req, res) => {
   try {
     const db = req.db;
-    const [rawDesign, brandImages, themes, brandModels] = await Promise.all([
+    const [rawDesign, brandImages, themes, brandModels, rawCopy] = await Promise.all([
       db.collection('design').find({}).toArray(),
       db.collection('brand_images').find({}).sort({ slot: 1, uploadedAt: -1 }).toArray(),
       db.collection('themes').find({}).sort({ createdAt: -1 }).toArray(),
       db.collection('brand_models').find({}).sort({ slot: 1 }).toArray(),
+      db.collection('copy').find({}).toArray(),
     ]);
     const design = { ...DESIGN_DEFAULTS };
     for (const item of rawDesign) design[item.key] = item.value;
     const enriched = enrichDesignContrast(design);
+    const copy = {};
+    for (const item of rawCopy) copy[item.key] = item.value;
     res.render('admin/design/index', {
-      user: req.adminUser, page: 'design', title: 'Design & Settings',
-      design: enriched, brandImages, themes, brandModels, saved: req.query.saved === '1', error: req.query.error === '1',
+      user: req.adminUser, page: 'design', title: 'Design & Content',
+      design: enriched, brandImages, themes, brandModels, copy, copySections: COPY_SECTIONS,
+      saved: req.query.saved === '1', error: req.query.error === '1',
     });
   } catch (err) {
     console.error(err);
@@ -71,17 +148,32 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const db = req.db;
-    const ops = Object.keys(DESIGN_DEFAULTS).map(key => {
-      const value = (key.startsWith('vis_') || key.startsWith('model_'))
+    const now = new Date();
+
+    // Save design fields
+    const designOps = Object.keys(DESIGN_DEFAULTS).map(key => {
+      const isBool = key.startsWith('vis_') || key.startsWith('model_') || key === 'snap_enabled' || key === 'gradient_enabled' || key === 'card_hover_accent';
+      const value = isBool
         ? (req.body[key] === 'on' ? 'true' : 'false')
         : (req.body[key] !== undefined && req.body[key] !== '' ? req.body[key] : DESIGN_DEFAULTS[key]);
       return db.collection('design').updateOne(
         { key },
-        { $set: { key, value, updatedAt: new Date() } },
+        { $set: { key, value, updatedAt: now } },
         { upsert: true }
       );
     });
-    await Promise.all(ops);
+
+    // Save copy fields (any key starting with known copy prefixes)
+    const allCopyKeys = Object.values(COPY_SECTIONS).flat();
+    const copyOps = allCopyKeys.filter(key => req.body[key] !== undefined).map(key => {
+      return db.collection('copy').updateOne(
+        { key },
+        { $set: { key, value: req.body[key] || '', updatedAt: now } },
+        { upsert: true }
+      );
+    });
+
+    await Promise.all([...designOps, ...copyOps]);
     res.redirect('/admin/design?saved=1');
   } catch (err) {
     console.error(err);
@@ -163,6 +255,23 @@ router.post('/toggle-model', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('Toggle model error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Save single design key (for live preview layout/vis changes) ──
+router.post('/key', async (req, res) => {
+  try {
+    const { key, value } = req.body;
+    if (!key || !DESIGN_DEFAULTS.hasOwnProperty(key)) return res.status(400).json({ error: 'Invalid key' });
+    await req.db.collection('design').updateOne(
+      { key },
+      { $set: { key, value: String(value ?? ''), updatedAt: new Date() } },
+      { upsert: true }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Design key save error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -362,6 +471,39 @@ LAYOUT FIELDS:
 
 VISIBILITY FIELDS (string "true" or "false"):
 - vis_hero, vis_services, vis_portfolio, vis_about, vis_process, vis_reviews, vis_contact, vis_blog
+
+COPY FIELDS (text content shown on the landing page):
+- hero_eyebrow: Small text above the headline (e.g. "Welcome to...")
+- hero_heading: Main hero headline
+- hero_heading_em: Italic/accent word in the hero heading
+- hero_sub: Supporting text below the headline
+- hero_badge: Small badge text (e.g. "Est. 2020")
+- hero_cta_primary: Primary call-to-action button text
+- hero_cta_primary_link: Primary CTA link URL
+- hero_cta_secondary: Secondary CTA button text
+- hero_cta_secondary_link: Secondary CTA link URL
+- services_label: Section label for services (e.g. "What We Do")
+- services_heading: Services section heading
+- services_heading_em: Emphasized word in services heading
+- services_sub: Services section subheading
+- service1_title, service2_title, service3_title: Individual service card titles
+- service1_desc, service2_desc, service3_desc: Individual service card descriptions
+- about_eyebrow: About section label
+- about_quote: Main quote/statement in about section
+- about_desc: About section description paragraph
+- about_sig: Signature/name in about section
+- about_initial: Large decorative initial letter
+- process_label: Process section label
+- process_heading, process_heading_em: Process section heading + emphasis
+- process1_title through process4_title: Step titles
+- process1_desc through process4_desc: Step descriptions
+- contact_eyebrow: Contact section label
+- contact_heading, contact_heading_em: Contact heading + emphasis
+- contact_sub: Contact section subheading
+- contact_location: Business location text
+- contact_serving: "Serving" text
+- contact_services: Services list text
+- contact_btn: Submit button text
 
 AGENT SETTINGS:
 - agent_name: Name of the AI assistant

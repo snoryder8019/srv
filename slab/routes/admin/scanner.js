@@ -48,7 +48,7 @@ router.post('/run', async (req, res) => {
     const scanPages = (pages && pages.length > 0) ? pages : defaultPages;
 
     // Default modules — all
-    const allModules = ['contrast', 'modals', 'modules', 'redundancy', 'security', 'routes'];
+    const allModules = ['contrast', 'modals', 'modules', 'redundancy', 'security', 'routes', 'admin'];
     const scanModules = (modules && modules.length > 0) ? modules : allModules;
 
     const result = await runScan({
@@ -56,6 +56,7 @@ router.post('/run', async (req, res) => {
       adminCookie,
       modules: scanModules,
       pages: scanPages,
+      db: req.db,
     });
 
     // Save result to DB

@@ -166,7 +166,9 @@ export const CUSTOM_TEMPLATES = {
 };
 
 // ── GET /admin/sections ──────────────────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', (req, res) => res.redirect('/admin/design'));
+
+router.get('/legacy', async (req, res) => {
   const db = req.db;
   const [rawCopy, rawDesign, rawMedia, customSections] = await Promise.all([
     db.collection('copy').find({}).toArray(),

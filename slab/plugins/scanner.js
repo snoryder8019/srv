@@ -1,19 +1,22 @@
 /**
  * Slab — Site Scanner Engine
  *
- * Puppeteer-based scanner with 6 modules:
+ * Puppeteer-based scanner with 7 modules:
  *   1. Contrast   — WCAG AA color contrast audit on rendered pages
  *   2. Modals     — verify modals open/close, no dead triggers
  *   3. Modules    — check page sections/components render without errors
  *   4. Redundancy — duplicate IDs, broken links, dead elements
  *   5. Security   — brute force detection, auth bypass, exposed endpoints
  *   6. Routes     — HTTP health check on all routes/EPs/MCP/Ollama
+ *   7. Admin      — authenticated admin panel rendering, forms, CRUD validation
  *
  * Each module returns an array of findings: { severity, title, detail, url }
  * severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
  */
 
 import puppeteer from 'puppeteer';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import { config } from '../config/config.js';
 import { getSlabDb } from './mongo.js';
 
@@ -858,6 +861,280 @@ async function scanRoutes(base, adminCookie) {
   return findings;
 }
 
+// ── 7. Admin Panel Scanner ──────────────────────────────────────────────────
+
+const SCANNER_TEST_EMAIL = 'scanner-test@slab.system';
+const SCANNER_TEST_PASSWORD = 'Sc@nner_T3st_2026!';
+
+/**
+ * Ensure a test admin user exists in the tenant DB.
+ * Returns { user, token } — the JWT string for cookie auth.
+ */
+async function ensureTestUser(db, tenantDb) {
+  let user = await db.collection('users').findOne({ email: SCANNER_TEST_EMAIL });
+  if (!user) {
+    const hash = await bcrypt.hash(SCANNER_TEST_PASSWORD, 12);
+    const result = await db.collection('users').insertOne({
+      email: SCANNER_TEST_EMAIL,
+      displayName: 'Scanner Test',
+      password: hash,
+      providers: ['local'],
+      isAdmin: true,
+      isOwner: false,
+      isScannerAccount: true,
+      tutorials: { seen: {}, dismissed: {}, autoPlay: false, lastReset: null },
+      createdAt: new Date(),
+    });
+    user = await db.collection('users').findOne({ _id: result.insertedId });
+  }
+  // Mint a JWT directly — avoids HTTP login round-trip
+  const token = jwt.sign({
+    id: user._id.toString(),
+    email: user.email,
+    displayName: user.displayName || 'Scanner Test',
+    isAdmin: true,
+    isOwner: false,
+    tenantDb: tenantDb || null,
+  }, config.JWT_SECRET, { expiresIn: '1h' });
+
+  return { user, token };
+}
+
+/**
+ * Scan authenticated admin pages using Puppeteer.
+ * Tests: page renders, no console errors, key elements present, forms functional.
+ */
+async function scanAdmin(base, db, tenantDb) {
+  const findings = [];
+
+  // ── Setup test user + JWT ────────────────────────────────────────────────
+  let testToken;
+  try {
+    const { token } = await ensureTestUser(db, tenantDb);
+    testToken = token;
+  } catch (err) {
+    findings.push({
+      severity: 'high',
+      title: 'Admin scan: test user setup failed',
+      detail: err.message,
+      url: base,
+    });
+    return findings;
+  }
+
+  const cookie = `slab_token=${testToken}`;
+
+  // Admin pages to test with expected content markers
+  const adminPages = [
+    { path: '/admin',              name: 'Dashboard',        expect: ['.stat-card', '.topbar-title'] },
+    { path: '/admin/portfolio',    name: 'Portfolio',         expect: ['.topbar-title', '.content'] },
+    { path: '/admin/clients',      name: 'Clients',           expect: ['.topbar-title', '.content'] },
+    { path: '/admin/copy',         name: 'Copy',              expect: ['.topbar-title', '.form-field'] },
+    { path: '/admin/design',       name: 'Design',            expect: ['.topbar-title', 'input'] },
+    { path: '/admin/blog',         name: 'Blog',              expect: ['.topbar-title', '.content'] },
+    { path: '/admin/pages',        name: 'Pages',             expect: ['.topbar-title', '.content'] },
+    { path: '/admin/sections',     name: 'Sections',          expect: ['.topbar-title', '.content'] },
+    { path: '/admin/assets',       name: 'Assets',            expect: ['.topbar-title', '.content'] },
+    { path: '/admin/meetings',     name: 'Meetings',          expect: ['.topbar-title', '.content'] },
+    { path: '/admin/bookkeeping',  name: 'Bookkeeping',       expect: ['.topbar-title', '.content'] },
+    { path: '/admin/email-marketing', name: 'Email Marketing', expect: ['.topbar-title', '.content'] },
+    { path: '/admin/users',        name: 'Users',             expect: ['.topbar-title', 'table'] },
+    { path: '/admin/tickets',      name: 'Tickets',           expect: ['.topbar-title', '.stat-grid'] },
+    { path: '/admin/settings',     name: 'Settings',          expect: ['.topbar-title', '.form-field'] },
+    { path: '/admin/profile',      name: 'Profile',           expect: ['.topbar-title', '.content'] },
+    { path: '/admin/scanner',      name: 'Scanner',           expect: ['.topbar-title', '.content'] },
+    { path: '/admin/docs',         name: 'Docs',              expect: ['.topbar-title'] },
+  ];
+
+  let browser;
+  try {
+    browser = await launchBrowser();
+
+    for (const pg of adminPages) {
+      const url = `${base}${pg.path}`;
+      const page = await browser.newPage();
+      const consoleErrors = [];
+      const pageErrors = [];
+
+      // Capture console errors
+      page.on('console', msg => {
+        if (msg.type() === 'error') consoleErrors.push(msg.text());
+      });
+      page.on('pageerror', err => pageErrors.push(err.message));
+
+      try {
+        // Set auth cookie before navigation
+        const domain = new URL(base).hostname;
+        await page.setCookie({
+          name: 'slab_token',
+          value: testToken,
+          domain,
+          path: '/',
+          httpOnly: true,
+          secure: base.startsWith('https'),
+        });
+
+        const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
+        const status = response?.status() || 0;
+        const finalUrl = page.url();
+
+        // Check if we got redirected to login (auth failed)
+        if (finalUrl.includes('/admin/login') || finalUrl.includes('/login')) {
+          findings.push({
+            severity: 'high',
+            title: `Admin auth rejected: ${pg.name}`,
+            detail: `${pg.path} redirected to login. Test user JWT may be invalid or tenant mismatch.`,
+            url,
+          });
+          await page.close();
+          continue;
+        }
+
+        // Check HTTP status
+        if (status >= 500) {
+          findings.push({
+            severity: 'critical',
+            title: `Admin page crashed: ${pg.name}`,
+            detail: `${pg.path} returned ${status}`,
+            url,
+          });
+          await page.close();
+          continue;
+        }
+
+        if (status >= 400) {
+          findings.push({
+            severity: 'high',
+            title: `Admin page error: ${pg.name}`,
+            detail: `${pg.path} returned ${status}`,
+            url,
+          });
+          await page.close();
+          continue;
+        }
+
+        // Check expected elements exist
+        for (const selector of pg.expect) {
+          const found = await page.$(selector);
+          if (!found) {
+            findings.push({
+              severity: 'medium',
+              title: `Admin missing element: ${pg.name}`,
+              detail: `Expected "${selector}" not found on ${pg.path}`,
+              url,
+            });
+          }
+        }
+
+        // Check for JS console errors (filter out known noise)
+        const realErrors = consoleErrors.filter(e =>
+          !e.includes('GSI_LOGGER') &&
+          !e.includes('identity provider') &&
+          !e.includes('favicon') &&
+          !e.includes('the server responded with a status of 404')
+        );
+        if (realErrors.length > 0) {
+          findings.push({
+            severity: 'high',
+            title: `Admin JS error: ${pg.name}`,
+            detail: realErrors.slice(0, 3).join('\n'),
+            url,
+          });
+        }
+
+        // Check for page crashes
+        if (pageErrors.length > 0) {
+          findings.push({
+            severity: 'critical',
+            title: `Admin page error: ${pg.name}`,
+            detail: pageErrors.slice(0, 3).join('\n'),
+            url,
+          });
+        }
+
+        // Check sidebar rendered
+        const sidebar = await page.$('.sidebar');
+        if (!sidebar) {
+          findings.push({
+            severity: 'medium',
+            title: `Admin layout broken: ${pg.name}`,
+            detail: `Sidebar not rendered on ${pg.path}`,
+            url,
+          });
+        }
+
+        // Check for EJS render errors (unescaped error traces in HTML)
+        const bodyText = await page.evaluate(() => document.body?.innerText || '');
+        if (bodyText.includes('ReferenceError') || bodyText.includes('TypeError') || bodyText.includes('Cannot read properties')) {
+          findings.push({
+            severity: 'critical',
+            title: `Admin render error: ${pg.name}`,
+            detail: `Template error visible on page: ${bodyText.substring(0, 200)}`,
+            url,
+          });
+        }
+
+      } catch (err) {
+        findings.push({
+          severity: 'high',
+          title: `Admin page timeout: ${pg.name}`,
+          detail: `${pg.path}: ${err.message}`,
+          url,
+        });
+      }
+      await page.close();
+    }
+
+    // ── Admin form smoke tests ─────────────────────────────────────────────
+    // Test that key forms have expected inputs and submit buttons
+    const formPages = [
+      { path: '/admin/tickets/new', name: 'New Ticket Form', fields: ['input[name="subject"]', 'select[name="category"]', 'select[name="priority"]', 'button[type="submit"]'] },
+      { path: '/admin/design',      name: 'Design Form',     fields: ['input[name="color_primary"]', 'select[name="font_heading"]'] },
+      { path: '/admin/copy',        name: 'Copy Form',       fields: ['input[name="hero_heading"]', 'button[type="submit"]'] },
+    ];
+
+    for (const fp of formPages) {
+      const url = `${base}${fp.path}`;
+      const page = await browser.newPage();
+      try {
+        const domain = new URL(base).hostname;
+        await page.setCookie({ name: 'slab_token', value: testToken, domain, path: '/', httpOnly: true, secure: base.startsWith('https') });
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
+
+        if (page.url().includes('/admin/login')) {
+          await page.close();
+          continue; // auth issue already flagged above
+        }
+
+        for (const field of fp.fields) {
+          const found = await page.$(field);
+          if (!found) {
+            findings.push({
+              severity: 'medium',
+              title: `Form field missing: ${fp.name}`,
+              detail: `Expected "${field}" not found on ${fp.path}`,
+              url,
+            });
+          }
+        }
+      } catch (err) {
+        findings.push({
+          severity: 'medium',
+          title: `Form test failed: ${fp.name}`,
+          detail: err.message,
+          url,
+        });
+      }
+      await page.close();
+    }
+
+  } finally {
+    if (browser) await browser.close();
+  }
+
+  return findings;
+}
+
 // ── Main Scanner ────────────────────────────────────────────────────────────
 
 /**
@@ -877,6 +1154,7 @@ export async function runScan(opts = {}) {
     adminCookie = '',
     modules = ['contrast', 'modals', 'modules', 'redundancy', 'security', 'routes'],
     pages = ['/', '/admin/login', '/admin'],
+    db = null,
   } = opts;
 
   const base = baseUrl(tenant);
@@ -909,6 +1187,11 @@ export async function runScan(opts = {}) {
     // Network scans (security, routes) — no browser needed
     if (modules.includes('security')) allFindings.push(...await scanSecurity(base, cookie));
     if (modules.includes('routes'))   allFindings.push(...await scanRoutes(base, cookie));
+
+    // Admin panel scan — creates test user, authenticates, tests all admin pages
+    if (modules.includes('admin') && db) {
+      allFindings.push(...await scanAdmin(base, db, tenant?.db));
+    }
 
   } finally {
     if (browser) await browser.close();

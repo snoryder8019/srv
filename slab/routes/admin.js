@@ -1,5 +1,6 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
+import rateLimit from 'express-rate-limit';
 import { requireAdmin, issueAdminJWT } from '../middleware/jwtAuth.js';
 import { checkSuperAdmin } from '../middleware/superadmin.js';
 import { isSuperAdminEmail } from '../middleware/superadmin.js';
@@ -69,6 +70,27 @@ router.use(async (req, res, next) => {
     res.locals.brandDesign = enrichDesignContrast({ ...DESIGN_DEFAULTS });
   }
 
+  // Notification center — open tickets + scan issues for this tenant
+  try {
+    if (req.db) {
+      const [openTickets, latestScan] = await Promise.all([
+        req.db.collection('tickets').countDocuments({ status: { $in: ['open', 'in-progress', 'escalated'] } }),
+        req.db.collection('scan_results').find({}).sort({ 'summary.scannedAt': -1 }).limit(1).toArray(),
+      ]);
+      const scanIssues = latestScan[0]?.summary?.counts || {};
+      const scanTotal = (scanIssues.critical || 0) + (scanIssues.high || 0);
+      res.locals.notifications = {
+        tickets: openTickets,
+        scanIssues: scanTotal,
+        total: openTickets + scanTotal,
+      };
+    } else {
+      res.locals.notifications = { tickets: 0, scanIssues: 0, total: 0 };
+    }
+  } catch {
+    res.locals.notifications = { tickets: 0, scanIssues: 0, total: 0 };
+  }
+
   next();
 });
 
@@ -98,8 +120,17 @@ router.get('/login', (req, res) => {
   res.render('admin/login', { errorMsg, platformGoogleCid: config.GGLCID || '', centralAuthUrl });
 });
 
+// ── Rate limiters ────────────────────────────────────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,                   // 10 attempts per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many attempts. Please try again in 15 minutes.',
+});
+
 // ── Local login POST ─────────────────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.redirect('/admin/login?error=credentials');
@@ -127,7 +158,7 @@ router.get('/register', (req, res) => {
 });
 
 // ── Registration POST ────────────────────────────────────────────────────────
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   try {
     const { email, password, password_confirm, displayName } = req.body;
     const formData = { email, displayName };
@@ -178,7 +209,7 @@ router.post('/register', async (req, res) => {
 });
 
 // ── Password recovery ─────────────────────────────────────────────────────────
-router.post('/recover', async (req, res) => {
+router.post('/recover', authLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.json({ ok: false, error: 'Email required' });
   try {

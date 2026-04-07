@@ -32,7 +32,7 @@
     :root {
       --navy: <%= _bd.color_primary || '#1C2B4A' %>; --navy-deep: <%= _bd.color_primary_deep || '#0F1B30' %>; --navy-mid: <%= _bd.color_primary_mid || '#2E4270' %>;
       --gold: <%= _bd.color_accent || '#C9A848' %>; --gold-light: <%= _bd.color_accent_light || '#E8D08A' %>;
-      --ivory: <%= _bd.color_bg || '#F5F3EF' %>; --ivory-mid: #E6E1D6;
+      --ivory: <%= _bd.color_bg || '#F5F3EF' %>; --ivory-mid: color-mix(in srgb, <%= _bd.color_bg || '#F5F3EF' %> 85%, gray);
       --dark: <%= _bd.color_primary_deep || '#0F1B30' %>; --white: #FDFCFA;
       --on-ivory: <%= _bd._on_bg || '#0F1B30' %>; --on-ivory-muted: <%= _bd._on_bg_muted || '#6B7380' %>;
       --on-navy: <%= _bd._on_primary || '#FDFCFA' %>; --on-navy-deep: <%= _bd._on_primary_deep || '#FDFCFA' %>; --on-navy-mid: <%= _bd._on_primary_mid || '#FDFCFA' %>;
@@ -324,6 +324,19 @@
         min-width: 120px;
       }
     }
+    /* ── Notification Bell ── */
+    .notif-bell { position: fixed; top: 12px; right: 100px; z-index: 200; cursor: pointer; }
+    .notif-bell-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--white); border: 1px solid var(--ivory-mid); display: flex; align-items: center; justify-content: center; font-size: 1rem; transition: box-shadow 0.2s; position: relative; }
+    .notif-bell-btn:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+    .notif-badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 0.6rem; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+    .notif-drop { display: none; position: absolute; top: 44px; right: 0; width: 280px; background: var(--white); border: 1px solid var(--ivory-mid); border-radius: 4px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
+    .notif-drop.open { display: block; }
+    .notif-drop-title { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--slate); padding: 14px 16px 8px; }
+    .notif-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--ivory); text-decoration: none; color: var(--dark); transition: background 0.1s; font-size: 0.82rem; }
+    .notif-item:hover { background: var(--ivory); }
+    .notif-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .notif-count { font-weight: 600; margin-left: auto; font-size: 0.78rem; }
+    .notif-count.warn { color: var(--danger); }
   </style>
   <!-- Driver.js Tour -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css">
@@ -339,4 +352,23 @@
 <% } else { %>
 <div style="position:fixed;top:8px;right:8px;z-index:9999;background:linear-gradient(135deg,#C9A848,#E8D08A);color:#1C2B4A;font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;padding:4px 10px;border-radius:2px;box-shadow:0 2px 8px rgba(201,168,72,0.3);pointer-events:none;">Admin</div>
 <% } %>
+<% const _n = typeof notifications !== 'undefined' ? notifications : { tickets: 0, scanIssues: 0, total: 0 }; %>
+<div class="notif-bell" id="notifBell">
+  <div class="notif-bell-btn" onclick="document.getElementById('notifDrop').classList.toggle('open')">
+    &#128276;<% if (_n.total > 0) { %><span class="notif-badge"><%= _n.total %></span><% } %>
+  </div>
+  <div class="notif-drop" id="notifDrop">
+    <div class="notif-drop-title">Notifications</div>
+    <a href="/admin/tickets" class="notif-item">
+      <span class="notif-icon">&#9744;</span>
+      <span>Open Tickets</span>
+      <span class="notif-count<%= _n.tickets > 0 ? ' warn' : '' %>"><%= _n.tickets %></span>
+    </a>
+    <a href="/admin/scanner" class="notif-item">
+      <span class="notif-icon">&#9888;</span>
+      <span>Scan Issues</span>
+      <span class="notif-count<%= _n.scanIssues > 0 ? ' warn' : '' %>"><%= _n.scanIssues %></span>
+    </a>
+  </div>
+</div>
 <div class="layout">

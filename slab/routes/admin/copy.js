@@ -99,13 +99,7 @@ const COPY_DEFAULTS = {
   contact_services: '',
 };
 
-router.get('/', async (req, res) => {
-  const db = req.db;
-  const rawCopy = await db.collection('copy').find({}).toArray();
-  const copy = { ...COPY_DEFAULTS };
-  for (const item of rawCopy) copy[item.key] = item.value;
-  res.render('admin/copy/index', { user: req.adminUser, copy, sections: SECTIONS, flash: req.query.saved });
-});
+router.get('/', (req, res) => res.redirect('/admin/design'));
 
 router.post('/', async (req, res) => {
   try {

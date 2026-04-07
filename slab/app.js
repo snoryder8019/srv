@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import logger from 'morgan';
+import helmet from 'helmet';
 import session from 'express-session';
 import MongoStore from 'connect-mongo';
 import passport from './plugins/passport.js';
@@ -35,6 +36,15 @@ const MAINTENANCE_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 app.set('trust proxy', 1);
+
+// ── Security headers ──────────────────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false,        // EJS templates use inline scripts/styles
+  crossOriginEmbedderPolicy: false,    // allows loading external fonts/images
+  crossOriginOpenerPolicy: false,      // allows iframe contentDocument access (design editor)
+  crossOriginResourcePolicy: false,    // allows same-origin iframe resource loading
+  hsts: { maxAge: 31536000, includeSubDomains: true },
+}));
 
 app.use(
   session({

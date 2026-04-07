@@ -33,7 +33,7 @@
   <% /* Google One-Tap only loads on slab.madladslab.com (central auth page handles it) */ %>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    :root { --navy: <%= _bd.color_primary || '#1C2B4A' %>; --navy-deep: <%= _bd.color_primary_deep || '#0F1B30' %>; --gold: <%= _bd.color_accent || '#C9A848' %>; --gold-light: <%= _bd.color_accent_light || '#E8D08A' %>; --ivory: <%= _bd.color_bg || '#F5F3EF' %>; --ivory-mid: #E6E1D6; --dark: #0F1B30; --white: #FDFCFA; --on-ivory: <%= _bd._on_bg || '#0F1B30' %>; --on-ivory-muted: <%= _bd._on_bg_muted || '#6B7380' %>; --font-heading: '<%= _hFont %>', serif; --font-body: '<%= _bFont %>', sans-serif; }
+    :root { --navy: <%= _bd.color_primary || '#1C2B4A' %>; --navy-deep: <%= _bd.color_primary_deep || '#0F1B30' %>; --gold: <%= _bd.color_accent || '#C9A848' %>; --gold-light: <%= _bd.color_accent_light || '#E8D08A' %>; --ivory: <%= _bd.color_bg || '#F5F3EF' %>; --ivory-mid: color-mix(in srgb, <%= _bd.color_bg || '#F5F3EF' %> 85%, gray); --on-ivory: <%= _bd._on_bg || '#0F1B30' %>; --on-ivory-muted: <%= _bd._on_bg_muted || '#6B7380' %>; --font-heading: '<%= _hFont %>', serif; --font-body: '<%= _bFont %>', sans-serif; }
     body { font-family:var(--font-body); background:transparent; min-height:100vh; display:flex; align-items:center; justify-content:center; }
 
     /* ── Floating backdrop ── */
@@ -60,20 +60,21 @@
     /* ── Form elements ── */
     .field { margin-bottom:14px; }
     .field label { display:block; font-size:0.62rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--on-ivory-muted); margin-bottom:5px; }
-    .field input { width:100%; padding:11px 14px; border:1.5px solid var(--ivory-mid); border-radius:2px; font-family:var(--font-body); font-size:0.85rem; font-weight:300; color:var(--dark); background:var(--white); outline:none; }
-    .field input:focus { border-color:var(--navy); }
+    .field input { width:100%; padding:11px 14px; border:1.5px solid var(--ivory-mid); border-radius:2px; font-family:var(--font-body); font-size:0.85rem; font-weight:300; color:var(--on-ivory); background:transparent; outline:none; }
+    .field input::placeholder { color:var(--on-ivory-muted); }
+    .field input:focus { border-color:var(--gold); }
     .hint { font-size:0.62rem; color:var(--on-ivory-muted); margin-top:3px; }
-    .btn-submit { width:100%; padding:13px; background:var(--navy); color:var(--white); border:none; border-radius:2px; font-family:var(--font-body); font-size:0.78rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; cursor:pointer; transition:background 0.15s; margin-top:6px; }
-    .btn-submit:hover { background:var(--navy-deep); }
-    .btn-submit:disabled { background:var(--ivory-mid); color:var(--on-ivory-muted); cursor:not-allowed; }
+    .btn-submit { width:100%; padding:13px; background:var(--gold); color:<%= _bd._on_accent || '#0F1B30' %>; border:none; border-radius:2px; font-family:var(--font-body); font-size:0.78rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; cursor:pointer; transition:opacity 0.15s; margin-top:6px; }
+    .btn-submit:hover { opacity:0.85; }
+    .btn-submit:disabled { opacity:0.4; cursor:not-allowed; }
 
     /* ── Divider ── */
     .divider { display:flex; align-items:center; gap:14px; margin:18px 0; font-size:0.62rem; color:var(--on-ivory-muted); letter-spacing:0.1em; text-transform:uppercase; }
     .divider::before, .divider::after { content:''; flex:1; height:1px; background:var(--ivory-mid); }
 
     /* ── Google button ── */
-    .btn-google { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; background:var(--white); color:var(--on-ivory); text-decoration:none; padding:12px; font-size:0.78rem; font-weight:500; letter-spacing:0.04em; transition:all 0.15s; border-radius:2px; border:1.5px solid var(--ivory-mid); cursor:pointer; font-family:var(--font-body); }
-    .btn-google:hover { border-color:var(--navy); background:var(--ivory); }
+    .btn-google { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; background:transparent; color:var(--on-ivory); text-decoration:none; padding:12px; font-size:0.78rem; font-weight:500; letter-spacing:0.04em; transition:all 0.15s; border-radius:2px; border:1.5px solid var(--ivory-mid); cursor:pointer; font-family:var(--font-body); }
+    .btn-google:hover { border-color:var(--gold); }
     .btn-google svg { width:18px; height:18px; flex-shrink:0; }
 
     /* ── Messages ── */
@@ -85,9 +86,6 @@
     .auth-footer { padding:0 32px 24px; text-align:center; }
     .auth-footer a { font-size:0.72rem; color:var(--on-ivory-muted); text-decoration:none; }
     .auth-footer a:hover { color:var(--navy); }
-
-    /* One Tap container */
-    #oneTapWrap { display:flex; justify-content:center; margin-bottom:12px; }
 
     @media (max-width:480px) { .auth-modal { margin:12px; } .auth-body { padding:20px 20px 24px; } .auth-tabs { margin:0 20px; } .auth-header { padding:24px 20px 0; } .auth-footer { padding:0 20px 20px; } }
   </style>
@@ -115,8 +113,6 @@
     <!-- ═══ SIGN IN ═══ -->
     <div class="auth-panel active" id="panel-login">
       <% if (oauthCid) { %>
-      <!-- Google One Tap inline (posts to /auth/google/one-tap) -->
-      <div id="oneTapContainer" style="display:flex;justify-content:center;margin-bottom:8px;"></div>
       <a href="<%= _centralAuthUrl || '/auth/google' %>" class="btn-google" id="googleLoginBtn">
         <svg viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
         Sign in with Google
@@ -139,8 +135,8 @@
       <%/* Google button is now at the top, pointing to central auth */%>
 
       <p class="msg-info">
-        Don't have an account? <a href="#" onclick="switchTab('register');return false;">Register</a>
-        &middot; <a href="#" onclick="switchTab('recover');return false;">Forgot password?</a>
+        Don't have an account? <a href="javascript:void(0)" onclick="switchTab('register')">Register</a>
+        &middot; <a href="javascript:void(0)" onclick="switchTab('recover')">Forgot password?</a>
       </p>
     </div>
 
@@ -175,7 +171,7 @@
       </a>
       <% } %>
 
-      <p class="msg-info">Already have an account? <a href="#" onclick="switchTab('login');return false;">Sign in</a></p>
+      <p class="msg-info">Already have an account? <a href="javascript:void(0)" onclick="switchTab('login')">Sign in</a></p>
     </div>
 
     <!-- ═══ RECOVER ═══ -->
@@ -189,7 +185,7 @@
         <button type="submit" class="btn-submit" id="recoverBtn">Send Recovery Link</button>
       </form>
       <div id="recoverMsg" style="display:none;margin-top:12px;"></div>
-      <p class="msg-info"><a href="#" onclick="switchTab('login');return false;">Back to sign in</a></p>
+      <p class="msg-info"><a href="javascript:void(0)" onclick="switchTab('login')">Back to sign in</a></p>
     </div>
   </div>
 
@@ -236,48 +232,6 @@ if (recoverForm) {
   });
 }
 
-// Google One Tap for tenant login pages
-<% if (oauthCid) { %>
-(function() {
-  var script = document.createElement('script');
-  script.src = 'https://accounts.google.com/gsi/client';
-  script.async = true;
-  script.onload = function() {
-    if (typeof google === 'undefined' || !google.accounts) return;
-    google.accounts.id.initialize({
-      client_id: '<%= oauthCid %>',
-      callback: handleOneTapLogin,
-      auto_select: true,
-    });
-    google.accounts.id.renderButton(document.getElementById('oneTapContainer'), {
-      theme: 'outline', size: 'large', width: 356, text: 'signin_with',
-    });
-    google.accounts.id.prompt();
-  };
-  document.head.appendChild(script);
-
-  window.handleOneTapLogin = async function(response) {
-    try {
-      var res = await fetch('/auth/google/one-tap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential }),
-      });
-      var data = await res.json();
-      if (data.ok && data.redirect) {
-        window.location.href = data.redirect;
-      } else if (data.error) {
-        // Fall back to central auth for non-admin users
-        var centralUrl = '<%= _centralAuthUrl || "" %>';
-        if (centralUrl) window.location.href = centralUrl;
-        else alert(data.error);
-      }
-    } catch(e) {
-      console.error('One Tap login error:', e);
-    }
-  };
-})();
-<% } %>
 </script>
 </body>
 </html>

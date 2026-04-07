@@ -125,7 +125,9 @@ async function getBrandModels(db) {
 
 function buildVisibility(design) {
   return {
+    header:    design.vis_header    !== 'false',
     hero:      design.vis_hero      !== 'false',
+    marquee:   design.vis_marquee   !== 'false',
     services:  design.vis_services  !== 'false',
     portfolio: design.vis_portfolio !== 'false',
     about:     design.vis_about     !== 'false',
@@ -133,6 +135,7 @@ function buildVisibility(design) {
     reviews:   design.vis_reviews   !== 'false',
     contact:   design.vis_contact   !== 'false',
     blog:      design.vis_blog      === 'true',
+    footer:    design.vis_footer    !== 'false',
     qr:        design.vis_qr        === 'true',
   };
 }
@@ -333,10 +336,14 @@ router.get('/', async (req, res) => {
       ? await db.collection('blog').find({ status: 'published' }).sort({ publishedAt: -1 }).limit(3).toArray()
       : [];
 
+    // Allow preview_layout query param to override without saving
+    const effectiveLayout = req.query.preview_layout || design.landing_layout;
+
     // Startup layout → use the templatized landing page (same data scope as index)
-    if (design.landing_layout === 'startup') {
+    if (effectiveLayout === 'startup') {
       return res.render('landing', {
-        design, copy, logos, brandModels, media,
+        design: { ...design, landing_layout: effectiveLayout },
+        copy, logos, brandModels, media,
         reviews, portfolio, customSections,
         latestPosts, visibility: buildVisibility(design),
         contacted: req.query.contacted,
@@ -344,7 +351,9 @@ router.get('/', async (req, res) => {
     }
 
     res.render('index', {
-      copy, reviews, portfolio, design, media,
+      copy, reviews, portfolio,
+      design: { ...design, landing_layout: effectiveLayout },
+      media,
       visibility: buildVisibility(design),
       latestPosts, customSections, logos, brandModels,
     });

@@ -624,18 +624,25 @@ var quillReady = false;
   }
 })();
 
-// Expose for AI agent fills — switch to HTML tab, then set content
+// Expose for AI agent fills — write HTML, then show designer view
 window._blogContentSet = function(html) {
   var hidden = document.getElementById('field-content');
   var htmlEditor = document.getElementById('htmlEditor');
   var htmlToggle = document.getElementById('htmlToggle');
-  hidden.value = html;
 
-  // Switch to HTML mode if not already there
-  if (!htmlToggle.classList.contains('active')) {
-    htmlToggle.click();
-  }
+  // Set the raw HTML in both storage fields
+  hidden.value = html;
   htmlEditor.value = html;
+
+  // Update Quill's rendered content so designer shows it
+  if (typeof quill !== 'undefined' && quill) {
+    quill.root.innerHTML = html;
+  }
+
+  // Ensure we're in designer mode (not HTML mode) so users see rendered content
+  if (htmlToggle.classList.contains('active')) {
+    htmlToggle.click(); // switch back to designer
+  }
 };
 
 // ── AGENT PANEL ──

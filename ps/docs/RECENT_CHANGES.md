@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-04-06T20:14:54.597Z
+Generated: 2026-04-07T07:30:00.094Z
+
+---
+
+## Commit: depreication to srv
+
+- **Hash:** `0471378`
+- **Author:** Scott
+- **Date:** 4/6/2026
+- **Changes:** 260 files, +7268/-51822 lines
+
+### Modified Areas:
+
+**Frontend:** 3 files
+**Backend:** 54 files
+**Views:** 70 files
+**Documentation:** 36 files
 
 ---
 
@@ -61,22 +77,6 @@ Generated: 2026-04-06T20:14:54.597Z
 **Backend:** 14 files
 **Views:** 42 files
 **Documentation:** 3 files
-
----
-
-## Commit: v0.9 — security hardening, sandboxed game users, server-cam, unified terminal
-
-- **Hash:** `34d6674`
-- **Author:** Scott
-- **Date:** 3/31/2026
-- **Changes:** 42 files, +2701/-319 lines
-
-### Modified Areas:
-
-**Backend:** 7 files
-**Views:** 12 files
-**Scripts:** 1 files
-**Documentation:** 1 files
 
 ---
 

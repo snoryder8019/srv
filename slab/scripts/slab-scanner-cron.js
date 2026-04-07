@@ -83,15 +83,16 @@ async function scanAllTenants() {
     console.log(`[scanner] Scanning: ${label}`);
 
     try {
+      const db = getTenantDb(tenant.db);
       const result = await runScan({
         tenant,
         adminCookie: '',
-        modules: ['contrast', 'modals', 'modules', 'redundancy', 'security', 'routes'],
+        modules: ['contrast', 'modals', 'modules', 'redundancy', 'security', 'routes', 'admin'],
         pages: ['/', '/admin/login'],
+        db,
       });
 
       // Save to DB
-      const db = getTenantDb(tenant.db);
       await db.collection('scan_results').insertOne({
         ...result,
         runBy: 'slab-scanner-cron',
