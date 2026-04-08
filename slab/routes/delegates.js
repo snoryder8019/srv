@@ -13,6 +13,9 @@
  *   GET  /delegates/panel/settings  → edit profile / contact info
  *   POST /delegates/panel/settings  → save profile
  *   POST /delegates/panel/password  → change password
+ *   GET  /delegates/panel/tax-info  → tax info form (SSN/EIN + W-9 upload)
+ *   POST /delegates/panel/tax-info  → save encrypted tax info
+ *   GET  /delegates/panel/tax-info/w9 → download own W-9
  *
  * Superadmin (requireSuperAdmin):
  *   GET  /delegates/admin                  → list all delegates
@@ -22,17 +25,33 @@
  *   POST /delegates/admin/:id/detach       → detach tenant
  *   POST /delegates/admin/:id/payout       → log a payout
  *   GET  /delegates/admin/:id/payouts      → payout history JSON
+ *   GET  /delegates/admin/:id/w9           → download delegate W-9
  */
 
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import multer from 'multer';
 import { ObjectId } from 'mongodb';
 import { getSlabDb } from '../plugins/mongo.js';
 import { requireSuperAdmin } from '../middleware/superadmin.js';
+import { encrypt, decrypt } from '../plugins/crypto.js';
 import { config } from '../config/config.js';
 import { logActivity } from '../plugins/activityLog.js';
+
+// ── Multer (memory) for W-9 PDF upload ─────────────────────────────────────
+const taxUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error('Only PDF, JPEG, and PNG files are accepted.'));
+    }
+    cb(null, true);
+  },
+});
 
 const router = express.Router();
 const COOKIE_DOMAIN = config.NODE_ENV === 'production' ? '.madladslab.com' : undefined;
@@ -313,6 +332,147 @@ router.post('/panel/password', async (req, res) => {
   res.redirect('/delegates/panel/settings?msg=Password changed successfully.');
 });
 
+// ── Tax Info ───────────────────────────────────────────────────────────────
+
+const TAX_ENTITY_TYPES = [
+  'individual', 'sole_proprietor', 'llc_single', 'llc_multi',
+  'c_corp', 's_corp', 'partnership', 'trust', 'other',
+];
+
+router.get('/panel/tax-info', async (req, res) => {
+  const slab = getSlabDb();
+  const delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.delegate.id) });
+  if (!delegate) return res.redirect('/delegates/login');
+
+  // Decrypt stored tax fields for display (masked)
+  let taxInfo = null;
+  if (delegate.taxInfo) {
+    try {
+      const ssn = delegate.taxInfo.ssn_enc ? decrypt(delegate.taxInfo.ssn_enc) : '';
+      const ein = delegate.taxInfo.ein_enc ? decrypt(delegate.taxInfo.ein_enc) : '';
+      taxInfo = {
+        legalName: delegate.taxInfo.legalName || '',
+        entityType: delegate.taxInfo.entityType || '',
+        ssnLast4: ssn.length >= 4 ? '***-**-' + ssn.slice(-4) : '',
+        einLast4: ein.length >= 4 ? '**-***' + ein.slice(-4) : '',
+        hasW9: !!delegate.taxInfo.w9_enc,
+        w9Filename: delegate.taxInfo.w9Filename || '',
+        submittedAt: delegate.taxInfo.submittedAt,
+      };
+    } catch (err) {
+      console.error('[delegates] tax info decrypt error:', err);
+    }
+  }
+
+  res.render('delegates/tax-info', {
+    delegate,
+    taxInfo,
+    entityTypes: TAX_ENTITY_TYPES,
+    error: null,
+    msg: req.query.msg || null,
+  });
+});
+
+router.post('/panel/tax-info', (req, res, next) => {
+  taxUpload.single('w9_file')(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.redirect('/delegates/panel/tax-info?msg=File too large. Max 10 MB.');
+      }
+      return res.redirect(`/delegates/panel/tax-info?msg=${encodeURIComponent(err.message)}`);
+    }
+    next();
+  });
+}, async (req, res) => {
+  const { legalName, entityType, ssn, ein } = req.body;
+
+  if (!legalName?.trim()) {
+    return res.redirect('/delegates/panel/tax-info?msg=Legal name is required.');
+  }
+  if (!TAX_ENTITY_TYPES.includes(entityType)) {
+    return res.redirect('/delegates/panel/tax-info?msg=Please select a valid entity type.');
+  }
+  // Require at least SSN or EIN
+  const cleanSSN = (ssn || '').replace(/[^0-9]/g, '');
+  const cleanEIN = (ein || '').replace(/[^0-9]/g, '');
+  if (!cleanSSN && !cleanEIN) {
+    return res.redirect('/delegates/panel/tax-info?msg=SSN or EIN is required.');
+  }
+  if (cleanSSN && cleanSSN.length !== 9) {
+    return res.redirect('/delegates/panel/tax-info?msg=SSN must be 9 digits.');
+  }
+  if (cleanEIN && cleanEIN.length !== 9) {
+    return res.redirect('/delegates/panel/tax-info?msg=EIN must be 9 digits.');
+  }
+
+  try {
+    const slab = getSlabDb();
+    const delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.delegate.id) });
+    if (!delegate) return res.redirect('/delegates/login');
+
+    const now = new Date();
+    const taxData = {
+      legalName: legalName.trim(),
+      entityType,
+      ssn_enc: cleanSSN ? encrypt(cleanSSN) : (delegate.taxInfo?.ssn_enc || null),
+      ein_enc: cleanEIN ? encrypt(cleanEIN) : (delegate.taxInfo?.ein_enc || null),
+      submittedAt: now,
+    };
+
+    // Encrypt W-9 file if uploaded, otherwise keep existing
+    if (req.file) {
+      const fileBase64 = req.file.buffer.toString('base64');
+      taxData.w9_enc = encrypt(fileBase64);
+      taxData.w9Filename = req.file.originalname;
+      taxData.w9Mimetype = req.file.mimetype;
+    } else if (delegate.taxInfo) {
+      taxData.w9_enc = delegate.taxInfo.w9_enc || null;
+      taxData.w9Filename = delegate.taxInfo.w9Filename || null;
+      taxData.w9Mimetype = delegate.taxInfo.w9Mimetype || null;
+    }
+
+    await slab.collection('sales_delegates').updateOne(
+      { _id: delegate._id },
+      {
+        $set: {
+          taxInfo: taxData,
+          taxInfoProvided: true,
+          updatedAt: now,
+        },
+      }
+    );
+
+    logActivity({
+      category: 'delegate_action', action: 'tax_info_submitted',
+      status: 'success',
+      actor: { email: delegate.email, role: 'delegate' },
+      details: { entityType, hasW9: !!taxData.w9_enc },
+    });
+
+    res.redirect('/delegates/panel/tax-info?msg=Tax information saved successfully.');
+  } catch (err) {
+    console.error('[delegates] tax info save error:', err);
+    res.redirect('/delegates/panel/tax-info?msg=Failed to save. Please try again.');
+  }
+});
+
+// ── Download own W-9 (delegate) ───────────────────────────────────────────
+router.get('/panel/tax-info/w9', async (req, res) => {
+  const slab = getSlabDb();
+  const delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.delegate.id) });
+  if (!delegate?.taxInfo?.w9_enc) return res.redirect('/delegates/panel/tax-info');
+
+  try {
+    const decoded = Buffer.from(decrypt(delegate.taxInfo.w9_enc), 'base64');
+    res.set('Content-Type', delegate.taxInfo.w9Mimetype || 'application/pdf');
+    res.set('Content-Disposition', `inline; filename="${delegate.taxInfo.w9Filename || 'w9.pdf'}"`);
+    res.send(decoded);
+  } catch (err) {
+    console.error('[delegates] w9 download decrypt error:', err);
+    res.redirect('/delegates/panel/tax-info?msg=Error retrieving document.');
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SUPERADMIN — Delegate Management
 // ═══════════════════════════════════════════════════════════════════════════
@@ -496,6 +656,225 @@ router.post('/admin/:id/payout', async (req, res) => {
   });
 
   res.redirect(`/delegates/admin/${req.params.id}`);
+});
+
+// ── Superadmin: download delegate W-9 ─────────────────────────────────────
+router.get('/admin/:id/w9', async (req, res) => {
+  const slab = getSlabDb();
+  let delegate;
+  try { delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.params.id) }); }
+  catch { return res.redirect('/delegates/admin'); }
+  if (!delegate?.taxInfo?.w9_enc) return res.redirect(`/delegates/admin/${req.params.id}`);
+
+  try {
+    const decoded = Buffer.from(decrypt(delegate.taxInfo.w9_enc), 'base64');
+    res.set('Content-Type', delegate.taxInfo.w9Mimetype || 'application/pdf');
+    res.set('Content-Disposition', `inline; filename="${delegate.taxInfo.w9Filename || 'w9.pdf'}"`);
+    res.send(decoded);
+  } catch (err) {
+    console.error('[delegates] admin w9 download decrypt error:', err);
+    res.redirect(`/delegates/admin/${req.params.id}`);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DELEGATE PANEL — Sales Sheets & Leads
+// ═══════════════════════════════════════════════════════════════════════════
+
+const LEAD_STATUSES = ['new', 'contacted', 'callback', 'interested', 'converted', 'lost'];
+const LEAD_TAGS     = ['hot', 'warm', 'cold', 'follow-up', 'demo-scheduled', 'pricing-sent', 'no-answer'];
+
+// ── Sales Sheets (per brand) ───────────────────────────────────────────────
+router.get('/panel/sales-sheets', async (req, res) => {
+  const slab = getSlabDb();
+  const delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.delegate.id) });
+  if (!delegate) return res.redirect('/delegates/login');
+
+  // Build brand info for each assigned tenant
+  const brands = [];
+  for (const t of delegate.tenants || []) {
+    const tenant = await slab.collection('tenants').findOne({ _id: t.tenantId });
+    if (!tenant) continue;
+
+    // Count leads for this brand
+    const leadCount = await slab.collection('delegate_leads').countDocuments({
+      delegateId: delegate._id, tenantId: t.tenantId,
+    });
+    const convertedCount = await slab.collection('delegate_leads').countDocuments({
+      delegateId: delegate._id, tenantId: t.tenantId, status: 'converted',
+    });
+
+    brands.push({
+      tenantId: t.tenantId,
+      domain: t.tenantDomain,
+      brandName: tenant.brand?.name || t.tenantDomain,
+      tagline: tenant.brand?.tagline || '',
+      description: tenant.brand?.description || '',
+      services: tenant.brand?.services || [],
+      pricingNotes: tenant.brand?.pricingNotes || '',
+      targetAudience: tenant.brand?.targetAudience || '',
+      phone: tenant.brand?.phone || '',
+      email: tenant.brand?.email || '',
+      leadCount,
+      convertedCount,
+    });
+  }
+
+  res.render('delegates/sales-sheets', {
+    delegate,
+    brands,
+    promo: { type: '30-day free trial', description: 'New signups get 30 days free on any platform when using your referral code.' },
+  });
+});
+
+// ── Sales Sheet Detail (single brand) ──────────────────────────────────────
+router.get('/panel/sales-sheets/:tenantId', async (req, res) => {
+  const slab = getSlabDb();
+  const delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.delegate.id) });
+  if (!delegate) return res.redirect('/delegates/login');
+
+  let tenantId;
+  try { tenantId = new ObjectId(req.params.tenantId); } catch { return res.redirect('/delegates/panel/sales-sheets'); }
+
+  const assigned = (delegate.tenants || []).find(t => t.tenantId.toString() === tenantId.toString());
+  if (!assigned) return res.redirect('/delegates/panel/sales-sheets');
+
+  const tenant = await slab.collection('tenants').findOne({ _id: tenantId });
+  if (!tenant) return res.redirect('/delegates/panel/sales-sheets');
+
+  const leads = await slab.collection('delegate_leads')
+    .find({ delegateId: delegate._id, tenantId })
+    .sort({ updatedAt: -1 })
+    .toArray();
+
+  const stats = {
+    total: leads.length,
+    new: leads.filter(l => l.status === 'new').length,
+    contacted: leads.filter(l => l.status === 'contacted').length,
+    interested: leads.filter(l => l.status === 'interested').length,
+    converted: leads.filter(l => l.status === 'converted').length,
+    lost: leads.filter(l => l.status === 'lost').length,
+  };
+
+  res.render('delegates/sales-sheet-detail', {
+    delegate,
+    tenant,
+    brand: tenant.brand || {},
+    leads,
+    stats,
+    leadStatuses: LEAD_STATUSES,
+    leadTags: LEAD_TAGS,
+    promo: { type: '30-day free trial', description: 'New signups get 30 days free on any platform when using your referral code.' },
+  });
+});
+
+// ── Add Lead ───────────────────────────────────────────────────────────────
+router.post('/panel/leads/add', async (req, res) => {
+  const { tenantId, name, email, phone, company, notes, tags } = req.body;
+  if (!tenantId || !name?.trim()) return res.redirect('/delegates/panel/sales-sheets');
+
+  const slab = getSlabDb();
+  const delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.delegate.id) });
+  if (!delegate) return res.redirect('/delegates/login');
+
+  let tid;
+  try { tid = new ObjectId(tenantId); } catch { return res.redirect('/delegates/panel/sales-sheets'); }
+
+  const assigned = (delegate.tenants || []).find(t => t.tenantId.toString() === tid.toString());
+  if (!assigned) return res.redirect('/delegates/panel/sales-sheets');
+
+  const now = new Date();
+  const parsedTags = Array.isArray(tags) ? tags : (tags ? [tags] : []);
+
+  await slab.collection('delegate_leads').insertOne({
+    delegateId: delegate._id,
+    delegateEmail: delegate.email,
+    tenantId: tid,
+    tenantDomain: assigned.tenantDomain,
+    name: name.trim(),
+    email: (email || '').trim().toLowerCase(),
+    phone: (phone || '').trim(),
+    company: (company || '').trim(),
+    notes: (notes || '').trim(),
+    tags: parsedTags.filter(t => LEAD_TAGS.includes(t)),
+    status: 'new',
+    callLog: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  logActivity({
+    category: 'delegate_action', action: 'lead_added',
+    status: 'success',
+    actor: { email: delegate.email, role: 'delegate' },
+    details: { leadName: name.trim(), tenantDomain: assigned.tenantDomain },
+  });
+
+  res.redirect(`/delegates/panel/sales-sheets/${tenantId}`);
+});
+
+// ── Update Lead Status / Tags ──────────────────────────────────────────────
+router.post('/panel/leads/:leadId/update', async (req, res) => {
+  const { status, tags, tenantId } = req.body;
+  const slab = getSlabDb();
+  const delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.delegate.id) });
+  if (!delegate) return res.redirect('/delegates/login');
+
+  let leadId;
+  try { leadId = new ObjectId(req.params.leadId); } catch { return res.redirect('/delegates/panel/sales-sheets'); }
+
+  const update = { $set: { updatedAt: new Date() } };
+  if (status && LEAD_STATUSES.includes(status)) update.$set.status = status;
+  if (tags !== undefined) {
+    const parsedTags = Array.isArray(tags) ? tags : (tags ? [tags] : []);
+    update.$set.tags = parsedTags.filter(t => LEAD_TAGS.includes(t));
+  }
+
+  await slab.collection('delegate_leads').updateOne(
+    { _id: leadId, delegateId: delegate._id },
+    update,
+  );
+
+  res.redirect(`/delegates/panel/sales-sheets/${tenantId || ''}`);
+});
+
+// ── Log a Call on a Lead ───────────────────────────────────────────────────
+router.post('/panel/leads/:leadId/log-call', async (req, res) => {
+  const { outcome, notes, tenantId } = req.body;
+  const slab = getSlabDb();
+  const delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.delegate.id) });
+  if (!delegate) return res.redirect('/delegates/login');
+
+  let leadId;
+  try { leadId = new ObjectId(req.params.leadId); } catch { return res.redirect('/delegates/panel/sales-sheets'); }
+
+  const callEntry = {
+    date: new Date(),
+    outcome: (outcome || 'no-answer').trim(),
+    notes: (notes || '').trim(),
+  };
+
+  await slab.collection('delegate_leads').updateOne(
+    { _id: leadId, delegateId: delegate._id },
+    { $push: { callLog: callEntry }, $set: { updatedAt: new Date() } },
+  );
+
+  res.redirect(`/delegates/panel/sales-sheets/${tenantId || ''}`);
+});
+
+// ── Delete Lead ────────────────────────────────────────────────────────────
+router.post('/panel/leads/:leadId/delete', async (req, res) => {
+  const { tenantId } = req.body;
+  const slab = getSlabDb();
+
+  let leadId;
+  try { leadId = new ObjectId(req.params.leadId); } catch { return res.redirect('/delegates/panel/sales-sheets'); }
+
+  await slab.collection('delegate_leads').deleteOne({
+    _id: leadId, delegateId: new ObjectId(req.delegate.id),
+  });
+
+  res.redirect(`/delegates/panel/sales-sheets/${tenantId || ''}`);
 });
 
 // ── Monthly commission calculation endpoint ─────────────────────────────────

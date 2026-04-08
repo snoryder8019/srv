@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title><%= tpl.name || 'Preview' %></title>
+<%- include('../../partials/font-vars') %>
+<style>
+:root {
+  --navy: <%= design.color_primary %>;
+  --navy-deep: <%= design.color_primary_deep %>;
+  --navy-mid: <%= design.color_primary_mid %>;
+  --gold: <%= design.color_accent %>;
+  --gold-light: <%= design.color_accent_light %>;
+  --ivory: <%= design.color_bg %>;
+  --dark: <%= design.color_dark || '#0F1B30' %>;
+  --white: <%= design.color_white || '#FDFCFA' %>;
+  --muted: <%= design.color_muted || design._on_bg_muted || '#6B7380' %>;
+  --accent-2: <%= design.color_accent_2 || design.color_accent %>;
+  --card-radius: <%= design.card_border_radius || '2' %>px;
+  --font-heading: '<%= design.font_heading %>', serif;
+  --font-body: '<%= design.font_body %>', sans-serif;
+}
+*, *::before, *::after { box-sizing:border-box;margin:0;padding:0; }
+body { font-family:var(--font-body);color:var(--dark);background:var(--ivory);line-height:1.6; }
+
+/* ── Block styles ── */
+.lb-hero { background:linear-gradient(135deg, var(--navy-deep), var(--navy));padding:80px 32px;text-align:center; }
+.lb-hero-inner { max-width:800px;margin:0 auto; }
+.lb-heading { font-family:var(--font-heading);font-weight:600;font-size:2.4rem;line-height:1.15;margin-bottom:12px; }
+.lb-body { font-size:1.05rem;line-height:1.7;color:var(--muted); }
+.lb-eyebrow { font-size:0.72rem;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold);margin-bottom:8px; }
+.lb-btn { display:inline-block;padding:12px 28px;background:var(--gold);color:var(--navy-deep);font-weight:600;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;text-decoration:none;border-radius:var(--card-radius);margin-top:20px;transition:opacity 0.2s; }
+.lb-btn:hover { opacity:0.85; }
+
+.lb-text { padding:64px 32px;text-align:center; }
+.lb-text-inner { max-width:720px;margin:0 auto; }
+
+.lb-split { padding:64px 32px; }
+.lb-split-inner { max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center; }
+.lb-split-img { width:100%;border-radius:var(--card-radius); }
+.lb-split-img-ph { width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,var(--navy),var(--navy-mid));border-radius:var(--card-radius); }
+
+.lb-cta { background:linear-gradient(135deg,var(--navy),var(--navy-mid));padding:64px 32px;text-align:center; }
+.lb-cta-inner { max-width:700px;margin:0 auto; }
+
+.lb-cards { padding:64px 32px; }
+.lb-cards-inner { max-width:1100px;margin:0 auto; }
+.lb-cards-intro { text-align:center;margin-bottom:40px; }
+.lb-cards-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px; }
+.lb-card { border:1px solid rgba(0,0,0,0.08);border-radius:var(--card-radius);padding:28px 24px;background:var(--white);transition:border-color 0.2s,box-shadow 0.2s; }
+.lb-card:hover { border-color:var(--gold);box-shadow:0 4px 16px rgba(0,0,0,0.06); }
+.lb-card-title { font-family:var(--font-heading);font-size:1.1rem;font-weight:600;margin-bottom:8px;color:var(--dark); }
+.lb-card-body { font-size:0.9rem;color:var(--muted);line-height:1.6; }
+
+.lb-faq { padding:64px 32px; }
+.lb-faq-inner { max-width:720px;margin:0 auto; }
+.lb-faq-list { margin-top:32px; }
+.lb-faq-item { border-bottom:1px solid rgba(0,0,0,0.08);padding:16px 0; }
+.lb-faq-q { font-weight:600;cursor:pointer;padding-right:24px;position:relative; }
+.lb-faq-q::after { content:'+';position:absolute;right:0;top:0;font-size:1.2rem;color:var(--gold); }
+.lb-faq-item.open .lb-faq-q::after { content:'\2212'; }
+.lb-faq-a { display:none;padding-top:10px;font-size:0.9rem;color:var(--muted);line-height:1.7; }
+.lb-faq-item.open .lb-faq-a { display:block; }
+
+/* ── New block types ── */
+.lb-pricing { padding:64px 32px; }
+.lb-pricing-inner { max-width:1100px;margin:0 auto; }
+.lb-pricing-intro { text-align:center;margin-bottom:40px; }
+.lb-pricing-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px; }
+.lb-pricing-card { border:1px solid rgba(0,0,0,0.08);border-radius:var(--card-radius);padding:32px 24px;background:var(--white);text-align:center;transition:border-color 0.2s; }
+.lb-pricing-card:nth-child(2) { border-color:var(--gold);box-shadow:0 4px 24px rgba(201,168,72,0.15); }
+.lb-pricing-name { font-family:var(--font-heading);font-size:1.1rem;font-weight:600;margin-bottom:4px; }
+.lb-pricing-price { font-size:2rem;font-weight:700;color:var(--navy);margin-bottom:16px; }
+.lb-pricing-features { font-size:0.88rem;color:var(--muted);line-height:2;margin-bottom:24px;text-align:left;padding:0 8px; }
+.lb-pricing-features span { display:block; }
+.lb-pricing-cta { display:inline-block;padding:10px 24px;background:var(--navy);color:var(--white);font-weight:600;font-size:0.78rem;letter-spacing:0.08em;text-transform:uppercase;text-decoration:none;border-radius:var(--card-radius);transition:opacity 0.2s; }
+
+.lb-testimonials { padding:64px 32px;background:color-mix(in srgb, var(--ivory) 80%, white); }
+.lb-testimonials-inner { max-width:1100px;margin:0 auto; }
+.lb-testimonials-intro { text-align:center;margin-bottom:40px; }
+.lb-testimonials-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px; }
+.lb-testimonial-card { background:var(--white);border:1px solid rgba(0,0,0,0.06);border-radius:var(--card-radius);padding:28px 24px; }
+.lb-testimonial-quote { font-style:italic;font-size:0.95rem;line-height:1.7;color:var(--dark);margin-bottom:16px;position:relative;padding-left:20px;border-left:3px solid var(--gold); }
+.lb-testimonial-name { font-weight:600;font-size:0.88rem;color:var(--dark); }
+.lb-testimonial-role { font-size:0.78rem;color:var(--muted); }
+
+.lb-stats { padding:48px 32px;background:linear-gradient(135deg,var(--navy-deep),var(--navy)); }
+.lb-stats-inner { max-width:1000px;margin:0 auto; }
+.lb-stats-heading { text-align:center;color:var(--white);margin-bottom:36px; }
+.lb-stats-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:24px;text-align:center; }
+.lb-stat-num { font-family:var(--font-heading);font-size:2.4rem;font-weight:700;color:var(--gold);line-height:1.2; }
+.lb-stat-label { font-size:0.82rem;color:rgba(253,252,250,0.6);margin-top:4px;letter-spacing:0.04em; }
+
+@media (max-width: 768px) {
+  .lb-heading { font-size:1.8rem; }
+  .lb-split-inner { grid-template-columns:1fr; }
+  .lb-hero { padding:48px 20px; }
+}
+</style>
+</head>
+<body>
+
+<% (blocks || []).forEach(function(block) { %>
+  <% const f = block.fields || {}; %>
+
+  <% if (block.type === 'hero') { %>
+  <section class="lb-hero">
+    <div class="lb-hero-inner">
+      <% if (f.heading) { %><h1 class="lb-heading" style="color:#fff;"><%- f.heading %></h1><% } %>
+      <% if (f.subheading) { %><p class="lb-body" style="color:rgba(255,255,255,0.7);max-width:600px;margin:0 auto 8px;"><%- f.subheading %></p><% } %>
+      <% if (f.cta_text && f.cta_link) { %><a href="<%= f.cta_link %>" class="lb-btn"><%- f.cta_text %></a><% } %>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'text') { %>
+  <section class="lb-text">
+    <div class="lb-text-inner">
+      <% if (f.subheading) { %><div class="lb-eyebrow"><%- f.subheading %></div><% } %>
+      <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--dark);"><%- f.heading %></h2><% } %>
+      <% if (f.body) { %><div class="lb-body"><%- f.body %></div><% } %>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'split') { %>
+  <section class="lb-split">
+    <div class="lb-split-inner">
+      <div>
+        <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--dark);"><%- f.heading %></h2><% } %>
+        <% if (f.body) { %><div class="lb-body"><%- f.body %></div><% } %>
+        <% if (f.cta_text && f.cta_link) { %><a href="<%= f.cta_link %>" class="lb-btn" style="margin-top:24px;"><%- f.cta_text %></a><% } %>
+      </div>
+      <div>
+        <% if (block.images && block.images.main_image) { %>
+          <img src="<%= block.images.main_image %>" alt="" class="lb-split-img">
+        <% } else { %>
+          <div class="lb-split-img-ph"></div>
+        <% } %>
+      </div>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'cta') { %>
+  <section class="lb-cta">
+    <div class="lb-cta-inner">
+      <% if (f.heading) { %><h2 class="lb-heading" style="color:#fff;"><%- f.heading %></h2><% } %>
+      <% if (f.subtext) { %><div class="lb-body" style="color:rgba(255,255,255,0.7);"><%- f.subtext %></div><% } %>
+      <% if (f.btn_text && f.btn_link) { %><a href="<%= f.btn_link %>" class="lb-btn"><%- f.btn_text %></a><% } %>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'cards') { %>
+  <section class="lb-cards">
+    <div class="lb-cards-inner">
+      <% if (f.heading || f.subtext) { %>
+        <div class="lb-cards-intro">
+          <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--dark);"><%- f.heading %></h2><% } %>
+          <% if (f.subtext) { %><p class="lb-body"><%- f.subtext %></p><% } %>
+        </div>
+      <% } %>
+      <div class="lb-cards-grid">
+        <% [1,2,3,4].forEach(function(n) { %>
+          <% if (f['card'+n+'_title'] || f['card'+n+'_body']) { %>
+          <div class="lb-card">
+            <% if (f['card'+n+'_title']) { %><div class="lb-card-title"><%- f['card'+n+'_title'] %></div><% } %>
+            <% if (f['card'+n+'_body']) { %><div class="lb-card-body"><%- f['card'+n+'_body'] %></div><% } %>
+          </div>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'faq') { %>
+  <section class="lb-faq">
+    <div class="lb-faq-inner">
+      <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--dark);"><%- f.heading %></h2><% } %>
+      <div class="lb-faq-list">
+        <% [1,2,3,4,5].forEach(function(n) { %>
+          <% if (f['q'+n] && f['a'+n]) { %>
+          <div class="lb-faq-item">
+            <div class="lb-faq-q"><%- f['q'+n] %></div>
+            <div class="lb-faq-a"><%- f['a'+n] %></div>
+          </div>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'pricing') { %>
+  <section class="lb-pricing">
+    <div class="lb-pricing-inner">
+      <% if (f.heading || f.subtext) { %>
+        <div class="lb-pricing-intro">
+          <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--dark);"><%- f.heading %></h2><% } %>
+          <% if (f.subtext) { %><p class="lb-body"><%- f.subtext %></p><% } %>
+        </div>
+      <% } %>
+      <div class="lb-pricing-grid">
+        <% [1,2,3].forEach(function(n) { %>
+          <% if (f['tier'+n+'_name']) { %>
+          <div class="lb-pricing-card">
+            <div class="lb-pricing-name"><%- f['tier'+n+'_name'] %></div>
+            <div class="lb-pricing-price"><%- f['tier'+n+'_price'] || '' %></div>
+            <div class="lb-pricing-features">
+              <% (f['tier'+n+'_features'] || '').split('\n').forEach(function(line) { %>
+                <% if (line.trim()) { %><span><%- line.trim() %></span><% } %>
+              <% }); %>
+            </div>
+            <% if (f['tier'+n+'_cta']) { %><a href="#" class="lb-pricing-cta"><%- f['tier'+n+'_cta'] %></a><% } %>
+          </div>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'testimonials') { %>
+  <section class="lb-testimonials">
+    <div class="lb-testimonials-inner">
+      <% if (f.heading || f.subtext) { %>
+        <div class="lb-testimonials-intro">
+          <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--dark);"><%- f.heading %></h2><% } %>
+          <% if (f.subtext) { %><p class="lb-body"><%- f.subtext %></p><% } %>
+        </div>
+      <% } %>
+      <div class="lb-testimonials-grid">
+        <% [1,2,3].forEach(function(n) { %>
+          <% if (f['t'+n+'_quote']) { %>
+          <div class="lb-testimonial-card">
+            <div class="lb-testimonial-quote"><%- f['t'+n+'_quote'] %></div>
+            <% if (f['t'+n+'_name']) { %><div class="lb-testimonial-name"><%- f['t'+n+'_name'] %></div><% } %>
+            <% if (f['t'+n+'_role']) { %><div class="lb-testimonial-role"><%- f['t'+n+'_role'] %></div><% } %>
+          </div>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'stats') { %>
+  <section class="lb-stats">
+    <div class="lb-stats-inner">
+      <% if (f.heading) { %><h2 class="lb-heading lb-stats-heading"><%- f.heading %></h2><% } %>
+      <div class="lb-stats-grid">
+        <% [1,2,3,4].forEach(function(n) { %>
+          <% if (f['stat'+n+'_num']) { %>
+          <div>
+            <div class="lb-stat-num"><%- f['stat'+n+'_num'] %></div>
+            <% if (f['stat'+n+'_label']) { %><div class="lb-stat-label"><%- f['stat'+n+'_label'] %></div><% } %>
+          </div>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  </section>
+  <% } %>
+
+<% }); %>
+
+<% if (!blocks || blocks.length === 0) { %>
+<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:var(--muted);font-size:1.1rem;">
+  Add blocks to see a preview
+</div>
+<% } %>
+
+<script>
+// FAQ accordion
+document.querySelectorAll('.lb-faq-q').forEach(q => {
+  q.addEventListener('click', () => q.closest('.lb-faq-item').classList.toggle('open'));
+});
+
+// postMessage receiver for live updates from builder
+window.addEventListener('message', function(e) {
+  if (!e.data || e.data.type !== 'slab-template-preview') return;
+  const d = e.data;
+  // Update CSS variables
+  if (d.cssVars) {
+    const root = document.documentElement;
+    for (const [k, v] of Object.entries(d.cssVars)) root.style.setProperty(k, v);
+  }
+});
+</script>
+</body>
+</html>

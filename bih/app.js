@@ -51,6 +51,20 @@ app.use(sessionMiddleware);
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Superadmin gateway
+const { gatewayRoute } = require('/srv/gateway.cjs');
+app.get('/gateway', gatewayRoute({
+  secret: process.env.SESSION_SECRET || process.env.SESHSEC,
+  appName: 'bih',
+  findOrCreateAdmin: async (email) => {
+    const User = require('./models/User');
+    let user = await User.findOne({ email });
+    if (!user) user = await User.create({ email, displayName: email.split('@')[0], role: 'admin', provider: 'gateway' });
+    else if (user.role !== 'admin') { user.role = 'admin'; await user.save(); }
+    return user;
+  },
+}));
+
 // Make user available to all views
 app.use((req, res, next) => {
   res.locals.user = req.user || null;

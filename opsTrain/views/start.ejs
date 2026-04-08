@@ -16,6 +16,11 @@
     h2{font-size:18px;font-weight:800;margin-bottom:16px;text-align:center;}
     .error-msg{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:14px;}
 
+    /* Delegate promo banner */
+    .promo-banner{background:linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);border:1px solid #c9a848;border-radius:8px;padding:14px 18px;margin-bottom:18px;text-align:center;}
+    .promo-banner h3{font-size:13px;font-weight:700;color:#c9a848;margin-bottom:4px;}
+    .promo-banner p{font-size:11px;color:#a3a3a3;line-height:1.4;}
+
     /* Auth tabs */
     .auth-tabs{display:flex;gap:0;margin-bottom:16px;border:1px solid #3f3f46;border-radius:6px;overflow:hidden;}
     .auth-tab{flex:1;padding:8px 0;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;background:#111113;color:#71717a;border:none;cursor:pointer;transition:all 0.15s;font-family:'Inter',sans-serif;}
@@ -57,7 +62,15 @@
   <div class="card">
     <div class="logo">OpsTrain</div>
     <div class="sub"><%= lang==='es'?'Gestion de operaciones para restaurantes':'Operations management for restaurants' %></div>
+
+    <% if (typeof ref !== 'undefined' && ref) { %>
+    <div class="promo-banner">
+      <h3><%= lang==='es'?'30 dias gratis':'30 Days Free' %></h3>
+      <p><%= lang==='es'?'Registrate con este enlace y obtén 30 días gratis — sin tarjeta de crédito':'Sign up with this referral link and get 30 days free — no credit card required' %></p>
+    </div>
+    <% } else { %>
     <div class="trial-badge"><span><%= lang==='es'?'7 dias gratis — sin tarjeta de credito':'7 days free — no credit card' %></span></div>
+    <% } %>
 
     <% if (typeof error !== 'undefined' && error) { %>
       <div class="error-msg"><%= error %></div>
@@ -72,6 +85,10 @@
     <!-- EMAIL SIGNUP -->
     <div class="auth-panel active" id="panel-email">
       <form action="/start/signup" method="POST" id="signupForm">
+        <% if (typeof ref !== 'undefined' && ref) { %>
+        <input type="hidden" name="ref" value="<%= ref %>">
+        <% } %>
+
         <label><%= lang==='es'?'Nombre del Restaurante':'Restaurant / Business Name' %> *</label>
         <input type="text" name="restaurantName" required placeholder="<%= lang==='es'?'Ej: Taqueria El Sol':'e.g. Scotty\'s Bar & Grill' %>">
 
@@ -158,6 +175,8 @@
   </div>
 
 <script>
+var _ref = '<%= typeof ref !== "undefined" && ref ? ref : "" %>';
+
 function switchTab(tab) {
   document.querySelectorAll('.auth-tab').forEach(function(t) { t.classList.toggle('active', t.dataset.tab === tab); });
   document.querySelectorAll('.auth-panel').forEach(function(p) { p.classList.remove('active'); });
@@ -194,6 +213,7 @@ async function handleGoogleSignup(response) {
         restaurantName: name,
         location: document.getElementById('g-location').value.trim(),
         timezone: document.getElementById('g-timezone').value,
+        ref: _ref || undefined,
       }),
     });
     var data = await res.json();

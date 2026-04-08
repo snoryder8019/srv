@@ -11,8 +11,8 @@ const DOMAIN = process.env.DOMAIN || 'https://ops-train.madladslab.com';
 // List QR codes
 router.get('/', async (req, res) => {
   const filter = { active: true };
-  if (req.query.brandId) filter.brand = req.query.brandId;
-  else if (req.user.role === 'brandAdmin') filter.brand = req.user.brand;
+  if (req.brandScope) filter.brand = req.brandScope;
+  else if (req.query.brandId) filter.brand = req.query.brandId;
 
   const qrCodes = await QRCode.find(filter).populate('brand', 'name color').populate('task', 'title').sort({ area: 1, position: 1, label: 1 }).lean();
   const brands = await Brand.find({ active: true }).select('name color').lean();

@@ -45,6 +45,9 @@
     --hero-overlay-alpha: <%= (design.hero_overlay_opacity || '55') / 100 %>;
     --gradient-angle: <%= design.gradient_angle || '135' %>deg;
     --card-radius:  <%= design.card_border_radius || '2' %>px;
+    /* ── hero styling tokens ── */
+    --hero-text-align:   <%= design.hero_text_align || 'left' %>;
+    --hero-min-height:   <%= design.hero_height || '100vh' %>;
     /* ── contact section colors ── */
     --contact-bg:         <%= design.contact_bg || 'var(--navy-deep)' %>;
     --contact-heading:    <%= design.contact_heading_color || '#FFFFFF' %>;
@@ -75,11 +78,57 @@
     overflow-x: hidden;
   }
 
+  /* ── Design token consumption: hero overlay, card radius, bg patterns, gradient ── */
+
+  /* Hero image overlay using design tokens */
+  .hero-right[style*="background-image"]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--hero-overlay, var(--navy-deep));
+    opacity: var(--hero-overlay-alpha, 0.55);
+    z-index: 0;
+    pointer-events: none;
+  }
+  .hero-right[style*="background-image"] .hero-right-content { position: relative; z-index: 1; }
+
+  /* Card border-radius token */
+  .service-card, .portfolio-card, .review-card, .theme-card { border-radius: var(--card-radius, 2px); }
+
+  /* Gradient backgrounds when gradient_enabled = true */
+  body[data-gradient="true"] .services { background: linear-gradient(var(--gradient-angle, 135deg), var(--ivory) 0%, var(--bg) 100%); }
+  body[data-gradient="true"] .advisor-section { background: linear-gradient(var(--gradient-angle, 135deg), var(--navy-deep) 0%, var(--navy) 60%, var(--navy-mid) 100%); }
+  body[data-gradient="true"] #process { background: linear-gradient(var(--gradient-angle, 135deg), var(--navy) 0%, var(--navy-deep) 100%); }
+
+  /* Card hover accent (top border on hover) */
+  body[data-card-hover-accent="true"] .service-card:hover { border-top: 2px solid var(--gold); }
+
+  /* BG pattern overlays */
+  body[data-hero-pattern="grid"] .hero-right::after,
+  body[data-hero-pattern="diagonal"] .hero-right::after,
+  body[data-hero-pattern="dots"] .hero-right::after {
+    content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  }
+  body[data-hero-pattern="grid"] .hero-right::after {
+    background-image: repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,0.04) 39px, rgba(255,255,255,0.04) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(255,255,255,0.04) 39px, rgba(255,255,255,0.04) 40px);
+  }
+  body[data-hero-pattern="diagonal"] .hero-right::after {
+    background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.03) 10px, rgba(255,255,255,0.03) 11px);
+  }
+  body[data-hero-pattern="dots"] .hero-right::after {
+    background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Secondary / tertiary accent usage (marquee dot, eyebrow accents on alt sections) */
+  .marquee-dot { color: var(--accent-2, var(--gold)); }
+
   /* nav styles provided by partials/header.ejs */
 
   /* ── HERO ── */
   .hero {
-    min-height: 100vh;
+    min-height: var(--hero-min-height, 100vh);
     display: grid;
     grid-template-columns: 1fr 1fr;
     overflow: hidden;
@@ -92,7 +141,7 @@
     padding: 120px 64px 80px;
   }
 
-  .hero-text { max-width: 500px; }
+  .hero-text { max-width: 500px; text-align: var(--hero-text-align, left); }
 
   .hero-eyebrow {
     display: inline-flex;
@@ -355,6 +404,7 @@
     position: relative;
     transition: background 0.3s;
     overflow: hidden;
+    border-radius: var(--card-radius, 2px);
   }
 
   .service-card::after {
@@ -1602,7 +1652,7 @@
   .scroll-dot.active { background: var(--gold); border-color: var(--gold); }
 </style>
 </head>
-<body data-layout="<%= design.landing_layout || 'classic' %>">
+<body data-layout="<%= design.landing_layout || 'classic' %>" data-gradient="<%= design.gradient_enabled || 'false' %>" data-card-hover-accent="<%= design.card_hover_accent || 'true' %>" data-hero-pattern="<%= design.hero_bg_pattern || 'none' %>">
 <!-- NAV -->
 <% if (visibility.header !== false) { %>
 <%- include('partials/header', { activePage: 'home' }) %>
@@ -1617,7 +1667,7 @@
         <img src="<%= logos.logo_primary %>" alt="<%= brand?.name || '' %>" style="max-width:min(280px,60vw);margin:0 auto 2rem;display:block;filter:brightness(1.1);">
       <% } %>
       <% if (copy.hero_eyebrow) { %><p class="hero-eyebrow"><%= copy.hero_eyebrow %></p><% } %>
-      <h1 class="hero-heading"><%= copy.hero_heading %></h1>
+      <h1 class="hero-heading"><%= copy.hero_heading %><% if (copy.hero_heading_em) { %> <em><%= copy.hero_heading_em %></em><% } %></h1>
       <div class="hero-btns">
         <a href="<%= copy.hero_cta_primary_link || '#contact' %>" class="btn-primary"><%= copy.hero_cta_primary || 'Start a Project' %></a>
         <a href="<%= copy.hero_cta_secondary_link || '#services' %>" class="btn-ghost"><%= copy.hero_cta_secondary || 'Our Services' %></a>
@@ -2129,7 +2179,9 @@
   <div class="footer-copy">
     <span>&copy; <%= new Date().getFullYear() %> <%= brand?.name || '' %> &mdash; <%= brand?.location || '' %>. All rights reserved.</span>
     <span>
-      <a href="/admin/login" style="color:rgba(253,252,250,0.15);text-decoration:none;font-size:0.7rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.35)'" onmouseout="this.style.color='rgba(253,252,250,0.15)'">Admin</a>
+      <% if (visibility.admin_link !== false) { %>
+      <a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.15);text-decoration:none;font-size:0.7rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.35)'" onmouseout="this.style.color='rgba(253,252,250,0.15)'">Admin</a>
+      <% } %>
       <% if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) { %>
         <a href="/superadmin" style="color:rgba(253,252,250,0.15);text-decoration:none;font-size:0.7rem;letter-spacing:0.04em;margin-left:12px;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.35)'" onmouseout="this.style.color='rgba(253,252,250,0.15)'">&loz;</a>
       <% } %>
@@ -2376,6 +2428,12 @@
 
     // Layout
     if (d.layout) document.body.setAttribute('data-layout', d.layout);
+
+    // Body data-attributes (gradient, card-hover-accent, hero-pattern)
+    if (d.bodyAttrs) {
+      var aKeys = Object.keys(d.bodyAttrs);
+      for (var ai = 0; ai < aKeys.length; ai++) document.body.setAttribute('data-' + aKeys[ai], d.bodyAttrs[aKeys[ai]]);
+    }
 
     // Copy updates: array of {sel, prop, val}
     if (d.copy) {

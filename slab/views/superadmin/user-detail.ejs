@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= user.displayName || user.email %> — User Detail</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1000px; margin:0 auto; padding:24px; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media (max-width:768px) { .grid-2 { grid-template-columns:1fr; } }
+    .section { margin-bottom:24px; }
+    h2 { font-size:15px; font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+    h3 { font-size:13px; font-weight:500; color:#737373; margin-bottom:8px; }
+    .card { background:#141414; border:1px solid #262626; border-radius:8px; padding:18px; margin-bottom:16px; }
+    .user-header { display:flex; align-items:center; gap:16px; margin-bottom:20px; }
+    .avatar { width:56px; height:56px; border-radius:50%; background:#262626; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; color:#c9a848; flex-shrink:0; }
+    .user-info h1 { font-size:20px; font-weight:600; color:#fff; }
+    .user-info p { font-size:13px; color:#737373; margin-top:2px; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:500; margin-right:4px; }
+    .badge-admin { background:#14532d; color:#86efac; }
+    .badge-owner { background:#c9a848; color:#0a0a0a; }
+    .badge-client { background:#1e3a5f; color:#7dd3fc; }
+    .badge-collaborator { background:#3b0764; color:#d8b4fe; }
+    .badge-user { background:#262626; color:#a3a3a3; }
+    .tenant-link { color:#c9a848; text-decoration:none; font-size:12px; } .tenant-link:hover { text-decoration:underline; }
+    .stat-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(100px, 1fr)); gap:10px; margin-bottom:16px; }
+    .mini-stat { background:#0a0a0a; border:1px solid #1f1f1f; border-radius:6px; padding:10px; text-align:center; }
+    .mini-stat-val { font-size:20px; font-weight:700; color:#c9a848; }
+    .mini-stat-lbl { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:#525252; margin-top:2px; }
+    .field-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #1f1f1f; font-size:13px; }
+    .field-row:last-child { border-bottom:0; }
+    .field-label { color:#737373; font-size:12px; }
+    .field-value { color:#e5e5e5; font-weight:500; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:8px 12px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:8px 12px; font-size:12px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    .status { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:500; }
+    .status-open { background:#422006; color:#fdba74; }
+    .status-in-progress { background:#1e3a5f; color:#7dd3fc; }
+    .status-escalated { background:#451a1a; color:#fca5a5; }
+    .status-resolved { background:#14532d; color:#86efac; }
+    .status-closed { background:#262626; color:#a3a3a3; }
+    .form-group { margin-bottom:12px; }
+    .form-group label { display:block; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; margin-bottom:4px; }
+    .form-group input, .form-group select, .form-group textarea { width:100%; background:#0a0a0a; border:1px solid #333; color:#e5e5e5; padding:8px 12px; border-radius:5px; font-family:'Inter',sans-serif; font-size:12px; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color:#c9a848; outline:none; }
+    .form-group textarea { min-height:80px; resize:vertical; }
+    .checkbox-row { display:flex; align-items:center; gap:8px; font-size:13px; }
+    .checkbox-row input[type="checkbox"] { width:auto; }
+    .btn { padding:7px 14px; font-size:12px; border-radius:5px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; transition:all .15s; }
+    .btn:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-gold { background:#c9a848; color:#0a0a0a; border-color:#c9a848; font-weight:600; } .btn-gold:hover { background:#b8960b; }
+    .btn-sm { padding:4px 10px; font-size:11px; }
+    .link { color:#c9a848; text-decoration:none; font-size:12px; } .link:hover { text-decoration:underline; }
+    .empty { color:#525252; font-size:12px; padding:16px; text-align:center; }
+    .msg-card { background:#0a0a0a; border:1px solid #1f1f1f; border-radius:6px; padding:12px; margin-bottom:8px; }
+    .msg-header { display:flex; justify-content:space-between; font-size:11px; margin-bottom:6px; }
+    .msg-subject { color:#c9a848; font-weight:500; }
+    .msg-time { color:#525252; }
+    .msg-body { font-size:12px; color:#a3a3a3; line-height:1.5; white-space:pre-wrap; }
+    .msg-unread { border-left:2px solid #c9a848; }
+    .success-banner { background:#14532d; color:#86efac; padding:10px 16px; border-radius:6px; margin-bottom:16px; font-size:13px; }
+    .provider-tag { font-size:10px; color:#525252; background:#1a1a1a; padding:1px 5px; border-radius:4px; }
+    .perm-tag { display:inline-block; background:#1e3a5f; color:#7dd3fc; padding:2px 7px; border-radius:10px; font-size:10px; margin:2px; }
+    .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:8px; }
+    .table-wrap table { min-width:400px; }
+    @media (max-width:768px) {
+      .topbar { padding:10px 14px; flex-wrap:wrap; gap:8px; }
+      .topbar-left { gap:10px; } .topbar-right { gap:8px; font-size:11px; flex-wrap:wrap; }
+      .logo { font-size:17px; }
+      .container { padding:14px; }
+      .grid-2 { grid-template-columns:1fr; }
+      .stat-row { grid-template-columns:repeat(3, 1fr); gap:6px; }
+      .mini-stat { padding:8px; } .mini-stat-val { font-size:16px; }
+      .card { padding:14px; }
+      .user-header { gap:12px; }
+      .avatar { width:44px; height:44px; font-size:18px; }
+      .user-info h1 { font-size:17px; }
+      h2 { font-size:14px; }
+      .field-row { font-size:12px; }
+      .form-group input, .form-group select, .form-group textarea { font-size:12px; padding:7px 10px; }
+      .msg-card { padding:10px; }
+      th, td { padding:8px 10px; font-size:12px; }
+    }
+    @media (max-width:480px) {
+      .stat-row { grid-template-columns:repeat(2, 1fr); }
+      .topbar-right a:first-child { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">s<span>Lab</span></div>
+      <span style="color:#737373; font-size:13px;">/ <a href="/superadmin/users" style="color:#737373; text-decoration:none;">Users</a> / Detail</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin/users?tenant=<%= tenantDb %>">&larr; Tenant Users</a>
+      <a href="/superadmin/users">&larr; All Users</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <% if (typeof sent !== 'undefined' || (typeof req !== 'undefined' && req?.query?.sent)) { %>
+    <% } %>
+    <% /* Check for sent param via simple check */ %>
+
+    <!-- User Header -->
+    <div class="card">
+      <div class="user-header">
+        <div class="avatar"><%= (user.displayName || user.email || '?')[0].toUpperCase() %></div>
+        <div class="user-info">
+          <h1><%= user.displayName || '(no name)' %></h1>
+          <p><%= user.email || '—' %></p>
+          <div style="margin-top:6px;">
+            <% if (user.isOwner) { %><span class="badge badge-owner">owner</span><% } %>
+            <% if (user.isAdmin) { %><span class="badge badge-admin">admin</span><% } %>
+            <% if (user.role === 'client') { %><span class="badge badge-client">client</span><% } %>
+            <% if (user.role === 'collaborator') { %><span class="badge badge-collaborator">collab</span><% } %>
+            <% if (!user.isAdmin && !user.isOwner && user.role !== 'client' && user.role !== 'collaborator') { %><span class="badge badge-user"><%= user.role || 'user' %></span><% } %>
+            <% const provs = user.providers || (user.provider ? [user.provider] : []); provs.forEach(p => { %><span class="provider-tag"><%= p %></span> <% }) %>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:12px; font-size:12px; color:#525252; flex-wrap:wrap;">
+        <span>Tenant: <a class="tenant-link" href="/superadmin/tenants/<%= tenant?._id %>"><%= tenant?.brand?.name || tenant?.domain || tenantDb %></a></span>
+        <span>DB: <code style="color:#737373;"><%= tenantDb %></code></span>
+        <span>ID: <code style="color:#737373;"><%= user._id %></code></span>
+        <span>Joined: <%= user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—' %></span>
+      </div>
+    </div>
+
+    <!-- Analytics -->
+    <div class="section">
+      <h2>Analytics</h2>
+      <div class="stat-row">
+        <div class="mini-stat"><div class="mini-stat-val"><%= analytics.blogCount || 0 %></div><div class="mini-stat-lbl">Blog Posts</div></div>
+        <div class="mini-stat"><div class="mini-stat-val"><%= analytics.invoiceCount || 0 %></div><div class="mini-stat-lbl">Invoices</div></div>
+        <div class="mini-stat"><div class="mini-stat-val"><%= analytics.clientCount || 0 %></div><div class="mini-stat-lbl">Client Link</div></div>
+        <div class="mini-stat"><div class="mini-stat-val"><%= userTickets.length %></div><div class="mini-stat-lbl">Tickets</div></div>
+        <div class="mini-stat"><div class="mini-stat-val"><%= userActivity.length %></div><div class="mini-stat-lbl">Activity</div></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- LEFT COLUMN -->
+      <div>
+        <!-- Edit Profile -->
+        <div class="card">
+          <h2>Profile &amp; Roles</h2>
+          <form method="POST" action="/superadmin/users/<%= tenantDb %>/<%= user._id %>/update">
+            <div class="form-group">
+              <label>Display Name</label>
+              <input type="text" name="displayName" value="<%= user.displayName || '' %>" />
+            </div>
+            <div class="form-group">
+              <label>Role</label>
+              <select name="role">
+                <option value="admin" <%= user.role === 'admin' ? 'selected' : '' %>>Admin</option>
+                <option value="client" <%= user.role === 'client' ? 'selected' : '' %>>Client</option>
+                <option value="collaborator" <%= user.role === 'collaborator' ? 'selected' : '' %>>Collaborator</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <div class="checkbox-row">
+                <input type="checkbox" name="isAdmin" id="isAdmin" <%= user.isAdmin ? 'checked' : '' %> />
+                <label for="isAdmin" style="font-size:12px; color:#e5e5e5; text-transform:none; letter-spacing:0;">Tenant Admin</label>
+              </div>
+            </div>
+            <div class="form-group">
+              <div class="checkbox-row">
+                <input type="checkbox" name="isOwner" id="isOwner" <%= user.isOwner ? 'checked' : '' %> />
+                <label for="isOwner" style="font-size:12px; color:#e5e5e5; text-transform:none; letter-spacing:0;">Tenant Owner</label>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-gold">Save Changes</button>
+          </form>
+        </div>
+
+        <!-- Permissions -->
+        <div class="card">
+          <h2>Permissions</h2>
+          <div style="margin-bottom:10px;">
+            <% if (user.permissions && user.permissions.length) { %>
+              <% user.permissions.forEach(p => { %><span class="perm-tag"><%= p %></span><% }) %>
+            <% } else { %>
+              <span style="color:#525252; font-size:12px;">No custom permissions set</span>
+            <% } %>
+          </div>
+          <form method="POST" action="/superadmin/users/<%= tenantDb %>/<%= user._id %>/permissions">
+            <div class="form-group">
+              <label>Permissions (comma-separated)</label>
+              <input type="text" name="permissions" value="<%= (user.permissions || []).join(', ') %>" placeholder="e.g. blog.write, invoices.create, pages.edit" />
+            </div>
+            <button type="submit" class="btn btn-sm">Update Permissions</button>
+          </form>
+        </div>
+
+        <!-- User Details -->
+        <div class="card">
+          <h2>Details</h2>
+          <div class="field-row"><span class="field-label">Email</span><span class="field-value"><%= user.email || '—' %></span></div>
+          <div class="field-row"><span class="field-label">Google ID</span><span class="field-value" style="font-size:11px;"><%= user.googleId || '—' %></span></div>
+          <div class="field-row"><span class="field-label">Providers</span><span class="field-value"><%= (user.providers || [user.provider]).filter(Boolean).join(', ') || '—' %></span></div>
+          <div class="field-row"><span class="field-label">Client ID</span><span class="field-value"><%= user.clientId || '—' %></span></div>
+          <div class="field-row"><span class="field-label">Created</span><span class="field-value"><%= user.createdAt ? new Date(user.createdAt).toLocaleString() : '—' %></span></div>
+          <div class="field-row"><span class="field-label">Updated</span><span class="field-value"><%= user.updatedAt ? new Date(user.updatedAt).toLocaleString() : '—' %></span></div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div>
+        <!-- Direct Message -->
+        <div class="card">
+          <h2>Direct Message</h2>
+          <form method="POST" action="/superadmin/users/<%= tenantDb %>/<%= user._id %>/message">
+            <div class="form-group">
+              <label>Subject</label>
+              <input type="text" name="subject" placeholder="Message from Platform Admin" />
+            </div>
+            <div class="form-group">
+              <label>Message</label>
+              <textarea name="body" placeholder="Type your message..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-gold">Send Message</button>
+          </form>
+
+          <% if (messages.length) { %>
+            <h3 style="margin-top:16px;">Message History (<%= messages.length %>)</h3>
+            <% messages.forEach(m => { %>
+              <div class="msg-card <%= !m.read ? 'msg-unread' : '' %>">
+                <div class="msg-header">
+                  <span class="msg-subject"><%= m.subject %></span>
+                  <span class="msg-time"><%= new Date(m.createdAt).toLocaleString() %></span>
+                </div>
+                <div class="msg-body"><%= m.body %></div>
+              </div>
+            <% }) %>
+          <% } %>
+        </div>
+
+        <!-- Tickets -->
+        <div class="card">
+          <h2>Tickets (<%= userTickets.length %>)</h2>
+          <% if (userTickets.length === 0) { %>
+            <div class="empty">No tickets from this user.</div>
+          <% } else { %>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Subject</th><th>Status</th><th>Date</th><th></th></tr></thead>
+              <tbody>
+                <% userTickets.forEach(t => { %>
+                <tr>
+                  <td><%= t.subject || '(no subject)' %></td>
+                  <td><span class="status status-<%= t.status || 'open' %>"><%= t.status || 'open' %></span></td>
+                  <td style="font-size:11px; color:#525252;"><%= t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—' %></td>
+                  <td><a class="link" href="/superadmin/tickets/<%= tenantDb %>/<%= t._id %>">View</a></td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table></div>
+          <% } %>
+        </div>
+
+        <!-- Activity -->
+        <div class="card">
+          <h2>Recent Activity</h2>
+          <% if (userActivity.length === 0) { %>
+            <div class="empty">No activity recorded for this user.</div>
+          <% } else { %>
+            <% userActivity.forEach(a => { %>
+              <div style="padding:6px 0; border-bottom:1px solid #1f1f1f; font-size:12px;">
+                <span style="color:#e5e5e5;"><%= a.action %></span>
+                <span style="color:#525252; float:right;"><%= new Date(a.timestamp).toLocaleString() %></span>
+              </div>
+            <% }) %>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="card" style="border-color:#451a1a;">
+      <h2 style="color:#f87171;">Danger Zone</h2>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <form method="POST" action="/superadmin/users/<%= tenantDb %>/<%= user._id %>/toggle-admin" style="display:inline;">
+          <button type="submit" class="btn btn-sm"><%= user.isAdmin ? 'Revoke Admin' : 'Grant Admin' %></button>
+        </form>
+        <form method="POST" action="/superadmin/users/<%= tenantDb %>/<%= user._id %>/delete" style="display:inline;" onsubmit="return confirm('Permanently delete <%= (user.email || '').replace(/\'/g, '') %>? This cannot be undone.')">
+          <button type="submit" class="btn btn-sm" style="border-color:#f87171; color:#f87171;">Delete User</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

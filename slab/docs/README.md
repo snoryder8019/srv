@@ -25,3 +25,6 @@
 
 ## Superadmin
 - [Huginn](modules/huginn.md) — Platform AI assistant (chat, control center, MCP, webhooks)
+
+## Delegate Portal
+- [Sales Sheets & Leads](modules/delegates.md) — Delegate referral codes, sales sheets, lead management, and commission tracking

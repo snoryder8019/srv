@@ -185,9 +185,19 @@ async function backupLocal(game, userId) {
 /**
  * Restore: download from bucket → SCP to new Linode → extract.
  */
-async function restoreToLinode(ip, game, userId) {
-  const backup = await db.collection('world_backups')
-    .findOne({ userId, game }, { sort: { createdAt: -1 } });
+/**
+ * Restore a specific backup (by ID) to a provisioned Linode.
+ * Falls back to latest if no backupId given.
+ */
+async function restoreToLinode(ip, game, userId, backupId) {
+  let backup;
+  if (backupId) {
+    const { ObjectId } = require('mongodb');
+    backup = await db.collection('world_backups').findOne({ _id: new ObjectId(backupId) });
+  } else {
+    backup = await db.collection('world_backups')
+      .findOne({ userId, game }, { sort: { createdAt: -1 } });
+  }
   if (!backup) return { ok: false, message: 'No backup found' };
 
   const tarPath = path.join(BACKUP_DIR, 'restore-' + Date.now() + '.tar.gz');
@@ -225,4 +235,76 @@ async function listAllBackups(limit) {
   return db.collection('world_backups').find().sort({ createdAt: -1 }).limit(limit || 50).toArray();
 }
 
-module.exports = { init, backupFromLinode, backupLocal, restoreToLinode, listBackups, listAllBackups };
+/**
+ * Restore a specific backup to the local server.
+ */
+async function restoreLocal(game, backupId) {
+  const { ObjectId } = require('mongodb');
+  const backup = await db.collection('world_backups').findOne({ _id: new ObjectId(backupId) });
+  if (!backup) return { ok: false, message: 'No backup found' };
+
+  const localPath = LOCAL_PATHS[game];
+  if (!localPath) return { ok: false, message: 'No local path configured for ' + game };
+
+  const tarPath = path.join(BACKUP_DIR, 'restore-local-' + Date.now() + '.tar.gz');
+
+  // Download from bucket
+  const response = await getS3().send(new GetObjectCommand({
+    Bucket: BUCKET,
+    Key: backup.s3Key,
+  }));
+
+  const chunks = [];
+  for await (const chunk of response.Body) chunks.push(chunk);
+  fs.writeFileSync(tarPath, Buffer.concat(chunks));
+
+  try {
+    // Ensure target directory exists and extract
+    const targetDir = path.dirname(localPath);
+    fs.mkdirSync(targetDir, { recursive: true });
+    execSync(`tar xzf ${tarPath} -C ${targetDir}`);
+    console.log('[backup] Restored local', backup.s3Key, 'to', targetDir);
+    return { ok: true, restored: backup.s3Key, target: targetDir };
+  } catch (e) {
+    return { ok: false, message: 'Local restore failed: ' + e.message };
+  } finally {
+    try { fs.unlinkSync(tarPath); } catch (e) {}
+  }
+}
+
+/**
+ * Get a single backup by ID.
+ */
+async function getBackup(backupId) {
+  const { ObjectId } = require('mongodb');
+  return db.collection('world_backups').findOne({ _id: new ObjectId(backupId) });
+}
+
+/**
+ * Delete a backup from S3 and DB.
+ */
+async function deleteBackup(backupId) {
+  const { ObjectId } = require('mongodb');
+  const backup = await db.collection('world_backups').findOne({ _id: new ObjectId(backupId) });
+  if (!backup) return { ok: false, message: 'Backup not found' };
+
+  // Delete from S3
+  try {
+    await getS3().send(new DeleteObjectCommand({
+      Bucket: BUCKET,
+      Key: backup.s3Key,
+    }));
+  } catch (e) {
+    console.error('[backup] S3 delete failed:', e.message);
+  }
+
+  // Delete from DB
+  await db.collection('world_backups').deleteOne({ _id: new ObjectId(backupId) });
+  console.log('[backup] Deleted', backup.s3Key);
+  return { ok: true, deleted: backup.s3Key };
+}
+
+module.exports = {
+  init, backupFromLinode, backupLocal, restoreToLinode, restoreLocal,
+  listBackups, listAllBackups, getBackup, deleteBackup,
+};

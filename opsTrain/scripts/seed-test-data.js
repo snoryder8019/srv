@@ -73,7 +73,7 @@ async function seed() {
     staff.push(u);
   }
 
-  // Link scott wallace as brandAdmin for this brand
+  // Link scott wallace as admin for this brand
   await User.updateOne(
     { email: 'm.scott.wallace@gmail.com' },
     { $set: { brand: brand._id } }

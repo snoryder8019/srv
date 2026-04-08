@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-04-07T07:30:00.094Z
+Generated: 2026-04-08T15:48:35.604Z
+
+---
+
+## Commit: design overhaul +0.1.0
+
+- **Hash:** `038dcb6`
+- **Author:** Scott
+- **Date:** 4/7/2026
+- **Changes:** 41 files, +3768/-1018 lines
+
+### Modified Areas:
+
+**Backend:** 6 files
+**Views:** 9 files
+**Scripts:** 4 files
+**Documentation:** 3 files
 
 ---
 
@@ -62,21 +78,6 @@ Generated: 2026-04-07T07:30:00.094Z
 
 **Backend:** 16 files
 **Views:** 29 files
-
----
-
-## Commit: v 0.91.1 ouath bug 0.1.0 jwt into multiple slabs. design updates. some games updates srv whoah
-
-- **Hash:** `a278271`
-- **Author:** Scott
-- **Date:** 4/4/2026
-- **Changes:** 125 files, +7800/-790 lines
-
-### Modified Areas:
-
-**Backend:** 14 files
-**Views:** 42 files
-**Documentation:** 3 files
 
 ---
 

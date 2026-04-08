@@ -45,7 +45,27 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-
+// Superadmin gateway
+import { createRequire } from 'module';
+const require_cjs = createRequire(import.meta.url);
+const { gatewayRoute } = require_cjs('/srv/gateway.cjs');
+import { getDb } from './plugins/mongo/mongo.js';
+app.get('/gateway', gatewayRoute({
+  secret: process.env.SESHSEC,
+  appName: 'madladslab',
+  findOrCreateAdmin: async (email) => {
+    const db = getDb();
+    let user = await db.collection('users').findOne({ email });
+    if (!user) {
+      const result = await db.collection('users').insertOne({ email, displayName: email.split('@')[0], isAdmin: true, provider: 'gateway', createdAt: new Date() });
+      user = await db.collection('users').findOne({ _id: result.insertedId });
+    } else if (!user.isAdmin) {
+      await db.collection('users').updateOne({ _id: user._id }, { $set: { isAdmin: true } });
+      user.isAdmin = true;
+    }
+    return user;
+  },
+}));
 
 connectDB();
 connectMongoose();

@@ -66,14 +66,14 @@ router.post('/register', async (req, res) => {
       return;
     }
 
-    // New user — visitor role until an admin promotes them
+    // New user — user role until an admin promotes them
     const hashed = await bcrypt.hash(password, 12);
     const user = await User.create({
       email: cleanEmail,
       displayName: (displayName || '').trim() || cleanEmail.split('@')[0],
       password: hashed,
       provider: 'local',
-      role: 'visitor',
+      role: 'user',
     });
 
     return res.render('auth/login', {

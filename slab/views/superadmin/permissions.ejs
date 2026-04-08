@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Platform Permissions — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1100px; margin:0 auto; padding:24px; }
+    .section { margin-bottom:28px; }
+    h2 { font-size:16px; font-weight:500; margin-bottom:14px; }
+    h3 { font-size:14px; font-weight:500; color:#a3a3a3; margin-bottom:10px; }
+
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:24px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:14px; text-align:center; }
+    .stat-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:4px; }
+    .stat-value { font-size:22px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; } .stat-value.green { color:#34d399; }
+
+    /* Tiers */
+    .tier-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; margin-bottom:24px; }
+    .tier-card { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; }
+    .tier-card h4 { font-size:13px; font-weight:600; color:#fff; margin-bottom:6px; }
+    .tier-card p { font-size:12px; color:#737373; line-height:1.5; }
+    .tier-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; margin-top:8px; }
+    .tier-superadmin { background:#c9a848; color:#0a0a0a; }
+    .tier-admin { background:#34d399; color:#0a0a0a; }
+    .tier-portal { background:#38bdf8; color:#0a0a0a; }
+    .tier-ops { background:#a78bfa; color:#0a0a0a; }
+
+    /* Tables */
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; margin-bottom:16px; }
+    th { text-align:left; padding:10px 14px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    tr:hover td { background:#1a1a1a; }
+
+    /* Badges */
+    .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:500; }
+    .badge-sa { background:#c9a848; color:#0a0a0a; }
+    .badge-admin { background:#14532d; color:#86efac; }
+    .badge-owner { background:#422006; color:#fdba74; }
+    .tenant-tag { color:#c9a848; font-size:11px; }
+    .status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px; }
+    .dot-active { background:#34d399; } .dot-preview { background:#fdba74; } .dot-suspended { background:#f87171; }
+
+    /* Form */
+    .add-form { background:#141414; border:1px solid #262626; border-radius:8px; padding:18px; display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
+    .form-group { display:flex; flex-direction:column; gap:4px; }
+    .form-group label { font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; }
+    .form-group input, .form-group select { background:#0a0a0a; border:1px solid #333; color:#e5e5e5; padding:7px 12px; border-radius:5px; font-family:'Inter',sans-serif; font-size:12px; }
+    .form-group input:focus, .form-group select:focus { border-color:#c9a848; outline:none; }
+    .btn { padding:7px 14px; font-size:12px; border-radius:5px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; transition:all .15s; }
+    .btn:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-gold { background:#c9a848; color:#0a0a0a; border-color:#c9a848; font-weight:600; } .btn-gold:hover { background:#b8960b; }
+    .btn-sm { padding:3px 8px; font-size:10px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; }
+    .btn-sm:hover { border-color:#f87171; color:#f87171; }
+    .empty { color:#525252; font-size:13px; padding:20px; text-align:center; }
+    .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:8px; }
+    .table-wrap table { min-width:500px; }
+    @media (max-width:768px) {
+      .topbar { padding:10px 14px; flex-wrap:wrap; gap:8px; }
+      .topbar-left { gap:10px; } .topbar-right { gap:8px; font-size:11px; flex-wrap:wrap; }
+      .logo { font-size:17px; }
+      .container { padding:14px; }
+      .stats { grid-template-columns:repeat(2, 1fr); gap:8px; }
+      .stat { padding:10px; } .stat-value { font-size:18px; } .stat-label { font-size:9px; }
+      .tier-grid { grid-template-columns:1fr; }
+      .tier-card { padding:14px; }
+      .add-form { flex-direction:column; gap:10px; align-items:stretch; }
+      .add-form .form-group { width:100%; }
+      .add-form .form-group input, .add-form .form-group select { width:100%; }
+      .btn { width:100%; justify-content:center; }
+      th, td { padding:8px 10px; font-size:12px; }
+      h2 { font-size:14px; }
+    }
+    @media (max-width:480px) {
+      .topbar-right a { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">s<span>Lab</span></div>
+      <span style="color:#737373; font-size:13px;">/ Platform Permissions</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin">&larr; Dashboard</a>
+      <a href="/superadmin/users">Global Users</a>
+      <span><%= superAdmin.email %></span>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Total Tenants</div><div class="stat-value gold"><%= stats.totalTenants %></div></div>
+      <div class="stat"><div class="stat-label">Active</div><div class="stat-value green"><%= stats.activeTenants %></div></div>
+      <div class="stat"><div class="stat-label">Tenant Admins</div><div class="stat-value"><%= stats.totalAdmins %></div></div>
+      <div class="stat"><div class="stat-label">Platform Roles</div><div class="stat-value"><%= platformRoles.length %></div></div>
+    </div>
+
+    <!-- Access Tiers -->
+    <div class="section">
+      <h2>Access Tiers</h2>
+      <div class="tier-grid">
+        <div class="tier-card">
+          <h4>Superadmin</h4>
+          <p>Full platform control — all services, all tenants, system tools, agent hub, user management, permissions. Hardcoded email list + platform_roles collection.</p>
+          <div class="tier-badge tier-superadmin">JWT via slab_token</div>
+        </div>
+        <div class="tier-card">
+          <h4>Tenant Admin</h4>
+          <p>Full admin panel access within their tenant — blog, clients, invoicing, pages, settings, user management.</p>
+          <div class="tier-badge tier-admin">isAdmin: true</div>
+        </div>
+        <div class="tier-card">
+          <h4>Portal User</h4>
+          <p>Client-facing portal — view invoices, upload files, communicate. Roles: client, collaborator.</p>
+          <div class="tier-badge tier-portal">JWT via slab_portal</div>
+        </div>
+        <div class="tier-card">
+          <h4>OpsTrain Roles</h4>
+          <p>Separate hierarchy: superadmin > admin > manager > user. Brand-scoped. Users auth via QR + PIN.</p>
+          <div class="tier-badge tier-ops">Brand-scoped</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Platform Roles (dynamic) -->
+    <div class="section">
+      <h2>Platform Roles</h2>
+      <h3>Grant elevated access to specific emails across the platform</h3>
+
+      <form method="POST" action="/superadmin/permissions/platform-role" class="add-form">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" name="email" placeholder="user@example.com" required style="min-width:220px;" />
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select name="role" required>
+            <option value="superadmin">Superadmin</option>
+            <option value="support">Support</option>
+            <option value="readonly">Read-only</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Scope</label>
+          <select name="scope">
+            <option value="full">Full Platform</option>
+            <option value="tickets">Tickets Only</option>
+            <option value="tenants">Tenants Only</option>
+            <option value="users">Users Only</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-gold">Add Role</button>
+      </form>
+
+      <% if (platformRoles.length === 0) { %>
+        <div class="empty" style="margin-top:12px;">No custom platform roles yet. Hardcoded superadmins above still have full access.</div>
+      <% } else { %>
+        <div class="table-wrap" style="margin-top:12px;"><table>
+          <thead><tr><th>Email</th><th>Role</th><th>Scope</th><th>Granted By</th><th>Date</th><th></th></tr></thead>
+          <tbody>
+            <% platformRoles.forEach(r => { %>
+            <tr>
+              <td><%= r.email %></td>
+              <td><span class="badge badge-sa"><%= r.role %></span></td>
+              <td><%= r.scope || 'full' %></td>
+              <td style="font-size:12px; color:#737373;"><%= r.grantedBy || '—' %></td>
+              <td style="font-size:12px; color:#525252;"><%= r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—' %></td>
+              <td>
+                <form method="POST" action="/superadmin/permissions/platform-role/<%= r._id %>/delete" style="display:inline;" onsubmit="return confirm('Remove platform role for <%= r.email %>?')">
+                  <button type="submit" class="btn-sm">Remove</button>
+                </form>
+              </td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table></div>
+      <% } %>
+    </div>
+
+    <!-- Hardcoded Superadmins -->
+    <div class="section">
+      <h2>Hardcoded Superadmins</h2>
+      <h3>Defined in middleware/superadmin.js — always have full access</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Email</th><th>Role</th><th>Scope</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>snoryder8019@gmail.com</td>
+            <td><span class="badge badge-sa">superadmin</span></td>
+            <td>All services, all tenants, full platform</td>
+          </tr>
+          <tr>
+            <td>scott@madladslab.com</td>
+            <td><span class="badge badge-sa">superadmin</span></td>
+            <td>Alias — same access</td>
+          </tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <!-- Tenant Admins -->
+    <div class="section">
+      <h2>All Tenant Admins (<%= tenantAdmins.length %>)</h2>
+      <h3>Users with isAdmin: true across all tenants</h3>
+      <% if (tenantAdmins.length === 0) { %>
+        <div class="empty">No tenant admins found.</div>
+      <% } else { %>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Email</th><th>Tenant</th><th>Status</th><th>Flags</th></tr></thead>
+          <tbody>
+            <% tenantAdmins.forEach(a => { %>
+            <tr>
+              <td><strong><%= a.displayName || '—' %></strong></td>
+              <td style="font-size:12px;"><%= a.email || '—' %></td>
+              <td><span class="tenant-tag"><%= a._tenantName %></span></td>
+              <td>
+                <span class="status-dot dot-<%= a._tenantStatus || 'preview' %>"></span>
+                <span style="font-size:12px; color:#737373;"><%= a._tenantStatus || 'preview' %></span>
+              </td>
+              <td>
+                <% if (a.isOwner) { %><span class="badge badge-owner">owner</span> <% } %>
+                <span class="badge badge-admin">admin</span>
+              </td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table></div>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

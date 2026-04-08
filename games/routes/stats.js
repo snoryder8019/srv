@@ -31,7 +31,7 @@ router.get('/summary/:game', async (req, res) => {
 // All server summaries at once
 router.get('/summary', async (req, res) => {
   try {
-    const games = ['rust', 'valheim', 'l4d2', '7dtd'];
+    const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
     const summaries = {};
     for (const game of games) {
       summaries[game] = await stats.getServerSummary(game);
@@ -74,6 +74,46 @@ router.get('/player/:steamId', async (req, res) => {
     res.json({ stats: playerStats });
   } catch (e) {
     res.status(500).json({ error: 'Failed to load player stats' });
+  }
+});
+
+// All-time aggregated stats for a game
+router.get('/alltime/:game', async (req, res) => {
+  try {
+    const allTime = await stats.getGameAllTimeStats(req.params.game);
+    res.json(allTime);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load all-time stats' });
+  }
+});
+
+// Notable events (deaths, kills, boss kills, raids) for a game
+router.get('/notable/:game', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const events = await stats.getNotableEvents(req.params.game, limit);
+    res.json({ events });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load notable events' });
+  }
+});
+
+// All summaries including new fields
+router.get('/dashboard', async (req, res) => {
+  try {
+    const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
+    const result = {};
+    for (const game of games) {
+      const [summary, allTime, leaderboard] = await Promise.all([
+        stats.getServerSummary(game),
+        stats.getGameAllTimeStats(game),
+        stats.getPlayerLeaderboard(game, 'totalPlaytime', 5),
+      ]);
+      result[game] = { ...summary, allTime, topPlayers: leaderboard };
+    }
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load dashboard data' });
   }
 });
 

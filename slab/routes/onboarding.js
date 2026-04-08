@@ -111,6 +111,66 @@ function calcSlabPrice(planKey, existingSlabCount) {
 // ── Promo: first 10 signups get free custom templates ──
 const PROMO_FREE_TEMPLATE_LIMIT = 10;
 
+// ── Delegate referral promo: 30 days free ──
+const DELEGATE_PROMO_DAYS = 30;
+
+/**
+ * Check for a valid delegate referral code and return the delegate doc (or null).
+ */
+async function lookupDelegateRef(refCode) {
+  if (!refCode || typeof refCode !== 'string') return null;
+  const code = refCode.trim().toUpperCase();
+  if (!/^SD-[A-F0-9]{8}$/.test(code)) return null;
+  const slab = getSlabDb();
+  return slab.collection('sales_delegates').findOne({ refCode: code, status: 'active' });
+}
+
+/**
+ * Apply delegate referral promo to a newly provisioned tenant.
+ * Sets 30-day free trial perk and tracks the referral.
+ */
+async function applyDelegatePromo(slug, delegate, signupEmail) {
+  const slab = getSlabDb();
+  const now = new Date();
+  const trialEndsAt = new Date(now.getTime() + DELEGATE_PROMO_DAYS * 24 * 60 * 60 * 1000);
+
+  await slab.collection('tenants').updateOne(
+    { 'meta.subdomain': slug },
+    {
+      $set: {
+        'perks.delegatePromo': true,
+        'perks.delegatePromoAt': now,
+        'perks.trialEndsAt': trialEndsAt,
+        'perks.referredBy': {
+          delegateId: delegate._id,
+          delegateEmail: delegate.email,
+          refCode: delegate.refCode,
+        },
+      },
+    },
+  );
+
+  // Track the referral for commission calculation
+  await slab.collection('delegate_referrals').insertOne({
+    delegateId: delegate._id,
+    delegateEmail: delegate.email,
+    refCode: delegate.refCode,
+    signupEmail: signupEmail.toLowerCase(),
+    subdomain: slug,
+    promoDays: DELEGATE_PROMO_DAYS,
+    trialEndsAt,
+    convertedToPaid: false,
+    createdAt: now,
+  });
+
+  logActivity({
+    category: 'registration', action: 'delegate_referral_applied',
+    status: 'success',
+    actor: { email: signupEmail, role: 'signup' },
+    details: { refCode: delegate.refCode, delegateEmail: delegate.email, trialEndsAt },
+  });
+}
+
 // ── Pricing API — returns discounted prices for an email ────────────────────
 router.get('/pricing', async (req, res) => {
   const email = (req.query.email || '').toLowerCase().trim();
@@ -137,12 +197,14 @@ router.get('/', async (req, res) => {
   const promoUsed = await slab.collection('signups').countDocuments({ freeTemplates: true });
   const promoLeft = Math.max(0, PROMO_FREE_TEMPLATE_LIMIT - promoUsed);
   const isAddingSlab = req.query.add === '1';
+  const ref = req.query.ref || null;
   res.render('onboarding/start', {
     error: req.query.error || null,
     success: req.query.success || null,
     promoLeft,
     googleClientId: config.GGLCID || '',
     isAddingSlab,
+    ref,
   });
 });
 
@@ -163,7 +225,7 @@ router.get('/check-subdomain', async (req, res) => {
 // ── Google One Tap signup — provisions tenant with Google account ───────────
 router.post('/google-signup', async (req, res) => {
   try {
-    const { credential, subdomain, brandName, brandLocation, design, tagline } = req.body;
+    const { credential, subdomain, brandName, brandLocation, design, tagline, ref } = req.body;
     if (!credential) return res.status(400).json({ error: 'Missing Google credential' });
 
     const slug = (subdomain || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
@@ -216,10 +278,16 @@ router.post('/google-signup', async (req, res) => {
     // Track signup
     const promoUsed = await slab.collection('signups').countDocuments({ freeTemplates: true });
     const earnedFreeTemplates = promoUsed < PROMO_FREE_TEMPLATE_LIMIT;
+
+    // Check for delegate referral code
+    const delegateRef = await lookupDelegateRef(ref);
+
     await slab.collection('signups').insertOne({
       email: profile.email, brandName: brandName.trim(), subdomain: slug, domain: result.domain,
       source: 'google-one-tap', ip: req.ip, userAgent: req.get('user-agent'),
-      freeTemplates: earnedFreeTemplates, createdAt: new Date(),
+      freeTemplates: earnedFreeTemplates,
+      refCode: delegateRef?.refCode || null,
+      createdAt: new Date(),
     });
     if (earnedFreeTemplates) {
       await slab.collection('tenants').updateOne(
@@ -228,9 +296,14 @@ router.post('/google-signup', async (req, res) => {
       );
     }
 
+    // Apply 30-day free trial if referred by a delegate
+    if (delegateRef) {
+      await applyDelegatePromo(slug, delegateRef, profile.email);
+    }
+
     logActivity({ category: 'registration', action: 'signup', tenantDomain: result.domain, status: 'success',
       actor: { email: profile.email, role: 'owner' },
-      details: { subdomain: slug, brandName: brandName.trim(), plan: 'free', design: design || 'classic', method: 'google' }, ip: req.ip,
+      details: { subdomain: slug, brandName: brandName.trim(), plan: 'free', design: design || 'classic', method: 'google', refCode: delegateRef?.refCode || null }, ip: req.ip,
     });
 
     // Send welcome email to registrant
@@ -310,7 +383,7 @@ router.post('/google-signup', async (req, res) => {
 
 // ── Free signup — provisions preview tenant ─────────────────────────────────
 router.post('/signup', async (req, res) => {
-  const { subdomain, brandName, brandLocation, email, password, design, tagline } = req.body;
+  const { subdomain, brandName, brandLocation, email, password, design, tagline, ref } = req.body;
   const slug = (subdomain || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
 
   if (!slug || slug.length < 2) return res.status(400).json({ error: 'Invalid subdomain' });
@@ -336,6 +409,9 @@ router.post('/signup', async (req, res) => {
     const promoUsed = await slab.collection('signups').countDocuments({ freeTemplates: true });
     const earnedFreeTemplates = promoUsed < PROMO_FREE_TEMPLATE_LIMIT;
 
+    // Check for delegate referral code
+    const delegateRef = await lookupDelegateRef(ref);
+
     await slab.collection('signups').insertOne({
       email: email.trim().toLowerCase(),
       brandName: brandName.trim(),
@@ -345,6 +421,7 @@ router.post('/signup', async (req, res) => {
       ip: req.ip,
       userAgent: req.get('user-agent'),
       freeTemplates: earnedFreeTemplates,
+      refCode: delegateRef?.refCode || null,
       createdAt: new Date(),
     });
 
@@ -354,6 +431,11 @@ router.post('/signup', async (req, res) => {
         { 'meta.subdomain': slug },
         { $set: { 'perks.freeTemplates': true, 'perks.freeTemplatesAt': new Date() } },
       );
+    }
+
+    // Apply 30-day free trial if referred by a delegate
+    if (delegateRef) {
+      await applyDelegatePromo(slug, delegateRef, email.trim());
     }
 
     // Store chosen design layout + tagline

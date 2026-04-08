@@ -1,10 +1,13 @@
-// Role hierarchy: superadmin > admin > brandAdmin > user > visitor
+// Role hierarchy: superadmin > admin > manager > user
+// superadmin  — platform owner (you)
+// admin       — customer / brand owner (signs up, pays)
+// manager     — assigned by admin to oversee shifts
+// user        — shift workers, no auth — verified by geolocation + QR scan + PIN
 const ROLE_LEVELS = {
-  superadmin: 5,
-  admin: 4,
-  brandAdmin: 3,
-  user: 2,
-  visitor: 1
+  superadmin: 4,
+  admin: 3,
+  manager: 2,
+  user: 1
 };
 
 // Require authentication
@@ -32,25 +35,42 @@ function requireRole(minRole) {
   };
 }
 
-// Require brandAdmin+ AND matching brand
+// Require admin+ AND matching brand (managers see their own brand too)
 function requireBrandAccess(req, res, next) {
   if (!req.isAuthenticated || !req.isAuthenticated()) {
     return res.redirect('/auth/login');
   }
   const userLevel = ROLE_LEVELS[req.user.role] || 0;
-  // superadmin and admin can access any brand
-  if (userLevel >= ROLE_LEVELS.admin) return next();
-  // brandAdmin must match brand
-  if (userLevel >= ROLE_LEVELS.brandAdmin) {
+  // superadmin can access any brand
+  if (userLevel >= ROLE_LEVELS.superadmin) return next();
+  // admin or manager must match brand
+  if (userLevel >= ROLE_LEVELS.manager) {
     const brandId = req.params.brandId || req.body.brandId || req.query.brandId;
     if (brandId && req.user.brand && req.user.brand.toString() === brandId.toString()) {
       return next();
     }
+    // If no brandId in request, allow access to their own brand context
+    if (!brandId && req.user.brand) return next();
   }
   return res.status(403).render('errors/error', {
     title: 'Access Denied',
     message: 'You do not have access to this brand.'
   });
+}
+
+// Require manager+ role (admin dashboard sections managers can see)
+function requireManager(req, res, next) {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return res.redirect('/auth/login');
+  }
+  const userLevel = ROLE_LEVELS[req.user.role] || 0;
+  if (userLevel < ROLE_LEVELS.manager) {
+    return res.status(403).render('errors/error', {
+      title: 'Access Denied',
+      message: 'Manager access required.'
+    });
+  }
+  next();
 }
 
 // Shift user middleware — checks session.shiftUser
@@ -65,5 +85,6 @@ module.exports = {
   requireAuth,
   requireRole,
   requireBrandAccess,
-  requireShiftUser
+  requireShiftUser,
+  requireManager
 };

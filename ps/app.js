@@ -56,6 +56,28 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Superadmin gateway
+import { createRequire as _cr } from 'module';
+const _req = _cr(import.meta.url);
+const { gatewayRoute } = _req('/srv/gateway.cjs');
+import { getDb as getPsDb } from './plugins/mongo/mongo.js';
+app.get('/gateway', gatewayRoute({
+  secret: process.env.SESHSEC,
+  appName: 'ps',
+  findOrCreateAdmin: async (email) => {
+    const db = getPsDb();
+    let user = await db.collection('users').findOne({ email });
+    if (!user) {
+      const r = await db.collection('users').insertOne({ email, displayName: email.split('@')[0], isAdmin: true, provider: 'gateway', createdAt: new Date() });
+      user = await db.collection('users').findOne({ _id: r.insertedId });
+    } else if (!user.isAdmin) {
+      await db.collection('users').updateOne({ _id: user._id }, { $set: { isAdmin: true } });
+      user.isAdmin = true;
+    }
+    return user;
+  },
+}));
+
 // Make user available to all views
 app.use((req, res, next) => {
   res.locals.user = req.user || null;

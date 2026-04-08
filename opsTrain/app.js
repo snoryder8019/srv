@@ -52,6 +52,20 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Superadmin gateway
+const { gatewayRoute } = require('/srv/gateway.cjs');
+app.get('/gateway', gatewayRoute({
+  secret: process.env.SESHSEC,
+  appName: 'opsTrain',
+  findOrCreateAdmin: async (email) => {
+    const User = require('./models/User');
+    let user = await User.findOne({ email });
+    if (!user) user = await User.create({ email, displayName: email.split('@')[0], role: 'superadmin', provider: 'gateway' });
+    else if (user.role !== 'superadmin') { user.role = 'superadmin'; await user.save(); }
+    return user;
+  },
+}));
+
 // Locals — make user + lang available in all views
 app.use((req, res, next) => {
   // Language toggle: ?lang=es or ?lang=en persists to session
@@ -82,9 +96,11 @@ connectDB().then(() => {
   const superadminRouter = require('./routes/superadmin');
 
   const startRouter = require('./routes/start');
+  const inviteRouter = require('./routes/invite');
 
   app.use('/', indexRouter);
   app.use('/start', startRouter);
+  app.use('/invite', inviteRouter);
   app.use('/auth', authRouter);
   app.use('/admin', adminRouter);
   app.use('/scan', scanRouter);

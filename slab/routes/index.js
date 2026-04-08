@@ -132,10 +132,12 @@ function buildVisibility(design) {
     portfolio: design.vis_portfolio !== 'false',
     about:     design.vis_about     !== 'false',
     process:   design.vis_process   !== 'false',
+    pricing:   design.vis_pricing   !== 'false',
     reviews:   design.vis_reviews   !== 'false',
     contact:   design.vis_contact   !== 'false',
     blog:      design.vis_blog      === 'true',
     footer:    design.vis_footer    !== 'false',
+    admin_link: design.vis_admin_link !== 'false',
     qr:        design.vis_qr        === 'true',
   };
 }
@@ -316,6 +318,23 @@ router.get('/privacy', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const db = req.db;
+
+    // ── Active template override ──
+    const activeTemplate = await db.collection('active_template').findOne({});
+    if (activeTemplate) {
+      const tpl = await db.collection('templates').findOne({ _id: activeTemplate.templateId });
+      if (tpl) {
+        const design = await getDesign(db);
+        const logos = await getBrandLogos(db);
+        const brandModels = await getBrandModels(db);
+        const blocks = (tpl.blocks || []).map(b => {
+          const overrides = activeTemplate.contentOverrides?.[b.id] || {};
+          return { ...b, fields: { ...b.fields, ...overrides } };
+        });
+        return res.render('template-live', { design, blocks, tpl, logos, brandModels, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
+      }
+    }
+
     const [rawCopy, reviews, portfolio, design, rawMedia, customSections, logos, brandModels] = await Promise.all([
       db.collection('copy').find({}).toArray(),
       getReviews(db, req.tenant),
@@ -340,6 +359,8 @@ router.get('/', async (req, res) => {
     const effectiveLayout = req.query.preview_layout || design.landing_layout;
 
     // Startup layout → use the templatized landing page (same data scope as index)
+    const centralAuthUrl = config.DOMAIN + '/auth/login';
+
     if (effectiveLayout === 'startup') {
       return res.render('landing', {
         design: { ...design, landing_layout: effectiveLayout },
@@ -347,6 +368,7 @@ router.get('/', async (req, res) => {
         reviews, portfolio, customSections,
         latestPosts, visibility: buildVisibility(design),
         contacted: req.query.contacted,
+        centralAuthUrl,
       });
     }
 
@@ -356,6 +378,7 @@ router.get('/', async (req, res) => {
       media,
       visibility: buildVisibility(design),
       latestPosts, customSections, logos, brandModels,
+      centralAuthUrl,
     });
   } catch (err) {
     console.error(err);
@@ -364,6 +387,7 @@ router.get('/', async (req, res) => {
       design: DESIGN_DEFAULTS, media: {},
       visibility: buildVisibility(DESIGN_DEFAULTS),
       latestPosts: [], customSections: [], logos: {}, brandModels: {},
+      centralAuthUrl: config.DOMAIN + '/auth/login',
     });
   }
 });
@@ -381,7 +405,7 @@ router.get('/blog', async (req, res) => {
     ]);
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
-    res.render('blog/index', { posts, design, copy, logos, brandModels });
+    res.render('blog/index', { posts, design, copy, logos, brandModels, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
   } catch (err) {
     console.error(err);
     res.status(500).send('Error loading blog');
@@ -402,7 +426,7 @@ router.get('/blog/:slug', async (req, res) => {
     if (!post) return res.status(404).render('404', { message: 'Post not found', design });
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
-    res.render('blog/post', { post, design, copy, logos, brandModels });
+    res.render('blog/post', { post, design, copy, logos, brandModels, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
   } catch (err) {
     console.error(err);
     res.status(500).send('Error loading post');
@@ -433,10 +457,10 @@ router.get('/:slug', async (req, res, next) => {
         db.collection(col).find(query).sort({ publishedAt: -1, createdAt: -1 }).skip(skip).limit(perPage).toArray(),
       ]);
       const totalPages = Math.ceil(total / perPage);
-      return res.render('page', { pg, design, logos, items, p, totalPages, perPage, col });
+      return res.render('page', { pg, design, logos, items, p, totalPages, perPage, col, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
     }
 
-    res.render('page', { pg, design, logos, items: null, p: 1, totalPages: 1, perPage: 9, col: null });
+    res.render('page', { pg, design, logos, items: null, p: 1, totalPages: 1, perPage: 9, col: null, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
   } catch (err) {
     console.error(err);
     next();

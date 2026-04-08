@@ -58,13 +58,17 @@ router.put('/api/games/users/:id', requireSuperAdmin, async (req, res) => {
   try {
     const db = req.app.locals.db;
     const { isAdmin, permissions } = req.body;
-    // Prevent setting isAdmin on your own account (safety net)
-    if (req.params.id === req.user._id.toString() && isAdmin) {
+    // Superadmin cannot be granted via admin panel
+    if (isAdmin === true) {
+      return res.status(403).json({ error: 'Superadmin is reserved — cannot be granted via admin panel' });
+    }
+    // Prevent modifying your own superadmin status
+    if (req.params.id === req.user._id.toString()) {
       return res.status(403).json({ error: 'Cannot modify your own superadmin status' });
     }
     await db.collection('users').updateOne(
       { _id: new ObjectId(req.params.id) },
-      { $set: { isAdmin: !!isAdmin, permissions: permissions || {} } }
+      { $set: { isAdmin: false, permissions: permissions || {} } }
     );
     res.json({ ok: true });
   } catch (e) {
@@ -106,7 +110,20 @@ router.put('/api/games/users/:id/role', requireSuperAdmin, async (req, res) => {
     const db = req.app.locals.db;
     const { isAdmin, isBroadcaster, permissions } = req.body;
     const update = {};
-    if (isAdmin !== undefined) update.isAdmin = !!isAdmin;
+
+    // Superadmin is reserved for a singular user — only the current superadmin
+    // can grant/revoke it, and cannot revoke their own
+    if (isAdmin !== undefined) {
+      if (isAdmin === true) {
+        // Never allow granting superadmin to another user via API
+        return res.status(403).json({ error: 'Superadmin is reserved — cannot be granted via admin panel' });
+      }
+      // Allow revoking superadmin (but not your own)
+      if (req.params.id === req.user._id.toString()) {
+        return res.status(403).json({ error: 'Cannot modify your own superadmin status' });
+      }
+      update.isAdmin = false;
+    }
     if (isBroadcaster !== undefined) update.isBroadcaster = !!isBroadcaster;
     if (permissions !== undefined) update.permissions = permissions;
     await db.collection('users').updateOne(

@@ -16,8 +16,9 @@ const logPositions = {};
 
 // ── Config ──
 const LOG_PATHS = {
-  rust:    path.join(__dirname, '..', 'rust', 'server', 'madlads', 'Log.EAC.txt'),
+  rust:    path.join(__dirname, '..', 'rust', 'logs', 'server.log'),
   valheim: path.join(__dirname, '..', 'valheim', 'logs', 'server.log'),
+  valheim_events: path.join(__dirname, '..', 'valheim', 'logs', 'events.log'),
   l4d2:    path.join(__dirname, '..', 'l4d2', 'logs', 'console.log'),
   '7dtd':  path.join(__dirname, '..', '7dtd', 'logs', 'output_log.txt'),
   se:      path.join(__dirname, '..', 'se', 'logs', 'server.log'),
@@ -27,18 +28,41 @@ const LOG_PATHS = {
 // Fallback log paths
 const RUST_LOG_ALT = path.join(__dirname, '..', 'rust', 'RustDedicated_Data', 'output_log.txt');
 
+// Map virtual log sources to their game for DB storage
+const LOG_GAME_MAP = {
+  rust: 'rust', valheim: 'valheim', valheim_events: 'valheim',
+  l4d2: 'l4d2', '7dtd': '7dtd', se: 'se', palworld: 'palworld',
+};
+
 // ── Log line patterns per game ──
 const PATTERNS = {
   rust: [
+    { type: 'player_join', re: /(.+?) with steamid (\d+) joined from ip (\S+)/, fields: ['name', 'steamId', 'ip'] },
     { type: 'player_join', re: /(\d+\.\d+\.\d+\.\d+:\d+)\/(\d+)\/(.+?) joined \[(.+?)\/(\d+)\]/, fields: ['ip', 'steamId', 'name', 'os', 'ownerSteamId'] },
+    { type: 'player_spawn', re: /(.+?)\[(\d+)\] has spawned/, fields: ['name', 'steamId'] },
     { type: 'player_leave', re: /(\d+\.\d+\.\d+\.\d+:\d+)\/(\d+)\/(.+?) disconnecting:/, fields: ['ip', 'steamId', 'name'] },
     { type: 'chat', re: /\[CHAT\] (.+?)\[(\d+)\] : (.+)/, fields: ['name', 'steamId', 'message'] },
+    { type: 'kill', re: /(.+?)\[(\d+)\] was killed by (.+?)(?:\[(\d+)\])? at \((.+?)\)/, fields: ['victim', 'victimId', 'attacker', 'attackerId', 'pos'] },
     { type: 'kill', re: /(.+?)\[(\d+)\] was killed by (.+?)(?:\[(\d+)\])?$/, fields: ['victim', 'victimId', 'attacker', 'attackerId'] },
+    { type: 'save', re: /Saved ([\d,]+) ents/, fields: ['entityCount'] },
+    { type: 'server_start', re: /Server startup complete/, fields: [] },
   ],
   valheim: [
     { type: 'player_join', re: /Got connection SteamID (\d+)/, fields: ['steamId'] },
     { type: 'player_leave', re: /Closing socket (\d+)/, fields: ['steamId'] },
+    { type: 'character_name', re: /Got character ZDOID from (.+?) :/, fields: ['name'] },
+    { type: 'wrong_password', re: /Peer (\d+) has wrong password/, fields: ['steamId'] },
     { type: 'server_start', re: /Game server connected/, fields: [] },
+    { type: 'server_version', re: /Valheim version: (.+?) \(network version (\d+)\)/, fields: ['version', 'networkVersion'] },
+  ],
+  // BepInEx event logger (MadLadsEventLogger plugin) — structured events
+  valheim_events: [
+    { type: 'death', re: /\[MLEVENT\] .+? \| death \| victim=(.+?)\|victim_type=(.+?)\|killer=(.+?)\|killer_type=(.+?)\|pos=(.+)/, fields: ['victim', 'victimType', 'attacker', 'attackerType', 'pos'] },
+    { type: 'boss_kill', re: /\[MLEVENT\] .+? \| boss_kill \| boss=(.+?)\|killed_by=(.+?)\|pos=(.+)/, fields: ['boss', 'killedBy', 'pos'] },
+    { type: 'raid_start', re: /\[MLEVENT\] .+? \| raid_start \| event=(.+?)\|pos=(.+)/, fields: ['raidEvent', 'pos'] },
+    { type: 'raid_end', re: /\[MLEVENT\] .+? \| raid_end \|/, fields: [] },
+    { type: 'piece_place', re: /\[MLEVENT\] .+? \| piece_place \| player=(.+?)\|piece=(.+)/, fields: ['name', 'piece'] },
+    { type: 'world_save', re: /\[MLEVENT\] .+? \| world_save \|/, fields: [] },
   ],
   l4d2: [
     { type: 'player_join', re: /"(.+?)<\d+><(STEAM_\S+)>" entered the game/, fields: ['name', 'steamId'] },
@@ -46,23 +70,35 @@ const PATTERNS = {
     { type: 'map_change', re: /Started map "([^"]+)"/, fields: ['map'] },
     { type: 'chat', re: /"(.+?)<\d+><(STEAM_\S+)><[^>]*>" say "(.+)"/, fields: ['name', 'steamId', 'message'] },
     { type: 'kill', re: /"(.+?)<\d+><(STEAM_\S+)>" killed "(.+?)<\d+><(STEAM_\S+)>"/, fields: ['attacker', 'attackerId', 'victim', 'victimId'] },
+    { type: 'friendly_fire', re: /"(.+?)<\d+><(STEAM_\S+)>.*" attacked "(.+?)<\d+><(STEAM_\S+)>"/, fields: ['attacker', 'attackerId', 'victim', 'victimId'] },
+    { type: 'infected_kill', re: /"(.+?)<\d+><(STEAM_\S+)><Survivor>" triggered "Killed" against "(.+?)<\d+><[^>]*><Infected>"/, fields: ['name', 'steamId', 'infected'] },
   ],
   '7dtd': [
+    { type: 'player_join', re: /PlayerSpawnedInWorld \(reason: (.+?), position: (.+?)\).*PltfmId='Steam_(\d+)'.*PlayerName='(.+?)'/, fields: ['reason', 'pos', 'steamId', 'name'] },
     { type: 'player_join', re: /PlayerSpawnedInWorld.*PlayerName='(.+?)'.*SteamId='(\d+)'/, fields: ['name', 'steamId'] },
+    { type: 'player_leave', re: /Player (.+?) disconnected after ([\d.]+) minutes/, fields: ['name', 'sessionMinutes'] },
+    { type: 'player_leave', re: /Player disconnected:.*PltfmId='Steam_(\d+)'.*PlayerName='(.+?)'/, fields: ['steamId', 'name'] },
     { type: 'player_leave', re: /Player disconnected:.*PlayerName='(.+?)'.*SteamId='(\d+)'/, fields: ['name', 'steamId'] },
+    { type: 'death', re: /GMSG: Player '(.+?)' died/, fields: ['victim'] },
     { type: 'chat', re: /Chat.*'(.+?)': (.+)/, fields: ['name', 'message'] },
     { type: 'kill', re: /Player '(.+?)' killed by '(.+?)'/, fields: ['victim', 'attacker'] },
     { type: 'server_start', re: /GameManager Awake done/, fields: [] },
+    { type: 'bloodmoon', re: /BloodMoon.*SetDay=(\d+)/, fields: ['day'] },
   ],
   se: [
+    { type: 'player_join', re: /OnConnectedClient (.+?) attempt/, fields: ['name'] },
     { type: 'player_join', re: /Player connected.*?:\s*(.+?)\s*\((\d{17})\)/, fields: ['name', 'steamId'] },
+    { type: 'player_leave', re: /User left (.+)/, fields: ['name'] },
     { type: 'player_leave', re: /Player disconnected.*?:\s*(.+?)\s*\((\d{17})\)/, fields: ['name', 'steamId'] },
-    { type: 'server_start', re: /Game ready|Server started/, fields: [] },
+    { type: 'server_start', re: /Session loaded/, fields: [] },
+    { type: 'save', re: /Autosave/, fields: [] },
+    { type: 'grid_built', re: /Grid created.*?by\s*(.+)/, fields: ['name'] },
   ],
   palworld: [
     { type: 'player_join', re: /Login.*?:\s*(.+?)\s*.*?SteamID:\s*(\d{17})/, fields: ['name', 'steamId'] },
     { type: 'player_leave', re: /Logout.*?:\s*(.+?)\s*.*?SteamID:\s*(\d{17})/, fields: ['name', 'steamId'] },
     { type: 'server_start', re: /Setting breakpad|Server started/, fields: [] },
+    { type: 'pal_captured', re: /captured.*?Pal.*?:\s*(.+)/, fields: ['pal'] },
   ],
 };
 
@@ -84,11 +120,15 @@ async function ensureCollections() {
     // Create indexes for efficient queries
     await db.collection('game_events').createIndex({ game: 1, ts: -1 });
     await db.collection('game_events').createIndex({ type: 1, ts: -1 });
+    await db.collection('game_events').createIndex({ game: 1, type: 1, ts: -1 });
     await db.collection('game_events').createIndex({ ts: 1 }, { expireAfterSeconds: 30 * 24 * 3600 }); // 30-day TTL
     await db.collection('game_snapshots').createIndex({ game: 1, ts: -1 });
     await db.collection('game_snapshots').createIndex({ ts: 1 }, { expireAfterSeconds: 7 * 24 * 3600 }); // 7-day TTL
     await db.collection('player_stats').createIndex({ steamId: 1, game: 1 }, { unique: true, sparse: true });
     await db.collection('player_stats').createIndex({ game: 1, totalPlaytime: -1 });
+    await db.collection('player_stats').createIndex({ game: 1, kills: -1 });
+    await db.collection('player_stats').createIndex({ game: 1, deaths: -1 });
+    await db.collection('player_stats').createIndex({ game: 1, bossKills: -1 });
   } catch (e) {
     console.error('[stats] Index creation error:', e.message);
   }
@@ -101,7 +141,7 @@ function startPolling() {
 }
 
 async function pollAllServers() {
-  const games = ['rust', 'valheim', 'l4d2', '7dtd'];
+  const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
   for (const game of games) {
     try {
       const lib = require(`./${game === '7dtd' ? '7dtd' : game}`);
@@ -167,9 +207,9 @@ function parseRustPlayerList(raw) {
 
 // ── Log Tailing ──
 function startLogTailing() {
-  for (const [game, logPath] of Object.entries(LOG_PATHS)) {
-    const actualPath = (game === 'rust' && !fs.existsSync(logPath)) ? RUST_LOG_ALT : logPath;
-    tailLog(game, actualPath);
+  for (const [source, logPath] of Object.entries(LOG_PATHS)) {
+    const actualPath = (source === 'rust' && !fs.existsSync(logPath)) ? RUST_LOG_ALT : logPath;
+    tailLog(source, actualPath);
   }
 }
 
@@ -217,9 +257,11 @@ function readNewLines(game, logPath) {
   }
 }
 
-function processLogLine(game, line) {
-  const patterns = PATTERNS[game];
+function processLogLine(source, line) {
+  const patterns = PATTERNS[source];
   if (!patterns) return;
+
+  const game = LOG_GAME_MAP[source] || source;
 
   for (const pat of patterns) {
     const match = line.match(pat.re);
@@ -242,27 +284,55 @@ function processLogLine(game, line) {
   }
 }
 
+// ── Valheim: map SteamID → character name from recent events ──
+const valheimNameCache = {}; // steamId → name
+
+function resolveValheimName(steamId) {
+  return valheimNameCache[steamId] || steamId;
+}
+
 // ── Event Storage ──
 async function storeEvent(event) {
   try {
     await db.collection('game_events').insertOne(event);
     emitter.emit('event', event);
 
-    // Update player stats on join/leave
+    // --- Valheim character name resolution ---
+    if (event.game === 'valheim' && event.type === 'character_name' && event.name) {
+      // Cache name; also update last join event with name
+      const recentJoin = await db.collection('game_events').findOne(
+        { game: 'valheim', type: 'player_join', ts: { $gte: new Date(Date.now() - 60000) } },
+        { sort: { ts: -1 } }
+      );
+      if (recentJoin && recentJoin.steamId) {
+        valheimNameCache[recentJoin.steamId] = event.name;
+        await db.collection('player_stats').updateOne(
+          { steamId: recentJoin.steamId, game: 'valheim' },
+          { $set: { name: event.name, lastSeen: event.ts } },
+          { upsert: false }
+        );
+      }
+    }
+
+    // --- Player join: upsert player_stats ---
     if (event.type === 'player_join' && event.steamId) {
+      const name = event.name || resolveValheimName(event.steamId);
       await db.collection('player_stats').updateOne(
         { steamId: event.steamId, game: event.game },
         {
-          $set: { name: event.name || 'Unknown', lastSeen: event.ts },
+          $set: { name, lastSeen: event.ts },
           $inc: { sessions: 1 },
-          $setOnInsert: { firstSeen: event.ts, totalPlaytime: 0 },
+          $setOnInsert: {
+            firstSeen: event.ts, totalPlaytime: 0,
+            kills: 0, deaths: 0, bossKills: 0, piecesPlaced: 0, crafted: 0,
+          },
         },
         { upsert: true }
       );
     }
 
+    // --- Kill events (Rust, L4D2, 7DTD) ---
     if (event.type === 'kill') {
-      // Increment kill count for attacker
       if (event.attackerId) {
         await db.collection('player_stats').updateOne(
           { steamId: event.attackerId, game: event.game },
@@ -270,7 +340,6 @@ async function storeEvent(event) {
           { upsert: true }
         );
       }
-      // Increment death count for victim
       if (event.victimId) {
         await db.collection('player_stats').updateOne(
           { steamId: event.victimId, game: event.game },
@@ -279,6 +348,62 @@ async function storeEvent(event) {
         );
       }
     }
+
+    // --- Valheim death (from BepInEx event logger) ---
+    if (event.type === 'death' && event.game === 'valheim') {
+      if (event.victimType === 'player') {
+        // Player died — increment deaths by name
+        await db.collection('player_stats').updateOne(
+          { game: 'valheim', name: event.victim },
+          { $inc: { deaths: 1 } }
+        );
+      }
+      if (event.attackerType === 'player' && event.victimType === 'creature') {
+        // Player killed a creature
+        await db.collection('player_stats').updateOne(
+          { game: 'valheim', name: event.attacker },
+          { $inc: { kills: 1 } }
+        );
+      }
+    }
+
+    // --- Valheim boss kill ---
+    if (event.type === 'boss_kill' && event.game === 'valheim') {
+      if (event.killedBy && event.killedBy !== 'unknown') {
+        await db.collection('player_stats').updateOne(
+          { game: 'valheim', name: event.killedBy },
+          { $inc: { bossKills: 1 } }
+        );
+      }
+    }
+
+    // --- Valheim piece placement ---
+    if (event.type === 'piece_place' && event.game === 'valheim') {
+      if (event.name) {
+        await db.collection('player_stats').updateOne(
+          { game: 'valheim', name: event.name },
+          { $inc: { piecesPlaced: 1 } }
+        );
+      }
+    }
+
+    // --- 7DTD player death ---
+    if (event.type === 'death' && event.game === '7dtd' && event.victim) {
+      await db.collection('player_stats').updateOne(
+        { game: '7dtd', name: event.victim },
+        { $inc: { deaths: 1 } }
+      );
+    }
+
+    // --- L4D2 infected kills ---
+    if (event.type === 'infected_kill' && event.steamId) {
+      await db.collection('player_stats').updateOne(
+        { steamId: event.steamId, game: event.game },
+        { $inc: { kills: 1 } },
+        { upsert: true }
+      );
+    }
+
   } catch (e) {
     console.error('[stats] Event store error:', e.message);
   }
@@ -358,13 +483,54 @@ async function getServerSummary(game) {
   const peakSnap = await db.collection('game_snapshots')
     .findOne({ game, ts: { $gte: since } }, { sort: { players: -1 } });
 
+  const evMap = eventCounts.reduce((acc, e) => { acc[e._id] = e.count; return acc; }, {});
+
   return {
     game,
     latest,
-    events: eventCounts.reduce((acc, e) => { acc[e._id] = e.count; return acc; }, {}),
+    events: evMap,
     uniquePlayers24h: uniquePlayers.length,
     peakPlayers24h: peakSnap ? peakSnap.players : 0,
+    // Enriched stats
+    deaths24h: evMap.death || 0,
+    bossKills24h: evMap.boss_kill || 0,
+    raids24h: evMap.raid_start || 0,
+    piecesPlaced24h: evMap.piece_place || 0,
   };
+}
+
+// ── All-time stats for a game ──
+async function getGameAllTimeStats(game) {
+  const pipeline = [
+    { $match: { game } },
+    {
+      $group: {
+        _id: null,
+        totalSessions: { $sum: '$sessions' },
+        totalPlaytime: { $sum: '$totalPlaytime' },
+        totalKills: { $sum: { $ifNull: ['$kills', 0] } },
+        totalDeaths: { $sum: { $ifNull: ['$deaths', 0] } },
+        totalBossKills: { $sum: { $ifNull: ['$bossKills', 0] } },
+        totalPiecesPlaced: { $sum: { $ifNull: ['$piecesPlaced', 0] } },
+        playerCount: { $sum: 1 },
+      },
+    },
+  ];
+  const result = await db.collection('player_stats').aggregate(pipeline).toArray();
+  return result[0] || {
+    totalSessions: 0, totalPlaytime: 0, totalKills: 0,
+    totalDeaths: 0, totalBossKills: 0, totalPiecesPlaced: 0, playerCount: 0,
+  };
+}
+
+// ── Recent notable events (deaths, boss kills, raids) for a game ──
+async function getNotableEvents(game, limit = 20) {
+  const notableTypes = ['death', 'boss_kill', 'kill', 'raid_start', 'raid_end'];
+  return db.collection('game_events')
+    .find({ game, type: { $in: notableTypes } })
+    .sort({ ts: -1 })
+    .limit(limit)
+    .toArray();
 }
 
 function shutdown() {
@@ -382,4 +548,6 @@ module.exports = {
   getPlayerLeaderboard,
   getPlayerStats,
   getServerSummary,
+  getGameAllTimeStats,
+  getNotableEvents,
 };

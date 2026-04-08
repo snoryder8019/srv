@@ -286,31 +286,78 @@ router.get('/api/playtime/:userId', requireSuperAdmin, async (req, res) => {
 
 // ── World Backups ──
 
-// User: list my backups
+// Admin: list all backups (admins see all, players see own)
 router.get('/api/backups', requireAuth, async (req, res) => {
   try {
     const game = req.query.game || null;
-    const backups = await worldBackup.listBackups(req.user._id.toString(), game);
-    res.json({ backups });
+    const u = req.user;
+    const isAdminUser = u.isAdmin || (u.permissions && u.permissions.games === 'admin');
+    if (isAdminUser) {
+      const backups = await worldBackup.listAllBackups(100);
+      const filtered = game ? backups.filter(b => b.game === game) : backups;
+      res.json({ backups: filtered });
+    } else {
+      const backups = await worldBackup.listBackups(u._id.toString(), game);
+      res.json({ backups });
+    }
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// Superadmin: list all backups
-router.get('/api/backups/all', requireSuperAdmin, async (req, res) => {
-  try {
-    const backups = await worldBackup.listAllBackups(50);
-    res.json({ backups });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Superadmin: backup local server
-router.post('/api/backups/local/:game', requireSuperAdmin, async (req, res) => {
+// Admin: backup local server
+router.post('/api/backups/local/:game', requireAdmin, async (req, res) => {
   try {
     const result = await worldBackup.backupLocal(req.params.game, req.user._id.toString());
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Admin: restore a specific backup to local server
+router.post('/api/backups/:id/restore-local', requireAdmin, async (req, res) => {
+  try {
+    const backup = await worldBackup.getBackup(req.params.id);
+    if (!backup) return res.status(404).json({ error: 'Backup not found' });
+
+    // Check if the game server is running — warn but allow
+    const game = backup.game;
+    let running = false;
+    try {
+      const lib = GAME_LIBS[game]();
+      running = lib.isRunning();
+    } catch (e) {}
+
+    const result = await worldBackup.restoreLocal(game, req.params.id);
+    if (result.ok && running) {
+      result.warning = game.toUpperCase() + ' server is still running — restart it to load the restored save';
+    }
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Admin: restore a specific backup to a provisioned Linode
+router.post('/api/backups/:id/restore-linode', requireAdmin, async (req, res) => {
+  try {
+    const { ip } = req.body;
+    if (!ip) return res.status(400).json({ error: 'ip is required' });
+    const backup = await worldBackup.getBackup(req.params.id);
+    if (!backup) return res.status(404).json({ error: 'Backup not found' });
+
+    const result = await worldBackup.restoreToLinode(ip, backup.game, backup.userId, req.params.id);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Superadmin only: delete a backup
+router.delete('/api/backups/:id', requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await worldBackup.deleteBackup(req.params.id);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -6,8 +6,8 @@ const router = express.Router();
 // List specials (active + drafts)
 router.get('/', async (req, res) => {
   const filter = { active: true };
-  if (req.query.brandId) filter.brand = req.query.brandId;
-  else if (req.user.role === 'brandAdmin') filter.brand = req.user.brand;
+  if (req.brandScope) filter.brand = req.brandScope;
+  else if (req.query.brandId) filter.brand = req.query.brandId;
 
   const specials = await Special.find(filter).populate('brand', 'name').sort({ status: 1, createdAt: -1 }).lean();
   const brands = await Brand.find({ active: true }).select('name').lean();

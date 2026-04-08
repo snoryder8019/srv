@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tax Information — sLab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#c9a848; background:#262626; padding:3px 8px; border-radius:4px; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:640px; margin:0 auto; padding:24px; }
+    .card { background:#141414; border:1px solid #262626; border-radius:8px; padding:28px; margin-bottom:20px; }
+    .card-title { font-size:16px; font-weight:600; color:#fff; margin-bottom:8px; padding-bottom:12px; border-bottom:1px solid #262626; }
+    .card-desc { font-size:13px; color:#737373; margin-bottom:20px; line-height:1.6; }
+    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+    .form-row.full { grid-template-columns:1fr; }
+    .form-group { display:flex; flex-direction:column; gap:5px; }
+    .form-group label { font-size:11px; font-weight:600; letter-spacing:0.8px; text-transform:uppercase; color:#737373; }
+    .form-group input, .form-group select { background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:10px 12px; border-radius:4px; font-family:'Inter',sans-serif; font-size:14px; outline:none; }
+    .form-group input:focus, .form-group select:focus { border-color:#c9a848; }
+    .form-group .hint { font-size:11px; color:#525252; margin-top:2px; }
+    .error { background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.2); color:#f87171; padding:10px 14px; border-radius:4px; font-size:13px; margin-bottom:16px; }
+    .msg { background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.2); color:#4ade80; padding:10px 14px; border-radius:4px; font-size:13px; margin-bottom:16px; }
+    .btn { padding:10px 20px; background:#c9a848; color:#0a0a0a; border:none; border-radius:4px; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+    .btn:hover { background:#d4b85c; }
+    .btn-ghost { background:transparent; color:#a3a3a3; border:1px solid #333; } .btn-ghost:hover { border-color:#c9a848; color:#c9a848; }
+    .secure-badge { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#4ade80; background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.15); padding:4px 10px; border-radius:4px; margin-bottom:16px; }
+    .file-upload { border:2px dashed #333; border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s; }
+    .file-upload:hover { border-color:#c9a848; }
+    .file-upload input[type="file"] { display:none; }
+    .file-upload .label { font-size:13px; color:#737373; }
+    .file-upload .label strong { color:#c9a848; }
+    .existing-file { display:flex; align-items:center; justify-content:space-between; background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px 14px; margin-top:8px; }
+    .existing-file .name { font-size:13px; color:#e5e5e5; }
+    .existing-file a { font-size:12px; color:#c9a848; text-decoration:none; }
+    .current-info { background:#1a1a1a; border:1px solid #262626; border-radius:6px; padding:16px; margin-bottom:20px; }
+    .current-info h4 { font-size:12px; color:#c9a848; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; }
+    .info-row { display:flex; justify-content:space-between; padding:4px 0; font-size:13px; }
+    .info-row .lbl { color:#737373; } .info-row .val { color:#e5e5e5; font-weight:500; }
+    @media (max-width:520px) { .form-row { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo"><span>s</span>Lab</div>
+      <span class="badge">Delegate</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/delegates/panel">Dashboard</a>
+      <a href="/delegates/panel/sales-sheets">Sales Sheets</a>
+      <a href="/delegates/panel/settings">Settings</a>
+      <a href="/delegates/logout">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <% if (error) { %><div class="error"><%= error %></div><% } %>
+    <% if (msg) { %><div class="msg"><%= msg %></div><% } %>
+
+    <% if (taxInfo) { %>
+    <div class="current-info">
+      <h4>Current Tax Information on File</h4>
+      <div class="info-row"><span class="lbl">Legal Name</span><span class="val"><%= taxInfo.legalName %></span></div>
+      <div class="info-row"><span class="lbl">Entity Type</span><span class="val"><%= taxInfo.entityType.replace(/_/g, ' ') %></span></div>
+      <% if (taxInfo.ssnLast4) { %>
+      <div class="info-row"><span class="lbl">SSN</span><span class="val"><%= taxInfo.ssnLast4 %></span></div>
+      <% } %>
+      <% if (taxInfo.einLast4) { %>
+      <div class="info-row"><span class="lbl">EIN</span><span class="val"><%= taxInfo.einLast4 %></span></div>
+      <% } %>
+      <% if (taxInfo.hasW9) { %>
+      <div class="info-row"><span class="lbl">W-9</span><span class="val"><a href="/delegates/panel/tax-info/w9" target="_blank" style="color:#c9a848;"><%= taxInfo.w9Filename %></a></span></div>
+      <% } %>
+      <div class="info-row"><span class="lbl">Last Updated</span><span class="val"><%= new Date(taxInfo.submittedAt).toLocaleDateString() %></span></div>
+    </div>
+    <% } %>
+
+    <div class="card">
+      <div class="card-title">Tax Information (W-9)</div>
+      <div class="card-desc">
+        Required before receiving payouts. Your SSN/EIN and W-9 document are encrypted at rest
+        using AES-256-GCM and are never stored in plaintext.
+      </div>
+      <div class="secure-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        AES-256 Encrypted
+      </div>
+
+      <form method="POST" action="/delegates/panel/tax-info" enctype="multipart/form-data">
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Legal Name (as shown on tax return) *</label>
+            <input type="text" name="legalName" value="<%= taxInfo?.legalName || (delegate.firstName + ' ' + delegate.lastName) %>" required>
+          </div>
+        </div>
+
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Entity Type *</label>
+            <select name="entityType" required>
+              <option value="">Select...</option>
+              <option value="individual" <%= taxInfo?.entityType === 'individual' ? 'selected' : '' %>>Individual / Sole Proprietor</option>
+              <option value="sole_proprietor" <%= taxInfo?.entityType === 'sole_proprietor' ? 'selected' : '' %>>Sole Proprietor (DBA)</option>
+              <option value="llc_single" <%= taxInfo?.entityType === 'llc_single' ? 'selected' : '' %>>LLC — Single Member</option>
+              <option value="llc_multi" <%= taxInfo?.entityType === 'llc_multi' ? 'selected' : '' %>>LLC — Multi Member</option>
+              <option value="c_corp" <%= taxInfo?.entityType === 'c_corp' ? 'selected' : '' %>>C Corporation</option>
+              <option value="s_corp" <%= taxInfo?.entityType === 's_corp' ? 'selected' : '' %>>S Corporation</option>
+              <option value="partnership" <%= taxInfo?.entityType === 'partnership' ? 'selected' : '' %>>Partnership</option>
+              <option value="trust" <%= taxInfo?.entityType === 'trust' ? 'selected' : '' %>>Trust / Estate</option>
+              <option value="other" <%= taxInfo?.entityType === 'other' ? 'selected' : '' %>>Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>SSN</label>
+            <input type="text" name="ssn" placeholder="<%= taxInfo?.ssnLast4 || '000-00-0000' %>" maxlength="11" autocomplete="off">
+            <span class="hint">9 digits. Leave blank to keep existing.</span>
+          </div>
+          <div class="form-group">
+            <label>EIN (Employer ID)</label>
+            <input type="text" name="ein" placeholder="<%= taxInfo?.einLast4 || '00-0000000' %>" maxlength="10" autocomplete="off">
+            <span class="hint">9 digits. Leave blank to keep existing.</span>
+          </div>
+        </div>
+
+        <div class="form-row full">
+          <div class="form-group">
+            <label>W-9 Document</label>
+            <div class="file-upload" onclick="this.querySelector('input').click()">
+              <input type="file" name="w9_file" accept=".pdf,.jpg,.jpeg,.png" id="w9Input">
+              <div class="label" id="w9Label">
+                <strong>Click to upload</strong> your W-9 (PDF, JPEG, or PNG — max 10 MB)
+              </div>
+            </div>
+            <% if (taxInfo?.hasW9) { %>
+            <div class="existing-file">
+              <span class="name"><%= taxInfo.w9Filename %> (on file)</span>
+              <a href="/delegates/panel/tax-info/w9" target="_blank">View</a>
+            </div>
+            <% } %>
+            <span class="hint">Leave blank to keep existing document on file.</span>
+          </div>
+        </div>
+
+        <div style="margin-top:8px;">
+          <button type="submit" class="btn">Save Tax Information</button>
+          <a href="/delegates/panel" class="btn btn-ghost" style="margin-left:8px;text-decoration:none;display:inline-block;">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('w9Input').addEventListener('change', function() {
+      const label = document.getElementById('w9Label');
+      if (this.files.length) {
+        label.innerHTML = '<strong>' + this.files[0].name + '</strong> (' + (this.files[0].size / 1024 / 1024).toFixed(1) + ' MB)';
+      }
+    });
+  </script>
+</body>
+</html>

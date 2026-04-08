@@ -294,6 +294,71 @@
       </div>
     </div>
   </section>
+  <% } else if (block.type === 'pricing') { %>
+  <section class="lb-pricing">
+    <div class="lb-pricing-inner">
+      <% if (f.heading || f.subtext) { %>
+        <div class="lb-pricing-intro" style="text-align:center;margin-bottom:40px;">
+          <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--dark);"><%- f.heading %></h2><% } %>
+          <% if (f.subtext) { %><p class="lb-body"><%- f.subtext %></p><% } %>
+        </div>
+      <% } %>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;">
+        <% [1,2,3].forEach(function(n) { %>
+          <% if (f['tier'+n+'_name']) { %>
+          <div style="border:1px solid rgba(0,0,0,0.08);border-radius:var(--card-radius);padding:32px 24px;background:var(--white);text-align:center;<%= n===2 ? 'border-color:var(--gold);box-shadow:0 4px 24px rgba(201,168,72,0.15);' : '' %>">
+            <div style="font-family:var(--font-heading);font-size:1.1rem;font-weight:600;margin-bottom:4px;"><%- f['tier'+n+'_name'] %></div>
+            <div style="font-size:2rem;font-weight:700;color:var(--navy);margin-bottom:16px;"><%- f['tier'+n+'_price'] || '' %></div>
+            <div style="font-size:0.88rem;color:var(--muted);line-height:2;margin-bottom:24px;text-align:left;padding:0 8px;">
+              <% (f['tier'+n+'_features'] || '').split('\n').forEach(function(line) { %><% if (line.trim()) { %><span style="display:block;"><%- line.trim() %></span><% } %><% }); %>
+            </div>
+            <% if (f['tier'+n+'_cta']) { %><a href="#" class="lb-btn" style="margin-top:0;"><%- f['tier'+n+'_cta'] %></a><% } %>
+          </div>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'testimonials') { %>
+  <section class="lb-testimonials" style="padding:64px 32px;background:color-mix(in srgb, var(--ivory) 80%, white);">
+    <div style="max-width:1100px;margin:0 auto;">
+      <% if (f.heading || f.subtext) { %>
+        <div style="text-align:center;margin-bottom:40px;">
+          <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--dark);"><%- f.heading %></h2><% } %>
+          <% if (f.subtext) { %><p class="lb-body"><%- f.subtext %></p><% } %>
+        </div>
+      <% } %>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;">
+        <% [1,2,3].forEach(function(n) { %>
+          <% if (f['t'+n+'_quote']) { %>
+          <div style="background:var(--white);border:1px solid rgba(0,0,0,0.06);border-radius:var(--card-radius);padding:28px 24px;">
+            <div style="font-style:italic;font-size:0.95rem;line-height:1.7;color:var(--dark);margin-bottom:16px;padding-left:20px;border-left:3px solid var(--gold);"><%- f['t'+n+'_quote'] %></div>
+            <% if (f['t'+n+'_name']) { %><div style="font-weight:600;font-size:0.88rem;"><%- f['t'+n+'_name'] %></div><% } %>
+            <% if (f['t'+n+'_role']) { %><div style="font-size:0.78rem;color:var(--muted);"><%- f['t'+n+'_role'] %></div><% } %>
+          </div>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  </section>
+
+  <% } else if (block.type === 'stats') { %>
+  <section class="lb-stats" style="padding:48px 32px;background:linear-gradient(135deg,var(--navy-deep),var(--navy));">
+    <div style="max-width:1000px;margin:0 auto;">
+      <% if (f.heading) { %><h2 class="lb-heading" style="text-align:center;color:#fff;margin-bottom:36px;"><%- f.heading %></h2><% } %>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:24px;text-align:center;">
+        <% [1,2,3,4].forEach(function(n) { %>
+          <% if (f['stat'+n+'_num']) { %>
+          <div>
+            <div style="font-family:var(--font-heading);font-size:2.4rem;font-weight:700;color:var(--gold);line-height:1.2;"><%- f['stat'+n+'_num'] %></div>
+            <% if (f['stat'+n+'_label']) { %><div style="font-size:0.82rem;color:rgba(253,252,250,0.6);margin-top:4px;"><%- f['stat'+n+'_label'] %></div><% } %>
+          </div>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  </section>
   <% } %>
 
 <% }); %>
@@ -308,7 +373,9 @@
     <li><a href="/blog">Blog</a></li>
     <li><a href="/#contact">Contact</a></li>
   </ul>
-  <div style="margin-top:16px;text-align:center;"><a href="/admin/login" style="color:rgba(253,252,250,0.12);text-decoration:none;font-size:0.6rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.3)'" onmouseout="this.style.color='rgba(253,252,250,0.12)'">Admin</a></div>
+  <% if (typeof visibility === 'undefined' || !visibility || visibility.admin_link !== false) { %>
+  <div style="margin-top:16px;text-align:center;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.12);text-decoration:none;font-size:0.6rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.3)'" onmouseout="this.style.color='rgba(253,252,250,0.12)'">Admin</a></div>
+  <% } %>
 </footer>
 
 <script>

@@ -10,7 +10,7 @@ const brandSchema = new mongoose.Schema({
   color:       { type: String, default: '#2563eb' },
   description: { type: String, default: '' },
 
-  // Owner (admin or brandAdmin who created it)
+  // Owner (admin who created it)
   owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
   // Settings
@@ -30,6 +30,10 @@ const brandSchema = new mongoose.Schema({
 
   active: { type: Boolean, default: true },
 
+  // Manager invite token (admin generates, managers use to self-register)
+  inviteToken:    { type: String },
+  inviteCreatedAt:{ type: Date },
+
   // SaaS status: preview (trial) → active (paid) → suspended (expired/cancelled)
   status: {
     type: String,
@@ -38,10 +42,26 @@ const brandSchema = new mongoose.Schema({
   },
   trialExpiresAt: { type: Date },
 
-  // Payment tracking
-  plan: { type: String, enum: ['free', 'monthly', 'annual'], default: 'free' },
-  activatedAt: { type: Date },
-  paymentId: { type: String }
+  // Payment tracking (aligned with slab PP_PLANS)
+  plan: {
+    type: String,
+    enum: ['free', 'monthly', 'quarterly', 'annual', 'lifetime'],
+    default: 'free'
+  },
+  activatedAt:    { type: Date },
+  expiresAt:      { type: Date },
+  paypalOrderId:  { type: String },
+  paypalCaptureId:{ type: String },
+
+  // Delegate referral promo
+  delegatePromo:    { type: Boolean, default: false },
+  delegatePromoAt:  { type: Date },
+  delegateTrialEndsAt: { type: Date },
+  referredBy: {
+    delegateId:    { type: String },
+    delegateEmail: { type: String },
+    refCode:       { type: String }
+  }
 
 }, { timestamps: true });
 

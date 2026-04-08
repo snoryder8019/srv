@@ -1,0 +1,369 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<style>
+/* ── Builder layout ── */
+.builder-wrap { display:flex;height:calc(100vh - 60px);overflow:hidden; }
+.builder-palette { width:200px;min-width:200px;border-right:1px solid var(--ivory-mid);background:var(--white);overflow-y:auto;padding:16px 12px;flex-shrink:0; }
+.builder-center { flex:1;display:flex;flex-direction:column;overflow:hidden; }
+.builder-blocks { flex:1;overflow-y:auto;padding:20px;background:color-mix(in srgb, var(--ivory) 50%, white); }
+.builder-right { width:380px;min-width:380px;border-left:1px solid var(--ivory-mid);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0; }
+.builder-right-tabs { display:flex;border-bottom:1px solid var(--ivory-mid); }
+.builder-right-tab { flex:1;padding:10px;text-align:center;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s; }
+.builder-right-tab.active { color:var(--navy);border-bottom-color:var(--navy); }
+.builder-right-panel { flex:1;overflow-y:auto;display:none; }
+.builder-right-panel.active { display:block; }
+.panel-meta { padding:20px; }
+.panel-preview { height:100%;position:relative; }
+.panel-preview iframe { width:100%;height:100%;border:none; }
+
+/* ── Block palette ── */
+.palette-title { font-size:0.62rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--slate);margin-bottom:12px; }
+.palette-item { display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--ivory-mid);border-radius:4px;margin-bottom:8px;cursor:pointer;transition:all 0.15s;background:var(--white); }
+.palette-item:hover { border-color:var(--navy-mid);background:color-mix(in srgb, var(--navy) 3%, white); }
+.palette-icon { font-size:1.1rem;width:24px;text-align:center;color:var(--navy); }
+.palette-label { font-size:0.78rem;font-weight:600;color:var(--dark); }
+
+/* ── Block cards ── */
+.block-card { border:1px solid var(--ivory-mid);border-radius:4px;margin-bottom:10px;overflow:hidden;background:var(--white); }
+.block-card-header { display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--ivory);cursor:pointer;user-select:none; }
+.block-drag-handle { color:var(--slate);font-size:0.9rem;cursor:grab; }
+.block-type-badge { font-size:0.62rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:var(--navy);color:#fff;padding:2px 7px;border-radius:2px; }
+.block-title-text { flex:1;font-size:0.85rem;font-weight:500;color:var(--dark); }
+.block-actions { display:flex;gap:4px;margin-left:auto; }
+.block-body { padding:14px;display:flex;flex-direction:column;gap:12px; }
+.block-body.collapsed { display:none; }
+.block-field { display:flex;flex-direction:column;gap:5px; }
+.block-field label { font-size:0.62rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate); }
+.block-field input, .block-field textarea { width:100%;padding:8px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:var(--font-body);font-size:0.88rem;color:var(--dark);box-sizing:border-box; }
+.block-field textarea { min-height:80px;resize:vertical; }
+.block-empty { text-align:center;padding:60px 20px;color:var(--slate);font-size:0.9rem; }
+.block-empty-icon { font-size:2rem;margin-bottom:12px;opacity:0.3; }
+
+/* ── Form fields ── */
+.form-group { margin-bottom:16px; }
+.form-label { display:block;font-size:0.62rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--slate);margin-bottom:6px; }
+.form-input { width:100%;padding:9px 12px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:var(--font-body);font-size:0.88rem;box-sizing:border-box; }
+.form-input:focus { outline:none;border-color:var(--navy); }
+.form-textarea { min-height:80px;resize:vertical; }
+.form-select { width:100%;padding:9px 12px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:var(--font-body);font-size:0.88rem;background:var(--white); }
+.form-hint { font-size:0.72rem;color:var(--slate);margin-top:4px; }
+
+/* ── Preview controls ── */
+.preview-bar { padding:8px 12px;background:var(--ivory);border-bottom:1px solid var(--ivory-mid);display:flex;align-items:center;gap:8px; }
+.preview-bar select { padding:4px 8px;font-size:0.78rem;border:1px solid var(--ivory-mid);border-radius:2px; }
+.preview-bar button { padding:4px 10px;font-size:0.72rem;border:1px solid var(--ivory-mid);border-radius:2px;background:var(--white);cursor:pointer; }
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+  .builder-right { width:320px;min-width:320px; }
+}
+@media (max-width: 960px) {
+  .builder-wrap { flex-direction:column;height:auto; }
+  .builder-palette { width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--ivory-mid);display:flex;flex-wrap:wrap;gap:8px;padding:12px; }
+  .palette-title { width:100%;margin-bottom:4px; }
+  .palette-item { flex:1;min-width:120px; }
+  .builder-center { min-height:400px; }
+  .builder-right { width:100%;min-width:0;border-left:none;border-top:1px solid var(--ivory-mid);max-height:500px; }
+}
+</style>
+
+<div class="topbar" style="position:sticky;top:0;z-index:10;">
+  <div class="topbar-title"><%= tpl && tpl._id ? 'Edit Template' : 'New Template' %></div>
+  <div class="topbar-actions">
+    <a href="/admin/templates" class="btn btn-ghost btn-sm">← Templates</a>
+    <button type="submit" form="template-form" class="btn btn-navy">Save Template</button>
+  </div>
+</div>
+
+<form id="template-form" method="POST" action="<%= tpl && tpl._id ? '/admin/templates/' + tpl._id : '/admin/templates' %>">
+  <input type="hidden" id="blocks-json" name="blocksJson" value="<%- JSON.stringify((tpl && tpl.blocks) || []) %>">
+
+  <div class="builder-wrap">
+    <!-- ── Left: Block Palette ── -->
+    <div class="builder-palette">
+      <div class="palette-title">Add Block</div>
+      <% const blockMeta = {
+        hero:         { icon: '\u25C6', label: 'Hero Banner' },
+        text:         { icon: '\u00B6', label: 'Text Section' },
+        split:        { icon: '\u25EB', label: 'Split Layout' },
+        cta:          { icon: '\u25B6', label: 'Call to Action' },
+        cards:        { icon: '\u25A6', label: 'Feature Cards' },
+        faq:          { icon: '?', label: 'FAQ Accordion' },
+        pricing:      { icon: '$', label: 'Pricing Table' },
+        testimonials: { icon: '\u275D', label: 'Testimonials' },
+        stats:        { icon: '#', label: 'Stats Row' },
+      };
+      VALID_BLOCK_TYPES.forEach(type => {
+        const m = blockMeta[type] || { icon: '\u25A1', label: type };
+      %>
+        <div class="palette-item" onclick="addBlock('<%= type %>')" title="Add <%= m.label %>">
+          <span class="palette-icon"><%= m.icon %></span>
+          <span class="palette-label"><%= m.label %></span>
+        </div>
+      <% }) %>
+    </div>
+
+    <!-- ── Center: Block Stack ── -->
+    <div class="builder-center">
+      <div class="builder-blocks" id="block-list-wrap">
+        <div id="block-empty" class="block-empty" style="display:none;">
+          <div class="block-empty-icon">+</div>
+          <p>Click a block type on the left to start building your template.</p>
+        </div>
+        <div id="block-list"></div>
+      </div>
+    </div>
+
+    <!-- ── Right: Metadata + Preview ── -->
+    <div class="builder-right">
+      <div class="builder-right-tabs">
+        <div class="builder-right-tab active" data-panel="meta" onclick="switchRightPanel('meta')">Details</div>
+        <div class="builder-right-tab" data-panel="preview" onclick="switchRightPanel('preview')">Preview</div>
+      </div>
+
+      <!-- Metadata panel -->
+      <div class="builder-right-panel active" id="panel-meta">
+        <div class="panel-meta">
+          <div class="form-group">
+            <label class="form-label">Template Name</label>
+            <input type="text" name="name" class="form-input" required value="<%= tpl ? tpl.name : '' %>" placeholder="e.g. Bold Agency Landing">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-input form-textarea" placeholder="What is this template for?"><%= tpl ? (tpl.description || '') : '' %></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select name="category" class="form-select">
+              <option value="landing" <%= tpl && tpl.category === 'landing' ? 'selected' : '' %>>Landing Page</option>
+              <option value="page" <%= tpl && tpl.category === 'page' ? 'selected' : '' %>>Content Page</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tags</label>
+            <input type="text" name="tags" class="form-input" value="<%= tpl && tpl.tags ? tpl.tags.join(', ') : '' %>" placeholder="agency, bold, dark (comma-separated)">
+            <div class="form-hint">Comma-separated tags for search and filtering.</div>
+          </div>
+
+          <div style="border-top:1px solid var(--ivory-mid);margin:20px 0;padding-top:16px;">
+            <div class="form-label" style="margin-bottom:12px;">Design Snapshot</div>
+            <p style="font-size:0.78rem;color:var(--slate);line-height:1.5;margin-bottom:12px;">
+              Your current design tokens (colors, fonts, layout) will be captured when you save. This snapshot is used for store previews.
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;" id="snapshot-preview">
+              <!-- Populated by JS from current design -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Preview panel -->
+      <div class="builder-right-panel" id="panel-preview">
+        <div class="preview-bar">
+          <select id="preview-design-mode" onchange="refreshPreview()">
+            <option value="current">My Design</option>
+            <option value="snapshot">Template Design</option>
+          </select>
+          <button type="button" onclick="refreshPreview()">Refresh</button>
+        </div>
+        <div class="panel-preview">
+          <iframe id="preview-frame" src="about:blank"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script>
+// ── Block field definitions (from server) ──
+const BLOCK_FIELDS = <%- BLOCK_FIELDS %>;
+const BLOCK_DEFAULTS = <%- BLOCK_DEFAULTS %>;
+const BLOCK_META = {
+  hero:         { icon: '\u25C6', label: 'Hero Banner' },
+  text:         { icon: '\u00B6', label: 'Text Section' },
+  split:        { icon: '\u25EB', label: 'Split Layout' },
+  cta:          { icon: '\u25B6', label: 'Call to Action' },
+  cards:        { icon: '\u25A6', label: 'Feature Cards' },
+  faq:          { icon: '?', label: 'FAQ Accordion' },
+  pricing:      { icon: '$', label: 'Pricing Table' },
+  testimonials: { icon: '\u275D', label: 'Testimonials' },
+  stats:        { icon: '#', label: 'Stats Row' },
+};
+
+// ── State ──
+let tplBlocks = [];
+try { tplBlocks = JSON.parse(document.getElementById('blocks-json').value) || []; } catch {}
+tplBlocks = tplBlocks.map(b => ({ id: b.id || Math.random().toString(36).slice(2), ...b }));
+
+let dragSrc = null;
+
+// ── Block rendering ──
+function renderBlocks() {
+  const list = document.getElementById('block-list');
+  const empty = document.getElementById('block-empty');
+  empty.style.display = tplBlocks.length ? 'none' : '';
+  list.innerHTML = '';
+
+  tplBlocks.forEach((block, i) => {
+    const card = document.createElement('div');
+    card.className = 'block-card';
+    card.draggable = true;
+    card.dataset.id = block.id;
+
+    // Drag events
+    card.addEventListener('dragstart', e => { dragSrc = i; e.dataTransfer.effectAllowed = 'move'; });
+    card.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; card.style.outline = '2px solid var(--gold)'; });
+    card.addEventListener('dragleave', () => { card.style.outline = ''; });
+    card.addEventListener('drop', e => {
+      e.preventDefault(); card.style.outline = '';
+      if (dragSrc === null || dragSrc === i) return;
+      const moved = tplBlocks.splice(dragSrc, 1)[0];
+      tplBlocks.splice(i, 0, moved);
+      dragSrc = null;
+      renderBlocks();
+    });
+
+    const fields = BLOCK_FIELDS[block.type] || [];
+    const previewText = block.fields?.heading || block.fields?.q1 || block.type;
+    const meta = BLOCK_META[block.type] || { icon: '?', label: block.type };
+
+    card.innerHTML = `
+      <div class="block-card-header" onclick="toggleBlock('${block.id}')">
+        <span class="block-drag-handle" title="Drag to reorder">\u2807</span>
+        <span class="block-type-badge">${meta.icon} ${block.type}</span>
+        <span class="block-title-text">${(previewText || '(empty)').toString().slice(0, 48)}</span>
+        <div class="block-actions">
+          ${i > 0 ? `<button type="button" class="btn btn-ghost btn-sm" style="padding:4px 8px;" onclick="event.stopPropagation();moveBlock(${i},-1)">\u2191</button>` : ''}
+          ${i < tplBlocks.length - 1 ? `<button type="button" class="btn btn-ghost btn-sm" style="padding:4px 8px;" onclick="event.stopPropagation();moveBlock(${i},1)">\u2193</button>` : ''}
+          <button type="button" class="btn btn-ghost btn-sm" style="padding:4px 8px;" onclick="event.stopPropagation();duplicateBlock('${block.id}')" title="Duplicate">\u2398</button>
+          <button type="button" class="btn btn-danger btn-sm" style="padding:4px 8px;" onclick="event.stopPropagation();removeBlock('${block.id}')">\u2715</button>
+        </div>
+      </div>
+      <div class="block-body collapsed" id="block-body-${block.id}">
+        ${fields.map(([key, label, type]) => `
+          <div class="block-field">
+            <label>${label}</label>
+            ${type === 'textarea'
+              ? `<textarea data-bid="${block.id}" data-key="${key}" oninput="updateBlockField('${block.id}','${key}',this.value)">${(block.fields?.[key] || '').replace(/</g, '&lt;')}</textarea>`
+              : `<input type="text" data-bid="${block.id}" data-key="${key}" value="${(block.fields?.[key] || '').replace(/"/g, '&quot;')}" oninput="updateBlockField('${block.id}','${key}',this.value)">`
+            }
+          </div>`).join('')}
+      </div>`;
+    list.appendChild(card);
+  });
+
+  serializeBlocks();
+}
+
+function toggleBlock(id) {
+  const body = document.getElementById('block-body-' + id);
+  if (body) body.classList.toggle('collapsed');
+}
+
+function addBlock(type) {
+  const defaults = BLOCK_DEFAULTS[type] || {};
+  tplBlocks.push({
+    id: Math.random().toString(36).slice(2),
+    type,
+    fields: { ...defaults },
+    images: {},
+  });
+  renderBlocks();
+  // Expand the new block
+  const lastBlock = tplBlocks[tplBlocks.length - 1];
+  const body = document.getElementById('block-body-' + lastBlock.id);
+  if (body) body.classList.remove('collapsed');
+}
+
+function removeBlock(id) {
+  tplBlocks = tplBlocks.filter(b => b.id !== id);
+  renderBlocks();
+}
+
+function duplicateBlock(id) {
+  const source = tplBlocks.find(b => b.id === id);
+  if (!source) return;
+  const idx = tplBlocks.indexOf(source);
+  const clone = JSON.parse(JSON.stringify(source));
+  clone.id = Math.random().toString(36).slice(2);
+  tplBlocks.splice(idx + 1, 0, clone);
+  renderBlocks();
+}
+
+function moveBlock(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= tplBlocks.length) return;
+  [tplBlocks[i], tplBlocks[j]] = [tplBlocks[j], tplBlocks[i]];
+  renderBlocks();
+}
+
+function updateBlockField(id, key, value) {
+  const block = tplBlocks.find(b => b.id === id);
+  if (block) { if (!block.fields) block.fields = {}; block.fields[key] = value; }
+  serializeBlocks();
+}
+
+function serializeBlocks() {
+  document.getElementById('blocks-json').value = JSON.stringify(tplBlocks);
+}
+
+// ── Right panel tabs ──
+function switchRightPanel(panel) {
+  document.querySelectorAll('.builder-right-tab').forEach(t => t.classList.toggle('active', t.dataset.panel === panel));
+  document.querySelectorAll('.builder-right-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + panel));
+  if (panel === 'preview') refreshPreview();
+}
+
+// ── Preview ──
+function refreshPreview() {
+  const tplId = '<%= tpl && tpl._id ? tpl._id : '' %>';
+  const mode = document.getElementById('preview-design-mode').value;
+  const frame = document.getElementById('preview-frame');
+
+  if (tplId) {
+    frame.src = '/admin/templates/' + tplId + '/preview?designMode=' + mode + '&t=' + Date.now();
+  } else {
+    // For unsaved templates, POST the blocks JSON
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/admin/templates/preview';
+    form.target = 'preview-frame';
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'blocksJson';
+    input.value = JSON.stringify(tplBlocks);
+    form.appendChild(input);
+    document.body.appendChild(form);
+    frame.name = 'preview-frame';
+    form.submit();
+    form.remove();
+  }
+}
+
+// ── Design snapshot preview ──
+function showDesignSnapshot() {
+  const container = document.getElementById('snapshot-preview');
+  const design = <%- JSON.stringify({
+    color_primary: design.color_primary,
+    color_accent: design.color_accent,
+    color_bg: design.color_bg,
+    font_heading: design.font_heading,
+    font_body: design.font_body,
+  }) %>;
+  container.innerHTML = `
+    <div style="display:flex;gap:4px;">
+      <div style="width:24px;height:24px;border-radius:2px;background:${design.color_primary};border:1px solid rgba(0,0,0,0.1);" title="Primary"></div>
+      <div style="width:24px;height:24px;border-radius:2px;background:${design.color_accent};border:1px solid rgba(0,0,0,0.1);" title="Accent"></div>
+      <div style="width:24px;height:24px;border-radius:2px;background:${design.color_bg};border:1px solid rgba(0,0,0,0.1);" title="Background"></div>
+    </div>
+    <div style="font-size:0.72rem;color:var(--slate);">${design.font_heading} / ${design.font_body}</div>
+  `;
+}
+
+// ── Init ──
+document.getElementById('template-form').addEventListener('submit', serializeBlocks);
+renderBlocks();
+showDesignSnapshot();
+</script>
+</div></body></html>

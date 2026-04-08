@@ -8,18 +8,14 @@ See **[.claude-context.json](./.claude-context.json)** for comprehensive module 
 
 ## Active Services
 
-| Service | Port | Domain | Description |
-|---------|------|--------|-------------|
-| **madladslab** | 3000 | madladslab.com | Main platform with auth, monitoring daemon |
-| **servers** | 3600 | servers.madladslab.com | Admin dashboard for monitoring/managing services |
-| **ps** | 3399 | ps.madladslab.com | Project Stringborne MMO with Three.js |
-| **game-state** | 3500 | svc.madladslab.com | Game state service for PS |
-| **acm** | 3002 | acmcreativeconcepts.com | Creative agency website |
-| **sfg** | 3003 | sfg.madladslab.com | SFG project |
-| **sna** | 3010 | somenewsarticle.com | News aggregation platform |
-| **twww** | 3008 | theworldwidewallet.com | Payment services directory |
-| **madThree** | 3001 | three.madladslab.com | Three.js experiments |
-| **w2MongoClient** | 3006 | localhost | MongoDB client |
+| Service | Port | Domain | tmux | Description |
+|---------|------|--------|------|-------------|
+| **games** | 3500 | games.madladslab.com | `games` | Dedicated game server portal (Rust, Valheim, L4D2, 7DTD, SE, Palworld) |
+| **slab** | 3602 | *.madladslab.com | `slab` | Multi-tenant white-label SaaS platform |
+| **bih** | 3055 | — | `bih` | Gaming hub (phases 1-5), connects via bridge SSO to games |
+| **madladslab** | 3000 | madladslab.com | `madladslab` | Main platform (will migrate to Slab) |
+| **ps** | 3399 | ps.madladslab.com | `ps_session` | Project Stringborne sci-fi MMO |
+| **servers** | 3600 | servers.madladslab.com | — | Admin dashboard for monitoring/managing services |
 
 ## Shared Infrastructure
 

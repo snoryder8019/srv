@@ -9,8 +9,8 @@ const router = express.Router();
 // GET /admin/shifts — list shifts
 router.get('/', async (req, res) => {
   const filter = {};
-  if (req.query.brandId) filter.brand = req.query.brandId;
-  else if (req.user.role === 'brandAdmin') filter.brand = req.user.brand;
+  if (req.brandScope) filter.brand = req.brandScope;
+  else if (req.query.brandId) filter.brand = req.query.brandId;
   if (req.query.date) filter.date = req.query.date;
 
   const shifts = await Shift.find(filter).populate('brand', 'name color').sort({ date: -1, shiftTime: 1 }).limit(50).lean();

@@ -15,7 +15,7 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-// Google OAuth — for brandAdmin+ roles
+// Google OAuth — for admin+ roles
 passport.use(new GoogleStrategy({
   clientID: process.env.GGLCID,
   clientSecret: process.env.GGLSEC,
@@ -33,7 +33,7 @@ passport.use(new GoogleStrategy({
       }
       return done(null, user);
     }
-    // New Google user — default to visitor until assigned a role
+    // New Google user — default to user until an admin promotes them
     user = await User.create({
       googleId: profile.id,
       email: profile.emails[0].value,
@@ -41,7 +41,7 @@ passport.use(new GoogleStrategy({
       firstName: profile.name?.givenName || '',
       lastName: profile.name?.familyName || '',
       avatar: profile.photos?.[0]?.value || '',
-      role: 'visitor',
+      role: 'user',
       provider: 'google'
     });
     done(null, user);
@@ -50,7 +50,7 @@ passport.use(new GoogleStrategy({
   }
 }));
 
-// Local strategy — email + password login for brandAdmin+ roles
+// Local strategy — email + password login for manager+ roles
 passport.use('local', new LocalStrategy({
   usernameField: 'email',
   passwordField: 'password',
@@ -63,8 +63,8 @@ passport.use('local', new LocalStrategy({
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return done(null, false, { message: 'Invalid email or password' });
 
-    // Must be brandAdmin or higher to use the admin login
-    const adminRoles = ['superadmin', 'admin', 'brandAdmin'];
+    // Must be manager or higher to use the admin login
+    const adminRoles = ['superadmin', 'admin', 'manager'];
     if (!adminRoles.includes(user.role)) {
       return done(null, false, { message: 'Your account does not have admin access. Staff use QR + PIN.' });
     }

@@ -138,6 +138,25 @@ app.use(sessionMiddleware);
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Superadmin gateway
+const { gatewayRoute } = require('/srv/gateway.cjs');
+app.get('/gateway', gatewayRoute({
+  secret: process.env.SESHSEC,
+  appName: 'games',
+  findOrCreateAdmin: async (email) => {
+    const db = app.locals.db;
+    let user = await db.collection('users').findOne({ email });
+    if (!user) {
+      const result = await db.collection('users').insertOne({ email, displayName: email.split('@')[0], isAdmin: true, provider: 'gateway', createdAt: new Date() });
+      user = await db.collection('users').findOne({ _id: result.insertedId });
+    } else if (!user.isAdmin) {
+      await db.collection('users').updateOne({ _id: user._id }, { $set: { isAdmin: true } });
+      user.isAdmin = true;
+    }
+    return user;
+  },
+}));
+
 // Static assets
 app.use('/static', express.static(__dirname + '/public'));
 

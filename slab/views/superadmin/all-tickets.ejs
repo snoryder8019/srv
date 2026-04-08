@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>All Tickets — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1200px; margin:0 auto; padding:24px; }
+    .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+    .page-title { font-size:20px; font-weight:600; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:12px; margin-bottom:24px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:14px; text-align:center; }
+    .stat-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:4px; }
+    .stat-value { font-size:22px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; } .stat-value.green { color:#34d399; } .stat-value.red { color:#f87171; } .stat-value.orange { color:#f97316; } .stat-value.blue { color:#38bdf8; }
+    .toolbar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
+    .filter-btn { padding:5px 12px; font-size:11px; border-radius:5px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; text-decoration:none; font-family:'Inter',sans-serif; transition:all .15s; }
+    .filter-btn:hover { border-color:#c9a848; color:#c9a848; }
+    .filter-btn.active { background:#c9a848; color:#0a0a0a; border-color:#c9a848; font-weight:600; }
+    select.filter-select { background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:5px 10px; border-radius:5px; font-family:'Inter',sans-serif; font-size:12px; }
+    select.filter-select:focus { border-color:#c9a848; outline:none; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; white-space:nowrap; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    tr:hover td { background:#1a1a1a; }
+    .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:500; white-space:nowrap; }
+    .status-open { background:#422006; color:#fdba74; }
+    .status-in-progress { background:#1e3a5f; color:#7dd3fc; }
+    .status-escalated { background:#451a1a; color:#fca5a5; }
+    .status-resolved { background:#14532d; color:#86efac; }
+    .status-closed { background:#262626; color:#a3a3a3; }
+    .link { color:#c9a848; text-decoration:none; font-size:12px; } .link:hover { text-decoration:underline; }
+    .tenant-tag { color:#c9a848; font-size:11px; }
+    .escalated-badge { background:#451a1a; color:#fca5a5; font-size:9px; padding:1px 5px; border-radius:8px; margin-left:4px; }
+    .empty { color:#525252; font-size:13px; padding:40px; text-align:center; }
+    .reply-count { font-size:11px; color:#525252; }
+    .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:8px; }
+    .table-wrap table { min-width:640px; }
+    @media (max-width:768px) {
+      .topbar { padding:10px 14px; flex-wrap:wrap; gap:8px; }
+      .topbar-left { gap:10px; } .topbar-right { gap:8px; font-size:11px; flex-wrap:wrap; }
+      .logo { font-size:17px; }
+      .container { padding:14px; }
+      .stats { grid-template-columns:repeat(3, 1fr); gap:8px; }
+      .stat { padding:10px; } .stat-value { font-size:18px; } .stat-label { font-size:9px; }
+      .toolbar { gap:6px; }
+      .filter-btn { padding:4px 10px; font-size:10px; }
+      select.filter-select { font-size:11px; }
+      th, td { padding:8px 10px; font-size:12px; }
+    }
+    @media (max-width:480px) {
+      .stats { grid-template-columns:repeat(2, 1fr); }
+      .topbar-right a:not(:last-child) { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">s<span>Lab</span></div>
+      <span style="color:#737373; font-size:13px;">/ All Tickets</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin">&larr; Dashboard</a>
+      <a href="/superadmin/tickets">Escalated Only</a>
+      <span><%= superAdmin.email %></span>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Total</div><div class="stat-value gold"><%= statusCounts.total %></div></div>
+      <div class="stat"><div class="stat-label">Open</div><div class="stat-value orange"><%= statusCounts.open %></div></div>
+      <div class="stat"><div class="stat-label">In Progress</div><div class="stat-value blue"><%= statusCounts['in-progress'] %></div></div>
+      <div class="stat"><div class="stat-label">Escalated</div><div class="stat-value red"><%= statusCounts.escalated %></div></div>
+      <div class="stat"><div class="stat-label">Resolved</div><div class="stat-value green"><%= statusCounts.resolved %></div></div>
+      <div class="stat"><div class="stat-label">Closed</div><div class="stat-value"><%= statusCounts.closed %></div></div>
+    </div>
+
+    <div class="toolbar">
+      <a class="filter-btn <%= !filters.status ? 'active' : '' %>" href="/superadmin/all-tickets<%= filters.tenant ? '?tenant='+filters.tenant : '' %>">All</a>
+      <a class="filter-btn <%= filters.status === 'open' ? 'active' : '' %>" href="/superadmin/all-tickets?status=open<%= filters.tenant ? '&tenant='+filters.tenant : '' %>">Open</a>
+      <a class="filter-btn <%= filters.status === 'in-progress' ? 'active' : '' %>" href="/superadmin/all-tickets?status=in-progress<%= filters.tenant ? '&tenant='+filters.tenant : '' %>">In Progress</a>
+      <a class="filter-btn <%= filters.status === 'escalated' ? 'active' : '' %>" href="/superadmin/all-tickets?status=escalated<%= filters.tenant ? '&tenant='+filters.tenant : '' %>">Escalated</a>
+      <a class="filter-btn <%= filters.status === 'resolved' ? 'active' : '' %>" href="/superadmin/all-tickets?status=resolved<%= filters.tenant ? '&tenant='+filters.tenant : '' %>">Resolved</a>
+      <a class="filter-btn <%= filters.status === 'closed' ? 'active' : '' %>" href="/superadmin/all-tickets?status=closed<%= filters.tenant ? '&tenant='+filters.tenant : '' %>">Closed</a>
+
+      <span style="color:#333;">|</span>
+
+      <select class="filter-select" onchange="filterTenant(this.value)">
+        <option value="">All Tenants</option>
+        <% tenants.forEach(t => { %>
+          <option value="<%= t.db %>" <%= filters.tenant === t.db ? 'selected' : '' %>><%= t.brand?.name || t.domain %></option>
+        <% }) %>
+      </select>
+    </div>
+
+    <% if (tickets.length === 0) { %>
+      <div class="empty">No tickets found matching your filters.</div>
+    <% } else { %>
+      <div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th>Subject</th>
+            <th>Tenant</th>
+            <th>From</th>
+            <th>Status</th>
+            <th>Replies</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% tickets.forEach(t => { %>
+          <tr>
+            <td>
+              <strong><%= t.subject || '(no subject)' %></strong>
+              <% if (t.escalated) { %><span class="escalated-badge">ESCALATED</span><% } %>
+            </td>
+            <td><span class="tenant-tag"><%= t._tenantName %></span></td>
+            <td style="font-size:12px; color:#a3a3a3;"><%= t.author?.displayName || t.author?.email || '—' %></td>
+            <td><span class="status status-<%= t.status || 'open' %>"><%= t.status || 'open' %></span></td>
+            <td><span class="reply-count"><%= t.replies?.length || 0 %></span></td>
+            <td style="font-size:12px; color:#525252;"><%= t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—' %></td>
+            <td><a class="link" href="/superadmin/tickets/<%= t._tenantDb %>/<%= t._id %>">View</a></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+    <% } %>
+  </div>
+
+  <script>
+    function filterTenant(db) {
+      const url = new URL(window.location);
+      if (db) url.searchParams.set('tenant', db);
+      else url.searchParams.delete('tenant');
+      window.location = url;
+    }
+  </script>
+</body>
+</html>

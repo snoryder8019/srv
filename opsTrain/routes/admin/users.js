@@ -1,4 +1,6 @@
 const express = require('express');
+const crypto = require('crypto');
+const QRCodeLib = require('qrcode');
 const User = require('../../models/User');
 const Brand = require('../../models/Brand');
 const router = express.Router();
@@ -6,8 +8,8 @@ const router = express.Router();
 // List users
 router.get('/', async (req, res) => {
   const filter = {};
-  if (req.query.brandId) filter.brand = req.query.brandId;
-  else if (req.user.role === 'brandAdmin') filter.brand = req.user.brand;
+  if (req.brandScope) filter.brand = req.brandScope;
+  else if (req.query.brandId) filter.brand = req.query.brandId;
 
   const users = await User.find(filter).populate('brand', 'name').sort({ role: 1, displayName: 1 }).lean();
   const brands = await Brand.find({ active: true }).select('name').lean();
@@ -73,6 +75,33 @@ router.post('/:id', async (req, res) => {
 router.post('/:id/delete', async (req, res) => {
   const u = await User.findByIdAndDelete(req.params.id);
   res.redirect(`/admin/users?brandId=${u?.brand || ''}`);
+});
+
+// ── Manager Invite Link ────────────────────────────────────────────────────
+// POST /admin/users/invite — generate invite token + QR for manager signup
+router.post('/invite', async (req, res) => {
+  const brandId = req.brandScope || req.user.brand;
+  if (!brandId) return res.redirect('/admin/users?error=no_brand');
+
+  const token = crypto.randomBytes(16).toString('hex');
+  await Brand.findByIdAndUpdate(brandId, {
+    inviteToken: token,
+    inviteCreatedAt: new Date(),
+  });
+
+  const domain = process.env.DOMAIN || 'https://ops-train.madladslab.com';
+  const inviteUrl = `${domain}/invite/${token}`;
+
+  // Generate QR code as data URL
+  const qrDataUrl = await QRCodeLib.toDataURL(inviteUrl, { width: 300, margin: 2 });
+
+  const brand = await Brand.findById(brandId).select('name').lean();
+  res.render('admin/users/invite', {
+    title: 'Manager Invite',
+    inviteUrl,
+    qrDataUrl,
+    brandName: brand?.name || 'Brand',
+  });
 });
 
 module.exports = router;

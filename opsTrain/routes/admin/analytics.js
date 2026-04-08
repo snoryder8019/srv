@@ -16,8 +16,8 @@ router.get('/', async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
 
   const brandFilter = {};
-  if (brandId) brandFilter.brand = new mongoose.Types.ObjectId(brandId);
-  else if (req.user.role === 'brandAdmin') brandFilter.brand = req.user.brand;
+  if (req.brandScope) brandFilter.brand = req.brandScope;
+  else if (brandId) brandFilter.brand = new mongoose.Types.ObjectId(brandId);
 
   const brands = await Brand.find({ active: true }).select('name color').lean();
 

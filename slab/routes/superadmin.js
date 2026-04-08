@@ -10,14 +10,16 @@
  */
 
 import express from 'express';
-import { ObjectId } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import { getSlabDb, getTenantDb } from '../plugins/mongo.js';
 import { requireSuperAdmin, isSuperAdminEmail } from '../middleware/superadmin.js';
 import { bustTenantCache } from '../middleware/tenant.js';
+import { createLoginToken } from '../middleware/jwtAuth.js';
 import { config } from '../config/config.js';
 import nodemailer from 'nodemailer';
 import { logActivity, getActivityLogs } from '../plugins/activityLog.js';
 import { execSync } from 'child_process';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { getServices, getServicesByCategory, getService } from '../plugins/serviceRegistry.js';
@@ -113,6 +115,26 @@ router.get('/logout', (req, res) => {
   if (domain) res.clearCookie('slab_token', { domain });
   res.clearCookie('slab_token');
   res.redirect('/superadmin/login');
+});
+
+// ── Public subscriber capture (no auth) ───────────────────────────────────
+router.get('/subscribe', (req, res) => {
+  res.render('superadmin/subscribe', { success: req.query.success || null });
+});
+
+router.post('/subscribe', async (req, res) => {
+  const { email, name, interest, source } = req.body;
+  if (!email?.trim()) return res.redirect('/superadmin/subscribe');
+  const slab = getSlabDb();
+  await slab.collection('subscribers').updateOne(
+    { email: email.toLowerCase().trim() },
+    {
+      $set: { email: email.toLowerCase().trim(), name: name?.trim() || '', interest: interest || 'general', source: source || 'direct', updatedAt: new Date() },
+      $setOnInsert: { createdAt: new Date(), status: 'active' },
+    },
+    { upsert: true },
+  );
+  res.redirect('/superadmin/subscribe?success=1');
 });
 
 // ── All routes below require superadmin ─────────────────────────────────────
@@ -764,6 +786,665 @@ router.post('/api/deprecation/advance', (req, res) => {
       return res.json({ ok: false, error: errOutput });
     }
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPERSONATE — Login as tenant admin (moved from /admin/super)
+// ═══════════════════════════════════════════════════════════════════════════
+router.post('/tenants/:id/impersonate', async (req, res) => {
+  const slab = getSlabDb();
+  const tenant = await slab.collection('tenants').findOne({ _id: new ObjectId(req.params.id) });
+  if (!tenant) return res.redirect('/superadmin');
+
+  const tenantDb = getTenantDb(tenant.db);
+  const adminUser = await tenantDb.collection('users').findOne({ isAdmin: true });
+  if (!adminUser) return res.redirect(`/superadmin/tenants/${req.params.id}?error=no-admin-user`);
+
+  const token = createLoginToken(adminUser, tenant.db, '5m');
+  const protocol = req.protocol;
+  res.redirect(`${protocol}://${tenant.domain}/admin?token=${token}`);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ESCALATED TICKETS (moved from /admin/super)
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/tickets', async (req, res) => {
+  const slab = getSlabDb();
+  const filter = {};
+  if (req.query.status) filter.status = req.query.status;
+  else filter.status = 'escalated';
+
+  const tickets = await slab.collection('escalated_tickets')
+    .find(filter).sort({ escalatedAt: -1 }).toArray();
+
+  const stats = await Promise.all([
+    slab.collection('escalated_tickets').countDocuments({ status: 'escalated' }),
+    slab.collection('escalated_tickets').countDocuments({ status: 'resolved' }),
+    slab.collection('escalated_tickets').countDocuments({ status: 'closed' }),
+  ]).then(([active, resolved, closed]) => ({ active, resolved, closed, total: active + resolved + closed }));
+
+  res.render('superadmin/tickets', {
+    superAdmin: req.superAdmin,
+    tickets,
+    stats,
+    filters: { status: req.query.status || '' },
+  });
+});
+
+router.get('/tickets/:tenantDb/:ticketId', async (req, res) => {
+  try {
+    const tenantDb = getTenantDb(req.params.tenantDb);
+    const ticket = await tenantDb.collection('tickets').findOne({ _id: new ObjectId(req.params.ticketId) });
+    if (!ticket) return res.redirect('/superadmin/tickets');
+
+    res.render('superadmin/ticket-detail', {
+      superAdmin: req.superAdmin,
+      ticket,
+      tenantDbName: req.params.tenantDb,
+    });
+  } catch {
+    res.redirect('/superadmin/tickets');
+  }
+});
+
+router.post('/tickets/:tenantDb/:ticketId/reply', async (req, res) => {
+  const { body } = req.body;
+  if (!body?.trim()) return res.redirect(`/superadmin/tickets/${req.params.tenantDb}/${req.params.ticketId}`);
+
+  const tenantDb = getTenantDb(req.params.tenantDb);
+  const reply = {
+    _id: new ObjectId(),
+    author: {
+      type: 'superadmin',
+      email: req.superAdmin.email,
+      displayName: (req.superAdmin.displayName || req.superAdmin.email) + ' (Platform)',
+    },
+    body: body.trim(),
+    attachments: [],
+    createdAt: new Date(),
+  };
+
+  await tenantDb.collection('tickets').updateOne(
+    { _id: new ObjectId(req.params.ticketId) },
+    { $push: { replies: reply }, $set: { updatedAt: new Date() } },
+  );
+  res.redirect(`/superadmin/tickets/${req.params.tenantDb}/${req.params.ticketId}`);
+});
+
+router.post('/tickets/:tenantDb/:ticketId/resolve', async (req, res) => {
+  const now = new Date();
+  const tenantDb = getTenantDb(req.params.tenantDb);
+
+  await tenantDb.collection('tickets').updateOne(
+    { _id: new ObjectId(req.params.ticketId) },
+    { $set: { status: 'resolved', escalated: false, resolvedAt: now, updatedAt: now } },
+  );
+
+  const slab = getSlabDb();
+  await slab.collection('escalated_tickets').updateOne(
+    { ticketId: req.params.ticketId, tenantDbName: req.params.tenantDb },
+    { $set: { status: 'resolved', resolvedAt: now } },
+  );
+
+  res.redirect('/superadmin/tickets');
+});
+
+router.post('/tickets/:tenantDb/:ticketId/de-escalate', async (req, res) => {
+  const now = new Date();
+  const tenantDb = getTenantDb(req.params.tenantDb);
+
+  await tenantDb.collection('tickets').updateOne(
+    { _id: new ObjectId(req.params.ticketId) },
+    { $set: { status: 'open', escalated: false, updatedAt: now } },
+  );
+
+  const slab = getSlabDb();
+  await slab.collection('escalated_tickets').deleteOne({
+    ticketId: req.params.ticketId, tenantDbName: req.params.tenantDb,
+  });
+
+  res.redirect('/superadmin/tickets');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OPSTRAIN — Brand management (centralized from opsTrain /superadmin)
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/opstrain', async (req, res) => {
+  const client = new MongoClient(config.DB_URL || 'mongodb+srv://snoryder8019:51DUBsqu%40red51@cluster0.tpmae.mongodb.net');
+  try {
+    await client.connect();
+    const opsDb = client.db('opsTrain');
+
+    const [brands, users, tasks, qrCodes] = await Promise.all([
+      opsDb.collection('brands').find().sort({ name: 1 }).toArray(),
+      opsDb.collection('users').find().toArray(),
+      opsDb.collection('tasks').find({ active: true }).toArray(),
+      opsDb.collection('qrcodes').find({ active: true }).toArray(),
+    ]);
+
+    const brandStats = brands.map(b => ({
+      ...b,
+      userCount: users.filter(u => u.brand?.toString() === b._id.toString()).length,
+      taskCount: tasks.filter(t => t.brand?.toString() === b._id.toString()).length,
+      qrCount: qrCodes.filter(q => q.brand?.toString() === b._id.toString()).length,
+    }));
+
+    res.render('superadmin/opstrain', {
+      superAdmin: req.superAdmin,
+      brands: brandStats,
+      stats: {
+        totalBrands: brands.length,
+        activeBrands: brands.filter(b => b.status === 'active').length,
+        previewBrands: brands.filter(b => b.status === 'preview').length,
+        totalUsers: users.length,
+      },
+    });
+  } finally { await client.close(); }
+});
+
+router.post('/opstrain/brand/:id/toggle', async (req, res) => {
+  const client = new MongoClient(config.DB_URL || 'mongodb+srv://snoryder8019:51DUBsqu%40red51@cluster0.tpmae.mongodb.net');
+  try {
+    await client.connect();
+    const opsDb = client.db('opsTrain');
+
+    const brand = await opsDb.collection('brands').findOne({ _id: new ObjectId(req.params.id) });
+    if (brand) {
+      await opsDb.collection('brands').updateOne(
+        { _id: brand._id },
+        { $set: { active: !brand.active, updatedAt: new Date() } },
+      );
+    }
+
+    res.redirect('/superadmin/opstrain');
+  } finally { await client.close(); }
+});
+
+router.post('/opstrain/user/:id/role', async (req, res) => {
+  const { role } = req.body;
+  const validRoles = ['superadmin', 'admin', 'manager', 'user'];
+  if (!validRoles.includes(role)) return res.redirect('/superadmin/opstrain');
+
+  const client = new MongoClient(config.DB_URL || 'mongodb+srv://snoryder8019:51DUBsqu%40red51@cluster0.tpmae.mongodb.net');
+  try {
+    await client.connect();
+    const opsDb = client.db('opsTrain');
+
+    await opsDb.collection('users').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { role, updatedAt: new Date() } },
+    );
+
+    res.redirect('/superadmin/opstrain');
+  } finally { await client.close(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GLOBAL TICKETS — All tickets across all tenants
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/all-tickets', async (req, res) => {
+  const slab = getSlabDb();
+  const tenants = await slab.collection('tenants').find({}, { projection: { db: 1, domain: 1, 'brand.name': 1 } }).toArray();
+
+  const statusFilter = req.query.status || '';
+  const tenantFilter = req.query.tenant || '';
+  const allTickets = [];
+
+  for (const tenant of tenants) {
+    if (tenantFilter && tenant.db !== tenantFilter) continue;
+    try {
+      const tDb = getTenantDb(tenant.db);
+      const filter = {};
+      if (statusFilter && statusFilter !== 'all') filter.status = statusFilter;
+      const tickets = await tDb.collection('tickets').find(filter).sort({ createdAt: -1 }).limit(100).toArray();
+      for (const t of tickets) {
+        allTickets.push({
+          ...t,
+          _tenantDb: tenant.db,
+          _tenantDomain: tenant.domain,
+          _tenantName: tenant.brand?.name || tenant.domain,
+        });
+      }
+    } catch { /* skip dead tenant DBs */ }
+  }
+
+  allTickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  const statusCounts = {
+    open: allTickets.filter(t => t.status === 'open').length,
+    'in-progress': allTickets.filter(t => t.status === 'in-progress').length,
+    escalated: allTickets.filter(t => t.escalated || t.status === 'escalated').length,
+    resolved: allTickets.filter(t => t.status === 'resolved').length,
+    closed: allTickets.filter(t => t.status === 'closed').length,
+    total: allTickets.length,
+  };
+
+  res.render('superadmin/all-tickets', {
+    superAdmin: req.superAdmin,
+    tickets: allTickets,
+    statusCounts,
+    tenants,
+    filters: { status: statusFilter, tenant: tenantFilter },
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GLOBAL USERS — Cross-tenant user management
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/users', async (req, res) => {
+  const slab = getSlabDb();
+  const tenants = await slab.collection('tenants').find({}, { projection: { db: 1, domain: 1, 'brand.name': 1, status: 1 } }).toArray();
+
+  const tenantFilter = req.query.tenant || '';
+  const roleFilter = req.query.role || '';
+  const searchQuery = req.query.q || '';
+  const allUsers = [];
+
+  for (const tenant of tenants) {
+    if (tenantFilter && tenant.db !== tenantFilter) continue;
+    try {
+      const tDb = getTenantDb(tenant.db);
+      const users = await tDb.collection('users').find().toArray();
+      for (const u of users) {
+        if (roleFilter === 'admin' && !u.isAdmin) continue;
+        if (roleFilter === 'owner' && !u.isOwner) continue;
+        if (roleFilter === 'client' && u.role !== 'client') continue;
+        if (roleFilter === 'collaborator' && u.role !== 'collaborator') continue;
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          const match = (u.email || '').toLowerCase().includes(q) ||
+                        (u.displayName || '').toLowerCase().includes(q);
+          if (!match) continue;
+        }
+        allUsers.push({
+          ...u,
+          _tenantDb: tenant.db,
+          _tenantDomain: tenant.domain,
+          _tenantName: tenant.brand?.name || tenant.domain,
+          _tenantStatus: tenant.status,
+        });
+      }
+    } catch { /* skip dead tenant DBs */ }
+  }
+
+  allUsers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  res.render('superadmin/global-users', {
+    superAdmin: req.superAdmin,
+    users: allUsers,
+    tenants,
+    filters: { tenant: tenantFilter, role: roleFilter, q: searchQuery },
+    stats: {
+      total: allUsers.length,
+      admins: allUsers.filter(u => u.isAdmin).length,
+      owners: allUsers.filter(u => u.isOwner).length,
+      clients: allUsers.filter(u => u.role === 'client').length,
+    },
+  });
+});
+
+router.post('/users/:tenantDb/:userId/toggle-admin', async (req, res) => {
+  const tDb = getTenantDb(req.params.tenantDb);
+  const user = await tDb.collection('users').findOne({ _id: new ObjectId(req.params.userId) });
+  if (user) {
+    await tDb.collection('users').updateOne(
+      { _id: user._id },
+      { $set: { isAdmin: !user.isAdmin, updatedAt: new Date() } },
+    );
+    await logActivity({
+      category: 'admin_action',
+      action: `${user.isAdmin ? 'Revoked' : 'Granted'} admin for ${user.email}`,
+      tenantDomain: req.params.tenantDb,
+      actor: { email: req.superAdmin.email, role: 'superadmin' },
+    });
+  }
+  res.redirect(`/superadmin/users?tenant=${req.params.tenantDb}`);
+});
+
+router.post('/users/:tenantDb/:userId/role', async (req, res) => {
+  const { role } = req.body;
+  const validRoles = ['admin', 'client', 'collaborator'];
+  if (!validRoles.includes(role)) return res.redirect('/superadmin/users');
+  const tDb = getTenantDb(req.params.tenantDb);
+  await tDb.collection('users').updateOne(
+    { _id: new ObjectId(req.params.userId) },
+    { $set: { role, updatedAt: new Date() } },
+  );
+  await logActivity({
+    category: 'admin_action',
+    action: `Changed role to ${role} for user ${req.params.userId}`,
+    tenantDomain: req.params.tenantDb,
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+  });
+  res.redirect(`/superadmin/users?tenant=${req.params.tenantDb}`);
+});
+
+router.post('/users/:tenantDb/:userId/delete', async (req, res) => {
+  const tDb = getTenantDb(req.params.tenantDb);
+  const user = await tDb.collection('users').findOne({ _id: new ObjectId(req.params.userId) });
+  if (user) {
+    await tDb.collection('users').deleteOne({ _id: user._id });
+    await logActivity({
+      category: 'admin_action',
+      action: `Deleted user ${user.email} from ${req.params.tenantDb}`,
+      tenantDomain: req.params.tenantDb,
+      actor: { email: req.superAdmin.email, role: 'superadmin' },
+    });
+  }
+  res.redirect(`/superadmin/users?tenant=${req.params.tenantDb}`);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLATFORM PERMISSIONS — Manage superadmin access & platform roles
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/permissions', async (req, res) => {
+  const slab = getSlabDb();
+  const tenants = await slab.collection('tenants').find({}, { projection: { db: 1, domain: 1, 'brand.name': 1, status: 1 } }).toArray();
+
+  // Gather all admins across tenants
+  const tenantAdmins = [];
+  for (const tenant of tenants) {
+    try {
+      const tDb = getTenantDb(tenant.db);
+      const admins = await tDb.collection('users').find({ isAdmin: true }).toArray();
+      for (const a of admins) {
+        tenantAdmins.push({
+          ...a,
+          _tenantDb: tenant.db,
+          _tenantDomain: tenant.domain,
+          _tenantName: tenant.brand?.name || tenant.domain,
+          _tenantStatus: tenant.status,
+        });
+      }
+    } catch { /* skip */ }
+  }
+
+  // Get platform-level permission overrides from slab registry
+  const platformRoles = await slab.collection('platform_roles').find().sort({ createdAt: -1 }).toArray().catch(() => []);
+
+  res.render('superadmin/permissions', {
+    superAdmin: req.superAdmin,
+    tenantAdmins,
+    platformRoles,
+    tenants,
+    stats: {
+      totalAdmins: tenantAdmins.length,
+      totalTenants: tenants.length,
+      activeTenants: tenants.filter(t => t.status === 'active').length,
+    },
+  });
+});
+
+router.post('/permissions/platform-role', async (req, res) => {
+  const { email, role, scope } = req.body;
+  if (!email || !role) return res.redirect('/superadmin/permissions');
+  const slab = getSlabDb();
+  await slab.collection('platform_roles').updateOne(
+    { email: email.toLowerCase() },
+    { $set: { email: email.toLowerCase(), role, scope: scope || 'full', updatedAt: new Date(), grantedBy: req.superAdmin.email }, $setOnInsert: { createdAt: new Date() } },
+    { upsert: true },
+  );
+  await logActivity({
+    category: 'admin_action',
+    action: `Set platform role: ${email} → ${role} (${scope || 'full'})`,
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+  });
+  res.redirect('/superadmin/permissions');
+});
+
+router.post('/permissions/platform-role/:id/delete', async (req, res) => {
+  const slab = getSlabDb();
+  const role = await slab.collection('platform_roles').findOne({ _id: new ObjectId(req.params.id) });
+  if (role) {
+    await slab.collection('platform_roles').deleteOne({ _id: role._id });
+    await logActivity({
+      category: 'admin_action',
+      action: `Removed platform role for ${role.email}`,
+      actor: { email: req.superAdmin.email, role: 'superadmin' },
+    });
+  }
+  res.redirect('/superadmin/permissions');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// USER DETAIL — Full user profile with permissions, analytics, messaging
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/users/:tenantDb/:userId', async (req, res) => {
+  const slab = getSlabDb();
+  const tDb = getTenantDb(req.params.tenantDb);
+
+  let user;
+  try { user = await tDb.collection('users').findOne({ _id: new ObjectId(req.params.userId) }); }
+  catch { return res.redirect('/superadmin/users'); }
+  if (!user) return res.redirect('/superadmin/users');
+
+  const tenant = await slab.collection('tenants').findOne({ db: req.params.tenantDb });
+
+  // Activity for this user
+  const userActivity = await getActivityLogs({ limit: 20 }).then(logs =>
+    logs.filter(l => l.actor?.email === user.email)
+  );
+
+  // Ticket count for this user
+  const userTickets = await tDb.collection('tickets').find({
+    $or: [{ 'author.email': user.email }, { 'author.displayName': user.displayName }]
+  }).sort({ createdAt: -1 }).limit(20).toArray();
+
+  // Messages sent to this user from superadmin
+  const messages = await slab.collection('superadmin_messages')
+    .find({ recipientEmail: user.email, tenantDb: req.params.tenantDb })
+    .sort({ createdAt: -1 }).limit(20).toArray().catch(() => []);
+
+  // Analytics: login count, last login, content counts
+  const analytics = {};
+  try {
+    analytics.blogCount = await tDb.collection('blog').countDocuments({ authorEmail: user.email });
+    analytics.invoiceCount = await tDb.collection('invoices').countDocuments({ createdBy: user.email });
+    analytics.clientCount = user.clientId ? 1 : 0;
+  } catch { /* some collections may not exist */ }
+
+  res.render('superadmin/user-detail', {
+    superAdmin: req.superAdmin,
+    user,
+    tenant,
+    tenantDb: req.params.tenantDb,
+    userActivity,
+    userTickets,
+    messages,
+    analytics,
+  });
+});
+
+router.post('/users/:tenantDb/:userId/permissions', async (req, res) => {
+  const { permissions } = req.body;
+  const permArray = (permissions || '').split(',').map(p => p.trim()).filter(Boolean);
+  const tDb = getTenantDb(req.params.tenantDb);
+  await tDb.collection('users').updateOne(
+    { _id: new ObjectId(req.params.userId) },
+    { $set: { permissions: permArray, updatedAt: new Date() } },
+  );
+  await logActivity({
+    category: 'admin_action',
+    action: `Updated permissions for user ${req.params.userId}: [${permArray.join(', ')}]`,
+    tenantDomain: req.params.tenantDb,
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+  });
+  res.redirect(`/superadmin/users/${req.params.tenantDb}/${req.params.userId}`);
+});
+
+router.post('/users/:tenantDb/:userId/message', async (req, res) => {
+  const { subject, body } = req.body;
+  if (!body?.trim()) return res.redirect(`/superadmin/users/${req.params.tenantDb}/${req.params.userId}`);
+
+  const tDb = getTenantDb(req.params.tenantDb);
+  const user = await tDb.collection('users').findOne({ _id: new ObjectId(req.params.userId) });
+  if (!user) return res.redirect('/superadmin/users');
+
+  const slab = getSlabDb();
+  const message = {
+    recipientEmail: user.email,
+    recipientName: user.displayName,
+    tenantDb: req.params.tenantDb,
+    subject: subject?.trim() || 'Message from Platform Admin',
+    body: body.trim(),
+    sender: { email: req.superAdmin.email, displayName: req.superAdmin.displayName || 'Platform Admin' },
+    read: false,
+    createdAt: new Date(),
+  };
+  await slab.collection('superadmin_messages').insertOne(message);
+
+  await logActivity({
+    category: 'admin_action',
+    action: `Sent message to ${user.email}: "${message.subject}"`,
+    tenantDomain: req.params.tenantDb,
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+  });
+
+  res.redirect(`/superadmin/users/${req.params.tenantDb}/${req.params.userId}?sent=1`);
+});
+
+router.post('/users/:tenantDb/:userId/update', async (req, res) => {
+  const { displayName, role, isAdmin, isOwner } = req.body;
+  const update = { updatedAt: new Date() };
+  if (displayName !== undefined) update.displayName = displayName.trim();
+  if (role) update.role = role;
+  update.isAdmin = isAdmin === 'on' || isAdmin === 'true';
+  update.isOwner = isOwner === 'on' || isOwner === 'true';
+
+  const tDb = getTenantDb(req.params.tenantDb);
+  await tDb.collection('users').updateOne(
+    { _id: new ObjectId(req.params.userId) },
+    { $set: update },
+  );
+  await logActivity({
+    category: 'admin_action',
+    action: `Updated user profile ${req.params.userId} in ${req.params.tenantDb}`,
+    tenantDomain: req.params.tenantDb,
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+  });
+  res.redirect(`/superadmin/users/${req.params.tenantDb}/${req.params.userId}`);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUBSCRIBERS — Manage captured subscriber data
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/subscribers', async (req, res) => {
+  const slab = getSlabDb();
+  const statusFilter = req.query.status || '';
+  const filter = {};
+  if (statusFilter && statusFilter !== 'all') filter.status = statusFilter;
+
+  const subscribers = await slab.collection('subscribers').find(filter).sort({ createdAt: -1 }).toArray();
+  const stats = {
+    total: subscribers.length,
+    active: subscribers.filter(s => s.status === 'active').length,
+    interests: {},
+  };
+  subscribers.forEach(s => { stats.interests[s.interest || 'general'] = (stats.interests[s.interest || 'general'] || 0) + 1; });
+
+  res.render('superadmin/subscribers', {
+    superAdmin: req.superAdmin,
+    subscribers,
+    stats,
+    filters: { status: statusFilter },
+  });
+});
+
+router.post('/subscribers/:id/delete', async (req, res) => {
+  const slab = getSlabDb();
+  await slab.collection('subscribers').deleteOne({ _id: new ObjectId(req.params.id) });
+  res.redirect('/superadmin/subscribers');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GREEALITYTV — Community TV management
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/greealitytv', async (req, res) => {
+  const client = new MongoClient(config.DB_URL || 'mongodb+srv://snoryder8019:51DUBsqu%40red51@cluster0.tpmae.mongodb.net');
+  try {
+    await client.connect();
+    const grvDb = client.db('madLadsLab');
+
+    const [users, posts, videos, petitions, locals, gigs, delegates] = await Promise.all([
+      grvDb.collection('grv_users').find().toArray(),
+      grvDb.collection('posts').countDocuments(),
+      grvDb.collection('videos').countDocuments(),
+      grvDb.collection('petitions').countDocuments(),
+      grvDb.collection('locals').countDocuments(),
+      grvDb.collection('gigs').countDocuments(),
+      grvDb.collection('delegates').countDocuments().catch(() => 0),
+    ]);
+
+    const userStats = {
+      total: users.length,
+      admins: users.filter(u => u.isAdmin).length,
+      contributors: users.filter(u => u.role === 'contributor').length,
+      delegates: users.filter(u => u.role === 'delegate').length,
+      verified: users.filter(u => u.isVerified).length,
+    };
+
+    res.render('superadmin/greealitytv', {
+      superAdmin: req.superAdmin,
+      users,
+      userStats,
+      contentStats: { posts, videos, petitions, locals, gigs, delegates },
+    });
+  } finally { await client.close(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADMIN GATEWAY — Drop into any app's admin panel from superadmin
+// ═══════════════════════════════════════════════════════════════════════════
+const GATEWAY_APPS = {
+  opsTrain:       { port: 3603, secret: 'doner5%$$!@ojeFGojtYOjergewr', label: 'OpsTrain' },
+  madladslab:     { port: 3000, secret: 'doner5%$$!@ojeFGojtYOjergewr', label: 'MadLadsLab' },
+  greealitytv:    { port: 3400, secret: 'doner5%$$!@ojeFGojtYOjergewr', label: 'GreeAlityTV' },
+  games:          { port: 3500, secret: 'doner5%$$!@ojeFGojtYOjergewr', label: 'Games' },
+  bih:            { port: 3055, secret: 'doner5%$$!@ojeFGojtYOjergewr', label: 'BallzInHolez' },
+  ps:             { port: 3399, secret: 'doner5%$$!@ojeFGojtYOjergewr', label: 'Stringborn' },
+  acm:            { port: 3004, secret: 'doner5%$$!@ojeFGojtYOjergewr', label: 'ACM' },
+  nocometalworkz: { port: 3002, secret: 'doner5%$$!@ojeFGojtYOjergewr', label: 'NoCometal' },
+};
+
+function generateGatewayToken(app, email, secret) {
+  const payload = JSON.stringify({ app, email, ts: Date.now() });
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  return Buffer.from(payload).toString('base64url') + '.' + sig;
+}
+
+router.get('/gateway/:app', (req, res) => {
+  const appKey = req.params.app;
+  const appDef = GATEWAY_APPS[appKey];
+  if (!appDef) return res.status(404).send('Unknown app');
+
+  const token = generateGatewayToken(appKey, req.superAdmin.email, appDef.secret);
+  const protocol = req.protocol;
+  const host = req.hostname.replace(/:\d+$/, '');
+
+  // In production use the app's domain, in dev use localhost:port
+  let targetUrl;
+  if (config.NODE_ENV === 'production') {
+    // Use the service registry domain if available
+    const svc = getServices().find(s => s.name === appKey);
+    targetUrl = svc?.domain
+      ? `https://${svc.domain}/gateway?token=${token}`
+      : `${protocol}://${host}:${appDef.port}/gateway?token=${token}`;
+  } else {
+    targetUrl = `${protocol}://${host}:${appDef.port}/gateway?token=${token}`;
+  }
+
+  res.redirect(targetUrl);
+});
+
+// API endpoint returning gateway info for all apps
+router.get('/api/gateway', (req, res) => {
+  const apps = Object.entries(GATEWAY_APPS).map(([key, def]) => ({
+    key,
+    label: def.label,
+    port: def.port,
+    url: `/superadmin/gateway/${key}`,
+  }));
+  res.json({ apps });
 });
 
 export default router;

@@ -74,6 +74,16 @@ They hot-load automatically. Logs are in `/srv/games/rust/oxide/logs/`.
 | `/srv/games/rust/oxide/plugins/` | Oxide plugins |
 | `/srv/games/rust/logs/server.log` | Server stdout log |
 
+#### Admin Panel Sections
+
+The admin panel (`/admin`) now includes a **Backups & Saves** section. Admins can:
+- View all world backups across all games (filtered by game)
+- Create a local backup on demand
+- Restore a specific backup to the local server (warns if the game server is still running)
+- Superadmins can delete backups permanently
+
+Note: Superadmin (`isAdmin: true`) can never be granted through the admin panel UI — it is reserved and must be set directly in the database.
+
 #### SSL / HTTPS
 
 Run once the domain is confirmed live:

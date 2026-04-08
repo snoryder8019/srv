@@ -10,11 +10,11 @@ const userSchema = new mongoose.Schema({
   password:    { type: String, default: '' },
   provider:    { type: String, default: 'local' },
 
-  // Role hierarchy: superadmin > admin > brandAdmin > user > visitor
+  // Role hierarchy: superadmin > admin > manager > user
   role: {
     type: String,
-    enum: ['superadmin', 'admin', 'brandAdmin', 'user', 'visitor'],
-    default: 'visitor'
+    enum: ['superadmin', 'admin', 'manager', 'user'],
+    default: 'user'
   },
 
   // Brand association

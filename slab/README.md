@@ -46,6 +46,7 @@ fuser -k 3602/tcp            # Kill stale port if needed
 | Design | [`docs/modules/design.md`](docs/modules/design.md) | Design tokens & themes |
 | Copy | [`docs/modules/copy.md`](docs/modules/copy.md) | Site copy editor |
 | Settings | [`docs/modules/settings.md`](docs/modules/settings.md) | Brand profile & integrations |
+| Delegates | [`docs/modules/delegates.md`](docs/modules/delegates.md) | Sales delegate portal, referral promo, lead CRM |
 
 ## AI Context
 

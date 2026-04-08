@@ -3,6 +3,7 @@ import { getDb } from '../../plugins/mongo.js';
 import { ObjectId } from 'mongodb';
 import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import { VALID_BLOCK_TYPES } from '../../config/blocks.js';
 
 const router = express.Router();
 
@@ -19,8 +20,6 @@ function pageFields(body, current) {
   const pageType = ALLOWED_PAGE_TYPES.includes(body.pageType) ? body.pageType : 'content';
   let blocks = [];
   try { blocks = JSON.parse(body.blocksJson || '[]'); } catch {}
-  // Validate block types
-  const VALID_BLOCK_TYPES = ['hero','text','split','cta','cards','faq'];
   blocks = blocks.filter(b => b && VALID_BLOCK_TYPES.includes(b.type));
 
   const dataCollection = ALLOWED_COLLECTIONS.includes(body.dataCollection) ? body.dataCollection : 'blog';

@@ -1,0 +1,108 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<style>
+.tpl-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px; }
+.tpl-card { border:1px solid var(--ivory-mid);border-radius:4px;overflow:hidden;background:var(--white);transition:border-color 0.15s,box-shadow 0.15s; }
+.tpl-card:hover { border-color:var(--navy-mid);box-shadow:0 4px 20px rgba(15,27,48,0.06); }
+.tpl-card.is-active { border-color:var(--gold);box-shadow:0 0 0 1px var(--gold); }
+.tpl-thumb { height:180px;background:linear-gradient(135deg,var(--navy-deep),var(--navy-mid));display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden; }
+.tpl-thumb-placeholder { font-size:2.5rem;color:rgba(201,168,72,0.3); }
+.tpl-thumb img { width:100%;height:100%;object-fit:cover; }
+.tpl-active-badge { position:absolute;top:10px;right:10px;background:var(--gold);color:var(--navy-deep);padding:3px 10px;border-radius:2px;font-size:0.62rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase; }
+.tpl-public-badge { position:absolute;top:10px;left:10px;background:var(--success);color:#fff;padding:3px 10px;border-radius:2px;font-size:0.62rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase; }
+.tpl-info { padding:16px; }
+.tpl-name { font-family:var(--font-heading);font-size:1.1rem;font-weight:600;color:var(--dark);margin-bottom:4px; }
+.tpl-desc { font-size:0.82rem;color:var(--slate);line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+.tpl-meta { display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px; }
+.tpl-tag { font-size:0.62rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;background:rgba(46,66,112,0.08);color:var(--navy-mid);padding:2px 8px;border-radius:2px; }
+.tpl-blocks-count { font-size:0.72rem;color:var(--slate); }
+.tpl-actions { display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--ivory-mid);padding:12px 16px; }
+.tpl-actions form { display:inline; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Templates</div>
+  <div class="topbar-actions">
+    <a href="/admin/template-store" class="btn btn-ghost" style="margin-right:8px;">Template Store</a>
+    <a href="/admin/templates/new" class="btn btn-navy">+ New Template</a>
+  </div>
+</div>
+<div class="content">
+
+  <% if (msg === 'created') { %><div class="alert alert-success">Template created.</div><% } %>
+  <% if (msg === 'updated') { %><div class="alert alert-success">Template updated.</div><% } %>
+  <% if (msg === 'deleted') { %><div class="alert alert-success">Template deleted.</div><% } %>
+  <% if (msg === 'deactivated') { %><div class="alert alert-success">Template deactivated. Your site is back to the default homepage.</div><% } %>
+  <% if (msg === 'published') { %><div class="alert alert-success">Template published to the Template Store.</div><% } %>
+  <% if (msg === 'unpublished') { %><div class="alert alert-success">Template removed from the Template Store.</div><% } %>
+  <% if (typeof err !== 'undefined' && err) { %><div class="alert alert-error"><%= typeof err === 'string' ? decodeURIComponent(err) : 'Something went wrong.' %></div><% } %>
+
+  <div style="padding:14px 18px;background:rgba(201,168,72,0.08);border:1px solid rgba(201,168,72,0.3);border-radius:2px;margin-bottom:20px;font-size:0.82rem;color:#92660F;">
+    <strong>Template Builder:</strong> Create reusable page layouts from blocks. Activate a template to use it as your landing page, or publish to the Template Store for others to download.
+  </div>
+
+  <% if (!templates || templates.length === 0) { %>
+    <div class="empty">
+      <div class="empty-icon">◈</div>
+      <p>No templates yet. Build your first template to create reusable page layouts.</p>
+      <div style="margin-top:20px;">
+        <a href="/admin/templates/new" class="btn btn-navy">Create Template</a>
+        <a href="/admin/template-store" class="btn btn-ghost" style="margin-left:8px;">Browse Store</a>
+      </div>
+    </div>
+  <% } else { %>
+    <div class="tpl-grid">
+      <% templates.forEach(tpl => {
+        const isActive = activeId && tpl._id.toString() === activeId;
+      %>
+        <div class="tpl-card<%= isActive ? ' is-active' : '' %>">
+          <div class="tpl-thumb">
+            <% if (tpl.thumbnail) { %>
+              <img src="<%= tpl.thumbnail %>" alt="<%= tpl.name %>">
+            <% } else { %>
+              <span class="tpl-thumb-placeholder">◈</span>
+            <% } %>
+            <% if (isActive) { %><span class="tpl-active-badge">Active</span><% } %>
+            <% if (tpl.isPublic) { %><span class="tpl-public-badge">Published</span><% } %>
+          </div>
+          <div class="tpl-info">
+            <div class="tpl-name"><%= tpl.name %></div>
+            <div class="tpl-desc"><%= tpl.description || 'No description' %></div>
+            <div class="tpl-meta">
+              <span class="tpl-tag"><%= tpl.category || 'landing' %></span>
+              <span class="tpl-blocks-count"><%= (tpl.blocks || []).length %> blocks</span>
+              <% if (tpl.source === 'store') { %><span class="tpl-tag" style="background:rgba(21,128,61,0.1);color:#15803D;">from store</span><% } %>
+              <% if (tpl.source === 'migration') { %><span class="tpl-tag" style="background:rgba(201,168,72,0.15);color:#92660F;">built-in</span><% } %>
+            </div>
+          </div>
+          <div class="tpl-actions">
+            <a href="/admin/templates/<%= tpl._id %>/edit" class="btn btn-ghost btn-sm">Edit</a>
+            <form method="POST" action="/admin/templates/<%= tpl._id %>/clone">
+              <button type="submit" class="btn btn-ghost btn-sm">Clone</button>
+            </form>
+            <% if (isActive) { %>
+              <form method="POST" action="/admin/templates/<%= tpl._id %>/deactivate">
+                <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--gold);">Deactivate</button>
+              </form>
+            <% } else { %>
+              <form method="POST" action="/admin/templates/<%= tpl._id %>/activate">
+                <button type="submit" class="btn btn-navy btn-sm">Activate</button>
+              </form>
+            <% } %>
+            <form method="POST" action="/admin/templates/<%= tpl._id %>/publish">
+              <button type="submit" class="btn btn-ghost btn-sm" style="<%= tpl.isPublic ? 'color:var(--danger);' : '' %>">
+                <%= tpl.isPublic ? 'Unpublish' : 'Publish' %>
+              </button>
+            </form>
+            <form method="POST" action="/admin/templates/<%= tpl._id %>/delete" onsubmit="return confirm('Delete this template?')">
+              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            </form>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+
+</div>
+</div></body></html>

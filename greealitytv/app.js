@@ -34,6 +34,20 @@ app.use(passport.initialize());
 app.use(passport.session());
 app.use(flash());
 
+// Superadmin gateway
+const { gatewayRoute } = require('/srv/gateway.cjs');
+app.get('/gateway', gatewayRoute({
+  secret: process.env.SESHSEC,
+  appName: 'greealitytv',
+  findOrCreateAdmin: async (email) => {
+    const User = require('./models/User');
+    let user = await User.findOne({ email });
+    if (!user) user = await User.create({ email, displayName: email.split('@')[0], isAdmin: true, role: 'admin', provider: 'gateway' });
+    else if (!user.isAdmin) { user.isAdmin = true; await user.save(); }
+    return user;
+  },
+}));
+
 app.use((req, res, next) => {
   res.locals.user = req.user || null;
   res.locals.success = req.flash('success');

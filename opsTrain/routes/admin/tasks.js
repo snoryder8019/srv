@@ -3,11 +3,11 @@ const Task = require('../../models/Task');
 const Brand = require('../../models/Brand');
 const router = express.Router();
 
-// List tasks (filtered by brand for brandAdmins)
+// List tasks (filtered by brand for admin/manager)
 router.get('/', async (req, res) => {
   const filter = { active: true };
-  if (req.query.brandId) filter.brand = req.query.brandId;
-  else if (req.user.role === 'brandAdmin') filter.brand = req.user.brand;
+  if (req.brandScope) filter.brand = req.brandScope;
+  else if (req.query.brandId) filter.brand = req.query.brandId;
 
   const tasks = await Task.find(filter).populate('brand', 'name').sort({ sortOrder: 1 }).lean();
   const brands = await Brand.find({ active: true }).select('name').lean();

@@ -155,6 +155,7 @@
       <div class="tagline">A real business platform. Not another website builder.</div>
     </div>
     <div class="form-body">
+      <% if (ref) { %><div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #c9a848;padding:12px 16px;border-radius:6px;font-size:13px;margin-bottom:14px;color:#e5e5e5;line-height:1.5;"><strong style="color:#c9a848;">30 Days Free!</strong> You've been referred by one of our delegates. Sign up now and get 30 days free on any plan — no credit card required.</div><% } %>
       <% if (error) { %><div style="background:#451a1a;color:#fca5a5;padding:8px 12px;border-radius:4px;font-size:12px;margin-bottom:12px;"><%= error === 'cancelled' ? 'Payment was cancelled.' : error %></div><% } %>
 
       <div class="step-indicator">
@@ -441,7 +442,8 @@ function switchAuthMethod(method) {
     if (pw !== pwc) { alert('Passwords do not match.'); return; }
     submitBtn.disabled = true; submitBtn.textContent = 'Building your site...';
     try {
-      var body = { subdomain: subdomain.value, brandName: brandName.value.trim(), brandLocation: brandLocation.value.trim(), email: email, password: pw, design: designSelect.value, tagline: taglineInput.value.trim() };
+      var refCode = '<%= ref || "" %>';
+      var body = { subdomain: subdomain.value, brandName: brandName.value.trim(), brandLocation: brandLocation.value.trim(), email: email, password: pw, design: designSelect.value, tagline: taglineInput.value.trim(), ref: refCode };
       var res = await fetch('/start/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       var data = await res.json();
       if (data.ok) { window.location.href = data.adminUrl || ('https://' + data.domain + '/admin'); }
@@ -488,6 +490,7 @@ async function handleGoogleSignup(response) {
         brandLocation: brandLocation,
         design: design,
         tagline: tagline,
+        ref: '<%= ref || "" %>',
       }),
     });
     var data = await res.json();

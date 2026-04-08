@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subscribers — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1100px; margin:0 auto; padding:24px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:24px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:14px; text-align:center; }
+    .stat-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:4px; }
+    .stat-value { font-size:22px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; } .stat-value.green { color:#34d399; }
+    .interest-grid { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+    .interest-tag { padding:4px 12px; border-radius:6px; font-size:11px; background:#1a1a1a; border:1px solid #262626; color:#a3a3a3; }
+    .interest-count { color:#c9a848; font-weight:600; margin-left:4px; }
+    .toolbar { display:flex; gap:10px; margin-bottom:16px; align-items:center; }
+    .share-link { background:#1a1a1a; border:1px solid #333; color:#c9a848; padding:6px 12px; border-radius:5px; font-size:12px; font-family:'Inter',sans-serif; flex:1; max-width:400px; }
+    .btn-sm { padding:4px 10px; font-size:11px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; }
+    .btn-sm:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-sm.danger:hover { border-color:#f87171; color:#f87171; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    tr:hover td { background:#1a1a1a; }
+    .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:500; }
+    .badge-active { background:#14532d; color:#86efac; }
+    .badge-unsubscribed { background:#262626; color:#a3a3a3; }
+    .empty { color:#525252; font-size:13px; padding:40px; text-align:center; }
+    .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:8px; }
+    .table-wrap table { min-width:600px; }
+    @media (max-width:768px) {
+      .topbar { padding:10px 14px; flex-wrap:wrap; gap:8px; }
+      .topbar-left { gap:10px; } .topbar-right { gap:8px; font-size:11px; flex-wrap:wrap; }
+      .logo { font-size:17px; }
+      .container { padding:14px; }
+      .stats { grid-template-columns:repeat(2, 1fr); gap:8px; }
+      .stat { padding:10px; } .stat-value { font-size:18px; } .stat-label { font-size:9px; }
+      .interest-grid { gap:6px; }
+      .toolbar { flex-direction:column; gap:8px; }
+      .share-link { max-width:100%; }
+      th, td { padding:8px 10px; font-size:12px; }
+    }
+    @media (max-width:480px) { .topbar-right a:not(:first-child) { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">s<span>Lab</span></div>
+      <span style="color:#737373; font-size:13px;">/ Subscribers</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin">&larr; Dashboard</a>
+      <a href="/superadmin/subscribe" target="_blank">Public Form</a>
+      <span><%= superAdmin.email %></span>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Total</div><div class="stat-value gold"><%= stats.total %></div></div>
+      <div class="stat"><div class="stat-label">Active</div><div class="stat-value green"><%= stats.active %></div></div>
+    </div>
+
+    <div class="interest-grid">
+      <% Object.entries(stats.interests).sort((a,b) => b[1]-a[1]).forEach(([k, v]) => { %>
+        <div class="interest-tag"><%= k %><span class="interest-count"><%= v %></span></div>
+      <% }) %>
+    </div>
+
+    <div class="toolbar">
+      <span style="font-size:12px; color:#737373;">Share link:</span>
+      <input class="share-link" value="https://slab.madladslab.com/superadmin/subscribe" readonly onclick="this.select()" />
+      <button class="btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value)">Copy</button>
+    </div>
+
+    <% if (subscribers.length === 0) { %>
+      <div class="empty">No subscribers yet. Share the public form to start collecting.</div>
+    <% } else { %>
+      <div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Interest</th>
+            <th>Source</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% subscribers.forEach(s => { %>
+          <tr>
+            <td><strong><%= s.email %></strong></td>
+            <td style="color:#a3a3a3;"><%= s.name || '—' %></td>
+            <td><span class="interest-tag" style="margin:0;"><%= s.interest || 'general' %></span></td>
+            <td style="font-size:12px; color:#525252;"><%= s.source || '—' %></td>
+            <td><span class="badge badge-<%= s.status || 'active' %>"><%= s.status || 'active' %></span></td>
+            <td style="font-size:12px; color:#525252;"><%= s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—' %></td>
+            <td>
+              <form method="POST" action="/superadmin/subscribers/<%= s._id %>/delete" style="display:inline;" onsubmit="return confirm('Remove <%= s.email %>?')">
+                <button type="submit" class="btn-sm danger">Remove</button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+    <% } %>
+  </div>
+</body>
+</html>

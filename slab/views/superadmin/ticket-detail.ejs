@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ticket Detail — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:800px; margin:0 auto; padding:24px; }
+    .ticket-header { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; margin-bottom:20px; }
+    .ticket-subject { font-size:18px; font-weight:600; color:#fff; margin-bottom:8px; }
+    .ticket-meta { display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:#737373; }
+    .ticket-meta span { display:flex; align-items:center; gap:4px; }
+    .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
+    .status-escalated { background:#451a1a; color:#fca5a5; }
+    .status-resolved { background:#14532d; color:#86efac; }
+    .status-open { background:#422006; color:#fdba74; }
+    .ticket-body { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; margin-bottom:20px; font-size:14px; line-height:1.6; white-space:pre-wrap; }
+    .replies { margin-bottom:20px; }
+    .reply { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; margin-bottom:10px; }
+    .reply-header { display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px; }
+    .reply-author { color:#c9a848; font-weight:500; }
+    .reply-time { color:#525252; }
+    .reply-body { font-size:13px; line-height:1.5; white-space:pre-wrap; }
+    .reply-form { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; margin-bottom:16px; }
+    .reply-form h3 { font-size:14px; font-weight:500; color:#a3a3a3; margin-bottom:10px; }
+    textarea { width:100%; min-height:100px; background:#0a0a0a; border:1px solid #333; border-radius:6px; padding:10px; color:#e5e5e5; font-family:'Inter',sans-serif; font-size:13px; resize:vertical; }
+    textarea:focus { border-color:#c9a848; outline:none; }
+    .btn { padding:8px 16px; font-size:13px; border-radius:6px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+    .btn:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-gold { background:#c9a848; color:#0a0a0a; border-color:#c9a848; font-weight:600; } .btn-gold:hover { background:#b8960b; }
+    .btn-green { background:#14532d; color:#86efac; border-color:#14532d; } .btn-green:hover { background:#166534; }
+    .btn-red { background:#451a1a; color:#fca5a5; border-color:#451a1a; } .btn-red:hover { background:#7f1d1d; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    @media (max-width:768px) {
+      .topbar { padding:10px 14px; flex-wrap:wrap; gap:8px; }
+      .topbar-left { gap:10px; } .topbar-right { gap:8px; font-size:11px; }
+      .logo { font-size:17px; }
+      .container { padding:14px; }
+      .ticket-header { padding:16px; }
+      .ticket-subject { font-size:16px; }
+      .ticket-meta { gap:8px; font-size:11px; }
+      .ticket-body { padding:16px; font-size:13px; }
+      .reply { padding:12px; }
+      .reply-form { padding:16px; }
+      textarea { min-height:80px; font-size:12px; }
+      .btn { padding:7px 12px; font-size:12px; width:100%; justify-content:center; }
+      .actions { flex-direction:column; }
+      .actions form { width:100%; }
+      .actions .btn { width:100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">s<span>Lab</span></div>
+      <span style="color:#737373; font-size:13px;">/ <a href="/superadmin/tickets" style="color:#737373; text-decoration:none;">Tickets</a> / Detail</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin/tickets">&larr; All Tickets</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="ticket-header">
+      <div class="ticket-subject"><%= ticket.subject || '(no subject)' %></div>
+      <div class="ticket-meta">
+        <span>Tenant: <strong style="color:#c9a848;"><%= tenantDbName %></strong></span>
+        <span>From: <%= ticket.author?.displayName || ticket.author?.email || '—' %></span>
+        <span><span class="status status-<%= ticket.status || 'open' %>"><%= ticket.status || 'open' %></span></span>
+        <span>Created: <%= ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : '—' %></span>
+      </div>
+    </div>
+
+    <% if (ticket.body) { %>
+      <div class="ticket-body"><%= ticket.body %></div>
+    <% } %>
+
+    <% if (ticket.replies && ticket.replies.length) { %>
+      <div class="replies">
+        <h3 style="font-size:14px; font-weight:500; color:#a3a3a3; margin-bottom:12px;">Replies (<%= ticket.replies.length %>)</h3>
+        <% ticket.replies.forEach(r => { %>
+          <div class="reply">
+            <div class="reply-header">
+              <span class="reply-author"><%= r.author?.displayName || r.author?.email || 'Unknown' %></span>
+              <span class="reply-time"><%= r.createdAt ? new Date(r.createdAt).toLocaleString() : '' %></span>
+            </div>
+            <div class="reply-body"><%= r.body %></div>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <div class="reply-form">
+      <h3>Reply</h3>
+      <form method="POST" action="/superadmin/tickets/<%= tenantDbName %>/<%= ticket._id %>/reply">
+        <textarea name="body" placeholder="Type your reply..." required></textarea>
+        <div style="margin-top:10px;">
+          <button type="submit" class="btn btn-gold">Send Reply</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="actions">
+      <% if (ticket.status !== 'resolved') { %>
+        <form method="POST" action="/superadmin/tickets/<%= tenantDbName %>/<%= ticket._id %>/resolve" style="display:inline;">
+          <button type="submit" class="btn btn-green">Resolve</button>
+        </form>
+      <% } %>
+      <form method="POST" action="/superadmin/tickets/<%= tenantDbName %>/<%= ticket._id %>/de-escalate" style="display:inline;">
+        <button type="submit" class="btn btn-red">De-escalate</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

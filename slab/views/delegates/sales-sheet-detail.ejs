@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= brand.name || tenant.domain %> — Sales Sheet — sLab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#c9a848; background:#262626; padding:3px 8px; border-radius:4px; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; color:#737373; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1000px; margin:0 auto; padding:24px; }
+    .back { display:inline-block; color:#a3a3a3; text-decoration:none; font-size:12px; margin-bottom:16px; } .back:hover { color:#c9a848; }
+    h1 { font-size:22px; font-weight:600; color:#fff; margin-bottom:4px; }
+    .meta { font-size:13px; color:#737373; margin-bottom:24px; }
+    .meta a { color:#c9a848; text-decoration:none; }
+
+    /* Stats bar */
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(100px, 1fr)); gap:12px; margin-bottom:24px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:14px; text-align:center; }
+    .stat-value { font-size:22px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; } .stat-value.green { color:#4ade80; } .stat-value.red { color:#f87171; } .stat-value.blue { color:#60a5fa; }
+    .stat-label { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:#525252; margin-top:2px; }
+
+    /* Brand info card */
+    .card { background:#141414; border:1px solid #262626; border-radius:8px; padding:24px; margin-bottom:20px; }
+    .card-title { font-size:14px; font-weight:600; color:#fff; margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #262626; }
+    .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .info-item label { font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#525252; display:block; margin-bottom:2px; }
+    .info-item span { font-size:13px; color:#e5e5e5; }
+    .services-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+    .service-tag { background:#262626; color:#a3a3a3; font-size:11px; padding:3px 8px; border-radius:4px; }
+
+    /* Promo card */
+    .promo-card { background:linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border:1px solid #c9a848; border-radius:8px; padding:20px 24px; margin-bottom:24px; }
+    .promo-card h3 { font-size:14px; color:#c9a848; margin-bottom:6px; }
+    .promo-card p { font-size:13px; color:#a3a3a3; line-height:1.5; }
+    .ref-link { display:inline-block; background:#0a0a0a; border:1px solid #333; border-radius:4px; padding:6px 12px; margin-top:8px; font-family:monospace; font-size:13px; color:#c9a848; }
+
+    /* Tabs */
+    .tabs { display:flex; gap:0; margin-bottom:20px; border-bottom:1px solid #262626; }
+    .tab { padding:10px 20px; font-size:13px; color:#737373; cursor:pointer; border-bottom:2px solid transparent; transition:all 0.2s; background:none; border-top:none; border-left:none; border-right:none; font-family:'Inter',sans-serif; }
+    .tab:hover { color:#e5e5e5; }
+    .tab.active { color:#c9a848; border-bottom-color:#c9a848; }
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+
+    /* Forms */
+    .form-row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+    .form-group { display:flex; flex-direction:column; gap:4px; flex:1; min-width:150px; }
+    .form-group label { font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#525252; }
+    .form-group input, .form-group select, .form-group textarea { background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:8px 10px; border-radius:4px; font-family:'Inter',sans-serif; font-size:13px; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color:#c9a848; outline:none; }
+    .form-group textarea { resize:vertical; min-height:60px; }
+    .btn { padding:8px 16px; border-radius:4px; font-family:'Inter',sans-serif; font-size:12px; font-weight:600; cursor:pointer; border:none; }
+    .btn-gold { background:#c9a848; color:#0a0a0a; } .btn-gold:hover { background:#d4b85c; }
+    .btn-sm { padding:5px 10px; font-size:11px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; }
+    .btn-sm:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-sm.red { border-color:#451a1a; color:#fca5a5; } .btn-sm.red:hover { border-color:#f87171; }
+
+    /* Tag checkboxes */
+    .tag-group { display:flex; flex-wrap:wrap; gap:6px; }
+    .tag-check { display:none; }
+    .tag-label { background:#262626; color:#737373; font-size:11px; padding:3px 8px; border-radius:4px; cursor:pointer; transition:all 0.2s; }
+    .tag-check:checked + .tag-label { background:#c9a848; color:#0a0a0a; font-weight:600; }
+
+    /* Leads table */
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; vertical-align:top; }
+    tr:last-child td { border-bottom:0; }
+    .status-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+    .status-new { background:#1e3a5f; color:#60a5fa; }
+    .status-contacted { background:#422006; color:#fdba74; }
+    .status-callback { background:#3b0764; color:#c084fc; }
+    .status-interested { background:#14532d; color:#86efac; }
+    .status-converted { background:#064e3b; color:#34d399; }
+    .status-lost { background:#451a1a; color:#fca5a5; }
+    .lead-tag { display:inline-block; background:#262626; color:#a3a3a3; font-size:10px; padding:2px 6px; border-radius:3px; margin:1px; }
+    .call-log { font-size:11px; color:#525252; margin-top:4px; }
+    .call-log .call-entry { padding:4px 0; border-top:1px dashed #1f1f1f; }
+    .call-log .call-entry:first-child { border-top:none; }
+    .empty { color:#525252; font-size:13px; padding:20px; text-align:center; }
+
+    /* Inline edit form */
+    .inline-actions { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+    .expandable { display:none; }
+    .expandable.show { display:block; }
+    .toggle-btn { background:none; border:none; color:#737373; font-size:11px; cursor:pointer; padding:2px 0; font-family:'Inter',sans-serif; }
+    .toggle-btn:hover { color:#c9a848; }
+
+    @media (max-width:600px) { .info-grid { grid-template-columns:1fr; } .container { padding:16px; } .stats { grid-template-columns:repeat(3, 1fr); } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo"><span>s</span>Lab</div>
+      <span class="badge">Delegate</span>
+    </div>
+    <div class="topbar-right">
+      <span><%= delegate.firstName %> <%= delegate.lastName %></span>
+      <a href="/delegates/panel">Dashboard</a>
+      <a href="/delegates/panel/sales-sheets">Sales Sheets</a>
+      <a href="/delegates/panel/settings">Settings</a>
+      <a href="/delegates/logout">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <a href="/delegates/panel/sales-sheets" class="back">&larr; Back to Sales Sheets</a>
+
+    <h1><%= brand.name || tenant.domain %></h1>
+    <div class="meta">
+      <a href="https://<%= tenant.domain %>" target="_blank"><%= tenant.domain %></a>
+      <% if (brand.phone) { %>&nbsp;&middot;&nbsp;<%= brand.phone %><% } %>
+      <% if (brand.email) { %>&nbsp;&middot;&nbsp;<a href="mailto:<%= brand.email %>"><%= brand.email %></a><% } %>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat"><div class="stat-value"><%= stats.total %></div><div class="stat-label">Total Leads</div></div>
+      <div class="stat"><div class="stat-value blue"><%= stats.new %></div><div class="stat-label">New</div></div>
+      <div class="stat"><div class="stat-value"><%= stats.contacted %></div><div class="stat-label">Contacted</div></div>
+      <div class="stat"><div class="stat-value gold"><%= stats.interested %></div><div class="stat-label">Interested</div></div>
+      <div class="stat"><div class="stat-value green"><%= stats.converted %></div><div class="stat-label">Converted</div></div>
+      <div class="stat"><div class="stat-value red"><%= stats.lost %></div><div class="stat-label">Lost</div></div>
+    </div>
+
+    <!-- Promo -->
+    <div class="promo-card">
+      <h3><%= promo.type %></h3>
+      <p><%= promo.description %></p>
+      <% if (tenant.isProduct && tenant.domain) { %>
+      <div class="ref-link">https://<%= tenant.domain %>/start?ref=<%= delegate.refCode %></div>
+      <% } else { %>
+      <div class="ref-link">/start?ref=<%= delegate.refCode %></div>
+      <% } %>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('brand-info')">Brand Info</button>
+      <button class="tab" onclick="switchTab('leads')">Call Sheet / Leads (<%= stats.total %>)</button>
+      <button class="tab" onclick="switchTab('add-lead')">+ Add Lead</button>
+    </div>
+
+    <!-- Brand Info Tab -->
+    <div id="tab-brand-info" class="tab-content active">
+      <div class="card">
+        <div class="card-title">Brand Details</div>
+        <div class="info-grid">
+          <div class="info-item"><label>Business Name</label><span><%= brand.name || '—' %></span></div>
+          <div class="info-item"><label>Location</label><span><%= brand.location || '—' %></span></div>
+          <div class="info-item"><label>Industry</label><span><%= brand.industry || '—' %></span></div>
+          <div class="info-item"><label>Business Type</label><span><%= brand.businessType || '—' %></span></div>
+          <div class="info-item"><label>Service Area</label><span><%= brand.serviceArea || '—' %></span></div>
+          <div class="info-item"><label>Target Audience</label><span><%= brand.targetAudience || '—' %></span></div>
+          <div class="info-item" style="grid-column:1/-1;"><label>Tagline</label><span><%= brand.tagline || '—' %></span></div>
+          <div class="info-item" style="grid-column:1/-1;"><label>Description</label><span><%= brand.description || '—' %></span></div>
+          <div class="info-item" style="grid-column:1/-1;"><label>Brand Voice</label><span><%= brand.brandVoice || '—' %></span></div>
+          <% if (brand.pricingNotes) { %>
+          <div class="info-item" style="grid-column:1/-1;"><label>Pricing Notes</label><span><%= brand.pricingNotes %></span></div>
+          <% } %>
+        </div>
+        <% if (brand.services?.length) { %>
+        <div style="margin-top:16px;">
+          <label style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:#525252;display:block;margin-bottom:6px;">Services</label>
+          <div class="services-list">
+            <% for (const s of brand.services) { %>
+            <span class="service-tag"><%= s %></span>
+            <% } %>
+          </div>
+        </div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Leads / Call Sheet Tab -->
+    <div id="tab-leads" class="tab-content">
+      <% if (leads.length) { %>
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Contact</th><th>Status</th><th>Tags</th><th>Last Updated</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          <% for (const l of leads) { %>
+          <tr>
+            <td>
+              <strong style="color:#fff;"><%= l.name %></strong>
+              <% if (l.company) { %><br><span style="color:#737373;font-size:11px;"><%= l.company %></span><% } %>
+            </td>
+            <td>
+              <% if (l.email) { %><a href="mailto:<%= l.email %>" style="color:#c9a848;text-decoration:none;font-size:12px;"><%= l.email %></a><br><% } %>
+              <% if (l.phone) { %><span style="font-size:12px;"><%= l.phone %></span><% } %>
+            </td>
+            <td><span class="status-badge status-<%= l.status %>"><%= l.status %></span></td>
+            <td>
+              <% for (const tag of l.tags || []) { %>
+              <span class="lead-tag"><%= tag %></span>
+              <% } %>
+            </td>
+            <td style="font-size:12px;color:#737373;"><%= new Date(l.updatedAt).toLocaleDateString() %></td>
+            <td>
+              <button class="toggle-btn" onclick="toggleExpand('actions-<%= l._id %>')">Edit / Log Call</button>
+              <div id="actions-<%= l._id %>" class="expandable">
+                <!-- Update status/tags -->
+                <form method="POST" action="/delegates/panel/leads/<%= l._id %>/update" style="margin-top:8px;">
+                  <input type="hidden" name="tenantId" value="<%= tenant._id %>">
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
+                    <select name="status" style="background:#1a1a1a;border:1px solid #333;color:#e5e5e5;padding:4px 8px;border-radius:4px;font-size:11px;">
+                      <% for (const s of leadStatuses) { %>
+                      <option value="<%= s %>" <%= l.status === s ? 'selected' : '' %>><%= s %></option>
+                      <% } %>
+                    </select>
+                    <button type="submit" class="btn-sm">Update Status</button>
+                  </div>
+                  <div class="tag-group" style="margin-bottom:6px;">
+                    <% for (const tag of leadTags) { %>
+                    <input type="checkbox" name="tags" value="<%= tag %>" id="tag-<%= l._id %>-<%= tag %>" class="tag-check" <%= (l.tags || []).includes(tag) ? 'checked' : '' %>>
+                    <label for="tag-<%= l._id %>-<%= tag %>" class="tag-label"><%= tag %></label>
+                    <% } %>
+                  </div>
+                </form>
+
+                <!-- Log call -->
+                <form method="POST" action="/delegates/panel/leads/<%= l._id %>/log-call" style="margin-top:8px;padding-top:8px;border-top:1px solid #262626;">
+                  <input type="hidden" name="tenantId" value="<%= tenant._id %>">
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;">
+                    <select name="outcome" style="background:#1a1a1a;border:1px solid #333;color:#e5e5e5;padding:4px 8px;border-radius:4px;font-size:11px;">
+                      <option value="no-answer">No Answer</option>
+                      <option value="voicemail">Voicemail</option>
+                      <option value="spoke">Spoke</option>
+                      <option value="callback-set">Callback Set</option>
+                      <option value="demo-booked">Demo Booked</option>
+                      <option value="not-interested">Not Interested</option>
+                    </select>
+                    <input type="text" name="notes" placeholder="Call notes..." style="background:#1a1a1a;border:1px solid #333;color:#e5e5e5;padding:4px 8px;border-radius:4px;font-size:11px;flex:1;min-width:120px;">
+                    <button type="submit" class="btn-sm">Log Call</button>
+                  </div>
+                </form>
+
+                <!-- Call history -->
+                <% if (l.callLog?.length) { %>
+                <div class="call-log" style="margin-top:8px;">
+                  <% for (const c of l.callLog.slice(-5).reverse()) { %>
+                  <div class="call-entry">
+                    <span style="color:#737373;"><%= new Date(c.date).toLocaleDateString() %></span>
+                    <span style="color:#c9a848;margin-left:4px;"><%= c.outcome %></span>
+                    <% if (c.notes) { %><span style="color:#525252;margin-left:4px;">— <%= c.notes %></span><% } %>
+                  </div>
+                  <% } %>
+                </div>
+                <% } %>
+
+                <!-- Delete -->
+                <form method="POST" action="/delegates/panel/leads/<%= l._id %>/delete" style="margin-top:8px;">
+                  <input type="hidden" name="tenantId" value="<%= tenant._id %>">
+                  <button type="submit" class="btn-sm red" onclick="return confirm('Delete this lead?')">Delete Lead</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <% } else { %>
+      <div class="empty">No leads yet. Add your first lead to start tracking your call sheet.</div>
+      <% } %>
+    </div>
+
+    <!-- Add Lead Tab -->
+    <div id="tab-add-lead" class="tab-content">
+      <div class="card">
+        <div class="card-title">Add New Lead</div>
+        <form method="POST" action="/delegates/panel/leads/add">
+          <input type="hidden" name="tenantId" value="<%= tenant._id %>">
+          <div class="form-row">
+            <div class="form-group"><label>Name *</label><input type="text" name="name" required placeholder="John Smith"></div>
+            <div class="form-group"><label>Company</label><input type="text" name="company" placeholder="Acme Corp"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Email</label><input type="email" name="email" placeholder="john@example.com"></div>
+            <div class="form-group"><label>Phone</label><input type="text" name="phone" placeholder="(555) 123-4567"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1 1 100%;">
+              <label>Notes</label>
+              <textarea name="notes" placeholder="Any initial notes about this lead..."></textarea>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1 1 100%;">
+              <label>Tags</label>
+              <div class="tag-group">
+                <% for (const tag of leadTags) { %>
+                <input type="checkbox" name="tags" value="<%= tag %>" id="new-tag-<%= tag %>" class="tag-check">
+                <label for="new-tag-<%= tag %>" class="tag-label"><%= tag %></label>
+                <% } %>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:12px;">
+            <button type="submit" class="btn btn-gold">Add Lead</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(name) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      event.target.classList.add('active');
+    }
+    function toggleExpand(id) {
+      const el = document.getElementById(id);
+      el.classList.toggle('show');
+    }
+  </script>
+</body>
+</html>

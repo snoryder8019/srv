@@ -11,8 +11,19 @@ const specialsRouter = require('./admin/specials');
 const analyticsRouter = require('./admin/analytics');
 const rosterRouter = require('./admin/roster');
 
-// All admin routes require at least brandAdmin
-router.use(requireRole('brandAdmin'));
+// All admin routes require at least manager
+router.use(requireRole('manager'));
+
+// Brand-scoping middleware: admin/manager only see their own brand
+// superadmin sees everything
+router.use((req, res, next) => {
+  if (req.user.role === 'superadmin') {
+    req.brandScope = null; // no filter — sees all
+  } else {
+    req.brandScope = req.user.brand; // scoped to their brand
+  }
+  next();
+});
 
 // Dashboard
 router.get('/', async (req, res) => {
@@ -23,22 +34,24 @@ router.get('/', async (req, res) => {
 
   let brands, userCount, taskCount, qrCount;
 
-  if (['superadmin', 'admin'].includes(req.user.role)) {
+  if (!req.brandScope) {
+    // superadmin — all brands
     brands = await Brand.find({ active: true }).lean();
     userCount = await User.countDocuments();
     taskCount = await Task.countDocuments({ active: true });
     qrCount = await QRCode.countDocuments({ active: true });
   } else {
-    brands = await Brand.find({ _id: req.user.brand, active: true }).lean();
-    userCount = await User.countDocuments({ brand: req.user.brand });
-    taskCount = await Task.countDocuments({ brand: req.user.brand, active: true });
-    qrCount = await QRCode.countDocuments({ brand: req.user.brand, active: true });
+    // admin/manager — own brand only
+    brands = await Brand.find({ _id: req.brandScope, active: true }).lean();
+    userCount = await User.countDocuments({ brand: req.brandScope });
+    taskCount = await Task.countDocuments({ brand: req.brandScope, active: true });
+    qrCount = await QRCode.countDocuments({ brand: req.brandScope, active: true });
   }
 
-  // Get trial info for the user's brand
+  // Get trial/plan info for the user's brand
   let trialBrand = null;
   if (req.user.brand) {
-    trialBrand = await Brand.findById(req.user.brand).select('status trialExpiresAt plan name').lean();
+    trialBrand = await Brand.findById(req.user.brand).select('status trialExpiresAt expiresAt plan name delegatePromo delegateTrialEndsAt').lean();
   }
 
   res.render('admin/dashboard', {
@@ -46,6 +59,8 @@ router.get('/', async (req, res) => {
     brands,
     stats: { userCount, taskCount, qrCount, brandCount: brands.length },
     trialBrand,
+    success: req.query.success || null,
+    error: req.query.error || null,
   });
 });
 

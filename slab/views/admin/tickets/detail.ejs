@@ -1,4 +1,4 @@
-<%- include('../partials/head', { title: 'Ticket ' + ticket.ticketNumber }) %>
+<%- include('../partials/head', { title: 'Request ' + ticket.ticketNumber }) %>
 <div class="layout">
 <%- include('../partials/sidebar', { page: 'tickets', user, brand: typeof brand !== 'undefined' ? brand : null, tenant: typeof tenant !== 'undefined' ? tenant : null, isSuperAdmin: typeof isSuperAdmin !== 'undefined' ? isSuperAdmin : false, brandDesign: typeof brandDesign !== 'undefined' ? brandDesign : {} }) %>
 
@@ -14,11 +14,6 @@
   .reply-body { margin-top:8px; font-size:0.9rem; line-height:1.6; white-space:pre-wrap; }
   .reply-att { margin-top:8px; }
   .reply-att a { font-size:0.8rem; color:var(--navy-mid); text-decoration:underline; }
-  .debug-panel { background:var(--ivory); border:1px solid var(--ivory-mid); border-radius:2px; padding:16px; margin-top:16px; }
-  .debug-section { margin-bottom:12px; }
-  .debug-section-title { font-size:0.65rem; font-weight:600; letter-spacing:0.16em; text-transform:uppercase; color:var(--slate); margin-bottom:6px; cursor:pointer; }
-  .debug-pre { background:var(--navy-deep); color:#a3e635; font-family:monospace; font-size:0.72rem; padding:12px; border-radius:2px; max-height:300px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
-  .actions-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:24px; }
 </style>
 
 <div class="topbar">
@@ -30,57 +25,14 @@
 
 <div class="content">
 
-  <!-- Actions -->
-  <div class="actions-bar">
-    <% if (ticket.status !== 'resolved' && ticket.status !== 'closed') { %>
-      <form method="POST" action="/admin/tickets/<%= ticket._id %>/resolve" style="display:inline;">
-        <button class="btn btn-sm btn-navy" onclick="return confirm('Mark as resolved?')">Resolve</button>
-      </form>
-    <% } %>
-    <% if (ticket.status !== 'closed') { %>
-      <form method="POST" action="/admin/tickets/<%= ticket._id %>/close" style="display:inline;">
-        <button class="btn btn-sm btn-ghost" onclick="return confirm('Close this ticket?')">Close</button>
-      </form>
-    <% } %>
-    <% if (!ticket.escalated && ticket.status !== 'resolved' && ticket.status !== 'closed') { %>
-      <button class="btn btn-sm btn-danger" onclick="document.getElementById('escalatePanel').style.display='block'">Escalate</button>
-    <% } %>
-    <form method="POST" action="/admin/tickets/<%= ticket._id %>/delete" style="display:inline;margin-left:auto;">
-      <button class="btn btn-sm btn-danger" onclick="return confirm('Permanently delete this ticket?')">Delete</button>
-    </form>
-  </div>
-
-  <!-- Escalation panel (hidden) -->
-  <div id="escalatePanel" style="display:none;margin-bottom:20px;" class="card">
-    <div class="card-title">Escalate to Platform Support</div>
-    <form method="POST" action="/admin/tickets/<%= ticket._id %>/escalate">
-      <div class="form-field" style="margin-bottom:16px;">
-        <label>Escalation Notes (optional)</label>
-        <textarea name="escalationNotes" rows="3" placeholder="Context for the platform team..."></textarea>
-      </div>
-      <div style="display:flex;gap:10px;">
-        <button type="submit" class="btn btn-sm btn-danger">Confirm Escalation</button>
-        <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('escalatePanel').style.display='none'">Cancel</button>
-      </div>
-    </form>
-  </div>
-
   <!-- Ticket Info -->
   <div class="card" style="margin-bottom:20px;">
     <div class="ticket-meta">
       <div class="ticket-meta-item">
         <label>Status</label>
         <div>
-          <% if (ticket.status !== 'resolved' && ticket.status !== 'closed') { %>
-            <select id="statusSelect" style="padding:4px 8px;font-size:0.82rem;border:1px solid var(--ivory-mid);border-radius:2px;">
-              <option value="open" <%= ticket.status === 'open' ? 'selected' : '' %>>Open</option>
-              <option value="in-progress" <%= ticket.status === 'in-progress' ? 'selected' : '' %>>In Progress</option>
-              <option value="escalated" <%= ticket.status === 'escalated' ? 'selected' : '' %>>Escalated</option>
-            </select>
-          <% } else { %>
-            <% const sc = { resolved: 'badge-active', closed: 'badge-draft' }; %>
-            <span class="badge <%= sc[ticket.status] || '' %>"><%= ticket.status %></span>
-          <% } %>
+          <% const sc = { open: 'badge-prospect', 'in-progress': 'badge-featured', escalated: 'badge-featured', resolved: 'badge-active', closed: 'badge-draft' }; %>
+          <span class="badge <%= sc[ticket.status] || 'badge-draft' %>"><%= ticket.status === 'escalated' ? 'in-progress' : ticket.status %></span>
         </div>
       </div>
       <div class="ticket-meta-item">
@@ -98,33 +50,10 @@
         <div class="val"><%= ticket.submittedBy?.displayName || ticket.submittedBy?.email || 'Unknown' %></div>
       </div>
       <div class="ticket-meta-item">
-        <label>Assigned To</label>
-        <div>
-          <form method="POST" action="/admin/tickets/<%= ticket._id %>/assign" style="display:inline;">
-            <select name="assignedTo" onchange="this.form.submit()" style="padding:4px 8px;font-size:0.82rem;border:1px solid var(--ivory-mid);border-radius:2px;">
-              <option value="">Unassigned</option>
-              <% for (const a of admins) { %>
-                <option value="<%= a.email %>" <%= ticket.assignedTo === a.email ? 'selected' : '' %>><%= a.displayName || a.email %></option>
-              <% } %>
-            </select>
-          </form>
-        </div>
-      </div>
-      <div class="ticket-meta-item">
         <label>Created</label>
         <div class="val" style="font-size:0.82rem;"><%= ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : '' %></div>
       </div>
     </div>
-
-    <% if (ticket.escalated) { %>
-      <div style="background:rgba(185,28,28,0.10);border:1px solid rgba(185,28,28,0.2);border-radius:2px;padding:12px;margin-bottom:16px;">
-        <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--danger);margin-bottom:4px;">Escalated to Platform Support</div>
-        <div style="font-size:0.82rem;color:var(--slate);">By <%= ticket.escalatedBy %> on <%= ticket.escalatedAt ? new Date(ticket.escalatedAt).toLocaleString() : '' %></div>
-        <% if (ticket.escalationNotes) { %>
-          <div style="font-size:0.85rem;margin-top:8px;"><%= ticket.escalationNotes %></div>
-        <% } %>
-      </div>
-    <% } %>
 
     <!-- Description -->
     <% if (ticket.description) { %>
@@ -150,57 +79,6 @@
     <% } %>
   </div>
 
-  <!-- Debug Data -->
-  <% if (ticket.debugData) { %>
-    <div class="card" style="margin-bottom:20px;">
-      <div class="card-title" style="display:flex;align-items:center;gap:8px;">
-        <span>&#128027;</span> Debug Data
-        <span style="font-size:0.72rem;color:var(--slate);font-weight:400;font-family:var(--font-body);">Captured <%= ticket.debugData.capturedAt ? new Date(ticket.debugData.capturedAt).toLocaleString() : '' %></span>
-      </div>
-
-      <div class="ticket-meta" style="margin-bottom:16px;">
-        <% if (ticket.debugData.currentUrl) { %>
-          <div class="ticket-meta-item"><label>URL</label><div class="val" style="font-size:0.8rem;word-break:break-all;"><%= ticket.debugData.currentUrl %></div></div>
-        <% } %>
-        <% if (ticket.debugData.userAgent) { %>
-          <div class="ticket-meta-item"><label>User Agent</label><div class="val" style="font-size:0.75rem;word-break:break-all;"><%= ticket.debugData.userAgent %></div></div>
-        <% } %>
-        <% if (ticket.debugData.screenSize) { %>
-          <div class="ticket-meta-item"><label>Screen</label><div class="val"><%= ticket.debugData.screenSize %></div></div>
-        <% } %>
-      </div>
-
-      <% if (ticket.debugData.consoleErrors?.length) { %>
-        <div class="debug-section">
-          <div class="debug-section-title" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Console Errors (<%= ticket.debugData.consoleErrors.length %>) &#9660;</div>
-          <div class="debug-pre" style="display:none;"><% for (const e of ticket.debugData.consoleErrors) { %><%= e %>
-<% } %></div>
-        </div>
-      <% } %>
-
-      <% if (ticket.debugData.tmuxLog) { %>
-        <div class="debug-section">
-          <div class="debug-section-title" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Tmux Log (Server) &#9660;</div>
-          <div class="debug-pre" style="display:none;"><%= ticket.debugData.tmuxLog %></div>
-        </div>
-      <% } %>
-
-      <% if (ticket.debugData.apacheErrorLog) { %>
-        <div class="debug-section">
-          <div class="debug-section-title" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Apache Error Log &#9660;</div>
-          <div class="debug-pre" style="display:none;"><%= ticket.debugData.apacheErrorLog %></div>
-        </div>
-      <% } %>
-
-      <% if (ticket.debugData.apacheAccessLog) { %>
-        <div class="debug-section">
-          <div class="debug-section-title" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Apache Access Log &#9660;</div>
-          <div class="debug-pre" style="display:none;"><%= ticket.debugData.apacheAccessLog %></div>
-        </div>
-      <% } %>
-    </div>
-  <% } %>
-
   <!-- Reply Thread -->
   <div class="card">
     <div class="card-title">Replies (<%= ticket.replies?.length || 0 %>)</div>
@@ -212,7 +90,7 @@
             <span class="reply-author"><%= r.author?.displayName || r.author?.email || 'Unknown' %></span>
             <span class="reply-time"><%= r.createdAt ? new Date(r.createdAt).toLocaleString() : '' %></span>
             <% if (r.author?.type === 'superadmin') { %>
-              <span class="badge badge-inactive" style="margin-left:6px;font-size:0.65rem;">Platform</span>
+              <span class="badge badge-inactive" style="margin-left:6px;font-size:0.65rem;">Platform Support</span>
             <% } %>
             <div class="reply-body"><%= r.body %></div>
             <% if (r.attachments?.length) { %>
@@ -228,11 +106,11 @@
     <% } %>
 
     <!-- Reply form -->
-    <% if (ticket.status !== 'closed') { %>
+    <% if (ticket.status !== 'closed' && ticket.status !== 'resolved') { %>
       <form method="POST" action="/admin/tickets/<%= ticket._id %>/reply" enctype="multipart/form-data" style="margin-top:20px;padding-top:20px;border-top:1px solid var(--ivory);">
         <div class="form-field" style="margin-bottom:12px;">
           <label>Reply</label>
-          <textarea name="body" rows="4" required placeholder="Type your reply..."></textarea>
+          <textarea name="body" rows="4" required placeholder="Add more details or respond to platform support..."></textarea>
         </div>
         <div style="display:flex;gap:12px;align-items:center;">
           <button type="submit" class="btn btn-sm btn-navy">Send Reply</button>
@@ -242,26 +120,6 @@
     <% } %>
   </div>
 </div>
-
-<script>
-(function() {
-  const sel = document.getElementById('statusSelect');
-  if (!sel) return;
-  sel.addEventListener('change', async function() {
-    const status = this.value;
-    try {
-      const res = await fetch('/admin/tickets/<%= ticket._id %>/status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      if (res.ok) window.location.reload();
-    } catch (e) {
-      alert('Failed to update status');
-    }
-  });
-})();
-</script>
 
 <script src="/js/tours/tickets.js"></script>
 </div><!-- layout -->

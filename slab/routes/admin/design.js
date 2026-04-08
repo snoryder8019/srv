@@ -35,6 +35,7 @@ export const DESIGN_DEFAULTS = {
   vis_contact:         'true',
   vis_blog:            'false',
   vis_footer:          'true',
+  vis_admin_link:      'true',
   agent_name:          'Assistant',
   agent_greeting:      'Hi! I can write blog posts, update site copy, or build new sections. What would you like to create?',
   portfolio_layout:    'grid',
@@ -43,6 +44,7 @@ export const DESIGN_DEFAULTS = {
   nav_logo_split:      '0',
   landing_layout:      'classic',
   hero_name_large:     '',
+  vis_pricing:           'true',
   vis_qr:               'false',
   model_header_enabled: 'false',
   model_logo_enabled:   'false',
@@ -78,7 +80,7 @@ export const DESIGN_DEFAULTS = {
 };
 
 // ── Theme-saveable design keys (excludes agent settings / visibility) ──
-const THEME_KEYS = [
+export const THEME_KEYS = [
   'color_primary', 'color_primary_deep', 'color_primary_mid',
   'color_accent', 'color_accent_light', 'color_bg',
   'color_accent_2', 'color_accent_3',
@@ -106,6 +108,15 @@ export const COPY_SECTIONS = {
   process: ['process_label', 'process_heading', 'process_heading_em',
            'process1_title', 'process1_desc', 'process2_title', 'process2_desc',
            'process3_title', 'process3_desc', 'process4_title', 'process4_desc'],
+  pricing: ['startup_price_heading', 'startup_price_desc', 'startup_price_cta', 'startup_price_note',
+           'startup_price_amount', 'startup_price_unit', 'startup_price_label', 'startup_price_features',
+           'pricing_tier2_amount', 'pricing_tier2_unit', 'pricing_tier2_label', 'pricing_tier2_equiv',
+           'pricing_tier2_cta_link',
+           'pricing_tier3_amount', 'pricing_tier3_unit', 'pricing_tier3_label', 'pricing_tier3_equiv',
+           'pricing_tier3_featured', 'pricing_tier3_cta_link',
+           'pricing_tier4_amount', 'pricing_tier4_unit', 'pricing_tier4_label', 'pricing_tier4_equiv',
+           'pricing_tier4_cta_link',
+           'promo_enabled', 'promo_badge', 'promo_heading', 'promo_text'],
   contact: ['contact_eyebrow', 'contact_heading', 'contact_heading_em',
            'contact_sub', 'contact_location', 'contact_location_label',
            'contact_serving', 'contact_serving_label',
@@ -164,11 +175,16 @@ router.post('/', async (req, res) => {
     });
 
     // Save copy fields (any key starting with known copy prefixes)
+    // Checkbox copy fields need explicit handling (unchecked = not in body)
+    const COPY_CHECKBOXES = ['promo_enabled', 'pricing_tier3_featured'];
     const allCopyKeys = Object.values(COPY_SECTIONS).flat();
-    const copyOps = allCopyKeys.filter(key => req.body[key] !== undefined).map(key => {
+    const copyOps = allCopyKeys.filter(key => req.body[key] !== undefined || COPY_CHECKBOXES.includes(key)).map(key => {
+      const value = COPY_CHECKBOXES.includes(key)
+        ? (req.body[key] || '')       // '' when unchecked, 'yes' when checked
+        : (req.body[key] || '');
       return db.collection('copy').updateOne(
         { key },
-        { $set: { key, value: req.body[key] || '', updatedAt: now } },
+        { $set: { key, value, updatedAt: now } },
         { upsert: true }
       );
     });

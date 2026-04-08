@@ -210,6 +210,7 @@
     <div class="sidebar-item active" onclick="show('servers')">Server Control</div>
     <div class="sidebar-item" onclick="show('plugins')">Plugin Center</div>
     <div class="sidebar-item" onclick="show('gusers')">Users</div>
+    <div class="sidebar-item" onclick="show('backups')">Backups &amp; Saves</div>
     <div class="sidebar-section sa-only">INFRASTRUCTURE</div>
     <div class="sidebar-item sa-only" onclick="show('provisioner')">Server Provisioner</div>
     <div class="sidebar-section sa-only">SYSTEM</div>
@@ -363,6 +364,54 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Backups & Saves -->
+    <div class="panel" id="panel-backups">
+      <h2>World Backups &amp; Player Saves</h2>
+
+      <!-- Game filter + create backup -->
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="field" style="margin:0">
+          <label>FILTER BY GAME</label>
+          <select id="bkFilterGame" onchange="loadBackups()">
+            <option value="">All Games</option>
+            <option value="rust">Rust</option>
+            <option value="valheim">Valheim</option>
+            <option value="l4d2">Left 4 Dead 2</option>
+            <option value="7dtd">7 Days to Die</option>
+            <option value="se">Space Engineers</option>
+            <option value="palworld">Palworld</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label>CREATE LOCAL BACKUP</label>
+          <select id="bkCreateGame">
+            <option value="rust">Rust</option>
+            <option value="valheim">Valheim</option>
+            <option value="l4d2">Left 4 Dead 2</option>
+            <option value="7dtd">7 Days to Die</option>
+          </select>
+        </div>
+        <button class="btn btn-green" onclick="createLocalBackup()">BACKUP NOW</button>
+      </div>
+
+      <!-- Backup list -->
+      <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">
+        SAVED BACKUPS <span id="bkCount" style="margin-left:6px;background:#222;padding:1px 6px;border-radius:2px;">0</span>
+      </div>
+      <table style="font-size:0.75rem;">
+        <thead>
+          <tr>
+            <th>Game</th>
+            <th>Date</th>
+            <th>Size</th>
+            <th>Source</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="bkTbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+      </table>
     </div>
 
     <!-- Server Provisioner -->
@@ -538,12 +587,10 @@
 
     <div class="field sa-only" style="display:flex;gap:20px;">
       <label class="checkbox-row">
-        <input type="checkbox" id="modal-admin"> Superadmin
-      </label>
-      <label class="checkbox-row">
         <input type="checkbox" id="modal-broadcaster"> Broadcaster
       </label>
     </div>
+    <input type="hidden" id="modal-admin" value="false">
 
     <div id="modal-readonly" style="display:none;color:var(--muted);font-size:0.72rem;padding:8px 0;">
       Only superadmins can change subscriptions and permissions.
@@ -591,6 +638,7 @@ function show(id) {
   if (id === 'busers' && !buserData.length) loadBUsers();
   if (id === 'tickets') loadTickets();
   if (id === 'plugins') { pLoadLib(); pLoadInstalled(); }
+  if (id === 'backups') loadBackups();
   if (id === 'provisioner') loadProvisioner();
 }
 
@@ -818,7 +866,8 @@ async function saveUser() {
   }
 
   // Games user — full save (role + subscription + permissions)
-  const isAdmin = document.getElementById('modal-admin').checked;
+  // Superadmin is reserved — never grant via UI
+  const isAdmin = false;
   const isBroadcaster = document.getElementById('modal-broadcaster').checked;
   const sub = document.getElementById('modal-sub').value;
   const expiry = document.getElementById('modal-expiry').value;
@@ -987,6 +1036,82 @@ async function pDelete(id) {
     var d = await r.json();
     if (d.ok) { toast('Deleted'); pLoadLib(); } else toast(d.error, false);
   } catch (e) { toast('Failed', false); }
+}
+
+// --- Backups & Saves ---
+async function loadBackups() {
+  var tbody = document.getElementById('bkTbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="loading">Loading...</td></tr>';
+  var game = document.getElementById('bkFilterGame').value;
+  try {
+    var url = '/servers/api/backups' + (game ? '?game=' + game : '');
+    var r = await fetch(url);
+    var d = await r.json();
+    var backups = d.backups || [];
+    document.getElementById('bkCount').textContent = backups.length;
+    if (!backups.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">No backups found</td></tr>';
+      return;
+    }
+    tbody.innerHTML = backups.map(function(b) {
+      var date = new Date(b.createdAt).toLocaleString();
+      var kb = Math.round((b.fileSize || 0) / 1024);
+      var size = kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
+      var srcColor = b.source === 'local' ? 'var(--green)' : 'var(--yellow)';
+      var gameName = PGAMES[b.game] || b.game;
+      var id = b._id;
+
+      var actions = '<button class="btn btn-green" style="padding:3px 8px;font-size:0.62rem;" onclick="restoreBackupLocal(\'' + id + '\')">RESTORE LOCAL</button>';
+      if (isSuperAdmin) {
+        actions += ' <button class="btn btn-red" style="padding:3px 8px;font-size:0.62rem;" onclick="deleteBackup(\'' + id + '\')">DELETE</button>';
+      }
+      return '<tr>' +
+        '<td><span class="tag">' + esc(gameName) + '</span></td>' +
+        '<td style="color:var(--muted)">' + esc(date) + '</td>' +
+        '<td>' + esc(size) + '</td>' +
+        '<td style="color:' + srcColor + ';font-size:0.7rem;">' + esc(b.source || '?') + (b.sourceIp ? ' (' + esc(b.sourceIp) + ')' : '') + '</td>' +
+        '<td>' + actions + '</td>' +
+      '</tr>';
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#cd412b">Error loading backups</td></tr>';
+  }
+}
+
+async function createLocalBackup() {
+  var game = document.getElementById('bkCreateGame').value;
+  if (!confirm('Create a local backup for ' + game.toUpperCase() + '?\n\nThis will compress and upload current save files to cloud storage.')) return;
+  toast('Creating backup...');
+  try {
+    var r = await fetch('/servers/api/backups/local/' + game, { method: 'POST' });
+    var d = await r.json();
+    if (d.ok) { toast('Backup created'); loadBackups(); }
+    else toast(d.message || 'Backup failed', false);
+  } catch (e) { toast('Backup failed', false); }
+}
+
+async function restoreBackupLocal(id) {
+  if (!confirm('RESTORE this backup to the local server?\n\nThis will OVERWRITE current save files. Make sure the game server is stopped first.')) return;
+  toast('Restoring...');
+  try {
+    var r = await fetch('/servers/api/backups/' + id + '/restore-local', { method: 'POST' });
+    var d = await r.json();
+    if (d.ok) {
+      var msg = 'Restore complete';
+      if (d.warning) msg += ': ' + d.warning;
+      toast(msg);
+    } else toast(d.message || 'Restore failed', false);
+  } catch (e) { toast('Restore failed', false); }
+}
+
+async function deleteBackup(id) {
+  if (!confirm('DELETE this backup permanently?\n\nThis removes it from cloud storage and cannot be undone.')) return;
+  try {
+    var r = await fetch('/servers/api/backups/' + id, { method: 'DELETE' });
+    var d = await r.json();
+    if (d.ok) { toast('Backup deleted'); loadBackups(); }
+    else toast(d.message || 'Delete failed', false);
+  } catch (e) { toast('Delete failed', false); }
 }
 
 // --- Provisioner ---

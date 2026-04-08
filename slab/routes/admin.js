@@ -33,6 +33,8 @@ import ticketsRouter from './admin/tickets.js';
 import onboardingRouter from './admin/onboarding.js';
 import brandBuilderRouter from './admin/brandBuilder.js';
 import scannerRouter from './admin/scanner.js';
+import templatesRouter from './admin/templates.js';
+import templateStoreRouter from './admin/templateStore.js';
 
 const router = express.Router();
 
@@ -286,8 +288,8 @@ router.get('/ai-health', async (req, res) => {
 });
 
 router.get('/', async (req, res) => {
-  // Redirect to brand builder if setup is incomplete (skip if ?setup=complete or returning from wizard)
-  if (req.tenant && !req.tenant.brandSetupComplete && !req.query.setup && !req.query.activated) {
+  // Redirect to brand builder if setup is incomplete (skip for superadmins, ?setup=complete, or returning from wizard)
+  if (req.tenant && !req.tenant.brandSetupComplete && !req.isSuperAdmin && !req.query.setup && !req.query.activated) {
     return res.redirect('/admin/brand-builder');
   }
 
@@ -405,5 +407,7 @@ router.use('/super', superRouter);
 router.use('/onboarding', onboardingRouter);
 router.use('/brand-builder', brandBuilderRouter);
 router.use('/scanner', scannerRouter);
+router.use('/templates', templatesRouter);
+router.use('/template-store', templateStoreRouter);
 
 export default router;

@@ -1,0 +1,103 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<style>
+.activate-wrap { max-width:900px;margin:0 auto; }
+.activate-info { padding:16px 20px;background:rgba(201,168,72,0.08);border:1px solid rgba(201,168,72,0.3);border-radius:2px;margin-bottom:24px;font-size:0.82rem;color:#92660F;line-height:1.6; }
+.block-override-card { border:1px solid var(--ivory-mid);border-radius:4px;margin-bottom:16px;overflow:hidden; }
+.block-override-header { display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--ivory);cursor:pointer;user-select:none; }
+.block-override-badge { font-size:0.62rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:var(--navy);color:#fff;padding:2px 7px;border-radius:2px; }
+.block-override-name { flex:1;font-size:0.88rem;font-weight:500;color:var(--dark); }
+.block-override-body { padding:16px;display:flex;flex-direction:column;gap:12px; }
+.block-override-body.collapsed { display:none; }
+.override-field { display:flex;flex-direction:column;gap:5px; }
+.override-field label { font-size:0.62rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate); }
+.override-field input, .override-field textarea { width:100%;padding:8px 10px;border:1px solid var(--ivory-mid);border-radius:2px;font-family:var(--font-body);font-size:0.88rem;color:var(--dark);box-sizing:border-box; }
+.override-field textarea { min-height:80px;resize:vertical; }
+.override-hint { font-size:0.72rem;color:var(--slate);font-style:italic; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Content Mapping — <%= tpl.name %></div>
+  <div class="topbar-actions">
+    <a href="/admin/templates" class="btn btn-ghost btn-sm">← Templates</a>
+    <button type="submit" form="activate-form" class="btn btn-navy">Save Content</button>
+  </div>
+</div>
+
+<div class="content">
+  <div class="activate-wrap">
+
+    <div class="activate-info">
+      <strong>This template is now active.</strong> Replace dummy content below with your real information, or leave fields as-is. Changes are saved separately from the template itself.
+      <br><a href="/" target="_blank" style="color:var(--gold);font-weight:600;">View live site →</a>
+    </div>
+
+    <form id="activate-form" method="POST" action="/admin/templates/<%= tpl._id %>/content">
+      <input type="hidden" id="overrides-json" name="overridesJson" value="<%- JSON.stringify((active && active.contentOverrides) || {}) %>">
+
+      <% const BLOCK_FIELDS_OBJ = JSON.parse(BLOCK_FIELDS); %>
+      <% (tpl.blocks || []).forEach(function(block, i) { %>
+        <% const fields = BLOCK_FIELDS_OBJ[block.type] || []; %>
+        <% const overrides = (active && active.contentOverrides && active.contentOverrides[block.id]) || {}; %>
+        <div class="block-override-card">
+          <div class="block-override-header" onclick="this.nextElementSibling.classList.toggle('collapsed')">
+            <span class="block-override-badge"><%= block.type %></span>
+            <span class="block-override-name">Block <%= i + 1 %>: <%= (block.fields && block.fields.heading) || block.type %></span>
+            <span style="color:var(--slate);font-size:0.8rem;">▾</span>
+          </div>
+          <div class="block-override-body">
+            <% fields.forEach(function([key, label, type]) { %>
+              <div class="override-field">
+                <label><%= label %></label>
+                <% const currentVal = overrides[key] || ''; %>
+                <% const defaultVal = (block.fields && block.fields[key]) || ''; %>
+                <% if (type === 'textarea') { %>
+                  <textarea
+                    data-bid="<%= block.id %>"
+                    data-key="<%= key %>"
+                    oninput="updateOverride('<%= block.id %>','<%= key %>',this.value)"
+                    placeholder="<%= defaultVal.replace(/"/g, '&quot;').slice(0, 100) %>"
+                  ><%= currentVal %></textarea>
+                <% } else { %>
+                  <input type="text"
+                    data-bid="<%= block.id %>"
+                    data-key="<%= key %>"
+                    oninput="updateOverride('<%= block.id %>','<%= key %>',this.value)"
+                    value="<%= currentVal.replace ? currentVal.replace(/"/g, '&quot;') : '' %>"
+                    placeholder="<%= defaultVal.replace ? defaultVal.replace(/"/g, '&quot;').slice(0, 80) : '' %>"
+                  >
+                <% } %>
+                <% if (!currentVal && defaultVal) { %>
+                  <div class="override-hint">Default: <%= defaultVal.slice(0, 60) %><%= defaultVal.length > 60 ? '...' : '' %></div>
+                <% } %>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+      <% }); %>
+    </form>
+
+  </div>
+</div>
+
+<script>
+let overrides = {};
+try { overrides = JSON.parse(document.getElementById('overrides-json').value) || {}; } catch {}
+
+function updateOverride(bid, key, value) {
+  if (!overrides[bid]) overrides[bid] = {};
+  if (value.trim()) {
+    overrides[bid][key] = value;
+  } else {
+    delete overrides[bid][key];
+    if (Object.keys(overrides[bid]).length === 0) delete overrides[bid];
+  }
+  document.getElementById('overrides-json').value = JSON.stringify(overrides);
+}
+
+document.getElementById('activate-form').addEventListener('submit', function() {
+  document.getElementById('overrides-json').value = JSON.stringify(overrides);
+});
+</script>
+</div></body></html>

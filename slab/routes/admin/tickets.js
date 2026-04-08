@@ -1,14 +1,15 @@
 /**
- * Slab — Admin Support Tickets
+ * Slab — Admin Help Requests
  * Mounted at /admin/tickets — requires admin JWT.
+ * All new requests auto-escalate to superadmin for platform support.
  *
- * GET  /                    → ticket list (filterable)
- * GET  /new                 → new ticket form
- * POST /                    → create ticket
- * GET  /:id                 → ticket detail + reply thread
+ * GET  /                    → help request list (filterable)
+ * GET  /new                 → new request form
+ * POST /                    → create request (auto-escalates)
+ * GET  /:id                 → request detail + reply thread
  * POST /:id/reply           → add reply
- * POST /:id/status          → change status (JSON)
- * POST /:id/assign          → assign to admin
+ * POST /:id/status          → change status (JSON) — superadmin use
+ * POST /:id/assign          → assign to admin — superadmin use
  * POST /:id/escalate        → escalate to superadmin
  * POST /:id/resolve         → mark resolved
  * POST /:id/close           → mark closed
@@ -80,13 +81,10 @@ router.get('/', async (req, res) => {
 
 // ── New form ───────────────────────────────────────────────────────────────────
 
-router.get('/new', async (req, res) => {
-  const db = req.db;
-  const admins = await db.collection('users').find({ isAdmin: true }).project({ email: 1, displayName: 1 }).toArray();
+router.get('/new', (req, res) => {
   res.render('admin/tickets/form', {
     user: req.adminUser,
     page: 'tickets',
-    admins,
     error: null,
   });
 });
@@ -104,13 +102,18 @@ router.post('/', ticketUpload.single('screenshot'), async (req, res) => {
     const att = fileToAttachment(req.file);
     if (att) attachments.push(att);
 
+    const now = new Date();
+    const tenantDomain = req.tenant?.domain || '';
+    const tenantDbName = req.tenant?.db || '';
+    const tenantBrandName = req.tenant?.brand?.name || '';
+
     const doc = {
       ticketNumber,
       subject: subject.trim(),
       description: (description || '').trim(),
       category: category || 'other',
       priority: priority || 'medium',
-      status: 'open',
+      status: 'escalated',
       submittedBy: {
         type: 'admin',
         userId: req.adminUser.id,
@@ -118,31 +121,47 @@ router.post('/', ticketUpload.single('screenshot'), async (req, res) => {
         displayName: req.adminUser.displayName,
         clientId: null,
       },
-      escalated: false,
-      escalatedAt: null,
-      escalatedBy: null,
+      escalated: true,
+      escalatedAt: now,
+      escalatedBy: req.adminUser.email,
       escalationNotes: null,
-      tenantDomain: req.tenant?.domain || '',
-      tenantDbName: req.tenant?.db || '',
-      tenantBrandName: req.tenant?.brand?.name || '',
+      tenantDomain,
+      tenantDbName,
+      tenantBrandName,
       attachments,
       debugData: null,
       replies: [],
-      assignedTo: assignedTo || null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      assignedTo: null,
+      createdAt: now,
+      updatedAt: now,
       resolvedAt: null,
     };
 
     const result = await db.collection('tickets').insertOne(doc);
+
+    // Auto-escalate — push to slab registry for superadmin
+    const slab = getSlabDb();
+    await slab.collection('escalated_tickets').insertOne({
+      ticketId: result.insertedId.toString(),
+      tenantDomain,
+      tenantDbName,
+      tenantBrandName,
+      ticketNumber,
+      subject: doc.subject,
+      status: 'escalated',
+      priority: doc.priority,
+      category: doc.category,
+      submittedByEmail: req.adminUser.email,
+      escalatedAt: now,
+      escalatedBy: req.adminUser.email,
+      resolvedAt: null,
+    });
+
     res.redirect(`/admin/tickets/${result.insertedId}`);
   } catch (err) {
-    const db = req.db;
-    const admins = await db.collection('users').find({ isAdmin: true }).project({ email: 1, displayName: 1 }).toArray();
     res.render('admin/tickets/form', {
       user: req.adminUser,
       page: 'tickets',
-      admins,
       error: err.message,
     });
   }
@@ -158,13 +177,10 @@ router.get('/:id', async (req, res) => {
   } catch { return res.redirect('/admin/tickets'); }
   if (!ticket) return res.redirect('/admin/tickets');
 
-  const admins = await db.collection('users').find({ isAdmin: true }).project({ email: 1, displayName: 1 }).toArray();
-
   res.render('admin/tickets/detail', {
     user: req.adminUser,
     page: 'tickets',
     ticket,
-    admins,
   });
 });
 

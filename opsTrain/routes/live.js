@@ -9,8 +9,8 @@ const { getShiftInfo } = require('../plugins/shiftTime');
 const { requireRole } = require('../middleware/roles');
 const router = express.Router();
 
-// Live dashboard requires brandAdmin+ access
-router.use(requireRole('brandAdmin'));
+// Live dashboard requires manager+ access
+router.use(requireRole('manager'));
 
 // GET /live?brandId=xxx&date=YYYY-MM-DD
 router.get('/', async (req, res) => {

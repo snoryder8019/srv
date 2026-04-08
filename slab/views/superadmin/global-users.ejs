@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global Users — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1200px; margin:0 auto; padding:24px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:12px; margin-bottom:24px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:14px; text-align:center; }
+    .stat-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:4px; }
+    .stat-value { font-size:22px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; } .stat-value.green { color:#34d399; } .stat-value.blue { color:#38bdf8; }
+    .toolbar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
+    .filter-btn { padding:5px 12px; font-size:11px; border-radius:5px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; text-decoration:none; font-family:'Inter',sans-serif; transition:all .15s; }
+    .filter-btn:hover { border-color:#c9a848; color:#c9a848; }
+    .filter-btn.active { background:#c9a848; color:#0a0a0a; border-color:#c9a848; font-weight:600; }
+    select.filter-select { background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:5px 10px; border-radius:5px; font-family:'Inter',sans-serif; font-size:12px; }
+    select.filter-select:focus { border-color:#c9a848; outline:none; }
+    .search-input { background:#1a1a1a; border:1px solid #333; color:#e5e5e5; padding:5px 12px; border-radius:5px; font-family:'Inter',sans-serif; font-size:12px; min-width:200px; }
+    .search-input:focus { border-color:#c9a848; outline:none; }
+    .search-input::placeholder { color:#525252; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; white-space:nowrap; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    tr:hover td { background:#1a1a1a; }
+    .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:500; }
+    .badge-admin { background:#14532d; color:#86efac; }
+    .badge-owner { background:#c9a848; color:#0a0a0a; }
+    .badge-client { background:#1e3a5f; color:#7dd3fc; }
+    .badge-collaborator { background:#3b0764; color:#d8b4fe; }
+    .badge-user { background:#262626; color:#a3a3a3; }
+    .tenant-tag { color:#c9a848; font-size:11px; }
+    .provider-tag { font-size:10px; color:#525252; background:#1a1a1a; padding:1px 5px; border-radius:4px; }
+    .btn-sm { padding:3px 8px; font-size:10px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; text-decoration:none; display:inline-block; transition:all .15s; }
+    .btn-sm:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-sm.danger:hover { border-color:#f87171; color:#f87171; }
+    .actions { display:flex; gap:4px; align-items:center; flex-wrap:nowrap; }
+    .empty { color:#525252; font-size:13px; padding:40px; text-align:center; }
+    .link { color:#c9a848; text-decoration:none; } .link:hover { text-decoration:underline; }
+    .confirm-delete { display:none; }
+    tr:hover .confirm-delete { display:inline; }
+    .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:8px; }
+    .table-wrap table { min-width:700px; }
+    @media (max-width:768px) {
+      .topbar { padding:10px 14px; flex-wrap:wrap; gap:8px; }
+      .topbar-left { gap:10px; } .topbar-right { gap:8px; font-size:11px; flex-wrap:wrap; }
+      .logo { font-size:17px; }
+      .container { padding:14px; }
+      .stats { grid-template-columns:repeat(2, 1fr); gap:8px; }
+      .stat { padding:10px; } .stat-value { font-size:18px; } .stat-label { font-size:9px; }
+      .toolbar { gap:6px; }
+      .filter-btn { padding:4px 10px; font-size:10px; }
+      .search-input { min-width:140px; font-size:11px; }
+      select.filter-select { font-size:11px; }
+      th, td { padding:8px 10px; font-size:12px; }
+      .actions { gap:3px; }
+      .btn-sm { padding:3px 6px; font-size:9px; }
+      .confirm-delete { display:inline; }
+    }
+    @media (max-width:480px) {
+      .topbar-right a { display:none; }
+      .toolbar > span { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">s<span>Lab</span></div>
+      <span style="color:#737373; font-size:13px;">/ Global Users</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin">&larr; Dashboard</a>
+      <a href="/superadmin/permissions">Permissions</a>
+      <span><%= superAdmin.email %></span>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Total Users</div><div class="stat-value gold"><%= stats.total %></div></div>
+      <div class="stat"><div class="stat-label">Admins</div><div class="stat-value green"><%= stats.admins %></div></div>
+      <div class="stat"><div class="stat-label">Owners</div><div class="stat-value"><%= stats.owners %></div></div>
+      <div class="stat"><div class="stat-label">Clients</div><div class="stat-value blue"><%= stats.clients %></div></div>
+    </div>
+
+    <div class="toolbar">
+      <form method="GET" action="/superadmin/users" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input type="text" name="q" class="search-input" placeholder="Search email or name..." value="<%= filters.q %>" />
+        <input type="hidden" name="tenant" value="<%= filters.tenant %>" />
+        <input type="hidden" name="role" value="<%= filters.role %>" />
+        <button type="submit" class="filter-btn" style="border-color:#c9a848; color:#c9a848;">Search</button>
+      </form>
+
+      <span style="color:#333;">|</span>
+
+      <a class="filter-btn <%= !filters.role ? 'active' : '' %>" href="/superadmin/users?<%= filters.tenant ? 'tenant='+filters.tenant+'&' : '' %><%= filters.q ? 'q='+encodeURIComponent(filters.q) : '' %>">All</a>
+      <a class="filter-btn <%= filters.role === 'admin' ? 'active' : '' %>" href="/superadmin/users?role=admin<%= filters.tenant ? '&tenant='+filters.tenant : '' %><%= filters.q ? '&q='+encodeURIComponent(filters.q) : '' %>">Admins</a>
+      <a class="filter-btn <%= filters.role === 'owner' ? 'active' : '' %>" href="/superadmin/users?role=owner<%= filters.tenant ? '&tenant='+filters.tenant : '' %><%= filters.q ? '&q='+encodeURIComponent(filters.q) : '' %>">Owners</a>
+      <a class="filter-btn <%= filters.role === 'client' ? 'active' : '' %>" href="/superadmin/users?role=client<%= filters.tenant ? '&tenant='+filters.tenant : '' %><%= filters.q ? '&q='+encodeURIComponent(filters.q) : '' %>">Clients</a>
+
+      <span style="color:#333;">|</span>
+
+      <select class="filter-select" onchange="filterTenant(this.value)">
+        <option value="">All Tenants</option>
+        <% tenants.forEach(t => { %>
+          <option value="<%= t.db %>" <%= filters.tenant === t.db ? 'selected' : '' %>><%= t.brand?.name || t.domain %></option>
+        <% }) %>
+      </select>
+    </div>
+
+    <% if (users.length === 0) { %>
+      <div class="empty">No users found matching your filters.</div>
+    <% } else { %>
+      <div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Email</th>
+            <th>Tenant</th>
+            <th>Role</th>
+            <th>Provider</th>
+            <th>Joined</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% users.forEach(u => { %>
+          <tr>
+            <td><strong><%= u.displayName || '—' %></strong></td>
+            <td style="font-size:12px;"><%= u.email || '—' %></td>
+            <td><span class="tenant-tag"><%= u._tenantName %></span></td>
+            <td>
+              <% if (u.isOwner) { %><span class="badge badge-owner">owner</span>
+              <% } else if (u.isAdmin) { %><span class="badge badge-admin">admin</span>
+              <% } else if (u.role === 'client') { %><span class="badge badge-client">client</span>
+              <% } else if (u.role === 'collaborator') { %><span class="badge badge-collaborator">collab</span>
+              <% } else { %><span class="badge badge-user"><%= u.role || 'user' %></span>
+              <% } %>
+            </td>
+            <td>
+              <% const provs = u.providers || (u.provider ? [u.provider] : ['—']); %>
+              <% provs.forEach(p => { %><span class="provider-tag"><%= p %></span> <% }) %>
+            </td>
+            <td style="font-size:12px; color:#525252;"><%= u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—' %></td>
+            <td>
+              <div class="actions">
+                <a href="/superadmin/users/<%= u._tenantDb %>/<%= u._id %>" class="btn-sm" style="border-color:#c9a848; color:#c9a848; text-decoration:none;">Edit</a>
+                <form method="POST" action="/superadmin/users/<%= u._tenantDb %>/<%= u._id %>/toggle-admin" style="display:inline;">
+                  <button type="submit" class="btn-sm" title="<%= u.isAdmin ? 'Revoke admin' : 'Grant admin' %>"><%= u.isAdmin ? 'Revoke' : 'Grant' %></button>
+                </form>
+                <form method="POST" action="/superadmin/users/<%= u._tenantDb %>/<%= u._id %>/delete" style="display:inline;" class="confirm-delete" onsubmit="return confirm('Delete <%= (u.email || '').replace(/'/g, '') %> from <%= u._tenantName %>?')">
+                  <button type="submit" class="btn-sm danger">Del</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+    <% } %>
+  </div>
+
+  <script>
+    function filterTenant(db) {
+      const url = new URL(window.location);
+      if (db) url.searchParams.set('tenant', db);
+      else url.searchParams.delete('tenant');
+      window.location = url;
+    }
+  </script>
+</body>
+</html>
