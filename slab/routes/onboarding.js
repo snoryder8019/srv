@@ -14,6 +14,8 @@ import nodemailer from 'nodemailer';
 import { config } from '../config/config.js';
 import { getSlabDb, getTenantDb } from '../plugins/mongo.js';
 import { provisionTenant } from '../plugins/provision.js';
+import { DESIGN_DEFAULTS } from './admin/design.js';
+import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { bustTenantCache } from '../middleware/tenant.js';
 import { createLoginToken } from '../middleware/jwtAuth.js';
 import { logActivity } from '../plugins/activityLog.js';
@@ -198,6 +200,17 @@ router.get('/', async (req, res) => {
   const promoLeft = Math.max(0, PROMO_FREE_TEMPLATE_LIMIT - promoUsed);
   const isAddingSlab = req.query.add === '1';
   const ref = req.query.ref || null;
+
+  // Load tenant design for branded onboarding
+  let design = { ...DESIGN_DEFAULTS };
+  if (req.db) {
+    try {
+      const rawDesign = await req.db.collection('design').find({}).toArray();
+      for (const item of rawDesign) design[item.key] = item.value;
+      design = enrichDesignContrast(design);
+    } catch (e) { /* fallback to defaults */ }
+  }
+
   res.render('onboarding/start', {
     error: req.query.error || null,
     success: req.query.success || null,
@@ -205,6 +218,7 @@ router.get('/', async (req, res) => {
     googleClientId: config.GGLCID || '',
     isAddingSlab,
     ref,
+    design,
   });
 });
 

@@ -452,6 +452,7 @@ router.get('/:slug', async (req, res, next) => {
       const p       = Math.max(1, parseInt(req.query.p) || 1);
       const skip    = (p - 1) * perPage;
       const query   = { status: 'published' };
+      if (col === 'portfolio' && pg.dataGroup) query.group = pg.dataGroup;
       const [total, items] = await Promise.all([
         db.collection(col).countDocuments(query),
         db.collection(col).find(query).sort({ publishedAt: -1, createdAt: -1 }).skip(skip).limit(perPage).toArray(),

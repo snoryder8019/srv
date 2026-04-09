@@ -57,6 +57,7 @@ export async function provisionTenant({
   ownerEmail,      // admin email
   customDomain,    // optional: 'acmemarketing.com'
   stripeCustomerId,// Stripe customer ID for billing
+  platform,        // optional: 'slab' | 'games' | 'opstrain' | 'madladslab' (defaults to 'slab')
 }) {
   const slug = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
   if (!slug || slug.length < 2) throw new Error('Invalid subdomain');
@@ -78,6 +79,7 @@ export async function provisionTenant({
     domain,
     db: dbName,
     status: 'preview',   // preview | active | suspended | cancelled
+    platform: platform || 'slab', // slab | games | opstrain | madladslab
     brand: {
       name: brandName,
       location: brandLocation || '',
@@ -330,7 +332,7 @@ export async function setupCustomDomain(tenantDomain, customDomain) {
         $setOnInsert: { createdAt: new Date() },
         $set: {
           db: tenant.db,
-          active: true,
+          status: tenant.status || 'active',
           brand: tenant.brand,
           s3Prefix: tenant.s3Prefix,
           public: tenant.public,

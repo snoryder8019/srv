@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-04-08T15:48:35.604Z
+Generated: 2026-04-09T00:30:36.165Z
+
+---
+
+## Commit: superadmin updates, template builder, delegate updates, login debugging. +0.1.3
+
+- **Hash:** `efb718e`
+- **Author:** Scott
+- **Date:** 4/8/2026
+- **Changes:** 122 files, +10025/-2120 lines
+
+### Modified Areas:
+
+**Backend:** 24 files
+**Views:** 47 files
+**Scripts:** 3 files
+**Documentation:** 10 files
 
 ---
 
@@ -64,20 +80,6 @@ Generated: 2026-04-08T15:48:35.604Z
 **Views:** 2 files
 **Scripts:** 4 files
 **Documentation:** 1 files
-
----
-
-## Commit: updates meetings
-
-- **Hash:** `cff709e`
-- **Author:** Scott
-- **Date:** 4/4/2026
-- **Changes:** 59 files, +4957/-178 lines
-
-### Modified Areas:
-
-**Backend:** 16 files
-**Views:** 29 files
 
 ---
 

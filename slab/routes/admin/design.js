@@ -36,12 +36,26 @@ export const DESIGN_DEFAULTS = {
   vis_blog:            'false',
   vis_footer:          'true',
   vis_admin_link:      'true',
+  // ── Custom element toggles ──
+  el_bug_button:       'true',         // floating bug/ticket button
+  el_notification_bell:'true',         // notification bell (platform announcements)
+  el_admin_tour:       'true',         // guided admin tour (Driver.js)
+  el_preview_banner:   'true',         // preview-mode top banner
+  el_maintenance_banner:'true',        // maintenance cooldown banner
+  el_gltf_viewer:      'false',        // 3D model viewer (heavy)
   agent_name:          'Assistant',
   agent_greeting:      'Hi! I can write blog posts, update site copy, or build new sections. What would you like to create?',
   portfolio_layout:    'grid',
   blog_layout:         'grid',
   nav_logo_display:    'text',
   nav_logo_split:      '0',
+  nav_logo_split_end:  '0',            // char end for accent range (0 = use split as single point)
+  nav_logo_accent_color: '',           // custom accent color for logo text (empty = use color_accent)
+  nav_tagline_display: 'true',         // show tagline + location below brand name
+  nav_cta_text:        '',             // custom CTA text in nav (empty = "Get Started")
+  nav_cta_link:        '',             // custom CTA link (empty = "/#contact")
+  nav_bg:              '',             // custom nav background (empty = ivory/transparent)
+  nav_text_color:      '',             // custom nav link color (empty = auto)
   landing_layout:      'classic',
   hero_name_large:     '',
   vis_pricing:           'true',

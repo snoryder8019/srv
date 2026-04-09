@@ -1,5 +1,6 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
+import { ObjectId } from 'mongodb';
 import rateLimit from 'express-rate-limit';
 import { requireAdmin, issueAdminJWT } from '../middleware/jwtAuth.js';
 import { checkSuperAdmin } from '../middleware/superadmin.js';
@@ -72,28 +73,60 @@ router.use(async (req, res, next) => {
     res.locals.brandDesign = enrichDesignContrast({ ...DESIGN_DEFAULTS });
   }
 
-  // Notification center — open tickets + scan issues for this tenant
+  // Notification center — open tickets + scan issues + platform announcements
   try {
-    if (req.db) {
-      const [openTickets, latestScan] = await Promise.all([
-        req.db.collection('tickets').countDocuments({ status: { $in: ['open', 'in-progress', 'escalated'] } }),
-        req.db.collection('scan_results').find({}).sort({ 'summary.scannedAt': -1 }).limit(1).toArray(),
-      ]);
-      const scanIssues = latestScan[0]?.summary?.counts || {};
-      const scanTotal = (scanIssues.critical || 0) + (scanIssues.high || 0);
-      res.locals.notifications = {
-        tickets: openTickets,
-        scanIssues: scanTotal,
-        total: openTickets + scanTotal,
-      };
-    } else {
-      res.locals.notifications = { tickets: 0, scanIssues: 0, total: 0 };
-    }
+    const adminEmail = req.adminUser?.email || '';
+    const tenantStatus = req.tenant?.status || 'active';
+
+    // Fetch tenant-local counts + platform announcements in parallel
+    const slab = getSlabDb();
+    const localPromises = req.db ? [
+      req.db.collection('tickets').countDocuments({ status: { $in: ['open', 'in-progress', 'escalated'] } }),
+      req.db.collection('scan_results').find({}).sort({ 'summary.scannedAt': -1 }).limit(1).toArray(),
+    ] : [Promise.resolve(0), Promise.resolve([])];
+
+    const [openTickets, latestScan, platformNotifs] = await Promise.all([
+      ...localPromises,
+      slab.collection('platform_notifications').find({
+        status: 'published',
+        $or: [{ audience: 'all' }, { audience: tenantStatus }],
+      }).sort({ createdAt: -1 }).limit(20).toArray(),
+    ]);
+
+    const scanIssues = Array.isArray(latestScan) ? (latestScan[0]?.summary?.counts || {}) : {};
+    const scanTotal = (scanIssues.critical || 0) + (scanIssues.high || 0);
+
+    // Filter out dismissed announcements for this admin
+    const activeNotifs = platformNotifs.filter(n => !(n.dismissedBy || []).includes(adminEmail));
+
+    res.locals.notifications = {
+      tickets: typeof openTickets === 'number' ? openTickets : 0,
+      scanIssues: scanTotal,
+      announcements: activeNotifs,
+      total: (typeof openTickets === 'number' ? openTickets : 0) + scanTotal + activeNotifs.length,
+    };
   } catch {
-    res.locals.notifications = { tickets: 0, scanIssues: 0, total: 0 };
+    res.locals.notifications = { tickets: 0, scanIssues: 0, announcements: [], total: 0 };
   }
 
   next();
+});
+
+// ── Dismiss platform announcement ───────────────────────────────────────────
+router.post('/notifications/:id/dismiss', async (req, res) => {
+  try {
+    const slab = getSlabDb();
+    const email = req.adminUser?.email || '';
+    if (email) {
+      await slab.collection('platform_notifications').updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $addToSet: { dismissedBy: email } },
+      );
+    }
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
 });
 
 // ── Password validation ──────────────────────────────────────────────────────

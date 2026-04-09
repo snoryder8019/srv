@@ -43,8 +43,6 @@ const SLAB_COPY = [
   { key: 'service2_description', value: 'Onboard clients, track projects, manage meetings, and handle invoicing in one place.' },
   { key: 'service3_title', value: 'AI-Powered Content' },
   { key: 'service3_description', value: 'Built-in AI agents that write copy, research clients, and generate designs on demand.' },
-  { key: 'service4_title', value: 'Email Marketing' },
-  { key: 'service4_description', value: 'Campaign builder with open/click tracking, funnel segmentation, and automated follow-ups.' },
   { key: 'about_heading', value: 'Built by Operators, for Operators' },
   { key: 'about_body', value: 'Slab started because we needed it ourselves. We ran agencies and got tired of duct-taping five different tools together. So we built one platform that does it all — and made it white-label so you can too.' },
   { key: 'process_heading', value: 'Go Live in Minutes' },
@@ -66,6 +64,7 @@ try {
     brandName: 'Slab',
     brandLocation: '',
     ownerEmail: 'snoryder8019@gmail.com',
+    platform: 'slab',
   });
 
   console.log(`\nSlab tenant provisioned: ${result.domain}`);
@@ -115,7 +114,7 @@ try {
         'brand.description': 'White-label SaaS platform for agencies and entrepreneurs.',
         'brand.industry': 'SaaS / Technology',
         'brand.businessType': 'Platform',
-        'brand.services': ['White-Label Websites', 'Client Management', 'Invoicing', 'Email Marketing', 'AI Content', 'Portfolio Builder'],
+        'brand.services': ['White-Label Websites', 'Client Management', 'Invoicing', 'AI Content', 'Portfolio Builder'],
         'brand.targetAudience': 'Agencies, freelancers, and entrepreneurs who want their own branded platform',
         'brand.brandVoice': 'Direct, confident, technical but accessible',
         updatedAt: new Date(),

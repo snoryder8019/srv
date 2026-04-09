@@ -29,7 +29,7 @@ const SERVICES = [
   { name: 'nocometalworkz',  dir: '/srv/nocometalworkz',     port: 3002, domain: 'nocometalworkz.com',          tmux: 'nocometalworkz',    category: 'media',     description: 'No Cometal Workz — music/media platform' },
   { name: 'greealitytv',     dir: '/srv/greealitytv',        port: 3400, domain: 'greealitytv.com',             tmux: 'greealitytv_session', category: 'media',   description: 'GreeAlity TV — local community TV' },
   { name: 'candaceWallace',  dir: '/srv/candaceWallace',     port: null, domain: null,                          tmux: 'candaceWallace_session', category: 'client', description: 'Candace Wallace — marketing strategy (dev)' },
-  { name: 'opsTrain',        dir: '/srv/opsTrain',           port: 3004, domain: null,                          tmux: 'opsTrain',          category: 'tool',      description: 'QR-driven ops training & task management' },
+  { name: 'opsTrain',        dir: '/srv/opsTrain',           port: 3603, domain: 'ops-train.madladslab.com',    tmux: 'opsTrain',          category: 'tool',      description: 'QR-driven ops training & task management' },
   { name: 'piper-tts',       dir: '/srv/piper-tts',          port: null, domain: null,                          tmux: 'piper-tts',         category: 'tool',      description: 'OpenAI-compatible TTS wrapper' },
   { name: 'mcp',             dir: '/srv/mcp',                port: null, domain: null,                          tmux: 'mcp_session',       category: 'tool',      description: 'MCP server for Claude Android' },
 ];
@@ -40,6 +40,71 @@ const CATEGORIES = {
   game:     { label: 'Games',     icon: '🎮', color: '#34d399' },
   media:    { label: 'Media',     icon: '📺', color: '#a78bfa' },
   tool:     { label: 'Tools',     icon: '🔧', color: '#f97316' },
+};
+
+/**
+ * MadLadsLab product registry — top-level products that have their own user bases.
+ * Used by superadmin to query users across all products from one panel.
+ *
+ * Hierarchy:  MadLadsLab (parent)
+ *             ├── Slab (white-label SaaS — has its own tenants, each with users)
+ *             ├── OpsTrain (standalone SaaS — has its own tenants/users)
+ *             ├── Games/BIH (standalone app — direct users)
+ *             └── MadLadsLab (parent site — direct users)
+ *
+ * 'slab' is special: its users live in per-tenant DBs (slab_<slug>).
+ * Other products store users directly in their main DB.
+ */
+const PRODUCTS = {
+  slab: {
+    label: 'Slab',
+    icon: '&#9830;',
+    color: '#c9a848',
+    bg: '#1a1510',
+    border: '#362a10',
+    type: 'multi-tenant',    // users spread across tenant DBs
+    usersCollection: 'users',
+  },
+  opstrain: {
+    label: 'OpsTrain',
+    icon: '&#9881;',
+    color: '#a78bfa',
+    bg: '#1a0f2e',
+    border: '#3b1e6f',
+    type: 'standalone',
+    db: 'opsTrain',
+    usersCollection: 'users',
+  },
+  games: {
+    label: 'Games',
+    icon: '&#127918;',
+    color: '#34d399',
+    bg: '#0f2e1a',
+    border: '#14532d',
+    type: 'standalone',
+    db: 'test',
+    usersCollection: 'users',
+  },
+  stringborn: {
+    label: 'Stringborn',
+    icon: '&#128640;',
+    color: '#f97316',
+    bg: '#1a0f05',
+    border: '#431407',
+    type: 'standalone',
+    db: 'projectStringborne',
+    usersCollection: 'users',
+  },
+  madladslab: {
+    label: 'MadLadsLab',
+    icon: '&#9733;',
+    color: '#38bdf8',
+    bg: '#0f1a2e',
+    border: '#1e3a5f',
+    type: 'standalone',
+    db: 'madLadsLab',
+    usersCollection: 'users',
+  },
 };
 
 /**
@@ -110,4 +175,4 @@ export function getService(name) {
   };
 }
 
-export { SERVICES, CATEGORIES };
+export { SERVICES, CATEGORIES, PRODUCTS };

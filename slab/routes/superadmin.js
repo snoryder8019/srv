@@ -22,7 +22,7 @@ import { execSync } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { getServices, getServicesByCategory, getService } from '../plugins/serviceRegistry.js';
+import { getServices, getServicesByCategory, getService, PRODUCTS } from '../plugins/serviceRegistry.js';
 
 const router = express.Router();
 
@@ -158,6 +158,61 @@ router.get('/', async (req, res) => {
   const aliveCount = services.filter(s => s.alive === true).length;
   const deadCount = services.filter(s => s.alive === false).length;
 
+  // ── Fetch OpsTrain data ──
+  let opsData = { brands: [], users: [], stats: {} };
+  try {
+    const opsDb = getTenantDb('opsTrain');
+    const [opsBrands, opsUsers, opsTasks, opsQr] = await Promise.all([
+      opsDb.collection('brands').find().sort({ name: 1 }).toArray(),
+      opsDb.collection('users').find().toArray(),
+      opsDb.collection('tasks').find({ active: true }).toArray(),
+      opsDb.collection('qrcodes').find({ active: true }).toArray(),
+    ]);
+    opsData.brands = opsBrands.map(b => ({
+      ...b,
+      userCount: opsUsers.filter(u => u.brand?.toString() === b._id.toString()).length,
+      taskCount: opsTasks.filter(t => t.brand?.toString() === b._id.toString()).length,
+      qrCount: opsQr.filter(q => q.brand?.toString() === b._id.toString()).length,
+    }));
+    opsData.users = opsUsers;
+    opsData.stats = {
+      totalBrands: opsBrands.length,
+      activeBrands: opsBrands.filter(b => b.active !== false).length,
+      totalUsers: opsUsers.length,
+      admins: opsUsers.filter(u => u.role === 'admin' || u.role === 'superadmin').length,
+      managers: opsUsers.filter(u => u.role === 'manager').length,
+    };
+  } catch (err) { console.error('[superadmin] OpsTrain fetch error:', err.message); }
+
+  // ── Fetch Games data (games.madladslab.com — DB: test) ──
+  let gamesData = { users: [], stats: {} };
+  try {
+    const gamesDb = getTenantDb('test');
+    const gamesUsers = await gamesDb.collection('users').find().toArray();
+    gamesData.users = gamesUsers;
+    gamesData.stats = {
+      totalUsers: gamesUsers.length,
+      admins: gamesUsers.filter(u => u.isAdmin).length,
+      broadcasters: gamesUsers.filter(u => u.isBroadcaster).length,
+      gameAdmins: gamesUsers.filter(u => u.permissions?.games === 'admin').length,
+    };
+  } catch (err) { console.error('[superadmin] Games fetch error:', err.message); }
+
+  // ── Fetch Stringborn data (ps.madladslab.com — DB: projectStringborne) ──
+  let stringbornData = { users: [], stats: {} };
+  try {
+    const psDb = getTenantDb('projectStringborne');
+    const psUsers = await psDb.collection('users').find().toArray();
+    const psChars = await psDb.collection('characters').find().toArray();
+    stringbornData.users = psUsers;
+    stringbornData.stats = {
+      totalUsers: psUsers.length,
+      admins: psUsers.filter(u => u.isAdmin).length,
+      testers: psUsers.filter(u => u.userRole === 'tester').length,
+      characters: psChars.length,
+    };
+  } catch (err) { console.error('[superadmin] Stringborn fetch error:', err.message); }
+
   res.render('superadmin/dashboard', {
     user: req.superAdmin,
     services,
@@ -166,11 +221,18 @@ router.get('/', async (req, res) => {
     aliveCount,
     deadCount,
     tenants,
-    stats: { total: tenants.length, active, preview, suspended, mrr: active * 50 },
+    stats: {
+      total: tenants.length, active, preview, suspended,
+      promo: tenants.filter(t => t.meta?.isPromo).length,
+      mrr: tenants.filter(t => t.status === 'active' && !t.meta?.isPromo).length * 50,
+    },
     recentSignups,
     tagDefs: TENANT_TAGS,
     activityLogs,
     selectedService: req.query.service || 'all',
+    opsData,
+    gamesData,
+    stringbornData,
   });
 });
 
@@ -337,6 +399,31 @@ router.post('/tenants/:id/tags', async (req, res) => {
     return res.json({ ok: true });
   }
   res.redirect(`/superadmin/tenants/${req.params.id}`);
+});
+
+router.post('/tenants/:id/toggle-promo', async (req, res) => {
+  const slab = getSlabDb();
+  const tenant = await slab.collection('tenants').findOne({ _id: new ObjectId(req.params.id) });
+  if (!tenant) return res.redirect('/superadmin');
+
+  const isPromo = !tenant.meta?.isPromo;
+  await slab.collection('tenants').updateOne(
+    { _id: tenant._id },
+    { $set: { 'meta.isPromo': isPromo, updatedAt: new Date() } },
+  );
+
+  await logActivity({
+    category: 'admin_action',
+    action: `${isPromo ? 'Marked' : 'Unmarked'} ${tenant.domain} as promo (excluded from MRR)`,
+    tenantDomain: tenant.domain,
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+  });
+
+  // Support AJAX or redirect
+  if (req.headers.accept?.includes('application/json')) {
+    return res.json({ ok: true, isPromo });
+  }
+  res.redirect('/superadmin#tab-slab');
 });
 
 // ── Promos ──────────────────────────────────────────────────────────────────
@@ -910,73 +997,162 @@ router.post('/tickets/:tenantDb/:ticketId/de-escalate', async (req, res) => {
 // OPSTRAIN — Brand management (centralized from opsTrain /superadmin)
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/opstrain', async (req, res) => {
-  const client = new MongoClient(config.DB_URL || 'mongodb+srv://snoryder8019:51DUBsqu%40red51@cluster0.tpmae.mongodb.net');
-  try {
-    await client.connect();
-    const opsDb = client.db('opsTrain');
+  const opsDb = getTenantDb('opsTrain');
+  const [brands, users, tasks, qrCodes] = await Promise.all([
+    opsDb.collection('brands').find().sort({ name: 1 }).toArray(),
+    opsDb.collection('users').find().toArray(),
+    opsDb.collection('tasks').find({ active: true }).toArray(),
+    opsDb.collection('qrcodes').find({ active: true }).toArray(),
+  ]);
 
-    const [brands, users, tasks, qrCodes] = await Promise.all([
-      opsDb.collection('brands').find().sort({ name: 1 }).toArray(),
-      opsDb.collection('users').find().toArray(),
-      opsDb.collection('tasks').find({ active: true }).toArray(),
-      opsDb.collection('qrcodes').find({ active: true }).toArray(),
-    ]);
+  const brandStats = brands.map(b => ({
+    ...b,
+    userCount: users.filter(u => u.brand?.toString() === b._id.toString()).length,
+    taskCount: tasks.filter(t => t.brand?.toString() === b._id.toString()).length,
+    qrCount: qrCodes.filter(q => q.brand?.toString() === b._id.toString()).length,
+  }));
 
-    const brandStats = brands.map(b => ({
-      ...b,
-      userCount: users.filter(u => u.brand?.toString() === b._id.toString()).length,
-      taskCount: tasks.filter(t => t.brand?.toString() === b._id.toString()).length,
-      qrCount: qrCodes.filter(q => q.brand?.toString() === b._id.toString()).length,
-    }));
-
-    res.render('superadmin/opstrain', {
-      superAdmin: req.superAdmin,
-      brands: brandStats,
-      stats: {
-        totalBrands: brands.length,
-        activeBrands: brands.filter(b => b.status === 'active').length,
-        previewBrands: brands.filter(b => b.status === 'preview').length,
-        totalUsers: users.length,
-      },
-    });
-  } finally { await client.close(); }
+  res.render('superadmin/opstrain', {
+    superAdmin: req.superAdmin,
+    brands: brandStats,
+    users,
+    stats: {
+      totalBrands: brands.length,
+      activeBrands: brands.filter(b => b.active !== false).length,
+      previewBrands: brands.filter(b => b.status === 'preview').length,
+      totalUsers: users.length,
+    },
+  });
 });
 
 router.post('/opstrain/brand/:id/toggle', async (req, res) => {
-  const client = new MongoClient(config.DB_URL || 'mongodb+srv://snoryder8019:51DUBsqu%40red51@cluster0.tpmae.mongodb.net');
-  try {
-    await client.connect();
-    const opsDb = client.db('opsTrain');
+  const opsDb = getTenantDb('opsTrain');
+  const brand = await opsDb.collection('brands').findOne({ _id: new ObjectId(req.params.id) });
+  if (brand) {
+    await opsDb.collection('brands').updateOne(
+      { _id: brand._id },
+      { $set: { active: !brand.active, updatedAt: new Date() } },
+    );
+  }
+  res.redirect('/superadmin#tab-opstrain');
+});
 
-    const brand = await opsDb.collection('brands').findOne({ _id: new ObjectId(req.params.id) });
-    if (brand) {
-      await opsDb.collection('brands').updateOne(
-        { _id: brand._id },
-        { $set: { active: !brand.active, updatedAt: new Date() } },
-      );
-    }
+router.get('/opstrain/brand/:id/enter', (req, res) => {
+  const appDef = GATEWAY_APPS.opsTrain;
+  const token = generateGatewayToken('opsTrain', req.superAdmin.email, appDef.secret, { brand: req.params.id });
+  const protocol = req.protocol;
+  const host = req.hostname.replace(/:\d+$/, '');
 
-    res.redirect('/superadmin/opstrain');
-  } finally { await client.close(); }
+  let targetUrl;
+  if (config.NODE_ENV === 'production') {
+    const svc = getServices().find(s => s.name === 'opsTrain');
+    targetUrl = svc?.domain
+      ? `https://${svc.domain}/gateway?token=${token}`
+      : `${protocol}://${host}:${appDef.port}/gateway?token=${token}`;
+  } else {
+    targetUrl = `${protocol}://${host}:${appDef.port}/gateway?token=${token}`;
+  }
+
+  res.redirect(targetUrl);
 });
 
 router.post('/opstrain/user/:id/role', async (req, res) => {
   const { role } = req.body;
   const validRoles = ['superadmin', 'admin', 'manager', 'user'];
-  if (!validRoles.includes(role)) return res.redirect('/superadmin/opstrain');
+  if (!validRoles.includes(role)) return res.redirect('/superadmin#tab-opstrain');
+  const opsDb = getTenantDb('opsTrain');
+  await opsDb.collection('users').updateOne(
+    { _id: new ObjectId(req.params.id) },
+    { $set: { role, updatedAt: new Date() } },
+  );
+  res.redirect('/superadmin#tab-opstrain');
+});
 
-  const client = new MongoClient(config.DB_URL || 'mongodb+srv://snoryder8019:51DUBsqu%40red51@cluster0.tpmae.mongodb.net');
-  try {
-    await client.connect();
-    const opsDb = client.db('opsTrain');
-
-    await opsDb.collection('users').updateOne(
-      { _id: new ObjectId(req.params.id) },
-      { $set: { role, updatedAt: new Date() } },
+// ── Games user management (games.madladslab.com — DB: test) ────────────────
+router.post('/games/user/:id/toggle-admin', async (req, res) => {
+  const gamesDb = getTenantDb('test');
+  const user = await gamesDb.collection('users').findOne({ _id: new ObjectId(req.params.id) });
+  if (user) {
+    await gamesDb.collection('users').updateOne(
+      { _id: user._id },
+      { $set: { isAdmin: !user.isAdmin } },
     );
+    await logActivity({
+      category: 'admin_action',
+      action: `${user.isAdmin ? 'Revoked' : 'Granted'} admin for ${user.email} in Games`,
+      actor: { email: req.superAdmin.email, role: 'superadmin' },
+    });
+  }
+  res.redirect('/superadmin#tab-games');
+});
 
-    res.redirect('/superadmin/opstrain');
-  } finally { await client.close(); }
+router.post('/games/user/:id/toggle-broadcaster', async (req, res) => {
+  const gamesDb = getTenantDb('test');
+  const user = await gamesDb.collection('users').findOne({ _id: new ObjectId(req.params.id) });
+  if (user) {
+    await gamesDb.collection('users').updateOne(
+      { _id: user._id },
+      { $set: { isBroadcaster: !user.isBroadcaster } },
+    );
+  }
+  res.redirect('/superadmin#tab-games');
+});
+
+router.post('/games/user/:id/game-admin', async (req, res) => {
+  const gamesDb = getTenantDb('test');
+  const user = await gamesDb.collection('users').findOne({ _id: new ObjectId(req.params.id) });
+  if (user) {
+    const hasGameAdmin = user.permissions?.games === 'admin';
+    await gamesDb.collection('users').updateOne(
+      { _id: user._id },
+      hasGameAdmin
+        ? { $unset: { 'permissions.games': '' } }
+        : { $set: { 'permissions.games': 'admin' } },
+    );
+  }
+  res.redirect('/superadmin#tab-games');
+});
+
+router.post('/games/user/:id/subscription', async (req, res) => {
+  const { subscription } = req.body;
+  const valid = ['free', 'player', 'admin', 'lifetime'];
+  if (!valid.includes(subscription)) return res.redirect('/superadmin#tab-games');
+  const gamesDb = getTenantDb('test');
+  await gamesDb.collection('users').updateOne(
+    { _id: new ObjectId(req.params.id) },
+    { $set: { subscription } },
+  );
+  res.redirect('/superadmin#tab-games');
+});
+
+// ── Stringborn user management (ps.madladslab.com — DB: projectStringborne) ─
+router.post('/stringborn/user/:id/toggle-admin', async (req, res) => {
+  const psDb = getTenantDb('projectStringborne');
+  const user = await psDb.collection('users').findOne({ _id: new ObjectId(req.params.id) });
+  if (user) {
+    await psDb.collection('users').updateOne(
+      { _id: user._id },
+      { $set: { isAdmin: !user.isAdmin, userRole: user.isAdmin ? 'tester' : 'admin' } },
+    );
+    await logActivity({
+      category: 'admin_action',
+      action: `${user.isAdmin ? 'Revoked' : 'Granted'} admin for ${user.email || user.username} in Stringborn`,
+      actor: { email: req.superAdmin.email, role: 'superadmin' },
+    });
+  }
+  res.redirect('/superadmin#tab-stringborn');
+});
+
+router.post('/stringborn/user/:id/role', async (req, res) => {
+  const { role } = req.body;
+  const valid = ['tester', 'admin'];
+  if (!valid.includes(role)) return res.redirect('/superadmin#tab-stringborn');
+  const psDb = getTenantDb('projectStringborne');
+  await psDb.collection('users').updateOne(
+    { _id: new ObjectId(req.params.id) },
+    { $set: { userRole: role, isAdmin: role === 'admin' } },
+  );
+  res.redirect('/superadmin#tab-stringborn');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1033,38 +1209,71 @@ router.get('/all-tickets', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/users', async (req, res) => {
   const slab = getSlabDb();
-  const tenants = await slab.collection('tenants').find({}, { projection: { db: 1, domain: 1, 'brand.name': 1, status: 1 } }).toArray();
+  const tenants = await slab.collection('tenants').find({}, { projection: { db: 1, domain: 1, 'brand.name': 1, status: 1, platform: 1 } }).toArray();
 
   const tenantFilter = req.query.tenant || '';
-  const roleFilter = req.query.role || '';
-  const searchQuery = req.query.q || '';
+  const roleFilter   = req.query.role || '';
+  const searchQuery   = req.query.q || '';
+  const productFilter = req.query.product || '';
   const allUsers = [];
 
-  for (const tenant of tenants) {
-    if (tenantFilter && tenant.db !== tenantFilter) continue;
-    try {
-      const tDb = getTenantDb(tenant.db);
-      const users = await tDb.collection('users').find().toArray();
-      for (const u of users) {
-        if (roleFilter === 'admin' && !u.isAdmin) continue;
-        if (roleFilter === 'owner' && !u.isOwner) continue;
-        if (roleFilter === 'client' && u.role !== 'client') continue;
-        if (roleFilter === 'collaborator' && u.role !== 'collaborator') continue;
-        if (searchQuery) {
-          const q = searchQuery.toLowerCase();
-          const match = (u.email || '').toLowerCase().includes(q) ||
-                        (u.displayName || '').toLowerCase().includes(q);
-          if (!match) continue;
+  // Helper: apply role + search filters to a user
+  function matchesFilters(u) {
+    if (roleFilter === 'admin' && !u.isAdmin) return false;
+    if (roleFilter === 'owner' && !u.isOwner) return false;
+    if (roleFilter === 'client' && u.role !== 'client') return false;
+    if (roleFilter === 'collaborator' && u.role !== 'collaborator') return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!(u.email || '').toLowerCase().includes(q) &&
+          !(u.displayName || '').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }
+
+  // ── 1. Slab tenants (multi-tenant: each tenant DB has its own users) ──
+  if (!productFilter || productFilter === 'slab') {
+    for (const tenant of tenants) {
+      if (tenantFilter && tenant.db !== tenantFilter) continue;
+      try {
+        const tDb = getTenantDb(tenant.db);
+        const users = await tDb.collection('users').find().toArray();
+        for (const u of users) {
+          if (!matchesFilters(u)) continue;
+          allUsers.push({
+            ...u,
+            _product: 'slab',
+            _tenantDb: tenant.db,
+            _tenantDomain: tenant.domain,
+            _tenantName: tenant.brand?.name || tenant.domain,
+            _tenantStatus: tenant.status,
+            _isSuperAdmin: isSuperAdminEmail(u.email),
+          });
         }
+      } catch { /* skip dead tenant DBs */ }
+    }
+  }
+
+  // ── 2. Standalone products (opstrain, games, madladslab) ──
+  for (const [productKey, product] of Object.entries(PRODUCTS)) {
+    if (product.type !== 'standalone') continue;
+    if (productFilter && productFilter !== productKey) continue;
+    try {
+      const pDb = getTenantDb(product.db);
+      const users = await pDb.collection(product.usersCollection).find().toArray();
+      for (const u of users) {
+        if (!matchesFilters(u)) continue;
         allUsers.push({
           ...u,
-          _tenantDb: tenant.db,
-          _tenantDomain: tenant.domain,
-          _tenantName: tenant.brand?.name || tenant.domain,
-          _tenantStatus: tenant.status,
+          _product: productKey,
+          _tenantDb: product.db,
+          _tenantDomain: null,
+          _tenantName: product.label,
+          _tenantStatus: 'active',
+          _isSuperAdmin: isSuperAdminEmail(u.email),
         });
       }
-    } catch { /* skip dead tenant DBs */ }
+    } catch { /* skip if DB unreachable */ }
   }
 
   allUsers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -1073,12 +1282,14 @@ router.get('/users', async (req, res) => {
     superAdmin: req.superAdmin,
     users: allUsers,
     tenants,
-    filters: { tenant: tenantFilter, role: roleFilter, q: searchQuery },
+    products: PRODUCTS,
+    filters: { tenant: tenantFilter, role: roleFilter, q: searchQuery, product: productFilter },
     stats: {
       total: allUsers.length,
       admins: allUsers.filter(u => u.isAdmin).length,
       owners: allUsers.filter(u => u.isOwner).length,
       clients: allUsers.filter(u => u.role === 'client').length,
+      superadmins: allUsers.filter(u => u._isSuperAdmin).length,
     },
   });
 });
@@ -1087,13 +1298,17 @@ router.post('/users/:tenantDb/:userId/toggle-admin', async (req, res) => {
   const tDb = getTenantDb(req.params.tenantDb);
   const user = await tDb.collection('users').findOne({ _id: new ObjectId(req.params.userId) });
   if (user) {
+    // Prevent toggling admin on superadmin accounts
+    if (isSuperAdminEmail(user.email)) {
+      return res.redirect(`/superadmin/users?tenant=${req.params.tenantDb}`);
+    }
     await tDb.collection('users').updateOne(
       { _id: user._id },
       { $set: { isAdmin: !user.isAdmin, updatedAt: new Date() } },
     );
     await logActivity({
       category: 'admin_action',
-      action: `${user.isAdmin ? 'Revoked' : 'Granted'} admin for ${user.email}`,
+      action: `${user.isAdmin ? 'Revoked' : 'Granted'} tenant admin for ${user.email} in ${req.params.tenantDb}`,
       tenantDomain: req.params.tenantDb,
       actor: { email: req.superAdmin.email, role: 'superadmin' },
     });
@@ -1123,6 +1338,10 @@ router.post('/users/:tenantDb/:userId/delete', async (req, res) => {
   const tDb = getTenantDb(req.params.tenantDb);
   const user = await tDb.collection('users').findOne({ _id: new ObjectId(req.params.userId) });
   if (user) {
+    // Prevent deleting superadmin accounts
+    if (isSuperAdminEmail(user.email)) {
+      return res.redirect(`/superadmin/users?tenant=${req.params.tenantDb}`);
+    }
     await tDb.collection('users').deleteOne({ _id: user._id });
     await logActivity({
       category: 'admin_action',
@@ -1252,6 +1471,7 @@ router.get('/users/:tenantDb/:userId', async (req, res) => {
     userTickets,
     messages,
     analytics,
+    isSuperAdminUser: isSuperAdminEmail(user.email),
   });
 });
 
@@ -1406,8 +1626,8 @@ const GATEWAY_APPS = {
   nocometalworkz: { port: 3002, secret: 'doner5%$$!@ojeFGojtYOjergewr', label: 'NoCometal' },
 };
 
-function generateGatewayToken(app, email, secret) {
-  const payload = JSON.stringify({ app, email, ts: Date.now() });
+function generateGatewayToken(app, email, secret, extra = {}) {
+  const payload = JSON.stringify({ app, email, ts: Date.now(), ...extra });
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex');
   return Buffer.from(payload).toString('base64url') + '.' + sig;
 }
@@ -1445,6 +1665,64 @@ router.get('/api/gateway', (req, res) => {
     url: `/superadmin/gateway/${key}`,
   }));
   res.json({ apps });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANNOUNCEMENTS — Platform-wide notifications to tenant admins
+// ═══════════════════════════════════════════════════════════════════════════
+
+// List all announcements
+router.get('/announcements', async (req, res) => {
+  const slab = getSlabDb();
+  const announcements = await slab.collection('platform_notifications')
+    .find().sort({ createdAt: -1 }).toArray();
+  res.render('superadmin/announcements', {
+    user: req.superAdmin,
+    announcements,
+  });
+});
+
+// Create announcement
+router.post('/announcements', async (req, res) => {
+  const slab = getSlabDb();
+  const { title, message, type, audience } = req.body;
+  if (!title || !message) return res.redirect('/superadmin/announcements');
+
+  await slab.collection('platform_notifications').insertOne({
+    title: title.trim(),
+    message: message.trim(),
+    type: type || 'info',
+    audience: audience || 'all',
+    createdBy: req.superAdmin.email,
+    createdAt: new Date(),
+    dismissedBy: [],
+    status: 'published',
+  });
+
+  await logActivity({
+    category: 'admin_action',
+    action: `Published announcement: "${title.trim()}"`,
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+  });
+
+  res.redirect('/superadmin/announcements');
+});
+
+// Archive announcement
+router.post('/announcements/:id/archive', async (req, res) => {
+  const slab = getSlabDb();
+  await slab.collection('platform_notifications').updateOne(
+    { _id: new ObjectId(req.params.id) },
+    { $set: { status: 'archived', archivedAt: new Date() } },
+  );
+  res.redirect('/superadmin/announcements');
+});
+
+// Delete announcement
+router.post('/announcements/:id/delete', async (req, res) => {
+  const slab = getSlabDb();
+  await slab.collection('platform_notifications').deleteOne({ _id: new ObjectId(req.params.id) });
+  res.redirect('/superadmin/announcements');
 });
 
 export default router;

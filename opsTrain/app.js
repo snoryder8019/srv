@@ -57,11 +57,19 @@ const { gatewayRoute } = require('/srv/gateway.cjs');
 app.get('/gateway', gatewayRoute({
   secret: process.env.SESHSEC,
   appName: 'opsTrain',
-  findOrCreateAdmin: async (email) => {
+  findOrCreateAdmin: async (email, payload) => {
     const User = require('./models/User');
+    const brandId = payload?.brand || null;
     let user = await User.findOne({ email });
-    if (!user) user = await User.create({ email, displayName: email.split('@')[0], role: 'superadmin', provider: 'gateway' });
-    else if (user.role !== 'superadmin') { user.role = 'superadmin'; await user.save(); }
+    if (brandId) {
+      // Brand-scoped entry: create/update as admin for that brand
+      if (!user) user = await User.create({ email, displayName: email.split('@')[0], role: 'admin', brand: brandId, provider: 'gateway' });
+      else { user.role = 'admin'; user.brand = brandId; await user.save(); }
+    } else {
+      // Platform-level entry: superadmin (sees all brands)
+      if (!user) user = await User.create({ email, displayName: email.split('@')[0], role: 'superadmin', provider: 'gateway' });
+      else if (user.role !== 'superadmin') { user.role = 'superadmin'; await user.save(); }
+    }
     return user;
   },
 }));

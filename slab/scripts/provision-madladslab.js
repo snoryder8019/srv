@@ -16,6 +16,7 @@ async function main() {
       brandLocation: '',
       ownerEmail: 'snoryder8019@gmail.com',
       customDomain: 'madladslab.com',
+      platform: 'madladslab',
     });
 
     console.log('[provision] Tenant created successfully:');

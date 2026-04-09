@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Announcements — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:12px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:14px; font-size:13px; color:#737373; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .content { padding:24px; max-width:900px; margin:0 auto; }
+    h1 { font-size:20px; font-weight:600; margin-bottom:24px; display:flex; align-items:center; gap:10px; }
+    h1 span { color:#c9a848; }
+
+    /* ── FORM ── */
+    .compose { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; margin-bottom:28px; }
+    .compose h2 { font-size:14px; font-weight:600; margin-bottom:16px; color:#e5e5e5; }
+    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+    .form-full { grid-column:span 2; }
+    label { display:block; font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:5px; font-weight:600; }
+    input[type=text], textarea, select { width:100%; padding:9px 12px; background:#1a1a1a; border:1px solid #333; border-radius:4px; color:#e5e5e5; font-family:'Inter',sans-serif; font-size:13px; }
+    input:focus, textarea:focus, select:focus { border-color:#c9a848; outline:none; }
+    textarea { resize:vertical; min-height:80px; }
+    .btn-gold { display:inline-flex; align-items:center; gap:6px; padding:9px 20px; font-size:12px; font-weight:600; border-radius:6px; border:none; background:#c9a848; color:#0a0a0a; cursor:pointer; font-family:'Inter',sans-serif; letter-spacing:0.5px; text-transform:uppercase; } .btn-gold:hover { background:#b8960b; }
+
+    /* ── LIST ── */
+    .ann-list { display:flex; flex-direction:column; gap:12px; }
+    .ann-card { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px 20px; display:flex; align-items:flex-start; gap:14px; transition:border-color .2s; }
+    .ann-card:hover { border-color:#333; }
+    .ann-card.archived { opacity:0.5; }
+    .ann-type { width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+    .ann-type.info { background:#38bdf8; box-shadow:0 0 6px #38bdf8; }
+    .ann-type.warning { background:#facc15; box-shadow:0 0 6px #facc15; }
+    .ann-type.critical { background:#f87171; box-shadow:0 0 6px #f87171; }
+    .ann-type.success { background:#34d399; box-shadow:0 0 6px #34d399; }
+    .ann-body { flex:1; min-width:0; }
+    .ann-title { font-size:14px; font-weight:600; color:#fff; margin-bottom:4px; }
+    .ann-msg { font-size:13px; color:#a3a3a3; line-height:1.5; margin-bottom:8px; }
+    .ann-meta { display:flex; gap:14px; font-size:11px; color:#525252; flex-wrap:wrap; }
+    .ann-meta span { display:flex; align-items:center; gap:4px; }
+    .ann-actions { display:flex; gap:6px; flex-shrink:0; align-items:flex-start; }
+    .btn-sm { padding:5px 12px; font-size:11px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; } .btn-sm:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-sm.danger:hover { border-color:#f87171; color:#f87171; }
+    .status-pill { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:500; }
+    .status-pill.published { background:#14532d; color:#86efac; }
+    .status-pill.archived { background:#1f1f1f; color:#737373; }
+    .empty { color:#525252; font-size:13px; padding:24px; text-align:center; }
+
+    @media (max-width:600px) {
+      .form-row { grid-template-columns:1fr; }
+      .form-full { grid-column:span 1; }
+      .ann-card { flex-direction:column; gap:8px; }
+      .ann-actions { align-self:flex-end; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── TOPBAR ── -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">s<span>Lab</span></div>
+    <span style="font-size:11px; color:#525252; letter-spacing:1px; text-transform:uppercase;">Announcements</span>
+  </div>
+  <div class="topbar-right">
+    <a href="/superadmin">Dashboard</a>
+    <span><%= user.email %></span>
+  </div>
+</div>
+
+<div class="content">
+  <h1><span>&#128227;</span> Platform Announcements</h1>
+
+  <!-- ── COMPOSE ── -->
+  <div class="compose">
+    <h2>New Announcement</h2>
+    <form method="POST" action="/superadmin/announcements">
+      <div class="form-row">
+        <div class="form-full">
+          <label>Title *</label>
+          <input type="text" name="title" required placeholder="e.g. Scheduled Maintenance Tonight">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-full">
+          <label>Message *</label>
+          <textarea name="message" rows="3" required placeholder="The details your tenants need to know..."></textarea>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label>Type</label>
+          <select name="type">
+            <option value="info">Info</option>
+            <option value="success">Success</option>
+            <option value="warning">Warning</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+        <div>
+          <label>Audience</label>
+          <select name="audience">
+            <option value="all">All Tenants</option>
+            <option value="active">Active Only</option>
+            <option value="preview">Preview Only</option>
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="btn-gold" style="margin-top:8px;">Publish Announcement</button>
+    </form>
+  </div>
+
+  <!-- ── LIST ── -->
+  <h2 style="font-size:14px; font-weight:600; margin-bottom:14px;">History (<%= announcements.length %>)</h2>
+  <% if (!announcements.length) { %>
+    <div class="empty">No announcements yet. Publish one above.</div>
+  <% } else { %>
+  <div class="ann-list">
+    <% announcements.forEach(a => { %>
+    <div class="ann-card<%= a.status === 'archived' ? ' archived' : '' %>">
+      <div class="ann-type <%= a.type || 'info' %>"></div>
+      <div class="ann-body">
+        <div class="ann-title"><%= a.title %></div>
+        <div class="ann-msg"><%= a.message %></div>
+        <div class="ann-meta">
+          <span><span class="status-pill <%= a.status || 'published' %>"><%= a.status || 'published' %></span></span>
+          <span><%= a.type || 'info' %></span>
+          <span>Audience: <%= a.audience || 'all' %></span>
+          <span><%= a.createdAt ? new Date(a.createdAt).toLocaleDateString() : '' %></span>
+          <% if (a.dismissedBy && a.dismissedBy.length) { %><span>Dismissed by <%= a.dismissedBy.length %></span><% } %>
+        </div>
+      </div>
+      <div class="ann-actions">
+        <% if (a.status !== 'archived') { %>
+        <form method="POST" action="/superadmin/announcements/<%= a._id %>/archive" style="display:inline;">
+          <button type="submit" class="btn-sm">Archive</button>
+        </form>
+        <% } %>
+        <form method="POST" action="/superadmin/announcements/<%= a._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this announcement permanently?');">
+          <button type="submit" class="btn-sm danger">Delete</button>
+        </form>
+      </div>
+    </div>
+    <% }) %>
+  </div>
+  <% } %>
+</div>
+
+<div style="position:fixed;bottom:16px;right:16px;z-index:9999;background:linear-gradient(135deg,#c9a848,#b8860b);color:#0a0a0a;font-weight:700;padding:6px 12px;font-size:11px;box-shadow:0 2px 8px rgba(0,0,0,0.4);border-radius:4px;letter-spacing:1px;text-transform:uppercase;">Superadmin</div>
+</body>
+</html>

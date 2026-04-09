@@ -24,12 +24,14 @@ function pageFields(body, current) {
 
   const dataCollection = ALLOWED_COLLECTIONS.includes(body.dataCollection) ? body.dataCollection : 'blog';
   const dataPageSize   = Math.min(Math.max(parseInt(body.dataPageSize) || 9, 1), 100);
+  const dataGroup      = dataCollection === 'portfolio' ? (body.dataGroup?.trim() || '') : '';
 
   return {
     pageType,
     content:          body.content || '',
     dataCollection,
     dataPageSize,
+    dataGroup,
     blocks,
     metaTitle:        body.metaTitle || body.title,
     metaDescription:  body.metaDescription || '',

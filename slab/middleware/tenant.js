@@ -93,7 +93,7 @@ async function lookupTenant(domain) {
   // Decrypt secrets once, store decrypted in cache (memory only)
   // Check if brand setup wizard is complete (has required fields filled)
   const brand = doc.brand || {};
-  const brandSetupComplete = !!(brand.name && brand.businessType && brand.industry && brand.description);
+  const brandSetupComplete = !!(brand.name && brand.businessType && brand.industry) || !!doc.meta?.brandSetupAt;
 
   return {
     _id: doc._id,

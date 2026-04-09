@@ -188,6 +188,7 @@
   <div class="tab" onclick="showTab('madladslab', this)"><span class="tab-icon">&#9733;</span> MadLadsLab</div>
   <div class="tab" onclick="showTab('opstrain', this)"><span class="tab-icon">&#9881;</span> OpsTrain</div>
   <div class="tab" onclick="showTab('games', this)"><span class="tab-icon">&#127918;</span> Games</div>
+  <div class="tab" onclick="showTab('stringborn', this)"><span class="tab-icon">&#128640;</span> Stringborn</div>
   <div class="tab" onclick="showTab('webapps', this)"><span class="tab-icon">&#127760;</span> Webapps</div>
   <div class="tab-spacer"></div>
   <div class="tab tab-util" onclick="showTab('tools', this)"><span class="tab-icon">&#128295;</span> Tools</div>
@@ -209,13 +210,14 @@
     </div>
 
     <div class="quick-links">
-      <a class="qlink" href="/superadmin/users">&#128101; Global Users</a>
+      <a class="qlink" href="/superadmin/users">&#128101; Platform Users</a>
       <a class="qlink" href="/superadmin/all-tickets">&#127991; All Tickets</a>
       <a class="qlink" href="/superadmin/tickets">&#9873; Escalated</a>
       <a class="qlink" href="/superadmin/permissions">&#128274; Permissions</a>
       <a class="qlink" href="/superadmin/subscribers">&#128236; Subscribers</a>
       <a class="qlink" href="/superadmin/signups">&#128200; Signups</a>
       <a class="qlink" href="/superadmin/promos">&#127873; Promos</a>
+      <a class="qlink" href="/superadmin/announcements">&#128227; Announcements</a>
     </div>
 
     <!-- All services by category -->
@@ -275,6 +277,7 @@
       <a class="qlink" href="/superadmin/all-tickets">&#127991; Tickets</a>
       <a class="qlink" href="/delegates/admin">&#9733; Delegates</a>
       <a class="qlink" href="/superadmin/subscribe" target="_blank">&#128279; Public Subscribe</a>
+      <a class="qlink" href="/superadmin/announcements">&#128227; Announcements</a>
     </div>
 
     <div class="stats">
@@ -282,6 +285,7 @@
       <div class="stat"><div class="stat-label">Active</div><div class="stat-value green"><%= stats.active %></div></div>
       <div class="stat"><div class="stat-label">Preview</div><div class="stat-value"><%= stats.preview %></div></div>
       <div class="stat"><div class="stat-label">Suspended</div><div class="stat-value red"><%= stats.suspended %></div></div>
+      <div class="stat"><div class="stat-label">Promo</div><div class="stat-value" style="color:#fdba74;"><%= stats.promo %></div></div>
       <div class="stat"><div class="stat-label">Est. MRR</div><div class="stat-value gold">$<%= stats.mrr %></div></div>
     </div>
 
@@ -309,7 +313,7 @@
       <h2>Tenants</h2>
       <div class="table-wrap">
       <table>
-        <thead><tr><th>Domain</th><th>Brand</th><th>Status</th><th>Plan</th><th>Owner</th><th>Tags</th><th></th></tr></thead>
+        <thead><tr><th>Domain</th><th>Brand</th><th>Status</th><th>Plan</th><th>Promo</th><th>Owner</th><th>Tags</th><th></th></tr></thead>
         <tbody>
           <% for (const t of tenants) { %>
             <tr>
@@ -317,6 +321,13 @@
               <td><%= t.brand?.name || '—' %></td>
               <td><span class="status status-<%= t.status || 'preview' %>"><%= t.status || 'preview' %></span></td>
               <td><%= t.meta?.plan || 'free' %></td>
+              <td>
+                <form method="POST" action="/superadmin/tenants/<%= t._id %>/toggle-promo" style="display:inline;">
+                  <button type="submit" class="btn-sm" style="<%= t.meta?.isPromo ? 'background:#422006;color:#fdba74;border-color:#422006;' : '' %>" title="<%= t.meta?.isPromo ? 'Promo account — excluded from MRR. Click to unmark.' : 'Click to mark as promo (excludes from MRR)' %>">
+                    <%= t.meta?.isPromo ? 'Promo' : '\u2014' %>
+                  </button>
+                </form>
+              </td>
               <td style="color:#737373; font-size:12px;"><%= t.meta?.ownerEmail || '—' %></td>
               <td>
                 <% if (t.tags?.length) { t.tags.forEach(tag => {
@@ -338,44 +349,100 @@
     <div class="quick-links">
       <a class="qlink" href="/superadmin/opstrain">&#9881; Full OpsTrain Panel</a>
       <a class="qlink" href="https://ops-train.madladslab.com" target="_blank">&#128279; OpsTrain Live</a>
+      <a class="qlink" href="/superadmin/users?product=opstrain">&#128101; OpsTrain Users</a>
+      <% const opsSvc = services.find(s => s.name === 'opsTrain'); %>
+      <% if (opsSvc?.tmux) { %><button class="qlink" style="cursor:pointer;" onclick="svcAction('opsTrain', 'status')">&#128994; Status Check</button><% } %>
     </div>
 
-    <div class="card-grid">
-      <div class="card">
-        <div class="card-header"><span class="card-title">OpsTrain</span>
-          <% const opsSvc = services.find(s => s.name === 'opsTrain'); %>
-          <span class="svc-dot <%= opsSvc?.alive ? 'alive' : (opsSvc?.alive === false ? 'dead' : 'unknown') %>"></span>
-        </div>
-        <div class="card-desc">QR-driven restaurant ops — task management, shifts, specials, analytics. SaaS'd via Slab + PayPal.</div>
-        <div class="card-meta">
-          <span>Port: 3603</span>
-          <span>DB: opsTrain</span>
-        </div>
-        <div class="card-actions">
-          <a href="/superadmin/opstrain" class="btn-sm">Brands &amp; Users</a>
-          <% if (opsSvc?.tmux) { %><button class="btn-sm" onclick="svcAction('opsTrain', 'status')">Status</button><% } %>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title" style="margin-bottom:8px;">What's Included</div>
-        <div class="card-desc" style="line-height:1.8;">
-          &#9745; Brand multi-tenancy (per-restaurant)<br>
-          &#9745; QR code task scanning<br>
-          &#9745; Shift management &amp; scheduling<br>
-          &#9745; Daily specials engine<br>
-          &#9745; User roles (superadmin &gt; admin &gt; manager &gt; user)<br>
-          &#9745; PayPal SaaS billing via Slab
-        </div>
-      </div>
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Brands</div><div class="stat-value gold"><%= opsData.stats.totalBrands || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Active</div><div class="stat-value green"><%= opsData.stats.activeBrands || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Total Users</div><div class="stat-value"><%= opsData.stats.totalUsers || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Admins</div><div class="stat-value green"><%= opsData.stats.admins || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Managers</div><div class="stat-value blue"><%= opsData.stats.managers || 0 %></div></div>
     </div>
-    <pre id="opsOutput" class="tool-output" style="margin-top:16px;">Run a status check above...</pre>
+
+    <!-- Brands -->
+    <h2>&#127973; Brands</h2>
+    <% if (opsData.brands.length === 0) { %>
+      <div class="empty">No OpsTrain brands found.</div>
+    <% } else { %>
+      <div class="card-grid" style="margin-bottom:24px;">
+        <% opsData.brands.forEach(b => { %>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">
+                <% if (b.color) { %><span style="width:12px;height:12px;border-radius:3px;display:inline-block;background:<%= b.color %>;border:1px solid #333;"></span><% } %>
+                <%= b.name || '(unnamed)' %>
+              </span>
+              <span class="svc-dot <%= b.active !== false ? 'alive' : 'dead' %>"></span>
+            </div>
+            <div class="card-meta" style="margin:8px 0;">
+              <span><strong><%= b.userCount %></strong> users</span>
+              <span><strong><%= b.taskCount %></strong> tasks</span>
+              <span><strong><%= b.qrCount %></strong> QR codes</span>
+              <% if (b.status) { %><span>Status: <%= b.status %></span><% } %>
+              <% if (b.plan) { %><span>Plan: <%= b.plan %></span><% } %>
+            </div>
+            <div class="card-actions">
+              <form method="POST" action="/superadmin/opstrain/brand/<%= b._id %>/toggle" style="display:inline;">
+                <button type="submit" class="btn-sm"><%= b.active !== false ? 'Deactivate' : 'Activate' %></button>
+              </form>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <!-- Users -->
+    <h2>&#128101; Users <span style="font-size:11px; color:#525252; font-weight:400;">(<%= opsData.users.length %> total)</span></h2>
+    <% if (opsData.users.length === 0) { %>
+      <div class="empty">No OpsTrain users found.</div>
+    <% } else { %>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table>
+          <thead><tr>
+            <th>User</th>
+            <th>Email</th>
+            <th>Brand</th>
+            <th>Role</th>
+            <th>Actions</th>
+          </tr></thead>
+          <tbody>
+            <% opsData.users.forEach(u => { %>
+              <%   const uBrand = opsData.brands.find(b => b._id.toString() === (u.brand || '').toString()); %>
+              <tr>
+                <td><strong><%= u.displayName || u.firstName || '\u2014' %></strong></td>
+                <td style="font-size:12px;"><%= u.email || '\u2014' %></td>
+                <td style="font-size:12px; color:#c9a848;"><%= uBrand?.name || '\u2014' %></td>
+                <td>
+                  <form method="POST" action="/superadmin/opstrain/user/<%= u._id %>/role" style="display:inline;">
+                    <select name="role" onchange="this.form.submit()" style="background:#1a1a1a;border:1px solid #333;color:#e5e5e5;padding:3px 6px;border-radius:4px;font-size:11px;font-family:'Inter',sans-serif;">
+                      <option value="user" <%= u.role === 'user' ? 'selected' : '' %>>user</option>
+                      <option value="manager" <%= u.role === 'manager' ? 'selected' : '' %>>manager</option>
+                      <option value="admin" <%= u.role === 'admin' ? 'selected' : '' %>>admin</option>
+                      <option value="superadmin" <%= u.role === 'superadmin' ? 'selected' : '' %>>superadmin</option>
+                    </select>
+                  </form>
+                </td>
+                <td style="font-size:11px; color:#525252;">
+                  Scoped to <%= uBrand?.name || 'no brand' %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+    <pre id="opsOutput" class="tool-output" style="margin-top:16px; display:none;">Run a status check above...</pre>
   </div>
 
   <!-- ═══════ MADLADSLAB TAB ═══════ -->
   <div class="panel" id="tab-madladslab">
     <div class="quick-links">
       <a class="qlink" href="https://madladslab.com" target="_blank">&#128279; MadLadsLab Live</a>
-      <a class="qlink" href="/superadmin/users">&#128101; Global Users</a>
+      <a class="qlink" href="/superadmin/users">&#128101; Platform Users</a>
       <a class="qlink" href="/superadmin/permissions">&#128274; Permissions</a>
       <a class="qlink" href="/superadmin/huginn">&#129302; Huginn AI</a>
     </div>
@@ -424,16 +491,26 @@
   <div class="panel" id="tab-games">
     <div class="quick-links">
       <a class="qlink" href="https://games.madladslab.com" target="_blank">&#128279; Games Portal</a>
-      <a class="qlink" href="https://ballzinholez.com" target="_blank">&#128279; BallzInHolez</a>
-      <a class="qlink" href="https://ps.madladslab.com" target="_blank">&#128279; Stringborn Universe</a>
+      <a class="qlink" href="https://servers.madladslab.com" target="_blank">&#128279; Server Dash</a>
+      <a class="qlink" href="/superadmin/users?product=games">&#128101; Games Users</a>
+      <% const gamesSvc = services.find(s => s.name === 'games'); %>
+      <% if (gamesSvc?.tmux) { %><button class="qlink" style="cursor:pointer;" onclick="svcAction('games', 'status')">&#128994; Status</button><% } %>
     </div>
 
-    <div class="card-grid">
-      <% const gameSvcs = [
-           ...(servicesByCategory.game?.services || []),
-           ...((servicesByCategory.tool?.services || []).filter(s => s.name === 'servers')),
-         ];
-         gameSvcs.forEach(svc => { %>
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Total Users</div><div class="stat-value gold"><%= gamesData.stats.totalUsers || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Admins</div><div class="stat-value green"><%= gamesData.stats.admins || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Game Admins</div><div class="stat-value blue"><%= gamesData.stats.gameAdmins || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Broadcasters</div><div class="stat-value purple"><%= gamesData.stats.broadcasters || 0 %></div></div>
+    </div>
+
+    <!-- Services -->
+    <h2>&#127918; Services</h2>
+    <div class="card-grid" style="margin-bottom:24px;">
+      <% const gameSvcs = (servicesByCategory.game?.services || []).filter(s => s.name !== 'bih');
+         const serverSvc = (servicesByCategory.tool?.services || []).filter(s => s.name === 'servers');
+         [...gameSvcs, ...serverSvc].forEach(svc => { %>
         <div class="card">
           <div class="card-header">
             <span class="card-title"><%= svc.name %></span>
@@ -451,7 +528,156 @@
         </div>
       <% }) %>
     </div>
-    <pre id="gamesOutput" class="tool-output" style="margin-top:16px;">Run a status check above...</pre>
+
+    <!-- Users -->
+    <h2>&#128101; Users <span style="font-size:11px; color:#525252; font-weight:400;">(<%= gamesData.users.length %> total)</span></h2>
+    <% if (gamesData.users.length === 0) { %>
+      <div class="empty">No Games users found.</div>
+    <% } else { %>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table>
+          <thead><tr>
+            <th>User</th>
+            <th>Email</th>
+            <th>Superadmin</th>
+            <th>Game Admin</th>
+            <th>Broadcaster</th>
+            <th>Subscription</th>
+          </tr></thead>
+          <tbody>
+            <% gamesData.users.forEach(u => { %>
+              <tr>
+                <td><strong><%= u.displayName || '\u2014' %></strong></td>
+                <td style="font-size:12px;"><%= u.email || '\u2014' %></td>
+                <td>
+                  <form method="POST" action="/superadmin/games/user/<%= u._id %>/toggle-admin" style="display:inline;">
+                    <button type="submit" class="btn-sm" style="<%= u.isAdmin ? 'background:#14532d;color:#86efac;border-color:#14532d;' : '' %>">
+                      <%= u.isAdmin ? 'Yes' : '\u2014' %>
+                    </button>
+                  </form>
+                </td>
+                <td>
+                  <form method="POST" action="/superadmin/games/user/<%= u._id %>/game-admin" style="display:inline;">
+                    <button type="submit" class="btn-sm" style="<%= u.permissions?.games === 'admin' ? 'background:#1e3a5f;color:#7dd3fc;border-color:#1e3a5f;' : '' %>">
+                      <%= u.permissions?.games === 'admin' ? 'Yes' : '\u2014' %>
+                    </button>
+                  </form>
+                </td>
+                <td>
+                  <form method="POST" action="/superadmin/games/user/<%= u._id %>/toggle-broadcaster" style="display:inline;">
+                    <button type="submit" class="btn-sm" style="<%= u.isBroadcaster ? 'background:#3b0764;color:#d8b4fe;border-color:#3b0764;' : '' %>">
+                      <%= u.isBroadcaster ? 'Yes' : '\u2014' %>
+                    </button>
+                  </form>
+                </td>
+                <td>
+                  <form method="POST" action="/superadmin/games/user/<%= u._id %>/subscription" style="display:inline;">
+                    <select name="subscription" onchange="this.form.submit()" style="background:#1a1a1a;border:1px solid #333;color:#e5e5e5;padding:3px 6px;border-radius:4px;font-size:11px;font-family:'Inter',sans-serif;">
+                      <option value="free" <%= u.subscription === 'free' || !u.subscription ? 'selected' : '' %>>free</option>
+                      <option value="player" <%= u.subscription === 'player' ? 'selected' : '' %>>player</option>
+                      <option value="admin" <%= u.subscription === 'admin' ? 'selected' : '' %>>admin</option>
+                      <option value="lifetime" <%= u.subscription === 'lifetime' ? 'selected' : '' %>>lifetime</option>
+                    </select>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+    <pre id="gamesOutput" class="tool-output" style="margin-top:16px; display:none;"></pre>
+  </div>
+
+  <!-- ═══════ STRINGBORN TAB ═══════ -->
+  <div class="panel" id="tab-stringborn">
+    <div class="quick-links">
+      <a class="qlink" href="https://ps.madladslab.com" target="_blank">&#128279; Stringborn Live</a>
+      <a class="qlink" href="/superadmin/users?product=stringborn">&#128101; Stringborn Users</a>
+      <% const psSvc = services.find(s => s.name === 'ps'); %>
+      <% if (psSvc?.tmux) { %><button class="qlink" style="cursor:pointer;" onclick="svcAction('ps', 'status')">&#128994; Status</button><% } %>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Total Users</div><div class="stat-value gold"><%= stringbornData.stats.totalUsers || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Admins</div><div class="stat-value green"><%= stringbornData.stats.admins || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Testers</div><div class="stat-value blue"><%= stringbornData.stats.testers || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Characters</div><div class="stat-value purple"><%= stringbornData.stats.characters || 0 %></div></div>
+    </div>
+
+    <!-- Service Card -->
+    <h2>&#128640; Service</h2>
+    <div class="card-grid" style="margin-bottom:24px;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Stringborn Universe</span>
+          <span class="svc-dot <%= psSvc?.alive ? 'alive' : (psSvc?.alive === false ? 'dead' : 'unknown') %>"></span>
+        </div>
+        <div class="card-desc">Sci-fi MMO — characters, zones, ships, talent trees, procedural planets. Tester-phase.</div>
+        <div class="card-meta">
+          <span>Port: 3399</span>
+          <span>DB: projectStringborne</span>
+          <% if (psSvc?.domain) { %><span><a href="https://<%= psSvc.domain %>" target="_blank" class="link" style="font-size:11px;"><%= psSvc.domain %></a></span><% } %>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px;">Features</div>
+        <div class="card-desc" style="line-height:1.8;">
+          &#9745; Character creation (species, traits, classes)<br>
+          &#9745; Zone exploration &amp; galactic map<br>
+          &#9745; Ship builder &amp; survival systems<br>
+          &#9745; Procedural planet generation<br>
+          &#9745; TOME storyline assets<br>
+          &#9745; Sprite atlas system<br>
+          &#9745; Onboarding flow (welcome &gt; intro &gt; character)
+        </div>
+      </div>
+    </div>
+
+    <!-- Users -->
+    <h2>&#128101; Users <span style="font-size:11px; color:#525252; font-weight:400;">(<%= stringbornData.users.length %> total)</span></h2>
+    <% if (stringbornData.users.length === 0) { %>
+      <div class="empty">No Stringborn users found.</div>
+    <% } else { %>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table>
+          <thead><tr>
+            <th>User</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Onboarding</th>
+            <th>Joined</th>
+          </tr></thead>
+          <tbody>
+            <% stringbornData.users.forEach(u => { %>
+              <tr>
+                <td><strong><%= u.username || u.displayName || '\u2014' %></strong></td>
+                <td style="font-size:12px;"><%= u.email || '\u2014' %></td>
+                <td>
+                  <form method="POST" action="/superadmin/stringborn/user/<%= u._id %>/role" style="display:inline;">
+                    <select name="role" onchange="this.form.submit()" style="background:#1a1a1a;border:1px solid #333;color:#e5e5e5;padding:3px 6px;border-radius:4px;font-size:11px;font-family:'Inter',sans-serif;">
+                      <option value="tester" <%= u.userRole === 'tester' || !u.userRole ? 'selected' : '' %>>tester</option>
+                      <option value="admin" <%= u.userRole === 'admin' ? 'selected' : '' %>>admin</option>
+                    </select>
+                  </form>
+                </td>
+                <td style="font-size:11px;">
+                  <% if (u.hasCompletedIntro) { %>
+                    <span style="color:#34d399;">Complete</span>
+                  <% } else if (u.hasCompletedWelcome) { %>
+                    <span style="color:#fdba74;">Welcome done</span>
+                  <% } else { %>
+                    <span style="color:#525252;">Not started</span>
+                  <% } %>
+                </td>
+                <td style="font-size:12px; color:#525252;"><%= u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '\u2014' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
   </div>
 
   <!-- ═══════ WEBAPPS TAB ═══════ -->
@@ -625,10 +851,24 @@
   function showTab(id, el) {
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.getElementById('tab-' + id).classList.add('active');
+    const panel = document.getElementById('tab-' + id);
+    if (panel) panel.classList.add('active');
     if (el) el.classList.add('active');
+    else {
+      // Find the tab button by matching the id
+      document.querySelectorAll('.tab').forEach(t => {
+        if (t.getAttribute('onclick')?.includes("'" + id + "'")) t.classList.add('active');
+      });
+    }
+    window.location.hash = 'tab-' + id;
     if (id === 'tools') loadDeprecationPipeline();
   }
+
+  // Restore tab from URL hash on page load
+  (function() {
+    const hash = window.location.hash.replace('#tab-', '');
+    if (hash && document.getElementById('tab-' + hash)) showTab(hash);
+  })();
 
   async function runTool(tool) {
     const out = document.getElementById('toolOutput');

@@ -1,13 +1,30 @@
 <%
   /* ── Shared tenant header — one source of truth for all public pages ── */
-  const _hdr_sp = parseInt(design.nav_logo_split) || 0;
-  const _hdr_pre = _hdr_sp > 0 ? (brand?.name||'').slice(0,_hdr_sp) : '';
-  const _hdr_post = _hdr_sp > 0 ? (brand?.name||'').slice(_hdr_sp) : (brand?.name||'');
+  const _hdr_start = parseInt(design.nav_logo_split) || 0;
+  const _hdr_end   = parseInt(design.nav_logo_split_end) || 0;
+  const _bname     = brand?.name || '';
+  const _hdr_accentColor = design.nav_logo_accent_color || 'var(--accent, var(--gold))';
+  /* Range mode: start..end chars get accent color */
+  let _hdr_before = '', _hdr_accent = '', _hdr_after = '';
+  if (_hdr_start > 0) {
+    if (_hdr_end > _hdr_start) {
+      _hdr_before = _bname.slice(0, _hdr_start - 1);
+      _hdr_accent = _bname.slice(_hdr_start - 1, _hdr_end);
+      _hdr_after  = _bname.slice(_hdr_end);
+    } else {
+      _hdr_before = '';
+      _hdr_accent = _bname.slice(0, _hdr_start);
+      _hdr_after  = _bname.slice(_hdr_start);
+    }
+  }
   const _hdr_active = typeof activePage !== 'undefined' ? activePage : '';
+  const _showTagline = design.nav_tagline_display !== 'false';
+  const _navCtaText = design.nav_cta_text || 'Get Started';
+  const _navCtaLink = design.nav_cta_link || '/#contact';
 %>
 <style>
   /* ── NAV (shared header) ── */
-  #main-nav { position:fixed;top:0;width:100%;z-index:1000;display:flex;justify-content:space-between;align-items:center;padding:20px 52px;background:color-mix(in srgb, var(--bg, var(--ivory)) 95%, transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--ivory-mid);transition:border-color 0.3s, box-shadow 0.3s; }
+  #main-nav { position:fixed;top:0;width:100%;z-index:1000;display:flex;justify-content:space-between;align-items:center;padding:20px 52px;background:<%= design.nav_bg || 'color-mix(in srgb, var(--bg, var(--ivory)) 95%, transparent)' %>;backdrop-filter:blur(10px);border-bottom:1px solid var(--ivory-mid);transition:border-color 0.3s, box-shadow 0.3s; }
   #main-nav.scrolled { border-color:var(--ivory-mid);box-shadow:0 2px 24px color-mix(in srgb, var(--primary, var(--navy)) 10%, transparent); }
   #main-nav .nav-wordmark { display:flex;flex-direction:column;line-height:1;text-decoration:none; }
   #main-nav .nav-wordmark-top { font-family:var(--font-heading);font-size:1.4rem;font-weight:400;color:var(--on-ivory, var(--dark));letter-spacing:0.04em;display:block; }
@@ -31,8 +48,8 @@
   }
 </style>
 
-<%- include('preview-banner') %>
-<%- include('maintenance-banner') %>
+<% if (!design.el_preview_banner || design.el_preview_banner !== 'false') { %><%- include('preview-banner') %><% } %>
+<% if (!design.el_maintenance_banner || design.el_maintenance_banner !== 'false') { %><%- include('maintenance-banner') %><% } %>
 
 <nav id="main-nav">
   <a href="/" class="nav-wordmark">
@@ -42,8 +59,8 @@
       <img src="<%= logos.logo_primary %>" alt="<%= brand?.name || 'Home' %>" class="nav-logo">
     <% } %>
     <% if (design.nav_logo_display !== 'image' || !logos || !logos.logo_primary) { %>
-      <span class="nav-wordmark-top"><% if (_hdr_pre) { %><span style="color:var(--accent, var(--gold))"><%= _hdr_pre %></span><% } %><%- _hdr_post %></span>
-      <span class="nav-wordmark-sub"><%= brand?.tagline ? brand.tagline + ' &mdash; ' : '' %><%= brand?.location || '' %></span>
+      <span class="nav-wordmark-top"><% if (_hdr_accent) { %><%- _hdr_before %><span style="color:<%= _hdr_accentColor %>"><%= _hdr_accent %></span><%- _hdr_after %><% } else { %><%- _bname %><% } %></span>
+      <% if (_showTagline) { %><span class="nav-wordmark-sub"><%- brand?.tagline ? brand.tagline + ' &mdash; ' : '' %><%= brand?.location || '' %></span><% } %>
     <% } %>
   </a>
   <ul class="nav-links">
@@ -54,7 +71,7 @@
       <% }); %>
     <% } %>
     <li><a href="/blog" <%= _hdr_active === 'blog' ? 'class="active"' : '' %>>Blog</a></li>
-    <li><a href="/#contact">Get Started</a></li>
+    <li><a href="<%= _navCtaLink %>"><%= _navCtaText %></a></li>
   </ul>
 </nav>
 

@@ -58,7 +58,7 @@ function gatewayRoute(opts) {
     }
 
     try {
-      const user = await findOrCreateAdmin(payload.email);
+      const user = await findOrCreateAdmin(payload.email, payload);
       if (!user) return res.status(403).send('Admin user not found');
 
       req.login(user, (err) => {

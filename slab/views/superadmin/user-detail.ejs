@@ -122,13 +122,20 @@
           <h1><%= user.displayName || '(no name)' %></h1>
           <p><%= user.email || '—' %></p>
           <div style="margin-top:6px;">
-            <% if (user.isOwner) { %><span class="badge badge-owner">owner</span><% } %>
-            <% if (user.isAdmin) { %><span class="badge badge-admin">admin</span><% } %>
+            <% const _isSA = typeof isSuperAdminUser !== 'undefined' && isSuperAdminUser; %>
+            <% if (_isSA) { %><span class="badge" style="background:linear-gradient(135deg,#c9a848,#b8860b);color:#0a0a0a;font-weight:700;">SUPERADMIN</span><% } %>
+            <% if (user.isOwner) { %><span class="badge badge-owner">tenant owner</span><% } %>
+            <% if (user.isAdmin && !_isSA) { %><span class="badge badge-admin">tenant admin</span><% } %>
             <% if (user.role === 'client') { %><span class="badge badge-client">client</span><% } %>
             <% if (user.role === 'collaborator') { %><span class="badge badge-collaborator">collab</span><% } %>
-            <% if (!user.isAdmin && !user.isOwner && user.role !== 'client' && user.role !== 'collaborator') { %><span class="badge badge-user"><%= user.role || 'user' %></span><% } %>
+            <% if (!user.isAdmin && !user.isOwner && user.role !== 'client' && user.role !== 'collaborator' && !_isSA) { %><span class="badge badge-user"><%= user.role || 'user' %></span><% } %>
             <% const provs = user.providers || (user.provider ? [user.provider] : []); provs.forEach(p => { %><span class="provider-tag"><%= p %></span> <% }) %>
           </div>
+          <% if (!_isSA) { %>
+            <div style="margin-top:4px; font-size:11px; color:#525252;">Scoped to <strong style="color:#c9a848;"><%= tenant?.brand?.name || tenant?.domain || tenantDb %></strong> only</div>
+          <% } else { %>
+            <div style="margin-top:4px; font-size:11px; color:#c9a848;">Global platform access</div>
+          <% } %>
         </div>
       </div>
       <div style="display:flex; gap:12px; font-size:12px; color:#525252; flex-wrap:wrap;">

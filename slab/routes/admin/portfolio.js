@@ -23,7 +23,7 @@ router.get('/new', (req, res) => {
 router.post('/', portfolioUpload.single('image'), async (req, res) => {
   try {
     const db = req.db;
-    const { title, category, description, clientName, projectDate, featured, tags, order, displayLayout } = req.body;
+    const { title, category, description, clientName, projectDate, featured, showDate, tags, order, displayLayout, group } = req.body;
 
     let imageUrl = req.body.imageUrlManual || '';
     let bucketKey = '';
@@ -44,11 +44,14 @@ router.post('/', portfolioUpload.single('image'), async (req, res) => {
       clientName: clientName?.trim() || '',
       projectDate: projectDate || null,
       featured: featured === 'on',
+      showDate: showDate === 'on',
+      group: group?.trim() || '',
       tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
       order: parseInt(order) || 0,
       displayLayout: displayLayout || 'grid',
       imageUrl,
       bucketKey,
+      status: 'published',
       createdAt: new Date(),
     });
 
@@ -71,7 +74,7 @@ router.get('/:id/edit', async (req, res) => {
 router.post('/:id', portfolioUpload.single('image'), async (req, res) => {
   try {
     const db = req.db;
-    const { title, category, description, clientName, projectDate, featured, tags, order, displayLayout } = req.body;
+    const { title, category, description, clientName, projectDate, featured, showDate, tags, order, displayLayout, group } = req.body;
     const existing = await db.collection('portfolio').findOne({ _id: new ObjectId(req.params.id) });
     if (!existing) return res.redirect('/admin/portfolio');
 
@@ -94,6 +97,8 @@ router.post('/:id', portfolioUpload.single('image'), async (req, res) => {
         clientName: clientName?.trim() || '',
         projectDate: projectDate || null,
         featured: featured === 'on',
+        showDate: showDate === 'on',
+        group: group?.trim() || '',
         tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
         order: parseInt(order) || 0,
         displayLayout: displayLayout || 'grid',
