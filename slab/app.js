@@ -15,6 +15,7 @@ import indexRouter from './routes/index.js';
 import authRouter from './routes/auth.js';
 import adminRouter from './routes/admin.js';
 import meetingsRouter from './routes/meetings.js';
+import bookingRouter from './routes/booking.js';
 import payRouter from './routes/pay.js';
 import webhooksRouter from './routes/webhooks.js';
 import trackingRouter from './routes/tracking.js';
@@ -134,6 +135,7 @@ app.get('/', async (req, res, next) => {
 app.use('/api/tickets', ticketApiRouter);
 app.use('/t', trackingRouter);
 app.use('/meeting', meetingsRouter);
+app.use('/book', bookingRouter);
 app.use('/pay', payRouter);
 app.use('/webhooks', webhooksRouter);
 app.use('/', indexRouter);

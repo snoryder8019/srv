@@ -1,3 +1,4 @@
+const { notifyAdmin } = require('/srv/slab/plugins/notify.cjs');
 const express = require('express');
 const bcrypt = require('bcrypt');
 const Brand = require('../models/Brand');
@@ -73,6 +74,9 @@ router.post('/:token', async (req, res) => {
       role: 'manager',
       brand: brand._id,
     });
+    notifyAdmin({ type: 'opstrain', app: 'opsTrain', email: cleanEmail,
+      name: displayName.trim(), ip: req.ip,
+      data: { Method: 'Invite Link', Brand: brand.name, Role: 'manager' } }).catch(() => {});
 
     req.logIn(user, (err) => {
       if (err) return res.redirect('/auth/login');

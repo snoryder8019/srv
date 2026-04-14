@@ -160,7 +160,7 @@
     .nav-logo-img { height:36px; width:auto; object-fit:contain; margin-right:10px; }
     .nav-links { display:flex; gap:28px; align-items:center; }
     .nav-links a { font-size:13px; color:var(--subtle); transition:color 0.2s; } .nav-links a:hover { color:#fff; }
-    .nav-cta { background:var(--accent); color:var(--bg); padding:8px 20px; border-radius:6px; font-weight:600; font-size:13px; }
+    .nav-cta { background:var(--accent); color:#0F1B30; padding:8px 20px; border-radius:6px; font-weight:600; font-size:13px; }
     .nav-cta:hover { background:var(--accent-hover); }
 
     /* ── Hero ── */
@@ -568,10 +568,34 @@
     <% if (c.privacy_content) { %> <a href="/privacy" style="color:#525252;text-decoration:underline;">Privacy</a><% } %>
   </div>
   <% } %>
+  <!-- Footer QR Codes -->
+  <div id="footer-qr-codes" style="display:none;padding:16px 0 0;text-align:center;">
+    <div id="footer-qr-list" style="display:flex;justify-content:center;gap:20px;flex-wrap:wrap;"></div>
+  </div>
   <% if (typeof visibility === 'undefined' || !visibility || visibility.admin_link !== false) { %>
   <div style="margin-top:12px;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(82,82,82,0.3);text-decoration:none;font-size:9px;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(82,82,82,0.7)'" onmouseout="this.style.color='rgba(82,82,82,0.3)'">Admin</a></div>
   <% } %>
 </footer>
+<script>
+(function() {
+  var container = document.getElementById('footer-qr-codes');
+  var list = document.getElementById('footer-qr-list');
+  if (!container || !list) return;
+  fetch('/api/footer-qr').then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.links || !data.links.length) return;
+    data.links.forEach(function(link) {
+      var item = document.createElement('a');
+      item.href = link.url;
+      item.target = link.type === 'business-card' ? '_blank' : '_self';
+      item.style.cssText = 'text-decoration:none;text-align:center;display:inline-block;';
+      item.innerHTML = '<img src="' + link.dataUrl + '" alt="' + link.label + '" style="width:64px;height:64px;border-radius:4px;">'
+        + '<div style="font-size:0.6rem;color:rgba(82,82,82,0.5);margin-top:4px;">' + link.label + '</div>';
+      list.appendChild(item);
+    });
+    container.style.display = '';
+  }).catch(function() {});
+})();
+</script>
 
 <% if (d.model_header_enabled === 'true' || d.model_logo_enabled === 'true') { %>
 <script src="/js/gltfViewer.js"></script>

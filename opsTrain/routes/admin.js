@@ -17,10 +17,12 @@ router.use(requireRole('manager'));
 // Brand-scoping middleware: admin/manager only see their own brand
 // superadmin sees everything
 router.use((req, res, next) => {
-  if (req.user.role === 'superadmin') {
-    req.brandScope = null; // no filter — sees all
+  const u = req.adminUser || req.user;
+  if (!u) return res.redirect('/auth/login');
+  if (u.role === 'superadmin' || u.isSuperAdmin) {
+    req.brandScope = null; // superadmin sees all brands
   } else {
-    req.brandScope = req.user.brand; // scoped to their brand
+    req.brandScope = u.brand; // scoped to their brand
   }
   next();
 });

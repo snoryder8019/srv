@@ -150,6 +150,114 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// ── Booking availability settings ─────────────────────────────────────────
+
+// GET /admin/meetings/booking — availability settings page
+router.get('/booking', async (req, res) => {
+  try {
+    const db = req.db;
+    const doc = await db.collection('booking_settings').findOne({ key: 'config' });
+    const settings = doc?.value || {
+      enabled: false,
+      title: 'Book a Meeting',
+      subtitle: 'Choose a time that works for you.',
+      meetingLength: 30,
+      bufferMinutes: 15,
+      advanceDays: 14,
+      minNoticeHours: 2,
+      availability: {
+        1: { enabled: true, start: '09:00', end: '17:00' },
+        2: { enabled: true, start: '09:00', end: '17:00' },
+        3: { enabled: true, start: '09:00', end: '17:00' },
+        4: { enabled: true, start: '09:00', end: '17:00' },
+        5: { enabled: true, start: '09:00', end: '17:00' },
+      },
+    };
+
+    // Upcoming bookings
+    const bookings = await db.collection('bookings')
+      .find({ startAt: { $gte: new Date() }, status: { $nin: ['cancelled'] } })
+      .sort({ startAt: 1 }).limit(20).toArray();
+
+    const domain = req.tenant?.domain ? 'https://' + req.tenant.domain : '';
+
+    res.render('admin/meetings/booking', {
+      user: req.adminUser,
+      page: 'meetings',
+      title: 'Booking Settings',
+      settings,
+      bookings,
+      bookingUrl: domain + '/book',
+      saved: req.query.saved === '1',
+      error: req.query.error === '1',
+    });
+  } catch (err) {
+    console.error('[meetings/booking] error:', err);
+    res.status(500).send('Error loading booking settings');
+  }
+});
+
+// POST /admin/meetings/booking — save settings
+router.post('/booking', async (req, res) => {
+  try {
+    const db = req.db;
+    const { enabled, title, subtitle, meetingLength, bufferMinutes, advanceDays, minNoticeHours } = req.body;
+
+    // Parse availability from form — days 0-6, each has enabled/start/end
+    const availability = {};
+    for (let d = 0; d <= 6; d++) {
+      availability[d] = {
+        enabled: req.body[`day_${d}_enabled`] === 'on',
+        start: req.body[`day_${d}_start`] || '09:00',
+        end:   req.body[`day_${d}_end`]   || '17:00',
+      };
+    }
+
+    const settings = {
+      enabled: enabled === 'on',
+      title:   title?.trim()    || 'Book a Meeting',
+      subtitle: subtitle?.trim() || '',
+      meetingLength:  parseInt(meetingLength)  || 30,
+      bufferMinutes:  parseInt(bufferMinutes)  || 15,
+      advanceDays:    parseInt(advanceDays)    || 14,
+      minNoticeHours: parseInt(minNoticeHours) || 2,
+      availability,
+      updatedAt: new Date(),
+    };
+
+    await db.collection('booking_settings').updateOne(
+      { key: 'config' },
+      { $set: { key: 'config', value: settings } },
+      { upsert: true },
+    );
+
+    res.redirect('/admin/meetings/booking?saved=1');
+  } catch (err) {
+    console.error('[meetings/booking] save error:', err);
+    res.redirect('/admin/meetings/booking?error=1');
+  }
+});
+
+// POST /admin/meetings/booking/:id/status — update a booking status
+router.post('/booking/:id/status', express.json(), async (req, res) => {
+  try {
+    const { ObjectId } = await import('mongodb');
+    const db = req.db;
+    const { status } = req.body;
+    if (!['confirmed', 'cancelled', 'completed', 'pending'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    await db.collection('bookings').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { status, updatedAt: new Date() } },
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // GET /admin/meetings/:id — detail / archive view
 router.get('/:id', async (req, res) => {
   try {
@@ -294,5 +402,6 @@ router.post('/:id/agreements', express.json(), async (req, res) => {
     res.status(500).json({ error: 'Failed to send agreement' });
   }
 });
+
 
 export default router;

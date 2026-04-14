@@ -15,23 +15,35 @@ import nodemailer from 'nodemailer';
 import https from 'https';
 
 const TO = 'scott@madladslab.com';
-const OLLAMA_HEALTH_URL = 'https://ollama.madladslab.com/health';
+// Use internal LB directly when running on-server to avoid Apache/evasive
+const OLLAMA_HEALTH_URL_INTERNAL = 'http://localhost:11400/health';
+const OLLAMA_HEALTH_URL_EXTERNAL = 'https://ollama.madladslab.com/health';
+// Try internal first (faster, no TLS, no rate limiting), fall back to external
+const OLLAMA_HEALTH_URL = OLLAMA_HEALTH_URL_INTERNAL;
 
 // ── Ollama health fetcher ───────────────────────────────────────────────────
 
-function fetchOllamaHealth() {
-  return new Promise((resolve, reject) => {
-    const req = https.get(OLLAMA_HEALTH_URL, { timeout: 15000 }, (res) => {
-      let data = '';
-      res.on('data', c => data += c);
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch { reject(new Error('Bad JSON')); }
-      });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+async function fetchOllamaHealth() {
+  const ollamaKey = config.OLLAMA_KEY || process.env.OLLAMA_KEY || '';
+  const headers = {};
+  if (ollamaKey) headers['Authorization'] = `Bearer ${ollamaKey}`;
+
+  const r = await fetch(OLLAMA_HEALTH_URL, {
+    headers,
+    signal: AbortSignal.timeout(15000),
   });
+
+  if (!r.ok) {
+    const body = await r.text().catch(() => '');
+    throw new Error(`HTTP ${r.status} — ${body.slice(0, 120).replace(/<[^>]+>/g, '').trim() || 'no body'}`);
+  }
+
+  const text = await r.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Bad JSON (status ${r.status}) — ${text.slice(0, 120).replace(/<[^>]+>/g, '').trim()}`);
+  }
 }
 
 function statusIcon(s) { return s === 'up' ? '✅' : '🔴'; }
@@ -202,22 +214,27 @@ function buildReportHtml(scanResults, ollamaHtml) {
 // ── Email sender ────────────────────────────────────────────────────────────
 
 async function sendEmail(subject, html) {
-  // Try slab env first, fall back to madladslab env
-  if (!process.env.ZOHO_USER || !process.env.ZOHO_PASS) {
-    const dotenv = await import('dotenv');
-    dotenv.config({ path: '/srv/madladslab/.env' });
-  }
-  if (!process.env.ZOHO_USER || !process.env.ZOHO_PASS) {
-    throw new Error('Missing ZOHO_USER/ZOHO_PASS');
-  }
+  // Always use the platform account — load slab .env explicitly to ensure correct creds
+  const dotenv = await import('dotenv');
+  dotenv.config({ path: '/srv/slab/.env', override: true });
+
+  const zohoUser = process.env.ZOHO_USER;
+  const zohoPass = process.env.ZOHO_PASS;
+
+  if (!zohoUser || !zohoPass) throw new Error('Missing ZOHO_USER/ZOHO_PASS in /srv/slab/.env');
 
   const transporter = nodemailer.createTransport({
-    host: 'smtp.zoho.com', port: 465, secure: true,
-    auth: { user: process.env.ZOHO_USER, pass: process.env.ZOHO_PASS },
+    host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN',
+    auth: { user: zohoUser, pass: zohoPass },
   });
 
-  await transporter.sendMail({ from: process.env.ZOHO_USER, to: TO, subject, html });
-  console.log(`[scanner] Email sent: ${subject}`);
+  await transporter.sendMail({
+    from: `"MadLadsLab Platform" <${zohoUser}>`,
+    to: TO,
+    subject,
+    html,
+  });
+  console.log(`[scanner] Email sent from ${zohoUser}: ${subject}`);
 }
 
 // ── Modes ───────────────────────────────────────────────────────────────────

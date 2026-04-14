@@ -1,53 +1,83 @@
 #!/bin/bash
+# ═══════════════════════════════════════════════════════════
+#  MadLadsLab — Start All Services
+#  Usage: bash /srv/start-all-services.sh [--restart-only]
+#  --restart-only  kills & restarts only already-running sessions
+# ═══════════════════════════════════════════════════════════
 
-# Start All MadLads Lab Services in Tmux
-# This script creates a tmux session for each service
+RESTART_ONLY=false
+[[ "$1" == "--restart-only" ]] && RESTART_ONLY=true
 
-echo "Starting all services in tmux sessions..."
-
-# Service configurations: name:port:directory:command
+# name : port : directory : start command
+# Port env var is passed as PORT=<port> unless the service uses its own var
 SERVICES=(
-  "madladslab:3000:/srv/madladslab:npm start"
-  "ps:3399:/srv/ps:npm start"
-  "game-state:3500:/srv/game-state-service:node index.js"
-  "acm:3004:/srv/acm:npm start"
-  "nocometalworkz:3002:/srv/nocometalworkz:npm start"
-  "sfg:3003:/srv/sfg:npm start"
-  "sna:3010:/srv/sna:npm start"
-  "twww:3005:/srv/twww:npm start"
-  "w2portal:3006:/srv/w2MongoClient:npm start"
-  "madThree:3007:/srv/madThree:npm start"
-  "graffitiTV:3008:/srv/graffiti-tv:GRAFFITI_TV_PORT=3008 npm start"
+  "slab:3602:/srv/slab:node bin/www.js"
+  "games:3500:/srv/games:node app.js"
+  "graffiti-tv:3001:/srv/graffiti-tv:node ./bin/www"
+  "greealitytv:3400:/srv/greealitytv:node app.js"
+  "madladslab:3000:/srv/madladslab:node ./bin/www"
+  "ps:3399:/srv/ps:node ./bin/www"
+  "opsTrain:3603:/srv/opsTrain:node bin/www"
+  "w2marketing:3601:/srv/depricated/w2Marketing:node bin/www.js"
+  "nocometalworkz:3002:/srv/nocometalworkz:node ./bin/www"
+  "mcp-streamable:3650:/srv/mcp:node mcp-http.js"
 )
 
-# Kill existing sessions
-for service_config in "${SERVICES[@]}"; do
-  IFS=':' read -r name port dir cmd <<< "$service_config"
+echo ""
+echo "╔══════════════════════════════════════════╗"
+echo "║     MadLadsLab — Service Startup          ║"
+echo "╚══════════════════════════════════════════╝"
+echo ""
+
+started=0
+skipped=0
+failed=0
+
+for svc in "${SERVICES[@]}"; do
+  IFS=':' read -r name port dir cmd <<< "$svc"
+
+  # Skip if --restart-only and session doesn't exist
+  if $RESTART_ONLY && ! tmux has-session -t "$name" 2>/dev/null; then
+    echo "  ⏭  $name — skipped (not running)"
+    ((skipped++))
+    continue
+  fi
+
+  # Kill existing session
   tmux kill-session -t "$name" 2>/dev/null
-done
 
-# Start each service in its own tmux session
-for service_config in "${SERVICES[@]}"; do
-  IFS=':' read -r name port dir cmd <<< "$service_config"
+  if [ ! -d "$dir" ]; then
+    echo "  ❌  $name — directory not found: $dir"
+    ((failed++))
+    continue
+  fi
 
-  if [ -d "$dir" ]; then
-    echo "Starting $name on port $port..."
-    tmux new-session -d -s "$name" -c "$dir" "PORT=$port $cmd"
-    sleep 1
+  # Special port env vars
+  if [[ "$name" == "games" ]]; then
+    env_prefix="GAMES_PORT=$port"
   else
-    echo "Warning: Directory $dir not found for $name"
+    env_prefix="PORT=$port"
+  fi
+
+  tmux new-session -d -s "$name" -c "$dir" "$env_prefix $cmd"
+  sleep 1
+
+  # Verify it came up
+  pid=$(lsof -ti :$port 2>/dev/null | head -1)
+  if [ -n "$pid" ]; then
+    echo "  ✅  $name — port $port (pid $pid)"
+    ((started++))
+  else
+    echo "  ⚠   $name — started but port $port not yet listening (may still be booting)"
+    ((started++))
   fi
 done
 
 echo ""
-echo "All services started! Use these commands to view logs:"
-echo "  tmux attach -t <service-name>"
+echo "══════════════════════════════════════════"
+echo "  Started: $started  |  Skipped: $skipped  |  Failed: $failed"
+echo "══════════════════════════════════════════"
 echo ""
-echo "Available services:"
-for service_config in "${SERVICES[@]}"; do
-  IFS=':' read -r name port dir cmd <<< "$service_config"
-  echo "  - $name (port $port): tmux attach -t $name"
-done
-
+echo "  View logs:   tmux attach -t <name>"
+echo "  List all:    tmux ls"
 echo ""
-echo "To see all running sessions: tmux ls"

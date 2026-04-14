@@ -1,10 +1,12 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import QRCode from 'qrcode';
 import { getDb } from '../plugins/mongo.js';
 import { getReviews } from '../plugins/reviews.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { config } from '../config/config.js';
+import { notifyAdmin } from '../plugins/notify.js';
 
 const router = express.Router();
 
@@ -51,10 +53,16 @@ const COPY_DEFAULTS = {
   services_sub: 'Everything your business needs to build a powerful presence.',
   service1_title: 'Service One',
   service1_desc: 'Description of your first service offering.',
+  service1_image: '',
+  service1_link: '',
   service2_title: 'Service Two',
   service2_desc: 'Description of your second service offering.',
+  service2_image: '',
+  service2_link: '',
   service3_title: 'Service Three',
   service3_desc: 'Description of your third service offering.',
+  service3_image: '',
+  service3_link: '',
   about_quote: '',
   about_desc: '',
   about_sig: '',
@@ -79,10 +87,16 @@ const COPY_DEFAULTS = {
   process3_desc: 'We produce and review deliverables with you.',
   process4_title: 'Launch & Grow',
   process4_desc: 'We go live, track results, and optimize.',
+  contact_eyebrow: 'Get In Touch',
+  contact_heading: "Let's Work",
+  contact_heading_em: 'Together',
   contact_sub: "Ready to get started? Tell us about your project and we'll be in touch.",
   contact_location: '',
+  contact_location_label: 'Location',
   contact_serving: '',
+  contact_serving_label: 'Serving',
   contact_services: '',
+  contact_services_label: 'Services',
   contact_btn: 'Send Message',
   contact_fname_label: 'First Name',
   contact_fname_placeholder: 'Jane',
@@ -278,14 +292,49 @@ router.post('/contact', async (req, res) => {
 
     if (!email) return res.redirect('/#contact');
 
-    await db.collection('inquiries').insertOne({
+    const inquiry = {
       name: contactName.trim(),
       email: email.toLowerCase().trim(),
       company: company?.trim() || '',
       service: service?.trim() || '',
       message: message?.trim() || '',
+      tenantDomain: req.tenant?.domain || '',
       createdAt: new Date(),
-    });
+    };
+    await db.collection('inquiries').insertOne(inquiry);
+
+    // Notify admin + forward to tenant email if configured
+    const brand = res.locals.brand || {};
+    notifyAdmin({ type: 'contact', app: 'slab', email: inquiry.email, name: inquiry.name, ip: req.ip,
+      data: { 'Brand': brand.name || req.tenant?.domain || 'sLab tenant', 'Domain': req.tenant?.domain || '', 'Company': inquiry.company, 'Service': inquiry.service, 'Message': inquiry.message?.slice(0, 200) } }).catch(() => {});
+
+    // Forward to tenant owner if they have Zoho configured
+    try {
+      const tenant = await import('../plugins/mongo.js').then(m => m.getSlabDb()).then(sdb => sdb.collection('tenants').findOne({ domain: req.tenant?.domain }));
+      const zohoUser = tenant?.secrets?.zohoUser || tenant?.public?.zohoUser;
+      const zohoPass = tenant?.secrets?.zohoPass;
+      const ownerEmail = tenant?.meta?.ownerEmail;
+      if (zohoUser && zohoPass && ownerEmail) {
+        const nodemailer = await import('nodemailer');
+        const t = nodemailer.default.createTransport({ host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN', auth: { user: zohoUser, pass: zohoPass } });
+        await t.sendMail({
+          from: `"${brand.name || 'Your Site'}" <${zohoUser}>`,
+          to: ownerEmail,
+          replyTo: inquiry.email,
+          subject: `New Contact: ${inquiry.name}${inquiry.service ? ' — ' + inquiry.service : ''}`,
+          html: `<div style="font-family:Inter,sans-serif;max-width:500px;padding:24px;background:#fff;color:#111">
+            <h2 style="font-size:18px;margin-bottom:16px">New Contact Form Submission</h2>
+            <table style="width:100%;border-collapse:collapse">
+              <tr><td style="padding:6px;color:#666;width:100px">Name</td><td style="padding:6px"><strong>${inquiry.name}</strong></td></tr>
+              <tr><td style="padding:6px;color:#666">Email</td><td style="padding:6px"><a href="mailto:${inquiry.email}">${inquiry.email}</a></td></tr>
+              ${inquiry.company ? `<tr><td style="padding:6px;color:#666">Company</td><td style="padding:6px">${inquiry.company}</td></tr>` : ''}
+              ${inquiry.service ? `<tr><td style="padding:6px;color:#666">Service</td><td style="padding:6px">${inquiry.service}</td></tr>` : ''}
+              <tr><td style="padding:6px;color:#666;vertical-align:top">Message</td><td style="padding:6px">${inquiry.message || '—'}</td></tr>
+            </table>
+          </div>`,
+        });
+      }
+    } catch (emailErr) { console.error('[contact] Forward email error:', emailErr.message); }
 
     res.redirect('/?contacted=1#contact');
   } catch (err) {
@@ -335,7 +384,7 @@ router.get('/', async (req, res) => {
       }
     }
 
-    const [rawCopy, reviews, portfolio, design, rawMedia, customSections, logos, brandModels] = await Promise.all([
+    const [rawCopy, reviews, portfolio, design, rawMedia, customSections, logos, brandModels, bookingSettingsDoc] = await Promise.all([
       db.collection('copy').find({}).toArray(),
       getReviews(db, req.tenant),
       db.collection('portfolio').find({}).sort({ order: 1, createdAt: -1 }).toArray(),
@@ -344,7 +393,9 @@ router.get('/', async (req, res) => {
       db.collection('custom_sections').find({ visible: { $ne: false } }).sort({ order: 1, createdAt: 1 }).toArray(),
       getBrandLogos(db),
       getBrandModels(db),
+      db.collection('booking_settings').findOne({ key: 'config' }),
     ]);
+    const bookingEnabled = bookingSettingsDoc?.value?.enabled === true;
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
     const media = {};
@@ -369,6 +420,7 @@ router.get('/', async (req, res) => {
         latestPosts, visibility: buildVisibility(design),
         contacted: req.query.contacted,
         centralAuthUrl,
+        bookingEnabled: bookingEnabled || false,
       });
     }
 
@@ -379,6 +431,7 @@ router.get('/', async (req, res) => {
       visibility: buildVisibility(design),
       latestPosts, customSections, logos, brandModels,
       centralAuthUrl,
+      bookingEnabled: bookingEnabled || false,
     });
   } catch (err) {
     console.error(err);
@@ -431,6 +484,99 @@ router.get('/blog/:slug', async (req, res) => {
     console.error(err);
     res.status(500).send('Error loading post');
   }
+});
+
+// ── Digital Business Card ─────────────────────────────────────────────────
+router.get('/card/:slug', async (req, res, next) => {
+  try {
+    const db = req.db;
+    const link = await db.collection('qr_links').findOne({ slug: req.params.slug, type: 'business-card' });
+    if (!link) return next();
+
+    // Track scan
+    db.collection('qr_links').updateOne({ _id: link._id }, { $inc: { scanCount: 1 } }).catch(() => {});
+
+    const [design, logoRow] = await Promise.all([
+      getDesign(db),
+      db.collection('brand_images').findOne({ slot: 'logo_primary' }),
+    ]);
+
+    const brand = req.tenant?.brand || {};
+    const logo = logoRow?.url || '';
+    const domain = req.hostname;
+    const websiteUrl = `https://${domain}`;
+
+    // Generate QR code pointing to this card's URL
+    const qrDataUrl = await QRCode.toDataURL(link.url, {
+      width: 300, margin: 2,
+      color: { dark: design.color_primary || '#1C2B4A', light: '#ffffff' },
+    });
+
+    res.render('card', {
+      brand, design, logo, qrDataUrl, websiteUrl,
+      slug: req.params.slug,
+    });
+  } catch (err) {
+    console.error('[Card] render error:', err);
+    next();
+  }
+});
+
+// Card scan tracker (fire-and-forget from client JS)
+router.post('/card/:slug/scan', async (req, res) => {
+  try {
+    const db = req.db;
+    await db.collection('qr_links').updateOne(
+      { slug: req.params.slug },
+      { $inc: { scanCount: 1 } },
+    );
+    res.json({ ok: true });
+  } catch { res.json({ ok: false }); }
+});
+
+// PWA manifest for add-to-home-screen
+router.get('/card/:slug/manifest.json', async (req, res) => {
+  try {
+    const db = req.db;
+    const brand = req.tenant?.brand || {};
+    const design = await getDesign(db);
+    const logoRow = await db.collection('brand_images').findOne({ slot: 'logo_primary' });
+    const icons = logoRow ? [{ src: logoRow.url, sizes: '192x192', type: 'image/png' }] : [];
+
+    res.json({
+      name: brand.name || 'Business Card',
+      short_name: (brand.name || 'Card').slice(0, 12),
+      description: brand.tagline || brand.businessType || '',
+      start_url: `/card/${req.params.slug}`,
+      display: 'standalone',
+      background_color: design.color_primary_deep || '#0F1B30',
+      theme_color: design.color_primary || '#1C2B4A',
+      icons,
+    });
+  } catch {
+    res.status(500).json({ error: 'manifest error' });
+  }
+});
+
+// ── Footer QR links API (for public views) ─────────────────────────────────
+router.get('/api/footer-qr', async (req, res) => {
+  try {
+    const db = req.db;
+    const links = await db.collection('qr_links').find({ showInFooter: true }).toArray();
+    const design = {};
+    const rows = await db.collection('design').find({ key: 'color_primary' }).toArray();
+    for (const r of rows) design[r.key] = r.value;
+
+    const results = await Promise.all(links.map(async (link) => {
+      const dataUrl = await QRCode.toDataURL(link.url, {
+        width: 120, margin: 1,
+        color: { dark: '#ffffff', light: 'rgba(0,0,0,0)' },
+      });
+      return { label: link.label, url: link.url, slug: link.slug, type: link.type, dataUrl };
+    }));
+
+    res.json({ links: results });
+  } catch { res.json({ links: [] }); }
 });
 
 // Dynamic pages — must be last

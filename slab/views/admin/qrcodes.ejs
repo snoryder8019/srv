@@ -1,0 +1,223 @@
+<%- include('partials/head', { title: 'QR Codes & Business Card' }) %>
+<%- include('partials/sidebar', { page: 'qr-codes', user: user }) %>
+
+<style>
+.qr-page { max-width: 960px; margin: 0 auto; }
+.qr-page h1 { font-family: var(--font-heading), serif; font-size: 1.6rem; font-weight: 600; margin-bottom: 6px; }
+.qr-page .subtitle { color: var(--on-ivory-muted); font-size: 0.85rem; margin-bottom: 28px; }
+
+/* Create form */
+.qr-create-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 24px; margin-bottom: 28px;
+}
+.qr-create-card h2 { font-family: var(--font-heading), serif; font-size: 1.1rem; margin-bottom: 16px; }
+.qr-form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.qr-form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
+.qr-form-group label { font-size: 0.75rem; font-weight: 500; color: var(--on-ivory-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.qr-form-group input, .qr-form-group select {
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 0.85rem; font-family: var(--font-body), sans-serif; background: var(--white);
+}
+.qr-form-group input:focus, .qr-form-group select:focus { outline: none; border-color: var(--accent); }
+
+/* QR Link Cards */
+.qr-links-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 20px; }
+.qr-link-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 20px; position: relative; transition: border-color 0.2s;
+}
+.qr-link-card:hover { border-color: var(--accent); }
+.qr-link-card .qr-type-badge {
+  display: inline-block; font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; padding: 2px 8px; border-radius: 3px; margin-bottom: 8px;
+}
+.qr-type-badge.business-card { background: var(--accent); color: var(--dark); }
+.qr-type-badge.custom { background: var(--primary-mid); color: var(--white); }
+.qr-type-badge.page { background: var(--border); color: var(--dark); }
+
+.qr-link-card h3 { font-family: var(--font-heading), serif; font-size: 1.05rem; margin-bottom: 4px; }
+.qr-link-card .qr-url { font-size: 0.75rem; color: var(--on-ivory-muted); word-break: break-all; margin-bottom: 12px; }
+
+.qr-preview-area { text-align: center; margin: 12px 0; }
+.qr-preview-area img { width: 160px; height: 160px; border-radius: 4px; border: 1px solid var(--border); }
+
+.qr-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.qr-actions form { display: inline; }
+
+/* Business card preview */
+.bcard-preview {
+  background: var(--primary); color: var(--white); border-radius: 12px;
+  padding: 28px 24px; text-align: center; max-width: 340px; margin: 0 auto 28px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+.bcard-preview .bcard-logo { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; margin-bottom: 12px; border: 2px solid var(--accent); }
+.bcard-preview .bcard-name { font-family: var(--font-heading), serif; font-size: 1.3rem; font-weight: 600; margin-bottom: 4px; }
+.bcard-preview .bcard-tagline { font-size: 0.8rem; opacity: 0.8; margin-bottom: 16px; }
+.bcard-preview .bcard-contact { font-size: 0.78rem; opacity: 0.7; line-height: 1.6; }
+
+/* Footer toggle indicator */
+.footer-badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 3px; font-weight: 500; }
+.footer-badge.on { background: #dcfce7; color: #166534; }
+.footer-badge.off { background: var(--border); color: var(--on-ivory-muted); }
+
+/* Toast */
+.qr-toast {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 10001;
+  background: #14532d; color: #86efac; padding: 12px 24px; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  animation: toastIn 0.3s ease, toastOut 0.3s ease 3s forwards;
+}
+@keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
+@keyframes toastOut { to { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
+
+/* Empty state */
+.qr-empty {
+  text-align: center; padding: 48px 24px; color: var(--on-ivory-muted);
+  border: 2px dashed var(--border); border-radius: 8px; margin-top: 20px;
+}
+.qr-empty svg { opacity: 0.3; margin-bottom: 12px; }
+
+@media (max-width: 600px) {
+  .qr-form-row { flex-direction: column; }
+  .qr-links-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<main class="admin-main">
+  <div class="qr-page">
+    <% if (saved) { %><div class="qr-toast">Changes saved!</div><% } %>
+
+    <h1>QR Codes & Business Card</h1>
+    <p class="subtitle">Create QR links, digital business cards, and share branded content with a scan.</p>
+
+    <!-- ═══ Business Card Preview ═══ -->
+    <div class="qr-create-card">
+      <h2>Your Digital Business Card</h2>
+      <p style="font-size:0.82rem;color:var(--on-ivory-muted);margin-bottom:16px;">
+        Create a "Business Card" QR link below. When scanned, visitors see a branded mobile card with your info, QR code, and an option to add it to their home screen.
+      </p>
+      <div class="bcard-preview" style="background:<%= brandDesign.color_primary || '#1C2B4A' %>;">
+        <% if (logo) { %>
+          <img src="<%= logo %>" alt="Logo" class="bcard-logo">
+        <% } else { %>
+          <div style="width:64px;height:64px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:700;color:var(--dark);margin-bottom:12px;"><%= (brand?.name || '?')[0] %></div>
+        <% } %>
+        <div class="bcard-name"><%= brand?.name || 'Your Business' %></div>
+        <div class="bcard-tagline"><%= brand?.tagline || brand?.businessType || '' %></div>
+        <div style="width:100px;height:100px;background:rgba(255,255,255,0.15);border-radius:6px;margin:12px auto;display:flex;align-items:center;justify-content:center;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="2" height="2"/><rect x="20" y="14" width="2" height="2"/><rect x="14" y="20" width="2" height="2"/><rect x="20" y="20" width="2" height="2"/><rect x="17" y="17" width="2" height="2"/></svg>
+        </div>
+        <div class="bcard-contact">
+          <% if (brand?.phone) { %><div><%= brand.phone %></div><% } %>
+          <% if (brand?.email) { %><div><%= brand.email %></div><% } %>
+          <% if (brand?.location) { %><div><%= brand.location %></div><% } %>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Create New QR Link ═══ -->
+    <div class="qr-create-card">
+      <h2>Create QR Link</h2>
+      <form method="POST" action="/admin/qr-codes">
+        <div class="qr-form-row">
+          <div class="qr-form-group">
+            <label>Type</label>
+            <select name="type" id="qrType" onchange="toggleUrlField()">
+              <option value="business-card">Business Card</option>
+              <option value="custom">Custom URL</option>
+              <option value="page">Page Link</option>
+            </select>
+          </div>
+          <div class="qr-form-group">
+            <label>Label</label>
+            <input type="text" name="label" placeholder="e.g. Main Business Card" required>
+          </div>
+          <div class="qr-form-group" id="slugGroup">
+            <label>Slug</label>
+            <input type="text" name="slug" placeholder="e.g. main" pattern="[a-z0-9\-]+" title="Lowercase letters, numbers, hyphens only">
+          </div>
+          <div class="qr-form-group" id="urlGroup" style="display:none;">
+            <label>URL</label>
+            <input type="url" name="url" placeholder="https://...">
+          </div>
+          <div class="qr-form-group" style="flex:0 0 auto;">
+            <label>&nbsp;</label>
+            <button type="submit" class="btn btn-primary" style="white-space:nowrap;">Create QR</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- ═══ Existing QR Links ═══ -->
+    <h2 style="font-family:var(--font-heading),serif;font-size:1.1rem;margin-top:32px;">Your QR Links</h2>
+
+    <% if (!links || links.length === 0) { %>
+      <div class="qr-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="2" height="2"/><rect x="20" y="14" width="2" height="2"/><rect x="14" y="20" width="2" height="2"/><rect x="20" y="20" width="2" height="2"/><rect x="17" y="17" width="2" height="2"/></svg>
+        <p style="font-size:0.9rem;margin-bottom:4px;">No QR links yet</p>
+        <p style="font-size:0.78rem;">Create your first QR code above to get started.</p>
+      </div>
+    <% } else { %>
+      <div class="qr-links-grid">
+        <% links.forEach(function(link) { %>
+          <div class="qr-link-card">
+            <span class="qr-type-badge <%= link.type %>"><%= link.type === 'business-card' ? 'Business Card' : link.type === 'page' ? 'Page' : 'Custom' %></span>
+            <% if (link.showInFooter) { %><span class="footer-badge on">In Footer</span><% } %>
+            <h3><%- link.label %></h3>
+            <div class="qr-url"><%= link.url %></div>
+
+            <div class="qr-preview-area">
+              <img src="/admin/qr-codes/<%= link._id %>/qr.png" alt="QR Code" loading="lazy">
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.72rem;color:var(--on-ivory-muted);margin-bottom:8px;">
+              <span>Created <%= link.createdAt ? new Date(link.createdAt).toLocaleDateString() : '' %></span>
+              <span><%= link.scanCount || 0 %> scans</span>
+            </div>
+
+            <div class="qr-actions">
+              <a href="/admin/qr-codes/<%= link._id %>/qr.png" download="<%= link.slug %>-qr.png" class="btn btn-sm">Download PNG</a>
+
+              <% if (link.type === 'business-card') { %>
+                <a href="/card/<%= link.slug %>" target="_blank" class="btn btn-sm btn-outline">Preview Card</a>
+              <% } %>
+
+              <form method="POST" action="/admin/qr-codes/<%= link._id %>/footer">
+                <button type="submit" class="btn btn-sm btn-outline" title="<%= link.showInFooter ? 'Remove from footer' : 'Show in website footer' %>">
+                  <%= link.showInFooter ? 'Remove from Footer' : 'Add to Footer' %>
+                </button>
+              </form>
+
+              <button class="btn btn-sm btn-outline" onclick="copyToClipboard('<%= link.url %>', this)">Copy URL</button>
+
+              <form method="POST" action="/admin/qr-codes/<%= link._id %>/delete" onsubmit="return confirm('Delete this QR link?')">
+                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+              </form>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    <% } %>
+
+  </div>
+</main>
+
+<script>
+function toggleUrlField() {
+  var type = document.getElementById('qrType').value;
+  document.getElementById('urlGroup').style.display = type === 'custom' ? '' : 'none';
+  document.getElementById('slugGroup').style.display = type !== 'custom' ? '' : 'none';
+}
+
+function copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = orig; }, 2000);
+  });
+}
+</script>
+
+</body>
+</html>

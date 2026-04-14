@@ -1,3 +1,4 @@
+const { notifyAdmin } = require('/srv/slab/plugins/notify.cjs');
 const express = require('express');
 const bcrypt = require('bcrypt');
 const { MongoClient } = require('mongodb');
@@ -171,6 +172,10 @@ router.post('/signup', async (req, res) => {
       await applyDelegatePromo(brand, delegateRef, cleanEmail);
     }
 
+    notifyAdmin({ type: 'opstrain', app: 'opsTrain', email: cleanEmail,
+      name: (ownerName || '').trim() || cleanEmail, ip: req.ip,
+      data: { Method: 'Password', Brand: brand.name, Plan: 'free (trial)', Location: (location || '').trim() } }).catch(() => {});
+
     // Auto-login via Passport
     req.logIn(user, (err) => {
       if (err) {
@@ -248,6 +253,10 @@ router.post('/google-signup', express.json(), async (req, res) => {
     if (delegateRef) {
       await applyDelegatePromo(brand, delegateRef, profile.email);
     }
+
+    notifyAdmin({ type: 'opstrain', app: 'opsTrain', email: profile.email,
+      name: profile.name || profile.email, ip: req.ip || '',
+      data: { Method: 'Google', Brand: brand.name, Plan: 'free (trial)', Location: (location || '').trim() } }).catch(() => {});
 
     // Auto-login
     req.logIn(user, (err) => {

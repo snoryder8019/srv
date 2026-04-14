@@ -3,119 +3,413 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login — MadLadsLab Games</title>
+  <title>Access — MadLadsLab Games</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600;700&display=swap');
+
+    :root {
+      --bg: #080808;
+      --surface: #0e0e0e;
+      --card: #111;
+      --border: #1e1e1e;
+      --accent: #cd412b;
+      --accent-dim: rgba(205,65,43,0.18);
+      --accent-glow: rgba(205,65,43,0.5);
+      --text: #e0e0e0;
+      --muted: #444;
+      --mono: 'Share Tech Mono', 'Courier New', monospace;
+      --display: 'Rajdhani', sans-serif;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      background: #0d0d0d;
-      color: #e0e0e0;
-      font-family: 'Courier New', monospace;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
-      padding: 20px;
+      overflow: hidden;
+      position: relative;
     }
+
+    /* ── Grid background ── */
+    .bg-grid {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(205,65,43,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(205,65,43,0.04) 1px, transparent 1px);
+      background-size: 44px 44px;
+      z-index: 0;
+      animation: gridDrift 40s linear infinite;
+    }
+    @keyframes gridDrift {
+      from { background-position: 0 0, 0 0; }
+      to   { background-position: 44px 44px, 44px 44px; }
+    }
+
+    /* ── Scanlines ── */
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.18) 2px,
+        rgba(0,0,0,0.18) 4px
+      );
+    }
+
+    /* ── Corner decorations ── */
+    .corner {
+      position: fixed;
+      width: 60px; height: 60px;
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0.35;
+    }
+    .corner::before, .corner::after {
+      content: '';
+      position: absolute;
+      background: var(--accent);
+    }
+    .corner::before { width: 100%; height: 1px; }
+    .corner::after  { width: 1px; height: 100%; }
+    .corner.tl { top: 20px; left: 20px; }
+    .corner.tr { top: 20px; right: 20px; transform: scaleX(-1); }
+    .corner.bl { bottom: 20px; left: 20px; transform: scaleY(-1); }
+    .corner.br { bottom: 20px; right: 20px; transform: scale(-1); }
+
+    /* ── Status ticker ── */
+    .status-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 28px;
+      background: rgba(8,8,8,0.95);
+      border-top: 1px solid #1a1a1a;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+    .status-label {
+      padding: 0 14px;
+      border-right: 1px solid #1e1e1e;
+      color: var(--accent);
+      white-space: nowrap;
+      font-size: 0.6rem;
+    }
+    .status-scroll {
+      display: flex;
+      animation: tickerScroll 28s linear infinite;
+      white-space: nowrap;
+      padding-left: 30px;
+    }
+    .status-scroll span { padding: 0 32px; }
+    .dot { color: var(--accent); }
+    @keyframes tickerScroll {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    /* ── Main card ── */
     .card {
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-top: 3px solid #cd412b;
-      border-radius: 4px;
-      padding: 40px;
+      position: relative;
+      z-index: 5;
       width: 100%;
-      max-width: 400px;
+      max-width: 420px;
+      padding: 0 20px 28px;
+      animation: cardIn 0.5s cubic-bezier(0.16,1,0.3,1) both;
     }
-    h1 { color: #cd412b; font-size: 1.4rem; margin-bottom: 4px; }
-    .sub { color: #555; font-size: 0.8rem; margin-bottom: 32px; }
-    label { display: block; color: #888; font-size: 0.75rem; margin-bottom: 6px; letter-spacing: 0.05em; }
-    input {
-      width: 100%;
-      background: #111;
-      border: 1px solid #333;
-      color: #e0e0e0;
-      font-family: inherit;
-      font-size: 0.9rem;
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Header block ── */
+    .header {
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #1a1a1a;
+      position: relative;
+    }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px; left: 0;
+      width: 60px; height: 1px;
+      background: var(--accent);
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .logo-main {
+      font-family: var(--display);
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+      line-height: 1;
+      text-transform: uppercase;
+      text-shadow: 0 0 24px var(--accent-glow);
+      position: relative;
+    }
+    .logo-main::after {
+      content: attr(data-text);
+      position: absolute;
+      inset: 0;
+      color: var(--accent);
+      clip-path: inset(0 0 60% 0);
+      opacity: 0.4;
+      filter: blur(1px);
+      transform: translateY(-1px);
+    }
+
+    .logo-tag {
+      font-size: 0.6rem;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .sys-id {
+      font-size: 0.65rem;
+      color: #2e2e2e;
+      letter-spacing: 0.08em;
+      margin-top: 2px;
+    }
+    .sys-id .blink {
+      display: inline-block;
+      width: 7px; height: 10px;
+      background: var(--accent);
+      opacity: 0.7;
+      margin-left: 2px;
+      vertical-align: middle;
+      animation: blink 1.1s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ── Error ── */
+    .error-box {
+      background: rgba(205,65,43,0.08);
+      border: 1px solid rgba(205,65,43,0.3);
+      border-left: 3px solid var(--accent);
+      color: #ff7060;
+      font-size: 0.72rem;
       padding: 10px 14px;
-      border-radius: 3px;
+      border-radius: 2px;
       margin-bottom: 20px;
-      outline: none;
-      transition: border-color 0.2s;
+      letter-spacing: 0.04em;
+      display: none;
     }
-    input:focus { border-color: #cd412b; }
-    button {
+    .error-box::before { content: '✕  '; }
+
+    /* ── Form fields ── */
+    .field { margin-bottom: 18px; }
+    .field label {
+      display: block;
+      font-size: 0.62rem;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+    .field input {
       width: 100%;
-      background: #cd412b;
+      background: #0c0c0c;
+      border: 1px solid #222;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.88rem;
+      padding: 11px 14px;
+      border-radius: 2px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      letter-spacing: 0.02em;
+    }
+    .field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim), inset 0 0 8px rgba(205,65,43,0.04);
+    }
+    .field input::placeholder { color: #2a2a2a; }
+
+    /* ── Submit button ── */
+    .btn-primary {
+      width: 100%;
+      background: var(--accent);
       color: #fff;
       border: none;
-      font-family: inherit;
-      font-size: 0.9rem;
-      font-weight: bold;
-      padding: 12px;
-      border-radius: 3px;
+      font-family: var(--display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 13px;
+      border-radius: 2px;
       cursor: pointer;
-      letter-spacing: 0.05em;
-      transition: background 0.2s;
+      position: relative;
+      overflow: hidden;
+      transition: background 0.15s, box-shadow 0.15s;
     }
-    button:hover { background: #b83525; }
-    .error {
-      background: #2a1010;
-      border: 1px solid #cd412b;
-      color: #ff6b6b;
-      font-size: 0.82rem;
-      padding: 10px 14px;
-      border-radius: 3px;
-      margin-bottom: 20px;
+    .btn-primary::before {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%;
+      width: 60%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+      transition: left 0.4s;
     }
+    .btn-primary:hover { background: #b83525; box-shadow: 0 0 20px var(--accent-glow); }
+    .btn-primary:hover::before { left: 150%; }
+    .btn-primary:active { transform: scale(0.99); }
+
+    /* ── Divider ── */
     .divider {
-      display: flex; align-items: center; gap: 12px;
-      color: #333; font-size: 0.75rem; margin: 20px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 22px 0;
+      color: #252525;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
     }
-    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #2a2a2a; }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #1c1c1c;
+    }
+
+    /* ── Google button ── */
     .btn-google {
       width: 100%;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      color: #e0e0e0;
-      font-family: inherit;
-      font-size: 0.85rem;
-      padding: 11px;
-      border-radius: 3px;
+      background: transparent;
+      border: 1px solid #252525;
+      color: #888;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      padding: 12px 16px;
+      border-radius: 2px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 12px;
       text-decoration: none;
-      transition: border-color 0.2s;
+      letter-spacing: 0.04em;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      position: relative;
     }
-    .btn-google:hover { border-color: #555; }
-    .note {
-      color: #444;
-      font-size: 0.75rem;
+    .btn-google:hover {
+      border-color: #3a3a3a;
+      color: var(--text);
+      background: #0f0f0f;
+    }
+    .btn-google .g-icon {
+      width: 16px; height: 16px;
+      flex-shrink: 0;
+    }
+
+    /* ── Footer note ── */
+    .footnote {
       text-align: center;
-      margin-top: 24px;
+      margin-top: 26px;
+      font-size: 0.6rem;
+      color: #262626;
+      letter-spacing: 0.06em;
+      line-height: 1.7;
     }
-    .note a { color: #cd412b; text-decoration: none; }
+    .footnote a { color: #3a3a3a; text-decoration: none; }
+    .footnote a:hover { color: var(--accent); }
+
+    /* ── Section label ── */
+    .section-label {
+      font-size: 0.6rem;
+      color: #2a2a2a;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
   </style>
 </head>
 <body>
+
+  <div class="bg-grid"></div>
+  <div class="scanlines"></div>
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+
   <div class="card">
-    <h1>MadLadsLab</h1>
-    <p class="sub">Game Server Portal</p>
-    <div id="err" class="error" style="display:none">Invalid email or password.</div>
+    <div class="header">
+      <div class="logo-row">
+        <div class="logo-main" data-text="MadLadsLab">MadLadsLab</div>
+      </div>
+      <div class="logo-tag">Game Server Portal</div>
+      <div class="sys-id">SYS://GAMES.MADLADSLAB.COM<span class="blink"></span></div>
+    </div>
+
+    <div id="err" class="error-box">Authentication failed. Check credentials.</div>
+
+    <div class="section-label">// Authenticate</div>
+
     <form method="POST" action="/login">
-      <label>EMAIL</label>
-      <input type="email" name="email" required autocomplete="email" autofocus>
-      <label>PASSWORD</label>
-      <input type="password" name="password" required autocomplete="current-password">
-      <button type="submit">LOGIN</button>
+      <div class="field">
+        <label>Email Address</label>
+        <input type="email" name="email" required autocomplete="email" autofocus placeholder="user@domain.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="password" required autocomplete="current-password" placeholder="••••••••••••">
+      </div>
+      <button class="btn-primary" type="submit">Authenticate</button>
     </form>
-    <div class="divider">OR</div>
-    <a class="btn-google" href="/auth/google">
-      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
+
+    <div class="divider">or continue with</div>
+
+    <a class="btn-google" href="https://madladslab.com/auth/games">
+      <svg class="g-icon" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+        <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+        <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+        <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
+        <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
+      </svg>
       Continue with Google
     </a>
+
+    <div class="footnote">
+      By signing in you agree to our <a href="#">terms</a>.<br>
+      Access is restricted to authorized users only.
+    </div>
   </div>
+
+  <div class="status-bar">
+    <div class="status-label">◈ SYS</div>
+    <div class="status-scroll">
+      <span>SECURE CONNECTION ESTABLISHED <span class="dot">◆</span></span>
+      <span>GAME SERVERS ONLINE <span class="dot">◆</span></span>
+      <span>RUST <span class="dot">●</span> VALHEIM <span class="dot">●</span> 7DTD <span class="dot">●</span> PALWORLD <span class="dot">●</span></span>
+      <span>AUTH GATEWAY ACTIVE <span class="dot">◆</span></span>
+      <span>SECURE CONNECTION ESTABLISHED <span class="dot">◆</span></span>
+      <span>GAME SERVERS ONLINE <span class="dot">◆</span></span>
+      <span>RUST <span class="dot">●</span> VALHEIM <span class="dot">●</span> 7DTD <span class="dot">●</span> PALWORLD <span class="dot">●</span></span>
+      <span>AUTH GATEWAY ACTIVE <span class="dot">◆</span></span>
+    </div>
+  </div>
+
   <script>
     if (new URLSearchParams(location.search).get('error')) {
       document.getElementById('err').style.display = 'block';

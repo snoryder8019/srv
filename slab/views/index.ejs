@@ -1196,7 +1196,7 @@
   }
   [data-layout="industrial"] .hero-heading em { color: var(--gold); font-style: normal; }
   [data-layout="industrial"] .hero-sub { color: rgba(253,252,250,0.55); font-size: 18px; max-width: 520px; }
-  [data-layout="industrial"] .btn-primary { background: var(--gold); color: var(--white); border-radius: 8px; }
+  [data-layout="industrial"] .btn-primary { background: var(--gold); color: #0F1B30; border-radius: 8px; }
   [data-layout="industrial"] .btn-primary:hover { box-shadow: 0 8px 24px rgba(249,115,22,0.35); transform: translateY(-1px); }
   [data-layout="industrial"] .btn-ghost { background: rgba(255,255,255,0.07); color: var(--white); border-color: rgba(255,255,255,0.15); border-radius: 8px; }
   [data-layout="industrial"] .btn-ghost:hover { background: rgba(255,255,255,0.12); }
@@ -1268,7 +1268,7 @@
     border-color: var(--gold); box-shadow: 0 0 0 3px rgba(249,115,22,0.2);
   }
   [data-layout="industrial"] .contact-right .form-field label { color: rgba(253,252,250,0.55); }
-  [data-layout="industrial"] .btn-submit { background: var(--gold); color: var(--white); border-radius: 8px; }
+  [data-layout="industrial"] .btn-submit { background: var(--gold); color: #0F1B30; border-radius: 8px; }
   [data-layout="industrial"] .btn-submit:hover { box-shadow: 0 8px 24px rgba(249,115,22,0.35); }
   [data-layout="industrial"] footer { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.08); }
 
@@ -2021,6 +2021,14 @@
         <textarea name="message" placeholder="<%= copy.contact_message_placeholder %>"></textarea>
       </div>
       <button type="submit" class="btn-submit"><%= copy.contact_btn %></button>
+      <% if (typeof bookingEnabled !== 'undefined' && bookingEnabled) { %>
+      <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid rgba(0,0,0,0.08)">
+        <span style="font-size:0.8rem;color:var(--on-ivory-muted,#888);display:block;margin-bottom:8px">Or schedule a meeting directly</span>
+        <a href="/book" style="display:inline-flex;align-items:center;gap:7px;font-size:0.82rem;font-weight:600;color:var(--primary,var(--navy));text-decoration:none;letter-spacing:0.05em;text-transform:uppercase;border:1.5px solid var(--primary,var(--navy));padding:9px 20px;border-radius:4px;transition:all 0.2s" onmouseover="this.style.background='var(--primary,var(--navy))';this.style.color='var(--on-navy,#fff)'" onmouseout="this.style.background='transparent';this.style.color='var(--primary,var(--navy))'">
+          <span>📅</span> Book a Meeting
+        </a>
+      </div>
+      <% } %>
       <div id="form-msg"></div>
     </form>
   </div>
@@ -2178,6 +2186,11 @@
       <li><a href="/onboard" style="color:var(--gold-light);font-weight:500;">Get Started</a></li>
     </ul>
   </div>
+  <!-- Footer QR Codes (loaded dynamically from admin QR links) -->
+  <div id="footer-qr-codes" style="display:none;padding:24px 0 0;text-align:center;">
+    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--gold-light,#E8D08A);margin-bottom:14px;font-weight:500;">Scan & Connect</div>
+    <div id="footer-qr-list" style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap;"></div>
+  </div>
   <div class="footer-divider"></div>
   <div class="footer-copy">
     <span>&copy; <%= new Date().getFullYear() %> <%= brand?.name || '' %> &mdash; <%= brand?.location || '' %>. All rights reserved.</span>
@@ -2191,6 +2204,26 @@
     </span>
   </div>
 </footer>
+<script>
+(function() {
+  var container = document.getElementById('footer-qr-codes');
+  var list = document.getElementById('footer-qr-list');
+  if (!container || !list) return;
+  fetch('/api/footer-qr').then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.links || !data.links.length) return;
+    data.links.forEach(function(link) {
+      var item = document.createElement('a');
+      item.href = link.url;
+      item.target = link.type === 'business-card' ? '_blank' : '_self';
+      item.style.cssText = 'text-decoration:none;text-align:center;display:inline-block;';
+      item.innerHTML = '<img src="' + link.dataUrl + '" alt="' + link.label + '" style="width:80px;height:80px;border-radius:4px;">'
+        + '<div style="font-size:0.68rem;color:rgba(253,252,250,0.6);margin-top:6px;">' + link.label + '</div>';
+      list.appendChild(item);
+    });
+    container.style.display = '';
+  }).catch(function() {});
+})();
+</script>
 <% } %>
 
 <!-- SCROLL-DOT NAVIGATION (snap/showcase layouts) -->

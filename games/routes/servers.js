@@ -35,7 +35,7 @@ const GAME_LIBS = {
   palworld: () => require('../lib/palworld'),
 };
 
-router.post('/api/request', requireAdmin, async (req, res) => {
+router.post('/api/request', requireAuth, async (req, res) => {
   try {
     const { game } = req.body;
     const validGames = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
@@ -43,73 +43,24 @@ router.post('/api/request', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Invalid game. Choose: ' + validGames.join(', ') });
     }
 
-    const lib = GAME_LIBS[game]();
-    const userName = req.user.displayName || req.user.email;
+    const serverManager = req.app.locals.serverManager;
+    const result = await serverManager.requestStart(game, req.user._id.toString());
 
-    // Check if already running
-    if (lib.isRunning()) {
-      console.log('[servers]', userName, 'requested', game, '— already running');
-      return res.json({ ok: true, message: game.toUpperCase() + ' server is already running', status: 'running' });
-    }
-
-    // Count how many local servers are currently running (max 2 on this box)
-    const runningCount = Object.entries(GAME_LIBS).filter(([, fn]) => {
-      try { return fn().isRunning(); } catch (e) { return false; }
-    }).length;
-
-    if (runningCount >= 2) {
-      // 3rd server — spin up a Linode instead
-      console.log('[servers]', userName, 'requested', game, '— 2 already running, provisioning Linode');
-      try {
-        const server = await provisioner.provisionServer(game, req.user._id.toString());
-        const db2 = req.app.locals.db;
-        await db2.collection('server_requests').insertOne({
-          userId: req.user._id.toString(),
-          userName,
-          game,
-          status: 'provisioned',
-          linodeId: server.linodeId,
-          createdAt: new Date(),
-        });
-        // Push event to feed
-        const provEvent = { game, type: 'server_start', ts: new Date(), name: userName + ' (Linode)' };
-        await db.collection('game_events').insertOne(provEvent);
-        require('../lib/stats-collector').emitter.emit('event', provEvent);
-
-        return res.json({
-          ok: true,
-          message: game.toUpperCase() + ' server provisioning on a new Linode (2 already running locally)',
-          status: 'provisioning',
-          linodeId: server.linodeId,
-          ip: server.ip,
-        });
-      } catch (e) {
-        console.error('[servers] Linode provision failed:', e.message);
-        return res.status(500).json({ error: 'Could not provision server: ' + e.message });
-      }
-    }
-
-    // Start locally
-    console.log('[servers]', userName, 'requested', game, '— starting server');
-    const result = lib.startServer();
-
-    // Log the request + emit event
+    // Log to DB + stats feed
     const db = req.app.locals.db;
+    const userName = req.user.displayName || req.user.email;
     await db.collection('server_requests').insertOne({
-      userId: req.user._id.toString(),
-      userName,
-      game,
-      status: 'started',
-      createdAt: new Date(),
-    });
+      userId: req.user._id.toString(), userName, game,
+      status: result.status || 'requested', createdAt: new Date(),
+    }).catch(() => {});
 
-    // Push event to stats feed so dashboard updates
-    const event = { game, type: 'server_start', ts: new Date(), name: userName };
-    await db.collection('game_events').insertOne(event);
-    const statsCollector = require('../lib/stats-collector');
-    statsCollector.emitter.emit('event', event);
+    if (result.status === 'starting' || result.status === 'already_running') {
+      const event = { game, type: 'server_start', ts: new Date(), name: userName };
+      await db.collection('game_events').insertOne(event).catch(() => {});
+      require('../lib/stats-collector').emitter.emit('event', event);
+    }
 
-    res.json({ ok: true, message: game.toUpperCase() + ' server starting up — give it a minute to boot', status: 'starting' });
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

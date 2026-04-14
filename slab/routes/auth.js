@@ -1,5 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
 import { ObjectId } from 'mongodb';
 import { getSlabDb, getTenantDb } from '../plugins/mongo.js';
 import { issueAdminJWT, issuePortalJWT, createLoginToken } from '../middleware/jwtAuth.js';
@@ -7,6 +8,18 @@ import { isSuperAdminEmail } from '../middleware/superadmin.js';
 import { config } from '../config/config.js';
 
 const router = express.Router();
+
+const centralAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    const ip = req.ip || '';
+    return ip === '127.0.0.1' || ip === '::1';
+  },
+  message: 'Too many login attempts. Please try again in 15 minutes.',
+});
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -201,6 +214,63 @@ router.get('/google/callback', async (req, res) => {
         createdAt: new Date(),
       });
       user = await users.findOne({ _id: result.insertedId });
+    }
+
+    // ── OpsTrain portal flow ──────────────────────────────────────────────────
+    if (authType === 'opstrain') {
+      const token = jwt.sign(
+        {
+          email: profile.email,
+          displayName: profile.name || profile.given_name || profile.email,
+          firstName: profile.given_name || '',
+          lastName: profile.family_name || '',
+          googleId: profile.id,
+          isAdmin: isSuperAdminEmail(profile.email),
+          sso: true,
+        },
+        config.JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+      const dest = new URL('https://ops-train.madladslab.com/auth/sso');
+      dest.searchParams.set('token', token);
+      return res.redirect(dest.toString());
+    }
+
+    // ── GraffitiTV portal flow ─────────────────────────────────────────────────
+    if (authType === 'graffititv') {
+      const token = jwt.sign(
+        {
+          email: profile.email,
+          displayName: profile.name || profile.given_name || profile.email,
+          googleId: profile.id,
+          sso: true,
+        },
+        config.JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+      const dest = new URL('https://graffititv.madladslab.com/auth/sso');
+      dest.searchParams.set('token', token);
+      return res.redirect(dest.toString());
+    }
+
+    // ── Games portal flow — issue a one-time JWT back to games.madladslab.com ──
+    // Uses Google profile directly — games manages its own user DB independently
+    if (authType === 'games') {
+      const gamesToken = jwt.sign(
+        {
+          email: profile.email,
+          displayName: profile.name || profile.given_name || profile.email,
+          firstName: profile.given_name || '',
+          lastName: profile.family_name || '',
+          googleId: profile.id,
+          games: true,
+        },
+        config.JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+      const dest = new URL('https://games.madladslab.com/auth/sso');
+      dest.searchParams.set('token', gamesToken);
+      return res.redirect(dest.toString());
     }
 
     // ── Central flow — find user's slabs, show picker or redirect ──
@@ -455,6 +525,23 @@ async function redirectToSlab(res, slab, profile) {
   res.redirect(`${targetDomain}/admin?token=${token}`);
 }
 
+
+
+// ── OpsTrain portal Google OAuth ──────────────────────────────────────────────
+router.get('/opstrain', (req, res) => {
+  redirectToGoogle(req, res, { authType: 'opstrain' });
+});
+
+// ── GraffitiTV portal Google OAuth ───────────────────────────────────────────
+router.get('/graffititv', (req, res) => {
+  redirectToGoogle(req, res, { authType: 'graffititv' });
+});
+
+// ── Games portal Google OAuth ─────────────────────────────────────────────────
+router.get('/games', (req, res) => {
+  redirectToGoogle(req, res, { authType: 'games' });
+});
+
 // ── Central login page (slab.madladslab.com/auth/login) ─────────────────────
 router.get('/login', (req, res) => {
   const error = req.query.error;
@@ -467,7 +554,7 @@ router.get('/login', (req, res) => {
 });
 
 // ── Central email/password login — find slab by email, verify, redirect ─────
-router.post('/login', express.json(), async (req, res) => {
+router.post('/login', centralAuthLimiter, express.json(), async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>GRAFFITI TV — GALLERY</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Space+Grotesk:wght@700&family=Space+Mono&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    body {
+      min-height:100vh; overflow:hidden;
+      font-family:'Space Grotesk',sans-serif;
+      /* Textured cork board */
+      background-color: #c8a96e;
+      background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23c8a96e'/%3E%3Ccircle cx='1' cy='1' r='0.8' fill='%23b8996a' opacity='0.4'/%3E%3Ccircle cx='3' cy='3' r='0.8' fill='%23d4b578' opacity='0.3'/%3E%3C/svg%3E");
+    }
+
+    /* The whole thing is a tilted polaroid stack */
+    .board {
+      width:100vw; height:100vh;
+      position:relative;
+      display:flex; align-items:center; justify-content:center;
+    }
+
+    /* BIG central polaroid — the media */
+    .polaroid-main {
+      position:relative; z-index:5;
+      background:#fff;
+      padding:14px 14px 60px 14px;
+      box-shadow: 4px 6px 20px rgba(0,0,0,0.35), 8px 12px 40px rgba(0,0,0,0.2);
+      transform: rotate(-1.5deg);
+      width: min(55vw, 520px);
+      animation: sway 8s ease-in-out infinite;
+    }
+    @keyframes sway {
+      0%,100% { transform:rotate(-1.5deg) translateY(0); }
+      50%      { transform:rotate(-0.5deg) translateY(-6px); }
+    }
+    .polaroid-media {
+      width:100%; aspect-ratio:4/3; background:#111; overflow:hidden; position:relative;
+    }
+    #mediaContainer { width:100%; height:100%; position:relative; }
+    #mediaContainer img, #mediaContainer video {
+      width:100%;height:100%;object-fit:cover;
+      position:absolute;top:0;left:0;
+    }
+    .polaroid-caption {
+      font-family:'Caveat',cursive; font-size:22px;
+      text-align:center; padding-top:10px; color:#333;
+      letter-spacing:1px;
+    }
+
+    /* PIN */
+    .pin {
+      position:absolute; top:-14px; left:50%; transform:translateX(-50%);
+      width:18px; height:18px; border-radius:50%;
+      background: radial-gradient(circle at 35% 35%, #ff6b6b, #cc0000);
+      box-shadow:0 2px 6px rgba(0,0,0,0.4);
+      z-index:10;
+    }
+
+    /* SIDE POLAROIDS — menu cards */
+    .polaroid-side {
+      position:absolute;
+      background:#fff;
+      padding:10px 10px 44px 10px;
+      box-shadow:3px 5px 16px rgba(0,0,0,0.25);
+      width:min(20vw, 180px);
+      z-index:4;
+    }
+    .ps-img {
+      width:100%; aspect-ratio:1/1;
+      display:flex; align-items:center; justify-content:center;
+      flex-direction:column; gap:4px;
+    }
+    .ps-price {
+      font-family:'Space Grotesk',sans-serif; font-weight:700;
+      font-size:clamp(1.2rem,2.5vw,2rem); color:#111;
+    }
+    .ps-caption { font-family:'Caveat',cursive; font-size:16px; text-align:center; color:#444; padding-top:6px; }
+
+    .p1 { left:5%; top:10%; transform:rotate(-4deg); }
+    .p2 { left:3%; bottom:8%; transform:rotate(3deg); }
+    .p3 { right:5%; top:8%; transform:rotate(5deg); }
+    .p4 { right:3%; bottom:10%; transform:rotate(-3deg); }
+
+    /* Sticky notes scattered around */
+    .sticky {
+      position:absolute; z-index:6;
+      padding:14px 16px;
+      font-family:'Caveat',cursive; font-size:18px;
+      line-height:1.4; color:#333;
+      box-shadow:2px 3px 10px rgba(0,0,0,0.2);
+      max-width:160px;
+    }
+    .sticky.yellow { background:#fff176; transform:rotate(2deg); top:12%; right:26%; }
+    .sticky.pink   { background:#f8bbd0; transform:rotate(-3deg); bottom:18%; left:26%; }
+    .sticky.green  { background:#c8e6c9; transform:rotate(1.5deg); top:55%; right:24%; }
+    .sticky.blue   { background:#bbdefb; transform:rotate(-2deg); bottom:15%; right:26%; }
+
+    /* Ticker tape at very bottom */
+    .tape {
+      position:fixed; bottom:0; left:0; right:0; z-index:20;
+      background:#fff8e7; border-top:3px solid #ddd;
+      overflow:hidden; height:38px; display:flex; align-items:center;
+    }
+    .tape-track {
+      display:flex; animation:tickerScroll 28s linear infinite; white-space:nowrap;
+    }
+    @keyframes tickerScroll { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+    .tape-item {
+      padding:0 40px;
+      font-family:'Space Mono',monospace; font-size:13px; color:#666; letter-spacing:1px;
+    }
+    .tape-item strong { color:#c0392b; }
+
+    /* Clock top right */
+    .clock-badge {
+      position:fixed; top:16px; right:20px; z-index:20;
+      background:#fff; padding:6px 14px;
+      font-family:'Space Mono',monospace; font-size:16px; color:#333;
+      box-shadow:2px 3px 10px rgba(0,0,0,0.15);
+      transform:rotate(1deg);
+    }
+
+    /* Loading */
+    .loading-msg { position:absolute;inset:0;background:#f0ede8;display:flex;align-items:center;justify-content:center; }
+    .loading-msg span { font-family:'Caveat',cursive;font-size:2rem;color:#999; }
+  
+    
+    .sticky.qr-sticky{background:#e8f4ff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px;}
+    .qr-block-box{background:#fff;border:2px solid #ccc;padding:4px;border-radius:2px;width:80px;height:80px;display:flex;align-items:center;justify-content:center;}
+    .qr-block-label{font-family:'Patrick Hand',cursive,sans-serif;font-size:9px;color:#555;text-align:center;line-height:1.3;max-width:90px;}
+  </style>
+</head>
+<body>
+<div class="board">
+
+  <!-- STICKY NOTES -->
+  <div class="sticky yellow">Happy Hour!<br>4–7pm daily<br>Negroni $5 🍹</div>
+  <div class="sticky pink">Live Music<br>every Friday<br>night! 🎸</div>
+  <div class="sticky green">Wood-fired<br>pizza is<br>back!! 🍕</div>
+  <div class="sticky blue">Truffle pasta<br>only $24.99<br>limited qty!</div>
+
+  <!-- SIDE POLAROIDS -->
+  <div class="sticky qr-sticky"><div class="qr-block-box"><div id="qr-code"></div></div><div class="qr-block-label" id="qr-label">Scan for offer</div></div>
+  <div class="polaroid-side p1">
+    <div class="ps-img" style="background:#fff8e7">
+      <div class="ps-price">$19.99</div>
+    </div>
+    <div class="ps-caption">Carbonara</div>
+  </div>
+  <div class="polaroid-side p2">
+    <div class="ps-img" style="background:#fce4ec">
+      <div class="ps-price">$17.99</div>
+    </div>
+    <div class="ps-caption">Cacio e Pepe</div>
+  </div>
+  <div class="polaroid-side p3">
+    <div class="ps-img" style="background:#e8f5e9">
+      <div class="ps-price">$21.99</div>
+    </div>
+    <div class="ps-caption">Bolognese</div>
+  </div>
+  <div class="polaroid-side p4">
+    <div class="ps-img" style="background:#e3f2fd">
+      <div class="ps-price">$16.99</div>
+    </div>
+    <div class="ps-caption">Arrabbiata</div>
+  </div>
+
+  <!-- MAIN POLAROID -->
+  <div class="polaroid-main">
+    <div class="pin"></div>
+    <div class="polaroid-media">
+      <div id="mediaContainer">
+        <div class="loading-msg"><span>loading...</span></div>
+      </div>
+    </div>
+    <div class="polaroid-caption" id="caption">Graffiti Pasta · Denton TX</div>
+  </div>
+
+</div>
+
+<!-- CLOCK -->
+<div class="clock-badge" id="clock">--:--:--</div>
+
+<!-- BOTTOM TAPE -->
+<div class="tape">
+  <div class="tape-track">
+    <span class="tape-item"><strong>Graffiti Pasta</strong> · Denton, Texas</span>
+    <span class="tape-item">Handmade pasta daily</span>
+    <span class="tape-item"><strong>Happy Hour 4–7pm</strong> · Negroni $5</span>
+    <span class="tape-item">Live Music every Friday</span>
+    <span class="tape-item"><strong>Truffle Pasta</strong> $24.99</span>
+    <span class="tape-item">Wood-Fired Pizza nightly</span>
+    <span class="tape-item"><strong>Carbonara</strong> $19.99</span>
+    <span class="tape-item">Street Art meets Italian Soul</span>
+    <span class="tape-item"><strong>Graffiti Pasta</strong> · Denton, Texas</span>
+    <span class="tape-item">Handmade pasta daily</span>
+    <span class="tape-item"><strong>Happy Hour 4–7pm</strong> · Negroni $5</span>
+    <span class="tape-item">Live Music every Friday</span>
+    <span class="tape-item"><strong>Truffle Pasta</strong> $24.99</span>
+    <span class="tape-item">Wood-Fired Pizza nightly</span>
+    <span class="tape-item"><strong>Carbonara</strong> $19.99</span>
+    <span class="tape-item">Street Art meets Italian Soul</span>
+  </div>
+</div>
+
+<script>
+  setInterval(()=>{ document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}); },1000);
+
+  const captions = ['Graffiti Pasta · Denton TX','Handmade fresh daily 🍝','Street art meets Italian soul 🎨','Live music Fridays 🎸','Happy hour 4–7pm 🍹'];
+  let ci=0; setInterval(()=>{ ci=(ci+1)%captions.length; document.getElementById('caption').textContent=captions[ci]; },8000);
+
+  let mediaList=[],idx=0;
+  async function loadMedia(){try{const r=await fetch('/api/linode/media');const d=await r.json();if(d.success&&d.media?.length){mediaList=d.media;playMedia();}else loadFallback();}catch(e){loadFallback();}}
+  function loadFallback(){document.getElementById('mediaContainer').innerHTML=`<iframe src="https://www.youtube.com/embed/86YLFOog4GM?autoplay=1&mute=1&controls=0&loop=1&playlist=86YLFOog4GM" frameborder="0" allow="autoplay" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe>`;}
+  function playMedia(){const c=document.getElementById('mediaContainer');const m=mediaList[idx];c.innerHTML='';if(m.type==='video'){const v=document.createElement('video');v.src=m.url;v.autoplay=v.muted=true;v.loop=true;v.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0';c.appendChild(v);}else{const i=document.createElement('img');i.src=m.url;i.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0';i.addEventListener('error',next);c.appendChild(i);setTimeout(next,15000);}}
+  function next(){idx=(idx+1)%mediaList.length;playMedia();}
+  document.addEventListener('DOMContentLoaded',loadMedia);
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(async()=>{
+  try{
+    const slug=window.location.pathname.split('/')[2];
+    const d=await fetch('/api/'+slug+'/offering').then(r=>r.json());
+    if(!d.url)return;
+    const lbl=document.getElementById('qr-label');if(lbl)lbl.textContent=d.title||'Scan for offer';
+    const box=document.getElementById('qr-code');if(box)new QRCode(box,{text:d.url,width:84,height:84,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){}
+})();
+</script>
+</body></html>

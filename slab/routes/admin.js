@@ -36,6 +36,7 @@ import brandBuilderRouter from './admin/brandBuilder.js';
 import scannerRouter from './admin/scanner.js';
 import templatesRouter from './admin/templates.js';
 import templateStoreRouter from './admin/templateStore.js';
+import qrcodesRouter from './admin/qrcodes.js';
 
 const router = express.Router();
 
@@ -157,11 +158,11 @@ router.get('/login', (req, res) => {
 
 // ── Rate limiters ────────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,                   // 10 attempts per window
+  windowMs: 15 * 60 * 1000,
+  max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: 'Too many attempts. Please try again in 15 minutes.',
+  message: 'Too many login attempts. Please try again in 15 minutes.',
 });
 
 // ── Local login POST ─────────────────────────────────────────────────────────
@@ -297,7 +298,16 @@ router.get('/ai-health', async (req, res) => {
       signal: AbortSignal.timeout(6000),
     });
     if (!r.ok) return res.json({ ok: false, cold: false, gpus: [], sd: 'down' });
-    const data = await r.json();
+
+    // Safe JSON parse — /health may return non-JSON on cold start or proxy error
+    let data = {};
+    try {
+      data = await r.json();
+    } catch (parseErr) {
+      const raw = await r.text().catch(() => '(unreadable)');
+      console.error('[ai-health] bad JSON from /health:', parseErr.message, '| body:', raw.slice(0, 200));
+      return res.json({ ok: false, cold: true, gpus: [], sd: 'down', error: 'bad_json', detail: raw.slice(0, 200) });
+    }
 
     const gpus = (data.gpus || []).map(g => ({
       gpu: g.gpu,
@@ -316,6 +326,7 @@ router.get('/ai-health', async (req, res) => {
       tunnel: data.tunnel?.status || 'down',
     });
   } catch (err) {
+    console.error('[ai-health] fetch error:', err.message);
     res.json({ ok: false, cold: false, gpus: [], sd: 'down', error: err.message });
   }
 });
@@ -442,5 +453,6 @@ router.use('/brand-builder', brandBuilderRouter);
 router.use('/scanner', scannerRouter);
 router.use('/templates', templatesRouter);
 router.use('/template-store', templateStoreRouter);
+router.use('/qr-codes', qrcodesRouter);
 
 export default router;

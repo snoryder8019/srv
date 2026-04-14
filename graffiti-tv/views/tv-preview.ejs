@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title><%= tenant.branding.name %> — Preview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{width:100%;height:100%;overflow:hidden;background:#000;}
+    iframe{width:100%;height:100%;border:none;display:block;position:absolute;top:0;left:0;pointer-events:none;}
+    #overlay{position:fixed;inset:0;background:#000;z-index:9999;opacity:0;pointer-events:none;transition:opacity 0.7s ease;}
+    #overlay.fading{opacity:1;}
+
+    /* WATERMARK */
+    #watermark{position:fixed;inset:0;z-index:8000;pointer-events:none;display:flex;align-items:center;justify-content:center;}
+    #watermark-text{font-family:monospace;font-size:clamp(1.5rem,4vw,3rem);letter-spacing:8px;color:rgba(255,255,255,0.07);transform:rotate(-25deg);text-transform:uppercase;white-space:nowrap;user-select:none;}
+
+    /* UPGRADE BANNER */
+    #upgrade-bar{position:fixed;bottom:0;left:0;right:0;z-index:9000;background:rgba(0,0,0,0.9);border-top:2px solid #ff5000;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;font-family:monospace;}
+    .ub-left{font-size:12px;letter-spacing:2px;color:rgba(255,255,255,0.5);}
+    .ub-left strong{color:#ff5000;}
+    .ub-btn{background:#ff5000;color:#fff;border:none;padding:8px 20px;font-family:monospace;font-size:12px;letter-spacing:2px;cursor:pointer;text-decoration:none;}
+
+    /* Back arrow */
+    #backBtn{
+      position:fixed;top:16px;left:16px;z-index:10001;
+      width:44px;height:44px;border-radius:50%;
+      background:rgba(0,0,0,0.5);backdrop-filter:blur(6px);
+      border:1.5px solid rgba(255,255,255,0.2);
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;opacity:0;transition:opacity 0.3s ease;
+      -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+    }
+    #backBtn svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+    body.show-nav #backBtn{opacity:1;}
+
+    /* Tap zones */
+    #tapNext{position:fixed;top:0;left:15%;width:85%;height:calc(100% - 60px);z-index:10000;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+    #tapPrev{position:fixed;top:0;left:0;width:15%;height:calc(100% - 60px);z-index:10000;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+  </style>
+</head>
+<body>
+  <div id="overlay"></div>
+  <iframe id="themeFrame" src="/theme/<%= tenant.slug %>/1" allowfullscreen></iframe>
+  <div id="watermark"><div id="watermark-text">PREVIEW ONLY · GRAFFITI TV</div></div>
+
+  <!-- Back arrow -->
+  <button id="backBtn" aria-label="Previous template" title="Previous">
+    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+
+  <!-- Tap zones (above upgrade bar) -->
+  <div id="tapNext" aria-hidden="true"></div>
+  <div id="tapPrev" aria-hidden="true"></div>
+
+  <div id="upgrade-bar">
+    <div class="ub-left">PREVIEW MODE — <strong><%= tenant.branding.name %></strong> · <%= shuffled.length %> of 15 themes available</div>
+    <a class="ub-btn" href="/#pricing" target="_top">UPGRADE TO GO LIVE →</a>
+  </div>
+
+<script>
+  const ORDER  = <%- JSON.stringify(shuffled) %>;
+  const TENANT = '<%= tenant.slug %>';
+  let pos = 0;
+  let switching = false;
+
+  function switchTheme(dir) {
+    if (switching) return;
+    switching = true;
+    const overlay = document.getElementById('overlay');
+    const frame   = document.getElementById('themeFrame');
+    overlay.classList.add('fading');
+    setTimeout(() => {
+      pos = ((pos + dir) + ORDER.length) % ORDER.length;
+      frame.src = `/theme/${TENANT}/${ORDER[pos]}`;
+      frame.onload = () => setTimeout(() => { overlay.classList.remove('fading'); switching = false; }, 150);
+      setTimeout(() => { overlay.classList.remove('fading'); switching = false; }, 2000);
+    }, 750);
+  }
+
+  // Auto-advance
+  setInterval(() => switchTheme(1), 10 * 60 * 1000);
+
+  // Keyboard
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') switchTheme(1);
+    if (e.key === 'ArrowLeft')                   switchTheme(-1);
+  });
+
+  // Tap zones
+  document.getElementById('tapNext').addEventListener('click', () => switchTheme(1));
+  document.getElementById('tapPrev').addEventListener('click', () => switchTheme(-1));
+
+  // Back button
+  document.getElementById('backBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    switchTheme(-1);
+  });
+
+  // Show nav on touch/move, hide after 3s
+  let navTimer;
+  function showNav() {
+    document.body.classList.add('show-nav');
+    clearTimeout(navTimer);
+    navTimer = setTimeout(() => document.body.classList.remove('show-nav'), 3000);
+  }
+  document.addEventListener('touchstart', showNav, { passive: true });
+  document.addEventListener('mousemove', showNav, { passive: true });
+</script>
+</body>
+</html>

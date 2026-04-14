@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Superadmin — MadLabs Platform</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
@@ -12,7 +12,7 @@
     /* ── TOPBAR ── */
     .topbar { background:#141414; border-bottom:1px solid #262626; padding:12px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
     .topbar-left { display:flex; align-items:center; gap:16px; }
-    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .logo { font-size:18px; font-weight:500; color:#fff; font-family:'Space Grotesk',sans-serif; letter-spacing:0.05em; } .logo span { color:#c9a848; }
     .badge-overseer { background:linear-gradient(135deg, #c9a848 0%, #b8860b 100%); color:#0a0a0a; font-weight:700; position:fixed; bottom:16px; right:16px; z-index:9999; padding:6px 12px; font-size:11px; box-shadow:0 2px 8px rgba(0,0,0,0.4); border-radius:4px; letter-spacing:1px; text-transform:uppercase; }
     .topbar-right { display:flex; align-items:center; gap:14px; font-size:13px; color:#737373; }
     .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
@@ -157,6 +157,25 @@
       .stats { grid-template-columns:repeat(2, 1fr); }
       .tab { padding:8px 10px; font-size:11px; }
     }
+
+    /* ── GFTV ── */
+    .gftv-stat-value { font-size:26px; font-weight:700; }
+    .gftv-stat-value.gold { color:#f5c400; }
+    .gftv-stat-value.green { color:#34d399; }
+    .gftv-promo-badge { background:rgba(245,196,0,0.12); color:#f5c400; border:1px solid rgba(245,196,0,0.25); padding:2px 8px; border-radius:4px; font-size:10px; letter-spacing:1px; font-weight:600; }
+    .plan-starter { background:rgba(255,255,255,0.05); color:#a3a3a3; border:1px solid #333; padding:2px 8px; border-radius:4px; font-size:10px; }
+    .plan-pro { background:rgba(245,196,0,0.1); color:#f5c400; border:1px solid rgba(245,196,0,0.25); padding:2px 8px; border-radius:4px; font-size:10px; }
+    .gftv-form { background:#141414; border:1px solid #262626; border-radius:8px; padding:18px; margin-bottom:16px; }
+    .gftv-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+    .gftv-field { display:flex; flex-direction:column; gap:4px; }
+    .gftv-field label { font-size:10px; letter-spacing:2px; color:#525252; text-transform:uppercase; }
+    .gftv-field input, .gftv-field select { background:#0a0a0a; border:1px solid #262626; color:#e5e5e5; padding:8px 10px; font-family:'Inter',sans-serif; font-size:13px; border-radius:4px; outline:none; }
+    .gftv-field input:focus, .gftv-field select:focus { border-color:#444; }
+    .btn-gftv { background:#f5c400; color:#0a0a0a; border:none; padding:8px 18px; font-size:12px; font-weight:700; border-radius:4px; cursor:pointer; letter-spacing:1px; }
+    .gftv-links a { color:#525252; font-size:11px; text-decoration:none; margin-right:10px; }
+    .gftv-links a:hover { color:#f5c400; }
+    .lead-status select { background:#0a0a0a; border:1px solid #262626; color:#a3a3a3; font-size:11px; padding:3px 6px; border-radius:4px; }
+
   </style>
 </head>
 <body>
@@ -164,7 +183,7 @@
 <!-- ── TOPBAR ── -->
 <div class="topbar">
   <div class="topbar-left">
-    <div class="logo">s<span>Lab</span></div>
+    <div class="logo">mad<span>Labs</span>lab</div>
     <span style="font-size:11px; color:#525252; letter-spacing:1px; text-transform:uppercase;">Superadmin</span>
     <span style="font-size:12px; color:#525252;">
       <span class="health-dot up"></span> <%= aliveCount %>
@@ -172,10 +191,15 @@
     </span>
   </div>
   <div class="topbar-right">
+    <a href="/superadmin/events" style="color:#c9a848;">📡 Events</a>
     <a href="/superadmin/users">Users</a>
+    <a href="/superadmin/security" style="color:#ef4444;">🛡 Security</a>
     <a href="/superadmin/permissions">Permissions</a>
     <a href="/superadmin/huginn">Huginn</a>
     <a href="/superadmin/control-center" target="_blank">Control Center</a>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#525252;" title="Ollama AI">
+      <span class="svc-dot" id="ollamaDotTop" style="width:6px;height:6px;"></span>Ollama
+    </span>
     <span><%= user.email %></span>
     <a href="/superadmin/logout">Logout</a>
   </div>
@@ -190,6 +214,7 @@
   <div class="tab" onclick="showTab('games', this)"><span class="tab-icon">&#127918;</span> Games</div>
   <div class="tab" onclick="showTab('stringborn', this)"><span class="tab-icon">&#128640;</span> Stringborn</div>
   <div class="tab" onclick="showTab('webapps', this)"><span class="tab-icon">&#127760;</span> Webapps</div>
+  <div class="tab" onclick="showTab('gftv', this)"><span class="tab-icon">📺</span> Graffiti TV</div>
   <div class="tab-spacer"></div>
   <div class="tab tab-util" onclick="showTab('tools', this)"><span class="tab-icon">&#128295;</span> Tools</div>
   <div class="tab tab-util" onclick="showTab('activity', this)"><span class="tab-icon">&#9998;</span> Activity</div>
@@ -753,40 +778,97 @@
 
     <div class="section">
       <h2>Agent Hub</h2>
-      <div class="service-grid">
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Huginn</span>
-            <span class="svc-dot" id="huginnDot"></span>
-          </div>
-          <div class="card-desc">DeepSeek R1 — platform AI assistant with live Slab context</div>
-          <div class="card-actions">
-            <a href="/superadmin/huginn" class="btn-sm">Open Chat</a>
-            <button class="btn-sm" onclick="checkHuginn()">Health Check</button>
-          </div>
+
+      <!-- ── Claude spot ── -->
+      <div class="card" style="margin-bottom:14px;border-color:#6366f1;">
+        <div class="card-header" style="margin-bottom:8px;">
+          <span class="card-title" style="display:flex;align-items:center;gap:8px;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6366f1;box-shadow:0 0 6px #6366f1;"></span>
+            Claude (Sonnet 4.5)
+          </span>
+          <span style="font-size:10px;letter-spacing:2px;color:#6366f1;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);padding:2px 8px;border-radius:4px;">MCP ACTIVE</span>
         </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title">OpenClaw</span></div>
-          <div class="card-desc">Agent orchestration gateway (WhatsApp, Claude, threads)</div>
-          <div class="card-meta"><span>Ports: 18789, 18792</span></div>
-          <div class="card-actions"><button class="btn-sm" onclick="svcAction('openclaw', 'status')">Status</button></div>
+        <div style="font-size:12px;color:#737373;margin-bottom:10px;">Connected via madladslab.com/mcp · Full /srv access · Last session today</div>
+        <div style="background:#0a0a0a;border:1px solid #1e1e1e;border-radius:6px;padding:12px;margin-bottom:10px;max-height:180px;overflow-y:auto;" id="claudeBriefing">
+          <div style="font-size:10px;letter-spacing:2px;color:#525252;margin-bottom:8px;">SESSION BRIEFING</div>
+          <div style="font-size:12px;color:#a3a3a3;line-height:1.7;" id="claudeBriefingText">Loading briefing...</div>
         </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title">MCP Server</span></div>
-          <div class="card-desc">Model Context Protocol — Claude Android app bridge</div>
-          <div class="card-actions"><button class="btn-sm" onclick="svcAction('mcp', 'status')">Status</button></div>
+        <div style="background:#0a0a0a;border:1px solid #1e1e1e;border-radius:6px;padding:12px;" id="claudeTldr">
+          <div style="font-size:10px;letter-spacing:2px;color:#525252;margin-bottom:6px;">RECENT WORK — TLDR</div>
+          <div style="font-size:12px;color:#a3a3a3;line-height:1.7;" id="claudeTldrText">Loading...</div>
         </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title">Piper TTS</span></div>
-          <div class="card-desc">OpenAI-compatible text-to-speech</div>
-          <div class="card-actions"><button class="btn-sm" onclick="svcAction('piper-tts', 'status')">Status</button></div>
-        </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title">Ollama (AI API)</span></div>
-          <div class="card-desc">SD v1.5 image gen + DeepSeek chat at ollama.madladslab.com</div>
-          <div class="card-actions"><button class="btn-sm" onclick="checkOllama()">Health</button></div>
+        <div class="card-actions" style="margin-top:10px;">
+          <a href="https://claude.ai" target="_blank" class="btn-sm">Open Claude</a>
+          <button class="btn-sm" onclick="loadClaudeBriefing()">Refresh Briefing</button>
         </div>
       </div>
+
+      <div class="service-grid">
+        <!-- Huginn -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title" style="display:flex;align-items:center;gap:6px;">
+              <span class="svc-dot" id="huginnDot"></span>
+              Huginn
+            </span>
+          </div>
+          <div class="card-desc">DeepSeek R1 — platform AI with live Slab context</div>
+          <div id="huginnBriefingSnip" style="font-size:11px;color:#525252;margin:6px 0;line-height:1.5;min-height:20px;"></div>
+          <div class="card-actions">
+            <a href="/superadmin/huginn" class="btn-sm">Open Chat</a>
+            <button class="btn-sm" onclick="loadHuginnBriefing()">Briefing</button>
+            <button class="btn-sm" onclick="checkHuginn()">Health</button>
+          </div>
+        </div>
+
+        <!-- MCP Server -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">MCP Server</span><span class="svc-dot alive"></span></div>
+          <div class="card-desc">Model Context Protocol — Claude mobile + Android bridge at mcp.madladslab.com</div>
+          <div class="card-meta"><span>Port: 3650</span></div>
+          <div class="card-actions"><button class="btn-sm" onclick="svcAction('mcp', 'status')">Status</button></div>
+        </div>
+
+        <!-- Ollama -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title" style="display:flex;align-items:center;gap:6px;">
+              <span class="svc-dot" id="ollamaDot"></span>
+              Ollama
+            </span>
+          </div>
+          <div class="card-desc">DeepSeek + image gen · ollama.madladslab.com</div>
+          <div id="ollamaSnip" style="font-size:11px;color:#525252;margin:6px 0;">—</div>
+          <div class="card-actions"><button class="btn-sm" onclick="checkOllamaFull()">Health Check</button></div>
+        </div>
+
+        <!-- Piper → ElevenLabs -->
+        <div class="card" style="border-color:#362a10;">
+          <div class="card-header">
+            <span class="card-title" style="display:flex;align-items:center;gap:6px;">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 4px #f59e0b;"></span>
+              TTS
+            </span>
+            <span style="font-size:9px;letter-spacing:2px;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);padding:2px 7px;border-radius:3px;">MIGRATING</span>
+          </div>
+          <div class="card-desc">Piper TTS (local) → ElevenLabs (cloud). Migration pending.</div>
+          <div class="card-meta" style="font-size:10px;color:#525252;">Piper on :8091 · ElevenLabs API integration coming</div>
+          <div class="card-actions">
+            <button class="btn-sm" onclick="svcAction('piper-tts', 'status')">Piper Status</button>
+          </div>
+        </div>
+
+        <!-- OpenCalw — removed -->
+        <div class="card" style="opacity:0.4;border-style:dashed;">
+          <div class="card-header">
+            <span class="card-title" style="text-decoration:line-through;color:#525252;">OpenCalw</span>
+            <span style="font-size:9px;letter-spacing:2px;color:#f87171;padding:2px 7px;border:1px solid #451a1a;border-radius:3px;">REMOVED</span>
+          </div>
+          <div class="card-desc" style="color:#525252;">Removed from system. Functionality absorbed or deprecated.</div>
+        </div>
+
+      </div>
+
       <pre id="agentOutput" class="tool-output" style="margin-top:16px;">Select an agent to check...</pre>
     </div>
 
@@ -810,6 +892,79 @@
       <div class="service-grid" id="deprGridDeconstructed" style="margin-bottom:12px;"></div>
       <div class="service-grid" id="deprGridDeletion" style="margin-bottom:12px;"></div>
       <pre id="deprOutput" class="tool-output">Select a project or run an action...</pre>
+    </div>
+  </div>
+
+
+  <!-- ═══════ GRAFFITI TV TAB ═══════ -->
+  <div class="panel" id="tab-gftv">
+    <div class="section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h2 style="margin:0;">📺 Graffiti TV</h2>
+        <div style="display:flex;gap:8px;">
+          <a href="https://graffititv.madladslab.com" target="_blank" class="btn-sm">↗ Landing Page</a>
+          <a href="https://graffititv.madladslab.com/super" target="_blank" class="btn-sm">↗ GFTV Super Admin</a>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats" id="gftvStats">
+        <div class="stat"><div class="stat-label">Loading...</div></div>
+      </div>
+
+      <!-- Add Tenant Form -->
+      <div class="gftv-form">
+        <div style="font-size:11px;letter-spacing:2px;color:#525252;text-transform:uppercase;margin-bottom:12px;">Add Tenant</div>
+        <div class="gftv-form-grid">
+          <div class="gftv-field"><label>Business Name</label><input id="gt-name" placeholder="The Rusty Nail"></div>
+          <div class="gftv-field"><label>Slug (URL key)</label><input id="gt-slug" placeholder="rusty-nail"></div>
+        </div>
+        <div class="gftv-form-grid">
+          <div class="gftv-field"><label>Email</label><input id="gt-email" placeholder="owner@venue.com"></div>
+          <div class="gftv-field"><label>Admin Password</label><input id="gt-pass" placeholder="their-password"></div>
+        </div>
+        <div class="gftv-form-grid">
+          <div class="gftv-field"><label>Plan</label>
+            <select id="gt-plan">
+              <option value="starter">Starter — $18/mo · 3 themes</option>
+              <option value="pro">Pro — $35/mo · 10 themes</option>
+            </select>
+          </div>
+          <div class="gftv-field"><label>Location</label><input id="gt-loc" placeholder="Denton, TX"></div>
+        </div>
+        <div class="gftv-form-grid">
+          <div class="gftv-field"><label>Accent Color</label><input id="gt-color" placeholder="#ff5000" value="#ff5000"></div>
+          <div class="gftv-field" style="justify-content:flex-end;flex-direction:row;align-items:flex-end;gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#525252;cursor:pointer;">
+              <input type="checkbox" id="gt-promo"> Promo (exclude from MRR)
+            </label>
+            <button class="btn-gftv" onclick="gftvAddTenant()">+ CREATE</button>
+          </div>
+        </div>
+        <div id="gt-msg" style="font-size:12px;color:#34d399;margin-top:8px;min-height:16px;"></div>
+      </div>
+
+      <!-- Tenants Table -->
+      <div style="font-size:11px;letter-spacing:2px;color:#525252;text-transform:uppercase;margin-bottom:10px;">Active Tenants</div>
+      <div class="table-wrap" style="margin-bottom:24px;">
+        <table>
+          <thead><tr>
+            <th>Tenant</th><th>Plan</th><th>MRR</th><th>Subs</th><th>Status</th><th>Links</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="gftvTenantsTable"><tr><td colspan="7" style="color:#525252;text-align:center;padding:20px;">Loading...</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- Leads Table -->
+      <div style="font-size:11px;letter-spacing:2px;color:#525252;text-transform:uppercase;margin-bottom:10px;">Signup Leads</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Email</th><th>Business</th><th>Plan</th><th>Source</th><th>Status</th><th>Date</th>
+          </tr></thead>
+          <tbody id="gftvLeadsTable"><tr><td colspan="7" style="color:#525252;text-align:center;padding:20px;">Loading...</td></tr></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -848,6 +1003,135 @@
 </div><!-- /content -->
 
 <script>
+
+  // ── Graffiti TV ──────────────────────────────────────────────────────────
+  let _gftvData = null;
+
+  async function loadGFTV() {
+    if (_gftvData) return renderGFTV(_gftvData);
+    try {
+      const r = await fetch('/superadmin/gftv/data');
+      _gftvData = await r.json();
+      renderGFTV(_gftvData);
+    } catch(e) { console.error('GFTV load error', e); }
+  }
+
+  function renderGFTV(d) {
+    const { tenants, leads, mrr, totalSubs, planPrices } = d;
+    const active  = tenants.filter(t => t.active && !t.isPromo).length;
+    const promos  = tenants.filter(t => t.isPromo).length;
+    const newLeads = leads.filter(l => l.status === 'new').length;
+
+    document.getElementById('gftvStats').innerHTML = [
+      { label:'Tenants',     val:'$' + mrr,    cls:'gold',  sub:'Est. MRR' },
+      { label:'Active',      val:active,        cls:'green', sub:'Paying tenants' },
+      { label:'Promo',       val:promos,        cls:'',      sub:'Excluded from MRR' },
+      { label:'New Leads',   val:newLeads,      cls:'gold',  sub:'Awaiting contact' },
+      { label:'Subscribers', val:totalSubs,     cls:'green', sub:'TV email signups' },
+    ].map(s => `<div class="stat">
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-value ${s.cls}">${s.val}</div>
+      <div style="font-size:10px;color:#525252;margin-top:2px;">${s.sub}</div>
+    </div>`).join('');
+
+    // Tenants table
+    document.getElementById('gftvTenantsTable').innerHTML = tenants.length ? tenants.map(t => {
+      const tenantMrr = t.active && !t.isPromo ? (planPrices[t.plan] || 0) : 0;
+      const tenantData = {};  // subscriber count loaded server-side in stats
+      return `<tr>
+        <td>
+          <div style="font-weight:500;color:#fff;">${t.name}</div>
+          <div style="font-size:11px;color:#525252;">${t.slug}</div>
+        </td>
+        <td><span class="plan-${t.plan}">${t.plan}</span></td>
+        <td style="color:#f5c400;font-weight:600;">${tenantMrr ? '$' + tenantMrr + '/mo' : '<span style=\'color:#525252\'>—</span>'}</td>
+        <td style="color:#a3a3a3;">—</td>
+        <td>
+          ${t.active ? '<span class="badge badge-active">ACTIVE</span>' : '<span class="badge badge-suspended">OFF</span>'}
+          ${t.isPromo ? '<span class="gftv-promo-badge">PROMO</span>' : ''}
+        </td>
+        <td class="gftv-links">
+          <a href="https://graffititv.madladslab.com/tv/${t.slug}" target="_blank">📺 Display</a>
+          <a href="https://graffititv.madladslab.com/admin/${t.slug}" target="_blank">⚙ Admin</a>
+          <a href="/superadmin/gftv/tenants/${t.slug}">🔍 Detail</a>
+        </td>
+        <td>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            <button class="btn-sm" onclick="gftvTogglePromo('${t.slug}', this)">${t.isPromo ? 'Unmark Promo' : 'Mark Promo'}</button>
+            <button class="btn-sm" onclick="gftvToggleActive('${t.slug}', ${!t.active})">${t.active ? 'Disable' : 'Enable'}</button>
+            <button class="btn-sm" style="color:#f87171;border-color:#451a1a;" onclick="gftvDelete('${t.slug}')">Del</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="7" style="color:#525252;text-align:center;padding:20px;">No tenants yet</td></tr>';
+
+    // Leads table
+    document.getElementById('gftvLeadsTable').innerHTML = leads.length ? leads.slice().reverse().map(l => `<tr>
+      <td style="font-weight:500;">${l.name || '—'}</td>
+      <td>${l.email}</td>
+      <td style="color:#a3a3a3;">${l.business || '—'}</td>
+      <td><span class="plan-${l.plan || 'starter'}">${l.plan || 'starter'}</span></td>
+      <td style="color:#525252;font-size:11px;">${l.source || 'landing'}</td>
+      <td class="lead-status">
+        <select onchange="gftvUpdateLead(${l.id}, this.value)">
+          ${['new','contacted','converted','lost'].map(s => `<option value="${s}" ${l.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td style="color:#525252;font-size:11px;">${new Date(l.createdAt).toLocaleDateString()}</td>
+    </tr>`).join('') : '<tr><td colspan="7" style="color:#525252;text-align:center;padding:20px;">No leads yet</td></tr>';
+  }
+
+  async function gftvAddTenant() {
+    const slug = document.getElementById('gt-slug').value.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+    const body = {
+      name:     document.getElementById('gt-name').value,
+      slug,
+      email:    document.getElementById('gt-email').value,
+      password: document.getElementById('gt-pass').value,
+      plan:     document.getElementById('gt-plan').value,
+      location: document.getElementById('gt-loc').value,
+      color:    document.getElementById('gt-color').value || '#ff5000',
+      isPromo:  String(document.getElementById('gt-promo').checked),
+    };
+    if (!body.name || !body.slug) { document.getElementById('gt-msg').textContent = 'Name and slug required.'; return; }
+    const r = await fetch('/superadmin/gftv/tenants', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('gt-msg').textContent = '✓ Tenant created — ' + slug;
+      _gftvData = null; loadGFTV();
+    } else {
+      document.getElementById('gt-msg').textContent = 'Error: ' + (d.error || 'Unknown');
+    }
+  }
+
+  async function gftvTogglePromo(slug, btn) {
+    const r = await fetch(`/superadmin/gftv/tenants/${slug}/toggle-promo`, { method:'POST' });
+    const d = await r.json();
+    if (d.ok) { btn.textContent = d.isPromo ? 'Unmark Promo' : 'Mark Promo'; _gftvData = null; loadGFTV(); }
+  }
+
+  async function gftvToggleActive(slug, active) {
+    await fetch(`/superadmin/gftv/tenants/${slug}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active }) });
+    _gftvData = null; loadGFTV();
+  }
+
+  async function gftvDelete(slug) {
+    if (!confirm('Delete GFTV tenant ' + slug + '?')) return;
+    await fetch(`/superadmin/gftv/tenants/${slug}`, { method:'DELETE' });
+    _gftvData = null; loadGFTV();
+  }
+
+  async function gftvUpdateLead(id, status) {
+    await fetch(`/superadmin/gftv/leads/${id}/status`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ status }) });
+    if (_gftvData) {
+      _gftvData.leads = _gftvData.leads.map(l => String(l.id) === String(id) ? {...l, status} : l);
+      renderGFTV(_gftvData);
+    }
+  }
+
+  // Load GFTV data when tab is opened
+  const _origShowTab = showTab;
+
   function showTab(id, el) {
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -862,12 +1146,28 @@
     }
     window.location.hash = 'tab-' + id;
     if (id === 'tools') loadDeprecationPipeline();
+    if (id === 'gftv') loadGFTV();
+    if (id === 'tools') { loadClaudeBriefing(); checkOllamaFull(); }
   }
 
   // Restore tab from URL hash on page load
   (function() {
     const hash = window.location.hash.replace('#tab-', '');
     if (hash && document.getElementById('tab-' + hash)) showTab(hash);
+    // Mini Ollama dot in topbar — check on load
+    (async function() {
+      try {
+        const r = await fetch('/superadmin/api/tool/ollama');
+        const d = await r.json();
+        const dot = document.getElementById('ollamaDotTop');
+        if (dot) dot.className = (d.ok || d.models) ? 'svc-dot alive' : 'svc-dot dead';
+      } catch(e) {
+        const dot = document.getElementById('ollamaDotTop');
+        if (dot) dot.className = 'svc-dot dead';
+      }
+    })();
+    // Load Claude briefing if tools tab already active
+    if (!window.location.hash || window.location.hash === '#tab-tools') loadClaudeBriefing();
   })();
 
   async function runTool(tool) {
@@ -894,6 +1194,82 @@
     }
   }
 
+  // ── Claude briefing (pulled from Huginn sessions) ──────────────────────────
+  const CLAUDE_BRIEFING = {
+    sessions: [
+      "Connected via MCP server at mcp.madladslab.com — full /srv read/write access.",
+      "This session: built GFTV SaaS tenant architecture, 15 display themes, superadmin integration, platform user sync.",
+      "Security hardening: mod_evasive, 4 fail2ban jails (HTTP 404, scanner, badbots, recidive), UFW blocks on known Azure scanner ranges, Apache blanket rules blocking .php/.env/.git/wp-* probes.",
+      "VSCode watchdog cron installed — auto-kills runaway extension host if RAM > 20%.",
+      "Piper TTS migration to ElevenLabs pending. OpenCalw removed from system.",
+      "GFTV: 15 themes live, tenant admin panel, super admin tab in slab, platform users synced, QR codes baked into all templates linking to backend routes.",
+      "Slab superadmin logo updated to Space Grotesk (madladslab.com typeface) across all 16 superadmin views.",
+    ],
+    tldr: [
+      "🏗️ Built Graffiti TV SaaS — multi-tenant, 15 themes, QR offers, admin panels, landing page ($18/$35 plans)",
+      "🔒 Full server hardening — fail2ban HTTP jails, Apache scanner blocks, UFW firewall, VSCode watchdog",
+      "📺 GFTV integrated into slab superadmin — Graffiti TV tab, tenant detail views, platform users synced",
+      "🎨 Superadmin logo → Space Grotesk across all views",
+      "🚧 Piper TTS → ElevenLabs migration queued · OpenCalw removed",
+    ]
+  };
+
+  function loadClaudeBriefing() {
+    const bt = document.getElementById('claudeBriefingText');
+    const tt = document.getElementById('claudeTldrText');
+    if (!bt || !tt) return;
+    bt.innerHTML = CLAUDE_BRIEFING.sessions.map(s => `<div style="margin-bottom:6px;padding-left:10px;border-left:2px solid #6366f1;">• ${s}</div>`).join('');
+    tt.innerHTML = CLAUDE_BRIEFING.tldr.map(s => `<div style="margin-bottom:4px;">${s}</div>`).join('');
+  }
+
+  // ── Huginn briefing snippet ───────────────────────────────────────────────
+  async function loadHuginnBriefing() {
+    const snip = document.getElementById('huginnBriefingSnip');
+    const out  = document.getElementById('agentOutput');
+    if (snip) snip.textContent = 'Loading...';
+    try {
+      const r = await fetch('/superadmin/huginn/sessions');
+      const d = await r.json();
+      const sessions = Array.isArray(d) ? d : (d.sessions || []);
+      if (sessions.length && snip) {
+        const latest = sessions[0];
+        snip.textContent = `Last session: ${latest.id || 'unknown'} · ${latest.messageCount || '?'} messages`;
+      } else if (snip) {
+        snip.textContent = 'No sessions found';
+      }
+      if (out) out.textContent = JSON.stringify(sessions.slice(0,3), null, 2);
+    } catch(e) {
+      if (snip) snip.textContent = 'Huginn unreachable';
+      if (out) out.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  // ── Ollama inline health ──────────────────────────────────────────────────
+  async function checkOllamaFull() {
+    const dot  = document.getElementById('ollamaDot');
+    const snip = document.getElementById('ollamaSnip');
+    const out  = document.getElementById('agentOutput');
+    if (out) out.textContent = 'Checking Ollama...';
+    try {
+      const res = await fetch('/superadmin/api/tool/ollama');
+      const d = await res.json();
+      if (d.ok || d.models) {
+        if (dot) { dot.className = 'svc-dot alive'; }
+        const models = d.models || [];
+        if (snip) snip.textContent = models.length ? models.join(' · ') : 'Online — no models listed';
+        if (out) out.textContent = JSON.stringify(d, null, 2);
+      } else {
+        if (dot) dot.className = 'svc-dot dead';
+        if (snip) snip.textContent = 'Offline — ' + (d.error || 'no response');
+        if (out) out.textContent = 'Ollama offline: ' + (d.error || 'unknown');
+      }
+    } catch(e) {
+      if (dot) dot.className = 'svc-dot dead';
+      if (snip) snip.textContent = 'Unreachable';
+      if (out) out.textContent = 'Error: ' + e.message;
+    }
+  }
+
   async function checkHuginn() {
     const out = document.getElementById('agentOutput');
     const dot = document.getElementById('huginnDot');
@@ -910,6 +1286,9 @@
   }
 
   async function checkOllama() {
+    return checkOllamaFull();
+  }
+  async function _checkOllamaOld() {
     const out = document.getElementById('agentOutput');
     out.textContent = 'Checking Ollama...';
     try {

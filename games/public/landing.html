@@ -49,10 +49,11 @@
       background-size: cover; background-position: center;
     }
     @keyframes heroSlide {
-      0%, 22% { transform: translateX(0); }
-      25%, 47% { transform: translateX(-100%); }
-      50%, 72% { transform: translateX(-200%); }
-      75%, 97% { transform: translateX(-300%); }
+      0%, 18% { transform: translateX(0); }
+      20%, 38% { transform: translateX(-100%); }
+      40%, 58% { transform: translateX(-200%); }
+      60%, 78% { transform: translateX(-300%); }
+      80%, 97% { transform: translateX(-400%); }
       100% { transform: translateX(0); }
     }
     .hero-overlay {
@@ -235,15 +236,17 @@
     <div class="hero-slide" style="background-image:url('/static/img/valheim.jpg')"></div>
     <div class="hero-slide" style="background-image:url('/static/img/l4d2.jpg')"></div>
     <div class="hero-slide" style="background-image:url('/static/img/7dtd.jpg')"></div>
+    <div class="hero-slide" style="background-image:url('/static/img/minecraft.svg')"></div>
   </div>
   <div class="hero-overlay"></div>
   <div class="hero-content">
     <div class="hero-tag">DEDICATED GAME SERVERS</div>
     <h1 class="hero-title">PLAY. BROADCAST. DOMINATE.</h1>
-    <p class="hero-desc">Dedicated Rust, Valheim, L4D2, and 7 Days to Die servers. Watch live broadcasts, jump into voice chat, or spin up your own game.</p>
+    <p class="hero-desc">Dedicated Rust, Valheim, L4D2, 7DTD, Space Engineers, Palworld, and Minecraft Java servers. Watch live broadcasts, jump into voice chat, or spin up your own game.</p>
     <div class="hero-actions">
       <a href="/login" class="hero-btn hero-btn-primary" id="heroCta">JOIN NOW</a>
       <a href="#games" class="hero-btn hero-btn-ghost">VIEW SERVERS</a>
+      <a href="/private-servers" class="hero-btn" style="background:#22c55e20;color:#22c55e;border:1px solid #22c55e50;">🎮 PRIVATE SERVERS $15/mo</a>
     </div>
   </div>
 </section>
@@ -274,8 +277,8 @@
     </div>
     <div class="feature">
       <div class="feature-icon">&#127918;</div>
-      <div class="feature-title">4 GAME SERVERS</div>
-      <div class="feature-desc">Rust, Valheim, L4D2, 7 Days to Die. Modded and ready to play.</div>
+      <div class="feature-title">7 GAME SERVERS</div>
+      <div class="feature-desc">Rust, Valheim, L4D2, 7DTD, Space Engineers, Palworld, and Minecraft Java.</div>
     </div>
     <div class="feature">
       <div class="feature-icon">&#127908;</div>
@@ -285,7 +288,7 @@
     <div class="feature">
       <div class="feature-icon">&#128274;</div>
       <div class="feature-title">PRIVATE SERVERS</div>
-      <div class="feature-desc">Spin up your own dedicated server. Full mod control. Starting at $12/mo.</div>
+      <div class="feature-desc">Private servers for any of our 7 games — mods included. From $15/mo.</div>
     </div>
   </div>
 </section>
@@ -302,12 +305,14 @@
     { id: 'valheim', name: 'VALHEIM', img: '/static/img/valheim.jpg' },
     { id: 'l4d2', name: 'LEFT 4 DEAD 2', img: '/static/img/l4d2.jpg' },
     { id: '7dtd', name: '7 DAYS TO DIE', img: '/static/img/7dtd.jpg' },
+    { id: 'minecraft', name: 'MINECRAFT JAVA', img: '/static/img/minecraft.svg', private: true },
   ];
   var GAME_LABELS = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7 DAYS' };
 
   // Build game showcase cards
   var gGrid = document.getElementById('gamesGrid');
   GAMES.forEach(function(g) {
+    var isPrivate = g.private;
     var card = document.createElement('div');
     card.className = 'game-card';
     card.id = 'game-card-' + g.id;
@@ -317,6 +322,11 @@
         '<div class="game-card-name">' + g.name + '</div>' +
         '<div class="game-card-status" id="game-status-' + g.id + '">CHECKING...</div>' +
       '</div>';
+    if (isPrivate) {
+      card.style.cursor = 'pointer';
+      card.title = 'Get a private Minecraft server';
+      card.onclick = function() { window.location.href = '/private-servers'; };
+    }
     gGrid.appendChild(card);
   });
 
@@ -325,7 +335,12 @@
     for (var i = 0; i < GAMES.length; i++) {
       var g = GAMES[i];
       try {
-        var r = await fetch('/stats/summary/' + g.id);
+        if (g.private) {
+        var el = document.getElementById('game-status-' + g.id);
+        if (el) { el.textContent = 'PRIVATE — $15/MO'; el.className = 'game-card-status online'; el.style.color='#22c55e'; }
+        continue;
+      }
+      var r = await fetch('/stats/summary/' + g.id);
         var data = await r.json();
         var el = document.getElementById('game-status-' + g.id);
         if (data.latest && data.latest.players !== undefined && !data.latest.booting) {

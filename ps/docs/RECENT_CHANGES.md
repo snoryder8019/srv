@@ -1,6 +1,39 @@
 # Recent Changes Summary
 
-Generated: 2026-04-09T00:30:36.165Z
+Generated: 2026-04-14T07:30:00.044Z
+
+---
+
+## Commit: works on all three
+
+- **Hash:** `6f81e9b`
+- **Author:** Scott
+- **Date:** 4/13/2026
+- **Changes:** 134 files, +16137/-3517 lines
+
+### Modified Areas:
+
+**Frontend:** 1 files
+**Backend:** 20 files
+**Views:** 43 files
+**Scripts:** 8 files
+**Documentation:** 5 files
+
+---
+
+## Commit: depricated bih. xlogin on games
+
+- **Hash:** `8c2a0ee`
+- **Author:** Scott
+- **Date:** 4/9/2026
+- **Changes:** 93 files, +1481/-12301 lines
+
+### Modified Areas:
+
+**Backend:** 15 files
+**Views:** 30 files
+**Scripts:** 2 files
+**Documentation:** 7 files
 
 ---
 
@@ -49,37 +82,6 @@ Generated: 2026-04-09T00:30:36.165Z
 **Backend:** 54 files
 **Views:** 70 files
 **Documentation:** 36 files
-
----
-
-## Commit: whats new v 1.0 tunning. shippit
-
-- **Hash:** `4d7acb6`
-- **Author:** Scott
-- **Date:** 4/4/2026
-- **Changes:** 9 files, +588/-12 lines
-
-### Modified Areas:
-
-**Backend:** 4 files
-**Views:** 3 files
-**Scripts:** 1 files
-
----
-
-## Commit: tests scans V1.0
-
-- **Hash:** `63c05d5`
-- **Author:** Scott
-- **Date:** 4/4/2026
-- **Changes:** 12 files, +3496/-8 lines
-
-### Modified Areas:
-
-**Backend:** 2 files
-**Views:** 2 files
-**Scripts:** 4 files
-**Documentation:** 1 files
 
 ---
 

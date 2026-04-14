@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title><%= settings.title || 'Book a Meeting' %> — <%= brand.name || '' %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --accent: <%= design.color_primary || '#C9A848' %>;
+      --bg: <%= design.color_bg || '#FAFAF8' %>;
+      --ink: <%= design.color_text || '#0F1B30' %>;
+      --muted: #6B7380;
+      --border: #E6E1D6;
+      --white: #fff;
+    }
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+
+    /* Header */
+    .site-header{background:var(--white);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
+    .site-logo{font-size:18px;font-weight:700;color:var(--ink);text-decoration:none}
+    .back-link{font-size:13px;color:var(--muted);text-decoration:none}
+    .back-link:hover{color:var(--ink)}
+
+    /* Hero */
+    .hero{padding:40px 24px 0;text-align:center;max-width:600px;margin:0 auto}
+    .hero h1{font-size:26px;font-weight:700;margin-bottom:8px}
+    .hero p{font-size:15px;color:var(--muted);line-height:1.6}
+
+    /* Alerts */
+    .alert{max-width:640px;margin:16px auto;padding:12px 18px;border-radius:6px;font-size:14px}
+    .alert-success{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
+    .alert-error{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}
+
+    /* Layout */
+    .booking-layout{display:grid;grid-template-columns:1fr 380px;gap:32px;max-width:900px;margin:32px auto;padding:0 24px 60px}
+    @media(max-width:780px){.booking-layout{grid-template-columns:1fr}}
+
+    /* Calendar */
+    .day-list{}
+    .day-btn{width:100%;text-align:left;padding:12px 16px;background:var(--white);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:all .15s;font-family:'Inter',sans-serif}
+    .day-btn:hover,.day-btn.active{border-color:var(--accent);background:#fffdf5}
+    .day-btn.active{box-shadow:0 0 0 2px var(--accent)20}
+    .day-label{font-size:14px;font-weight:500;color:var(--ink)}
+    .day-count{font-size:12px;color:var(--muted);background:#f3f4f6;padding:2px 8px;border-radius:10px}
+    .day-btn.active .day-count{background:var(--accent)20;color:var(--accent)}
+
+    /* Slots */
+    .slots-panel{position:sticky;top:20px}
+    .slots-header{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:14px}
+    .slots-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px}
+    .slot-btn{padding:10px;border:1px solid var(--border);border-radius:5px;font-size:13px;font-weight:500;color:var(--ink);background:var(--white);cursor:pointer;text-align:center;transition:all .15s;font-family:'Inter',sans-serif}
+    .slot-btn:hover{border-color:var(--accent);color:var(--accent)}
+    .slot-btn.selected{background:var(--accent);color:var(--white);border-color:var(--accent)}
+    .slot-placeholder{font-size:13px;color:var(--muted);text-align:center;padding:20px;background:var(--white);border:1px dashed var(--border);border-radius:6px}
+
+    /* Booking form */
+    .booking-form{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:24px;margin-top:16px;display:none}
+    .booking-form.show{display:block}
+    .selected-slot-display{background:#fffdf5;border:1px solid var(--accent)40;border-radius:5px;padding:10px 14px;margin-bottom:20px;font-size:13px;font-weight:500;color:var(--ink)}
+    .form-field{margin-bottom:14px}
+    .form-field label{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px}
+    .form-field input,.form-field textarea{width:100%;border:1px solid var(--border);border-radius:5px;padding:9px 12px;font-size:14px;font-family:'Inter',sans-serif;color:var(--ink);background:var(--white)}
+    .form-field input:focus,.form-field textarea:focus{outline:none;border-color:var(--accent)}
+    .form-field textarea{resize:vertical;min-height:80px}
+    .form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .btn-book{width:100%;background:var(--accent);color:var(--white);border:none;border-radius:6px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:opacity .15s;margin-top:8px}
+    .btn-book:hover{opacity:.88}
+    .btn-book:disabled{opacity:.5;cursor:not-allowed}
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-logo"><%= brand.name || 'Book a Meeting' %></a>
+  <a href="/" class="back-link">← Back to site</a>
+</header>
+
+<% if (success) { %>
+<div class="alert alert-success">✓ Your meeting request has been submitted! Check your email for a confirmation.</div>
+<% } %>
+<% if (error) { %>
+<div class="alert alert-error">
+  <% if (error === 'taken') { %>That time slot was just booked — please choose another.
+  <% } else if (error === 'missing') { %>Please fill in all required fields.
+  <% } else { %>Something went wrong. Please try again.<% } %>
+</div>
+<% } %>
+
+<div class="hero">
+  <h1><%= settings.title || 'Book a Meeting' %></h1>
+  <p><%= settings.subtitle || 'Choose a time that works for you.' %></p>
+</div>
+
+<div class="booking-layout">
+
+  <!-- Day picker -->
+  <div>
+    <div class="day-list" id="dayList">
+      <% days.forEach((day, i) => { %>
+      <button class="day-btn <%= i === 0 ? 'active' : '' %>" data-day="<%= i %>" onclick="selectDay(<%= i %>, this)">
+        <span class="day-label"><%= day.label %></span>
+        <span class="day-count"><%= day.slots.length %> slot<%= day.slots.length !== 1 ? 's' : '' %></span>
+      </button>
+      <% }); %>
+      <% if (!days.length) { %>
+      <div style="text-align:center;padding:40px;color:var(--muted);font-size:14px">No available slots in the next <%= settings.advanceDays || 14 %> days.</div>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- Slot picker + form -->
+  <div class="slots-panel">
+    <div class="slots-header" id="slotsHeader">
+      <% if (days.length) { %><%= days[0]?.label %><% } else { %>No availability<% } %>
+    </div>
+
+    <div class="slots-grid" id="slotsGrid">
+      <% if (days.length && days[0]) { %>
+        <% days[0].slots.forEach(slot => { %>
+        <button class="slot-btn" data-iso="<%= slot.iso %>" data-label="<%= days[0].label %> at <%= slot.label %>" onclick="selectSlot(this)"><%= slot.label %></button>
+        <% }); %>
+      <% } else { %>
+      <div class="slot-placeholder" style="grid-column:span 2">Select a date</div>
+      <% } %>
+    </div>
+
+    <div class="booking-form" id="bookingForm">
+      <div class="selected-slot-display" id="selectedSlotDisplay">📅 —</div>
+      <form method="POST" action="/book" id="theForm">
+        <input type="hidden" name="slotIso" id="slotIso">
+        <div class="form-row-2">
+          <div class="form-field"><label>First Name *</label><input name="firstName" required></div>
+          <div class="form-field"><label>Last Name</label><input name="lastName"></div>
+        </div>
+        <div class="form-field"><label>Email *</label><input type="email" name="email" required></div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Phone</label><input type="tel" name="phone"></div>
+          <div class="form-field"><label>Company</label><input name="company"></div>
+        </div>
+        <div class="form-field"><label>Message</label><textarea name="message" placeholder="Anything we should know before the meeting?"></textarea></div>
+        <input type="hidden" name="name" id="fullNameHidden">
+        <button type="submit" class="btn-book" id="bookBtn">Request Meeting</button>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const DAYS = <%- JSON.stringify(days.map(d => ({ label: d.label, iso: d.iso, slots: d.slots }))) %>;
+let selectedSlotIso = null;
+
+function selectDay(idx, btn) {
+  document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const day = DAYS[idx];
+  if (!day) return;
+  document.getElementById('slotsHeader').textContent = day.label;
+  const grid = document.getElementById('slotsGrid');
+  if (!day.slots.length) {
+    grid.innerHTML = '<div class="slot-placeholder" style="grid-column:span 2">No slots this day</div>';
+    return;
+  }
+  grid.innerHTML = day.slots.map(s =>
+    `<button class="slot-btn" data-iso="${s.iso}" data-label="${day.label} at ${s.label}" onclick="selectSlot(this)">${s.label}</button>`
+  ).join('');
+  // Reset selection
+  selectedSlotIso = null;
+  document.getElementById('bookingForm').classList.remove('show');
+}
+
+function selectSlot(btn) {
+  document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedSlotIso = btn.dataset.iso;
+  document.getElementById('slotIso').value = selectedSlotIso;
+  document.getElementById('selectedSlotDisplay').textContent = '📅 ' + btn.dataset.label;
+  document.getElementById('bookingForm').classList.add('show');
+  document.getElementById('bookingForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+document.getElementById('theForm').addEventListener('submit', function(e) {
+  const fn = document.querySelector('[name=firstName]').value.trim();
+  const ln = document.querySelector('[name=lastName]').value.trim();
+  document.getElementById('fullNameHidden').value = [fn, ln].filter(Boolean).join(' ');
+  document.getElementById('bookBtn').disabled = true;
+  document.getElementById('bookBtn').textContent = 'Submitting…';
+});
+
+// Auto-select first day if only one
+if (DAYS.length === 1) selectDay(0, document.querySelector('.day-btn'));
+</script>
+
+</body>
+</html>

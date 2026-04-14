@@ -12,6 +12,8 @@ const nodemailer = require('/srv/madladslab/node_modules/nodemailer');
 require('/srv/madladslab/node_modules/dotenv').config({ path: '/srv/madladslab/.env' });
 require('/srv/madladslab/node_modules/dotenv').config({ path: '/srv/slab/.env' }); // picks up SLAB_DB if missing
 
+const OLLAMA_KEY = process.env.OLLAMA_KEY || '';
+
 const { MongoClient } = require('/srv/madladslab/node_modules/mongodb');
 
 const HEALTH_URL = 'https://ollama.madladslab.com/health';
@@ -29,7 +31,14 @@ function getTransporter() {
 
 function fetchHealth() {
   return new Promise((resolve, reject) => {
-    const req = https.get(HEALTH_URL, { timeout: 15000 }, (res) => {
+    const opts = {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'ollama-health-monitor/1.0',
+        ...(OLLAMA_KEY ? { 'Authorization': 'Bearer ' + OLLAMA_KEY } : {}),
+      },
+    };
+    const req = https.get(HEALTH_URL, opts, (res) => {
       let data = '';
       res.on('data', (c) => (data += c));
       res.on('end', () => {

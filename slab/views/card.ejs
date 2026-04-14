@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title><%= brand?.name || 'Business Card' %></title>
+  <meta name="description" content="<%= brand?.tagline || brand?.name || '' %>">
+  <meta name="theme-color" content="<%= design.color_primary || '#1C2B4A' %>">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="<%= brand?.name || 'Card' %>">
+  <% if (logo) { %><link rel="apple-touch-icon" href="<%= logo %>"><% } %>
+  <link rel="manifest" href="/card/<%= slug %>/manifest.json">
+  <%
+    const _hFont = design.font_heading || 'Cormorant Garamond';
+    const _bFont = design.font_body || 'Jost';
+    const _fontMap = {
+      'Cormorant Garamond': 'Cormorant+Garamond:wght@400;600;700',
+      'Playfair Display': 'Playfair+Display:wght@400;600;700',
+      'Lora': 'Lora:wght@400;600;700',
+      'Merriweather': 'Merriweather:wght@300;400;700',
+      'Libre Baskerville': 'Libre+Baskerville:wght@400;700',
+      'Jost': 'Jost:wght@300;400;500;600',
+      'Inter': 'Inter:wght@300;400;500;600',
+      'Poppins': 'Poppins:wght@300;400;500;600',
+      'Raleway': 'Raleway:wght@300;400;500;600',
+      'Nunito': 'Nunito:wght@300;400;500;600',
+      'DM Sans': 'DM+Sans:wght@300;400;500;600',
+    };
+    const hUrl = _fontMap[_hFont] || _fontMap['Cormorant Garamond'];
+    const bUrl = _fontMap[_bFont] || _fontMap['Jost'];
+    const fontsParam = hUrl === bUrl ? hUrl : hUrl + '&family=' + bUrl;
+  %>
+  <link href="https://fonts.googleapis.com/css2?family=<%= fontsParam %>&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: <%= design.color_primary || '#1C2B4A' %>;
+      --primary-deep: <%= design.color_primary_deep || '#0F1B30' %>;
+      --accent: <%= design.color_accent || '#C9A848' %>;
+      --accent-light: <%= design.color_accent_light || '#E8D08A' %>;
+      --bg: <%= design.color_bg || '#F5F3EF' %>;
+      --white: <%= design.color_white || '#FDFCFA' %>;
+      --dark: <%= design.color_dark || '#0F1B30' %>;
+      --font-heading: '<%= _hFont %>', serif;
+      --font-body: '<%= _bFont %>', sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      background: var(--primary-deep);
+      min-height: 100vh; min-height: 100dvh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .card {
+      background: var(--white);
+      border-radius: 20px;
+      width: 100%; max-width: 380px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.05);
+      animation: cardIn 0.5s ease;
+    }
+    @keyframes cardIn { from { opacity: 0; transform: translateY(20px) scale(0.97); } }
+
+    /* Header band */
+    .card-header {
+      background: var(--primary);
+      padding: 36px 24px 28px;
+      text-align: center;
+      position: relative;
+    }
+    .card-header::after {
+      content: '';
+      position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%);
+      width: 24px; height: 24px; background: var(--white);
+      border-radius: 50%;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+    }
+
+    .card-logo {
+      width: 72px; height: 72px; border-radius: 50%;
+      object-fit: cover; border: 3px solid var(--accent);
+      margin-bottom: 14px;
+    }
+    .card-logo-placeholder {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: var(--accent); color: var(--dark);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 1.8rem; font-weight: 700; font-family: var(--font-heading);
+      margin-bottom: 14px;
+    }
+
+    .card-name {
+      font-family: var(--font-heading);
+      font-size: 1.5rem; font-weight: 600;
+      color: var(--white); margin-bottom: 4px;
+    }
+    .card-tagline {
+      font-size: 0.82rem; color: var(--accent-light);
+      font-weight: 300; letter-spacing: 0.02em;
+    }
+
+    /* Body */
+    .card-body { padding: 28px 24px 20px; text-align: center; }
+
+    /* QR section */
+    .card-qr {
+      display: inline-block; padding: 12px;
+      background: #fff; border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      margin-bottom: 20px;
+    }
+    .card-qr img { display: block; width: 180px; height: 180px; }
+
+    /* Contact details */
+    .card-details { margin-bottom: 20px; }
+    .card-detail {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; margin-bottom: 6px;
+      border-radius: 8px; background: var(--bg);
+      font-size: 0.82rem; color: var(--dark);
+      text-decoration: none; transition: background 0.2s;
+    }
+    .card-detail:hover { background: var(--accent-light); }
+    .card-detail svg { flex-shrink: 0; opacity: 0.6; }
+    .card-detail span { text-align: left; }
+
+    /* Social links */
+    .card-socials {
+      display: flex; justify-content: center; gap: 12px;
+      margin-bottom: 20px;
+    }
+    .card-social {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: var(--primary); color: var(--white);
+      display: flex; align-items: center; justify-content: center;
+      text-decoration: none; transition: transform 0.2s, background 0.2s;
+    }
+    .card-social:hover { transform: scale(1.1); background: var(--accent); color: var(--dark); }
+
+    /* CTA buttons */
+    .card-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+    .card-btn {
+      display: block; padding: 12px 20px; border-radius: 10px;
+      font-size: 0.85rem; font-weight: 500; text-decoration: none;
+      text-align: center; transition: transform 0.15s, box-shadow 0.15s;
+      font-family: var(--font-body);
+    }
+    .card-btn:active { transform: scale(0.98); }
+    .card-btn-primary {
+      background: var(--primary); color: var(--white);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+    .card-btn-outline {
+      background: transparent; color: var(--primary);
+      border: 1.5px solid var(--primary);
+    }
+
+    /* Add to home screen prompt */
+    .a2hs-prompt {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--primary); color: var(--white);
+      padding: 16px 20px; text-align: center;
+      transform: translateY(100%); transition: transform 0.35s ease;
+      z-index: 9000;
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+    .a2hs-prompt.show { transform: translateY(0); }
+    .a2hs-prompt p { font-size: 0.82rem; margin-bottom: 10px; opacity: 0.9; }
+    .a2hs-prompt .a2hs-btn {
+      display: inline-block; padding: 10px 24px;
+      background: var(--accent); color: var(--dark);
+      border: none; border-radius: 8px; font-size: 0.85rem;
+      font-weight: 600; cursor: pointer; font-family: var(--font-body);
+    }
+    .a2hs-dismiss {
+      position: absolute; top: 8px; right: 12px;
+      background: none; border: none; color: rgba(255,255,255,0.5);
+      font-size: 1.2rem; cursor: pointer;
+    }
+
+    /* Footer */
+    .card-footer {
+      text-align: center; padding: 12px 24px 20px;
+      font-size: 0.68rem; color: var(--dark); opacity: 0.35;
+    }
+    .card-footer a { color: inherit; text-decoration: none; }
+
+    /* Share button */
+    .share-fab {
+      position: fixed; top: 16px; right: 16px;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 100; transition: background 0.2s;
+    }
+    .share-fab:hover { background: rgba(255,255,255,0.25); }
+  </style>
+</head>
+<body>
+
+  <!-- Share FAB -->
+  <button class="share-fab" id="shareBtn" aria-label="Share" style="display:none;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+  </button>
+
+  <div class="card">
+    <!-- Header -->
+    <div class="card-header">
+      <% if (logo) { %>
+        <img src="<%= logo %>" alt="<%= brand?.name || '' %>" class="card-logo">
+      <% } else { %>
+        <div class="card-logo-placeholder"><%= (brand?.name || '?')[0] %></div>
+      <% } %>
+      <div class="card-name"><%= brand?.name || 'Business' %></div>
+      <% if (brand?.tagline || brand?.businessType) { %>
+        <div class="card-tagline"><%= brand.tagline || brand.businessType %></div>
+      <% } %>
+    </div>
+
+    <div class="card-body">
+      <!-- QR Code -->
+      <div class="card-qr">
+        <img src="<%= qrDataUrl %>" alt="QR Code">
+      </div>
+
+      <!-- Contact Details -->
+      <div class="card-details">
+        <% if (brand?.phone) { %>
+          <a href="tel:<%= brand.phone.replace(/[^\d+]/g, '') %>" class="card-detail">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+            <span><%= brand.phone %></span>
+          </a>
+        <% } %>
+        <% if (brand?.email) { %>
+          <a href="mailto:<%= brand.email %>" class="card-detail">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span><%= brand.email %></span>
+          </a>
+        <% } %>
+        <% if (brand?.location) { %>
+          <div class="card-detail">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span><%= brand.location %></span>
+          </div>
+        <% } %>
+        <% if (websiteUrl) { %>
+          <a href="<%= websiteUrl %>" class="card-detail" target="_blank">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+            <span>Visit Website</span>
+          </a>
+        <% } %>
+      </div>
+
+      <!-- Social Links -->
+      <% const socials = brand?.socialLinks || {}; %>
+      <% const hasSocials = Object.values(socials).some(v => v && v.trim()); %>
+      <% if (hasSocials) { %>
+        <div class="card-socials">
+          <% if (socials.facebook) { %>
+            <a href="<%= socials.facebook %>" class="card-social" target="_blank" aria-label="Facebook">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            </a>
+          <% } %>
+          <% if (socials.instagram) { %>
+            <a href="<%= socials.instagram %>" class="card-social" target="_blank" aria-label="Instagram">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+            </a>
+          <% } %>
+          <% if (socials.linkedin) { %>
+            <a href="<%= socials.linkedin %>" class="card-social" target="_blank" aria-label="LinkedIn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+            </a>
+          <% } %>
+          <% if (socials.twitter) { %>
+            <a href="<%= socials.twitter %>" class="card-social" target="_blank" aria-label="X / Twitter">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            </a>
+          <% } %>
+          <% if (socials.youtube) { %>
+            <a href="<%= socials.youtube %>" class="card-social" target="_blank" aria-label="YouTube">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            </a>
+          <% } %>
+          <% if (socials.tiktok) { %>
+            <a href="<%= socials.tiktok %>" class="card-social" target="_blank" aria-label="TikTok">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+            </a>
+          <% } %>
+        </div>
+      <% } %>
+
+      <!-- Action Buttons -->
+      <div class="card-actions">
+        <% if (websiteUrl) { %>
+          <a href="<%= websiteUrl %>" class="card-btn card-btn-primary">Visit Our Website</a>
+        <% } %>
+        <% if (brand?.phone) { %>
+          <a href="tel:<%= brand.phone.replace(/[^\d+]/g, '') %>" class="card-btn card-btn-outline">Call Us</a>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="card-footer">
+      <a href="<%= websiteUrl || '#' %>"><%= brand?.name || '' %></a>
+    </div>
+  </div>
+
+  <!-- Add to Home Screen prompt -->
+  <div class="a2hs-prompt" id="a2hsPrompt">
+    <button class="a2hs-dismiss" id="a2hsDismiss" aria-label="Close">&times;</button>
+    <p>Add <strong><%= brand?.name || 'this card' %></strong> to your home screen for quick access</p>
+    <button class="a2hs-btn" id="a2hsBtn">Add to Home Screen</button>
+  </div>
+
+  <script>
+  (function() {
+    // ── Track scan ──
+    fetch('/card/<%= slug %>/scan', { method: 'POST' }).catch(function(){});
+
+    // ── Web Share API ──
+    var shareBtn = document.getElementById('shareBtn');
+    if (navigator.share) {
+      shareBtn.style.display = 'flex';
+      shareBtn.addEventListener('click', function() {
+        navigator.share({
+          title: '<%= (brand?.name || "Business Card").replace(/'/g, "\\'") %>',
+          text: '<%= (brand?.tagline || "").replace(/'/g, "\\'") %>',
+          url: window.location.href,
+        }).catch(function(){});
+      });
+    }
+
+    // ── Add to Home Screen ──
+    var deferredPrompt = null;
+    var a2hs = document.getElementById('a2hsPrompt');
+    var a2hsBtn = document.getElementById('a2hsBtn');
+    var a2hsDismiss = document.getElementById('a2hsDismiss');
+
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      setTimeout(function() { a2hs.classList.add('show'); }, 2000);
+    });
+
+    a2hsBtn.addEventListener('click', function() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function() { deferredPrompt = null; });
+      } else {
+        // iOS fallback — show instructions
+        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        if (isIOS) {
+          alert('Tap the Share button (box with arrow) at the bottom of Safari, then tap "Add to Home Screen".');
+        }
+      }
+      a2hs.classList.remove('show');
+    });
+
+    a2hsDismiss.addEventListener('click', function() {
+      a2hs.classList.remove('show');
+    });
+
+    // Show iOS prompt after delay if standalone not detected
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.navigator.standalone) {
+      setTimeout(function() {
+        if (!deferredPrompt) a2hs.classList.add('show');
+      }, 3000);
+    }
+  })();
+  </script>
+</body>
+</html>

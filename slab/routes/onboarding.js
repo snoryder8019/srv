@@ -19,6 +19,7 @@ import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { bustTenantCache } from '../middleware/tenant.js';
 import { createLoginToken } from '../middleware/jwtAuth.js';
 import { logActivity } from '../plugins/activityLog.js';
+import { notifyAdmin } from '../plugins/notify.js';
 import bcrypt from 'bcrypt';
 
 const router = express.Router();
@@ -319,6 +320,8 @@ router.post('/google-signup', async (req, res) => {
       actor: { email: profile.email, role: 'owner' },
       details: { subdomain: slug, brandName: brandName.trim(), plan: 'free', design: design || 'classic', method: 'google', refCode: delegateRef?.refCode || null }, ip: req.ip,
     });
+    notifyAdmin({ type: 'signup', app: 'slab', email: profile.email, name: profile.name || '', ip: req.ip,
+      data: { 'Brand': brandName.trim(), 'Domain': result.domain, 'Method': 'Google One Tap', 'Design': design || 'classic' } }).catch(() => {});
 
     // Send welcome email to registrant
     try {

@@ -1,3 +1,4 @@
+const { notifyAdmin } = require('/srv/slab/plugins/notify.cjs');
 const express = require('express');
 const passport = require('passport');
 const bcrypt = require('bcrypt');
@@ -75,6 +76,8 @@ router.post('/register', async (req, res) => {
       provider: 'local',
       role: 'user',
     });
+    notifyAdmin({ type: 'opstrain', app: 'opsTrain', email: cleanEmail, name: (displayName || '').trim() || cleanEmail, ip: req.ip,
+      data: { 'Method': 'Password', 'Display Name': (displayName || '').trim() || cleanEmail } }).catch(() => {});
 
     return res.render('auth/login', {
       title: 'Login',
@@ -137,3 +140,12 @@ router.get('/logout', (req, res) => {
 });
 
 module.exports = router;
+
+// ── JWT SSO (from slab Google OAuth) ─────────────────────────────────────────
+const { handleSSOCallback } = require('../middleware/jwtAuth');
+router.get('/sso', handleSSOCallback);
+
+// Redirect Google auth through slab (madladslab.com/auth/opstrain)
+router.get('/google/slab', (req, res) => {
+  res.redirect('https://madladslab.com/auth/opstrain');
+});

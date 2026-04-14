@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>GRAFFITI TV — CINEMA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Italiana&family=Raleway:wght@900&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#0a0806; height:100vh; overflow:hidden; font-family:'Italiana',serif; color:#f0ebe0; }
+
+    /* FULL BLEED media behind everything */
+    #mediaContainer {
+      position:fixed; inset:0; z-index:0;
+    }
+    #mediaContainer img, #mediaContainer video {
+      width:100%; height:100%; object-fit:cover;
+      position:absolute; top:0; left:0;
+      filter: brightness(0.55) saturate(1.2);
+    }
+
+    /* Cinematic letterbox bars */
+    body::before, body::after {
+      content:'';
+      position:fixed; left:0; right:0; z-index:2;
+      background:#000;
+      height:10vh;
+    }
+    body::before { top:0; }
+    body::after  { bottom:0; }
+
+    /* Content layer */
+    .cinema-ui {
+      position:fixed; inset:0; z-index:3;
+      display:flex; flex-direction:column;
+      justify-content:space-between;
+      padding:12vh 5vw;
+    }
+
+    /* TOP: logo + time side by side */
+    .top-row {
+      display:flex; justify-content:space-between; align-items:flex-start;
+    }
+    .logo-block {}
+    .logo-main {
+      font-family:'Raleway',sans-serif; font-weight:900;
+      font-size:clamp(2rem,4vw,5rem);
+      letter-spacing:10px; text-transform:uppercase;
+      color:#fff;
+      text-shadow: 0 2px 40px rgba(0,0,0,0.9);
+      line-height:1;
+    }
+    .logo-sub {
+      font-family:'DM Mono',monospace;
+      font-size:12px; letter-spacing:6px;
+      color:rgba(255,255,255,0.35);
+      margin-top:6px;
+    }
+    .time-block {
+      text-align:right;
+    }
+    .big-time {
+      font-family:'DM Mono',monospace;
+      font-size:clamp(1.5rem,3vw,3.5rem);
+      color:#fff; letter-spacing:4px;
+      text-shadow: 0 0 30px rgba(255,180,50,0.4);
+    }
+    .time-label {
+      font-size:11px; letter-spacing:5px;
+      color:rgba(255,255,255,0.25);
+      margin-top:4px; font-family:'DM Mono',monospace;
+    }
+
+    /* MIDDLE: current special — large centered */
+    .center-special {
+      text-align:center;
+      animation: fadeFloat 6s ease-in-out infinite;
+    }
+    @keyframes fadeFloat {
+      0%,100% { opacity:0.85; transform:translateY(0); }
+      50%      { opacity:1;    transform:translateY(-6px); }
+    }
+    .special-eyebrow {
+      font-family:'DM Mono',monospace; font-size:11px;
+      letter-spacing:8px; color:rgba(255,200,80,0.7);
+      margin-bottom:10px;
+    }
+    .special-name {
+      font-family:'Raleway',sans-serif; font-weight:900;
+      font-size:clamp(3rem,7vw,9rem);
+      line-height:0.9; letter-spacing:-2px;
+      color:#fff;
+      text-shadow: 0 4px 60px rgba(0,0,0,0.8);
+    }
+    .special-name em { color:#f5a623; font-style:normal; }
+    .special-desc {
+      font-family:'Italiana',serif; font-size:clamp(1rem,1.8vw,1.6rem);
+      color:rgba(255,255,255,0.5); margin-top:12px; letter-spacing:2px;
+    }
+
+    /* BOTTOM: horizontal ticker */
+    .bottom-ticker {
+      overflow:hidden;
+      border-top:1px solid rgba(255,255,255,0.1);
+      padding-top:14px;
+    }
+    .ticker-track {
+      display:flex; animation:tickerScroll 35s linear infinite; white-space:nowrap;
+    }
+    @keyframes tickerScroll { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+    .t-item {
+      padding:0 50px;
+      font-family:'DM Mono',monospace; font-size:13px;
+      letter-spacing:3px; color:rgba(255,255,255,0.35);
+    }
+    .t-item strong { color:rgba(255,255,255,0.75); }
+    .t-item::before { content:'· '; color:#f5a623; }
+
+    /* Specials cycle — JS swaps this */
+    .loading-msg {
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      background:#0a0806;z-index:10;
+    }
+    .loading-msg span {
+      font-family:'Raleway',sans-serif;font-weight:900;
+      font-size:4rem;letter-spacing:10px;color:rgba(255,255,255,0.15);
+    }
+  
+    .qr-block{display:flex;flex-direction:column;align-items:center;gap:4px;}
+    .qr-block-box{background:#fff;padding:5px;border-radius:2px;width:84px;height:84px;display:flex;align-items:center;justify-content:center;}
+    .qr-block-label{font-family:'Playfair Display',serif;font-size:8px;letter-spacing:1px;color:rgba(245,166,35,0.8);text-align:center;text-transform:uppercase;max-width:90px;line-height:1.3;}
+  </style>
+</head>
+<body>
+
+  <div id="mediaContainer">
+    <div class="loading-msg" id="loadingMsg"><span>GFTV</span></div>
+  </div>
+
+  <div class="cinema-ui">
+    <div class="top-row">
+      <div class="logo-block">
+        <div class="logo-main">Graffiti</div>
+        <div class="logo-main" style="color:#f5a623">Pasta</div>
+        <div class="logo-sub">DENTON · TEXAS</div>
+      </div>
+      <div class="time-block">
+        <div class="big-time" id="clock">--:--:--</div>
+        <div class="time-label">LOCAL TIME</div>
+      </div>
+      <div class="qr-block"><div class="qr-block-box"><div id="qr-code"></div></div><div class="qr-block-label" id="qr-label">Scan for offer</div></div>
+    </div>
+
+    <div class="center-special" id="specialBlock">
+      <div class="special-eyebrow">TONIGHT'S SPECIAL</div>
+      <div class="special-name" id="specialName">Graffiti <em>Carbonara</em></div>
+      <div class="special-desc" id="specialDesc">guanciale · egg yolk · pecorino · black pepper</div>
+    </div>
+
+    <div class="bottom-ticker">
+      <div class="ticker-track">
+        <span class="t-item"><strong>Carbonara</strong> $19.99</span>
+        <span class="t-item"><strong>Truffle Pasta</strong> $24.99</span>
+        <span class="t-item"><strong>Cacio e Pepe</strong> $17.99</span>
+        <span class="t-item"><strong>Bolognese</strong> $21.99</span>
+        <span class="t-item"><strong>Arrabbiata</strong> $16.99</span>
+        <span class="t-item"><strong>Wood-Fired Pizza</strong> $14.99</span>
+        <span class="t-item"><strong>Negroni Happy Hour</strong> $5</span>
+        <span class="t-item"><strong>Aperol Spritz</strong> $8.99</span>
+        <span class="t-item">Live Music · Every Friday</span>
+        <span class="t-item">Happy Hour · 4–7pm Daily</span>
+        <span class="t-item"><strong>Carbonara</strong> $19.99</span>
+        <span class="t-item"><strong>Truffle Pasta</strong> $24.99</span>
+        <span class="t-item"><strong>Cacio e Pepe</strong> $17.99</span>
+        <span class="t-item"><strong>Bolognese</strong> $21.99</span>
+        <span class="t-item"><strong>Arrabbiata</strong> $16.99</span>
+        <span class="t-item"><strong>Wood-Fired Pizza</strong> $14.99</span>
+        <span class="t-item"><strong>Negroni Happy Hour</strong> $5</span>
+        <span class="t-item"><strong>Aperol Spritz</strong> $8.99</span>
+        <span class="t-item">Live Music · Every Friday</span>
+        <span class="t-item">Happy Hour · 4–7pm Daily</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // Clock
+  setInterval(()=>{ document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}); },1000);
+
+  // Rotating specials for the center display
+  const specials = [
+    { name:'Graffiti <em>Carbonara</em>', desc:'guanciale · egg yolk · pecorino · black pepper' },
+    { name:'Truffle <em>Pasta</em>',      desc:'black truffle · parmesan · butter · fresh herbs' },
+    { name:'Cacio <em>e Pepe</em>',       desc:'tonnarelli · pecorino romano · cracked pepper' },
+    { name:'Wood-Fired <em>Pizza</em>',   desc:'every night · fresh dough · rotating toppings' },
+    { name:'Happy <em>Hour</em>',         desc:'negroni $5 · aperol spritz $8.99 · 4–7pm daily' },
+  ];
+  let si = 0;
+  function rotateSpecial() {
+    si = (si + 1) % specials.length;
+    const el = document.getElementById('specialBlock');
+    el.style.opacity = 0;
+    el.style.transition = 'opacity 0.8s';
+    setTimeout(() => {
+      document.getElementById('specialName').innerHTML = specials[si].name;
+      document.getElementById('specialDesc').textContent = specials[si].desc;
+      el.style.opacity = 1;
+    }, 800);
+  }
+  setInterval(rotateSpecial, 7000);
+
+  // Media
+  let mediaList=[],idx=0;
+  async function loadMedia(){
+    try{
+      const r=await fetch('/api/linode/media');const d=await r.json();
+      if(d.success&&d.media?.length){mediaList=d.media;playMedia();}else loadFallback();
+    }catch(e){loadFallback();}
+  }
+  function loadFallback(){
+    document.getElementById('mediaContainer').innerHTML=`<iframe src="https://www.youtube.com/embed/86YLFOog4GM?autoplay=1&mute=1&controls=0&loop=1&playlist=86YLFOog4GM" frameborder="0" allow="autoplay" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;filter:brightness(0.55) saturate(1.2)"></iframe>`;
+  }
+  function playMedia(){
+    const lm=document.getElementById('loadingMsg');if(lm)lm.remove();
+    const c=document.getElementById('mediaContainer');const m=mediaList[idx];c.innerHTML='';
+    if(m.type==='video'){const v=document.createElement('video');v.src=m.url;v.autoplay=v.muted=true;v.loop=true;v.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;filter:brightness(0.55) saturate(1.2)';c.appendChild(v);}
+    else{const i=document.createElement('img');i.src=m.url;i.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;filter:brightness(0.55) saturate(1.2)';i.addEventListener('error',next);c.appendChild(i);setTimeout(next,15000);}
+  }
+  function next(){idx=(idx+1)%mediaList.length;playMedia();}
+  document.addEventListener('DOMContentLoaded',loadMedia);
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(async()=>{
+  try{
+    const slug=window.location.pathname.split('/')[2];
+    const d=await fetch('/api/'+slug+'/offering').then(r=>r.json());
+    if(!d.url)return;
+    const lbl=document.getElementById('qr-label');if(lbl)lbl.textContent=d.title||'Scan for offer';
+    const box=document.getElementById('qr-code');if(box)new QRCode(box,{text:d.url,width:84,height:84,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){}
+})();
+</script>
+</body></html>

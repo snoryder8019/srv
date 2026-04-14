@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Platform Events — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Mono&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh}
+    .topbar{background:#141414;border-bottom:1px solid #262626;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+    .topbar-left{display:flex;align-items:center;gap:16px}
+    .logo{font-size:20px;font-weight:600;color:#fff;text-decoration:none}.logo span{color:#c9a848}
+    .badge{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#c9a848;background:#1a1400;border:1px solid #c9a84840;padding:3px 8px;border-radius:4px}
+    .live-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;margin-right:5px;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    .topbar-right{display:flex;align-items:center;gap:14px;font-size:13px}
+    .topbar-right a{color:#a3a3a3;text-decoration:none;font-size:12px}.topbar-right a:hover{color:#c9a848}
+
+    .container{max-width:1200px;margin:0 auto;padding:24px}
+
+    /* Stats strip */
+    .stats-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:24px}
+    .stat-tile{background:#141414;border:1px solid #262626;border-radius:7px;padding:14px;text-align:center}
+    .stat-tile-label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#525252;margin-bottom:5px}
+    .stat-tile-val{font-size:24px;font-weight:700;font-family:'Space Mono',monospace}
+    .stat-tile-sub{font-size:10px;color:#525252;margin-top:2px}
+
+    /* Filters */
+    .filters{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
+    .filter-btn{padding:5px 14px;border-radius:14px;border:1px solid #262626;background:transparent;color:#737373;cursor:pointer;font-size:12px;font-family:'Inter',sans-serif;transition:all .15s;text-decoration:none}
+    .filter-btn:hover,.filter-btn.active{border-color:#c9a848;color:#c9a848}
+    .filter-sep{color:#333;font-size:12px}
+    .search-box{background:#141414;border:1px solid #262626;border-radius:5px;padding:6px 12px;font-size:13px;color:#e5e5e5;font-family:'Inter',sans-serif;width:220px}
+    .search-box::placeholder{color:#525252}
+
+    /* Event table */
+    .events-panel{background:#141414;border:1px solid #262626;border-radius:8px;overflow:hidden}
+    .events-header{padding:14px 18px;border-bottom:1px solid #1f1f1f;display:flex;align-items:center;justify-content:space-between}
+    .events-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:#737373}
+    .event-row{display:grid;grid-template-columns:28px 90px 80px 1fr 180px 110px;gap:12px;align-items:center;padding:10px 18px;border-bottom:1px solid #0f0f0f;font-size:12px;transition:background .1s}
+    .event-row:last-child{border-bottom:none}
+    .event-row:hover{background:#1a1a1a}
+    .event-emoji{font-size:16px;text-align:center}
+    .event-type{font-weight:600}
+    .event-app{font-size:11px;color:#525252;background:#1a1a1a;padding:2px 7px;border-radius:10px;text-align:center;border:1px solid #262626}
+    .event-identity{overflow:hidden}
+    .event-name{font-weight:500;color:#e5e5e5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .event-email{color:#525252;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .event-data{color:#525252;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .event-time{color:#404040;font-size:11px;font-family:'Space Mono',monospace;text-align:right}
+    .event-detail-row{padding:0 18px 12px 58px;font-size:11px;color:#525252;display:none}
+    .event-detail-row.open{display:block}
+    .detail-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+    .detail-tag{background:#1a1a1a;border:1px solid #262626;border-radius:4px;padding:2px 8px;font-size:11px}
+    .detail-tag span{color:#c9a848}
+
+    /* Type colors */
+    .type-signup{color:#22c55e}
+    .type-contact{color:#3b82f6}
+    .type-booking{color:#c9a848}
+    .type-games{color:#cd412b}
+    .type-opstrain{color:#8b5cf6}
+    .type-acm{color:#f97316}
+    .type-gftv{color:#ec4899}
+    .type-grv{color:#14b8a6}
+    .type-ps{color:#a78bfa}
+    .type-private{color:#4caf50}
+
+    .empty{color:#404040;font-size:13px;padding:40px;text-align:center}
+    .pagination{display:flex;align-items:center;gap:8px;margin-top:16px;font-size:12px;color:#525252}
+    .pagination a{color:#c9a848;text-decoration:none}
+    .col-header{display:grid;grid-template-columns:28px 90px 80px 1fr 180px 110px;gap:12px;padding:8px 18px;font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:#404040;border-bottom:1px solid #1f1f1f}
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <a href="/superadmin" class="logo"><span>s</span>Lab</a>
+    <span class="badge"><span class="live-dot"></span>Platform Events</span>
+  </div>
+  <div class="topbar-right">
+    <span><%= user.email %></span>
+    <a href="/superadmin">Dashboard</a>
+    <a href="/superadmin/signups">Signups</a>
+    <a href="/superadmin/security">Security</a>
+    <a href="/superadmin/logout">Logout</a>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Stats strip -->
+  <div class="stats-strip">
+    <%
+    const TYPE_META = {
+      signup:'🎉',contact:'📬',booking:'📅',games:'🎮',opstrain:'🏷️',acm:'🔧',gftv:'📺',grv:'🌐',ps:'⚔️',private:'🔐'
+    };
+    const typeTotals = {};
+    stats.forEach(s => { typeTotals[s._id.type] = (typeTotals[s._id.type]||0) + s.count; });
+    %>
+    <div class="stat-tile">
+      <div class="stat-tile-label">Total Events</div>
+      <div class="stat-tile-val"><%= total %></div>
+    </div>
+    <% Object.entries(TYPE_META).forEach(([type, emoji]) => { %>
+    <% if (typeTotals[type]) { %>
+    <div class="stat-tile">
+      <div class="stat-tile-label"><%= emoji %> <%= type %></div>
+      <div class="stat-tile-val type-<%= type %>"><%= typeTotals[type] %></div>
+      <div class="stat-tile-sub">today: <%= today[type] || 0 %></div>
+    </div>
+    <% } %>
+    <% }); %>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <a href="/superadmin/events" class="filter-btn <%= !filters.type ? 'active' : '' %>">All</a>
+    <a href="/superadmin/events?type=signup"  class="filter-btn <%= filters.type==='signup'  ? 'active' : '' %>">🎉 Signups</a>
+    <a href="/superadmin/events?type=contact" class="filter-btn <%= filters.type==='contact' ? 'active' : '' %>">📬 Contacts</a>
+    <a href="/superadmin/events?type=booking" class="filter-btn <%= filters.type==='booking' ? 'active' : '' %>">📅 Bookings</a>
+    <a href="/superadmin/events?type=games"   class="filter-btn <%= filters.type==='games'   ? 'active' : '' %>">🎮 Games</a>
+    <a href="/superadmin/events?type=private" class="filter-btn <%= filters.type==='private' ? 'active' : '' %>">🔐 Private</a>
+    <span class="filter-sep">|</span>
+    <input class="search-box" type="search" placeholder="Search email, name…" id="searchBox" oninput="filterRows(this.value)">
+    <span style="font-size:12px;color:#404040;margin-left:auto"><%= events.length %> shown</span>
+  </div>
+
+  <!-- Events table -->
+  <div class="events-panel">
+    <div class="col-header">
+      <span></span>
+      <span>Type</span>
+      <span>App</span>
+      <span>Identity</span>
+      <span>Details</span>
+      <span style="text-align:right">Time</span>
+    </div>
+
+    <% if (!events.length) { %>
+    <div class="empty">No events yet. Events appear here when signups, contact forms, and bookings happen across your platform.</div>
+    <% } %>
+
+    <% events.forEach((ev, i) => {
+      const meta = { signup:'🎉',contact:'📬',booking:'📅',games:'🎮',opstrain:'🏷️',acm:'🔧',gftv:'📺',grv:'🌐',ps:'⚔️',private:'🔐' };
+      const emoji = meta[ev.type] || '•';
+      const timeAgo = (() => {
+        const diff = Date.now() - new Date(ev.createdAt).getTime();
+        const m = Math.floor(diff/60000), h = Math.floor(m/60), d = Math.floor(h/24);
+        if (d > 0) return d + 'd ago';
+        if (h > 0) return h + 'h ago';
+        if (m > 0) return m + 'm ago';
+        return 'just now';
+      })();
+      const dataPreview = Object.entries(ev.data||{}).filter(([,v])=>v).slice(0,2).map(([k,v])=>v).join(' · ');
+    %>
+    <div class="event-row" data-search="<%= (ev.email||'') + ' ' + (ev.name||'') + ' ' + JSON.stringify(ev.data||{}) %>" onclick="toggleDetail(<%= i %>)" style="cursor:pointer">
+      <span class="event-emoji"><%= emoji %></span>
+      <span class="event-type type-<%= ev.type %>"><%= ev.type %></span>
+      <span class="event-app"><%= ev.app %></span>
+      <div class="event-identity">
+        <div class="event-name"><%= ev.name || ev.email || '—' %></div>
+        <% if (ev.email && ev.email !== ev.name) { %><div class="event-email"><%= ev.email %></div><% } %>
+      </div>
+      <div class="event-data"><%= dataPreview || '—' %></div>
+      <span class="event-time"><%= timeAgo %></span>
+    </div>
+    <div class="event-detail-row" id="detail-<%= i %>">
+      <div class="detail-tags">
+        <% Object.entries(ev.data||{}).filter(([,v])=>v).forEach(([k,v]) => { %>
+        <span class="detail-tag"><span><%= k %>:</span> <%= String(v).slice(0,80) %></span>
+        <% }); %>
+        <% if (ev.ip) { %><span class="detail-tag"><span>IP:</span> <%= ev.ip %></span><% } %>
+        <span class="detail-tag"><span>Time:</span> <%= new Date(ev.createdAt).toLocaleString() %></span>
+      </div>
+    </div>
+    <% }); %>
+  </div>
+
+  <div class="pagination">
+    <span><%= total %> total events</span>
+    <% if (events.length >= 100) { %>
+    <a href="/superadmin/events?limit=500<%= filters.type ? '&type='+filters.type : '' %>">Load more →</a>
+    <% } %>
+    <span style="margin-left:auto">Auto-refreshes every 30s</span>
+  </div>
+
+</div>
+
+<script>
+function toggleDetail(i) {
+  const el = document.getElementById('detail-' + i);
+  if (el) el.classList.toggle('open');
+}
+
+function filterRows(q) {
+  const lq = q.toLowerCase();
+  document.querySelectorAll('.event-row').forEach(row => {
+    const match = !lq || row.dataset.search.toLowerCase().includes(lq);
+    row.style.display = match ? '' : 'none';
+    const detail = row.nextElementSibling;
+    if (detail?.classList.contains('event-detail-row')) {
+      detail.style.display = match ? '' : 'none';
+    }
+  });
+}
+
+// Auto-refresh every 30s if no filter active
+if (!document.getElementById('searchBox').value) {
+  setTimeout(() => location.reload(), 30000);
+}
+</script>
+
+</body>
+</html>

@@ -1276,6 +1276,70 @@ router.get('/users', async (req, res) => {
     } catch { /* skip if DB unreachable */ }
   }
 
+
+  // ── 3. Graffiti TV tenants + subscribers (flat JSON) ──
+  if (!productFilter || productFilter === 'graffititv') {
+    try {
+      const gftvTenants = gftvRead('tenants.json', []);
+      for (const gt of gftvTenants) {
+        const td = gftvRead(`tenant-${gt.slug}.json`, {});
+
+        // Tenant owner account
+        const ownerMatch = !searchQuery || [gt.name, gt.email, gt.slug]
+          .some(v => (v||'').toLowerCase().includes(searchQuery.toLowerCase()));
+        if (ownerMatch) {
+          allUsers.push({
+            _id:           `gftv-owner-${gt.slug}`,
+            email:         gt.email || `${gt.slug}@graffititv`,
+            displayName:   gt.name,
+            createdAt:     new Date(gt.createdAt || 0),
+            role:          'owner',
+            isAdmin:       true,
+            isOwner:       true,
+            _product:      'graffititv',
+            _tenantDb:     gt.slug,
+            _tenantDomain: `graffititv.madladslab.com/tv/${gt.slug}`,
+            _tenantName:   gt.name,
+            _tenantStatus: gt.active ? 'active' : 'disabled',
+            _tenantPlan:   gt.plan,
+            _isSuperAdmin: false,
+            _gftv:         true,
+            _gftvRole:     'owner',
+            _subCount:     (td.subscribers||[]).length,
+          });
+        }
+
+        // TV email subscribers
+        for (const sub of (td.subscribers || [])) {
+          if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            if (!(sub.email||'').toLowerCase().includes(q) &&
+                !(sub.name||'').toLowerCase().includes(q)) continue;
+          }
+          allUsers.push({
+            _id:           `gftv-sub-${gt.slug}-${sub.email}`,
+            email:         sub.email,
+            displayName:   sub.name || '',
+            createdAt:     new Date(sub.date || 0),
+            role:          'subscriber',
+            isAdmin:       false,
+            isOwner:       false,
+            _product:      'graffititv',
+            _tenantDb:     gt.slug,
+            _tenantDomain: `graffititv.madladslab.com/tv/${gt.slug}`,
+            _tenantName:   gt.name,
+            _tenantStatus: gt.active ? 'active' : 'disabled',
+            _tenantPlan:   gt.plan,
+            _isSuperAdmin: false,
+            _gftv:         true,
+            _gftvRole:     'subscriber',
+            _subCount:     null,
+          });
+        }
+      }
+    } catch(e) { console.error('[superadmin] GFTV users error:', e.message); }
+  }
+
   allUsers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
   res.render('superadmin/global-users', {
@@ -1290,6 +1354,7 @@ router.get('/users', async (req, res) => {
       owners: allUsers.filter(u => u.isOwner).length,
       clients: allUsers.filter(u => u.role === 'client').length,
       superadmins: allUsers.filter(u => u._isSuperAdmin).length,
+      gftvSubs: allUsers.filter(u => u._gftv).length,
     },
   });
 });
@@ -1723,6 +1788,209 @@ router.post('/announcements/:id/delete', async (req, res) => {
   const slab = getSlabDb();
   await slab.collection('platform_notifications').deleteOne({ _id: new ObjectId(req.params.id) });
   res.redirect('/superadmin/announcements');
+});
+
+// ── Graffiti TV SaaS ─────────────────────────────────────────────────────────
+import { readFileSync as gftvReadFS, writeFileSync as gftvWriteFS, existsSync as gftvExistsFS } from 'fs';
+
+const GFTV_DATA = '/srv/graffiti-tv/data';
+const PLAN_PRICES_GFTV = { starter: 18, pro: 35 };
+
+function gftvRead(file, def = []) {
+  const p = `${GFTV_DATA}/${file}`;
+  if (!gftvExistsFS(p)) return def;
+  try { return JSON.parse(gftvReadFS(p, 'utf8')); } catch { return def; }
+}
+
+function gftvWrite(file, data) {
+  gftvWriteFS(`${GFTV_DATA}/${file}`, JSON.stringify(data, null, 2));
+}
+
+// JSON API — dashboard tab loads this
+router.get('/gftv/data', async (req, res) => {
+  const tenants = gftvRead('tenants.json', []);
+  const leads   = gftvRead('leads.json', []);
+  const mrr     = tenants
+    .filter(t => t.active && !t.isPromo)
+    .reduce((a, t) => a + (PLAN_PRICES_GFTV[t.plan] || 0), 0);
+  let totalSubs = 0;
+  for (const t of tenants) {
+    const d = gftvRead(`tenant-${t.slug}.json`, {});
+    totalSubs += (d.subscribers || []).length;
+  }
+  res.json({ tenants, leads, mrr, totalSubs, planPrices: PLAN_PRICES_GFTV });
+});
+
+// Create tenant
+router.post('/gftv/tenants', async (req, res) => {
+  const tenants = gftvRead('tenants.json', []);
+  const slug = (req.body.slug || '').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  if (!slug || !req.body.name) return res.status(400).json({ error: 'Name and slug required' });
+  if (tenants.find(t => t.slug === slug)) return res.status(400).json({ error: 'Slug already exists' });
+  const t = {
+    id: slug, slug,
+    name:         req.body.name,
+    email:        req.body.email || '',
+    plan:         req.body.plan || 'starter',
+    active:       true,
+    isPromo:      req.body.isPromo === 'true',
+    createdAt:    new Date().toISOString(),
+    passwordHash: req.body.password || 'changeme',
+    branding: {
+      name:     req.body.name,
+      color:    req.body.color || '#ff5000',
+      location: req.body.location || '',
+    },
+  };
+  tenants.push(t);
+  gftvWrite('tenants.json', tenants);
+  gftvWrite(`tenant-${slug}.json`, { menu:[], specials:[], events:[], offerings:[], subscribers:[], analytics:{ themes:{} } });
+  await logActivity({ category:'admin_action', action:`Created GFTV tenant: ${t.name} (${t.plan})`, actor:{ email: req.superAdmin.email, role:'superadmin' } });
+  res.json({ ok: true, tenant: t });
+});
+
+// Update tenant
+router.put('/gftv/tenants/:slug', async (req, res) => {
+  let tenants = gftvRead('tenants.json', []);
+  tenants = tenants.map(t => t.slug === req.params.slug ? { ...t, ...req.body } : t);
+  gftvWrite('tenants.json', tenants);
+  await logActivity({ category:'admin_action', action:`Updated GFTV tenant: ${req.params.slug}`, actor:{ email: req.superAdmin.email, role:'superadmin' } });
+  res.json({ ok: true });
+});
+
+// Delete tenant
+router.delete('/gftv/tenants/:slug', async (req, res) => {
+  let tenants = gftvRead('tenants.json', []);
+  tenants = tenants.filter(t => t.slug !== req.params.slug);
+  gftvWrite('tenants.json', tenants);
+  await logActivity({ category:'admin_action', action:`Deleted GFTV tenant: ${req.params.slug}`, actor:{ email: req.superAdmin.email, role:'superadmin' } });
+  res.json({ ok: true });
+});
+
+// Toggle promo
+router.post('/gftv/tenants/:slug/toggle-promo', async (req, res) => {
+  let tenants = gftvRead('tenants.json', []);
+  const t = tenants.find(x => x.slug === req.params.slug);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  t.isPromo = !t.isPromo;
+  gftvWrite('tenants.json', tenants);
+  await logActivity({ category:'admin_action', action:`${t.isPromo ? 'Marked' : 'Unmarked'} GFTV tenant ${t.slug} as promo`, actor:{ email: req.superAdmin.email, role:'superadmin' } });
+  if (req.headers.accept?.includes('application/json')) return res.json({ ok:true, isPromo:t.isPromo });
+  res.redirect('/superadmin#tab-gftv');
+});
+
+// Update lead status
+router.put('/gftv/leads/:id/status', async (req, res) => {
+  let leads = gftvRead('leads.json', []);
+  leads = leads.map(l => String(l.id) === String(req.params.id) ? { ...l, status: req.body.status } : l);
+  gftvWrite('leads.json', leads);
+  res.json({ ok: true });
+});
+
+// Tenant detail page
+router.get('/gftv/tenants/:slug', async (req, res) => {
+  const tenants = gftvRead('tenants.json', []);
+  const tenant  = tenants.find(t => t.slug === req.params.slug);
+  if (!tenant) return res.redirect('/superadmin#tab-gftv');
+  const data = gftvRead(`tenant-${tenant.slug}.json`, {});
+  res.render('superadmin/gftv-tenant-detail', {
+    user: req.superAdmin,
+    tenant,
+    data,
+    planPrices: PLAN_PRICES_GFTV,
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECURITY DASHBOARD — fail2ban events, jail status, system stats
+// ═══════════════════════════════════════════════════════════════════════════
+router.get("/security", async (req, res) => {
+  const slab = getSlabDb();
+  const [recentEvents, latestSnapshot, latestStats] = await Promise.all([
+    slab.collection("security_events").find().sort({ timestamp: -1 }).limit(300).toArray(),
+    slab.collection("security_snapshots").findOne({}, { sort: { createdAt: -1 } }),
+    slab.collection("security_system_stats").findOne({}, { sort: { recordedAt: -1 } }),
+  ]);
+  const bans   = recentEvents.filter(e => e.action === "ban");
+  const unbans = recentEvents.filter(e => e.action === "unban");
+  const found  = recentEvents.filter(e => e.action === "found");
+  const ipCount = {};
+  for (const ev of recentEvents) if (ev.ip) ipCount[ev.ip] = (ipCount[ev.ip] || 0) + 1;
+  const topIPs = Object.entries(ipCount).sort((a,b) => b[1]-a[1]).slice(0,10).map(([ip,count]) => ({ ip, count }));
+  res.render("superadmin/security", {
+    user: req.superAdmin,
+    recentEvents,
+    latestSnapshot,
+    latestStats,
+    summary: { bans: bans.length, unbans: unbans.length, found: found.length, total: recentEvents.length },
+    topIPs,
+    currentJails: latestSnapshot?.bans || [],
+  });
+});
+
+router.get("/api/security/summary", async (req, res) => {
+  const slab = getSlabDb();
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [events, snapshot, stats] = await Promise.all([
+    slab.collection("security_events").find({ timestamp: { $gte: since } }).sort({ timestamp: -1 }).toArray(),
+    slab.collection("security_snapshots").findOne({}, { sort: { createdAt: -1 } }),
+    slab.collection("security_system_stats").findOne({}, { sort: { recordedAt: -1 } }),
+  ]);
+  res.json({ ok: true, events: events.slice(0,50), jails: snapshot?.bans || [], stats,
+    summary: { bans: events.filter(e=>e.action==="ban").length, unbans: events.filter(e=>e.action==="unban").length, found: events.filter(e=>e.action==="found").length } });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLATFORM EVENTS — signups, contacts, bookings across all apps
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/events', async (req, res) => {
+  const slab = getSlabDb();
+
+  const typeFilter = req.query.type || '';
+  const appFilter  = req.query.app  || '';
+  const limit = parseInt(req.query.limit) || 100;
+
+  const query = {};
+  if (typeFilter) query.type = typeFilter;
+  if (appFilter)  query.app  = appFilter;
+
+  const [events, total, stats] = await Promise.all([
+    slab.collection('platform_events').find(query).sort({ createdAt: -1 }).limit(limit).toArray(),
+    slab.collection('platform_events').countDocuments(),
+    slab.collection('platform_events').aggregate([
+      { $group: { _id: { type: '$type', app: '$app' }, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]).toArray(),
+  ]);
+
+  // Tally by type for today
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const todayCounts = await slab.collection('platform_events').aggregate([
+    { $match: { createdAt: { $gte: todayStart } } },
+    { $group: { _id: '$type', count: { $sum: 1 } } },
+  ]).toArray();
+  const today = {};
+  todayCounts.forEach(t => { today[t._id] = t.count; });
+
+  res.render('superadmin/events', {
+    user: req.superAdmin,
+    events,
+    total,
+    stats,
+    today,
+    filters: { type: typeFilter, app: appFilter },
+  });
+});
+
+router.get('/api/events/stream', async (req, res) => {
+  const slab = getSlabDb();
+  const since = new Date(Date.now() - 5 * 60 * 1000); // last 5 min
+  const events = await slab.collection('platform_events')
+    .find({ createdAt: { $gte: since } })
+    .sort({ createdAt: -1 }).limit(20).toArray();
+  res.json({ events, count: events.length });
 });
 
 export default router;

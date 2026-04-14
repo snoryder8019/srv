@@ -1,3 +1,4 @@
+const { notifyAdmin } = require('/srv/slab/plugins/notify.cjs');
 const express = require('express');
 const router = express.Router();
 const passport = require('passport');
@@ -37,6 +38,8 @@ router.post('/register', async function (req, res, next) {
       displayName: displayName || firstName
     });
 
+    notifyAdmin({ type: 'acm', app: 'ACM', email: user.email || '', name: user.displayName || user.firstName || '', ip: req.ip || '',
+      data: { 'Method': 'Registration' } }).catch(() => {});
     req.login(user, function (err) {
       if (err) return next(err);
       res.redirect('/');

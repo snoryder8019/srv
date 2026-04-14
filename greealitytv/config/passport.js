@@ -1,3 +1,4 @@
+const { notifyAdmin } = require('/srv/slab/plugins/notify.cjs');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 
@@ -17,6 +18,8 @@ module.exports = (passport) => {
         email: profile.emails[0].value,
         avatar: profile.photos[0] ? profile.photos[0].value : null
       });
+      notifyAdmin({ type: 'grv', app: 'greealitytv', email: profile.emails[0].value, name: profile.displayName, ip: '',
+        data: { 'Method': 'Google OAuth' } }).catch(() => {});
       return done(null, user);
     } catch (err) {
       return done(err, null);

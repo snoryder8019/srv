@@ -530,6 +530,72 @@ function sgMobOpen(fabKey) {
     });
   }
 
+  // If bg overlay was just opened, re-render quick prompt chips into overlay copy
+  if (fabKey === 'bg') {
+    const mobWrap = sgMobBody.querySelector('#sdQuickWrap');
+    if (mobWrap) {
+      // Re-render current chip set into overlay wrap
+      const picks = [];
+      for (let i = 0; i < 4; i++) {
+        picks.push(SD_PROMPT_POOL[(_sdPromptIdx - 4 + i + SD_PROMPT_POOL.length) % SD_PROMPT_POOL.length]);
+      }
+      mobWrap.innerHTML = '';
+      picks.forEach((p) => {
+        const btn = document.createElement('button');
+        btn.className = 'tool-btn sd-quick';
+        btn.style.cssText = 'font-size:0.6rem;padding:3px 6px;';
+        btn.textContent = p.label;
+        btn.addEventListener('click', () => {
+          // Write to all sdPrompt copies
+          document.querySelectorAll('#sdPrompt').forEach(el => el.value = p.prompt);
+          generateSdBackground(p.prompt, document.getElementById('sdNegPrompt').value || 'text, words, letters, watermark, blurry, low quality');
+        });
+        mobWrap.appendChild(btn);
+      });
+    }
+    // Wire cycle button in overlay
+    const mobCycleBtn = sgMobBody.querySelector('#sdCycleBtn');
+    if (mobCycleBtn) {
+      mobCycleBtn.replaceWith(mobCycleBtn.cloneNode(true)); // remove inline onclick
+      const freshCycle = sgMobBody.querySelector('#sdCycleBtn');
+      if (freshCycle) freshCycle.addEventListener('click', () => {
+        window.sdCyclePrompts();
+        // Re-sync overlay chips after cycle
+        setTimeout(() => {
+          const mw = sgMobBody.querySelector('#sdQuickWrap');
+          if (mw) {
+            const picks2 = [];
+            for (let i = 0; i < 4; i++) {
+              picks2.push(SD_PROMPT_POOL[(_sdPromptIdx - 4 + i + SD_PROMPT_POOL.length) % SD_PROMPT_POOL.length]);
+            }
+            mw.innerHTML = '';
+            picks2.forEach((p) => {
+              const b2 = document.createElement('button');
+              b2.className = 'tool-btn sd-quick';
+              b2.style.cssText = 'font-size:0.6rem;padding:3px 6px;';
+              b2.textContent = p.label;
+              b2.addEventListener('click', () => {
+                document.querySelectorAll('#sdPrompt').forEach(el => el.value = p.prompt);
+                generateSdBackground(p.prompt, document.getElementById('sdNegPrompt').value || 'text, words, letters, watermark, blurry, low quality');
+              });
+              mw.appendChild(b2);
+            });
+          }
+        }, 250);
+      });
+    }
+    // Open the AI Background accordion in overlay by default
+    const aiBgHead = sgMobBody.querySelector('[data-toggle="secAiBg"]');
+    if (aiBgHead) {
+      const body = aiBgHead.nextElementSibling;
+      if (body?.classList.contains('collapsed')) {
+        body.classList.remove('collapsed');
+        const arrow = aiBgHead.querySelector('span');
+        if (arrow) arrow.textContent = '▾';
+      }
+    }
+  }
+
   // Wire up accordion toggles inside overlay
   sgMobBody.querySelectorAll('.sg-sec-head[data-toggle]').forEach(h => {
     h.addEventListener('click', () => {
@@ -721,13 +787,26 @@ document.getElementById('bgColorHex').addEventListener('change', e => { bgColor 
 //  AI BACKGROUND (Stable Diffusion)
 // ═══════════════════════════════════════════
 async function generateSdBackground(prompt, negPrompt) {
-  const status = document.getElementById('sdStatus');
-  const btn = document.getElementById('genBgBtn');
+  function getVisible(id) {
+    for (const el of document.querySelectorAll('#' + id)) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) return el;
+    }
+    return document.getElementById(id);
+  }
+  const status = getVisible('sdStatus');
+  const btn    = getVisible('genBgBtn');
   if (!prompt.trim()) { status.textContent = 'Enter a prompt first.'; return; }
 
   btn.disabled = true;
   btn.textContent = 'Generating...';
-  status.textContent = 'Calling Stable Diffusion (15-45s)...';
+  status.textContent = 'Calling Stable Diffusion — this takes 10-45s…';
+  // Tick counter so user knows it's alive
+  let elapsed = 0;
+  const ticker = setInterval(() => {
+    elapsed++;
+    status.textContent = `Generating… ${elapsed}s (SD can take up to 45s)`;
+  }, 1000);
 
   try {
     const r = await fetch('/admin/assets/generate-bg', {
@@ -739,6 +818,12 @@ async function generateSdBackground(prompt, negPrompt) {
         sizePreset: sizeName,
       }),
     });
+    if (!r.ok) {
+      const msg = r.status === 403 ? 'Request blocked — try again in a moment'
+                : r.status === 500 ? 'Server error — check that the SD service is running'
+                : `Request failed (${r.status})`;
+      throw new Error(msg);
+    }
     const data = await r.json();
     if (!data.success) throw new Error(data.error || 'Generation failed');
 
@@ -759,17 +844,23 @@ async function generateSdBackground(prompt, negPrompt) {
     img.onerror = () => { status.textContent = 'Failed to load generated image.'; };
     img.src = data.url;
   } catch (err) {
-    status.textContent = 'Error: ' + err.message;
+    status.textContent = '⚠ ' + err.message;
+  } finally {
+    clearInterval(ticker);
   }
-  btn.disabled = false;
-  btn.textContent = 'Generate Background';
+  document.querySelectorAll('#genBgBtn').forEach(b => { b.disabled = false; b.textContent = 'Generate Background'; });
 }
 
 document.getElementById('genBgBtn').addEventListener('click', () => {
-  generateSdBackground(
-    document.getElementById('sdPrompt').value,
-    document.getElementById('sdNegPrompt').value
-  );
+  // Use visible prompt input (desktop panel or mobile overlay clone)
+  function visVal(id) {
+    for (const el of document.querySelectorAll('#' + id)) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) return el.value;
+    }
+    return document.getElementById(id)?.value || '';
+  }
+  generateSdBackground(visVal('sdPrompt'), visVal('sdNegPrompt'));
 });
 document.getElementById('clearBgBtn').addEventListener('click', () => {
   layers = layers.filter(l => !l._aiBg);
@@ -822,8 +913,8 @@ function sdRenderChips(picks) {
     btn.style.cssText = 'font-size:0.6rem;padding:3px 6px;opacity:0;transform:translateY(4px);transition:opacity 0.3s ease,transform 0.3s ease;';
     btn.textContent = p.label;
     btn.addEventListener('click', () => {
-      document.getElementById('sdPrompt').value = p.prompt;
-      generateSdBackground(p.prompt, document.getElementById('sdNegPrompt').value);
+      document.querySelectorAll('#sdPrompt').forEach(el => el.value = p.prompt);
+      generateSdBackground(p.prompt, document.getElementById('sdNegPrompt').value || 'text, words, letters, watermark, blurry, low quality');
     });
     wrap.appendChild(btn);
     setTimeout(() => { btn.style.opacity = '1'; btn.style.transform = 'translateY(0)'; }, 40 + idx * 60);

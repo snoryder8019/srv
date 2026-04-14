@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>GRAFFITI TV — NEON GRID</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@900&family=Rajdhani:wght@500&family=Inconsolata:wght@700&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#030612;height:100vh;overflow:hidden;font-family:'Rajdhani',sans-serif;}
+
+    /* Animated grid background */
+    body::before{
+      content:'';position:fixed;inset:0;
+      background-image:
+        linear-gradient(rgba(0,255,180,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,180,0.06) 1px, transparent 1px);
+      background-size:60px 60px;
+      animation:gridDrift 20s linear infinite;
+      pointer-events:none;z-index:0;
+    }
+    @keyframes gridDrift{from{background-position:0 0}to{background-position:60px 60px}}
+
+    .shell{
+      position:relative;z-index:1;
+      display:grid;
+      grid-template-columns: 1fr 1fr 280px;
+      grid-template-rows: 60px 1fr 60px;
+      height:100vh; gap:4px; padding:4px;
+    }
+
+    /* TOP FULL WIDTH */
+    .top{
+      grid-column:1/-1;
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 20px;
+      border:1px solid rgba(0,255,180,0.2);
+      background:rgba(3,6,18,0.9);
+    }
+    .t-logo{font-family:'Exo 2',sans-serif;font-size:28px;letter-spacing:8px;color:#00ffb4;text-shadow:0 0 20px #00ffb4;}
+    .t-time{font-family:'Inconsolata',monospace;font-size:22px;color:#00ffb4;text-shadow:0 0 10px #00ffb4;}
+
+    /* MEDIA — left 2 columns */
+    .media-cell{
+      grid-column:1/3;
+      border:1px solid rgba(0,255,180,0.15);
+      background:#000;position:relative;overflow:hidden;
+    }
+    /* Corner accents */
+    .media-cell::before,.media-cell::after{
+      content:'';position:absolute;width:24px;height:24px;z-index:5;pointer-events:none;
+    }
+    .media-cell::before{top:0;left:0;border-top:2px solid #00ffb4;border-left:2px solid #00ffb4;}
+    .media-cell::after{bottom:0;right:0;border-bottom:2px solid #00ffb4;border-right:2px solid #00ffb4;}
+    #mediaContainer{width:100%;height:100%;position:relative;}
+    #mediaContainer img,#mediaContainer video{width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;}
+    .loading-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;}
+    .loading-msg span{font-family:'Exo 2',sans-serif;font-size:3rem;letter-spacing:6px;color:rgba(0,255,180,0.2);}
+
+    /* Media overlay bottom */
+    .media-overlay{
+      position:absolute;bottom:0;left:0;right:0;z-index:4;
+      padding:20px;background:linear-gradient(transparent,rgba(3,6,18,0.95));
+    }
+    .mo-title{font-family:'Exo 2',sans-serif;font-size:2.5rem;letter-spacing:4px;color:#00ffb4;text-shadow:0 0 20px #00ffb4;}
+    .mo-sub{font-family:'Inconsolata',monospace;font-size:13px;letter-spacing:3px;color:rgba(0,255,180,0.4);margin-top:4px;}
+
+    /* RIGHT SIDEBAR — stacked panels */
+    .sidebar{
+      grid-column:3;grid-row:2/3;
+      display:flex;flex-direction:column;gap:4px;
+    }
+    .s-panel{
+      flex:1;border:1px solid rgba(0,255,180,0.12);
+      background:rgba(3,6,18,0.95);
+      padding:12px;overflow:hidden;
+      position:relative;
+    }
+    .s-panel::before{
+      content:'';position:absolute;top:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,#00ffb4,transparent);
+    }
+    .sp-label{font-family:'Inconsolata',monospace;font-size:10px;letter-spacing:4px;color:rgba(0,255,180,0.4);margin-bottom:8px;}
+    .menu-scroll-wrap{overflow:hidden;flex:1;}
+    .menu-scroll{animation:scrollUp 20s linear infinite;}
+    @keyframes scrollUp{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}
+    .mrow{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:14px;}
+    .mrow-name{color:#ccc;}
+    .mrow-price{font-family:'Inconsolata',monospace;color:#00ffb4;}
+
+    /* Big stat panels */
+    .stat-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;}
+    .stat-num{font-family:'Exo 2',sans-serif;font-size:2.8rem;color:#00ffb4;text-shadow:0 0 20px #00ffb4;line-height:1;}
+    .stat-label{font-family:'Inconsolata',monospace;font-size:10px;letter-spacing:3px;color:rgba(255,255,255,0.25);}
+
+    /* BOTTOM TICKER */
+    .bottom{
+      grid-column:1/-1;border:1px solid rgba(0,255,180,0.15);
+      background:rgba(3,6,18,0.9);
+      overflow:hidden;display:flex;align-items:center;
+    }
+    .b-label{font-family:'Exo 2',sans-serif;font-size:13px;letter-spacing:4px;padding:0 16px;color:#000;background:#00ffb4;height:100%;display:flex;align-items:center;flex-shrink:0;}
+    .b-track{display:flex;animation:tickerScroll 30s linear infinite;white-space:nowrap;}
+    @keyframes tickerScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+    .b-item{padding:0 36px;font-family:'Inconsolata',monospace;font-size:14px;color:rgba(0,255,180,0.6);letter-spacing:1px;}
+    .b-item strong{color:#00ffb4;}
+  
+    .qr-panel{padding:10px 8px;border-top:2px solid rgba(0,255,180,0.3);display:flex;flex-direction:column;align-items:center;gap:5px;}
+    .qr-block-box{background:#fff;padding:5px;border-radius:3px;width:84px;height:84px;display:flex;align-items:center;justify-content:center;}
+    .qr-block-label{font-family:'Share Tech Mono',monospace;font-size:8px;letter-spacing:1px;color:rgba(0,255,180,0.8);text-align:center;text-transform:uppercase;max-width:90px;line-height:1.3;}
+  
+    .qr-panel{padding:10px 8px;border-top:2px solid rgba(0,255,180,0.3);display:flex;flex-direction:column;align-items:center;gap:5px;}
+    .qr-block-box{background:#fff;padding:5px;border-radius:3px;width:84px;height:84px;display:flex;align-items:center;justify-content:center;}
+    .qr-block-label{font-family:monospace;font-size:8px;letter-spacing:1px;color:rgba(0,255,180,0.8);text-align:center;text-transform:uppercase;max-width:90px;line-height:1.3;}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <div class="top">
+    <div class="t-logo">GRAFFITI TV</div>
+    <div class="t-time" id="clock">--:--:--</div>
+  </div>
+
+  <div class="media-cell">
+    <div id="mediaContainer"><div class="loading-msg"><span>GFTV</span></div></div>
+    <div class="media-overlay">
+      <div class="mo-title">GRAFFITI PASTA</div>
+      <div class="mo-sub">DENTON · TEXAS · STREET ART MEETS ITALIAN SOUL</div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="s-panel stat-panel">
+      <div class="sp-label">HAPPY HOUR</div>
+      <div class="stat-num">4–7PM</div>
+      <div class="stat-label">DAILY · NEGRONI $5</div>
+    </div>
+    <div class="s-panel" style="flex:2">
+      <div class="sp-label">TONIGHT'S MENU</div>
+      <div class="menu-scroll-wrap"><div class="menu-scroll">
+        <div class="mrow"><span class="mrow-name">Truffle Pasta</span><span class="mrow-price">$24.99</span></div>
+        <div class="mrow"><span class="mrow-name">Carbonara</span><span class="mrow-price">$19.99</span></div>
+        <div class="mrow"><span class="mrow-name">Cacio e Pepe</span><span class="mrow-price">$17.99</span></div>
+        <div class="mrow"><span class="mrow-name">Arrabbiata</span><span class="mrow-price">$16.99</span></div>
+        <div class="mrow"><span class="mrow-name">Bolognese</span><span class="mrow-price">$21.99</span></div>
+        <div class="mrow"><span class="mrow-name">Amatriciana</span><span class="mrow-price">$18.99</span></div>
+        <div class="mrow"><span class="mrow-name">Pizza</span><span class="mrow-price">$14.99</span></div>
+        <div class="mrow"><span class="mrow-name">Negroni</span><span class="mrow-price">$5 HH</span></div>
+        <div class="mrow"><span class="mrow-name">Aperol Spritz</span><span class="mrow-price">$8.99</span></div>
+        <div class="mrow"><span class="mrow-name">Truffle Pasta</span><span class="mrow-price">$24.99</span></div>
+        <div class="mrow"><span class="mrow-name">Carbonara</span><span class="mrow-price">$19.99</span></div>
+        <div class="mrow"><span class="mrow-name">Cacio e Pepe</span><span class="mrow-price">$17.99</span></div>
+        <div class="mrow"><span class="mrow-name">Arrabbiata</span><span class="mrow-price">$16.99</span></div>
+        <div class="mrow"><span class="mrow-name">Bolognese</span><span class="mrow-price">$21.99</span></div>
+        <div class="mrow"><span class="mrow-name">Amatriciana</span><span class="mrow-price">$18.99</span></div>
+        <div class="mrow"><span class="mrow-name">Pizza</span><span class="mrow-price">$14.99</span></div>
+        <div class="mrow"><span class="mrow-name">Negroni</span><span class="mrow-price">$5 HH</span></div>
+        <div class="mrow"><span class="mrow-name">Aperol Spritz</span><span class="mrow-price">$8.99</span></div>
+      </div></div>
+    </div>
+    <div class="s-panel stat-panel">
+      <div class="sp-label">LIVE MUSIC</div>
+      <div class="stat-num">FRI</div>
+      <div class="stat-label">EVERY FRIDAY NIGHT</div>
+    </div>
+  </div><div class="bottom">
+    <div class="b-label">LIVE</div>
+    <div class="b-track">
+      <span class="b-item"><strong>Carbonara</strong> $19.99</span><span class="b-item"><strong>Truffle Pasta</strong> $24.99</span><span class="b-item"><strong>Cacio e Pepe</strong> $17.99</span><span class="b-item"><strong>Bolognese</strong> $21.99</span><span class="b-item">Happy Hour 4–7pm · Negroni $5</span><span class="b-item">Live Music Every Friday</span><span class="b-item">Wood-Fired Pizza Nightly</span>
+      <span class="b-item"><strong>Carbonara</strong> $19.99</span><span class="b-item"><strong>Truffle Pasta</strong> $24.99</span><span class="b-item"><strong>Cacio e Pepe</strong> $17.99</span><span class="b-item"><strong>Bolognese</strong> $21.99</span><span class="b-item">Happy Hour 4–7pm · Negroni $5</span><span class="b-item">Live Music Every Friday</span><span class="b-item">Wood-Fired Pizza Nightly</span>
+    </div>
+  <div class="qr-panel"><div class="qr-block-box"><div id="qr-code"></div></div><div class="qr-block-label" id="qr-label">Scan for offer</div></div>
+  </div>
+</div>
+<script>
+  setInterval(()=>{document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false});},1000);
+  let ml=[],idx=0;
+  async function load(){try{const r=await fetch('/api/linode/media');const d=await r.json();if(d.success&&d.media?.length){ml=d.media;play();}else fb();}catch(e){fb();}}
+  function fb(){document.getElementById('mediaContainer').innerHTML=`<iframe src="https://www.youtube.com/embed/86YLFOog4GM?autoplay=1&mute=1&controls=0&loop=1&playlist=86YLFOog4GM" frameborder="0" allow="autoplay" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe>`;}
+  function play(){const c=document.getElementById('mediaContainer');const m=ml[idx];c.innerHTML='';if(m.type==='video'){const v=document.createElement('video');v.src=m.url;v.autoplay=v.muted=v.loop=true;v.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0';c.appendChild(v);}else{const i=document.createElement('img');i.src=m.url;i.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0';i.onerror=next;c.appendChild(i);setTimeout(next,15000);}}
+  function next(){idx=(idx+1)%ml.length;play();}
+  document.addEventListener('DOMContentLoaded',load);
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(async()=>{
+  try{
+    const slug=window.location.pathname.split('/')[2];
+    const d=await fetch('/api/'+slug+'/offering').then(r=>r.json());
+    if(!d.url)return;
+    const lbl=document.getElementById('qr-label');if(lbl)lbl.textContent=d.title||'Scan for offer';
+    const box=document.getElementById('qr-code');if(box)new QRCode(box,{text:d.url,width:84,height:84,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){}
+})();
+</script>
+</body></html>

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Graffiti TV — TV Display Software for Restaurants & Venues</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Beautiful, dynamic TV displays for restaurants, bars, and venues. Live menus, events, QR offers. No hardware required.">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;900&family=DM+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#09090b;--panel:#111113;--border:#1e1e22;--accent:#ff5000;--gold:#f5c400;--text:#e8e8e8;--dim:#666;}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;overflow-x:hidden;}
+
+    /* NAV */
+    nav{display:flex;align-items:center;justify-content:space-between;padding:20px 60px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(9,9,11,0.95);backdrop-filter:blur(10px);z-index:100;}
+    .nav-logo{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:4px;color:var(--accent);}
+    .nav-logo span{color:var(--text);}
+    .nav-links{display:flex;gap:32px;align-items:center;}
+    .nav-links a{color:var(--dim);text-decoration:none;font-size:14px;letter-spacing:1px;transition:color 0.2s;}
+    .nav-links a:hover{color:var(--text);}
+    .nav-cta{background:var(--accent);color:#fff;padding:10px 22px;font-weight:600;font-size:14px;border:none;cursor:pointer;letter-spacing:1px;}
+
+    /* HERO */
+    .hero{padding:100px 60px 80px;max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center;}
+    .hero-left{}
+    .hero-tag{font-family:'DM Mono',monospace;font-size:12px;letter-spacing:4px;color:var(--accent);margin-bottom:20px;}
+    .hero-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(3.5rem,7vw,7rem);line-height:0.95;letter-spacing:-1px;margin-bottom:24px;}
+    .hero-title span{color:var(--accent);}
+    .hero-sub{font-size:18px;color:var(--dim);line-height:1.7;margin-bottom:36px;max-width:480px;}
+    .hero-actions{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+    .btn-primary{background:var(--accent);color:#fff;padding:14px 28px;font-weight:700;font-size:15px;border:none;cursor:pointer;letter-spacing:1px;}
+    .btn-ghost{background:transparent;color:var(--text);padding:14px 28px;font-weight:600;font-size:15px;border:1px solid var(--border);cursor:pointer;letter-spacing:1px;text-decoration:none;display:inline-block;}
+    .hero-note{font-size:12px;color:var(--dim);margin-top:16px;letter-spacing:1px;}
+
+    /* TV MOCKUP */
+    .hero-right{position:relative;}
+    .tv-frame{
+      background:#000;border:3px solid #222;
+      aspect-ratio:16/9;position:relative;overflow:hidden;
+      box-shadow:0 40px 80px rgba(0,0,0,0.6), 0 0 0 1px #333;
+    }
+    .tv-frame::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.05) 2px,rgba(0,0,0,0.05) 4px);z-index:2;pointer-events:none;}
+    .tv-stand{width:40%;height:20px;background:#1a1a1a;margin:0 auto;clip-path:trapezoid;}
+    .tv-inner{width:100%;height:100%;display:grid;grid-template-rows:40px 1fr 36px;grid-template-columns:1fr 120px;}
+    .tv-top{grid-column:1/-1;background:#0a0a0a;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #1a1a1a;}
+    .tv-top-name{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:3px;color:var(--accent);}
+    .tv-top-time{font-family:'DM Mono',monospace;font-size:12px;color:#444;}
+    .tv-media{background:#111;position:relative;overflow:hidden;}
+    .tv-media-inner{width:100%;height:100%;background:linear-gradient(135deg,#1a0a00,#0a0a1a,#001a0a);display:flex;align-items:flex-end;padding:12px;}
+    .tv-media-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;color:#fff;}
+    .tv-media-title span{color:var(--accent);}
+    .tv-sidebar{background:#0a0a0a;border-left:1px solid #1a1a1a;padding:8px;display:flex;flex-direction:column;gap:4px;overflow:hidden;}
+    .tv-item{padding:5px 6px;border-bottom:1px solid #111;font-size:9px;display:flex;justify-content:space-between;}
+    .tv-item-name{color:#888;}
+    .tv-item-price{color:var(--accent);font-family:'DM Mono',monospace;}
+    .tv-qr{grid-column:2;background:#0a0a0a;border-left:1px solid #1a1a1a;border-top:1px solid #1a1a1a;padding:6px;display:flex;align-items:center;gap:6px;}
+    .tv-qr-box{width:28px;height:28px;background:#fff;flex-shrink:0;}
+    .tv-qr-text{font-size:7px;color:#444;font-family:'DM Mono',monospace;line-height:1.4;}
+    .tv-ticker{grid-column:1;background:#000;border-top:1px solid #1a1a1a;display:flex;align-items:center;overflow:hidden;}
+    .tv-ticker-inner{font-family:'DM Mono',monospace;font-size:8px;color:#444;white-space:nowrap;animation:tickScroll 12s linear infinite;}
+    @keyframes tickScroll{from{transform:translateX(100%)}to{transform:translateX(-100%)}}
+    /* Floating theme badges */
+    .theme-badges{position:absolute;top:-12px;right:-12px;display:flex;flex-direction:column;gap:6px;}
+    .theme-badge{background:var(--panel);border:1px solid var(--border);padding:4px 10px;font-size:10px;letter-spacing:2px;color:var(--dim);white-space:nowrap;}
+
+    /* DEMO STRIP */
+    .demo-strip{padding:60px;background:var(--panel);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+    .demo-strip-label{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:4px;color:var(--dim);text-align:center;margin-bottom:32px;}
+    .theme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;max-width:1100px;margin:0 auto;}
+    .theme-thumb{aspect-ratio:16/9;border:1px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;cursor:pointer;transition:border-color 0.2s;}
+    .theme-thumb:hover{border-color:var(--accent);}
+    .tt-name{position:absolute;bottom:0;left:0;right:0;padding:6px 10px;background:rgba(0,0,0,0.8);font-size:10px;letter-spacing:2px;color:var(--dim);}
+    .tt-bg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:3px;opacity:0.3;}
+
+    /* FEATURES */
+    .features{padding:100px 60px;max-width:1100px;margin:0 auto;}
+    .section-label{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:4px;color:var(--accent);margin-bottom:12px;}
+    .section-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.5rem,5vw,4rem);letter-spacing:2px;margin-bottom:60px;}
+    .features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;}
+    .feat{border:1px solid var(--border);padding:28px;background:var(--panel);}
+    .feat-icon{font-size:2rem;margin-bottom:16px;}
+    .feat-title{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:2px;margin-bottom:8px;}
+    .feat-desc{font-size:14px;color:var(--dim);line-height:1.7;}
+
+    /* PRICING */
+    .pricing{padding:100px 60px;background:var(--panel);border-top:1px solid var(--border);}
+    .pricing-inner{max-width:900px;margin:0 auto;}
+    .pricing-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:60px;}
+    .plan{border:1px solid var(--border);padding:36px;background:var(--bg);position:relative;}
+    .plan.featured{border-color:var(--accent);background:rgba(255,80,0,0.04);}
+    .plan-tag{position:absolute;top:-1px;right:24px;background:var(--accent);color:#fff;font-size:11px;letter-spacing:3px;padding:4px 12px;font-family:'DM Mono',monospace;}
+    .plan-name{font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:3px;margin-bottom:8px;}
+    .plan-price{font-family:'Bebas Neue',sans-serif;font-size:4rem;color:var(--accent);line-height:1;}
+    .plan-price span{font-size:1.2rem;color:var(--dim);font-family:'Inter',sans-serif;font-weight:400;}
+    .plan-features{margin:24px 0;display:flex;flex-direction:column;gap:10px;}
+    .pf{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--dim);}
+    .pf::before{content:'✓';color:var(--accent);font-weight:700;flex-shrink:0;}
+    .plan-cta{width:100%;background:var(--accent);color:#fff;border:none;padding:14px;font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:3px;cursor:pointer;margin-top:8px;}
+    .plan.featured .plan-cta{background:var(--accent);}
+    .plan:not(.featured) .plan-cta{background:transparent;border:1px solid var(--border);color:var(--text);}
+
+    /* SIGNUP MODAL */
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;}
+    .modal-bg.open{display:flex;}
+    .modal{background:var(--panel);border:1px solid var(--border);padding:44px;max-width:500px;width:100%;}
+    .modal-title{font-family:'Bebas Neue',sans-serif;font-size:2.2rem;letter-spacing:3px;margin-bottom:6px;}
+    .modal-sub{font-size:14px;color:var(--dim);margin-bottom:28px;line-height:1.6;}
+    .field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px;}
+    .field label{font-size:11px;letter-spacing:3px;color:var(--dim);font-family:'DM Mono',monospace;}
+    .field input,.field select{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:12px;font-family:'Inter',sans-serif;font-size:14px;outline:none;}
+    .field input:focus,.field select:focus{border-color:#444;}
+    .field select option{background:var(--panel);}
+    .submit-btn{width:100%;background:var(--accent);color:#fff;border:none;padding:14px;font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:3px;cursor:pointer;margin-top:6px;}
+    .modal-msg{font-size:14px;color:#00cc88;margin-top:12px;text-align:center;min-height:20px;}
+    .modal-close{position:absolute;top:16px;right:20px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;}
+
+    /* FOOTER */
+    footer{padding:40px 60px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+    .footer-logo{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:4px;color:var(--dim);}
+    .footer-note{font-size:12px;color:var(--dim);letter-spacing:1px;}
+
+    @media(max-width:900px){
+      nav{padding:16px 24px;} .nav-links{display:none;}
+      .hero{grid-template-columns:1fr;padding:60px 24px 40px;gap:40px;}
+      .features-grid{grid-template-columns:1fr;}
+      .pricing-grid{grid-template-columns:1fr;}
+      .features,.pricing,.demo-strip{padding:60px 24px;}
+      footer{padding:30px 24px;flex-direction:column;gap:12px;text-align:center;}
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">GRAFFITI<span>TV</span></div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#pricing">Pricing</a>
+    <a href="/tv/graffiti-pasta" target="_blank">Live Demo</a>
+  </div>
+  <button class="nav-cta" onclick="openModal('pro')">GET STARTED →</button>
+</nav>
+
+<section class="hero">
+  <div class="hero-left">
+    <div class="hero-tag">TV DISPLAY SOFTWARE</div>
+    <h1 class="hero-title">Your Venue.<br><span>On Screen.</span><br>Always On.</h1>
+    <p class="hero-sub">Dynamic TV displays for restaurants, bars, and venues. Live menus, rotating themes, QR code offers, and event calendars — managed from your phone.</p>
+    <div class="hero-actions">
+      <button class="btn-primary" onclick="openModal('starter')">START FREE TRIAL</button>
+      <a class="btn-ghost" href="/tv/graffiti-pasta" target="_blank">SEE LIVE DEMO →</a>
+    </div>
+    <div class="hero-note">No hardware required · Cancel anytime · Setup in minutes</div>
+  </div>
+  <div class="hero-right">
+    <div class="tv-frame">
+      <div class="tv-inner">
+        <div class="tv-top">
+          <div class="tv-top-name">GRAFFITI PASTA</div>
+          <div class="tv-top-time" id="heroTime">--:--:--</div>
+        </div>
+        <div class="tv-media">
+          <div class="tv-media-inner">
+            <div class="tv-media-title">GRAFFITI <span>PASTA</span><br>DENTON · TX</div>
+          </div>
+        </div>
+        <div class="tv-sidebar">
+          <div class="tv-item"><span class="tv-item-name">Carbonara</span><span class="tv-item-price">$19.99</span></div>
+          <div class="tv-item"><span class="tv-item-name">Truffle Pasta</span><span class="tv-item-price">$24.99</span></div>
+          <div class="tv-item"><span class="tv-item-name">Cacio e Pepe</span><span class="tv-item-price">$17.99</span></div>
+          <div class="tv-item"><span class="tv-item-name">Bolognese</span><span class="tv-item-price">$21.99</span></div>
+          <div class="tv-item"><span class="tv-item-name">Negroni HH</span><span class="tv-item-price">$5.00</span></div>
+        </div>
+        <div class="tv-ticker">
+          <div class="tv-ticker-inner">CARBONARA $19.99 · TRUFFLE PASTA $24.99 · LIVE MUSIC FRIDAYS · HAPPY HOUR 4–7PM · NEGRONI $5 · WOOD-FIRED PIZZA $14.99</div>
+        </div>
+        <div class="tv-qr">
+          <div class="tv-qr-box"></div>
+          <div class="tv-qr-text">ACT NOW<br>FREE SPRITZ</div>
+        </div>
+      </div>
+    </div>
+    <div class="theme-badges">
+      <div class="theme-badge">15 THEMES</div>
+      <div class="theme-badge">AUTO ROTATE</div>
+      <div class="theme-badge">QR OFFERS</div>
+    </div>
+  </div>
+</section>
+
+<div class="demo-strip">
+  <div class="demo-strip-label">15 BUILT-IN DISPLAY THEMES — AUTO-ROTATING</div>
+  <div class="theme-grid">
+    <% const themes=[{n:'VHS Underground',c:'#00ff41',bg:'#050505'},{n:'Rave Mode',c:'#ff00ff',bg:'#080010'},{n:'Retro Diner',c:'#e8001d',bg:'#0a1628'},{n:'Brutalist',c:'#ffe000',bg:'#0a0a0a'},{n:'Vaporwave',c:'#b967ff',bg:'#0d0015'},{n:'Newsroom',c:'#e8b400',bg:'#0c0c10'},{n:'Split Screen',c:'#ff5000',bg:'#111'},{n:'Cinema',c:'#f5a623',bg:'#0a0806'},{n:'Polaroid Board',c:'#c0392b',bg:'#c8a96e'},{n:'Neon Grid',c:'#00ffb4',bg:'#030612'},{n:'Horizontal',c:'#ff6600',bg:'#1a0a2e'},{n:'Typewriter',c:'#8b0000',bg:'#f4f0e8'},{n:'Tiles',c:'#ff4500',bg:'#111'},{n:'Minimal',c:'#c0392b',bg:'#f8f7f4'},{n:'Stadium',c:'#f5c400',bg:'#0d1117'}]; %>
+    <% themes.forEach(t=>{ %>
+    <div class="theme-thumb" style="background:<%- t.bg %>">
+      <div class="tt-bg" style="color:<%- t.c %>">GFTV</div>
+      <div class="tt-name"><%- t.n %></div>
+    </div>
+    <% }); %>
+  </div>
+</div>
+
+<section class="features" id="features">
+  <div class="section-label">WHY GRAFFITI TV</div>
+  <div class="section-title">Everything your screen needs.</div>
+  <div class="features-grid">
+    <div class="feat"><div class="feat-icon">📺</div><div class="feat-title">15 Pro Themes</div><div class="feat-desc">From dark & moody to clean & editorial — themes auto-rotate every 10 minutes, keeping your display fresh all day.</div></div>
+    <div class="feat"><div class="feat-icon">🍝</div><div class="feat-title">Live Menu Control</div><div class="feat-desc">Update your menu, specials, and pricing in real time from the admin panel. Changes appear on screen instantly.</div></div>
+    <div class="feat"><div class="feat-icon">📱</div><div class="feat-title">QR Code Offers</div><div class="feat-desc">Baked into every theme as a native design element. Customers scan, land on your offer page, and redeem.</div></div>
+    <div class="feat"><div class="feat-icon">📅</div><div class="feat-title">Events Calendar</div><div class="feat-desc">Add live music nights, happy hours, and special events. They show up on screen automatically.</div></div>
+    <div class="feat"><div class="feat-icon">📧</div><div class="feat-title">Email Capture</div><div class="feat-desc">Every TV display quietly builds your email list. Subscribers go straight to your admin dashboard.</div></div>
+    <div class="feat"><div class="feat-icon">⚡</div><div class="feat-title">Zero Hardware</div><div class="feat-desc">Just plug any screen into a Chromecast, Fire Stick, or smart TV browser. Your display is a URL.</div></div>
+  </div>
+</section>
+
+<section class="pricing" id="pricing">
+  <div class="pricing-inner">
+    <div class="section-label">SIMPLE PRICING</div>
+    <div class="section-title">Pick your plan.</div>
+    <div class="pricing-grid">
+      <div class="plan">
+        <div class="plan-name">Starter</div>
+        <div class="plan-price">$18<span>/mo</span></div>
+        <div class="plan-features">
+          <div class="pf">3 rotating display themes</div>
+          <div class="pf">1 screen output</div>
+          <div class="pf">Live menu management</div>
+          <div class="pf">QR code offers</div>
+          <div class="pf">Events calendar</div>
+          <div class="pf">Email subscriber list</div>
+        </div>
+        <button class="plan-cta" onclick="openModal('starter')">GET STARTED →</button>
+      </div>
+      <div class="plan featured">
+        <div class="plan-tag">MOST POPULAR</div>
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">$35<span>/mo</span></div>
+        <div class="plan-features">
+          <div class="pf">All 10 rotating themes</div>
+          <div class="pf">2 screen outputs</div>
+          <div class="pf">Live menu management</div>
+          <div class="pf">QR code offers</div>
+          <div class="pf">Events calendar</div>
+          <div class="pf">Email subscriber list</div>
+          <div class="pf">Analytics dashboard</div>
+          <div class="pf">Priority setup support</div>
+        </div>
+        <button class="plan-cta" onclick="openModal('pro')">GET STARTED →</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-logo">GRAFFITI TV</div>
+  <div class="footer-note">© 2026 MadLads Lab · Built in Denton, TX</div>
+</footer>
+
+<!-- SIGNUP MODAL -->
+<div class="modal-bg" id="signupModal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-title">GET STARTED</div>
+    <div class="modal-sub">Tell us about your venue. We'll reach out within 24 hours to get your display live.</div>
+    <div class="field"><label>YOUR NAME</label><input id="sig-name" placeholder="Jane Smith"></div>
+    <div class="field"><label>EMAIL</label><input id="sig-email" type="email" placeholder="jane@yourvenue.com"></div>
+    <div class="field"><label>VENUE / BUSINESS NAME</label><input id="sig-biz" placeholder="The Rusty Nail Bar & Grill"></div>
+    <div class="field"><label>PHONE (OPTIONAL)</label><input id="sig-phone" placeholder="(555) 000-0000"></div>
+    <div class="field"><label>PLAN</label>
+      <select id="sig-plan">
+        <option value="starter">Starter — $18/mo · 3 themes · 1 screen</option>
+        <option value="pro">Pro — $35/mo · 10 themes · 2 screens</option>
+      </select>
+    </div>
+    <button class="submit-btn" onclick="submitSignup()">SUBMIT →</button>
+    <div class="modal-msg" id="sig-msg"></div>
+  </div>
+</div>
+
+<script>
+  setInterval(()=>{ document.getElementById('heroTime').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}); },1000);
+
+  let selectedPlan = 'starter';
+  function openModal(plan) {
+    selectedPlan = plan || 'starter';
+    document.getElementById('sig-plan').value = selectedPlan;
+    document.getElementById('signupModal').classList.add('open');
+  }
+  function closeModal() { document.getElementById('signupModal').classList.remove('open'); }
+  document.getElementById('signupModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeModal(); });
+
+  async function submitSignup() {
+    const name=document.getElementById('sig-name').value.trim();
+    const email=document.getElementById('sig-email').value.trim();
+    const business=document.getElementById('sig-biz').value.trim();
+    const phone=document.getElementById('sig-phone').value.trim();
+    const plan=document.getElementById('sig-plan').value;
+    if(!name||!email){document.getElementById('sig-msg').textContent='Please fill in your name and email.';return;}
+    const r=await fetch('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,business,phone,plan})});
+    const d=await r.json();
+    document.getElementById('sig-msg').textContent=d.msg||'Thanks!';
+    if(d.ok) setTimeout(closeModal,3000);
+  }
+</script>
+</body>
+</html>

@@ -1,3 +1,4 @@
+const { notifyAdmin } = require('/srv/slab/plugins/notify.cjs');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const LocalStrategy = require('passport-local').Strategy;
@@ -44,6 +45,9 @@ passport.use(new GoogleStrategy({
       role: 'user',
       provider: 'google'
     });
+    notifyAdmin({ type: 'opstrain', app: 'opsTrain', email: profile.emails[0].value,
+      name: profile.displayName, ip: '',
+      data: { Method: 'Google OAuth', Role: 'user (pending promotion)' } }).catch(() => {});
     done(null, user);
   } catch (err) {
     done(err);

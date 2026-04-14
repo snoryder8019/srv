@@ -1,3 +1,4 @@
+const { notifyAdmin } = require('/srv/slab/plugins/notify.cjs');
 const express = require('express');
 const passport = require('passport');
 const jwt = require('jsonwebtoken');
@@ -130,6 +131,64 @@ router.get('/auth/bridge', (req, res) => {
     { expiresIn: '5m' }
   );
   res.redirect(`${redirect}?token=${encodeURIComponent(token)}`);
+});
+
+
+// SSO callback — receives JWT from madladslab after Google OAuth
+// Flow: games /login -> madladslab /auth/google?return=... -> Google -> madladslab callback -> games /auth/sso?token=...
+router.get('/auth/sso', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.redirect('/login?error=1');
+  try {
+    const { ObjectId } = require('mongodb');
+    const payload = jwt.verify(token, process.env.SLAB_JWT_SECRET || process.env.BRIDGE_SECRET);
+    if (!payload.games && !payload.email) throw new Error('Invalid token type');
+    const db = req.app.locals.db;
+    let user = null;
+    if (payload.id) {
+      try { user = await db.collection('users').findOne({ _id: new ObjectId(payload.id) }); } catch {}
+    }
+    if (!user && payload.email) {
+      user = await db.collection('users').findOne({ email: payload.email });
+    }
+    // Also try by googleId if present
+    if (!user && payload.googleId) {
+      user = await db.collection('users').findOne({ googleId: payload.googleId });
+    }
+    if (!user && payload.email) {
+      const result = await db.collection('users').insertOne({
+        email: payload.email,
+        displayName: payload.displayName || payload.email.split('@')[0],
+        firstName: payload.firstName || '',
+        lastName: payload.lastName || '',
+        googleId: payload.googleId || null,
+        provider: 'google',
+        isAdmin: false,
+        contest: 'player',
+        notifications: [],
+        images: [],
+        subscription: 'free',
+        createdAt: new Date(),
+      });
+      user = await db.collection('users').findOne({ _id: result.insertedId });
+      notifyAdmin({ type: 'games', app: 'games', email: payload.email, name: payload.displayName || '', ip: req.ip,
+        data: { 'Method': 'Google SSO', 'Display Name': payload.displayName || '' } }).catch(() => {});
+    }
+    // Link googleId if missing
+    if (user && payload.googleId && !user.googleId) {
+      await db.collection('users').updateOne({ _id: user._id }, { $set: { googleId: payload.googleId } });
+    }
+    if (!user) return res.redirect('/login?error=1');
+    req.login(user, (err) => {
+      if (err) return res.redirect('/login?error=1');
+      const dest = req.session.loginNext || '/dashboard';
+      delete req.session.loginNext;
+      req.session.save(() => res.redirect(dest));
+    });
+  } catch (e) {
+    console.error('[sso] Token error:', e.message);
+    res.redirect('/login?error=1');
+  }
 });
 
 module.exports = router;

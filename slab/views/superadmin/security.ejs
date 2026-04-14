@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Mono&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh;}
+
+    /* Topbar */
+    .topbar{background:#141414;border-bottom:1px solid #262626;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;}
+    .topbar-left{display:flex;align-items:center;gap:16px;}
+    .logo{font-size:20px;font-weight:600;color:#fff;text-decoration:none;}
+    .logo span{color:#c9a848;}
+    .badge{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#ef4444;background:#2a0a0a;border:1px solid #3f1515;padding:3px 8px;border-radius:4px;}
+    .topbar-right{display:flex;align-items:center;gap:16px;font-size:13px;color:#737373;}
+    .topbar-right a{color:#a3a3a3;text-decoration:none;font-size:12px;transition:color .15s;}
+    .topbar-right a:hover{color:#c9a848;}
+    .refresh-btn{background:#1a1a1a;border:1px solid #333;color:#a3a3a3;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:12px;font-family:'Inter',sans-serif;transition:all .15s;}
+    .refresh-btn:hover{border-color:#ef4444;color:#ef4444;}
+
+    .container{max-width:1200px;margin:0 auto;padding:24px;}
+
+    /* Stats bar */
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;}
+    .stat-card{background:#141414;border:1px solid #262626;border-radius:8px;padding:16px;position:relative;overflow:hidden;}
+    .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+    .stat-card.bans::before{background:#ef4444;}
+    .stat-card.found::before{background:#f97316;}
+    .stat-card.unbans::before{background:#22c55e;}
+    .stat-card.mem::before{background:#8b5cf6;}
+    .stat-card.jails::before{background:#c9a848;}
+    .stat-label{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#525252;margin-bottom:6px;}
+    .stat-value{font-size:28px;font-weight:600;color:#e5e5e5;font-family:'Space Mono',monospace;}
+    .stat-sub{font-size:11px;color:#525252;margin-top:4px;}
+
+    /* Two-col layout */
+    .grid-2{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start;}
+    @media(max-width:900px){.grid-2{grid-template-columns:1fr;}}
+
+    /* Panel */
+    .panel{background:#141414;border:1px solid #262626;border-radius:8px;overflow:hidden;}
+    .panel-header{padding:14px 18px;border-bottom:1px solid #1f1f1f;display:flex;align-items:center;justify-content:space-between;}
+    .panel-title{font-size:13px;font-weight:600;color:#e5e5e5;}
+    .panel-sub{font-size:11px;color:#525252;}
+
+    /* Event log */
+    .event-row{display:flex;align-items:center;gap:12px;padding:9px 18px;border-bottom:1px solid #0f0f0f;font-size:12px;transition:background .1s;}
+    .event-row:last-child{border-bottom:0;}
+    .event-row:hover{background:#1a1a1a;}
+    .ev-icon{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;}
+    .ev-ban{background:#3f1515;color:#ef4444;}
+    .ev-unban{background:#052e1c;color:#22c55e;}
+    .ev-found{background:#1c1000;color:#f97316;}
+    .ev-jail{font-size:10px;color:#c9a848;background:#1a1400;padding:1px 6px;border-radius:10px;white-space:nowrap;}
+    .ev-ip{font-family:'Space Mono',monospace;color:#e5e5e5;font-size:11px;flex:1;}
+    .ev-time{color:#404040;font-size:10px;white-space:nowrap;font-family:'Space Mono',monospace;}
+    .ev-action{font-weight:600;}
+    .ev-action.ban{color:#ef4444;}
+    .ev-action.unban{color:#22c55e;}
+    .ev-action.found{color:#f97316;}
+
+    /* Jail status */
+    .jail-row{padding:12px 18px;border-bottom:1px solid #0f0f0f;}
+    .jail-row:last-child{border-bottom:0;}
+    .jail-name{font-size:12px;font-weight:600;color:#c9a848;margin-bottom:4px;}
+    .jail-stats{display:flex;gap:12px;font-size:11px;}
+    .jail-stat{color:#525252;}
+    .jail-stat span{color:#e5e5e5;font-family:'Space Mono',monospace;}
+    .jail-ips{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;}
+    .jail-ip-tag{font-size:10px;font-family:'Space Mono',monospace;background:#1a0a0a;border:1px solid #3f1515;color:#ef4444;padding:2px 6px;border-radius:4px;}
+
+    /* Top IPs */
+    .ip-row{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;border-bottom:1px solid #0f0f0f;font-size:12px;}
+    .ip-row:last-child{border-bottom:0;}
+    .ip-addr{font-family:'Space Mono',monospace;color:#e5e5e5;}
+    .ip-bar-wrap{flex:1;margin:0 12px;height:4px;background:#1f1f1f;border-radius:2px;overflow:hidden;}
+    .ip-bar{height:100%;background:#ef4444;border-radius:2px;}
+    .ip-count{font-family:'Space Mono',monospace;color:#ef4444;font-size:11px;min-width:24px;text-align:right;}
+
+    /* System stats */
+    .sys-row{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1px solid #0f0f0f;font-size:12px;}
+    .sys-row:last-child{border-bottom:0;}
+    .sys-label{color:#525252;}
+    .sys-val{font-family:'Space Mono',monospace;color:#e5e5e5;}
+    .bar-wrap{width:80px;height:4px;background:#1f1f1f;border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px;}
+    .bar-fill{height:100%;border-radius:2px;}
+    .bar-ok{background:#22c55e;}
+    .bar-warn{background:#f97316;}
+    .bar-danger{background:#ef4444;}
+
+    /* Filter bar */
+    .filter-bar{display:flex;gap:8px;padding:12px 18px;border-bottom:1px solid #1f1f1f;flex-wrap:wrap;}
+    .filter-btn{padding:4px 12px;font-size:11px;border-radius:12px;border:1px solid #333;background:transparent;color:#737373;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;}
+    .filter-btn:hover,.filter-btn.active{border-color:#ef4444;color:#ef4444;}
+    .filter-btn.green:hover,.filter-btn.green.active{border-color:#22c55e;color:#22c55e;}
+    .filter-btn.orange:hover,.filter-btn.orange.active{border-color:#f97316;color:#f97316;}
+
+    /* Live indicator */
+    .live-dot{width:7px;height:7px;border-radius:50%;background:#ef4444;display:inline-block;margin-right:6px;animation:pulse 2s infinite;}
+    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+    .section-title{font-size:13px;font-weight:600;color:#737373;text-transform:uppercase;letter-spacing:.8px;margin:24px 0 12px;}
+    .empty{padding:24px;text-align:center;color:#404040;font-size:12px;}
+    .scroll-box{max-height:520px;overflow-y:auto;}
+    .scroll-box::-webkit-scrollbar{width:4px;}
+    .scroll-box::-webkit-scrollbar-track{background:#0f0f0f;}
+    .scroll-box::-webkit-scrollbar-thumb{background:#333;border-radius:2px;}
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <a href="/superadmin" class="logo"><span>s</span>Lab</a>
+    <span class="badge"><span class="live-dot"></span>Security</span>
+  </div>
+  <div class="topbar-right">
+    <span><%= user.email %></span>
+    <a href="/superadmin">Dashboard</a>
+    <a href="/superadmin/events" style="color:#c9a848;">📡 Events</a>
+    <a href="/superadmin/activity">Activity</a>
+    <a href="/superadmin/logout">Logout</a>
+    <button class="refresh-btn" onclick="location.reload()">↻ Refresh</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Stats bar -->
+  <div class="stats-grid">
+    <div class="stat-card bans">
+      <div class="stat-label">Bans (session)</div>
+      <div class="stat-value"><%= summary.bans %></div>
+      <div class="stat-sub">IPs blocked</div>
+    </div>
+    <div class="stat-card found">
+      <div class="stat-label">Attempts (session)</div>
+      <div class="stat-value"><%= summary.found %></div>
+      <div class="stat-sub">auth failures detected</div>
+    </div>
+    <div class="stat-card unbans">
+      <div class="stat-label">Unbans (session)</div>
+      <div class="stat-value"><%= summary.unbans %></div>
+      <div class="stat-sub">IPs released</div>
+    </div>
+    <div class="stat-card jails">
+      <div class="stat-label">Active Jails</div>
+      <div class="stat-value"><%= currentJails.length %></div>
+      <div class="stat-sub">fail2ban jails running</div>
+    </div>
+    <% if (latestStats) { %>
+    <div class="stat-card mem">
+      <div class="stat-label">RAM Used</div>
+      <div class="stat-value"><%= Math.round(latestStats.memUsed / 1024 / 1024 / 1024 * 10) / 10 %>G</div>
+      <div class="stat-sub">of <%= Math.round(latestStats.memTotal / 1024 / 1024 / 1024 * 10) / 10 %>G total</div>
+    </div>
+    <% } %>
+  </div>
+
+  <div class="grid-2">
+
+    <!-- Left: event log + top IPs -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Security Events</span>
+          <span class="panel-sub"><%= recentEvents.length %> events loaded</span>
+        </div>
+        <div class="filter-bar">
+          <button class="filter-btn active" onclick="filterEvents('all', this)">All</button>
+          <button class="filter-btn" onclick="filterEvents('ban', this)">🚫 Bans</button>
+          <button class="filter-btn orange" onclick="filterEvents('found', this)">⚠ Attempts</button>
+          <button class="filter-btn green" onclick="filterEvents('unban', this)">✓ Unbans</button>
+        </div>
+        <div class="scroll-box" id="eventLog">
+          <% if (!recentEvents.length) { %>
+            <div class="empty">No security events found. Run the ingester to populate.</div>
+          <% } %>
+          <% recentEvents.forEach(ev => { %>
+          <div class="event-row" data-action="<%= ev.action || 'info' %>">
+            <div class="ev-icon ev-<%= ev.action || 'found' %>">
+              <% if (ev.action === 'ban') { %> 🚫
+              <% } else if (ev.action === 'unban') { %> ✓
+              <% } else { %> ⚡ <% } %>
+            </div>
+            <span class="ev-jail"><%= ev.jail %></span>
+            <span class="ev-action <%= ev.action %>"><%= (ev.action || 'info').toUpperCase() %></span>
+            <span class="ev-ip"><%= ev.ip || '—' %></span>
+            <span class="ev-time"><%= new Date(ev.timestamp).toISOString().replace('T',' ').slice(0,19) %></span>
+          </div>
+          <% }); %>
+        </div>
+      </div>
+
+      <!-- Top attacking IPs -->
+      <% if (topIPs.length) { %>
+      <div class="section-title">Top Attacking IPs</div>
+      <div class="panel">
+        <% const maxCount = topIPs[0]?.count || 1; %>
+        <% topIPs.forEach(({ ip, count }) => { %>
+        <div class="ip-row">
+          <span class="ip-addr"><%= ip %></span>
+          <div class="ip-bar-wrap">
+            <div class="ip-bar" style="width:<%= Math.round(count/maxCount*100) %>%"></div>
+          </div>
+          <span class="ip-count"><%= count %></span>
+        </div>
+        <% }); %>
+      </div>
+      <% } %>
+    </div>
+
+    <!-- Right: jail status + system stats -->
+    <div>
+
+      <!-- Jail Status -->
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-header">
+          <span class="panel-title">Jail Status</span>
+          <% if (latestSnapshot) { %>
+          <span class="panel-sub"><%= new Date(latestSnapshot.createdAt).toISOString().slice(11,19) %> UTC</span>
+          <% } %>
+        </div>
+        <% if (!currentJails.length) { %>
+          <div class="empty">No jail data yet.</div>
+        <% } %>
+        <% currentJails.forEach(jail => { %>
+        <div class="jail-row">
+          <div class="jail-name"><%= jail.jail %></div>
+          <div class="jail-stats">
+            <div class="jail-stat">Banned: <span><%= jail.currentlyBanned %></span></div>
+            <div class="jail-stat">Total: <span><%= jail.totalBanned %></span></div>
+            <div class="jail-stat">Failed: <span><%= jail.currentlyFailed %></span></div>
+          </div>
+          <% if (jail.bannedIPs && jail.bannedIPs.length) { %>
+          <div class="jail-ips">
+            <% jail.bannedIPs.forEach(ip => { %>
+            <span class="jail-ip-tag"><%= ip %></span>
+            <% }); %>
+          </div>
+          <% } %>
+        </div>
+        <% }); %>
+      </div>
+
+      <!-- System Stats -->
+      <% if (latestStats) { %>
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-header">
+          <span class="panel-title">System Stats</span>
+          <span class="panel-sub"><%= new Date(latestStats.recordedAt).toISOString().slice(11,19) %> UTC</span>
+        </div>
+        <%
+          const memPct = Math.round(latestStats.memUsed / latestStats.memTotal * 100);
+          const swapPct = latestStats.swapTotal > 0 ? Math.round(latestStats.swapUsed / latestStats.swapTotal * 100) : 0;
+          const memClass = memPct > 85 ? 'bar-danger' : memPct > 65 ? 'bar-warn' : 'bar-ok';
+          const swapClass = swapPct > 70 ? 'bar-danger' : swapPct > 40 ? 'bar-warn' : 'bar-ok';
+          const uptimeHrs = Math.floor(latestStats.uptimeSec / 3600);
+          const uptimeMins = Math.floor((latestStats.uptimeSec % 3600) / 60);
+        %>
+        <div class="sys-row">
+          <span class="sys-label">RAM</span>
+          <span class="sys-val">
+            <span class="bar-wrap"><span class="bar-fill <%= memClass %>" style="width:<%= memPct %>%"></span></span>
+            <%= memPct %>%
+          </span>
+        </div>
+        <div class="sys-row">
+          <span class="sys-label">Swap</span>
+          <span class="sys-val">
+            <span class="bar-wrap"><span class="bar-fill <%= swapClass %>" style="width:<%= swapPct %>%"></span></span>
+            <%= swapPct %>%
+          </span>
+        </div>
+        <div class="sys-row">
+          <span class="sys-label">Load avg</span>
+          <span class="sys-val"><%= latestStats.load['1m'] %> / <%= latestStats.load['5m'] %> / <%= latestStats.load['15m'] %></span>
+        </div>
+        <div class="sys-row">
+          <span class="sys-label">Uptime</span>
+          <span class="sys-val"><%= uptimeHrs %>h <%= uptimeMins %>m</span>
+        </div>
+        <div class="sys-row">
+          <span class="sys-label">RAM Free</span>
+          <span class="sys-val"><%= (latestStats.memFree / 1024 / 1024 / 1024).toFixed(1) %> GB</span>
+        </div>
+      </div>
+      <% } %>
+
+      <!-- Quick Links -->
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Actions</span></div>
+        <div style="padding:14px 18px;display:flex;flex-direction:column;gap:8px;">
+          <a href="/superadmin" style="font-size:12px;color:#a3a3a3;text-decoration:none;">← Back to Dashboard</a>
+          <a href="/superadmin/activity" style="font-size:12px;color:#a3a3a3;text-decoration:none;">Activity Log</a>
+          <a href="/superadmin/security" onclick="location.reload();return false;" style="font-size:12px;color:#c9a848;text-decoration:none;">↻ Refresh Data</a>
+          <div style="font-size:11px;color:#404040;margin-top:4px;padding-top:8px;border-top:1px solid #1f1f1f;">
+            Data ingested via cron every minute.<br>
+            Covers last 60 min of fail2ban activity.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+function filterEvents(action, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.event-row').forEach(row => {
+    if (action === 'all' || row.dataset.action === action) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+
+// Auto-refresh every 60s
+setTimeout(() => location.reload(), 60000);
+</script>
+
+</body>
+</html>

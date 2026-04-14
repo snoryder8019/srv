@@ -1,0 +1,193 @@
+<%- include('../partials/head', { title: 'Booking Settings' }) %>
+<%- include('../partials/sidebar', { page: 'meetings', user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Booking Settings</div>
+  <div class="topbar-actions">
+    <a href="/admin/meetings" class="btn btn-ghost">← Meetings</a>
+    <% if (settings.enabled) { %>
+    <a href="<%= bookingUrl %>" target="_blank" class="btn btn-gold">View Public Page ↗</a>
+    <% } %>
+  </div>
+</div>
+
+<style>
+  .booking-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media(max-width:900px){ .booking-grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--white); border: 1px solid var(--ivory-mid); border-radius: 6px; overflow: hidden; margin-bottom: 20px; }
+  .panel-header { padding: 14px 20px; border-bottom: 1px solid var(--ivory-mid); display: flex; align-items: center; justify-content: space-between; }
+  .panel-title { font-size: 13px; font-weight: 600; color: var(--ink); text-transform: uppercase; letter-spacing: .6px; }
+  .panel-body { padding: 20px; }
+  .form-row { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .form-input { width: 100%; border: 1px solid var(--ivory-mid); border-radius: 4px; padding: 8px 12px; font-size: 14px; color: var(--ink); background: var(--white); }
+  .form-input:focus { outline: none; border-color: var(--gold); }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--ivory-light); }
+  .toggle-row:last-child { border-bottom: none; }
+  .toggle-label { font-size: 13px; color: var(--ink); font-weight: 500; }
+  .toggle-sub { font-size: 11px; color: var(--ink-muted); margin-top: 2px; }
+  .toggle-controls { display: flex; align-items: center; gap: 12px; }
+  .time-input { width: 90px; border: 1px solid var(--ivory-mid); border-radius: 4px; padding: 5px 8px; font-size: 13px; }
+  .time-dash { color: var(--ink-muted); font-size: 12px; }
+  input[type=checkbox].day-toggle { width: 18px; height: 18px; accent-color: var(--gold); cursor: pointer; }
+  .enabled-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 14px 16px; background: var(--ivory-light); border-radius: 6px; }
+  .enabled-toggle label { font-size: 14px; font-weight: 600; color: var(--ink); cursor: pointer; }
+  input[type=checkbox]#enabled { width: 20px; height: 20px; accent-color: #22c55e; cursor: pointer; }
+  .booking-url-box { background: var(--ivory-light); border: 1px solid var(--ivory-mid); border-radius: 5px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .booking-url { font-size: 13px; color: var(--ink-muted); font-family: monospace; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copy-url-btn { font-size: 11px; padding: 4px 10px; background: var(--gold); color: var(--white); border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  .booking-card { background: var(--white); border: 1px solid var(--ivory-mid); border-radius: 5px; padding: 12px 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px; }
+  .booking-time { font-size: 12px; font-weight: 600; color: var(--gold); min-width: 140px; }
+  .booking-person { font-size: 13px; font-weight: 500; color: var(--ink); }
+  .booking-email { font-size: 12px; color: var(--ink-muted); }
+  .booking-status { margin-left: auto; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+  .status-pending   { background: #fef9e7; color: #b7791f; }
+  .status-confirmed { background: #f0fdf4; color: #15803d; }
+  .status-cancelled { background: #fef2f2; color: #b91c1c; }
+  .empty-bookings { color: var(--ink-muted); font-size: 13px; text-align: center; padding: 24px; }
+  .saved-banner { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px; padding: 10px 16px; color: #15803d; font-size: 13px; margin-bottom: 16px; }
+  .btn-save { background: var(--gold); color: var(--white); border: none; border-radius: 5px; padding: 10px 28px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+  .btn-save:hover { opacity: .88; }
+  .num-input { width: 80px; }
+</style>
+
+<div class="content">
+  <% if (typeof saved !== 'undefined' && saved) { %>
+  <div class="saved-banner">✓ Settings saved successfully.</div>
+  <% } %>
+
+  <% if (settings.enabled && bookingUrl) { %>
+  <div class="booking-url-box">
+    <span class="booking-url"><%= bookingUrl %></span>
+    <button class="copy-url-btn" onclick="navigator.clipboard.writeText('<%= bookingUrl %>');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy URL',2000)">Copy URL</button>
+    <a href="<%= bookingUrl %>" target="_blank" style="font-size:12px;color:var(--gold);text-decoration:none">Open ↗</a>
+  </div>
+  <% } %>
+
+  <form method="POST" action="/admin/meetings/booking">
+    <div class="booking-grid">
+
+      <!-- Left: settings -->
+      <div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">General</span></div>
+          <div class="panel-body">
+            <div class="enabled-toggle">
+              <input type="checkbox" id="enabled" name="enabled" <%= settings.enabled ? 'checked' : '' %>>
+              <label for="enabled">Enable public booking page</label>
+            </div>
+
+            <div class="form-row">
+              <label class="form-label">Page Title</label>
+              <input class="form-input" name="title" value="<%= settings.title || 'Book a Meeting' %>">
+            </div>
+            <div class="form-row">
+              <label class="form-label">Subtitle</label>
+              <input class="form-input" name="subtitle" value="<%= settings.subtitle || '' %>">
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Slot Settings</span></div>
+          <div class="panel-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div class="form-row">
+                <label class="form-label">Meeting Length (min)</label>
+                <input class="form-input num-input" type="number" name="meetingLength" value="<%= settings.meetingLength || 30 %>" min="15" max="180" step="15">
+              </div>
+              <div class="form-row">
+                <label class="form-label">Buffer Between (min)</label>
+                <input class="form-input num-input" type="number" name="bufferMinutes" value="<%= settings.bufferMinutes || 15 %>" min="0" max="60" step="5">
+              </div>
+              <div class="form-row">
+                <label class="form-label">Book Ahead (days)</label>
+                <input class="form-input num-input" type="number" name="advanceDays" value="<%= settings.advanceDays || 14 %>" min="1" max="90">
+              </div>
+              <div class="form-row">
+                <label class="form-label">Min Notice (hours)</label>
+                <input class="form-input num-input" type="number" name="minNoticeHours" value="<%= settings.minNoticeHours || 2 %>" min="0" max="72">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Availability</span></div>
+          <div class="panel-body">
+            <% const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']; %>
+            <% for (let d = 0; d <= 6; d++) { %>
+            <% const dayAvail = settings.availability?.[d] || {}; %>
+            <div class="toggle-row">
+              <div>
+                <div class="toggle-label"><%= DAYS[d] %></div>
+              </div>
+              <div class="toggle-controls">
+                <input type="checkbox" class="day-toggle" name="day_<%= d %>_enabled" id="day_<%= d %>" <%= dayAvail.enabled ? 'checked' : '' %>
+                  onchange="document.getElementById('times_<%= d %>').style.opacity=this.checked?1:0.3">
+                <span id="times_<%= d %>" style="display:flex;align-items:center;gap:6px;opacity:<%= dayAvail.enabled ? 1 : 0.3 %>">
+                  <input type="time" class="time-input" name="day_<%= d %>_start" value="<%= dayAvail.start || '09:00' %>">
+                  <span class="time-dash">–</span>
+                  <input type="time" class="time-input" name="day_<%= d %>_end" value="<%= dayAvail.end || '17:00' %>">
+                </span>
+              </div>
+            </div>
+            <% } %>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-save">Save Settings</button>
+      </div>
+
+      <!-- Right: upcoming bookings -->
+      <div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Upcoming Bookings</span>
+            <span style="font-size:12px;color:var(--ink-muted)"><%= bookings.length %> scheduled</span>
+          </div>
+          <div class="panel-body" style="padding:12px">
+            <% if (!bookings.length) { %>
+            <div class="empty-bookings">No upcoming bookings yet.</div>
+            <% } else { %>
+            <% bookings.forEach(b => { %>
+            <div class="booking-card">
+              <div>
+                <div class="booking-time"><%= new Date(b.startAt).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) %> · <%= new Date(b.startAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) %></div>
+                <div class="booking-person"><%= b.name %></div>
+                <div class="booking-email"><%= b.email %><% if (b.company) { %> · <%= b.company %><% } %></div>
+                <% if (b.message) { %><div style="font-size:11px;color:var(--ink-muted);margin-top:3px;font-style:italic"><%= b.message.slice(0,80) %></div><% } %>
+              </div>
+              <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                <span class="booking-status status-<%= b.status || 'pending' %>"><%= (b.status || 'pending').toUpperCase() %></span>
+                <select style="font-size:11px;border:1px solid var(--ivory-mid);border-radius:3px;padding:2px 4px" onchange="updateStatus('<%= b._id %>',this.value)">
+                  <option value="pending" <%= (b.status||'pending')==='pending'?'selected':'' %>>Pending</option>
+                  <option value="confirmed" <%= b.status==='confirmed'?'selected':'' %>>Confirm</option>
+                  <option value="cancelled" <%= b.status==='cancelled'?'selected':'' %>>Cancel</option>
+                  <option value="completed" <%= b.status==='completed'?'selected':'' %>>Complete</option>
+                </select>
+              </div>
+            </div>
+            <% }); %>
+            <% } %>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </form>
+</div>
+
+<script>
+async function updateStatus(id, status) {
+  await fetch('/admin/meetings/booking/' + id + '/status', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  location.reload();
+}
+</script>
+</div><!-- .main -->
+</div><!-- .layout -->
+</body>
+</html>

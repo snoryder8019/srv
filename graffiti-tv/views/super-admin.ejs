@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>GFTV Super Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#07070a;--panel:#0e0e12;--border:#1a1a20;--accent:#f5c400;--red:#cc1100;--green:#00cc88;--text:#d8d8d8;--dim:#444;}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospace;min-height:100vh;}
+    .layout{display:grid;grid-template-columns:240px 1fr;min-height:100vh;}
+    .sidebar{background:#000;border-right:1px solid var(--border);padding:0;display:flex;flex-direction:column;}
+    .sb-logo{padding:24px 20px;border-bottom:1px solid var(--border);}
+    .sb-logo-main{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:4px;color:var(--accent);}
+    .sb-logo-sub{font-size:9px;letter-spacing:4px;color:var(--dim);margin-top:3px;}
+    nav{padding:12px 0;flex:1;}
+    .ni{display:flex;align-items:center;gap:10px;padding:11px 20px;font-size:12px;letter-spacing:1px;color:var(--dim);cursor:pointer;border-left:3px solid transparent;}
+    .ni:hover{color:var(--text);}
+    .ni.active{color:var(--accent);border-left-color:var(--accent);}
+    .sb-foot{padding:16px 20px;border-top:1px solid var(--border);font-size:10px;color:var(--dim);}
+
+    .main{padding:32px;overflow-y:auto;}
+    .page{display:none;}.page.active{display:block;}
+    .page-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:4px;margin-bottom:2px;}
+    .page-sub{font-size:10px;letter-spacing:3px;color:var(--dim);margin-bottom:24px;}
+
+    /* AUTH */
+    .auth-full{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+    .auth-box{background:var(--panel);border:1px solid var(--border);padding:44px;width:380px;text-align:center;}
+    .auth-title{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:5px;color:var(--accent);margin-bottom:24px;}
+    .auth-in{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:12px;font-family:'IBM Plex Mono',monospace;font-size:14px;margin-bottom:12px;outline:none;letter-spacing:2px;}
+    .auth-btn{width:100%;background:var(--accent);color:#000;border:none;padding:12px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:3px;cursor:pointer;}
+    .auth-err{color:var(--red);font-size:12px;margin-top:8px;min-height:18px;}
+
+    /* STATS */
+    .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px;}
+    .stat{background:var(--panel);border:1px solid var(--border);padding:20px;text-align:center;}
+    .stat-num{font-family:'Bebas Neue',sans-serif;font-size:3rem;color:var(--accent);line-height:1;}
+    .stat-lbl{font-size:9px;letter-spacing:3px;color:var(--dim);margin-top:3px;}
+
+    .card{background:var(--panel);border:1px solid var(--border);padding:18px;margin-bottom:14px;}
+    .card-title{font-size:9px;letter-spacing:4px;color:var(--dim);margin-bottom:14px;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    th{text-align:left;padding:7px 10px;font-size:9px;letter-spacing:3px;color:var(--dim);border-bottom:1px solid var(--border);}
+    td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,0.02);vertical-align:middle;}
+    tr:hover td{background:rgba(255,255,255,0.01);}
+    .badge{display:inline-block;padding:2px 7px;font-size:9px;letter-spacing:1px;}
+    .badge-on{background:rgba(0,204,136,0.1);color:var(--green);border:1px solid rgba(0,204,136,0.2);}
+    .badge-off{background:rgba(204,17,0,0.1);color:var(--red);border:1px solid rgba(204,17,0,0.2);}
+    .badge-new{background:rgba(245,196,0,0.1);color:var(--accent);border:1px solid rgba(245,196,0,0.2);}
+    .badge-starter{background:rgba(255,255,255,0.05);color:#888;border:1px solid #222;}
+    .badge-pro{background:rgba(245,196,0,0.1);color:var(--accent);border:1px solid rgba(245,196,0,0.2);}
+
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+    .field{display:flex;flex-direction:column;gap:4px;}
+    .field label{font-size:9px;letter-spacing:3px;color:var(--dim);}
+    .field input,.field select{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 10px;font-family:'IBM Plex Mono',monospace;font-size:12px;outline:none;}
+    .field select option{background:var(--panel);}
+    .btn{display:inline-flex;align-items:center;padding:7px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:1px;cursor:pointer;border:none;}
+    .btn-acc{background:var(--accent);color:#000;}
+    .btn-del{background:var(--red);color:#fff;}
+    .btn-tog{background:transparent;color:var(--dim);border:1px solid var(--border);}
+    .btn-sm{padding:3px 9px;font-size:10px;}
+    .btns{display:flex;gap:5px;}
+    #toast{position:fixed;bottom:20px;right:20px;background:var(--green);color:#000;padding:10px 18px;font-size:12px;letter-spacing:1px;z-index:9999;display:none;}
+    #toast.show{display:block;}
+    a.link{color:var(--dim);text-decoration:none;font-size:11px;}
+    a.link:hover{color:var(--text);}
+  </style>
+</head>
+<body>
+
+<div id="authFull" class="auth-full">
+  <div class="auth-box">
+    <div class="auth-title">SUPER ADMIN</div>
+    <input class="auth-in" type="password" id="passIn" placeholder="SUPER PASSWORD" onkeydown="if(event.key==='Enter')login()">
+    <button class="auth-btn" onclick="login()">ENTER →</button>
+    <div class="auth-err" id="authErr"></div>
+  </div>
+</div>
+
+<div class="layout" id="app" style="display:none">
+  <div class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-main">GFTV SUPER</div>
+      <div class="sb-logo-sub">MADLADS LAB</div>
+    </div>
+    <nav>
+      <div class="ni active" onclick="goto('dash')">📊 Overview</div>
+      <div class="ni" onclick="goto('tenants')">🏢 Tenants</div>
+      <div class="ni" onclick="goto('leads')">📬 Leads</div>
+      <div class="ni" onclick="goto('revenue')">💰 Revenue</div>
+    </nav>
+    <div class="sb-foot">MADLADS LAB · SUPER ADMIN</div>
+  </div>
+
+  <div class="main">
+    <div id="toast"></div>
+
+    <div class="page active" id="page-dash">
+      <div class="page-title">Overview</div>
+      <div class="page-sub">GRAFFITI TV · ALL TENANTS</div>
+      <div class="stats-row" id="ovStats"></div>
+      <div class="card"><div class="card-title">RECENT LEADS</div><table><thead><tr><th>NAME</th><th>EMAIL</th><th>BUSINESS</th><th>PLAN</th><th>STATUS</th><th>DATE</th></tr></thead><tbody id="recentLeads"></tbody></table></div>
+    </div>
+
+    <div class="page" id="page-tenants">
+      <div class="page-title">Tenants</div>
+      <div class="page-sub">ALL ACTIVE TENANTS</div>
+      <div class="card">
+        <div class="card-title">ADD TENANT</div>
+        <div class="form-row"><div class="field"><label>BUSINESS NAME</label><input id="t-name" placeholder="The Rusty Nail"></div><div class="field"><label>SLUG (URL KEY)</label><input id="t-slug" placeholder="rusty-nail"></div></div>
+        <div class="form-row"><div class="field"><label>EMAIL</label><input id="t-email" placeholder="owner@venue.com"></div><div class="field"><label>PASSWORD</label><input id="t-pass" placeholder="their-admin-password"></div></div>
+        <div class="form-row">
+          <div class="field"><label>PLAN</label><select id="t-plan"><option value="starter">Starter — $18/mo</option><option value="pro">Pro — $35/mo</option></select></div>
+          <div class="field"><label>ACCENT COLOR</label><input id="t-color" placeholder="#ff5000" value="#ff5000"></div>
+        </div>
+        <button class="btn btn-acc" onclick="addTenant()">+ CREATE TENANT</button>
+      </div>
+      <div class="card"><div class="card-title">ALL TENANTS</div><table><thead><tr><th>NAME</th><th>SLUG</th><th>PLAN</th><th>STATUS</th><th>LINKS</th><th>ACTIONS</th></tr></thead><tbody id="tb-tenants"></tbody></table></div>
+    </div>
+
+    <div class="page" id="page-leads">
+      <div class="page-title">Leads</div>
+      <div class="page-sub">SIGNUPS & INQUIRIES</div>
+      <div class="card"><div class="card-title">ALL LEADS</div><table><thead><tr><th>NAME</th><th>EMAIL</th><th>BUSINESS</th><th>PLAN</th><th>SOURCE</th><th>STATUS</th><th>DATE</th></tr></thead><tbody id="tb-leads"></tbody></table></div>
+    </div>
+
+    <div class="page" id="page-revenue">
+      <div class="page-title">Revenue</div>
+      <div class="page-sub">ESTIMATED MRR</div>
+      <div class="stats-row" id="revStats"></div>
+      <div class="card"><div class="card-title">TENANT BREAKDOWN</div><table><thead><tr><th>TENANT</th><th>PLAN</th><th>MRR</th><th>STATUS</th></tr></thead><tbody id="tb-rev"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let PASS='', DATA={tenants:[],leads:[]};
+const PLAN_PRICES={starter:18,pro:35};
+
+function login(){
+  PASS=document.getElementById('passIn').value;
+  Promise.all([
+    fetch('/api/super/tenants',{headers:{'x-super-pass':PASS}}).then(r=>{if(!r.ok)throw new Error();return r.json();}),
+    fetch('/api/super/leads',{headers:{'x-super-pass':PASS}}).then(r=>r.json())
+  ]).then(([tenants,leads])=>{
+    DATA={tenants,leads};
+    document.getElementById('authFull').style.display='none';
+    document.getElementById('app').style.display='grid';
+    render();
+  }).catch(()=>{document.getElementById('authErr').textContent='Incorrect password.';});
+}
+
+function goto(p){
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.ni').forEach(x=>x.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  event.currentTarget.classList.add('active');
+  refresh();
+}
+
+async function refresh(){
+  const [t,l]=await Promise.all([
+    fetch('/api/super/tenants',{headers:{'x-super-pass':PASS}}).then(r=>r.json()),
+    fetch('/api/super/leads',{headers:{'x-super-pass':PASS}}).then(r=>r.json())
+  ]);
+  DATA={tenants:t,leads:l};render();
+}
+
+function render(){
+  const t=DATA.tenants,l=DATA.leads;
+  const mrr=t.filter(x=>x.active).reduce((a,x)=>a+(PLAN_PRICES[x.plan]||0),0);
+
+  // Overview
+  document.getElementById('ovStats').innerHTML=[
+    {n:t.length,lb:'TENANTS'},
+    {n:t.filter(x=>x.active).length,lb:'ACTIVE'},
+    {n:l.filter(x=>x.status==='new').length,lb:'NEW LEADS'},
+    {n:'$'+mrr,lb:'EST. MRR'},
+  ].map(s=>`<div class="stat"><div class="stat-num">${s.n}</div><div class="stat-lbl">${s.lb}</div></div>`).join('');
+
+  document.getElementById('recentLeads').innerHTML=l.slice(-8).reverse().map(l=>`<tr>
+    <td>${l.name||'-'}</td><td>${l.email}</td><td>${l.business||'-'}</td>
+    <td><span class="badge badge-${l.plan||'starter'}">${l.plan||'starter'}</span></td>
+    <td><span class="badge badge-${l.status==='new'?'new':'on'}">${l.status||'new'}</span></td>
+    <td style="color:var(--dim)">${new Date(l.createdAt).toLocaleDateString()}</td>
+  </tr>`).join('');
+
+  // Tenants
+  document.getElementById('tb-tenants').innerHTML=t.map(x=>`<tr>
+    <td>${x.name}</td><td style="color:var(--dim)">${x.slug}</td>
+    <td><span class="badge badge-${x.plan}">${x.plan}</span></td>
+    <td><span class="badge badge-${x.active?'on':'off'}">${x.active?'ACTIVE':'OFF'}</span></td>
+    <td>
+      <a class="link" href="/tv/${x.slug}" target="_blank">DISPLAY</a> ·
+      <a class="link" href="/admin/${x.slug}" target="_blank">ADMIN</a> ·
+      <a class="link" href="/preview/${x.slug}" target="_blank">PREVIEW</a>
+    </td>
+    <td><div class="btns">
+      <button class="btn btn-tog btn-sm" onclick="toggleTenant('${x.slug}',${!x.active})">${x.active?'DISABLE':'ENABLE'}</button>
+      <button class="btn btn-del btn-sm" onclick="delTenant('${x.slug}')">DEL</button>
+    </div></td>
+  </tr>`).join('');
+
+  // Leads
+  document.getElementById('tb-leads').innerHTML=l.slice().reverse().map(x=>`<tr>
+    <td>${x.name||'-'}</td><td>${x.email}</td><td>${x.business||'-'}</td>
+    <td><span class="badge badge-${x.plan||'starter'}">${x.plan||'starter'}</span></td>
+    <td style="color:var(--dim)">${x.source||'landing'}</td>
+    <td>
+      <select style="background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px;" onchange="updateLead(${x.id},this.value)">
+        ${['new','contacted','converted','lost'].map(s=>`<option value="${s}" ${x.status===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </td>
+    <td style="color:var(--dim)">${new Date(x.createdAt).toLocaleDateString()}</td>
+  </tr>`).join('');
+
+  // Revenue
+  const active=t.filter(x=>x.active);
+  const totalMRR=active.reduce((a,x)=>a+(PLAN_PRICES[x.plan]||0),0);
+  document.getElementById('revStats').innerHTML=[
+    {n:'$'+totalMRR,lb:'MONTHLY MRR'},
+    {n:'$'+(totalMRR*12),lb:'ARR RUN RATE'},
+    {n:active.filter(x=>x.plan==='starter').length,lb:'STARTER TENANTS'},
+    {n:active.filter(x=>x.plan==='pro').length,lb:'PRO TENANTS'},
+  ].map(s=>`<div class="stat"><div class="stat-num">${s.n}</div><div class="stat-lbl">${s.lb}</div></div>`).join('');
+  document.getElementById('tb-rev').innerHTML=active.map(x=>`<tr>
+    <td>${x.name}</td>
+    <td><span class="badge badge-${x.plan}">${x.plan}</span></td>
+    <td style="color:var(--accent)">$${PLAN_PRICES[x.plan]||0}/mo</td>
+    <td><span class="badge badge-on">ACTIVE</span></td>
+  </tr>`).join('');
+}
+
+async function addTenant(){
+  const slug=v('t-slug').toLowerCase().replace(/\s+/g,'-');
+  const body={slug,id:slug,name:v('t-name'),email:v('t-email'),passwordHash:v('t-pass'),plan:v('t-plan'),branding:{name:v('t-name'),color:v('t-color')||'#ff5000'}};
+  await fetch('/api/super/tenants',{method:'POST',headers:{'Content-Type':'application/json','x-super-pass':PASS},body:JSON.stringify(body)});
+  toast('✓ Tenant created');await refresh();
+}
+async function toggleTenant(slug,active){
+  await fetch(`/api/super/tenants/${slug}`,{method:'PUT',headers:{'Content-Type':'application/json','x-super-pass':PASS},body:JSON.stringify({active})});
+  toast(active?'✓ Enabled':'✓ Disabled');await refresh();
+}
+async function delTenant(slug){
+  if(!confirm(`Delete tenant ${slug}?`))return;
+  await fetch(`/api/super/tenants/${slug}`,{method:'DELETE',headers:{'x-super-pass':PASS}});
+  toast('✓ Deleted');await refresh();
+}
+async function updateLead(id,status){
+  await fetch(`/api/super/leads/${id}/status`,{method:'PUT',headers:{'Content-Type':'application/json','x-super-pass':PASS},body:JSON.stringify({status})});
+  toast('✓ Updated');await refresh();
+}
+function v(id){return document.getElementById(id)?.value||'';}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+</script>
+</body>
+</html>

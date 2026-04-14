@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Platform Users — Superadmin</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
     .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
     .topbar-left { display:flex; align-items:center; gap:16px; }
-    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .logo { font-size:18px; font-weight:500; color:#fff; font-family:'Space Grotesk',sans-serif; letter-spacing:0.05em; } .logo span { color:#c9a848; }
     .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
     .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
     .container { max-width:1200px; margin:0 auto; padding:24px; }
@@ -52,6 +52,7 @@
     .product-tag { display:inline-block; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
 
     .scope-label { font-size:10px; color:#525252; display:block; margin-top:2px; }
+    .badge-tv-sub { background:rgba(245,196,0,0.1); color:#f5c400; border:1px solid rgba(245,196,0,0.25); padding:2px 7px; border-radius:10px; font-size:10px; font-weight:500; }
     .tenant-tag { color:#737373; font-size:11px; }
     .provider-tag { font-size:10px; color:#525252; background:#1a1a1a; padding:1px 5px; border-radius:4px; }
     .btn-sm { padding:3px 8px; font-size:10px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; text-decoration:none; display:inline-block; transition:all .15s; }
@@ -117,6 +118,7 @@
       <div class="stat"><div class="stat-label">Admins</div><div class="stat-value green"><%= stats.admins %></div></div>
       <div class="stat"><div class="stat-label">Owners</div><div class="stat-value"><%= stats.owners %></div></div>
       <div class="stat"><div class="stat-label">Clients</div><div class="stat-value blue"><%= stats.clients %></div></div>
+      <div class="stat"><div class="stat-label">TV Subscribers</div><div class="stat-value" style="color:#f5c400"><%= stats.gftvSubs || 0 %></div></div>
     </div>
 
     <div class="toolbar">
@@ -144,6 +146,7 @@
         <% for (const [key, p] of Object.entries(products)) { %>
           <option value="<%= key %>" <%= filters.product === key ? 'selected' : '' %>><%= p.icon ? '' : '' %><%= p.label %></option>
         <% } %>
+          <option value="graffititv" <%= filters.product === 'graffititv' ? 'selected' : '' %>>📺 Graffiti TV</option>
       </select>
 
       <!-- Tenant filter (only relevant for slab product) -->
@@ -180,7 +183,11 @@
             <td style="font-size:12px;"><%= u.email || '\u2014' %></td>
             <td>
               <span class="product-tag" style="color:<%= prod.color %>; background:<%= prod.bg %>; border:1px solid <%= prod.border %>;"><%= prod.label %></span>
-              <% if (u._product === 'slab') { %>
+              <% if (u._gftv) { %>
+                <span class="tenant-tag" style="margin-left:4px;"><%= u._tenantName %></span>
+                <% if (u._tenantPlan) { %><span style="margin-left:4px;font-size:9px;color:#f5c400;background:rgba(245,196,0,0.08);border:1px solid rgba(245,196,0,0.2);padding:1px 5px;border-radius:3px;"><%= u._tenantPlan %></span><% } %>
+                <% if (u._subCount !== null) { %><span style="margin-left:4px;font-size:9px;color:#525252;"><%= u._subCount %> subs</span><% } %>
+              <% } else if (u._product === 'slab') { %>
                 <span class="tenant-tag" style="margin-left:4px;"><%= u._tenantName %></span>
               <% } %>
             </td>
@@ -212,10 +219,17 @@
             <td style="font-size:12px; color:#525252;"><%= u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '\u2014' %></td>
             <td>
               <div class="actions">
-                <% if (u._product === 'slab') { %>
+                <% if (u._gftv) { %>
+                  <% if (u._gftvRole === 'owner') { %>
+                    <a href="/superadmin/gftv/tenants/<%= u._tenantDb %>" class="btn-sm" style="border-color:#f5c400;color:#f5c400;text-decoration:none;">Detail</a>
+                    <a href="https://graffititv.madladslab.com/tv/<%= u._tenantDb %>" target="_blank" class="btn-sm">📺 Display</a>
+                  <% } else { %>
+                    <span style="color:#525252;font-size:11px;">TV Subscriber</span>
+                  <% } %>
+                <% } else if (u._product === 'slab') { %>
                   <a href="/superadmin/users/<%= u._tenantDb %>/<%= u._id %>" class="btn-sm" style="border-color:#c9a848; color:#c9a848; text-decoration:none;">Edit</a>
                 <% } %>
-                <% if (!u._isSuperAdmin) { %>
+                <% if (!u._isSuperAdmin && !u._gftv) { %>
                   <% if (u._product === 'slab') { %>
                     <form method="POST" action="/superadmin/users/<%= u._tenantDb %>/<%= u._id %>/toggle-admin" style="display:inline;">
                       <button type="submit" class="btn-sm" title="<%= u.isAdmin ? 'Revoke admin' : 'Grant admin' %>"><%= u.isAdmin ? 'Revoke' : 'Grant' %></button>

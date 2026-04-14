@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>GRAFFITI TV — SPLIT</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Quicksand:wght@700&family=Fira+Code:wght@500&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#111; height:100vh; overflow:hidden; font-family:'Quicksand',sans-serif; }
+
+    /* === LAYOUT: big media left, right side split into 3 stacked panels === */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      grid-template-rows: 1fr;
+      height: 100vh;
+    }
+
+    /* LEFT: media with floating title */
+    .media-zone {
+      position: relative;
+      background: #000;
+      overflow: hidden;
+    }
+    #mediaContainer {
+      width:100%; height:100%;
+      position:relative;
+    }
+    #mediaContainer img, #mediaContainer video {
+      width:100%; height:100%; object-fit:cover;
+      position:absolute; top:0; left:0;
+    }
+
+    /* Diagonal color slash overlay */
+    .media-zone::after {
+      content:'';
+      position:absolute; top:0; left:0; right:0; bottom:0;
+      background: linear-gradient(135deg,
+        rgba(255,80,0,0.18) 0%,
+        transparent 40%,
+        transparent 60%,
+        rgba(0,180,255,0.18) 100%);
+      pointer-events:none;
+    }
+
+    /* Big floating name — bottom left */
+    .media-title {
+      position:absolute; bottom:0; left:0; right:0;
+      padding:30px 28px 22px;
+      background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%);
+      z-index:5;
+    }
+    .media-title h1 {
+      font-family:'Black Han Sans',sans-serif;
+      font-size:clamp(2.5rem,5vw,5rem);
+      color:#fff;
+      line-height:1;
+      letter-spacing:-1px;
+    }
+    .media-title h1 span { color:#ff5000; }
+    .media-title p {
+      font-family:'Fira Code',monospace;
+      font-size:13px; color:rgba(255,255,255,0.45);
+      margin-top:6px; letter-spacing:2px;
+    }
+
+    /* RIGHT: 3 stacked panels */
+    .right-panels {
+      display:grid;
+      grid-template-rows: 1fr 1fr 1fr;
+      border-left:4px solid #222;
+    }
+
+    .panel {
+      overflow:hidden;
+      border-bottom:3px solid #222;
+      position:relative;
+      display:flex; flex-direction:column;
+      padding:16px;
+    }
+
+    /* Panel 1: Scrolling menu */
+    .panel-menu { background:#0d0d0d; }
+    .panel-label {
+      font-family:'Fira Code',monospace;
+      font-size:10px; letter-spacing:4px;
+      color:#ff5000; margin-bottom:10px;
+      text-transform:uppercase;
+    }
+    .menu-scroll-wrap { flex:1; overflow:hidden; }
+    .menu-scroll { animation: scrollUp 18s linear infinite; }
+    @keyframes scrollUp { 0%{transform:translateY(0)} 100%{transform:translateY(-50%)} }
+    .menu-row {
+      display:flex; justify-content:space-between; align-items:baseline;
+      padding:7px 0; border-bottom:1px solid #1c1c1c;
+    }
+    .menu-row-name { font-size:15px; color:#ddd; }
+    .menu-row-price { font-family:'Fira Code',monospace; font-size:14px; color:#ff5000; }
+
+    /* Panel 2: Big clock + info */
+    .panel-clock {
+      background:#0a0a14;
+      align-items:center; justify-content:center; gap:4px;
+    }
+    .big-clock {
+      font-family:'Fira Code',monospace;
+      font-size:clamp(2rem,3.5vw,3.5rem);
+      color:#00d4ff; letter-spacing:4px;
+      text-shadow: 0 0 20px rgba(0,212,255,0.5);
+    }
+    .clock-sub { font-size:11px; letter-spacing:3px; color:#333; font-family:'Fira Code',monospace; }
+    .panel-badges { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .badge {
+      padding:3px 10px; border-radius:2px;
+      font-size:11px; letter-spacing:1px; font-weight:700;
+    }
+    .badge-red { background:#ff5000; color:#fff; }
+    .badge-blue { background:#00d4ff; color:#000; }
+    .badge-yellow { background:#ffe000; color:#000; }
+
+    /* Panel 3: Marquee of specials */
+    .panel-special {
+      background:#0f0900;
+      justify-content:center;
+    }
+    .special-track-wrap { overflow:hidden; }
+    .special-track {
+      display:flex; gap:0;
+      animation: tickerScroll 22s linear infinite;
+      white-space:nowrap;
+    }
+    @keyframes tickerScroll { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+    .special-item {
+      padding:0 32px; display:inline-flex; flex-direction:column; gap:2px;
+    }
+    .si-name { font-family:'Black Han Sans',sans-serif; font-size:20px; color:#ffe000; }
+    .si-desc { font-family:'Fira Code',monospace; font-size:10px; color:#555; }
+    .si-price { font-size:13px; color:#ff5000; font-weight:700; }
+
+    /* Subtle pulsing separator between columns */
+    .right-panels::before {
+      content:''; position:absolute;
+      left:0; top:0; bottom:0; width:4px;
+      background: linear-gradient(to bottom, #ff5000, #00d4ff, #ffe000, #ff5000);
+      background-size: 100% 300%;
+      animation: gradShift 6s linear infinite;
+    }
+    @keyframes gradShift { 0%{background-position:0 0} 100%{background-position:0 300%} }
+
+    /* Loading */
+    .loading-msg {
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      background:#000;
+    }
+    .loading-msg span {
+      font-family:'Black Han Sans',sans-serif; font-size:3rem;
+      color:#ff5000; animation:pulse 1s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.97)} }
+  
+    .qr-block{padding:8px;border-top:2px solid #333;display:flex;flex-direction:column;align-items:center;gap:4px;background:#050510;}
+    .qr-block-box{background:#fff;padding:5px;border-radius:2px;width:84px;height:84px;display:flex;align-items:center;justify-content:center;}
+    .qr-block-label{font-family:'Fira Code',monospace;font-size:7px;letter-spacing:1.5px;color:#00d4ff;text-align:center;text-transform:uppercase;max-width:90px;line-height:1.3;}
+  </style>
+</head>
+<body>
+<div class="grid">
+  <div class="media-zone">
+    <div id="mediaContainer">
+      <div class="loading-msg"><span>GFTV</span></div>
+    </div>
+    <div class="media-title">
+      <h1>GRAFFITI <span>PASTA</span></h1>
+      <p>DENTON, TEXAS · STREET ART MEETS ITALIAN SOUL</p>
+    </div>
+  </div>
+
+  <div class="right-panels">
+
+    <!-- MENU PANEL -->
+    <div class="panel panel-menu">
+      <div class="panel-label">// Tonight's Menu</div>
+      <div class="menu-scroll-wrap">
+        <div class="menu-scroll">
+          <div class="menu-row"><span class="menu-row-name">Truffle Pasta</span><span class="menu-row-price">$24.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Graffiti Carbonara</span><span class="menu-row-price">$19.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Cacio e Pepe</span><span class="menu-row-price">$17.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Arrabbiata</span><span class="menu-row-price">$16.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Bolognese</span><span class="menu-row-price">$21.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Amatriciana</span><span class="menu-row-price">$18.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Wood-Fired Pizza</span><span class="menu-row-price">$14.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Negroni</span><span class="menu-row-price">$5 HH</span></div>
+          <div class="menu-row"><span class="menu-row-name">Aperol Spritz</span><span class="menu-row-price">$8.99</span></div>
+          <!-- dupe -->
+          <div class="menu-row"><span class="menu-row-name">Truffle Pasta</span><span class="menu-row-price">$24.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Graffiti Carbonara</span><span class="menu-row-price">$19.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Cacio e Pepe</span><span class="menu-row-price">$17.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Arrabbiata</span><span class="menu-row-price">$16.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Bolognese</span><span class="menu-row-price">$21.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Amatriciana</span><span class="menu-row-price">$18.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Wood-Fired Pizza</span><span class="menu-row-price">$14.99</span></div>
+          <div class="menu-row"><span class="menu-row-name">Negroni</span><span class="menu-row-price">$5 HH</span></div>
+          <div class="menu-row"><span class="menu-row-name">Aperol Spritz</span><span class="menu-row-price">$8.99</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLOCK PANEL -->
+    <div class="panel panel-clock">
+      <div class="big-clock" id="clock">--:--:--</div>
+      <div class="clock-sub">DENTON · TEXAS</div>
+      <div class="panel-badges">
+        <span class="badge badge-red">LIVE MUSIC FRI</span>
+        <span class="badge badge-blue">HAPPY HOUR 4–7</span>
+        <span class="badge badge-yellow">OPEN NOW</span>
+      </div>
+      <div class="qr-block"><div class="qr-block-box"><div id="qr-code"></div></div><div class="qr-block-label" id="qr-label">Scan for offer</div></div>
+    </div>
+
+    <!-- SPECIALS HORIZONTAL SCROLL -->
+    <div class="panel panel-special">
+      <div class="panel-label">// Chef's Specials</div>
+      <div class="special-track-wrap">
+        <div class="special-track">
+          <div class="special-item"><div class="si-name">Truffle Pasta</div><div class="si-desc">black truffle · parm · butter</div><div class="si-price">$24.99</div></div>
+          <div class="special-item"><div class="si-name">Carbonara</div><div class="si-desc">guanciale · egg · pecorino</div><div class="si-price">$19.99</div></div>
+          <div class="special-item"><div class="si-name">Cacio e Pepe</div><div class="si-desc">roman · simple · perfect</div><div class="si-price">$17.99</div></div>
+          <div class="special-item"><div class="si-name">Negroni</div><div class="si-desc">happy hour daily 4–7pm</div><div class="si-price">$5</div></div>
+          <div class="special-item"><div class="si-name">Truffle Pasta</div><div class="si-desc">black truffle · parm · butter</div><div class="si-price">$24.99</div></div>
+          <div class="special-item"><div class="si-name">Carbonara</div><div class="si-desc">guanciale · egg · pecorino</div><div class="si-price">$19.99</div></div>
+          <div class="special-item"><div class="si-name">Cacio e Pepe</div><div class="si-desc">roman · simple · perfect</div><div class="si-price">$17.99</div></div>
+          <div class="special-item"><div class="si-name">Negroni</div><div class="si-desc">happy hour daily 4–7pm</div><div class="si-price">$5</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+<script>
+  setInterval(()=>{ document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}); },1000);
+  let mediaList=[],idx=0;
+  async function loadMedia(){try{const r=await fetch('/api/linode/media');const d=await r.json();if(d.success&&d.media?.length){mediaList=d.media;playMedia();}else loadFallback();}catch(e){loadFallback();}}
+  function loadFallback(){document.getElementById('mediaContainer').innerHTML=`<iframe src="https://www.youtube.com/embed/86YLFOog4GM?autoplay=1&mute=1&controls=0&loop=1&playlist=86YLFOog4GM" frameborder="0" allow="autoplay" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe>`;}
+  function playMedia(){const c=document.getElementById('mediaContainer');const m=mediaList[idx];c.innerHTML='';if(m.type==='video'){const v=document.createElement('video');v.src=m.url;v.autoplay=v.muted=true;v.loop=true;c.appendChild(v);}else{const i=document.createElement('img');i.src=m.url;i.addEventListener('error',next);c.appendChild(i);setTimeout(next,15000);}}
+  function next(){idx=(idx+1)%mediaList.length;playMedia();}
+  document.addEventListener('DOMContentLoaded',loadMedia);
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(async()=>{
+  try{
+    const slug=window.location.pathname.split('/')[2];
+    const d=await fetch('/api/'+slug+'/offering').then(r=>r.json());
+    if(!d.url)return;
+    const lbl=document.getElementById('qr-label');if(lbl)lbl.textContent=d.title||'Scan for offer';
+    const box=document.getElementById('qr-code');if(box)new QRCode(box,{text:d.url,width:84,height:84,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){}
+})();
+</script>
+</body></html>
