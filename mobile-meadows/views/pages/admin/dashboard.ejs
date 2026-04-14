@@ -1,0 +1,52 @@
+<h1>Dashboard</h1>
+
+<div class="dash-stats">
+  <div class="stat-card">
+    <h3><%= bookings.filter(b => b.status === 'pending').length %></h3>
+    <p>Pending Bookings</p>
+  </div>
+  <div class="stat-card">
+    <h3><%= slots.length %></h3>
+    <p>Upcoming Slots</p>
+  </div>
+  <div class="stat-card">
+    <h3><%= userCount %></h3>
+    <p>Users</p>
+  </div>
+</div>
+
+<h2>Recent Bookings</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th><th>Service</th><th>Date</th><th>Status</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (bookings.length === 0) { %>
+        <tr><td colspan="5">No bookings yet</td></tr>
+      <% } %>
+      <% bookings.forEach(b => { %>
+        <tr>
+          <td><%= b.guestName || 'N/A' %></td>
+          <td><%= b.serviceType === 'mobile-repair' ? 'Mobile' : 'Roof' %></td>
+          <td><%= new Date(b.requestedDate).toLocaleDateString() %></td>
+          <td><span class="badge badge-<%= b.status %>"><%= b.status %></span></td>
+          <td>
+            <% if (b.status === 'pending') { %>
+              <form action="/admin/bookings/<%= b._id %>/confirm" method="POST" style="display:inline">
+                <button class="btn btn-sm btn-success">Confirm</button>
+              </form>
+            <% } %>
+            <% if (b.status !== 'cancelled' && b.status !== 'completed') { %>
+              <form action="/admin/bookings/<%= b._id %>/cancel" method="POST" style="display:inline">
+                <button class="btn btn-sm btn-danger">Cancel</button>
+              </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>

@@ -69,6 +69,27 @@ export function enrichDesignContrast(design) {
     // Muted secondary text: 55% text color mixed with the background
     d._on_bg_muted     = mixHex(d._on_bg, d.color_bg, 0.6);
 
+    // ── Admin surface contrast ──
+    // Card/input surfaces: always high-contrast against the page bg
+    const bgLum = relativeLuminance(d.color_bg);
+    // If bg is light, cards/inputs are white; if bg is dark, lift slightly
+    d._surface         = bgLum > 0.4 ? '#FFFFFF' : mixHex('#FFFFFF', d.color_bg, 0.12);
+    d._on_surface      = readableTextColor(d._surface);
+    d._on_surface_muted = mixHex(d._on_surface, d._surface, 0.65);
+    // Input border: visible against both bg AND surface
+    d._border          = bgLum > 0.4
+      ? mixHex(d._on_bg, d.color_bg, 0.22)
+      : mixHex(d._on_bg, d.color_bg, 0.30);
+    // Input border focus: use primary if it contrasts with surface, else use accent
+    const primaryOnSurface = contrastRatio(d.color_primary, d._surface);
+    d._border_focus    = primaryOnSurface >= 3 ? d.color_primary : d.color_accent;
+    // Placeholder text: guaranteed readable but subdued
+    d._placeholder     = mixHex(d._on_surface, d._surface, 0.35);
+    // Badge text: for tinted-transparent badges on surface bg, use darkened accent
+    d._badge_accent    = readableTextColor(d._surface) === '#0F1B30'
+      ? mixHex(d.color_accent, '#000000', 0.65)
+      : mixHex(d.color_accent, '#FFFFFF', 0.75);
+
     // Contrast checks for common pairings
     d._contrast = {
       text_on_page:       wcagAA(d.color_primary_deep, '#FDFCFA'),
@@ -79,12 +100,19 @@ export function enrichDesignContrast(design) {
       text_on_primary:    wcagAA(d._on_primary, d.color_primary),
       text_on_deep:       wcagAA(d._on_primary_deep, d.color_primary_deep),
       accent_on_deep:     wcagAA(d.color_accent_light, d.color_primary_deep),
+      text_on_surface:    wcagAA(d._on_surface, d._surface),
+      muted_on_surface:   wcagAA(d._on_surface_muted, d._surface),
+      border_on_surface:  wcagAA(d._border, d._surface),
     };
   } catch {
     // If any color is malformed, fall back to safe defaults
     d._on_primary = d._on_primary_deep = d._on_primary_mid = '#FDFCFA';
     d._on_accent = d._on_accent_light = d._on_bg = '#0F1B30';
     d._on_bg_muted = '#6B7380';
+    d._surface = '#FFFFFF'; d._on_surface = '#0F1B30';
+    d._on_surface_muted = '#6B7380'; d._border = '#CBD5E1';
+    d._border_focus = '#1C2B4A'; d._placeholder = '#9CA3AF';
+    d._badge_accent = '#92722A';
     d._contrast = {};
   }
   return d;

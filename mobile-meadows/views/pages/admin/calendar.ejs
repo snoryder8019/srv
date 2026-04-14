@@ -1,0 +1,74 @@
+<h1>Manage Calendar Slots</h1>
+
+<div class="admin-card">
+  <h2>Add New Slot</h2>
+  <form action="/admin/calendar/slot" method="POST" class="slot-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" name="date" required>
+      </div>
+      <div class="form-group">
+        <label>Start Time</label>
+        <input type="time" name="startTime" required>
+      </div>
+      <div class="form-group">
+        <label>End Time</label>
+        <input type="time" name="endTime" required>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Service Type</label>
+        <select name="serviceType" required>
+          <option value="mobile-repair">Mobile Repair</option>
+          <option value="roof-repair">Roof Repair</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Max Bookings</label>
+        <input type="number" name="maxBookings" value="1" min="1">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Location Label (mobile only)</label>
+        <input type="text" name="locationLabel" placeholder="Branson Landing Area">
+      </div>
+      <div class="form-group">
+        <label>Location Address</label>
+        <input type="text" name="locationAddress" placeholder="123 Main St, Branson, MO">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Add Slot</button>
+  </form>
+</div>
+
+<h2>Existing Slots</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Time</th><th>Service</th><th>Location</th><th>Booked</th><th>Available</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      <% if (slots.length === 0) { %>
+        <tr><td colspan="7">No slots created yet</td></tr>
+      <% } %>
+      <% slots.forEach(s => { %>
+        <tr>
+          <td><%= new Date(s.date).toLocaleDateString() %></td>
+          <td><%= s.startTime %> - <%= s.endTime %></td>
+          <td><%= s.serviceType === 'mobile-repair' ? 'Mobile' : 'Roof' %></td>
+          <td><%= (s.location && s.location.label) ? s.location.label : '—' %></td>
+          <td><%= s.currentBookings %>/<%= s.maxBookings %></td>
+          <td><%= s.isAvailable ? 'Yes' : 'Full' %></td>
+          <td>
+            <form action="/admin/calendar/slot/<%= s._id %>?_method=DELETE" method="POST">
+              <button class="btn btn-sm btn-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>

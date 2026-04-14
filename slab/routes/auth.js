@@ -434,16 +434,29 @@ async function findSlabsForEmail(email) {
     status: { $in: ['active', 'preview'] },
   }).toArray();
 
-  const results = [];
+  // Deduplicate tenants by db name — prefer the entry with a custom domain
+  const byDb = new Map();
   for (const t of tenants) {
+    const existing = byDb.get(t.db);
+    const cd = (t.meta?.customDomain || t.public?.customDomain || '').toLowerCase();
+    const hasCustom = cd && !cd.endsWith('.madladslab.com');
+    if (!existing || hasCustom) byDb.set(t.db, t);
+  }
+
+  const results = [];
+  for (const t of byDb.values()) {
     try {
       const db = getTenantDb(t.db);
       const user = await db.collection('users').findOne({ email });
       if (user) {
+        // Prefer custom domain so redirect lands on the tenant's own domain, not the wildcard
+        const raw = t.meta?.customDomain || t.public?.customDomain || '';
+        const customDomain = raw && !raw.toLowerCase().endsWith('.madladslab.com') ? raw : '';
+        const effectiveDomain = customDomain || t.domain;
         results.push({
           tenantDb: t.db,
-          domain: t.domain,
-          brandName: t.brand?.name || t.domain,
+          domain: effectiveDomain,
+          brandName: t.brand?.name || effectiveDomain,
           isAdmin: user.isAdmin || false,
           isOwner: user.isOwner || false,
           userId: user._id.toString(),

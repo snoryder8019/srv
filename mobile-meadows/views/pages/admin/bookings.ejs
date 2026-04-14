@@ -1,0 +1,42 @@
+<h1>Manage Bookings</h1>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th><th>Email</th><th>Phone</th><th>Service</th>
+        <th>Vehicle</th><th>Issue</th><th>Date</th><th>Status</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (bookings.length === 0) { %>
+        <tr><td colspan="9">No bookings</td></tr>
+      <% } %>
+      <% bookings.forEach(b => { %>
+        <tr>
+          <td><%= b.guestName || 'N/A' %></td>
+          <td><%= b.guestEmail || '' %></td>
+          <td><%= b.guestPhone || '' %></td>
+          <td><%= b.serviceType === 'mobile-repair' ? 'Mobile' : 'Roof' %></td>
+          <td><%= [b.vehicleYear, b.vehicleMake, b.vehicleModel].filter(Boolean).join(' ') %></td>
+          <td><%= b.issueDescription ? b.issueDescription.substring(0, 60) : '' %></td>
+          <td><%= new Date(b.requestedDate).toLocaleDateString() %></td>
+          <td><span class="badge badge-<%= b.status %>"><%= b.status %></span></td>
+          <td class="actions-cell">
+            <% if (b.status === 'pending') { %>
+              <form action="/admin/bookings/<%= b._id %>/confirm" method="POST">
+                <input type="text" name="adminNotes" placeholder="Notes..." class="input-sm">
+                <button class="btn btn-sm btn-success">Confirm</button>
+              </form>
+            <% } %>
+            <% if (b.status !== 'cancelled' && b.status !== 'completed') { %>
+              <form action="/admin/bookings/<%= b._id %>/cancel" method="POST">
+                <button class="btn btn-sm btn-danger">Cancel</button>
+              </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>

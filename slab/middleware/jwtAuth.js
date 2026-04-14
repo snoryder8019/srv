@@ -1,11 +1,12 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config/config.js';
+import { isSuperAdminEmail } from './superadmin.js';
 
 const COOKIE_DOMAIN = config.NODE_ENV === 'production' ? '.madladslab.com' : undefined;
 
 // ── Admin JWT ─────────────────────────────────────────────────────────────────
 
-export function requireAdmin(req, res, next) {
+export async function requireAdmin(req, res, next) {
   // One-time login token (from signup or magic link)
   const loginToken = req.query.token;
   if (loginToken) {
@@ -47,15 +48,35 @@ export function requireAdmin(req, res, next) {
     const decoded = jwt.verify(token, config.JWT_SECRET);
 
     if (!decoded.isAdmin) {
-  
+
       res.clearCookie('slab_token');
       return res.redirect('/admin/login?error=unauthorized');
     }
     // Tenant isolation — JWT must match this tenant's database
+    // Superadmins can cross tenants — re-issue a scoped token instead of blocking
     if (decoded.tenantDb && req.tenant?.db && decoded.tenantDb !== req.tenant.db) {
-  
-      res.clearCookie('slab_token');
-      return res.redirect('/admin/login?error=unauthorized');
+      if (isSuperAdminEmail(decoded.email)) {
+        // Re-issue JWT scoped to THIS tenant so superadmin can cross-navigate
+        const reissued = { ...decoded };
+        delete reissued.iat;
+        delete reissued.exp;
+        reissued.tenantDb = req.tenant.db;
+        const newToken = jwt.sign(reissued, config.JWT_SECRET, { expiresIn: '8h' });
+        const opts = {
+          httpOnly: true,
+          secure: config.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 8 * 60 * 60 * 1000,
+        };
+        if (COOKIE_DOMAIN && req.hostname.endsWith('.madladslab.com')) {
+          opts.domain = COOKIE_DOMAIN;
+        }
+        res.cookie('slab_token', newToken, opts);
+        decoded.tenantDb = req.tenant.db;
+      } else {
+        res.clearCookie('slab_token');
+        return res.redirect('/admin/login?error=unauthorized');
+      }
     }
     req.adminUser = decoded;
     next();

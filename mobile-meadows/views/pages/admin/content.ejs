@@ -1,0 +1,137 @@
+<h1>Edit Site Content</h1>
+<p>Edit the text and images displayed on the public landing page. Use the AI agent to generate or improve copy.</p>
+
+<% const sectionNames = ['hero', 'mobile-repair', 'roof-repair', 'about', 'contact', 'footer']; %>
+<% sectionNames.forEach(sec => { %>
+  <% const s = sections.find(x => x.section === sec) || {}; %>
+  <div class="admin-card" id="card-<%= sec %>">
+    <h2><%= sec.charAt(0).toUpperCase() + sec.slice(1).replace('-', ' ') %> Section</h2>
+    <form action="/admin/content/<%= sec %>" method="POST" enctype="multipart/form-data">
+      <div class="form-group">
+        <label>Heading</label>
+        <div class="field-row">
+          <input type="text" name="heading" id="<%= sec %>-heading" value="<%= s.heading || '' %>">
+          <button type="button" class="btn btn-ai" onclick="aiSuggest('<%= sec %>', 'heading')">AI Suggest</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Subheading</label>
+        <div class="field-row">
+          <input type="text" name="subheading" id="<%= sec %>-subheading" value="<%= s.subheading || '' %>">
+          <button type="button" class="btn btn-ai" onclick="aiSuggest('<%= sec %>', 'subheading')">AI Suggest</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Body</label>
+        <div class="field-row field-row-area">
+          <textarea name="body" id="<%= sec %>-body" rows="4"><%= s.body || '' %></textarea>
+          <button type="button" class="btn btn-ai" onclick="aiSuggest('<%= sec %>', 'body')">AI Suggest</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Button Text</label>
+          <div class="field-row">
+            <input type="text" name="buttonText" id="<%= sec %>-buttonText" value="<%= s.buttonText || '' %>">
+            <button type="button" class="btn btn-ai" onclick="aiSuggest('<%= sec %>', 'buttonText')">AI Suggest</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Button Link</label>
+          <input type="text" name="buttonLink" value="<%= s.buttonLink || '' %>">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Image</label>
+        <input type="file" name="image" accept="image/*">
+        <% if (s.image) { %>
+          <br><img src="<%= s.image %>" class="preview-img" alt="">
+        <% } %>
+      </div>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </form>
+
+    <!-- AI suggestion preview -->
+    <div class="ai-preview" id="ai-preview-<%= sec %>" style="display:none">
+      <div class="ai-preview-header">
+        <span class="ai-label">AI Suggestion</span>
+        <span class="ai-field-label" id="ai-field-label-<%= sec %>"></span>
+      </div>
+      <div class="ai-preview-body" id="ai-preview-body-<%= sec %>"></div>
+      <div class="ai-preview-actions">
+        <button type="button" class="btn btn-primary btn-sm" onclick="acceptSuggestion('<%= sec %>')">Accept</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="retrySuggestion('<%= sec %>')">Retry</button>
+        <button type="button" class="btn btn-sm" onclick="dismissSuggestion('<%= sec %>')">Dismiss</button>
+      </div>
+    </div>
+  </div>
+<% }) %>
+
+<script>
+const aiState = {};
+
+async function aiSuggest(section, field) {
+  const input = document.getElementById(`${section}-${field}`);
+  const preview = document.getElementById(`ai-preview-${section}`);
+  const body = document.getElementById(`ai-preview-body-${section}`);
+  const fieldLabel = document.getElementById(`ai-field-label-${section}`);
+  const btn = event.target;
+
+  // Store which field we're suggesting for
+  aiState[section] = { field, input };
+
+  // Show loading
+  btn.disabled = true;
+  btn.textContent = 'Thinking...';
+  btn.classList.add('ai-loading');
+  preview.style.display = 'block';
+  body.textContent = 'Polling AI agent...';
+  fieldLabel.textContent = field;
+
+  try {
+    const res = await fetch('/admin/ai/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        section,
+        field,
+        currentValue: input.value.trim()
+      })
+    });
+
+    const data = await res.json();
+    if (data.success && data.suggestion) {
+      body.textContent = data.suggestion;
+    } else {
+      body.textContent = data.error || 'No suggestion returned. Try again.';
+    }
+  } catch (err) {
+    body.textContent = 'AI service unavailable. Try again later.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'AI Suggest';
+    btn.classList.remove('ai-loading');
+  }
+}
+
+function acceptSuggestion(section) {
+  const state = aiState[section];
+  if (!state) return;
+  const body = document.getElementById(`ai-preview-body-${section}`);
+  state.input.value = body.textContent;
+  if (state.input.tagName === 'TEXTAREA') {
+    state.input.textContent = body.textContent;
+  }
+  dismissSuggestion(section);
+}
+
+function retrySuggestion(section) {
+  const state = aiState[section];
+  if (!state) return;
+  aiSuggest(section, state.field);
+}
+
+function dismissSuggestion(section) {
+  document.getElementById(`ai-preview-${section}`).style.display = 'none';
+}
+</script>
