@@ -23,8 +23,9 @@ import onboardingRouter from './routes/onboarding.js';
 import superadminRouter from './routes/superadmin.js';
 import delegatesRouter from './routes/delegates.js';
 import ticketApiRouter from './routes/ticketApi.js';
-import huginnWebhookRouter from './routes/huginn-webhook.js';
-import huginnMcpRouter from './routes/huginn-mcp.js';
+// REMOVED: Huginn unwired
+// import huginnWebhookRouter from './routes/huginn-webhook.js';
+// import huginnMcpRouter from './routes/huginn-mcp.js';
 import { mountTenantRoutes } from './routes/tenants/loader.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -93,8 +94,9 @@ connectDB();
 app.use('/start', onboardingRouter);
 app.use('/superadmin', superadminRouter);
 app.use('/delegates', delegatesRouter);
-app.use('/huginn/mcp', huginnMcpRouter);  // must be before /huginn catch-all
-app.use('/huginn', huginnWebhookRouter);
+// REMOVED: Huginn unwired
+// app.use('/huginn/mcp', huginnMcpRouter);
+// app.use('/huginn', huginnWebhookRouter);
 
 // ── Tenant-specific custom routes (routes/tenants/<name>/) ─────────────────
 await mountTenantRoutes(app);

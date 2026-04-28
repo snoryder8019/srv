@@ -1,0 +1,267 @@
+<%- include('../partials/head', { title: 'Scoreboard' }) %>
+
+<div class="scoreboard-tv" id="scoreboardApp"
+  data-game-id="<%= game._id %>"
+  data-mode="<%= game.mode %>"
+  data-current-player="<%= game.currentPlayerIndex %>">
+
+  <div class="tv-header">
+    <div class="tv-logo">🎯 Triple-Twenty</div>
+    <div class="tv-game-title"><%= game.name || (game.mode.toUpperCase() + ' · ' + game.players.map(function(p){return p.name}).join(' vs ')) %></div>
+    <div class="tv-meta">
+      <span class="live-badge">● LIVE</span>
+      <span id="tvConnCount" class="tv-conn-count"></span>
+      <span id="tvClock"></span>
+    </div>
+  </div>
+
+  <div class="tv-feeds-row" id="tvFeedsRow">
+    <% game.players.forEach(function(p, i) { %>
+      <div class="tv-feed-slot" id="tvFeedSlot_<%= i %>">
+        <div class="tv-feed-name"><%= p.name %></div>
+        <div class="tv-feed-wrap">
+          <img id="tvFeedImg_<%= i %>" src="" alt="" class="tv-feed-img" style="display:none;">
+          <div class="tv-feed-placeholder" id="tvFeedPlaceholder_<%= i %>">📷</div>
+          <div class="tv-feed-conf" id="tvFeedConf_<%= i %>"></div>
+        </div>
+        <div class="tv-feed-darts" id="tvFeedDarts_<%= i %>">
+          <span class="tv-dart-badge empty">-</span>
+          <span class="tv-dart-badge empty">-</span>
+          <span class="tv-dart-badge empty">-</span>
+        </div>
+      </div>
+    <% }); %>
+  </div>
+
+  <div class="tv-players" id="tvPlayers">
+    <% game.players.forEach(function(p, i) { %>
+      <div class="tv-player-card <%= i === game.currentPlayerIndex ? 'active-player' : '' %>" id="tvPlayer_<%= i %>">
+        <div class="tv-player-name"><%= p.name %></div>
+        <% if (game.mode === '501') { %>
+          <div class="tv-big-score" id="tvScore_<%= i %>"><%= p.remaining %></div>
+          <div class="tv-score-label">remaining</div>
+        <% } else { %>
+          <div class="tv-cricket-marks" id="tvMarks_<%= i %>">
+            <% ['20','19','18','17','16','15','bull'].forEach(function(n) {
+                 var _m = (p.marks && (p.marks[n] || (p.marks.get && p.marks.get(n)))) || 0;
+                 var _dots = (_m>=1?'●':'○') + (_m>=2?'●':'○') + (_m>=3?'✕':'○');
+            %>
+              <div class="tv-mark-row">
+                <span class="tv-mark-num"><%= n %></span>
+                <span class="tv-mark-dots" id="tvMark_<%= i %>_<%= n %>"><%= _dots %></span>
+              </div>
+            <% }); %>
+          </div>
+          <div class="tv-cricket-pts">Pts: <span id="tvPts_<%= i %>"><%= p.cricketPoints || 0 %></span></div>
+        <% } %>
+        <div class="tv-turn-arrow" id="tvArrow_<%= i %>"><%= i === game.currentPlayerIndex ? '▶ YOUR TURN' : '' %></div>
+      </div>
+    <% }); %>
+  </div>
+
+  <div class="tv-history-bar">
+    <span class="history-label">HISTORY</span>
+    <div class="history-ticker" id="tvTicker"><%
+      if (!game.rounds || !game.rounds.length) { %>No rounds yet<% }
+      else {
+        var _roundItems = [];
+        var _rTotal = game.rounds.length;
+        var _slice  = game.rounds.slice(-12);
+        for (var _ri = _slice.length - 1; _ri >= 0; _ri--) {
+          var _r = _slice[_ri];
+          var _roundNum = _rTotal - (_slice.length - 1 - _ri);
+          var _playerName = (game.players[_r.playerIndex] && game.players[_r.playerIndex].name) || ('P' + _r.playerIndex);
+          var _dartStrs = (_r.darts || []).map(function(d){
+            var pfx = d.ring === 'double' ? 'D' : d.ring === 'triple' ? 'T' : '';
+            return d.ring === 'miss' ? 'X' : (pfx + d.segment);
+          });
+          _roundItems.push('R' + _roundNum + ' ' + _playerName + ': ' + _dartStrs.join('+') + '=' + (_r.total || 0));
+        }
+      %><%= _roundItems.join('  |  ') %><% } %></div>
+  </div>
+
+  <div class="tv-winner-overlay" id="tvWinnerOverlay" style="display:none;">
+    <div class="tv-winner-card">
+      <div class="winner-trophy">🏆</div>
+      <h1>WINNER!</h1>
+      <div class="winner-name" id="tvWinnerName"></div>
+      <a href="/" class="btn btn-primary btn-lg" style="margin-top:24px">New Game</a>
+    </div>
+  </div>
+</div>
+
+<!-- Non-socket JS safe to run before foot.ejs -->
+<script>
+const _sbGameId = document.getElementById('scoreboardApp').dataset.gameId;
+const _sbMode   = document.getElementById('scoreboardApp').dataset.mode;
+let _currentPlayerIndex = parseInt(document.getElementById('scoreboardApp').dataset.currentPlayer) || 0;
+
+setInterval(() => {
+  document.getElementById('tvClock').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+function showPlayerFeed(playerIndex, analysis, frame) {
+  if (frame) {
+    const img = document.getElementById('tvFeedImg_' + playerIndex);
+    const ph  = document.getElementById('tvFeedPlaceholder_' + playerIndex);
+    if (img) { img.src = 'data:image/jpeg;base64,' + frame; img.style.display = 'block'; }
+    if (ph)  ph.style.display = 'none';
+  }
+  if (analysis?.darts) {
+    const dc = document.getElementById('tvFeedDarts_' + playerIndex);
+    if (dc) {
+      dc.innerHTML = '';
+      for (let i = 0; i < 3; i++) {
+        const span = document.createElement('span');
+        if (analysis.darts[i]) {
+          const d = analysis.darts[i];
+          const prefix = d.ring === 'double' ? 'D' : d.ring === 'triple' ? 'T' : '';
+          span.className   = 'tv-dart-badge';
+          span.textContent = prefix + d.segment + ' = ' + d.score;
+        } else {
+          span.className = 'tv-dart-badge empty';
+          span.textContent = '-';
+        }
+        dc.appendChild(span);
+      }
+    }
+    const conf = document.getElementById('tvFeedConf_' + playerIndex);
+    if (conf && analysis.confidence) {
+      conf.textContent = analysis.confidence.toUpperCase();
+      conf.className   = 'tv-feed-conf conf-' + analysis.confidence;
+    }
+  }
+}
+
+function formatDart(d) {
+  if (!d) return '-';
+  if (d.ring === 'miss') return 'X';
+  const pfx = d.ring === 'double' ? 'D' : d.ring === 'triple' ? 'T' : '';
+  return pfx + d.segment;
+}
+
+function renderHistory(game) {
+  const el = document.getElementById('tvTicker');
+  if (!el) return;
+  if (!game.rounds || !game.rounds.length) { el.textContent = 'No rounds yet'; return; }
+  const total = game.rounds.length;
+  const slice = game.rounds.slice(-12);
+  const items = [];
+  for (let i = slice.length - 1; i >= 0; i--) {
+    const r = slice[i];
+    const roundNum = total - (slice.length - 1 - i);
+    const playerName = (game.players[r.playerIndex] && game.players[r.playerIndex].name) || ('P' + r.playerIndex);
+    const dartStr = (r.darts || []).map(formatDart).join('+');
+    items.push(`R${roundNum} ${playerName}: ${dartStr}=${r.total || 0}`);
+  }
+  el.textContent = items.join('  |  ');
+}
+
+function updateScoreboard(game) {
+  _currentPlayerIndex = game.currentPlayerIndex;
+  game.players.forEach((p, i) => {
+    const card = document.getElementById('tvPlayer_' + i);
+    const slot = document.getElementById('tvFeedSlot_' + i);
+    if (!card) return;
+    const isActive = i === game.currentPlayerIndex;
+    card.classList.toggle('active-player', isActive);
+    if (slot) slot.classList.toggle('active-feed', isActive);
+    const arrow = document.getElementById('tvArrow_' + i);
+    if (arrow) arrow.textContent = isActive ? '▶ YOUR TURN' : '';
+    if (_sbMode === '501') {
+      const sc = document.getElementById('tvScore_' + i);
+      if (sc) sc.textContent = p.remaining;
+    } else {
+      ['20','19','18','17','16','15','bull'].forEach(n => {
+        const el = document.getElementById('tvMark_' + i + '_' + n);
+        if (!el) return;
+        const m = p.marks ? (p.marks[n] || 0) : 0;
+        el.textContent = (m>=1?'●':'○') + (m>=2?'●':'○') + (m>=3?'✕':'○');
+      });
+      const pts = document.getElementById('tvPts_' + i);
+      if (pts) pts.textContent = p.cricketPoints || 0;
+    }
+  });
+  renderHistory(game);
+}
+</script>
+
+<%- include('../partials/foot') %>
+
+<!-- Socket init MUST be after foot.ejs so socket.io.js is loaded -->
+<script>
+const socket = window._ttSocket || io();
+window._ttSocket = socket;
+
+socket.emit('join-game', { gameId: _sbGameId, role: 'scoreboard' });
+
+// Sync current game state on load so marks/scores/history reflect DB even if
+// no game-update has fired since this tab opened.
+fetch('/api/game/' + _sbGameId)
+  .then(r => r.ok ? r.json() : null)
+  .then(g => { if (g && g.players) updateScoreboard(g); })
+  .catch(() => {});
+
+// Scoreboard plays sound louder (TV context) and covers the full event set.
+if (window.ttAudio) window.ttAudio.setMasterGain(1.4);
+
+socket.on('player-analysis',  ({ playerIndex, analysis, frame }) => {
+  showPlayerFeed(playerIndex, analysis, frame);
+  if (window.ttAudio && analysis && analysis.available !== false && (analysis.darts || []).length) {
+    window.ttAudio.play('aiSeen');
+  }
+});
+socket.on('analysis-result',  ({ analysis, frame, forPlayerIndex }) => {
+  showPlayerFeed(forPlayerIndex ?? _currentPlayerIndex, analysis, frame);
+  if (window.ttAudio && analysis && analysis.available !== false && (analysis.darts || []).length) {
+    window.ttAudio.play('aiSeen');
+  }
+});
+socket.on('game-update', ({ game, soloMode }) => {
+  updateScoreboard(game);
+  if (window.ttAudio) window.ttAudio.play(soloMode ? 'roundDoneSolo' : 'roundDoneMulti');
+});
+socket.on('game-started', ({ game }) => {
+  updateScoreboard(game);
+  if (window.ttAudio) window.ttAudio.play('gameStart');
+});
+socket.on('game-finished', ({ winner, game }) => {
+  document.getElementById('tvWinnerName').textContent = winner;
+  document.getElementById('tvWinnerOverlay').style.display = 'flex';
+  if (game) updateScoreboard(game);
+  if (window.ttAudio) window.ttAudio.play('gameWinSelf');  // scoreboard is neutral — play the celebratory variant
+});
+socket.on('player-connected', ({ role, remoteCount }) => {
+  if (role === 'remote') {
+    document.getElementById('tvConnCount').textContent = `${remoteCount} player${remoteCount !== 1 ? 's' : ''} online`;
+  }
+});
+socket.on('game-resumed', ({ game }) => {
+  updateScoreboard(game);
+  if (window.ttAudio) window.ttAudio.play('gameStart');
+  const overlay = document.getElementById('tvWinnerOverlay');
+  if (overlay) overlay.style.display = 'none';
+});
+socket.on('game-idle', () => {
+  const overlay = document.getElementById('tvWinnerOverlay');
+  if (overlay) {
+    const nameEl = document.getElementById('tvWinnerName');
+    if (nameEl) nameEl.textContent = 'Game paused (idle)';
+    const h1     = overlay.querySelector('h1');
+    const trophy = overlay.querySelector('.winner-trophy');
+    if (h1)     h1.textContent     = 'Paused';
+    if (trophy) trophy.textContent = '⏸';
+    overlay.style.display = 'flex';
+  }
+});
+socket.on('game-archived', () => {
+  const overlay = document.getElementById('tvWinnerOverlay');
+  document.getElementById('tvWinnerName').textContent = 'Game ended by host';
+  const h1     = overlay.querySelector('h1');
+  const trophy = overlay.querySelector('.winner-trophy');
+  if (h1)     h1.textContent     = 'Game Over';
+  if (trophy) trophy.textContent = '🚫';
+  overlay.style.display = 'flex';
+  setTimeout(() => window.location.href = '/', 4000);
+});
+</script>

@@ -91,6 +91,18 @@ export const DESIGN_DEFAULTS = {
   contact_form_label_color:'',         // form field label color
   contact_btn_bg:       '',            // submit button bg (defaults to --navy)
   contact_btn_color:    '',            // submit button text color
+  // ── Ticker / Marquee bar ──
+  ticker_items:         '',            // pipe-separated custom items (empty = use brand services/location/tagline)
+  ticker_speed:         '22',          // animation duration in seconds (higher = slower)
+  ticker_direction:     'left',        // left or right (scroll direction)
+  ticker_bg:            '',            // background color (empty = primary)
+  ticker_text_color:    '',            // text color (empty = accent-light)
+  ticker_dot_color:     '',            // separator dot color (empty = accent-2)
+  ticker_font_size:     '0.72',        // rem
+  ticker_padding:       '14',          // px (vertical)
+  ticker_uppercase:     'true',        // text-transform: uppercase
+  ticker_letter_spacing:'0.2',         // em
+  ticker_item_gap:      '32',          // px — gap between items
 };
 
 // ── Theme-saveable design keys (excludes agent settings / visibility) ──
@@ -106,6 +118,10 @@ export const THEME_KEYS = [
   'snap_enabled', 'gradient_enabled', 'gradient_angle',
   'hero_bg_pattern', 'card_hover_accent', 'card_border_radius',
   'section_animation',
+  // ticker style tokens (items themselves stay per-tenant/content)
+  'ticker_speed', 'ticker_direction', 'ticker_bg', 'ticker_text_color',
+  'ticker_dot_color', 'ticker_font_size', 'ticker_padding',
+  'ticker_uppercase', 'ticker_letter_spacing', 'ticker_item_gap',
 ];
 
 // Copy section field map — shared with copy.js
@@ -177,7 +193,9 @@ router.post('/', async (req, res) => {
 
     // Save design fields
     const designOps = Object.keys(DESIGN_DEFAULTS).map(key => {
-      const isBool = key.startsWith('vis_') || key.startsWith('model_') || key === 'snap_enabled' || key === 'gradient_enabled' || key === 'card_hover_accent';
+      const isBool = key.startsWith('vis_') || key.startsWith('model_')
+        || key === 'snap_enabled' || key === 'gradient_enabled'
+        || key === 'card_hover_accent' || key === 'ticker_uppercase';
       const value = isBool
         ? (req.body[key] === 'on' ? 'true' : 'false')
         : (req.body[key] !== undefined && req.body[key] !== '' ? req.body[key] : DESIGN_DEFAULTS[key]);
@@ -500,7 +518,15 @@ LAYOUT FIELDS:
 - nav_logo_display: text, image, or both
 
 VISIBILITY FIELDS (string "true" or "false"):
-- vis_hero, vis_services, vis_portfolio, vis_about, vis_process, vis_reviews, vis_contact, vis_blog
+- vis_hero, vis_services, vis_portfolio, vis_about, vis_process, vis_reviews, vis_contact, vis_blog, vis_marquee
+
+TICKER / MARQUEE FIELDS:
+- ticker_items: Pipe-separated items for the scrolling ticker bar (e.g. "Free Shipping | 24/7 Support | Same-Day Install"). Leave empty to auto-populate from brand services/location/tagline.
+- ticker_speed: Animation duration in seconds (10=fast, 22=default, 40=slow)
+- ticker_direction: "left" or "right"
+- ticker_bg: Ticker background color (hex). Empty = primary color.
+- ticker_text_color: Ticker text color (hex). Empty = accent-light.
+- ticker_dot_color: Separator dot color (hex). Empty = accent.
 
 COPY FIELDS (text content shown on the landing page):
 - hero_eyebrow: Small text above the headline (e.g. "Welcome to...")

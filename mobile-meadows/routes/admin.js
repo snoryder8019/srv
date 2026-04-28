@@ -7,6 +7,7 @@ const Booking = require('../models/Booking');
 const CalendarSlot = require('../models/CalendarSlot');
 const SiteContent = require('../models/SiteContent');
 const SiteTheme = require('../models/SiteTheme');
+const RoofCalculator = require('../models/RoofCalculator');
 const { sendBookingConfirmation } = require('../utils/mailer');
 
 // Multer for image uploads
@@ -110,13 +111,8 @@ router.post('/bookings/:id/confirm', async (req, res) => {
     booking.confirmedAt = new Date();
     booking.adminNotes = req.body.adminNotes || booking.adminNotes;
     await booking.save();
-
-    // Send confirmation email
     const email = booking.guestEmail || (booking.user ? (await User.findById(booking.user))?.email : null);
-    if (email) {
-      await sendBookingConfirmation(email, booking);
-    }
-
+    if (email) await sendBookingConfirmation(email, booking);
     const io = req.app.get('io');
     io.emit('booking-confirmed', { bookingId: booking._id });
   }
@@ -128,7 +124,6 @@ router.post('/bookings/:id/cancel', async (req, res) => {
   if (booking) {
     booking.status = 'cancelled';
     await booking.save();
-    // Free up the slot
     if (booking.slot) {
       await CalendarSlot.findByIdAndUpdate(booking.slot, {
         $inc: { currentBookings: -1 },
@@ -172,11 +167,9 @@ router.post('/design/settings', async (req, res) => {
     updatedBy: req.user._id,
     updatedAt: new Date()
   };
-  // Only store non-empty custom colors
   if (req.body.customColors) {
     const cc = {};
     for (const [key, val] of Object.entries(req.body.customColors)) {
-      // Skip duplicate values from color picker (first) vs text input (second)
       if (val && val.trim() && val.trim().startsWith('#') && val.trim().length >= 4) {
         cc[key] = val.trim();
       }
@@ -196,12 +189,65 @@ router.post('/design/reset', async (req, res) => {
   res.redirect('/admin/design');
 });
 
+// ── Roof Calculator Admin ──
+router.get('/calculator', async (req, res) => {
+  const calc = await RoofCalculator.getConfig();
+  res.render('pages/admin/calculator', { title: 'Roof Cost Calculator', calc });
+});
+
+router.post('/calculator/rates', async (req, res) => {
+  await RoofCalculator.findOneAndUpdate({}, {
+    costPerFoot: parseFloat(req.body.costPerFoot) || 12,
+    costPerAC:   parseFloat(req.body.costPerAC)   || 75,
+    noteText:    req.body.noteText || 'Estimate only — final price confirmed on inspection.',
+    enabled:     req.body.enabled === 'on',
+    updatedBy:   req.user._id,
+    updatedAt:   new Date()
+  }, { upsert: true });
+  res.redirect('/admin/calculator');
+});
+
+router.post('/calculator/addon/add', async (req, res) => {
+  const cfg = await RoofCalculator.getConfig();
+  const id = req.body.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  cfg.addOns.push({
+    id: id + '-' + Date.now(),
+    label: req.body.label,
+    cost: parseFloat(req.body.cost) || 0,
+    type: req.body.type || 'checkbox',
+    enabled: true
+  });
+  cfg.updatedAt = new Date();
+  await cfg.save();
+  res.redirect('/admin/calculator');
+});
+
+router.post('/calculator/addon/delete/:addonId', async (req, res) => {
+  const cfg = await RoofCalculator.getConfig();
+  cfg.addOns = cfg.addOns.filter(a => a.id !== req.params.addonId);
+  cfg.updatedAt = new Date();
+  await cfg.save();
+  res.redirect('/admin/calculator');
+});
+
+router.post('/calculator/addon/update/:addonId', async (req, res) => {
+  const cfg = await RoofCalculator.getConfig();
+  const addon = cfg.addOns.find(a => a.id === req.params.addonId);
+  if (addon) {
+    addon.label   = req.body.label   || addon.label;
+    addon.cost    = parseFloat(req.body.cost) || 0;
+    addon.type    = req.body.type    || addon.type;
+    addon.enabled = req.body.enabled === 'on';
+  }
+  cfg.updatedAt = new Date();
+  await cfg.save();
+  res.redirect('/admin/calculator');
+});
+
 // ── AI Content Suggest (Ollama) ──
 router.post('/ai/suggest', async (req, res) => {
   const { section, field, currentValue } = req.body;
-  if (!section || !field) {
-    return res.status(400).json({ error: 'section and field required' });
-  }
+  if (!section || !field) return res.status(400).json({ error: 'section and field required' });
 
   const sectionLabels = {
     'hero': 'the hero/banner section of a mobile RV & motorhome repair business website',
@@ -211,46 +257,37 @@ router.post('/ai/suggest', async (req, res) => {
     'contact': 'the contact section for a mobile RV repair business',
     'footer': 'the footer of a mobile RV repair business website'
   };
-
   const fieldLabels = {
     heading: 'a short, punchy heading (under 10 words)',
     subheading: 'a brief subheading/tagline (under 20 words)',
     body: 'compelling body copy (2-3 sentences, persuasive, professional)',
     buttonText: 'short call-to-action button text (2-4 words)'
   };
-
   const context = sectionLabels[section] || `the ${section} section`;
   const ask = fieldLabels[field] || `${field} content`;
-
   const prompt = currentValue
     ? `Improve the following ${field} for ${context}. Current text: "${currentValue}". Write ${ask}. Return ONLY the new text, no quotes or explanation.`
-    : `Write ${ask} for ${context}. The business is Mobile Meadows — mobile RV & motorhome repair in Branson, MO and surrounding areas. Return ONLY the text, no quotes or explanation.`;
+    : `Write ${ask} for ${context}. The business is Mobile Meadows — mobile RV & motorhome repair in Branson, MO. Return ONLY the text, no quotes or explanation.`;
 
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
-
     const response = await fetch(`${process.env.OLLAMA_URL}/v1/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OLLAMA_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OLLAMA_KEY}` },
       body: JSON.stringify({
         model: 'deepseek-r1:7b',
         messages: [
-          { role: 'system', content: 'You are a professional copywriter for small businesses. Write concise, compelling website copy. Never include quotes, labels, or explanations — only the final text.' },
+          { role: 'system', content: 'You are a professional copywriter. Write concise, compelling website copy. Never include quotes, labels, or explanations — only the final text.' },
           { role: 'user', content: prompt }
         ],
         stream: false
       }),
       signal: controller.signal
     });
-
     clearTimeout(timeout);
     const data = await response.json();
-    const text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
-    // Strip <think>...</think> tags from deepseek responses
+    const text = (data.choices?.[0]?.message?.content) || '';
     const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
     res.json({ success: true, suggestion: cleaned });
   } catch (err) {

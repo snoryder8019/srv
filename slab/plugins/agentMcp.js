@@ -53,7 +53,7 @@ export async function fetchUrl(url) {
   }
 }
 
-export async function callLLM(messages, systemPrompt) {
+export async function callLLM(messages, systemPrompt, timeoutMs = 90000) {
   const res = await fetch(OLLAMA_URL, {
     method: 'POST',
     headers: {
@@ -65,6 +65,7 @@ export async function callLLM(messages, systemPrompt) {
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
       stream: false,
     }),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     const errText = await res.text();

@@ -396,7 +396,6 @@ async function scanSecurity(base, adminCookie) {
     { method: 'GET',  path: '/admin/settings' },
     { method: 'GET',  path: '/admin/profile' },
     { method: 'GET',  path: '/admin/docs' },
-    { method: 'GET',  path: '/admin/huginn' },
     { method: 'GET',  path: '/admin/master-agent' },
     { method: 'GET',  path: '/admin/tts' },
     { method: 'GET',  path: '/admin/brand-builder' },
@@ -741,7 +740,6 @@ async function scanRoutes(base, adminCookie) {
     { method: 'GET', path: '/admin/settings', expect: [200, 302] },
     { method: 'GET', path: '/admin/docs', expect: [200, 302] },
     { method: 'GET', path: '/admin/profile', expect: [200, 302] },
-    { method: 'GET', path: '/admin/huginn', expect: [200, 302] },
     { method: 'GET', path: '/admin/brand-builder', expect: [200, 302] },
   ];
 

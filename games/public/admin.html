@@ -191,6 +191,70 @@
     .log-err { color: #e57373; }
     .log-warn { color: #e6b800; }
     .log-info { color: #4caf82; }
+
+    /* Tables that hold their column count get a horizontal scroll wrapper on small screens. */
+    .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-scroll table { min-width: 640px; }
+
+    /* Hamburger toggle — hidden by default; shown only on mobile. */
+    .nav-toggle {
+      display: none; background: none; border: 1px solid var(--border); color: var(--text);
+      font-size: 1.1rem; line-height: 1; padding: 4px 10px; border-radius: 3px; cursor: pointer;
+      font-family: inherit;
+    }
+    .sidebar-scrim {
+      display: none; position: fixed; inset: 52px 0 0 0; background: rgba(0,0,0,0.55);
+      z-index: 40;
+    }
+    .sidebar-scrim.open { display: block; }
+
+    @media (max-width: 820px) {
+      nav { padding: 0 12px; }
+      .nav-brand { font-size: 0.85rem; }
+      .nav-brand span { display: none; }
+      .nav-toggle { display: inline-flex; }
+
+      .layout { display: block; height: auto; }
+      .sidebar {
+        position: fixed; top: 52px; left: 0; bottom: 0; width: 240px; max-width: 80vw;
+        z-index: 50; transform: translateX(-100%); transition: transform 0.18s ease;
+        overflow-y: auto;
+      }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-item { padding: 12px 16px; font-size: 0.95rem; } /* easier touch targets */
+
+      .main { padding: 14px; height: auto; min-height: calc(100vh - 52px); }
+      h2 { font-size: 0.95rem; margin-bottom: 14px; }
+
+      /* Stack two-column field rows */
+      .field-row { flex-direction: column; gap: 0; }
+
+      /* Modals fill the screen */
+      .modal { width: 100%; max-width: 95vw; padding: 18px; }
+
+      /* Server cards single-column for readability */
+      .server-grid { grid-template-columns: 1fr; }
+
+      /* Plugin/upload rows wrap by default; just tighten gaps */
+      .search-bar input { width: 100%; }
+
+      /* Terminal window — full-screen on mobile */
+      .rcon-window {
+        top: 52px !important; left: 0 !important;
+        width: 100vw !important; max-width: 100vw;
+        height: calc(100vh - 52px) !important; max-height: calc(100vh - 52px);
+        border-radius: 0; resize: none;
+      }
+      .rcon-output { font-size: 0.78rem; }
+      .rcon-input { font-size: 0.85rem; }
+    }
+
+    @media (max-width: 480px) {
+      .nav-links a { font-size: 0.75rem; }
+      .btn { padding: 6px 10px; font-size: 0.78rem; } /* slightly larger touch target */
+      .card { padding: 14px; }
+      th, td { padding: 6px 8px; }
+    }
   </style>
 </head>
 <body>
@@ -198,6 +262,7 @@
 <nav>
   <div class="nav-brand">MadLadsLab <span>Admin</span> <span id="appVersion" style="color:var(--muted);font-size:0.6rem;opacity:0.6"></span></div>
   <div class="nav-links">
+    <button class="nav-toggle" id="navToggle" onclick="toggleSidebar()" aria-label="Toggle menu">&#9776;</button>
     <a href="/dashboard">Dashboard</a>
     <button class="btn sa-only" style="padding:4px 10px;border-color:var(--accent);color:var(--accent)" onclick="openTerm()">TERMINAL</button>
     <form method="POST" action="/logout" style="margin:0"><button class="btn" style="padding:4px 10px">Logout</button></form>
@@ -205,7 +270,8 @@
 </nav>
 
 <div class="layout">
-  <div class="sidebar">
+  <div class="sidebar-scrim" id="sidebarScrim" onclick="closeSidebarOnMobile()"></div>
+  <div class="sidebar" id="sidebar">
     <div class="sidebar-section">GAMES</div>
     <div class="sidebar-item active" onclick="show('servers')">Server Control</div>
     <div class="sidebar-item" onclick="show('plugins')">Plugin Center</div>
@@ -215,9 +281,6 @@
     <div class="sidebar-item sa-only" onclick="show('provisioner')">Server Provisioner</div>
     <div class="sidebar-section sa-only">SYSTEM</div>
     <div class="sidebar-item sa-only" onclick="show('maintenance')">Maintenance</div>
-    <div class="sidebar-section">BIH</div>
-    <div class="sidebar-item" onclick="show('busers')">Users</div>
-    <div class="sidebar-item" onclick="show('tickets')">Tickets</div>
   </div>
 
   <div class="main">
@@ -230,22 +293,14 @@
 
     <!-- Games Users -->
     <div class="panel" id="panel-gusers">
-      <h2>Games Users</h2>
+      <h2>Users</h2>
       <div class="search-bar"><input type="text" id="guser-search" placeholder="Search email or name..." oninput="filterTable('guser-tbody', this.value)"></div>
-      <table>
-        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Subscription</th><th>Permissions</th><th>Action</th></tr></thead>
-        <tbody id="guser-tbody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
-      </table>
-    </div>
-
-    <!-- bih Users -->
-    <div class="panel" id="panel-busers">
-      <h2>bih Users</h2>
-      <div class="search-bar"><input type="text" id="buser-search" placeholder="Search email or name..." oninput="filterTable('buser-tbody', this.value)"></div>
-      <table>
-        <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Permissions</th><th>Action</th></tr></thead>
-        <tbody id="buser-tbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Subscription</th><th>Permissions</th><th>Action</th></tr></thead>
+          <tbody id="guser-tbody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Plugin Center -->
@@ -261,6 +316,7 @@
         <button class="btn" id="pt-7dtd" onclick="pluginFilter('7dtd')">7DTD</button>
         <button class="btn" id="pt-se" onclick="pluginFilter('se')">SE</button>
         <button class="btn" id="pt-palworld" onclick="pluginFilter('palworld')">PALWORLD</button>
+        <button class="btn" id="pt-windrose" onclick="pluginFilter('windrose')">WINDROSE</button>
       </div>
 
       <!-- Upload (superadmin only) -->
@@ -268,7 +324,7 @@
         <div style="font-size:0.72rem;color:var(--accent);margin-bottom:10px;letter-spacing:0.06em;">UPLOAD PLUGIN</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px;">
           <div class="field" style="margin:0"><label>Game</label>
-            <select id="pUploadGame"><option value="rust">Rust (.cs)</option><option value="valheim">Valheim (.dll)</option><option value="l4d2">L4D2 (.smx)</option><option value="7dtd">7DTD</option><option value="se">Space Engineers</option><option value="palworld">Palworld</option></select>
+            <select id="pUploadGame"><option value="rust">Rust (.cs)</option><option value="valheim">Valheim (.dll)</option><option value="l4d2">L4D2 (.smx)</option><option value="7dtd">7DTD</option><option value="se">Space Engineers</option><option value="palworld">Palworld</option><option value="windrose">Windrose</option></select>
           </div>
           <div class="field" style="margin:0;flex:1"><label>File</label><input type="file" id="pUploadFile" style="width:100%"></div>
         </div>
@@ -382,6 +438,7 @@
             <option value="7dtd">7 Days to Die</option>
             <option value="se">Space Engineers</option>
             <option value="palworld">Palworld</option>
+            <option value="windrose">Windrose</option>
           </select>
         </div>
         <div class="field" style="margin:0">
@@ -391,6 +448,9 @@
             <option value="valheim">Valheim</option>
             <option value="l4d2">Left 4 Dead 2</option>
             <option value="7dtd">7 Days to Die</option>
+            <option value="se">Space Engineers</option>
+            <option value="palworld">Palworld</option>
+            <option value="windrose">Windrose</option>
           </select>
         </div>
         <button class="btn btn-green" onclick="createLocalBackup()">BACKUP NOW</button>
@@ -400,18 +460,20 @@
       <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">
         SAVED BACKUPS <span id="bkCount" style="margin-left:6px;background:#222;padding:1px 6px;border-radius:2px;">0</span>
       </div>
-      <table style="font-size:0.75rem;">
-        <thead>
-          <tr>
-            <th>Game</th>
-            <th>Date</th>
-            <th>Size</th>
-            <th>Source</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="bkTbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
-      </table>
+      <div class="table-scroll">
+        <table style="font-size:0.75rem;">
+          <thead>
+            <tr>
+              <th>Game</th>
+              <th>Date</th>
+              <th>Size</th>
+              <th>Source</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bkTbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Server Provisioner -->
@@ -431,6 +493,7 @@
               <option value="7dtd">7 Days to Die</option>
               <option value="se">Space Engineers</option>
               <option value="palworld">Palworld</option>
+              <option value="windrose">Windrose</option>
             </select>
           </div>
           <div style="font-size:0.62rem;color:var(--muted);padding-bottom:6px;">g6-standard-2 &middot; 4GB RAM &middot; 2 vCPU &middot; $0.036/hr</div>
@@ -444,17 +507,21 @@
 
       <!-- History -->
       <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">HISTORY</div>
-      <table style="font-size:0.75rem;">
-        <thead><tr><th>Label</th><th>Game</th><th>IP</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
-        <tbody id="provHistoryBody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
-      </table>
+      <div class="table-scroll">
+        <table style="font-size:0.75rem;">
+          <thead><tr><th>Label</th><th>Game</th><th>IP</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+          <tbody id="provHistoryBody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+        </table>
+      </div>
 
       <!-- Community requests -->
       <div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin:24px 0 10px;">COMMUNITY REQUESTS</div>
-      <table style="font-size:0.75rem;">
-        <thead><tr><th>User</th><th>Game</th><th>Status</th><th>Requested</th></tr></thead>
-        <tbody id="provRequestsBody"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
-      </table>
+      <div class="table-scroll">
+        <table style="font-size:0.75rem;">
+          <thead><tr><th>User</th><th>Game</th><th>Status</th><th>Requested</th></tr></thead>
+          <tbody id="provRequestsBody"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
+        </table>
+      </div>
 
       <!-- Cleanup -->
       <div style="margin-top:20px;">
@@ -489,16 +556,6 @@
       </div>
     </div>
 
-    <!-- bih Tickets -->
-    <div class="panel" id="panel-tickets">
-      <h2>bih Tickets</h2>
-      <div class="search-bar"><input type="text" id="ticket-search" placeholder="Search subject..." oninput="filterTable('ticket-tbody', this.value)"></div>
-      <table>
-        <thead><tr><th>Subject</th><th>User</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-        <tbody id="ticket-tbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
-      </table>
-    </div>
-
   </div>
 </div><!-- /layout -->
 
@@ -524,6 +581,7 @@
         <option value="7dtd">7DTD</option>
         <option value="se">SPACE ENGINEERS</option>
         <option value="palworld">PALWORLD</option>
+        <option value="windrose">WINDROSE</option>
       </select>
       <button class="rcon-win-btn" onclick="minimizeTerm()" title="Minimize">&#9472;</button>
       <button class="rcon-win-btn" onclick="maximizeTerm()" title="Maximize">&#9633;</button>
@@ -557,7 +615,6 @@
   <div class="modal">
     <h3 id="modal-title">Edit User</h3>
     <input type="hidden" id="modal-uid">
-    <input type="hidden" id="modal-scope">
     <div id="modal-user-info" style="color:var(--muted);font-size:0.72rem;margin-bottom:16px;"></div>
 
     <div class="field-row sa-only">
@@ -590,7 +647,6 @@
         <input type="checkbox" id="modal-broadcaster"> Broadcaster
       </label>
     </div>
-    <input type="hidden" id="modal-admin" value="false">
 
     <div id="modal-readonly" style="display:none;color:var(--muted);font-size:0.72rem;padding:8px 0;">
       Only superadmins can change subscriptions and permissions.
@@ -609,8 +665,8 @@
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 function escAttr(s) { return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
-const GAMES = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
-let guserData = [], buserData = [];
+const GAMES = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
+let guserData = [];
 let isSuperAdmin = false;
 
 // Check if current user is superadmin
@@ -635,11 +691,20 @@ function show(id) {
   event.currentTarget.classList.add('active');
   if (id === 'servers') loadServerStatuses();
   if (id === 'gusers' && !guserData.length) loadGUsers();
-  if (id === 'busers' && !buserData.length) loadBUsers();
-  if (id === 'tickets') loadTickets();
   if (id === 'plugins') { pLoadLib(); pLoadInstalled(); }
   if (id === 'backups') loadBackups();
   if (id === 'provisioner') loadProvisioner();
+  closeSidebarOnMobile();
+}
+
+// --- Mobile sidebar toggle ---
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarScrim').classList.toggle('open');
+}
+function closeSidebarOnMobile() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarScrim').classList.remove('open');
 }
 
 // --- Toast ---
@@ -652,6 +717,16 @@ function toast(msg, ok = true) {
 }
 
 // --- Server control ---
+let keepOnlineMap = {};
+
+async function loadKeepOnline() {
+  try {
+    const r = await fetch('/admin/api/keep-online');
+    const d = await r.json();
+    keepOnlineMap = d.keepOnline || {};
+  } catch (e) {}
+}
+
 async function loadServerStatuses() {
   for (const g of GAMES) {
     try {
@@ -668,7 +743,30 @@ async function loadServerStatuses() {
           info.textContent = '—';
         }
       }
+      const ko = document.getElementById('ko-' + g);
+      if (ko) ko.checked = !!keepOnlineMap[g];
     } catch (e) {}
+  }
+}
+
+async function toggleKeepOnline(game, on) {
+  try {
+    const r = await fetch('/admin/api/keep-online/' + game, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ on: !!on }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      keepOnlineMap[game] = d.keepOnline;
+      toast(game.toUpperCase() + (d.keepOnline ? ' pinned online' : ' auto-shutdown re-enabled'));
+    } else {
+      toast(d.error || 'Failed', false);
+      const ko = document.getElementById('ko-' + game);
+      if (ko) ko.checked = !!keepOnlineMap[game];
+    }
+  } catch (e) {
+    toast('Request failed', false);
   }
 }
 
@@ -695,11 +793,15 @@ function buildServerGrid() {
         <button class="btn btn-red" onclick="serverAction('${g}','stop')">Stop</button>
         <button class="btn btn-yellow" onclick="serverAction('${g}','restart')">Restart</button>
       </div>
+      <label class="checkbox-row" style="margin-top:10px;font-size:0.72rem;color:var(--muted);" title="Override the 1hr-idle auto-shutdown for this server">
+        <input type="checkbox" id="ko-${g}" onchange="toggleKeepOnline('${g}', this.checked)">
+        Keep online (skip auto-shutdown)
+      </label>
     </div>`).join('');
 }
 
 // --- Users ---
-function renderUserRow(u, scope) {
+function renderUserRow(u) {
   const perms = u.permissions || {};
   const gamePerm = perms.games || '';
   const sub = u.subscription || 'free';
@@ -731,7 +833,6 @@ function renderUserRow(u, scope) {
     subscription: sub,
     subscriptionExpiry: u.subscriptionExpiry || '',
     gamePerm: gamePerm,
-    scope: scope,
   });
 
   return '<tr data-search="' + escAttr(searchStr) + '" data-user="' + escAttr(userJson) + '">' +
@@ -749,49 +850,8 @@ async function loadGUsers() {
   try {
     const r = await fetch('/admin/api/games/users');
     guserData = await r.json();
-    tbody.innerHTML = guserData.map(u => renderUserRow(u, 'games')).join('');
+    tbody.innerHTML = guserData.map(u => renderUserRow(u)).join('');
   } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="color:#cd412b">Error loading users</td></tr>'; }
-}
-
-async function loadBUsers() {
-  const tbody = document.getElementById('buser-tbody');
-  try {
-    const r = await fetch('/admin/api/bih/users');
-    buserData = await r.json();
-    tbody.innerHTML = buserData.map(u => renderUserRow(u, 'bih')).join('');
-  } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="color:#cd412b">Error loading users</td></tr>'; }
-}
-
-// --- Tickets ---
-async function loadTickets() {
-  const tbody = document.getElementById('ticket-tbody');
-  tbody.innerHTML = '<tr><td colspan="5" class="loading">Loading...</td></tr>';
-  try {
-    const r = await fetch('/admin/api/bih/tickets');
-    const tickets = await r.json();
-    if (!tickets.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">No tickets</td></tr>'; return; }
-    tbody.innerHTML = tickets.map(t => {
-      const user = t.user ? (t.user.displayName || t.user.email || '?') : '?';
-      const stClass = { open: 'st-open', 'in-progress': 'st-in-progress', closed: 'st-closed' }[t.status] || '';
-      const date = new Date(t.createdAt).toLocaleDateString();
-      return `<tr data-search="${escAttr(t.subject.toLowerCase())}" data-ticket="${escAttr(JSON.stringify(t))}">
-        <td>${esc(t.subject)}</td>
-        <td style="color:var(--muted)">${esc(user)}</td>
-        <td><span class="ticket-status ${esc(stClass)}">${esc(t.status)}</span></td>
-        <td style="color:var(--muted)">${esc(date)}</td>
-        <td><button class="btn" onclick="showTicketFromRow(this)">View</button></td>
-      </tr>`;
-    }).join('');
-  } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="color:#cd412b">Error loading tickets</td></tr>'; }
-}
-
-function showTicketFromRow(btn) {
-  var t = JSON.parse(btn.closest('tr').dataset.ticket);
-  showTicket(t);
-}
-
-function showTicket(t) {
-  alert('Subject: ' + (t.subject||'') + '\n\n' + (t.message||'') + '\n\nStatus: ' + (t.status||'') + '\nActions: ' + (t.actions ? t.actions.length : 0));
 }
 
 // --- Modal ---
@@ -803,13 +863,11 @@ function openModalFromRow(btn) {
   const u = currentEditUser;
 
   document.getElementById('modal-uid').value = u.id;
-  document.getElementById('modal-scope').value = u.scope;
   document.getElementById('modal-title').textContent = 'Edit User';
   document.getElementById('modal-user-info').textContent = u.name + ' — ' + u.email;
   document.getElementById('modal-sub').value = u.subscription || 'free';
   document.getElementById('modal-expiry').value = u.subscriptionExpiry ? u.subscriptionExpiry.split('T')[0] : '';
   document.getElementById('modal-game-perm').value = u.gamePerm || '';
-  document.getElementById('modal-admin').checked = u.isAdmin;
   document.getElementById('modal-broadcaster').checked = u.isBroadcaster;
 
   // Show/hide superadmin controls
@@ -824,17 +882,6 @@ function openModalFromRow(btn) {
   document.getElementById('modal-overlay').style.display = 'flex';
 }
 
-function openModal(uid, scope, perms, isAdmin) {
-  // Legacy fallback for bih users
-  currentEditUser = { id: uid, scope: scope, isAdmin: isAdmin };
-  document.getElementById('modal-uid').value = uid;
-  document.getElementById('modal-scope').value = scope;
-  document.getElementById('modal-title').textContent = 'Edit ' + scope + ' User';
-  document.getElementById('modal-user-info').textContent = '';
-  document.getElementById('modal-admin').checked = isAdmin;
-  document.getElementById('modal-overlay').style.display = 'flex';
-}
-
 function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
   currentEditUser = null;
@@ -842,23 +889,6 @@ function closeModal() {
 
 async function saveUser() {
   const id = document.getElementById('modal-uid').value;
-  const scope = document.getElementById('modal-scope').value;
-
-  if (scope === 'bih') {
-    // BIH user — simple permission save
-    const isAdmin = document.getElementById('modal-admin').checked;
-    try {
-      const r = await fetch('/admin/api/bih/users/' + id, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isAdmin }),
-      });
-      const d = await r.json();
-      if (d.ok) { toast('Saved'); closeModal(); buserData = []; loadBUsers(); }
-      else toast(d.error || 'Error', false);
-    } catch (e) { toast('Request failed', false); }
-    return;
-  }
 
   if (!isSuperAdmin) {
     toast('Superadmin required', false);
@@ -914,7 +944,7 @@ function filterTable(tbodyId, q) {
 // --- Plugin Center ---
 var pCurrentGame = null;
 var pLibrary = [];
-var PGAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7DTD', se: 'SE', palworld: 'PALWORLD' };
+var PGAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7DTD', se: 'SE', palworld: 'PALWORLD', windrose: 'WINDROSE' };
 
 function pluginFilter(game) {
   pCurrentGame = game;
@@ -965,7 +995,7 @@ function pRenderLib() {
 }
 
 async function pLoadInstalled() {
-  var games = pCurrentGame ? [pCurrentGame] : ['rust', 'valheim', 'l4d2', '7dtd'];
+  var games = pCurrentGame ? [pCurrentGame] : ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
   var all = [];
   for (var i = 0; i < games.length; i++) {
     try {
@@ -1556,8 +1586,8 @@ if (isSuperAdmin) {
 
 // Init
 buildServerGrid();
-loadServerStatuses();
-setInterval(loadServerStatuses, 10000);
+loadKeepOnline().then(loadServerStatuses);
+setInterval(() => { loadKeepOnline().then(loadServerStatuses); }, 10000);
 </script>
 <script src="/static/js/socket.io.min.js"></script>
 <script>

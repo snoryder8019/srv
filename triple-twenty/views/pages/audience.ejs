@@ -1,0 +1,171 @@
+<%- include('../partials/head', { title: 'Audience View — Triple-Twenty' }) %>
+
+<div class="audience-app" data-count="<%= games.length %>">
+
+  <% if (!games.length) { %>
+    <div class="audience-empty">
+      <h2>No games to watch right now.</h2>
+      <p class="hint">Pass a list of games: <code>/audience?games=ID1,ID2</code> (up to 4). Or start one from <a href="/">the lobby</a>.</p>
+    </div>
+  <% } else { %>
+
+    <div class="audience-header">
+      <h1>🎯 Triple-Twenty · Audience</h1>
+      <div class="audience-meta">
+        <% if (autoSelected) { %>
+          <span>Auto-picked <%= games.length %> most recent game<%= games.length !== 1 ? 's' : '' %></span>
+        <% } else { %>
+          <span>Watching <%= games.length %> game<%= games.length !== 1 ? 's' : '' %></span>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="audience-grid audience-grid-<%= games.length %>">
+      <% games.forEach(function(game, idx) { %>
+        <div class="audience-tile" data-game-id="<%= game._id %>" id="atile_<%= game._id %>">
+          <div class="atile-header">
+            <span class="atile-mode"><%= game.mode.toUpperCase() %></span>
+            <span class="atile-title"><%= game.name || game.players.map(function(p){return p.name}).join(' vs ') %></span>
+            <span class="atile-status <%= game.status === 'active' ? 'status-active' : game.status === 'waiting' ? 'status-waiting' : 'status-idle' %>">
+              <%= game.status === 'active' ? '● Live' : game.status === 'waiting' ? '◌ Waiting' : '⏸ Paused' %>
+            </span>
+          </div>
+          <div class="atile-feed-wrap">
+            <img class="atile-feed-img" id="atileImg_<%= game._id %>" src="" alt="" style="display:none;">
+            <div class="atile-feed-placeholder" id="atilePh_<%= game._id %>">
+              <span style="font-size:2rem;">📷</span>
+              <span>Waiting for camera…</span>
+            </div>
+          </div>
+          <div class="atile-scoreboard" id="atileBoard_<%= game._id %>">
+            <% game.players.forEach(function(p, i) { %>
+              <div class="atile-player <%= i === game.currentPlayerIndex && game.status === 'active' ? 'atile-player-active' : '' %>"
+                   id="atilePlayer_<%= game._id %>_<%= i %>">
+                <span class="atile-pname"><%= p.name %></span>
+                <% if (game.mode === '501') { %>
+                  <span class="atile-pscore" id="atileScore_<%= game._id %>_<%= i %>"><%= p.remaining %></span>
+                <% } else { %>
+                  <span class="atile-pscore" id="atileScore_<%= game._id %>_<%= i %>"><%= p.cricketPoints || 0 %> pts</span>
+                <% } %>
+              </div>
+            <% }); %>
+          </div>
+          <div class="atile-lastround" id="atileLast_<%= game._id %>">
+            <% if (game.rounds && game.rounds.length) { var lr = game.rounds[game.rounds.length-1]; %>
+              Last: <%= (lr.darts||[]).map(function(d){return d.score}).join(' + ') %> = <strong><%= lr.total %></strong>
+            <% } else { %>No rounds yet<% } %>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  <% } %>
+
+</div>
+
+<script>
+const AUDIENCE_GAME_IDS = <%- JSON.stringify(games.map(function(g){return String(g._id)})) %>;
+</script>
+
+<%- include('../partials/foot') %>
+
+<script>
+// Audience multiplexer — subscribe to every game's room and update the tiles.
+(function () {
+  const socket = window._ttSocket || io();
+  window._ttSocket = socket;
+
+  // Scoreboard-like: louder master gain for TV context, but only one "ding" per
+  // game round so 4 games finishing rounds doesn't cascade into a disco.
+  if (window.ttAudio) window.ttAudio.setMasterGain(1.2);
+  const _recentRoundAt = {};  // gameId -> timestamp, throttle
+
+  function joinAll() {
+    AUDIENCE_GAME_IDS.forEach(id => {
+      socket.emit('join-game', { gameId: id, role: 'audience', playerName: 'Audience' });
+    });
+  }
+  if (socket.connected) joinAll();
+  socket.on('connect', joinAll);
+
+  function setFeed(gameId, frame) {
+    const img = document.getElementById('atileImg_' + gameId);
+    const ph  = document.getElementById('atilePh_' + gameId);
+    if (img && frame) { img.src = 'data:image/jpeg;base64,' + frame; img.style.display = 'block'; }
+    if (ph) ph.style.display = 'none';
+  }
+  function updateBoard(gameId, game) {
+    if (!game || !game.players) return;
+    game.players.forEach((p, i) => {
+      const scoreEl  = document.getElementById('atileScore_' + gameId + '_' + i);
+      const playerEl = document.getElementById('atilePlayer_' + gameId + '_' + i);
+      if (scoreEl)  scoreEl.textContent = p.remaining !== undefined ? p.remaining : ((p.cricketPoints || 0) + ' pts');
+      if (playerEl) playerEl.classList.toggle('atile-player-active', i === game.currentPlayerIndex && game.status === 'active');
+    });
+    const lastEl = document.getElementById('atileLast_' + gameId);
+    if (lastEl && game.rounds && game.rounds.length) {
+      const lr = game.rounds[game.rounds.length - 1];
+      lastEl.innerHTML = 'Last: ' + (lr.darts || []).map(d => d.score).join(' + ') + ' = <strong>' + lr.total + '</strong>';
+    }
+  }
+
+  socket.on('lobby-frame', ({ gameId, frame }) => {
+    if (AUDIENCE_GAME_IDS.indexOf(gameId) === -1) return;
+    setFeed(gameId, frame);
+  });
+  socket.on('player-analysis', ({ playerIndex, frame }) => {
+    // This fires inside a game room we've joined; find which one
+    // (socket payload doesn't always carry gameId). Best-effort: apply to all
+    // tiles we've been hearing about.
+    // Safer: only apply if we're in exactly one room and frame is present.
+    if (!frame || AUDIENCE_GAME_IDS.length !== 1) return;
+    setFeed(AUDIENCE_GAME_IDS[0], frame);
+  });
+  socket.on('game-update', ({ game }) => {
+    if (!game || !game._id) return;
+    const gid = String(game._id);
+    if (AUDIENCE_GAME_IDS.indexOf(gid) === -1) return;
+    updateBoard(gid, game);
+    // Throttled "ding" so multiple games don't overlap
+    const now = Date.now();
+    if (!_recentRoundAt[gid] || (now - _recentRoundAt[gid]) > 1500) {
+      _recentRoundAt[gid] = now;
+      if (window.ttAudio) window.ttAudio.play('roundDoneMulti');
+    }
+  });
+  socket.on('game-started', ({ game }) => {
+    if (game && game._id && AUDIENCE_GAME_IDS.indexOf(String(game._id)) !== -1) {
+      if (window.ttAudio) window.ttAudio.play('gameStart');
+    }
+  });
+  socket.on('game-finished', ({ winner, game }) => {
+    if (!game || !game._id) return;
+    const gid = String(game._id);
+    if (AUDIENCE_GAME_IDS.indexOf(gid) === -1) return;
+    updateBoard(gid, game);
+    const statusEl = document.querySelector('#atile_' + gid + ' .atile-status');
+    if (statusEl) {
+      statusEl.textContent = '🏆 ' + (winner || 'Winner');
+      statusEl.className = 'atile-status status-finished';
+    }
+    if (window.ttAudio) window.ttAudio.play('gameWinSelf');
+  });
+  socket.on('game-idle', ({ gameId }) => {
+    if (!gameId) return;
+    const gid = String(gameId);
+    if (AUDIENCE_GAME_IDS.indexOf(gid) === -1) return;
+    const statusEl = document.querySelector('#atile_' + gid + ' .atile-status');
+    if (statusEl) { statusEl.textContent = '⏸ Paused'; statusEl.className = 'atile-status status-idle'; }
+  });
+  socket.on('game-resumed', ({ game }) => {
+    if (!game || !game._id) return;
+    const gid = String(game._id);
+    if (AUDIENCE_GAME_IDS.indexOf(gid) === -1) return;
+    updateBoard(gid, game);
+    const statusEl = document.querySelector('#atile_' + gid + ' .atile-status');
+    if (statusEl) {
+      statusEl.textContent = game.status === 'active' ? '● Live' : '◌ Waiting';
+      statusEl.className = 'atile-status ' + (game.status === 'active' ? 'status-active' : 'status-waiting');
+    }
+  });
+})();
+</script>

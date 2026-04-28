@@ -55,6 +55,21 @@ const SAVE_PATHS = {
     patterns: ['*'],
     extras: ['serverconfig.xml'],
   },
+  se: {
+    dirs: ['Instance/Saves'],
+    patterns: ['*'],
+    extras: ['Instance/SpaceEngineers-Dedicated.cfg'],
+  },
+  palworld: {
+    dirs: ['Pal/Saved/SaveGames'],
+    patterns: ['*'],
+    extras: ['Pal/Saved/Config/LinuxServer/PalWorldSettings.ini'],
+  },
+  windrose: {
+    dirs: ['R5/Saved/SaveProfiles'],
+    patterns: ['*'],
+    extras: ['R5/ServerDescription.json'],
+  },
 };
 
 // Local server save paths (on this box)
@@ -63,6 +78,9 @@ const LOCAL_PATHS = {
   valheim: '/srv/games/valheim/worlds',
   l4d2: '/srv/games/l4d2/left4dead2/cfg',
   '7dtd': '/srv/games/7dtd/UserDataFolder/Saves',
+  se: '/srv/games/se/Instance/Saves',
+  palworld: '/srv/games/palworld/Pal/Saved/SaveGames',
+  windrose: '/srv/games/windrose/R5/Saved/SaveProfiles',
 };
 
 let db = null;

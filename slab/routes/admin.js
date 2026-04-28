@@ -29,7 +29,8 @@ import profileRouter from './admin/profile.js';
 import settingsRouter from './admin/settings.js';
 import docsRouter from './admin/docs.js';
 import superRouter from './admin/super.js';
-import huginnRouter from './admin/huginn.js';
+// REMOVED: Huginn unwired
+// import huginnRouter from './admin/huginn.js';
 import ticketsRouter from './admin/tickets.js';
 import onboardingRouter from './admin/onboarding.js';
 import brandBuilderRouter from './admin/brandBuilder.js';
@@ -37,6 +38,7 @@ import scannerRouter from './admin/scanner.js';
 import templatesRouter from './admin/templates.js';
 import templateStoreRouter from './admin/templateStore.js';
 import qrcodesRouter from './admin/qrcodes.js';
+import notesRouter from './admin/notes.js';
 
 const router = express.Router();
 
@@ -446,7 +448,8 @@ router.use('/profile', profileRouter);
 router.use('/settings', settingsRouter);
 router.use('/docs', docsRouter);
 router.use('/tickets', ticketsRouter);
-router.use('/huginn', huginnRouter);
+// REMOVED: Huginn unwired
+// router.use('/huginn', huginnRouter);
 router.use('/super', superRouter);
 router.use('/onboarding', onboardingRouter);
 router.use('/brand-builder', brandBuilderRouter);
@@ -454,5 +457,6 @@ router.use('/scanner', scannerRouter);
 router.use('/templates', templatesRouter);
 router.use('/template-store', templateStoreRouter);
 router.use('/qr-codes', qrcodesRouter);
+router.use('/notes', notesRouter);
 
 export default router;

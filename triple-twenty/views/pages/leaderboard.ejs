@@ -1,0 +1,224 @@
+<%- include('../partials/head', { title: 'Leaderboard — Triple-Twenty' }) %>
+
+<div class="leaderboard-app">
+
+  <div class="lb-header">
+    <h1>🏆 Leaderboard</h1>
+    <p class="subtitle">All-time rankings & match history</p>
+    <a href="/" class="btn btn-sm">← New Game</a>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="lb-stats-bar" id="lbStatsBar">
+    <div class="lb-stat"><span id="statGames">–</span><label>Games Played</label></div>
+    <div class="lb-stat"><span id="statPlayers">–</span><label>Players</label></div>
+    <div class="lb-stat"><span id="statCorrections">–</span><label>AI Corrections</label></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="lb-tabs">
+    <button class="lb-tab active" data-tab="rankings">Rankings</button>
+    <button class="lb-tab" data-tab="history">Recent Games</button>
+    <button class="lb-tab" data-tab="h2h">Head-to-Head</button>
+    <button class="lb-tab" data-tab="learning">ML Learning</button>
+  </div>
+
+  <!-- Rankings Tab -->
+  <div class="lb-tab-content active" id="tab-rankings">
+    <div class="lb-loading" id="rankingsLoading">Loading...</div>
+    <table class="lb-table" id="rankingsTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Player</th>
+          <th>W</th>
+          <th>L</th>
+          <th>Games</th>
+          <th>Win %</th>
+          <th>Avg/Round</th>
+        </tr>
+      </thead>
+      <tbody id="rankingsBody"></tbody>
+    </table>
+    <div class="lb-empty" id="rankingsEmpty" style="display:none;">No games played yet. Start one!</div>
+  </div>
+
+  <!-- Recent Games Tab -->
+  <div class="lb-tab-content" id="tab-history">
+    <div class="lb-loading" id="historyLoading">Loading...</div>
+    <div id="recentGamesList"></div>
+    <div class="lb-empty" id="historyEmpty" style="display:none;">No games yet.</div>
+  </div>
+
+  <!-- H2H Tab -->
+  <div class="lb-tab-content" id="tab-h2h">
+    <div class="h2h-search">
+      <input type="text" id="h2hPlayer1" placeholder="Player 1 name">
+      <span>vs</span>
+      <input type="text" id="h2hPlayer2" placeholder="Player 2 name">
+      <button class="btn btn-primary" id="h2hSearchBtn">Search</button>
+    </div>
+    <div id="h2hResult"></div>
+  </div>
+
+  <!-- ML Learning Tab -->
+  <div class="lb-tab-content" id="tab-learning">
+    <div class="lb-loading" id="learningLoading">Loading...</div>
+    <div class="learning-stats" id="learningStats" style="display:none;">
+      <div class="learning-hero">
+        <div class="learning-count" id="learningCount">0</div>
+        <div class="learning-label">Total Corrections Submitted</div>
+        <p class="hint">Each correction teaches the AI to better recognize dart positions for your specific camera angle and lighting.</p>
+      </div>
+      <h4>Recent Corrections</h4>
+      <div id="correctionsList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Tabs
+document.querySelectorAll('.lb-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.lb-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.lb-tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Load everything on mount
+loadLeaderboard();
+loadCorrections();
+
+async function loadLeaderboard() {
+  try {
+    const resp = await fetch('/api/leaderboard');
+    const data = await resp.json();
+
+    // Stats bar
+    document.getElementById('statGames').textContent = data.recentGames.length;
+    const players = new Set();
+    data.board.forEach(p => players.add(p.name));
+    document.getElementById('statPlayers').textContent = players.size;
+
+    // Rankings
+    document.getElementById('rankingsLoading').style.display = 'none';
+    if (!data.board.length) {
+      document.getElementById('rankingsEmpty').style.display = 'block';
+    } else {
+      document.getElementById('rankingsTable').style.display = 'table';
+      const body = document.getElementById('rankingsBody');
+      body.innerHTML = data.board.map((p, i) => `
+        <tr class="${i < 3 ? 'top-' + (i+1) : ''}">
+          <td class="rank-num">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i+1}</td>
+          <td class="player-name-cell">${p.name}</td>
+          <td class="wins">${p.wins}</td>
+          <td class="losses">${p.losses}</td>
+          <td>${p.games}</td>
+          <td><span class="win-rate-pill">${p.winRate}%</span></td>
+          <td>${p.avgPerRound}</td>
+        </tr>
+      `).join('');
+    }
+
+    // Recent games
+    document.getElementById('historyLoading').style.display = 'none';
+    if (!data.recentGames.length) {
+      document.getElementById('historyEmpty').style.display = 'block';
+    } else {
+      document.getElementById('recentGamesList').innerHTML = data.recentGames.map(g => `
+        <div class="recent-game-card">
+          <div class="rg-left">
+            <span class="rg-mode">${g.mode.toUpperCase()}</span>
+            <span class="rg-players">${g.players.join(' vs ')}</span>
+          </div>
+          <div class="rg-right">
+            <span class="rg-winner">${g.winner ? '🏆 ' + g.winner : 'In progress'}</span>
+            <span class="rg-date">${new Date(g.createdAt).toLocaleDateString()}</span>
+            <a href="/game/${g._id}" class="btn btn-sm" target="_blank">View</a>
+          </div>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    document.getElementById('rankingsLoading').textContent = 'Error loading data.';
+  }
+}
+
+async function loadCorrections() {
+  try {
+    const resp = await fetch('/api/corrections');
+    const data = await resp.json();
+    document.getElementById('statCorrections').textContent = data.total;
+    document.getElementById('learningLoading').style.display = 'none';
+    document.getElementById('learningStats').style.display = 'block';
+    document.getElementById('learningCount').textContent = data.total;
+
+    const list = document.getElementById('correctionsList');
+    if (!data.corrections.length) {
+      list.innerHTML = '<p class="hint">No corrections yet. Confirm or correct AI scores during a game.</p>';
+    } else {
+      list.innerHTML = data.corrections.map(c => {
+        const aiDarts = (c.ai.darts || []).map(d => d.score).join(', ');
+        const corrDarts = (c.corrected.darts || []).map(d => d.score).join(', ');
+        return `<div class="correction-item">
+          <div class="corr-row">
+            <span class="corr-label ai-label">AI said</span>
+            <span class="corr-darts">[${aiDarts}] = ${c.ai.total}</span>
+          </div>
+          <div class="corr-row">
+            <span class="corr-label fix-label">Fixed to</span>
+            <span class="corr-darts">[${corrDarts}] = ${c.corrected.total}</span>
+          </div>
+          ${c.note ? `<div class="corr-note">"${c.note}"</div>` : ''}
+          <div class="corr-time">${new Date(c.createdAt).toLocaleString()}</div>
+        </div>`;
+      }).join('');
+    }
+  } catch (err) {
+    document.getElementById('learningLoading').textContent = 'Error loading corrections.';
+  }
+}
+
+// H2H search
+document.getElementById('h2hSearchBtn').addEventListener('click', async () => {
+  const p1 = document.getElementById('h2hPlayer1').value.trim();
+  const p2 = document.getElementById('h2hPlayer2').value.trim();
+  if (!p1 || !p2) return;
+
+  const result = document.getElementById('h2hResult');
+  result.innerHTML = 'Loading...';
+  try {
+    const resp = await fetch(`/api/h2h/${encodeURIComponent(p1)}/${encodeURIComponent(p2)}`);
+    const data = await resp.json();
+    result.innerHTML = `
+      <div class="h2h-result-card">
+        <div class="h2h-score-row">
+          <div class="h2h-player">
+            <div class="h2h-name">${data.player1}</div>
+            <div class="h2h-wins">${data.p1wins}</div>
+          </div>
+          <div class="h2h-vs">VS</div>
+          <div class="h2h-player">
+            <div class="h2h-name">${data.player2}</div>
+            <div class="h2h-wins">${data.p2wins}</div>
+          </div>
+        </div>
+        <div class="h2h-history">
+          ${data.history.map(g => `
+            <div class="h2h-game-row">
+              <span class="rg-mode">${g.mode.toUpperCase()}</span>
+              <span>${g.winner ? '🏆 ' + g.winner : 'No result'}</span>
+              <span class="rg-date">${new Date(g.createdAt).toLocaleDateString()}</span>
+            </div>
+          `).join('') || '<p class="hint">No games between these players.</p>'}
+        </div>
+      </div>`;
+  } catch (err) {
+    result.innerHTML = 'Error loading H2H data.';
+  }
+});
+</script>
+
+<%- include('../partials/foot') %>

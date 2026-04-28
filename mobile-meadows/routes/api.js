@@ -1,9 +1,9 @@
 const router = require('express').Router();
 const CalendarSlot = require('../models/CalendarSlot');
 const Booking = require('../models/Booking');
+const RoofCalculator = require('../models/RoofCalculator');
 
 // @route  GET /api/slots?month=2026-04
-// Returns slots for the calendar view
 router.get('/slots', async (req, res) => {
   try {
     const { month, serviceType } = req.query;
@@ -15,13 +15,10 @@ router.get('/slots', async (req, res) => {
       end.setMonth(end.getMonth() + 1);
       query.date = { $gte: start, $lt: end };
     } else {
-      // Default: next 60 days
       query.date = { $gte: new Date() };
     }
 
-    if (serviceType) {
-      query.serviceType = serviceType;
-    }
+    if (serviceType) query.serviceType = serviceType;
 
     const slots = await CalendarSlot.find(query).sort({ date: 1, startTime: 1 });
     res.json({ success: true, slots });
@@ -36,6 +33,17 @@ router.get('/slots/:id', async (req, res) => {
     const slot = await CalendarSlot.findById(req.params.id);
     if (!slot) return res.status(404).json({ success: false, error: 'Slot not found' });
     res.json({ success: true, slot });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// @route  GET /api/roof-calculator
+// Returns calculator config for the public landing page
+router.get('/roof-calculator', async (req, res) => {
+  try {
+    const cfg = await RoofCalculator.getConfig();
+    res.json({ success: true, calculator: cfg });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Windrose Modbuilder · MadLadsLab</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel2: #1c2128;
+      --line: #30363d;
+      --text: #c9d1d9;
+      --dim: #8b949e;
+      --accent: #58a6ff;
+      --good: #3fb950;
+      --warn: #d29922;
+      --bad: #f85149;
+      --idle: #8b949e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    header .ver { color: var(--dim); font-family: monospace; font-size: 12px; }
+    header a { color: var(--accent); text-decoration: none; margin-left: auto; }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.4fr) minmax(320px, 1fr);
+      gap: 16px;
+      padding: 16px 24px;
+    }
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--dim);
+      font-weight: 600;
+    }
+    .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--panel2); }
+    .row:last-child { border-bottom: none; }
+    .row .k { color: var(--dim); }
+    .row .v { font-family: monospace; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .pill.active { background: rgba(63,185,80,.15); color: var(--good); }
+    .pill.idle   { background: rgba(139,148,158,.15); color: var(--idle); }
+    .pill.boot   { background: rgba(210,153,34,.15); color: var(--warn); }
+    .pill.dead   { background: rgba(248,81,73,.15); color: var(--bad); }
+    .invite {
+      font-family: monospace;
+      font-size: 16px;
+      color: var(--accent);
+      cursor: pointer;
+      user-select: all;
+    }
+    .invite:hover { text-decoration: underline; }
+    .events {
+      max-height: 600px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .event {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--panel2);
+      display: grid;
+      grid-template-columns: 70px 100px 1fr;
+      gap: 8px;
+      align-items: baseline;
+    }
+    .event .t { color: var(--dim); }
+    .event .ty {
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--panel2);
+      text-align: center;
+    }
+    .event.player_join .ty { color: var(--good); }
+    .event.player_leave .ty { color: var(--warn); }
+    .event.heartbeat .ty { color: var(--dim); }
+    .event.server_start .ty { color: var(--accent); }
+    .event.command .ty { color: var(--accent); }
+    .player {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--panel2);
+      align-items: center;
+    }
+    .player .name { font-weight: 600; }
+    .player .meta { color: var(--dim); font-size: 12px; font-family: monospace; }
+    .multipliers {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px 16px;
+    }
+    .multipliers .row { padding: 4px 0; border: none; }
+    .empty { color: var(--dim); font-style: italic; padding: 8px 0; }
+    .counts {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .count {
+      background: var(--panel2);
+      padding: 8px 12px;
+      border-radius: 6px;
+      text-align: center;
+    }
+    .count .n { font-size: 22px; font-weight: 700; color: var(--accent); }
+    .count .l { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; }
+    .updated { color: var(--dim); font-size: 11px; margin-top: 12px; text-align: right; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Windrose Modbuilder</h1>
+    <span class="ver" id="version"></span>
+    <a href="/admin">← admin</a>
+  </header>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Server</h2>
+        <div class="row"><span class="k">Status</span><span class="v" id="mode"><span class="pill dead">unknown</span></span></div>
+        <div class="row"><span class="k">Players</span><span class="v" id="playerCount">—</span></div>
+        <div class="row"><span class="k">Uptime</span><span class="v" id="uptime">—</span></div>
+        <div class="row"><span class="k">Map</span><span class="v" id="map">—</span></div>
+        <div class="row"><span class="k">Game version</span><span class="v" id="gameVer">—</span></div>
+        <div class="row"><span class="k">Windrose+</span><span class="v" id="modVer">—</span></div>
+        <div class="row"><span class="k">RCON</span><span class="v" id="rcon">—</span></div>
+        <div class="row"><span class="k">Invite</span><span class="invite" id="invite" title="Click to select">—</span></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>Last 24h</h2>
+        <div class="counts" id="counts"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>Multipliers</h2>
+        <div class="multipliers" id="multipliers"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Recent events</h2>
+        <div class="events" id="events"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Players (<span id="playerTotal">0</span>)</h2>
+        <div id="players"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="updated" id="updated" style="padding:0 24px 16px"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  function fmtUptime(s) {
+    if (s == null) return '—';
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    return h ? `${h}h ${m}m` : `${m}m`;
+  }
+  function fmtTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleTimeString('en-US', { hour12: false });
+  }
+  function fmtAgo(ts) {
+    if (!ts) return '';
+    const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s/60)}m ago`;
+    if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+    return `${Math.floor(s/86400)}d ago`;
+  }
+
+  async function refresh() {
+    try {
+      const r = await fetch('/admin/modbuilder/api/state', { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const s = await r.json();
+      render(s);
+    } catch (e) {
+      $('updated').textContent = `error: ${e.message}`;
+    }
+  }
+
+  function render(s) {
+    const status = s.status || {};
+    const server = status.server || {};
+    const snap = s.latestSnapshot || {};
+    const lastEvent = s.events[0];
+    const lastHb = s.events.find(e => e.type === 'heartbeat');
+
+    const mode = lastHb?.mode || (snap.running ? 'idle' : 'dead');
+    $('mode').innerHTML = `<span class="pill ${mode}">${mode}</span>`;
+    $('playerCount').textContent = `${server.player_count ?? 0} / ${server.max_players ?? 8}`;
+    $('uptime').textContent = fmtUptime(lastHb?.payload?.uptime_sec ?? lastHb?.uptime);
+    $('map').textContent = server.game || '—';
+    $('gameVer').textContent = server.version || '—';
+    $('modVer').textContent = server.windrose_plus || '—';
+    $('rcon').textContent = (s.config?.rconPasswordSet ? 'enabled' : 'disabled (set password)');
+    $('invite').textContent = server.invite_code || '—';
+    $('version').textContent = server.windrose_plus ? `WindrosePlus ${server.windrose_plus}` : '';
+
+    // Counts
+    const c = s.counts24h || {};
+    const wantedCounts = [
+      ['player_join', 'Joins'],
+      ['player_leave', 'Leaves'],
+      ['heartbeat', 'Heartbeats'],
+      ['command', 'Commands'],
+    ];
+    $('counts').innerHTML = wantedCounts.map(([k, l]) =>
+      `<div class="count"><div class="n">${c[k] || 0}</div><div class="l">${l}</div></div>`
+    ).join('');
+
+    // Multipliers
+    const m = status.multipliers || {};
+    $('multipliers').innerHTML = Object.keys(m).length
+      ? Object.entries(m).map(([k, v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v}×</span></div>`).join('')
+      : '<div class="empty">no data</div>';
+
+    // Events
+    $('events').innerHTML = s.events.length
+      ? s.events.map(e => {
+          const detail = e.type === 'player_join' || e.type === 'player_leave'
+            ? (e.name || '')
+            : e.type === 'heartbeat'
+              ? `mode=${e.mode || '?'} players=${e.playerCount ?? 0}`
+              : (e.message || e.raw?.slice(0, 80) || '');
+          return `<div class="event ${e.type}"><span class="t">${fmtTime(e.ts)}</span><span class="ty">${e.type}</span><span>${escapeHtml(detail)}</span></div>`;
+        }).join('')
+      : '<div class="empty">no events yet</div>';
+
+    // Players
+    $('playerTotal').textContent = s.players.length;
+    $('players').innerHTML = s.players.length
+      ? s.players.map(p => `
+          <div class="player">
+            <div>
+              <div class="name">${escapeHtml(p.name || '?')}</div>
+              <div class="meta">sessions: ${p.sessions || 0}</div>
+            </div>
+            <div>${p.active ? '<span class="pill active">in-game</span>' : ''}</div>
+            <div class="meta">${fmtAgo(p.lastSeen)}</div>
+          </div>
+        `).join('')
+      : '<div class="empty">no players seen yet</div>';
+
+    $('invite').onclick = () => {
+      if (server.invite_code) navigator.clipboard?.writeText(server.invite_code);
+    };
+
+    $('updated').textContent = `updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>

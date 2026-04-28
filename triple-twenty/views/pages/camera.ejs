@@ -1,0 +1,478 @@
+<%- include('../partials/head', { title: 'Camera — Triple-Twenty' }) %>
+
+<div class="camera-host" id="cameraApp"
+  data-game-id="<%= game._id %>"
+  data-mode="<%= game.mode %>"
+  data-player-count="<%= game.players.length %>"
+  data-has-ipcam="<%= (game.camera && game.camera.ip) ? '1' : '' %>"
+  data-invite-code="<%= game.inviteCode %>"
+  data-game-name="<%= encodeURIComponent(game.name || '') %>">
+
+  <!-- ══ TOP BAR ══ -->
+  <div class="cam-top-bar">
+    <div class="cam-top-left">
+      <span class="dart-icon-sm">🎯</span>
+      <span class="cam-game-title">
+        <%= game.name || (game.mode.toUpperCase() + ' · ' + game.players.map(function(p){return p.name}).join(' vs ')) %>
+      </span>
+      <span class="mode-pill"><%= game.mode.toUpperCase() %></span>
+    </div>
+    <div class="cam-top-right">
+      <span class="cam-status-chip">
+        <span class="status-dot dot-waiting" id="statusDot"></span>
+        <span id="statusText">Waiting</span>
+      </span>
+      <button class="cam-icon-btn" id="controlsModeBtn" title="Hide/show scoring controls (for paired controller setups)">🎮</button>
+      <button class="cam-icon-btn" id="tuneBtn"     title="Camera tuning"          style="display:none;">⚙</button>
+      <button class="cam-icon-btn" id="guideBtn"    title="Board framing guide">⊙</button>
+      <button class="cam-icon-btn" id="shareMenuBtn" title="Share / open on another screen">⎘</button>
+      <a href="/game/<%= game._id %>" class="cam-icon-btn" target="_blank" title="TV Scoreboard">📺</a>
+    </div>
+  </div>
+
+  <!-- ══ FEED AREA ══ -->
+  <div class="cam-feed-area">
+
+    <div class="cam-feed-wrap" id="feedSingle">
+      <video id="phoneVideo" autoplay playsinline muted></video>
+      <canvas id="phoneCanvas" style="display:none;"></canvas>
+      <img id="ipCamImg" src="" alt="IP Camera" style="display:none;">
+
+      <!-- Board framing guide -->
+      <div class="board-guide" id="boardGuide" style="display:none;">
+        <svg class="board-guide-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+          <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(249,115,22,0.7)" stroke-width="0.4" stroke-dasharray="2 1"/>
+          <circle cx="50" cy="50" r="43" fill="none" stroke="rgba(249,115,22,0.5)" stroke-width="0.3"/>
+          <circle cx="50" cy="50" r="5"  fill="none" stroke="rgba(249,115,22,0.6)" stroke-width="0.4"/>
+          <circle cx="50" cy="50" r="2"  fill="rgba(249,115,22,0.5)"/>
+          <line x1="50" y1="1"  x2="50" y2="18" stroke="rgba(255,255,255,0.4)" stroke-width="0.3"/>
+          <line x1="50" y1="82" x2="50" y2="99" stroke="rgba(255,255,255,0.4)" stroke-width="0.3"/>
+          <line x1="1"  y1="50" x2="18" y2="50" stroke="rgba(255,255,255,0.4)" stroke-width="0.3"/>
+          <line x1="82" y1="50" x2="99" y2="50" stroke="rgba(255,255,255,0.4)" stroke-width="0.3"/>
+          <path d="M2,10 L2,2 L10,2"    fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="0.5"/>
+          <path d="M90,2 L98,2 L98,10"   fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="0.5"/>
+          <path d="M2,90 L2,98 L10,98"   fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="0.5"/>
+          <path d="M90,98 L98,98 L98,90" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="0.5"/>
+        </svg>
+        <div class="board-guide-label">Align board to circle · fill frame for best AI results</div>
+      </div>
+
+      <!-- Camera tuning panel -->
+      <div class="tuning-panel" id="tuningPanel" style="display:none;">
+        <div class="tuning-header">
+          <span class="tuning-title">⚙ Camera Tuning</span>
+          <button class="tuning-close" id="tuningCloseBtn">✕</button>
+        </div>
+        <div class="tuning-rows" id="tuningRows">
+          <div class="tune-empty">Starting camera…</div>
+        </div>
+      </div>
+
+      <!-- Start overlay -->
+      <div class="cam-start-overlay" id="camStartOverlay">
+        <div class="cam-start-inner">
+          <% if (!game.camera || !game.camera.ip) { %>
+            <div class="cam-start-icon">📷</div>
+            <button class="btn btn-primary btn-lg" id="startPhoneCamBtn">Start Camera</button>
+            <button class="btn btn-sm cam-skip-btn" id="skipCamBtn">No camera — manual only</button>
+          <% } else { %>
+            <div class="cam-start-icon">📷</div>
+            <div class="cam-start-info">IP Cam: <%= game.camera.ip %></div>
+            <button class="btn btn-primary btn-lg" id="startIpCamBtn">Connect Camera</button>
+            <button class="btn btn-sm cam-skip-btn" id="skipCamBtn">No camera — manual only</button>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- Score HUD (shown once camera is active) -->
+      <div class="cam-hud" id="camHud" style="display:none;">
+        <div class="hud-scores" id="hudScores">
+          <% game.players.forEach(function(p, i) { %>
+            <div class="hud-player <%= i === game.currentPlayerIndex ? 'hud-active' : '' %>" id="hudPlayer_<%= i %>">
+              <div class="hud-player-name"><%= p.name %></div>
+              <% if (game.mode === '501') { %>
+                <div class="hud-player-score" id="hudScore_<%= i %>"><%= p.remaining %></div>
+              <% } else { %>
+                <div class="hud-player-score" id="hudScore_<%= i %>"><%= p.cricketPoints || 0 %><span class="hud-score-unit">pts</span></div>
+              <% } %>
+              <div class="hud-conn-dot" id="hudConn_<%= i %>"></div>
+            </div>
+          <% }); %>
+        </div>
+        <div class="hud-turn-banner" id="hudTurnBanner" style="display:none;">
+          🎯 <span id="hudTurnName"><%= game.players[game.currentPlayerIndex]?.name %></span>'s turn
+        </div>
+        <div class="hud-conf" id="hudConf" style="display:none;"></div>
+      </div>
+
+      <div class="bust-banner" id="bustBanner" style="display:none;">💥 BUST!</div>
+    </div>
+
+    <!-- Split feed -->
+    <div class="cam-split-wrap" id="feedSplit" style="display:none;">
+      <div class="cam-split-half" id="splitLeft">
+        <div class="split-label" id="splitLabelLeft">Player 1</div>
+        <div class="split-crop-indicator"></div>
+        <div class="split-conf" id="splitConfLeft"></div>
+      </div>
+      <div class="cam-split-divider"></div>
+      <div class="cam-split-half" id="splitRight">
+        <div class="split-label" id="splitLabelRight">Player 2</div>
+        <div class="split-crop-indicator"></div>
+        <div class="split-conf" id="splitConfRight"></div>
+      </div>
+      <canvas id="canvasLeft"  style="display:none;"></canvas>
+      <canvas id="canvasRight" style="display:none;"></canvas>
+      <canvas id="splitCanvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;"></canvas>
+    </div>
+
+  </div>
+
+  <!-- ══ CONTROL BAR ══ -->
+  <div class="cam-control-bar">
+    <div class="cam-ctrl-left">
+      <% if (game.status === 'waiting') { %>
+        <button class="btn btn-success cam-capture-btn" id="startGameBtn">▶ Start Game</button>
+      <% } %>
+      <% if (game.players.length >= 2) { %>
+        <label class="cam-ctrl-toggle" title="Same location — split feed">
+          <input type="checkbox" id="sameLocToggle">
+          <span class="cam-ctrl-toggle-label">Split</span>
+        </label>
+      <% } %>
+      <div id="singleControls" class="cam-ctrl-group">
+        <button class="btn btn-primary cam-capture-btn" id="captureBtn">📸 Analyze</button>
+        <label class="cam-ctrl-toggle">
+          <input type="checkbox" id="autoCapture">
+          <span class="cam-ctrl-toggle-label">Auto</span>
+        </label>
+      </div>
+      <div id="splitControls" class="cam-ctrl-group" style="display:none;">
+        <button class="btn btn-sm btn-primary" id="captureSplitLeftBtn">📸 L</button>
+        <button class="btn btn-sm btn-primary" id="captureSplitRightBtn">📸 R</button>
+        <button class="btn btn-sm" id="captureSplitBothBtn">📸 Both</button>
+      </div>
+    </div>
+    <div class="cam-ctrl-right">
+      <div class="cam-ai-chip" title="Last AI analyze">
+        <span class="ai-chip-label">Last:</span>
+        <span id="lastAnalyzed" class="ai-chip-time">--</span>
+      </div>
+      <button class="cam-icon-btn" id="togglePanelBtn" title="Show controls panel">⋮</button>
+    </div>
+  </div>
+
+  <!-- ══ SCORING + CONTROLS PANEL ══
+       Always visible below the feed. Camera AI pre-fills dart inputs;
+       host can edit any dart or enter manually. -->
+  <div class="cam-panel" id="camPanel">
+
+    <!-- ── SCORE ENTRY (unified manual + AI) ── -->
+    <div class="score-entry-card" id="scoreEntryCard">
+      <div class="score-entry-header">
+        <div class="score-entry-who">
+          <span class="score-entry-label">SCORING</span>
+          <span class="score-entry-player" id="scoreEntryPlayer">
+            <%= game.players[game.currentPlayerIndex]?.name %>
+          </span>
+        </div>
+        <div class="score-entry-source" id="scoreEntrySource">
+          <!-- filled by JS: 'Manual' or 'AI · high' etc -->
+        </div>
+      </div>
+
+      <!-- Learning Mode toggle + AI status -->
+      <div class="quick-entry-meta">
+        <label class="learn-toggle" title="Each dart you tap also triggers an AI analyze + correction save">
+          <input type="checkbox" id="learnModeToggle">
+          <span class="learn-toggle-label">🎓 Learning Mode</span>
+        </label>
+        <span class="ai-status-chip" id="aiStatusChip" title="Dartboard model status">
+          <span class="ai-status-dot" id="aiStatusDot">●</span>
+          <span id="aiStatusText">checking…</span>
+        </span>
+      </div>
+
+      <!-- Dart slot summary — shows the 3 committed darts -->
+      <div class="dart-slots" id="dartSlots">
+        <% for (var d = 0; d < 3; d++) { %>
+          <button class="dart-slot" id="dartSlot_<%= d %>" data-slot="<%= d %>">
+            <span class="dart-slot-num">Dart <%= d+1 %></span>
+            <span class="dart-slot-value" id="dartSlotValue_<%= d %>">–</span>
+          </button>
+        <% } %>
+      </div>
+      <div class="round-lock-hint" id="roundLockHint" style="display:none;">
+        ✓ All 3 darts in — tap <strong>Confirm Round</strong>, or click a dart slot above to edit it.
+      </div>
+
+      <!-- Quick-tap pad: multiplier (top row) + segment grid -->
+      <div class="tap-pad" id="tapPad">
+        <div class="tap-mult-row" role="group" aria-label="Multiplier">
+          <button class="tap-mult" data-mult="single" aria-pressed="true">Single</button>
+          <button class="tap-mult" data-mult="double">Double</button>
+          <button class="tap-mult" data-mult="triple">Triple</button>
+          <button class="tap-mult tap-mult-miss"  data-mult="miss">Miss</button>
+        </div>
+        <div class="tap-seg-grid">
+          <% var _nums = [20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1]; %>
+          <% _nums.forEach(function(n){ %>
+            <button class="tap-seg" data-seg="<%= n %>"><%= n %></button>
+          <% }); %>
+          <button class="tap-seg tap-seg-bull"  data-seg="25" data-ring="outer_bull">25</button>
+          <button class="tap-seg tap-seg-dbull" data-seg="25" data-ring="inner_bull">BULL</button>
+        </div>
+        <div class="tap-actions">
+          <button class="btn btn-sm" id="tapUndoBtn">⌫ Undo dart</button>
+        </div>
+      </div>
+
+      <!-- Hidden legacy inputs for JS compatibility -->
+      <div style="display:none;" id="dartEntryRows">
+        <% for (var d = 0; d < 3; d++) { %>
+          <div class="dart-entry-row" id="dartRow_<%= d %>">
+            <input type="number" id="dartSeg_<%= d %>">
+            <select id="dartRing_<%= d %>">
+              <option value="single">Single</option>
+              <option value="double">Double</option>
+              <option value="triple">Triple</option>
+              <option value="inner_bull">Bull</option>
+              <option value="outer_bull">Outer</option>
+              <option value="miss">Miss</option>
+            </select>
+            <span id="dartScore_<%= d %>">–</span>
+          </div>
+        <% } %>
+      </div>
+
+      <!-- Running total + confirm -->
+      <div class="score-entry-footer">
+        <div class="score-entry-total">
+          Total: <strong id="entryTotal">0</strong>
+          <span class="score-entry-remaining" id="entryRemaining"></span>
+        </div>
+        <div class="score-entry-actions">
+          <button class="btn btn-success" id="confirmEntryBtn">✓ Confirm Round</button>
+          <button class="btn btn-sm"      id="clearEntryBtn">✕ Clear</button>
+        </div>
+      </div>
+
+      <!-- AI source note (shown when AI filled the form) -->
+      <div class="score-entry-ai-note" id="aiNote" style="display:none;">
+        <span id="aiNoteText"></span>
+        <button class="btn btn-sm btn-warning" id="reanalyzeBtn">↺ Re-analyze</button>
+      </div>
+    </div>
+
+    <!-- ── SPLIT MODE analysis cards ── -->
+    <div class="cam-analysis-card split-analysis-card" id="analysisCardLeft" style="display:none;">
+      <div class="analysis-header">
+        <span id="analysisLabelLeft">Left — Player 1</span>
+        <span class="confidence-badge" id="confBadgeLeft"></span>
+      </div>
+      <div class="analysis-darts" id="analysisDartsLeft"></div>
+      <div class="analysis-total">Total: <span id="analysisTotalLeft">0</span></div>
+      <div class="analysis-note" id="analysisNoteLeft"></div>
+      <div class="analysis-actions">
+        <button class="btn btn-success btn-sm" id="confirmLeftBtn">✓ Confirm</button>
+        <button class="btn btn-danger  btn-sm" id="correctLeftBtn">✏ Edit</button>
+      </div>
+    </div>
+
+    <div class="cam-analysis-card split-analysis-card" id="analysisCardRight" style="display:none;">
+      <div class="analysis-header">
+        <span id="analysisLabelRight">Right — Player 2</span>
+        <span class="confidence-badge" id="confBadgeRight"></span>
+      </div>
+      <div class="analysis-darts" id="analysisDartsRight"></div>
+      <div class="analysis-total">Total: <span id="analysisTotalRight">0</span></div>
+      <div class="analysis-note" id="analysisNoteRight"></div>
+      <div class="analysis-actions">
+        <button class="btn btn-success btn-sm" id="confirmRightBtn">✓ Confirm</button>
+        <button class="btn btn-danger  btn-sm" id="correctRightBtn">✏ Edit</button>
+      </div>
+    </div>
+
+    <!-- ── Correction note (appended when editing AI result) ── -->
+    <div class="correction-note-row" id="correctionNoteRow" style="display:none;">
+      <textarea id="correctionNote" placeholder="Optional note for AI training (e.g. dart bounced off wire)" rows="2"></textarea>
+    </div>
+
+    <!-- ── Player score cards ── -->
+    <div class="cam-panel-scores" id="panelScores">
+      <% game.players.forEach(function(p, i) { %>
+        <div class="panel-player-card <%= i === game.currentPlayerIndex ? 'active-player' : '' %>" id="camPlayer_<%= i %>">
+          <div class="cam-player-name">
+            <%= p.name %>
+            <span class="cam-player-connected" id="camConn_<%= i %>">○</span>
+          </div>
+          <% if (game.mode === '501') { %>
+            <div class="cam-big-score" id="camScore_<%= i %>"><%= p.remaining %></div>
+            <div class="cam-score-label">remaining</div>
+          <% } else { %>
+            <div class="cam-cricket-pts">Pts: <span id="camPts_<%= i %>"><%= p.cricketPoints || 0 %></span></div>
+          <% } %>
+        </div>
+      <% }); %>
+    </div>
+
+    <!-- ── AI Trigger Log ── -->
+    <div class="ai-log-panel">
+      <div class="ai-log-header">
+        <h4>🤖 AI TRIGGER LOG</h4>
+        <button type="button" class="btn btn-sm" id="aiLogToggle" aria-expanded="true">Hide</button>
+      </div>
+      <div class="ai-log-body" id="aiLogBody">
+        <div class="ai-log-legend">
+          <span><span class="ail-badge ail-ok">SEEN</span> model returned darts</span>
+          <span><span class="ail-badge ail-empty">EMPTY</span> model returned nothing</span>
+          <span><span class="ail-badge ail-off">OFF</span> tunnel/model unavailable</span>
+          <span><span class="ail-badge ail-err">ERR</span> request failed</span>
+        </div>
+        <div class="ai-log-list" id="aiLogList">
+          <div class="ai-log-empty">No AI calls yet.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Round history ── -->
+    <div class="cam-history">
+      <h4 style="font-size:0.82rem; color:var(--text3); margin-bottom:8px;">
+        ROUND HISTORY <span id="historyCount"></span>
+      </h4>
+      <table class="history-table">
+        <thead><tr><th>Player</th><th>Darts</th><th>Total</th><th>Conf</th></tr></thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ══ SHARE MODAL ══ -->
+  <div class="modal-overlay" id="shareModal" style="display:none;">
+    <div class="modal-card" style="max-width:380px;">
+      <h3 style="margin-bottom:16px;">📡 Open on another screen</h3>
+      <div class="share-link-row">
+        <div class="share-link-label">📺 TV Scoreboard</div>
+        <div class="share-link-sub">Full-screen display for the room / alley</div>
+        <div class="share-link-actions">
+          <input type="text" id="shareScoreboardUrl" readonly>
+          <button class="btn btn-sm" onclick="copyShare('shareScoreboardUrl')">Copy</button>
+          <a href="/game/<%= game._id %>" target="_blank" class="btn btn-sm btn-primary">Open</a>
+        </div>
+      </div>
+      <div class="share-link-row">
+        <div class="share-link-label">📱 Player Remote</div>
+        <div class="share-link-sub">Players join on their own phone</div>
+        <div class="share-link-actions">
+          <input type="text" id="shareRemoteUrl" readonly>
+          <button class="btn btn-sm" onclick="copyShare('shareRemoteUrl')">Copy</button>
+        </div>
+        <div id="shareQr" style="margin-top:10px; display:flex; justify-content:center;"></div>
+      </div>
+      <div class="share-link-row">
+        <div class="share-link-label">📷 Extra Camera</div>
+        <div class="share-link-sub">Open this host view on another device</div>
+        <div class="share-link-actions">
+          <input type="text" id="shareCamUrl" readonly>
+          <button class="btn btn-sm" onclick="copyShare('shareCamUrl')">Copy</button>
+        </div>
+      </div>
+      <div style="margin-top:16px; text-align:center;">
+        <span style="font-size:1.4rem; font-weight:900; letter-spacing:6px; color:var(--primary);"><%= game.inviteCode %></span>
+        <div style="font-size:0.72rem; color:var(--text3); margin-top:2px;">INVITE CODE</div>
+      </div>
+      <button class="btn btn-sm" id="shareModalClose" style="width:100%; margin-top:16px;">Close</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(function() {
+  const base   = window.location.origin;
+  const gameId = document.getElementById('cameraApp').dataset.gameId;
+  const code   = document.getElementById('cameraApp').dataset.inviteCode;
+
+  document.getElementById('shareScoreboardUrl').value = base + '/game/'   + gameId;
+  document.getElementById('shareRemoteUrl').value     = base + '/remote/' + code;
+  document.getElementById('shareCamUrl').value        = base + '/camera/' + gameId;
+
+  new QRCode(document.getElementById('shareQr'), {
+    text: base + '/remote/' + code, width: 120, height: 120, colorDark: '#000', colorLight: '#fff'
+  });
+
+  document.getElementById('shareMenuBtn').addEventListener('click', () =>
+    document.getElementById('shareModal').style.display = 'flex');
+  document.getElementById('shareModalClose').addEventListener('click', () =>
+    document.getElementById('shareModal').style.display = 'none');
+  document.getElementById('shareModal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+  });
+})();
+
+window.copyShare = function(id) {
+  navigator.clipboard.writeText(document.getElementById(id).value)
+    .then(() => window.showMiniToast && window.showMiniToast('Copied!'));
+};
+
+// ⋮ panel toggle (for history / details — panel is always open by default now)
+document.getElementById('togglePanelBtn').addEventListener('click', () => {
+  const panel   = document.getElementById('camPanel');
+  const scoreCard = document.getElementById('scoreEntryCard');
+  // Only toggle the history/scores section below the score card
+  const history = document.getElementById('historyBody')?.closest('.cam-history');
+  const scores  = document.getElementById('panelScores');
+  const meta    = document.querySelector('.cam-panel-meta');
+  const open    = document.getElementById('togglePanelBtn').dataset.open !== 'false';
+  [history, scores, meta].forEach(el => { if (el) el.style.display = open ? 'none' : ''; });
+  document.getElementById('togglePanelBtn').textContent = open ? '⋮' : '✕';
+  document.getElementById('togglePanelBtn').dataset.open = open ? 'false' : 'true';
+});
+
+document.getElementById('tuningCloseBtn')?.addEventListener('click', () => {
+  document.getElementById('tuningPanel').style.display = 'none';
+  document.getElementById('tuneBtn').classList.remove('cam-icon-btn-active');
+});
+
+// 🎮 toggle for scoring controls visibility.
+// Use when you have a paired controller device handling scoring — keeps this
+// device clean as a pure camera feed. Setting persists in localStorage for this game.
+(function () {
+  const btn = document.getElementById('controlsModeBtn');
+  if (!btn) return;
+  const key = 'tt:controlsHidden:<%= game._id %>';
+  const scoreCard = document.getElementById('scoreEntryCard');
+  const correctionRow = document.getElementById('correctionNoteRow');
+  const history = document.getElementById('historyBody')?.closest('.cam-history');
+  const scores  = document.getElementById('panelScores');
+  const aiLog   = document.querySelector('.ai-log-panel');
+  function apply(hidden) {
+    [scoreCard, correctionRow].forEach(el => { if (el) el.style.display = hidden ? 'none' : ''; });
+    // Keep the AI log visible even in camera-only mode — it's useful debug info.
+    btn.classList.toggle('cam-icon-btn-active', hidden);
+    btn.title = hidden ? 'Show scoring controls' : 'Hide scoring controls (for paired controller setups)';
+  }
+  let hidden = false;
+  try { hidden = localStorage.getItem(key) === '1'; } catch (_) {}
+  apply(hidden);
+  btn.addEventListener('click', () => {
+    hidden = !hidden;
+    try { localStorage.setItem(key, hidden ? '1' : '0'); } catch (_) {}
+    apply(hidden);
+  });
+})();
+
+// AI trigger log hide/show
+document.getElementById('aiLogToggle')?.addEventListener('click', function() {
+  const body = document.getElementById('aiLogBody');
+  const showing = body.style.display !== 'none';
+  body.style.display = showing ? 'none' : '';
+  this.textContent = showing ? 'Show' : 'Hide';
+  this.setAttribute('aria-expanded', String(!showing));
+});
+</script>
+
+<%- include('../partials/foot') %>
+<script src="/js/camera.js"></script>

@@ -73,6 +73,14 @@ const STEAM_APPS = {
   '7dtd': 294420,
 };
 
+// Passwords baked into each provisioned server's start command / config
+const GAME_PASSWORDS = {
+  rust: null,
+  valheim: 'madlads',
+  l4d2: null,
+  '7dtd': null,
+};
+
 // Game start commands
 const GAME_START = {
   rust: `cd /srv/game && ./RustDedicated -batchmode -nographics \\
@@ -89,41 +97,131 @@ function buildBootstrapScript(game) {
   const firewallRules = ports.map(p => `ufw allow ${p}/tcp\nufw allow ${p}/udp`).join('\n');
   const appId = STEAM_APPS[game] || 0;
   const startCmd = GAME_START[game] || 'echo "No start command for ' + game + '"';
+  // Primary game port — used for the port-ready healthcheck at the end of the bootstrap.
+  const primaryPort = ports[0] || 0;
 
   return `#!/bin/bash
-set -e
+set -euo pipefail
 exec > /var/log/bootstrap.log 2>&1
 
-# SSH key
-mkdir -p /root/.ssh
+phase() { echo "[phase] $1 $(date -Iseconds)"; mkdir -p /srv/game; echo "$1" > /srv/game/.phase; }
+fail()  { echo "[FATAL] $1"; echo "failed:$1" > /srv/game/.phase || true; exit 1; }
+
+phase init
+
+# --- SSH key ------------------------------------------------------------------
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
 echo "${SSH_PUBKEY}" >> /root/.ssh/authorized_keys
 chmod 600 /root/.ssh/authorized_keys
 
-# Firewall
+# --- Wait for cloud-init / apt locks ------------------------------------------
+for i in $(seq 1 60); do
+  if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && \\
+     ! fuser /var/lib/apt/lists/lock     >/dev/null 2>&1 && \\
+     ! fuser /var/lib/dpkg/lock          >/dev/null 2>&1; then
+    break
+  fi
+  echo "waiting for apt locks... ($i/60)"
+  sleep 5
+done
+
+# --- Packages -----------------------------------------------------------------
+phase packages
+export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq ufw lib32gcc-s1 lib32stdc++6 tmux
+apt-get install -y -qq ufw lib32gcc-s1 lib32stdc++6 tmux curl ca-certificates netcat-openbsd
+
+# --- Firewall -----------------------------------------------------------------
+phase firewall
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp
 ${firewallRules}
 ufw --force enable
 
-# SteamCMD
-mkdir -p /srv/steamcmd /srv/game
+# --- Game user ----------------------------------------------------------------
+phase user
+id -u gameserver >/dev/null 2>&1 || useradd -m -s /bin/bash gameserver
+install -d -o gameserver -g gameserver /srv/game /srv/steamcmd
+
+# --- SteamCMD (with retries + integrity check) --------------------------------
+phase steamcmd
 cd /srv/steamcmd
-curl -sqL "https://steamcdn-a.akamlihd.net/client/installer/steamcmd_linux.tar.gz" | tar xz
+for i in 1 2 3; do
+  if curl -fsSL --retry 3 --retry-delay 5 --max-time 120 \\
+      "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \\
+      -o steamcmd.tar.gz; then
+    break
+  fi
+  echo "steamcmd download attempt $i failed, retrying..."
+  sleep 5
+done
+[ -s steamcmd.tar.gz ] || fail "steamcmd download failed"
+tar -tzf steamcmd.tar.gz >/dev/null 2>&1 || fail "steamcmd archive corrupt"
+tar xzf steamcmd.tar.gz
+[ -x ./steamcmd.sh ] || fail "steamcmd.sh missing after extract"
+chown -R gameserver:gameserver /srv/steamcmd
 
-# Install game server
-./steamcmd.sh +force_install_dir /srv/game +login anonymous +app_update ${appId} validate +quit
+# --- Game install (SteamCMD) --------------------------------------------------
+phase install
+sudo -u gameserver /srv/steamcmd/steamcmd.sh \\
+  +@sSteamCmdForcePlatformType linux \\
+  +force_install_dir /srv/game \\
+  +login anonymous \\
+  +app_update ${appId} validate \\
+  +quit
 
-# Start game in tmux
-tmux new-session -d -s game '${startCmd.replace(/'/g, "'\\''")}'
+# Valheim's stock server binary needs its bundled libs on LD_LIBRARY_PATH.
+[ "${game}" = "valheim" ] && ln -sf /srv/game/linux64/steamclient.so /srv/game/steamclient.so || true
 
-# Signal ready with connect info
-echo "READY" > /srv/game/.provisioned
-echo "${game}" > /srv/game/.game
-date -Iseconds > /srv/game/.created
-echo "RUNNING" > /srv/game/.status
+chown -R gameserver:gameserver /srv/game
+
+# --- systemd supervision ------------------------------------------------------
+phase service
+cat > /etc/systemd/system/gameserver.service <<SERVICE
+[Unit]
+Description=MadLadsLab ${game} dedicated server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gameserver
+Group=gameserver
+WorkingDirectory=/srv/game
+Environment=LD_LIBRARY_PATH=/srv/game/linux64:/srv/game
+ExecStart=/bin/bash -lc ${JSON.stringify(startCmd)}
+Restart=on-failure
+RestartSec=15
+StandardOutput=append:/var/log/gameserver.log
+StandardError=append:/var/log/gameserver.log
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable --now gameserver
+
+# --- Wait for the game port to start listening --------------------------------
+phase warmup
+PORT=${primaryPort}
+for i in $(seq 1 120); do
+  if ss -ulnp 2>/dev/null | grep -q ":\${PORT}\\b" || ss -tlnp 2>/dev/null | grep -q ":\${PORT}\\b"; then
+    break
+  fi
+  sleep 5
+done
+
+if ss -ulnp 2>/dev/null | grep -q ":\${PORT}\\b" || ss -tlnp 2>/dev/null | grep -q ":\${PORT}\\b"; then
+  phase ready
+  echo "READY" > /srv/game/.provisioned
+  echo "${game}" > /srv/game/.game
+  date -Iseconds > /srv/game/.created
+  echo "RUNNING" > /srv/game/.status
+else
+  fail "port ${primaryPort} never came up after 10 minutes"
+fi
 `;
 }
 
@@ -184,10 +282,25 @@ async function provisionServer(game, requestedBy) {
 }
 
 // ── Get Linode status ──
+//
+// When the Linode is gone (404 from the API), auto-reconcile the DB record so
+// the dashboard doesn't hang on a "booting" card after someone deletes the VM
+// directly from the Linode Cloud Manager.
 async function getLinodeStatus(linodeId) {
   const res = await fetch(LINODE_API + '/linode/instances/' + linodeId, {
     headers: headers(),
   });
+  if (res.status === 404) {
+    try {
+      if (db) {
+        await db.collection('provisioned_servers').updateOne(
+          { linodeId, status: { $in: ['provisioning', 'running'] } },
+          { $set: { status: 'destroyed', destroyedAt: new Date(), destroyedReason: 'reconciled: not in Linode API' } }
+        );
+      }
+    } catch {}
+    return null;
+  }
   if (!res.ok) return null;
   return res.json();
 }
@@ -275,4 +388,5 @@ module.exports = {
   touchActivity,
   checkInactivity,
   countActive,
+  GAME_PASSWORDS,
 };

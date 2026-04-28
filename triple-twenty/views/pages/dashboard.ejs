@@ -1,0 +1,548 @@
+<%- include('../partials/head', { title: 'My Games — Triple-Twenty' }) %>
+
+<div class="dashboard" id="dashboardApp">
+
+  <div class="dash-header">
+    <div class="dash-header-left">
+      <% if (user.avatar) { %><img src="<%= user.avatar %>" class="dash-avatar"><% } %>
+      <div>
+        <h1><%= user.displayName %></h1>
+        <div class="dash-email"><%= user.email %></div>
+      </div>
+    </div>
+    <div class="dash-header-right">
+      <a href="/" class="btn btn-sm">← Lobby</a>
+      <button class="btn btn-primary" id="newGameQuickBtn">+ New Game</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="dash-stats-bar">
+    <div class="dash-stat"><span id="dstatHosted">–</span><label>Hosted</label></div>
+    <div class="dash-stat"><span id="dstatJoined">–</span><label>Joined</label></div>
+    <div class="dash-stat"><span id="dstatActive">–</span><label>Active Now</label></div>
+    <div class="dash-stat"><span id="dstatWins">–</span><label>Wins</label></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="dash-tabs">
+    <button class="dash-tab active" data-tab="hosted">🎮 Hosted</button>
+    <button class="dash-tab" data-tab="joined">🔗 Joined</button>
+    <button class="dash-tab" data-tab="settings">⚙ Settings</button>
+  </div>
+
+  <!-- HOSTED -->
+  <div class="dash-tab-content active" id="tab-hosted">
+    <div class="dash-loading" id="hostedLoading">Loading...</div>
+    <div id="hostedList" style="display:none;"></div>
+    <div class="dash-empty" id="hostedEmpty" style="display:none;">
+      No hosted games yet.
+      <button class="btn btn-sm btn-primary" id="newGameEmptyBtn" style="margin-top:10px;">+ New Game</button>
+    </div>
+  </div>
+
+  <!-- JOINED -->
+  <div class="dash-tab-content" id="tab-joined">
+    <div class="dash-loading" id="joinedLoading">Loading...</div>
+    <div id="joinedList" style="display:none;"></div>
+    <div class="dash-empty" id="joinedEmpty" style="display:none;">
+      No joined games yet. Enter an invite code on the lobby.
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="dash-tab-content" id="tab-settings">
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:14px;">🔔 Notifications</h3>
+      <label class="toggle-row">
+        <span>
+          <strong>Turn alerts</strong>
+          <span class="hint">Flash a toast on all your open tabs/devices when it's your turn</span>
+        </span>
+        <input type="checkbox" class="toggle-input" id="notifyTurnToggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+      <label class="toggle-row">
+        <span>
+          <strong>Chat messages</strong>
+          <span class="hint">Notify when someone chats in your active games</span>
+        </span>
+        <input type="checkbox" class="toggle-input" id="notifyChatToggle">
+        <span class="toggle-slider"></span>
+      </label>
+      <div style="margin-top:16px; display:flex; align-items:center; gap:12px;">
+        <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+        <span id="saveConfirm" style="display:none; color:var(--green); font-size:0.85rem;">✓ Saved</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:14px;">👤 Account</h3>
+      <label style="margin-bottom:6px;">Display Name</label>
+      <div style="display:flex; gap:8px; max-width:360px;">
+        <input type="text" id="displayNameInput" value="<%= user.displayName %>">
+        <button class="btn btn-sm" id="saveDisplayNameBtn" style="flex-shrink:0;">Save</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ NEW GAME MODAL ══ -->
+<div class="modal-overlay" id="newGameModal" style="display:none;">
+  <div class="modal-card" style="max-width:480px; text-align:left;">
+    <h2 style="margin-bottom:16px;">🎮 New Game</h2>
+
+    <div class="form-group">
+      <label>Game Name (optional)</label>
+      <input type="text" id="ngName" placeholder="e.g. Friday Night 501">
+    </div>
+
+    <div class="form-group">
+      <label>Mode</label>
+      <div class="mode-select">
+        <button type="button" class="mode-btn active" data-mode="501">501</button>
+        <button type="button" class="mode-btn" data-mode="cricket">Cricket</button>
+      </div>
+      <input type="hidden" id="ngMode" value="501">
+    </div>
+
+    <div class="form-group">
+      <label>Players</label>
+      <div id="ngPlayerList">
+        <input type="text" class="ng-player" placeholder="Player 1 (your name)" style="margin-bottom:8px;">
+        <input type="text" class="ng-player" placeholder="Player 2" style="margin-bottom:8px;">
+      </div>
+      <button type="button" class="btn btn-sm" id="ngAddPlayer">+ Add Player</button>
+    </div>
+
+    <div class="form-group">
+      <label>Camera Source</label>
+      <div class="cam-type-row">
+        <button type="button" class="cam-type-btn active" data-cam="phone">📱 Phone</button>
+        <button type="button" class="cam-type-btn" data-cam="ip">📷 IP Cam</button>
+      </div>
+      <input type="hidden" id="ngCamType" value="phone">
+      <div id="ngIpFields" style="display:none; margin-top:8px;">
+        <input type="text" id="ngCamIp" placeholder="192.168.1.x" style="margin-bottom:6px;">
+        <div class="cam-creds-row">
+          <input type="text"     id="ngCamUser" placeholder="Username">
+          <input type="password" id="ngCamPass" placeholder="Password">
+        </div>
+      </div>
+    </div>
+
+    <div id="ngError" class="error-msg" style="display:none;"></div>
+
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn btn-primary btn-lg" id="ngCreateBtn">Create &amp; Get Invite</button>
+      <button class="btn btn-sm" id="ngCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RENAME MODAL ══ -->
+<div class="modal-overlay" id="renameModal" style="display:none;">
+  <div class="modal-card" style="max-width:360px;">
+    <h3>Rename Game</h3>
+    <input type="text" id="renameInput" placeholder="Game name" style="margin-top:12px;">
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn btn-primary" id="renameConfirmBtn">Save</button>
+      <button class="btn btn-sm"      id="renameCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ INVITE MODAL (shown after creating game) ══ -->
+<div class="modal-overlay" id="inviteModal" style="display:none;">
+  <div class="modal-card" style="text-align:center;">
+    <h2>Game Created! 🎯</h2>
+    <p style="color:var(--text2); margin:8px 0 16px;">Share with your players</p>
+    <div class="invite-code" id="inviteCodeDisplay"></div>
+    <div class="invite-url-row">
+      <input type="text" id="inviteUrlInput" readonly>
+      <button class="btn btn-sm" id="copyInviteBtn">Copy</button>
+    </div>
+    <div class="qr-wrap" id="qrWrap" style="margin:16px 0;"></div>
+    <div class="modal-actions">
+      <a id="hostGameLink" class="btn btn-primary btn-lg">📷 Open Host View</a>
+      <a id="scoreboardLink" class="btn btn-secondary" target="_blank">📺 Scoreboard</a>
+    </div>
+    <button class="btn btn-sm" id="inviteCloseBtn" style="margin-top:12px; width:100%;">Close</button>
+  </div>
+</div>
+
+<!-- ══ KICK PLAYER MODAL ══ -->
+<div class="modal-overlay" id="kickModal" style="display:none;">
+  <div class="modal-card" style="max-width:340px;">
+    <h3>Manage Players</h3>
+    <div id="kickPlayerList" style="margin-top:12px;"></div>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn btn-sm" id="kickCancelBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const MY_ID = '<%= user._id %>';
+let userData       = null;
+let renameTargetId = null;
+let kickTargetId   = null;
+let _loadAttempt   = 0;
+
+// ══════════════════════════════════════════════════
+// LOAD DASHBOARD
+// ══════════════════════════════════════════════════
+async function loadDashboard() {
+  try {
+    const resp = await fetch('/api/user/me');
+
+    if (resp.status === 401) {
+      _loadAttempt++;
+      if (_loadAttempt <= 2) {
+        console.warn('Dashboard: 401 on attempt', _loadAttempt, '— retrying in 800ms');
+        setTimeout(loadDashboard, 800);
+        return;
+      }
+      window.location.href = '/auth/google?returnTo=/dashboard';
+      return;
+    }
+
+    _loadAttempt = 0;
+    if (!resp.ok) throw new Error('Server error ' + resp.status);
+
+    const data = await resp.json();
+    if (!data.user) throw new Error('Invalid response');
+
+    const { user, hosted = [], joined = [] } = data;
+    userData = { user, hosted, joined };
+
+    const activeCount = [...hosted, ...joined].filter(g => ['active','waiting','idle'].includes(g.status)).length;
+    document.getElementById('dstatHosted').textContent = hosted.length;
+    document.getElementById('dstatJoined').textContent = joined.length;
+    document.getElementById('dstatActive').textContent = activeCount;
+    document.getElementById('dstatWins').textContent   = user.stats?.gamesWon || 0;
+
+    document.getElementById('notifyTurnToggle').checked = user.notifyOnTurn !== false;
+    document.getElementById('notifyChatToggle').checked = user.notifyOnChat  || false;
+    document.getElementById('displayNameInput').value   = user.displayName   || '';
+
+    renderGameList('hosted', hosted, true);
+    renderGameList('joined', joined, false);
+    document.querySelectorAll('.dash-loading').forEach(el => el.style.display = 'none');
+
+  } catch (err) {
+    console.error('Dashboard load failed', err);
+    document.querySelectorAll('.dash-loading').forEach(el => {
+      el.textContent = 'Error loading data. ';
+      const retry = document.createElement('button');
+      retry.className = 'btn btn-sm';
+      retry.textContent = 'Retry';
+      retry.onclick = () => { _loadAttempt = 0; loadDashboard(); };
+      el.appendChild(retry);
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════
+function renderGameList(type, games, isHost) {
+  const loadingEl = document.getElementById(type + 'Loading');
+  const listEl    = document.getElementById(type + 'List');
+  const emptyEl   = document.getElementById(type + 'Empty');
+  loadingEl.style.display = 'none';
+  if (!games.length) {
+    emptyEl.style.display = 'flex';
+    listEl.style.display  = 'none';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  listEl.style.display  = 'block';
+
+  const buckets = [
+    { label:'● Active',   cls:'section-active',   items: games.filter(g=>g.status==='active')   },
+    { label:'◌ Waiting',  cls:'section-waiting',  items: games.filter(g=>g.status==='waiting')  },
+    { label:'⏸ Paused',   cls:'section-idle',     items: games.filter(g=>g.status==='idle')     },
+    { label:'✓ Finished', cls:'section-finished', items: games.filter(g=>g.status==='finished') },
+    { label:'✕ Archived', cls:'section-archived', items: games.filter(g=>g.status==='archived') }
+  ].filter(b => b.items.length);
+
+  listEl.innerHTML = buckets.map(b => `
+    <div class="dash-section">
+      <div class="dash-section-label ${b.cls}">${b.label} · ${b.items.length}</div>
+      ${b.items.map(g => renderGameRow(g, isHost)).join('')}
+    </div>`
+  ).join('');
+
+  listEl.querySelectorAll('[data-action]').forEach(el => {
+    el.addEventListener('click', () => handleAction(el.dataset.action, el.dataset.id, el.dataset.extra));
+  });
+}
+
+function renderGameRow(g, isHost) {
+  const mySlot   = g.players.findIndex(p => p.userId === MY_ID);
+  const isMyTurn = g.status === 'active' && g.currentPlayerIndex === mySlot && mySlot !== -1;
+
+  const scores = g.players.map((p, i) => {
+    const active = i === g.currentPlayerIndex && g.status === 'active';
+    const score  = g.mode === '501'
+      ? (p.remaining !== undefined ? p.remaining : '?')
+      : (p.cricketPoints || 0) + ' pts';
+    return `<span class="dg-player ${active?'dg-player-active':''}">${p.name}: <strong>${score}</strong></span>`;
+  }).join('');
+
+  const statusBadge = {
+    active:   '<span class="dg-status status-active">● Live</span>',
+    waiting:  '<span class="dg-status status-waiting">◌ Waiting</span>',
+    idle:     '<span class="dg-status status-idle">⏸ Paused</span>',
+    finished: '<span class="dg-status status-finished">✓ Done</span>',
+    archived: '<span class="dg-status status-archived">✕ Archived</span>'
+  }[g.status] || '';
+
+  const live = ['active','waiting'].includes(g.status);
+
+  const hostActions = isHost ? `
+    <button class="btn btn-sm" data-action="rename" data-id="${g._id}" data-extra="${encodeURIComponent(g.name||'')}">✏</button>
+    <button class="btn btn-sm" data-action="players" data-id="${g._id}">👥</button>
+    ${g.status==='waiting' ? `<button class="btn btn-sm btn-success" data-action="start" data-id="${g._id}">▶ Start</button>` : ''}
+    ${g.status==='idle' ? `<button class="btn btn-sm btn-success" data-action="resume" data-id="${g._id}">▶ Resume</button>` : ''}
+    ${(live || g.status==='idle') ? `<button class="btn btn-sm btn-danger" data-action="archive" data-id="${g._id}">✕ End</button>` : ''}
+  ` : '';
+
+  const viewActions = `
+    ${live && isHost ? `<a href="/camera/${g._id}" class="btn btn-sm btn-primary">📷 Host</a>` : ''}
+    ${live && !isHost && mySlot !== -1 ? `<a href="/remote/${g.inviteCode}" class="btn btn-sm btn-primary">📱 Play</a>` : ''}
+    ${g.status==='idle' && !isHost && mySlot !== -1 ? `<button class="btn btn-sm btn-success" data-action="resume" data-id="${g._id}">▶ Resume</button>` : ''}
+    ${live ? `<a href="/game/${g._id}" class="btn btn-sm">📺 Watch</a>` : ''}
+    ${g.status==='finished' ? `<a href="/game/${g._id}" class="btn btn-sm">📊 Review</a>` : ''}
+  `;
+
+  const inviteBtn = g.inviteCode && live
+    ? `<button class="btn btn-sm" data-action="copyinvite" data-id="${g._id}" data-extra="${g.inviteCode}">🔗</button>`
+    : '';
+
+  return `
+    <div class="dash-game-row ${isMyTurn?'my-turn-row':''}" id="dgrow_${g._id}">
+      <div class="dg-left">
+        <div class="dg-name">${g.name || (g.mode.toUpperCase() + ' · ' + g.players.map(p=>p.name).join(' vs '))}</div>
+        <div class="dg-meta">
+          ${statusBadge}
+          <span class="dg-mode">${g.mode.toUpperCase()}</span>
+          <span class="dg-rounds">R${g.roundCount}</span>
+          <span class="dg-time">${timeAgo(g.updatedAt)}</span>
+        </div>
+        <div class="dg-scores">${scores}</div>
+        ${isMyTurn ? '<div class="dg-turn-banner">🎯 YOUR TURN — tap Host View</div>' : ''}
+      </div>
+      <div class="dg-actions">${viewActions}${hostActions}${inviteBtn}</div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════
+// ACTIONS
+// ══════════════════════════════════════════════════
+async function handleAction(action, gameId, extra) {
+  switch (action) {
+    case 'start':
+      if (!confirm('Start game now?')) return;
+      await fetch(`/api/game/${gameId}/start`, { method:'POST' });
+      loadDashboard(); break;
+    case 'resume': {
+      const resp = await fetch(`/api/game/${gameId}/resume`, { method:'POST' });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) { alert(data.error || 'Could not resume game'); break; }
+      // Route the user to the right view
+      const game = data.game || {};
+      const mySlot = (game.players || []).findIndex(p => p.userId === MY_ID);
+      const amHost = String(game.hostUserId) === MY_ID;
+      if (amHost)      window.location.href = `/camera/${gameId}`;
+      else if (mySlot !== -1 && game.inviteCode) window.location.href = `/remote/${game.inviteCode}`;
+      else loadDashboard();
+      break;
+    }
+    case 'archive':
+      if (!confirm('End and archive this game? This cannot be undone.')) return;
+      await fetch(`/api/game/${gameId}`, { method:'DELETE' });
+      loadDashboard(); break;
+    case 'rename':
+      renameTargetId = gameId;
+      document.getElementById('renameInput').value = decodeURIComponent(extra || '');
+      document.getElementById('renameModal').style.display = 'flex';
+      setTimeout(() => document.getElementById('renameInput').focus(), 50); break;
+    case 'players':
+      kickTargetId = gameId;
+      showKickModal(gameId); break;
+    case 'copyinvite':
+      await navigator.clipboard.writeText(`${location.origin}/remote/${extra}`);
+      showMiniToast('Invite link copied!'); break;
+  }
+}
+
+async function showKickModal(gameId) {
+  const game = await fetch(`/api/game/${gameId}`).then(r => r.json());
+  document.getElementById('kickPlayerList').innerHTML = game.players.map((p, i) => `
+    <div class="kick-player-row">
+      <span class="kick-player-name">
+        ${p.name}
+        ${p.userId ? '<span class="linked-badge">linked</span>' : '<span class="unlinked-badge">guest</span>'}
+      </span>
+      <button class="btn btn-sm btn-danger" onclick="kickPlayer('${gameId}', ${i})">Remove</button>
+    </div>`).join('');
+  document.getElementById('kickModal').style.display = 'flex';
+}
+
+async function kickPlayer(gameId, playerIndex) {
+  if (!confirm('Remove this player from the game?')) return;
+  await fetch(`/api/game/${gameId}/kick/${playerIndex}`, { method:'POST' });
+  document.getElementById('kickModal').style.display = 'none';
+  loadDashboard();
+}
+
+// ══════════════════════════════════════════════════
+// NEW GAME MODAL
+// ══════════════════════════════════════════════════
+function openNewGameModal() { document.getElementById('newGameModal').style.display = 'flex'; }
+
+['newGameQuickBtn','newGameEmptyBtn'].forEach(id =>
+  document.getElementById(id)?.addEventListener('click', openNewGameModal));
+document.getElementById('ngCancelBtn').addEventListener('click', () =>
+  document.getElementById('newGameModal').style.display = 'none');
+document.getElementById('newGameModal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none'; });
+
+document.querySelectorAll('#newGameModal .mode-btn').forEach(btn =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#newGameModal .mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('ngMode').value = btn.dataset.mode;
+  }));
+
+document.querySelectorAll('#newGameModal .cam-type-btn').forEach(btn =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#newGameModal .cam-type-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('ngCamType').value = btn.dataset.cam;
+    document.getElementById('ngIpFields').style.display = btn.dataset.cam === 'ip' ? 'block' : 'none';
+  }));
+
+document.getElementById('ngAddPlayer').addEventListener('click', () => {
+  const list = document.getElementById('ngPlayerList');
+  const count = list.querySelectorAll('input').length;
+  if (count >= 4) return;
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.className = 'ng-player';
+  inp.placeholder = `Player ${count + 1}`; inp.style.marginBottom = '8px';
+  list.appendChild(inp);
+});
+
+document.getElementById('ngCreateBtn').addEventListener('click', async () => {
+  const errEl = document.getElementById('ngError');
+  const names = Array.from(document.querySelectorAll('.ng-player')).map(i=>i.value.trim()).filter(Boolean);
+  if (!names.length) { errEl.textContent = 'Add at least one player name.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+  const camType = document.getElementById('ngCamType').value;
+  let camera = null;
+  if (camType === 'ip') {
+    const ip = document.getElementById('ngCamIp').value.trim();
+    if (ip) camera = { ip, username: document.getElementById('ngCamUser').value.trim(), password: document.getElementById('ngCamPass').value.trim() };
+  }
+  const btn = document.getElementById('ngCreateBtn');
+  btn.textContent = 'Creating...'; btn.disabled = true;
+  try {
+    const game = await fetch('/api/game', {
+      method: 'POST', headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ mode: document.getElementById('ngMode').value, name: document.getElementById('ngName').value.trim() || null, players: names.map(n => ({ name: n })), camera })
+    }).then(r=>r.json());
+    if (!game._id) throw new Error(game.error || 'Failed');
+    document.getElementById('newGameModal').style.display = 'none';
+    showInviteModal(game);
+    loadDashboard();
+  } catch (err) { errEl.textContent = err.message; errEl.style.display = 'block'; }
+  finally { btn.textContent = 'Create & Get Invite'; btn.disabled = false; }
+});
+
+function showInviteModal(game) {
+  const url = `${location.origin}/remote/${game.inviteCode}`;
+  document.getElementById('inviteCodeDisplay').textContent = game.inviteCode;
+  document.getElementById('inviteUrlInput').value          = url;
+  document.getElementById('hostGameLink').href             = `/camera/${game._id}`;
+  document.getElementById('scoreboardLink').href           = `/game/${game._id}`;
+  document.getElementById('qrWrap').innerHTML = '';
+  new QRCode(document.getElementById('qrWrap'), { text:url, width:160, height:160, colorDark:'#000', colorLight:'#fff' });
+  document.getElementById('inviteModal').style.display = 'flex';
+}
+document.getElementById('copyInviteBtn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('inviteUrlInput').value)
+    .then(() => { document.getElementById('copyInviteBtn').textContent = 'Copied!'; setTimeout(() => document.getElementById('copyInviteBtn').textContent = 'Copy', 2000); });
+});
+document.getElementById('inviteCloseBtn').addEventListener('click', () => document.getElementById('inviteModal').style.display = 'none');
+document.getElementById('inviteModal').addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
+
+document.getElementById('renameConfirmBtn').addEventListener('click', async () => {
+  const name = document.getElementById('renameInput').value.trim();
+  if (!name || !renameTargetId) return;
+  await fetch(`/api/game/${renameTargetId}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+  document.getElementById('renameModal').style.display = 'none';
+  renameTargetId = null; loadDashboard();
+});
+document.getElementById('renameCancelBtn').addEventListener('click', () => document.getElementById('renameModal').style.display = 'none');
+document.getElementById('renameModal').addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
+
+document.getElementById('kickCancelBtn').addEventListener('click', () => document.getElementById('kickModal').style.display = 'none');
+document.getElementById('kickModal').addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
+
+document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+  const resp = await fetch('/api/user/me', { method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ notifyOnTurn: document.getElementById('notifyTurnToggle').checked, notifyOnChat: document.getElementById('notifyChatToggle').checked }) });
+  if (resp.ok) { const el = document.getElementById('saveConfirm'); el.style.display = 'inline'; setTimeout(() => el.style.display = 'none', 2500); }
+});
+document.getElementById('saveDisplayNameBtn').addEventListener('click', async () => {
+  const name = document.getElementById('displayNameInput').value.trim();
+  if (!name) return;
+  await fetch('/api/user/me', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ displayName: name }) });
+  showMiniToast('Name updated');
+});
+
+document.querySelectorAll('.dash-tab').forEach(tab =>
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.dash-tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  }));
+
+function timeAgo(d) {
+  const s = Math.floor((Date.now() - new Date(d)) / 1000);
+  if (s < 60)    return 'just now';
+  if (s < 3600)  return Math.floor(s/60)   + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+</script>
+
+<%- include('../partials/foot') %>
+
+<!-- Socket + initial load — MUST be after foot.ejs so socket.io.js is loaded -->
+<script>
+const socket = window._ttSocket || io();
+
+['game-update','game-started','game-finished','lobby-update','game-archived','game-idle','game-resumed'].forEach(evt =>
+  socket.on(evt, () => loadDashboard()));
+
+socket.on('your-turn', ({ gameId }) => {
+  const row = document.getElementById('dgrow_' + gameId);
+  if (!row) return;
+  row.classList.add('my-turn-row');
+  if (!row.querySelector('.dg-turn-banner')) {
+    const b = document.createElement('div');
+    b.className = 'dg-turn-banner';
+    b.textContent = '🎯 YOUR TURN — tap Host or Play';
+    row.querySelector('.dg-left').appendChild(b);
+  }
+  row.scrollIntoView({ behavior:'smooth', block:'nearest' });
+});
+
+loadDashboard();
+</script>

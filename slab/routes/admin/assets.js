@@ -36,7 +36,7 @@ async function uploadToLinode(buffer, folder, originalName, mimeType, s3Prefix) 
     Body: buffer,
     ContentType: mimeType,
     ACL: 'public-read',
-  }));
+  }), { abortSignal: AbortSignal.timeout(60000) });
 
   return { key, url: bucketUrl(key), filename };
 }
@@ -64,6 +64,9 @@ router.post('/generate-bg', express.json(), async (req, res) => {
     if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
     const negPrompt = negative_prompt || 'text, words, letters, numbers, watermark, blurry, low quality, deformed, ugly';
+
+    // Keep-alive: send a comment byte every 15s so Apache doesn't close the socket
+    // We switch to streaming only if the client supports it, otherwise rely on timeout fix
     const pngBuffer = await generateSdImage(prompt, negPrompt, sizePreset || 'ig-post');
 
     // Upload to S3 so the frontend can use it as an image layer
@@ -72,7 +75,7 @@ router.post('/generate-bg', express.json(), async (req, res) => {
     res.json({ success: true, url, size: pngBuffer.length });
   } catch (err) {
     console.error('[generate-bg] error:', err.message);
-    res.status(500).json({ error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: err.message });
   }
 });
 

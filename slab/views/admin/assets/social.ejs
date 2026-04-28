@@ -618,7 +618,21 @@ function sgMobOpen(fabKey) {
 
   // Event delegation for tool-btn clicks (add layer, generate, etc.)
   sgMobBody.querySelectorAll('.tool-btn').forEach(btn => {
-    if (btn.id) {
+    if (!btn.id) return;
+    if (btn.id === 'genBgBtn') {
+      // Wire generate button directly to overlay's own inputs — avoids duplicate-ID confusion
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const promptEl = sgMobBody.querySelector('#sdPrompt');
+        const negEl    = sgMobBody.querySelector('#sdNegPrompt');
+        const statusEl = sgMobBody.querySelector('#sdStatus');
+        const prompt   = promptEl?.value?.trim() || '';
+        const neg      = negEl?.value?.trim()    || 'text, words, letters, watermark, blurry, low quality';
+        generateSdBackground(prompt, neg, { btn: this, status: statusEl });
+      });
+    } else if (btn.id === 'clearBgBtn') {
+      btn.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('clearBgBtn').click(); });
+    } else {
       const orig = document.getElementById(btn.id);
       if (orig && orig !== btn) btn.addEventListener('click', (e) => { e.preventDefault(); orig.click(); });
     }
@@ -786,17 +800,15 @@ document.getElementById('bgColorHex').addEventListener('change', e => { bgColor 
 // ═══════════════════════════════════════════
 //  AI BACKGROUND (Stable Diffusion)
 // ═══════════════════════════════════════════
-async function generateSdBackground(prompt, negPrompt) {
-  function getVisible(id) {
-    for (const el of document.querySelectorAll('#' + id)) {
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) return el;
-    }
-    return document.getElementById(id);
+async function generateSdBackground(prompt, negPrompt, _ctx) {
+  // _ctx allows caller to pass { btn, status } to target the right elements
+  // when duplicate IDs exist (mobile overlay clone vs original panel)
+  const status = (_ctx && _ctx.status) || document.getElementById('sdStatus');
+  const btn    = (_ctx && _ctx.btn)    || document.getElementById('genBgBtn');
+  if (!prompt || !prompt.trim()) {
+    if (status) status.textContent = 'Enter a prompt first.';
+    return;
   }
-  const status = getVisible('sdStatus');
-  const btn    = getVisible('genBgBtn');
-  if (!prompt.trim()) { status.textContent = 'Enter a prompt first.'; return; }
 
   btn.disabled = true;
   btn.textContent = 'Generating...';
@@ -848,19 +860,19 @@ async function generateSdBackground(prompt, negPrompt) {
   } finally {
     clearInterval(ticker);
   }
-  document.querySelectorAll('#genBgBtn').forEach(b => { b.disabled = false; b.textContent = 'Generate Background'; });
+  if (btn) { btn.disabled = false; btn.textContent = 'Generate Background'; }
+  // Also restore any other copies (mobile overlay clone)
+  document.querySelectorAll('[id="genBgBtn"]').forEach(b => { b.disabled = false; b.textContent = 'Generate Background'; });
 }
 
-document.getElementById('genBgBtn').addEventListener('click', () => {
-  // Use visible prompt input (desktop panel or mobile overlay clone)
-  function visVal(id) {
-    for (const el of document.querySelectorAll('#' + id)) {
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) return el.value;
-    }
-    return document.getElementById(id)?.value || '';
-  }
-  generateSdBackground(visVal('sdPrompt'), visVal('sdNegPrompt'));
+document.getElementById('genBgBtn').addEventListener('click', function() {
+  // This is the ORIGINAL desktop button — read from the original inputs directly
+  const promptEl = document.getElementById('sdPrompt');
+  const negEl    = document.getElementById('sdNegPrompt');
+  const statusEl = document.getElementById('sdStatus');
+  const prompt   = promptEl?.value?.trim() || '';
+  const neg      = negEl?.value?.trim()    || 'text, words, letters, watermark, blurry, low quality';
+  generateSdBackground(prompt, neg, { btn: this, status: statusEl });
 });
 document.getElementById('clearBgBtn').addEventListener('click', () => {
   layers = layers.filter(l => !l._aiBg);

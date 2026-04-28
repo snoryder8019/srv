@@ -301,6 +301,7 @@
     .event-game.sdtd { background: rgba(123,53,0,0.2); color: #c46200; }
     .event-game.se { background: rgba(43,94,166,0.2); color: #4a8cd6; }
     .event-game.palworld { background: rgba(61,184,122,0.2); color: #3db87a; }
+    .event-game.windrose { background: rgba(184,134,58,0.2); color: #d4a34a; }
     .event-icon { font-size: 0.78rem; flex-shrink: 0; }
     .event-text { color: var(--text); flex: 1; }
     .event-text .name { color: var(--yellow); font-weight: bold; }
@@ -395,6 +396,7 @@ const GAMES = [
   {
     id: 'rust', name: 'Rust', badge: 'RUST', color: '#cd412b', img: '/static/img/rust.jpg',
     connect: 'client.connect games.madladslab.com:28015', steam: 'steam://connect/games.madladslab.com:28015',
+    password: null,
     hasRcon: true, pluginType: 'Oxide Plugins', pluginApi: '/api/rust/plugins',
     statFields: ['status', 'players', 'map', 'worldSize', 'seed', 'fps'],
     stat24: ['peak', 'unique', 'joins', 'kills'],
@@ -402,6 +404,7 @@ const GAMES = [
   {
     id: 'l4d2', name: 'Left 4 Dead 2', badge: 'L4D2', color: '#2e7d32', img: '/static/img/l4d2.jpg',
     connect: 'connect games.madladslab.com:27015', steam: 'steam://connect/games.madladslab.com:27015',
+    password: null,
     hasRcon: false, pluginType: 'SourceMod Plugins', pluginApi: '/api/l4d2/plugins',
     statFields: ['status', 'players', 'map'],
     stat24: ['peak', 'unique', 'joins', 'kills'],
@@ -409,6 +412,7 @@ const GAMES = [
   {
     id: '7dtd', name: '7 Days to Die', badge: '7DTD', color: '#7b3500', img: '/static/img/7dtd.jpg',
     connect: 'games.madladslab.com:26900', steam: 'steam://connect/games.madladslab.com:26900',
+    password: null,
     hasRcon: false, pluginType: 'Mods', pluginApi: '/api/7dtd/mods',
     statFields: ['status', 'players', 'map', 'seed'],
     stat24: ['peak', 'unique', 'joins', 'kills'],
@@ -416,6 +420,7 @@ const GAMES = [
   {
     id: 'valheim', name: 'Valheim', badge: 'VALHEIM', color: '#4a7c9e', img: '/static/img/valheim.jpg',
     connect: 'games.madladslab.com:2456', steam: 'steam://connect/games.madladslab.com:2456',
+    password: 'changeme_valheim_pass',
     hasRcon: false, pluginType: 'BepInEx Plugins', pluginApi: '/api/valheim/plugins',
     statFields: ['status', 'players', 'map', 'maxPlayers'],
     stat24: ['peak', 'unique', 'joins', 'deaths', 'bossKills', 'raids'],
@@ -423,6 +428,7 @@ const GAMES = [
   {
     id: 'se', name: 'Space Engineers', badge: 'SE', color: '#2b5ea6', img: '/static/img/se.jpg',
     connect: 'games.madladslab.com:27016', steam: 'steam://connect/games.madladslab.com:27016',
+    password: null,
     hasRcon: false, pluginType: 'Mods', pluginApi: '/api/se/mods',
     statFields: ['status', 'players', 'map', 'maxPlayers'],
     stat24: ['peak', 'unique', 'joins'],
@@ -430,7 +436,15 @@ const GAMES = [
   {
     id: 'palworld', name: 'Palworld', badge: 'PALWORLD', color: '#3db87a', img: '/static/img/palworld.jpg',
     connect: 'games.madladslab.com:8211', steam: null,
+    password: 'hello_palworld',
     hasRcon: false, pluginType: null, pluginApi: null,
+    statFields: ['status', 'players', 'map', 'maxPlayers'],
+    stat24: ['peak', 'unique', 'joins'],
+  },
+  {
+    id: 'windrose', name: 'Windrose', badge: 'WINDROSE', color: '#b8863a', img: '/static/img/windrose.jpg',
+    connect: 'Invite code (see server console)', steam: null, usesInviteCode: true,
+    hasRcon: true, pluginType: null, pluginApi: null,
     statFields: ['status', 'players', 'map', 'maxPlayers'],
     stat24: ['peak', 'unique', 'joins'],
   },
@@ -445,7 +459,7 @@ const GAMES = [
 ];
 
 const API_MAP = {
-  rust: 'rust', l4d2: 'l4d2', '7dtd': '7dtd', valheim: 'valheim', se: 'se', palworld: 'palworld'
+  rust: 'rust', l4d2: 'l4d2', '7dtd': '7dtd', valheim: 'valheim', se: 'se', palworld: 'palworld', windrose: 'windrose'
 };
 
 const STAT24_LABELS = {
@@ -485,9 +499,14 @@ function buildCard(g) {
     </div>
     <div class="stats-24h">${stat24Html}</div>
     <div class="connect-bar">
-      ${g.steam ? `<a href="#" class="btn-join" id="${id}_join" onclick="return joinServer(this)" data-connect="${g.connect}" data-steam="${g.steam}" style="display:none">JOIN SERVER</a>` :
-        `<span class="connect-cmd" onclick="navigator.clipboard.writeText('${g.connect}');this.textContent='COPIED!';setTimeout(()=>this.textContent='${g.connect}',2000)" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--green);font-family:inherit;font-size:0.78rem;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${g.connect}</span>`}
+      ${g.steam ? `<a href="#" class="btn-join" id="${id}_join" onclick="return joinServer(this)" data-connect="${g.connect}" data-steam="${g.steam}" style="display:none">JOIN SERVER</a>
+        <span class="connect-cmd" id="${id}_connect" onclick="copyConnect(this)" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.78rem;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-default="${g.connect}" data-uses-invite="${g.usesInviteCode ? '1' : ''}">${g.connect}</span>` :
+        `<span class="connect-cmd" id="${id}_connect" onclick="copyConnect(this)" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--green);font-family:inherit;font-size:0.78rem;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-default="${g.connect}" data-uses-invite="${g.usesInviteCode ? '1' : ''}">${g.connect}</span>`}
       <button class="btn-request" id="${id}_request" onclick="requestServer('${id}')" style="display:none">START SERVER</button>
+    </div>
+    <div class="pw-bar" id="${id}_pwbar" style="display:${g.password ? 'flex' : 'none'};gap:6px;padding:0 14px 10px;align-items:center;font-size:0.7rem;color:var(--muted)">
+      <span style="letter-spacing:0.08em;text-transform:uppercase">Password</span>
+      <span class="connect-cmd" id="${id}_password" onclick="copyPassword(this)" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--yellow);font-family:inherit;font-size:0.78rem;padding:4px 10px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-default="${g.password || ''}" data-copy="${g.password || ''}">${g.password || '—'}</span>
     </div>`;
 
   // Stats/leaderboard tab
@@ -607,8 +626,30 @@ async function pollGame(g) {
   }
   const id = g.id;
   const apiId = API_MAP[id] || id;
-  const s = await api('GET', `/api/${apiId}/status`);
+  let s = await api('GET', `/api/${apiId}/status`);
   if (!s) return;
+
+  // If the local server isn't running, see whether a Linode is hosting this game.
+  if (!s.running) {
+    try {
+      const r = await fetch('/servers/api/provisioned-status/' + apiId);
+      if (r.ok) {
+        const rs = await r.json();
+        if (rs && rs.active) {
+          s = {
+            running: true,
+            booting: !rs.ready,
+            players: s.players || 0,
+            maxPlayers: s.maxPlayers || 0,
+            map: s.map || null,
+            remoteConnect: rs.connect,
+            remoteSteam: rs.steam,
+            remotePassword: rs.password,
+          };
+        }
+      }
+    } catch (e) {}
+  }
 
   const dot = document.getElementById(id + '_dot');
   const statusEl = document.getElementById(id + '_status');
@@ -645,6 +686,89 @@ async function pollGame(g) {
   const reqEl = document.getElementById(id + '_request');
   if (joinEl) joinEl.style.display = (s.running && !s.booting) ? '' : 'none';
   if (reqEl) reqEl.style.display = (!s.running) ? '' : 'none';
+
+  // Update dynamic connect info (invite codes, server names, etc.)
+  updateConnectInfo(id, s);
+}
+
+function updateConnectInfo(id, s) {
+  const el = document.getElementById(id + '_connect');
+  if (!el) return;
+  const usesInvite = el.dataset.usesInvite === '1';
+  const staticLabel = el.dataset.default || '';
+  // When a Linode is hosting this game, prefer its address over the local label.
+  const activeLabel = s.remoteConnect || staticLabel;
+  if (s.running && !s.booting && usesInvite && s.inviteCode) {
+    el.textContent = 'Invite: ' + s.inviteCode;
+    el.dataset.copy = s.inviteCode;
+    el.style.color = 'var(--green)';
+  } else if (s.running && !s.booting && usesInvite && s.serverName) {
+    el.textContent = s.serverName + ' (invite code pending)';
+    el.dataset.copy = '';
+    el.style.color = 'var(--yellow)';
+  } else if (s.running && s.booting) {
+    el.textContent = s.remoteConnect ? 'Linode booting... ' + s.remoteConnect : 'Server booting...';
+    el.dataset.copy = '';
+    el.style.color = 'var(--yellow)';
+  } else if (s.running && usesInvite) {
+    el.textContent = 'Waiting for invite code...';
+    el.dataset.copy = '';
+    el.style.color = 'var(--yellow)';
+  } else if (s.running) {
+    el.textContent = activeLabel || 'Server online';
+    el.dataset.copy = activeLabel;
+    el.style.color = 'var(--green)';
+  } else {
+    el.textContent = 'Server offline';
+    el.dataset.copy = '';
+    el.style.color = 'var(--muted)';
+  }
+
+  // Promote the remote Linode password when hosting remotely; otherwise restore the static one.
+  const pwEl = document.getElementById(id + '_password');
+  if (pwEl) {
+    const staticPw = pwEl.dataset.default || '';
+    const effectivePw = s.remotePassword || (s.running ? staticPw : staticPw);
+    updatePassword(id, effectivePw);
+  }
+
+  // Wire up the Steam join button's href for remote Linodes too.
+  const joinEl = document.getElementById(id + '_join');
+  if (joinEl && s.remoteSteam) {
+    joinEl.dataset.connect = s.remoteConnect || joinEl.dataset.connect;
+    joinEl.dataset.steam = s.remoteSteam;
+  }
+}
+
+function copyConnect(el) {
+  const text = el.dataset.copy || el.textContent;
+  if (!text || text === '--') return;
+  navigator.clipboard.writeText(text);
+  const orig = el.textContent;
+  el.textContent = 'COPIED!';
+  setTimeout(() => { el.textContent = orig; }, 2000);
+}
+
+function copyPassword(el) {
+  const text = el.dataset.copy || '';
+  if (!text || text === '—') return;
+  navigator.clipboard.writeText(text);
+  const orig = el.textContent;
+  el.textContent = 'COPIED!';
+  setTimeout(() => { el.textContent = orig; }, 2000);
+}
+
+function updatePassword(id, password) {
+  const row = document.getElementById(id + '_pwbar');
+  const el = document.getElementById(id + '_password');
+  if (!row || !el) return;
+  if (password) {
+    row.style.display = 'flex';
+    el.textContent = password;
+    el.dataset.copy = password;
+  } else {
+    row.style.display = 'none';
+  }
 }
 
 function setEl(id, val) {
@@ -940,8 +1064,8 @@ const EVENT_ICONS = {
   boss_kill: '\u{1F451}', raid_start: '\u{26A1}', raid_end: '\u{1F6E1}',
   piece_place: '\u{1F3D7}', character_name: '\u{1F464}',
 };
-const GAME_CSS = { rust: 'rust', valheim: 'valheim', l4d2: 'l4d2', '7dtd': 'sdtd', se: 'se', palworld: 'palworld' };
-const GAME_NAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7DTD', se: 'SE', palworld: 'PAL' };
+const GAME_CSS = { rust: 'rust', valheim: 'valheim', l4d2: 'l4d2', '7dtd': 'sdtd', se: 'se', palworld: 'palworld', windrose: 'windrose' };
+const GAME_NAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7DTD', se: 'SE', palworld: 'PAL', windrose: 'WIND' };
 
 let feedEvents = [];
 
@@ -972,9 +1096,9 @@ function renderEventItem(ev) {
 
   switch (ev.type) {
     case 'player_join':
-      text = '<span class="name">' + esc(ev.name || ev.steamId || 'Player') + '</span> joined'; break;
+      text = '<span class="name">' + esc(ev.name || 'Anonymous') + '</span> joined'; break;
     case 'player_leave':
-      text = '<span class="name">' + esc(ev.name || ev.steamId || 'Player') + '</span> left'; break;
+      text = '<span class="name">' + esc(ev.name || 'Anonymous') + '</span> left'; break;
     case 'character_name':
       text = '<span class="name">' + esc(ev.name || '?') + '</span> entered the world'; break;
     case 'chat':
@@ -1061,6 +1185,7 @@ function applyServerState(game, status) {
   if (joinEl) joinEl.style.display = isOnline ? '' : 'none';
   if (reqEl)  reqEl.style.display  = !status.running ? '' : 'none';
   if (isAdmin) { setDisabled(game+'_btnStart',status.running); setDisabled(game+'_btnStop',!status.running); setDisabled(game+'_btnRestart',!status.running); }
+  updateConnectInfo(game, status);
   setCardState(game, isOnline ? 'online' : isBooting ? 'booting' : 'offline');
 }
 

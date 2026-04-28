@@ -2,80 +2,375 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Print QR Codes — <%= brand ? brand.name : 'OpsTrain' %></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Print — <%= brand ? brand.name : 'OpsTrain' %></title>
   <style>
+    :root {
+      --bg: #111113; --card: #1c1c21; --border: #2e2e35;
+      --text: #e4e4e7; --muted: #71717a; --accent: #d97706;
+      --accent2: #fbbf24; --green: #22c55e; --radius: 8px;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; padding: 20px; background: #111113; color: #e4e4e7; }
-    .print-header { text-align: center; margin-bottom: 30px; }
-    .print-header h1 { font-size: 24px; color: #d97706; }
-    .area-section { margin-bottom: 30px; page-break-inside: avoid; }
-    .area-title {
-      font-size: 18px; text-transform: uppercase; letter-spacing: 1px;
-      border-bottom: 2px solid #d97706; padding-bottom: 6px; margin-bottom: 16px; color: #d97706;
+    body { font-family: -apple-system, Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; }
+
+    /* ── Screen-only toolbar ── */
+    .toolbar {
+      position: sticky; top: 0; z-index: 50;
+      background: #18181b; border-bottom: 1px solid var(--border);
+      padding: 10px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     }
-    .qr-print-grid {
+    .toolbar-brand { font-weight: 700; font-size: 15px; color: var(--accent); margin-right: 8px; white-space: nowrap; }
+    .tb-group { display: flex; align-items: center; gap: 6px; }
+    .tb-label { font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+    .tb-select, .tb-btn {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    }
+    .tb-select:focus { outline: none; border-color: var(--accent); }
+    .tb-btn { font-weight: 600; transition: background 0.15s; }
+    .tb-btn:hover { background: #27272a; }
+    .tb-btn.print-btn { background: var(--accent); color: #111; border-color: var(--accent); }
+    .tb-btn.print-btn:hover { background: var(--accent2); }
+    .tb-back { color: var(--muted); text-decoration: none; font-size: 12px; }
+    .tb-back:hover { color: var(--text); }
+    .tb-spacer { flex: 1; }
+
+    /* Mode tabs */
+    .mode-tabs { display: flex; gap: 0; }
+    .mode-tab {
+      padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+      background: var(--card); border: 1px solid var(--border); color: var(--muted);
+      transition: all 0.15s;
+    }
+    .mode-tab:first-child { border-radius: 5px 0 0 5px; }
+    .mode-tab:last-child { border-radius: 0 5px 5px 0; border-left: none; }
+    .mode-tab.active { background: var(--accent); color: #111; border-color: var(--accent); }
+
+    /* ── Print content ── */
+    .print-body { padding: 20px; max-width: 1100px; margin: 0 auto; }
+    .print-title { text-align: center; margin-bottom: 24px; }
+    .print-title h1 { font-size: 22px; color: var(--accent); }
+    .print-title p { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+    /* ── QR mode ── */
+    .area-section { margin-bottom: 28px; }
+    .area-heading {
+      font-size: 13px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
+      color: var(--accent); border-bottom: 2px solid var(--accent);
+      padding-bottom: 5px; margin-bottom: 14px;
+    }
+    .qr-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
     }
-    .qr-print-item {
-      border: 2px solid #2e2e35;
-      border-radius: 8px;
-      padding: 15px;
-      text-align: center;
-      background: #1c1c21;
-      page-break-inside: avoid;
+    .qr-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px; text-align: center; page-break-inside: avoid;
     }
-    .qr-print-item img { width: 160px; height: 160px; }
-    .qr-print-item h3 { font-size: 13px; margin: 8px 0 4px; color: #e4e4e7; }
-    .qr-print-item p { font-size: 11px; color: #8b8b94; }
-    .qr-print-item .station-tag {
-      display: inline-block; background: #2e2e35; color: #d97706;
-      font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-top: 4px;
-      text-transform: uppercase; font-weight: 600;
+    .qr-card img { width: 130px; height: 130px; display: block; margin: 0 auto; }
+    .qr-card h3 { font-size: 12px; font-weight: 700; margin: 7px 0 3px; color: var(--text); }
+    .qr-card .qr-meta { font-size: 10px; color: var(--muted); }
+    .badge {
+      display: inline-block; padding: 2px 7px; border-radius: 10px;
+      background: #27272a; color: var(--accent2); font-size: 10px; font-weight: 600; text-transform: uppercase;
     }
-    .no-print { margin-bottom: 20px; }
-    .no-print button {
-      padding: 10px 20px; font-size: 16px; cursor: pointer;
-      background: #d97706; color: #111; border: none; border-radius: 6px; font-weight: 600;
+
+    /* ── Sidework Sheet mode ── */
+    .sw-page {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; margin-bottom: 24px; page-break-after: always;
     }
-    .no-print a { margin-left: 10px; color: #8b8b94; }
+    .sw-page:last-child { page-break-after: auto; }
+    .sw-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 16px; margin-bottom: 16px; padding-bottom: 12px;
+      border-bottom: 2px solid var(--accent);
+    }
+    .sw-header-left h2 { font-size: 18px; font-weight: 800; color: var(--accent); text-transform: uppercase; }
+    .sw-header-left .sw-brand { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .sw-header-left .sw-date {
+      font-size: 11px; color: var(--muted); margin-top: 4px;
+      border: 1px dashed var(--border); border-radius: 4px; padding: 3px 8px; display: inline-block;
+    }
+    .sw-qr-block { text-align: center; flex-shrink: 0; }
+    .sw-qr-block img { width: 110px; height: 110px; display: block; }
+    .sw-qr-block p { font-size: 9px; color: var(--muted); margin-top: 4px; }
+
+    .sw-tasks { display: flex; flex-direction: column; gap: 0; }
+    .sw-task {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 6px; border-bottom: 1px solid var(--border);
+    }
+    .sw-task:last-child { border-bottom: none; }
+    .sw-check {
+      width: 18px; height: 18px; border: 2px solid var(--border); border-radius: 4px;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .sw-task-body { flex: 1; }
+    .sw-task-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .sw-task-desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .sw-task-badges { display: flex; gap: 5px; margin-top: 4px; flex-wrap: wrap; }
+    .sw-badge {
+      font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+      padding: 1px 6px; border-radius: 8px; background: #27272a; color: var(--muted);
+    }
+    .sw-badge.type-sidework { color: #fbbf24; }
+    .sw-badge.type-prep { color: #60a5fa; }
+    .sw-badge.type-cleaning { color: #34d399; }
+    .sw-badge.type-inspection { color: #f472b6; }
+    .sw-badge.type-custom { color: #a78bfa; }
+    .sw-badge.freq { color: var(--muted); }
+    .sw-note-line {
+      margin-top: 4px; border-bottom: 1px solid #27272a; height: 1px;
+      /* print: gives a write-on line */
+    }
+
+    .sw-section-head {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+      color: var(--muted); padding: 6px 6px 4px; margin-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .sw-section-head:first-child { border-top: none; margin-top: 0; }
+
+    .sw-footer {
+      margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border);
+      display: flex; gap: 20px; align-items: flex-end;
+    }
+    .sw-sig { flex: 1; }
+    .sw-sig-label { font-size: 10px; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+    .sw-sig-line { border-bottom: 1px solid var(--border); height: 22px; margin-top: 4px; }
+
+    .empty-state { text-align: center; padding: 40px; color: var(--muted); }
+
+    /* ── Print overrides ── */
     @media print {
-      .no-print { display: none; }
-      body { padding: 0; background: #fff; color: #111; }
-      .area-title { color: #333; border-color: #333; }
-      .qr-print-item { border-color: #333; background: #fff; }
-      .qr-print-item h3 { color: #111; }
-      .qr-print-item .station-tag { background: #eee; color: #333; }
+      .toolbar { display: none; }
+      body { background: #fff; color: #111; }
+      :root { --bg: #fff; --card: #fff; --border: #ccc; --text: #111; --muted: #555; --accent: #333; --accent2: #555; }
+      .sw-page { border: 1px solid #ccc; box-shadow: none; }
+      .sw-check { border-color: #999; }
+      .sw-badge { background: #f0f0f0; color: #555; }
+      .sw-badge.type-sidework, .sw-badge.type-prep, .sw-badge.type-cleaning,
+      .sw-badge.type-inspection, .sw-badge.type-custom { color: #333; }
+      .qr-card { border-color: #ccc; }
+      .area-heading { color: #333; border-color: #333; }
+      .print-title h1 { color: #111; }
     }
   </style>
 </head>
 <body>
-  <div class="no-print">
-    <button onclick="window.print()">Print QR Codes</button>
-    <a href="/admin/qr?brandId=<%= brand ? brand._id : '' %>">Back to QR list</a>
-  </div>
 
-  <div class="print-header">
-    <h1><%= brand ? brand.name : '' %> — QR Codes</h1>
-    <p style="color:#8b8b94;">Scan with any camera app</p>
-  </div>
+<!-- ── Toolbar (screen only) ── -->
+<div class="toolbar">
+  <span class="toolbar-brand"><%= brand ? brand.name : 'OpsTrain' %></span>
 
-  <% Object.keys(grouped).forEach(area => { %>
-    <div class="area-section">
-      <h2 class="area-title"><%= area %></h2>
-      <div class="qr-print-grid">
-        <% grouped[area].forEach(qr => { %>
-          <div class="qr-print-item">
-            <img src="<%= qr.dataUrl %>" alt="<%= qr.label %>">
-            <h3><%= qr.label %></h3>
-            <p><%= qr.type %></p>
-            <% if (qr.position) { %><span class="station-tag"><%= qr.position %></span><% } %>
-            <% if (qr.task) { %><p>Task: <%= qr.task.title %></p><% } %>
-          </div>
-        <% }) %>
-      </div>
+  <!-- Mode toggle -->
+  <div class="tb-group">
+    <div class="mode-tabs">
+      <button class="mode-tab <%= mode === 'qr' ? 'active' : '' %>" onclick="setMode('qr')">QR Codes</button>
+      <button class="mode-tab <%= mode === 'sidework' ? 'active' : '' %>" onclick="setMode('sidework')">Sidework Sheets</button>
     </div>
-  <% }) %>
+  </div>
+
+  <!-- QR filters (shown in qr mode) -->
+  <div class="tb-group" id="qr-filters" style="<%= mode === 'sidework' ? 'display:none' : '' %>">
+    <span class="tb-label">Area</span>
+    <select class="tb-select" id="f-area" onchange="applyFilters()">
+      <option value="">All Areas</option>
+      <% areas.forEach(a => { %><option value="<%= a %>" <%= areaFilter === a ? 'selected' : '' %>><%= a %></option><% }) %>
+    </select>
+    <span class="tb-label">Type</span>
+    <select class="tb-select" id="f-type" onchange="applyFilters()">
+      <option value="">All Types</option>
+      <% ['task-checkin','shift-login','webhook','task-list','prep-log','custom'].forEach(tp => { %>
+        <option value="<%= tp %>" <%= typeFilter === tp ? 'selected' : '' %>><%= tp %></option>
+      <% }) %>
+    </select>
+  </div>
+
+  <!-- Sidework filters (shown in sidework mode) -->
+  <div class="tb-group" id="sw-filters" style="<%= mode === 'qr' ? 'display:none' : '' %>">
+    <span class="tb-label">Shift</span>
+    <select class="tb-select" id="f-shift" onchange="applyFilters()">
+      <option value="all" <%= shiftFilter === 'all' ? 'selected' : '' %>>All Shifts</option>
+      <option value="open" <%= shiftFilter === 'open' ? 'selected' : '' %>>Open</option>
+      <option value="mid" <%= shiftFilter === 'mid' ? 'selected' : '' %>>Mid</option>
+      <option value="close" <%= shiftFilter === 'close' ? 'selected' : '' %>>Close</option>
+      <option value="any" <%= shiftFilter === 'any' ? 'selected' : '' %>>Any/All</option>
+    </select>
+  </div>
+
+  <div class="tb-spacer"></div>
+  <button class="tb-btn print-btn" onclick="window.print()">🖨 Print</button>
+  <a class="tb-back" href="/admin/qr?brandId=<%= brand ? brand._id : '' %>">← Back</a>
+</div>
+
+<!-- ── Print content ── -->
+<div class="print-body">
+
+  <!-- QR MODE -->
+  <div id="view-qr" style="<%= mode === 'sidework' ? 'display:none' : '' %>">
+    <div class="print-title">
+      <h1><%= brand ? brand.name : '' %> — QR Codes</h1>
+      <p>Scan with any camera app &nbsp;·&nbsp; ops-train.madladslab.com</p>
+    </div>
+
+    <% if (Object.keys(grouped).length === 0) { %>
+      <div class="empty-state">No QR codes match the current filters.</div>
+    <% } else { %>
+      <% Object.keys(grouped).sort().forEach(area => { %>
+        <div class="area-section">
+          <div class="area-heading"><%= area %></div>
+          <div class="qr-grid">
+            <% grouped[area].forEach(qr => { %>
+              <div class="qr-card">
+                <% if (qr.dataUrl) { %>
+                  <img src="<%= qr.dataUrl %>" alt="<%= qr.label %>">
+                <% } %>
+                <h3><%= qr.label %></h3>
+                <div class="qr-meta">
+                  <span class="badge"><%= qr.type %></span>
+                  <% if (qr.position) { %><br><span style="color:var(--muted);font-size:10px;"><%= qr.position %></span><% } %>
+                  <% if (qr.task) { %><br><span style="color:var(--muted);font-size:10px;"><%= qr.task.title %></span><% } %>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+      <% }) %>
+    <% } %>
+  </div>
+
+  <!-- SIDEWORK SHEET MODE -->
+  <div id="view-sidework" style="<%= mode === 'qr' ? 'display:none' : '' %>">
+
+    <%
+      const shiftLabels = { open: 'Opening', mid: 'Mid Shift', close: 'Closing', any: 'All Shifts' };
+      const shiftOrder = ['open', 'mid', 'close', 'any'];
+      const taskTypes = ['sidework', 'prep', 'cleaning', 'inspection', 'custom'];
+
+      // Which shifts to show
+      const shiftsToRender = (shiftFilter && shiftFilter !== 'all')
+        ? [shiftFilter]
+        : shiftOrder.filter(s => tasksByShift[s] && tasksByShift[s].length > 0);
+    %>
+
+    <% if (shiftsToRender.length === 0) { %>
+      <div class="empty-state">No tasks found. Add tasks in the Tasks section first.</div>
+    <% } else { %>
+
+      <% shiftsToRender.forEach(shift => { %>
+        <% const tasks = tasksByShift[shift]; %>
+        <% if (!tasks || tasks.length === 0) return; %>
+        <%
+          // Group this shift's tasks by type for sub-sections
+          const byType = {};
+          tasks.forEach(tk => {
+            const tp = tk.type || 'sidework';
+            if (!byType[tp]) byType[tp] = [];
+            byType[tp].push(tk);
+          });
+          const qr = shiftQR[shift];
+        %>
+
+        <div class="sw-page">
+          <!-- Sheet header -->
+          <div class="sw-header">
+            <div class="sw-header-left">
+              <h2><%= shiftLabels[shift] || shift %> Sidework</h2>
+              <div class="sw-brand"><%= brand ? brand.name : '' %></div>
+              <div class="sw-date">Date: ___________________</div>
+            </div>
+            <% if (qr && qr.dataUrl) { %>
+            <div class="sw-qr-block">
+              <img src="<%= qr.dataUrl %>" alt="Scan to check in">
+              <p>Scan to check in</p>
+            </div>
+            <% } %>
+          </div>
+
+          <!-- Tasks grouped by type -->
+          <div class="sw-tasks">
+            <% taskTypes.forEach(tp => { %>
+              <% if (!byType[tp] || byType[tp].length === 0) return; %>
+              <div class="sw-section-head"><%= tp %></div>
+              <% byType[tp].forEach(tk => { %>
+                <div class="sw-task">
+                  <div class="sw-check"></div>
+                  <div class="sw-task-body">
+                    <div class="sw-task-title"><%= tk.title %></div>
+                    <% if (tk.description) { %><div class="sw-task-desc"><%= tk.description %></div><% } %>
+                    <div class="sw-task-badges">
+                      <span class="sw-badge type-<%= tk.type %>"><%= tk.type %></span>
+                      <% if (tk.frequency && tk.frequency !== 'daily') { %>
+                        <span class="sw-badge freq"><%= tk.frequency %></span>
+                      <% } %>
+                      <% if (tk.requiresPhoto) { %><span class="sw-badge">📷 photo</span><% } %>
+                      <% if (tk.requiresNote) { %><span class="sw-badge">📝 note</span><% } %>
+                    </div>
+                    <% if (tk.requiresNote) { %>
+                      <div class="sw-note-line"></div>
+                    <% } %>
+                  </div>
+                </div>
+              <% }) %>
+            <% }) %>
+          </div>
+
+          <!-- Footer signature lines -->
+          <div class="sw-footer">
+            <div class="sw-sig">
+              <div class="sw-sig-label">Completed by</div>
+              <div class="sw-sig-line"></div>
+            </div>
+            <div class="sw-sig">
+              <div class="sw-sig-label">Verified by</div>
+              <div class="sw-sig-line"></div>
+            </div>
+            <div class="sw-sig" style="max-width:100px;">
+              <div class="sw-sig-label">Time out</div>
+              <div class="sw-sig-line"></div>
+            </div>
+          </div>
+        </div>
+
+      <% }) %>
+    <% } %>
+  </div>
+
+</div>
+
+<script>
+var brandId = '<%= brand ? brand._id : "" %>';
+var currentMode = '<%= mode %>';
+var currentArea = '<%= areaFilter %>';
+var currentType = '<%= typeFilter %>';
+var currentShift = '<%= shiftFilter %>';
+
+function setMode(m) {
+  currentMode = m;
+  document.getElementById('view-qr').style.display = m === 'qr' ? '' : 'none';
+  document.getElementById('view-sidework').style.display = m === 'sidework' ? '' : 'none';
+  document.getElementById('qr-filters').style.display = m === 'sidework' ? 'none' : '';
+  document.getElementById('sw-filters').style.display = m === 'qr' ? 'none' : '';
+  document.querySelectorAll('.mode-tab').forEach(function(t) { t.classList.remove('active'); });
+  event.target.classList.add('active');
+  // Reload with new mode so server re-renders with correct data
+  applyFilters();
+}
+
+function applyFilters() {
+  var area = (document.getElementById('f-area') || {}).value || '';
+  var type = (document.getElementById('f-type') || {}).value || '';
+  var shift = (document.getElementById('f-shift') || {}).value || 'all';
+  var url = '/admin/qr/print?brandId=' + brandId +
+    '&mode=' + currentMode +
+    '&area=' + encodeURIComponent(area) +
+    '&type=' + encodeURIComponent(type) +
+    '&shift=' + encodeURIComponent(shift);
+  window.location.href = url;
+}
+</script>
 </body>
 </html>

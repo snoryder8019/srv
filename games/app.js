@@ -169,6 +169,7 @@ app.use('/static', express.static(__dirname + '/public'));
 app.use('/', require('./routes/index'));
 app.use('/api', require('./routes/api'));
 app.use('/internal', require('./routes/internal'));
+app.use('/admin/modbuilder', require('./routes/modbuilder'));
 app.use('/admin', require('./routes/admin'));
 app.use('/broadcasts', require('./routes/broadcasts'));
 app.use('/stats', require('./routes/stats'));

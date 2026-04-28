@@ -65,15 +65,27 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Print page — all QR codes for a brand
+// Print page — QR codes + sidework sheets for a brand
 router.get('/print', async (req, res) => {
   const brandId = req.query.brandId;
   if (!brandId) return res.redirect('/admin/qr');
 
   const brand = await Brand.findById(brandId).lean();
-  const qrCodes = await QRCode.find({ brand: brandId, active: true }).populate('task', 'title').sort({ area: 1, position: 1, label: 1 }).lean();
 
-  // Generate data URLs for any missing ones
+  // Filters from query
+  const typeFilter = req.query.type || '';       // qr type filter
+  const areaFilter = req.query.area || '';       // area filter
+  const shiftFilter = req.query.shift || '';     // shift filter (for sidework mode)
+  const mode = req.query.mode || 'qr';          // 'qr' or 'sidework'
+
+  // --- QR codes ---
+  const qrFilter = { brand: brandId, active: true };
+  if (typeFilter) qrFilter.type = typeFilter;
+  if (areaFilter) qrFilter.area = areaFilter;
+
+  const qrCodes = await QRCode.find(qrFilter).populate('task', 'title type shiftTime').sort({ area: 1, position: 1, label: 1 }).lean();
+
+  // Ensure data URLs
   for (const qr of qrCodes) {
     if (!qr.dataUrl) {
       const scanUrl = `${DOMAIN}/scan/${qr.code}`;
@@ -81,7 +93,7 @@ router.get('/print', async (req, res) => {
     }
   }
 
-  // Group for print layout
+  // Group QRs by area
   const grouped = {};
   qrCodes.forEach(qr => {
     const area = qr.area || 'Unassigned';
@@ -89,7 +101,50 @@ router.get('/print', async (req, res) => {
     grouped[area].push(qr);
   });
 
-  res.render('admin/qr/print', { title: `Print QR Codes — ${brand?.name}`, brand, qrCodes, grouped });
+  // All unique areas across QR codes (for filter dropdown)
+  const allQrCodes = await QRCode.find({ brand: brandId, active: true }).select('area').lean();
+  const areas = [...new Set(allQrCodes.map(q => q.area || 'Unassigned'))].sort();
+
+  // --- Sidework tasks (grouped by shiftTime) ---
+  const taskFilter = { brand: brandId, active: true };
+  if (shiftFilter && shiftFilter !== 'all') taskFilter.shiftTime = shiftFilter;
+
+  const allTasks = await Task.find(taskFilter).sort({ shiftTime: 1, type: 1, sortOrder: 1, title: 1 }).lean();
+
+  // Group tasks by shiftTime
+  const tasksByShift = {};
+  allTasks.forEach(tk => {
+    const s = tk.shiftTime || 'any';
+    if (!tasksByShift[s]) tasksByShift[s] = [];
+    tasksByShift[s].push(tk);
+  });
+
+  // Find the best QR code to represent each shift group (task-list type, or fallback to shift-login)
+  // One QR per shift group for the sidework sheet
+  const allBrandQRs = await QRCode.find({ brand: brandId, active: true, type: { $in: ['task-list', 'shift-login', 'task-checkin'] } }).lean();
+
+  const shiftQR = {};
+  ['open', 'mid', 'close', 'any'].forEach(s => {
+    // Prefer task-list, then shift-login, then any
+    const match = allBrandQRs.find(q => q.type === 'task-list') ||
+                  allBrandQRs.find(q => q.type === 'shift-login') ||
+                  allBrandQRs[0];
+    if (match) shiftQR[s] = match;
+  });
+
+  res.render('admin/qr/print', {
+    title: `Print — ${brand?.name}`,
+    brand,
+    qrCodes,
+    grouped,
+    areas,
+    tasksByShift,
+    shiftQR,
+    mode,
+    typeFilter,
+    areaFilter,
+    shiftFilter: shiftFilter || 'all'
+  });
 });
 
 // Edit QR form

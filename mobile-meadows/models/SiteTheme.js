@@ -4,7 +4,7 @@ const siteThemeSchema = new mongoose.Schema({
   activeTheme: {
     type: String,
     default: 'default',
-    enum: ['default', 'camping-highway']
+    enum: ['default', 'camping-highway', 'desert-sunset', 'lake-country', 'mountain-lodge', 'open-road', 'ozark-morning']
   },
   customColors: {
     primary: String,

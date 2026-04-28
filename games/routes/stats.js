@@ -31,7 +31,7 @@ router.get('/summary/:game', async (req, res) => {
 // All server summaries at once
 router.get('/summary', async (req, res) => {
   try {
-    const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
+    const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
     const summaries = {};
     for (const game of games) {
       summaries[game] = await stats.getServerSummary(game);
@@ -101,7 +101,7 @@ router.get('/notable/:game', async (req, res) => {
 // All summaries including new fields
 router.get('/dashboard', async (req, res) => {
   try {
-    const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
+    const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
     const result = {};
     for (const game of games) {
       const [summary, allTime, leaderboard] = await Promise.all([

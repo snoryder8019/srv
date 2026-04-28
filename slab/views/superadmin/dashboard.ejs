@@ -30,7 +30,7 @@
     .tab.tab-util.active { color:#c9a848; }
 
     /* ── LAYOUT ── */
-    .content { padding:24px; max-width:1400px; margin:0 auto; }
+    .content { padding:24px 32px; max-width:100%; margin:0 auto; }
     .panel { display:none; } .panel.active { display:block; }
 
     /* ── STATS ROW ── */
@@ -158,6 +158,66 @@
       .tab { padding:8px 10px; font-size:11px; }
     }
 
+    /* ── ULTRAWIDE (1800px+) ── */
+    @media (min-width:1800px) {
+      .content { padding:28px 48px; }
+      .stats { grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:16px; }
+      .card-grid { grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:18px; }
+      .service-grid { grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:18px; }
+      .stat-value { font-size:30px; }
+      .topbar { padding:14px 48px; }
+      .tab-bar { padding:0 48px; }
+      .quick-links { gap:10px; }
+      .qlink { padding:8px 18px; font-size:13px; }
+      .log-table { max-height:600px; }
+      .tool-output { max-height:500px; }
+      .table-wrap table { min-width:auto; }
+    }
+
+    /* ── SUPER ULTRAWIDE (2600px+ / 34" 4K curved) ── */
+    @media (min-width:2600px) {
+      .content { padding:36px 64px; }
+      .stats { grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px; }
+      .stat { padding:20px 24px; border-radius:10px; }
+      .stat-value { font-size:34px; }
+      .stat-label { font-size:11px; letter-spacing:1.5px; }
+      .card-grid { grid-template-columns:repeat(auto-fill, minmax(380px, 1fr)); gap:22px; }
+      .service-grid { grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:22px; }
+      .card { padding:22px; border-radius:10px; }
+      .card-title { font-size:15px; }
+      .card-desc { font-size:13px; line-height:1.55; }
+      .topbar { padding:16px 64px; }
+      .topbar-right { gap:20px; font-size:14px; }
+      .topbar-right a { font-size:13px; }
+      .logo { font-size:22px; }
+      .tab-bar { padding:0 64px; }
+      .tab { padding:14px 28px; font-size:14px; }
+      .tab-icon { font-size:16px; }
+      .quick-links { gap:12px; }
+      .qlink { padding:10px 22px; font-size:14px; border-radius:8px; }
+      h2 { font-size:17px; }
+      h3 { font-size:14px; }
+      .section-label { font-size:11px; letter-spacing:1.5px; }
+      th { padding:12px 18px; font-size:11px; }
+      td { padding:12px 18px; font-size:14px; }
+      .log-row { padding:14px 20px; font-size:14px; }
+      .log-icon { width:32px; height:32px; font-size:15px; }
+      .log-table { max-height:700px; }
+      .tool-output { max-height:600px; font-size:13px; }
+      .btn { padding:9px 18px; font-size:13px; }
+      .btn-sm { padding:6px 14px; font-size:12px; }
+      .gftv-form { padding:24px; }
+      .gftv-form-grid { gap:14px; }
+      .badge-overseer { padding:8px 16px; font-size:12px; bottom:20px; right:20px; border-radius:6px; }
+    }
+
+    /* ── DUAL COLUMN PANELS for ultrawide overview ── */
+    @media (min-width:2200px) {
+      .uw-columns { display:grid; grid-template-columns:1fr 1fr; gap:28px; align-items:start; }
+      .uw-columns > .section { margin-bottom:0; }
+      .uw-3col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:22px; align-items:start; }
+    }
+
     /* ── GFTV ── */
     .gftv-stat-value { font-size:26px; font-weight:700; }
     .gftv-stat-value.gold { color:#f5c400; }
@@ -195,7 +255,6 @@
     <a href="/superadmin/users">Users</a>
     <a href="/superadmin/security" style="color:#ef4444;">🛡 Security</a>
     <a href="/superadmin/permissions">Permissions</a>
-    <a href="/superadmin/huginn">Huginn</a>
     <a href="/superadmin/control-center" target="_blank">Control Center</a>
     <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#525252;" title="Ollama AI">
       <span class="svc-dot" id="ollamaDotTop" style="width:6px;height:6px;"></span>Ollama
@@ -245,34 +304,37 @@
       <a class="qlink" href="/superadmin/announcements">&#128227; Announcements</a>
     </div>
 
-    <!-- All services by category -->
-    <% for (const [cat, group] of Object.entries(servicesByCategory)) { %>
-      <div class="section">
-        <div class="section-label"><%= group.icon %> <%= group.label %></div>
-        <div class="card-grid">
-          <% for (const svc of group.services) { %>
-            <div class="card">
-              <div class="card-header">
-                <span class="card-title"><%= svc.name %></span>
-                <span class="svc-dot <%= svc.alive ? 'alive' : (svc.alive === false ? 'dead' : 'unknown') %>"></span>
-              </div>
-              <div class="card-desc"><%= svc.description %></div>
-              <div class="card-meta">
-                <% if (svc.port) { %><span>:<%= svc.port %></span><% } %>
-                <% if (svc.domain) { %><span><a href="https://<%= svc.domain %>" target="_blank" class="link" style="font-size:11px;"><%= svc.domain %></a></span><% } %>
-              </div>
-              <div class="card-actions">
-                <% if (svc.domain) { %><a href="https://<%= svc.domain %>" target="_blank" class="btn-sm">Visit</a><% } %>
-                <% if (svc.tmux) { %><button class="btn-sm" onclick="svcAction('<%= svc.name %>', 'status')">Status</button><% } %>
-              </div>
+    <!-- All services by category + recent signups — dual column on ultrawide -->
+    <div class="uw-columns">
+      <div>
+        <% for (const [cat, group] of Object.entries(servicesByCategory)) { %>
+          <div class="section">
+            <div class="section-label"><%= group.icon %> <%= group.label %></div>
+            <div class="card-grid">
+              <% for (const svc of group.services) { %>
+                <div class="card">
+                  <div class="card-header">
+                    <span class="card-title"><%= svc.name %></span>
+                    <span class="svc-dot <%= svc.alive ? 'alive' : (svc.alive === false ? 'dead' : 'unknown') %>"></span>
+                  </div>
+                  <div class="card-desc"><%= svc.description %></div>
+                  <div class="card-meta">
+                    <% if (svc.port) { %><span>:<%= svc.port %></span><% } %>
+                    <% if (svc.domain) { %><span><a href="https://<%= svc.domain %>" target="_blank" class="link" style="font-size:11px;"><%= svc.domain %></a></span><% } %>
+                  </div>
+                  <div class="card-actions">
+                    <% if (svc.domain) { %><a href="https://<%= svc.domain %>" target="_blank" class="btn-sm">Visit</a><% } %>
+                    <% if (svc.tmux) { %><button class="btn-sm" onclick="svcAction('<%= svc.name %>', 'status')">Status</button><% } %>
+                  </div>
+                </div>
+              <% } %>
             </div>
-          <% } %>
-        </div>
+          </div>
+        <% } %>
       </div>
-    <% } %>
-
-    <div class="section">
-      <h2>Recent Signups</h2>
+      <div>
+        <div class="section">
+          <h2>Recent Signups</h2>
       <% if (recentSignups.length) { %>
         <table>
           <thead><tr><th>Email</th><th>Brand</th><th>Subdomain</th><th>Date</th></tr></thead>
@@ -290,7 +352,9 @@
       <% } else { %>
         <div class="empty">No recent signups</div>
       <% } %>
-    </div>
+        </div>
+      </div>
+    </div><!-- /uw-columns -->
   </div>
 
   <!-- ═══════ SLAB TAB ═══════ -->
@@ -469,11 +533,10 @@
       <a class="qlink" href="https://madladslab.com" target="_blank">&#128279; MadLadsLab Live</a>
       <a class="qlink" href="/superadmin/users">&#128101; Platform Users</a>
       <a class="qlink" href="/superadmin/permissions">&#128274; Permissions</a>
-      <a class="qlink" href="/superadmin/huginn">&#129302; Huginn AI</a>
     </div>
 
     <% const mlSvc = services.find(s => s.name === 'madladslab'); %>
-    <div class="card-grid">
+    <div class="card-grid" style="grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));">
       <div class="card">
         <div class="card-header"><span class="card-title">MadLadsLab</span>
           <span class="svc-dot <%= mlSvc?.alive ? 'alive' : (mlSvc?.alive === false ? 'dead' : 'unknown') %>"></span>
@@ -494,7 +557,6 @@
           &#9745; User accounts &amp; Google OAuth<br>
           &#9745; Central admin dashboard<br>
           &#9745; AI API gateway (Ollama, SD, DeepSeek)<br>
-          &#9745; Huginn AI assistant<br>
           &#9745; MCP server (Claude bridge)<br>
           &#9745; OpenClaw agent orchestration<br>
           &#9745; Shared MongoDB cluster
@@ -739,6 +801,7 @@
 
   <!-- ═══════ TOOLS TAB ═══════ -->
   <div class="panel" id="tab-tools">
+    <div class="uw-columns">
     <div class="section">
       <h2>System Tools</h2>
       <div class="service-grid">
@@ -776,6 +839,8 @@
       <pre id="toolOutput" class="tool-output" style="margin-top:16px;">Select a tool to run...</pre>
     </div>
 
+    </div><!-- /uw-columns -->
+
     <div class="section">
       <h2>Agent Hub</h2>
 
@@ -804,23 +869,6 @@
       </div>
 
       <div class="service-grid">
-        <!-- Huginn -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title" style="display:flex;align-items:center;gap:6px;">
-              <span class="svc-dot" id="huginnDot"></span>
-              Huginn
-            </span>
-          </div>
-          <div class="card-desc">DeepSeek R1 — platform AI with live Slab context</div>
-          <div id="huginnBriefingSnip" style="font-size:11px;color:#525252;margin:6px 0;line-height:1.5;min-height:20px;"></div>
-          <div class="card-actions">
-            <a href="/superadmin/huginn" class="btn-sm">Open Chat</a>
-            <button class="btn-sm" onclick="loadHuginnBriefing()">Briefing</button>
-            <button class="btn-sm" onclick="checkHuginn()">Health</button>
-          </div>
-        </div>
-
         <!-- MCP Server -->
         <div class="card">
           <div class="card-header"><span class="card-title">MCP Server</span><span class="svc-dot alive"></span></div>
@@ -1222,27 +1270,6 @@
     tt.innerHTML = CLAUDE_BRIEFING.tldr.map(s => `<div style="margin-bottom:4px;">${s}</div>`).join('');
   }
 
-  // ── Huginn briefing snippet ───────────────────────────────────────────────
-  async function loadHuginnBriefing() {
-    const snip = document.getElementById('huginnBriefingSnip');
-    const out  = document.getElementById('agentOutput');
-    if (snip) snip.textContent = 'Loading...';
-    try {
-      const r = await fetch('/superadmin/huginn/sessions');
-      const d = await r.json();
-      const sessions = Array.isArray(d) ? d : (d.sessions || []);
-      if (sessions.length && snip) {
-        const latest = sessions[0];
-        snip.textContent = `Last session: ${latest.id || 'unknown'} · ${latest.messageCount || '?'} messages`;
-      } else if (snip) {
-        snip.textContent = 'No sessions found';
-      }
-      if (out) out.textContent = JSON.stringify(sessions.slice(0,3), null, 2);
-    } catch(e) {
-      if (snip) snip.textContent = 'Huginn unreachable';
-      if (out) out.textContent = 'Error: ' + e.message;
-    }
-  }
 
   // ── Ollama inline health ──────────────────────────────────────────────────
   async function checkOllamaFull() {
@@ -1270,20 +1297,6 @@
     }
   }
 
-  async function checkHuginn() {
-    const out = document.getElementById('agentOutput');
-    const dot = document.getElementById('huginnDot');
-    out.textContent = 'Checking Huginn...';
-    try {
-      const res = await fetch('/superadmin/huginn/health');
-      const data = await res.json();
-      dot.className = 'svc-dot ' + (data.status === 'ok' ? 'alive' : 'dead');
-      out.textContent = JSON.stringify(data, null, 2);
-    } catch (e) {
-      dot.className = 'svc-dot dead';
-      out.textContent = 'Error: ' + e.message;
-    }
-  }
 
   async function checkOllama() {
     return checkOllamaFull();

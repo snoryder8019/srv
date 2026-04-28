@@ -1,6 +1,21 @@
 # Recent Changes Summary
 
-Generated: 2026-04-14T16:58:45.063Z
+Generated: 2026-04-28T16:03:32.684Z
+
+---
+
+## Commit: mobile meadows v0.1
+
+- **Hash:** `e2a03d7`
+- **Author:** Scott
+- **Date:** 4/14/2026
+- **Changes:** 110 files, +7617/-1566 lines
+
+### Modified Areas:
+
+**Backend:** 6 files
+**Views:** 74 files
+**Documentation:** 3 files
 
 ---
 
@@ -66,22 +81,6 @@ Generated: 2026-04-14T16:58:45.063Z
 **Views:** 9 files
 **Scripts:** 4 files
 **Documentation:** 3 files
-
----
-
-## Commit: depreication to srv
-
-- **Hash:** `0471378`
-- **Author:** Scott
-- **Date:** 4/6/2026
-- **Changes:** 260 files, +7268/-51822 lines
-
-### Modified Areas:
-
-**Frontend:** 3 files
-**Backend:** 54 files
-**Views:** 70 files
-**Documentation:** 36 files
 
 ---
 

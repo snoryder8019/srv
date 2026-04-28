@@ -23,16 +23,41 @@ const LOG_PATHS = {
   '7dtd':  path.join(__dirname, '..', '7dtd', 'logs', 'output_log.txt'),
   se:      path.join(__dirname, '..', 'se', 'logs', 'server.log'),
   palworld: path.join(__dirname, '..', 'palworld', 'logs', 'server.log'),
+  windrose: path.join(__dirname, '..', 'windrose', 'logs', 'server.log'),
+  windrose_events: path.join(__dirname, '..', 'windrose', 'WindrosePlus', 'logs', 'activity.log'),
 };
 
 // Fallback log paths
 const RUST_LOG_ALT = path.join(__dirname, '..', 'rust', 'RustDedicated_Data', 'output_log.txt');
+const WINDROSE_LOG_ALT = path.join(__dirname, '..', 'windrose', 'R5', 'Saved', 'Logs', 'R5.log');
+// WindrosePlus writes one NDJSON file per UTC day named YYYY-MM-DD.log inside
+// <game>/windrose_plus_data/. We pick the most recent at startup; daily
+// rollover requires a games service restart (acceptable for now).
+const WINDROSE_PLUS_DATA_DIR = path.join(__dirname, '..', 'windrose', 'windrose_plus_data');
+function resolveWindrosePlusLog() {
+  try {
+    if (!fs.existsSync(WINDROSE_PLUS_DATA_DIR)) return null;
+    const files = fs.readdirSync(WINDROSE_PLUS_DATA_DIR)
+      .filter(f => /^\d{4}-\d{2}-\d{2}\.log$/.test(f))
+      .sort();
+    return files.length ? path.join(WINDROSE_PLUS_DATA_DIR, files[files.length - 1]) : null;
+  } catch { return null; }
+}
 
 // Map virtual log sources to their game for DB storage
 const LOG_GAME_MAP = {
   rust: 'rust', valheim: 'valheim', valheim_events: 'valheim',
   l4d2: 'l4d2', '7dtd': '7dtd', se: 'se', palworld: 'palworld',
+  windrose: 'windrose', windrose_events: 'windrose',
 };
+
+// Sources whose lines are NDJSON instead of free-form text
+const JSON_SOURCES = new Set(['windrose_events']);
+
+// Per-source one-shot raw-line dump. WindrosePlus's NDJSON schema is
+// unconfirmed — log the first few lines so we can lock in field names.
+const DEBUG_DUMP_LIMITS = { windrose_events: 5 };
+const debugDumpCounts = {};
 
 // ── Log line patterns per game ──
 const PATTERNS = {
@@ -100,6 +125,14 @@ const PATTERNS = {
     { type: 'server_start', re: /Setting breakpad|Server started/, fields: [] },
     { type: 'pal_captured', re: /captured.*?Pal.*?:\s*(.+)/, fields: ['pal'] },
   ],
+  // Windrose runs UE5; log lines come through tee to logs/server.log.
+  // Patterns are intentionally permissive — Windrose is in early access and the log
+  // schema is undocumented. Update as real logs accumulate.
+  windrose: [
+    { type: 'player_join', re: /Join succeeded:\s*(\S+)/i, fields: ['name'] },
+    { type: 'player_leave', re: /UChannel::Close.*?(?:RemoteAddr|PlayerName)[:=]\s*(\S+)/i, fields: ['name'] },
+    { type: 'server_start', re: /(Server is ready|InviteCode|Engine Initialization\) Total time)/i, fields: [] },
+  ],
 };
 
 let db = null;
@@ -141,7 +174,7 @@ function startPolling() {
 }
 
 async function pollAllServers() {
-  const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
+  const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
   for (const game of games) {
     try {
       const lib = require(`./${game === '7dtd' ? '7dtd' : game}`);
@@ -151,6 +184,7 @@ async function pollAllServers() {
       const snapshot = {
         game,
         ts: new Date(),
+        running: true,
         players: status.players || 0,
         maxPlayers: status.maxPlayers || 0,
         map: status.map || null,
@@ -208,7 +242,12 @@ function parseRustPlayerList(raw) {
 // ── Log Tailing ──
 function startLogTailing() {
   for (const [source, logPath] of Object.entries(LOG_PATHS)) {
-    const actualPath = (source === 'rust' && !fs.existsSync(logPath)) ? RUST_LOG_ALT : logPath;
+    let actualPath = logPath;
+    if (source === 'rust' && !fs.existsSync(logPath)) actualPath = RUST_LOG_ALT;
+    if (source === 'windrose' && !fs.existsSync(logPath)) actualPath = WINDROSE_LOG_ALT;
+    if (source === 'windrose_events') {
+      actualPath = resolveWindrosePlusLog() || logPath;
+    }
     tailLog(source, actualPath);
   }
 }
@@ -257,7 +296,66 @@ function readNewLines(game, logPath) {
   }
 }
 
+// WindrosePlus emits NDJSON of shape:
+//   {"ev":"player.join","ts":"...","ts_unix":...,"payload":{...},"sid":"..."}
+// We map dot-namespaced ev names to our internal type vocab, and flatten
+// payload so name/x/y/z/etc are top-level on the stored event.
+const JSON_TYPE_MAP = {
+  'player.join': 'player_join', 'player.leave': 'player_leave',
+  'mod.boot': 'server_start',
+  'config.load': 'config_load', 'config.load.fail': 'config_load_fail',
+  'heartbeat': 'heartbeat',
+  'admin.command': 'command',
+};
+
+function processJsonLogLine(source, line) {
+  const limit = DEBUG_DUMP_LIMITS[source];
+  if (limit) {
+    const seen = debugDumpCounts[source] || 0;
+    if (seen < limit) {
+      debugDumpCounts[source] = seen + 1;
+      console.log(`[stats] ${source} sample #${seen + 1}:`, line.slice(0, 500));
+    }
+  }
+
+  let parsed;
+  try { parsed = JSON.parse(line); } catch { return; }
+  if (!parsed || typeof parsed !== 'object') return;
+
+  const rawType = parsed.ev || parsed.event || parsed.type || parsed.action;
+  if (!rawType) return;
+
+  const game = LOG_GAME_MAP[source] || source;
+  const tsRaw = parsed.ts || parsed.timestamp;
+  const event = {
+    game,
+    type: JSON_TYPE_MAP[rawType] || rawType,
+    ts: tsRaw ? new Date(tsRaw) : new Date(),
+    raw: line.slice(0, 300),
+  };
+  if (parsed.sid) event.sessionId = parsed.sid;
+
+  const p = (parsed.payload && typeof parsed.payload === 'object') ? parsed.payload : parsed;
+  const name = p.name || p.player || p.playerName;
+  const steamId = p.steamId || p.steamid || p.accountId || p.account_id;
+
+  if (name) event.name = name;
+  if (steamId) event.steamId = String(steamId);
+  if (p.message || p.text) event.message = p.message || p.text;
+  if (p.x != null && p.y != null) event.pos = `${p.x},${p.y},${p.z != null ? p.z : 0}`;
+  if (p.player_count != null) event.playerCount = p.player_count;
+  if (p.mode) event.mode = p.mode;
+  if (p.attacker) event.attacker = p.attacker;
+  if (p.victim) event.victim = p.victim;
+  if (p.attackerId) event.attackerId = String(p.attackerId);
+  if (p.victimId) event.victimId = String(p.victimId);
+
+  storeEvent(event);
+}
+
 function processLogLine(source, line) {
+  if (JSON_SOURCES.has(source)) return processJsonLogLine(source, line);
+
   const patterns = PATTERNS[source];
   if (!patterns) return;
 
@@ -284,16 +382,51 @@ function processLogLine(source, line) {
   }
 }
 
-// ── Valheim: map SteamID → character name from recent events ──
-const valheimNameCache = {}; // steamId → name
+// ── Cross-game SteamID → login/character name cache ──
+// Populated whenever we observe a name+steamId pair in any event. Used to
+// backfill the `name` field on later events that only carry a steamId so the
+// live feed always keys on a human-readable login instead of a player number.
+const nameCache = {}; // `${game}:${steamId}` → name
 
+function cacheName(game, steamId, name) {
+  if (!game || !steamId || !name) return;
+  nameCache[`${game}:${steamId}`] = name;
+}
+
+function lookupName(game, steamId) {
+  if (!game || !steamId) return null;
+  return nameCache[`${game}:${steamId}`] || null;
+}
+
+// Legacy alias kept to avoid touching call sites elsewhere.
+const valheimNameCache = nameCache;
 function resolveValheimName(steamId) {
-  return valheimNameCache[steamId] || steamId;
+  return lookupName('valheim', steamId) || steamId;
 }
 
 // ── Event Storage ──
 async function storeEvent(event) {
   try {
+    // Cache any name+steamId pair we can learn from this event…
+    if (event.steamId && event.name) cacheName(event.game, event.steamId, event.name);
+    if (event.attackerId && event.attacker) cacheName(event.game, event.attackerId, event.attacker);
+    if (event.victimId && event.victim) cacheName(event.game, event.victimId, event.victim);
+
+    // …then backfill missing names from the cache so the live feed never has to
+    // fall back to a raw steamId / "player number".
+    if (!event.name && event.steamId) {
+      const cached = lookupName(event.game, event.steamId);
+      if (cached) event.name = cached;
+    }
+    if (!event.attacker && event.attackerId) {
+      const cached = lookupName(event.game, event.attackerId);
+      if (cached) event.attacker = cached;
+    }
+    if (!event.victim && event.victimId) {
+      const cached = lookupName(event.game, event.victimId);
+      if (cached) event.victim = cached;
+    }
+
     await db.collection('game_events').insertOne(event);
     emitter.emit('event', event);
 
@@ -305,7 +438,17 @@ async function storeEvent(event) {
         { sort: { ts: -1 } }
       );
       if (recentJoin && recentJoin.steamId) {
-        valheimNameCache[recentJoin.steamId] = event.name;
+        cacheName('valheim', recentJoin.steamId, event.name);
+        // Re-emit a synthetic player_join with the resolved name so the live feed
+        // updates from "Anonymous joined" to the real character name.
+        emitter.emit('event', {
+          game: 'valheim',
+          type: 'player_join',
+          ts: event.ts,
+          name: event.name,
+          steamId: recentJoin.steamId,
+          resolved: true,
+        });
         await db.collection('player_stats').updateOne(
           { steamId: recentJoin.steamId, game: 'valheim' },
           { $set: { name: event.name, lastSeen: event.ts } },
@@ -321,6 +464,22 @@ async function storeEvent(event) {
         { steamId: event.steamId, game: event.game },
         {
           $set: { name, lastSeen: event.ts },
+          $inc: { sessions: 1 },
+          $setOnInsert: {
+            firstSeen: event.ts, totalPlaytime: 0,
+            kills: 0, deaths: 0, bossKills: 0, piecesPlaced: 0, crafted: 0,
+          },
+        },
+        { upsert: true }
+      );
+    }
+
+    // --- Windrose has no SteamID; key on name like Valheim does ---
+    if (event.type === 'player_join' && event.game === 'windrose' && event.name && !event.steamId) {
+      await db.collection('player_stats').updateOne(
+        { game: 'windrose', name: event.name },
+        {
+          $set: { lastSeen: event.ts },
           $inc: { sessions: 1 },
           $setOnInsert: {
             firstSeen: event.ts, totalPlaytime: 0,
@@ -473,10 +632,14 @@ async function getServerSummary(game) {
     { $group: { _id: '$type', count: { $sum: 1 } } },
   ]).toArray();
 
-  // Unique players last 24h
-  const uniquePlayers = await db.collection('game_events').distinct(
-    'steamId',
-    { game, type: 'player_join', ts: { $gte: since }, steamId: { $ne: null } }
+  // Unique players last 24h. Prefer steamId, fall back to name — windrose
+  // and valheim track players by name only (no Steam ID exposed).
+  const joins = await db.collection('game_events').find(
+    { game, type: 'player_join', ts: { $gte: since } },
+    { projection: { steamId: 1, name: 1 } }
+  ).toArray();
+  const uniquePlayers = new Set(
+    joins.map(e => e.steamId || e.name).filter(Boolean)
   );
 
   // Peak players (max from snapshots)
@@ -489,7 +652,7 @@ async function getServerSummary(game) {
     game,
     latest,
     events: evMap,
-    uniquePlayers24h: uniquePlayers.length,
+    uniquePlayers24h: uniquePlayers.size,
     peakPlayers24h: peakSnap ? peakSnap.players : 0,
     // Enriched stats
     deaths24h: evMap.death || 0,

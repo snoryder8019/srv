@@ -1,0 +1,959 @@
+<%- include('../partials/head', { title: 'Remote Control — Triple-Twenty' }) %>
+
+<div class="remote-app" id="remoteApp" data-invite-code="<%= inviteCode %>">
+
+  <!-- ══ JOIN SCREEN ══ -->
+  <div id="joinScreen" class="remote-screen">
+    <div class="remote-hero">
+      <div class="dart-icon">🎯</div>
+      <h2>Triple-Twenty</h2>
+      <p class="subtitle">Remote Player Controller</p>
+    </div>
+    <div class="card remote-join-card">
+      <div class="join-code-display" id="joinCodeDisplay"><%= inviteCode %></div>
+      <p class="hint" style="text-align:center; margin-bottom:14px;">Enter your name to join</p>
+      <input type="text" id="playerNameInput" placeholder="Your name" maxlength="20" autocomplete="off">
+
+      <div class="cam-source-choice">
+        <p class="hint" style="margin-bottom:8px;">Your camera source</p>
+        <div class="cam-type-row">
+          <button type="button" class="cam-type-btn active" data-cam="controller">🎮 Controller (no camera)</button>
+          <button type="button" class="cam-type-btn" data-cam="phone">📱 Phone Cam</button>
+          <button type="button" class="cam-type-btn" data-cam="ip">📷 IP Cam</button>
+        </div>
+        <input type="hidden" id="camTypeInput" value="controller">
+        <p class="hint" style="font-size:0.72rem; margin-top:6px;">
+          <strong>Controller:</strong> live view from the host camera + scoring. <strong>Phone/IP:</strong> your own camera feeds the AI.
+        </p>
+        <div id="ipCamJoinFields" style="display:none; margin-top:10px;">
+          <input type="text" id="joinCamIp" placeholder="Camera IP (e.g. 192.168.1.x)">
+          <div class="cam-creds-row" style="margin-top:6px;">
+            <input type="text" id="joinCamUser" placeholder="Username">
+            <input type="password" id="joinCamPass" placeholder="Password">
+          </div>
+        </div>
+      </div>
+
+      <div id="joinStatus" class="join-status"></div>
+      <button class="btn btn-primary btn-lg" id="joinGameBtn" style="width:100%; margin-top:14px;">Join Game →</button>
+    </div>
+  </div>
+
+  <!-- ══ PLAYER SCREEN ══ -->
+  <div id="playerScreen" class="remote-screen" style="display:none;">
+
+    <div class="remote-header">
+      <div class="remote-player-name" id="remotePlayerName"></div>
+      <div class="remote-game-mode" id="remoteGameMode"></div>
+      <div class="conn-indicator">
+        <span class="conn-dot dot-green"></span> Connected
+      </div>
+    </div>
+
+    <!-- Score card -->
+    <div class="remote-score-card">
+      <div class="remote-score-label" id="remoteScoreLabel">REMAINING</div>
+      <div class="remote-big-score" id="remoteBigScore">501</div>
+      <div class="remote-turn-banner" id="remoteTurnBanner" style="display:none;">🎯 YOUR TURN</div>
+    </div>
+
+    <!-- Cricket marks (hidden until cricket mode confirmed) -->
+    <div class="remote-cricket-marks" id="remoteCricketMarks" style="display:none;">
+      <div class="all-players-label">MY MARKS</div>
+      <% ['20','19','18','17','16','15','bull'].forEach(function(n) { %>
+        <div class="rcm-row">
+          <span class="rcm-num"><%= n === 'bull' ? 'Bull' : n %></span>
+          <span class="rcm-dots" data-num="<%= n %>">○○○</span>
+        </div>
+      <% }); %>
+    </div>
+
+    <!-- Camera section -->
+    <div class="remote-camera-card">
+      <div class="rcam-header">
+        <span class="rcam-title">📷 My Board Camera</span>
+        <span class="rcam-status" id="rcamStatus">No camera</span>
+      </div>
+      <div class="rcam-feed-wrap">
+        <video id="rcamVideo" autoplay playsinline style="display:none; width:100%;"></video>
+        <canvas id="rcamCanvas" style="display:none;"></canvas>
+        <img id="rcamIpImg" style="display:none; width:100%;" alt="IP cam">
+        <div class="rcam-placeholder" id="rcamPlaceholder">
+          <span>📷</span>
+          <span id="rcamPlaceholderText">Start your camera below</span>
+        </div>
+        <div class="rcam-confidence" id="rcamConfidence"></div>
+      </div>
+      <div class="rcam-ai-status" id="rcamAiStatusLine">🤖 Waiting for AI…</div>
+      <div class="rcam-controls">
+        <div id="rcamPhoneControls" style="display:none;">
+          <button class="btn btn-primary" id="rcamStartBtn">📱 Start Camera</button>
+        </div>
+        <div id="rcamIpInfo" style="display:none;">
+          <span class="cam-info" id="rcamIpLabel"></span>
+        </div>
+      </div>
+      <div class="rcam-action-row" id="rcamActionRow" style="display:none;">
+        <button class="btn btn-primary" id="rcamCaptureBtn">📸 Capture &amp; Analyze</button>
+        <label class="auto-label">
+          <input type="checkbox" id="rcamAutoCapture"> Auto (4s)
+        </label>
+        <span class="rcam-last-analyzed" id="rcamLastAnalyzed"></span>
+      </div>
+    </div>
+
+    <!-- AI Analysis Result -->
+    <div class="remote-analysis-feed" id="remoteAnalysisFeed" style="display:none;">
+      <div class="analysis-feed-header">
+        <span>🤖 AI Result</span>
+        <span class="conf-pill" id="remoteConfPill"></span>
+      </div>
+      <div class="remote-analysis-darts" id="remoteAnalysisDarts"></div>
+      <div class="remote-analysis-total">Total: <strong id="remoteAnalysisTotal">0</strong></div>
+      <div class="analysis-actions" style="margin-top:10px;">
+        <button class="btn btn-success" id="remoteConfirmBtn">✓ Confirm Round</button>
+        <button class="btn btn-warning" id="remoteCorrectToggle">✏ Correct</button>
+        <button class="btn btn-sm"      id="remoteReanalyzeBtn">↺ Re-analyze</button>
+      </div>
+      <div class="remote-correction-form" id="remoteCorrectionForm" style="display:none; margin-top:12px;">
+        <p class="hint" style="margin-bottom:8px;">Edit the darts below:</p>
+        <div id="remoteCorrectionDarts"></div>
+        <textarea id="remoteCorrectionNote" placeholder="What was wrong? (optional)" rows="2" style="margin-top:8px;"></textarea>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button class="btn btn-primary" id="submitRemoteCorrection">Submit &amp; Confirm</button>
+          <button class="btn btn-sm"      id="cancelRemoteCorrection">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Score entry pad (tap-based) — controller's primary scoring UI -->
+    <div class="remote-tap-entry" id="remoteTapEntry" style="display:none;">
+      <div class="tap-entry-header">
+        <span class="tap-entry-label" id="tapEntryLabel">SCORING</span>
+        <span class="tap-entry-state" id="tapEntryState"></span>
+      </div>
+      <!-- 3 dart slots -->
+      <div class="rtap-slots" id="rtapSlots">
+        <% for (var d = 0; d < 3; d++) { %>
+          <button class="rtap-slot" id="rtapSlot_<%= d %>" data-slot="<%= d %>">
+            <span class="rtap-slot-num">Dart <%= d+1 %></span>
+            <span class="rtap-slot-value" id="rtapSlotValue_<%= d %>">–</span>
+          </button>
+        <% } %>
+      </div>
+      <!-- Multiplier row -->
+      <div class="rtap-mult-row" role="group">
+        <button class="rtap-mult active" data-mult="single">Single</button>
+        <button class="rtap-mult" data-mult="double">Double</button>
+        <button class="rtap-mult" data-mult="triple">Triple</button>
+        <button class="rtap-mult rtap-mult-miss" data-mult="miss">Miss</button>
+      </div>
+      <!-- Number grid -->
+      <div class="rtap-seg-grid">
+        <% var _nums = [20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1]; %>
+        <% _nums.forEach(function(n){ %>
+          <button class="rtap-seg" data-seg="<%= n %>"><%= n %></button>
+        <% }); %>
+        <button class="rtap-seg rtap-seg-bull" data-seg="25" data-ring="outer_bull">25</button>
+        <button class="rtap-seg rtap-seg-bull" data-seg="25" data-ring="inner_bull">Bull</button>
+      </div>
+      <div class="rtap-total-row">
+        Round Total: <strong id="rtapTotal">0</strong>
+      </div>
+      <div class="rtap-actions">
+        <button class="btn btn-sm" id="rtapUndoBtn">↶ Undo</button>
+        <button class="btn btn-sm" id="rtapClearBtn">✕ Clear</button>
+        <button class="btn btn-primary" id="rtapSubmitBtn" disabled>Submit Round</button>
+      </div>
+    </div>
+
+    <!-- Scoreboard -->
+    <div class="remote-all-players">
+      <div class="all-players-label">SCOREBOARD</div>
+      <div id="allPlayersList"></div>
+    </div>
+
+    <!-- Last round -->
+    <div class="remote-round-card">
+      <div class="remote-round-label">MY LAST ROUND</div>
+      <div class="remote-dart-badges" id="remoteDartBadges">
+        <span class="remote-dart-badge empty">-</span>
+        <span class="remote-dart-badge empty">-</span>
+        <span class="remote-dart-badge empty">-</span>
+      </div>
+      <div class="remote-round-total">Total: <strong id="remoteRoundTotal">0</strong></div>
+    </div>
+
+    <!-- Chat -->
+    <div class="remote-chat">
+      <div class="remote-chat-messages" id="remoteChatMessages"></div>
+      <div class="remote-chat-input-row">
+        <input type="text" id="remoteChatInput" placeholder="Say something..." maxlength="100">
+        <button class="btn btn-sm" id="remoteChatSend">→</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Non-socket JS (safe before foot.ejs) -->
+<script>
+const _inviteCode = document.getElementById('remoteApp').dataset.inviteCode;
+
+let gameId        = null;
+let myPlayerIndex = -1;
+let myName        = '';
+let gameMode      = '501';
+let gameState     = null;
+let lastAnalysis  = null;
+let camType       = 'phone';
+let phoneStream   = null;
+let autoInterval  = null;
+let camReady      = false;
+let ipCamIp = '', ipCamUser = '', ipCamPass = '';
+
+// ── Cam type buttons ──
+document.querySelectorAll('.cam-type-btn').forEach(btn =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.cam-type-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('camTypeInput').value = btn.dataset.cam;
+    document.getElementById('ipCamJoinFields').style.display = btn.dataset.cam === 'ip' ? 'block' : 'none';
+  }));
+
+document.getElementById('joinGameBtn').addEventListener('click', joinGame);
+document.getElementById('playerNameInput').addEventListener('keydown', e => { if (e.key === 'Enter') joinGame(); });
+
+async function joinGame() {
+  const name = document.getElementById('playerNameInput').value.trim();
+  if (!name) { document.getElementById('joinStatus').textContent = 'Enter your name.'; return; }
+  myName  = name;
+  camType = document.getElementById('camTypeInput').value;
+
+  if (camType === 'ip') {
+    ipCamIp   = document.getElementById('joinCamIp').value.trim();
+    ipCamUser = document.getElementById('joinCamUser').value.trim();
+    ipCamPass = document.getElementById('joinCamPass').value.trim();
+    if (!ipCamIp) { document.getElementById('joinStatus').textContent = 'Enter your camera IP.'; return; }
+  }
+
+  const statusEl = document.getElementById('joinStatus');
+  const joinBtn  = document.getElementById('joinGameBtn');
+  statusEl.textContent = 'Looking up game...';
+  joinBtn.disabled     = true;
+
+  try {
+    const resp = await fetch(`/api/join/${_inviteCode}`);
+    const data = await resp.json();
+    if (data.error) { statusEl.textContent = data.error; joinBtn.disabled = false; return; }
+
+    gameId    = data._id;
+    gameMode  = data.mode;
+    gameState = data;
+
+    myPlayerIndex = (data.claimedIndex >= 0)
+      ? data.claimedIndex
+      : data.players.findIndex(p => p.name.toLowerCase() === name.toLowerCase());
+
+    if (myPlayerIndex >= 0 && !data.players[myPlayerIndex]?.isMe) {
+      fetch(`/api/game/${data._id}/claim`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      }).catch(() => {});
+    }
+
+    // socket may not exist yet if joinGame is called very fast — handled in the post-foot script
+    if (window._ttSocket) {
+      window._ttSocket.emit('join-game', { gameId, role: 'remote', playerName: name, hasCam: camType !== 'none' });
+    }
+    window._pendingJoin = { gameId, playerName: name, hasCam: camType !== 'none' };
+
+    document.getElementById('joinScreen').style.display   = 'none';
+    document.getElementById('playerScreen').style.display = 'flex';
+    document.getElementById('remotePlayerName').textContent = name;
+    document.getElementById('remoteGameMode').textContent   = data.mode.toUpperCase();
+
+    initCamera();
+
+    if (gameMode === 'cricket') {
+      document.getElementById('remoteScoreLabel').textContent       = 'CRICKET PTS';
+      document.getElementById('remoteBigScore').textContent         = '0';
+      document.getElementById('remoteCricketMarks').style.display   = 'block';
+    }
+
+    renderGameState(data);
+  } catch (err) {
+    statusEl.textContent = 'Could not find game. Check your code.';
+    console.error(err);
+  } finally {
+    joinBtn.disabled = false;
+  }
+}
+
+function initCamera() {
+  if (camType === 'phone') {
+    document.getElementById('rcamPhoneControls').style.display = 'block';
+    document.getElementById('rcamStartBtn').addEventListener('click', startPhoneCam);
+  } else if (camType === 'ip') {
+    document.getElementById('rcamIpInfo').style.display    = 'block';
+    document.getElementById('rcamIpLabel').textContent     = '📷 ' + ipCamIp;
+    document.getElementById('rcamActionRow').style.display = 'flex';
+    document.getElementById('rcamPlaceholder').style.display = 'none';
+    setCamStatus('IP cam ready', 'dot-green');
+    camReady = true;
+  } else if (camType === 'controller') {
+    // Standalone controller: no local camera. The feed img/canvas is used
+    // to display mirrored frames pushed by the host camera over socket.io.
+    document.getElementById('rcamPlaceholderText').textContent = 'Waiting for host camera feed…';
+    setCamStatus('Controller mode', 'dot-waiting');
+    // Hide the per-player capture controls — the controller never captures.
+    const phoneCtrl = document.getElementById('rcamPhoneControls'); if (phoneCtrl) phoneCtrl.style.display = 'none';
+    const ipCtrl    = document.getElementById('rcamIpInfo');        if (ipCtrl) ipCtrl.style.display = 'none';
+    const actionRow = document.getElementById('rcamActionRow');     if (actionRow) actionRow.style.display = 'none';
+    // Rebrand the camera card as a live view
+    const camTitle = document.querySelector('.rcam-title');
+    if (camTitle) camTitle.textContent = '📺 Live Host Camera';
+    camReady = true;  // manual submit path always available
+  } else {
+    document.getElementById('rcamPlaceholderText').textContent = 'Manual score entry only';
+    setCamStatus('Manual mode', 'dot-waiting');
+  }
+}
+
+async function startPhoneCam() {
+  try {
+    phoneStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false
+    });
+    const video = document.getElementById('rcamVideo');
+    video.srcObject = phoneStream;
+    video.style.display = 'block';
+    document.getElementById('rcamPlaceholder').style.display = 'none';
+    document.getElementById('rcamStartBtn').textContent = '✅ Camera On';
+    document.getElementById('rcamStartBtn').disabled    = true;
+    document.getElementById('rcamActionRow').style.display = 'flex';
+    setCamStatus('Camera active', 'dot-green');
+    camReady = true;
+  } catch (err) {
+    setCamStatus('Camera denied', 'dot-red');
+    alert('Camera access denied: ' + err.message);
+  }
+}
+
+function setCamStatus(text, cls) {
+  const el = document.getElementById('rcamStatus');
+  el.textContent = text;
+  el.className   = 'rcam-status ' + (cls || '');
+}
+
+async function captureFrame() {
+  if (camType === 'phone' && phoneStream) {
+    const video = document.getElementById('rcamVideo');
+    const canvas = document.getElementById('rcamCanvas');
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+  }
+  if (camType === 'ip' && ipCamIp) {
+    const resp = await fetch('/api/proxy-snapshot', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip: ipCamIp, username: ipCamUser, password: ipCamPass })
+    });
+    const data = await resp.json();
+    if (data.image) {
+      const img = document.getElementById('rcamIpImg');
+      img.src = 'data:image/jpeg;base64,' + data.image;
+      img.style.display = 'block';
+      document.getElementById('rcamPlaceholder').style.display = 'none';
+    }
+    return data.image;
+  }
+  return null;
+}
+
+async function captureAndAnalyze() {
+  if (!camReady && camType !== 'none') return;
+  setCamStatus('Analyzing...', 'dot-yellow');
+  document.getElementById('rcamCaptureBtn').disabled = true;
+  try {
+    const base64 = await captureFrame();
+    const resp = await fetch('/api/analyze', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64, gameId, playerIndex: myPlayerIndex })
+    });
+    const analysis = await resp.json();
+    lastAnalysis = { ...analysis, frameBase64: base64 };
+    showAnalysisResult(analysis);
+    document.getElementById('rcamLastAnalyzed').textContent = 'Last: ' + new Date().toLocaleTimeString();
+    setCamStatus('Ready', 'dot-green');
+    if (window._ttSocket) {
+      window._ttSocket.emit('player-analysis', { gameId, playerIndex: myPlayerIndex, playerName: myName, analysis, frame: base64 });
+    }
+    const confEl = document.getElementById('rcamConfidence');
+    if (analysis.confidence) {
+      confEl.textContent   = analysis.confidence.toUpperCase();
+      confEl.className     = 'rcam-confidence conf-' + analysis.confidence;
+      confEl.style.display = 'block';
+    }
+  } catch (err) {
+    setCamStatus('Error', 'dot-red');
+    console.error(err);
+  } finally {
+    document.getElementById('rcamCaptureBtn').disabled = false;
+  }
+}
+
+document.getElementById('rcamCaptureBtn').addEventListener('click', captureAndAnalyze);
+// Auto-capture: user intent is the checkbox; actual polling only runs on my turn.
+// This prevents 4 remote phones all hammering the tunnel simultaneously.
+let _autoCaptureWanted = false;
+function _startAutoIfAllowed() {
+  if (!_autoCaptureWanted) return;
+  if (autoInterval) return;
+  const isMyTurn = !gameState || gameState.currentPlayerIndex === myPlayerIndex;
+  if (!isMyTurn) return;
+  autoInterval = setInterval(captureAndAnalyze, 4000);
+}
+function _stopAuto() {
+  if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
+}
+document.getElementById('rcamAutoCapture').addEventListener('change', function() {
+  if (camType === 'controller' || camType === 'none') {
+    this.checked = false;  // controllers don't capture
+    return;
+  }
+  _autoCaptureWanted = this.checked;
+  if (_autoCaptureWanted) _startAutoIfAllowed();
+  else _stopAuto();
+});
+
+function showAnalysisResult(analysis) {
+  // Hard guard: never show the AI panel with empty or unavailable analysis.
+  // Manual scoring via the tap pad should take over in those cases.
+  const hasDarts = analysis && Array.isArray(analysis.darts) && analysis.darts.length > 0;
+  const aiOk     = analysis && analysis.available !== false;
+  if (!aiOk || !hasDarts) {
+    document.getElementById('remoteAnalysisFeed').style.display = 'none';
+    lastAnalysis = null;
+    return;
+  }
+  document.getElementById('remoteAnalysisFeed').style.display = 'block';
+  const conf = document.getElementById('remoteConfPill');
+  conf.textContent = (analysis.confidence || '').toUpperCase();
+  conf.className   = 'conf-pill conf-' + (analysis.confidence || 'low');
+  document.getElementById('remoteAnalysisDarts').innerHTML = (analysis.darts || []).map(d => {
+    const prefix = d.ring === 'double' ? 'D' : d.ring === 'triple' ? 'T' : '';
+    return `<span class="remote-dart-badge">${prefix}${d.segment} = ${d.score}</span>`;
+  }).join('');
+  document.getElementById('remoteAnalysisTotal').textContent = analysis.total || 0;
+  document.getElementById('remoteCorrectionForm').style.display = 'none';
+  buildRemoteCorrectionForm(analysis);
+}
+
+function buildRemoteCorrectionForm(analysis) {
+  const c = document.getElementById('remoteCorrectionDarts');
+  c.innerHTML = '';
+  (analysis.darts || []).forEach((d, i) => {
+    const row = document.createElement('div');
+    row.className = 'correction-dart-row';
+    row.innerHTML = `<label>Dart ${i+1}</label>
+      <input type="number" class="corr-seg" min="1" max="25" value="${d.segment}" style="width:58px;">
+      <select class="corr-ring">
+        <option value="single"     ${d.ring==='single'    ?'selected':''}>Single</option>
+        <option value="double"     ${d.ring==='double'    ?'selected':''}>Double</option>
+        <option value="triple"     ${d.ring==='triple'    ?'selected':''}>Triple</option>
+        <option value="outer_bull" ${d.ring==='outer_bull'?'selected':''}>Outer Bull</option>
+        <option value="inner_bull" ${d.ring==='inner_bull'?'selected':''}>Bull</option>
+        <option value="miss"       ${d.ring==='miss'      ?'selected':''}>Miss</option>
+      </select>`;
+    c.appendChild(row);
+  });
+  c.dataset.aiDarts = JSON.stringify(analysis.darts);
+  c.dataset.aiTotal = analysis.total;
+}
+
+document.getElementById('remoteConfirmBtn').addEventListener('click', async () => {
+  if (!lastAnalysis || !lastAnalysis.darts || !lastAnalysis.darts.length) {
+    // Empty AI result — nothing to confirm. Just dismiss the panel.
+    document.getElementById('remoteAnalysisFeed').style.display = 'none';
+    lastAnalysis = null;
+    return;
+  }
+  await submitRound(lastAnalysis.darts, lastAnalysis.confidence);
+});
+document.getElementById('remoteReanalyzeBtn').addEventListener('click', () => {
+  document.getElementById('remoteAnalysisFeed').style.display = 'none';
+  lastAnalysis = null;
+  // Only re-analyze if we have our own camera. Controllers don't capture.
+  if (camType === 'phone' || camType === 'ip') captureAndAnalyze();
+});
+document.getElementById('remoteCorrectToggle').addEventListener('click', () => {
+  const form = document.getElementById('remoteCorrectionForm');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+});
+document.getElementById('cancelRemoteCorrection').addEventListener('click', () => {
+  document.getElementById('remoteCorrectionForm').style.display = 'none';
+});
+document.getElementById('submitRemoteCorrection').addEventListener('click', async () => {
+  if (!lastAnalysis) return;
+  const c = document.getElementById('remoteCorrectionDarts');
+  const aiDarts = JSON.parse(c.dataset.aiDarts || '[]');
+  const aiTotal = parseInt(c.dataset.aiTotal || '0');
+  const correctedDarts = Array.from(c.querySelectorAll('.correction-dart-row')).map(row => {
+    const seg  = parseInt(row.querySelector('.corr-seg').value);
+    const ring = row.querySelector('.corr-ring').value;
+    let score  = seg;
+    if (ring === 'double')     score = seg * 2;
+    if (ring === 'triple')     score = seg * 3;
+    if (ring === 'inner_bull') score = 50;
+    if (ring === 'outer_bull') score = 25;
+    if (ring === 'miss')       score = 0;
+    return { segment: seg, ring, score };
+  });
+  const correctedTotal = correctedDarts.reduce((s, d) => s + d.score, 0);
+  const note = document.getElementById('remoteCorrectionNote').value.trim();
+  await fetch('/api/correct', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gameId, frameId: new Date().toISOString(),
+      ai: { darts: aiDarts, total: aiTotal }, corrected: { darts: correctedDarts, total: correctedTotal }, note })
+  });
+  await submitRound(correctedDarts, 'corrected');
+});
+
+// ══════════════════════════════════════════════════
+// Tap-based score entry (controller / manual-only)
+// Shows whenever camType is controller or none. Always visible — submit
+// button is disabled off-turn so users can pre-enter/review.
+// ══════════════════════════════════════════════════
+const rtap = {
+  darts: [null, null, null],
+  activeSlot: 0,
+  mult: 'single',
+  editMode: false
+};
+
+function maybeShowManual(game) {
+  const el = document.getElementById('remoteTapEntry');
+  const needPad = (camType === 'controller' || camType === 'none');
+  el.style.display = needPad ? 'block' : 'none';
+  if (!needPad) return;
+  updateTapPadState(game);
+}
+
+function updateTapPadState(game) {
+  const isMyTurn = game && game.currentPlayerIndex === myPlayerIndex && game.status === 'active';
+  const waiting  = game && game.status === 'waiting';
+  const stateEl  = document.getElementById('tapEntryState');
+  const submit   = document.getElementById('rtapSubmitBtn');
+  const whoseTurn = game && game.players && game.players[game.currentPlayerIndex]
+    ? game.players[game.currentPlayerIndex].name : '?';
+
+  if (waiting) {
+    stateEl.textContent = '◌ Waiting for game to start';
+    stateEl.className   = 'tap-entry-state state-waiting';
+    submit.disabled     = true;
+  } else if (!game || game.status === 'finished') {
+    stateEl.textContent = '✓ Game over';
+    stateEl.className   = 'tap-entry-state state-done';
+    submit.disabled     = true;
+  } else if (game.status === 'idle') {
+    stateEl.textContent = '⏸ Paused — resume from dashboard';
+    stateEl.className   = 'tap-entry-state state-idle';
+    submit.disabled     = true;
+  } else if (isMyTurn) {
+    stateEl.textContent = '🎯 YOUR TURN';
+    stateEl.className   = 'tap-entry-state state-mine';
+    const anyDart = rtap.darts.some(Boolean);
+    submit.disabled = !anyDart;
+  } else {
+    stateEl.textContent = whoseTurn + "'s turn";
+    stateEl.className   = 'tap-entry-state state-other';
+    submit.disabled     = true;
+  }
+}
+
+function rtapFormatDart(d) {
+  if (!d) return '–';
+  if (d.ring === 'miss') return 'X';
+  if (d.ring === 'inner_bull') return '50';
+  if (d.ring === 'outer_bull') return '25';
+  const pfx = d.ring === 'double' ? 'D' : d.ring === 'triple' ? 'T' : '';
+  return pfx + d.segment;
+}
+
+function rtapRefresh() {
+  for (let i = 0; i < 3; i++) {
+    const slot = document.getElementById('rtapSlot_' + i);
+    const val  = document.getElementById('rtapSlotValue_' + i);
+    if (!slot || !val) continue;
+    val.textContent = rtapFormatDart(rtap.darts[i]);
+    slot.classList.toggle('slot-filled', !!rtap.darts[i]);
+    slot.classList.toggle('slot-active', i === rtap.activeSlot);
+  }
+  let total = 0;
+  rtap.darts.forEach(d => { if (d) total += d.score; });
+  document.getElementById('rtapTotal').textContent = total;
+  // Re-evaluate submit button state
+  updateTapPadState(gameState);
+}
+
+function rtapSetActiveSlot(i) {
+  rtap.activeSlot = Math.max(0, Math.min(2, i|0));
+  rtapRefresh();
+}
+
+function rtapAdvance() {
+  for (let i = rtap.activeSlot + 1; i < 3; i++) {
+    if (!rtap.darts[i]) { rtapSetActiveSlot(i); return; }
+  }
+  // stay put when full
+}
+
+function rtapSetMult(m) {
+  rtap.mult = m;
+  document.querySelectorAll('.rtap-mult').forEach(b => {
+    b.classList.toggle('active', b.dataset.mult === m);
+  });
+}
+
+function rtapCommit(dart) {
+  // User is entering manually — dismiss any AI confirm panel that's been
+  // sitting around so we don't have two score surfaces competing.
+  const feed = document.getElementById('remoteAnalysisFeed');
+  if (feed && feed.style.display !== 'none') {
+    feed.style.display = 'none';
+    lastAnalysis = null;
+  }
+  rtap.darts[rtap.activeSlot] = dart;
+  // Miss/double/triple reset to single (unless in edit mode)
+  if (dart.ring === 'miss' || dart.ring === 'double' || dart.ring === 'triple') {
+    if (!rtap.editMode) rtapSetMult('single');
+  }
+  if (rtap.editMode) {
+    rtap.editMode = false;
+    rtapRefresh();
+  } else {
+    rtapAdvance();
+    rtapRefresh();
+  }
+}
+
+function rtapClear() {
+  rtap.darts = [null, null, null];
+  rtap.activeSlot = 0;
+  rtap.editMode = false;
+  rtapSetMult('single');
+  rtapRefresh();
+}
+
+// Wire tap pad buttons
+document.querySelectorAll('.rtap-slot').forEach(b => {
+  b.addEventListener('click', () => {
+    rtap.editMode = true;
+    rtapSetActiveSlot(parseInt(b.dataset.slot, 10));
+  });
+});
+document.querySelectorAll('.rtap-mult').forEach(b => {
+  b.addEventListener('click', () => rtapSetMult(b.dataset.mult));
+});
+document.querySelectorAll('.rtap-seg').forEach(b => {
+  b.addEventListener('click', () => {
+    const seg  = parseInt(b.dataset.seg, 10);
+    const fixedRing = b.dataset.ring;  // for 25/Bull, ring is forced
+    let ring = fixedRing || rtap.mult;
+    if (rtap.mult === 'miss' && !fixedRing) ring = 'miss';
+    let score;
+    if (ring === 'miss')       score = 0;
+    else if (ring === 'inner_bull') score = 50;
+    else if (ring === 'outer_bull') score = 25;
+    else if (ring === 'double')     score = seg * 2;
+    else if (ring === 'triple')     score = seg * 3;
+    else                            score = seg;
+    const dart = { segment: ring === 'miss' ? 0 : seg, ring, score };
+    rtapCommit(dart);
+  });
+});
+document.getElementById('rtapUndoBtn').addEventListener('click', () => {
+  for (let i = 2; i >= 0; i--) {
+    if (rtap.darts[i]) {
+      rtap.darts[i] = null;
+      rtapSetActiveSlot(i);
+      return;
+    }
+  }
+});
+document.getElementById('rtapClearBtn').addEventListener('click', rtapClear);
+document.getElementById('rtapSubmitBtn').addEventListener('click', async () => {
+  const darts = rtap.darts.filter(Boolean);
+  if (!darts.length) return;
+  await submitRound(darts, 'manual');
+  rtapClear();
+});
+
+async function submitRound(darts, confidence) {
+  document.getElementById('remoteConfirmBtn').disabled  = true;
+  const _rtapSub = document.getElementById('rtapSubmitBtn'); if (_rtapSub) _rtapSub.disabled = true;
+  try {
+    const resp = await fetch(`/api/game/${gameId}/round`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ darts, confidence: confidence || 'remote', frameId: new Date().toISOString() })
+    });
+    const game = await resp.json();
+    if (game.error) { alert(game.error); return; }
+
+    const wasBust = game.mode === '501' && game.rounds?.length > 0 && game.rounds[game.rounds.length-1].total === 0;
+    gameState = game;
+    renderGameState(game);
+
+    if (wasBust) {
+      const banner = document.getElementById('remoteTurnBanner');
+      banner.style.display = 'block';
+      banner.style.background = 'var(--red)';
+      banner.textContent = '💥 BUST! Score unchanged.';
+      setTimeout(() => { banner.style.background = ''; banner.style.display = 'none'; }, 3000);
+    }
+
+    if (window._ttSocket) window._ttSocket.emit('game-update', { gameId, game });
+    document.getElementById('remoteAnalysisFeed').style.display = 'none';
+    lastAnalysis = null;
+    _stopAuto();  // pause — intent persists, will resume when my turn comes back
+  } catch (err) {
+    alert('Error submitting round: ' + err.message);
+  } finally {
+    document.getElementById('remoteConfirmBtn').disabled  = false;
+    // rtapSubmitBtn is re-enabled via updateTapPadState() after render
+  }
+}
+
+function renderGameState(game) {
+  const isMyTurn = game.currentPlayerIndex === myPlayerIndex;
+
+  if (myPlayerIndex >= 0 && game.players[myPlayerIndex]) {
+    const p = game.players[myPlayerIndex];
+    if (game.mode === '501') {
+      document.getElementById('remoteBigScore').textContent  = p.remaining;
+      document.getElementById('remoteScoreLabel').textContent = 'REMAINING';
+    } else {
+      document.getElementById('remoteBigScore').textContent  = p.cricketPoints || 0;
+      document.getElementById('remoteScoreLabel').textContent = 'CRICKET PTS';
+      const marksEl = document.getElementById('remoteCricketMarks');
+      if (marksEl && p.marks) {
+        ['20','19','18','17','16','15','bull'].forEach(n => {
+          const el = marksEl.querySelector(`[data-num="${n}"]`);
+          if (!el) return;
+          const m = p.marks[n] || 0;
+          el.textContent = (m>=1?'●':'○') + (m>=2?'●':'○') + (m>=3?'✕':'○');
+        });
+      }
+    }
+  }
+
+  document.getElementById('remoteCricketMarks').style.display = game.mode === 'cricket' ? 'block' : 'none';
+
+  const banner = document.getElementById('remoteTurnBanner');
+  if (isMyTurn && game.status === 'active') {
+    banner.style.display    = 'block';
+    banner.textContent      = '🎯 YOUR TURN';
+    banner.style.background = '';
+  } else {
+    banner.style.display = 'none';
+  }
+
+  document.getElementById('allPlayersList').innerHTML = game.players.map((p, i) => {
+    const active = i === game.currentPlayerIndex;
+    const score  = game.mode === '501' ? `${p.remaining} left` : `${p.cricketPoints || 0} pts`;
+    return `<div class="all-player-row ${active ? 'active-row' : ''}">
+      <span class="all-player-indicator">${active ? '▶' : ''}</span>
+      <span class="all-player-name">${p.name}</span>
+      <span class="all-player-score">${score}</span>
+    </div>`;
+  }).join('');
+
+  const myRounds = (game.rounds || []).filter(r => r.playerIndex === myPlayerIndex);
+  const last = myRounds[myRounds.length - 1];
+  if (last) {
+    const c = document.getElementById('remoteDartBadges');
+    c.innerHTML = '';
+    for (let i = 0; i < 3; i++) {
+      const span = document.createElement('span');
+      if (last.darts?.[i]) {
+        const d = last.darts[i];
+        const prefix = d.ring === 'double' ? 'D' : d.ring === 'triple' ? 'T' : '';
+        span.className = 'remote-dart-badge';
+        span.textContent = prefix + d.segment + ' = ' + d.score;
+      } else {
+        span.className = 'remote-dart-badge empty';
+        span.textContent = '-';
+      }
+      c.appendChild(span);
+    }
+    document.getElementById('remoteRoundTotal').textContent = last.total || 0;
+  }
+
+  maybeShowManual(game);
+}
+
+// Chat
+document.getElementById('remoteChatSend').addEventListener('click', sendChat);
+document.getElementById('remoteChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+function sendChat() {
+  const msg = document.getElementById('remoteChatInput').value.trim();
+  if (!msg || !gameId || !window._ttSocket) return;
+  window._ttSocket.emit('game-chat', { gameId, message: msg, playerName: myName });
+  document.getElementById('remoteChatInput').value = '';
+}
+function addChatMessage(from, message) {
+  const el  = document.getElementById('remoteChatMessages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg';
+  div.innerHTML = `<span class="chat-from">${from}:</span> <span class="chat-text">${message}</span>`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+</script>
+
+<%- include('../partials/foot') %>
+
+<!-- Socket init MUST be after foot.ejs so socket.io.js is loaded -->
+<script>
+const socket = window._ttSocket || io();
+window._ttSocket = socket;
+
+// If joinGame() ran before socket was ready, send the pending join now
+if (window._pendingJoin) {
+  socket.emit('join-game', { ...window._pendingJoin, role: 'remote' });
+  window._pendingJoin = null;
+}
+
+socket.on('connect', () => {
+  if (window._pendingJoin) {
+    socket.emit('join-game', { ...window._pendingJoin, role: 'remote' });
+    window._pendingJoin = null;
+  }
+});
+
+// Track whose turn it was before updates so we can detect "round just tallied"
+let _prevTurnIdx = null;
+socket.on('game-update', ({ game, soloMode, roundPlayerIndex }) => {
+  gameState = game;
+  // Sound: round tallied (distinct for solo vs multi)
+  if (window.ttAudio) {
+    window.ttAudio.play(soloMode ? 'roundDoneSolo' : 'roundDoneMulti');
+    if (!soloMode && roundPlayerIndex !== undefined && roundPlayerIndex !== myPlayerIndex) {
+      setTimeout(() => window.ttAudio.play('opponentScore'), 400);
+    }
+  }
+  renderGameState(game);
+  _prevTurnIdx = game.currentPlayerIndex;
+  // Turn-gate auto-capture: pause when not my turn, resume when it is.
+  if (game.currentPlayerIndex === myPlayerIndex) _startAutoIfAllowed();
+  else _stopAuto();
+});
+socket.on('game-started', ({ game }) => {
+  gameState = game;
+  if (window.ttAudio) window.ttAudio.play('gameStart');
+  renderGameState(game);
+  if (game.currentPlayerIndex === myPlayerIndex) _startAutoIfAllowed();
+  else _stopAuto();
+});
+socket.on('game-finished', ({ winner }) => {
+  const banner = document.getElementById('remoteTurnBanner');
+  banner.style.display    = 'block';
+  banner.textContent      = winner === myName ? '🏆 YOU WIN!' : `🏆 ${winner} wins!`;
+  banner.style.background = winner === myName ? 'var(--green)' : 'var(--border2)';
+  _autoCaptureWanted = false;
+  const cb = document.getElementById('rcamAutoCapture');
+  if (cb) cb.checked = false;
+  _stopAuto();
+  if (window.ttAudio) window.ttAudio.play(winner === myName ? 'gameWinSelf' : 'gameWinOther');
+});
+socket.on('analysis-result', ({ analysis, forPlayerIndex }) => {
+  if (forPlayerIndex !== undefined && forPlayerIndex !== myPlayerIndex) return;
+  if (gameState && gameState.currentPlayerIndex !== myPlayerIndex) return;
+  const hasDarts = analysis && Array.isArray(analysis.darts) && analysis.darts.length > 0;
+  const aiOk     = analysis && analysis.available !== false;
+  if (!aiOk || !hasDarts) return;  // don't hijack the tap pad with empty results
+  lastAnalysis = analysis;
+  if (window.ttAudio) window.ttAudio.play('aiSeen');
+  showAnalysisResult(analysis);
+});
+socket.on('game-resumed', ({ game }) => {
+  gameState = game;
+  if (window.ttAudio) window.ttAudio.play('gameStart');
+  renderGameState(game);
+  if (game.currentPlayerIndex === myPlayerIndex) _startAutoIfAllowed();
+  else _stopAuto();
+});
+socket.on('game-idle', () => {
+  _autoCaptureWanted = false;
+  const cb = document.getElementById('rcamAutoCapture');
+  if (cb) cb.checked = false;
+  _stopAuto();
+  const banner = document.getElementById('remoteTurnBanner');
+  if (banner) {
+    banner.style.display = 'block';
+    banner.style.background = 'var(--border2)';
+    banner.textContent = '⏸ Game paused — resume from dashboard';
+  }
+});
+// Controller mode: receive host-camera frames over socket and display them.
+socket.on('player-analysis', ({ playerIndex, frame, analysis }) => {
+  if (camType !== 'controller') return;
+  if (!frame) return;
+  const img = document.getElementById('rcamIpImg');
+  if (img) {
+    img.src = 'data:image/jpeg;base64,' + frame;
+    img.style.display = 'block';
+  }
+  const ph = document.getElementById('rcamPlaceholder');
+  if (ph) ph.style.display = 'none';
+  setCamStatus('Live', 'dot-green');
+
+  // Only surface the AI confirm panel when:
+  //   1. AI is actually available (not offline / model missing)
+  //   2. AI actually detected at least one dart
+  //   3. It's my turn AND this frame targets me (or is general)
+  // This prevents the empty-result AI panel from hijacking the manual tap pad.
+  const hasDarts = analysis && Array.isArray(analysis.darts) && analysis.darts.length > 0;
+  const aiOk     = analysis && analysis.available !== false;
+  const forMe    = playerIndex === undefined || playerIndex === myPlayerIndex;
+  const myTurn   = gameState && gameState.currentPlayerIndex === myPlayerIndex && gameState.status === 'active';
+
+  if (aiOk && hasDarts && forMe && myTurn) {
+    lastAnalysis = analysis;
+    showAnalysisResult(analysis);
+  }
+  // Update the small status line under the feed with what AI saw this frame.
+  // The `note` field is surfaced on off/empty states — the cluster now echoes
+  // parser diagnostics there (e.g. "no JSON found in response"), which is the
+  // most useful signal when the model returns zero darts.
+  const aiStatusLine = document.getElementById('rcamAiStatusLine');
+  if (aiStatusLine) {
+    const note = (analysis && analysis.note) ? ' — ' + analysis.note : '';
+    if (!aiOk) {
+      aiStatusLine.textContent = '🤖 AI unavailable' + note;
+      aiStatusLine.className = 'rcam-ai-status ai-off';
+    } else if (hasDarts) {
+      aiStatusLine.textContent = '🤖 AI saw ' + analysis.darts.length + ' dart(s) · total ' + (analysis.total || 0);
+      aiStatusLine.className = 'rcam-ai-status ai-seen';
+    } else {
+      aiStatusLine.textContent = '🤖 AI saw nothing this frame' + note;
+      aiStatusLine.className = 'rcam-ai-status ai-empty';
+    }
+  }
+});
+// lobby-frame carries the same payload for every game on the server. Filter by gameId.
+socket.on('lobby-frame', ({ gameId: fgId, frame }) => {
+  if (camType !== 'controller') return;
+  if (fgId !== gameId) return;
+  const img = document.getElementById('rcamIpImg');
+  if (img && frame) {
+    img.src = 'data:image/jpeg;base64,' + frame;
+    img.style.display = 'block';
+  }
+  const ph = document.getElementById('rcamPlaceholder');
+  if (ph) ph.style.display = 'none';
+});
+socket.on('game-chat', ({ message, playerName }) => addChatMessage(playerName, message));
+</script>

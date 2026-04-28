@@ -1,10 +1,28 @@
 'use strict';
 
 const express = require('express');
+const net = require('net');
 const provisioner = require('../lib/linode-provisioner');
 const playtime = require('../lib/playtime');
 const worldBackup = require('../lib/world-backup');
 const router = express.Router();
+
+// TCP reachability check — Valheim/Rust/etc use UDP, so this only tells us the
+// host is up and something is binding. For a cheap ready signal we just check
+// that a TCP SYN returns RST (port closed but host alive) vs ACK (port open).
+// We treat either as "reachable"; timeout means still booting.
+function probeHost(ip, port, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const s = new net.Socket();
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; s.destroy(); resolve(ok); };
+    s.setTimeout(timeoutMs);
+    s.once('connect', () => finish(true));
+    s.once('error', (e) => finish(e && e.code === 'ECONNREFUSED')); // host reachable, port just closed
+    s.once('timeout', () => finish(false));
+    s.connect(port, ip);
+  });
+}
 
 function requireAuth(req, res, next) {
   if (req.isAuthenticated()) return next();
@@ -33,12 +51,13 @@ const GAME_LIBS = {
   '7dtd': () => require('../lib/7dtd'),
   se: () => require('../lib/se'),
   palworld: () => require('../lib/palworld'),
+  windrose: () => require('../lib/windrose'),
 };
 
 router.post('/api/request', requireAuth, async (req, res) => {
   try {
     const { game } = req.body;
-    const validGames = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld'];
+    const validGames = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
     if (!game || !validGames.includes(game)) {
       return res.status(400).json({ error: 'Invalid game. Choose: ' + validGames.join(', ') });
     }
@@ -77,17 +96,21 @@ router.get('/api/provisioned-status/:game', requireAuth, async (req, res) => {
     const GAME_PORTS_MAP = { rust: 28015, valheim: 2456, l4d2: 27015, '7dtd': 26900, se: 27016, palworld: 8211 };
     const port = GAME_PORTS_MAP[server.game] || '';
 
-    // Check Linode API for actual status
+    // Determine readiness:
+    //   1. Linode API must report the instance as "running".
+    //   2. SSH 22 reachable → host booted; still "booting" until the game port is live.
+    //   3. Game port reachable (SYN accepted) → "running".
+    // We still use age as a safety cap, but the port probe is the authoritative signal.
     let linodeStatus = 'provisioning';
     if (server.ip) {
       try {
         const linodeData = await provisioner.getLinodeStatus(server.linodeId);
         if (linodeData && linodeData.status === 'running') {
           linodeStatus = 'booting';
-          // Estimate: Linode boots ~2min, SteamCMD install ~5-8min
           const age = Date.now() - new Date(server.createdAt).getTime();
-          if (age > 8 * 60 * 1000) {
-            // 8+ minutes — game should be installed and running
+          const sshUp = await probeHost(server.ip, 22, 1200);
+          const gameUp = port ? await probeHost(server.ip, port, 1500) : false;
+          if (gameUp || (sshUp && age > 12 * 60 * 1000)) {
             linodeStatus = 'running';
             if (server.status !== 'running') {
               await db.collection('provisioned_servers').updateOne(
@@ -109,6 +132,7 @@ router.get('/api/provisioned-status/:game', requireAuth, async (req, res) => {
       port,
       connect: server.ip && port ? server.ip + ':' + port : null,
       steam: server.ip && port ? 'steam://connect/' + server.ip + ':' + port : null,
+      password: (provisioner.GAME_PASSWORDS || {})[server.game] || null,
       game: server.game,
       status: linodeStatus,
       linodeId: server.linodeId,

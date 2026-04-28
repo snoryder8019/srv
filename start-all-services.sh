@@ -18,9 +18,9 @@ SERVICES=(
   "madladslab:3000:/srv/madladslab:node ./bin/www"
   "ps:3399:/srv/ps:node ./bin/www"
   "opsTrain:3603:/srv/opsTrain:node bin/www"
-  "w2marketing:3601:/srv/depricated/w2Marketing:node bin/www.js"
   "nocometalworkz:3002:/srv/nocometalworkz:node ./bin/www"
   "mcp-streamable:3650:/srv/mcp:node mcp-http.js"
+  "mobile-meadows:3700:/srv/mobile-meadows:node app.js"
 )
 
 echo ""
@@ -78,6 +78,6 @@ echo "════════════════════════�
 echo "  Started: $started  |  Skipped: $skipped  |  Failed: $failed"
 echo "══════════════════════════════════════════"
 echo ""
-echo "  View logs:   tmux attach -t <name>"
+echo "  View logs:   tmux attach -t <n>"
 echo "  List all:    tmux ls"
 echo ""

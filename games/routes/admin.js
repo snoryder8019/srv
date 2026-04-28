@@ -21,19 +21,6 @@ function requireSuperAdmin(req, res, next) {
   next();
 }
 
-async function bihCall(path, method = 'GET', body) {
-  const opts = {
-    method,
-    headers: {
-      'X-Bridge-Secret': process.env.BRIDGE_SECRET,
-      'Content-Type': 'application/json',
-    },
-  };
-  if (body) opts.body = JSON.stringify(body);
-  const r = await fetch(`http://127.0.0.1:3055${path}`, opts);
-  return r.json();
-}
-
 // Serve admin panel HTML
 router.get('/', requireAuth, requireAdmin, (req, res) => {
   res.sendFile('admin.html', { root: __dirname + '/../public' });
@@ -136,32 +123,6 @@ router.put('/api/games/users/:id/role', requireSuperAdmin, async (req, res) => {
   }
 });
 
-// --- bih users ---
-router.get('/api/bih/users', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    res.json(await bihCall('/api/internal/users'));
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-router.put('/api/bih/users/:id', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    res.json(await bihCall(`/api/internal/users/${req.params.id}/permissions`, 'PUT', req.body));
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// --- bih tickets ---
-router.get('/api/bih/tickets', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    res.json(await bihCall('/api/internal/tickets'));
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ── Superadmin: trigger maintenance notification ──
 router.post('/api/maintenance', requireSuperAdmin, (req, res) => {
   const { minutes } = req.body;
@@ -178,6 +139,27 @@ router.post('/api/maintenance', requireSuperAdmin, (req, res) => {
 
   console.log('[admin] Maintenance notification sent (' + mins + ' min countdown)');
   res.json({ ok: true, message: 'Maintenance notification sent to all clients' });
+});
+
+// ── Admin: keep a server pinned online (override 1hr-idle auto-shutdown) ──
+const VALID_GAMES = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
+
+router.get('/api/keep-online', requireAuth, requireAdmin, (req, res) => {
+  const sm = req.app.locals.serverManager;
+  if (!sm) return res.status(500).json({ error: 'server-manager not available' });
+  res.json({ ok: true, keepOnline: sm.getKeepOnlineMap() });
+});
+
+router.post('/api/keep-online/:game', requireAuth, requireAdmin, (req, res) => {
+  const { game } = req.params;
+  if (!VALID_GAMES.includes(game)) return res.status(400).json({ error: 'Invalid game' });
+  const sm = req.app.locals.serverManager;
+  if (!sm) return res.status(500).json({ error: 'server-manager not available' });
+  const on = !!req.body.on;
+  const result = sm.setKeepOnline(game, on);
+  if (!result.ok) return res.status(400).json(result);
+  console.log('[admin] keep-online', game, '=', result.keepOnline, 'by', req.user.email || req.user._id);
+  res.json(result);
 });
 
 module.exports = router;

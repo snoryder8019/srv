@@ -1,0 +1,36 @@
+#!/bin/bash
+# Windrose Dedicated Server Startup Script
+# Runs inside tmux session "windrose" as gs-windrose user via Wine.
+# Windrose ships only a Windows binary, so we use Wine + Xvfb (UE5 server
+# still expects a display even when headless).
+
+WINDROSE_DIR="/srv/games/windrose"
+SESSION="windrose"
+GS_USER="gs-windrose"
+
+LOG_FILE="$WINDROSE_DIR/logs/server.log"
+WINEPREFIX="$WINDROSE_DIR/.wine"
+
+# Ensure Wine prefix exists for gs-windrose
+if [ ! -d "$WINEPREFIX" ]; then
+  echo "Initializing Wine prefix for $GS_USER..."
+  sudo -u $GS_USER WINEPREFIX="$WINEPREFIX" WINEDLLOVERRIDES="mscoree,mshtml=" wineboot --init 2>/dev/null
+  echo "Wine prefix initialized."
+fi
+
+# Kill existing session if running
+sudo -u $GS_USER tmux kill-session -t $SESSION 2>/dev/null
+
+sudo -u $GS_USER tmux new-session -d -s $SESSION -x 220 -y 50
+
+# Launch the REAL UE5 binary directly (not the 260KB launcher stub which uses
+# Wine start.exe and detaches stdout from the console pipe).
+# -log tells UE5 to mirror output to stdout in addition to its internal log files.
+SERVER_EXE="$WINDROSE_DIR/R5/Binaries/Win64/WindroseServer-Win64-Shipping.exe"
+sudo -u $GS_USER tmux send-keys -t $SESSION "cd $WINDROSE_DIR && WINEPREFIX=$WINEPREFIX xvfb-run -a wine $SERVER_EXE -log 2>&1 | tee -a $LOG_FILE" Enter
+
+echo "Windrose server started in tmux session '$SESSION' (user: $GS_USER)"
+echo "Attach with: sudo -u $GS_USER tmux attach -t $SESSION"
+echo ""
+echo "Networking: Windrose uses NAT punch-through + invite codes."
+echo "Invite code is in $WINDROSE_DIR/R5/Saved/Config/... or server console."

@@ -6,6 +6,7 @@ const l4d2 = require('../lib/l4d2');
 const sdtd = require('../lib/7dtd');
 const se = require('../lib/se');
 const palworld = require('../lib/palworld');
+const windrose = require('../lib/windrose');
 
 function requireAuth(req, res, next) {
   if (req.isAuthenticated()) return next();
@@ -178,6 +179,27 @@ router.post('/palworld/rcon', requireAdmin, async (req, res) => {
   if (!cmd) return res.status(400).json({ error: 'cmd required' });
   try {
     const output = await palworld.rconCommand(cmd);
+    res.json({ output });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Windrose ---
+
+router.get('/windrose/status', requireAuth, async (req, res) => {
+  try { res.json(await windrose.getStatus()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/windrose/start', requireAdmin, (req, res) => { res.json(windrose.startServer()); });
+router.post('/windrose/stop', requireAdmin, (req, res) => { res.json(windrose.stopServer('manual stop')); });
+router.post('/windrose/restart', requireAdmin, (req, res) => { res.json(windrose.restartServer()); });
+
+router.post('/windrose/rcon', requireAdmin, async (req, res) => {
+  const { cmd } = req.body;
+  if (!cmd) return res.status(400).json({ error: 'cmd required' });
+  try {
+    const output = await windrose.rconCommand(cmd);
     res.json({ output });
   } catch (e) {
     res.status(500).json({ error: e.message });

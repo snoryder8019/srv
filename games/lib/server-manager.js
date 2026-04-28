@@ -1,5 +1,20 @@
 'use strict';
 
+const net = require('net');
+
+function _probePort(ip, port, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const s = new net.Socket();
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; s.destroy(); resolve(ok); };
+    s.setTimeout(timeoutMs);
+    s.once('connect', () => finish(true));
+    s.once('error', () => finish(false));
+    s.once('timeout', () => finish(false));
+    s.connect(port, ip);
+  });
+}
+
 /**
  * lib/server-manager.js
  *
@@ -21,6 +36,7 @@ const GAME_LIBS = {
   '7dtd':   () => require('./7dtd'),
   se:       () => require('./se'),
   palworld: () => require('./palworld'),
+  windrose: () => require('./windrose'),
 };
 
 const MAX_LOCAL        = 2;
@@ -34,6 +50,10 @@ let db          = null;
 
 // Per-game inactivity tracking: { game: { lastActivity: Date, timer: intervalId } }
 const _inactivity = {};
+
+// Per-game "keep online" override — admin sets this to skip the 1hr idle auto-shutdown.
+// Cleared when the server stops (so next start defaults back to auto-shutdown behavior).
+const _keepOnline = {};
 
 // Last known status per game (for diffing — only push on change)
 const _lastStatus = {};
@@ -139,9 +159,29 @@ function stop(game, reason) {
 
   const result = lib().stopServer(reason || 'manual stop');
   _stopInactivityWatch(game);
+  delete _keepOnline[game];
   _emit('server:stopped', { game, reason: reason || 'manual' });
   _pushStatus(game);
   return result;
+}
+
+// Toggle the auto-shutdown override for a single game.
+function setKeepOnline(game, on) {
+  if (!GAME_LIBS[game]) return { ok: false, error: 'Unknown game' };
+  if (on) _keepOnline[game] = true;
+  else delete _keepOnline[game];
+  // Reset the idle clock either way so a freshly toggled-off server gets a full grace window.
+  if (_inactivity[game]) _inactivity[game].lastActivity = Date.now();
+  _emit('server:keep-online', { game, keepOnline: !!_keepOnline[game] });
+  return { ok: true, keepOnline: !!_keepOnline[game] };
+}
+
+function isKeepOnline(game) {
+  return !!_keepOnline[game];
+}
+
+function getKeepOnlineMap() {
+  return Object.keys(_keepOnline).reduce((acc, g) => { acc[g] = true; return acc; }, {});
 }
 
 // ── Inactivity watch per game ─────────────────────────────────────────────
@@ -171,6 +211,12 @@ async function _checkInactivity(game) {
     return;
   }
 
+  // Keep-online override — admin pinned this server up; skip idle shutdown.
+  if (_keepOnline[game]) {
+    if (_inactivity[game]) _inactivity[game].lastActivity = Date.now();
+    return;
+  }
+
   try {
     const status = await gameLib.getStatus();
 
@@ -180,10 +226,15 @@ async function _checkInactivity(game) {
       return;
     }
 
-    // No players — check how long we've been empty
-    const idle = _inactivity[game]
-      ? Date.now() - _inactivity[game].lastActivity
-      : INACTIVITY_MS + 1;
+    // No players — check how long we've been empty.
+    // If the server is running but we have no inactivity record (e.g., started outside
+    // the portal, or requestStart short-circuited on already_running), seed one now
+    // instead of treating it as instantly expired.
+    if (!_inactivity[game]) {
+      _startInactivityWatch(game);
+      return;
+    }
+    const idle = Date.now() - _inactivity[game].lastActivity;
 
     if (idle >= INACTIVITY_MS) {
       console.log('[server-manager] Auto-shutdown:', game, '— idle', Math.round(idle / 60000) + 'min');
@@ -219,6 +270,48 @@ async function _pushStatus(game) {
 
   try {
     const status = await lib().getStatus();
+
+    // If local isn't running, surface any active Linode for this game so the card lights up for everyone.
+    if (!status.running && db) {
+      try {
+        const remote = await db.collection('provisioned_servers')
+          .findOne({ game, status: { $in: ['provisioning', 'running'] } }, { sort: { createdAt: -1 } });
+        if (remote && remote.ip) {
+          // Confirm the Linode still exists (auto-reconciles in getLinodeStatus on 404).
+          let linodeAlive = true;
+          if (provisioner && provisioner.getLinodeStatus) {
+            try {
+              const linodeData = await provisioner.getLinodeStatus(remote.linodeId);
+              linodeAlive = !!linodeData;
+            } catch { linodeAlive = false; }
+          }
+          if (linodeAlive) {
+            const GAME_PORTS_MAP = { rust: 28015, valheim: 2456, l4d2: 27015, '7dtd': 26900, se: 27016, palworld: 8211 };
+            const port = GAME_PORTS_MAP[game];
+            const passwords = (provisioner && provisioner.GAME_PASSWORDS) || {};
+            let ready = remote.status === 'running';
+            if (!ready && port) {
+              ready = await _probePort(remote.ip, port, 1200);
+            }
+            if (ready && remote.status !== 'running') {
+              try {
+                await db.collection('provisioned_servers').updateOne(
+                  { linodeId: remote.linodeId },
+                  { $set: { status: 'running', lastActivity: new Date() } }
+                );
+              } catch {}
+            }
+            // Keep running=true so the card treats this as "booting" (not offline) while the Linode comes up.
+            status.running = true;
+            status.booting = !ready;
+            status.remoteConnect = port ? remote.ip + ':' + port : null;
+            status.remoteSteam = port ? 'steam://connect/' + remote.ip + ':' + port : null;
+            status.remotePassword = passwords[game] || null;
+          }
+        }
+      } catch {}
+    }
+
     const payload = { game, ...status, ts: Date.now() };
 
     // Only emit if something changed
@@ -282,6 +375,9 @@ module.exports = {
   init,
   requestStart,
   stop,
+  setKeepOnline,
+  isKeepOnline,
+  getKeepOnlineMap,
   countRunning,
   runningList,
   getStatus,

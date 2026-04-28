@@ -2,6 +2,17 @@
   <h1>Service Calendar</h1>
   <p class="calendar-subtitle">Select a service type and pick an available date to book your appointment.</p>
 
+  <!-- Estimate banner — shown when arriving from the roof calculator -->
+  <div id="estimate-banner" style="display:none;" class="estimate-banner">
+    <div class="estimate-banner-inner">
+      <span class="estimate-label">Your Roof Repair Estimate</span>
+      <span class="estimate-amount" id="estimate-amount"></span>
+      <span class="estimate-detail" id="estimate-detail"></span>
+      <a href="/" class="estimate-edit">Edit ✎</a>
+    </div>
+    <p class="estimate-note">Estimate only — final price confirmed on inspection.</p>
+  </div>
+
   <div class="calendar-filters">
     <button class="filter-btn active" data-service="all">All Services</button>
     <button class="filter-btn" data-service="mobile-repair">Mobile Repair</button>
@@ -23,3 +34,26 @@
 </section>
 
 <script src="/js/calendar.js" defer></script>
+<script>
+// Show estimate banner when arriving from the roof calculator
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const est    = params.get('est');
+  const length = params.get('length');
+  const acs    = params.get('acs');
+
+  if (!est) return;
+
+  const banner  = document.getElementById('estimate-banner');
+  const amount  = document.getElementById('estimate-amount');
+  const detail  = document.getElementById('estimate-detail');
+
+  const parts = [];
+  if (length) parts.push(`${length} ft roof`);
+  if (acs)    parts.push(`${acs} AC unit${acs > 1 ? 's' : ''}`);
+
+  amount.textContent = `~$${parseFloat(est).toFixed(2)}`;
+  detail.textContent = parts.length ? `(${parts.join(', ')})` : '';
+  banner.style.display = 'block';
+})();
+</script>

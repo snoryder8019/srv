@@ -1,0 +1,204 @@
+<h1>Roof Cost Calculator</h1>
+<p>Manage the instant estimate tool shown on the public landing page under Roof Repair.</p>
+
+<!-- Enable/disable toggle -->
+<div class="admin-card" style="border-left: 4px solid <%= calc.enabled ? '#2d6a4f' : '#999' %>; margin-bottom: 1.5rem;">
+  <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+    <div>
+      <h2 style="margin: 0 0 0.25rem;">Calculator is <strong><%= calc.enabled ? 'LIVE' : 'HIDDEN' %></strong></h2>
+      <p style="margin: 0; color: var(--text-light); font-size: 0.9rem;">When hidden the calculator widget won't appear on the public site.</p>
+    </div>
+    <form action="/admin/calculator/rates" method="POST" style="margin-left: auto;">
+      <input type="hidden" name="costPerFoot" value="<%= calc.costPerFoot %>">
+      <input type="hidden" name="costPerAC"   value="<%= calc.costPerAC %>">
+      <input type="hidden" name="noteText"    value="<%= calc.noteText %>">
+      <% if (calc.enabled) { %>
+        <button type="submit" class="btn btn-secondary">Hide Calculator</button>
+      <% } else { %>
+        <input type="hidden" name="enabled" value="on">
+        <button type="submit" class="btn btn-primary">Show Calculator</button>
+      <% } %>
+    </form>
+  </div>
+</div>
+
+<!-- Core Rates -->
+<div class="admin-card" style="margin-bottom: 1.5rem;">
+  <h2>Base Rates</h2>
+  <form action="/admin/calculator/rates" method="POST">
+    <input type="hidden" name="enabled" value="<%= calc.enabled ? 'on' : 'off' %>">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Cost Per Linear Foot ($)</label>
+        <input type="number" name="costPerFoot" value="<%= calc.costPerFoot %>" min="0" step="0.01" style="max-width: 160px;" required>
+        <small style="color: var(--text-light); display: block; margin-top: 0.3rem;">Applied to the RV length the customer enters</small>
+      </div>
+      <div class="form-group">
+        <label>Cost Per AC Unit ($)</label>
+        <input type="number" name="costPerAC" value="<%= calc.costPerAC %>" min="0" step="0.01" style="max-width: 160px;" required>
+        <small style="color: var(--text-light); display: block; margin-top: 0.3rem;">Added per AC unit counted by the customer</small>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Disclaimer / Note Text</label>
+      <input type="text" name="noteText" value="<%= calc.noteText %>" style="max-width: 600px;">
+      <small style="color: var(--text-light); display: block; margin-top: 0.3rem;">Shown below the estimate on the public calculator</small>
+    </div>
+    <button type="submit" class="btn btn-primary">Save Rates</button>
+  </form>
+</div>
+
+<!-- Add-On Fields -->
+<div class="admin-card" style="margin-bottom: 1.5rem;">
+  <h2>Add-On Fields</h2>
+  <p style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 1.5rem;">
+    Extra line items the customer can select in the calculator. Each adds a flat cost to the estimate.
+    <strong>Checkbox</strong> = yes/no toggle. <strong>Count</strong> = numeric quantity (cost × qty).
+  </p>
+
+  <% if (calc.addOns && calc.addOns.length > 0) { %>
+    <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+      <% calc.addOns.forEach(addon => { %>
+        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+          <form action="/admin/calculator/addon/update/<%= addon.id %>" method="POST" style="display: flex; align-items: center; gap: 0.75rem; flex: 1; flex-wrap: wrap;">
+            <div class="form-group" style="margin: 0; flex: 1; min-width: 160px;">
+              <input type="text" name="label" value="<%= addon.label %>" placeholder="Label" style="width: 100%;">
+            </div>
+            <div class="form-group" style="margin: 0; width: 110px;">
+              <div style="display: flex; align-items: center; gap: 0.3rem;">
+                <span style="color: var(--text-light); font-size: 0.9rem;">$</span>
+                <input type="number" name="cost" value="<%= addon.cost %>" min="0" step="0.01" style="width: 80px;">
+              </div>
+            </div>
+            <div class="form-group" style="margin: 0; width: 120px;">
+              <select name="type" style="width: 100%;">
+                <option value="checkbox" <%= addon.type === 'checkbox' ? 'selected' : '' %>>Checkbox</option>
+                <option value="count"    <%= addon.type === 'count'    ? 'selected' : '' %>>Count</option>
+              </select>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <input type="checkbox" name="enabled" id="en-<%= addon.id %>" <%= addon.enabled ? 'checked' : '' %> style="width: 16px; height: 16px;">
+              <label for="en-<%= addon.id %>" style="font-size: 0.85rem; color: var(--text-light); margin: 0;">Enabled</label>
+            </div>
+            <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+          </form>
+          <form action="/admin/calculator/addon/delete/<%= addon.id %>" method="POST" onsubmit="return confirm('Remove this add-on?')">
+            <button type="submit" class="btn btn-danger btn-sm">✕</button>
+          </form>
+        </div>
+      <% }) %>
+    </div>
+  <% } else { %>
+    <p style="color: var(--text-light); font-style: italic; margin-bottom: 1.5rem;">No add-ons yet. Add one below.</p>
+  <% } %>
+
+  <!-- Add new add-on -->
+  <div style="background: var(--bg); border: 2px dashed var(--border); border-radius: var(--radius); padding: 1.25rem;">
+    <h3 style="margin: 0 0 1rem; font-size: 0.95rem; color: var(--text-light);">+ New Add-On Field</h3>
+    <form action="/admin/calculator/addon/add" method="POST" style="display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap;">
+      <div class="form-group" style="margin: 0; flex: 1; min-width: 160px;">
+        <label style="font-size: 0.8rem;">Label</label>
+        <input type="text" name="label" placeholder="e.g. Skylight Seal" required style="width: 100%;">
+      </div>
+      <div class="form-group" style="margin: 0; width: 120px;">
+        <label style="font-size: 0.8rem;">Cost ($)</label>
+        <input type="number" name="cost" placeholder="50" min="0" step="0.01" required style="width: 100%;">
+      </div>
+      <div class="form-group" style="margin: 0; width: 130px;">
+        <label style="font-size: 0.8rem;">Type</label>
+        <select name="type" style="width: 100%;">
+          <option value="checkbox">Checkbox</option>
+          <option value="count">Count</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">Add Field</button>
+    </form>
+  </div>
+</div>
+
+<!-- Live Preview -->
+<div class="admin-card">
+  <h2>Preview</h2>
+  <p style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 1rem;">This is how the calculator appears to customers. Rates update live as you type above.</p>
+  <div id="calc-preview" style="max-width: 480px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem;">
+    <h3 style="margin: 0 0 1rem; font-size: 1rem;">Estimate Your Roof Repair</h3>
+    <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+      <div style="flex: 1; min-width: 120px;">
+        <label style="font-size: 0.8rem; display: block; margin-bottom: 0.3rem; color: var(--text-light);">RV Length (ft)</label>
+        <input type="number" id="prev-length" min="1" max="100" placeholder="e.g. 32" style="width: 100%;" oninput="updatePreview()">
+      </div>
+      <div style="flex: 1; min-width: 120px;">
+        <label style="font-size: 0.8rem; display: block; margin-bottom: 0.3rem; color: var(--text-light);">Number of ACs</label>
+        <input type="number" id="prev-acs" min="0" max="5" placeholder="e.g. 1" style="width: 100%;" oninput="updatePreview()">
+      </div>
+    </div>
+    <% if (calc.addOns && calc.addOns.filter(a => a.enabled).length > 0) { %>
+      <div id="prev-addons" style="margin-bottom: 1rem;">
+        <% calc.addOns.filter(a => a.enabled).forEach(addon => { %>
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <% if (addon.type === 'count') { %>
+              <input type="number" id="prev-addon-<%= addon.id %>" class="prev-addon" data-cost="<%= addon.cost %>" data-type="count"
+                min="0" max="20" placeholder="0" style="width: 60px;" oninput="updatePreview()">
+            <% } else { %>
+              <input type="checkbox" id="prev-addon-<%= addon.id %>" class="prev-addon" data-cost="<%= addon.cost %>" data-type="checkbox"
+                style="width: 16px; height: 16px;" onchange="updatePreview()">
+            <% } %>
+            <label for="prev-addon-<%= addon.id %>" style="font-size: 0.85rem;"><%= addon.label %> <span style="color: var(--text-light);">(+$<%= addon.cost.toFixed(2) %><%= addon.type === 'count' ? ' each' : '' %>)</span></label>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+    <div id="prev-result" style="display: none; background: var(--bg-card); border-radius: var(--radius); padding: 1rem; border: 1px solid var(--border);">
+      <div id="prev-breakdown" style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 0.5rem;"></div>
+      <div id="prev-total" style="font-size: 1.5rem; font-weight: 700; color: var(--primary);"></div>
+      <p style="font-size: 0.75rem; color: var(--text-light); margin: 0.5rem 0 0;"><%= calc.noteText %></p>
+    </div>
+  </div>
+</div>
+
+<script>
+const COST_PER_FOOT = <%= calc.costPerFoot %>;
+const COST_PER_AC   = <%= calc.costPerAC %>;
+
+function updatePreview() {
+  const length = parseFloat(document.getElementById('prev-length').value) || 0;
+  const acs    = parseFloat(document.getElementById('prev-acs').value)    || 0;
+  const result = document.getElementById('prev-result');
+  const breakdown = document.getElementById('prev-breakdown');
+  const total = document.getElementById('prev-total');
+
+  if (!length && !acs) { result.style.display = 'none'; return; }
+
+  let lines = [];
+  let sum = 0;
+
+  if (length) {
+    const footCost = length * COST_PER_FOOT;
+    sum += footCost;
+    lines.push(`${length} ft × $${COST_PER_FOOT}/ft = $${footCost.toFixed(2)}`);
+  }
+  if (acs) {
+    const acCost = acs * COST_PER_AC;
+    sum += acCost;
+    lines.push(`${acs} AC × $${COST_PER_AC}/unit = $${acCost.toFixed(2)}`);
+  }
+
+  document.querySelectorAll('.prev-addon').forEach(el => {
+    const cost = parseFloat(el.dataset.cost) || 0;
+    if (el.dataset.type === 'checkbox' && el.checked) {
+      sum += cost;
+      lines.push(`${el.nextElementSibling.textContent.split('(')[0].trim()} = $${cost.toFixed(2)}`);
+    } else if (el.dataset.type === 'count') {
+      const qty = parseFloat(el.value) || 0;
+      if (qty > 0) {
+        sum += cost * qty;
+        lines.push(`${el.nextElementSibling.textContent.split('(')[0].trim()} × ${qty} = $${(cost * qty).toFixed(2)}`);
+      }
+    }
+  });
+
+  breakdown.innerHTML = lines.join('<br>');
+  total.textContent = `Estimated: $${sum.toFixed(2)}`;
+  result.style.display = 'block';
+}
+</script>

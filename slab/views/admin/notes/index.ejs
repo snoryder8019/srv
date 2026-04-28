@@ -1,0 +1,902 @@
+<%- include('../partials/head', { title: 'Notes' }) %>
+<%- include('../partials/sidebar', { page: 'notes', user }) %>
+
+<style>
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.notes-layout  { display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 56px); overflow:hidden; }
+.notes-left    { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; background:var(--surface); }
+.notes-right   { display:flex; flex-direction:column; overflow:hidden; }
+.mobile-tabs   { display:none; }
+
+/* ── Tag cloud sidebar ───────────────────────────────────────────────────── */
+.tags-wrap      { border-bottom:1px solid var(--border); flex-shrink:0; }
+.tags-hdr       { display:flex; align-items:center; justify-content:space-between; padding:8px 12px 6px; }
+.tags-lbl       { font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); }
+.tags-add-btn   { background:none; border:none; color:var(--gold); font-size:18px; line-height:1; cursor:pointer; padding:0 2px; }
+.tags-cloud     { display:flex; flex-wrap:wrap; gap:5px; padding:0 12px 10px; }
+.tag-pill       { display:inline-flex; align-items:center; gap:3px; padding:3px 9px; border-radius:12px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--bg); color:var(--text); transition:all 0.15s; white-space:nowrap; user-select:none; }
+.tag-pill:hover         { border-color:var(--gold); color:var(--gold); }
+.tag-pill.active        { border-color:var(--gold); background:rgba(201,168,72,0.12); color:var(--gold); }
+.tag-pill.core          { border-color:rgba(201,168,72,0.35); }
+.tag-pill .tp-count     { font-size:9px; opacity:0.6; }
+.tag-pill .tp-del       { font-size:10px; opacity:0; margin-left:1px; transition:opacity 0.15s; }
+.tag-pill:hover .tp-del { opacity:0.6; }
+/* Add tag inline input */
+.tag-add-row    { display:flex; gap:6px; padding:0 12px 10px; }
+.tag-add-input  { flex:1; font-size:12px; padding:4px 8px; background:var(--bg); border:1px solid var(--border); border-radius:20px; color:var(--text); }
+.tag-add-input:focus { outline:none; border-color:var(--gold); }
+/* Tag modal (add-tag modal) */
+.tag-modal-bg  { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:500; display:none; align-items:center; justify-content:center; }
+.tag-modal-bg.open { display:flex; }
+.tag-modal     { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:22px; width:320px; max-width:92vw; }
+.tag-modal h3  { margin:0 0 14px; font-size:14px; font-weight:700; }
+.tag-modal input { width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box; }
+.tag-modal input:focus { outline:none; border-color:var(--gold); }
+.tag-modal-note { font-size:11px; color:var(--slate); margin-top:6px; }
+.tag-modal-actions { display:flex; gap:8px; margin-top:14px; justify-content:flex-end; }
+.tag-modal-err { font-size:11px; color:#e74c3c; margin-top:6px; display:none; }
+
+/* ── Recorder ────────────────────────────────────────────────────────────── */
+.rec-wrap      { padding:14px; border-bottom:1px solid var(--border); }
+.rec-btn       { width:100%; padding:13px; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:700; letter-spacing:0.04em; transition:all 0.2s; user-select:none; -webkit-user-select:none; touch-action:none; }
+.rec-btn.idle  { background:var(--gold); color:var(--on-surface); }
+.rec-btn.live  { background:#e74c3c; color:#fff; animation:pulserec 1.2s ease-in-out infinite; }
+@keyframes pulserec { 0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,0.45)} 50%{box-shadow:0 0 0 9px rgba(231,76,60,0)} }
+.rec-timer     { text-align:center; font-size:11px; color:var(--slate); margin-top:6px; min-height:16px; }
+.rec-textarea  { width:100%; margin-top:10px; padding:9px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:13px; color:var(--text); resize:vertical; min-height:80px; font-family:inherit; box-sizing:border-box; }
+.rec-actions   { display:flex; gap:8px; margin-top:8px; }
+.rec-actions .btn { flex:1; font-size:12px; padding:7px 6px; }
+
+/* ── Note type badges ────────────────────────────────────────────────────── */
+.type-badge        { padding:1px 7px; border-radius:10px; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; }
+.type-badge.short  { background:rgba(46,204,113,0.12); color:#2ecc71; }
+.type-badge.rant   { background:rgba(155,89,182,0.12); color:#9b59b6; }
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+.toast {
+  position:fixed; bottom:70px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  padding:10px 18px; font-size:12px; font-weight:700; color:var(--text);
+  box-shadow:0 4px 20px rgba(0,0,0,0.3); opacity:0;
+  transition:opacity 0.25s, transform 0.25s; z-index:999; pointer-events:none;
+  white-space:nowrap;
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.toast .toast-icon { margin-right:6px; }
+
+/* ── List ────────────────────────────────────────────────────────────────── */
+.notes-filter  { padding:8px 12px; border-bottom:1px solid var(--border); display:flex; gap:6px; }
+.notes-filter input,.notes-filter select { font-size:12px; padding:5px 8px; background:var(--bg); border:1px solid var(--border); border-radius:5px; color:var(--text); min-width:0; flex:1; }
+.notes-list    { flex:1; overflow-y:auto; }
+.note-row      { padding:12px 14px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.12s; }
+.note-row:hover{ background:var(--bg-hover,rgba(255,255,255,0.04)); }
+.note-row.active{ background:rgba(201,168,72,0.08); border-left:3px solid var(--gold); padding-left:11px; }
+.nr-title      { font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.nr-preview    { font-size:11px; color:var(--slate); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+.nr-meta       { display:flex; gap:6px; align-items:center; margin-top:4px; flex-wrap:wrap; }
+.nr-tag        { background:rgba(201,168,72,0.1); color:var(--gold); padding:1px 6px; border-radius:10px; font-size:9px; font-weight:700; text-transform:uppercase; }
+.nr-date       { font-size:10px; color:var(--slate); }
+.notes-empty   { padding:40px 16px; text-align:center; color:var(--slate); font-size:13px; }
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.note-toolbar  { padding:10px 20px; border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center; flex-wrap:wrap; flex-shrink:0; }
+.note-toolbar .btn { font-size:12px; padding:6px 12px; }
+.nt-sel        { font-size:12px; padding:5px 9px; background:var(--bg); border:1px solid var(--border); border-radius:20px; color:var(--text); }
+.nt-sel:focus  { outline:none; border-color:var(--gold); }
+.nt-tags       { font-size:12px; padding:5px 10px; background:var(--bg); border:1px solid var(--border); border-radius:20px; color:var(--text); min-width:130px; }
+.nt-tags:focus { outline:none; border-color:var(--gold); }
+
+/* ── Detail ──────────────────────────────────────────────────────────────── */
+.note-body-area{ flex:1; overflow-y:auto; padding:20px 24px; display:flex; flex-direction:column; gap:12px; }
+.note-empty    { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--slate); gap:10px; text-align:center; }
+.note-title-in { font-size:20px; font-weight:800; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text); width:100%; padding:0 0 5px; transition:border-color 0.2s; flex-shrink:0; }
+.note-title-in:focus { outline:none; border-bottom-color:var(--gold); }
+.note-body-in  { min-height:220px; max-height:40vh; background:transparent; border:1px solid var(--border); border-radius:8px; padding:11px 13px; font-size:14px; color:var(--text); resize:vertical; font-family:inherit; line-height:1.65; box-sizing:border-box; width:100%; }
+.note-body-in:focus { outline:none; border-color:var(--gold); }
+
+/* ── TLDR ────────────────────────────────────────────────────────────────── */
+.tldr-box       { background:rgba(201,168,72,0.07); border:1px solid var(--gold); border-radius:8px; padding:0; flex-shrink:0; overflow:hidden; }
+.tldr-tabs      { display:flex; border-bottom:1px solid rgba(201,168,72,0.3); }
+.tldr-tab       { flex:1; padding:7px 10px; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--slate); background:transparent; border:none; cursor:pointer; transition:color 0.15s,background 0.15s; }
+.tldr-tab.active{ color:var(--gold); background:rgba(201,168,72,0.08); }
+.tldr-content   { padding:13px 15px; }
+.tldr-panel     { display:none; }
+.tldr-panel.active { display:block; }
+.tldr-txt       { font-size:13px; color:var(--text); line-height:1.6; margin:0; cursor:text; }
+.tldr-bullets   { font-size:13px; color:var(--text); line-height:1.7; margin:0; padding:0; list-style:none; }
+.tldr-bullets li{ padding-left:14px; position:relative; cursor:text; }
+.tldr-bullets li::before { content:"–"; position:absolute; left:0; color:var(--gold); }
+.tldr-edit-area { width:100%; min-height:80px; background:var(--bg); border:1px solid var(--gold); border-radius:6px; padding:8px 10px; font-size:13px; color:var(--text); line-height:1.6; resize:vertical; font-family:inherit; box-sizing:border-box; }
+.tldr-edit-area:focus { outline:none; }
+.tldr-edit-row  { display:flex; gap:6px; margin-top:8px; justify-content:flex-end; }
+.tldr-edit-hint { font-size:10px; color:var(--slate); margin-top:4px; }
+/* Append indicator on rec button when note is open */
+.rec-btn.append { background:var(--surface); border:2px solid var(--gold); color:var(--gold); }
+.rec-btn.append.live { background:rgba(201,168,72,0.15); border-color:#e74c3c; color:#e74c3c; animation:pulserec 1.2s ease-in-out infinite; }
+.tag-chips     { display:flex; flex-wrap:wrap; gap:6px; flex-shrink:0; }
+.tag-chip      { background:rgba(201,168,72,0.1); color:var(--gold); padding:3px 9px; border-radius:12px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:all 0.15s; }
+.tag-chip:hover{ border-color:var(--gold); }
+
+/* ── Distribute ──────────────────────────────────────────────────────────── */
+.dist-panel    { border-top:1px solid var(--border); padding:16px 0 8px; background:transparent; margin-top:4px; }
+.dist-panel h3 { font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); margin:0 0 12px; }
+.dist-grid     { display:flex; gap:10px; flex-wrap:wrap; }
+.dist-card     { border:1px solid var(--border); border-radius:8px; padding:12px 14px; cursor:pointer; transition:all 0.18s; text-align:center; background:var(--bg); min-width:100px; flex:1; }
+.dist-card:hover   { border-color:var(--gold); }
+.dist-card.sel     { border-color:var(--gold); background:rgba(201,168,72,0.09); }
+.dist-icon     { font-size:20px; margin-bottom:5px; }
+.dist-lbl      { font-size:11px; font-weight:700; color:var(--text); }
+.dist-sub      { font-size:9px; color:var(--slate); margin-top:2px; }
+.dist-extras   { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+.dist-extras input,.dist-extras select { font-size:12px; padding:6px 9px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); flex:1; min-width:140px; }
+.dist-row      { display:flex; gap:8px; align-items:center; margin-top:10px; }
+.dist-results  { margin-top:10px; font-size:12px; display:flex; flex-direction:column; gap:4px; }
+.dist-ok       { color:#2ecc71; }
+.dist-err      { color:#e74c3c; }
+
+/* ── Mobile (≤767px) ─────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .notes-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    position: relative;
+    overflow: hidden;
+  }
+  /* Both panels fill the screen; right panel slides off-screen to the right by default */
+  .notes-left, .notes-right {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+    border-right: none;
+  }
+  .notes-left  { transform: translateX(0); }
+  .notes-right { transform: translateX(100%); }
+  /* When a note is open, left slides out left, right slides in */
+  .notes-layout.note-open .notes-left  { transform: translateX(-100%); }
+  .notes-layout.note-open .notes-right { transform: translateX(0); }
+  /* Back button — shown only on mobile when detail is open */
+  .mob-back { display:flex; }
+  .note-toolbar { padding: 8px 12px; gap: 6px; }
+  .note-toolbar .btn { padding: 6px 10px; font-size: 11px; }
+  .nt-sel, .nt-tags { font-size: 11px; padding: 5px 8px; }
+  .note-body-area { padding: 14px; }
+  .note-title-in  { font-size: 17px; }
+  .note-body-in   { font-size: 13px; min-height: 130px; }
+}
+.mob-back { display:none; align-items:center; padding:8px 12px; border-bottom:1px solid var(--border); flex-shrink:0; background:var(--surface); }
+.mob-back-btn { background:none; border:none; color:var(--gold); font-size:13px; font-weight:700; cursor:pointer; padding:4px 0; display:flex; align-items:center; gap:6px; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">🎙 Notes</div>
+  <div class="topbar-actions">
+    <button class="btn btn-ghost" onclick="newBlankNote()">+ Blank Note</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"><span class="toast-icon" id="toastIcon"></span><span id="toastMsg"></span></div>
+
+<div class="notes-layout">
+
+  <!-- ══ LEFT: recorder + list ══ -->
+  <div class="notes-left" id="panelLeft">
+
+    <div class="rec-wrap">
+      <button class="rec-btn idle" id="recBtn"
+        onpointerdown="startRec(event)"
+        onpointerup="stopRec()"
+        onpointerleave="stopRec()"
+        oncontextmenu="return false">🎙 Hold to Record</button>
+      <div class="rec-timer" id="recTimer"></div>
+      <textarea class="rec-textarea" id="recText" placeholder="Transcript appears here…" style="display:none"></textarea>
+    </div>
+
+    <!-- Tag cloud -->
+    <div class="tags-wrap">
+      <div class="tags-hdr">
+        <span class="tags-lbl"># Tags</span>
+        <button class="tags-add-btn" onclick="openTagModal()" title="New tag">+</button>
+      </div>
+      <div class="tags-cloud">
+        <span class="tag-pill <%- !filters.tag ? 'active' : '' %>" onclick="filterByTag('')">
+          All <span class="tp-count">(<%=notes.length%>)</span>
+        </span>
+        <% tagDocs.forEach(t => { %>
+        <span class="tag-pill <%- t.core ? 'core' : '' %> <%- filters.tag===t.name ? 'active' : '' %>"
+              onclick="filterByTag('<%=t.name%>')">
+          <%=t.name%><span class="tp-count">(<%=t.count%>)</span><% if (!t.core) { %><span class="tp-del" onclick="deleteTag(event,'<%=t.name%>')">✕</span><% } %>
+        </span>
+        <% }) %>
+      </div>
+    </div>
+
+    <div class="notes-filter">
+      <input type="text" id="filterQ" placeholder="Search…" value="<%= filters.q %>" oninput="debounceFilter()">
+    </div>
+
+    <div class="notes-list" id="notesList">
+      <% if (!notes.length) { %>
+        <div class="notes-empty">No notes yet.<br>Tap the mic and start talking.</div>
+      <% } %>
+      <% notes.forEach(n => { %>
+      <div class="note-row" id="row-<%= n._id %>"
+           data-id="<%= n._id %>"
+           data-note="<%- encodeURIComponent(JSON.stringify({
+             _id: String(n._id),
+             title: n.title||'',
+             body: n.body||'',
+             tldr: n.tldr||'',
+             tags: n.tags||[],
+             clientId: n.clientId ? String(n.clientId) : '',
+             suggestedTags: n.suggestedTags||[],
+             tldrBullets: n.tldrBullets||'',
+             noteType: n.noteType||''
+           })) %>">
+        <div class="nr-title"><%= n.title || 'Untitled Note' %></div>
+        <div class="nr-preview"><%= (n.tldr||n.body||'').slice(0,70) %></div>
+        <div class="nr-meta">
+          <span class="nr-date"><%= new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %></span>
+          <% if(n.noteType==='short'){ %><span class="type-badge short">Short</span><% } %>
+          <% if(n.noteType==='rant'){ %><span class="type-badge rant">Rant</span><% } %>
+          <% if(n.clientId && clientMap[n.clientId.toString()]){ %><span class="nr-tag">👤 <%=clientMap[n.clientId.toString()]%></span><% } %>
+          <% (n.tags||[]).slice(0,3).forEach(t=>{ %><span class="nr-tag"><%=t%></span><% }) %>
+        </div>
+      </div>
+      <% }) %>
+    </div>
+
+  </div>
+
+  <!-- ══ RIGHT: detail + distribute ══ -->
+  <div class="notes-right" id="panelRight">
+
+    <div class="mob-back" id="mobBack">
+      <button class="mob-back-btn" onclick="mobileBack()">‹ Notes</button>
+    </div>
+
+    <div class="note-toolbar" id="noteToolbar" style="display:none">
+      <button class="btn btn-gold"  onclick="saveNote()"  id="saveBtn">Save</button>
+      <button class="btn btn-ghost" onclick="runTldr()"   id="tldrBtn">✦ TLDR</button>
+      <span id="noteTypeBadge" style="align-self:center"></span>
+      <select class="nt-sel" id="noteClient">
+        <option value="">No client</option>
+        <% clients.forEach(c=>{ %><option value="<%=c._id%>"><%=c.name||c.company||c.email%></option><% }) %>
+      </select>
+      <input  class="nt-tags" id="noteTags" placeholder="tags, comma-sep">
+      <button class="btn btn-ghost" onclick="deleteNote()" style="margin-left:auto;color:#e74c3c">Delete</button>
+    </div>
+
+    <div class="note-body-area" id="noteBodyArea">
+      <div class="note-empty" id="noteEmpty" style="display:none"></div>
+      <input  class="note-title-in" id="noteTitle"  placeholder="Title" style="display:none">
+      <textarea class="note-body-in" id="noteBody" placeholder="Your note…" style="display:none"></textarea>
+      <div id="tldrBox" style="display:none" class="tldr-box">
+        <div class="tldr-tabs">
+          <button class="tldr-tab active" onclick="switchTldrTab('para', this)">Paragraph</button>
+          <button class="tldr-tab"        onclick="switchTldrTab('bullets', this)">Bullets</button>
+        </div>
+        <div class="tldr-content">
+          <div id="tldrPanelPara" class="tldr-panel active">
+            <p class="tldr-txt" id="tldrTxt" onclick="editTldr('para')" title="Click to edit"></p>
+            <div id="tldrEditPara" style="display:none">
+              <textarea class="tldr-edit-area" id="tldrEditParaTA"></textarea>
+              <div class="tldr-edit-row">
+                <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="cancelTldrEdit('para')">Cancel</button>
+                <button class="btn btn-gold"  style="font-size:11px;padding:5px 10px" onclick="saveTldrEdit('para')">Save</button>
+              </div>
+            </div>
+            <div class="tldr-edit-hint">Tap to correct</div>
+          </div>
+          <div id="tldrPanelBullets" class="tldr-panel">
+            <ul class="tldr-bullets" id="tldrBullets" onclick="editTldr('bullets')" title="Click to edit"></ul>
+            <div id="tldrEditBullets" style="display:none">
+              <textarea class="tldr-edit-area" id="tldrEditBulletsTA" placeholder="One bullet per line"></textarea>
+              <div class="tldr-edit-row">
+                <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="cancelTldrEdit('bullets')">Cancel</button>
+                <button class="btn btn-gold"  style="font-size:11px;padding:5px 10px" onclick="saveTldrEdit('bullets')">Save</button>
+              </div>
+            </div>
+            <div class="tldr-edit-hint">Tap to correct</div>
+          </div>
+        </div>
+      </div>
+      <div class="tag-chips" id="tagChips"></div>
+
+      <div class="dist-panel" id="distPanel" style="display:none">
+        <h3>Send this note to…</h3>
+        <div class="dist-grid">
+          <div class="dist-card" data-t="blog"        onclick="toggleDist(this)"><div class="dist-icon">📝</div><div class="dist-lbl">Blog Post</div><div class="dist-sub">AI drafts a full post</div></div>
+          <div class="dist-card" data-t="email"       onclick="toggleDist(this)"><div class="dist-icon">📧</div><div class="dist-lbl">Email</div><div class="dist-sub">Marketing email draft</div></div>
+          <div class="dist-card" data-t="campaign"    onclick="toggleDist(this)"><div class="dist-icon">📣</div><div class="dist-lbl">Campaign</div><div class="dist-sub">IG · FB · LinkedIn</div></div>
+          <div class="dist-card" data-t="web"         onclick="toggleDist(this)"><div class="dist-icon">🌐</div><div class="dist-lbl">Web Copy</div><div class="dist-sub">Push to site section</div></div>
+          <div class="dist-card" data-t="client_note" onclick="toggleDist(this)"><div class="dist-icon">👤</div><div class="dist-lbl">Client Note</div><div class="dist-sub">Attach to client</div></div>
+          <div class="dist-card" data-t="ticket"      onclick="toggleDist(this)"><div class="dist-icon">🎫</div><div class="dist-lbl">Ticket</div><div class="dist-sub">Open support ticket</div></div>
+        </div>
+        <div class="dist-extras" id="distExtras"></div>
+        <div class="dist-row">
+          <button class="btn btn-gold" onclick="runDistribute()" id="distBtn">Send Selected</button>
+          <span id="distStatus" style="font-size:12px;color:var(--slate)"></span>
+        </div>
+        <div class="dist-results" id="distResults"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Tag create modal -->
+<div class="tag-modal-bg" id="tagModalBg" onclick="closeTagModal(event)">
+  <div class="tag-modal">
+    <h3>New Tag</h3>
+    <input type="text" id="tagNameIn" placeholder="e.g. health, travel, clients" maxlength="40">
+    <div class="tag-modal-note">Lowercase letters, numbers and hyphens only.</div>
+    <div class="tag-modal-actions">
+      <button class="btn btn-ghost" onclick="closeTagModal()">Cancel</button>
+      <button class="btn btn-gold"  onclick="createTag()">Add Tag</button>
+    </div>
+    <div class="tag-modal-err" id="tagModalErr"></div>
+  </div>
+</div>
+
+
+
+<script>
+// ── Mobile slide navigation ───────────────────────────────────────────────────
+function mobileOpenDetail() {
+  document.querySelector('.notes-layout').classList.add('note-open');
+}
+function mobileBack() {
+  document.querySelector('.notes-layout').classList.remove('note-open');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg, icon = '✓', duration = 3000) {
+  const el  = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent  = msg;
+  document.getElementById('toastIcon').textContent = icon;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), duration);
+}
+
+
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let currentId       = null;
+let recognition     = null;
+let recSecs         = 0;
+let recTimer        = null;
+let selectedTargets = new Set();
+let filterTimer     = null;
+
+const CLIENTS = <%- JSON.stringify(clients.map(c=>({id:String(c._id), name:c.name||c.company||c.email||''}))) %>;
+
+// ── Word count ────────────────────────────────────────────────────────────────
+function wordCount(t) { return (t||'').trim().split(/\s+/).filter(Boolean).length; }
+
+// ── Voice Recording (hold to record) ─────────────────────────────────────────
+let recFinalText = ''; // accumulated confirmed words — never wiped on restart
+let recStopping  = false;
+
+function startRec(e) {
+  // Prevent hold triggering twice on touch+mouse devices
+  if (e && e.pointerType === 'mouse' && e.buttons !== 1) return;
+  if (recognition) return; // already running
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert('Speech recognition needs Chrome or Edge. You can still type your note directly.'); return; }
+
+  // Seed once from whatever is already typed
+  if (!recFinalText) recFinalText = document.getElementById('recText').value.trimEnd();
+  if (recFinalText) recFinalText += ' ';
+  recStopping = false;
+
+  function attach() {
+    const r = new SR();
+    r.continuous     = true;
+    r.interimResults = false; // finals only — no rolling-window duplication
+    r.lang           = 'en-US';
+
+    r.onresult = e => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          recFinalText += e.results[i][0].transcript.trim() + ' ';
+        }
+      }
+      document.getElementById('recText').value = recFinalText;
+    };
+
+    r.onerror = e => {
+      if (e.error === 'not-allowed') {
+        recStopping = true;
+        stopRec();
+        alert('Microphone blocked — allow mic access in your browser settings then try again.');
+      }
+      // other errors: let onend restart if still held
+    };
+
+    r.onend = () => {
+      // Only auto-restart if the user is still holding the button
+      if (!recStopping) {
+        try { recognition = attach(); recognition.start(); } catch(_) {}
+      }
+    };
+
+    return r;
+  }
+
+  recognition = attach();
+  recognition.start();
+
+  const btn = document.getElementById('recBtn');
+  const isAppend = !!currentId;
+  btn.className   = isAppend ? 'rec-btn append live' : 'rec-btn live';
+  btn.textContent = isAppend ? '🔴 Adding to note…' : '🔴 Recording…';
+  document.getElementById('recText').style.display = '';
+
+  recSecs = 0;
+  recTimer = setInterval(() => {
+    recSecs++;
+    const m = String(Math.floor(recSecs / 60)).padStart(2, '0');
+    const s = String(recSecs % 60).padStart(2, '0');
+    document.getElementById('recTimer').textContent = `Recording ${m}:${s}`;
+  }, 1000);
+}
+
+function stopRec() {
+  if (!recognition && !recTimer) return; // nothing running
+  recStopping = true;
+  try { recognition && recognition.stop(); } catch(_) {}
+  recognition = null;
+  clearInterval(recTimer);
+  recTimer = null;
+  const btn = document.getElementById('recBtn');
+  btn.className   = currentId ? 'rec-btn append' : 'rec-btn idle';
+  btn.textContent = currentId ? '🎙 Hold to Add More' : '🎙 Hold to Record';
+  const secs = recSecs;
+  recSecs = 0;
+  const transcript = recFinalText.trim();
+  document.getElementById('recText').style.display = 'none';
+  document.getElementById('recTimer').textContent = '';
+  recFinalText = '';
+  if (transcript) saveFromTranscript(transcript);
+}
+
+function clearRec() {
+  recStopping = true;
+  try { recognition && recognition.stop(); } catch(_) {}
+  recognition = null;
+  clearInterval(recTimer);
+  recTimer = null;
+  recSecs = 0;
+  recFinalText = '';
+  document.getElementById('recText').value = '';
+  document.getElementById('recText').style.display = 'none';
+  document.getElementById('recTimer').textContent = '';
+  const btn = document.getElementById('recBtn');
+  btn.className   = 'rec-btn idle';
+  btn.textContent = '🎙 Hold to Record';
+}
+
+async function saveFromTranscript(body) {
+  if (!body) return;
+  if (currentId) {
+    // Append to the currently open note
+    const existing = document.getElementById('noteBody').value.trimEnd();
+    const newBody  = existing ? existing + '\n\n' + body : body;
+    document.getElementById('noteBody').value = newBody;
+    await saveNote();
+    showToast('Added to note', '✚', 3000);
+  } else {
+    // Create a new note
+    const wc       = wordCount(body);
+    const isRant   = wc > 60;
+    showToast(`${isRant ? 'Rant' : 'Short'} saved — ${wc} words`, isRant ? '🌊' : '⚡', 4000);
+    const r = await api('POST', '/admin/notes', { body, title: body.slice(0, 60) });
+    if (r.ok) location.href = '/admin/notes';
+  }
+}
+
+function newBlankNote() {
+  clearRec();
+  currentId = null;
+  selectedTargets.clear();
+  document.getElementById('noteEmpty').style.display   = 'flex';
+  document.getElementById('noteTitle').style.display   = 'none';
+  document.getElementById('noteBody').style.display    = 'none';
+  document.getElementById('tldrBox').style.display     = 'none';
+  document.getElementById('tagChips').innerHTML        = '';
+  document.getElementById('distPanel').style.display   = 'none';
+  document.getElementById('noteToolbar').style.display = 'none';
+  document.querySelectorAll('.note-row').forEach(r => r.classList.remove('active'));
+  document.getElementById('recText').focus();
+  mobileBack();
+  // Reset rec button to new-note mode
+  const rb = document.getElementById('recBtn');
+  rb.className   = 'rec-btn idle';
+  rb.textContent = '🎙 Hold to Record';
+}
+
+// ── Note list click ────────────────────────────────────────────────────────────
+document.getElementById('notesList').addEventListener('click', e => {
+  const row = e.target.closest('.note-row');
+  if (!row) return;
+  try {
+    const n = JSON.parse(decodeURIComponent(row.dataset.note));
+    openNote(n);
+  } catch(err) { console.error('note parse error', err); }
+});
+
+// ── TLDR tab switcher ─────────────────────────────────────────────────────────
+function switchTldrTab(which, btn) {
+  document.querySelectorAll('.tldr-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tldr-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(which === 'para' ? 'tldrPanelPara' : 'tldrPanelBullets').classList.add('active');
+}
+
+// ── TLDR inline editing ───────────────────────────────────────────────────────
+function editTldr(which) {
+  if (which === 'para') {
+    const current = document.getElementById('tldrTxt').textContent;
+    document.getElementById('tldrEditParaTA').value = current;
+    document.getElementById('tldrTxt').style.display = 'none';
+    document.getElementById('tldrEditPara').style.display = '';
+    document.getElementById('tldrEditParaTA').focus();
+  } else {
+    // Convert rendered bullets back to plain lines for editing
+    const lines = Array.from(document.getElementById('tldrBullets').querySelectorAll('li'))
+      .map(li => li.textContent).join('\n');
+    document.getElementById('tldrEditBulletsTA').value = lines;
+    document.getElementById('tldrBullets').style.display = 'none';
+    document.getElementById('tldrEditBullets').style.display = '';
+    document.getElementById('tldrEditBulletsTA').focus();
+  }
+}
+
+function cancelTldrEdit(which) {
+  if (which === 'para') {
+    document.getElementById('tldrEditPara').style.display = 'none';
+    document.getElementById('tldrTxt').style.display = '';
+  } else {
+    document.getElementById('tldrEditBullets').style.display = 'none';
+    document.getElementById('tldrBullets').style.display = '';
+  }
+}
+
+async function saveTldrEdit(which) {
+  if (!currentId) return;
+  let tldr        = document.getElementById('tldrTxt').textContent;
+  let tldrBullets = Array.from(document.getElementById('tldrBullets').querySelectorAll('li')).map(l => l.textContent).join('\n');
+
+  if (which === 'para') {
+    tldr = document.getElementById('tldrEditParaTA').value.trim();
+  } else {
+    tldrBullets = document.getElementById('tldrEditBulletsTA').value.trim();
+  }
+
+  await api('PUT', `/admin/notes/${currentId}`, {
+    title:    document.getElementById('noteTitle').value,
+    body:     document.getElementById('noteBody').value,
+    tags:     document.getElementById('noteTags').value,
+    clientId: document.getElementById('noteClient').value || null,
+    tldr,
+    tldrBullets,
+  });
+
+  // Re-render
+  renderTldr(tldr, tldrBullets);
+  cancelTldrEdit(which);
+  showToast('TLDR updated', '✓', 2000);
+}
+
+function renderTldr(tldr, tldrBullets) {
+  // Paragraph
+  document.getElementById('tldrTxt').textContent = tldr || '';
+
+  // Bullets — parse "- line" format into <li> elements
+  const ul = document.getElementById('tldrBullets');
+  ul.innerHTML = '';
+  if (tldrBullets) {
+    tldrBullets.split('\n')
+      .map(l => l.replace(/^[-•*]\s*/, '').trim())
+      .filter(Boolean)
+      .forEach(l => {
+        const li = document.createElement('li');
+        li.textContent = l;
+        ul.appendChild(li);
+      });
+  }
+
+  document.getElementById('tldrBox').style.display = (tldr || tldrBullets) ? '' : 'none';
+}
+
+// ── Open note ──────────────────────────────────────────────────────────────────
+function openNote(n) {
+  currentId = String(n._id);
+  document.querySelectorAll('.note-row').forEach(r => r.classList.toggle('active', r.id === 'row-' + currentId));
+
+  document.getElementById('noteEmpty').style.display   = 'none';
+  document.getElementById('noteTitle').style.display   = '';
+  document.getElementById('noteBody').style.display    = '';
+  document.getElementById('noteToolbar').style.display = 'flex';
+  document.getElementById('distPanel').style.display   = '';
+
+  document.getElementById('noteTitle').value  = n.title    || '';
+  document.getElementById('noteBody').value   = n.body     || '';
+  document.getElementById('noteClient').value = n.clientId ? String(n.clientId) : '';
+  document.getElementById('noteTags').value   = (n.tags || []).join(', ');
+
+  // Type badge in toolbar
+  const badge = document.getElementById('noteTypeBadge');
+  if (n.noteType === 'short') {
+    badge.innerHTML = '<span class="type-badge short">⚡ Short</span>';
+  } else if (n.noteType === 'rant') {
+    badge.innerHTML = '<span class="type-badge rant">🌊 Rant</span>';
+  } else {
+    badge.innerHTML = '';
+  }
+
+  renderTldr(n.tldr || '', n.tldrBullets || '');
+
+  const chips = document.getElementById('tagChips');
+  chips.innerHTML = '';
+  const suggested = n.suggestedTags || [];
+  if (suggested.length) {
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'font-size:10px;color:var(--slate);align-self:center';
+    lbl.textContent = 'Suggested:';
+    chips.appendChild(lbl);
+    suggested.forEach(t => {
+      const c = document.createElement('span');
+      c.className = 'tag-chip'; c.textContent = t;
+      c.onclick = () => addTag(t);
+      chips.appendChild(c);
+    });
+  }
+
+  selectedTargets.clear();
+  document.querySelectorAll('.dist-card').forEach(c => c.classList.remove('sel'));
+  document.getElementById('distExtras').innerHTML  = '';
+  document.getElementById('distResults').innerHTML = '';
+  document.getElementById('distStatus').textContent = '';
+  // Slide to detail on mobile
+  mobileOpenDetail();
+  // Switch rec button to append mode
+  const rb = document.getElementById('recBtn');
+  if (rb.classList.contains('idle')) {
+    rb.className   = 'rec-btn append';
+    rb.textContent = '🎙 Hold to Add More';
+  }
+}
+
+function addTag(t) {
+  const el = document.getElementById('noteTags');
+  const existing = el.value.split(',').map(x => x.trim()).filter(Boolean);
+  if (!existing.includes(t)) el.value = [...existing, t].join(', ');
+}
+
+// ── Save / Delete ──────────────────────────────────────────────────────────────
+async function saveNote() {
+  if (!currentId) return;
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  await api('PUT', `/admin/notes/${currentId}`, {
+    title:    document.getElementById('noteTitle').value,
+    body:     document.getElementById('noteBody').value,
+    tags:     document.getElementById('noteTags').value,
+    clientId: document.getElementById('noteClient').value || null,
+  });
+  btn.disabled = false; btn.textContent = 'Saved ✓';
+  setTimeout(() => { btn.textContent = 'Save'; }, 2000);
+}
+
+async function deleteNote() {
+  if (!currentId || !confirm('Delete this note?')) return;
+  await api('DELETE', `/admin/notes/${currentId}`);
+  location.href = '/admin/notes';
+}
+
+// ── TLDR ───────────────────────────────────────────────────────────────────────
+async function runTldr() {
+  if (!currentId) return;
+  await saveNote();
+  const btn = document.getElementById('tldrBtn');
+  btn.disabled = true;
+  let secs = 0;
+  const tick = setInterval(() => { secs++; btn.textContent = `✦ TLDR… ${secs}s`; }, 1000);
+  btn.textContent = '✦ TLDR…';
+
+  const r = await api('POST', `/admin/notes/${currentId}/tldr`);
+  clearInterval(tick);
+  btn.disabled = false; btn.textContent = '✦ TLDR';
+
+  if (r.error) {
+    document.getElementById('tldrTxt').textContent = '⚠ ' + r.error;
+    document.getElementById('tldrBox').style.display = '';
+    return;
+  }
+  if (r.tldr || r.tldrBullets) {
+    renderTldr(r.tldr || '', r.tldrBullets || '');
+  }
+  if (r.suggestedTags?.length) {
+    const chips = document.getElementById('tagChips');
+    chips.innerHTML = '';
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'font-size:10px;color:var(--slate);align-self:center';
+    lbl.textContent = 'Suggested:';
+    chips.appendChild(lbl);
+    r.suggestedTags.forEach(t => {
+      const c = document.createElement('span');
+      c.className = 'tag-chip'; c.textContent = t;
+      c.onclick = () => addTag(t);
+      chips.appendChild(c);
+    });
+  }
+}
+
+// ── Distribute ─────────────────────────────────────────────────────────────────
+function toggleDist(card) {
+  const t = card.dataset.t;
+  if (selectedTargets.has(t)) { selectedTargets.delete(t); card.classList.remove('sel'); }
+  else { selectedTargets.add(t); card.classList.add('sel'); }
+  renderDistExtras();
+}
+
+function renderDistExtras() {
+  const wrap = document.getElementById('distExtras');
+  wrap.innerHTML = '';
+  if (selectedTargets.has('blog')) {
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.id = 'distBlogCategory'; inp.placeholder = 'Category (optional)';
+    wrap.appendChild(inp);
+  }
+  if (selectedTargets.has('email')) {
+    const sel = document.createElement('select'); sel.id = 'distEmailFunnel';
+    sel.innerHTML = '<option value="all">All contacts</option><option value="lead">Leads</option><option value="prospect">Prospects</option><option value="customer">Customers</option>';
+    wrap.appendChild(sel);
+  }
+  if (selectedTargets.has('campaign')) {
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:11px;color:var(--slate);padding:4px 0';
+    note.textContent = 'Saves IG + FB + LinkedIn drafts to Social Generator presets';
+    wrap.appendChild(note);
+  }
+  if (selectedTargets.has('web')) {
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.id = 'distWebKey';
+    inp.placeholder = 'Copy key (e.g. hero_heading, about_body, tagline)'; inp.required = true;
+    wrap.appendChild(inp);
+  }
+  if (selectedTargets.has('client_note')) {
+    const sel = document.createElement('select'); sel.id = 'distClientId';
+    sel.innerHTML = '<option value="">Select client…</option>' +
+      CLIENTS.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    const noteClient = document.getElementById('noteClient').value;
+    if (noteClient) sel.value = noteClient;
+    wrap.appendChild(sel);
+  }
+  if (selectedTargets.has('ticket')) {
+    const sel = document.createElement('select'); sel.id = 'distPriority';
+    sel.innerHTML = '<option value="low">Low priority</option><option value="medium" selected>Medium priority</option><option value="high">High priority</option>';
+    wrap.appendChild(sel);
+  }
+}
+
+async function runDistribute() {
+  if (!currentId || !selectedTargets.size) {
+    document.getElementById('distStatus').textContent = 'Select at least one destination above.';
+    return;
+  }
+  await saveNote();
+  const btn = document.getElementById('distBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  document.getElementById('distStatus').textContent = `Processing ${selectedTargets.size} destination(s)…`;
+  document.getElementById('distResults').innerHTML  = '';
+
+  const targets = [...selectedTargets].map(t => {
+    const obj = { section: t };
+    if (t === 'blog')   obj.category    = document.getElementById('distBlogCategory')?.value?.trim() || '';
+    if (t === 'email')  obj.targetFunnel = document.getElementById('distEmailFunnel')?.value || 'all';
+    if (t === 'web') {
+      const key = document.getElementById('distWebKey')?.value?.trim();
+      if (!key) { document.getElementById('distStatus').textContent = '⚠ Web Copy requires a copy key.'; return null; }
+      obj.sectionKey = key;
+    }
+    if (t === 'client_note') {
+      const cid = document.getElementById('distClientId')?.value;
+      if (!cid) { document.getElementById('distStatus').textContent = '⚠ Client Note requires a client to be selected.'; return null; }
+      obj.clientId = cid;
+    }
+    if (t === 'ticket') obj.priority = document.getElementById('distPriority')?.value || 'medium';
+    return obj;
+  }).filter(Boolean);
+
+  if (!targets.length) return;
+
+  const r = await api('POST', `/admin/notes/${currentId}/distribute`, { targets });
+  btn.disabled = false; btn.textContent = 'Send Selected';
+
+  if (r.results) {
+    document.getElementById('distStatus').textContent = '';
+    const res = document.getElementById('distResults');
+    r.results.forEach(item => {
+      const d = document.createElement('div');
+      d.className = item.ok ? 'dist-ok' : 'dist-err';
+      d.textContent = item.ok ? `✓ ${item.target}: ${item.detail}` : `✗ ${item.target}: ${item.error}`;
+      res.appendChild(d);
+    });
+  } else if (r.error) {
+    document.getElementById('distStatus').textContent = '⚠ ' + r.error;
+  }
+}
+
+// ── Filter ─────────────────────────────────────────────────────────────────────
+function debounceFilter() { clearTimeout(filterTimer); filterTimer = setTimeout(applyFilter, 380); }
+let activeTag = '<%= filters.tag %>';
+
+function filterByTag(name) {
+  activeTag = name;
+  applyFilter();
+}
+
+function applyFilter() {
+  const q   = document.getElementById('filterQ').value.trim();
+  const params = new URLSearchParams();
+  if (q)         params.set('q', q);
+  if (activeTag) params.set('tag', activeTag);
+  location.href = '/admin/notes?' + params.toString();
+}
+
+// ── Tag management ────────────────────────────────────────────────────────────
+function openTagModal() {
+  document.getElementById('tagNameIn').value = '';
+  document.getElementById('tagModalErr').style.display = 'none';
+  document.getElementById('tagModalBg').classList.add('open');
+  setTimeout(() => document.getElementById('tagNameIn').focus(), 50);
+}
+
+function closeTagModal(e) {
+  if (e && e.target !== document.getElementById('tagModalBg')) return;
+  document.getElementById('tagModalBg').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('tagModalBg').classList.remove('open');
+  if (e.key === 'Enter' && document.getElementById('tagModalBg').classList.contains('open')) createTag();
+});
+
+async function createTag() {
+  const name = document.getElementById('tagNameIn').value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const errEl = document.getElementById('tagModalErr');
+  if (!name) { errEl.textContent = 'Name required'; errEl.style.display = ''; return; }
+  errEl.style.display = 'none';
+  const r = await api('POST', '/admin/notes/tags', { name });
+  if (r.error) { errEl.textContent = r.error; errEl.style.display = ''; return; }
+  location.href = '/admin/notes';
+}
+
+async function deleteTag(e, name) {
+  e.stopPropagation();
+  if (!confirm(`Remove tag "${name}"? Notes keep their tag text but the tag disappears from the sidebar.`)) return;
+  const r = await api('DELETE', '/admin/notes/tags/' + name);
+  if (r.ok) location.href = '/admin/notes';
+  else alert(r.error || 'Failed');
+}
+
+// ── API helper ─────────────────────────────────────────────────────────────────
+async function api(method, url, body) {
+  try {
+    const r = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body:    body ? JSON.stringify(body) : undefined,
+    });
+    return r.json();
+  } catch(e) { return { error: e.message }; }
+}
+</script>
