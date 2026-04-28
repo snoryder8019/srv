@@ -25,6 +25,7 @@ const LOG_PATHS = {
   palworld: path.join(__dirname, '..', 'palworld', 'logs', 'server.log'),
   windrose: path.join(__dirname, '..', 'windrose', 'logs', 'server.log'),
   windrose_events: path.join(__dirname, '..', 'windrose', 'WindrosePlus', 'logs', 'activity.log'),
+  madlads_stats: path.join(__dirname, '..', 'windrose', 'windrose_plus_data', 'madlads_stats.log'),
 };
 
 // Fallback log paths
@@ -48,15 +49,15 @@ function resolveWindrosePlusLog() {
 const LOG_GAME_MAP = {
   rust: 'rust', valheim: 'valheim', valheim_events: 'valheim',
   l4d2: 'l4d2', '7dtd': '7dtd', se: 'se', palworld: 'palworld',
-  windrose: 'windrose', windrose_events: 'windrose',
+  windrose: 'windrose', windrose_events: 'windrose', madlads_stats: 'windrose',
 };
 
 // Sources whose lines are NDJSON instead of free-form text
-const JSON_SOURCES = new Set(['windrose_events']);
+const JSON_SOURCES = new Set(['windrose_events', 'madlads_stats']);
 
 // Per-source one-shot raw-line dump. WindrosePlus's NDJSON schema is
 // unconfirmed — log the first few lines so we can lock in field names.
-const DEBUG_DUMP_LIMITS = { windrose_events: 5 };
+const DEBUG_DUMP_LIMITS = { windrose_events: 5, madlads_stats: 30 };
 const debugDumpCounts = {};
 
 // ── Log line patterns per game ──
@@ -306,6 +307,10 @@ const JSON_TYPE_MAP = {
   'config.load': 'config_load', 'config.load.fail': 'config_load_fail',
   'heartbeat': 'heartbeat',
   'admin.command': 'command',
+  // MadLadsStats discovery — every successful hook firing names the path it fired on
+  'hook.fired': 'hook_fired',
+  'madlads_stats.boot': 'mod_boot',
+  'madlads_stats.hooks': 'mod_status',
 };
 
 function processJsonLogLine(source, line) {
@@ -474,7 +479,12 @@ async function storeEvent(event) {
       );
     }
 
-    // --- Windrose has no SteamID; key on name like Valheim does ---
+    // --- Windrose: name-keyed upsert (no SteamID exposed by WindrosePlus) ---
+    // Death tracking is not implemented: WindrosePlus only emits player.join
+    // when a player NAME enters the active set (set-diff detection), so
+    // respawn-while-still-online produces no event. UE4SS RegisterHook against
+    // engine death/damage UFunctions doesn't fire under Proton/UE5.6 either.
+    // Re-evaluate when WindrosePlus adds death events upstream.
     if (event.type === 'player_join' && event.game === 'windrose' && event.name && !event.steamId) {
       await db.collection('player_stats').updateOne(
         { game: 'windrose', name: event.name },
@@ -487,6 +497,22 @@ async function storeEvent(event) {
           },
         },
         { upsert: true }
+      );
+    }
+
+    // --- Player leave (name-keyed games): close the session, increment playtime ---
+    // Caps at 24h so a missing player_leave (server crash) can't inflate the total.
+    if (event.type === 'player_leave' && event.name && !event.steamId) {
+      const recentJoin = await db.collection('game_events').findOne(
+        { game: event.game, type: 'player_join', name: event.name, ts: { $lt: event.ts } },
+        { sort: { ts: -1 } }
+      );
+      const sessionSec = recentJoin && recentJoin.ts
+        ? Math.min(86400, Math.max(0, Math.floor((event.ts - recentJoin.ts) / 1000)))
+        : 0;
+      await db.collection('player_stats').updateOne(
+        { game: event.game, name: event.name },
+        { $set: { lastSeen: event.ts }, $inc: { totalPlaytime: sessionSec } }
       );
     }
 

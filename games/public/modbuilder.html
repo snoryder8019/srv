@@ -111,6 +111,7 @@
     }
     .event.player_join .ty { color: var(--good); }
     .event.player_leave .ty { color: var(--warn); }
+    .event.death .ty { color: var(--bad); background: rgba(248,81,73,.1); }
     .event.heartbeat .ty { color: var(--dim); }
     .event.server_start .ty { color: var(--accent); }
     .event.command .ty { color: var(--accent); }
@@ -252,8 +253,8 @@
     const wantedCounts = [
       ['player_join', 'Joins'],
       ['player_leave', 'Leaves'],
+      ['death', 'Deaths'],
       ['heartbeat', 'Heartbeats'],
-      ['command', 'Commands'],
     ];
     $('counts').innerHTML = wantedCounts.map(([k, l]) =>
       `<div class="count"><div class="n">${c[k] || 0}</div><div class="l">${l}</div></div>`
@@ -265,14 +266,17 @@
       ? Object.entries(m).map(([k, v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v}×</span></div>`).join('')
       : '<div class="empty">no data</div>';
 
-    // Events
-    $('events').innerHTML = s.events.length
-      ? s.events.map(e => {
-          const detail = e.type === 'player_join' || e.type === 'player_leave'
-            ? (e.name || '')
-            : e.type === 'heartbeat'
-              ? `mode=${e.mode || '?'} players=${e.playerCount ?? 0}`
-              : (e.message || e.raw?.slice(0, 80) || '');
+    // Events — filter out noisy internals (mod boot/status/discovery hooks)
+    const SHOW_TYPES = new Set(['player_join', 'player_leave', 'death', 'heartbeat', 'command']);
+    const visibleEvents = s.events.filter(e => SHOW_TYPES.has(e.type));
+    $('events').innerHTML = visibleEvents.length
+      ? visibleEvents.map(e => {
+          const detail =
+            e.type === 'player_join'  ? `${e.name || '?'} joined`        :
+            e.type === 'player_leave' ? `${e.name || '?'} left`          :
+            e.type === 'death'        ? `${e.name || '?'} died`          :
+            e.type === 'heartbeat'    ? `mode=${e.mode || '?'} players=${e.playerCount ?? 0}` :
+            (e.message || e.raw?.slice(0, 80) || '');
           return `<div class="event ${e.type}"><span class="t">${fmtTime(e.ts)}</span><span class="ty">${e.type}</span><span>${escapeHtml(detail)}</span></div>`;
         }).join('')
       : '<div class="empty">no events yet</div>';
@@ -284,7 +288,7 @@
           <div class="player">
             <div>
               <div class="name">${escapeHtml(p.name || '?')}</div>
-              <div class="meta">sessions: ${p.sessions || 0}</div>
+              <div class="meta">${fmtUptime(p.totalPlaytime || 0)} · ${p.sessions || 0} sess · ${p.deaths || 0} deaths</div>
             </div>
             <div>${p.active ? '<span class="pill active">in-game</span>' : ''}</div>
             <div class="meta">${fmtAgo(p.lastSeen)}</div>
