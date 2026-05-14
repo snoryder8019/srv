@@ -1,0 +1,289 @@
+<%- include('../partials/head', { title: isNew ? 'New Calculator' : calc.title }) %>
+<%- include('../partials/sidebar', { page: 'calculators', user }) %>
+
+<div class="topbar">
+  <div class="topbar-title"><%= isNew ? 'New Calculator' : 'Edit: ' + calc.title %></div>
+  <div class="topbar-actions">
+    <a href="/admin/calculators" class="btn btn-ghost">← Back</a>
+    <% if (!isNew) { %>
+    <form method="POST" action="/admin/calculators/<%= calc._id %>/delete" style="display:inline" onsubmit="return confirm('Delete this calculator? This cannot be undone.')">
+      <button type="submit" class="btn btn-ghost" style="color:#b91c1c">Delete</button>
+    </form>
+    <% } %>
+  </div>
+</div>
+
+<style>
+  .form-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; }
+  @media(max-width:1100px){ .form-layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 20px; }
+  .panel-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display:flex;align-items:center;justify-content:space-between }
+  .panel-title { font-size: 13px; font-weight: 600; color: var(--ink); text-transform: uppercase; letter-spacing: .6px; }
+  .panel-body { padding: 18px 20px; }
+  .form-row { margin-bottom: 14px; }
+  .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  label { display: block; font-size: 11px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
+  input[type=text], input[type=number], input[type=url], select, textarea { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; font-size: 14px; color: var(--ink); background: var(--surface); font-family: inherit; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--gold); }
+  textarea { min-height: 60px; resize: vertical; }
+  .field-row { display: grid; grid-template-columns: 1fr 1.2fr 80px 80px 100px auto; gap: 8px; align-items: center; margin-bottom: 8px; padding: 8px; background: var(--ivory-light); border-radius: 4px; }
+  .field-row.addon { grid-template-columns: 1fr 1.2fr 110px 100px 80px auto; }
+  .field-row input, .field-row select { padding: 6px 10px; font-size: 13px; }
+  .field-add { font-size: 12px; padding: 6px 12px; background: var(--ivory-light); border: 1px dashed var(--border); border-radius: 4px; cursor: pointer; color: var(--ink-muted); display: inline-block; }
+  .field-add:hover { border-color: var(--gold); color: var(--gold); }
+  .field-remove { background: none; border: none; color: #b91c1c; cursor: pointer; font-size: 18px; padding: 4px 8px; }
+  .field-empty { font-size: 12px; color: var(--ink-muted); font-style: italic; padding: 8px 0; }
+  .field-help { font-size: 11px; color: var(--ink-muted); margin-top: 6px; }
+  .btn-save { background: var(--gold); color: var(--surface); border: none; border-radius: 5px; padding: 10px 28px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-save:hover { opacity: .9; }
+  .saved-banner, .error-banner { padding: 10px 16px; border-radius: 5px; font-size: 13px; margin-bottom: 16px; }
+  .saved-banner { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+  .error-banner { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+  .preview-wrap { position: sticky; top: 20px; }
+  .preview-wrap .panel-body { padding: 24px; background: #fafaf6; }
+  .preview-note { font-size: 12px; color: var(--ink-muted); margin-bottom: 12px; font-style: italic; }
+  .embed-box { font-family: monospace; font-size: 11px; padding: 10px 12px; background: #1a1a1a; color: #c9a848; border-radius: 4px; cursor: pointer; word-break: break-all; }
+  .col-label { font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .5px; padding: 0 8px 4px; display: grid; gap: 8px; }
+</style>
+
+<div class="content">
+  <% if (saved) { %><div class="saved-banner">✓ Saved.</div><% } %>
+  <% if (error) { %><div class="error-banner">⚠ <%= error === 'missing' ? 'Slug and title are required.' : (error === 'duplicate' ? 'A calculator with that slug already exists.' : 'Error: ' + error) %></div><% } %>
+
+  <form method="POST" action="<%= isNew ? '/admin/calculators' : '/admin/calculators/' + calc._id %>" id="calcForm">
+    <div class="form-layout">
+
+      <!-- LEFT: editor -->
+      <div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">General</span></div>
+          <div class="panel-body">
+            <div class="form-row">
+              <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:13px;font-weight:500;color:var(--ink)">
+                <input type="checkbox" name="enabled" <%= calc.enabled !== false ? 'checked' : '' %> style="accent-color:#22c55e">
+                Enabled (visible to public)
+              </label>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-row">
+                <label>Slug (URL key) *</label>
+                <input type="text" name="slug" value="<%= calc.slug %>" pattern="[a-z0-9-]+" required <%= !isNew ? 'readonly' : '' %> placeholder="roof-cost">
+              </div>
+              <div class="form-row">
+                <label>Title *</label>
+                <input type="text" name="title" value="<%= calc.title %>" required placeholder="Roof Repair Cost Calculator">
+              </div>
+            </div>
+            <div class="form-row">
+              <label>Description (optional)</label>
+              <textarea name="description"><%= calc.description || '' %></textarea>
+            </div>
+            <div class="form-row">
+              <label>Footer Note (shown below total)</label>
+              <input type="text" name="noteText" value="<%= calc.noteText || '' %>" placeholder="Estimate only — final price confirmed on inspection.">
+            </div>
+            <div class="form-grid-2">
+              <div class="form-row">
+                <label>CTA Button Label</label>
+                <input type="text" name="ctaLabel" value="<%= (calc.primaryCta && calc.primaryCta.label) || 'Book Service' %>">
+              </div>
+              <div class="form-row">
+                <label>CTA Button URL</label>
+                <input type="text" name="ctaUrl" value="<%= (calc.primaryCta && calc.primaryCta.url) || '/book' %>">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Base fields -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Base Fields</span>
+            <span style="font-size:11px;color:var(--ink-muted)">value × cost-per-unit</span>
+          </div>
+          <div class="panel-body">
+            <div class="col-label" style="grid-template-columns:1fr 1.2fr 80px 80px 100px 36px">
+              <span>ID</span><span>Label</span><span>Min</span><span>Max</span><span>Cost / Unit</span><span></span>
+            </div>
+            <div id="base-fields-list">
+              <% if (!calc.baseFields || !calc.baseFields.length) { %>
+                <div class="field-empty">No base fields. (e.g. RV length × $/ft)</div>
+              <% } else { calc.baseFields.forEach(f => { %>
+              <div class="field-row">
+                <input type="text" name="base_id" value="<%= f.id %>" pattern="[a-z0-9_-]+" required placeholder="length">
+                <input type="text" name="base_label" value="<%= f.label %>" required placeholder="RV Length (ft)">
+                <input type="number" name="base_min" value="<%= f.min %>" step="any">
+                <input type="number" name="base_max" value="<%= f.max %>" step="any">
+                <input type="number" name="base_cost" value="<%= f.costPerUnit %>" step="any">
+                <button type="button" class="field-remove" onclick="this.parentElement.remove()">&times;</button>
+              </div>
+              <% }); } %>
+            </div>
+            <button type="button" class="field-add" onclick="addBaseRow()">+ Add Base Field</button>
+            <div class="field-help">Customer enters a value; total adds <code>value × cost</code>.</div>
+          </div>
+        </div>
+
+        <!-- Multiplier fields -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Multiplier Fields</span>
+            <span style="font-size:11px;color:var(--ink-muted)">count × cost-per-unit (integer)</span>
+          </div>
+          <div class="panel-body">
+            <div class="col-label" style="grid-template-columns:1fr 1.2fr 80px 80px 100px 36px">
+              <span>ID</span><span>Label</span><span>Min</span><span>Max</span><span>Cost / Unit</span><span></span>
+            </div>
+            <div id="mult-fields-list">
+              <% if (!calc.multiplierFields || !calc.multiplierFields.length) { %>
+                <div class="field-empty">No multiplier fields. (e.g. AC units × $/ea)</div>
+              <% } else { calc.multiplierFields.forEach(f => { %>
+              <div class="field-row">
+                <input type="text" name="mult_id" value="<%= f.id %>" pattern="[a-z0-9_-]+" required placeholder="ac">
+                <input type="text" name="mult_label" value="<%= f.label %>" required placeholder="AC Units on Roof">
+                <input type="number" name="mult_min" value="<%= f.min %>" step="1" min="0">
+                <input type="number" name="mult_max" value="<%= f.max %>" step="1" min="0">
+                <input type="number" name="mult_cost" value="<%= f.costPerUnit %>" step="any">
+                <button type="button" class="field-remove" onclick="this.parentElement.remove()">&times;</button>
+              </div>
+              <% }); } %>
+            </div>
+            <button type="button" class="field-add" onclick="addMultRow()">+ Add Multiplier Field</button>
+          </div>
+        </div>
+
+        <!-- Add-ons -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Add-Ons</span>
+            <span style="font-size:11px;color:var(--ink-muted)">checkbox (flat) or count (qty × cost)</span>
+          </div>
+          <div class="panel-body">
+            <div class="col-label" style="grid-template-columns:1fr 1.2fr 110px 100px 80px 36px">
+              <span>ID</span><span>Label</span><span>Type</span><span>Cost</span><span>Max (count)</span><span></span>
+            </div>
+            <div id="addon-fields-list">
+              <% if (!calc.addOns || !calc.addOns.length) { %>
+                <div class="field-empty">No add-ons. (e.g. Skylight Seal — $50 checkbox)</div>
+              <% } else { calc.addOns.forEach(f => { %>
+              <div class="field-row addon">
+                <input type="text" name="add_id" value="<%= f.id %>" pattern="[a-z0-9_-]+" required>
+                <input type="text" name="add_label" value="<%= f.label %>" required>
+                <select name="add_type">
+                  <option value="checkbox" <%= f.type !== 'count' ? 'selected' : '' %>>Checkbox (flat)</option>
+                  <option value="count"    <%= f.type === 'count' ? 'selected' : '' %>>Count (qty × cost)</option>
+                </select>
+                <input type="number" name="add_cost" value="<%= f.cost %>" step="any">
+                <input type="number" name="add_max" value="<%= f.max || 10 %>" step="1" min="1" <%= f.type !== 'count' ? 'disabled' : '' %>>
+                <button type="button" class="field-remove" onclick="this.parentElement.remove()">&times;</button>
+              </div>
+              <% }); } %>
+            </div>
+            <button type="button" class="field-add" onclick="addAddonRow()">+ Add Add-On</button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-save"><%= isNew ? 'Create Calculator' : 'Save Changes' %></button>
+      </div>
+
+      <!-- RIGHT: live preview + embed -->
+      <% if (!isNew) { %>
+      <div>
+        <div class="preview-wrap">
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Embed</span></div>
+            <div class="panel-body">
+              <div class="preview-note">Drop these two lines into any tenant page:</div>
+              <div class="embed-box" onclick="navigator.clipboard.writeText(this.textContent.trim());this.textContent='copied!';setTimeout(()=>location.reload(),1200)">&lt;slab-calculator data-slug="<%= calc.slug %>"&gt;&lt;/slab-calculator&gt;
+&lt;script src="/js/slab-calculator.js" defer&gt;&lt;/script&gt;</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Live Preview</span></div>
+            <div class="panel-body">
+              <div class="preview-note">Refresh page after saving to see updates.</div>
+              <slab-calculator data-slug="<%= calc.slug %>"></slab-calculator>
+            </div>
+          </div>
+        </div>
+      </div>
+      <% } else { %>
+      <div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Preview</span></div>
+          <div class="panel-body" style="padding:24px;color:var(--ink-muted);font-style:italic;font-size:13px">
+            Save the calculator to see a live preview here and get the embed snippet.
+          </div>
+        </div>
+      </div>
+      <% } %>
+
+    </div>
+  </form>
+</div>
+
+<script src="/js/slab-calculator.js" defer></script>
+<script>
+  function addBaseRow() {
+    const wrap = document.getElementById('base-fields-list');
+    const empty = wrap.querySelector('.field-empty');
+    if (empty) empty.remove();
+    const row = document.createElement('div');
+    row.className = 'field-row';
+    row.innerHTML = `
+      <input type="text" name="base_id" pattern="[a-z0-9_-]+" required placeholder="length">
+      <input type="text" name="base_label" required placeholder="Field label">
+      <input type="number" name="base_min" value="0" step="any">
+      <input type="number" name="base_max" value="100" step="any">
+      <input type="number" name="base_cost" value="0" step="any">
+      <button type="button" class="field-remove" onclick="this.parentElement.remove()">&times;</button>
+    `;
+    wrap.appendChild(row);
+  }
+  function addMultRow() {
+    const wrap = document.getElementById('mult-fields-list');
+    const empty = wrap.querySelector('.field-empty');
+    if (empty) empty.remove();
+    const row = document.createElement('div');
+    row.className = 'field-row';
+    row.innerHTML = `
+      <input type="text" name="mult_id" pattern="[a-z0-9_-]+" required placeholder="ac">
+      <input type="text" name="mult_label" required placeholder="Field label">
+      <input type="number" name="mult_min" value="0" step="1" min="0">
+      <input type="number" name="mult_max" value="10" step="1" min="0">
+      <input type="number" name="mult_cost" value="0" step="any">
+      <button type="button" class="field-remove" onclick="this.parentElement.remove()">&times;</button>
+    `;
+    wrap.appendChild(row);
+  }
+  function addAddonRow() {
+    const wrap = document.getElementById('addon-fields-list');
+    const empty = wrap.querySelector('.field-empty');
+    if (empty) empty.remove();
+    const row = document.createElement('div');
+    row.className = 'field-row addon';
+    row.innerHTML = `
+      <input type="text" name="add_id" pattern="[a-z0-9_-]+" required placeholder="skylight">
+      <input type="text" name="add_label" required placeholder="Add-on label">
+      <select name="add_type" onchange="this.parentElement.querySelector('[name=add_max]').disabled = this.value !== 'count'">
+        <option value="checkbox">Checkbox (flat)</option>
+        <option value="count">Count (qty × cost)</option>
+      </select>
+      <input type="number" name="add_cost" value="0" step="any">
+      <input type="number" name="add_max" value="10" step="1" min="1" disabled>
+      <button type="button" class="field-remove" onclick="this.parentElement.remove()">&times;</button>
+    `;
+    wrap.appendChild(row);
+  }
+  // toggle add_max disabled state on existing addon rows
+  document.querySelectorAll('select[name="add_type"]').forEach(sel => {
+    sel.addEventListener('change', e => {
+      e.target.parentElement.querySelector('[name=add_max]').disabled = e.target.value !== 'count';
+    });
+  });
+</script>
+
+</div><!-- .main -->
+</div><!-- .layout -->
+</body>
+</html>

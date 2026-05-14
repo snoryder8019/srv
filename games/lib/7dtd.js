@@ -165,7 +165,9 @@ function resetInactivityTimer() {
     try {
       const status = await getStatus();
       if (!status.running) { clearInactivityTimer(); return; }
-      if (status.players > 0) {
+      let pinned = false;
+      try { pinned = require('./server-manager').isKeepOnline('7dtd'); } catch {}
+      if (status.players > 0 || pinned) {
         lastPlayerActivity = Date.now();
       } else if (lastPlayerActivity && Date.now() - lastPlayerActivity >= INACTIVITY_LIMIT_MS) {
         console.log('[games] Auto-shutting down 7DTD: 1hr inactivity');

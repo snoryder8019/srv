@@ -1,6 +1,9 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { getDb } from '../plugins/mongo.js';
 import { getReviews } from '../plugins/reviews.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
@@ -8,22 +11,31 @@ import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { config } from '../config/config.js';
 import { notifyAdmin } from '../plugins/notify.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TENANT_VIEWS_ROOT = path.resolve(__dirname, '..', 'views', 'tenants');
+
 const router = express.Router();
 
 // Load nav pages + superadmin flag for all public views
 router.use(async (req, res, next) => {
   try {
     if (req.db) {
-      const navPages = await req.db.collection('pages')
-        .find({ status: 'published', showInNav: true }, { projection: { title: 1, slug: 1 } })
-        .sort({ title: 1 })
-        .toArray();
+      const [navPages, navLinks] = await Promise.all([
+        req.db.collection('pages')
+          .find({ status: 'published', showInNav: true }, { projection: { title: 1, slug: 1 } })
+          .sort({ title: 1 })
+          .toArray(),
+        req.db.collection('nav_links').find({}).sort({ order: 1, createdAt: 1 }).toArray(),
+      ]);
       res.locals.navPages = navPages;
+      res.locals.navLinks = navLinks;
     } else {
       res.locals.navPages = [];
+      res.locals.navLinks = [];
     }
   } catch {
     res.locals.navPages = [];
+    res.locals.navLinks = [];
   }
   // Check if current user is superadmin (from slab_token JWT email)
   try {
@@ -155,6 +167,30 @@ function buildVisibility(design) {
     qr:        design.vis_qr        === 'true',
   };
 }
+
+// ── Calculator config (consumed by <slab-calculator> web component) ──
+router.get('/calculators/:slug.json', async (req, res) => {
+  try {
+    const db = req.db;
+    if (!db) return res.status(404).json({ error: 'no_tenant' });
+    const calc = await db.collection('calculators').findOne({ slug: req.params.slug, enabled: { $ne: false } });
+    if (!calc) return res.status(404).json({ error: 'not_found' });
+    // Strip Mongo _id and expose only public-safe shape
+    res.json({
+      slug: calc.slug,
+      title: calc.title,
+      description: calc.description || '',
+      noteText: calc.noteText || '',
+      baseFields: calc.baseFields || [],
+      multiplierFields: calc.multiplierFields || [],
+      addOns: calc.addOns || [],
+      primaryCta: calc.primaryCta || null,
+    });
+  } catch (err) {
+    console.error('[calculators] config error:', err);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
 
 // Public asset share
 router.get('/assets/share/:token', async (req, res) => {
@@ -368,19 +404,62 @@ router.get('/', async (req, res) => {
   try {
     const db = req.db;
 
+    // ── Resolve homepage source ──
+    // Priority is driven by design.home_source so the /admin/design panel can
+    // explicitly switch between custom EJS, slab template, and standard layout.
+    const sub = req.tenant?.meta?.subdomain;
+    const tenantHome = sub ? path.join(TENANT_VIEWS_ROOT, sub, 'home.ejs') : null;
+    const hasCustomEjs = !!(tenantHome && fs.existsSync(tenantHome));
+    const designSource = (await db.collection('design').findOne({ key: 'home_source' }))?.value || 'auto';
+
+    const wantCustom   = designSource === 'custom'   || (designSource === 'auto' && hasCustomEjs);
+    const wantTemplate = designSource === 'template' || (designSource === 'auto' && !hasCustomEjs);
+
+    // ── Tenant-specific home.ejs override ──
+    if (wantCustom && hasCustomEjs) {
+      const [design, logos, brandModels, rawCopy] = await Promise.all([
+        getDesign(db),
+        getBrandLogos(db),
+        getBrandModels(db),
+        db.collection('copy').find({}).toArray(),
+      ]);
+      const copy = { ...COPY_DEFAULTS };
+      for (const item of rawCopy) copy[item.key] = item.value;
+      return res.render(`tenants/${sub}/home`, {
+        design, logos, brandModels, copy,
+        brand: res.locals.brand || {},
+        tenant: req.tenant,
+        visibility: buildVisibility(design),
+        centralAuthUrl: config.DOMAIN + '/auth/login',
+      });
+    }
+
     // ── Active template override ──
-    const activeTemplate = await db.collection('active_template').findOne({});
-    if (activeTemplate) {
-      const tpl = await db.collection('templates').findOne({ _id: activeTemplate.templateId });
-      if (tpl) {
-        const design = await getDesign(db);
-        const logos = await getBrandLogos(db);
-        const brandModels = await getBrandModels(db);
-        const blocks = (tpl.blocks || []).map(b => {
-          const overrides = activeTemplate.contentOverrides?.[b.id] || {};
-          return { ...b, fields: { ...b.fields, ...overrides } };
-        });
-        return res.render('template-live', { design, blocks, tpl, logos, brandModels, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
+    if (wantTemplate || designSource === 'template') {
+      const activeTemplate = await db.collection('active_template').findOne({});
+      if (activeTemplate) {
+        const tpl = await db.collection('templates').findOne({ _id: activeTemplate.templateId });
+        if (tpl) {
+          const [design, logos, brandModels, rawCopy, navLinks] = await Promise.all([
+            getDesign(db),
+            getBrandLogos(db),
+            getBrandModels(db),
+            db.collection('copy').find({}).toArray(),
+            db.collection('nav_links').find({}).sort({ order: 1, createdAt: 1 }).toArray(),
+          ]);
+          const copy = { ...COPY_DEFAULTS };
+          for (const item of rawCopy) copy[item.key] = item.value;
+          const blocks = (tpl.blocks || []).map(b => {
+            const overrides = activeTemplate.contentOverrides?.[b.id] || {};
+            return { ...b, fields: { ...b.fields, ...overrides } };
+          });
+          return res.render('template-live', {
+            design, blocks, tpl, logos, brandModels, copy, navLinks,
+            brand: res.locals.brand || {},
+            visibility: buildVisibility(design),
+            centralAuthUrl: config.DOMAIN + '/auth/login',
+          });
+        }
       }
     }
 

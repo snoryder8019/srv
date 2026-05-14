@@ -199,8 +199,8 @@ router.post('/windrose/rcon', requireAdmin, async (req, res) => {
   const { cmd } = req.body;
   if (!cmd) return res.status(400).json({ error: 'cmd required' });
   try {
-    const output = await windrose.rconCommand(cmd);
-    res.json({ output });
+    const result = await windrose.rconCommand(cmd, { adminUser: req.user && req.user.email });
+    res.json({ output: result.message, status: result.status });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -30,6 +30,17 @@
   --on-surface: <%= design._on_surface || design.color_dark || '#0F1B30' %>;
   --on-surface-muted: <%= design._on_surface_muted || design.color_muted || '#6B7380' %>;
   --border: <%= design._border || design.color_border || '#E6E1D6' %>;
+  --accent-light: <%= design.color_accent_light %>;
+  /* Ticker */
+  --ticker-bg:             <%= design.ticker_bg || 'var(--navy)' %>;
+  --ticker-text:           <%= design.ticker_text_color || 'var(--accent-light)' %>;
+  --ticker-dot:            <%= design.ticker_dot_color || 'var(--accent-2)' %>;
+  --ticker-speed:          <%= design.ticker_speed || '22' %>s;
+  --ticker-font-size:      <%= design.ticker_font_size || '0.72' %>rem;
+  --ticker-padding:        <%= design.ticker_padding || '14' %>px;
+  --ticker-letter-spacing: <%= design.ticker_letter_spacing || '0.2' %>em;
+  --ticker-item-gap:       <%= design.ticker_item_gap || '32' %>px;
+  --ticker-text-transform: <%= design.ticker_uppercase !== 'false' ? 'uppercase' : 'none' %>;
 }
 *, *::before, *::after { box-sizing:border-box;margin:0;padding:0; }
 html { scroll-behavior:smooth; }
@@ -120,6 +131,14 @@ a { color:var(--gold); }
 .tl-footer-admin a { color:rgba(253,252,250,0.08);text-decoration:none;font-size:0.6rem;transition:color 0.2s; }
 .tl-footer-admin a:hover { color:rgba(253,252,250,0.25); }
 
+/* ── Ticker / marquee bar ── */
+.marquee-bar { background: var(--ticker-bg); padding: var(--ticker-padding) 0; overflow: hidden; white-space: nowrap; position: sticky; top: 60px; z-index: 90; }
+.marquee-track { display: inline-flex; gap: 0; animation: marqueeScroll var(--ticker-speed) linear infinite; }
+.marquee-bar[data-direction="right"] .marquee-track { animation-direction: reverse; }
+.marquee-item { display: inline-flex; align-items: center; gap: 20px; padding: 0 var(--ticker-item-gap); font-size: var(--ticker-font-size); font-weight: 600; letter-spacing: var(--ticker-letter-spacing); text-transform: var(--ticker-text-transform); color: var(--ticker-text); }
+.marquee-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--ticker-dot); flex-shrink: 0; }
+@keyframes marqueeScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+
 @media (max-width: 768px) {
   .lb-heading { font-size:1.8rem; }
   .lb-split-inner { grid-template-columns:1fr; }
@@ -130,9 +149,18 @@ a { color:var(--gold); }
 </head>
 <body>
 
+<% const _vis = typeof visibility !== 'undefined' && visibility ? visibility : {}; %>
+<% const _navLinks = (typeof navLinks !== 'undefined' && navLinks) ? navLinks : []; %>
+<% const _headerLinks = _navLinks.filter(l => l.location === 'header' || l.location === 'both'); %>
+<% const _footerLinks = _navLinks.filter(l => l.location === 'footer' || l.location === 'both'); %>
+<% const _navBrandColor = design.nav_brand_color || design.nav_text_color || ''; %>
+<% const _navCtaText = design.nav_cta_text || ''; %>
+<% const _navCtaLink = design.nav_cta_link || '/#contact'; %>
+
 <!-- Nav -->
-<nav class="tl-nav">
-  <a href="/" class="tl-nav-brand">
+<% if (_vis.header !== false) { %>
+<nav class="tl-nav" style="<%= design.nav_bg ? 'background:' + design.nav_bg + ';' : '' %>">
+  <a href="/" class="tl-nav-brand" style="<%= _navBrandColor ? 'color:' + _navBrandColor + ';' : '' %>">
     <% if (logos && logos.logo_white) { %>
       <img src="<%= logos.logo_white %>" alt="<%= brand?.name || '' %>" style="height:32px;">
     <% } else { %>
@@ -143,12 +171,51 @@ a { color:var(--gold); }
     <a href="/#services">Services</a>
     <a href="/#about">About</a>
     <a href="/#contact">Contact</a>
-    <a href="/blog">Blog</a>
+    <% if (_vis.blog) { %><a href="/blog">Blog</a><% } %>
+    <% _headerLinks.forEach(function(l) { %>
+      <a href="<%= l.url %>"<% if (l.target === '_blank') { %> target="_blank" rel="noopener"<% } %>><%= l.label %></a>
+    <% }); %>
+    <% if (_navCtaText) { %>
+      <a href="<%= _navCtaLink %>" class="tl-nav-cta" style="background:<%= design.nav_cta_bg || 'var(--gold)' %>;color:<%= design.nav_cta_color || 'var(--navy-deep)' %>;padding:8px 18px;border-radius:var(--card-radius);font-weight:600;"><%= _navCtaText %></a>
+    <% } %>
   </div>
 </nav>
+<% } %>
+
+<!-- Ticker / Marquee (global) — suppressed when template has its own ticker block(s) -->
+<% const _hasTickerBlock = Array.isArray(blocks) && blocks.some(b => b && b.type === 'ticker'); %>
+<% if (_vis.marquee !== false && !_hasTickerBlock) { %>
+<%
+  let _marqueeItems = [];
+  const _customTicker = (design.ticker_items || '').trim();
+  if (_customTicker) {
+    _marqueeItems = _customTicker.split('|').map(s => s.trim()).filter(Boolean);
+  } else {
+    if (brand?.services && brand.services.length) {
+      brand.services.forEach(s => _marqueeItems.push(s));
+    }
+    if (brand?.location) _marqueeItems.push(brand.location);
+    if (brand?.tagline) _marqueeItems.push(brand.tagline);
+    if (_marqueeItems.length < 4) {
+      ['Quality Service', 'Trusted Partner', 'Get Started Today', 'Contact Us'].forEach(f => { if (_marqueeItems.length < 6) _marqueeItems.push(f); });
+    }
+  }
+  while (_marqueeItems.length > 0 && _marqueeItems.length < 4) _marqueeItems = _marqueeItems.concat(_marqueeItems);
+%>
+<% if (_marqueeItems.length) { %>
+<div class="marquee-bar" data-direction="<%= design.ticker_direction || 'left' %>" aria-hidden="true">
+  <div class="marquee-track">
+    <% for (let _r = 0; _r < 2; _r++) { %>
+      <% _marqueeItems.forEach(function(item) { %>
+        <span class="marquee-item"><%- item %><span class="marquee-dot"></span></span>
+      <% }); %>
+    <% } %>
+  </div>
+</div>
+<% } %>
+<% } %>
 
 <!-- Blocks -->
-<% const _vis = typeof visibility !== 'undefined' && visibility ? visibility : {}; %>
 <% const _visMap = { hero:'hero', cards:'services', pricing:'pricing', testimonials:'reviews', stats:null, text:null, split:null, cta:null, faq:null }; %>
 <% (blocks || []).forEach(function(block) { %>
   <% const _vk = _visMap[block.type]; if (_vk && _vis[_vk] === false) return; %>
@@ -305,23 +372,58 @@ a { color:var(--gold); }
       </div>
     </div>
   </section>
+
+  <% } else if (block.type === 'ticker') { %>
+  <%
+    let _items = (f.items || '').trim()
+      ? f.items.split('|').map(s => s.trim()).filter(Boolean)
+      : [];
+    if (!_items.length) {
+      if (brand?.services && brand.services.length) brand.services.forEach(s => _items.push(s));
+      if (brand?.location) _items.push(brand.location);
+      if (brand?.tagline) _items.push(brand.tagline);
+      if (!_items.length) _items = ['Quality Service', 'Trusted Partner', 'Get Started Today', 'Contact Us'];
+    }
+    while (_items.length > 0 && _items.length < 4) _items = _items.concat(_items);
+    const _bSpeed = (f.speed || design.ticker_speed || '22');
+    const _bDir = (f.direction || 'left');
+    const _bSticky = (f.sticky === 'true');
+    const _bgStyle = f.bg ? ('background:' + f.bg + ';') : '';
+    const _txStyle = f.text_color ? ('color:' + f.text_color + ';') : '';
+    const _stickyStyle = _bSticky ? 'position:sticky;top:60px;z-index:90;' : 'position:relative;';
+  %>
+  <div class="marquee-bar" data-direction="<%= _bDir %>" aria-hidden="true"
+       style="<%= _bgStyle %><%= _stickyStyle %>animation-duration:<%= _bSpeed %>s;">
+    <div class="marquee-track" style="animation-duration:<%= _bSpeed %>s;">
+      <% for (let _r = 0; _r < 2; _r++) { %>
+        <% _items.forEach(function(item) { %>
+          <span class="marquee-item" style="<%= _txStyle %>"><%- item %><span class="marquee-dot"></span></span>
+        <% }); %>
+      <% } %>
+    </div>
+  </div>
   <% } %>
 
 <% }); %>
 
 <!-- Footer -->
+<% if (_vis.footer !== false) { %>
 <footer class="tl-footer">
   <div class="tl-footer-brand"><%= brand?.name || '' %></div>
   <div class="tl-footer-links">
     <a href="/">Home</a>
     <a href="/#services">Services</a>
-    <a href="/blog">Blog</a>
+    <% if (_vis.blog) { %><a href="/blog">Blog</a><% } %>
     <a href="/#contact">Contact</a>
+    <% _footerLinks.forEach(function(l) { %>
+      <a href="<%= l.url %>"<% if (l.target === '_blank') { %> target="_blank" rel="noopener"<% } %>><%= l.label %></a>
+    <% }); %>
   </div>
-  <% if (typeof visibility === 'undefined' || !visibility || visibility.admin_link !== false) { %>
+  <% if (_vis.admin_link !== false) { %>
   <div class="tl-footer-admin"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>">Admin</a></div>
   <% } %>
 </footer>
+<% } %>
 
 <script>
 document.querySelectorAll('.lb-faq-q').forEach(q => {

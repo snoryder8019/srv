@@ -30,6 +30,19 @@
     </div>
   </div>
 
+  <!-- ══ OPPONENT VIEW BOXES ══ -->
+  <div class="opp-strip" id="oppStrip"></div>
+  <script>
+    (function () {
+      var players = <%- JSON.stringify(game.players.map(function(p){return { name: p.name }})) %>;
+      function go() {
+        if (!window._ttOppStrip) { setTimeout(go, 100); return; }
+        window._ttOppStrip.init({ players: players, selfIndex: -1 });
+      }
+      go();
+    })();
+  </script>
+
   <!-- ══ FEED AREA ══ -->
   <div class="cam-feed-area">
 
@@ -90,7 +103,7 @@
           <% game.players.forEach(function(p, i) { %>
             <div class="hud-player <%= i === game.currentPlayerIndex ? 'hud-active' : '' %>" id="hudPlayer_<%= i %>">
               <div class="hud-player-name"><%= p.name %></div>
-              <% if (game.mode === '501') { %>
+              <% if ((game.mode === '501' || game.mode === '301')) { %>
                 <div class="hud-player-score" id="hudScore_<%= i %>"><%= p.remaining %></div>
               <% } else { %>
                 <div class="hud-player-score" id="hudScore_<%= i %>"><%= p.cricketPoints || 0 %><span class="hud-score-unit">pts</span></div>
@@ -184,7 +197,7 @@
       <!-- Learning Mode toggle + AI status -->
       <div class="quick-entry-meta">
         <label class="learn-toggle" title="Each dart you tap also triggers an AI analyze + correction save">
-          <input type="checkbox" id="learnModeToggle">
+          <input type="checkbox" id="learnModeToggle" checked>
           <span class="learn-toggle-label">🎓 Learning Mode</span>
         </label>
         <span class="ai-status-chip" id="aiStatusChip" title="Dartboard model status">
@@ -306,7 +319,7 @@
             <%= p.name %>
             <span class="cam-player-connected" id="camConn_<%= i %>">○</span>
           </div>
-          <% if (game.mode === '501') { %>
+          <% if ((game.mode === '501' || game.mode === '301')) { %>
             <div class="cam-big-score" id="camScore_<%= i %>"><%= p.remaining %></div>
             <div class="cam-score-label">remaining</div>
           <% } else { %>
@@ -315,6 +328,9 @@
         </div>
       <% }); %>
     </div>
+
+    <!-- ── PvP Video (mic + cam between players) ── -->
+    <div id="ttRtcMount" class="cam-rtc-mount"></div>
 
     <!-- ── AI Trigger Log ── -->
     <div class="ai-log-panel">
@@ -475,4 +491,24 @@ document.getElementById('aiLogToggle')?.addEventListener('click', function() {
 </script>
 
 <%- include('../partials/foot') %>
+<script src="/js/tt-rtc.js"></script>
 <script src="/js/camera.js"></script>
+<script>
+  // Bring up the PvP video panel — host view.
+  // Host's playerIndex is the slot whose userId matches the logged-in user.
+  // If host isn't a player (just running camera), playerIndex stays -1.
+  (function () {
+    var hostName = document.querySelector('meta[name="tt-user-name"]')?.content || 'Host';
+    var meId     = document.querySelector('meta[name="tt-user-id"]')?.content || null;
+    var players  = <%- JSON.stringify(game.players.map(function(p){return { userId: p.userId ? String(p.userId) : null, name: p.name }})) %>;
+    var hostSlot = -1;
+    if (meId) hostSlot = players.findIndex(function(p){ return p.userId === meId; });
+    if (window._ttRtc) {
+      window._ttRtc.mount('ttRtcMount', {
+        gameId: '<%= game._id %>',
+        displayName: hostName,
+        playerIndex: hostSlot
+      });
+    }
+  })();
+</script>

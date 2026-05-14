@@ -109,6 +109,8 @@
       color = 'var(--yellow)'; label = '⚠ No dartboard model'; title = 'Tunnel up, but no dartboard model'; statusLine = 'No AI model'; statusCls = 'dot-yellow';
     } else if (status === 'unauthorized') {
       color = 'var(--red)'; label = '⚠ Unauthorized'; title = 'Tunnel rejected credentials'; statusLine = 'Tunnel auth'; statusCls = 'dot-red';
+    } else if (status === 'crashed') {
+      color = 'var(--yellow)'; label = '⚠ AI hung'; title = 'Tunnel up; dartboard model not responding'; statusLine = 'AI hung (tunnel up)'; statusCls = 'dot-yellow';
     } else if (status === 'unreachable') {
       color = 'var(--red)'; label = '⚠ Unreachable'; title = 'Tunnel offline'; statusLine = 'Tunnel offline'; statusCls = 'dot-red';
     }
@@ -157,7 +159,7 @@
 
     // Show projected remaining for 501
     const remEl = document.getElementById('entryRemaining');
-    if (remEl && gameState && MODE === '501') {
+    if (remEl && gameState && (MODE === '501' || MODE === '301')) {
       const cur = gameState.players[gameState.currentPlayerIndex]?.remaining;
       if (cur !== undefined) {
         const after = cur - total;
@@ -293,6 +295,7 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             gameId: GAME_ID, frameId: new Date().toISOString(),
+            frame: lastAnalysis.frame,    // persist the actual image with the correction
             ai:        { darts: lastAnalysis.darts, total: lastAnalysis.total },
             corrected: { darts, total: correctedTotal },
             note: corrNote
@@ -723,6 +726,8 @@
         body: JSON.stringify({ image: base64, gameId: GAME_ID, playerIndex: gameState ? gameState.currentPlayerIndex : 0 })
       });
       const analysis = await resp.json();
+      // Stash the frame on the analysis so /api/correct can persist it for training.
+      analysis.frame = base64;
 
       // Log to AI trigger panel
       logAiEvent({ source, t0, analysis });
@@ -749,6 +754,20 @@
         hudConf.className    = 'hud-conf conf-' + (analysis.confidence || 'low');
         hudConf.style.display = 'block';
         setTimeout(() => { hudConf.style.display = 'none'; }, 8000);
+      }
+      // Yellow-box the live feed itself based on AI confidence so the host
+      // can spot uncertain reads at a glance — same visual language as the
+      // opponent strip. Glow auto-clears with the hudConf timeout.
+      const feed = document.getElementById('feedSingle');
+      if (feed) {
+        feed.classList.remove('conf-high','conf-medium','conf-low','conf-manual','conf-unavailable');
+        const cc = analysis.available === false
+          ? 'conf-unavailable'
+          : (analysis.confidence ? 'conf-' + analysis.confidence : '');
+        if (cc) feed.classList.add(cc);
+        setTimeout(() => {
+          feed.classList.remove('conf-high','conf-medium','conf-low','conf-manual','conf-unavailable');
+        }, 8000);
       }
     } catch (err) {
       setStatus('Error: ' + err.message, 'dot-red');
@@ -877,7 +896,7 @@
     const game = await resp.json();
     if (game.error) { alert(game.error); return; }
 
-    const wasBust = game.mode === '501' && game.rounds?.length > 0 && game.rounds[game.rounds.length-1].total === 0;
+    const wasBust = (game.mode === '501' || game.mode === '301') && game.rounds?.length > 0 && game.rounds[game.rounds.length-1].total === 0;
     gameState = game;
     updateGameUI(game);
     socket.emit('game-update', { gameId: GAME_ID, game });
@@ -915,7 +934,7 @@
       const hudScore  = document.getElementById('hudScore_'  + i);
       if (!hudPlayer || !hudScore) return;
       hudPlayer.classList.toggle('hud-active', i === game.currentPlayerIndex && isActive);
-      hudScore.innerHTML = game.mode === '501'
+      hudScore.innerHTML = (game.mode === '501' || game.mode === '301')
         ? p.remaining
         : (p.cricketPoints || 0) + '<span class="hud-score-unit">pts</span>';
     });
@@ -938,7 +957,7 @@
       const card = document.getElementById('camPlayer_' + i);
       if (!card) return;
       card.classList.toggle('active-player', i === game.currentPlayerIndex);
-      if (MODE === '501') {
+      if (MODE === '501' || MODE === '301') {
         const sc = document.getElementById('camScore_' + i);
         if (sc) sc.textContent = p.remaining;
       } else {
@@ -1083,7 +1102,7 @@
   // --- State ---
   let activeSlot   = 0;                                // which dart slot is being edited
   let currentMult  = 'single';                         // 'single' | 'double' | 'triple' | 'miss'
-  let learnMode    = false;
+  let learnMode    = true;   // default ON — every confirmed round auto-logs (frame, ai, truth) for training
   let aiAvailable  = false;
   const committedDarts = [null, null, null];           // [{segment, ring, score} | null]
   const learningSamples = [];                          // AI comparisons accumulated this round
@@ -1391,6 +1410,7 @@
     dot.className = 'ai-status-dot';
     if      (status === 'up')        { dot.classList.add('dot-green');  txt.textContent = 'AI online'; }
     else if (status === 'missing')   { dot.classList.add('dot-yellow'); txt.textContent = 'No dartboard model'; }
+    else if (status === 'crashed')   { dot.classList.add('dot-yellow'); txt.textContent = 'AI hung — tunnel up'; }
     else if (status === 'unreachable'){ dot.classList.add('dot-red');   txt.textContent = 'Tunnel offline'; }
     else                              { dot.classList.add('dot-red');   txt.textContent = label || status || '?'; }
   }

@@ -7,6 +7,23 @@ import { config } from '../../config/config.js';
 
 const router = express.Router();
 
+function parseGallery(raw) {
+  if (!raw) return [];
+  let arr = [];
+  try {
+    arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map(g => ({
+      url: (g?.url || '').trim(),
+      caption: (g?.caption || '').trim(),
+    }))
+    .filter(g => g.url);
+}
+
 // List
 router.get('/', async (req, res) => {
   const db = req.db;
@@ -37,6 +54,9 @@ router.post('/', portfolioUpload.single('image'), async (req, res) => {
       }
     }
 
+    const gallery = parseGallery(req.body.gallery);
+    if (!imageUrl && gallery.length) imageUrl = gallery[0].url;
+
     await db.collection('portfolio').insertOne({
       title: title?.trim(),
       category: category?.trim() || '',
@@ -51,6 +71,7 @@ router.post('/', portfolioUpload.single('image'), async (req, res) => {
       displayLayout: displayLayout || 'grid',
       imageUrl,
       bucketKey,
+      gallery,
       status: 'published',
       createdAt: new Date(),
     });
@@ -88,6 +109,9 @@ router.post('/:id', portfolioUpload.single('image'), async (req, res) => {
       imageUrl = req.body.imageUrlManual;
     }
 
+    const gallery = parseGallery(req.body.gallery);
+    if (!imageUrl && gallery.length) imageUrl = gallery[0].url;
+
     await db.collection('portfolio').updateOne(
       { _id: new ObjectId(req.params.id) },
       { $set: {
@@ -104,6 +128,7 @@ router.post('/:id', portfolioUpload.single('image'), async (req, res) => {
         displayLayout: displayLayout || 'grid',
         imageUrl,
         bucketKey,
+        gallery,
         updatedAt: new Date(),
       }}
     );

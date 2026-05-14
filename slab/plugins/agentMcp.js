@@ -5,6 +5,7 @@
  */
 
 import { config } from '../config/config.js';
+import { getSlabDb } from './mongo.js';
 
 const OLLAMA_URL = config.OLLAMA_URL;
 const OLLAMA_BASE = OLLAMA_URL.replace(/\/v1\/chat\/completions$/, '');
@@ -122,6 +123,109 @@ export async function generateSdImage(prompt, negativePrompt, sizePreset) {
   return Buffer.from(b64, 'base64');
 }
 
+// ── Shared brand-aware SD prompt builder ──────────────────────────────────────
+// Single source of truth used by both the direct /generate-bg button and the
+// asset agent's social-image flow. Takes an optional user seed phrase + the
+// tenant's full brand context and produces a Stable Diffusion prompt flavored
+// by palette, voice, and industry. Falls back to raw seed on LLM failure.
+export async function buildBrandedSdPrompt(seed, brandContext, opts = {}) {
+  const baseNeg = 'text, words, letters, numbers, watermark, blurry, low quality, deformed, ugly';
+  const seedClean = (seed || '').trim();
+  const sizePreset = opts.sizePreset || 'ig-post';
+
+  const seedLine = seedClean
+    ? `User seed phrase: "${seedClean}"`
+    : 'No user seed — generate a background purely from the brand identity above.';
+
+  const sys = `You translate a brand profile (and optional user seed) into ONE Stable Diffusion v1.5 prompt for a marketing-image BACKGROUND layer.
+${brandContext ? '\n' + brandContext + '\n' : ''}
+Output ONLY raw JSON, no prose, no fences:
+{"fill": {"prompt": "...", "negative": "..."}}
+
+Rules:
+- Describe textures, atmosphere, mood, palette — NEVER text, letters, logos, or brand names.
+- Pull palette HEX values from the brand context above into the prompt as named hues (e.g. "navy and gold palette", "warm ivory tones").
+- Match the brand voice (luxurious / playful / industrial / minimalist / etc.) in atmosphere words.
+- If a seed is given, BLEND it with the brand mood; do not discard either.
+- Size preset: ${sizePreset} — pick imagery that crops well at that aspect.
+- Keep "prompt" under 50 words.
+- "negative" must include: ${baseNeg}. Add any anti-content that conflicts with the brand.`;
+
+  try {
+    const raw = await callLLM([{ role: 'user', content: seedLine }], sys, 30000);
+    const parsed = tryParseAgentResponse(raw);
+    const out = parsed?.fill || {};
+    if (typeof out.prompt === 'string' && out.prompt.trim()) {
+      return {
+        prompt: out.prompt.trim(),
+        negative: (out.negative || '').trim() || baseNeg,
+        source: 'enriched',
+      };
+    }
+  } catch (e) {
+    console.warn('[buildBrandedSdPrompt] enrich failed:', e.message);
+  }
+
+  return {
+    prompt: seedClean || 'elegant abstract textured background, professional brand mood',
+    negative: baseNeg,
+    source: seedClean ? 'raw' : 'fallback',
+  };
+}
+
+// ── Training-candidate capture ────────────────────────────────────────────────
+// Records every SD generation that survives upload, so we can build a curated
+// fine-tune dataset later. Writes to the slab master DB (platform-wide pool).
+// Never throws — failure here must not break the user-facing image flow.
+export async function recordTrainingCandidate(meta) {
+  try {
+    const slab = getSlabDb();
+    await slab.collection('training_candidates').insertOne({
+      prompt: meta.prompt,
+      negativePrompt: meta.negativePrompt || null,
+      sizePreset: meta.sizePreset || null,
+      size: meta.size || null,
+      bucketKey: meta.bucketKey,
+      publicUrl: meta.publicUrl,
+      byteSize: meta.byteSize || null,
+      source: meta.source || 'unknown',
+      tenant: meta.tenant || null,
+      userEmail: meta.userEmail || null,
+      model: 'runwayml/stable-diffusion-v1-5',
+      createdAt: new Date(),
+      curated: false,
+      caption: null,
+      rating: null,
+      notes: null,
+    });
+  } catch (e) {
+    console.warn('[training-candidate] insert failed:', e.message);
+  }
+}
+
+// Some LLMs (qwen2.5 in particular) return HTML with entity-escaped tags (&lt;p&gt;...).
+// Detect that pattern and decode so the editor renders real HTML, not literal angle brackets.
+function decodeIfEntityEscapedHtml(s) {
+  if (typeof s !== 'string' || !s) return s;
+  if (!/&lt;[a-zA-Z\/]/.test(s)) return s; // looks like normal text/HTML, leave alone
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&'); // last to avoid double-decoding
+}
+
+function postProcessFill(fill) {
+  if (!fill || typeof fill !== 'object') return fill;
+  for (const key of ['content', 'body', 'html']) {
+    if (typeof fill[key] === 'string') fill[key] = decodeIfEntityEscapedHtml(fill[key]);
+  }
+  return fill;
+}
+
 export function tryParseAgentResponse(raw) {
   const cleaned = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
 
@@ -129,7 +233,10 @@ export function tryParseAgentResponse(raw) {
     const m = cleaned.match(/\{[\s\S]*\}/);
     if (m) {
       const p = JSON.parse(m[0]);
-      if (p.fill && typeof p.fill === 'object') return p;
+      if (p.fill && typeof p.fill === 'object') {
+        p.fill = postProcessFill(p.fill);
+        return p;
+      }
     }
   } catch { /* fall through */ }
 
@@ -138,7 +245,10 @@ export function tryParseAgentResponse(raw) {
     const m = fixed.match(/\{[\s\S]*\}/);
     if (m) {
       const p = JSON.parse(m[0]);
-      if (p.fill && typeof p.fill === 'object') return p;
+      if (p.fill && typeof p.fill === 'object') {
+        p.fill = postProcessFill(p.fill);
+        return p;
+      }
     }
   } catch { /* fall through */ }
 
@@ -157,7 +267,7 @@ export function tryParseAgentResponse(raw) {
 
   const msgMatch = cleaned.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/);
   const message = msgMatch ? msgMatch[1] : (Object.keys(fill).length ? 'Fields filled.' : cleaned.slice(0, 200));
-  return { message, fill };
+  return { message, fill: postProcessFill(fill) };
 }
 
 // ── MCP Tool Definitions (follows MCP spec schema) ───────────────────────────
@@ -499,7 +609,7 @@ Output shape:
     "title": "short asset title",
     "size": "${chosenSize}",
     "bgColor": "primary brand color from context above",
-    "sd_prompt": "Stable Diffusion prompt for AI background, or null",
+    "sd_prompt": "REQUIRED — Stable Diffusion prompt describing the AI background atmosphere (textures, palette, mood)",
     "sd_negative_prompt": "text, words, letters, numbers, watermark, blurry, low quality, deformed",
     "layers": [ ... ]
   }
@@ -518,21 +628,23 @@ POSITIONING — use these exact formulas (canvas is ${cW}x${cH}):
 - Bottom strip: x=0, y=${Math.round(cH * 0.78)}, w=${cW}, h=${Math.round(cH * 0.22)}
 - CTA button: x=${Math.round(cW * 0.25)}, y=${Math.round(cH * 0.72)}, w=${Math.round(cW * 0.5)}, h=${Math.round(cH * 0.08)}, radius=8
 
-EXAMPLE for ${cW}x${cH} — centered headline with overlay:
+EXAMPLE for ${cW}x${cH} — centered headline over readability scrim:
 {
   "layers": [
-    { "type":"rect", "x":0, "y":${Math.round(cH * 0.2)}, "w":${cW}, "h":${Math.round(cH * 0.6)}, "fill":"rgba(0,0,0,0.5)", "radius":0 },
-    { "type":"text", "text":"YOUR HEADLINE", "x":${Math.round(cW * 0.08)}, "y":${Math.round(cH * 0.3)}, "w":${Math.round(cW * 0.84)}, "h":100, "fontSize":${Math.round(Math.min(cW, cH) * 0.07)}, "fontFamily":"serif", "color":"#FFFFFF", "align":"center", "bold":true },
-    { "type":"text", "text":"Subtitle text here", "x":${Math.round(cW * 0.1)}, "y":${Math.round(cH * 0.48)}, "w":${Math.round(cW * 0.8)}, "h":60, "fontSize":${Math.round(Math.min(cW, cH) * 0.035)}, "fontFamily":"sans-serif", "color":"#F5F3EF", "align":"center", "bold":false }
+    { "type":"rect", "x":0, "y":${Math.round(cH * 0.18)}, "w":${cW}, "h":${Math.round(cH * 0.64)}, "fill":"rgba(0,0,0,0.45)", "radius":0 },
+    { "type":"text", "text":"YOUR HEADLINE", "x":${Math.round(cW * 0.08)}, "y":${Math.round(cH * 0.3)}, "w":${Math.round(cW * 0.84)}, "h":${Math.round(cH * 0.18)}, "fontSize":${Math.round(Math.min(cW, cH) * 0.085)}, "fontFamily":"serif", "color":"#FFFFFF", "align":"center", "bold":true },
+    { "type":"text", "text":"Subtitle text here", "x":${Math.round(cW * 0.1)}, "y":${Math.round(cH * 0.52)}, "w":${Math.round(cW * 0.8)}, "h":${Math.round(cH * 0.1)}, "fontSize":${Math.round(Math.min(cW, cH) * 0.04)}, "fontFamily":"sans-serif", "color":"#F5F3EF", "align":"center", "bold":false }
   ]
 }
 
-RULES:
-- Use 2-5 layers. Always include at least one text layer.
-- Use the brand's color palette from the brand context above (unless user says otherwise).
-- Headline fontSize: ${Math.round(Math.min(cW, cH) * 0.06)}–${Math.round(Math.min(cW, cH) * 0.09)}. Subtitle: ${Math.round(Math.min(cW, cH) * 0.03)}–${Math.round(Math.min(cW, cH) * 0.045)}.
-- When using sd_prompt (for themes like paintstrokes, holidays, sunset, etc.), ALWAYS put a semi-transparent rect overlay behind all text so it's readable.
-- sd_prompt should describe textures/colors/atmosphere only — never text or logos. Set to null for plain designs.
+CANVAS-FILL RULES (MANDATORY):
+- ALWAYS include sd_prompt. It is REQUIRED — never null, never empty. The SD background fills the canvas; text layers sit on top.
+- sd_prompt describes textures/atmosphere/palette only — never text, letters, logos, or brand names. Pull palette hex names from the brand context.
+- ALWAYS include a semi-transparent scrim rect (rgba 0.35-0.6 alpha) at minimum 50% canvas height so text reads against the SD background.
+- ALWAYS include a HEADLINE text layer occupying at least 70% of canvas width.
+- Use 3-5 layers total: scrim rect → headline text → subtitle text → optional CTA/accent.
+- Use the brand's color palette from the brand context above.
+- Headline fontSize: ${Math.round(Math.min(cW, cH) * 0.07)}–${Math.round(Math.min(cW, cH) * 0.1)}. Subtitle: ${Math.round(Math.min(cW, cH) * 0.035)}–${Math.round(Math.min(cW, cH) * 0.05)}.
 - All x/y/w/h values must be integers within the ${cW}x${cH} canvas.
 ${contextNote}${researchCtx}`;
 

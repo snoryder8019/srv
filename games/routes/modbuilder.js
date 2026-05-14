@@ -3,6 +3,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { UI_SUPPRESSED_EVENT_TYPES } = require('../lib/stats-collector');
 
 const router = express.Router();
 
@@ -37,8 +38,14 @@ router.get('/api/state', requireAdmin, async (req, res) => {
     const livemap = readJsonSafe(LIVEMAP);
     const config = readJsonSafe(PLUS_CONFIG);
 
-    const [recentEvents, playerStats, eventCounts, latestSnapshot] = await Promise.all([
-      db.collection('game_events').find({ game: 'windrose' }).sort({ ts: -1 }).limit(50).toArray(),
+    // Heartbeats + mod-internal probes flood the event log; if we mixed them
+    // into the 50-event window, real player events would scroll out of view.
+    // Pull only player-facing events for the feed, and the latest heartbeat
+    // separately so the UI can still derive mode + uptime from it.
+    const noiseTypes = Array.from(UI_SUPPRESSED_EVENT_TYPES);
+    const [recentEvents, lastHeartbeat, playerStats, eventCounts, latestSnapshot] = await Promise.all([
+      db.collection('game_events').find({ game: 'windrose', type: { $nin: noiseTypes } }).sort({ ts: -1 }).limit(50).toArray(),
+      db.collection('game_events').findOne({ game: 'windrose', type: 'heartbeat' }, { sort: { ts: -1 } }),
       db.collection('player_stats').find({ game: 'windrose' }).sort({ lastSeen: -1 }).limit(50).toArray(),
       db.collection('game_events').aggregate([
         { $match: { game: 'windrose', ts: { $gte: since } } },
@@ -57,6 +64,7 @@ router.get('/api/state', requireAdmin, async (req, res) => {
       config: config ? { rconPasswordSet: config.rcon?.password && config.rcon.password !== 'changeme', features: config.features, multipliers: config.multipliers } : null,
       latestSnapshot,
       events: recentEvents,
+      lastHeartbeat,
       players: playerStats.map(p => ({ ...p, active: activeNames.has(p.name) })),
       counts24h: counts,
     });

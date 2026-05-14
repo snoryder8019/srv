@@ -1,0 +1,30 @@
+<%# ─── Reusable marquee/ticker partial ───
+   Caller provides: d (design), b (brand), pos (position keyword for class hook).
+   Renders nothing if items resolve to empty. Caller is responsible for the
+   visibility check (vis_marquee) before including. %>
+<%
+  let _items = [];
+  const _custom = (d.ticker_items || '').trim();
+  if (_custom) {
+    _items = _custom.split('|').map(s => s.trim()).filter(Boolean);
+  } else {
+    if (b && b.services && b.services.length) b.services.forEach(s => _items.push(s));
+    if (b && b.location) _items.push(b.location);
+    if (b && b.tagline) _items.push(b.tagline);
+    if (_items.length < 4) {
+      ['Quality Service', 'Trusted Partner', 'Get Started Today', 'Contact Us'].forEach(f => { if (_items.length < 6) _items.push(f); });
+    }
+  }
+  while (_items.length > 0 && _items.length < 4) _items = _items.concat(_items);
+%>
+<% if (_items.length) { %>
+<div class="marquee-bar marquee-bar--<%= pos %>" data-direction="<%= d.ticker_direction || 'left' %>" aria-hidden="true">
+  <div class="marquee-track">
+    <% for (let _r = 0; _r < 2; _r++) { %>
+      <% _items.forEach(function(item) { %>
+        <span class="marquee-item"><%- item %><span class="marquee-dot"></span></span>
+      <% }); %>
+    <% } %>
+  </div>
+</div>
+<% } %>

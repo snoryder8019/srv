@@ -30,20 +30,13 @@ async function getDesign(db) {
 }
 
 // ── List ─────────────────────────────────────────────────────────────────────
-router.get('/', async (req, res) => {
-  try {
-    const db = req.db;
-    const templates = await db.collection('templates').find({}).sort({ updatedAt: -1 }).toArray();
-    const active = await db.collection('active_template').findOne({});
-    res.render('admin/templates/index', {
-      user: req.adminUser, page: 'templates', title: 'Templates',
-      templates, activeId: active?.templateId?.toString() || null,
-      msg: req.query.msg, err: req.query.err,
-    });
-  } catch (err) {
-    console.error('[templates]', err);
-    res.redirect('/admin');
-  }
+// Standalone list page retired — template management lives in /admin/design Templates tab.
+// Individual edit/preview/activate routes below stay reachable (builder + AJAX endpoints).
+router.get('/', (req, res) => {
+  const qs = req.query.msg || req.query.err
+    ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(req.query).filter(([k]) => ['msg', 'err'].includes(k)))).toString()
+    : '';
+  res.redirect('/admin/design' + qs + '#tab=templates');
 });
 
 // ── New form ─────────────────────────────────────────────────────────────────
@@ -56,6 +49,7 @@ router.get('/new', async (req, res) => {
       BLOCK_FIELDS: JSON.stringify(BLOCK_FIELDS),
       BLOCK_DEFAULTS: JSON.stringify(BLOCK_DEFAULTS),
       VALID_BLOCK_TYPES,
+      isActive: false, contentOverrides: {},
     });
   } catch (err) {
     console.error('[templates]', err);
@@ -115,12 +109,16 @@ router.get('/:id/edit', async (req, res) => {
     const tpl = await db.collection('templates').findOne({ _id: new ObjectId(req.params.id) });
     if (!tpl) return res.redirect('/admin/templates');
     const design = await getDesign(db);
+    const active = await db.collection('active_template').findOne({});
+    const isActive = !!(active && active.templateId && active.templateId.toString() === tpl._id.toString());
+    const contentOverrides = isActive ? (active.contentOverrides || {}) : {};
     res.render('admin/templates/form', {
       user: req.adminUser, page: 'templates', title: 'Edit Template',
       tpl, design, error: null,
       BLOCK_FIELDS: JSON.stringify(BLOCK_FIELDS),
       BLOCK_DEFAULTS: JSON.stringify(BLOCK_DEFAULTS),
       VALID_BLOCK_TYPES,
+      isActive, contentOverrides,
     });
   } catch (err) {
     console.error('[templates]', err);

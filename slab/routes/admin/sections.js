@@ -166,33 +166,9 @@ export const CUSTOM_TEMPLATES = {
 };
 
 // ── GET /admin/sections ──────────────────────────────────────────────────────
-router.get('/', (req, res) => res.redirect('/admin/design'));
-
-router.get('/legacy', async (req, res) => {
-  const db = req.db;
-  const [rawCopy, rawDesign, rawMedia, customSections] = await Promise.all([
-    db.collection('copy').find({}).toArray(),
-    db.collection('design').find({}).toArray(),
-    db.collection('section_media').find({}).toArray(),
-    db.collection('custom_sections').find({}).sort({ order: 1, createdAt: 1 }).toArray(),
-  ]);
-
-  const copy = { ...COPY_DEFAULTS };
-  for (const item of rawCopy) copy[item.key] = item.value;
-
-  const design = { ...DESIGN_DEFAULTS };
-  for (const item of rawDesign) design[item.key] = item.value;
-
-  const media = {};
-  for (const item of rawMedia) media[item.key] = item;
-
-  res.render('admin/sections/index', {
-    user: req.adminUser, page: 'sections', title: 'Sections',
-    sections: SECTIONS_META, copy, design, media, labels: COPY_LABELS,
-    customSections, templates: CUSTOM_TEMPLATES,
-    flash: req.query.saved, error: req.query.error,
-  });
-});
+// Standalone editor fully retired — all section management lives in /admin/design.
+// Section/custom-section AJAX endpoints below stay reachable (POST /:section/copy, POST /custom/*).
+router.get(['/', '/legacy'], (req, res) => res.redirect('/admin/design#tab=sections'));
 
 // ── HARDCODED SECTION: save copy ─────────────────────────────────────────────
 router.post('/:section/copy', async (req, res) => {
@@ -307,7 +283,25 @@ router.post('/custom/new', async (req, res) => {
   }
 });
 
+// ── CUSTOM SECTIONS: reorder ─────────────────────────────────────────────────
+router.post('/custom/reorder', async (req, res) => {
+  try {
+    let order = [];
+    try { order = JSON.parse(req.body.orderJson || '[]'); } catch {}
+    const ops = order.map((id, i) =>
+      req.db.collection('custom_sections').updateOne({ _id: new ObjectId(id) }, { $set: { order: i, updatedAt: new Date() } })
+    );
+    await Promise.all(ops);
+    res.json({ ok: true, count: order.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── CUSTOM SECTIONS: save copy ───────────────────────────────────────────────
+// Accepts any field key from req.body (lets the design editor add card5/card6/q6
+// rows beyond the template's hardcoded count). Reserved keys (`visible`,
+// `_keys_to_remove`, internal underscored) are filtered out.
 router.post('/custom/:id/copy', async (req, res) => {
   try {
     const db = req.db;
@@ -316,8 +310,12 @@ router.post('/custom/:id/copy', async (req, res) => {
     const tmpl = CUSTOM_TEMPLATES[sec.type];
     if (!tmpl) return res.status(400).json({ error: 'Unknown type' });
 
+    const RESERVED = new Set(['visible', '_keys_to_remove']);
     const fields = {};
-    for (const f of tmpl.fields) fields[f.key] = (req.body[f.key] || '').trim();
+    for (const [k, v] of Object.entries(req.body)) {
+      if (RESERVED.has(k) || k.startsWith('_')) continue;
+      fields[k] = typeof v === 'string' ? v.trim() : v;
+    }
 
     const visible = req.body.visible === 'on';
     await db.collection('custom_sections').updateOne(

@@ -1,6 +1,46 @@
 # Recent Changes Summary
 
-Generated: 2026-04-28T16:03:32.684Z
+Generated: 2026-05-13T07:30:00.022Z
+
+---
+
+## Commit: stable commit games v
+
+- **Hash:** `d150ee8`
+- **Author:** Scott
+- **Date:** 4/28/2026
+- **Changes:** 2 files, +9/-1 lines
+
+### Modified Areas:
+
+
+---
+
+## Commit: good pusjh on stats for windrose
+
+- **Hash:** `71bf0e8`
+- **Author:** Scott
+- **Date:** 4/28/2026
+- **Changes:** 7 files, +240/-18 lines
+
+### Modified Areas:
+
+
+---
+
+## Commit: games updates mods winrose
+
+- **Hash:** `f030651`
+- **Author:** Scott
+- **Date:** 4/28/2026
+- **Changes:** 154 files, +103489/-3120 lines
+
+### Modified Areas:
+
+**Backend:** 25 files
+**Views:** 42 files
+**Scripts:** 2 files
+**Documentation:** 7 files
 
 ---
 
@@ -33,54 +73,6 @@ Generated: 2026-04-28T16:03:32.684Z
 **Views:** 96 files
 **Scripts:** 26 files
 **Documentation:** 25 files
-
----
-
-## Commit: depricated bih. xlogin on games
-
-- **Hash:** `8c2a0ee`
-- **Author:** Scott
-- **Date:** 4/9/2026
-- **Changes:** 93 files, +1481/-12301 lines
-
-### Modified Areas:
-
-**Backend:** 15 files
-**Views:** 30 files
-**Scripts:** 2 files
-**Documentation:** 7 files
-
----
-
-## Commit: superadmin updates, template builder, delegate updates, login debugging. +0.1.3
-
-- **Hash:** `efb718e`
-- **Author:** Scott
-- **Date:** 4/8/2026
-- **Changes:** 122 files, +10025/-2120 lines
-
-### Modified Areas:
-
-**Backend:** 24 files
-**Views:** 47 files
-**Scripts:** 3 files
-**Documentation:** 10 files
-
----
-
-## Commit: design overhaul +0.1.0
-
-- **Hash:** `038dcb6`
-- **Author:** Scott
-- **Date:** 4/7/2026
-- **Changes:** 41 files, +3768/-1018 lines
-
-### Modified Areas:
-
-**Backend:** 6 files
-**Views:** 9 files
-**Scripts:** 4 files
-**Documentation:** 3 files
 
 ---
 

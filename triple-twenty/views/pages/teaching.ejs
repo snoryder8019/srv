@@ -1,0 +1,408 @@
+<%- include('../partials/head', { title: 'Teaching — AI Review' }) %>
+
+<div class="teach-app">
+  <div class="teach-header">
+    <h2>🎓 Teaching Review</h2>
+    <p class="hint">Every captured frame + the AI's prediction + your ground truth. Use this to spot AI errors and validate samples for the training set.</p>
+  </div>
+
+  <!-- Stats card -->
+  <div class="teach-stats" id="teachStats">
+    <div class="stat-card">
+      <div class="stat-num" id="statTotal">–</div>
+      <div class="stat-label">Total Samples</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="statWithFrame">–</div>
+      <div class="stat-label">With Frame</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="statValidated">–</div>
+      <div class="stat-label">Validated</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="statFrameSize">–</div>
+      <div class="stat-label">Frames on Disk</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="teach-filters">
+    <button class="teach-filter active" data-filter="all">All</button>
+    <button class="teach-filter" data-filter="match">AI matched</button>
+    <button class="teach-filter" data-filter="mismatch">AI wrong</button>
+    <button class="teach-filter" data-filter="no-ai">No AI (manual)</button>
+    <button class="teach-filter" data-filter="validated">Validated</button>
+    <button class="teach-filter" data-filter="unvalidated">Unvalidated</button>
+    <a class="teach-export" href="/api/dataset/export" target="_blank">⬇ Export JSONL</a>
+  </div>
+
+  <!-- Sample grid -->
+  <div class="teach-empty" id="teachEmpty" style="display:none;">
+    <p>No samples yet. Confirm or correct rounds during a game with Learning Mode on (default), and frames + AI predictions will appear here.</p>
+  </div>
+  <div class="teach-loading" id="teachLoading">Loading…</div>
+  <div class="teach-grid" id="teachGrid" style="display:none;"></div>
+</div>
+
+<style>
+.teach-app { max-width: 1280px; margin: 0 auto; padding: 16px; }
+.teach-header h2 { color: var(--primary); font-size: 1.4rem; margin-bottom: 4px; }
+.teach-header .hint { color: var(--text3); font-size: 0.85rem; margin-bottom: 16px; }
+
+.teach-stats {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.stat-card {
+  background: var(--bg2, #1a1f2e); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px; text-align: center;
+}
+.stat-num { font-size: 1.7rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.stat-label { font-size: 0.7rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.teach-filters {
+  display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
+}
+.teach-filter {
+  padding: 6px 14px; background: var(--bg2, #1a1f2e); border: 1px solid var(--border);
+  border-radius: 16px; color: var(--text); font-size: 0.78rem; cursor: pointer;
+}
+.teach-filter.active { background: var(--primary); border-color: var(--primary); color: #000; }
+.teach-export {
+  margin-left: auto; padding: 6px 14px; background: var(--bg2, #1a1f2e);
+  border: 1px solid var(--green); border-radius: 6px; color: var(--green);
+  font-size: 0.78rem; text-decoration: none;
+}
+
+.teach-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.teach-card {
+  background: var(--bg2, #1a1f2e); border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.teach-card.match  { border-color: var(--green); }
+.teach-card.mismatch { border-color: var(--yellow); }
+.teach-card.no-ai  { border-color: var(--text3); }
+
+.teach-frame {
+  width: 100%; aspect-ratio: 4/3; object-fit: cover; background: #050608;
+  display: block;
+}
+.teach-frame-missing {
+  width: 100%; aspect-ratio: 4/3; background: #050608;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text3); font-size: 0.8rem;
+}
+.teach-body { padding: 12px; font-size: 0.78rem; }
+.teach-row { display: flex; gap: 6px; margin-bottom: 4px; align-items: baseline; }
+.teach-label { color: var(--text3); width: 56px; flex-shrink: 0; font-weight: 600; }
+.teach-darts { color: var(--text); font-family: ui-monospace, monospace; }
+.teach-darts.ai { color: var(--blue); }
+.teach-darts.fix { color: var(--green); }
+.teach-note {
+  font-size: 0.72rem; color: var(--text3); font-style: italic;
+  border-top: 1px solid var(--border); padding-top: 6px; margin-top: 6px;
+}
+.teach-meta {
+  font-size: 0.68rem; color: var(--text3); display: flex; justify-content: space-between;
+  margin-top: 8px;
+}
+.teach-actions {
+  display: flex; gap: 6px; padding: 0 12px 12px;
+}
+.teach-actions button {
+  flex: 1; padding: 5px 8px; font-size: 0.72rem;
+  background: var(--bg, #0d0f14); border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text); cursor: pointer;
+}
+.teach-actions button.validated { background: var(--green); border-color: var(--green); color: #000; }
+
+.dart-pill {
+  display: inline-block; padding: 1px 6px; margin: 0 2px;
+  background: rgba(255,255,255,0.06); border-radius: 3px;
+  font-size: 0.7rem; font-weight: 600;
+}
+
+.teach-edit { background: var(--bg, #0d0f14); border-top: 1px solid var(--border); }
+.teach-edit-inner { padding: 10px 12px 12px; }
+.teach-edit-title { font-size: 0.7rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.teach-edit-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+.teach-edit-label { font-size: 0.72rem; color: var(--text3); width: 24px; flex-shrink: 0; font-weight: 700; }
+.teach-edit-seg, .teach-edit-ring {
+  flex: 1; padding: 4px 6px; font-size: 0.72rem;
+  background: var(--bg2, #1a1f2e); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text);
+}
+.teach-edit-note {
+  width: 100%; margin-top: 6px; padding: 5px 7px; font-size: 0.72rem;
+  background: var(--bg2, #1a1f2e); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); resize: vertical; font-family: inherit;
+}
+.teach-edit-buttons { display: flex; gap: 6px; margin-top: 8px; }
+.teach-edit-buttons button {
+  flex: 1; padding: 5px 8px; font-size: 0.72rem;
+  border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+}
+.teach-edit-save   { background: var(--green); color: #000; border-color: var(--green); font-weight: 600; }
+.teach-edit-cancel { background: var(--bg, #0d0f14); color: var(--text); }
+.edit-btn { background: var(--bg, #0d0f14); }
+
+.teach-loading, .teach-empty {
+  text-align: center; padding: 40px 20px; color: var(--text3);
+}
+.teach-empty p { max-width: 460px; margin: 0 auto; }
+</style>
+
+<%- include('../partials/foot') %>
+
+<script>
+let allSamples = [];
+let activeFilter = 'all';
+
+function fmtDart(d) {
+  if (!d) return '—';
+  if (d.ring === 'miss') return 'X';
+  const pfx = d.ring === 'double' ? 'D' : d.ring === 'triple' ? 'T' :
+              d.ring === 'inner_bull' ? 'iBull ' : d.ring === 'outer_bull' ? 'oBull ' : '';
+  return pfx + d.segment;
+}
+
+function dartsHtml(darts) {
+  if (!darts || !darts.length) return '<span class="teach-darts">—</span>';
+  return darts.map(d => `<span class="dart-pill">${fmtDart(d)}=${d.score ?? 0}</span>`).join(' ');
+}
+
+function classify(c) {
+  const note = (c.note || '').toLowerCase();
+  if (note.includes('match'))    return 'match';
+  if (note.includes('mismatch')) return 'mismatch';
+  if (note.includes('no-ai'))    return 'no-ai';
+  // Fallback: compare ai vs corrected
+  const aiD = c.ai?.darts || [];
+  const fxD = c.corrected?.darts || [];
+  if (!aiD.length) return 'no-ai';
+  const same = aiD.length === fxD.length &&
+    aiD.every((d, i) => d.segment === fxD[i]?.segment && d.ring === fxD[i]?.ring);
+  return same ? 'match' : 'mismatch';
+}
+
+function applyFilter() {
+  const grid = document.getElementById('teachGrid');
+  const empty = document.getElementById('teachEmpty');
+  const filtered = allSamples.filter(c => {
+    const klass = classify(c);
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'validated')   return c.validated === true;
+    if (activeFilter === 'unvalidated') return c.validated !== true;
+    return klass === activeFilter;
+  });
+
+  if (filtered.length === 0) {
+    grid.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.style.display = 'grid';
+
+  grid.innerHTML = filtered.map(c => {
+    const klass = classify(c);
+    const ai  = c.ai?.darts || [];
+    const fx  = c.corrected?.darts || [];
+    const aiTotal = c.ai?.total ?? 0;
+    const fxTotal = c.corrected?.total ?? 0;
+    const frameImg = c.frameUrl
+      ? `<img src="${c.frameUrl}" class="teach-frame" alt="frame" loading="lazy">`
+      : `<div class="teach-frame-missing">No frame</div>`;
+    const validatedClass = c.validated ? ' validated' : '';
+    return `
+      <div class="teach-card ${klass}" data-id="${c._id}">
+        ${frameImg}
+        <div class="teach-body">
+          <div class="teach-row">
+            <span class="teach-label">AI:</span>
+            <span class="teach-darts ai">${dartsHtml(ai)} = <strong>${aiTotal}</strong></span>
+          </div>
+          <div class="teach-row">
+            <span class="teach-label">Truth:</span>
+            <span class="teach-darts fix">${dartsHtml(fx)} = <strong>${fxTotal}</strong></span>
+          </div>
+          ${c.note ? `<div class="teach-note">${c.note}</div>` : ''}
+          <div class="teach-meta">
+            <span>${new Date(c.createdAt).toLocaleString()}</span>
+            <span>${(c.source || klass).toUpperCase()}</span>
+          </div>
+        </div>
+        <div class="teach-actions">
+          <button class="validate-btn${validatedClass}" data-id="${c._id}">
+            ${c.validated ? '✓ Validated' : '☐ Validate'}
+          </button>
+          <button class="edit-btn" data-id="${c._id}">✏ Edit</button>
+        </div>
+        <div class="teach-edit" id="edit_${c._id}" style="display:none;"></div>
+      </div>`;
+  }).join('');
+
+  // wire edit
+  grid.querySelectorAll('.edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => openEditor(btn.dataset.id));
+  });
+
+  // wire validation toggle
+  grid.querySelectorAll('.validate-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const sample = allSamples.find(s => s._id === id);
+      const next = !sample.validated;
+      try {
+        const resp = await fetch(`/api/dataset/${id}/validate`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ validated: next })
+        });
+        if (resp.ok) {
+          sample.validated = next;
+          btn.classList.toggle('validated', next);
+          btn.textContent = next ? '✓ Validated' : '☐ Validate';
+          loadStats();
+        } else if (resp.status === 401) {
+          alert('Sign in to validate samples.');
+        }
+      } catch (e) { console.error(e); }
+    });
+  });
+}
+
+// Segment menu — covers numbered (1-20) plus bullseyes; ring selectable per dart.
+const SEG_OPTIONS = ['miss','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','25','50'];
+const RING_OPTIONS = ['single','double','triple','outer_bull','inner_bull','miss'];
+
+function dartScoreFor(seg, ring) {
+  const s = parseInt(seg) || 0;
+  if (ring === 'miss')       return 0;
+  if (ring === 'inner_bull') return 50;
+  if (ring === 'outer_bull') return 25;
+  if (ring === 'double')     return s * 2;
+  if (ring === 'triple')     return s * 3;
+  return s;
+}
+
+function openEditor(id) {
+  const sample = allSamples.find(s => s._id === id);
+  if (!sample) return;
+  const host = document.getElementById('edit_' + id);
+  if (host.style.display !== 'none') {
+    host.style.display = 'none';
+    host.innerHTML = '';
+    return;
+  }
+  const fx = sample.corrected?.darts || [];
+  const rows = [0, 1, 2].map(i => {
+    const d = fx[i] || {};
+    const seg  = d.segment != null ? String(d.segment) : '';
+    const ring = d.ring || 'single';
+    const segOpts = SEG_OPTIONS.map(s =>
+      `<option value="${s}"${s === seg ? ' selected' : ''}>${s}</option>`).join('');
+    const ringOpts = RING_OPTIONS.map(r =>
+      `<option value="${r}"${r === ring ? ' selected' : ''}>${r}</option>`).join('');
+    return `
+      <div class="teach-edit-row">
+        <span class="teach-edit-label">D${i + 1}</span>
+        <select class="teach-edit-seg" data-i="${i}"><option value="">—</option>${segOpts}</select>
+        <select class="teach-edit-ring" data-i="${i}">${ringOpts}</select>
+      </div>`;
+  }).join('');
+  host.innerHTML = `
+    <div class="teach-edit-inner">
+      <div class="teach-edit-title">Correct truth labels</div>
+      ${rows}
+      <textarea class="teach-edit-note" placeholder="Note (optional)" rows="2">${sample.note || ''}</textarea>
+      <div class="teach-edit-buttons">
+        <button class="teach-edit-save"   data-id="${id}">Save</button>
+        <button class="teach-edit-cancel" data-id="${id}">Cancel</button>
+      </div>
+    </div>`;
+  host.style.display = 'block';
+
+  host.querySelector('.teach-edit-save').addEventListener('click', async () => {
+    const segs  = host.querySelectorAll('.teach-edit-seg');
+    const rings = host.querySelectorAll('.teach-edit-ring');
+    const note  = host.querySelector('.teach-edit-note').value.trim();
+    const darts = [];
+    for (let i = 0; i < 3; i++) {
+      const seg  = segs[i].value;
+      const ring = rings[i].value;
+      if (!seg && seg !== '0') continue; // empty slot — drop dart
+      const s = parseInt(seg) || 0;
+      darts.push({ segment: s, ring, score: dartScoreFor(s, ring) });
+    }
+    const total = darts.reduce((sum, d) => sum + (d.score || 0), 0);
+    try {
+      const resp = await fetch('/api/dataset/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ corrected: { darts, total }, note })
+      });
+      if (resp.ok) {
+        sample.corrected = { darts, total };
+        sample.note = note;
+        host.style.display = 'none';
+        host.innerHTML = '';
+        applyFilter();
+      } else if (resp.status === 401) {
+        alert('Sign in to edit samples.');
+      } else {
+        alert('Save failed: ' + resp.status);
+      }
+    } catch (e) { alert('Save error: ' + e.message); }
+  });
+  host.querySelector('.teach-edit-cancel').addEventListener('click', () => {
+    host.style.display = 'none';
+    host.innerHTML = '';
+  });
+}
+
+async function loadStats() {
+  try {
+    const resp = await fetch('/api/dataset/stats');
+    const s = await resp.json();
+    document.getElementById('statTotal').textContent     = s.corrections?.total ?? 0;
+    document.getElementById('statWithFrame').textContent = s.corrections?.withFrame ?? 0;
+    document.getElementById('statValidated').textContent = s.corrections?.validated ?? 0;
+    const fr = s.frames || {};
+    const mb = fr.bytes ? (fr.bytes / 1024 / 1024).toFixed(1) + ' MB' : '0';
+    document.getElementById('statFrameSize').textContent = `${fr.count ?? 0} (${mb})`;
+  } catch (e) { console.warn('stats failed:', e); }
+}
+
+async function loadSamples() {
+  document.getElementById('teachLoading').style.display = 'block';
+  document.getElementById('teachGrid').style.display = 'none';
+  try {
+    const resp = await fetch('/api/corrections');
+    const data = await resp.json();
+    allSamples = data.corrections || [];
+    document.getElementById('teachLoading').style.display = 'none';
+    applyFilter();
+  } catch (e) {
+    document.getElementById('teachLoading').textContent = 'Error loading samples.';
+  }
+}
+
+document.querySelectorAll('.teach-filter').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.teach-filter').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    activeFilter = b.dataset.filter;
+    applyFilter();
+  });
+});
+
+loadStats();
+loadSamples();
+// Auto-refresh every 20 s while watching live
+setInterval(() => { loadStats(); loadSamples(); }, 20_000);
+</script>

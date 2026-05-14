@@ -5,7 +5,7 @@
 
 export const VALID_BLOCK_TYPES = [
   'hero', 'text', 'split', 'cta', 'cards', 'faq',
-  'pricing', 'testimonials', 'stats',
+  'pricing', 'testimonials', 'stats', 'ticker',
 ];
 
 /**
@@ -74,6 +74,14 @@ export const BLOCK_FIELDS = {
     ['stat3_num', 'Stat 3 Number', 'text'], ['stat3_label', 'Stat 3 Label', 'text'],
     ['stat4_num', 'Stat 4 Number', 'text'], ['stat4_label', 'Stat 4 Label', 'text'],
   ],
+  ticker: [
+    ['items', 'Items (pipe-separated)', 'textarea'],
+    ['direction', 'Direction (left / right)', 'text'],
+    ['speed', 'Speed (seconds per loop)', 'text'],
+    ['bg', 'Background (hex, blank = primary)', 'text'],
+    ['text_color', 'Text Color (hex, blank = accent-light)', 'text'],
+    ['sticky', 'Sticky to top (true / false)', 'text'],
+  ],
 };
 
 /**
@@ -140,6 +148,14 @@ export const BLOCK_DEFAULTS = {
     stat3_num: '12+', stat3_label: 'Years Experience',
     stat4_num: '24/7', stat4_label: 'Support Available',
   },
+  ticker: {
+    items: 'Free Shipping | 24/7 Support | Same-Day Install | Trusted Partner',
+    direction: 'left',
+    speed: '22',
+    bg: '',
+    text_color: '',
+    sticky: 'false',
+  },
 };
 
 /** Block type display metadata — icons + labels for the builder palette */
@@ -153,4 +169,5 @@ export const BLOCK_META = {
   pricing:      { icon: '$', label: 'Pricing Table' },
   testimonials: { icon: '❝', label: 'Testimonials' },
   stats:        { icon: '#', label: 'Stats Row' },
+  ticker:       { icon: '»', label: 'Ticker / Marquee' },
 };

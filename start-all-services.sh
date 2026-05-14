@@ -20,7 +20,6 @@ SERVICES=(
   "opsTrain:3603:/srv/opsTrain:node bin/www"
   "nocometalworkz:3002:/srv/nocometalworkz:node ./bin/www"
   "mcp-streamable:3650:/srv/mcp:node mcp-http.js"
-  "mobile-meadows:3700:/srv/mobile-meadows:node app.js"
 )
 
 echo ""

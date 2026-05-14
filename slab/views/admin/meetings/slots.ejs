@@ -1,0 +1,180 @@
+<%- include('../partials/head', { title: 'Service Slots' }) %>
+<%- include('../partials/sidebar', { page: 'meetings', user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Service Slots</div>
+  <div class="topbar-actions">
+    <a href="/admin/meetings/booking" class="btn btn-ghost">← Booking Settings</a>
+  </div>
+</div>
+
+<style>
+  .slots-layout { display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; }
+  @media(max-width:1100px){ .slots-layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 20px; }
+  .panel-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .panel-title { font-size: 13px; font-weight: 600; color: var(--ink); text-transform: uppercase; letter-spacing: .6px; }
+  .panel-body { padding: 20px; }
+  .form-row { margin-bottom: 14px; }
+  .form-label { display: block; font-size: 11px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
+  .form-input, .form-select { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; font-size: 14px; color: var(--ink); background: var(--surface); }
+  .form-input:focus, .form-select:focus { outline: none; border-color: var(--gold); }
+  .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .btn-save { background: var(--gold); color: var(--surface); border: none; border-radius: 5px; padding: 10px 28px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+  .btn-save:hover { opacity: .88; }
+  .saved-banner { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px; padding: 10px 16px; color: #15803d; font-size: 13px; margin-bottom: 16px; }
+  .error-banner { background: #fef2f2; border: 1px solid #fecaca; border-radius: 5px; padding: 10px 16px; color: #b91c1c; font-size: 13px; margin-bottom: 16px; }
+  .warn-banner { background: #fef9e7; border: 1px solid #fde68a; border-radius: 5px; padding: 10px 16px; color: #92400e; font-size: 13px; margin-bottom: 16px; }
+  .slot-card { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 12px 14px; margin-bottom: 8px; display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; }
+  .slot-date { font-weight: 700; color: var(--gold); font-size: 13px; min-width: 110px; }
+  .slot-time { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+  .slot-svc  { font-size: 13px; color: var(--ink); font-weight: 500; }
+  .slot-loc  { font-size: 11px; color: var(--ink-muted); margin-top: 2px; }
+  .slot-cap  { font-size: 11px; color: var(--ink-muted); }
+  .slot-cap.full { color: #b91c1c; font-weight: 600; }
+  .slot-actions form { margin: 0; }
+  .slot-del-btn { background: none; border: none; color: #b91c1c; cursor: pointer; font-size: 18px; padding: 4px 8px; border-radius: 4px; }
+  .slot-del-btn:hover { background: #fef2f2; }
+  .empty { color: var(--ink-muted); font-size: 13px; text-align: center; padding: 24px; font-style: italic; }
+</style>
+
+<div class="content">
+  <% if (typeof saved !== 'undefined' && saved) { %>
+  <div class="saved-banner">✓ Saved.</div>
+  <% } %>
+  <% if (typeof error !== 'undefined' && error) { %>
+  <div class="error-banner">⚠ <%= error === 'missing' ? 'Date, time range, and service type are required.' : ('Error: ' + error) %></div>
+  <% } %>
+
+  <% if (settings.mode !== 'service-slots') { %>
+  <div class="warn-banner">
+    Booking mode is currently set to <strong>"<%= settings.mode || 'meeting' %>"</strong>. Service slots will be ignored on the public page until you switch to "service-slots" mode in <a href="/admin/meetings/booking" style="color:#92400e;text-decoration:underline">Booking Settings</a>.
+  </div>
+  <% } %>
+
+  <% if (!settings.serviceTypes || !settings.serviceTypes.length) { %>
+  <div class="warn-banner">
+    No service types defined yet. Add at least one in <a href="/admin/meetings/booking" style="color:#92400e;text-decoration:underline">Booking Settings</a> before creating slots.
+  </div>
+  <% } %>
+
+  <div class="slots-layout">
+
+    <!-- Left: create form -->
+    <div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">New Slot</span></div>
+        <div class="panel-body">
+          <form method="POST" action="/admin/meetings/slots">
+            <div class="form-row">
+              <label class="form-label">Service Type</label>
+              <select name="serviceType" class="form-select" required>
+                <option value="">— select —</option>
+                <% (settings.serviceTypes || []).forEach(st => { %>
+                <option value="<%= st.slug %>"><%= st.label %></option>
+                <% }) %>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <label class="form-label">Date</label>
+              <input class="form-input" type="date" name="date" required min="<%= new Date().toISOString().slice(0,10) %>">
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-row">
+                <label class="form-label">Start Time</label>
+                <input class="form-input" type="time" name="startTime" required value="09:00">
+              </div>
+              <div class="form-row">
+                <label class="form-label">End Time</label>
+                <input class="form-input" type="time" name="endTime" required value="11:00">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label class="form-label">Location Label (optional)</label>
+              <input class="form-input" type="text" name="locationLabel" placeholder="e.g. Branson Landing">
+            </div>
+            <div class="form-row">
+              <label class="form-label">Address (optional)</label>
+              <input class="form-input" type="text" name="locationAddress" placeholder="Street, City, State">
+            </div>
+            <div class="form-grid-2">
+              <div class="form-row">
+                <label class="form-label">Lat (optional)</label>
+                <input class="form-input" type="number" step="any" name="locationLat">
+              </div>
+              <div class="form-row">
+                <label class="form-label">Lng (optional)</label>
+                <input class="form-input" type="number" step="any" name="locationLng">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label class="form-label">Max Bookings</label>
+              <input class="form-input" type="number" name="maxBookings" value="1" min="1" max="50">
+            </div>
+
+            <div class="form-row">
+              <label class="form-label">Internal Notes (optional)</label>
+              <input class="form-input" type="text" name="notes" maxlength="500">
+            </div>
+
+            <button type="submit" class="btn-save">+ Create Slot</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: existing slots -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Upcoming Slots</span>
+          <span style="font-size:12px;color:var(--ink-muted)"><%= slots.length %> total</span>
+        </div>
+        <div class="panel-body" style="padding:14px">
+          <% if (!slots.length) { %>
+          <div class="empty">No upcoming slots — create one to the left.</div>
+          <% } else { %>
+          <%
+            const svcMap = {};
+            (settings.serviceTypes || []).forEach(st => svcMap[st.slug] = st.label);
+          %>
+          <% slots.forEach(s => {
+            const dateLabel = new Date(s.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+            const isFull = (s.currentBookings || 0) >= (s.maxBookings || 1);
+          %>
+          <div class="slot-card">
+            <div>
+              <div class="slot-date"><%= dateLabel %></div>
+              <div class="slot-time"><%= s.startTime %> – <%= s.endTime %></div>
+            </div>
+            <div>
+              <div class="slot-svc"><%= svcMap[s.serviceType] || s.serviceType %></div>
+              <% if (s.location && (s.location.label || s.location.address)) { %>
+              <div class="slot-loc">📍 <%= s.location.label || s.location.address %></div>
+              <% } %>
+              <div class="slot-cap <%= isFull ? 'full' : '' %>"><%= s.currentBookings || 0 %> / <%= s.maxBookings || 1 %> booked<%= isFull ? ' — FULL' : '' %></div>
+              <% if (s.notes) { %><div style="font-size:11px;color:var(--ink-muted);margin-top:3px;font-style:italic"><%= s.notes %></div><% } %>
+            </div>
+            <div class="slot-actions">
+              <form method="POST" action="/admin/meetings/slots/<%= s._id %>/delete" onsubmit="return confirm('Delete this slot?')">
+                <button type="submit" class="slot-del-btn" title="Delete slot">&times;</button>
+              </form>
+            </div>
+          </div>
+          <% }) %>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- .main -->
+</div><!-- .layout -->
+</body>
+</html>

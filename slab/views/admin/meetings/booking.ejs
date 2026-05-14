@@ -49,7 +49,48 @@
   .btn-save { background: var(--gold); color: var(--surface); border: none; border-radius: 5px; padding: 10px 28px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
   .btn-save:hover { opacity: .88; }
   .num-input { width: 80px; }
+  .mode-radio-group { display: flex; gap: 12px; margin: 8px 0 4px; }
+  .mode-radio { flex: 1; padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: all .15s; }
+  .mode-radio.selected { border-color: var(--gold); background: var(--ivory-light); }
+  .mode-radio input { margin-right: 8px; accent-color: var(--gold); }
+  .mode-radio-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .mode-radio-sub   { font-size: 11px; color: var(--ink-muted); margin-top: 2px; }
+  .svc-row { display: grid; grid-template-columns: 1fr 1.5fr auto auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .svc-row input[type=text] { padding: 6px 10px; font-size: 13px; border: 1px solid var(--border); border-radius: 4px; }
+  .svc-row .svc-veh { font-size: 12px; color: var(--ink-muted); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .svc-row .svc-remove { background: none; border: none; color: #b91c1c; cursor: pointer; font-size: 18px; padding: 4px 8px; }
+  .svc-add { font-size: 12px; padding: 6px 12px; background: var(--ivory-light); border: 1px dashed var(--border); border-radius: 4px; cursor: pointer; color: var(--ink-muted); }
+  .svc-add:hover { border-color: var(--gold); color: var(--gold); }
+  .svc-empty { font-size: 12px; color: var(--ink-muted); font-style: italic; padding: 6px 0; }
+  .mode-only-meeting, .mode-only-slots { display: none; }
+  body[data-booking-mode="meeting"] .mode-only-meeting { display: block; }
+  body[data-booking-mode="service-slots"] .mode-only-slots { display: block; }
 </style>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.body.dataset.bookingMode = '<%= settings.mode || "meeting" %>';
+    document.querySelectorAll('input[name="mode"]').forEach(r => {
+      r.addEventListener('change', e => {
+        document.body.dataset.bookingMode = e.target.value;
+        document.querySelectorAll('.mode-radio').forEach(el => el.classList.toggle('selected', el.querySelector('input').checked));
+      });
+    });
+  });
+  function addServiceTypeRow() {
+    const wrap = document.getElementById('svc-types-list');
+    const empty = wrap.querySelector('.svc-empty');
+    if (empty) empty.remove();
+    const row = document.createElement('div');
+    row.className = 'svc-row';
+    row.innerHTML = `
+      <input type="text" name="service_slug" placeholder="slug (e.g. mobile-repair)" pattern="[a-z0-9-]+" required>
+      <input type="text" name="service_label" placeholder="Display label" required>
+      <label class="svc-veh"><input type="checkbox" name="service_vehicle"> req vehicle info</label>
+      <button type="button" class="svc-remove" onclick="this.parentElement.remove()" title="Remove">&times;</button>
+    `;
+    wrap.appendChild(row);
+  }
+</script>
 
 <div class="content">
   <% if (typeof saved !== 'undefined' && saved) { %>
@@ -77,7 +118,19 @@
               <label for="enabled">Enable public booking page</label>
             </div>
 
-            <div class="form-row">
+            <label class="form-label">Booking Mode</label>
+            <div class="mode-radio-group">
+              <label class="mode-radio <%= (settings.mode || 'meeting') === 'meeting' ? 'selected' : '' %>">
+                <div><input type="radio" name="mode" value="meeting" <%= (settings.mode || 'meeting') === 'meeting' ? 'checked' : '' %>><span class="mode-radio-title">Meetings</span></div>
+                <div class="mode-radio-sub">Auto-generated time slots from a weekly availability grid. Best for consults, calls, demos.</div>
+              </label>
+              <label class="mode-radio <%= settings.mode === 'service-slots' ? 'selected' : '' %>">
+                <div><input type="radio" name="mode" value="service-slots" <%= settings.mode === 'service-slots' ? 'checked' : '' %>><span class="mode-radio-title">Service Slots</span></div>
+                <div class="mode-radio-sub">Admin manually creates dated time + location + service-type slots. Best for mobile/on-site service.</div>
+              </label>
+            </div>
+
+            <div class="form-row" style="margin-top:16px">
               <label class="form-label">Page Title</label>
               <input class="form-input" name="title" value="<%= settings.title || 'Book a Meeting' %>">
             </div>
@@ -88,7 +141,34 @@
           </div>
         </div>
 
-        <div class="panel">
+        <div class="panel mode-only-slots">
+          <div class="panel-header">
+            <span class="panel-title">Service Types</span>
+            <a href="/admin/meetings/slots" style="font-size:12px;color:var(--gold);text-decoration:none">Manage slots →</a>
+          </div>
+          <div class="panel-body">
+            <div id="svc-types-list">
+              <% if (!settings.serviceTypes || !settings.serviceTypes.length) { %>
+                <div class="svc-empty">No service types yet — add at least one.</div>
+              <% } else { %>
+                <% settings.serviceTypes.forEach(st => { %>
+                <div class="svc-row">
+                  <input type="text" name="service_slug" value="<%= st.slug %>" pattern="[a-z0-9-]+" required>
+                  <input type="text" name="service_label" value="<%= st.label %>" required>
+                  <label class="svc-veh"><input type="checkbox" name="service_vehicle" <%= st.requiresVehicle ? 'checked' : '' %>> req vehicle info</label>
+                  <button type="button" class="svc-remove" onclick="this.parentElement.remove()" title="Remove">&times;</button>
+                </div>
+                <% }) %>
+              <% } %>
+            </div>
+            <button type="button" class="svc-add" onclick="addServiceTypeRow()">+ Add Service Type</button>
+            <div style="font-size:11px;color:var(--ink-muted);margin-top:10px">
+              Slug is the URL key (lowercase, dashes only). Label is shown to customers. <em>Req vehicle info</em> adds vehicle year/make/model/length fields to the booking form.
+            </div>
+          </div>
+        </div>
+
+        <div class="panel mode-only-meeting">
           <div class="panel-header"><span class="panel-title">Slot Settings</span></div>
           <div class="panel-body">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
@@ -112,7 +192,7 @@
           </div>
         </div>
 
-        <div class="panel">
+        <div class="panel mode-only-meeting">
           <div class="panel-header"><span class="panel-title">Availability</span></div>
           <div class="panel-body">
             <% const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']; %>

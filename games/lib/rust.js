@@ -237,7 +237,9 @@ function resetInactivityTimer() {
         clearInactivityTimer();
         return;
       }
-      if (status.players > 0) {
+      let pinned = false;
+      try { pinned = require('./server-manager').isKeepOnline('rust'); } catch {}
+      if (status.players > 0 || pinned) {
         lastPlayerActivity = Date.now();
       } else if (lastPlayerActivity && Date.now() - lastPlayerActivity >= INACTIVITY_LIMIT_MS) {
         console.log('[games] Auto-shutting down Rust server: 1hr inactivity');

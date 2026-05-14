@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title><%= settings.title || 'Book a Service' %> — <%= brand.name || '' %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --accent: <%= design.color_primary || '#C9A848' %>;
+      --bg: <%= design.color_bg || '#FAFAF8' %>;
+      --ink: <%= design.color_text || '#0F1B30' %>;
+      --muted: #6B7380;
+      --border: #E6E1D6;
+      --surface: #fff;
+    }
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;line-height:1.5}
+    .site-header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
+    .site-logo{font-size:18px;font-weight:700;color:var(--ink);text-decoration:none}
+    .back-link{font-size:13px;color:var(--muted);text-decoration:none}
+    .back-link:hover{color:var(--ink)}
+
+    .hero{padding:40px 24px 0;text-align:center;max-width:640px;margin:0 auto}
+    .hero h1{font-size:26px;font-weight:700;margin-bottom:8px}
+    .hero p{font-size:15px;color:var(--muted)}
+
+    .alert{max-width:640px;margin:16px auto;padding:12px 18px;border-radius:6px;font-size:14px}
+    .alert-success{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
+    .alert-error{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}
+
+    /* Service-type filter pills */
+    .service-pills{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:720px;margin:24px auto 0;padding:0 16px}
+    .pill{padding:8px 16px;background:var(--surface);border:1px solid var(--border);border-radius:999px;font-size:13px;font-weight:500;color:var(--ink);text-decoration:none;transition:all .15s}
+    .pill:hover{border-color:var(--accent)}
+    .pill.active{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+
+    /* Days + slots layout */
+    .layout{max-width:900px;margin:32px auto;padding:0 16px 60px}
+    .empty-state{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:48px 24px;text-align:center;color:var(--muted)}
+    .empty-state h3{color:var(--ink);margin-bottom:8px;font-weight:600}
+
+    .day-block{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
+    .day-header{padding:14px 18px;background:#fafaf6;border-bottom:1px solid var(--border);font-weight:600;font-size:15px}
+    .slot-list{padding:8px}
+    .slot-row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:14px 12px;border-bottom:1px solid #f3f1ea;cursor:pointer;transition:background .15s;border-radius:5px}
+    .slot-row:last-child{border-bottom:none}
+    .slot-row:hover{background:#fffdf5}
+    .slot-row.selected{background:#fff8e8;outline:2px solid var(--accent);outline-offset:-2px}
+    .slot-time{font-weight:700;color:var(--accent);min-width:120px;font-size:14px}
+    .slot-svc{font-size:14px;font-weight:500;color:var(--ink);flex:1;min-width:140px}
+    .slot-loc{font-size:12px;color:var(--muted)}
+    .slot-cap{font-size:11px;color:var(--muted);margin-left:auto}
+
+    /* Booking form */
+    .form-panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:24px;padding:24px;display:none}
+    .form-panel.visible{display:block}
+    .form-panel h3{font-size:16px;margin-bottom:6px}
+    .form-summary{background:#fafaf6;border-radius:6px;padding:12px 14px;font-size:13px;margin-bottom:16px;border-left:3px solid var(--accent)}
+    .form-row{margin-bottom:14px}
+    .form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media(max-width:520px){.form-grid-2{grid-template-columns:1fr}}
+    label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+    input,textarea{width:100%;padding:9px 12px;font-size:14px;border:1px solid var(--border);border-radius:5px;font-family:inherit;background:var(--surface);color:var(--ink)}
+    input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+    textarea{min-height:80px;resize:vertical}
+    .vehicle-block{background:#fafaf6;border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:14px;display:none}
+    .vehicle-block.visible{display:block}
+    .vehicle-block h4{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+    .submit-btn{background:var(--accent);color:var(--surface);border:none;border-radius:5px;padding:12px 32px;font-size:14px;font-weight:600;cursor:pointer;width:100%;font-family:inherit}
+    .submit-btn:hover{opacity:.9}
+    .submit-btn:disabled{opacity:.5;cursor:not-allowed}
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <a href="/" class="site-logo"><%= brand.name || 'Home' %></a>
+  <a href="/" class="back-link">← Back to site</a>
+</header>
+
+<section class="hero">
+  <h1><%= settings.title || 'Book a Service' %></h1>
+  <% if (settings.subtitle) { %><p><%= settings.subtitle %></p><% } %>
+</section>
+
+<% if (success) { %>
+  <div class="alert alert-success">✓ Your booking request was received. We'll be in touch shortly.</div>
+<% } %>
+<% if (error) { %>
+  <div class="alert alert-error">
+    <% if (error === 'taken') { %>That slot was just claimed. Please pick another.
+    <% } else if (error === 'missing') { %>Please fill in all required fields.
+    <% } else { %>Something went wrong. Please try again.<% } %>
+  </div>
+<% } %>
+
+<% if (serviceTypes && serviceTypes.length > 1) { %>
+<nav class="service-pills">
+  <a href="/book" class="pill <%= !requestedService ? 'active' : '' %>">All Services</a>
+  <% serviceTypes.forEach(st => { %>
+  <a href="/book?service=<%= st.slug %>" class="pill <%= requestedService === st.slug ? 'active' : '' %>"><%= st.label %></a>
+  <% }) %>
+</nav>
+<% } %>
+
+<div class="layout">
+  <% if (!days.length) { %>
+    <div class="empty-state">
+      <h3>No availability right now</h3>
+      <p>Please check back soon — new slots are added regularly.</p>
+    </div>
+  <% } else { %>
+    <% days.forEach(day => { %>
+    <div class="day-block">
+      <div class="day-header"><%= day.label %></div>
+      <div class="slot-list">
+        <% day.slots.forEach(s => { %>
+        <div class="slot-row" data-slot-id="<%= s._id %>" data-service="<%= s.serviceType %>" data-service-label="<%= s.serviceLabel %>" data-requires-vehicle="<%= s.requiresVehicle ? '1' : '' %>" data-time="<%= s.startTime %>–<%= s.endTime %>" data-day="<%= day.label %>" data-location="<%= (s.location && (s.location.label || s.location.address)) || '' %>">
+          <div class="slot-time"><%= s.startTime %> – <%= s.endTime %></div>
+          <div class="slot-svc">
+            <%= s.serviceLabel %>
+            <% if (s.location && (s.location.label || s.location.address)) { %>
+            <div class="slot-loc">📍 <%= s.location.label || s.location.address %></div>
+            <% } %>
+          </div>
+          <div class="slot-cap"><%= (s.maxBookings || 1) - (s.currentBookings || 0) %> open</div>
+        </div>
+        <% }) %>
+      </div>
+    </div>
+    <% }) %>
+  <% } %>
+
+  <form id="bookingForm" method="POST" action="/book" class="form-panel">
+    <h3>Confirm your booking</h3>
+    <div class="form-summary" id="formSummary"></div>
+    <input type="hidden" name="slotId" id="slotIdInput">
+
+    <div class="form-grid-2">
+      <div class="form-row">
+        <label>Name *</label>
+        <input type="text" name="name" required>
+      </div>
+      <div class="form-row">
+        <label>Email *</label>
+        <input type="email" name="email" required>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Phone</label>
+      <input type="tel" name="phone" placeholder="Optional but recommended">
+    </div>
+
+    <div class="vehicle-block" id="vehicleBlock">
+      <h4>Vehicle Info</h4>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Year</label>
+          <input type="text" name="vehicleYear" placeholder="2018">
+        </div>
+        <div class="form-row">
+          <label>Make</label>
+          <input type="text" name="vehicleMake" placeholder="Forest River">
+        </div>
+        <div class="form-row">
+          <label>Model</label>
+          <input type="text" name="vehicleModel" placeholder="Cherokee 274RK">
+        </div>
+        <div class="form-row">
+          <label>Length (ft)</label>
+          <input type="text" name="vehicleLength" placeholder="32">
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:0">
+        <label>Issue / What needs service?</label>
+        <textarea name="issueDescription" placeholder="Briefly describe the issue or service needed."></textarea>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label>Notes (optional)</label>
+      <textarea name="message" placeholder="Anything else we should know?"></textarea>
+    </div>
+
+    <button type="submit" class="submit-btn">Request Booking</button>
+  </form>
+</div>
+
+<script>
+  const form        = document.getElementById('bookingForm');
+  const slotInput   = document.getElementById('slotIdInput');
+  const summary     = document.getElementById('formSummary');
+  const vehicleBlk  = document.getElementById('vehicleBlock');
+  let selectedRow = null;
+
+  document.querySelectorAll('.slot-row').forEach(row => {
+    row.addEventListener('click', () => {
+      if (selectedRow) selectedRow.classList.remove('selected');
+      row.classList.add('selected');
+      selectedRow = row;
+
+      slotInput.value = row.dataset.slotId;
+      const loc = row.dataset.location ? ` at ${row.dataset.location}` : '';
+      summary.innerHTML = `<strong>${row.dataset.serviceLabel}</strong> — ${row.dataset.day}, ${row.dataset.time}${loc}`;
+
+      vehicleBlk.classList.toggle('visible', row.dataset.requiresVehicle === '1');
+      form.classList.add('visible');
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+
+</body>
+</html>

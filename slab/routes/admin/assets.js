@@ -6,7 +6,7 @@ import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getDb } from '../../plugins/mongo.js';
 import { s3Client, BUCKET, bucketUrl } from '../../plugins/s3.js';
 import { config } from '../../config/config.js';
-import { callLLM, webSearch, tryParseAgentResponse, runTool, generateSdImage } from '../../plugins/agentMcp.js';
+import { callLLM, webSearch, tryParseAgentResponse, runTool, generateSdImage, recordTrainingCandidate, buildBrandedSdPrompt } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { wouldExceedQuota, getQuotaLabel } from '../../plugins/storage.js';
 
@@ -60,22 +60,57 @@ router.get('/trim', (req, res) => {
 
 router.post('/generate-bg', express.json(), async (req, res) => {
   try {
-    const { prompt, negative_prompt, sizePreset } = req.body;
-    if (!prompt) return res.status(400).json({ error: 'prompt required' });
+    const { prompt, negative_prompt, sizePreset, enrich = true } = req.body;
+    const presetKey = sizePreset || 'ig-post';
 
-    const negPrompt = negative_prompt || 'text, words, letters, numbers, watermark, blurry, low quality, deformed, ugly';
+    let finalPrompt = (prompt || '').trim();
+    let finalNeg = (negative_prompt || '').trim();
+    let promptSource = 'raw';
 
-    // Keep-alive: send a comment byte every 15s so Apache doesn't close the socket
-    // We switch to streaming only if the client supports it, otherwise rely on timeout fix
-    const pngBuffer = await generateSdImage(prompt, negPrompt, sizePreset || 'ig-post');
+    if (enrich) {
+      const brandContext = await loadBrandContext(req.tenant, req.db);
+      const branded = await buildBrandedSdPrompt(finalPrompt, brandContext, { sizePreset: presetKey });
+      finalPrompt = branded.prompt;
+      if (!finalNeg) finalNeg = branded.negative;
+      promptSource = branded.source;
+    }
 
-    // Upload to S3 so the frontend can use it as an image layer
+    if (!finalPrompt) return res.status(400).json({ error: 'prompt required' });
+    if (!finalNeg) finalNeg = 'text, words, letters, numbers, watermark, blurry, low quality, deformed, ugly';
+
+    const pngBuffer = await generateSdImage(finalPrompt, finalNeg, presetKey);
     const { key, url } = await uploadToLinode(pngBuffer, 'ai-backgrounds', `sd-bg-${Date.now()}.png`, 'image/png', req.tenant?.s3Prefix);
 
-    res.json({ success: true, url, size: pngBuffer.length });
+    recordTrainingCandidate({
+      prompt: finalPrompt,
+      seedPrompt: prompt || null,
+      negativePrompt: finalNeg,
+      sizePreset: presetKey,
+      bucketKey: key, publicUrl: url, byteSize: pngBuffer.length,
+      source: `generate-bg:${promptSource}`,
+      tenant: { db: req.tenant?.db, name: req.tenant?.brand?.name, prefix: req.tenant?.s3Prefix },
+      userEmail: req.adminUser?.email || null,
+    });
+
+    res.json({ success: true, url, size: pngBuffer.length, finalPrompt, seedPrompt: prompt || null, promptSource });
   } catch (err) {
     console.error('[generate-bg] error:', err.message);
     if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/assets/suggest-sd-prompt — return a brand-flavored SD prompt
+// without generating an image. Lets the UI populate the prompt field and let
+// the user review before paying for the 15–45s SD round trip.
+router.post('/suggest-sd-prompt', express.json(), async (req, res) => {
+  try {
+    const { seed, sizePreset } = req.body || {};
+    const brandContext = await loadBrandContext(req.tenant, req.db);
+    const branded = await buildBrandedSdPrompt(seed || '', brandContext, { sizePreset: sizePreset || 'ig-post' });
+    res.json({ success: true, ...branded });
+  } catch (err) {
+    console.error('[suggest-sd-prompt] error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -194,7 +229,8 @@ router.post('/agent', express.json({ limit: '2mb' }), async (req, res) => {
 
     if (isImageRequest) {
       // Step 1: Get LLM to design the image (now may include sd_prompt)
-      const result = await runTool('generate_social_image', { prompt: lastMsg, brandContext: await loadBrandContext(req.tenant, req.db) });
+      const brandContext = await loadBrandContext(req.tenant, req.db);
+      const result = await runTool('generate_social_image', { prompt: lastMsg, brandContext });
       const fill = result.fill || {};
       const sizeKey = fill.size || 'ig-post';
       const title = fill.title || 'Social Asset';
@@ -209,9 +245,22 @@ router.post('/agent', express.json({ limit: '2mb' }), async (req, res) => {
         layers: fill.layers || [],
       };
 
-      // Step 2: Generate SD background variations (2 if SD requested, 1 if flat)
+      // Step 2: Guarantee an SD background. The agent's design call already had
+      // full brand context, so if it produced an sd_prompt we trust it and skip
+      // the second LLM round-trip (saves 10-30s and prevents Apache proxy
+      // timeouts). Only fabricate via buildBrandedSdPrompt when the agent left
+      // sd_prompt empty. Caller can opt out with sdDisable: true.
+      let sdNeg = fill.sd_negative_prompt || 'text, words, letters, watermark, blurry, low quality';
+      const sdDisabled = req.body.sdDisable === true;
+      const agentSdPrompt = fill.sd_prompt && String(fill.sd_prompt).trim();
+      if (!sdDisabled && !agentSdPrompt) {
+        const branded = await buildBrandedSdPrompt(lastMsg, brandContext, { sizePreset: sizeKey });
+        fill.sd_prompt = branded.prompt;
+        if (!fill.sd_negative_prompt && branded.negative) sdNeg = branded.negative;
+      }
+
+      // Generate SD background variations (2 if SD requested, 1 if flat)
       const variationCount = fill.sd_prompt ? 2 : 1;
-      const sdNeg = fill.sd_negative_prompt || 'text, words, letters, watermark, blurry, low quality';
       const variations = [];
 
       const sdPromises = [];
@@ -237,6 +286,14 @@ router.post('/agent', express.json({ limit: '2mb' }), async (req, res) => {
         if (sdBuffers[i]) {
           const sdUpload = await uploadToLinode(sdBuffers[i], 'ai-backgrounds', `sd-bg-${Date.now()}-${i}.png`, 'image/png', req.tenant?.s3Prefix);
           sdBgUrl = sdUpload.url;
+
+          recordTrainingCandidate({
+            prompt: fill.sd_prompt, negativePrompt: sdNeg, sizePreset: sizeKey,
+            bucketKey: sdUpload.key, publicUrl: sdUpload.url, byteSize: sdBuffers[i].length,
+            source: 'asset-agent',
+            tenant: { db: req.tenant?.db, name: req.tenant?.brand?.name, prefix: req.tenant?.s3Prefix },
+            userEmail: req.adminUser?.email || null,
+          });
         }
 
         // Upload composite preview

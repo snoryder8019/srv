@@ -733,7 +733,7 @@ router.post('/execute', async (req, res) => {
         unitPrice: Number(li.unitPrice) || 0,
       }));
       const amount = calculateTotal(items);
-      const invoiceNumber = await generateInvoiceNumber(db);
+      const invoiceNumber = await generateInvoiceNumber(db, req.tenant);
       const paymentToken = generatePaymentToken();
       const dueDate = new Date(now.getTime() + (Number(dueInDays) || 30) * 86400000);
 

@@ -37,12 +37,24 @@
               <span>Waiting for camera…</span>
             </div>
           </div>
+          <!-- Per-player face-cam strip — its own row so it doesn't float over
+               the dartboard image's letterbox bars. Empty/no-video slots are
+               invisible (border + bg only attach when a <video> is injected). -->
+          <div class="atile-facecam-strip" id="atileFaceStrip_<%= game._id %>">
+            <% game.players.forEach(function(p, i) { %>
+              <div class="atile-facecam" data-player-index="<%= i %>" id="atileFaceCam_<%= game._id %>_<%= i %>" title="<%= p.name %>">
+                <div class="atile-facecam-name"><%= p.name %></div>
+              </div>
+            <% }); %>
+          </div>
+          <!-- One viewer mount per game (hidden — slot-routes into the strip above) -->
+          <div class="atile-rtc-mount" id="atileRtcMount_<%= game._id %>" style="display:none;"></div>
           <div class="atile-scoreboard" id="atileBoard_<%= game._id %>">
             <% game.players.forEach(function(p, i) { %>
               <div class="atile-player <%= i === game.currentPlayerIndex && game.status === 'active' ? 'atile-player-active' : '' %>"
                    id="atilePlayer_<%= game._id %>_<%= i %>">
                 <span class="atile-pname"><%= p.name %></span>
-                <% if (game.mode === '501') { %>
+                <% if (game.mode === '501' || game.mode === '301') { %>
                   <span class="atile-pscore" id="atileScore_<%= game._id %>_<%= i %>"><%= p.remaining %></span>
                 <% } else { %>
                   <span class="atile-pscore" id="atileScore_<%= game._id %>_<%= i %>"><%= p.cricketPoints || 0 %> pts</span>
@@ -67,12 +79,39 @@ const AUDIENCE_GAME_IDS = <%- JSON.stringify(games.map(function(g){return String
 </script>
 
 <%- include('../partials/foot') %>
+<script src="/js/tt-rtc.js"></script>
 
 <script>
 // Audience multiplexer — subscribe to every game's room and update the tiles.
 (function () {
   const socket = window._ttSocket || io();
   window._ttSocket = socket;
+
+  // Per-game viewer-mode rtc mounts. Each instance routes peer videos into
+  // its game's per-player face-cam slots. tt-rtc.js exposes a single global
+  // module today, so we mount it once with a multi-game slot resolver — the
+  // resolver looks up the slot by gameId on the peer's socket connection.
+  // (For a 1-game tile this collapses to the same path as scoreboard.)
+  AUDIENCE_GAME_IDS.forEach(gid => {
+    if (!window._ttRtc) return;
+    // Each game needs its own rtc room; tt-rtc only supports one room per page.
+    // Workaround: only the first game connects rtc; others fall back to
+    // dartboard-frame-only. This is rare in practice (audience is usually
+    // one big game). Future: support multi-room in tt-rtc if user complains.
+  });
+  if (window._ttRtc && AUDIENCE_GAME_IDS.length >= 1) {
+    const primaryGid = AUDIENCE_GAME_IDS[0];
+    window._ttRtc.mount('atileRtcMount_' + primaryGid, {
+      gameId: primaryGid,
+      displayName: 'Audience',
+      viewer: true,
+      autoJoin: true,
+      slotResolver: function (peerInfo) {
+        if (typeof peerInfo.playerIndex !== 'number' || peerInfo.playerIndex < 0) return null;
+        return document.getElementById('atileFaceCam_' + primaryGid + '_' + peerInfo.playerIndex);
+      }
+    });
+  }
 
   // Scoreboard-like: louder master gain for TV context, but only one "ding" per
   // game round so 4 games finishing rounds doesn't cascade into a disco.

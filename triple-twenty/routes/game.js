@@ -51,6 +51,11 @@ router.get('/leaderboard', (req, res) => {
   res.render('pages/leaderboard', { title: 'Leaderboard' });
 });
 
+// Teaching review — every captured frame + AI prediction + your truth, with thumbnails.
+router.get('/teaching', (req, res) => {
+  res.render('pages/teaching', { title: 'Teaching — AI Review' });
+});
+
 // Audience multiplexer: /audience?games=id1,id2[,id3][,id4]
 // Shows 1–4 live games simultaneously for bars / league nights.
 router.get('/audience', async (req, res) => {

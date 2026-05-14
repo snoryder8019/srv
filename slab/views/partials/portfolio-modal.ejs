@@ -1,0 +1,222 @@
+<%
+// Shared portfolio modal + slideshow.
+// Caller passes `portfolio` array (already filtered/scoped).
+%>
+<div id="pfModal" class="pf-modal" aria-hidden="true">
+  <div class="pf-backdrop" data-pf-close></div>
+  <div class="pf-dialog" role="dialog" aria-modal="true" aria-labelledby="pfModalTitle">
+    <button class="pf-close" data-pf-close aria-label="Close">✕</button>
+    <div class="pf-stage">
+      <div class="pf-slides" id="pfSlides"></div>
+      <button class="pf-nav pf-prev" id="pfPrev" aria-label="Previous">‹</button>
+      <button class="pf-nav pf-next" id="pfNext" aria-label="Next">›</button>
+      <div class="pf-counter" id="pfCounter"></div>
+    </div>
+    <div class="pf-info">
+      <div class="pf-eyebrow" id="pfCategory"></div>
+      <h3 class="pf-title" id="pfModalTitle"></h3>
+      <div class="pf-meta">
+        <span id="pfClient" class="pf-meta-item"></span>
+        <span id="pfDate" class="pf-meta-item"></span>
+      </div>
+      <p class="pf-desc" id="pfDesc"></p>
+      <div class="pf-tags" id="pfTags"></div>
+      <div class="pf-caption" id="pfCaption"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+.pf-modal { position:fixed;inset:0;z-index:9998;display:none;align-items:center;justify-content:center;font-family:'Jost',sans-serif; }
+.pf-modal.open { display:flex; }
+.pf-backdrop { position:absolute;inset:0;background:rgba(10,15,28,0.78);backdrop-filter:blur(4px); }
+.pf-dialog {
+  position:relative;z-index:1;
+  width:min(1100px,96vw);max-height:92vh;
+  background:#0F1B30;color:#FDFCFA;
+  border-radius:4px;display:grid;grid-template-columns:1.4fr 1fr;
+  overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,0.55);
+}
+@media (max-width: 800px) { .pf-dialog { grid-template-columns:1fr;max-height:96vh; } }
+.pf-close {
+  position:absolute;top:10px;right:14px;z-index:5;background:rgba(0,0,0,0.4);
+  color:#FDFCFA;border:none;width:34px;height:34px;border-radius:50%;cursor:pointer;
+  font-size:1rem;display:flex;align-items:center;justify-content:center;
+  transition:background 0.15s;
+}
+.pf-close:hover { background:rgba(0,0,0,0.7); }
+.pf-stage { position:relative;background:#000;min-height:280px;display:flex;align-items:center;justify-content:center; }
+.pf-slides { position:relative;width:100%;height:100%;min-height:320px;aspect-ratio:16/10; }
+.pf-slide { position:absolute;inset:0;opacity:0;transition:opacity 0.4s ease;display:flex;align-items:center;justify-content:center; }
+.pf-slide.active { opacity:1; }
+.pf-slide img { width:100%;height:100%;object-fit:contain;background:#000;display:block; }
+.pf-nav {
+  position:absolute;top:50%;transform:translateY(-50%);
+  background:rgba(0,0,0,0.4);color:#FDFCFA;border:none;
+  width:42px;height:42px;border-radius:50%;cursor:pointer;
+  font-size:1.6rem;display:flex;align-items:center;justify-content:center;
+  transition:background 0.15s;z-index:2;
+}
+.pf-nav:hover { background:rgba(0,0,0,0.75); }
+.pf-prev { left:12px; } .pf-next { right:12px; }
+.pf-nav.hidden { display:none; }
+.pf-counter {
+  position:absolute;bottom:10px;right:14px;background:rgba(0,0,0,0.5);
+  color:#FDFCFA;font-size:0.72rem;letter-spacing:0.08em;
+  padding:3px 9px;border-radius:10px;z-index:2;
+}
+.pf-info { padding:30px 32px;overflow-y:auto; }
+.pf-eyebrow { font-size:0.66rem;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;color:#C9A848;margin-bottom:8px;min-height:1em; }
+.pf-title { font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;color:#FDFCFA;margin:0 0 10px;line-height:1.2; }
+.pf-meta { display:flex;gap:16px;flex-wrap:wrap;font-size:0.74rem;color:rgba(253,252,250,0.55);margin-bottom:16px; }
+.pf-meta-item:empty { display:none; }
+.pf-desc { font-size:0.9rem;color:rgba(253,252,250,0.78);line-height:1.7;margin-bottom:16px;white-space:pre-wrap; }
+.pf-tags { display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px; }
+.pf-tag { font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(201,168,72,0.85);border:1px solid rgba(201,168,72,0.3);padding:3px 9px;border-radius:2px; }
+.pf-caption { font-size:0.78rem;color:rgba(253,252,250,0.6);font-style:italic;border-top:1px solid rgba(253,252,250,0.08);padding-top:12px;min-height:1em; }
+.pf-card-clickable { cursor:pointer;transition:transform 0.18s ease, box-shadow 0.18s ease; }
+.pf-card-clickable:hover { transform:translateY(-2px); }
+.pf-card-clickable:focus-visible { outline:2px solid #C9A848;outline-offset:2px; }
+</style>
+
+<script>
+(function() {
+  'use strict';
+  const ITEMS = <%- JSON.stringify((portfolio||[]).map(p => ({
+    id: String(p._id),
+    title: p.title || '',
+    category: p.category || '',
+    description: p.description || '',
+    clientName: p.clientName || '',
+    projectDate: (p.showDate && p.projectDate) ? p.projectDate : null,
+    tags: p.tags || [],
+    gallery: (p.gallery && p.gallery.length) ? p.gallery : (p.imageUrl ? [{url: p.imageUrl, caption: ''}] : []),
+  }))) %>;
+
+  const modal = document.getElementById('pfModal');
+  if (!modal) return;
+  const slidesEl = document.getElementById('pfSlides');
+  const prevBtn = document.getElementById('pfPrev');
+  const nextBtn = document.getElementById('pfNext');
+  const counterEl = document.getElementById('pfCounter');
+  const captionEl = document.getElementById('pfCaption');
+  let currentIdx = 0;
+  let currentItem = null;
+  let autoTimer = null;
+
+  function fmtDate(d) {
+    if (!d) return '';
+    try { return new Date(d).toLocaleDateString('en-US', {month:'long', year:'numeric'}); } catch { return ''; }
+  }
+
+  function renderSlide() {
+    if (!currentItem) return;
+    const slides = slidesEl.querySelectorAll('.pf-slide');
+    slides.forEach((s, i) => s.classList.toggle('active', i === currentIdx));
+    const total = currentItem.gallery.length;
+    counterEl.textContent = total > 1 ? `${currentIdx + 1} / ${total}` : '';
+    counterEl.style.display = total > 1 ? '' : 'none';
+    prevBtn.classList.toggle('hidden', total <= 1);
+    nextBtn.classList.toggle('hidden', total <= 1);
+    const cap = currentItem.gallery[currentIdx]?.caption || '';
+    captionEl.textContent = cap;
+    captionEl.style.display = cap ? '' : 'none';
+  }
+
+  function openItem(id) {
+    const item = ITEMS.find(x => x.id === id);
+    if (!item || !item.gallery.length) return;
+    currentItem = item;
+    currentIdx = 0;
+
+    document.getElementById('pfCategory').textContent = item.category || '';
+    document.getElementById('pfModalTitle').textContent = item.title || '';
+    document.getElementById('pfClient').textContent = item.clientName || '';
+    document.getElementById('pfDate').textContent = fmtDate(item.projectDate);
+    document.getElementById('pfDesc').textContent = item.description || '';
+
+    const tagsEl = document.getElementById('pfTags');
+    tagsEl.innerHTML = '';
+    (item.tags || []).forEach(t => {
+      const span = document.createElement('span');
+      span.className = 'pf-tag';
+      span.textContent = t;
+      tagsEl.appendChild(span);
+    });
+
+    slidesEl.innerHTML = '';
+    item.gallery.forEach((g, i) => {
+      const slide = document.createElement('div');
+      slide.className = 'pf-slide' + (i === 0 ? ' active' : '');
+      const img = document.createElement('img');
+      img.src = g.url;
+      img.alt = g.caption || item.title || '';
+      img.loading = i === 0 ? 'eager' : 'lazy';
+      slide.appendChild(img);
+      slidesEl.appendChild(slide);
+    });
+
+    renderSlide();
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    if (item.gallery.length > 1) {
+      clearInterval(autoTimer);
+      autoTimer = setInterval(next, 5000);
+    }
+  }
+
+  function close() {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    clearInterval(autoTimer);
+    currentItem = null;
+  }
+
+  function next() {
+    if (!currentItem) return;
+    currentIdx = (currentIdx + 1) % currentItem.gallery.length;
+    renderSlide();
+  }
+  function prev() {
+    if (!currentItem) return;
+    currentIdx = (currentIdx - 1 + currentItem.gallery.length) % currentItem.gallery.length;
+    renderSlide();
+  }
+
+  prevBtn.addEventListener('click', () => { prev(); restartAuto(); });
+  nextBtn.addEventListener('click', () => { next(); restartAuto(); });
+  modal.querySelectorAll('[data-pf-close]').forEach(el => el.addEventListener('click', close));
+  document.addEventListener('keydown', (e) => {
+    if (!modal.classList.contains('open')) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowRight') { next(); restartAuto(); }
+    else if (e.key === 'ArrowLeft') { prev(); restartAuto(); }
+  });
+
+  function restartAuto() {
+    clearInterval(autoTimer);
+    if (currentItem && currentItem.gallery.length > 1) {
+      autoTimer = setInterval(next, 5000);
+    }
+  }
+
+  document.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-portfolio-id]');
+    if (!card) return;
+    e.preventDefault();
+    openItem(card.dataset.portfolioId);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = document.activeElement?.closest?.('[data-portfolio-id]');
+    if (card && card === document.activeElement) {
+      e.preventDefault();
+      openItem(card.dataset.portfolioId);
+    }
+  });
+})();
+</script>

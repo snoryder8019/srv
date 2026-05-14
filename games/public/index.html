@@ -537,7 +537,7 @@ function buildCard(g) {
         <button class="btn btn-start" id="${id}_btnStart" onclick="gameAction('${apiId}','start','${id}')">&#9654; START</button>
         <button class="btn btn-stop" id="${id}_btnStop" onclick="gameAction('${apiId}','stop','${id}')">&#9632; STOP</button>
         <button class="btn btn-restart" id="${id}_btnRestart" onclick="gameAction('${apiId}','restart','${id}')">&#8634; RESTART</button>
-        <button class="btn" style="background:#cd412b;margin-left:auto;color:#fff" onclick="playBroadcast('${id}')">&#9654; PLAY</button>
+        <button class="btn" style="background:#cd412b;margin-left:auto;color:#fff" onclick="playBroadcast('${id}')">&#9654; BROADCAST</button>
       </div>
       ${g.hasRcon ? `
       <div class="rcon-section">
@@ -698,7 +698,12 @@ function updateConnectInfo(id, s) {
   const staticLabel = el.dataset.default || '';
   // When a Linode is hosting this game, prefer its address over the local label.
   const activeLabel = s.remoteConnect || staticLabel;
-  if (s.running && !s.booting && usesInvite && s.inviteCode) {
+  // Direct-connect mode (Windrose) bypasses the invite-code matchmaker — surface the IP:port.
+  if (s.running && !s.booting && s.directConnect && s.directConnect.enabled && s.directConnect.address) {
+    el.textContent = 'Direct: ' + s.directConnect.address;
+    el.dataset.copy = s.directConnect.address;
+    el.style.color = 'var(--green)';
+  } else if (s.running && !s.booting && usesInvite && s.inviteCode) {
     el.textContent = 'Invite: ' + s.inviteCode;
     el.dataset.copy = s.inviteCode;
     el.style.color = 'var(--green)';
@@ -1060,12 +1065,15 @@ init();
 const EVENT_ICONS = {
   player_join: '\u{1F7E2}', player_leave: '\u{1F534}',
   chat: '\u{1F4AC}', kill: '\u{1F480}', death: '\u{1F480}',
-  map_change: '\u{1F5FA}', server_start: '\u{26A1}',
+  map_change: '\u{1F5FA}', server_start: '\u{26A1}', server_ready: '\u{1F7E2}',
   boss_kill: '\u{1F451}', raid_start: '\u{26A1}', raid_end: '\u{1F6E1}',
   piece_place: '\u{1F3D7}', character_name: '\u{1F464}',
 };
 const GAME_CSS = { rust: 'rust', valheim: 'valheim', l4d2: 'l4d2', '7dtd': 'sdtd', se: 'se', palworld: 'palworld', windrose: 'windrose' };
 const GAME_NAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7DTD', se: 'SE', palworld: 'PAL', windrose: 'WIND' };
+// Mirrors lib/stats-collector.js — server already strips these, but a stale
+// socket from before the last deploy could still ship one through.
+const UI_SUPPRESSED_EVENT_TYPES = new Set(['heartbeat', 'hook_fired', 'mod_boot', 'mod_status', 'config_load', 'config_load_fail', 'hook.registered', 'hook.failed', 'madlads_stats.armed']);
 
 let feedEvents = [];
 
@@ -1119,6 +1127,8 @@ function renderEventItem(ev) {
       text = 'Map changed to <span class="name">' + esc(ev.map || '?') + '</span>'; break;
     case 'server_start':
       text = 'Server started'; break;
+    case 'server_ready':
+      text = 'Server ready to connect'; break;
     default:
       text = esc(ev.type);
   }
@@ -1156,6 +1166,7 @@ function connectServerState() {
   sock.on('server:provisioning', ({ game }) => toast(game.toUpperCase() + ' provisioning on Linode (~10 min)', true));
   sock.on('stats:event', (ev) => {
     if (!ev || !ev.game) return;
+    if (UI_SUPPRESSED_EVENT_TYPES.has(ev.type)) return;
     feedEvents.push(ev);
     if (feedEvents.length > 100) feedEvents = feedEvents.slice(-100);
     const list = document.getElementById('eventList');

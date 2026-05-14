@@ -17,12 +17,14 @@
 
   <div class="tv-feeds-row" id="tvFeedsRow">
     <% game.players.forEach(function(p, i) { %>
-      <div class="tv-feed-slot" id="tvFeedSlot_<%= i %>">
+      <div class="tv-feed-slot" id="tvFeedSlot_<%= i %>" data-player-index="<%= i %>">
         <div class="tv-feed-name"><%= p.name %></div>
         <div class="tv-feed-wrap">
           <img id="tvFeedImg_<%= i %>" src="" alt="" class="tv-feed-img" style="display:none;">
           <div class="tv-feed-placeholder" id="tvFeedPlaceholder_<%= i %>">📷</div>
           <div class="tv-feed-conf" id="tvFeedConf_<%= i %>"></div>
+          <!-- Face-cam picture-in-picture filled in by tt-rtc.js viewer -->
+          <div class="tv-facecam" id="tvFaceCam_<%= i %>" data-player-index="<%= i %>"></div>
         </div>
         <div class="tv-feed-darts" id="tvFeedDarts_<%= i %>">
           <span class="tv-dart-badge empty">-</span>
@@ -33,11 +35,14 @@
     <% }); %>
   </div>
 
+  <!-- Hidden mount point for tt-rtc viewer; the visible slots are the per-player face-cams above. -->
+  <div id="ttRtcViewerMount" style="display:none;"></div>
+
   <div class="tv-players" id="tvPlayers">
     <% game.players.forEach(function(p, i) { %>
       <div class="tv-player-card <%= i === game.currentPlayerIndex ? 'active-player' : '' %>" id="tvPlayer_<%= i %>">
         <div class="tv-player-name"><%= p.name %></div>
-        <% if (game.mode === '501') { %>
+        <% if (game.mode === '501' || game.mode === '301') { %>
           <div class="tv-big-score" id="tvScore_<%= i %>"><%= p.remaining %></div>
           <div class="tv-score-label">remaining</div>
         <% } else { %>
@@ -187,6 +192,7 @@ function updateScoreboard(game) {
 </script>
 
 <%- include('../partials/foot') %>
+<script src="/js/tt-rtc.js"></script>
 
 <!-- Socket init MUST be after foot.ejs so socket.io.js is loaded -->
 <script>
@@ -194,6 +200,24 @@ const socket = window._ttSocket || io();
 window._ttSocket = socket;
 
 socket.emit('join-game', { gameId: _sbGameId, role: 'scoreboard' });
+
+// ── Multi-player face-cam (viewer mode) ──
+// Each player slot has a #tvFaceCam_{i} element. The slot resolver maps a
+// peer (by their playerIndex) to its slot — competitor video is layered as
+// PiP inside the dartboard feed slot, mic audio plays through autoplay.
+(function () {
+  if (!window._ttRtc) return;
+  window._ttRtc.mount('ttRtcViewerMount', {
+    gameId: _sbGameId,
+    displayName: 'TV',
+    viewer: true,
+    autoJoin: true,
+    slotResolver: function (peerInfo) {
+      if (typeof peerInfo.playerIndex !== 'number' || peerInfo.playerIndex < 0) return null;
+      return document.getElementById('tvFaceCam_' + peerInfo.playerIndex);
+    }
+  });
+})();
 
 // Sync current game state on load so marks/scores/history reflect DB even if
 // no game-update has fired since this tab opened.

@@ -1,6 +1,10 @@
 'use strict';
 
-const net = require('net');
+const net  = require('net');
+const fs   = require('fs');
+const path = require('path');
+
+const KEEP_ONLINE_FILE = path.join(__dirname, '..', 'keep-online.json');
 
 function _probePort(ip, port, timeoutMs = 1500) {
   return new Promise((resolve) => {
@@ -53,7 +57,33 @@ const _inactivity = {};
 
 // Per-game "keep online" override — admin sets this to skip the 1hr idle auto-shutdown.
 // Cleared when the server stops (so next start defaults back to auto-shutdown behavior).
+// Persisted to KEEP_ONLINE_FILE so the override survives `node app.js` restarts.
 const _keepOnline = {};
+
+function _loadKeepOnline() {
+  try {
+    if (!fs.existsSync(KEEP_ONLINE_FILE)) return;
+    const raw = fs.readFileSync(KEEP_ONLINE_FILE, 'utf8');
+    const data = JSON.parse(raw);
+    if (data && typeof data === 'object') {
+      for (const [g, v] of Object.entries(data)) {
+        if (v && GAME_LIBS[g]) _keepOnline[g] = true;
+      }
+    }
+    const pinned = Object.keys(_keepOnline);
+    if (pinned.length) console.log('[server-manager] Restored keep-online state:', pinned.join(', '));
+  } catch (e) {
+    console.error('[server-manager] Failed to load keep-online state:', e.message);
+  }
+}
+
+function _saveKeepOnline() {
+  try {
+    fs.writeFileSync(KEEP_ONLINE_FILE, JSON.stringify(_keepOnline), 'utf8');
+  } catch (e) {
+    console.error('[server-manager] Failed to persist keep-online state:', e.message);
+  }
+}
 
 // Last known status per game (for diffing — only push on change)
 const _lastStatus = {};
@@ -67,6 +97,8 @@ function init(ioInstance, provisionerLib, database) {
   io          = ioInstance;
   provisioner = provisionerLib;
   db          = database;
+
+  _loadKeepOnline();
 
   // Seed inactivity timers for any servers already running at boot
   for (const [game, getLib] of Object.entries(GAME_LIBS)) {
@@ -159,7 +191,10 @@ function stop(game, reason) {
 
   const result = lib().stopServer(reason || 'manual stop');
   _stopInactivityWatch(game);
-  delete _keepOnline[game];
+  if (_keepOnline[game]) {
+    delete _keepOnline[game];
+    _saveKeepOnline();
+  }
   _emit('server:stopped', { game, reason: reason || 'manual' });
   _pushStatus(game);
   return result;
@@ -168,10 +203,12 @@ function stop(game, reason) {
 // Toggle the auto-shutdown override for a single game.
 function setKeepOnline(game, on) {
   if (!GAME_LIBS[game]) return { ok: false, error: 'Unknown game' };
+  const before = !!_keepOnline[game];
   if (on) _keepOnline[game] = true;
   else delete _keepOnline[game];
   // Reset the idle clock either way so a freshly toggled-off server gets a full grace window.
   if (_inactivity[game]) _inactivity[game].lastActivity = Date.now();
+  if (before !== !!_keepOnline[game]) _saveKeepOnline();
   _emit('server:keep-online', { game, keepOnline: !!_keepOnline[game] });
   return { ok: true, keepOnline: !!_keepOnline[game] };
 }

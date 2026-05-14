@@ -7,11 +7,14 @@ const router = express.Router();
 // All stats endpoints are public — this is spectator data
 
 // Recent events across all games (or filter by game)
+// Heartbeats + mod-internal probes are excluded by default. Pass ?includeNoise=1
+// (or the legacy ?includeHeartbeats=1) to opt back in.
 router.get('/events', async (req, res) => {
   try {
     const game = req.query.game || null;
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    const events = await stats.getRecentEvents(game, limit);
+    const includeNoise = req.query.includeNoise === '1' || req.query.includeHeartbeats === '1';
+    const events = await stats.getRecentEvents(game, limit, { includeNoise });
     res.json({ events });
   } catch (e) {
     res.status(500).json({ error: 'Failed to load events' });

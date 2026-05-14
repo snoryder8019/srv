@@ -159,6 +159,7 @@ router.get('/booking', async (req, res) => {
     const doc = await db.collection('booking_settings').findOne({ key: 'config' });
     const settings = doc?.value || {
       enabled: false,
+      mode: 'meeting',
       title: 'Book a Meeting',
       subtitle: 'Choose a time that works for you.',
       meetingLength: 30,
@@ -172,7 +173,10 @@ router.get('/booking', async (req, res) => {
         4: { enabled: true, start: '09:00', end: '17:00' },
         5: { enabled: true, start: '09:00', end: '17:00' },
       },
+      serviceTypes: [],
     };
+    if (!settings.mode) settings.mode = 'meeting';
+    if (!Array.isArray(settings.serviceTypes)) settings.serviceTypes = [];
 
     // Upcoming bookings
     const bookings = await db.collection('bookings')
@@ -201,7 +205,7 @@ router.get('/booking', async (req, res) => {
 router.post('/booking', async (req, res) => {
   try {
     const db = req.db;
-    const { enabled, title, subtitle, meetingLength, bufferMinutes, advanceDays, minNoticeHours } = req.body;
+    const { enabled, mode, title, subtitle, meetingLength, bufferMinutes, advanceDays, minNoticeHours } = req.body;
 
     // Parse availability from form — days 0-6, each has enabled/start/end
     const availability = {};
@@ -213,8 +217,27 @@ router.post('/booking', async (req, res) => {
       };
     }
 
+    // Parse service types — repeating fields service_slug[], service_label[], service_vehicle[]
+    const slugs   = [].concat(req.body.service_slug   || []);
+    const labels  = [].concat(req.body.service_label  || []);
+    const vehicles = [].concat(req.body.service_vehicle || []);
+    const serviceTypes = [];
+    const seenSlugs = new Set();
+    for (let i = 0; i < slugs.length; i++) {
+      const slug = String(slugs[i] || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40);
+      const label = String(labels[i] || '').trim().slice(0, 80);
+      if (!slug || !label || seenSlugs.has(slug)) continue;
+      seenSlugs.add(slug);
+      serviceTypes.push({
+        slug,
+        label,
+        requiresVehicle: String(vehicles[i] || '') === 'on' || String(vehicles[i] || '') === '1',
+      });
+    }
+
     const settings = {
       enabled: enabled === 'on',
+      mode: (mode === 'service-slots') ? 'service-slots' : 'meeting',
       title:   title?.trim()    || 'Book a Meeting',
       subtitle: subtitle?.trim() || '',
       meetingLength:  parseInt(meetingLength)  || 30,
@@ -222,6 +245,7 @@ router.post('/booking', async (req, res) => {
       advanceDays:    parseInt(advanceDays)    || 14,
       minNoticeHours: parseInt(minNoticeHours) || 2,
       availability,
+      serviceTypes,
       updatedAt: new Date(),
     };
 
@@ -254,6 +278,84 @@ router.post('/booking/:id/status', express.json(), async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Calendar slots (service-slots booking mode) ─────────────────────────────
+// These are tenant-managed time/location/service-type slots that customers book against.
+// Only meaningful when booking_settings.value.mode === 'service-slots'.
+
+// GET /admin/meetings/slots — list + create form
+router.get('/slots', async (req, res) => {
+  try {
+    const db = req.db;
+    const settingsDoc = await db.collection('booking_settings').findOne({ key: 'config' });
+    const settings = settingsDoc?.value || { serviceTypes: [], mode: 'meeting' };
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const slots = await db.collection('calendar_slots')
+      .find({ date: { $gte: today.toISOString().slice(0, 10) } })
+      .sort({ date: 1, startTime: 1 })
+      .toArray();
+
+    res.render('admin/meetings/slots', {
+      user: req.adminUser,
+      page: 'meetings',
+      title: 'Service Slots',
+      settings,
+      slots,
+      saved: req.query.saved === '1',
+      error: req.query.error || null,
+    });
+  } catch (err) {
+    console.error('[meetings/slots] list error:', err);
+    res.status(500).send('Error loading slots');
+  }
+});
+
+// POST /admin/meetings/slots — create one slot
+router.post('/slots', async (req, res) => {
+  try {
+    const db = req.db;
+    const { date, startTime, endTime, serviceType, locationLabel, locationAddress, locationLat, locationLng, maxBookings, notes } = req.body;
+
+    if (!date || !startTime || !endTime || !serviceType) {
+      return res.redirect('/admin/meetings/slots?error=missing');
+    }
+
+    await db.collection('calendar_slots').insertOne({
+      date: String(date).slice(0, 10),
+      startTime: String(startTime).slice(0, 5),
+      endTime:   String(endTime).slice(0, 5),
+      serviceType: String(serviceType).trim(),
+      location: {
+        label: (locationLabel || '').trim(),
+        address: (locationAddress || '').trim(),
+        lat: locationLat ? parseFloat(locationLat) : null,
+        lng: locationLng ? parseFloat(locationLng) : null,
+      },
+      maxBookings: Math.max(1, parseInt(maxBookings) || 1),
+      currentBookings: 0,
+      notes: (notes || '').trim().slice(0, 500),
+      createdAt: new Date(),
+    });
+
+    res.redirect('/admin/meetings/slots?saved=1');
+  } catch (err) {
+    console.error('[meetings/slots] create error:', err);
+    res.redirect('/admin/meetings/slots?error=create');
+  }
+});
+
+// POST /admin/meetings/slots/:id/delete — remove a slot
+router.post('/slots/:id/delete', async (req, res) => {
+  try {
+    const db = req.db;
+    await db.collection('calendar_slots').deleteOne({ _id: new ObjectId(req.params.id) });
+    res.redirect('/admin/meetings/slots?saved=1');
+  } catch (err) {
+    console.error('[meetings/slots] delete error:', err);
+    res.redirect('/admin/meetings/slots?error=delete');
   }
 });
 

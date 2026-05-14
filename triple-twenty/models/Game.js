@@ -39,7 +39,7 @@ const playerStateSchema = new mongoose.Schema({
 
 const gameSchema = new mongoose.Schema({
   hostUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // who created it
-  mode:   { type: String, enum: ['501', 'cricket'], required: true },
+  mode:   { type: String, enum: ['301', '501', 'cricket'], required: true },
   status: { type: String, enum: ['waiting', 'active', 'idle', 'finished', 'archived'], default: 'waiting' },
   lastActivityAt: { type: Date, default: Date.now },
   pausedFromStatus: { type: String, enum: ['waiting', 'active', null], default: null },  // what to restore on resume

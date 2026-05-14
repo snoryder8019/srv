@@ -12,6 +12,7 @@
 
 import express from 'express';
 import nodemailer from 'nodemailer';
+import { ObjectId } from 'mongodb';
 import { notifyAdmin } from '../plugins/notify.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
@@ -106,7 +107,50 @@ router.get('/', async (req, res) => {
       return res.render('booking/unavailable', { design, brand, settings });
     }
 
-    // Build calendar: today + advanceDays
+    // ── service-slots mode: list admin-created CalendarSlot docs ──
+    if (settings.mode === 'service-slots') {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const slotDocs = await db.collection('calendar_slots')
+        .find({ date: { $gte: todayStr } })
+        .sort({ date: 1, startTime: 1 })
+        .toArray();
+
+      // Filter out full slots, restrict to a service if ?service= specified
+      const requestedService = (req.query.service || '').trim().toLowerCase();
+      const available = slotDocs.filter(s => {
+        if ((s.currentBookings || 0) >= (s.maxBookings || 1)) return false;
+        if (requestedService && s.serviceType !== requestedService) return false;
+        return true;
+      });
+
+      // Group by date for display
+      const svcMap = {};
+      (settings.serviceTypes || []).forEach(st => { svcMap[st.slug] = st; });
+      const byDate = {};
+      for (const s of available) {
+        if (!byDate[s.date]) byDate[s.date] = [];
+        byDate[s.date].push({
+          ...s,
+          serviceLabel: svcMap[s.serviceType]?.label || s.serviceType,
+          requiresVehicle: !!svcMap[s.serviceType]?.requiresVehicle,
+        });
+      }
+      const days = Object.entries(byDate).map(([date, slots]) => ({
+        date,
+        label: new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+        slots,
+      }));
+
+      return res.render('booking/slots', {
+        design, brand, settings, days,
+        serviceTypes: settings.serviceTypes || [],
+        requestedService,
+        success: req.query.success || null,
+        error: req.query.error || null,
+      });
+    }
+
+    // ── meeting mode (default): auto-generate slots from weekly availability ──
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const maxDate = new Date(today); maxDate.setDate(maxDate.getDate() + (settings.advanceDays || 14));
 
@@ -149,15 +193,82 @@ router.post('/', async (req, res) => {
   try {
     const db = req.db;
     if (!db) return res.redirect('/');
-    const { name, email, phone, company, message, slotIso } = req.body;
+    const settings = await loadSettings(db);
+    if (!settings.enabled) return res.redirect('/book');
     const brand = res.locals.brand || {};
+
+    // ── service-slots mode ──
+    if (settings.mode === 'service-slots') {
+      const { name, email, phone, slotId, message,
+              vehicleYear, vehicleMake, vehicleModel, vehicleLength, issueDescription } = req.body;
+      if (!name || !email || !slotId) return res.redirect('/book?error=missing');
+
+      let slotObjId;
+      try { slotObjId = new ObjectId(String(slotId)); }
+      catch { return res.redirect('/book?error=invalid_slot'); }
+
+      // Atomic claim: only increment if there's room
+      const claim = await db.collection('calendar_slots').findOneAndUpdate(
+        { _id: slotObjId, $expr: { $lt: [{ $ifNull: ['$currentBookings', 0] }, { $ifNull: ['$maxBookings', 1] }] } },
+        { $inc: { currentBookings: 1 }, $set: { updatedAt: new Date() } },
+        { returnDocument: 'after' },
+      );
+      const slot = claim?.value || claim; // node driver compat
+      if (!slot || !slot._id) return res.redirect('/book?error=taken');
+
+      const svcType = (settings.serviceTypes || []).find(st => st.slug === slot.serviceType);
+      const startAt = new Date(`${slot.date}T${slot.startTime}:00`);
+      const endAt   = new Date(`${slot.date}T${slot.endTime}:00`);
+
+      const bookingDoc = {
+        mode: 'service-slots',
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+        phone: phone?.trim() || '',
+        message: message?.trim() || '',
+        startAt, endAt,
+        slotId: slot._id,
+        serviceType: slot.serviceType,
+        location: slot.location || null,
+        status: 'pending',
+        tenantDomain: req.tenant?.domain || '',
+        createdAt: new Date(),
+      };
+      if (svcType?.requiresVehicle) {
+        bookingDoc.vehicle = {
+          year: (vehicleYear || '').trim(),
+          make: (vehicleMake || '').trim(),
+          model: (vehicleModel || '').trim(),
+          length: (vehicleLength || '').trim(),
+        };
+        bookingDoc.issueDescription = (issueDescription || '').trim().slice(0, 1000);
+      }
+      await db.collection('bookings').insertOne(bookingDoc);
+
+      const dateStr = startAt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      const timeStr = `${slot.startTime} – ${slot.endTime}`;
+      notifyAdmin({ type: 'booking', app: 'slab', email, name, ip: req.ip,
+        data: {
+          'Brand': brand.name || req.tenant?.domain || '',
+          'Service': svcType?.label || slot.serviceType,
+          'Date': dateStr,
+          'Time': timeStr,
+          'Location': slot.location?.label || slot.location?.address || '',
+          'Phone': phone || '',
+          'Vehicle': bookingDoc.vehicle ? `${bookingDoc.vehicle.year} ${bookingDoc.vehicle.make} ${bookingDoc.vehicle.model}`.trim() : '',
+          'Issue': bookingDoc.issueDescription?.slice(0, 200) || '',
+        },
+      }).catch(() => {});
+
+      return res.redirect('/book?success=1');
+    }
+
+    // ── meeting mode (default, original logic below) ──
+    const { name, email, phone, company, message, slotIso } = req.body;
 
     if (!name || !email || !slotIso) {
       return res.redirect('/book?error=missing');
     }
-
-    const settings = await loadSettings(db);
-    if (!settings.enabled) return res.redirect('/book');
 
     const startAt  = new Date(slotIso);
     const endAt    = new Date(startAt.getTime() + (settings.meetingLength || 30) * 60000);

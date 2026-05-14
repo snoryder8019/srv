@@ -1,14 +1,38 @@
 import crypto from 'crypto';
 
-/** Atomically generate next invoice number: W2-YYYY-0001 */
-export async function generateInvoiceNumber(db) {
+/** Derive a 2–4 char invoice prefix from tenant config. */
+export function getInvoicePrefix(tenant) {
+  const explicit = tenant?.public?.invoicePrefix;
+  if (explicit && /^[A-Za-z0-9]{1,6}$/.test(explicit)) return explicit.toUpperCase();
+  const brandName = tenant?.brand?.name;
+  if (brandName) {
+    const initials = brandName
+      .replace(/[^A-Za-z0-9 ]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(w => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 4);
+    if (initials.length >= 2) return initials;
+    const compact = brandName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4);
+    if (compact) return compact;
+  }
+  const slug = tenant?.s3Prefix || tenant?.db;
+  if (slug) return String(slug).replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4) || 'INV';
+  return 'INV';
+}
+
+/** Atomically generate next invoice number: <PREFIX>-YYYY-0001 */
+export async function generateInvoiceNumber(db, tenant = null) {
   const year = new Date().getFullYear();
   const counter = await db.collection('invoice_counter').findOneAndUpdate(
     { _id: `invoice_${year}` },
     { $inc: { seq: 1 } },
     { upsert: true, returnDocument: 'after' }
   );
-  return `W2-${year}-${String(counter.seq).padStart(4, '0')}`;
+  const prefix = getInvoicePrefix(tenant);
+  return `${prefix}-${year}-${String(counter.seq).padStart(4, '0')}`;
 }
 
 /** Generate a secure payment token for public invoice URLs */

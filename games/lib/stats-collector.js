@@ -11,8 +11,32 @@ const { EventEmitter } = require('events');
 
 const emitter = new EventEmitter();
 
+// Event types that are stored to mongo (so counts/aggregates work) but should
+// never reach the UI feed. Heartbeats fire every few seconds; the rest are
+// mod-internal probes from MadLadsStats / WindrosePlus boot+config that carry
+// no player-visible info. Shared so app.js, route handlers, and stats queries
+// stay in sync.
+const UI_SUPPRESSED_EVENT_TYPES = new Set([
+  'heartbeat',
+  'hook_fired',
+  'mod_boot',
+  'mod_status',
+  'config_load',
+  'config_load_fail',
+  // Raw dot-namespaced names from older MadLadsStats events written before the
+  // JSON_TYPE_MAP entries below existed — kept here so historical DB rows stay
+  // hidden from the feed.
+  'hook.registered',
+  'hook.failed',
+  'madlads_stats.armed',
+]);
+
 // Log file positions (for tailing)
 const logPositions = {};
+// Currently-tailed file path per source. Used by sources whose underlying file
+// rotates by name (windrose_events: YYYY-MM-DD.log) so we can detect the
+// rollover and switch files without restarting the games service.
+const activeLogPaths = {};
 
 // ── Config ──
 const LOG_PATHS = {
@@ -32,8 +56,8 @@ const LOG_PATHS = {
 const RUST_LOG_ALT = path.join(__dirname, '..', 'rust', 'RustDedicated_Data', 'output_log.txt');
 const WINDROSE_LOG_ALT = path.join(__dirname, '..', 'windrose', 'R5', 'Saved', 'Logs', 'R5.log');
 // WindrosePlus writes one NDJSON file per UTC day named YYYY-MM-DD.log inside
-// <game>/windrose_plus_data/. We pick the most recent at startup; daily
-// rollover requires a games service restart (acceptable for now).
+// <game>/windrose_plus_data/. We re-resolve on every tail tick so a UTC
+// rollover is picked up automatically — no games service restart required.
 const WINDROSE_PLUS_DATA_DIR = path.join(__dirname, '..', 'windrose', 'windrose_plus_data');
 function resolveWindrosePlusLog() {
   try {
@@ -54,6 +78,9 @@ const LOG_GAME_MAP = {
 
 // Sources whose lines are NDJSON instead of free-form text
 const JSON_SOURCES = new Set(['windrose_events', 'madlads_stats']);
+
+// Sources that re-resolve their log file path each tick (dated rotation).
+const ROLLING_SOURCES = new Set(['windrose_events']);
 
 // Per-source one-shot raw-line dump. WindrosePlus's NDJSON schema is
 // unconfirmed — log the first few lines so we can lock in field names.
@@ -132,7 +159,8 @@ const PATTERNS = {
   windrose: [
     { type: 'player_join', re: /Join succeeded:\s*(\S+)/i, fields: ['name'] },
     { type: 'player_leave', re: /UChannel::Close.*?(?:RemoteAddr|PlayerName)[:=]\s*(\S+)/i, fields: ['name'] },
-    { type: 'server_start', re: /(Server is ready|InviteCode|Engine Initialization\) Total time)/i, fields: [] },
+    { type: 'server_ready', re: /(Server is ready|InviteCode)/i, fields: [] },
+    { type: 'server_start', re: /Engine Initialization\) Total time/i, fields: [] },
   ],
 };
 
@@ -158,11 +186,14 @@ async function ensureCollections() {
     await db.collection('game_events').createIndex({ ts: 1 }, { expireAfterSeconds: 30 * 24 * 3600 }); // 30-day TTL
     await db.collection('game_snapshots').createIndex({ game: 1, ts: -1 });
     await db.collection('game_snapshots').createIndex({ ts: 1 }, { expireAfterSeconds: 7 * 24 * 3600 }); // 7-day TTL
-    await db.collection('player_stats').createIndex({ steamId: 1, game: 1 }, { unique: true, sparse: true });
+    await db.collection('player_stats').createIndex({ steamId: 1, game: 1 }, { unique: true, partialFilterExpression: { steamId: { $type: "string" } }, name: "steamId_game_partial" });
     await db.collection('player_stats').createIndex({ game: 1, totalPlaytime: -1 });
     await db.collection('player_stats').createIndex({ game: 1, kills: -1 });
     await db.collection('player_stats').createIndex({ game: 1, deaths: -1 });
     await db.collection('player_stats').createIndex({ game: 1, bossKills: -1 });
+    // Name-keyed games (windrose, valheim character index) need their own
+    // unique compound. Sparse so it doesn't collide with steamId-only docs.
+    await db.collection('player_stats').createIndex({ game: 1, name: 1 }, { unique: true, partialFilterExpression: { name: { $type: "string" } }, name: "game_name_partial" });
   } catch (e) {
     console.error('[stats] Index creation error:', e.message);
   }
@@ -253,44 +284,71 @@ function startLogTailing() {
   }
 }
 
-function tailLog(game, logPath) {
-  if (!fs.existsSync(logPath)) return;
+function tailLog(source, logPath) {
+  const isRolling = ROLLING_SOURCES.has(source);
 
-  // Start from end of file
-  try {
-    const stat = fs.statSync(logPath);
-    logPositions[game] = stat.size;
-  } catch (e) {
-    logPositions[game] = 0;
+  // Non-rolling sources need the file present at start; rolling sources may
+  // not have the file yet (e.g. boot before the first daily log is written),
+  // so we let the timer poll until a file appears.
+  if (!isRolling && !fs.existsSync(logPath)) return;
+
+  if (logPath && fs.existsSync(logPath)) {
+    try {
+      const stat = fs.statSync(logPath);
+      logPositions[source] = stat.size;
+    } catch (e) {
+      logPositions[source] = 0;
+    }
+    activeLogPaths[source] = logPath;
+  } else {
+    logPositions[source] = 0;
+    activeLogPaths[source] = null;
   }
 
-  logTimers[game] = setInterval(() => {
-    readNewLines(game, logPath);
+  logTimers[source] = setInterval(() => {
+    let target = activeLogPaths[source];
+
+    if (isRolling) {
+      const latest = resolveWindrosePlusLog();
+      if (latest && latest !== activeLogPaths[source]) {
+        // Daily rollover (or first-time resolve): reset tail position.
+        console.log(
+          `[stats] ${source} rolling to ${path.basename(latest)}` +
+          (activeLogPaths[source] ? ` from ${path.basename(activeLogPaths[source])}` : '')
+        );
+        activeLogPaths[source] = latest;
+        logPositions[source] = 0;
+        target = latest;
+      }
+    }
+
+    if (!target) return;
+    readNewLines(source, target);
   }, 3000); // check every 3s
 }
 
-function readNewLines(game, logPath) {
+function readNewLines(source, logPath) {
   try {
     const stat = fs.statSync(logPath);
-    if (stat.size < logPositions[game]) {
+    if (stat.size < logPositions[source]) {
       // Log was rotated/truncated
-      logPositions[game] = 0;
+      logPositions[source] = 0;
     }
-    if (stat.size <= logPositions[game]) return;
+    if (stat.size <= logPositions[source]) return;
 
     const fd = fs.openSync(logPath, 'r');
-    const bufSize = Math.min(stat.size - logPositions[game], 64 * 1024); // max 64KB per read
+    const bufSize = Math.min(stat.size - logPositions[source], 64 * 1024); // max 64KB per read
     const buf = Buffer.alloc(bufSize);
-    fs.readSync(fd, buf, 0, bufSize, logPositions[game]);
+    fs.readSync(fd, buf, 0, bufSize, logPositions[source]);
     fs.closeSync(fd);
-    logPositions[game] += bufSize;
+    logPositions[source] += bufSize;
 
     const text = buf.toString('utf8');
     const lines = text.split('\n');
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      processLogLine(game, line.trim());
+      processLogLine(source, line.trim());
     }
   } catch (e) {
     // File may be temporarily unavailable
@@ -309,7 +367,10 @@ const JSON_TYPE_MAP = {
   'admin.command': 'command',
   // MadLadsStats discovery — every successful hook firing names the path it fired on
   'hook.fired': 'hook_fired',
+  'hook.registered': 'mod_status',
+  'hook.failed': 'mod_status',
   'madlads_stats.boot': 'mod_boot',
+  'madlads_stats.armed': 'mod_boot',
   'madlads_stats.hooks': 'mod_status',
 };
 
@@ -409,9 +470,67 @@ function resolveValheimName(steamId) {
   return lookupName('valheim', steamId) || steamId;
 }
 
+// Name-keyed upsert that dodges the (steamId, game) sparse-unique index.
+// Doing { upsert: true } on a name-keyed match writes a doc with steamId:null
+// in some Mongo versions, which collides with the sparse-unique steamId+game
+// index whenever any other name-keyed row exists for the same game. We do the
+// find/insert in two steps so steamId is *omitted*, not nulled.
+async function nameKeyedJoinUpsert(game, name, ts) {
+  const existing = await db.collection('player_stats').findOne({ game, name });
+  if (existing) {
+    await db.collection('player_stats').updateOne(
+      { _id: existing._id },
+      { $set: { lastSeen: ts }, $inc: { sessions: 1 } }
+    );
+    return;
+  }
+  // Insert new — explicitly omit steamId so the sparse index skips this doc.
+  try {
+    await db.collection('player_stats').insertOne({
+      game,
+      name,
+      firstSeen: ts,
+      lastSeen: ts,
+      sessions: 1,
+      totalPlaytime: 0,
+      kills: 0,
+      deaths: 0,
+      bossKills: 0,
+      piecesPlaced: 0,
+      crafted: 0,
+    });
+  } catch (e) {
+    // Race: another join arrived first; fall back to update.
+    if (e && e.code === 11000) {
+      await db.collection('player_stats').updateOne(
+        { game, name },
+        { $set: { lastSeen: ts }, $inc: { sessions: 1 } }
+      );
+    } else {
+      throw e;
+    }
+  }
+}
+
+// Per-game cooldown for boot-phase events. A single restart often trips
+// multiple log patterns (engine init, session loaded, mod boot, invite code,
+// etc.) — we collapse them down to one `server_start` and one `server_ready`
+// notice per game per minute.
+const BOOT_DEDUPE_TYPES = new Set(['server_start', 'server_ready']);
+const BOOT_DEDUPE_WINDOW_MS = 60_000;
+const lastBootEventAt = {}; // `${game}:${type}` → ms timestamp
+
 // ── Event Storage ──
 async function storeEvent(event) {
   try {
+    if (BOOT_DEDUPE_TYPES.has(event.type)) {
+      const key = `${event.game}:${event.type}`;
+      const now = event.ts ? event.ts.getTime() : Date.now();
+      const last = lastBootEventAt[key] || 0;
+      if (now - last < BOOT_DEDUPE_WINDOW_MS) return;
+      lastBootEventAt[key] = now;
+    }
+
     // Cache any name+steamId pair we can learn from this event…
     if (event.steamId && event.name) cacheName(event.game, event.steamId, event.name);
     if (event.attackerId && event.attacker) cacheName(event.game, event.attackerId, event.attacker);
@@ -486,18 +605,7 @@ async function storeEvent(event) {
     // engine death/damage UFunctions doesn't fire under Proton/UE5.6 either.
     // Re-evaluate when WindrosePlus adds death events upstream.
     if (event.type === 'player_join' && event.game === 'windrose' && event.name && !event.steamId) {
-      await db.collection('player_stats').updateOne(
-        { game: 'windrose', name: event.name },
-        {
-          $set: { lastSeen: event.ts },
-          $inc: { sessions: 1 },
-          $setOnInsert: {
-            firstSeen: event.ts, totalPlaytime: 0,
-            kills: 0, deaths: 0, bossKills: 0, piecesPlaced: 0, crafted: 0,
-          },
-        },
-        { upsert: true }
-      );
+      await nameKeyedJoinUpsert('windrose', event.name, event.ts);
     }
 
     // --- Player leave (name-keyed games): close the session, increment playtime ---
@@ -614,8 +722,11 @@ async function upsertPlayerStat(game, player) {
 
 // ── Query Helpers (used by API routes) ──
 
-async function getRecentEvents(game, limit = 50) {
+async function getRecentEvents(game, limit = 50, opts = {}) {
   const query = game ? { game } : {};
+  // Heartbeats + mod-internal probes dominate the event stream and would push
+  // real events out of any reasonable limit. Strip them unless callers opt in.
+  if (!opts.includeNoise) query.type = { $nin: Array.from(UI_SUPPRESSED_EVENT_TYPES) };
   return db.collection('game_events')
     .find(query)
     .sort({ ts: -1 })
@@ -732,6 +843,7 @@ module.exports = {
   init,
   shutdown,
   emitter,
+  UI_SUPPRESSED_EVENT_TYPES,
   getRecentEvents,
   getRecentSnapshots,
   getPlayerLeaderboard,

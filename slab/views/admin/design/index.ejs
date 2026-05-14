@@ -126,6 +126,29 @@
 .brand-img-slot img { width: 100%; height: 60px; object-fit: contain; background: var(--ivory); }
 .brand-img-slot .lbl { padding: 4px 6px; font-size: 0.62rem; color: var(--slate); }
 
+/* ── Repeater (add/remove rows in lists) ── */
+.dp-repeater { display:flex; flex-direction:column; gap:10px; }
+.dp-rep-item { padding:10px; border:1px solid var(--border); border-radius:3px; background:color-mix(in srgb, var(--ivory) 60%, white); position:relative; }
+.dp-rep-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; font-size:0.62rem; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; color:var(--slate); }
+.dp-rep-actions { display:flex; gap:4px; }
+.dp-rep-actions button { background:none; border:1px solid var(--border); width:24px; height:24px; border-radius:2px; cursor:pointer; font-size:0.78rem; color:var(--slate); padding:0; }
+.dp-rep-actions button:hover:not(:disabled) { background:var(--ivory); color:var(--on-surface); }
+.dp-rep-actions button:disabled { opacity:0.3; cursor:not-allowed; }
+.dp-rep-remove { background:none; border:1px solid var(--border); width:24px; height:24px; border-radius:2px; cursor:pointer; font-size:0.85rem; color:#8B1C1C; padding:0; }
+.dp-rep-remove:hover { background:rgba(139,28,28,0.08); }
+.dp-rep-add { padding:7px 14px; font-size:0.65rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; background:var(--ivory); color:var(--navy); border:1px dashed var(--navy-mid); border-radius:2px; cursor:pointer; transition:background 0.15s; align-self:flex-start; font-family:var(--font-body); }
+.dp-rep-add:hover { background:color-mix(in srgb, var(--navy) 6%, white); }
+
+/* ── Tab nav (top of left panel) ── */
+.dp-tabs { display:flex; border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:5; overflow-x:auto; scrollbar-width:none; }
+.dp-tabs::-webkit-scrollbar { display:none; }
+.dp-tab { flex:1; min-width:fit-content; padding:10px 12px; font-size:0.62rem; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--slate); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; transition:color 0.15s, border-color 0.15s; font-family:var(--font-body); white-space:nowrap; }
+.dp-tab:hover { color:var(--on-surface); }
+.dp-tab.active { color:var(--navy); border-bottom-color:var(--gold); }
+.dp-tab .ico { display:inline-block; margin-right:5px; font-size:0.78rem; }
+/* hide accordion sections not matching the active tab */
+.editor-section[data-tab]:not(.dp-show) { display:none; }
+
 /* ── Mobile gate ── */
 .mobile-gate { display: none; }
 @media (max-width: 820px) {
@@ -161,10 +184,100 @@
 <% if (saved) { %><div class="save-banner success">Settings saved.</div><% } %>
 <% if (error) { %><div class="save-banner error">Failed to save.</div><% } %>
 
-<%# ─── 1. LAYOUT & TEMPLATE ─── %>
-<div class="editor-section open">
+<%# ─── Tab nav (consolidates Design / Sections / Templates / Brand) ─── %>
+<div class="dp-tabs" id="dpTabs">
+  <button type="button" class="dp-tab" data-tab="source"    onclick="dpSwitch('source')"><span class="ico">◐</span>Source</button>
+  <button type="button" class="dp-tab" data-tab="design"    onclick="dpSwitch('design')"><span class="ico">◑</span>Design</button>
+  <button type="button" class="dp-tab" data-tab="copy"      onclick="dpSwitch('copy')"><span class="ico">¶</span>Copy</button>
+  <button type="button" class="dp-tab" data-tab="sections"  onclick="dpSwitch('sections')"><span class="ico">▦</span>Sections</button>
+  <button type="button" class="dp-tab" data-tab="templates" onclick="dpSwitch('templates')"><span class="ico">◈</span>Templates</button>
+  <button type="button" class="dp-tab" data-tab="brand"     onclick="dpSwitch('brand')"><span class="ico">⛌</span>Brand</button>
+</div>
+
+<%# ─── Shared state used across multiple tabs ─── %>
+<%
+  const _sectionTemplates = typeof sectionTemplates !== 'undefined' ? sectionTemplates : {};
+  const _validSections = (customSections || []).filter(s => s && s.type && _sectionTemplates[s.type]);
+%>
+
+<%# ─── 1. HOMEPAGE SOURCE — top-level switch ─── %>
+<%
+  const _src = design.home_source || 'auto';
+  const _activeTpl = (templates || []).find(t => activeTemplateId && t._id.toString() === activeTemplateId);
+  // Effective renderer — what actually displays at "/", accounting for fallbacks
+  // when the configured source has no resource (e.g. template mode with no active template).
+  let _effective;
+  if (_src === 'layout') _effective = 'layout';
+  else if (_src === 'template') _effective = _activeTpl ? 'template' : 'layout';
+  else if (_src === 'custom')   _effective = hasCustomEjs ? 'custom' : 'layout';
+  else /* auto */               _effective = hasCustomEjs ? 'custom' : (_activeTpl ? 'template' : 'layout');
+%>
+<div class="editor-section open" data-tab="source">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
-    Layout & Template <span class="arrow">&#9654;</span>
+    Homepage Source <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <%
+      const _effLabel = _effective === 'layout' ? 'Standard Layout'
+                      : _effective === 'template' ? ('Slab Template — ' + (_activeTpl ? _activeTpl.name : 'unknown'))
+                      : _effective === 'custom' ? 'Custom EJS' : 'Standard Layout';
+      const _srcLabel = _src === 'auto' ? 'Auto'
+                      : _src === 'layout' ? 'Standard Layout'
+                      : _src === 'template' ? 'Slab Template'
+                      : _src === 'custom' ? 'Custom Layout' : _src;
+    %>
+    <div style="margin-bottom:12px;padding:10px 14px;background:rgba(28,43,74,0.05);border-left:3px solid var(--navy);border-radius:2px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:0.82rem;color:var(--on-surface);">
+        <span style="font-size:0.62rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--slate);">Currently rendering at /</span><br>
+        <strong style="color:var(--navy);"><%= _effLabel %></strong>
+      </div>
+      <div style="font-size:0.7rem;color:var(--slate);text-align:right;">
+        Source setting: <strong style="color:var(--on-surface);"><%= _srcLabel %></strong>
+        <% if (_src !== _effective) { %><br><span style="color:#8B1C1C;">(fallback — configured source has no resource)</span><% } %>
+      </div>
+    </div>
+    <div class="ep-hint" style="margin-bottom:10px;">
+      Pick what renders at <code style="font-size:0.7rem;background:var(--ivory);padding:1px 5px;border-radius:2px;">/</code>. The matching configuration section opens below.
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <%
+        const _options = [
+          { val: 'auto',     title: 'Auto',            desc: hasCustomEjs ? 'Use custom EJS if present, else active template, else standard layout' : 'Use active template if set, else standard layout' },
+          { val: 'layout',   title: 'Standard Layout', desc: 'Use the landing layout below (Classic, Bold, Minimal&hellip;) driven by the design panel' },
+          { val: 'template', title: 'Slab Template',   desc: _activeTpl ? ('Render the activated template: <strong>' + _activeTpl.name + '</strong>') : 'Render the active template (none activated yet — pick one below)' },
+          { val: 'custom',   title: 'Custom Layout',   desc: hasCustomEjs ? ('Use the bespoke EJS at <code>views/tenants/' + tenantSubdomain + '/home.ejs</code>') : 'Bespoke EJS file (not present for this tenant — falls back to layout)' },
+        ];
+      %>
+      <% _options.forEach(o => { const checked = _src === o.val; %>
+      <label class="vis-item" style="align-items:flex-start;padding:10px 12px;<%= checked ? 'border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);' : '' %>">
+        <input type="radio" name="home_source" value="<%= o.val %>" <%= checked ? 'checked' : '' %> style="margin-top:3px;flex-shrink:0;">
+        <span style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-weight:600;font-size:0.78rem;color:var(--on-surface);"><%= o.title %><% if (o.val === 'auto') { %> <span style="font-size:0.55rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);">DEFAULT</span><% } %></span>
+          <span style="font-size:0.68rem;color:var(--slate);line-height:1.4;font-weight:400;text-transform:none;letter-spacing:0;"><%- o.desc %></span>
+        </span>
+      </label>
+      <% }) %>
+    </div>
+
+    <% if (_src !== _effective) { %>
+    <div class="ep-hint" style="margin-top:10px;padding:8px 12px;background:rgba(139,28,28,0.06);border-left:3px solid #8B1C1C;border-radius:2px;color:#7A1818;">
+      <strong>Fallback active:</strong> you selected <strong><%= _src %></strong> but it has no resource, so <strong><%= _effective %></strong> is actually rendering at <code style="font-size:0.7rem;background:rgba(255,255,255,0.6);padding:1px 5px;border-radius:2px;">/</code>.
+      <% if (_src === 'template' && !_activeTpl) { %> Activate a template below to make template mode take effect.<% } %>
+      <% if (_src === 'custom' && !hasCustomEjs) { %> Create <code style="font-size:0.7rem;">views/tenants/<%= tenantSubdomain %>/home.ejs</code> to use a bespoke layout.<% } %>
+    </div>
+    <% } %>
+    <div class="ep-hint" style="margin-top:10px;">
+      <strong>Tip:</strong> &ldquo;Custom Layout&rdquo; uses CSS variables from this panel, so colors &amp; fonts you set here still apply to bespoke EJS files.
+    </div>
+  </div>
+</div>
+
+<%# ─── 1a. LAYOUT & TEMPLATE ─── %>
+<div class="editor-section<%= (_src === 'layout' || _src === 'auto') ? ' open' : '' %>" data-tab="source">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Standard Layout
+    <span class="arrow">&#9654;</span>
   </button>
   <div class="editor-section-body">
     <div class="ep-field">
@@ -208,110 +321,167 @@
   </div>
 </div>
 
+<%# ─── 1b. TEMPLATE LIBRARY ─── %>
+<div class="editor-section<%= _src === 'template' ? ' open' : '' %>" data-tab="templates">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Template Library
+    <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-hint" style="margin-bottom:10px;">
+      <% if (_activeTpl) { %>
+        Currently active: <strong style="color:var(--on-surface);"><%= _activeTpl.name %></strong>.
+        Active templates override the landing layout above.
+      <% } else { %>
+        No template active &mdash; using the landing layout above. Activate a template to swap your homepage to a fully custom layout.
+      <% } %>
+    </div>
+
+    <% if (!templates || templates.length === 0) { %>
+      <div style="padding:14px;border:1px dashed var(--border);border-radius:2px;text-align:center;">
+        <div style="font-size:0.78rem;color:var(--slate);margin-bottom:8px;">No templates yet.</div>
+        <a href="/admin/templates/new" class="btn btn-navy" style="font-size:0.65rem;padding:5px 12px;">+ Build Template</a>
+        <a href="/admin/template-store" class="btn btn-ghost" style="font-size:0.65rem;padding:5px 12px;margin-left:4px;">Browse Store</a>
+      </div>
+    <% } else { %>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <% templates.forEach(tpl => {
+             const isActive = activeTemplateId && tpl._id.toString() === activeTemplateId;
+             const blocksCount = (tpl.blocks || []).length;
+             const cat = tpl.category || 'landing';
+        %>
+          <div class="theme-card" style="<%= isActive ? 'border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);' : '' %>">
+            <div class="theme-card-body" style="display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;min-width:0;">
+                <div class="theme-card-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                  <%= tpl.name %>
+                  <% if (isActive) { %><span style="font-size:0.55rem;font-weight:700;letter-spacing:0.12em;background:var(--gold);color:var(--navy-deep);padding:1px 5px;border-radius:2px;margin-left:4px;vertical-align:middle;">ACTIVE</span><% } %>
+                </div>
+                <div class="theme-card-meta">
+                  <%= cat %> &middot; <%= blocksCount %> block<%= blocksCount === 1 ? '' : 's' %>
+                  <% if (tpl.source === 'store') { %> &middot; from store<% } %>
+                  <% if (tpl.source === 'migration') { %> &middot; built-in<% } %>
+                </div>
+              </div>
+              <div class="theme-card-actions" style="gap:4px;">
+                <a href="/admin/templates/<%= tpl._id %>/preview" target="_blank" class="btn btn-ghost" style="font-size:0.6rem;padding:3px 8px;letter-spacing:0.06em;">Preview</a>
+                <a href="/admin/templates/<%= tpl._id %>/edit" class="btn btn-ghost" style="font-size:0.6rem;padding:3px 8px;letter-spacing:0.06em;">Edit</a>
+                <% if (isActive) { %>
+                  <button type="submit" form="tpl-deact-<%= tpl._id %>" class="btn btn-ghost" style="font-size:0.6rem;padding:3px 8px;letter-spacing:0.06em;color:var(--gold);">Deactivate</button>
+                <% } else { %>
+                  <button type="submit" form="tpl-act-<%= tpl._id %>" class="btn btn-navy" style="font-size:0.6rem;padding:3px 8px;letter-spacing:0.06em;">Activate</button>
+                <% } %>
+              </div>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:6px;">
+        <a href="/admin/templates" class="btn btn-ghost" style="font-size:0.62rem;padding:5px 10px;letter-spacing:0.08em;">Manage All</a>
+        <a href="/admin/templates/new" class="btn btn-ghost" style="font-size:0.62rem;padding:5px 10px;letter-spacing:0.08em;">+ New</a>
+        <a href="/admin/template-store" class="btn btn-ghost" style="font-size:0.62rem;padding:5px 10px;letter-spacing:0.08em;">Store</a>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<%# ─── 1c. CUSTOM LAYOUT (only when relevant) ─── %>
+<% if (hasCustomEjs || _src === 'custom') { %>
+<div class="editor-section<%= _src === 'custom' ? ' open' : '' %>" data-tab="source">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Custom Layout
+    <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <% if (hasCustomEjs) { %>
+      <div class="ep-hint" style="margin-bottom:8px;">
+        Bespoke EJS file detected for this tenant:
+        <code style="display:block;margin-top:4px;padding:6px 8px;background:var(--ivory);border:1px solid var(--border);border-radius:2px;font-size:0.7rem;color:var(--on-surface);">views/tenants/<%= tenantSubdomain %>/home.ejs</code>
+      </div>
+      <div class="ep-hint">
+        Files in the tenant namespace pull colors &amp; fonts from this design panel via the <code>design.*</code> variables and shared CSS tokens (<code>--primary</code>, <code>--accent</code>, <code>--font-heading</code>&hellip;). To switch off the bespoke layout, change <strong>Homepage Source</strong> above.
+      </div>
+    <% } else { %>
+      <div class="ep-hint">
+        No bespoke EJS file present for <code><%= tenantSubdomain || '(no subdomain)' %></code>. Custom layouts require a developer to drop a file at <code>views/tenants/&lt;sub&gt;/home.ejs</code> &mdash; until then this option falls back to the standard layout.
+      </div>
+    <% } %>
+  </div>
+</div>
+<% } %>
+
 <%# ─── 2. COLORS ─── %>
-<div class="editor-section">
+<%
+  // Essentials drive 95% of the look. Everything else is derived or rarely tweaked.
+  const colorEssentials = [
+    { name: 'color_primary', label: 'Primary',    hint: 'Brand color &mdash; nav, headings, buttons' },
+    { name: 'color_accent',  label: 'Accent',     hint: 'CTAs, highlights, badges' },
+    { name: 'color_bg',      label: 'Background', hint: 'Section backgrounds, page bg' },
+  ];
+  const colorAdvanced = [
+    { name: 'color_primary_deep', label: 'Primary Deep',  hint: 'Hero bg, footer, deepest shade' },
+    { name: 'color_primary_mid',  label: 'Primary Mid',   hint: 'Borders, hover states' },
+    { name: 'color_accent_light', label: 'Accent Light',  hint: 'Text on dark bg' },
+    { name: 'color_accent_2',     label: 'Accent 2',      hint: 'Secondary accent (multi-brand)' },
+    { name: 'color_accent_3',     label: 'Accent 3',      hint: 'Tertiary accent (multi-brand)' },
+    { name: 'color_dark',         label: 'Text Dark',     hint: 'Body text on light bg' },
+    { name: 'color_white',        label: 'White / Surface', hint: 'Cards, page surface' },
+    { name: 'color_muted',        label: 'Muted Text',    hint: 'Secondary text (auto if empty)' },
+    { name: 'color_border',       label: 'Border',        hint: 'Dividers, card borders (auto if empty)' },
+    { name: 'color_success',      label: 'Success',       hint: 'Success state' },
+    { name: 'color_danger',       label: 'Danger',        hint: 'Error / danger state' },
+  ];
+  // For palette preview we want all six "primary" tokens in one row
+  const palettePreview = ['color_primary','color_primary_deep','color_primary_mid','color_accent','color_accent_light','color_bg'];
+%>
+<div class="editor-section" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Colors <span class="arrow">&#9654;</span>
   </button>
   <div class="editor-section-body">
-    <%
-      const colorFields = [
-        { name: 'color_primary',      label: 'Primary' },
-        { name: 'color_primary_deep', label: 'Primary Deep' },
-        { name: 'color_primary_mid',  label: 'Primary Mid' },
-        { name: 'color_accent',       label: 'Accent' },
-        { name: 'color_accent_light', label: 'Accent Light' },
-        { name: 'color_bg',           label: 'Background' },
-      ];
-    %>
-    <% colorFields.forEach(cf => { %>
+    <div class="ep-hint" style="margin-bottom:10px;">Three colors set the brand. Shades and contrast colors are auto-derived &mdash; tweak them under <em>Advanced</em> only if needed.</div>
+
+    <% colorEssentials.forEach(cf => { %>
     <div class="ep-field">
       <label><%= cf.label %></label>
       <div class="color-row">
         <input type="color" name="<%= cf.name %>" id="field-<%= cf.name %>" value="<%= design[cf.name] %>">
         <input type="text" value="<%= design[cf.name] %>" readonly>
       </div>
+      <% if (cf.hint) { %><div class="ep-hint"><%- cf.hint %></div><% } %>
     </div>
     <% }) %>
 
-    <div class="ep-field" style="margin-top:6px;">
-      <label>Secondary Accent</label>
-      <div class="color-row">
-        <input type="color" name="color_accent_2" id="field-color_accent_2" value="<%= design.color_accent_2 || design.color_accent %>">
-        <input type="text" value="<%= design.color_accent_2 || '' %>" placeholder="(primary)" readonly>
-      </div>
-    </div>
-    <div class="ep-field">
-      <label>Tertiary Accent</label>
-      <div class="color-row">
-        <input type="color" name="color_accent_3" id="field-color_accent_3" value="<%= design.color_accent_3 || design.color_accent %>">
-        <input type="text" value="<%= design.color_accent_3 || '' %>" placeholder="(primary)" readonly>
-      </div>
-    </div>
-
-    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
-      <div style="font-size:0.6rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:6px;">CONTRAST & UTILITY</div>
-      <div class="ep-row">
-        <div class="ep-field">
-          <label>Text Dark</label>
-          <div class="color-row">
-            <input type="color" name="color_dark" id="field-color_dark" value="<%= design.color_dark %>">
-            <input type="text" value="<%= design.color_dark %>" readonly>
-          </div>
-        </div>
-        <div class="ep-field">
-          <label>White / Surface</label>
-          <div class="color-row">
-            <input type="color" name="color_white" id="field-color_white" value="<%= design.color_white %>">
-            <input type="text" value="<%= design.color_white %>" readonly>
-          </div>
-        </div>
-      </div>
-      <div class="ep-row">
-        <div class="ep-field">
-          <label>Muted Text</label>
-          <div class="color-row">
-            <input type="color" name="color_muted" id="field-color_muted" value="<%= design.color_muted || '#6B7380' %>">
-            <input type="text" value="<%= design.color_muted || '' %>" placeholder="(auto)" readonly>
-          </div>
-        </div>
-        <div class="ep-field">
-          <label>Border</label>
-          <div class="color-row">
-            <input type="color" name="color_border" id="field-color_border" value="<%= design.color_border || '#E5E7EB' %>">
-            <input type="text" value="<%= design.color_border || '' %>" placeholder="(auto)" readonly>
-          </div>
-        </div>
-      </div>
-      <div class="ep-row">
-        <div class="ep-field">
-          <label>Success</label>
-          <div class="color-row">
-            <input type="color" name="color_success" id="field-color_success" value="<%= design.color_success %>">
-            <input type="text" value="<%= design.color_success %>" readonly>
-          </div>
-        </div>
-        <div class="ep-field">
-          <label>Danger</label>
-          <div class="color-row">
-            <input type="color" name="color_danger" id="field-color_danger" value="<%= design.color_danger %>">
-            <input type="text" value="<%= design.color_danger %>" readonly>
-          </div>
-        </div>
-      </div>
-    </div>
-
+    <%# Palette preview swatch row %>
     <div style="font-size:0.6rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-top:12px;margin-bottom:6px;">Palette Preview</div>
     <div class="swatch-row" id="swatch-preview">
-      <% colorFields.forEach(cf => { %>
-      <div class="swatch" style="background:<%= design[cf.name] %>;<%= cf.name === 'color_bg' ? 'border:1px solid var(--border);' : '' %>" title="<%= cf.label %>"></div>
+      <% palettePreview.forEach(k => { %>
+      <div class="swatch" style="background:<%= design[k] %>;<%= k === 'color_bg' ? 'border:1px solid var(--border);' : '' %>" title="<%= k %>"></div>
       <% }) %>
     </div>
+
+    <%# Advanced collapsible %>
+    <details style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px;">
+      <summary style="cursor:pointer;font-size:0.62rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);user-select:none;">Advanced shades &amp; states</summary>
+      <div style="margin-top:10px;">
+        <div class="ep-row">
+        <% colorAdvanced.forEach((cf, i) => { %>
+          <div class="ep-field">
+            <label><%= cf.label %></label>
+            <div class="color-row">
+              <input type="color" name="<%= cf.name %>" id="field-<%= cf.name %>" value="<%= design[cf.name] || (cf.name === 'color_accent_2' || cf.name === 'color_accent_3' ? design.color_accent : (cf.name === 'color_muted' ? '#6B7380' : (cf.name === 'color_border' ? '#E5E7EB' : ''))) %>">
+              <input type="text" value="<%= design[cf.name] || '' %>" placeholder="<%= cf.name === 'color_muted' || cf.name === 'color_border' ? '(auto)' : (cf.name.startsWith('color_accent_') ? '(primary)' : '') %>" readonly>
+            </div>
+          </div>
+        <% }) %>
+        </div>
+      </div>
+    </details>
   </div>
 </div>
 
 <%# ─── 3. TYPOGRAPHY ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Typography <span class="arrow">&#9654;</span>
   </button>
@@ -336,16 +506,16 @@
 </div>
 
 <%# ─── 4. SECTION VISIBILITY ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="sections">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Section Visibility <span class="arrow">&#9654;</span>
   </button>
   <div class="editor-section-body">
     <%
+      // vis_header + vis_footer live in the consolidated Header & Footer section
       const visSections = [
-        { key: 'vis_header',    label: 'Header' },
         { key: 'vis_hero',      label: 'Hero' },
-        { key: 'vis_marquee',   label: 'Marquee' },
+        { key: 'vis_marquee',   label: 'Ticker / Marquee' },
         { key: 'vis_services',  label: 'Services' },
         { key: 'vis_portfolio', label: 'Portfolio' },
         { key: 'vis_about',     label: 'About' },
@@ -354,7 +524,6 @@
         { key: 'vis_reviews',   label: 'Reviews' },
         { key: 'vis_contact',   label: 'Contact' },
         { key: 'vis_blog',      label: 'Blog' },
-        { key: 'vis_footer',    label: 'Footer' },
         { key: 'vis_admin_link',label: 'Admin Login Link' },
         { key: 'vis_qr',        label: 'QR Code' },
       ];
@@ -368,11 +537,355 @@
       </label>
       <% }) %>
     </div>
+
+    <% if (_validSections.length) { %>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="font-size:0.62rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Custom Sections · Order &amp; Visibility</div>
+      <div class="ep-hint" style="margin-bottom:8px;">Drag arrows to reorder. Toggle the eye to hide a section from the homepage.</div>
+      <div id="cs-order-list" style="display:flex;flex-direction:column;gap:4px;">
+        <% _validSections.forEach(function(sec, i) { %>
+          <div class="cs-row" data-cs-id="<%= sec._id %>" style="display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--border);border-radius:2px;background:var(--surface);">
+            <span style="font-size:0.7rem;color:var(--slate);min-width:16px;text-align:center;" data-cs-index="<%= i + 1 %>"><%= i + 1 %></span>
+            <span style="flex:1;min-width:0;font-size:0.78rem;color:var(--on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= sec.label || 'Untitled' %></span>
+            <button type="button" title="Move up" onclick="csMove('<%= sec._id %>', -1)" style="background:none;border:1px solid var(--border);width:22px;height:22px;border-radius:2px;cursor:pointer;font-size:0.7rem;color:var(--slate);"<%= i === 0 ? ' disabled' : '' %>>↑</button>
+            <button type="button" title="Move down" onclick="csMove('<%= sec._id %>', 1)" style="background:none;border:1px solid var(--border);width:22px;height:22px;border-radius:2px;cursor:pointer;font-size:0.7rem;color:var(--slate);"<%= i === _validSections.length - 1 ? ' disabled' : '' %>>↓</button>
+            <button type="button" class="cs-vis-toggle" data-cs-id="<%= sec._id %>" data-visible="<%= sec.visible !== false ? 'true' : 'false' %>" onclick="csToggleVisible('<%= sec._id %>', this)" title="<%= sec.visible !== false ? 'Hide section' : 'Show section' %>" style="background:none;border:1px solid var(--border);width:30px;height:22px;border-radius:2px;cursor:pointer;font-size:0.72rem;color:<%= sec.visible !== false ? 'var(--navy)' : 'var(--slate)' %>;"><%= sec.visible !== false ? '◉' : '○' %></button>
+          </div>
+        <% }); %>
+      </div>
+    </div>
+    <% } %>
+  </div>
+</div>
+
+<%- include('_ticker-section') %>
+
+<%# ─── 4b. HEADER & FOOTER (consolidated) ─── %>
+<%# All header & footer settings live here: visibility, logo, CTA, nav colors, custom links. %>
+<%# Link create/edit/delete use HTML5 form-attribute references to standalone forms declared outside designForm. %>
+<% const d = design; %>
+<div class="editor-section" id="links" data-tab="sections">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Header &amp; Footer <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+
+    <%# Sub-tabs %>
+    <div class="hf-tabs" style="display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:14px;">
+      <button type="button" class="hf-tab is-active" data-tab="layout"  onclick="hfTab(this)" style="background:none;border:none;padding:8px 12px;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--on-surface);font-weight:600;cursor:pointer;border-bottom:2px solid var(--gold);font-family:var(--font-body);">Layout</button>
+      <button type="button" class="hf-tab"           data-tab="colors"  onclick="hfTab(this)" style="background:none;border:none;padding:8px 12px;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--slate);font-weight:600;cursor:pointer;border-bottom:2px solid transparent;font-family:var(--font-body);">Colors</button>
+      <button type="button" class="hf-tab"           data-tab="links"   onclick="hfTab(this)" style="background:none;border:none;padding:8px 12px;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--slate);font-weight:600;cursor:pointer;border-bottom:2px solid transparent;font-family:var(--font-body);">Links</button>
+    </div>
+
+    <%# ── TAB: Layout ── %>
+    <div class="hf-pane" data-pane="layout">
+      <div class="ep-row">
+        <label class="vis-item"><input type="checkbox" name="vis_header" <%= d.vis_header !== 'false' ? 'checked' : '' %>> Show Header</label>
+        <label class="vis-item"><input type="checkbox" name="vis_footer" <%= d.vis_footer !== 'false' ? 'checked' : '' %>> Show Footer</label>
+      </div>
+
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">LOGO</div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Logo Display</label>
+          <select name="nav_logo_display" onchange="previewReload()">
+            <option value="text"  <%= d.nav_logo_display === 'text'  ? 'selected' : '' %>>Text Only</option>
+            <option value="image" <%= d.nav_logo_display === 'image' ? 'selected' : '' %>>Image Only</option>
+            <option value="both"  <%= d.nav_logo_display === 'both'  ? 'selected' : '' %>>Both</option>
+          </select>
+        </div>
+        <div class="ep-field">
+          <label>Show Tagline</label>
+          <select name="nav_tagline_display" onchange="previewReload()">
+            <option value="true"  <%= d.nav_tagline_display !== 'false' ? 'selected' : '' %>>Yes</option>
+            <option value="false" <%= d.nav_tagline_display === 'false' ? 'selected' : '' %>>No</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">BRAND TEXT STYLE</div>
+      <div class="ep-row-3">
+        <div class="ep-field">
+          <label>Size (rem) <span class="ep-hint" style="display:inline;font-style:italic;"><%= d.nav_brand_size || '1.4' %></span></label>
+          <input type="range" name="nav_brand_size" min="0.8" max="3" step="0.05" value="<%= d.nav_brand_size || '1.4' %>" oninput="this.previousElementSibling.querySelector('span').textContent=this.value" onchange="previewReload()">
+        </div>
+        <div class="ep-field">
+          <label>Weight</label>
+          <select name="nav_brand_weight" onchange="previewReload()">
+            <% ['300','400','500','600','700','800'].forEach(w => { %>
+              <option value="<%= w %>" <%= (d.nav_brand_weight || '400') === w ? 'selected' : '' %>><%= w %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="ep-field">
+          <label>Letter Spacing (em) <span class="ep-hint" style="display:inline;font-style:italic;"><%= d.nav_brand_spacing || '0.04' %></span></label>
+          <input type="range" name="nav_brand_spacing" min="-0.1" max="0.5" step="0.01" value="<%= d.nav_brand_spacing || '0.04' %>" oninput="this.previousElementSibling.querySelector('span').textContent=this.value" onchange="previewReload()">
+        </div>
+      </div>
+      <div class="ep-row-3">
+        <div class="ep-field">
+          <label>Transform</label>
+          <select name="nav_brand_transform" onchange="previewReload()">
+            <option value="none"      <%= (d.nav_brand_transform || 'none') === 'none' ? 'selected' : '' %>>As typed</option>
+            <option value="uppercase" <%= d.nav_brand_transform === 'uppercase' ? 'selected' : '' %>>UPPERCASE</option>
+            <option value="lowercase" <%= d.nav_brand_transform === 'lowercase' ? 'selected' : '' %>>lowercase</option>
+          </select>
+        </div>
+        <div class="ep-field">
+          <label>Italic</label>
+          <select name="nav_brand_italic" onchange="previewReload()">
+            <option value="false" <%= d.nav_brand_italic !== 'true' ? 'selected' : '' %>>No</option>
+            <option value="true"  <%= d.nav_brand_italic === 'true' ? 'selected' : '' %>>Yes</option>
+          </select>
+        </div>
+        <div class="ep-field">
+          <label>Color</label>
+          <div class="color-row">
+            <input type="color" value="<%= d.nav_brand_color || d.nav_text_color || d.color_dark %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
+            <input type="text" name="nav_brand_color" value="<%= d.nav_brand_color || '' %>" placeholder="auto" onchange="previewReload()">
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">LOGO TEXT ACCENT</div>
+      <div class="ep-hint" style="margin-bottom:8px;">Color a range of characters in your brand name. Char positions are 1-based.</div>
+      <div class="ep-row-3">
+        <div class="ep-field">
+          <label>Char Start</label>
+          <input type="number" name="nav_logo_split"     value="<%= d.nav_logo_split     || '0' %>" min="0" max="50" onchange="previewReload()">
+        </div>
+        <div class="ep-field">
+          <label>Char End</label>
+          <input type="number" name="nav_logo_split_end" value="<%= d.nav_logo_split_end || '0' %>" min="0" max="50" onchange="previewReload()">
+        </div>
+        <div class="ep-field">
+          <label>Accent Color</label>
+          <div class="color-row">
+            <input type="color" value="<%= d.nav_logo_accent_color || d.color_accent %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
+            <input type="text" name="nav_logo_accent_color" value="<%= d.nav_logo_accent_color || '' %>" placeholder="auto" onchange="previewReload()">
+          </div>
+        </div>
+      </div>
+      <div class="ep-row-3">
+        <div class="ep-field">
+          <label>Accent Weight</label>
+          <select name="nav_accent_weight" onchange="previewReload()">
+            <option value="" <%= !d.nav_accent_weight ? 'selected' : '' %>>(inherit brand)</option>
+            <% ['300','400','500','600','700','800','900'].forEach(w => { %>
+              <option value="<%= w %>" <%= d.nav_accent_weight === w ? 'selected' : '' %>><%= w %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="ep-field">
+          <label>Accent Italic</label>
+          <select name="nav_accent_italic" onchange="previewReload()">
+            <option value="false" <%= d.nav_accent_italic !== 'true' ? 'selected' : '' %>>No</option>
+            <option value="true"  <%= d.nav_accent_italic === 'true' ? 'selected' : '' %>>Yes</option>
+          </select>
+        </div>
+        <div class="ep-field">&nbsp;</div>
+      </div>
+
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">TAGLINE / WORDMARK SUB</div>
+      <div class="ep-hint" style="margin-bottom:8px;">Renders the small tagline + location line under the brand name (when &ldquo;Show Tagline&rdquo; above is Yes).</div>
+      <div class="ep-row-3">
+        <div class="ep-field">
+          <label>Size (rem) <span class="ep-hint" style="display:inline;font-style:italic;"><%= d.nav_tagline_size || '0.58' %></span></label>
+          <input type="range" name="nav_tagline_size" min="0.5" max="1.4" step="0.02" value="<%= d.nav_tagline_size || '0.58' %>" oninput="this.previousElementSibling.querySelector('span').textContent=this.value" onchange="previewReload()">
+        </div>
+        <div class="ep-field">
+          <label>Weight</label>
+          <select name="nav_tagline_weight" onchange="previewReload()">
+            <% ['300','400','500','600','700','800'].forEach(w => { %>
+              <option value="<%= w %>" <%= (d.nav_tagline_weight || '600') === w ? 'selected' : '' %>><%= w %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="ep-field">
+          <label>Letter Spacing (em) <span class="ep-hint" style="display:inline;font-style:italic;"><%= d.nav_tagline_spacing || '0.28' %></span></label>
+          <input type="range" name="nav_tagline_spacing" min="0" max="0.6" step="0.01" value="<%= d.nav_tagline_spacing || '0.28' %>" oninput="this.previousElementSibling.querySelector('span').textContent=this.value" onchange="previewReload()">
+        </div>
+      </div>
+      <div class="ep-row-3">
+        <div class="ep-field">
+          <label>Transform</label>
+          <select name="nav_tagline_transform" onchange="previewReload()">
+            <option value="none"      <%= d.nav_tagline_transform === 'none' ? 'selected' : '' %>>As typed</option>
+            <option value="uppercase" <%= (d.nav_tagline_transform || 'uppercase') === 'uppercase' ? 'selected' : '' %>>UPPERCASE</option>
+            <option value="lowercase" <%= d.nav_tagline_transform === 'lowercase' ? 'selected' : '' %>>lowercase</option>
+          </select>
+        </div>
+        <div class="ep-field">
+          <label>Italic</label>
+          <select name="nav_tagline_italic" onchange="previewReload()">
+            <option value="false" <%= d.nav_tagline_italic !== 'true' ? 'selected' : '' %>>No</option>
+            <option value="true"  <%= d.nav_tagline_italic === 'true' ? 'selected' : '' %>>Yes</option>
+          </select>
+        </div>
+        <div class="ep-field">
+          <label>Color</label>
+          <div class="color-row">
+            <input type="color" value="<%= d.nav_tagline_color || d.color_primary %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
+            <input type="text" name="nav_tagline_color" value="<%= d.nav_tagline_color || '' %>" placeholder="auto" onchange="previewReload()">
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">CTA BUTTON</div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>CTA Text</label>
+          <input type="text" name="nav_cta_text" value="<%= d.nav_cta_text || '' %>" placeholder="Get Started" onchange="previewReload()">
+        </div>
+        <div class="ep-field">
+          <label>CTA Link</label>
+          <input type="text" name="nav_cta_link" value="<%= d.nav_cta_link || '' %>" placeholder="/#contact" onchange="previewReload()">
+        </div>
+      </div>
+    </div>
+
+    <%# ── TAB: Colors ── %>
+    <div class="hf-pane" data-pane="colors" style="display:none;">
+      <div class="ep-field">
+        <label>Background</label>
+        <div class="color-row">
+          <input type="color" value="<%= d.nav_bg || d.color_bg %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
+          <input type="text" name="nav_bg" value="<%= d.nav_bg || '' %>" placeholder="auto" onchange="previewReload()">
+        </div>
+      </div>
+      <div class="ep-field">
+        <label>Default Text <span class="ep-hint" style="display:inline;font-style:italic;">(fallback for brand &amp; links)</span></label>
+        <div class="color-row">
+          <input type="color" value="<%= d.nav_text_color || d.color_dark %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
+          <input type="text" name="nav_text_color" value="<%= d.nav_text_color || '' %>" placeholder="auto" onchange="previewReload()">
+        </div>
+      </div>
+
+      <details style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+        <summary style="cursor:pointer;font-size:0.62rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);user-select:none;">Per-element overrides</summary>
+        <div style="margin-top:10px;">
+          <div class="ep-hint" style="margin-bottom:8px;">Brand &amp; tagline colors live with their typography in the <strong>Layout</strong> tab.</div>
+          <div class="ep-row">
+            <div class="ep-field">
+              <label>Link Resting</label>
+              <div class="color-row">
+                <input type="color" value="<%= d.nav_link_color || d.nav_text_color || d.color_dark %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
+                <input type="text" name="nav_link_color" value="<%= d.nav_link_color || '' %>" placeholder="auto" onchange="previewReload()">
+              </div>
+            </div>
+            <div class="ep-field">
+              <label>Link Hover / Active</label>
+              <div class="color-row">
+                <input type="color" value="<%= d.nav_link_hover_color || d.color_primary %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
+                <input type="text" name="nav_link_hover_color" value="<%= d.nav_link_hover_color || '' %>" placeholder="auto" onchange="previewReload()">
+              </div>
+            </div>
+          </div>
+          <div class="ep-row">
+            <div class="ep-field">
+              <label>CTA Background</label>
+              <div class="color-row">
+                <input type="color" value="<%= d.nav_cta_bg || d.color_accent %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
+                <input type="text" name="nav_cta_bg" value="<%= d.nav_cta_bg || '' %>" placeholder="auto" onchange="previewReload()">
+              </div>
+            </div>
+            <div class="ep-field">
+              <label>CTA Text</label>
+              <div class="color-row">
+                <input type="color" value="<%= d.nav_cta_color || d.color_dark %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
+                <input type="text" name="nav_cta_color" value="<%= d.nav_cta_color || '' %>" placeholder="auto" onchange="previewReload()">
+              </div>
+            </div>
+          </div>
+          <div class="ep-hint">CTA: set both bg + text to render the link as a button. Empty = plain link styling.</div>
+        </div>
+      </details>
+    </div>
+
+    <%# ── TAB: Links ── %>
+    <div class="hf-pane" data-pane="links" style="display:none;">
+      <div class="ep-hint" style="margin-bottom:10px;">CMS pages auto-populate. Add external URLs &amp; section anchors here.</div>
+
+      <% if (navLinks && navLinks.length) { %>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
+          <% navLinks.forEach(function(l) { const fid = 'link-edit-' + l._id; %>
+            <div style="border:1px solid var(--border);border-radius:2px;padding:8px;background:var(--surface);">
+              <input type="hidden" name="_id" value="<%= l._id %>" form="<%= fid %>">
+              <div class="ep-row" style="grid-template-columns:1fr 1.4fr;gap:6px;">
+                <div class="ep-field" style="margin-bottom:6px;">
+                  <label>Label</label>
+                  <input type="text" name="label" value="<%= l.label %>" maxlength="60" form="<%= fid %>">
+                </div>
+                <div class="ep-field" style="margin-bottom:6px;">
+                  <label>URL</label>
+                  <input type="text" name="url" value="<%= l.url %>" maxlength="500" placeholder="/about or https://..." form="<%= fid %>">
+                </div>
+              </div>
+              <div class="ep-row-3" style="gap:6px;">
+                <div class="ep-field" style="margin-bottom:0;">
+                  <label>Show in</label>
+                  <select name="location" form="<%= fid %>">
+                    <option value="header" <%= l.location === 'header' ? 'selected' : '' %>>Header only</option>
+                    <option value="footer" <%= l.location === 'footer' ? 'selected' : '' %>>Footer only</option>
+                    <option value="both"   <%= (l.location || 'both') === 'both' ? 'selected' : '' %>>Both</option>
+                  </select>
+                </div>
+                <div class="ep-field" style="margin-bottom:0;">
+                  <label>Open</label>
+                  <select name="target" form="<%= fid %>">
+                    <option value="_self"  <%= l.target !== '_blank' ? 'selected' : '' %>>Same tab</option>
+                    <option value="_blank" <%= l.target === '_blank' ? 'selected' : '' %>>New tab</option>
+                  </select>
+                </div>
+                <div class="ep-field" style="margin-bottom:0;display:flex;gap:4px;align-items:flex-end;">
+                  <button type="submit" form="<%= fid %>" class="btn btn-navy" style="font-size:0.6rem;padding:6px 8px;flex:1;">Save</button>
+                  <button type="submit" form="link-delete-<%= l._id %>" class="btn btn-ghost" style="font-size:0.6rem;padding:6px 8px;color:var(--danger);" onclick="return confirm('Delete this link?')">&times;</button>
+                </div>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+
+      <div style="border:1px dashed var(--border);border-radius:2px;padding:10px;background:var(--ivory);">
+        <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">+ Add new link</div>
+        <div class="ep-row" style="grid-template-columns:1fr 1.4fr;gap:6px;">
+          <div class="ep-field" style="margin-bottom:6px;">
+            <label>Label</label>
+            <input type="text" name="label" maxlength="60" placeholder="Shop" form="link-create">
+          </div>
+          <div class="ep-field" style="margin-bottom:6px;">
+            <label>URL</label>
+            <input type="text" name="url" maxlength="500" placeholder="/shop or https://..." form="link-create">
+          </div>
+        </div>
+        <div class="ep-row-3" style="gap:6px;">
+          <div class="ep-field" style="margin-bottom:0;">
+            <label>Show in</label>
+            <select name="location" form="link-create">
+              <option value="both" selected>Both</option>
+              <option value="header">Header only</option>
+              <option value="footer">Footer only</option>
+            </select>
+          </div>
+          <div class="ep-field" style="margin-bottom:0;">
+            <label>Open</label>
+            <select name="target" form="link-create">
+              <option value="_self" selected>Same tab</option>
+              <option value="_blank">New tab</option>
+            </select>
+          </div>
+          <div class="ep-field" style="margin-bottom:0;display:flex;align-items:flex-end;">
+            <button type="submit" form="link-create" class="btn btn-navy" style="font-size:0.62rem;padding:7px 10px;width:100%;">Add Link</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
 <%# ─── 5. HERO COPY ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="copy">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Hero Copy <span class="arrow">&#9654;</span>
   </button>
@@ -421,7 +934,7 @@
 </div>
 
 <%# ─── 6. SERVICES COPY ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="copy">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Services <span class="arrow">&#9654;</span>
   </button>
@@ -444,34 +957,54 @@
         <input type="text" name="services_sub" value="<%= copy.services_sub || '' %>">
       </div>
     </div>
-    <% for (let i = 1; i <= 3; i++) { %>
-    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
-      <div style="font-size:0.62rem;font-weight:600;color:var(--slate);letter-spacing:0.1em;margin-bottom:6px;">SERVICE <%= i %></div>
-      <div class="ep-field">
-        <label>Title</label>
-        <input type="text" name="service<%= i %>_title" value="<%= copy['service' + i + '_title'] || '' %>">
-      </div>
-      <div class="ep-field">
-        <label>Description</label>
-        <textarea name="service<%= i %>_desc" rows="2"><%= copy['service' + i + '_desc'] || '' %></textarea>
-      </div>
-      <div class="ep-row">
-        <div class="ep-field">
-          <label>Link</label>
-          <input type="text" name="service<%= i %>_link" value="<%= copy['service' + i + '_link'] || '' %>" placeholder="/services">
+    <%
+      // Count existing services by scanning copy keys for service{N}_*
+      const _svcIdx = new Set();
+      Object.keys(copy).forEach(k => { const m = k.match(/^service(\d+)_/); if (m) _svcIdx.add(parseInt(m[1], 10)); });
+      const _svcArr = [..._svcIdx].sort((a, b) => a - b);
+      if (_svcArr.length === 0) _svcArr.push(1, 2, 3); // ensure at least 3 visible on first load
+    %>
+    <div class="dp-repeater"
+         data-prefix="service"
+         data-noun="Service"
+         data-fields='[{"key":"title","label":"Title","type":"text"},{"key":"desc","label":"Description","type":"textarea","rows":2},{"key":"link","label":"Link","type":"text","placeholder":"/services"},{"key":"image","label":"Image URL","type":"text","placeholder":"/images/..."}]'>
+      <% _svcArr.forEach(function(i, iArr) { %>
+      <div class="dp-rep-item" data-idx="<%= i %>">
+        <div class="dp-rep-head">
+          <span>Service <%= i %></span>
+          <div class="dp-rep-actions">
+            <button type="button" data-dir="-1" onclick="repMove(this, -1)" title="Move up"<%= iArr === 0 ? ' disabled' : '' %>>↑</button>
+            <button type="button" data-dir="1" onclick="repMove(this, 1)" title="Move down"<%= iArr === _svcArr.length - 1 ? ' disabled' : '' %>>↓</button>
+            <button type="button" class="dp-rep-remove" onclick="repRemove(this)" title="Remove this service">✕</button>
+          </div>
         </div>
         <div class="ep-field">
-          <label>Image URL</label>
-          <input type="text" name="service<%= i %>_image" value="<%= copy['service' + i + '_image'] || '' %>" placeholder="/images/...">
+          <label>Title</label>
+          <input type="text" name="service<%= i %>_title" value="<%= copy['service' + i + '_title'] || '' %>">
+        </div>
+        <div class="ep-field">
+          <label>Description</label>
+          <textarea name="service<%= i %>_desc" rows="2"><%= copy['service' + i + '_desc'] || '' %></textarea>
+        </div>
+        <div class="ep-row">
+          <div class="ep-field">
+            <label>Link</label>
+            <input type="text" name="service<%= i %>_link" value="<%= copy['service' + i + '_link'] || '' %>" placeholder="/services">
+          </div>
+          <div class="ep-field">
+            <label>Image URL</label>
+            <input type="text" name="service<%= i %>_image" value="<%= copy['service' + i + '_image'] || '' %>" placeholder="/images/...">
+          </div>
         </div>
       </div>
+      <% }); %>
+      <button type="button" class="dp-rep-add" onclick="repAdd(this)">+ Add Service</button>
     </div>
-    <% } %>
   </div>
 </div>
 
 <%# ─── 7. ABOUT COPY ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="copy">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     About <span class="arrow">&#9654;</span>
   </button>
@@ -498,23 +1031,45 @@
         <input type="text" name="about_initial" value="<%= copy.about_initial || '' %>" placeholder="Large letter">
       </div>
     </div>
-    <% for (let i = 1; i <= 4; i++) { %>
-    <div class="ep-row" style="margin-top:6px;">
-      <div class="ep-field">
-        <label>Stat <%= i %> Number</label>
-        <input type="text" name="about_stat<%= i %>_num" value="<%= copy['about_stat' + i + '_num'] || '' %>" placeholder="e.g. 150+">
+    <%
+      const _statIdx = new Set();
+      Object.keys(copy).forEach(k => { const m = k.match(/^about_stat(\d+)_/); if (m) _statIdx.add(parseInt(m[1], 10)); });
+      const _statArr = [..._statIdx].sort((a, b) => a - b);
+      if (_statArr.length === 0) _statArr.push(1, 2, 3, 4);
+    %>
+    <div class="dp-repeater" style="margin-top:8px;"
+         data-prefix="about_stat"
+         data-noun="Stat"
+         data-fields='[{"key":"num","label":"Number","type":"text","placeholder":"e.g. 150+"},{"key":"label","label":"Label","type":"text","placeholder":"e.g. Projects"}]'>
+      <% _statArr.forEach(function(i, iArr) { %>
+      <div class="dp-rep-item" data-idx="<%= i %>">
+        <div class="dp-rep-head">
+          <span>Stat <%= i %></span>
+          <div class="dp-rep-actions">
+            <button type="button" data-dir="-1" onclick="repMove(this, -1)" title="Move up"<%= iArr === 0 ? ' disabled' : '' %>>↑</button>
+            <button type="button" data-dir="1" onclick="repMove(this, 1)" title="Move down"<%= iArr === _statArr.length - 1 ? ' disabled' : '' %>>↓</button>
+            <button type="button" class="dp-rep-remove" onclick="repRemove(this)" title="Remove this stat">✕</button>
+          </div>
+        </div>
+        <div class="ep-row">
+          <div class="ep-field">
+            <label>Number</label>
+            <input type="text" name="about_stat<%= i %>_num" value="<%= copy['about_stat' + i + '_num'] || '' %>" placeholder="e.g. 150+">
+          </div>
+          <div class="ep-field">
+            <label>Label</label>
+            <input type="text" name="about_stat<%= i %>_label" value="<%= copy['about_stat' + i + '_label'] || '' %>" placeholder="e.g. Projects">
+          </div>
+        </div>
       </div>
-      <div class="ep-field">
-        <label>Stat <%= i %> Label</label>
-        <input type="text" name="about_stat<%= i %>_label" value="<%= copy['about_stat' + i + '_label'] || '' %>" placeholder="e.g. Projects">
-      </div>
+      <% }); %>
+      <button type="button" class="dp-rep-add" onclick="repAdd(this)">+ Add Stat</button>
     </div>
-    <% } %>
   </div>
 </div>
 
 <%# ─── 8. PROCESS COPY ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="copy">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Process <span class="arrow">&#9654;</span>
   </button>
@@ -533,24 +1088,187 @@
         <input type="text" name="process_heading_em" value="<%= copy.process_heading_em || '' %>">
       </div>
     </div>
-    <% for (let i = 1; i <= 4; i++) { %>
-    <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border);">
-      <div style="font-size:0.62rem;font-weight:600;color:var(--slate);letter-spacing:0.1em;margin-bottom:4px;">STEP <%= i %></div>
-      <div class="ep-field">
-        <label>Title</label>
-        <input type="text" name="process<%= i %>_title" value="<%= copy['process' + i + '_title'] || '' %>">
+    <%
+      const _procIdx = new Set();
+      Object.keys(copy).forEach(k => { const m = k.match(/^process(\d+)_/); if (m) _procIdx.add(parseInt(m[1], 10)); });
+      const _procArr = [..._procIdx].sort((a, b) => a - b);
+      if (_procArr.length === 0) _procArr.push(1, 2, 3, 4);
+    %>
+    <div class="dp-repeater"
+         data-prefix="process"
+         data-noun="Step"
+         data-fields='[{"key":"title","label":"Title","type":"text"},{"key":"desc","label":"Description","type":"textarea","rows":2}]'>
+      <% _procArr.forEach(function(i, iArr) { %>
+      <div class="dp-rep-item" data-idx="<%= i %>">
+        <div class="dp-rep-head">
+          <span>Step <%= i %></span>
+          <div class="dp-rep-actions">
+            <button type="button" data-dir="-1" onclick="repMove(this, -1)" title="Move up"<%= iArr === 0 ? ' disabled' : '' %>>↑</button>
+            <button type="button" data-dir="1" onclick="repMove(this, 1)" title="Move down"<%= iArr === _procArr.length - 1 ? ' disabled' : '' %>>↓</button>
+            <button type="button" class="dp-rep-remove" onclick="repRemove(this)" title="Remove this step">✕</button>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Title</label>
+          <input type="text" name="process<%= i %>_title" value="<%= copy['process' + i + '_title'] || '' %>">
+        </div>
+        <div class="ep-field">
+          <label>Description</label>
+          <textarea name="process<%= i %>_desc" rows="2"><%= copy['process' + i + '_desc'] || '' %></textarea>
+        </div>
       </div>
-      <div class="ep-field">
-        <label>Description</label>
-        <textarea name="process<%= i %>_desc" rows="2"><%= copy['process' + i + '_desc'] || '' %></textarea>
+      <% }); %>
+      <button type="button" class="dp-rep-add" onclick="repAdd(this)">+ Add Step</button>
+    </div>
+  </div>
+</div>
+
+<%# ─── 8b. CUSTOM SECTIONS ─── %>
+<%# ─── 8b. CUSTOM SECTIONS — inline copy editors, one accordion per section ─── %>
+<% _validSections.forEach(function(sec) { %>
+  <% const _tmpl = _sectionTemplates[sec.type] || {};
+     const _fields = _tmpl.fields || [];
+     const _hidden = sec.visible === false;
+  %>
+  <div class="editor-section cs-edit" data-tab="copy" data-cs-id="<%= sec._id %>">
+    <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+      <span><%= _tmpl.icon || '▦' %> <%= sec.label || 'Custom Section' %></span>
+      <% if (_hidden) { %><span style="font-size:0.55rem;font-weight:700;letter-spacing:0.12em;background:rgba(0,0,0,0.06);color:var(--slate);padding:1px 5px;border-radius:2px;margin-left:6px;">HIDDEN</span><% } %>
+      <span class="arrow">&#9654;</span>
+    </button>
+    <div class="editor-section-body">
+      <div class="ep-hint" style="margin-bottom:8px;">
+        <strong><%= _tmpl.label || sec.type %></strong> — order & visibility under Section Visibility (Sections tab).
+      </div>
+      <%
+        // Partition template fields into singletons vs. repeatable groups
+        // (cards1_*..cardN_* and q1/a1..qN/aN). Anything outside known
+        // repeatable patterns renders as a regular singleton input.
+        const _cardRx = /^card(\d+)_(title|body|image)$/;
+        const _faqRx = /^(q|a)(\d+)$/;
+        const _singletons = [];
+        _fields.forEach(function(f) {
+          if (sec.type === 'cards' && _cardRx.test(f.key)) return;
+          if (sec.type === 'faq' && _faqRx.test(f.key)) return;
+          _singletons.push(f);
+        });
+      %>
+      <% _singletons.forEach(function(f) { %>
+        <div class="ep-field">
+          <label><%= f.label %></label>
+          <% if (f.type === 'textarea') { %>
+            <textarea data-cs-field="<%= f.key %>" rows="<%= f.rows || 2 %>"><%= (sec.fields && sec.fields[f.key]) || '' %></textarea>
+          <% } else { %>
+            <input type="text" data-cs-field="<%= f.key %>" value="<%= (sec.fields && sec.fields[f.key]) ? String(sec.fields[f.key]).replace(/"/g, '&quot;') : '' %>">
+          <% } %>
+        </div>
+      <% }); %>
+
+      <% if (sec.type === 'cards') { %>
+        <%
+          const _cardIdx = new Set();
+          Object.keys(sec.fields || {}).forEach(k => { const m = k.match(_cardRx); if (m) _cardIdx.add(parseInt(m[1], 10)); });
+          const _cardArr = [..._cardIdx].sort((a, b) => a - b);
+          if (_cardArr.length === 0) _cardArr.push(1, 2, 3, 4);
+        %>
+        <div class="dp-repeater cs-repeater" style="margin-top:10px;"
+             data-prefix="card"
+             data-noun="Card"
+             data-fields='[{"key":"title","label":"Title","type":"text"},{"key":"body","label":"Body","type":"textarea","rows":2},{"key":"image","label":"Image URL","type":"text","placeholder":"/images/..."}]'>
+          <% _cardArr.forEach(function(i, iArr) { %>
+          <div class="dp-rep-item" data-idx="<%= i %>">
+            <div class="dp-rep-head">
+              <span>Card <%= i %></span>
+              <div class="dp-rep-actions">
+                <button type="button" data-dir="-1" onclick="repMove(this, -1)" title="Move up"<%= iArr === 0 ? ' disabled' : '' %>>↑</button>
+                <button type="button" data-dir="1" onclick="repMove(this, 1)" title="Move down"<%= iArr === _cardArr.length - 1 ? ' disabled' : '' %>>↓</button>
+                <button type="button" class="dp-rep-remove" onclick="csRepRemove(this)" title="Remove this card">✕</button>
+              </div>
+            </div>
+            <div class="ep-field">
+              <label>Title</label>
+              <input type="text" data-cs-field="card<%= i %>_title" value="<%= (sec.fields && sec.fields['card' + i + '_title']) ? String(sec.fields['card' + i + '_title']).replace(/"/g, '&quot;') : '' %>">
+            </div>
+            <div class="ep-field">
+              <label>Body</label>
+              <textarea data-cs-field="card<%= i %>_body" rows="2"><%= (sec.fields && sec.fields['card' + i + '_body']) || '' %></textarea>
+            </div>
+            <div class="ep-field">
+              <label>Image URL</label>
+              <input type="text" data-cs-field="card<%= i %>_image" value="<%= (sec.fields && sec.fields['card' + i + '_image']) ? String(sec.fields['card' + i + '_image']).replace(/"/g, '&quot;') : '' %>" placeholder="/images/...">
+            </div>
+          </div>
+          <% }); %>
+          <button type="button" class="dp-rep-add" onclick="csRepAdd(this)">+ Add Card</button>
+        </div>
+      <% } else if (sec.type === 'faq') { %>
+        <%
+          const _faqIdx = new Set();
+          Object.keys(sec.fields || {}).forEach(k => { const m = k.match(/^q(\d+)$/); if (m) _faqIdx.add(parseInt(m[1], 10)); });
+          const _faqArr = [..._faqIdx].sort((a, b) => a - b);
+          if (_faqArr.length === 0) _faqArr.push(1, 2, 3, 4, 5);
+        %>
+        <div class="dp-repeater cs-repeater" style="margin-top:10px;"
+             data-prefix="q"
+             data-noun="Q&amp;A"
+             data-fields='[{"keyMode":"only","prefix":"q","labelTpl":"Question {n}","type":"text"},{"keyMode":"only","prefix":"a","labelTpl":"Answer {n}","type":"textarea","rows":2}]'>
+          <% _faqArr.forEach(function(i, iArr) { %>
+          <div class="dp-rep-item" data-idx="<%= i %>">
+            <div class="dp-rep-head">
+              <span>Q&amp;A <%= i %></span>
+              <div class="dp-rep-actions">
+                <button type="button" data-dir="-1" onclick="repMove(this, -1)" title="Move up"<%= iArr === 0 ? ' disabled' : '' %>>↑</button>
+                <button type="button" data-dir="1" onclick="repMove(this, 1)" title="Move down"<%= iArr === _faqArr.length - 1 ? ' disabled' : '' %>>↓</button>
+                <button type="button" class="dp-rep-remove" onclick="csRepRemove(this)" title="Remove this Q&amp;A">✕</button>
+              </div>
+            </div>
+            <div class="ep-field">
+              <label>Question <%= i %></label>
+              <input type="text" data-cs-field="q<%= i %>" value="<%= (sec.fields && sec.fields['q' + i]) ? String(sec.fields['q' + i]).replace(/"/g, '&quot;') : '' %>">
+            </div>
+            <div class="ep-field">
+              <label>Answer <%= i %></label>
+              <textarea data-cs-field="a<%= i %>" rows="2"><%= (sec.fields && sec.fields['a' + i]) || '' %></textarea>
+            </div>
+          </div>
+          <% }); %>
+          <button type="button" class="dp-rep-add" onclick="csRepAdd(this)">+ Add Q&amp;A</button>
+        </div>
+      <% } %>
+
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <button type="button" class="btn btn-navy" style="font-size:0.62rem;padding:5px 12px;letter-spacing:0.08em;" onclick="csSave('<%= sec._id %>', this)">Save Section</button>
+        <button type="button" class="btn btn-ghost" style="font-size:0.62rem;padding:5px 12px;letter-spacing:0.08em;color:#8B1C1C;" onclick="csDelete('<%= sec._id %>', this)">Delete</button>
       </div>
     </div>
-    <% } %>
+  </div>
+<% }); %>
+
+<%# ── + Add Custom Section (always visible in Copy tab) ── %>
+<div class="editor-section open" data-tab="copy" id="cs-add-section">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    + Add Custom Section <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-field">
+      <label>Section Type</label>
+      <select id="cs-new-type">
+        <% Object.entries(_sectionTemplates).forEach(function([key, t]) { %>
+          <option value="<%= key %>"><%= t.icon || '▦' %> <%= t.label || key %></option>
+        <% }); %>
+      </select>
+    </div>
+    <div class="ep-field">
+      <label>Label (for admin use)</label>
+      <input type="text" id="cs-new-label" placeholder="e.g. Featured Products, Why Choose Us">
+    </div>
+    <div id="cs-new-err" style="display:none;color:#8B1C1C;font-size:0.72rem;margin-bottom:6px;"></div>
+    <button type="button" class="btn btn-navy" style="font-size:0.62rem;padding:6px 14px;letter-spacing:0.08em;" onclick="csCreate(this)">Create Section</button>
   </div>
 </div>
 
 <%# ─── 9. PRICING TIERS ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="copy">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Pricing Tiers <span class="arrow">&#9654;</span>
   </button>
@@ -720,7 +1438,7 @@
 </div>
 
 <%# ─── 10. CONTACT COPY ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="copy">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Contact <span class="arrow">&#9654;</span>
   </button>
@@ -752,7 +1470,7 @@
         </div>
         <div class="ep-field">
           <label>Location Value</label>
-          <input type="text" name="contact_location" value="<%= copy.contact_location || '' %>">
+          <input type="text" name="contact_location" value="<%= copy.contact_location || '' %>" placeholder="<%= brand?.location || '' %>">
         </div>
       </div>
       <div class="ep-row">
@@ -762,7 +1480,7 @@
         </div>
         <div class="ep-field">
           <label>Serving Value</label>
-          <input type="text" name="contact_serving" value="<%= copy.contact_serving || '' %>">
+          <input type="text" name="contact_serving" value="<%= copy.contact_serving || '' %>" placeholder="<%= brand?.serviceArea || '' %>">
         </div>
       </div>
       <div class="ep-row">
@@ -902,7 +1620,7 @@
 </div>
 
 <%# ─── 11. HERO & SECTION STYLING ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Hero & Section Styling <span class="arrow">&#9654;</span>
   </button>
@@ -969,28 +1687,15 @@
 </div>
 
 <%# ─── 12. DISPLAY LAYOUTS ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Display Layouts <span class="arrow">&#9654;</span>
   </button>
   <div class="editor-section-body">
+    <div class="ep-hint" style="margin-bottom:10px;">Logo &amp; navbar settings live in <strong>Header &amp; Footer</strong> above.</div>
     <div class="ep-field">
-      <label>Navbar Logo</label>
-      <select name="nav_logo_display" id="field-nav_logo_display">
-        <option value="text" <%= design.nav_logo_display === 'text' ? 'selected' : '' %>>Text only</option>
-        <option value="image" <%= design.nav_logo_display === 'image' ? 'selected' : '' %>>Image only</option>
-        <option value="both" <%= design.nav_logo_display === 'both' ? 'selected' : '' %>>Image + Text</option>
-      </select>
-    </div>
-    <div class="ep-row">
-      <div class="ep-field">
-        <label>Logo Split</label>
-        <input type="number" name="nav_logo_split" id="field-nav_logo_split" min="0" max="10" value="<%= design.nav_logo_split || 0 %>">
-      </div>
-      <div class="ep-field">
-        <label>Hero Large Text</label>
-        <input type="text" name="hero_name_large" id="field-hero_name_large" value="<%= design.hero_name_large || '' %>" placeholder="Auto">
-      </div>
+      <label>Hero Large Text</label>
+      <input type="text" name="hero_name_large" id="field-hero_name_large" value="<%= design.hero_name_large || '' %>" placeholder="Auto">
     </div>
     <div class="ep-row">
       <div class="ep-field">
@@ -1016,7 +1721,7 @@
 </div>
 
 <%# ─── 13. AI ASSISTANT ─── %>
-<div class="editor-section">
+<div class="editor-section" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     AI Assistant <span class="arrow">&#9654;</span>
   </button>
@@ -1033,212 +1738,8 @@
   </div>
 </div>
 
-</form>
-<%# ─── 14. BRAND IMAGES ─── %>
-<div class="editor-section">
-  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
-    Brand Images <span class="arrow">&#9654;</span>
-  </button>
-  <div class="editor-section-body">
-    <%
-      const logoSlots = [
-        { slot: 'logo_primary', label: 'Primary Logo' },
-        { slot: 'logo_white',   label: 'White Logo' },
-        { slot: 'logo_icon',    label: 'Icon/Favicon' },
-        { slot: 'banner',       label: 'Banner' },
-      ];
-    %>
-    <div class="brand-img-grid">
-      <% logoSlots.forEach(ls => { %>
-        <% const existing = brandImages.find(i => i.slot === ls.slot); %>
-        <div class="brand-img-slot">
-          <% if (existing) { %>
-            <img src="<%= existing.url %>" alt="<%= ls.label %>" style="<%= ls.slot === 'logo_white' ? 'background:var(--navy-deep);' : '' %>">
-          <% } else { %>
-            <div style="height:60px;background:var(--ivory);display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:var(--slate);">None</div>
-          <% } %>
-          <div class="lbl"><%= ls.label %></div>
-        </div>
-      <% }) %>
-    </div>
-    <div style="margin-top:10px;">
-      <div class="ep-hint" style="margin-bottom:6px;">Upload and manage images on the brand images page.</div>
-      <% const supportCount = brandImages.filter(i => i.slot === 'support').length; %>
-      <div class="ep-hint"><%= supportCount %> support image<%= supportCount !== 1 ? 's' : '' %> uploaded.</div>
-    </div>
-
-    <%# Inline upload forms for logos %>
-    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
-      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin-bottom:8px;">UPLOAD / REPLACE</div>
-      <% logoSlots.forEach(ls => { %>
-        <% const existing = brandImages.find(i => i.slot === ls.slot); %>
-        <div style="margin-bottom:8px;">
-          <div style="font-size:0.68rem;color:var(--on-surface);margin-bottom:4px;"><%= ls.label %></div>
-          <form method="POST" action="/admin/design/images" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
-            <input type="hidden" name="slot" value="<%= ls.slot %>">
-            <input type="hidden" name="label" value="<%= ls.label %>">
-            <input type="file" name="image" accept="image/*" required style="font-size:0.65rem;max-width:160px;">
-            <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:3px 8px;"><%= existing ? 'Replace' : 'Upload' %></button>
-          </form>
-        </div>
-      <% }) %>
-    </div>
-  </div>
-</div>
-
-<%# ─── 15. 3D MODELS (collapsed) ─── %>
-<div class="editor-section">
-  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
-    3D Models <span class="arrow">&#9654;</span>
-  </button>
-  <div class="editor-section-body">
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
-      <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
-        <input type="checkbox" id="toggle_model_header" <%= design.model_header_enabled === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);" onchange="toggleModel('model_header_enabled', this.checked)"> 3D Header
-      </label>
-      <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
-        <input type="checkbox" id="toggle_model_logo" <%= design.model_logo_enabled === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);" onchange="toggleModel('model_logo_enabled', this.checked)"> 3D Logo
-      </label>
-    </div>
-    <%
-      const modelSlots = [
-        { slot: 'model_header', label: 'Header Model' },
-        { slot: 'model_logo',   label: 'Logo Model' },
-      ];
-    %>
-    <% modelSlots.forEach(ms => { %>
-      <% const existing = brandModels.find(m => m.slot === ms.slot); %>
-      <div style="margin-bottom:8px;">
-        <div style="font-size:0.68rem;color:var(--on-surface);margin-bottom:4px;"><%= ms.label %> <% if (existing) { %><span style="color:var(--success);font-size:0.6rem;">uploaded</span><% } %></div>
-        <form method="POST" action="/admin/design/models" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
-          <input type="hidden" name="slot" value="<%= ms.slot %>">
-          <input type="hidden" name="label" value="<%= ms.label %>">
-          <input type="file" name="model" accept=".glb,.gltf" required style="font-size:0.65rem;max-width:160px;">
-          <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:3px 8px;"><%= existing ? 'Replace' : 'Upload' %></button>
-        </form>
-      </div>
-    <% }) %>
-    <div class="ep-hint">GLB format recommended. Max 20MB.</div>
-  </div>
-</div>
-
-<%# ─── 16. THEMES ─── %>
-<div class="editor-section">
-  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
-    Themes <span class="arrow">&#9654;</span>
-  </button>
-  <div class="editor-section-body">
-    <%# Save current as theme — separate form target %>
-    <div style="margin-bottom:12px;">
-      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin-bottom:6px;">SAVE CURRENT</div>
-    </div>
-    <!-- This is a nested form workaround: we use formaction on the button -->
-    <div style="display:flex;gap:6px;margin-bottom:14px;">
-      <input type="text" id="themeNameInput" placeholder="Theme name" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:2px;font-size:0.75rem;font-family:var(--font-body);">
-      <button type="button" class="btn btn-navy btn-sm" style="font-size:0.62rem;white-space:nowrap;" onclick="saveTheme()">Save Theme</button>
-    </div>
-
-    <% if (themes && themes.length) { %>
-      <% for (const t of themes) { %>
-      <div class="theme-card">
-        <div class="theme-card-swatches">
-          <div style="background:<%= t.settings.color_primary || '#1C2B4A' %>;"></div>
-          <div style="background:<%= t.settings.color_primary_deep || '#0F1B30' %>;"></div>
-          <div style="background:<%= t.settings.color_accent || '#C9A848' %>;"></div>
-          <div style="background:<%= t.settings.color_bg || '#F5F3EF' %>;"></div>
-        </div>
-        <div class="theme-card-body">
-          <div class="theme-card-name"><%= t.name %></div>
-          <div class="theme-card-meta"><%= t.settings.font_heading || 'Default' %> / <%= t.settings.font_body || 'Default' %> &middot; <%= new Date(t.createdAt).toLocaleDateString() %></div>
-          <div class="theme-card-actions">
-            <form method="POST" action="/admin/design/themes/<%= t._id %>/apply" style="display:inline;">
-              <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.58rem;padding:3px 8px;" onclick="return confirm('Apply this theme?')">Apply</button>
-            </form>
-            <form method="POST" action="/admin/design/themes/<%= t._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete?')">
-              <button type="submit" class="btn btn-danger btn-sm" style="font-size:0.58rem;padding:3px 8px;">Del</button>
-            </form>
-          </div>
-        </div>
-      </div>
-      <% } %>
-    <% } else { %>
-      <div style="font-size:0.75rem;color:var(--slate);padding:12px 0;">No saved themes yet.</div>
-    <% } %>
-  </div>
-</div>
-
-<% const d = design; %>
-<!-- ── HEADER / NAV ── -->
-<div class="editor-section">
-  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
-    Header / Navigation <span class="arrow">&#9654;</span>
-  </button>
-  <div class="editor-section-body">
-    <div class="ep-field">
-      <label>Logo Display</label>
-      <select name="nav_logo_display" onchange="previewReload()">
-        <option value="text" <%= d.nav_logo_display === 'text' ? 'selected' : '' %>>Text Only</option>
-        <option value="image" <%= d.nav_logo_display === 'image' ? 'selected' : '' %>>Image Only</option>
-        <option value="both" <%= d.nav_logo_display === 'both' ? 'selected' : '' %>>Both</option>
-      </select>
-    </div>
-    <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:12px 0 6px;">LOGO TEXT ACCENT</div>
-    <div class="ep-hint" style="margin-bottom:8px;">Color a range of characters in your brand name. Char positions are 1-based.</div>
-    <div class="ep-row">
-      <div class="ep-field">
-        <label>Char Start</label>
-        <input type="number" name="nav_logo_split" value="<%= d.nav_logo_split || '0' %>" min="0" max="50" onchange="previewReload()">
-      </div>
-      <div class="ep-field">
-        <label>Char End</label>
-        <input type="number" name="nav_logo_split_end" value="<%= d.nav_logo_split_end || '0' %>" min="0" max="50" onchange="previewReload()">
-      </div>
-    </div>
-    <div class="ep-field">
-      <label>Accent Color (leave empty for theme accent)</label>
-      <div class="color-row">
-        <input type="color" value="<%= d.nav_logo_accent_color || d.color_accent %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
-        <input type="text" name="nav_logo_accent_color" value="<%= d.nav_logo_accent_color || '' %>" placeholder="auto" onchange="previewReload()">
-      </div>
-    </div>
-    <div class="ep-field">
-      <label>Show Tagline</label>
-      <select name="nav_tagline_display" onchange="previewReload()">
-        <option value="true" <%= d.nav_tagline_display !== 'false' ? 'selected' : '' %>>Yes</option>
-        <option value="false" <%= d.nav_tagline_display === 'false' ? 'selected' : '' %>>No</option>
-      </select>
-    </div>
-    <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:12px 0 6px;">NAV CTA BUTTON</div>
-    <div class="ep-row">
-      <div class="ep-field">
-        <label>CTA Text</label>
-        <input type="text" name="nav_cta_text" value="<%= d.nav_cta_text || '' %>" placeholder="Get Started" onchange="previewReload()">
-      </div>
-      <div class="ep-field">
-        <label>CTA Link</label>
-        <input type="text" name="nav_cta_link" value="<%= d.nav_cta_link || '' %>" placeholder="/#contact" onchange="previewReload()">
-      </div>
-    </div>
-    <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:12px 0 6px;">NAV COLORS</div>
-    <div class="ep-field">
-      <label>Background (empty = auto)</label>
-      <div class="color-row">
-        <input type="color" value="<%= d.nav_bg || d.color_bg %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
-        <input type="text" name="nav_bg" value="<%= d.nav_bg || '' %>" placeholder="auto" onchange="previewReload()">
-      </div>
-    </div>
-    <div class="ep-field">
-      <label>Link Color (empty = auto)</label>
-      <div class="color-row">
-        <input type="color" value="<%= d.nav_text_color || d.color_dark %>" onchange="this.nextElementSibling.value=this.value;previewReload()" oninput="this.nextElementSibling.value=this.value">
-        <input type="text" name="nav_text_color" value="<%= d.nav_text_color || '' %>" placeholder="auto" onchange="previewReload()">
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- ── CUSTOM ELEMENTS ── -->
-<div class="editor-section">
+<div class="editor-section" data-tab="sections">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Custom Elements <span class="arrow">&#9654;</span>
   </button>
@@ -1320,6 +1821,153 @@
   </div>
 </div>
 
+</form>
+
+<%# ─── Standalone forms for inline controls (HTML5 disallows nested <form>). ─── %>
+<%# Each form is `hidden` and zero-size; its submit is triggered by buttons elsewhere via the `form` attribute. %>
+<form id="link-create" action="/admin/design/links" method="POST" hidden></form>
+<% (navLinks || []).forEach(function(l) { %>
+  <form id="link-edit-<%= l._id %>" action="/admin/design/links" method="POST" hidden></form>
+  <form id="link-delete-<%= l._id %>" action="/admin/design/links/<%= l._id %>/delete" method="POST" hidden></form>
+<% }); %>
+<% (templates || []).forEach(function(tpl) { %>
+  <form id="tpl-act-<%= tpl._id %>"   action="/admin/templates/<%= tpl._id %>/activate"   method="POST" hidden></form>
+  <form id="tpl-deact-<%= tpl._id %>" action="/admin/templates/<%= tpl._id %>/deactivate" method="POST" hidden></form>
+<% }); %>
+
+<%# ─── 14. BRAND IMAGES ─── %>
+<div class="editor-section" data-tab="brand">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Brand Images <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <%
+      const logoSlots = [
+        { slot: 'logo_primary', label: 'Primary Logo' },
+        { slot: 'logo_white',   label: 'White Logo' },
+        { slot: 'logo_icon',    label: 'Icon/Favicon' },
+        { slot: 'banner',       label: 'Banner' },
+      ];
+    %>
+    <div class="brand-img-grid">
+      <% logoSlots.forEach(ls => { %>
+        <% const existing = brandImages.find(i => i.slot === ls.slot); %>
+        <div class="brand-img-slot">
+          <% if (existing) { %>
+            <img src="<%= existing.url %>" alt="<%= ls.label %>" style="<%= ls.slot === 'logo_white' ? 'background:var(--navy-deep);' : '' %>">
+          <% } else { %>
+            <div style="height:60px;background:var(--ivory);display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:var(--slate);">None</div>
+          <% } %>
+          <div class="lbl"><%= ls.label %></div>
+        </div>
+      <% }) %>
+    </div>
+    <div style="margin-top:10px;">
+      <div class="ep-hint" style="margin-bottom:6px;">Upload and manage images on the brand images page.</div>
+      <% const supportCount = brandImages.filter(i => i.slot === 'support').length; %>
+      <div class="ep-hint"><%= supportCount %> support image<%= supportCount !== 1 ? 's' : '' %> uploaded.</div>
+    </div>
+
+    <%# Inline upload forms for logos %>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin-bottom:8px;">UPLOAD / REPLACE</div>
+      <% logoSlots.forEach(ls => { %>
+        <% const existing = brandImages.find(i => i.slot === ls.slot); %>
+        <div style="margin-bottom:8px;">
+          <div style="font-size:0.68rem;color:var(--on-surface);margin-bottom:4px;"><%= ls.label %></div>
+          <form method="POST" action="/admin/design/images" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+            <input type="hidden" name="slot" value="<%= ls.slot %>">
+            <input type="hidden" name="label" value="<%= ls.label %>">
+            <input type="file" name="image" accept="image/*" required style="font-size:0.65rem;max-width:160px;">
+            <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:3px 8px;"><%= existing ? 'Replace' : 'Upload' %></button>
+          </form>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<%# ─── 15. 3D MODELS (collapsed) ─── %>
+<div class="editor-section" data-tab="brand">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    3D Models <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
+      <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="toggle_model_header" <%= design.model_header_enabled === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);" onchange="toggleModel('model_header_enabled', this.checked)"> 3D Header
+      </label>
+      <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="toggle_model_logo" <%= design.model_logo_enabled === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);" onchange="toggleModel('model_logo_enabled', this.checked)"> 3D Logo
+      </label>
+    </div>
+    <%
+      const modelSlots = [
+        { slot: 'model_header', label: 'Header Model' },
+        { slot: 'model_logo',   label: 'Logo Model' },
+      ];
+    %>
+    <% modelSlots.forEach(ms => { %>
+      <% const existing = brandModels.find(m => m.slot === ms.slot); %>
+      <div style="margin-bottom:8px;">
+        <div style="font-size:0.68rem;color:var(--on-surface);margin-bottom:4px;"><%= ms.label %> <% if (existing) { %><span style="color:var(--success);font-size:0.6rem;">uploaded</span><% } %></div>
+        <form method="POST" action="/admin/design/models" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+          <input type="hidden" name="slot" value="<%= ms.slot %>">
+          <input type="hidden" name="label" value="<%= ms.label %>">
+          <input type="file" name="model" accept=".glb,.gltf" required style="font-size:0.65rem;max-width:160px;">
+          <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:3px 8px;"><%= existing ? 'Replace' : 'Upload' %></button>
+        </form>
+      </div>
+    <% }) %>
+    <div class="ep-hint">GLB format recommended. Max 20MB.</div>
+  </div>
+</div>
+
+<%# ─── 16. THEMES ─── %>
+<div class="editor-section" data-tab="brand">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Themes <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <%# Save current as theme — separate form target %>
+    <div style="margin-bottom:12px;">
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin-bottom:6px;">SAVE CURRENT</div>
+    </div>
+    <!-- This is a nested form workaround: we use formaction on the button -->
+    <div style="display:flex;gap:6px;margin-bottom:14px;">
+      <input type="text" id="themeNameInput" placeholder="Theme name" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:2px;font-size:0.75rem;font-family:var(--font-body);">
+      <button type="button" class="btn btn-navy btn-sm" style="font-size:0.62rem;white-space:nowrap;" onclick="saveTheme()">Save Theme</button>
+    </div>
+
+    <% if (themes && themes.length) { %>
+      <% for (const t of themes) { %>
+      <div class="theme-card">
+        <div class="theme-card-swatches">
+          <div style="background:<%= t.settings.color_primary || '#1C2B4A' %>;"></div>
+          <div style="background:<%= t.settings.color_primary_deep || '#0F1B30' %>;"></div>
+          <div style="background:<%= t.settings.color_accent || '#C9A848' %>;"></div>
+          <div style="background:<%= t.settings.color_bg || '#F5F3EF' %>;"></div>
+        </div>
+        <div class="theme-card-body">
+          <div class="theme-card-name"><%= t.name %></div>
+          <div class="theme-card-meta"><%= t.settings.font_heading || 'Default' %> / <%= t.settings.font_body || 'Default' %> &middot; <%= new Date(t.createdAt).toLocaleDateString() %></div>
+          <div class="theme-card-actions">
+            <form method="POST" action="/admin/design/themes/<%= t._id %>/apply" style="display:inline;">
+              <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.58rem;padding:3px 8px;" onclick="return confirm('Apply this theme?')">Apply</button>
+            </form>
+            <form method="POST" action="/admin/design/themes/<%= t._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete?')">
+              <button type="submit" class="btn btn-danger btn-sm" style="font-size:0.58rem;padding:3px 8px;">Del</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <% } %>
+    <% } else { %>
+      <div style="font-size:0.75rem;color:var(--slate);padding:12px 0;">No saved themes yet.</div>
+    <% } %>
+  </div>
+</div>
+
 </div><!-- /.editor-panel -->
 
 <%# ═══════════ RIGHT PANEL — PREVIEW ═══════════ %>
@@ -1372,10 +2020,277 @@
 </div>
 
 <script>
+// ── Tab switching ──
+function dpSwitch(tab) {
+  document.querySelectorAll('#dpTabs .dp-tab').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  document.querySelectorAll('.editor-section[data-tab]').forEach(function(s) {
+    s.classList.toggle('dp-show', s.dataset.tab === tab);
+  });
+  // Persist tab to URL hash so refresh / deep-links survive
+  try { history.replaceState(null, '', '#tab=' + tab); } catch (e) {}
+}
+(function() {
+  var initial = 'source';
+  var m = location.hash.match(/tab=([a-z]+)/);
+  if (m && ['source','design','copy','sections','templates','brand'].indexOf(m[1]) !== -1) initial = m[1];
+  dpSwitch(initial);
+})();
+
 // ── Accordion toggle ──
 function toggleSection(btn) {
   var section = btn.closest('.editor-section');
   section.classList.toggle('open');
+}
+
+// ── Repeater (add/remove items in copy lists; data-attrs drive everything) ──
+// Wrapper config (set as JSON on the .dp-repeater element):
+//   data-prefix     — key prefix (e.g. "service", "process", "pricing_tier")
+//   data-fields     — JSON array [{key:"title",label:"Title",type:"text"},...]
+//   data-noun       — singular label for the +Add button ("Service")
+//   data-startidx   — first index used by template (default 1)
+function repAdd(btn) {
+  var wrap = btn.closest('.dp-repeater');
+  var prefix = wrap.dataset.prefix;
+  var fields;
+  try { fields = JSON.parse(wrap.dataset.fields); } catch (e) { fields = []; }
+  var items = wrap.querySelectorAll('.dp-rep-item');
+  // Find next free index — scan existing items and use max+1.
+  var nextIdx = 1;
+  items.forEach(function(it) { var n = parseInt(it.dataset.idx, 10); if (n >= nextIdx) nextIdx = n + 1; });
+  var item = document.createElement('div');
+  item.className = 'dp-rep-item';
+  item.dataset.idx = nextIdx;
+  var nounCap = (wrap.dataset.noun || 'Item') + ' ' + nextIdx;
+  var html = '<div class="dp-rep-head"><span>' + nounCap + '</span>' +
+    '<div class="dp-rep-actions">' +
+      '<button type="button" data-dir="-1" onclick="repMove(this, -1)" title="Move up">↑</button>' +
+      '<button type="button" data-dir="1" onclick="repMove(this, 1)" title="Move down">↓</button>' +
+      '<button type="button" class="dp-rep-remove" onclick="repRemove(this)" title="Remove this ' + (wrap.dataset.noun || 'item').toLowerCase() + '">✕</button>' +
+    '</div></div>';
+  fields.forEach(function(f) {
+    var name = prefix + nextIdx + '_' + f.key;
+    html += '<div class="ep-field"><label>' + (f.label || f.key) + '</label>';
+    if (f.type === 'textarea') html += '<textarea name="' + name + '" rows="' + (f.rows || 2) + '"></textarea>';
+    else if (f.type === 'checkbox') html += '<label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;text-transform:none;letter-spacing:0;"><input type="checkbox" name="' + name + '" value="yes" style="width:14px;height:14px;accent-color:var(--navy);"> ' + (f.checkboxLabel || 'Yes') + '</label>';
+    else html += '<input type="text" name="' + name + '"' + (f.placeholder ? ' placeholder="' + f.placeholder + '"' : '') + '>';
+    html += '</div>';
+  });
+  item.innerHTML = html;
+  // Insert before the +Add button
+  btn.parentNode.insertBefore(item, btn);
+  repRefreshBoundary(wrap);
+  // Focus first input
+  var first = item.querySelector('input,textarea');
+  if (first) first.focus();
+}
+function repRemove(btn) {
+  var item = btn.closest('.dp-rep-item');
+  if (!item) return;
+  if (!confirm('Remove this item? Saved data for it will be cleared on next Save All.')) return;
+  var wrap = item.closest('.dp-repeater');
+  // Mark every keyed input on this row for removal so the server deletes them.
+  item.querySelectorAll('[name]').forEach(function(el) {
+    var hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = '_keys_to_remove';
+    hidden.value = el.name;
+    document.getElementById('designForm').appendChild(hidden);
+  });
+  item.remove();
+  if (wrap) repRefreshBoundary(wrap);
+}
+
+// ── Custom-section repeater (cards / FAQ pairs inside per-section editors) ──
+// Uses data-cs-field instead of name; saves happen via csSave AJAX. No
+// _keys_to_remove tracking needed since server overwrites sec.fields entirely.
+function csRepAdd(btn) {
+  var wrap = btn.closest('.cs-repeater');
+  var prefix = wrap.dataset.prefix;
+  var fields;
+  try { fields = JSON.parse(wrap.dataset.fields); } catch (e) { fields = []; }
+  var nextIdx = 1;
+  wrap.querySelectorAll('.dp-rep-item').forEach(function(it) {
+    var n = parseInt(it.dataset.idx, 10); if (n >= nextIdx) nextIdx = n + 1;
+  });
+  var item = document.createElement('div');
+  item.className = 'dp-rep-item';
+  item.dataset.idx = nextIdx;
+  var noun = (wrap.dataset.noun || 'Item') + ' ' + nextIdx;
+  var html = '<div class="dp-rep-head"><span>' + noun + '</span>' +
+    '<div class="dp-rep-actions">' +
+      '<button type="button" data-dir="-1" onclick="repMove(this, -1)" title="Move up">↑</button>' +
+      '<button type="button" data-dir="1" onclick="repMove(this, 1)" title="Move down">↓</button>' +
+      '<button type="button" class="dp-rep-remove" onclick="csRepRemove(this)" title="Remove">✕</button>' +
+    '</div></div>';
+  fields.forEach(function(f) {
+    // keyMode "only" → field name = f.prefix + idx (e.g. q5, a5).
+    // keyMode "suffix" (default) → field name = wrap.prefix + idx + '_' + f.key (e.g. card5_title).
+    var key = f.keyMode === 'only'
+      ? (f.prefix || prefix) + nextIdx
+      : prefix + nextIdx + '_' + f.key;
+    var label = typeof f.labelTpl === 'string' ? f.labelTpl.replace('{n}', nextIdx) : (f.label || f.key);
+    html += '<div class="ep-field"><label>' + label + '</label>';
+    if (f.type === 'textarea') html += '<textarea data-cs-field="' + key + '" rows="' + (f.rows || 2) + '"></textarea>';
+    else html += '<input type="text" data-cs-field="' + key + '"' + (f.placeholder ? ' placeholder="' + f.placeholder + '"' : '') + '>';
+    html += '</div>';
+  });
+  item.innerHTML = html;
+  btn.parentNode.insertBefore(item, btn);
+  repRefreshBoundary(wrap);
+  var first = item.querySelector('input,textarea');
+  if (first) first.focus();
+}
+function csRepRemove(btn) {
+  var item = btn.closest('.dp-rep-item');
+  if (!item) return;
+  if (!confirm('Remove this item? Click Save Section to commit.')) return;
+  var wrap = item.closest('.dp-repeater');
+  item.remove();
+  if (wrap) repRefreshBoundary(wrap);
+}
+
+// ── Reorder repeater rows (works for both main-form and cs repeaters) ──
+// Strategy: swap rows in DOM, then renumber ALL rows 1..N so input
+// names/data-cs-fields match the new visual order. Save persists the new
+// numbering. The keys-to-remove channel handles any indexes that fall off
+// when count drops (only via × Remove, not via reorder).
+function repMove(btn, dir) {
+  var item = btn.closest('.dp-rep-item');
+  if (!item) return;
+  var sibling = dir < 0 ? item.previousElementSibling : item.nextElementSibling;
+  while (sibling && !sibling.classList.contains('dp-rep-item')) {
+    sibling = dir < 0 ? sibling.previousElementSibling : sibling.nextElementSibling;
+  }
+  if (!sibling) return;
+  var parent = item.parentNode;
+  if (dir < 0) parent.insertBefore(item, sibling);
+  else parent.insertBefore(sibling, item);
+  repRenumber(item.closest('.dp-repeater'));
+}
+function repRenumber(wrap) {
+  if (!wrap) return;
+  var isCs = wrap.classList.contains('cs-repeater');
+  var attrName = isCs ? 'data-cs-field' : 'name';
+  var noun = wrap.dataset.noun || 'Item';
+  var items = wrap.querySelectorAll('.dp-rep-item');
+  items.forEach(function(item, i) {
+    var newIdx = i + 1;
+    item.dataset.idx = newIdx;
+    var head = item.querySelector('.dp-rep-head > span');
+    if (head) head.textContent = noun + ' ' + newIdx;
+    item.querySelectorAll('[' + attrName + ']').forEach(function(el) {
+      var oldKey = el.getAttribute(attrName);
+      // Replace the FIRST digit-run in the key with newIdx — covers
+      // service{N}_title, card{N}_body, q{N}, a{N}, pricing_tier{N}_cta, etc.
+      var newKey = oldKey.replace(/(\d+)/, newIdx);
+      if (newKey !== oldKey) el.setAttribute(attrName, newKey);
+    });
+  });
+  repRefreshBoundary(wrap);
+}
+function repRefreshBoundary(wrap) {
+  var items = wrap.querySelectorAll('.dp-rep-item');
+  items.forEach(function(item, i) {
+    item.querySelectorAll('.dp-rep-actions button[data-dir]').forEach(function(b) {
+      var d = parseInt(b.dataset.dir, 10);
+      b.disabled = (d < 0 && i === 0) || (d > 0 && i === items.length - 1);
+    });
+  });
+}
+
+// ── Custom sections: save / delete / create / reorder / visibility ──
+async function csSave(id, btn) {
+  var card = btn.closest('.cs-edit');
+  var fd = new URLSearchParams();
+  card.querySelectorAll('[data-cs-field]').forEach(function(el) { fd.append(el.dataset.csField, el.value); });
+  // Preserve current visibility (server overwrites if missing)
+  var visBtn = document.querySelector('.cs-vis-toggle[data-cs-id="' + id + '"]');
+  if (visBtn && visBtn.dataset.visible === 'true') fd.append('visible', 'on');
+  btn.disabled = true; var prev = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    var r = await fetch('/admin/sections/custom/' + id + '/copy', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    btn.textContent = '✓ Saved'; setTimeout(function() { btn.textContent = prev; btn.disabled = false; }, 1200);
+    // Re-render the live preview so the new section content is visible
+    previewReload();
+  } catch (e) { btn.textContent = '✕ Failed'; btn.disabled = false; alert('Save failed: ' + e.message); }
+}
+async function csDelete(id, btn) {
+  if (!confirm('Delete this section permanently?')) return;
+  btn.disabled = true;
+  try {
+    var r = await fetch('/admin/sections/custom/' + id, { method: 'DELETE' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    location.reload();
+  } catch (e) { btn.disabled = false; alert('Delete failed: ' + e.message); }
+}
+async function csCreate(btn) {
+  var type = document.getElementById('cs-new-type').value;
+  var label = document.getElementById('cs-new-label').value.trim();
+  var err = document.getElementById('cs-new-err');
+  err.style.display = 'none';
+  if (!label) { err.textContent = 'Label is required.'; err.style.display = 'block'; return; }
+  btn.disabled = true;
+  try {
+    var fd = new URLSearchParams(); fd.append('type', type); fd.append('label', label);
+    var r = await fetch('/admin/sections/custom/new', { method: 'POST', body: fd });
+    var data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    location.reload();
+  } catch (e) { btn.disabled = false; err.textContent = e.message; err.style.display = 'block'; }
+}
+async function csMove(id, dir) {
+  var list = document.getElementById('cs-order-list');
+  var rows = Array.from(list.querySelectorAll('.cs-row'));
+  var idx = rows.findIndex(function(r) { return r.dataset.csId === id; });
+  var to = idx + dir;
+  if (to < 0 || to >= rows.length) return;
+  list.insertBefore(rows[idx], dir < 0 ? rows[to] : rows[to].nextSibling);
+  // Renumber labels
+  list.querySelectorAll('.cs-row').forEach(function(row, i) {
+    var lbl = row.querySelector('[data-cs-index]'); if (lbl) lbl.textContent = (i + 1);
+  });
+  // Persist
+  var orderJson = JSON.stringify(Array.from(list.querySelectorAll('.cs-row')).map(function(r) { return r.dataset.csId; }));
+  var fd = new URLSearchParams(); fd.append('orderJson', orderJson);
+  try {
+    await fetch('/admin/sections/custom/reorder', { method: 'POST', body: fd });
+    previewReload();
+  } catch (e) { alert('Reorder save failed: ' + e.message); }
+}
+async function csToggleVisible(id, btn) {
+  var nowVisible = btn.dataset.visible !== 'true'; // flip
+  // Pull current copy fields so we don't accidentally wipe them
+  var editCard = document.querySelector('.cs-edit[data-cs-id="' + id + '"]');
+  var fd = new URLSearchParams();
+  if (editCard) editCard.querySelectorAll('[data-cs-field]').forEach(function(el) { fd.append(el.dataset.csField, el.value); });
+  if (nowVisible) fd.append('visible', 'on');
+  try {
+    var r = await fetch('/admin/sections/custom/' + id + '/copy', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    btn.dataset.visible = nowVisible ? 'true' : 'false';
+    btn.textContent = nowVisible ? '◉' : '○';
+    btn.style.color = nowVisible ? 'var(--navy)' : 'var(--slate)';
+    btn.title = nowVisible ? 'Hide section' : 'Show section';
+    previewReload();
+  } catch (e) { alert('Visibility update failed: ' + e.message); }
+}
+
+// ── Header & Footer sub-tabs ──
+function hfTab(btn) {
+  var section = btn.closest('.editor-section');
+  var target = btn.getAttribute('data-tab');
+  section.querySelectorAll('.hf-tab').forEach(function(t) {
+    var active = t === btn;
+    t.classList.toggle('is-active', active);
+    t.style.color = active ? 'var(--on-surface)' : 'var(--slate)';
+    t.style.borderBottomColor = active ? 'var(--gold)' : 'transparent';
+  });
+  section.querySelectorAll('.hf-pane').forEach(function(p) {
+    p.style.display = (p.getAttribute('data-pane') === target) ? '' : 'none';
+  });
 }
 
 // ── Preview ──
@@ -1405,19 +2320,28 @@ function setViewport(mode) {
 
 // ── Live preview engine ──
 // Maps design field → CSS variable names (covers both index.ejs and landing.ejs)
+//
+// IMPORTANT: Only map raw user-controlled color inputs here.
+// Do NOT map to server-computed vars (--surface, --on-surface, --on-surface-muted,
+// --border, --on-ivory, --on-ivory-muted, --on-navy, etc.) — those are derived by
+// enrichDesignContrast() on the server and their live-preview equivalents are
+// injected separately below via computedVarsFromInputs().
+// Overwriting computed vars with raw color inputs causes the header and nav to
+// render stripped of their contrast-aware styles, producing the "preview looks
+// unstyled" bug (surface bleeds through as page-bg instead of white/card bg).
 var cssVarMap = {
-  color_primary:      ['--navy'],
-  color_primary_deep: ['--navy-deep', '--bg'],
-  color_primary_mid:  ['--navy-mid', '--card'],
+  color_primary:      ['--navy', '--primary'],
+  color_primary_deep: ['--navy-deep', '--primary-deep', '--bg'],
+  color_primary_mid:  ['--navy-mid', '--primary-mid', '--card'],
   color_accent:       ['--gold', '--accent'],
-  color_accent_light: ['--gold-light', '--accent-hover'],
-  color_bg:           ['--ivory', '--surface'],
+  color_accent_light: ['--gold-light', '--accent-light', '--accent-hover'],
+  color_bg:           ['--ivory', '--bg-page'],  // --surface intentionally excluded (computed)
   color_accent_2:     ['--accent-2'],
   color_accent_3:     ['--accent-3'],
-  color_dark:         ['--dark', '--on-surface'],
+  color_dark:         ['--dark'],   // --on-surface intentionally excluded (computed)
   color_white:        ['--white'],
-  color_muted:        ['--muted', '--on-surface-muted'],
-  color_border:       ['--ivory-mid', '--border'],
+  color_muted:        ['--muted'], // --on-surface-muted intentionally excluded (computed)
+  color_border:       ['--ivory-mid'], // --border intentionally excluded (computed)
   color_success:      ['--success'],
   color_danger:       ['--crimson'],
   hero_overlay_color:      ['--hero-overlay'],
@@ -1432,6 +2356,73 @@ var cssVarMap = {
   contact_btn_bg:          ['--contact-btn-bg'],
   contact_btn_color:       ['--contact-btn-color'],
 };
+
+// ── Client-side approximation of enrichDesignContrast() ──
+// Mirrors the server-side logic so computed CSS vars (--surface, --on-surface,
+// --border, --on-ivory, etc.) stay accurate in the live preview as the user
+// adjusts colors. Without this the header renders with wrong surface/text colors.
+function _hexToRgb(hex) {
+  hex = (hex || '').replace('#', '');
+  if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+  if (hex.length !== 6) return null;
+  var n = parseInt(hex, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function _relativeLuminance(hex) {
+  var c = _hexToRgb(hex);
+  if (!c) return 0.5;
+  return [c.r, c.g, c.b].reduce(function(acc, ch, i) {
+    ch /= 255;
+    ch = ch <= 0.04045 ? ch / 12.92 : Math.pow((ch + 0.055) / 1.055, 2.4);
+    return acc + ch * [0.2126, 0.7152, 0.0722][i];
+  }, 0);
+}
+function _readableText(bgHex) {
+  return _relativeLuminance(bgHex) > 0.179 ? '#0F1B30' : '#FDFCFA';
+}
+function _mixHex(hex1, hex2, w) {
+  var a = _hexToRgb(hex1) || {r:0,g:0,b:0};
+  var b = _hexToRgb(hex2) || {r:255,g:255,b:255};
+  var mix = function(c1, c2) { return Math.round(c1 * w + c2 * (1 - w)); };
+  var r = mix(a.r, b.r), g = mix(a.g, b.g), bl = mix(a.b, b.b);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1).toUpperCase();
+}
+function computedVarsFromInputs() {
+  // Read current raw color values from the form
+  function inp(name) { var el = document.querySelector('input[name="' + name + '"]'); return el ? (el.value || '') : ''; }
+  var colorBg      = inp('color_bg');
+  var colorPrimary = inp('color_primary');
+  var colorAccent  = inp('color_accent');
+
+  if (!colorBg || !colorPrimary) return {};
+
+  var bgLum = _relativeLuminance(colorBg);
+  var onBg  = _readableText(colorBg);
+
+  // --surface: white on light bg, slightly lifted on dark bg
+  var surface = bgLum > 0.4 ? '#FFFFFF' : _mixHex('#FFFFFF', colorBg, 0.12);
+  var onSurface = _readableText(surface);
+
+  // --border: mix of onBg with bg
+  var border = bgLum > 0.4
+    ? _mixHex(onBg, colorBg, 0.22)
+    : _mixHex(onBg, colorBg, 0.30);
+
+  return {
+    '--surface':          surface,
+    '--on-surface':       onSurface,
+    '--on-surface-muted': _mixHex(onSurface, surface, 0.65),
+    '--border':           border,
+    '--on-ivory':         onBg,
+    '--on-ivory-muted':   _mixHex(onBg, colorBg, 0.6),
+    '--on-navy':          _readableText(inp('color_primary') || colorPrimary),
+    '--on-navy-deep':     _readableText(inp('color_primary_deep') || colorPrimary),
+    '--on-navy-mid':      _readableText(inp('color_primary_mid') || colorPrimary),
+    '--on-gold':          _readableText(inp('color_accent') || colorAccent),
+    '--on-gold-light':    _readableText(inp('color_accent_light') || colorAccent),
+  };
+}
+
 // Range/select inputs that map to CSS vars but need special transforms
 var cssVarTransform = {
   hero_overlay_opacity: { vars: ['--hero-overlay-alpha'], transform: function(v) { return (parseInt(v,10)||55)/100; } },
@@ -1439,6 +2430,22 @@ var cssVarTransform = {
   gradient_angle:       { vars: ['--gradient-angle'],     transform: function(v) { return v + 'deg'; } },
   hero_text_align:      { vars: ['--hero-text-align'],    transform: function(v) { return v; } },
   hero_height:          { vars: ['--hero-min-height'],    transform: function(v) { return v; } },
+  // Wordmark / tagline typography
+  nav_brand_size:       { vars: ['--nav-brand-size'],      transform: function(v) { return v + 'rem'; } },
+  nav_brand_weight:     { vars: ['--nav-brand-weight'],    transform: function(v) { return v; } },
+  nav_brand_spacing:    { vars: ['--nav-brand-spacing'],   transform: function(v) { return v + 'em'; } },
+  nav_brand_transform:  { vars: ['--nav-brand-transform'], transform: function(v) { return v; } },
+  nav_brand_italic:     { vars: ['--nav-brand-style'],     transform: function(v) { return v === 'true' ? 'italic' : 'normal'; } },
+  nav_accent_weight:    { vars: ['--nav-accent-weight'],   transform: function(v) { return v || 'inherit'; } },
+  nav_accent_italic:    { vars: ['--nav-accent-style'],    transform: function(v) { return v === 'true' ? 'italic' : 'inherit'; } },
+  nav_tagline_size:     { vars: ['--nav-tagline-size'],      transform: function(v) { return v + 'rem'; } },
+  nav_tagline_weight:   { vars: ['--nav-tagline-weight'],    transform: function(v) { return v; } },
+  nav_tagline_spacing:  { vars: ['--nav-tagline-spacing'],   transform: function(v) { return v + 'em'; } },
+  nav_tagline_transform:{ vars: ['--nav-tagline-transform'], transform: function(v) { return v; } },
+  nav_tagline_italic:   { vars: ['--nav-tagline-style'],     transform: function(v) { return v === 'true' ? 'italic' : 'normal'; } },
+  // Plain color overrides (text fields) — also push as CSS vars
+  nav_brand_color:      { vars: ['--nav-brand-color'],     transform: function(v) { return v || 'currentColor'; } },
+  nav_tagline_color:    { vars: ['--nav-tagline-color'],   transform: function(v) { return v || 'currentColor'; } },
 };
 // Body data-attributes to push into the iframe body element
 var bodyDataMap = {
@@ -1583,6 +2590,29 @@ var copyMap = {
   contact_message_label:       { sel: '.contact-form textarea[name="message"]', prop: 'formLabel' },
 };
 
+// Dynamic copy selector — returns {sel, prop} for repeater keys (service4,
+// process5, about_stat6, etc.) that aren't enumerated in copyMap. Used by the
+// preview pipeline so newly-added rows show up immediately in the iframe.
+function dynamicCopySelector(name) {
+  var m;
+  if ((m = name.match(/^service(\d+)_(title|desc)$/))) {
+    var n = m[1], k = m[2];
+    if (k === 'title') return { sel: '.service-card:nth-child(' + n + ') .service-title,.feature-card:nth-child(' + n + ') h3', prop: 'textContent' };
+    if (k === 'desc')  return { sel: '.service-card:nth-child(' + n + ') .service-desc,.feature-card:nth-child(' + n + ') p', prop: 'textContent' };
+  }
+  if ((m = name.match(/^process(\d+)_(title|desc)$/))) {
+    var n2 = m[1], k2 = m[2];
+    if (k2 === 'title') return { sel: '.process-list .process-item:nth-child(' + n2 + ') .process-title,.steps .step:nth-child(' + n2 + ') .step-text h3', prop: 'innerHTML' };
+    if (k2 === 'desc')  return { sel: '.process-list .process-item:nth-child(' + n2 + ') .process-desc,.steps .step:nth-child(' + n2 + ') .step-text p', prop: 'innerHTML' };
+  }
+  if ((m = name.match(/^about_stat(\d+)_(num|label)$/))) {
+    var n3 = m[1], k3 = m[2];
+    if (k3 === 'num')   return { sel: '.stat-box:nth-child(' + n3 + ') .stat-num', prop: 'textContent' };
+    if (k3 === 'label') return { sel: '.stat-box:nth-child(' + n3 + ') .stat-label', prop: 'textContent' };
+  }
+  return null;
+}
+
 // Map vis_ checkboxes → iframe section selectors
 var visMap = {
   vis_header:    '#main-nav,.nav,.tl-nav',
@@ -1635,6 +2665,12 @@ function pushToPreview() {
     if (name === 'font_body') fontBodyVal = sel.value;
     if (name === 'font_heading') fontHeadVal = sel.value;
   });
+  // Append server-side-computed contrast vars (surface, border, on-* text colors).
+  // These are derived from the raw colors so must be recalculated client-side
+  // whenever the user changes a color input, rather than being taken from cssVarMap.
+  var computed = computedVarsFromInputs();
+  Object.keys(computed).forEach(function(v) { css += v + ':' + computed[v] + ' !important;'; });
+
   css += '}';
   // Force font on body + headings for templates that hardcode font-family (landing.ejs)
   if (fontBodyVal) css += " body,p,a,span,div,li,input,textarea,select,button{font-family:'" + fontBodyVal + "',sans-serif !important;}";
@@ -1718,6 +2754,20 @@ function pushToPreview() {
       }
     });
 
+    // Dynamic repeater fields (service4, process5, about_stat6, …)
+    document.querySelectorAll('.dp-repeater[data-prefix] input[name], .dp-repeater[data-prefix] textarea[name]').forEach(function(field) {
+      var name = field.getAttribute('name');
+      if (copyMap[name]) return; // already handled above
+      var dyn = dynamicCopySelector(name);
+      if (!dyn) return;
+      var val = field.value;
+      if (!val && dyn.prop !== 'href') return;
+      var el = doc.querySelector(dyn.sel);
+      if (!el) return;
+      if (dyn.prop === 'textContent') el.textContent = val;
+      else if (dyn.prop === 'innerHTML') el.innerHTML = val;
+    });
+
     // Visibility
     Object.keys(visMap).forEach(function(key) {
       var cb = document.querySelector('input[name="' + key + '"]');
@@ -1766,6 +2816,16 @@ function pushToPreview() {
         msgCopy.push({ sel: m.sel, prop: m.prop, val: val });
       }
     });
+    // Dynamic repeater fields (postMessage path)
+    document.querySelectorAll('.dp-repeater[data-prefix] input[name], .dp-repeater[data-prefix] textarea[name]').forEach(function(field) {
+      var nm = field.getAttribute('name');
+      if (copyMap[nm]) return;
+      var dyn = dynamicCopySelector(nm);
+      if (!dyn) return;
+      var v = field.value;
+      if (!v) return;
+      msgCopy.push({ sel: dyn.sel, prop: dyn.prop, val: v });
+    });
     var vis = {};
     Object.keys(visMap).forEach(function(key) {
       var cb = document.querySelector('input[name="' + key + '"]');
@@ -1775,6 +2835,9 @@ function pushToPreview() {
     Object.keys(cssVarMap).forEach(function(n) { var inp = document.querySelector('input[name="' + n + '"]'); if (inp) { var vars = cssVarMap[n]; for (var vi = 0; vi < vars.length; vi++) cssVarsObj[vars[vi]] = inp.value; } });
     Object.keys(cssVarTransform).forEach(function(n) { var inp = document.querySelector('[name="' + n + '"]'); if (inp) { var t = cssVarTransform[n]; var val = t.transform(inp.value); for (var vi = 0; vi < t.vars.length; vi++) cssVarsObj[t.vars[vi]] = val; } });
     Object.keys(fontMap).forEach(function(n) { var sel = document.querySelector('select[name="' + n + '"]'); if (sel) cssVarsObj[fontMap[n]] = "'" + sel.value + "',sans-serif"; });
+    // Merge computed contrast vars into the postMessage payload
+    var _cmp = computedVarsFromInputs();
+    Object.keys(_cmp).forEach(function(v) { cssVarsObj[v] = _cmp[v]; });
     var extraCss = '';
     if (fontBodyVal) extraCss += " body,p,a,span,div,li,input,textarea,select,button{font-family:'" + fontBodyVal + "',sans-serif !important;}";
     if (fontHeadVal) extraCss += " h1,h2,h3,h4,h5,h6{font-family:'" + fontHeadVal + "',serif !important;}";
@@ -1827,11 +2890,18 @@ _reloadFields.forEach(function(name) {
   });
 });
 
-// Listen to all form changes
-document.querySelectorAll('.editor-panel input, .editor-panel select, .editor-panel textarea').forEach(function(el) {
-  el.addEventListener('input', debouncedPush);
-  el.addEventListener('change', debouncedPush);
-});
+// Delegate input/change listeners on the editor panel so rows added later
+// (repeater + Add) automatically get live-preview without re-attaching.
+(function() {
+  var panel = document.querySelector('.editor-panel');
+  if (!panel) return;
+  panel.addEventListener('input', function(e) {
+    if (e.target.matches('input, select, textarea')) debouncedPush();
+  });
+  panel.addEventListener('change', function(e) {
+    if (e.target.matches('input, select, textarea')) debouncedPush();
+  });
+})();
 
 // Push once iframe loads — retry to handle slow renders
 var _pvFrame = document.getElementById('previewFrame');

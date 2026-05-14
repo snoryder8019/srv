@@ -328,7 +328,7 @@ router.post('/:id/invoices', async (req, res) => {
     const recurEnabled = req.body.recurringEnabled === 'on';
     const frequency = req.body.recurringFrequency || null;
 
-    const invoiceNumber = await generateInvoiceNumber(db);
+    const invoiceNumber = await generateInvoiceNumber(db, req.tenant);
     const paymentToken = generatePaymentToken();
 
     await db.collection('invoices').insertOne({

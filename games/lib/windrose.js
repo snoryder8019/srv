@@ -1,11 +1,9 @@
 /**
  * Windrose Dedicated Server Management
- * - tmux session control (start/stop/restart) via Wine
+ * - tmux session control (start/stop/restart) via Proton-GE
  * - Invite code + config read from R5/ServerDescription.json
- * - Player count parsed from server log (patterns are provisional —
- *   Windrose is 2 days into Early Access and the log format is
- *   not publicly documented; update PLAYER_JOIN_RE / PLAYER_LEAVE_RE
- *   once a real log is available).
+ * - Player count read from windrose_plus_data/server_status.json
+ *   (WindrosePlus rewrites it every heartbeat; treated as stale after 60s).
  * - Auto-stop after inactivity (mirrors other game modules).
  */
 
@@ -20,14 +18,18 @@ const WINDROSE_DIR = '/srv/games/windrose';
 const LOG_FILE = path.join(WINDROSE_DIR, 'logs', 'server.log');
 const UE5_LOG = path.join(WINDROSE_DIR, 'R5', 'Saved', 'Logs', 'R5.log');
 const SERVER_DESC = path.join(WINDROSE_DIR, 'R5', 'ServerDescription.json');
+const PLUS_STATUS = path.join(WINDROSE_DIR, 'windrose_plus_data', 'server_status.json');
+const PLUS_CONFIG = path.join(WINDROSE_DIR, 'windrose_plus.json');
+const RCON_SPOOL_DIR = path.join(WINDROSE_DIR, 'windrose_plus_data', 'rcon');
+const RCON_INDEX_FILE = path.join(RCON_SPOOL_DIR, 'pending_commands.txt');
+const RCON_TIMEOUT_MS = 10_000;
+const RCON_POLL_MS = 200;
+// server_status.json is rewritten by WindrosePlus on every heartbeat (~5s).
+// Anything older than this is stale (server crashed, mod unloaded, etc.).
+const PLUS_STATUS_MAX_AGE_MS = 60 * 1000;
 
-// --- Log patterns (provisional; verify against real logs) ---
-// UE5 servers usually log along the lines of:
-//   "[...] LogNet: Join succeeded: <PlayerName>"
-//   "[...] LogNet: UChannel::Close: ... <PlayerName>"
-// We try a few reasonable shapes; safe if nothing matches -> players = 0.
-const PLAYER_JOIN_RE  = /Join succeeded:\s*(\S+)/i;
-const PLAYER_LEAVE_RE = /UChannel::Close.*?(?:RemoteAddr|PlayerName)[:=]\s*(\S+)/i;
+// Used by getStatus() to detect when the server has finished booting
+// (player count comes from WindrosePlus's server_status.json, not log scraping).
 const SERVER_READY_RE = /(Server is ready|LogLoad: \(Engine Initialization\) Total time|InviteCode)/i;
 
 // --- Inactivity auto-stop ---
@@ -91,12 +93,17 @@ function readServerDescription() {
     const raw = fs.readFileSync(SERVER_DESC, 'utf8');
     const json = JSON.parse(raw);
     const persistent = json.ServerDescription_Persistent || json;
+    const useDirect = !!persistent.UseDirectConnection;
+    const directHost = persistent.DirectConnectionServerAddress || '';
+    const directPort = persistent.DirectConnectionServerPort || 7777;
     return {
-      inviteCode:   persistent.InviteCode || null,
-      serverName:   persistent.ServerName || null,
-      maxPlayers:   persistent.MaxPlayerCount || 8,
-      passwordLock: !!persistent.IsPasswordProtected,
-      worldId:      persistent.WorldIslandId || null,
+      inviteCode:        persistent.InviteCode || null,
+      serverName:        persistent.ServerName || null,
+      maxPlayers:        persistent.MaxPlayerCount || 8,
+      passwordLock:      !!persistent.IsPasswordProtected,
+      worldId:           persistent.WorldIslandId || null,
+      useDirect,
+      directAddress:     useDirect && directHost ? `${directHost}:${directPort}` : null,
     };
   } catch (e) {
     console.warn('[games] Windrose ServerDescription.json unreadable:', e.message);
@@ -106,30 +113,29 @@ function readServerDescription() {
 
 // --- Player tracking via log parsing (provisional) ---
 
-function getPlayerCount() {
-  // Prefer UE5 internal log where join/leave events actually appear
-  const logPath = fs.existsSync(UE5_LOG) ? UE5_LOG : LOG_FILE;
-  if (!fs.existsSync(logPath)) return 0;
+function readPlusStatus() {
   try {
-    const lines = fs.readFileSync(logPath, 'utf8').split('\n');
-
-    let startIdx = 0;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (SERVER_READY_RE.test(lines[i])) { startIdx = i; break; }
-    }
-
-    const connected = new Set();
-    for (let i = startIdx; i < lines.length; i++) {
-      const line = lines[i];
-      const join = line.match(PLAYER_JOIN_RE);
-      const leave = line.match(PLAYER_LEAVE_RE);
-      if (join) connected.add(join[1]);
-      if (leave) connected.delete(leave[1]);
-    }
-    return connected.size;
+    if (!fs.existsSync(PLUS_STATUS)) return null;
+    const stat = fs.statSync(PLUS_STATUS);
+    if (Date.now() - stat.mtimeMs > PLUS_STATUS_MAX_AGE_MS) return null;
+    return JSON.parse(fs.readFileSync(PLUS_STATUS, 'utf8'));
   } catch {
+    return null;
+  }
+}
+
+function getPlayerCount() {
+  // Authoritative source: WindrosePlus rewrites server_status.json every heartbeat
+  // with the current player set. The UE5 log fallback was unreliable — its join
+  // regex matched but the leave regex never did, so the count only ever grew.
+  const plus = readPlusStatus();
+  if (plus) {
+    if (Array.isArray(plus.players)) return plus.players.length;
+    if (typeof plus?.server?.player_count === 'number') return plus.server.player_count;
+    if (typeof plus.player_count === 'number') return plus.player_count;
     return 0;
   }
+  return 0;
 }
 
 async function getStatus() {
@@ -144,6 +150,7 @@ async function getStatus() {
       maxPlayers,
       inviteCode: desc?.inviteCode || null,
       serverName: desc?.serverName || null,
+      directConnect: desc?.useDirect ? { enabled: true, address: desc.directAddress } : { enabled: false, address: null },
     };
   }
 
@@ -169,6 +176,7 @@ async function getStatus() {
     map: desc?.serverName || 'Windrose',
     inviteCode: desc?.inviteCode || null,
     serverName: desc?.serverName || 'MadLadsLab Windrose',
+    directConnect: desc?.useDirect ? { enabled: true, address: desc.directAddress } : { enabled: false, address: null },
   };
 }
 
@@ -181,7 +189,9 @@ function resetInactivityTimer() {
     try {
       const status = await getStatus();
       if (!status.running) { clearInactivityTimer(); return; }
-      if (status.players > 0) {
+      let pinned = false;
+      try { pinned = require('./server-manager').isKeepOnline('windrose'); } catch {}
+      if (status.players > 0 || pinned) {
         lastPlayerActivity = Date.now();
       } else if (lastPlayerActivity && Date.now() - lastPlayerActivity >= INACTIVITY_LIMIT_MS) {
         console.log('[games] Auto-stopping Windrose: 1hr inactivity');
@@ -197,28 +207,76 @@ function clearInactivityTimer() {
 
 if (isRunning()) resetInactivityTimer();
 
-// --- Console passthrough via tmux send-keys ---
+// --- WindrosePlus RCON via file spool ---
+// Protocol (see WindrosePlus/Scripts/modules/rcon.lua):
+//   1. Write cmd_<id>.json into RCON_SPOOL_DIR with {id,command,args,password,timestamp}
+//   2. Append "cmd_<id>.json\n" to pending_commands.txt so the Lua poll picks it up
+//   3. Poll for res_<id>.json, parse {status, message}, delete it
+// The Lua side enforces a 30s command-expiry window from `timestamp`; we cap our
+// own wait at RCON_TIMEOUT_MS so a silent mod can't hang the request.
 
-function rconCommand(cmd) {
+function readRconPassword() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(PLUS_CONFIG, 'utf8'));
+    return cfg && cfg.rcon && cfg.rcon.password;
+  } catch { return null; }
+}
+
+function rconCommand(cmd, opts = {}) {
   return new Promise((resolve) => {
-    if (!isRunning()) return resolve('Server not running');
-    try {
-      execSync(`sudo -u ${GS_USER} tmux send-keys -t ${SESSION} '${cmd.replace(/'/g, "\x27\\\x27\x27")}' Enter`);
-      setTimeout(() => {
-        try {
-          const output = execSync(
-            `sudo -u ${GS_USER} tmux capture-pane -t ${SESSION} -p 2>/dev/null`,
-            { encoding: 'utf8' }
-          );
-          const lines = output.split('\n');
-          resolve(lines.slice(-20).join('\n').trim() || '(command sent)');
-        } catch {
-          resolve('(command sent — could not capture output)');
-        }
-      }, 1500);
-    } catch (e) {
-      resolve('Error: ' + e.message);
+    if (!isRunning()) return resolve({ status: 'error', message: 'Server not running' });
+
+    const password = readRconPassword();
+    if (!password || password === 'changeme') {
+      return resolve({ status: 'error', message: 'RCON not configured (password missing or default)' });
     }
+
+    const id = `web_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const cmdFile = `cmd_${id}.json`;
+    const cmdPath = path.join(RCON_SPOOL_DIR, cmdFile);
+    const tmpPath = cmdPath + '.tmp';
+    const resPath = path.join(RCON_SPOOL_DIR, `res_${id}.json`);
+    const payload = JSON.stringify({
+      id,
+      command: cmd,
+      args: [],
+      password,
+      admin_user: opts.adminUser || 'web',
+      timestamp: Math.floor(Date.now() / 1000),
+    });
+
+    try {
+      fs.writeFileSync(tmpPath, payload);
+      fs.renameSync(tmpPath, cmdPath);
+      fs.appendFileSync(RCON_INDEX_FILE, cmdFile + '\n');
+    } catch (e) {
+      try { fs.unlinkSync(tmpPath); } catch {}
+      return resolve({ status: 'error', message: 'Spool write failed: ' + e.message });
+    }
+
+    const deadline = Date.now() + RCON_TIMEOUT_MS;
+    const tick = () => {
+      let raw;
+      try { raw = fs.readFileSync(resPath, 'utf8'); } catch { raw = null; }
+      if (raw) {
+        try { fs.unlinkSync(resPath); } catch {}
+        try { fs.unlinkSync(cmdPath); } catch {}
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch {
+          return resolve({ status: 'error', message: 'Malformed RCON response' });
+        }
+        return resolve({
+          status: parsed.status || 'ok',
+          message: parsed.message != null ? String(parsed.message) : '(no output)',
+        });
+      }
+      if (Date.now() >= deadline) {
+        try { fs.unlinkSync(cmdPath); } catch {}
+        return resolve({ status: 'error', message: 'RCON timeout (no response in 10s)' });
+      }
+      setTimeout(tick, RCON_POLL_MS);
+    };
+    tick();
   });
 }
 

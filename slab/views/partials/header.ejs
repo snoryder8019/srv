@@ -21,26 +21,84 @@
   const _showTagline = design.nav_tagline_display !== 'false';
   const _navCtaText = design.nav_cta_text || 'Get Started';
   const _navCtaLink = design.nav_cta_link || '/#contact';
+  /* ── Granular nav color resolution (each falls back to nav_text_color, then theme defaults) ── */
+  const _navBrandColor   = design.nav_brand_color   || design.nav_text_color || 'var(--on-ivory, var(--dark))';
+  const _navTaglineColor = design.nav_tagline_color || 'var(--primary, var(--navy))';
+  const _navLinkColor    = design.nav_link_color    || design.nav_text_color || 'var(--on-ivory-muted, var(--slate))';
+  const _navLinkHover    = design.nav_link_hover_color || 'var(--primary, var(--navy))';
+  const _navCtaBg        = design.nav_cta_bg        || '';
+  const _navCtaColor     = design.nav_cta_color     || '';
+  /* ── Wordmark typography ── */
+  const _navBrandSize       = design.nav_brand_size       || '1.4';
+  const _navBrandWeight     = design.nav_brand_weight     || '400';
+  const _navBrandSpacing    = design.nav_brand_spacing    || '0.04';
+  const _navBrandTransform  = design.nav_brand_transform  || 'none';
+  const _navBrandStyle      = design.nav_brand_italic    === 'true' ? 'italic' : 'normal';
+  const _navAccentWeight    = design.nav_accent_weight    || _navBrandWeight;
+  const _navAccentStyle     = design.nav_accent_italic   === 'true' ? 'italic' : _navBrandStyle;
+  const _navTaglineSize       = design.nav_tagline_size       || '0.58';
+  const _navTaglineWeight     = design.nav_tagline_weight     || '600';
+  const _navTaglineSpacing    = design.nav_tagline_spacing    || '0.28';
+  const _navTaglineTransform  = design.nav_tagline_transform  || 'uppercase';
+  const _navTaglineStyle      = design.nav_tagline_italic    === 'true' ? 'italic' : 'normal';
 %>
 <style>
   /* ── NAV (shared header) ── */
   #main-nav { position:fixed;top:0;width:100%;z-index:1000;display:flex;justify-content:space-between;align-items:center;padding:20px 52px;background:<%= design.nav_bg || 'color-mix(in srgb, var(--bg, var(--ivory)) 95%, transparent)' %>;backdrop-filter:blur(10px);border-bottom:1px solid var(--border);transition:border-color 0.3s, box-shadow 0.3s; }
   #main-nav.scrolled { border-color:var(--border);box-shadow:0 2px 24px color-mix(in srgb, var(--primary, var(--navy)) 10%, transparent); }
   #main-nav .nav-wordmark { display:flex;flex-direction:column;line-height:1;text-decoration:none; }
-  #main-nav .nav-wordmark-top { font-family:var(--font-heading);font-size:1.4rem;font-weight:400;color:var(--on-ivory, var(--dark));letter-spacing:0.04em;display:block; }
-  #main-nav .nav-wordmark-sub { font-size:0.58rem;font-weight:600;letter-spacing:0.28em;text-transform:uppercase;color:var(--primary, var(--navy));margin-top:2px;display:block; }
+  /* Wordmark / tagline tokens — declared on :root so the live-preview system's :root !important overrides win cleanly */
+  :root {
+    --nav-brand-size: <%= _navBrandSize %>rem;
+    --nav-brand-weight: <%= _navBrandWeight %>;
+    --nav-brand-style: <%= _navBrandStyle %>;
+    --nav-brand-spacing: <%= _navBrandSpacing %>em;
+    --nav-brand-transform: <%= _navBrandTransform %>;
+    --nav-brand-color: <%= _navBrandColor %>;
+    --nav-accent-weight: <%= _navAccentWeight %>;
+    --nav-accent-style: <%= _navAccentStyle %>;
+    --nav-tagline-size: <%= _navTaglineSize %>rem;
+    --nav-tagline-weight: <%= _navTaglineWeight %>;
+    --nav-tagline-spacing: <%= _navTaglineSpacing %>em;
+    --nav-tagline-transform: <%= _navTaglineTransform %>;
+    --nav-tagline-style: <%= _navTaglineStyle %>;
+    --nav-tagline-color: <%= _navTaglineColor %>;
+  }
+  #main-nav .nav-wordmark-top { font-family:var(--font-heading);font-size:var(--nav-brand-size);font-weight:var(--nav-brand-weight);font-style:var(--nav-brand-style);color:var(--nav-brand-color);letter-spacing:var(--nav-brand-spacing);text-transform:var(--nav-brand-transform);display:block; }
+  #main-nav .nav-wordmark-top .nav-wordmark-accent { font-weight:var(--nav-accent-weight);font-style:var(--nav-accent-style); }
+  #main-nav .nav-wordmark-sub { font-size:var(--nav-tagline-size);font-weight:var(--nav-tagline-weight);font-style:var(--nav-tagline-style);letter-spacing:var(--nav-tagline-spacing);text-transform:var(--nav-tagline-transform);color:var(--nav-tagline-color);margin-top:2px;display:block; }
   #main-nav .nav-logo { height:48px;width:auto;object-fit:contain; }
   #main-nav .nav-links { display:flex;gap:2rem;list-style:none;align-items:center; }
-  #main-nav .nav-links a { font-size:0.82rem;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--on-ivory-muted, var(--slate));text-decoration:none;transition:color 0.2s; }
-  #main-nav .nav-links a:hover, #main-nav .nav-links a.active { color:var(--primary, var(--navy)); }
+  #main-nav .nav-links a { font-size:0.82rem;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:<%= _navLinkColor %>;text-decoration:none;transition:color 0.2s; }
+  #main-nav .nav-links a:hover, #main-nav .nav-links a.active { color:<%= _navLinkHover %>; }
+  <% if (_navCtaBg || _navCtaColor) { %>
+  #main-nav .nav-links a.nav-cta { <%= _navCtaBg ? 'background:' + _navCtaBg + ';' : '' %><%= _navCtaColor ? 'color:' + _navCtaColor + ';' : '' %>padding:8px 16px;border-radius:var(--card-radius, 4px); }
+  #main-nav .nav-links a.nav-cta:hover { opacity:0.85; }
+  <% } %>
 
-  /* dark layout overrides */
+  /* dark layout overrides (explicit dark layout) */
   [data-layout="dark"] #main-nav { background:rgba(15,27,48,0.95); }
   [data-layout="dark"] #main-nav.scrolled { border-color:rgba(201,168,72,0.15);box-shadow:0 2px 24px rgba(0,0,0,0.3); }
   [data-layout="dark"] #main-nav .nav-wordmark-top { color:var(--white); }
   [data-layout="dark"] #main-nav .nav-wordmark-sub { color:var(--accent, var(--gold)); }
   [data-layout="dark"] #main-nav .nav-links a { color:rgba(253,252,250,0.5); }
   [data-layout="dark"] #main-nav .nav-links a:hover, [data-layout="dark"] #main-nav .nav-links a.active { color:var(--accent-light, var(--gold-light)); }
+
+  /* agency layout overrides — hero is navy-deep so nav must also be dark */
+  [data-layout="agency"] #main-nav { background:<%= design.nav_bg || 'var(--navy-deep, rgba(15,27,48,0.97))' %>;backdrop-filter:blur(10px); }
+  [data-layout="agency"] #main-nav.scrolled { border-color:rgba(201,168,72,0.15);box-shadow:0 2px 24px rgba(0,0,0,0.3); }
+  [data-layout="agency"] #main-nav .nav-wordmark-top { color:var(--white, #fdfcfa); }
+  [data-layout="agency"] #main-nav .nav-wordmark-sub { color:var(--gold, #c9a848); }
+  [data-layout="agency"] #main-nav .nav-links a { color:rgba(253,252,250,0.6); }
+  [data-layout="agency"] #main-nav .nav-links a:hover, [data-layout="agency"] #main-nav .nav-links a.active { color:var(--gold, #c9a848); }
+
+  /* industrial layout overrides */
+  [data-layout="industrial"] #main-nav { background:<%= design.nav_bg || 'var(--navy-deep, rgba(15,27,48,0.97))' %>;backdrop-filter:blur(10px); }
+  [data-layout="industrial"] #main-nav.scrolled { border-color:rgba(201,168,72,0.15);box-shadow:0 2px 24px rgba(0,0,0,0.3); }
+  [data-layout="industrial"] #main-nav .nav-wordmark-top { color:var(--white, #fdfcfa); }
+  [data-layout="industrial"] #main-nav .nav-wordmark-sub { color:var(--gold, #c9a848); }
+  [data-layout="industrial"] #main-nav .nav-links a { color:rgba(253,252,250,0.6); }
+  [data-layout="industrial"] #main-nav .nav-links a:hover, [data-layout="industrial"] #main-nav .nav-links a.active { color:var(--gold, #c9a848); }
 
   @media (max-width:900px) {
     #main-nav { padding:16px 20px; }
@@ -59,7 +117,7 @@
       <img src="<%= logos.logo_primary %>" alt="<%= brand?.name || 'Home' %>" class="nav-logo">
     <% } %>
     <% if (design.nav_logo_display !== 'image' || !logos || !logos.logo_primary) { %>
-      <span class="nav-wordmark-top"><% if (_hdr_accent) { %><%- _hdr_before %><span style="color:<%= _hdr_accentColor %>"><%= _hdr_accent %></span><%- _hdr_after %><% } else { %><%- _bname %><% } %></span>
+      <span class="nav-wordmark-top"><% if (_hdr_accent) { %><%- _hdr_before %><span class="nav-wordmark-accent" style="color:<%= _hdr_accentColor %>"><%= _hdr_accent %></span><%- _hdr_after %><% } else { %><%- _bname %><% } %></span>
       <% if (_showTagline) { %><span class="nav-wordmark-sub"><%- brand?.tagline ? brand.tagline + ' &mdash; ' : '' %><%= brand?.location || '' %></span><% } %>
     <% } %>
   </a>
@@ -70,8 +128,13 @@
         <li><a href="/<%= p.slug %>" <%= _hdr_active === p.slug ? 'class="active"' : '' %>><%- p.title %></a></li>
       <% }); %>
     <% } %>
+    <% if (typeof navLinks !== 'undefined' && navLinks.length) { %>
+      <% navLinks.filter(l => l.location !== 'footer').forEach(function(l) { %>
+        <li><a href="<%= l.url %>"<%= l.target === '_blank' ? ' target="_blank" rel="noopener"' : '' %>><%- l.label %></a></li>
+      <% }); %>
+    <% } %>
     <li><a href="/blog" <%= _hdr_active === 'blog' ? 'class="active"' : '' %>>Blog</a></li>
-    <li><a href="<%= _navCtaLink %>"><%= _navCtaText %></a></li>
+    <li><a href="<%= _navCtaLink %>" class="nav-cta"><%= _navCtaText %></a></li>
     <% if (typeof bookingEnabled !== 'undefined' && bookingEnabled) { %>
     <li><a href="/book" style="background:var(--primary,var(--navy));color:var(--on-navy,#fff);padding:7px 16px;border-radius:4px;font-size:0.78rem">📅 Book</a></li>
     <% } %>

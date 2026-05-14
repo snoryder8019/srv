@@ -54,10 +54,21 @@ export async function sendInvoiceEmail(invoice, clientDoc, paymentUrl, tenant) {
 
   const brandLocation = tenant?.brand?.location || '';
 
+  // Bill-to: prefer the client's business/company name, fall back to contact name
+  const contactName = clientDoc.name || '';
+  const company = clientDoc.company || clientDoc.businessName || '';
+  const billToHtml = company && contactName
+    ? `${company}<br><span style="font-weight:400;color:#6B7380;">${contactName}</span>`
+    : (company || contactName || 'Client');
+  // Greeting: contact name if we have it, otherwise the company
+  const clientGreeting = contactName || company || 'there';
+
   const html = tmpl
     .replace(/\{brandName\}/g, brandName)
     .replace(/\{brandLocation\}/g, brandLocation)
-    .replace(/\{clientName\}/g, clientDoc.name || 'Client')
+    .replace(/\{clientGreeting\}/g, clientGreeting)
+    .replace(/\{clientName\}/g, contactName || company || 'Client')
+    .replace(/\{billToHtml\}/g, billToHtml)
     .replace(/\{invoiceNumber\}/g, invoice.invoiceNumber || '—')
     .replace(/\{invoiceTitle\}/g, invoice.title || '')
     .replace(/\{amount\}/g, invoice.amount.toFixed(2))
@@ -124,6 +135,21 @@ export async function sendCampaignEmail(toEmail, toName, subject, preheader, bod
   });
 }
 
+/**
+ * If body has no block-level HTML, treat it as plain text and convert
+ * blank lines → paragraph breaks and single newlines → <br>. Inline tags
+ * the user may have inserted (<strong>, <a>, <img>) survive untouched.
+ */
+function formatEmailBody(body) {
+  if (!body) return '';
+  const hasBlockHtml = /<(p|div|br|table|ul|ol|h[1-6]|blockquote)[\s>/]/i.test(body);
+  if (hasBlockHtml) return body;
+  const paragraphs = body.replace(/\r\n/g, '\n').split(/\n{2,}/);
+  return paragraphs
+    .map(p => `<p style="margin:0 0 14px;">${p.trim().replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
 /** Send a direct email to a client (plain or HTML body, with CC support and threading headers) */
 export async function sendClientEmail(to, cc, subject, body, threadHeaders = null, tenant = null) {
   const brandName = tenant?.brand?.name || 'Our Team';
@@ -138,7 +164,7 @@ export async function sendClientEmail(to, cc, subject, body, threadHeaders = nul
     .replace(/\{brandName\}/g, brandName)
     .replace(/\{brandLocation\}/g, brandLocation)
     .replace(/\{preheader\}/g, '')
-    .replace(/\{body\}/g, body)
+    .replace(/\{body\}/g, formatEmailBody(body))
     .replace(/\{unsubscribeUrl\}/g, '#');
 
   const mailOpts = {

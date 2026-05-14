@@ -82,6 +82,19 @@
     </div>
 
     <div class="card mt-24">
+      <div class="card-title">Gallery (Slideshow + Modal)</div>
+      <div style="font-size:0.78rem;color:var(--slate);margin-bottom:12px;">
+        Add multiple images for the modal slideshow. Cards on the public site show the first image as the thumbnail; clicking the card opens a modal with a slideshow of every image plus the project info.
+      </div>
+      <input type="hidden" name="gallery" id="galleryJson" value='<%- JSON.stringify((item?.gallery)||[]) %>'>
+      <div id="galleryList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-ghost btn-sm" id="galleryAddBtn">◈ Add Image from Assets</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="galleryAddUrlBtn">+ Add by URL</button>
+      </div>
+    </div>
+
+    <div class="card mt-24">
       <div class="card-title">Display Options</div>
       <div class="form-grid">
         <div class="form-field">
@@ -117,6 +130,82 @@
 
 <script src="/js/assetPicker.js"></script>
 <script src="/js/tours/portfolio.js"></script>
+<script>
+(function() {
+  'use strict';
+  const hidden = document.getElementById('galleryJson');
+  const listEl = document.getElementById('galleryList');
+  const addBtn = document.getElementById('galleryAddBtn');
+  const addUrlBtn = document.getElementById('galleryAddUrlBtn');
+  let gallery = [];
+  try { gallery = JSON.parse(hidden.value || '[]') || []; } catch { gallery = []; }
+
+  function save() { hidden.value = JSON.stringify(gallery); }
+
+  function render() {
+    listEl.innerHTML = '';
+    if (!gallery.length) {
+      listEl.innerHTML = '<div style="grid-column:1/-1;padding:18px;text-align:center;color:var(--slate);font-size:0.78rem;border:1px dashed var(--border);background:var(--ivory);">No gallery images yet. Add one above.</div>';
+      return;
+    }
+    gallery.forEach((g, i) => {
+      const tile = document.createElement('div');
+      tile.style.cssText = 'border:1px solid var(--border);background:var(--ivory);border-radius:2px;overflow:hidden;display:flex;flex-direction:column;';
+      tile.innerHTML = `
+        <div style="aspect-ratio:4/3;background:#f0eee8;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+          <img src="${g.url}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">
+        </div>
+        <input type="text" data-idx="${i}" class="gallery-cap" value="${(g.caption||'').replace(/"/g,'&quot;')}" placeholder="Caption (optional)" style="border:none;border-top:1px solid var(--border);padding:6px 8px;font-size:0.74rem;background:#fff;">
+        <div style="display:flex;border-top:1px solid var(--border);">
+          <button type="button" data-act="up" data-idx="${i}" class="btn btn-ghost btn-sm" style="flex:1;border-radius:0;border:none;${i===0?'opacity:0.3;pointer-events:none;':''}">←</button>
+          <button type="button" data-act="down" data-idx="${i}" class="btn btn-ghost btn-sm" style="flex:1;border-radius:0;border:none;border-left:1px solid var(--border);${i===gallery.length-1?'opacity:0.3;pointer-events:none;':''}">→</button>
+          <button type="button" data-act="del" data-idx="${i}" class="btn btn-ghost btn-sm" style="flex:1;border-radius:0;border:none;border-left:1px solid var(--border);color:var(--danger,#a32a2a);">✕</button>
+        </div>`;
+      listEl.appendChild(tile);
+    });
+  }
+
+  listEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const idx = +btn.dataset.idx;
+    const act = btn.dataset.act;
+    if (act === 'del') gallery.splice(idx, 1);
+    else if (act === 'up' && idx > 0) [gallery[idx-1], gallery[idx]] = [gallery[idx], gallery[idx-1]];
+    else if (act === 'down' && idx < gallery.length - 1) [gallery[idx], gallery[idx+1]] = [gallery[idx+1], gallery[idx]];
+    save(); render();
+  });
+
+  listEl.addEventListener('input', (e) => {
+    if (!e.target.classList.contains('gallery-cap')) return;
+    const idx = +e.target.dataset.idx;
+    if (gallery[idx]) { gallery[idx].caption = e.target.value; save(); }
+  });
+
+  addBtn.addEventListener('click', () => {
+    if (typeof window.openAssetPicker !== 'function') return;
+    window.openAssetPicker({
+      folder: 'portfolio', type: 'image',
+      onSelect: (asset) => {
+        if (asset && asset.publicUrl) {
+          gallery.push({ url: asset.publicUrl, caption: asset.title || '' });
+          save(); render();
+        }
+      }
+    });
+  });
+
+  addUrlBtn.addEventListener('click', () => {
+    const url = prompt('Image URL:');
+    if (url && url.trim()) {
+      gallery.push({ url: url.trim(), caption: '' });
+      save(); render();
+    }
+  });
+
+  render();
+})();
+</script>
 </div></div>
 </body>
 </html>

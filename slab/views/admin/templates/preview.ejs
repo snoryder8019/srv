@@ -92,6 +92,14 @@ body { font-family:var(--font-body);color:var(--on-surface);background:var(--ivo
 .lb-stat-num { font-family:var(--font-heading);font-size:2.4rem;font-weight:700;color:var(--gold);line-height:1.2; }
 .lb-stat-label { font-size:0.82rem;color:rgba(253,252,250,0.6);margin-top:4px;letter-spacing:0.04em; }
 
+/* ── Ticker / marquee block ── */
+.marquee-bar { background: <%= design.ticker_bg || design.color_primary %>; padding: <%= design.ticker_padding || '14' %>px 0; overflow:hidden; white-space:nowrap; }
+.marquee-track { display:inline-flex; gap:0; animation:marqueeScroll <%= design.ticker_speed || '22' %>s linear infinite; }
+.marquee-bar[data-direction="right"] .marquee-track { animation-direction:reverse; }
+.marquee-item { display:inline-flex; align-items:center; gap:20px; padding:0 <%= design.ticker_item_gap || '32' %>px; font-size:<%= design.ticker_font_size || '0.72' %>rem; font-weight:600; letter-spacing:<%= design.ticker_letter_spacing || '0.2' %>em; text-transform:<%= design.ticker_uppercase !== 'false' ? 'uppercase' : 'none' %>; color:<%= design.ticker_text_color || design.color_accent_light %>; }
+.marquee-dot { width:4px; height:4px; border-radius:50%; background:<%= design.ticker_dot_color || design.color_accent_2 || design.color_accent %>; flex-shrink:0; }
+@keyframes marqueeScroll { 0% { transform:translateX(0); } 100% { transform:translateX(-50%); } }
+
 @media (max-width: 768px) {
   .lb-heading { font-size:1.8rem; }
   .lb-split-inner { grid-template-columns:1fr; }
@@ -255,6 +263,26 @@ body { font-family:var(--font-body);color:var(--on-surface);background:var(--ivo
       </div>
     </div>
   </section>
+
+  <% } else if (block.type === 'ticker') { %>
+  <%
+    let _items = (f.items || '').trim()
+      ? f.items.split('|').map(s => s.trim()).filter(Boolean)
+      : ['Free Shipping', '24/7 Support', 'Same-Day Install', 'Trusted Partner'];
+    while (_items.length > 0 && _items.length < 4) _items = _items.concat(_items);
+    const _bgStyle = f.bg ? ('background:' + f.bg + ';') : '';
+    const _txStyle = f.text_color ? ('color:' + f.text_color + ';') : '';
+  %>
+  <div class="marquee-bar" data-direction="<%= f.direction || 'left' %>" aria-hidden="true"
+       style="<%= _bgStyle %>animation-duration:<%= f.speed || '22' %>s;">
+    <div class="marquee-track" style="animation-duration:<%= f.speed || '22' %>s;">
+      <% for (let _r = 0; _r < 2; _r++) { %>
+        <% _items.forEach(function(item) { %>
+          <span class="marquee-item" style="<%= _txStyle %>"><%- item %><span class="marquee-dot"></span></span>
+        <% }); %>
+      <% } %>
+    </div>
+  </div>
   <% } %>
 
 <% }); %>

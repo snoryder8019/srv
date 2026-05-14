@@ -1,10 +1,17 @@
 import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../../plugins/mongo.js';
 import { brandUpload, modelUpload } from '../../middleware/upload.js';
 import { callLLM, tryParseAgentResponse, webSearch } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { enrichDesignContrast } from '../../plugins/colorContrast.js';
+import { CUSTOM_TEMPLATES } from './sections.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TENANT_VIEWS_ROOT = path.resolve(__dirname, '..', '..', 'views', 'tenants');
 
 const router = express.Router();
 
@@ -24,6 +31,12 @@ export const DESIGN_DEFAULTS = {
   color_border:        '',              // borders / dividers (auto-computed if empty)
   color_success:       '#15803D',       // success state
   color_danger:        '#8B1C1C',       // error / danger state
+  // ── Homepage source ──
+  // 'auto'     → tenant custom EJS if present, else active template, else landing_layout
+  // 'layout'   → force standard landing_layout (ignore custom EJS + active template)
+  // 'template' → force active template (ignore custom EJS)
+  // 'custom'   → force tenant custom EJS (falls back to layout if no file exists)
+  home_source:         'auto',
   vis_header:          'true',
   vis_hero:            'true',
   vis_marquee:         'true',
@@ -51,11 +64,32 @@ export const DESIGN_DEFAULTS = {
   nav_logo_split:      '0',
   nav_logo_split_end:  '0',            // char end for accent range (0 = use split as single point)
   nav_logo_accent_color: '',           // custom accent color for logo text (empty = use color_accent)
+  // ── Brand wordmark typography ──
+  nav_brand_size:        '1.4',        // rem
+  nav_brand_weight:      '400',        // 300/400/500/600/700/800
+  nav_brand_spacing:     '0.04',       // em
+  nav_brand_transform:   'none',       // none | uppercase
+  nav_brand_italic:      'false',      // italic on/off
+  // ── Accent characters (inside the wordmark) ──
+  nav_accent_weight:     '',           // empty = inherit brand weight
+  nav_accent_italic:     'false',
+  // ── Tagline typography ──
   nav_tagline_display: 'true',         // show tagline + location below brand name
+  nav_tagline_size:      '0.58',       // rem
+  nav_tagline_weight:    '600',
+  nav_tagline_spacing:   '0.28',       // em
+  nav_tagline_transform: 'uppercase',  // none | uppercase | lowercase
+  nav_tagline_italic:    'false',
   nav_cta_text:        '',             // custom CTA text in nav (empty = "Get Started")
   nav_cta_link:        '',             // custom CTA link (empty = "/#contact")
   nav_bg:              '',             // custom nav background (empty = ivory/transparent)
-  nav_text_color:      '',             // custom nav link color (empty = auto)
+  nav_text_color:      '',             // legacy "everything" color (used as fallback for both brand + link)
+  nav_brand_color:     '',             // wordmark/brand text color (empty = nav_text_color → on-ivory)
+  nav_tagline_color:   '',             // tagline subtext color (empty = primary)
+  nav_link_color:      '',             // nav links resting color (empty = nav_text_color → on-ivory-muted)
+  nav_link_hover_color:'',             // nav link hover/active color (empty = primary)
+  nav_cta_bg:          '',             // CTA button bg (empty = inherits link styling)
+  nav_cta_color:       '',             // CTA button text color (empty = inherits link styling)
   landing_layout:      'classic',
   hero_name_large:     '',
   vis_pricing:           'true',
@@ -103,6 +137,14 @@ export const DESIGN_DEFAULTS = {
   ticker_uppercase:     'true',        // text-transform: uppercase
   ticker_letter_spacing:'0.2',         // em
   ticker_item_gap:      '32',          // px — gap between items
+  // Placement on the Standard Layout. Templates use their own ticker block(s) for placement.
+  // 'above_hero'      → above hero, sticky-pinned under nav (legacy)
+  // 'below_hero'      → below hero, inline
+  // 'below_services'  → below services/features (default)
+  // 'below_process'   → below the "How It Works" section
+  // 'fixed_top'       → fixed to viewport top, above everything
+  // 'fixed_bottom'    → fixed to viewport bottom
+  ticker_position:      'below_services',
 };
 
 // ── Theme-saveable design keys (excludes agent settings / visibility) ──
@@ -122,6 +164,7 @@ export const THEME_KEYS = [
   'ticker_speed', 'ticker_direction', 'ticker_bg', 'ticker_text_color',
   'ticker_dot_color', 'ticker_font_size', 'ticker_padding',
   'ticker_uppercase', 'ticker_letter_spacing', 'ticker_item_gap',
+  'ticker_position',
 ];
 
 // Copy section field map — shared with copy.js
@@ -163,21 +206,32 @@ export const COPY_SECTIONS = {
 router.get('/', async (req, res) => {
   try {
     const db = req.db;
-    const [rawDesign, brandImages, themes, brandModels, rawCopy] = await Promise.all([
+    const [rawDesign, brandImages, themes, brandModels, rawCopy, templates, activeTemplate, navLinks, customSections] = await Promise.all([
       db.collection('design').find({}).toArray(),
       db.collection('brand_images').find({}).sort({ slot: 1, uploadedAt: -1 }).toArray(),
       db.collection('themes').find({}).sort({ createdAt: -1 }).toArray(),
       db.collection('brand_models').find({}).sort({ slot: 1 }).toArray(),
       db.collection('copy').find({}).toArray(),
+      db.collection('templates').find({}).sort({ updatedAt: -1 }).toArray(),
+      db.collection('active_template').findOne({}),
+      db.collection('nav_links').find({}).sort({ order: 1, createdAt: 1 }).toArray(),
+      db.collection('custom_sections').find({}).sort({ order: 1, createdAt: 1 }).toArray(),
     ]);
     const design = { ...DESIGN_DEFAULTS };
     for (const item of rawDesign) design[item.key] = item.value;
     const enriched = enrichDesignContrast(design);
     const copy = {};
     for (const item of rawCopy) copy[item.key] = item.value;
+    const sub = req.tenant?.meta?.subdomain;
+    const customEjsPath = sub ? path.join(TENANT_VIEWS_ROOT, sub, 'home.ejs') : null;
+    const hasCustomEjs = !!(customEjsPath && fs.existsSync(customEjsPath));
+
     res.render('admin/design/index', {
       user: req.adminUser, page: 'design', title: 'Design & Content',
       design: enriched, brandImages, themes, brandModels, copy, copySections: COPY_SECTIONS,
+      templates, activeTemplateId: activeTemplate?.templateId?.toString() || null,
+      navLinks, customSections, sectionTemplates: CUSTOM_TEMPLATES,
+      hasCustomEjs, tenantSubdomain: sub || '',
       saved: req.query.saved === '1', error: req.query.error === '1',
     });
   } catch (err) {
@@ -206,14 +260,28 @@ router.post('/', async (req, res) => {
       );
     });
 
-    // Save copy fields (any key starting with known copy prefixes)
-    // Checkbox copy fields need explicit handling (unchecked = not in body)
+    // Save copy fields. Known fixed keys from COPY_SECTIONS plus any dynamic
+    // repeater keys (service{N}_*, process{N}_*, about_stat{N}_*,
+    // pricing_tier{N}_*) that the UI added at runtime.
     const COPY_CHECKBOXES = ['promo_enabled', 'pricing_tier3_featured'];
     const allCopyKeys = Object.values(COPY_SECTIONS).flat();
-    const copyOps = allCopyKeys.filter(key => req.body[key] !== undefined || COPY_CHECKBOXES.includes(key)).map(key => {
-      const value = COPY_CHECKBOXES.includes(key)
-        ? (req.body[key] || '')       // '' when unchecked, 'yes' when checked
-        : (req.body[key] || '');
+    const REPEATER_PATTERNS = [
+      /^service\d+_(title|desc|link|image)$/,
+      /^process\d+_(title|desc)$/,
+      /^about_stat\d+_(num|label)$/,
+      /^pricing_tier\d+_(amount|unit|label|equiv|cta_link|featured)$/,
+    ];
+    const isRepeaterKey = (k) => REPEATER_PATTERNS.some(rx => rx.test(k));
+    const repeaterCheckboxes = (k) => /^pricing_tier\d+_featured$/.test(k);
+
+    const dynamicKeys = Object.keys(req.body).filter(isRepeaterKey);
+    const writeKeys = new Set([
+      ...allCopyKeys.filter(k => req.body[k] !== undefined || COPY_CHECKBOXES.includes(k)),
+      ...dynamicKeys,
+    ]);
+    const copyOps = [...writeKeys].map(key => {
+      const isCheckbox = COPY_CHECKBOXES.includes(key) || repeaterCheckboxes(key);
+      const value = isCheckbox ? (req.body[key] || '') : (req.body[key] || '');
       return db.collection('copy').updateOne(
         { key },
         { $set: { key, value, updatedAt: now } },
@@ -221,7 +289,15 @@ router.post('/', async (req, res) => {
       );
     });
 
-    await Promise.all([...designOps, ...copyOps]);
+    // Explicit removals — JS appends to a hidden _keys_to_remove[] field when
+    // the user clicks × on a repeater row. Defensive prefix check to avoid
+    // arbitrary copy deletion through this channel.
+    let removalKeys = [];
+    if (Array.isArray(req.body._keys_to_remove)) removalKeys = req.body._keys_to_remove;
+    else if (typeof req.body._keys_to_remove === 'string' && req.body._keys_to_remove) removalKeys = [req.body._keys_to_remove];
+    const removalOps = removalKeys.filter(isRepeaterKey).map(key => db.collection('copy').deleteOne({ key }));
+
+    await Promise.all([...designOps, ...copyOps, ...removalOps]);
     res.redirect('/admin/design?saved=1');
   } catch (err) {
     console.error(err);
@@ -434,6 +510,65 @@ router.post('/themes/:id/delete', async (req, res) => {
   } catch (err) {
     console.error('Theme delete error:', err);
     res.redirect('/admin/design?error=1');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NAV LINKS — header/footer custom links (in addition to auto-populated pages)
+// Stored in tenant `nav_links` collection: { label, url, location, target, order }
+// ═══════════════════════════════════════════════════════════════════════════════
+router.post('/links', async (req, res) => {
+  try {
+    const { label, url, location, target, _id } = req.body;
+    const cleanLabel = (label || '').trim().slice(0, 60);
+    const cleanUrl = (url || '').trim().slice(0, 500);
+    const cleanLocation = ['header', 'footer', 'both'].includes(location) ? location : 'both';
+    const cleanTarget = target === '_blank' ? '_blank' : '_self';
+    if (!cleanLabel || !cleanUrl) return res.redirect('/admin/design?error=1#links');
+
+    const db = req.db;
+    if (_id) {
+      await db.collection('nav_links').updateOne(
+        { _id: new ObjectId(_id) },
+        { $set: { label: cleanLabel, url: cleanUrl, location: cleanLocation, target: cleanTarget, updatedAt: new Date() } },
+      );
+    } else {
+      const last = await db.collection('nav_links').find({}).sort({ order: -1 }).limit(1).toArray();
+      const nextOrder = last[0]?.order != null ? last[0].order + 1 : 0;
+      await db.collection('nav_links').insertOne({
+        label: cleanLabel, url: cleanUrl, location: cleanLocation, target: cleanTarget,
+        order: nextOrder, createdAt: new Date(), updatedAt: new Date(),
+      });
+    }
+    res.redirect('/admin/design?saved=1#links');
+  } catch (err) {
+    console.error('Nav link save error:', err);
+    res.redirect('/admin/design?error=1#links');
+  }
+});
+
+router.post('/links/:id/delete', async (req, res) => {
+  try {
+    await req.db.collection('nav_links').deleteOne({ _id: new ObjectId(req.params.id) });
+    res.redirect('/admin/design?saved=1#links');
+  } catch (err) {
+    console.error('Nav link delete error:', err);
+    res.redirect('/admin/design?error=1#links');
+  }
+});
+
+router.post('/links/reorder', async (req, res) => {
+  try {
+    let order = [];
+    try { order = JSON.parse(req.body.orderJson || '[]'); } catch {}
+    const ops = order.map((id, i) =>
+      req.db.collection('nav_links').updateOne({ _id: new ObjectId(id) }, { $set: { order: i } }),
+    );
+    await Promise.all(ops);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Nav link reorder error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

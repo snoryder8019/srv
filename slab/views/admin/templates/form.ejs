@@ -66,6 +66,16 @@
   .builder-center { min-height:400px; }
   .builder-right { width:100%;min-width:0;border-left:none;border-top:1px solid var(--border);max-height:500px; }
 }
+/* ── Retro / live-override badges ── */
+.override-banner { margin:12px 20px;padding:12px 16px;background:rgba(201,168,72,0.1);border:1px solid rgba(201,168,72,0.35);border-left:3px solid var(--gold);border-radius:4px;font-size:0.82rem;color:#7a5814;line-height:1.5;display:flex;align-items:center;justify-content:space-between;gap:12px; }
+.override-banner b { color:#5e4310; }
+.override-banner-actions { display:flex;gap:8px;flex-shrink:0; }
+.field-live-row { display:flex;align-items:center;gap:8px;margin-top:4px;font-size:0.72rem;color:var(--slate); }
+.field-live-row .live-tag { font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#7a5814;background:rgba(201,168,72,0.18);padding:1px 6px;border-radius:2px;font-size:0.62rem; }
+.field-live-row .live-val { flex:1;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.field-live-row .live-pull { font-size:0.65rem;padding:2px 8px;border:1px solid rgba(201,168,72,0.4);background:transparent;color:#7a5814;border-radius:2px;cursor:pointer;flex-shrink:0; }
+.field-live-row .live-pull:hover { background:rgba(201,168,72,0.15); }
+.block-field.has-override input, .block-field.has-override textarea { border-left:3px solid var(--gold); }
 </style>
 
 <div class="topbar" style="position:sticky;top:0;z-index:10;">
@@ -75,6 +85,29 @@
     <button type="submit" form="template-form" class="btn btn-navy">Save Template</button>
   </div>
 </div>
+
+<%
+  let _overrideFieldCount = 0;
+  if (typeof contentOverrides !== 'undefined' && contentOverrides) {
+    for (const bid in contentOverrides) {
+      for (const k in contentOverrides[bid]) {
+        if (contentOverrides[bid][k] !== '' && contentOverrides[bid][k] != null) _overrideFieldCount++;
+      }
+    }
+  }
+%>
+<% if (typeof isActive !== 'undefined' && isActive && _overrideFieldCount > 0) { %>
+<div class="override-banner">
+  <div>
+    <b>This template is active and has <%= _overrideFieldCount %> live override<%= _overrideFieldCount === 1 ? '' : 's' %>.</b>
+    Fields with a gold bar are overridden on your live site — editing them here won't change what visitors see. Use <b>↺ Use live</b> on a field to pull your live value into the template, or <b>Sync all from live</b> to capture every override at once.
+  </div>
+  <div class="override-banner-actions">
+    <button type="button" class="btn btn-ghost btn-sm" onclick="syncAllFromLive()" title="Copy every live override into the template's stock fields (in this form only — saved on next Save Template)">⇆ Sync all from live</button>
+    <a href="/admin/templates/<%= tpl._id %>/activate" class="btn btn-ghost btn-sm">Edit live copy →</a>
+  </div>
+</div>
+<% } %>
 
 <form id="template-form" method="POST" action="<%= tpl && tpl._id ? '/admin/templates/' + tpl._id : '/admin/templates' %>">
   <input type="hidden" id="blocks-json" name="blocksJson" value="<%= JSON.stringify((tpl && tpl.blocks) || []) %>">
@@ -93,6 +126,7 @@
         pricing:      { icon: '$', label: 'Pricing Table' },
         testimonials: { icon: '\u275D', label: 'Testimonials' },
         stats:        { icon: '#', label: 'Stats Row' },
+        ticker:       { icon: '»', label: 'Ticker / Marquee' },
       };
       VALID_BLOCK_TYPES.forEach(type => {
         const m = blockMeta[type] || { icon: '\u25A1', label: type };
@@ -179,6 +213,11 @@
 // ── Block field definitions (from server) ──
 const BLOCK_FIELDS = <%- BLOCK_FIELDS %>;
 const BLOCK_DEFAULTS = <%- BLOCK_DEFAULTS %>;
+const LIVE_OVERRIDES = <%- JSON.stringify(typeof contentOverrides !== 'undefined' ? contentOverrides : {}) %>;
+const IS_ACTIVE = <%= (typeof isActive !== 'undefined' && isActive) ? 'true' : 'false' %>;
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 const BLOCK_META = {
   hero:         { icon: '\u25C6', label: 'Hero Banner' },
   text:         { icon: '\u00B6', label: 'Text Section' },
@@ -189,6 +228,7 @@ const BLOCK_META = {
   pricing:      { icon: '$', label: 'Pricing Table' },
   testimonials: { icon: '\u275D', label: 'Testimonials' },
   stats:        { icon: '#', label: 'Stats Row' },
+  ticker:       { icon: '»', label: 'Ticker / Marquee' },
 };
 
 // ── State ──
@@ -241,14 +281,29 @@ function renderBlocks() {
         </div>
       </div>
       <div class="block-body collapsed" id="block-body-${block.id}">
-        ${fields.map(([key, label, type]) => `
-          <div class="block-field">
+        ${fields.map(([key, label, type]) => {
+          const liveVal = (IS_ACTIVE && LIVE_OVERRIDES[block.id] && LIVE_OVERRIDES[block.id][key] != null)
+            ? String(LIVE_OVERRIDES[block.id][key])
+            : null;
+          const hasOverride = liveVal !== null && liveVal !== '';
+          const stockVal = block.fields?.[key] ?? '';
+          const matches = hasOverride && String(stockVal) === liveVal;
+          const inputEl = type === 'textarea'
+            ? `<textarea data-bid="${block.id}" data-key="${key}" oninput="updateBlockField('${block.id}','${key}',this.value)">${escapeHtml(stockVal)}</textarea>`
+            : `<input type="text" data-bid="${block.id}" data-key="${key}" value="${escapeHtml(stockVal)}" oninput="updateBlockField('${block.id}','${key}',this.value)">`;
+          const liveRow = (hasOverride && !matches)
+            ? `<div class="field-live-row">
+                <span class="live-tag">Live</span>
+                <span class="live-val" title="${escapeHtml(liveVal)}">${escapeHtml(liveVal.slice(0, 140))}</span>
+                <button type="button" class="live-pull" onclick="pullLive('${block.id}','${key}')" title="Copy this live value into the template stock field">↺ Use live</button>
+              </div>`
+            : '';
+          return `<div class="block-field${hasOverride && !matches ? ' has-override' : ''}">
             <label>${label}</label>
-            ${type === 'textarea'
-              ? `<textarea data-bid="${block.id}" data-key="${key}" oninput="updateBlockField('${block.id}','${key}',this.value)">${(block.fields?.[key] || '').replace(/</g, '&lt;')}</textarea>`
-              : `<input type="text" data-bid="${block.id}" data-key="${key}" value="${(block.fields?.[key] || '').replace(/"/g, '&quot;')}" oninput="updateBlockField('${block.id}','${key}',this.value)">`
-            }
-          </div>`).join('')}
+            ${inputEl}
+            ${liveRow}
+          </div>`;
+        }).join('')}
       </div>`;
     list.appendChild(card);
   });
@@ -302,6 +357,38 @@ function updateBlockField(id, key, value) {
   const block = tplBlocks.find(b => b.id === id);
   if (block) { if (!block.fields) block.fields = {}; block.fields[key] = value; }
   serializeBlocks();
+}
+
+function pullLive(bid, key) {
+  const liveVal = LIVE_OVERRIDES[bid] && LIVE_OVERRIDES[bid][key];
+  if (liveVal == null) return;
+  const block = tplBlocks.find(b => b.id === bid);
+  if (!block) return;
+  if (!block.fields) block.fields = {};
+  block.fields[key] = String(liveVal);
+  renderBlocks();
+  const body = document.getElementById('block-body-' + bid);
+  if (body) body.classList.remove('collapsed');
+}
+
+function syncAllFromLive() {
+  if (!IS_ACTIVE) return;
+  let count = 0;
+  for (const bid in LIVE_OVERRIDES) {
+    const block = tplBlocks.find(b => b.id === bid);
+    if (!block) continue;
+    if (!block.fields) block.fields = {};
+    for (const k in LIVE_OVERRIDES[bid]) {
+      const v = LIVE_OVERRIDES[bid][k];
+      if (v != null && v !== '') { block.fields[k] = String(v); count++; }
+    }
+  }
+  if (count) {
+    renderBlocks();
+    alert('Pulled ' + count + ' live override' + (count === 1 ? '' : 's') + ' into template stock fields. Click Save Template to commit.');
+  } else {
+    alert('No live overrides to pull.');
+  }
 }
 
 function serializeBlocks() {

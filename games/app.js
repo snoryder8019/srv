@@ -260,6 +260,9 @@ statsNs.on('connection', (socket) => {
 // Pipe stats collector events to Socket.IO
 statsCollector.emitter.on('event', (event) => {
   serverCam.addEvent(event);
+  // Heartbeats + mod-internal probes still hit mongo (counts + last-seen
+  // mode/uptime) but never reach the UI feed.
+  if (statsCollector.UI_SUPPRESSED_EVENT_TYPES.has(event.type)) return;
   const safeEvent = {
     game: event.game,
     type: event.type,

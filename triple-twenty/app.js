@@ -35,6 +35,10 @@ mongoose.connect(process.env.MONGO_URI)
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+// Training frames — sha256-named, unguessable paths; immutable.
+app.use('/frames', express.static(path.join(__dirname, 'data', 'frames'), {
+  immutable: true, maxAge: '30d', fallthrough: false
+}));
 
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET,
@@ -85,6 +89,10 @@ app.use((err, req, res, next) => {
 // ══════════════════════════════════════════════════
 const gameRooms = {};
 const userRooms = {};
+// Per-game registry of WebRTC peers (sockets that opted into PvP video).
+// Keyed by gameId → Map<socketId, { displayName, hasCam, hasMic }>.
+// Mesh model — 2-4 players is the platform max, so direct N×N is fine.
+const rtcPeers = {};
 
 io.on('connection', (socket) => {
 
@@ -137,6 +145,70 @@ io.on('connection', (socket) => {
     });
   });
 
+  // ── WebRTC PvP video signaling (mesh) ──
+  // Client joins by sending rtc-join with the gameId they want video for.
+  // We respond with the existing peer list, then broadcast their arrival.
+  // Each pair negotiates with offer/answer/ice; sender of the offer is the
+  // peer that joined LATER (newcomer offers, existing peers answer).
+  socket.on('rtc-join', ({ gameId, displayName, hasCam, hasMic, playerIndex, role }) => {
+    if (!gameId) return;
+    socket.join(`rtc:${gameId}`);
+    socket.rtcGameId = gameId;
+    if (!rtcPeers[gameId]) rtcPeers[gameId] = new Map();
+    const me = {
+      displayName: displayName || socket.displayName || socket.playerName || 'Player',
+      hasCam: !!hasCam,
+      hasMic: !!hasMic,
+      // playerIndex maps a peer to a slot in the TV/audience views.
+      // Pass -1 (or omit) for non-player observers (TV, scoreboard, audience).
+      playerIndex: (typeof playerIndex === 'number') ? playerIndex : -1,
+      role: role || 'player'   // 'player' | 'viewer' | 'host'
+    };
+    const existing = Array.from(rtcPeers[gameId].entries())
+      .map(([sid, info]) => ({ peerId: sid, ...info }));
+    rtcPeers[gameId].set(socket.id, me);
+    socket.emit('rtc-peers', { peers: existing });
+    socket.to(`rtc:${gameId}`).emit('rtc-peer-joined', { peerId: socket.id, ...me });
+  });
+
+  // Viewer-mode clients (TV scoreboard, audience) call this when they need
+  // to observe a game's video stream without publishing. Same as rtc-join
+  // but role is forced to 'viewer' and they are explicitly NOT offered to
+  // by other peers (they pull, not push). Implementation reuses rtc-join
+  // logic — viewers count as peers in the room and receive offers from
+  // newly-joining publishers.
+  // (Single signaling path — keeps the contract simple; viewers just don't
+  //  add tracks to their RTCPeerConnection.)
+
+  socket.on('rtc-leave', () => {
+    const gid = socket.rtcGameId;
+    if (gid && rtcPeers[gid]) {
+      rtcPeers[gid].delete(socket.id);
+      if (!rtcPeers[gid].size) delete rtcPeers[gid];
+      socket.to(`rtc:${gid}`).emit('rtc-peer-left', { peerId: socket.id });
+    }
+    socket.leave(`rtc:${gid}`);
+    socket.rtcGameId = null;
+  });
+
+  socket.on('rtc-offer', ({ targetPeerId, sdp }) => {
+    if (!targetPeerId) return;
+    io.to(targetPeerId).emit('rtc-offer', { fromPeerId: socket.id, sdp });
+  });
+  socket.on('rtc-answer', ({ targetPeerId, sdp }) => {
+    if (!targetPeerId) return;
+    io.to(targetPeerId).emit('rtc-answer', { fromPeerId: socket.id, sdp });
+  });
+  socket.on('rtc-ice', ({ targetPeerId, candidate }) => {
+    if (!targetPeerId) return;
+    io.to(targetPeerId).emit('rtc-ice', { fromPeerId: socket.id, candidate });
+  });
+  socket.on('rtc-media-toggle', ({ kind, enabled }) => {
+    const gid = socket.rtcGameId;
+    if (!gid) return;
+    socket.to(`rtc:${gid}`).emit('rtc-media-toggle', { peerId: socket.id, kind, enabled });
+  });
+
   socket.on('disconnect', () => {
     if (socket.gameId && gameRooms[socket.gameId]) {
       gameRooms[socket.gameId].players.delete(socket.id);
@@ -147,6 +219,12 @@ io.on('connection', (socket) => {
     if (socket.userId && userRooms[socket.userId]) {
       userRooms[socket.userId].delete(socket.id);
       if (!userRooms[socket.userId].size) delete userRooms[socket.userId];
+    }
+    const gid = socket.rtcGameId;
+    if (gid && rtcPeers[gid]) {
+      rtcPeers[gid].delete(socket.id);
+      if (!rtcPeers[gid].size) delete rtcPeers[gid];
+      io.to(`rtc:${gid}`).emit('rtc-peer-left', { peerId: socket.id });
     }
   });
 });

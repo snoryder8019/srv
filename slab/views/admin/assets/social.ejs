@@ -208,7 +208,7 @@
 </style>
 
 <div class="topbar">
-  <div class="topbar-title">Social Media Generator</div>
+  <div class="topbar-title">Asset Generator</div>
   <div class="topbar-actions">
     <a href="/admin/assets" class="btn btn-ghost btn-sm">&larr; Assets</a>
     <a href="/admin/assets/trim" class="btn btn-ghost btn-sm">Video Trimmer</a>
@@ -301,17 +301,23 @@
       <div class="sg-sec">
         <div class="sg-sec-head" data-toggle="secAiBg">AI Background <span>▸</span></div>
         <div class="sg-sec-body collapsed" id="secAiBg">
-          <div style="margin-bottom:6px;">
-            <input type="text" class="sg-input" id="sdPrompt" placeholder="e.g. paintstrokes, St. Patrick's Day, sunset bokeh..." style="width:100%;">
+          <div style="display:flex;gap:4px;margin-bottom:6px;">
+            <input type="text" class="sg-input" id="sdPrompt" placeholder="seed words, or leave blank + Suggest..." style="flex:1;">
+            <button class="tool-btn" id="sdSuggestBtn" title="Suggest a brand-flavored prompt" style="padding:4px 8px;">&#10024; Suggest</button>
           </div>
           <div style="margin-bottom:6px;">
             <input type="text" class="sg-input" id="sdNegPrompt" placeholder="Negative (auto-filled)" value="text, words, letters, watermark, blurry, low quality" style="width:100%;font-size:0.68rem;color:var(--slate);">
           </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:0.7rem;color:var(--slate);cursor:pointer;">
+            <input type="checkbox" id="sdBrandBoost" checked style="accent-color:var(--gold);width:13px;height:13px;cursor:pointer;">
+            Brand boost <span style="font-size:0.6rem;opacity:0.7;">(palette + voice + industry)</span>
+          </label>
           <div class="tool-bar">
             <button class="tool-btn" id="genBgBtn" style="background:var(--gold);color:var(--on-surface);border-color:var(--gold);flex:1;">Generate Background</button>
             <button class="tool-btn" id="clearBgBtn" title="Remove AI background">Clear</button>
           </div>
           <div id="sdStatus" style="font-size:0.68rem;color:var(--slate);margin-top:4px;"></div>
+          <div id="sdFinalPrompt" style="font-size:0.62rem;color:var(--slate);margin-top:4px;opacity:0.85;line-height:1.35;"></div>
           <div style="margin-top:6px;">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
               <span style="font-size:0.55rem;color:var(--slate);letter-spacing:0.1em;text-transform:uppercase;font-weight:700;">Quick Prompts</span>
@@ -805,8 +811,9 @@ async function generateSdBackground(prompt, negPrompt, _ctx) {
   // when duplicate IDs exist (mobile overlay clone vs original panel)
   const status = (_ctx && _ctx.status) || document.getElementById('sdStatus');
   const btn    = (_ctx && _ctx.btn)    || document.getElementById('genBgBtn');
-  if (!prompt || !prompt.trim()) {
-    if (status) status.textContent = 'Enter a prompt first.';
+  const brandBoostOn = document.getElementById('sdBrandBoost')?.checked !== false;
+  if ((!prompt || !prompt.trim()) && !brandBoostOn) {
+    if (status) status.textContent = 'Enter a prompt first (or enable Brand boost).';
     return;
   }
 
@@ -820,6 +827,10 @@ async function generateSdBackground(prompt, negPrompt, _ctx) {
     status.textContent = `Generating… ${elapsed}s (SD can take up to 45s)`;
   }, 1000);
 
+  const enrich = document.getElementById('sdBrandBoost')?.checked !== false;
+  const finalEl = document.getElementById('sdFinalPrompt');
+  if (finalEl) finalEl.textContent = '';
+
   try {
     const r = await fetch('/admin/assets/generate-bg', {
       method: 'POST',
@@ -828,6 +839,7 @@ async function generateSdBackground(prompt, negPrompt, _ctx) {
         prompt: prompt.trim(),
         negative_prompt: negPrompt || 'text, words, letters, watermark, blurry, low quality',
         sizePreset: sizeName,
+        enrich,
       }),
     });
     if (!r.ok) {
@@ -838,6 +850,12 @@ async function generateSdBackground(prompt, negPrompt, _ctx) {
     }
     const data = await r.json();
     if (!data.success) throw new Error(data.error || 'Generation failed');
+
+    // Show what was actually sent so users see the brand boost in action
+    if (finalEl && data.finalPrompt) {
+      const tag = data.promptSource === 'enriched' ? 'Brand-boosted' : data.promptSource === 'fallback' ? 'Brand suggestion' : 'Raw';
+      finalEl.innerHTML = `<strong style="color:var(--gold);">${tag}:</strong> ${data.finalPrompt.replace(/[<&>]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}`;
+    }
 
     // Add as a layer at the bottom of the stack
     const img = new Image();
@@ -873,6 +891,36 @@ document.getElementById('genBgBtn').addEventListener('click', function() {
   const prompt   = promptEl?.value?.trim() || '';
   const neg      = negEl?.value?.trim()    || 'text, words, letters, watermark, blurry, low quality';
   generateSdBackground(prompt, neg, { btn: this, status: statusEl });
+});
+document.getElementById('sdSuggestBtn')?.addEventListener('click', async function() {
+  const promptEl = document.getElementById('sdPrompt');
+  const negEl    = document.getElementById('sdNegPrompt');
+  const statusEl = document.getElementById('sdStatus');
+  const finalEl  = document.getElementById('sdFinalPrompt');
+  const seed = promptEl?.value?.trim() || '';
+  this.disabled = true;
+  const oldLabel = this.textContent;
+  this.textContent = '…';
+  if (statusEl) statusEl.textContent = 'Composing a brand-flavored prompt…';
+  try {
+    const r = await fetch('/admin/assets/suggest-sd-prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed, sizePreset: sizeName }),
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error || 'Suggest failed');
+    if (promptEl && data.prompt) promptEl.value = data.prompt;
+    if (negEl && data.negative && !negEl.value.trim()) negEl.value = data.negative;
+    if (statusEl) statusEl.textContent = 'Prompt drafted — review and Generate.';
+    if (finalEl) finalEl.innerHTML = `<strong style="color:var(--gold);">${data.source === 'enriched' ? 'Suggested' : 'Fallback'}:</strong> ${data.prompt.replace(/[<&>]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}`;
+    setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4000);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = '⚠ ' + err.message;
+  } finally {
+    this.disabled = false;
+    this.textContent = oldLabel;
+  }
 });
 document.getElementById('clearBgBtn').addEventListener('click', () => {
   layers = layers.filter(l => !l._aiBg);
