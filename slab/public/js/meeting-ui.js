@@ -379,6 +379,151 @@
       transcriptPanel.scrollTop = transcriptPanel.scrollHeight;
     });
 
+    // ── BACKDROP PICKER ──
+    var ctrlBackdrop = document.getElementById('ctrl-backdrop');
+    var backdropPicker = document.getElementById('backdrop-picker');
+    if (ctrlBackdrop && backdropPicker) {
+      ctrlBackdrop.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var open = !backdropPicker.hasAttribute('hidden');
+        if (open) backdropPicker.setAttribute('hidden', '');
+        else backdropPicker.removeAttribute('hidden');
+      });
+      document.addEventListener('click', function (e) {
+        if (backdropPicker.hasAttribute('hidden')) return;
+        if (backdropPicker.contains(e.target) || ctrlBackdrop.contains(e.target)) return;
+        backdropPicker.setAttribute('hidden', '');
+      });
+
+      function markSelected(url) {
+        backdropPicker.querySelectorAll('.bd-option').forEach(function (b) {
+          b.classList.toggle('selected', b.dataset.bd === (url || ''));
+        });
+      }
+
+      backdropPicker.querySelectorAll('.bd-option').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var url = btn.dataset.bd || '';
+          var label = btn.dataset.label || 'Backdrop';
+          if (!url) {
+            window.MeetingRTC.clearBackdrop();
+            ctrlBackdrop.classList.remove('active');
+            ctrlBackdrop.title = 'Backdrop';
+          } else {
+            var apply = window.MeetingRTC.isBackdropActive()
+              ? window.MeetingRTC.changeBackdrop(url)
+              : window.MeetingRTC.applyBackdrop(url);
+            if (apply && apply.then) {
+              ctrlBackdrop.classList.add('loading');
+              apply.then(function () {
+                ctrlBackdrop.classList.remove('loading');
+                ctrlBackdrop.classList.add('active');
+                ctrlBackdrop.title = 'Backdrop: ' + label;
+              });
+            } else {
+              ctrlBackdrop.classList.add('active');
+              ctrlBackdrop.title = 'Backdrop: ' + label;
+            }
+          }
+          markSelected(url);
+          backdropPicker.setAttribute('hidden', '');
+        });
+      });
+      markSelected('');
+    }
+
+    // ── LOCAL PIP FULLSCREEN ──
+    var localFsBtn = document.getElementById('local-fs-btn');
+    if (localFsBtn) {
+      localFsBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var v = document.getElementById('local-video');
+        if (v && window.MeetingFS) window.MeetingFS.toggle(v);
+      });
+    }
+
+    // ── RECORDING CONTROLS ──
+    var ctrlRecord = document.getElementById('ctrl-record');
+    var ctrlRecScreen = document.getElementById('ctrl-recscreen');
+    var recordingBadge = document.getElementById('recording-badge');
+    var recTimeEl = document.getElementById('rec-time');
+    var recTimerId = null;
+    var recStartedAt = null;
+
+    function setRecordingActive(active, kind) {
+      if (ctrlRecord) ctrlRecord.classList.toggle('recording', active && kind === 'meeting');
+      if (ctrlRecScreen) ctrlRecScreen.classList.toggle('recording', active && kind === 'screen');
+      if (recordingBadge) recordingBadge.style.display = active ? 'inline-flex' : 'none';
+      if (active) {
+        recStartedAt = Date.now();
+        if (recTimeEl) recTimeEl.textContent = '00:00';
+        recTimerId = setInterval(function () {
+          var s = Math.floor((Date.now() - recStartedAt) / 1000);
+          var m = Math.floor(s / 60);
+          var sec = s % 60;
+          if (recTimeEl) recTimeEl.textContent = (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+        }, 1000);
+      } else {
+        if (recTimerId) { clearInterval(recTimerId); recTimerId = null; }
+        recStartedAt = null;
+      }
+    }
+
+    function toggleRecording(kind) {
+      if (window.MeetingRTC.isRecording()) {
+        // If a different recording kind is active, ignore — user must stop first via the active button
+        if (window.MeetingRTC.getRecordingKind() !== kind) {
+          showLocalError('A ' + window.MeetingRTC.getRecordingKind() + ' recording is already in progress.');
+          return;
+        }
+        window.MeetingRTC.stopRecording();
+      } else {
+        if (kind === 'screen') window.MeetingRTC.startScreenRecording();
+        else window.MeetingRTC.startMeetingRecording();
+      }
+    }
+
+    if (ctrlRecord) ctrlRecord.addEventListener('click', function () { toggleRecording('meeting'); });
+    if (ctrlRecScreen) ctrlRecScreen.addEventListener('click', function () { toggleRecording('screen'); });
+
+    document.addEventListener('recording-state', function (e) {
+      var d = e.detail || {};
+      if (d.state === 'started') {
+        setRecordingActive(true, d.kind);
+        showLocalSuccess((d.kind === 'screen' ? 'Screen' : 'Meeting') + ' recording started');
+      } else if (d.state === 'stopping') {
+        // keep UI active until upload completes — but show "uploading" hint
+        if (recTimeEl) recTimeEl.textContent = 'saving…';
+      } else if (d.state === 'uploading') {
+        if (recTimeEl) recTimeEl.textContent = 'uploading…';
+      } else if (d.state === 'uploaded') {
+        setRecordingActive(false, null);
+        showLocalSuccess('Recording uploaded');
+        if (d.asset) {
+          assetsEmpty.style.display = 'none';
+          appendAsset(d.asset);
+        }
+      } else if (d.state === 'error') {
+        setRecordingActive(false, null);
+        showLocalError(d.error || 'Recording failed');
+      }
+    });
+
+    function showLocalError(msg) {
+      var t = document.getElementById('error-toast');
+      if (!t) return;
+      t.textContent = msg;
+      t.style.display = 'block';
+      setTimeout(function () { t.style.display = 'none'; }, 4500);
+    }
+    function showLocalSuccess(msg) {
+      var t = document.getElementById('success-toast');
+      if (!t) { showLocalError(msg); return; }
+      t.textContent = msg;
+      t.style.display = 'block';
+      setTimeout(function () { t.style.display = 'none'; }, 3000);
+    }
+
     // Remote transcript + notetaker status + edits + replies
     function listenForSocketEvents() {
       var check = setInterval(function () {

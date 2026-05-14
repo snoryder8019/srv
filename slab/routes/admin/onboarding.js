@@ -101,8 +101,10 @@ ${brandContext}
 
 Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
 {
-  "message": "one sentence describing the suggested fields",
+  "message": "one sentence describing the suggested form",
   "fill": {
+    "name": "Concise form title (e.g. 'New Client Intake')",
+    "description": "One-sentence description of this form's purpose",
     "fields": [
       {
         "key": "field_key_snake_case",
@@ -121,14 +123,21 @@ Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
 
 Field types: text, textarea, select, checkbox, radio, number, email, url, date, color, heading (section divider).
 Only include "options" for select/radio/checkbox types.
-Generate 4-8 useful fields based on the business type and user prompt.`;
+Generate 4-8 useful fields based on the business type and user prompt.
+Always include a sensible "name" and "description" for the form itself.`;
 
     const raw = await callLLM(
       [{ role: 'user', content: prompt }],
       systemPrompt,
     );
     const parsed = tryParseAgentResponse(raw);
-    res.json({ success: true, message: parsed.message || 'Fields suggested', fields: parsed.fill?.fields || [] });
+    res.json({
+      success: true,
+      message: parsed.message || 'Fields suggested',
+      name: parsed.fill?.name || '',
+      description: parsed.fill?.description || '',
+      fields: parsed.fill?.fields || [],
+    });
   } catch (err) {
     console.error('[Onboarding] Agent suggest error:', err);
     res.status(500).json({ error: err.message || 'Agent failed' });
@@ -273,35 +282,45 @@ router.post('/:id/delete', async (req, res) => {
 
 // ── RESPONSES list ──────────────────────────────────────────────────────────
 router.get('/:id/responses', async (req, res) => {
-  const db = req.db;
-  let form;
   try {
-    form = await db.collection('onboarding_forms').findOne({ _id: new ObjectId(req.params.id) });
-  } catch { /* invalid id */ }
-  if (!form) return res.redirect('/admin/onboarding');
+    const db = req.db;
+    let form;
+    try {
+      form = await db.collection('onboarding_forms').findOne({ _id: new ObjectId(req.params.id) });
+    } catch { /* invalid id */ }
+    if (!form) return res.redirect('/admin/onboarding');
 
-  const responses = await db.collection('onboarding_responses')
-    .find({ formId: form._id })
-    .sort({ createdAt: -1 })
-    .limit(200)
-    .toArray();
+    // formId in responses may be stored as ObjectId OR as string — match both.
+    const responses = await db.collection('onboarding_responses')
+      .find({ $or: [{ formId: form._id }, { formId: form._id.toString() }] })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .toArray();
 
-  // Resolve client names
-  const clientIds = responses.filter(r => r.clientId).map(r => r.clientId);
-  const clients = clientIds.length
-    ? await db.collection('clients').find({ _id: { $in: clientIds } }).project({ name: 1, email: 1 }).toArray()
-    : [];
-  const clientMap = {};
-  clients.forEach(c => { clientMap[c._id.toString()] = c; });
+    // Resolve client names — accept ObjectId or hex-string clientIds, coerce to ObjectId
+    const clientIds = responses
+      .map(r => r.clientId)
+      .filter(Boolean)
+      .map(id => (id instanceof ObjectId ? id : (ObjectId.isValid(id) ? new ObjectId(id) : null)))
+      .filter(Boolean);
+    const clients = clientIds.length
+      ? await db.collection('clients').find({ _id: { $in: clientIds } }).project({ name: 1, email: 1 }).toArray()
+      : [];
+    const clientMap = {};
+    clients.forEach(c => { clientMap[c._id.toString()] = c; });
 
-  res.render('admin/onboarding/responses', {
-    user: req.adminUser,
-    page: 'onboarding',
-    title: 'Responses: ' + form.name,
-    form,
-    responses,
-    clientMap,
-  });
+    res.render('admin/onboarding/responses', {
+      user: req.adminUser,
+      page: 'onboarding',
+      title: 'Responses: ' + form.name,
+      form,
+      responses,
+      clientMap,
+    });
+  } catch (err) {
+    console.error('[Onboarding] Responses page error:', err);
+    res.status(500).send('Failed to load responses: ' + err.message);
+  }
 });
 
 // ── SUBMIT response (used by preview & client onboarding tab) ───────────────
@@ -366,11 +385,15 @@ router.post('/:id/agent', express.json(), async (req, res) => {
 ${brandContext}
 
 The form currently has these fields: ${existingFields}
+The form is titled: "${form?.name || '(untitled)'}"
+The form description is: "${form?.description || '(none)'}"
 
 Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
 {
   "message": "one sentence describing the suggested fields",
   "fill": {
+    "name": "Concise form title — leave empty string if the existing title is already good",
+    "description": "One-sentence form description — leave empty string if the existing description is already good",
     "fields": [
       {
         "key": "field_key_snake_case",
@@ -397,7 +420,13 @@ Do NOT duplicate fields that already exist on the form.`;
       systemPrompt,
     );
     const parsed = tryParseAgentResponse(raw);
-    res.json({ success: true, message: parsed.message || 'Fields suggested', fields: parsed.fill?.fields || [] });
+    res.json({
+      success: true,
+      message: parsed.message || 'Fields suggested',
+      name: parsed.fill?.name || '',
+      description: parsed.fill?.description || '',
+      fields: parsed.fill?.fields || [],
+    });
   } catch (err) {
     console.error('[Onboarding] Agent error:', err);
     res.status(500).json({ error: err.message || 'Agent failed' });

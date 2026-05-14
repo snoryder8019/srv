@@ -5,6 +5,23 @@ import { decrypt } from '../plugins/crypto.js';
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
 
+// Last-seen tracker — keyed by tenant _id (stringified). Throttled to 1 write/min/tenant.
+const lastSeenWrittenAt = new Map();
+const LAST_SEEN_THROTTLE_MS = 60 * 1000;
+function maybeTouchLastSeen(tenant) {
+  if (!tenant || !tenant._id) return;
+  const key = String(tenant._id);
+  const now = Date.now();
+  const prev = lastSeenWrittenAt.get(key) || 0;
+  if (now - prev < LAST_SEEN_THROTTLE_MS) return;
+  lastSeenWrittenAt.set(key, now);
+  // Fire-and-forget — never block the request
+  getSlabDb().collection('tenants').updateOne(
+    { _id: tenant._id },
+    { $set: { 'meta.lastSeenAt': new Date(now) }, $inc: { 'meta.hitsTotal': 1 } },
+  ).catch(() => { /* ignore */ });
+}
+
 function getCached(domain) {
   const entry = cache.get(domain);
   if (!entry) return null;
@@ -37,6 +54,7 @@ export function resolveTenant(req, res, next) {
   const cached = getCached(host);
   if (cached) {
     applyTenant(req, res, cached);
+    maybeTouchLastSeen(cached);
     return next();
   }
 
@@ -53,6 +71,7 @@ export function resolveTenant(req, res, next) {
       }
       cache.set(host, { tenant, ts: Date.now() });
       applyTenant(req, res, tenant);
+      maybeTouchLastSeen(tenant);
       next();
     })
     .catch(err => {

@@ -106,6 +106,10 @@ export const DESIGN_DEFAULTS = {
   snap_enabled:         'false',       // full-page snap scrolling (ACM-style)
   // ── Industrial/service styling ──
   hero_bg_pattern:      'none',        // none, grid, diagonal, dots — subtle overlay pattern
+  // ── Hero full-bleed background override (image or video from tenant assets) ──
+  hero_bg_media_url:    '',            // URL to image/video — overrides the split layout right-panel image
+  hero_bg_media_type:   '',            // '', 'image', or 'video'
+  hero_bg_media_poster: '',            // optional poster image URL for video
   card_hover_accent:    'true',        // accent-colored top border on card hover
   card_border_radius:   '2',           // 0-16 px
   // ── Color accents (secondary + tertiary for multi-brand) ──
@@ -159,6 +163,7 @@ export const THEME_KEYS = [
   'hero_overlay_opacity', 'hero_text_align', 'hero_height',
   'snap_enabled', 'gradient_enabled', 'gradient_angle',
   'hero_bg_pattern', 'card_hover_accent', 'card_border_radius',
+  'hero_bg_media_url', 'hero_bg_media_type', 'hero_bg_media_poster',
   'section_animation',
   // ticker style tokens (items themselves stay per-tenant/content)
   'ticker_speed', 'ticker_direction', 'ticker_bg', 'ticker_text_color',

@@ -711,13 +711,14 @@ router.get('/social/presets', async (req, res) => {
 router.post('/social/presets', express.json({ limit: '5mb' }), async (req, res) => {
   try {
     const db = req.db;
-    const { name, canvasW, canvasH, sizePreset, bgColor, palette, layers, clientId, folder, brandTarget } = req.body;
+    const { name, canvasW, canvasH, sizePreset, bgColor, bgTransparent, palette, layers, clientId, folder, brandTarget } = req.body;
     const doc = {
       name: name || 'Untitled',
       canvasW: canvasW || 1080,
       canvasH: canvasH || 1080,
       sizePreset: sizePreset || 'ig-post',
       bgColor: bgColor || '#F5F3EF',
+      bgTransparent: !!bgTransparent,
       palette: palette || [],
       layers: layers || [],
       clientId: clientId || null,
@@ -749,13 +750,14 @@ router.get('/social/presets/:id', async (req, res) => {
 router.put('/social/presets/:id', express.json({ limit: '5mb' }), async (req, res) => {
   try {
     const db = req.db;
-    const { name, canvasW, canvasH, sizePreset, bgColor, palette, layers, clientId, folder, brandTarget } = req.body;
+    const { name, canvasW, canvasH, sizePreset, bgColor, bgTransparent, palette, layers, clientId, folder, brandTarget } = req.body;
     const $set = { updatedAt: new Date() };
     if (name !== undefined) $set.name = name;
     if (canvasW !== undefined) $set.canvasW = canvasW;
     if (canvasH !== undefined) $set.canvasH = canvasH;
     if (sizePreset !== undefined) $set.sizePreset = sizePreset;
     if (bgColor !== undefined) $set.bgColor = bgColor;
+    if (bgTransparent !== undefined) $set.bgTransparent = !!bgTransparent;
     if (palette !== undefined) $set.palette = palette;
     if (layers !== undefined) $set.layers = layers;
     if (clientId !== undefined) $set.clientId = clientId || null;

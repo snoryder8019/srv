@@ -339,7 +339,9 @@ router.get('/google/callback', async (req, res) => {
 
     // Custom domains can't receive cookies from slab.madladslab.com callback.
     // Redirect with a one-time token — requireAdmin will exchange it for a cookie on the tenant domain.
-    const isCustom = returnDomain && !returnDomain.endsWith('.madladslab.com') && returnDomain !== 'localhost';
+    // madladslab.com (apex) + *.madladslab.com all share the .madladslab.com cookie, so they take the direct path.
+    const isPlatform = returnDomain && (returnDomain === 'madladslab.com' || returnDomain.endsWith('.madladslab.com'));
+    const isCustom = returnDomain && !isPlatform && returnDomain !== 'localhost';
     if (isCustom) {
       const { createLoginToken } = await import('../middleware/jwtAuth.js');
       const oneTimeToken = createLoginToken(user, tenantDbName, '2m');

@@ -267,10 +267,12 @@
             </tr>
           </thead>
           <tbody>
-            <% (meeting.assets || []).forEach(function(a) {
+            <% (meeting.assets || []).forEach(function(a, _idx) {
               var ext = (a.name || '').split('.').pop().toLowerCase();
               var isImage = ['jpg','jpeg','png','gif','webp','svg','bmp','ico'].indexOf(ext) !== -1;
               var isPdf = ext === 'pdf';
+              var isRecording = a.kind === 'meeting-recording' || a.kind === 'screen-recording';
+              var isVideo = isRecording || ['webm','mp4','mov','m4v','ogv'].indexOf(ext) !== -1;
             %>
               <tr>
                 <td style="width:52px;padding:6px;">
@@ -291,15 +293,25 @@
                 </td>
                 <td style="white-space:nowrap;"><%= a.createdAt ? new Date(a.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '' %></td>
                 <td>
-                  <div style="display:flex;gap:4px;">
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;">
                     <% if (isImage) { %>
                       <button class="btn btn-navy btn-sm" onclick="openLightbox('<%= a.url %>', '<%= a.name %>', 'image')">View</button>
                     <% } else if (isPdf) { %>
                       <button class="btn btn-navy btn-sm" onclick="openLightbox('<%= a.url %>', '<%= a.name %>', 'pdf')">View</button>
+                    <% } else if (isVideo) { %>
+                      <button class="btn btn-navy btn-sm" onclick="openLightbox('<%= a.url %>', '<%= a.name %>', 'video')">View</button>
                     <% } else { %>
                       <a href="<%= a.url %>" target="_blank" rel="noopener" class="btn btn-navy btn-sm">View</a>
                     <% } %>
                     <a href="<%= a.url %>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" download>Download</a>
+                    <% if (isRecording) { %>
+                      <button class="btn btn-ghost btn-sm send-to-assets-btn"
+                              data-asset-index="<%= _idx %>"
+                              data-bucket-key="<%= a.bucketKey || '' %>"
+                              title="Copy this recording into the Assets library under the Video folder">
+                        Send to Assets
+                      </button>
+                    <% } %>
                   </div>
                 </td>
               </tr>
@@ -400,6 +412,10 @@ function openLightbox(url, name, type) {
     inner.innerHTML = '<button class="asset-lightbox-close" onclick="closeLightbox()">&times;</button>'
       + '<iframe src="' + url + '"></iframe>'
       + '<div class="asset-lightbox-name">' + name + '</div>';
+  } else if (type === 'video') {
+    inner.innerHTML = '<button class="asset-lightbox-close" onclick="closeLightbox()">&times;</button>'
+      + '<video src="' + url + '" controls autoplay style="max-width:90vw;max-height:80vh;background:#000;border-radius:6px;"></video>'
+      + '<div class="asset-lightbox-name">' + name + '</div>';
   }
   lb.classList.add('open');
 }
@@ -410,6 +426,39 @@ function closeLightbox() {
 }
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeLightbox();
+});
+
+// Send-to-Assets — copy a recording into the central assets library
+document.querySelectorAll('.send-to-assets-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var idx = parseInt(btn.dataset.assetIndex, 10);
+    var key = btn.dataset.bucketKey || null;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    var originalText = btn.textContent;
+    btn.textContent = 'Sending…';
+    fetch('/admin/meetings/<%= meeting._id %>/recordings/send-to-assets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assetIndex: idx, bucketKey: key }),
+    })
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(result) {
+        if (result.ok) {
+          btn.textContent = result.data.alreadyExisted ? 'In Assets ✓' : 'Sent to Assets ✓';
+          btn.classList.add('btn-ok');
+        } else {
+          btn.disabled = false;
+          btn.textContent = originalText;
+          alert(result.data.error || 'Failed to send to assets');
+        }
+      })
+      .catch(function() {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        alert('Failed to send to assets');
+      });
+  });
 });
 
 // Delete record

@@ -21,6 +21,7 @@ import { logActivity, getActivityLogs } from '../plugins/activityLog.js';
 import { execSync } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { getServices, getServicesByCategory, getService, PRODUCTS } from '../plugins/serviceRegistry.js';
 
@@ -144,7 +145,7 @@ router.use(requireSuperAdmin);
 router.get('/', async (req, res) => {
   const slab = getSlabDb();
   const [tenants, recentSignups, activityLogs] = await Promise.all([
-    slab.collection('tenants').find().sort({ createdAt: -1 }).toArray(),
+    slab.collection('tenants').find().sort({ 'meta.lastSeenAt': -1, createdAt: -1 }).toArray(),
     slab.collection('signups').find().sort({ createdAt: -1 }).limit(10).toArray(),
     getActivityLogs({ limit: 30 }),
   ]);
@@ -571,9 +572,10 @@ router.get('/api/tool/:tool', async (req, res) => {
         output = safeExec('df -h / && echo "" && du -sh /srv/*/ 2>/dev/null | sort -rh | head -20');
         break;
       case 'ollama': {
-        const url = (config.OLLAMA_URL || 'https://ollama.madladslab.com/v1/chat/completions').replace('/v1/chat/completions', '/health');
-        output = safeExec(`curl -s --max-time 5 ${url} 2>&1`);
-        break;
+        const h = await ollamaHealth();
+        output = JSON.stringify(h, null, 2);
+        if (h.llm?.ok || h.sd?.ok) return res.json({ ok: true, tool, output, models: h.llm?.models || [], llm: h.llm, sd: h.sd });
+        return res.json({ ok: false, tool, output, error: h.error || 'unreachable' });
       }
       default:
         output = 'Unknown tool: ' + tool;
@@ -581,6 +583,348 @@ router.get('/api/tool/:tool', async (req, res) => {
     res.json({ ok: true, tool, output });
   } catch (err) {
     res.json({ ok: false, tool, output: 'Error: ' + err.message });
+  }
+});
+
+// ── Ollama tunnel analytics (proxy to ollama.madladslab.com) ────────────────
+function ollamaBase() {
+  return (config.OLLAMA_URL || 'https://ollama.madladslab.com/v1/chat/completions')
+    .replace(/\/v1\/chat\/completions\/?$/, '')
+    .replace(/\/$/, '');
+}
+
+async function ollamaFetch(pathname, { auth = true, timeoutMs = 6000 } = {}) {
+  const url = ollamaBase() + pathname;
+  const headers = { 'Accept': 'application/json' };
+  if (auth && config.OLLAMA_KEY) headers['Authorization'] = 'Bearer ' + config.OLLAMA_KEY;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { headers, signal: ctl.signal });
+    const text = await r.text();
+    let body; try { body = JSON.parse(text); } catch { body = text; }
+    return { ok: r.ok, status: r.status, body };
+  } catch (e) {
+    return { ok: false, status: 0, body: null, error: e.message };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function ollamaHealth() {
+  const [llm, sd] = await Promise.all([ollamaFetch('/health', { auth: false }), ollamaFetch('/health/sd', { auth: false })]);
+  return {
+    llm: { ok: llm.ok, status: llm.status, ...(typeof llm.body === 'object' && llm.body ? llm.body : {}), error: llm.error },
+    sd:  { ok: sd.ok,  status: sd.status,  ...(typeof sd.body  === 'object' && sd.body  ? sd.body  : {}), error: sd.error },
+  };
+}
+
+router.get('/api/ollama/health', async (req, res) => {
+  res.json(await ollamaHealth());
+});
+
+router.get('/api/ollama/keys', async (req, res) => {
+  const r = await ollamaFetch('/analytics/keys');
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.get('/api/ollama/rate', async (req, res) => {
+  const r = await ollamaFetch('/analytics/rate');
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.get('/api/ollama/analytics', async (req, res) => {
+  const qs = new URLSearchParams();
+  if (req.query.since) qs.set('since', String(req.query.since));
+  if (req.query.until) qs.set('until', String(req.query.until));
+  if (req.query.key)   qs.set('key',   String(req.query.key));
+  const path = '/analytics' + (qs.toString() ? '?' + qs.toString() : '');
+  const r = await ollamaFetch(path, { timeoutMs: 10000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+// ── Ops Pulse — per-service activity for the harmony visualizer ─────────────
+const pulseCache = { lastActivity: {}, lastHistory: {}, history: [], lastCpuSample: null, lastTail: {}, lastErrCount: {} };
+
+// Count error markers in a tail-50 block (HTTP 4xx/5xx access lines, Error/throws, common stack words)
+const ERR_RE = /\b[45]\d{2}\b|\bError\b|\bECONN[A-Z]+\b|\bENOTFOUND\b|\bEACCES\b|\bUnhandled\b|TypeError|RangeError|ReferenceError/i;
+function countErrorLines(s) {
+  if (!s) return 0;
+  let n = 0;
+  for (const line of s.split('\n')) { if (ERR_RE.test(line)) n++; }
+  return n;
+}
+
+function tmuxTail(session, lines = 50) {
+  try {
+    return execSync(`tmux capture-pane -t ${session} -p -S -${lines} 2>/dev/null`, { encoding: 'utf8', timeout: 1200 }) || '';
+  } catch { return ''; }
+}
+
+function sysSnapshot() {
+  // Load averages (Linux)
+  const load = os.loadavg(); // [1m, 5m, 15m]
+  const cores = os.cpus().length || 1;
+
+  // Memory from /proc/meminfo (more accurate than os.freemem on Linux)
+  let memTotal = os.totalmem(), memFree = os.freemem(), memAvail = memFree;
+  try {
+    const mi = fs.readFileSync('/proc/meminfo', 'utf8');
+    const get = k => { const m = mi.match(new RegExp('^' + k + ':\\s+(\\d+)\\s+kB', 'm')); return m ? parseInt(m[1], 10) * 1024 : null; };
+    memTotal = get('MemTotal') ?? memTotal;
+    memFree = get('MemFree') ?? memFree;
+    memAvail = get('MemAvailable') ?? memFree;
+  } catch {}
+
+  // CPU usage % since last sample (instantaneous)
+  let cpuPct = null;
+  try {
+    const cpus = os.cpus();
+    const sample = cpus.reduce((acc, c) => {
+      acc.idle += c.times.idle;
+      acc.total += c.times.user + c.times.nice + c.times.sys + c.times.idle + c.times.irq;
+      return acc;
+    }, { idle: 0, total: 0 });
+    if (pulseCache.lastCpuSample) {
+      const dIdle = sample.idle - pulseCache.lastCpuSample.idle;
+      const dTotal = sample.total - pulseCache.lastCpuSample.total;
+      if (dTotal > 0) cpuPct = Math.max(0, Math.min(100, 100 * (1 - dIdle / dTotal)));
+    }
+    pulseCache.lastCpuSample = sample;
+  } catch {}
+
+  // Top processes by CPU (single call, cheap)
+  let topProcs = [];
+  try {
+    const out = execSync('ps -eo pid,pcpu,pmem,rss,comm --sort=-pcpu --no-headers 2>/dev/null | head -8', { encoding: 'utf8', timeout: 1000 });
+    topProcs = out.trim().split('\n').filter(Boolean).map(line => {
+      const m = line.trim().match(/^(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(.+)$/);
+      if (!m) return null;
+      return { pid: parseInt(m[1], 10), cpu: parseFloat(m[2]), mem: parseFloat(m[3]), rssKb: parseInt(m[4], 10), name: m[5].trim() };
+    }).filter(Boolean);
+  } catch {}
+
+  // Process count
+  let procCount = null;
+  try { procCount = parseInt(execSync('ps -e --no-headers 2>/dev/null | wc -l', { encoding: 'utf8', timeout: 600 }).trim(), 10); } catch {}
+
+  return {
+    load: { m1: load[0], m5: load[1], m15: load[2], cores },
+    cpuPct,
+    mem: { total: memTotal, free: memFree, available: memAvail, used: memTotal - memAvail, usedPct: memTotal ? ((memTotal - memAvail) / memTotal) * 100 : 0 },
+    procs: { total: procCount, top: topProcs },
+    uptimeSec: os.uptime(),
+  };
+}
+
+router.get('/api/ops/pulse', (req, res) => {
+  const services = getServices();
+  const now = Date.now();
+
+  // Pull session_activity + history_size for all tmux sessions in one call.
+  const tmux = {};
+  try {
+    const out = execSync('tmux list-sessions -F "#{session_name}|#{session_activity}|#{history_size}" 2>/dev/null', { encoding: 'utf8', timeout: 1500 });
+    out.trim().split('\n').forEach(line => {
+      const [name, act, size] = line.split('|');
+      if (!name) return;
+      tmux[name] = { activity: parseInt(act, 10) * 1000, size: parseInt(size, 10) || 0 };
+    });
+  } catch { /* tmux missing or no sessions */ }
+
+  // One ss call, bucket established connections by local port.
+  const connsByPort = {};
+  try {
+    const out = execSync('ss -tn state established 2>/dev/null', { encoding: 'utf8', timeout: 1500 });
+    out.split('\n').slice(1).forEach(line => {
+      const m = line.match(/:(\d+)\s+\S+:\d+/);
+      if (m) { const p = parseInt(m[1], 10); connsByPort[p] = (connsByPort[p] || 0) + 1; }
+    });
+  } catch {}
+
+  // Pull in any tmux sessions that AREN'T in the registry as "unregistered" services,
+  // so newly spun-up sessions show up in the harmony immediately.
+  const registeredTmux = new Set(services.filter(s => s.tmux).map(s => s.tmux));
+  const allSessionNames = Object.keys(tmux);
+  const unregistered = allSessionNames
+    .filter(name => !registeredTmux.has(name))
+    .map(name => ({
+      name,
+      dir: null,
+      port: null,
+      domain: null,
+      tmux: name,
+      category: 'unregistered',
+      description: 'tmux session not in registry',
+      alive: true,
+      unregistered: true,
+    }));
+  const allServices = services.concat(unregistered);
+
+  let totalConns = 0;
+  let totalErrorPulses = 0;
+  const enriched = allServices.map(svc => {
+    const t = svc.tmux ? tmux[svc.tmux] : null;
+    const prevAct = pulseCache.lastActivity[svc.name];
+    const prevSize = pulseCache.lastHistory[svc.name];
+    const activityChanged = !!(t && prevAct != null && t.activity > prevAct);
+    const outputGrew = !!(t && prevSize != null && t.size > prevSize);
+
+    // Sample tail-50 only when output grew, to detect new error lines without paying for every session every tick
+    let errorPulse = false;
+    if (svc.tmux && outputGrew) {
+      const tail = tmuxTail(svc.tmux, 50);
+      pulseCache.lastTail[svc.name] = tail;
+      const errCount = countErrorLines(tail);
+      const prevErr = pulseCache.lastErrCount[svc.name] ?? errCount;
+      if (errCount > prevErr) errorPulse = true;
+      pulseCache.lastErrCount[svc.name] = errCount;
+    }
+
+    if (t) { pulseCache.lastActivity[svc.name] = t.activity; pulseCache.lastHistory[svc.name] = t.size; }
+    const conns = svc.port ? (connsByPort[svc.port] || 0) : 0;
+    totalConns += conns;
+    if (errorPulse) totalErrorPulses++;
+    return {
+      name: svc.name,
+      tmux: svc.tmux || null,
+      port: svc.port || null,
+      category: svc.category || 'tool',
+      alive: svc.alive === true,
+      unregistered: !!svc.unregistered,
+      conns,
+      idleMs: t?.activity ? Math.max(0, now - t.activity) : null,
+      pulse: activityChanged || outputGrew,
+      pulseKind: errorPulse ? 'error' : (outputGrew ? 'output' : (activityChanged ? 'session' : null)),
+    };
+  });
+
+  const sys = sysSnapshot();
+
+  // Keep a 60-sample ring buffer for sparkline (~2 minutes at 2s poll).
+  pulseCache.history.push({
+    ts: now,
+    conns: totalConns,
+    pulsing: enriched.filter(e => e.pulse).length,
+    cpu: sys.cpuPct,
+    memPct: sys.mem.usedPct,
+    load1: sys.load.m1,
+  });
+  if (pulseCache.history.length > 60) pulseCache.history.shift();
+
+  res.json({ ts: now, totalConns, totalErrorPulses, services: enriched, history: pulseCache.history, sys });
+});
+
+// ── Tail a tmux pane on demand (for hover tooltip) ─────────────────────────
+router.get('/api/ops/tail', (req, res) => {
+  const session = String(req.query.session || '').replace(/[^A-Za-z0-9_-]/g, '');
+  const lines = Math.max(1, Math.min(500, parseInt(req.query.lines, 10) || 50));
+  if (!session) return res.json({ ok: false, error: 'session required' });
+  const tail = tmuxTail(session, lines);
+  res.json({ ok: true, session, lines, tail, errorCount: countErrorLines(tail) });
+});
+
+// ── Outbound connections from this box (live) ──────────────────────────────
+router.get('/api/ops/outbounds', (req, res) => {
+  // Process for the peer (cmdline) when we can; else just count.
+  let lines = [];
+  try {
+    const out = execSync('ss -tnp state established 2>/dev/null', { encoding: 'utf8', timeout: 1500 });
+    lines = out.split('\n').slice(1).filter(Boolean);
+  } catch { return res.json({ ok: false, error: 'ss unavailable' }); }
+
+  const peers = new Map(); // key: peerAddr+':'+peerPort, val: { peerAddr, peerPort, count, sample }
+  for (const line of lines) {
+    // ss output: state recvq sendq localAddr:port peerAddr:port [process]
+    // The lines might have variable whitespace; use a generic split + regex for last two address:port tokens
+    const cols = line.trim().split(/\s+/);
+    if (cols.length < 4) continue;
+    const local = cols[cols.length - 3] || cols[3] || '';
+    const peer  = cols[cols.length - 2] || cols[4] || '';
+    const proc  = cols.length > 5 ? cols.slice(5).join(' ') : '';
+    // ss sometimes uses 4-col table without state — handle both layouts
+    let peerAddr = peer;
+    const m = peer.match(/^(.+):(\d+)$/);
+    if (!m) continue;
+    peerAddr = m[1].replace(/^\[|\]$/g, '');
+    const peerPort = parseInt(m[2], 10);
+
+    // Skip loopback peers (intra-host traffic)
+    if (peerAddr === '127.0.0.1' || peerAddr === '::1' || peerAddr.startsWith('127.')) continue;
+    // Also skip our own host's private IPs (Linode internal) — keep them for now since some are useful
+    const key = peerAddr + ':' + peerPort;
+    const cur = peers.get(key) || { peerAddr, peerPort, count: 0, local, proc };
+    cur.count++;
+    peers.set(key, cur);
+  }
+
+  // Group by peerAddr to show aggregate by host
+  const byHost = new Map();
+  for (const p of peers.values()) {
+    const h = byHost.get(p.peerAddr) || { peerAddr: p.peerAddr, ports: new Set(), count: 0, procs: new Set() };
+    h.count += p.count;
+    h.ports.add(p.peerPort);
+    if (p.proc) h.procs.add(p.proc);
+    byHost.set(p.peerAddr, h);
+  }
+  const hosts = [...byHost.values()].map(h => ({
+    peerAddr: h.peerAddr,
+    ports: [...h.ports].sort((a, b) => a - b),
+    count: h.count,
+    procs: [...h.procs].slice(0, 3),
+    label: peerLabel(h.peerAddr, [...h.ports]),
+  })).sort((a, b) => b.count - a.count);
+
+  res.json({ ok: true, total: peers.size, hosts });
+});
+
+// Map common peer addresses / ports to a friendly label
+function peerLabel(addr, ports) {
+  // Cheap heuristics — only label well-known ones
+  const portSet = new Set(ports);
+  if (portSet.has(27017)) return 'MongoDB Atlas';
+  if (portSet.has(443) && addr.endsWith('.googleapis.com')) return 'Google APIs';
+  if (portSet.has(443) && /\.amazonaws\.com$/.test(addr)) return 'AWS';
+  if (portSet.has(443) && /(github|githubusercontent)\.com$/.test(addr)) return 'GitHub';
+  if (portSet.has(443) && /\.zoho/.test(addr)) return 'Zoho';
+  if (portSet.has(443) && /\.stripe\.com$/.test(addr)) return 'Stripe';
+  if (portSet.has(443) && /\.cloudflare/.test(addr)) return 'Cloudflare';
+  if (portSet.has(443) && /\.openai\.com$/.test(addr)) return 'OpenAI';
+  if (portSet.has(443) && /anthropic/.test(addr)) return 'Anthropic';
+  if (portSet.has(80)) return addr + ' (http)';
+  if (portSet.has(443)) return addr + ' (https)';
+  if (portSet.has(25) || portSet.has(465) || portSet.has(587)) return addr + ' (smtp)';
+  return addr;
+}
+
+// ── Deprecation pipeline: ingest a service into /srv/depricated/new/<name> ──
+router.post('/api/deprecation/ingest-service', (req, res) => {
+  const name = String(req.body.name || '').replace(/[^A-Za-z0-9_.-]/g, '');
+  if (!name) return res.json({ ok: false, error: 'name required' });
+  const svc = getService(name);
+  if (!svc) return res.json({ ok: false, error: 'service not in registry' });
+  if (!svc.dir || !fs.existsSync(svc.dir)) return res.json({ ok: false, error: 'service dir missing' });
+
+  const newStage = path.join(DEPR_ROOT, 'new', svc.name);
+  if (fs.existsSync(newStage)) return res.json({ ok: false, error: 'already in pipeline (new stage)' });
+
+  let scriptOutput = '';
+  try {
+    // Prefer the script if it exists; otherwise do a safe rename.
+    const script = path.join(DEPR_ROOT, 'deprecate.sh');
+    if (fs.existsSync(script)) {
+      // deprecate.sh takes <project-name> only — it derives SRC=/srv/<name> internally
+      scriptOutput = execSync(`bash "${script}" "${svc.name}" 2>&1`, { encoding: 'utf8', timeout: 60000 });
+    } else {
+      fs.mkdirSync(path.join(DEPR_ROOT, 'new'), { recursive: true });
+      fs.renameSync(svc.dir, newStage);
+      fs.writeFileSync(path.join(newStage, '_receipt.json'), JSON.stringify({ deprecatedAt: new Date().toISOString(), original: svc.dir, service: svc }, null, 2));
+      scriptOutput = `Moved ${svc.dir} → ${newStage}`;
+    }
+    try { logActivity({ action: `service '${svc.name}' deprecated → /srv/depricated/new`, category: 'admin_action', actor: { email: req.superAdmin?.email || 'system' } }); } catch {}
+    res.json({ ok: true, name: svc.name, staged: newStage, output: scriptOutput });
+  } catch (err) {
+    res.json({ ok: false, error: err.message, output: scriptOutput || (err.stdout || '').toString() });
   }
 });
 

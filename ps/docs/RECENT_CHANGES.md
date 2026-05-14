@@ -1,6 +1,23 @@
 # Recent Changes Summary
 
-Generated: 2026-05-13T07:30:00.022Z
+Generated: 2026-05-14T07:30:00.019Z
+
+---
+
+## Commit: slab + 0.2.0 assets and designer stable updates
+
+- **Hash:** `95f771b`
+- **Author:** Scott
+- **Date:** 5/14/2026
+- **Changes:** 289 files, +117089/-975 lines
+
+### Modified Areas:
+
+**Frontend:** 8 files
+**Backend:** 44 files
+**Views:** 53 files
+**Scripts:** 6 files
+**Documentation:** 9 files
 
 ---
 
@@ -56,23 +73,6 @@ Generated: 2026-05-13T07:30:00.022Z
 **Backend:** 6 files
 **Views:** 74 files
 **Documentation:** 3 files
-
----
-
-## Commit: try again commitr
-
-- **Hash:** `931b803`
-- **Author:** Scott
-- **Date:** 4/14/2026
-- **Changes:** 493 files, +20933/-146149 lines
-
-### Modified Areas:
-
-**Frontend:** 18 files
-**Backend:** 96 files
-**Views:** 96 files
-**Scripts:** 26 files
-**Documentation:** 25 files
 
 ---
 

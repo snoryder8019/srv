@@ -14,7 +14,13 @@
   <%- include('partials/font-vars') %>
   <%- include('partials/landing-styles') %>
 </head>
-<body data-layout="<%= design.landing_layout || 'classic' %>" data-gradient="<%= design.gradient_enabled || 'false' %>" data-card-hover-accent="<%= design.card_hover_accent || 'true' %>" data-hero-pattern="<%= design.hero_bg_pattern || 'none' %>">
+<%
+  const heroBgMediaUrl  = (design.hero_bg_media_url  || '').trim();
+  const heroBgMediaType = (design.hero_bg_media_type || '').trim();
+  const heroBgMediaPoster = (design.hero_bg_media_poster || '').trim();
+  const heroFullBg = !!heroBgMediaUrl && (heroBgMediaType === 'image' || heroBgMediaType === 'video');
+%>
+<body data-layout="<%= design.landing_layout || 'classic' %>" data-gradient="<%= design.gradient_enabled || 'false' %>" data-card-hover-accent="<%= design.card_hover_accent || 'true' %>" data-hero-pattern="<%= design.hero_bg_pattern || 'none' %>" data-hero-full-bg="<%= heroFullBg ? heroBgMediaType : '' %>" data-portfolio-layout="<%= design.portfolio_layout || 'grid' %>" data-blog-layout="<%= design.blog_layout || 'grid' %>">
 
 <% if (visibility.header !== false) { %>
 <%- include('partials/header', { activePage: 'home' }) %>
@@ -22,7 +28,19 @@
 
 <!-- HERO -->
 <% if (visibility.hero) { %>
-<section class="hero">
+<section class="hero<%= heroFullBg ? ' hero--full-bg' : '' %>">
+  <% if (heroFullBg) { %>
+    <div class="hero-bg-media" aria-hidden="true">
+      <% if (heroBgMediaType === 'video') { %>
+        <video class="hero-bg-video" autoplay muted loop playsinline preload="metadata"<% if (heroBgMediaPoster) { %> poster="<%= heroBgMediaPoster %>"<% } %>>
+          <source src="<%= heroBgMediaUrl %>">
+        </video>
+      <% } else { %>
+        <div class="hero-bg-image" style="background-image:url('<%= heroBgMediaUrl %>');"></div>
+      <% } %>
+      <div class="hero-bg-overlay"></div>
+    </div>
+  <% } %>
   <div class="hero-left">
     <div class="hero-text">
       <% if (logos.logo_primary && (design.landing_layout === 'showcase' || design.landing_layout === 'industrial')) { %>
@@ -37,6 +55,7 @@
       </div>
     </div>
   </div>
+  <% if (!heroFullBg) { %>
   <div class="hero-right"<% if (media.hero_image) { %> style="background-image:url('<%= media.hero_image %>');background-size:cover;background-position:center;"<% } %>>
     <% if (!media.hero_image) { %><div class="hero-circle"></div><% } %>
     <div class="hero-right-content" style="position:relative;z-index:1;">
@@ -49,6 +68,12 @@
       <% } %>
     </div>
   </div>
+  <% } else if (copy.hero_badge) { %>
+    <div class="hero-badge hero-badge--floating">
+      <div class="hero-badge-dot"></div>
+      <span class="hero-badge-text"><%= copy.hero_badge %></span>
+    </div>
+  <% } %>
 </section>
 <% } %>
 
@@ -121,7 +146,7 @@
         <h2 class="section-heading" style="color:var(--white);">Recent <em style="color:var(--gold-light);">Projects</em></h2>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:2px;background:rgba(201,168,72,0.08);">
+    <div class="pf-grid">
       <% for (const item of portfolio) { %>
       <% const _galleryCount = (item.gallery && item.gallery.length) || (item.imageUrl ? 1 : 0); %>
       <div class="pf-card-clickable" tabindex="0" role="button" data-portfolio-id="<%= item._id %>"
@@ -246,9 +271,9 @@
       </div>
       <a href="/blog" style="font-size:0.78rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--navy);text-decoration:none;border-bottom:1px solid var(--gold);padding-bottom:2px;">View All</a>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:32px;">
+    <div class="blog-grid">
       <% latestPosts.forEach(bp => { %>
-        <a href="/blog/<%= bp.slug %>" style="display:block;background:var(--surface);border:1px solid var(--border);border-radius:2px;overflow:hidden;text-decoration:none;">
+        <a href="/blog/<%= bp.slug %>" class="blog-card" style="display:block;background:var(--surface);border:1px solid var(--border);border-radius:2px;overflow:hidden;text-decoration:none;">
           <% if (bp.featuredImageUrl) { %><img src="<%= bp.featuredImageUrl %>" alt="<%= bp.title %>" style="width:100%;height:180px;object-fit:cover;"><% } %>
           <div style="padding:24px;">
             <% if (bp.category) { %><div style="font-size:0.62rem;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:10px;"><%= bp.category %></div><% } %>
@@ -307,6 +332,15 @@
 
 <!-- CUSTOM SECTIONS -->
 <% if (customSections && customSections.length) { %>
+<%
+  function _csImg(sec, key) {
+    const imgs = sec.images || {}, f = sec.fields || {};
+    const v = imgs[key];
+    if (v) return typeof v === 'string' ? v : (v.url || '');
+    const fv = f[key];
+    return typeof fv === 'string' ? fv : '';
+  }
+%>
 <% customSections.forEach(function(sec) { %>
   <% const f = sec.fields || {}; const imgs = sec.images || {}; %>
   <% if (sec.type === 'text') { %>
@@ -323,11 +357,13 @@
       <% if (f.cta_text && f.cta_link) { %><a href="<%- f.cta_link %>" class="cs-btn"><%- f.cta_text %></a><% } %>
     </div>
     <div>
-      <% if (imgs.main_image) { %><img src="<%- imgs.main_image %>" alt="" class="cs-split-img"><% } else { %><div class="cs-split-img-placeholder"></div><% } %>
+      <% const _splitImg = _csImg(sec, 'main_image'); %>
+      <% if (_splitImg) { %><img src="<%- _splitImg %>" alt="" class="cs-split-img"><% } else { %><div class="cs-split-img-placeholder"></div><% } %>
     </div>
   </div></section>
   <% } else if (sec.type === 'cta') { %>
-  <section class="cs-cta<% if (imgs.bg_image) { %> cs-cta-bg<% } %>"<% if (imgs.bg_image) { %> style="background-image:url('<%- imgs.bg_image %>');background-size:cover;background-position:center"<% } %>>
+  <% const _ctaBg = _csImg(sec, 'bg_image'); %>
+  <section class="cs-cta<% if (_ctaBg) { %> cs-cta-bg<% } %>"<% if (_ctaBg) { %> style="background-image:url('<%- _ctaBg %>');background-size:cover;background-position:center"<% } %>>
     <div class="cs-wrap">
       <% if (f.heading) { %><h2 class="cs-heading"><%- f.heading %></h2><% } %>
       <% if (f.subtext) { %><div class="cs-body"><%- f.subtext %></div><% } %>
@@ -342,12 +378,22 @@
     </div>
     <div class="cs-cards-grid">
       <% [1,2,3,4].forEach(function(n) { %>
-        <% if (f['card'+n+'_title'] || f['card'+n+'_body']) { %>
-        <div class="cs-card">
-          <% if (imgs['card'+n+'_image']) { %><img src="<%- imgs['card'+n+'_image'] %>" alt="" class="cs-card-img"><% } %>
-          <% if (f['card'+n+'_title']) { %><div class="cs-card-title"><%- f['card'+n+'_title'] %></div><% } %>
-          <% if (f['card'+n+'_body']) { %><div class="cs-card-body"><%- f['card'+n+'_body'] %></div><% } %>
-        </div>
+        <% const _cardImg = _csImg(sec, 'card'+n+'_image'); %>
+        <% const _cardLinkRaw = f['card'+n+'_link']; const _cardLink = typeof _cardLinkRaw === 'string' ? _cardLinkRaw.trim() : ''; %>
+        <% if (f['card'+n+'_title'] || f['card'+n+'_body'] || _cardImg) { %>
+        <% const _tag = _cardLink ? 'a' : 'div'; %>
+        <% const _ext = _cardLink && /^https?:/.test(_cardLink); %>
+        <<%= _tag %> class="cs-card<%= _cardImg ? ' cs-card--has-image' : '' %><%= _cardLink ? ' cs-card--link' : '' %>"<% if (_cardLink) { %> href="<%= _cardLink %>"<% if (_ext) { %> target="_blank" rel="noopener"<% } %><% } %>>
+          <% if (_cardImg) { %>
+            <div class="cs-card-media" style="background-image:url('<%- _cardImg %>');"></div>
+          <% } %>
+          <div class="cs-card-content">
+            <div class="cs-card-num">0<%= n %></div>
+            <% if (f['card'+n+'_title']) { %><div class="cs-card-title"><%- f['card'+n+'_title'] %></div><% } %>
+            <% if (f['card'+n+'_body']) { %><div class="cs-card-body"><%- f['card'+n+'_body'] %></div><% } %>
+            <% if (_cardLink) { %><span class="cs-card-cta">View<% if (_ext) { %> ↗<% } else { %> →<% } %></span><% } %>
+          </div>
+        </<%= _tag %>>
         <% } %>
       <% }); %>
     </div>

@@ -506,4 +506,80 @@ router.post('/:id/agreements', express.json(), async (req, res) => {
 });
 
 
+// POST /admin/meetings/:id/recordings/send-to-assets
+// Copy a recording entry out of meetings.assets[] into the central `assets`
+// collection under folder "video" so it shows up in /admin/assets. The S3 object
+// is NOT duplicated — both records point to the same bucketKey/url. The new
+// assets-collection record stores size: 0 to avoid double-counting toward the
+// tenant storage quota (the bytes are already accounted for via meetings.assets).
+router.post('/:id/recordings/send-to-assets', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const { assetIndex, bucketKey } = req.body || {};
+
+    const meeting = await db.collection('meetings').findOne({ _id: new ObjectId(req.params.id) });
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    const assets = Array.isArray(meeting.assets) ? meeting.assets : [];
+    let asset = null;
+    if (Number.isInteger(assetIndex) && assets[assetIndex]) asset = assets[assetIndex];
+    else if (bucketKey) asset = assets.find(a => a.bucketKey === bucketKey);
+    if (!asset) return res.status(404).json({ error: 'Recording not found on this meeting' });
+
+    const kind = asset.kind || '';
+    if (kind !== 'meeting-recording' && kind !== 'screen-recording') {
+      return res.status(400).json({ error: 'Only meeting/screen recordings can be sent to the assets library.' });
+    }
+
+    // Idempotency — don't duplicate if the same bucketKey already exists in assets.
+    if (asset.bucketKey) {
+      const existing = await db.collection('assets').findOne({ bucketKey: asset.bucketKey });
+      if (existing) {
+        return res.json({ ok: true, asset: existing, alreadyExisted: true });
+      }
+    }
+
+    // Make sure a "video" folder exists in the picker.
+    try {
+      await db.collection('asset_folders').updateOne(
+        { slug: 'video' },
+        { $setOnInsert: { name: 'Video', slug: 'video', createdAt: new Date() } },
+        { upsert: true }
+      );
+    } catch (e) { /* non-fatal */ }
+
+    const filename = asset.bucketKey ? asset.bucketKey.split('/').pop() : (asset.name || 'recording.webm');
+    const titleBase = meeting.title || 'Meeting';
+    const kindLabel = kind === 'screen-recording' ? 'Screen Recording' : 'Recording';
+
+    const doc = {
+      filename,
+      originalName: asset.name || filename,
+      folders: ['video'],
+      folder: 'video',
+      publicUrl: asset.url,
+      bucketKey: asset.bucketKey || null,
+      fileType: 'video',
+      mimeType: asset.type || 'video/webm',
+      // size:0 — bytes are already counted via meetings.assets aggregation.
+      // Setting this to file.size would double-count against the tenant quota.
+      size: 0,
+      title: `${titleBase} — ${kindLabel}`,
+      meetingId: meeting._id,
+      kind,
+      createdAt: asset.createdAt ? new Date(asset.createdAt) : new Date(),
+      addedToLibraryAt: new Date(),
+      addedToLibraryBy: req.adminUser?.email || null,
+    };
+
+    const result = await db.collection('assets').insertOne(doc);
+    doc._id = result.insertedId;
+    res.json({ ok: true, asset: doc });
+  } catch (err) {
+    console.error('[meetings] send-to-assets error:', err);
+    res.status(500).json({ error: 'Failed to send recording to assets' });
+  }
+});
+
+
 export default router;

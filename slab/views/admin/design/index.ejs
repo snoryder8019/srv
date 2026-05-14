@@ -1144,7 +1144,7 @@
         // Partition template fields into singletons vs. repeatable groups
         // (cards1_*..cardN_* and q1/a1..qN/aN). Anything outside known
         // repeatable patterns renders as a regular singleton input.
-        const _cardRx = /^card(\d+)_(title|body|image)$/;
+        const _cardRx = /^card(\d+)_(title|body|image|link)$/;
         const _faqRx = /^(q|a)(\d+)$/;
         const _singletons = [];
         _fields.forEach(function(f) {
@@ -1174,7 +1174,7 @@
         <div class="dp-repeater cs-repeater" style="margin-top:10px;"
              data-prefix="card"
              data-noun="Card"
-             data-fields='[{"key":"title","label":"Title","type":"text"},{"key":"body","label":"Body","type":"textarea","rows":2},{"key":"image","label":"Image URL","type":"text","placeholder":"/images/..."}]'>
+             data-fields='[{"key":"title","label":"Title","type":"text"},{"key":"body","label":"Body","type":"textarea","rows":2},{"key":"image","label":"Image URL","type":"text","placeholder":"/images/..."},{"key":"link","label":"Link URL","type":"text","placeholder":"/products/sku or https://..."}]'>
           <% _cardArr.forEach(function(i, iArr) { %>
           <div class="dp-rep-item" data-idx="<%= i %>">
             <div class="dp-rep-head">
@@ -1196,6 +1196,10 @@
             <div class="ep-field">
               <label>Image URL</label>
               <input type="text" data-cs-field="card<%= i %>_image" value="<%= (sec.fields && sec.fields['card' + i + '_image']) ? String(sec.fields['card' + i + '_image']).replace(/"/g, '&quot;') : '' %>" placeholder="/images/...">
+            </div>
+            <div class="ep-field">
+              <label>Link URL <span style="color:var(--muted);font-weight:400;font-size:0.78em;">(makes the card clickable)</span></label>
+              <input type="text" data-cs-field="card<%= i %>_link" value="<%= (sec.fields && sec.fields['card' + i + '_link']) ? String(sec.fields['card' + i + '_link']).replace(/"/g, '&quot;') : '' %>" placeholder="/products/sku or https://...">
             </div>
           </div>
           <% }); %>
@@ -1625,6 +1629,30 @@
     Hero & Section Styling <span class="arrow">&#9654;</span>
   </button>
   <div class="editor-section-body">
+
+    <%# ── Full-bleed hero background (image or video from tenant assets) ── %>
+    <div id="heroBgMediaBlock" style="border:1px solid var(--border);border-radius:2px;padding:10px 12px;margin-bottom:12px;background:var(--surface);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+        <label style="font-size:0.7rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--on-surface);margin:0;">Hero Full Background</label>
+        <div style="display:flex;gap:6px;">
+          <button type="button" id="heroBgPickImage" style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:5px 10px;border:1px solid var(--border);border-radius:2px;background:var(--ivory);color:var(--navy);cursor:pointer;font-family:var(--font-body);">Pick Image</button>
+          <button type="button" id="heroBgPickVideo" style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:5px 10px;border:1px solid var(--border);border-radius:2px;background:var(--ivory);color:var(--navy);cursor:pointer;font-family:var(--font-body);">Pick Video</button>
+          <button type="button" id="heroBgClear" style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:5px 10px;border:1px solid var(--border);border-radius:2px;background:var(--ivory);color:#8B1C1C;cursor:pointer;font-family:var(--font-body);<%= design.hero_bg_media_url ? '' : 'display:none;' %>">Clear</button>
+        </div>
+      </div>
+      <input type="hidden" name="hero_bg_media_url"    id="field-hero_bg_media_url"    value="<%= design.hero_bg_media_url || '' %>">
+      <input type="hidden" name="hero_bg_media_type"   id="field-hero_bg_media_type"   value="<%= design.hero_bg_media_type || '' %>">
+      <input type="hidden" name="hero_bg_media_poster" id="field-hero_bg_media_poster" value="<%= design.hero_bg_media_poster || '' %>">
+      <div id="heroBgPreview" style="<%= design.hero_bg_media_url ? '' : 'display:none;' %>border:1px solid var(--border);border-radius:2px;overflow:hidden;background:#000;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;">
+        <% if (design.hero_bg_media_type === 'video') { %>
+          <video src="<%= design.hero_bg_media_url %>" muted playsinline autoplay loop style="width:100%;height:100%;object-fit:cover;"></video>
+        <% } else if (design.hero_bg_media_url) { %>
+          <img src="<%= design.hero_bg_media_url %>" alt="Hero background" style="width:100%;height:100%;object-fit:cover;">
+        <% } %>
+      </div>
+      <div class="ep-hint" style="margin-top:8px;">Overrides the split-panel layout with a full-bleed image or looping video. Overlay color/opacity below sit on top.</div>
+    </div>
+
     <div class="ep-row">
       <div class="ep-field">
         <label>Text Align</label>
@@ -2452,6 +2480,8 @@ var bodyDataMap = {
   gradient_enabled:    'gradient',
   card_hover_accent:   'card-hover-accent',
   hero_bg_pattern:     'hero-pattern',
+  portfolio_layout:    'portfolio-layout',
+  blog_layout:         'blog-layout',
 };
 var fontMap = {
   font_heading: '--font-heading', font_body: '--font-body',
@@ -3132,6 +3162,83 @@ function saveTheme() {
 </script>
 <script src="/js/agentHealth.js"></script>
 <script src="/js/tours/design.js"></script>
+<script src="/js/assetPicker.js"></script>
+<script>
+// ── Hero full-bg media picker (image or video from tenant assets) ──
+(function () {
+  var urlField    = document.getElementById('field-hero_bg_media_url');
+  var typeField   = document.getElementById('field-hero_bg_media_type');
+  var posterField = document.getElementById('field-hero_bg_media_poster');
+  var preview     = document.getElementById('heroBgPreview');
+  var pickImg     = document.getElementById('heroBgPickImage');
+  var pickVid     = document.getElementById('heroBgPickVideo');
+  var clearBtn    = document.getElementById('heroBgClear');
+  if (!urlField || !pickImg || !pickVid) return;
+
+  function renderPreview() {
+    if (!urlField.value) {
+      preview.style.display = 'none';
+      preview.innerHTML = '';
+      clearBtn.style.display = 'none';
+      return;
+    }
+    preview.style.display = '';
+    clearBtn.style.display = '';
+    if (typeField.value === 'video') {
+      preview.innerHTML = '<video src="' + urlField.value + '" muted playsinline autoplay loop style="width:100%;height:100%;object-fit:cover;"></video>';
+    } else {
+      preview.innerHTML = '<img src="' + urlField.value + '" alt="Hero background" style="width:100%;height:100%;object-fit:cover;">';
+    }
+  }
+
+  function saveKey(key, value) {
+    return fetch('/admin/design/key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: key, value: value })
+    });
+  }
+  function persistHeroBg() {
+    return Promise.all([
+      saveKey('hero_bg_media_url',    urlField.value),
+      saveKey('hero_bg_media_type',   typeField.value),
+      saveKey('hero_bg_media_poster', posterField.value),
+    ]);
+  }
+
+  function pick(type) {
+    if (typeof window.openAssetPicker !== 'function') {
+      alert('Asset picker not loaded');
+      return;
+    }
+    window.openAssetPicker({
+      type: type,
+      onSelect: function (asset) {
+        urlField.value = asset.publicUrl || '';
+        typeField.value = type;
+        if (type === 'video' && asset.posterUrl) posterField.value = asset.posterUrl;
+        else if (type === 'image') posterField.value = '';
+        renderPreview();
+        persistHeroBg().then(function () {
+          if (typeof previewReload === 'function') previewReload();
+        });
+      }
+    });
+  }
+
+  pickImg.addEventListener('click', function () { pick('image'); });
+  pickVid.addEventListener('click', function () { pick('video'); });
+  clearBtn.addEventListener('click', function () {
+    urlField.value = '';
+    typeField.value = '';
+    posterField.value = '';
+    renderPreview();
+    persistHeroBg().then(function () {
+      if (typeof previewReload === 'function') previewReload();
+    });
+  });
+})();
+</script>
 
 </body>
 </html>

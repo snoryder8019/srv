@@ -13,6 +13,13 @@
     const _portfolio = typeof portfolio !== 'undefined' ? portfolio : [];
     const _reviews = typeof reviews !== 'undefined' && reviews ? reviews : null;
     const _customSections = typeof customSections !== 'undefined' ? customSections : [];
+    function _csImg(sec, key) {
+      const imgs = sec?.images || {}, f = sec?.fields || {};
+      const v = imgs[key];
+      if (v) return typeof v === 'string' ? v : (v.url || '');
+      const fv = f[key];
+      return typeof fv === 'string' ? fv : '';
+    }
     const lg = typeof logos  !== 'undefined' && logos  ? logos  : {};
 
     const siteName    = b.name     || '';
@@ -249,6 +256,28 @@
     .cta { padding:80px 24px; text-align:center; }
     .cta h2 { font-size:32px; font-weight:700; color:#fff; margin-bottom:12px; }
     .cta p { font-size:16px; color:var(--subtle); margin-bottom:28px; }
+
+    /* ── Custom cards (products) ── */
+    .prod-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:24px; }
+    .prod-card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; display:grid; grid-template-columns:1fr; transition:border-color 0.3s, transform 0.3s, box-shadow 0.3s; text-decoration:none; color:inherit; position:relative; }
+    .prod-card.has-img { grid-template-columns:minmax(0, 44%) 1fr; }
+    a.prod-card { cursor:pointer; }
+    a.prod-card:hover { border-color:var(--accent); transform:translateY(-3px); box-shadow:0 18px 40px -20px rgba(201,168,72,0.25); }
+    a.prod-card:hover .prod-card-title { color:var(--accent); }
+    a.prod-card:hover .prod-card-cta { color:#fff; border-bottom-color:var(--accent-hover); }
+    .prod-card-media { background-size:cover; background-position:center; background-color:#0a0a0a; min-height:100%; position:relative; }
+    .prod-card-media::after { content:''; position:absolute; top:0; bottom:0; right:0; width:3px; background:var(--accent); opacity:0; transition:opacity 0.3s ease; }
+    a.prod-card:hover .prod-card-media::after { opacity:1; }
+    .prod-card-body { padding:28px 26px; display:flex; flex-direction:column; justify-content:center; gap:8px; min-width:0; }
+    .prod-card-num { font-size:11px; font-weight:600; letter-spacing:0.22em; text-transform:uppercase; color:var(--accent); }
+    .prod-card-title { font-size:18px; font-weight:600; color:#fff; line-height:1.25; margin:0; transition:color 0.2s; }
+    .prod-card-desc { font-size:13px; color:var(--subtle); line-height:1.65; margin:0; }
+    .prod-card-cta { display:inline-block; align-self:flex-start; margin-top:10px; font-size:11px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid rgba(201,168,72,0.5); padding-bottom:2px; transition:color 0.2s, border-color 0.2s; }
+    @media (max-width:760px) {
+      .prod-grid { grid-template-columns:1fr; }
+      .prod-card.has-img { grid-template-columns:1fr; }
+      .prod-card-media { aspect-ratio:16/10; min-height:0; }
+    }
 
     /* ── Footer ── */
     .footer { padding:32px 24px; border-top:1px solid var(--border); text-align:center; font-size:12px; color:#525252; }
@@ -495,13 +524,25 @@
       <% if (sec.fields?.btn_text && sec.fields?.btn_link) { %><a href="<%= sec.fields.btn_link %>" class="btn-lg btn-primary"><%= sec.fields.btn_text %></a><% } %>
     <% } else if (sec.type === 'cards') { %>
       <% if (sec.fields?.subtext) { %><p style="font-size:14px;color:var(--subtle);text-align:center;margin-bottom:32px;"><%= sec.fields.subtext %></p><% } %>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px;">
-        <% [1,2,3,4].forEach(n => { if (sec.fields?.['card'+n+'_title']) { %>
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px;">
-          <h3 style="font-size:15px;font-weight:600;color:#fff;margin-bottom:8px;"><%= sec.fields['card'+n+'_title'] %></h3>
-          <% if (sec.fields['card'+n+'_body']) { %><p style="font-size:13px;color:var(--subtle);line-height:1.6;"><%= sec.fields['card'+n+'_body'] %></p><% } %>
-        </div>
-        <% } }) %>
+      <div class="prod-grid">
+        <% [1,2,3,4].forEach(n => {
+             const _t = sec.fields?.['card'+n+'_title'];
+             const _b = sec.fields?.['card'+n+'_body'];
+             const _img = _csImg(sec, 'card'+n+'_image');
+             const _lnkRaw = sec.fields?.['card'+n+'_link'];
+             const _lnk = typeof _lnkRaw === 'string' ? _lnkRaw.trim() : '';
+             const _ext = _lnk && /^https?:/.test(_lnk);
+             if (!_t && !_b && !_img) return; %>
+        <% if (_lnk) { %><a href="<%= _lnk %>"<% if (_ext) { %> target="_blank" rel="noopener"<% } %> class="prod-card<%= _img ? ' has-img' : '' %>"><% } else { %><div class="prod-card<%= _img ? ' has-img' : '' %>"><% } %>
+          <% if (_img) { %><div class="prod-card-media" style="background-image:url('<%- _img %>');"></div><% } %>
+          <div class="prod-card-body">
+            <div class="prod-card-num">0<%= n %></div>
+            <% if (_t) { %><h3 class="prod-card-title"><%= _t %></h3><% } %>
+            <% if (_b) { %><p class="prod-card-desc"><%= _b %></p><% } %>
+            <% if (_lnk) { %><span class="prod-card-cta">View<%= _ext ? ' ↗' : ' →' %></span><% } %>
+          </div>
+        <% if (_lnk) { %></a><% } else { %></div><% } %>
+        <% }) %>
       </div>
     <% } else if (sec.type === 'faq') { %>
       <div style="max-width:720px;margin:0 auto;">

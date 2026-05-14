@@ -15,7 +15,6 @@ const statsCollector = require('./lib/stats-collector');
 const sfu = require('./lib/sfu');
 const provisioner = require('./lib/linode-provisioner');
 const serverManager = require('./lib/server-manager');
-const privateProvisioner = require('./lib/private-server-provisioner');
 const playtime = require('./lib/playtime');
 const worldBackup = require('./lib/world-backup');
 const serverCam = require('./lib/server-cam');
@@ -48,7 +47,6 @@ client.connect().then(() => {
   statsCollector.init(db);
   provisioner.init(db);
   serverManager.init(io, provisioner, db);
-  privateProvisioner.init(db);
   playtime.init(db);
   worldBackup.init(db);
   serverCam.init();
@@ -176,11 +174,6 @@ app.use('/stats', require('./routes/stats'));
 app.use('/suggest', require('./routes/suggest'));
 app.use('/plugins', require('./routes/plugins'));
 app.use('/servers', require('./routes/servers'));
-
-// Private server portal + Stripe webhook (webhook uses raw body — mounted separately)
-app.use('/private-servers/webhook', require('./routes/private-servers'));
-app.use('/private-servers', require('./routes/private-servers'));
-app.use('/api/private', require('./routes/private-servers'));
 
 // --- Server Camera (2D map overlay) ---
 app.get('/server-cam', (req, res) => res.sendFile('server-cam.html', { root: __dirname + '/public' }));

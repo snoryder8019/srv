@@ -12,6 +12,28 @@
  * - "Stop tutorials" option in every popover
  * - Progress badge on help button
  */
+// Tutorials disabled platform-wide — see comment in init() below.
+// Defensive cleanup on script load in case driver.js is already running
+// or a help button was injected by a cached prior version of this file.
+(function cleanupExistingTutorials() {
+  try {
+    var btn = document.getElementById('tour-help-btn');
+    if (btn) btn.remove();
+    // Driver.js leaves these in the DOM while a tour is active.
+    var overlay = document.querySelector('.driver-overlay, .driver-active-element');
+    if (overlay) {
+      document.querySelectorAll('.driver-overlay, .driver-popover, .driver-stage, .driver-active-element').forEach(function(el) {
+        el.classList.remove('driver-active-element');
+        if (el.parentNode && el.classList.contains('driver-overlay')) el.parentNode.removeChild(el);
+        if (el.parentNode && el.classList.contains('driver-popover')) el.parentNode.removeChild(el);
+        if (el.parentNode && el.classList.contains('driver-stage')) el.parentNode.removeChild(el);
+      });
+      document.documentElement.classList.remove('driver-active');
+      document.body.classList.remove('driver-active');
+    }
+  } catch (e) { /* ignore */ }
+})();
+
 class AdminTour {
   static _driver = null;
   static _currentPage = null;
@@ -23,6 +45,9 @@ class AdminTour {
    * Checks server status first, only auto-plays if not yet seen.
    */
   static async init(pageName, steps) {
+    // Tutorials disabled platform-wide — tenants reported they wouldn't stop
+    // and threatened to cancel. Remove this early-return to re-enable.
+    return;
     if (!steps || !steps.length) return;
 
     AdminTour._currentPage = pageName;

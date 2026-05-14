@@ -3,8 +3,10 @@ import QRCode from 'qrcode';
 import nodemailer from 'nodemailer';
 import { getDb } from '../plugins/mongo.js';
 import { config } from '../config/config.js';
-import { meetingAssetUpload } from '../middleware/upload.js';
-import { bucketUrl } from '../plugins/s3.js';
+import { meetingAssetUpload, meetingRecordingUpload, checkStorageQuota } from '../middleware/upload.js';
+import { bucketUrl, s3Client, BUCKET } from '../plugins/s3.js';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { wouldExceedQuota, getQuotaLabel } from '../plugins/storage.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
 
@@ -195,6 +197,75 @@ router.post('/:token/upload', express.json(), meetingAssetUpload.single('file'),
     res.status(500).json({ error: 'Upload failed' });
   }
 });
+
+// POST /meeting/:token/recording — upload a meeting/screen recording (webm/mp4).
+// Pre-flight uses Content-Length so the check matches the actual upload size.
+// A second post-upload check rolls the file back from S3 if it pushed the
+// tenant over quota — covers race conditions when multiple uploads land in
+// parallel and would together exceed quota.
+router.post('/:token/recording',
+  checkStorageQuota((req) => parseInt(req.headers['content-length'] || '0', 10) || 50 * 1024 * 1024),
+  meetingRecordingUpload.single('file'),
+  async (req, res) => {
+    try {
+      const db = req.db;
+      const meeting = await db.collection('meetings').findOne({ token: req.params.token, status: 'active' });
+      if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'No file uploaded' });
+
+      const url = file.location || (file.key ? bucketUrl(file.key) : null);
+      if (!url) return res.status(500).json({ error: 'Upload failed' });
+
+      // Post-upload quota check — race-safe rollback.
+      if (req.tenant && file.size) {
+        try {
+          const exceeded = await wouldExceedQuota(db, req.tenant, file.size);
+          if (exceeded) {
+            // Delete the just-uploaded object so it doesn't sit in the bucket
+            // counting toward billing while the tenant never sees it.
+            if (file.key) {
+              try {
+                await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: file.key }));
+              } catch (delErr) {
+                console.warn('[meetings] rollback delete failed for', file.key, delErr.message);
+              }
+            }
+            return res.status(413).json({
+              error: `Storage limit reached (${getQuotaLabel(req.tenant)}). Delete files or upgrade your plan for more space.`,
+              code: 'STORAGE_QUOTA_EXCEEDED',
+            });
+          }
+        } catch (quotaErr) {
+          console.warn('[meetings] post-upload quota check failed (allowing):', quotaErr.message);
+        }
+      }
+
+      const kind = req.body.kind === 'screen' ? 'screen' : 'meeting';
+      const asset = {
+        name: file.originalname,
+        url,
+        bucketKey: file.key || null,
+        size: file.size,
+        type: file.mimetype,
+        kind: kind === 'screen' ? 'screen-recording' : 'meeting-recording',
+        uploadedBy: req.body.displayName || 'Unknown',
+        createdAt: new Date(),
+      };
+
+      await db.collection('meetings').updateOne(
+        { _id: meeting._id },
+        { $push: { assets: asset } }
+      );
+
+      res.json({ ok: true, asset });
+    } catch (err) {
+      console.error('[meetings] recording upload error:', err);
+      res.status(500).json({ error: 'Recording upload failed' });
+    }
+  }
+);
 
 // GET /meeting/:token/data — fetch notes + assets for a meeting
 router.get('/:token/data', async (req, res) => {

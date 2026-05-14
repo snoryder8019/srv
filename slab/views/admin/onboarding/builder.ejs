@@ -636,6 +636,12 @@
     .then(function(r) { return r.json(); })
     .then(function(data) {
       btn.disabled = false; btn.textContent = 'AI Suggest Fields';
+
+      var nameInput = document.getElementById('formName');
+      var descInput = document.getElementById('formDesc');
+      if (data.name && !nameInput.value.trim()) nameInput.value = data.name;
+      if (data.description && !descInput.value.trim()) descInput.value = data.description;
+
       if (data.fields && data.fields.length) {
         var count = data.fields.length;
         if (confirm('Agent suggests ' + count + ' field(s):\n\n' + data.fields.map(function(f) { return f.label; }).join('\n') + '\n\nAdd them to your form?')) {
@@ -650,7 +656,7 @@
           });
           reorder(); render();
         }
-      } else {
+      } else if (!data.name && !data.description) {
         alert(data.message || 'No fields suggested.');
       }
     })

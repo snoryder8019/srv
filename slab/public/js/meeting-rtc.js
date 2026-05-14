@@ -75,7 +75,10 @@
     // In-call controls
     if (ctrlMic) ctrlMic.addEventListener('click', toggleMute);
     if (ctrlCam) ctrlCam.addEventListener('click', toggleVideo);
-    if (ctrlScreen) ctrlScreen.addEventListener('click', startScreenShare);
+    if (ctrlScreen) ctrlScreen.addEventListener('click', function () {
+      if (screenSharing) stopScreenShare();
+      else startScreenShare();
+    });
     if (ctrlLeave) ctrlLeave.addEventListener('click', leaveMeeting);
 
     // Prevent accidental reload/navigation while in a meeting
@@ -431,10 +434,41 @@
     videoEl.style.display = 'none';
     tile.appendChild(videoEl);
 
+    // Fullscreen button
+    var fsBtn = document.createElement('button');
+    fsBtn.className = 'tile-fs-btn';
+    fsBtn.title = 'Fullscreen';
+    fsBtn.setAttribute('aria-label', 'Toggle fullscreen');
+    fsBtn.innerHTML = '&#9974;'; // square-corner glyph
+    fsBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleFullscreen(videoEl);
+    });
+    tile.appendChild(fsBtn);
+
     peersGrid.appendChild(tile);
     updateGridLayout();
     return tile;
   }
+
+  // ==================== FULLSCREEN HELPER ====================
+  function toggleFullscreen(el) {
+    if (!el) return;
+    var doc = document;
+    var fsEl = doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement;
+    if (fsEl) {
+      var exit = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
+      if (exit) exit.call(doc);
+      return;
+    }
+    var req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+    if (req) {
+      var p = req.call(el);
+      if (p && p.catch) p.catch(function () {});
+    }
+  }
+  // Expose so meeting-ui.js can use it for the local PiP
+  window.MeetingFS = { toggle: toggleFullscreen };
 
   function removePeerTile(peerId) {
     if (!peersGrid) return;
@@ -574,12 +608,14 @@
   }
 
   function startScreenShare() {
-    if (Object.keys(peers).length === 0) return;
-    navigator.mediaDevices.getDisplayMedia({ video: true }).then(function (screenStream) {
+    if (screenSharing) return;
+    navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }).then(function (screenStream) {
       var screenTrack = screenStream.getVideoTracks()[0];
       screenSharing = true;
+      currentScreenStream = screenStream;
       if (ctrlScreen) ctrlScreen.classList.add('active');
 
+      // Send to peers (may be zero — solo screen share still works locally)
       Object.keys(peers).forEach(function (pid) {
         var peer = peers[pid];
         if (!peer.pc) return;
@@ -601,21 +637,305 @@
       if (localVideo) { localVideo.srcObject = screenStream; localVideo.style.display = 'block'; }
       if (localPip) localPip.style.display = 'block';
 
-      screenTrack.onended = function () {
-        screenSharing = false;
-        if (ctrlScreen) ctrlScreen.classList.remove('active');
-        var camTrack = localStream ? localStream.getVideoTracks()[0] : null;
+      screenTrack.onended = stopScreenShare;
+    }).catch(function (err) {
+      // User cancelled the picker or denied permission — fail silently
+      if (err && err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+        console.warn('[meeting] screen share failed:', err);
+      }
+    });
+  }
+
+  function stopScreenShare() {
+    if (!screenSharing) return;
+    screenSharing = false;
+    if (ctrlScreen) ctrlScreen.classList.remove('active');
+    if (currentScreenStream) {
+      currentScreenStream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+      currentScreenStream = null;
+    }
+    var camTrack = getActiveCamTrack();
+    var previewStreamObj = backdropOutputStream || localStream;
+    Object.keys(peers).forEach(function (pid) {
+      var peer = peers[pid];
+      if (!peer.pc) return;
+      var sender = peer.pc.getSenders().find(function (s) {
+        return s.track && s.track.kind === 'video';
+      });
+      if (sender && camTrack) sender.replaceTrack(camTrack);
+    });
+    if (localVideo && previewStreamObj) localVideo.srcObject = previewStreamObj;
+    if (localPip) localPip.style.display = (localStream && videoEnabled) ? 'block' : 'none';
+  }
+
+  // ==================== BACKDROPS ====================
+  // Person-segmented virtual backgrounds powered by MediaPipe Selfie Segmentation.
+  // applyBackdrop swaps the camera video track in every peer connection (and the
+  // local PiP preview) with the canvas-captured composite stream from
+  // window.MeetingBackdrop. Screen share takes priority — when sharing, the
+  // backdrop pipeline keeps running so resuming the camera returns to it.
+
+  var backdropOutputStream = null;
+  var currentBackdropUrl = null;
+
+  function getActiveCamTrack() {
+    if (backdropOutputStream) {
+      var t = backdropOutputStream.getVideoTracks()[0];
+      if (t) return t;
+    }
+    return localStream ? localStream.getVideoTracks()[0] : null;
+  }
+
+  function applyBackdrop(url) {
+    if (!window.MeetingBackdrop) {
+      showError('Backdrops are unavailable in this browser.');
+      return Promise.resolve();
+    }
+    if (!localStream || localStream.getVideoTracks().length === 0) {
+      showError('Turn on your camera before choosing a backdrop.');
+      return Promise.resolve();
+    }
+    var rawTrack = localStream.getVideoTracks()[0];
+    var rawForSeg = new MediaStream([rawTrack]);
+    return window.MeetingBackdrop.start(rawForSeg, url).then(function (out) {
+      backdropOutputStream = out;
+      currentBackdropUrl = url;
+      var newTrack = out.getVideoTracks()[0];
+      if (!newTrack) return;
+      if (!screenSharing) {
         Object.keys(peers).forEach(function (pid) {
           var peer = peers[pid];
           if (!peer.pc) return;
-          var sender = peer.pc.getSenders().find(function (s) {
-            return s.track && s.track.kind === 'video';
-          });
-          if (sender && camTrack) sender.replaceTrack(camTrack);
+          var sender = peer.pc.getSenders().find(function (s) { return s.track && s.track.kind === 'video'; });
+          if (sender) { try { sender.replaceTrack(newTrack); } catch (e) {} }
         });
-        if (localVideo && localStream) localVideo.srcObject = localStream;
-      };
-    }).catch(function () {});
+        if (localVideo) localVideo.srcObject = out;
+      }
+    }).catch(function (err) {
+      console.warn('[backdrop] start failed:', err);
+      showError('Could not load backdrop processor.');
+    });
+  }
+
+  function changeBackdrop(url) {
+    if (!backdropOutputStream) return applyBackdrop(url);
+    if (!window.MeetingBackdrop) return Promise.resolve();
+    currentBackdropUrl = url;
+    return window.MeetingBackdrop.setBackdrop(url);
+  }
+
+  function clearBackdrop() {
+    if (!backdropOutputStream) return;
+    if (window.MeetingBackdrop) window.MeetingBackdrop.stop();
+    backdropOutputStream = null;
+    currentBackdropUrl = null;
+    var rawTrack = localStream ? localStream.getVideoTracks()[0] : null;
+    if (!screenSharing && rawTrack) {
+      Object.keys(peers).forEach(function (pid) {
+        var peer = peers[pid];
+        if (!peer.pc) return;
+        var sender = peer.pc.getSenders().find(function (s) { return s.track && s.track.kind === 'video'; });
+        if (sender) { try { sender.replaceTrack(rawTrack); } catch (e) {} }
+      });
+      if (localVideo) localVideo.srcObject = localStream;
+    }
+  }
+
+  function isBackdropActive() { return !!backdropOutputStream; }
+  function getBackdropUrl() { return currentBackdropUrl; }
+
+  // ==================== RECORDING ====================
+  // Two flavors:
+  //   - meeting:  local camera (or current local view) + mixed audio of local + all remote peers
+  //   - screen:   getDisplayMedia (with display audio if granted) + mic
+  // Both upload as a single webm asset to /meeting/:token/recording on stop.
+
+  var recorder = null;
+  var recordingChunks = [];
+  var recordingMime = '';
+  var recordingKind = null;       // 'meeting' | 'screen'
+  var recordingAudioCtx = null;
+  var recordingScreenStream = null;
+  var recordingStartedAt = null;
+  var currentScreenStream = null;
+
+  function pickRecordingMime() {
+    var candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4',
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(candidates[i])) {
+        return candidates[i];
+      }
+    }
+    return '';
+  }
+
+  function buildMixedAudioStream(extraStreams) {
+    // Mix local mic + every remote peer's audio + any extras (e.g. screen audio).
+    if (!window.AudioContext && !window.webkitAudioContext) return null;
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var dest = ctx.createMediaStreamDestination();
+    var added = 0;
+
+    function addStreamAudio(stream) {
+      if (!stream) return;
+      var audioTracks = stream.getAudioTracks();
+      if (!audioTracks.length) return;
+      try {
+        var src = ctx.createMediaStreamSource(new MediaStream(audioTracks));
+        src.connect(dest);
+        added++;
+      } catch (e) { /* track already consumed elsewhere — skip */ }
+    }
+
+    addStreamAudio(localStream);
+    Object.keys(peers).forEach(function (pid) { addStreamAudio(peers[pid].remoteStream); });
+    (extraStreams || []).forEach(addStreamAudio);
+
+    recordingAudioCtx = ctx;
+    return added > 0 ? dest.stream : null;
+  }
+
+  function startMediaRecorder(stream, kind) {
+    var mime = pickRecordingMime();
+    if (!mime) { showError('Recording not supported in this browser.'); return false; }
+    try {
+      recorder = new MediaRecorder(stream, {
+        mimeType: mime,
+        videoBitsPerSecond: 1200000,
+        audioBitsPerSecond: 128000,
+      });
+    } catch (e) {
+      showError('Could not start recording: ' + (e.message || e));
+      return false;
+    }
+    recordingChunks = [];
+    recordingMime = mime;
+    recordingKind = kind;
+    recordingStartedAt = Date.now();
+    recorder.ondataavailable = function (e) { if (e.data && e.data.size) recordingChunks.push(e.data); };
+    recorder.onstop = function () {
+      var blob = new Blob(recordingChunks, { type: recordingMime });
+      uploadRecording(blob, recordingKind);
+      cleanupRecording();
+    };
+    recorder.onerror = function (e) {
+      console.warn('[recorder] error:', e);
+      showError('Recording error: ' + (e.error && e.error.name ? e.error.name : 'unknown'));
+    };
+    recorder.start(2000); // 2s chunks
+    document.dispatchEvent(new CustomEvent('recording-state', { detail: { state: 'started', kind: kind } }));
+    return true;
+  }
+
+  function cleanupRecording() {
+    if (recordingAudioCtx) { try { recordingAudioCtx.close(); } catch (e) {} recordingAudioCtx = null; }
+    if (recordingScreenStream) {
+      recordingScreenStream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+      recordingScreenStream = null;
+    }
+    recorder = null;
+    recordingChunks = [];
+    recordingKind = null;
+    recordingStartedAt = null;
+  }
+
+  function startMeetingRecording() {
+    if (recorder) return;
+    if (!localStream && Object.keys(peers).length === 0) {
+      showError('Join the meeting before starting a recording.');
+      return;
+    }
+    var recordStream = new MediaStream();
+    // Video: prefer the current local view — screen share if active, else
+    // whatever the active cam track is (backdrop-composited if backdrop is on).
+    var videoTrack = null;
+    if (currentScreenStream) videoTrack = currentScreenStream.getVideoTracks()[0];
+    else videoTrack = getActiveCamTrack();
+    if (videoTrack) recordStream.addTrack(videoTrack);
+
+    var mixed = buildMixedAudioStream([]);
+    if (mixed) mixed.getAudioTracks().forEach(function (t) { recordStream.addTrack(t); });
+
+    if (recordStream.getTracks().length === 0) {
+      showError('No audio or video available to record.');
+      return;
+    }
+    startMediaRecorder(recordStream, 'meeting');
+  }
+
+  function startScreenRecording() {
+    if (recorder) return;
+    navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }).then(function (screenStream) {
+      recordingScreenStream = screenStream;
+      var recordStream = new MediaStream();
+      screenStream.getVideoTracks().forEach(function (t) { recordStream.addTrack(t); });
+
+      var mixed = buildMixedAudioStream([screenStream]);
+      if (mixed) mixed.getAudioTracks().forEach(function (t) { recordStream.addTrack(t); });
+
+      // If user ends the OS-level share, stop the recording cleanly.
+      screenStream.getVideoTracks()[0].onended = function () { stopRecording(); };
+
+      var ok = startMediaRecorder(recordStream, 'screen');
+      if (!ok && recordingScreenStream) {
+        recordingScreenStream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+        recordingScreenStream = null;
+      }
+    }).catch(function (err) {
+      if (err && err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+        showError('Screen capture failed: ' + (err.message || err.name));
+      }
+    });
+  }
+
+  function stopRecording() {
+    if (!recorder) return;
+    if (recorder.state !== 'inactive') {
+      try { recorder.stop(); } catch (e) {}
+    }
+    document.dispatchEvent(new CustomEvent('recording-state', { detail: { state: 'stopping' } }));
+  }
+
+  function isRecording() { return !!recorder && recorder.state !== 'inactive'; }
+  function getRecordingKind() { return recordingKind; }
+
+  function uploadRecording(blob, kind) {
+    var ts = new Date().toISOString().replace(/[:.]/g, '-');
+    var ext = (recordingMime.indexOf('mp4') !== -1) ? 'mp4' : 'webm';
+    var filename = (kind === 'screen' ? 'screen' : 'meeting') + '-' + ts + '.' + ext;
+    var fd = new FormData();
+    fd.append('file', blob, filename);
+    fd.append('displayName', getDisplayName());
+    fd.append('kind', kind);
+
+    document.dispatchEvent(new CustomEvent('recording-state', {
+      detail: { state: 'uploading', filename: filename, size: blob.size }
+    }));
+
+    fetch('/meeting/' + token + '/recording', { method: 'POST', body: fd })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+      .then(function (result) {
+        if (result.ok && result.data.asset) {
+          document.dispatchEvent(new CustomEvent('recording-state', {
+            detail: { state: 'uploaded', asset: result.data.asset }
+          }));
+          if (socket) socket.emit('meeting-asset-uploaded', { asset: result.data.asset });
+        } else {
+          document.dispatchEvent(new CustomEvent('recording-state', {
+            detail: { state: 'error', error: (result.data && result.data.error) || 'Upload failed' }
+          }));
+        }
+      })
+      .catch(function (err) {
+        document.dispatchEvent(new CustomEvent('recording-state', {
+          detail: { state: 'error', error: err.message || 'Upload failed' }
+        }));
+      });
   }
 
   // ==================== AUDIO LEVEL MONITOR ====================
@@ -665,9 +985,16 @@
   function leaveMeeting() {
     inCall = false;
 
-    // Stop audio monitor and AI notetaker
+    // Stop audio monitor, AI notetaker, and any in-progress recording
     stopAudioMonitor();
     stopNotetaker();
+    if (isRecording()) stopRecording();
+    if (screenSharing) stopScreenShare();
+    if (backdropOutputStream && window.MeetingBackdrop) {
+      try { window.MeetingBackdrop.destroy(); } catch (e) {}
+      backdropOutputStream = null;
+      currentBackdropUrl = null;
+    }
 
     Object.keys(peers).forEach(function (pid) {
       var peer = peers[pid];
@@ -855,5 +1182,18 @@
     stopNotetaker: stopNotetaker,
     isNotetakerActive: isNotetakerActive,
     flushTranscriptToAI: flushTranscriptToAI,
+    startScreenShare: startScreenShare,
+    stopScreenShare: stopScreenShare,
+    isScreenSharing: function () { return screenSharing; },
+    applyBackdrop: applyBackdrop,
+    changeBackdrop: changeBackdrop,
+    clearBackdrop: clearBackdrop,
+    isBackdropActive: isBackdropActive,
+    getBackdropUrl: getBackdropUrl,
+    startMeetingRecording: startMeetingRecording,
+    startScreenRecording: startScreenRecording,
+    stopRecording: stopRecording,
+    isRecording: isRecording,
+    getRecordingKind: getRecordingKind,
   };
 })();

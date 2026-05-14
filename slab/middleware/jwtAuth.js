@@ -4,6 +4,14 @@ import { isSuperAdminEmail } from './superadmin.js';
 
 const COOKIE_DOMAIN = config.NODE_ENV === 'production' ? '.madladslab.com' : undefined;
 
+// True for madladslab.com (apex) and any *.madladslab.com subdomain.
+// We use this to decide whether the cookie can be issued with Domain=.madladslab.com
+// (which is shared across apex + all subdomains) vs. a custom tenant domain
+// (which needs a host-only cookie or a one-time-token redirect).
+function isPlatformDomain(host) {
+  return host === 'madladslab.com' || host?.endsWith('.madladslab.com');
+}
+
 // ── Admin JWT ─────────────────────────────────────────────────────────────────
 
 export async function requireAdmin(req, res, next) {
@@ -25,11 +33,12 @@ export async function requireAdmin(req, res, next) {
           sameSite: 'lax',
           maxAge: 8 * 60 * 60 * 1000,
         };
-        // Only set .madladslab.com domain for subdomain hosts
-        if (COOKIE_DOMAIN && req.hostname.endsWith('.madladslab.com')) {
+        // Set Domain=.madladslab.com for apex + any subdomain (custom tenant domains
+        // get a host-only cookie since .madladslab.com would not match).
+        if (COOKIE_DOMAIN && isPlatformDomain(req.hostname)) {
           opts.domain = COOKIE_DOMAIN;
         }
-    
+
         res.cookie('slab_token', sessionToken, opts);
         const cleanUrl = req.originalUrl.split('?')[0];
         return res.redirect(cleanUrl);
@@ -68,7 +77,7 @@ export async function requireAdmin(req, res, next) {
           sameSite: 'lax',
           maxAge: 8 * 60 * 60 * 1000,
         };
-        if (COOKIE_DOMAIN && req.hostname.endsWith('.madladslab.com')) {
+        if (COOKIE_DOMAIN && isPlatformDomain(req.hostname)) {
           opts.domain = COOKIE_DOMAIN;
         }
         res.cookie('slab_token', newToken, opts);
@@ -110,9 +119,9 @@ export function issueAdminJWT(user, res, tenantDb, returnDomain) {
   };
   const token = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '8h' });
 
-  // Custom domains (not *.madladslab.com) need cookie on their own domain
-  const isCustomDomain = returnDomain && !returnDomain.endsWith('.madladslab.com') && returnDomain !== 'localhost';
-  const cookieDomain = isCustomDomain ? undefined : COOKIE_DOMAIN;
+  // Apex + *.madladslab.com share Domain=.madladslab.com. Custom tenant domains
+  // and localhost get a host-only cookie (no Domain attribute).
+  const cookieDomain = isPlatformDomain(returnDomain) ? COOKIE_DOMAIN : undefined;
 
   const opts = {
     httpOnly: true,

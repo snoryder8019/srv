@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Superadmin — MadLabs Platform</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }</script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
@@ -218,6 +220,222 @@
       .uw-3col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:22px; align-items:start; }
     }
 
+    /* ── DASH GRID — TV-style tiled landing ───────────────────────────────── */
+    .dash-grid { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
+    @media (min-width:1500px) { .dash-grid { grid-template-columns:1fr 1fr; gap:16px; } }
+    @media (min-width:2200px) { .dash-grid { grid-template-columns:1fr 1fr 1fr; gap:18px; } }
+    @media (min-width:2800px) { .dash-grid { grid-template-columns:1.2fr 1fr 1.2fr 1fr; gap:20px; } }
+
+    .tile { background:#0f0f10; border:1px solid #1f1f22; border-radius:10px; padding:14px 16px; }
+    .tile .tile-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:10px; }
+    .tile .tile-title { font-size:11px; letter-spacing:2px; color:#737373; text-transform:uppercase; }
+    .tile .tile-meta { font-size:11px; color:#525252; }
+    .tile .tile-body { font-size:12px; color:#a3a3a3; }
+
+    /* spans for important tiles on wide screens */
+    @media (min-width:2200px) { .tile.span-2 { grid-column:span 2; } }
+    @media (min-width:2800px) { .tile.span-2 { grid-column:span 2; } .tile.span-3 { grid-column:span 3; } }
+    .tile.span-all { grid-column:1 / -1; }
+
+    /* Harmony tile — Three.js canvas is full-bleed inside its tile */
+    .tile.harmony { padding:0; overflow:hidden; position:relative; border-color:#1a2030; }
+    .tile.harmony .tile-head { position:absolute; top:0; left:0; right:0; padding:10px 14px; background:linear-gradient(to bottom, rgba(10,10,10,0.85), transparent); z-index:5; margin:0; }
+    .tile.harmony canvas { display:block; }
+    .tile.harmony .legend { position:absolute; bottom:8px; left:14px; right:14px; display:flex; gap:14px; flex-wrap:wrap; font-size:10px; color:#737373; letter-spacing:1px; text-transform:uppercase; z-index:5; pointer-events:none; }
+    .harmony-tooltip { position:absolute; z-index:30; background:rgba(10,10,10,0.92); border:1px solid #262626; border-radius:6px; padding:8px 10px; font-size:11px; color:#e5e5e5; max-width:560px; min-width:280px; pointer-events:none; box-shadow:0 4px 18px rgba(0,0,0,0.5); }
+    .harmony-tooltip .ht-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; gap:10px; }
+    .harmony-tooltip .ht-name { font-weight:600; color:#fff; }
+    .harmony-tooltip .ht-meta { font-size:10px; color:#737373; letter-spacing:1px; text-transform:uppercase; }
+    .harmony-tooltip pre { background:#000; border:1px solid #1a1a1a; border-radius:4px; padding:6px 8px; font-size:10px; line-height:1.4; color:#a3a3a3; max-height:260px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace; }
+    .harmony-tooltip pre .err { color:#f87171; }
+    .harmony-tooltip pre .warn { color:#f59e0b; }
+    .tile.harmony .legend .lg-item { display:inline-flex; align-items:center; gap:5px; }
+    .tile.harmony .legend .lg-dot { width:7px; height:7px; border-radius:50%; }
+    #harmonyCanvasWrap { width:100%; height:380px; position:relative; }
+    @media (min-width:2200px) { #harmonyCanvasWrap { height:480px; } }
+    @media (min-width:2800px) { #harmonyCanvasWrap { height:560px; } }
+
+    /* ── SINGLE-VIEWPORT (squeeze everything onto one horizontal screen) ── */
+    @media (min-width:1500px) {
+      body.overview-active { height:100vh; overflow:hidden; }
+      body.overview-active .content { height:calc(100vh - 100px); display:flex; flex-direction:column; gap:8px; padding:2vh 2vw !important; overflow:hidden; box-sizing:border-box; }
+      body.overview-active.fs .content { height:100vh; padding:2vh 2vw !important; gap:6px; box-sizing:border-box; }
+
+      #tab-overview.active { display:flex; flex-direction:column; flex:1; min-height:0; gap:0; position:relative; }
+      /* Stats float as overlay chips on top of all tiles (visible in fullscreen too) */
+      body.overview-active #tab-overview > .stats {
+        position:absolute; top:6px; right:8px; z-index:50; margin:0;
+        display:flex; gap:6px; grid-template-columns:none; flex-wrap:wrap;
+        max-width:70%; justify-content:flex-end; pointer-events:none;
+      }
+      body.overview-active.fs #tab-overview > .stats { top:8px; right:10px; }
+      body.overview-active #tab-overview > .stats .stat {
+        background:rgba(10,10,10,0.75); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+        border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:4px 10px;
+        min-width:auto; display:flex; align-items:baseline; gap:6px; box-shadow:0 2px 8px rgba(0,0,0,0.4);
+      }
+      body.overview-active #tab-overview > .stats .stat-label { font-size:9px; margin:0; letter-spacing:1px; }
+      body.overview-active #tab-overview > .stats .stat-value { font-size:14px; line-height:1; }
+      /* Quick links collapse to a tight strip; hidden in fullscreen */
+      body.overview-active #tab-overview > .quick-links { margin:0 0 6px 0; flex-shrink:0; gap:4px; }
+      body.overview-active #tab-overview > .quick-links .qlink { padding:3px 8px; font-size:10px; }
+      body.overview-active.fs #tab-overview > .quick-links { display:none; }
+
+      #tab-overview .dash-grid {
+        flex:1; min-height:0; gap:10px;
+        grid-template-columns: 1.6fr 1fr 1fr 1fr;
+        grid-template-rows: 1.4fr 1fr;
+        grid-template-areas:
+          "harmony   harmony  vitals   ollama"
+          "outbounds tenants  signups  activity";
+      }
+      #harmonyTile   { grid-area: harmony; }
+      #vitalsTile    { grid-area: vitals; }
+      #outboundsTile { grid-area: outbounds; }
+      #ollamaTile    { grid-area: ollama; }
+      #signupsTile   { grid-area: signups; }
+      #tenantsTile   { grid-area: tenants; }
+      #activityTile  { grid-area: activity; }
+      /* Services tile is hidden on the landing in compact mode; moved to Tools tab */
+      #tab-overview #servicesTile { display:none; }
+
+      .dash-grid .tile { display:flex; flex-direction:column; min-height:0; overflow:hidden; padding:10px 12px; }
+      /* Harmony is block (not flex) so its grid-stretched height is honored even though all children are absolute */
+      .dash-grid .tile.harmony { display:block !important; padding:0; position:relative; overflow:hidden; height:100%; min-height:0; }
+      .dash-grid .tile > .tile-head { flex-shrink:0; margin-bottom:8px; }
+      .dash-grid .tile.harmony > .tile-head { margin-bottom:0; }
+      .dash-grid .tile > .tile-body { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; }
+      /* Absolute wrap so canvas has a definite, clipped size that always matches the tile cell */
+      .dash-grid .tile.harmony > #harmonyCanvasWrap { position:absolute; top:0; left:0; right:0; bottom:0; width:auto; height:auto; overflow:hidden; }
+      .tile.harmony canvas { max-width:100%; max-height:100%; }
+
+      /* tighten Ollama internals so it fits in one cell */
+      #ollamaTile .stat { padding:6px 8px !important; }
+      #ollamaTile .stat-value { font-size:16px !important; }
+      #ollamaTile .stat-label { font-size:9px; }
+
+      /* services list scrolls inside its cell */
+      #servicesTile .svc-mini { grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:4px; }
+      #servicesTile .svc-mini .row { padding:4px 6px; font-size:10px; }
+
+      /* activity feed fills cell */
+      #activityTile .feed { max-height:none; }
+    }
+
+    /* On 2200+ widen the grid spread slightly */
+    @media (min-width:2200px) {
+      #tab-overview .dash-grid { grid-template-columns: 1.8fr 1fr 1fr 1fr; }
+    }
+
+    /* ── WORKSPACE TAB ─────────────────────────────────────────────────────── */
+    body.workspace-active { height:100vh; overflow:hidden; }
+    body.workspace-active .content { height:calc(100vh - 100px); display:flex; flex-direction:column; padding:2vh 2vw !important; gap:0; overflow:hidden; box-sizing:border-box; }
+    body.workspace-active.fs .content { height:100vh; padding:2vh 2vw !important; }
+    body.workspace-active.fs .topbar, body.workspace-active.fs .tab-bar { display:none !important; }
+
+    #tab-workspace.active { display:flex !important; flex-direction:column; flex:1; min-height:0; gap:10px; }
+    .ws-grid { flex:1; min-height:0; display:grid; gap:10px;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: 1fr auto;
+      grid-template-areas: "svcs detail" "pipe  tools";
+    }
+    @media (min-width:1800px) { .ws-grid { grid-template-columns: 360px 1fr 380px; grid-template-rows: 1fr auto; grid-template-areas: "svcs detail tools" "svcs pipe   tools"; } }
+    @media (min-width:2600px) { .ws-grid { grid-template-columns: 420px 1fr 460px; } }
+
+    .ws-pane { background:#0f0f10; border:1px solid #1f1f22; border-radius:8px; padding:12px 14px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+    .ws-pane > .ws-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:8px; flex-shrink:0; }
+    .ws-pane > .ws-head .ws-title { font-size:11px; letter-spacing:2px; color:#737373; text-transform:uppercase; font-weight:600; }
+    .ws-pane > .ws-body { flex:1; min-height:0; overflow:auto; }
+
+    #ws-svcs { grid-area: svcs; }
+    #ws-detail { grid-area: detail; }
+    #ws-pipe { grid-area: pipe; max-height:180px; }
+    #ws-tools { grid-area: tools; max-height:180px; }
+    @media (min-width:1800px) {
+      #ws-tools { max-height:none; }
+      #ws-pipe { max-height:none; }
+    }
+
+    /* Service list rows */
+    .ws-filter { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px; flex-shrink:0; }
+    .ws-filter .chip { font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:3px 8px; border:1px solid #262626; border-radius:3px; background:transparent; color:#737373; cursor:pointer; }
+    .ws-filter .chip.on { color:#c9a848; border-color:#c9a848; }
+    .ws-search { width:100%; background:#0a0a0a; border:1px solid #262626; border-radius:4px; padding:6px 8px; font-size:11px; color:#e5e5e5; margin-bottom:8px; flex-shrink:0; }
+    .ws-svc-row { padding:6px 8px; border-radius:4px; display:flex; align-items:center; gap:8px; cursor:pointer; border:1px solid transparent; font-size:11px; }
+    .ws-svc-row:hover { background:#141414; border-color:#262626; }
+    .ws-svc-row.sel { background:#1a1a1a; border-color:#c9a848; }
+    .ws-svc-row .name { flex:1; color:#e5e5e5; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
+    .ws-svc-row .meta { font-size:9px; color:#525252; letter-spacing:1px; text-transform:uppercase; }
+    .ws-svc-row.dead .name { color:#a3a3a3; }
+
+    /* Detail pane */
+    #ws-detail .ws-stat-strip { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    #ws-detail .ws-stat-strip .pill { font-size:10px; padding:3px 8px; border-radius:3px; background:#141414; border:1px solid #1e1e1e; color:#a3a3a3; }
+    #ws-detail .ws-stat-strip .pill.alive { color:#34d399; border-color:#0f3b2a; }
+    #ws-detail .ws-stat-strip .pill.dead { color:#f87171; border-color:#451a1a; }
+    #ws-detail .ws-actions { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; flex-shrink:0; }
+    #ws-detail pre.ws-tail { background:#000; border:1px solid #1a1a1a; border-radius:4px; padding:10px 12px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; color:#a3a3a3; flex:1; min-height:0; overflow:auto; white-space:pre-wrap; }
+    #ws-detail pre.ws-tail .err { color:#f87171; }
+    #ws-detail pre.ws-tail .warn { color:#f59e0b; }
+
+    /* Pipeline pane: 4 mini-stages */
+    .ws-stages { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:6px; }
+    .ws-stage { background:#0a0a0a; border:1px solid #1e1e1e; border-radius:4px; padding:6px 8px; }
+    .ws-stage .lbl { font-size:9px; color:#525252; letter-spacing:1px; text-transform:uppercase; }
+    .ws-stage .cnt { font-size:18px; font-weight:700; }
+    .ws-stage.new .cnt { color:#c9a848; }
+    .ws-stage.cleansed .cnt { color:#38bdf8; }
+    .ws-stage.deconstructed .cnt { color:#a78bfa; }
+    .ws-stage.deletion-stage .cnt { color:#f87171; }
+
+    /* Tools pane buttons */
+    .ws-tool-buttons { display:grid; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:6px; }
+    .ws-tool-buttons .btn-sm { padding:5px 8px; font-size:11px; }
+    #ws-tools pre { background:#000; border:1px solid #1a1a1a; border-radius:4px; padding:8px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px; color:#a3a3a3; margin-top:8px; max-height:120px; overflow:auto; white-space:pre-wrap; }
+
+    /* Bar/Pct meters for system vitals */
+    .meter { background:#0a0a0a; border:1px solid #1e1e1e; border-radius:4px; height:8px; overflow:hidden; position:relative; }
+    .meter > span { display:block; height:100%; background:linear-gradient(to right, #34d399, #c9a848 70%, #f87171 90%); transition:width .4s ease; }
+    .vitals-row { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px; margin-bottom:8px; }
+    .vitals-row .lbl { color:#737373; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; min-width:60px; }
+    .vitals-row .val { color:#e5e5e5; font-variant-numeric:tabular-nums; font-size:12px; min-width:60px; text-align:right; }
+    .vitals-row .meter { flex:1; }
+    .procs-table { font-size:11px; }
+    .procs-table .prow { display:grid; grid-template-columns:1fr 50px 50px; gap:6px; padding:3px 0; border-top:1px solid #1a1a1a; color:#a3a3a3; font-variant-numeric:tabular-nums; }
+    .procs-table .prow:first-child { border-top:0; color:#737373; font-size:10px; letter-spacing:1px; text-transform:uppercase; }
+
+    /* compact services-by-category inside a tile */
+    .tile .svc-mini { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:6px; }
+    .tile .svc-mini .row { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#141414; border:1px solid #1e1e1e; border-radius:6px; font-size:11px; }
+    .tile .svc-mini .row .name { color:#e5e5e5; font-weight:500; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tile .svc-mini .row .port { color:#525252; font-size:10px; }
+
+    /* compact activity feed inside a tile */
+    .tile .feed { max-height:520px; overflow:auto; }
+    .tile .feed .item { padding:6px 0; border-top:1px solid #1a1a1a; display:flex; gap:8px; font-size:11px; }
+    .tile .feed .item:first-child { border-top:0; }
+    .tile .feed .item .when { color:#525252; min-width:90px; }
+    .tile .feed .item .what { color:#a3a3a3; }
+
+    /* ── FULL-BLEED on TVs: zero gutters; user wants no margin/empty space ── */
+    @media (min-width:1800px) { .content { padding:18px 20px; } }
+    @media (min-width:2200px) { .content { padding:14px 16px; } }
+    @media (min-width:2600px) { .content { padding:10px 12px; } }
+
+    /* ── FULLSCREEN MODE: hides chrome, edge-to-edge ───────────────────── */
+    body.fs .topbar,
+    body.fs .tab-bar,
+    body.fs .badge-overseer { display:none !important; }
+    body.fs .content { padding:0 !important; }
+    body.fs .tile { border-radius:0; }
+    body.fs .panel { padding-bottom:0; }
+
+    .fs-btn { background:transparent; border:1px solid #262626; color:#737373; padding:4px 10px; font-size:11px; border-radius:4px; cursor:pointer; letter-spacing:1px; text-transform:uppercase; }
+    .fs-btn:hover { color:#c9a848; border-color:#c9a848; }
+    .fs-exit { position:fixed; top:8px; right:8px; z-index:10000; opacity:0; transition:opacity .2s; }
+    body.fs:hover .fs-exit, body.fs .fs-exit:focus { opacity:0.7; }
+    body.fs .fs-exit:hover { opacity:1; }
+
     /* ── GFTV ── */
     .gftv-stat-value { font-size:26px; font-weight:700; }
     .gftv-stat-value.gold { color:#f5c400; }
@@ -240,6 +458,8 @@
 </head>
 <body>
 
+<button class="fs-btn fs-exit" onclick="toggleFullscreen()" title="Exit fullscreen (Esc)">✕ Exit</button>
+
 <!-- ── TOPBAR ── -->
 <div class="topbar">
   <div class="topbar-left">
@@ -251,6 +471,7 @@
     </span>
   </div>
   <div class="topbar-right">
+    <a href="#tab-workspace" onclick="showTab('workspace', null); return false;" style="color:#c9a848;font-weight:600;">🛠 Workspace</a>
     <a href="/superadmin/events" style="color:#c9a848;">📡 Events</a>
     <a href="/superadmin/users">Users</a>
     <a href="/superadmin/security" style="color:#ef4444;">🛡 Security</a>
@@ -259,6 +480,7 @@
     <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#525252;" title="Ollama AI">
       <span class="svc-dot" id="ollamaDotTop" style="width:6px;height:6px;"></span>Ollama
     </span>
+    <button class="fs-btn" onclick="toggleFullscreen()" title="Fullscreen (F)">⛶ Full</button>
     <span><%= user.email %></span>
     <a href="/superadmin/logout">Logout</a>
   </div>
@@ -275,6 +497,7 @@
   <div class="tab" onclick="showTab('webapps', this)"><span class="tab-icon">&#127760;</span> Webapps</div>
   <div class="tab" onclick="showTab('gftv', this)"><span class="tab-icon">📺</span> Graffiti TV</div>
   <div class="tab-spacer"></div>
+  <div class="tab tab-util" onclick="showTab('workspace', this)" style="color:#c9a848;"><span class="tab-icon">&#128736;</span> Workspace</div>
   <div class="tab tab-util" onclick="showTab('tools', this)"><span class="tab-icon">&#128295;</span> Tools</div>
   <div class="tab tab-util" onclick="showTab('activity', this)"><span class="tab-icon">&#9998;</span> Activity</div>
 </div>
@@ -304,57 +527,259 @@
       <a class="qlink" href="/superadmin/announcements">&#128227; Announcements</a>
     </div>
 
-    <!-- All services by category + recent signups — dual column on ultrawide -->
-    <div class="uw-columns">
-      <div>
-        <% for (const [cat, group] of Object.entries(servicesByCategory)) { %>
-          <div class="section">
-            <div class="section-label"><%= group.icon %> <%= group.label %></div>
-            <div class="card-grid">
-              <% for (const svc of group.services) { %>
-                <div class="card">
-                  <div class="card-header">
-                    <span class="card-title"><%= svc.name %></span>
-                    <span class="svc-dot <%= svc.alive ? 'alive' : (svc.alive === false ? 'dead' : 'unknown') %>"></span>
+    <!-- Tiled TV-style dashboard — 1→2→3→4 col by screen width -->
+    <div class="dash-grid">
+
+      <!-- Server Harmony — Three.js constellation, live pulses -->
+      <div class="tile harmony span-all" id="harmonyTile">
+        <div class="tile-head">
+          <span class="tile-title" style="color:#a78bfa;">Server Harmony · live pulse</span>
+          <span class="tile-meta">
+            <a href="#tab-workspace" onclick="showTab('workspace', null); return false;" class="btn-sm" style="padding:3px 10px;color:#c9a848;border-color:#c9a848;margin-right:10px;">🛠 Open Workspace →</a>
+            <span id="harmonyStatusServices" style="color:#34d399;"><%= aliveCount %> up</span>
+            <span style="margin:0 6px;color:#262626;">·</span>
+            <span id="harmonyStatusConns" style="color:#60a5fa;">— conns</span>
+            <span style="margin:0 6px;color:#262626;">·</span>
+            <span id="harmonyStatusPulse" style="color:#737373;">— /s</span>
+          </span>
+        </div>
+        <div id="harmonyCanvasWrap"></div>
+        <div class="harmony-tooltip" id="harmonyTooltip" style="display:none;left:0;top:0;"></div>
+        <div class="legend">
+          <span class="lg-item"><span class="lg-dot" style="background:#34d399;box-shadow:0 0 6px #34d399;"></span>Platform</span>
+          <span class="lg-item"><span class="lg-dot" style="background:#60a5fa;box-shadow:0 0 6px #60a5fa;"></span>Client</span>
+          <span class="lg-item"><span class="lg-dot" style="background:#c084fc;box-shadow:0 0 6px #c084fc;"></span>Game</span>
+          <span class="lg-item"><span class="lg-dot" style="background:#f59e0b;box-shadow:0 0 6px #f59e0b;"></span>Media</span>
+          <span class="lg-item"><span class="lg-dot" style="background:#c9a848;box-shadow:0 0 6px #c9a848;"></span>Tool</span>
+          <span class="lg-item"><span class="lg-dot" style="background:#f87171;box-shadow:0 0 6px #f87171;"></span>Down</span>
+        </div>
+        <script type="application/json" id="harmonyServicesJson"><%- JSON.stringify(services.map(s => ({ name:s.name, category:s.category, port:s.port, tmux:s.tmux, alive:s.alive===true }))) %></script>
+      </div>
+
+      <!-- System Vitals — CPU/RAM/load + top processes + sparkline -->
+      <div class="tile span-2" id="vitalsTile">
+        <div class="tile-head">
+          <span class="tile-title" style="color:#34d399;">System Vitals</span>
+          <span class="tile-meta" id="vitalsUptime">—</span>
+        </div>
+        <div class="tile-body">
+          <div class="vitals-row">
+            <span class="lbl">CPU</span>
+            <div class="meter"><span id="vitalsCpuBar" style="width:0%"></span></div>
+            <span class="val" id="vitalsCpuVal">—</span>
+          </div>
+          <div class="vitals-row">
+            <span class="lbl">RAM</span>
+            <div class="meter"><span id="vitalsMemBar" style="width:0%"></span></div>
+            <span class="val" id="vitalsMemVal">—</span>
+          </div>
+          <div class="vitals-row">
+            <span class="lbl">Load</span>
+            <div class="meter"><span id="vitalsLoadBar" style="width:0%"></span></div>
+            <span class="val" id="vitalsLoadVal">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#737373;margin:8px 0 6px;">
+            <span>Processes: <span id="vitalsProcCount" style="color:#e5e5e5;">—</span></span>
+            <span>Active services: <span id="vitalsActiveSvc" style="color:#34d399;"><%= aliveCount %></span> / <%= totalServices %></span>
+          </div>
+          <div class="procs-table" id="vitalsProcs">
+            <div class="prow"><span>Process</span><span style="text-align:right;">CPU%</span><span style="text-align:right;">MEM%</span></div>
+          </div>
+          <div style="margin-top:10px;">
+            <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#525252;margin-bottom:4px;">Activity · 2 min</div>
+            <div style="height:80px;position:relative;"><canvas id="vitalsSpark"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+<!-- Services tile moved to Tools tab → "Services" section -->
+
+      <!-- Outbound connections — live -->
+      <div class="tile" id="outboundsTile">
+        <div class="tile-head">
+          <span class="tile-title" style="color:#c9a848;">Outbounds · live</span>
+          <span class="tile-meta" id="outboundsMeta">— peers</span>
+        </div>
+        <div class="tile-body">
+          <div id="outboundsList" style="font-size:11px;color:#a3a3a3;">Loading…</div>
+        </div>
+      </div>
+
+      <!-- Ollama Tunnel — analytics + health (primary on landing) -->
+      <div class="tile span-2" id="ollamaTile" style="border-color:#1f2a44;">
+        <div class="tile-head">
+          <span class="tile-title" style="display:flex;align-items:center;gap:8px;color:#60a5fa;">
+            <span class="svc-dot" id="ollamaDot"></span> Ollama Tunnel
+            <span style="font-size:9px;letter-spacing:2px;color:#525252;text-transform:uppercase;">ollama.madladslab.com</span>
+          </span>
+          <span class="tile-meta">
+            <select id="ollamaWindow" onchange="loadOllamaAnalytics()" class="service-select" style="font-size:11px;padding:2px 6px;">
+              <option value="1">24h</option>
+              <option value="7" selected>7d</option>
+              <option value="30">30d</option>
+            </select>
+            <button class="btn-sm" onclick="loadOllamaAnalytics()" style="padding:2px 8px;">↻</button>
+            <span id="ollamaUpdatedAt" style="margin-left:6px;">—</span>
+          </span>
+        </div>
+        <div class="tile-body">
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:11px;">
+            <span id="ollamaLlmPill"  style="padding:3px 8px;border-radius:3px;background:#1a1a1a;border:1px solid #262626;color:#737373;">LLM —</span>
+            <span id="ollamaSdPill"   style="padding:3px 8px;border-radius:3px;background:#1a1a1a;border:1px solid #262626;color:#737373;">SD —</span>
+            <span id="ollamaSnip"     style="padding:3px 8px;border-radius:3px;background:#0a0a0a;color:#525252;">models —</span>
+          </div>
+          <div class="stats" style="grid-template-columns:repeat(auto-fit, minmax(100px, 1fr));margin-bottom:10px;gap:8px;">
+            <div class="stat" style="padding:10px 12px;"><div class="stat-label">Requests</div><div class="stat-value" id="ollamaStatReq" style="font-size:22px;">—</div></div>
+            <div class="stat" style="padding:10px 12px;"><div class="stat-label">Errors</div><div class="stat-value red" id="ollamaStatErr" style="font-size:22px;">—</div></div>
+            <div class="stat" style="padding:10px 12px;"><div class="stat-label">Err%</div><div class="stat-value" id="ollamaStatErrRate" style="font-size:22px;">—</div></div>
+            <div class="stat" style="padding:10px 12px;"><div class="stat-label">Bytes Out</div><div class="stat-value gold" id="ollamaStatBytes" style="font-size:22px;">—</div></div>
+            <div class="stat" style="padding:10px 12px;"><div class="stat-label">Avg Dur</div><div class="stat-value" id="ollamaStatDur" style="font-size:22px;">—</div></div>
+            <div class="stat" style="padding:10px 12px;"><div class="stat-label">Keys</div><div class="stat-value green" id="ollamaStatKeys" style="font-size:22px;">—</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;">
+            <div>
+              <div style="font-size:10px;letter-spacing:2px;color:#525252;text-transform:uppercase;margin-bottom:4px;">Keys</div>
+              <div id="ollamaKeysTable" style="font-size:11px;color:#a3a3a3;">Loading…</div>
+            </div>
+            <div>
+              <div style="font-size:10px;letter-spacing:2px;color:#525252;text-transform:uppercase;margin-bottom:4px;">Routes</div>
+              <div id="ollamaRoutesTable" style="font-size:11px;color:#a3a3a3;">Loading…</div>
+            </div>
+            <div>
+              <div style="font-size:10px;letter-spacing:2px;color:#525252;text-transform:uppercase;margin-bottom:4px;">Models</div>
+              <div id="ollamaModelsTable" style="font-size:11px;color:#a3a3a3;">Loading…</div>
+            </div>
+          </div>
+          <div id="ollamaFlags" style="margin-top:8px;font-size:11px;"></div>
+        </div>
+      </div>
+
+      <!-- Recent Signups -->
+      <div class="tile" id="signupsTile">
+        <div class="tile-head">
+          <span class="tile-title">Recent Signups</span>
+          <a class="btn-sm" href="/superadmin/signups" style="padding:2px 8px;">All</a>
+        </div>
+        <div class="tile-body">
+        <% if (recentSignups.length) { %>
+          <div style="font-size:11px;">
+            <% for (const s of recentSignups.slice(0, 10)) { %>
+              <div style="padding:6px 0;border-top:1px solid #1a1a1a;display:flex;justify-content:space-between;gap:8px;">
+                <div style="min-width:0;overflow:hidden;">
+                  <div style="color:#e5e5e5;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;"><%= s.email %></div>
+                  <div style="color:#525252;font-size:10px;"><%= s.brandName || '—' %> · <%= s.subdomain || '—' %></div>
+                </div>
+                <div style="color:#525252;font-size:10px;white-space:nowrap;"><%= new Date(s.createdAt).toLocaleDateString() %></div>
+              </div>
+            <% } %>
+          </div>
+        <% } else { %>
+          <div class="empty">No recent signups</div>
+        <% } %>
+        </div>
+      </div>
+
+      <!-- Tenants -->
+      <%
+        // Activity helper — returns { label, color, live }
+        function tenantActivity(t) {
+          const seen = t?.meta?.lastSeenAt ? new Date(t.meta.lastSeenAt).getTime() : null;
+          if (!seen) return { label: 'never', color: '#525252', live: false };
+          const dt = Date.now() - seen;
+          if (dt < 90 * 1000)          return { label: 'live now', color: '#34d399', live: true };
+          if (dt < 5 * 60 * 1000)      return { label: Math.floor(dt/60000) + 'm ago', color: '#34d399', live: false };
+          if (dt < 60 * 60 * 1000)     return { label: Math.floor(dt/60000) + 'm ago', color: '#c9a848', live: false };
+          if (dt < 24 * 60 * 60 * 1000) return { label: Math.floor(dt/3600000) + 'h ago', color: '#a3a3a3', live: false };
+          if (dt < 30 * 24 * 60 * 60 * 1000) return { label: Math.floor(dt/86400000) + 'd ago', color: '#737373', live: false };
+          return { label: 'idle', color: '#525252', live: false };
+        }
+        // Truly-active count = tenants with activity within the last 24h
+        const liveCount = tenants.filter(t => t?.meta?.lastSeenAt && (Date.now() - new Date(t.meta.lastSeenAt).getTime()) < 24*60*60*1000).length;
+        const liveNowCount = tenants.filter(t => t?.meta?.lastSeenAt && (Date.now() - new Date(t.meta.lastSeenAt).getTime()) < 90*1000).length;
+      %>
+      <div class="tile" id="tenantsTile">
+        <div class="tile-head">
+          <span class="tile-title">Tenants · usage</span>
+          <span class="tile-meta"><%= stats.total %> total</span>
+        </div>
+        <div class="tile-body">
+        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:6px;margin-bottom:8px;flex-shrink:0;">
+          <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:8px;text-align:center;" title="Hit a tenant URL in the last 90 seconds">
+            <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">Live</div>
+            <div style="font-size:18px;color:#34d399;font-weight:700;"><%= liveNowCount %></div>
+          </div>
+          <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:8px;text-align:center;" title="Activity in the last 24h">
+            <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">24h</div>
+            <div style="font-size:18px;color:#c9a848;font-weight:700;"><%= liveCount %></div>
+          </div>
+          <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:8px;text-align:center;" title="Status: active">
+            <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">Active</div>
+            <div style="font-size:18px;color:#a3a3a3;font-weight:700;"><%= stats.active %></div>
+          </div>
+          <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:8px;text-align:center;" title="Status: suspended">
+            <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">Susp</div>
+            <div style="font-size:18px;color:#f87171;font-weight:700;"><%= stats.suspended %></div>
+          </div>
+        </div>
+        <% if (tenants.length) { %>
+          <div style="font-size:11px;">
+            <% for (const t of tenants.slice(0, 12)) { %>
+              <% const act = tenantActivity(t); %>
+              <%
+                const tName = t.brand?.name || t.brandName || t.domain?.split('.')[0] || t.meta?.subdomain || 'unnamed';
+                const tSub  = t.meta?.subdomain || t.domain || '';
+                const tOwner = t.meta?.ownerEmail || t.brand?.ownerName || t.brand?.email || null;
+              %>
+              <div style="padding:5px 0;border-top:1px solid #1a1a1a;display:flex;justify-content:space-between;gap:8px;align-items:center;">
+                <div style="min-width:0;overflow:hidden;display:flex;align-items:center;gap:6px;">
+                  <% if (act.live) { %><span style="width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 4px #34d399;flex-shrink:0;"></span><% } %>
+                  <div style="min-width:0;overflow:hidden;">
+                    <div style="color:#e5e5e5;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;"><%= tName %></div>
+                    <div style="color:#525252;font-size:10px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">
+                      <%= tSub %><% if (tOwner) { %> · <span style="color:#737373;"><%= tOwner %></span><% } %><% if (t.meta?.hitsTotal) { %> · <%= t.meta.hitsTotal %> hits<% } %>
+                    </div>
                   </div>
-                  <div class="card-desc"><%= svc.description %></div>
-                  <div class="card-meta">
-                    <% if (svc.port) { %><span>:<%= svc.port %></span><% } %>
-                    <% if (svc.domain) { %><span><a href="https://<%= svc.domain %>" target="_blank" class="link" style="font-size:11px;"><%= svc.domain %></a></span><% } %>
-                  </div>
-                  <div class="card-actions">
-                    <% if (svc.domain) { %><a href="https://<%= svc.domain %>" target="_blank" class="btn-sm">Visit</a><% } %>
-                    <% if (svc.tmux) { %><button class="btn-sm" onclick="svcAction('<%= svc.name %>', 'status')">Status</button><% } %>
+                </div>
+                <div style="text-align:right;white-space:nowrap;">
+                  <div style="font-size:10px;color:<%= act.color %>;letter-spacing:1px;text-transform:uppercase;"><%= act.label %></div>
+                  <div style="font-size:9px;color:<%= t.status === 'active' ? '#34d399' : t.status === 'suspended' ? '#f87171' : '#525252' %>;letter-spacing:1px;text-transform:uppercase;"><%= t.status || 'preview' %></div>
+                </div>
+              </div>
+            <% } %>
+          </div>
+        <% } else { %>
+          <div class="empty">No tenants</div>
+        <% } %>
+        </div>
+      </div>
+
+      <!-- Activity feed -->
+      <div class="tile span-2" id="activityTile">
+        <div class="tile-head">
+          <span class="tile-title">Activity</span>
+          <a class="btn-sm" href="/superadmin/activity" style="padding:2px 8px;">Full Log</a>
+        </div>
+        <div class="tile-body">
+          <div class="feed" style="max-height:none;">
+            <% if (activityLogs.length) { %>
+              <% for (const log of activityLogs) { %>
+                <div class="item">
+                  <div class="when"><%= new Date(log.timestamp).toLocaleString() %></div>
+                  <div class="what">
+                    <span style="color:#e5e5e5;"><%= log.action %></span>
+                    <% if (log.tenantDomain) { %><span style="color:#c9a848;"> · <%= log.tenantDomain %></span><% } %>
+                    <% if (log.actor?.email) { %><span style="color:#525252;"> · <%= log.actor.email %></span><% } %>
                   </div>
                 </div>
               <% } %>
-            </div>
-          </div>
-        <% } %>
-      </div>
-      <div>
-        <div class="section">
-          <h2>Recent Signups</h2>
-      <% if (recentSignups.length) { %>
-        <table>
-          <thead><tr><th>Email</th><th>Brand</th><th>Subdomain</th><th>Date</th></tr></thead>
-          <tbody>
-            <% for (const s of recentSignups) { %>
-              <tr>
-                <td><%= s.email %></td>
-                <td><%= s.brandName || '—' %></td>
-                <td><%= s.subdomain || '—' %></td>
-                <td style="color:#525252; font-size:12px;"><%= new Date(s.createdAt).toLocaleDateString() %></td>
-              </tr>
+            <% } else { %>
+              <div class="empty">No activity yet</div>
             <% } %>
-          </tbody>
-        </table>
-      <% } else { %>
-        <div class="empty">No recent signups</div>
-      <% } %>
+          </div>
         </div>
       </div>
-    </div><!-- /uw-columns -->
+
+    </div><!-- /dash-grid -->
   </div>
 
   <!-- ═══════ SLAB TAB ═══════ -->
@@ -799,6 +1224,97 @@
     </div>
   </div>
 
+  <!-- ═══════ WORKSPACE TAB ═══════ -->
+  <div class="panel" id="tab-workspace">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;flex-shrink:0;margin-bottom:6px;">
+      <h2 style="margin:0;font-size:14px;letter-spacing:1px;text-transform:uppercase;color:#c9a848;">🛠 Workspace</h2>
+      <span style="font-size:11px;color:#525252;">Operator console · pick a service, inspect, deprecate, rinse</span>
+    </div>
+
+    <div class="ws-grid">
+      <!-- Services list pane -->
+      <div class="ws-pane" id="ws-svcs">
+        <div class="ws-head">
+          <span class="ws-title">Services</span>
+          <span class="ws-title" id="wsSvcCount" style="letter-spacing:1px;color:#525252;">—</span>
+        </div>
+        <input class="ws-search" id="wsSearch" placeholder="Filter by name, port, tmux…" autocomplete="off">
+        <div class="ws-filter" id="wsFilters">
+          <button class="chip on" data-filter="all">All</button>
+          <button class="chip" data-filter="alive">Live</button>
+          <button class="chip" data-filter="dead">Down</button>
+          <button class="chip" data-filter="unregistered">Unregistered</button>
+          <button class="chip" data-filter="platform">Platform</button>
+          <button class="chip" data-filter="client">Client</button>
+          <button class="chip" data-filter="game">Game</button>
+          <button class="chip" data-filter="media">Media</button>
+          <button class="chip" data-filter="tool">Tool</button>
+        </div>
+        <div class="ws-body" id="wsList">Loading…</div>
+      </div>
+
+      <!-- Detail pane: tail viewer for selected service -->
+      <div class="ws-pane" id="ws-detail">
+        <div class="ws-head">
+          <span class="ws-title" id="wsDetailTitle">Select a service</span>
+          <span class="ws-title" id="wsDetailIdle" style="color:#525252;">—</span>
+        </div>
+        <div class="ws-stat-strip" id="wsDetailStrip"></div>
+        <div class="ws-actions" id="wsDetailActions">
+          <button class="btn-sm" onclick="wsRefreshTail()">↻ Refresh tail</button>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#737373;cursor:pointer;">
+            <input type="checkbox" id="wsAutoTail" checked> auto-tail (5s)
+          </label>
+          <select class="ws-search" id="wsLines" style="width:auto;padding:4px 8px;margin:0;">
+            <option value="50">50 lines</option>
+            <option value="100">100 lines</option>
+            <option value="200">200 lines</option>
+            <option value="500">500 lines</option>
+          </select>
+          <span style="flex:1;"></span>
+          <button class="btn-sm" onclick="wsServiceStatus()">Status</button>
+          <button class="btn-sm" style="color:#f87171;border-color:#451a1a;" onclick="wsDeprecateSelected()">Deprecate →</button>
+        </div>
+        <pre class="ws-tail" id="wsTail">Pick a service on the left to see its tail.</pre>
+      </div>
+
+      <!-- Deprecation pipeline status -->
+      <div class="ws-pane" id="ws-pipe">
+        <div class="ws-head">
+          <span class="ws-title">Deprecation Pipeline</span>
+          <button class="btn-sm" onclick="loadDeprecationPipeline()" style="padding:2px 8px;">↻</button>
+        </div>
+        <div class="ws-body">
+          <div class="ws-stages">
+            <div class="ws-stage new"><div class="lbl">New</div><div class="cnt" id="wsPipeNew">—</div></div>
+            <div class="ws-stage cleansed"><div class="lbl">Cleansed</div><div class="cnt" id="wsPipeCleansed">—</div></div>
+            <div class="ws-stage deconstructed"><div class="lbl">Deconstructed</div><div class="cnt" id="wsPipeDeconstructed">—</div></div>
+            <div class="ws-stage deletion-stage"><div class="lbl">Deletion</div><div class="cnt" id="wsPipeDeletion">—</div></div>
+          </div>
+          <div id="wsPipeList" style="font-size:11px;color:#a3a3a3;margin-top:6px;"></div>
+        </div>
+      </div>
+
+      <!-- Quick tools -->
+      <div class="ws-pane" id="ws-tools">
+        <div class="ws-head"><span class="ws-title">Quick Tools</span></div>
+        <div class="ws-body">
+          <div class="ws-tool-buttons">
+            <button class="btn-sm" onclick="wsRunTool('health')">Health</button>
+            <button class="btn-sm" onclick="wsRunTool('apache')">Apache</button>
+            <button class="btn-sm" onclick="wsRunTool('ssl')">SSL Certs</button>
+            <button class="btn-sm" onclick="wsRunTool('mongo')">MongoDB</button>
+            <button class="btn-sm" onclick="wsRunTool('disk')">Disk</button>
+            <button class="btn-sm" onclick="wsRunTool('ollama')">Ollama</button>
+            <a class="btn-sm" href="/superadmin/control-center" target="_blank" style="text-align:center;">Control Center ↗</a>
+            <a class="btn-sm" href="/superadmin/all-tickets" style="text-align:center;">Tickets ↗</a>
+          </div>
+          <pre id="wsToolsOut">Run a tool…</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════ TOOLS TAB ═══════ -->
   <div class="panel" id="tab-tools">
     <div class="uw-columns">
@@ -877,17 +1393,10 @@
           <div class="card-actions"><button class="btn-sm" onclick="svcAction('mcp', 'status')">Status</button></div>
         </div>
 
-        <!-- Ollama -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title" style="display:flex;align-items:center;gap:6px;">
-              <span class="svc-dot" id="ollamaDot"></span>
-              Ollama
-            </span>
-          </div>
-          <div class="card-desc">DeepSeek + image gen · ollama.madladslab.com</div>
-          <div id="ollamaSnip" style="font-size:11px;color:#525252;margin:6px 0;">—</div>
-          <div class="card-actions"><button class="btn-sm" onclick="checkOllamaFull()">Health Check</button></div>
+        <!-- Ollama Tunnel — analytics moved to the Overview landing tile -->
+        <div class="card" style="border-color:#1f2a44;">
+          <div class="card-header"><span class="card-title">Ollama Tunnel</span></div>
+          <div class="card-desc">Full analytics tile is on the <a href="#tab-overview" onclick="showTab('overview', null)" style="color:#60a5fa;">Overview</a> landing.</div>
         </div>
 
         <!-- Piper → ElevenLabs -->
@@ -918,6 +1427,32 @@
       </div>
 
       <pre id="agentOutput" class="tool-output" style="margin-top:16px;">Select an agent to check...</pre>
+    </div>
+
+    <div class="section">
+      <h2>Services</h2>
+      <div style="font-size:11px;color:#737373;margin-bottom:12px;">All registered services. Use <span style="color:#f87171;">Deprecate</span> to move a service directory into the deprecation pipeline at <code style="color:#a3a3a3;">/srv/depricated/new/&lt;name&gt;</code>.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:8px;">
+        <% for (const svc of services) { %>
+          <div style="background:#0f0f10;border:1px solid #1f1f22;border-radius:6px;padding:10px 12px;font-size:11px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span class="svc-dot <%= svc.alive ? 'alive' : (svc.alive === false ? 'dead' : 'unknown') %>"></span>
+              <span style="color:#e5e5e5;font-weight:600;flex:1;"><%= svc.name %></span>
+              <span style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;"><%= svc.category %></span>
+            </div>
+            <div style="color:#525252;font-size:10px;margin-bottom:6px;line-height:1.4;"><%= svc.description || '—' %></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#737373;">
+              <span><%= svc.port ? ':' + svc.port : 'no port' %><% if (svc.tmux) { %> · <%= svc.tmux %><% } %></span>
+              <div style="display:flex;gap:4px;">
+                <% if (svc.domain) { %><a href="https://<%= svc.domain %>" target="_blank" class="btn-sm" style="padding:2px 6px;font-size:10px;">Visit</a><% } %>
+                <% if (svc.tmux) { %><button class="btn-sm" style="padding:2px 6px;font-size:10px;" onclick="svcAction('<%= svc.name %>', 'status')">Status</button><% } %>
+                <button class="btn-sm" style="padding:2px 6px;font-size:10px;color:#f87171;border-color:#451a1a;" onclick="deprecateService('<%= svc.name %>')">Deprecate</button>
+              </div>
+            </div>
+          </div>
+        <% } %>
+      </div>
+      <pre id="deprecateOutput" class="tool-output" style="margin-top:12px;display:none;max-height:160px;"></pre>
     </div>
 
     <div class="section">
@@ -1051,6 +1586,41 @@
 </div><!-- /content -->
 
 <script>
+
+  // ── Fullscreen mode ──────────────────────────────────────────────────────
+  function toggleFullscreen() {
+    const willEnter = !document.body.classList.contains('fs');
+    document.body.classList.toggle('fs', willEnter);
+    try {
+      if (willEnter && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{});
+      else if (!willEnter && document.exitFullscreen && document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+    } catch(e){}
+    try { localStorage.setItem('superadmin.fs', willEnter ? '1' : '0'); } catch(e){}
+    // Force canvases to re-measure after the layout settles
+    [50, 200, 500].forEach(ms => setTimeout(() => {
+      try { window.serverHarmony && window.serverHarmony.resize(); } catch(e){}
+      try { window.vitalsSparkChart && window.vitalsSparkChart.resize(); } catch(e){}
+      window.dispatchEvent(new Event('resize'));
+    }, ms));
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); }
+    else if (e.key === 'Escape' && document.body.classList.contains('fs') && !document.fullscreenElement) {
+      document.body.classList.remove('fs');
+    }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) document.body.classList.remove('fs');
+    // Force canvases to re-measure after the fullscreen transition settles
+    [50, 200, 500].forEach(ms => setTimeout(() => {
+      try { window.serverHarmony && window.serverHarmony.resize(); } catch(e){}
+      try { window.vitalsSparkChart && window.vitalsSparkChart.resize(); } catch(e){}
+      window.dispatchEvent(new Event('resize'));
+    }, ms));
+  });
+  // Restore last fullscreen preference (visual only — browser fs API requires user gesture)
+  try { if (localStorage.getItem('superadmin.fs') === '1') document.body.classList.add('fs'); } catch(e){}
 
   // ── Graffiti TV ──────────────────────────────────────────────────────────
   let _gftvData = null;
@@ -1195,25 +1765,33 @@
     window.location.hash = 'tab-' + id;
     if (id === 'tools') loadDeprecationPipeline();
     if (id === 'gftv') loadGFTV();
-    if (id === 'tools') { loadClaudeBriefing(); checkOllamaFull(); }
+    if (id === 'tools') loadClaudeBriefing();
+    if (id === 'overview') loadOllamaAnalytics();
+    document.body.classList.toggle('overview-active', id === 'overview');
+    document.body.classList.toggle('workspace-active', id === 'workspace');
+    if (id === 'workspace') wsMaybeInit();
+    // Let layout settle, then force canvases to re-measure
+    if (id === 'overview') {
+      [50, 250].forEach(ms => setTimeout(() => {
+        try { window.serverHarmony && window.serverHarmony.resize(); } catch(e){}
+        try { window.vitalsSparkChart && window.vitalsSparkChart.resize(); } catch(e){}
+      }, ms));
+    }
   }
 
   // Restore tab from URL hash on page load
   (function() {
     const hash = window.location.hash.replace('#tab-', '');
     if (hash && document.getElementById('tab-' + hash)) showTab(hash);
+    // Default-active Overview gets the class on initial load
+    if (!hash || hash === 'overview') document.body.classList.add('overview-active');
+    if (hash === 'workspace') { document.body.classList.add('workspace-active'); wsMaybeInit(); }
     // Mini Ollama dot in topbar — check on load
-    (async function() {
-      try {
-        const r = await fetch('/superadmin/api/tool/ollama');
-        const d = await r.json();
-        const dot = document.getElementById('ollamaDotTop');
-        if (dot) dot.className = (d.ok || d.models) ? 'svc-dot alive' : 'svc-dot dead';
-      } catch(e) {
-        const dot = document.getElementById('ollamaDotTop');
-        if (dot) dot.className = 'svc-dot dead';
-      }
-    })();
+    refreshOllamaTopbar();
+    // Auto-load analytics on initial Overview landing
+    if (!window.location.hash || window.location.hash === '#tab-overview') {
+      try { loadOllamaAnalytics(); } catch(e) {}
+    }
     // Load Claude briefing if tools tab already active
     if (!window.location.hash || window.location.hash === '#tab-tools') loadClaudeBriefing();
   })();
@@ -1228,6 +1806,27 @@
     } catch (e) {
       out.textContent = 'Error: ' + e.message;
     }
+  }
+
+  async function deprecateService(name) {
+    if (!confirm('Deprecate "' + name + '"?\n\nMoves /srv/' + name + ' → /srv/depricated/new/' + name + '\n(kills its tmux session and removes from auto-start)')) return;
+    const out = document.getElementById('deprecateOutput');
+    if (out) { out.style.display = 'block'; out.textContent = '▶ Deprecating ' + name + '…'; }
+    try {
+      const res = await fetch('/superadmin/api/deprecation/ingest-service', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const d = await res.json();
+      const body = JSON.stringify({ ok: d.ok, name: d.name, staged: d.staged, error: d.error }, null, 2);
+      const output = (d.output || '').trim();
+      if (out) out.textContent = (d.ok ? '✓ DEPRECATED → ' + d.staged : '✗ FAILED — ' + (d.error || 'unknown')) + '\n\n── script output ──\n' + (output || '(no output)') + '\n\n── response ──\n' + body;
+      if (d.ok) {
+        loadDeprecationPipeline();
+        setTimeout(() => location.reload(), 1800);
+      }
+    } catch (e) { if (out) out.textContent = 'Error: ' + e.message; }
   }
 
   async function svcAction(name, action) {
@@ -1271,47 +1870,199 @@
   }
 
 
-  // ── Ollama inline health ──────────────────────────────────────────────────
-  async function checkOllamaFull() {
-    const dot  = document.getElementById('ollamaDot');
-    const snip = document.getElementById('ollamaSnip');
-    const out  = document.getElementById('agentOutput');
-    if (out) out.textContent = 'Checking Ollama...';
+  // ── Ollama Tunnel — health + analytics ───────────────────────────────────
+  function fmtBytes(n) {
+    if (n == null) return '—';
+    const u = ['B','KB','MB','GB','TB']; let i = 0; let v = Number(n);
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return v.toFixed(v >= 100 ? 0 : 1) + ' ' + u[i];
+  }
+  function fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString(); }
+  function fmtMs(n)  { return n == null ? '—' : (n >= 1000 ? (n/1000).toFixed(1)+'s' : Math.round(n)+'ms'); }
+  function pct(num, den) { if (!den) return '0%'; return (100 * num / den).toFixed(1) + '%'; }
+
+  async function refreshOllamaTopbar() {
+    const dot = document.getElementById('ollamaDotTop');
     try {
-      const res = await fetch('/superadmin/api/tool/ollama');
-      const d = await res.json();
-      if (d.ok || d.models) {
-        if (dot) { dot.className = 'svc-dot alive'; }
-        const models = d.models || [];
-        if (snip) snip.textContent = models.length ? models.join(' · ') : 'Online — no models listed';
-        if (out) out.textContent = JSON.stringify(d, null, 2);
-      } else {
-        if (dot) dot.className = 'svc-dot dead';
-        if (snip) snip.textContent = 'Offline — ' + (d.error || 'no response');
-        if (out) out.textContent = 'Ollama offline: ' + (d.error || 'unknown');
-      }
-    } catch(e) {
-      if (dot) dot.className = 'svc-dot dead';
-      if (snip) snip.textContent = 'Unreachable';
-      if (out) out.textContent = 'Error: ' + e.message;
-    }
+      const r = await fetch('/superadmin/api/ollama/health');
+      const d = await r.json();
+      const up = !!(d?.llm?.ok || d?.sd?.ok);
+      if (dot) dot.className = up ? 'svc-dot alive' : 'svc-dot dead';
+    } catch { if (dot) dot.className = 'svc-dot dead'; }
   }
 
+  async function loadOllamaAnalytics() {
+    const dot   = document.getElementById('ollamaDot');
+    const llmP  = document.getElementById('ollamaLlmPill');
+    const sdP   = document.getElementById('ollamaSdPill');
+    const snip  = document.getElementById('ollamaSnip');
+    const days  = parseInt(document.getElementById('ollamaWindow')?.value || '7', 10);
+    const since = new Date(Date.now() - days * 86400 * 1000).toISOString();
+    const updatedAt = document.getElementById('ollamaUpdatedAt');
 
-  async function checkOllama() {
-    return checkOllamaFull();
-  }
-  async function _checkOllamaOld() {
-    const out = document.getElementById('agentOutput');
-    out.textContent = 'Checking Ollama...';
+    // Health
     try {
-      const res = await fetch('/superadmin/api/tool/ollama');
-      const data = await res.json();
-      out.textContent = data.output || JSON.stringify(data, null, 2);
+      const h = await (await fetch('/superadmin/api/ollama/health')).json();
+      const llmOk = !!h?.llm?.ok, sdOk = !!h?.sd?.ok;
+      if (dot)  dot.className = (llmOk || sdOk) ? 'svc-dot alive' : 'svc-dot dead';
+      if (llmP) { llmP.textContent = 'LLM ' + (llmOk ? '✓' : '✗') + (h?.llm?.status ? ' · ' + h.llm.status : ''); llmP.style.color = llmOk ? '#34d399' : '#f87171'; }
+      if (sdP)  { sdP.textContent  = 'SD '  + (sdOk  ? '✓' : '✗') + (h?.sd?.status  ? ' · ' + h.sd.status  : ''); sdP.style.color  = sdOk  ? '#34d399' : '#f87171'; }
+      const models = h?.llm?.models || h?.llm?.available || [];
+      if (snip) snip.textContent = 'models: ' + (Array.isArray(models) && models.length ? models.slice(0,4).join(' · ') : '—');
     } catch (e) {
-      out.textContent = 'Error: ' + e.message;
+      if (dot) dot.className = 'svc-dot dead';
+      if (llmP) { llmP.textContent = 'LLM ✗'; llmP.style.color = '#f87171'; }
+      if (sdP)  { sdP.textContent  = 'SD ✗';  sdP.style.color  = '#f87171'; }
+      if (snip) snip.textContent = 'unreachable';
     }
+
+    // Analytics + live rate + keys (in parallel)
+    const [aRes, rRes, kRes] = await Promise.allSettled([
+      fetch('/superadmin/api/ollama/analytics?since=' + encodeURIComponent(since)).then(r => r.json()),
+      fetch('/superadmin/api/ollama/rate').then(r => r.json()),
+      fetch('/superadmin/api/ollama/keys').then(r => r.json()),
+    ]);
+    const a = aRes.status === 'fulfilled' && aRes.value?.ok ? aRes.value.data : null;
+    const rate = rRes.status === 'fulfilled' && rRes.value?.ok ? rRes.value.data : null;
+    const ks   = kRes.status === 'fulfilled' && kRes.value?.ok ? kRes.value.data : null;
+
+    renderOllamaStats(a);
+    renderOllamaKeys(a, rate, ks);
+    renderOllamaTopList('ollamaRoutesTable', extractTop(a, 'routes', 'route'));
+    renderOllamaTopList('ollamaModelsTable', extractTop(a, 'models', 'model'));
+    renderOllamaFlags(a, rate, ks);
+    if (updatedAt) updatedAt.textContent = 'updated ' + new Date().toLocaleTimeString();
   }
+
+  // The cluster's /analytics shape isn't strictly fixed; try common keys.
+  function extractTop(a, plural, singular) {
+    if (!a) return [];
+    const candidates = [a[plural], a['top_' + plural], a['by_' + singular], a['by_' + plural], a.top?.[plural], a.aggregates?.[plural]];
+    for (const c of candidates) {
+      if (Array.isArray(c)) return c;
+      if (c && typeof c === 'object') return Object.entries(c).map(([k,v]) => ({ [singular]: k, ...(typeof v === 'object' ? v : { requests: v }) }));
+    }
+    return [];
+  }
+
+  function sumField(obj, field) {
+    if (!obj || typeof obj !== 'object') return null;
+    let total = 0, found = false;
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === 'object' && typeof v[field] === 'number') { total += v[field]; found = true; }
+    }
+    return found ? total : null;
+  }
+
+  function renderOllamaStats(a) {
+    const t = a || {};
+    const byKey = t.by_key || t.keys || {};
+    const req = t.total_requests ?? t.totals?.requests ?? t.requests ?? sumField(byKey, 'requests');
+    const err = t.total_errors ?? t.totals?.errors ?? sumField(byKey, 'errors');
+    const bytes = t.total_bytes_out ?? t.totals?.bytes_out ?? sumField(byKey, 'bytes_out');
+    let dur = t.totals?.avg_duration_ms ?? t.avg_duration_ms ?? null;
+    if (dur == null && t.total_duration_ms != null && req) dur = t.total_duration_ms / req;
+    const keyCount = byKey ? (Array.isArray(byKey) ? byKey.length : Object.keys(byKey).length) : null;
+    document.getElementById('ollamaStatReq').textContent = fmtNum(req);
+    document.getElementById('ollamaStatErr').textContent = fmtNum(err);
+    document.getElementById('ollamaStatErrRate').textContent = (req && err != null) ? pct(err, req) : '—';
+    document.getElementById('ollamaStatBytes').textContent = fmtBytes(bytes);
+    document.getElementById('ollamaStatDur').textContent = fmtMs(dur);
+    document.getElementById('ollamaStatKeys').textContent = fmtNum(keyCount);
+  }
+
+  function renderOllamaKeys(a, rate, ks) {
+    const el = document.getElementById('ollamaKeysTable');
+    // Build a merged view: per-key totals from analytics + live rpm/rpd/inflight from rate
+    const byLabel = {};
+    const aKeys = a?.keys || a?.by_key || {};
+    if (Array.isArray(aKeys)) aKeys.forEach(k => { if (k?.label) byLabel[k.label] = { ...k }; });
+    else if (aKeys && typeof aKeys === 'object') Object.entries(aKeys).forEach(([label, v]) => { byLabel[label] = { label, ...(typeof v === 'object' ? v : {}) }; });
+
+    const rk = rate?.keys || rate?.by_key || rate || {};
+    if (rk && typeof rk === 'object') Object.entries(rk).forEach(([label, v]) => {
+      if (!v || typeof v !== 'object') return;
+      byLabel[label] = { ...(byLabel[label] || { label }), live: v };
+    });
+
+    // Limits from keys.json snapshot
+    const km = {};
+    const kArr = ks?.keys || (Array.isArray(ks) ? ks : []);
+    if (Array.isArray(kArr)) kArr.forEach(k => { if (k?.label) km[k.label] = k; });
+
+    const rows = Object.values(byLabel);
+    if (!rows.length) { el.textContent = 'No key data.'; return; }
+    rows.sort((x, y) => (y.requests || 0) - (x.requests || 0));
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<tr style="color:#525252;text-align:left;"><th style="padding:4px 6px;">Key</th><th>Req</th><th>Err</th><th>RPM</th><th>RPD</th><th>Inflight</th></tr>';
+    rows.slice(0, 10).forEach(k => {
+      const lim = km[k.label]?.limits || {};
+      const live = k.live || {};
+      const rpdUsed = live.last_day ?? live.rpd ?? null;
+      const rpdLim  = lim.rpd ?? null;
+      const rpmCur  = live.last_minute ?? live.rpm ?? null;
+      const inflight = live.inflight ?? null;
+      const errRate = (k.requests && k.errors != null) ? (k.errors / k.requests) : 0;
+      const errColor = errRate > 0.10 ? '#f87171' : '#a3a3a3';
+      const rpdHot = (rpdUsed != null && rpdLim && rpdUsed / rpdLim >= 0.8);
+      const rpdColor = rpdHot ? '#f59e0b' : '#a3a3a3';
+      html += `<tr style="border-top:1px solid #1a1a1a;">
+        <td style="padding:4px 6px;color:#e5e5e5;">${escapeHtml(k.label || '—')}</td>
+        <td>${fmtNum(k.requests)}</td>
+        <td style="color:${errColor};">${fmtNum(k.errors)}</td>
+        <td>${rpmCur == null ? '—' : fmtNum(rpmCur)}${lim.rpm ? ' / ' + fmtNum(lim.rpm) : ''}</td>
+        <td style="color:${rpdColor};">${rpdUsed == null ? '—' : fmtNum(rpdUsed)}${rpdLim ? ' / ' + fmtNum(rpdLim) : ''}</td>
+        <td>${inflight == null ? '—' : fmtNum(inflight)}${lim.concurrent ? ' / ' + fmtNum(lim.concurrent) : ''}</td>
+      </tr>`;
+    });
+    html += '</table>';
+    el.innerHTML = html;
+  }
+
+  function renderOllamaTopList(elId, items) {
+    const el = document.getElementById(elId);
+    if (!items || !items.length) { el.textContent = '—'; return; }
+    items.sort((a, b) => (b.requests || b.count || 0) - (a.requests || a.count || 0));
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    items.slice(0, 8).forEach(it => {
+      const label = it.route || it.model || it.name || it.label || Object.keys(it)[0];
+      const count = it.requests ?? it.count ?? 0;
+      html += `<tr style="border-top:1px solid #1a1a1a;"><td style="padding:3px 6px;color:#e5e5e5;">${escapeHtml(String(label))}</td><td style="text-align:right;color:#a3a3a3;">${fmtNum(count)}</td></tr>`;
+    });
+    html += '</table>';
+    el.innerHTML = html;
+  }
+
+  function renderOllamaFlags(a, rate, ks) {
+    const el = document.getElementById('ollamaFlags');
+    const flags = [];
+    const aKeys = a?.keys || a?.by_key || {};
+    const keyList = Array.isArray(aKeys) ? aKeys : Object.entries(aKeys).map(([label, v]) => ({ label, ...(typeof v === 'object' ? v : {}) }));
+    const km = {};
+    const kArr = ks?.keys || (Array.isArray(ks) ? ks : []);
+    if (Array.isArray(kArr)) kArr.forEach(k => { if (k?.label) km[k.label] = k; });
+    const rk = rate?.keys || rate?.by_key || rate || {};
+
+    keyList.forEach(k => {
+      const er = k.requests ? (k.errors || 0) / k.requests : 0;
+      if (er > 0.10 && (k.requests || 0) >= 20) flags.push(`<span style="color:#f87171;">${escapeHtml(k.label)} error rate ${(er*100).toFixed(1)}%</span>`);
+    });
+    if (rk && typeof rk === 'object') {
+      Object.entries(rk).forEach(([label, v]) => {
+        if (!v || typeof v !== 'object') return;
+        const rpd = v.last_day ?? v.rpd ?? null;
+        const lim = km[label]?.limits?.rpd ?? null;
+        if (rpd != null && lim && rpd / lim >= 0.8) flags.push(`<span style="color:#f59e0b;">${escapeHtml(label)} at ${(rpd/lim*100).toFixed(0)}% of rpd quota</span>`);
+        const inflight = v.inflight ?? null;
+        const conc = km[label]?.limits?.concurrent ?? null;
+        if (inflight != null && conc && inflight >= conc) flags.push(`<span style="color:#f59e0b;">${escapeHtml(label)} pinned at concurrency limit</span>`);
+      });
+    }
+    el.innerHTML = flags.length ? '⚑ ' + flags.join(' · ') : '<span style="color:#525252;">no flags</span>';
+  }
+
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
   // ── Deprecation Pipeline ──
   const STAGE_COLORS = { 'new': '#c9a848', 'cleansed': '#38bdf8', 'deconstructed': '#a78bfa', 'deletion-stage': '#f87171' };
@@ -1427,6 +2178,792 @@
       } else out.textContent = JSON.stringify(data, null, 2);
     } catch (e) { out.textContent = 'Error: ' + e.message; }
   }
+
+  // ── Workspace tab ────────────────────────────────────────────────────────
+  const WS = {
+    services: <%- JSON.stringify(services.map(s => ({ name:s.name, category:s.category, port:s.port, tmux:s.tmux, alive:s.alive===true, description:s.description||'', dir:s.dir||null, domain:s.domain||null }))) %>,
+    pulseMap: {},        // name → { conns, idleMs, pulse, alive, unregistered }
+    selected: null,
+    filter: 'all',
+    search: '',
+    autoTailTimer: null,
+    pollPipe: null,
+  };
+  function wsEsc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function wsHumanIdle(ms) {
+    if (ms == null) return '—';
+    const s = Math.floor(ms/1000); if (s < 60) return s + 's idle';
+    const m = Math.floor(s/60); if (m < 60) return m + 'm idle';
+    const h = Math.floor(m/60); return h + 'h idle';
+  }
+
+  function wsAllServices() {
+    // Merge static services list with any unregistered tmux from pulseMap
+    const known = new Map(WS.services.map(s => [s.name, s]));
+    Object.values(WS.pulseMap).forEach(p => {
+      if (!known.has(p.name)) {
+        known.set(p.name, { name:p.name, category:p.category || 'unregistered', port:p.port, tmux:p.tmux, alive:!!p.alive, description:'(tmux only)', unregistered:true });
+      } else {
+        const s = known.get(p.name);
+        s.alive = !!p.alive;
+        s.conns = p.conns;
+        s.idleMs = p.idleMs;
+      }
+    });
+    return [...known.values()];
+  }
+
+  function wsApplyFilter(list) {
+    const q = WS.search.trim().toLowerCase();
+    return list.filter(s => {
+      if (q && !`${s.name} ${s.tmux||''} ${s.port||''} ${s.category||''}`.toLowerCase().includes(q)) return false;
+      switch (WS.filter) {
+        case 'all': return true;
+        case 'alive': return !!s.alive;
+        case 'dead': return !s.alive;
+        case 'unregistered': return !!s.unregistered;
+        default: return (s.category || '') === WS.filter;
+      }
+    });
+  }
+
+  function wsRender() {
+    const list = wsApplyFilter(wsAllServices()).sort((a, b) => {
+      // alive first, then by name
+      if (!!b.alive - !!a.alive) return !!b.alive - !!a.alive;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+    document.getElementById('wsSvcCount').textContent = `${list.length} shown · ${list.filter(s => s.alive).length} live`;
+    const el = document.getElementById('wsList');
+    if (!list.length) { el.innerHTML = '<div style="color:#525252;font-size:11px;padding:8px;">No matches</div>'; return; }
+    el.innerHTML = list.map(s => {
+      const dot = s.alive ? 'alive' : (s.alive === false ? 'dead' : 'unknown');
+      const cls = ['ws-svc-row']; if (!s.alive) cls.push('dead'); if (WS.selected === s.name) cls.push('sel');
+      const conns = (s.conns != null) ? ' · ' + s.conns + 'c' : '';
+      return `<div class="${cls.join(' ')}" data-name="${wsEsc(s.name)}" onclick="wsSelect('${wsEsc(s.name)}')">
+        <span class="svc-dot ${dot}"></span>
+        <span class="name">${wsEsc(s.name)}</span>
+        <span class="meta">${wsEsc(s.category || '')}${s.port ? ' :' + s.port : ''}${conns}</span>
+      </div>`;
+    }).join('');
+  }
+
+  async function wsSelect(name) {
+    WS.selected = name;
+    wsRender();
+    const svc = wsAllServices().find(s => s.name === name);
+    if (!svc) return;
+    document.getElementById('wsDetailTitle').innerHTML = wsEsc(svc.name) + (svc.tmux ? ' · <span style="color:#737373;font-weight:400;">' + wsEsc(svc.tmux) + '</span>' : '');
+    const strip = document.getElementById('wsDetailStrip');
+    strip.innerHTML = [
+      `<span class="pill ${svc.alive ? 'alive' : 'dead'}">${svc.alive ? '● live' : '○ down'}</span>`,
+      `<span class="pill">${wsEsc(svc.category || '—')}</span>`,
+      svc.port ? `<span class="pill">port :${svc.port}</span>` : '',
+      svc.domain ? `<span class="pill"><a href="https://${wsEsc(svc.domain)}" target="_blank" style="color:inherit;text-decoration:none;">${wsEsc(svc.domain)} ↗</a></span>` : '',
+      svc.dir ? `<span class="pill" title="${wsEsc(svc.dir)}">${wsEsc(svc.dir)}</span>` : '',
+      svc.unregistered ? `<span class="pill" style="color:#fff;border-color:#444;">unregistered</span>` : '',
+    ].filter(Boolean).join('');
+    await wsRefreshTail();
+    if (WS.autoTailTimer) clearInterval(WS.autoTailTimer);
+    if (document.getElementById('wsAutoTail').checked) {
+      WS.autoTailTimer = setInterval(wsRefreshTail, 5000);
+    }
+  }
+
+  async function wsRefreshTail() {
+    const svc = WS.selected && wsAllServices().find(s => s.name === WS.selected);
+    if (!svc) return;
+    const lines = parseInt(document.getElementById('wsLines').value, 10) || 50;
+    const pre = document.getElementById('wsTail');
+    if (!svc.tmux) { pre.textContent = '(no tmux session for this service)'; return; }
+    try {
+      const r = await fetch('/superadmin/api/ops/tail?session=' + encodeURIComponent(svc.tmux) + '&lines=' + lines, { cache: 'no-store' });
+      const d = await r.json();
+      if (!d.ok) { pre.textContent = 'Error: ' + (d.error || 'tail unavailable'); return; }
+      const errRe = /\b[45]\d{2}\b|Error|ECONN[A-Z]+|ENOTFOUND|EACCES|Unhandled|TypeError|RangeError|ReferenceError/i;
+      const warnRe = /\bWARN|\bWarning\b|deprecated/i;
+      pre.innerHTML = wsEsc(d.tail || '(no output)').split('\n').map(line => {
+        if (errRe.test(line)) return '<span class="err">' + line + '</span>';
+        if (warnRe.test(line)) return '<span class="warn">' + line + '</span>';
+        return line;
+      }).join('\n');
+      pre.scrollTop = pre.scrollHeight;
+      document.getElementById('wsDetailIdle').textContent = `${d.errorCount} err · ${lines} lines`;
+    } catch (e) { pre.textContent = 'Error: ' + e.message; }
+  }
+
+  async function wsServiceStatus() {
+    if (!WS.selected) return;
+    const out = document.getElementById('wsToolsOut');
+    out.textContent = 'Checking ' + WS.selected + '…';
+    try {
+      const r = await fetch('/superadmin/api/service/' + encodeURIComponent(WS.selected) + '/status');
+      const d = await r.json();
+      out.textContent = d.output || JSON.stringify(d, null, 2);
+    } catch (e) { out.textContent = 'Error: ' + e.message; }
+  }
+
+  async function wsDeprecateSelected() {
+    if (!WS.selected) return;
+    const name = WS.selected;
+    if (!confirm('Send "' + name + '" to the deprecation pipeline?\\n\\nMoves /srv/' + name + ' → /srv/depricated/new/' + name + '\\n(kills its tmux session and removes from auto-start)')) return;
+
+    const tail = document.getElementById('wsTail');
+    const tools = document.getElementById('wsToolsOut');
+    const actions = document.getElementById('wsDetailActions');
+    actions.querySelectorAll('button, select, input').forEach(b => b.disabled = true);
+
+    const banner = `▶ Deprecating "${wsEsc(name)}"…\n  POST /superadmin/api/deprecation/ingest-service\n  body: { name: "${wsEsc(name)}" }\n`;
+    tail.textContent = banner;
+    tools.textContent = banner;
+    try {
+      const r = await fetch('/superadmin/api/deprecation/ingest-service', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name }),
+      });
+      const d = await r.json();
+      const body = JSON.stringify({ ok: d.ok, name: d.name, staged: d.staged, error: d.error }, null, 2);
+      const output = (d.output || '').trim();
+      tail.textContent = banner
+        + (d.ok ? `\n✓ DEPRECATED → ${d.staged}\n` : `\n✗ FAILED — ${d.error || 'unknown'}\n`)
+        + '\n── script output ──\n' + (output || '(no output)') + '\n\n── response ──\n' + body;
+      tools.textContent = body;
+      if (d.ok) {
+        wsLoadPipeline();
+        // Mark service as deprecated locally so the list updates without a reload
+        WS.pulseMap[name] = { ...(WS.pulseMap[name] || {}), name, alive: false, unregistered: false };
+        const idx = WS.services.findIndex(s => s.name === name);
+        if (idx >= 0) WS.services[idx] = { ...WS.services[idx], alive: false, dir: null, deprecated: true };
+        WS.selected = null;
+        wsRender();
+        document.getElementById('wsDetailTitle').textContent = '✓ Deprecated — pick another';
+        document.getElementById('wsDetailStrip').innerHTML = '';
+      }
+    } catch (e) {
+      tail.textContent = banner + '\nERROR: ' + e.message;
+      tools.textContent = 'Error: ' + e.message;
+    } finally {
+      actions.querySelectorAll('button, select, input').forEach(b => b.disabled = false);
+    }
+  }
+
+  async function wsRunTool(tool) {
+    const out = document.getElementById('wsToolsOut');
+    out.textContent = 'Running ' + tool + '…';
+    try {
+      const r = await fetch('/superadmin/api/tool/' + tool);
+      const d = await r.json();
+      out.textContent = d.output || JSON.stringify(d, null, 2);
+    } catch (e) { out.textContent = 'Error: ' + e.message; }
+  }
+
+  async function wsLoadPipeline() {
+    try {
+      const r = await fetch('/superadmin/api/deprecation/pipeline');
+      const d = await r.json();
+      if (!d.ok) return;
+      document.getElementById('wsPipeNew').textContent = d.pipeline['new']?.length || 0;
+      document.getElementById('wsPipeCleansed').textContent = d.pipeline['cleansed']?.length || 0;
+      document.getElementById('wsPipeDeconstructed').textContent = d.pipeline['deconstructed']?.length || 0;
+      document.getElementById('wsPipeDeletion').textContent = d.pipeline['deletion-stage']?.length || 0;
+      const stages = ['new', 'cleansed', 'deconstructed', 'deletion-stage'];
+      const stageColor = { 'new':'#c9a848', 'cleansed':'#38bdf8', 'deconstructed':'#a78bfa', 'deletion-stage':'#f87171' };
+      const rows = [];
+      stages.forEach(st => (d.pipeline[st] || []).forEach(p => rows.push({ stage: st, name: p.name || p })));
+      document.getElementById('wsPipeList').innerHTML = rows.length
+        ? rows.map(r => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #1a1a1a;"><span style="color:#e5e5e5;">${wsEsc(r.name)}</span><span style="font-size:9px;color:${stageColor[r.stage]};letter-spacing:1px;text-transform:uppercase;">${r.stage}</span></div>`).join('')
+        : '<div style="color:#525252;padding:4px 0;">pipeline empty</div>';
+    } catch (e) {}
+  }
+
+  function wsInit() {
+    document.getElementById('wsSearch').addEventListener('input', (e) => { WS.search = e.target.value; wsRender(); });
+    document.getElementById('wsFilters').addEventListener('click', (e) => {
+      const f = e.target?.dataset?.filter; if (!f) return;
+      WS.filter = f;
+      document.querySelectorAll('#wsFilters .chip').forEach(c => c.classList.toggle('on', c.dataset.filter === f));
+      wsRender();
+    });
+    document.getElementById('wsAutoTail').addEventListener('change', (e) => {
+      if (WS.autoTailTimer) { clearInterval(WS.autoTailTimer); WS.autoTailTimer = null; }
+      if (e.target.checked && WS.selected) WS.autoTailTimer = setInterval(wsRefreshTail, 5000);
+    });
+    document.getElementById('wsLines').addEventListener('change', () => { if (WS.selected) wsRefreshTail(); });
+    wsRender();
+    wsLoadPipeline();
+    if (WS.pollPipe) clearInterval(WS.pollPipe);
+    WS.pollPipe = setInterval(wsLoadPipeline, 8000);
+  }
+  // Init when entering Workspace tab (and once on first load if hash points there)
+  let _wsInited = false;
+  function wsMaybeInit() { if (_wsInited) return; _wsInited = true; wsInit(); }
+</script>
+
+<!-- ═══════ SERVER HARMONY — Three.js constellation + live pulse poller ═══════ -->
+<script type="module">
+import * as THREE from 'three';
+
+const CATEGORY_COLOR = {
+  platform: 0x34d399, client: 0x60a5fa, game: 0xc084fc, media: 0xf59e0b, tool: 0xc9a848, deprecated: 0x737373,
+  unregistered: 0xffffff,
+};
+const DOWN_COLOR = 0xf87171;
+
+// Parse the EJS-injected services list
+const servicesData = JSON.parse(document.getElementById('harmonyServicesJson').textContent || '[]');
+
+// ── Three.js scene ──────────────────────────────────────────────────────────
+const wrap = document.getElementById('harmonyCanvasWrap');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a0a0a, 0.018);
+const camera = new THREE.PerspectiveCamera(60, wrap.clientWidth / wrap.clientHeight, 0.1, 200);
+camera.position.set(0, 8, 28);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+renderer.setClearColor(0x0a0a0a, 1);
+wrap.appendChild(renderer.domElement);
+
+// Subtle starfield
+{
+  const geom = new THREE.BufferGeometry();
+  const N = 400;
+  const pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { pos[i*3] = (Math.random()-0.5)*80; pos[i*3+1] = (Math.random()-0.5)*40; pos[i*3+2] = (Math.random()-0.5)*80; }
+  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ size: 0.08, color: 0x404040, transparent: true, opacity: 0.6 });
+  scene.add(new THREE.Points(geom, mat));
+}
+
+// Lights — soft ambient + a center point light that brightens the constellation
+scene.add(new THREE.AmbientLight(0x808080, 0.6));
+const centerLight = new THREE.PointLight(0xc9a848, 1.2, 60);
+centerLight.position.set(0, 2, 0);
+scene.add(centerLight);
+
+// Cluster categories on a ring; place nodes in a sub-cluster around each cluster-center.
+// clusterCenters grows as new categories arrive (e.g., 'unregistered' from a new tmux).
+const clusterCenters = {};
+const categoryCounts = {}; // for spread within cluster
+
+// Predefined ring slots for known categories — keeps positions stable as new
+// categories arrive (e.g., 'unregistered'). Unknown categories get a free slot.
+const FIXED_CATEGORY_ORDER = ['platform', 'client', 'game', 'media', 'tool', 'deprecated', 'unregistered'];
+function ensureClusterCenter(cat) {
+  if (clusterCenters[cat]) return clusterCenters[cat];
+  const total = FIXED_CATEGORY_ORDER.length;
+  let i = FIXED_CATEGORY_ORDER.indexOf(cat);
+  if (i < 0) i = (Object.keys(clusterCenters).length + 0.5) % total; // fallback
+  const ang = (i / total) * Math.PI * 2;
+  clusterCenters[cat] = { x: Math.cos(ang) * 11, y: 0, z: Math.sin(ang) * 11, ang };
+  return clusterCenters[cat];
+}
+
+// Per-service node group
+const nodeMap = new Map(); // name -> { group, sphere, halo, baseColor, alive, category, line }
+// Raycast targets — declared up here so addServiceNode (called during init) can populate them
+const sphereTargets = [];
+const sphereToName = new Map();
+
+const sphereGeom = new THREE.SphereGeometry(0.45, 24, 24);
+const ringGeom = new THREE.RingGeometry(0.5, 0.55, 48);
+ringGeom.rotateX(-Math.PI / 2);
+
+function addServiceNode(svc, animateIn = false) {
+  if (nodeMap.has(svc.name)) return nodeMap.get(svc.name);
+  const cat = svc.category || 'tool';
+  const c = ensureClusterCenter(cat);
+  categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+  const idx = categoryCounts[cat];
+
+  // Sub-position around the cluster center
+  const sub = idx % 7;
+  const r = 1.6 + (sub * 0.35);
+  const phi = idx * 2.4;
+  const px = c.x + Math.cos(phi) * r;
+  const pz = c.z + Math.sin(phi) * r;
+  const py = ((idx % 5) - 2) * 0.5;
+
+  const color = svc.alive ? (CATEGORY_COLOR[cat] || 0xa3a3a3) : DOWN_COLOR;
+  const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: svc.alive ? 0.6 : 0.2, metalness: 0.4, roughness: 0.4 });
+  const sphere = new THREE.Mesh(sphereGeom, mat);
+
+  const group = new THREE.Group();
+  group.position.set(px, py, pz);
+  group.add(sphere);
+
+  const halo = new THREE.Mesh(ringGeom, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }));
+  group.add(halo);
+
+  const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(c.x - px, -py, c.z - pz)]);
+  const lineMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.10 });
+  const line = new THREE.Line(lineGeom, lineMat);
+  group.add(line);
+
+  scene.add(group);
+  const entry = { group, sphere, halo, line, baseColor: color, alive: !!svc.alive, category: cat };
+  nodeMap.set(svc.name, entry);
+
+  // Add to raycast targets so hover works on initial + dynamically added nodes
+  sphereTargets.push(sphere);
+  sphereToName.set(sphere.uuid, svc.name);
+
+  if (animateIn) {
+    // Pulse a ring at the new node so the user sees "something joined"
+    spawnPulse(svc.name, 'session');
+  }
+  return entry;
+}
+
+// Initial population from EJS-injected list
+servicesData.forEach(svc => addServiceNode(svc, false));
+
+// Pulse rings — pooled
+const pulseRings = [];
+function spawnPulse(serviceName, kind) {
+  const node = nodeMap.get(serviceName);
+  if (!node) return;
+  let color = node.baseColor;
+  let life = 900;
+  let scaleMax = 5;
+  if (kind === 'output') { color = 0xa78bfa; life = 1400; }
+  else if (kind === 'error') { color = 0xf87171; life = 1800; scaleMax = 7; }
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.6, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.copy(node.group.position);
+  scene.add(ring);
+  pulseRings.push({ mesh: ring, born: performance.now(), life, scaleMax });
+  node.sphere.material.emissiveIntensity = kind === 'error' ? 2.4 : 1.6;
+  // For errors, briefly tint the node itself red
+  if (kind === 'error') {
+    node.sphere.material.color.setHex(0xf87171);
+    setTimeout(() => { if (node.alive) node.sphere.material.color.setHex(node.baseColor); }, 1200);
+  }
+}
+
+// Resize — pass updateStyle=true so canvas.style.width/height get pixel values
+const ro = new ResizeObserver(() => {
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if (w === 0 || h === 0) return;
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h, true);
+});
+ro.observe(wrap);
+
+// Animate — `frozen` halts camera orbit while tooltip is open
+const clock = new THREE.Clock();
+let frozen = false;
+let camT = 0; // accumulated time for camera orbit (decoupled from elapsedTime so freeze works)
+function loop() {
+  const dt = clock.getDelta();
+  if (!frozen) camT += dt;
+  // Slow orbit camera
+  const r = 28;
+  camera.position.x = Math.sin(camT * 0.05) * r;
+  camera.position.z = Math.cos(camT * 0.05) * r;
+  camera.position.y = 8 + Math.sin(camT * 0.08) * 1.5;
+  camera.lookAt(0, 0, 0);
+
+  // Bob nodes gently + cool emissive back to baseline (frozen halts node spin)
+  nodeMap.forEach((n, name) => {
+    if (!frozen) {
+      n.group.rotation.y += dt * 0.3;
+      n.halo.rotation.z += dt * 0.4;
+    }
+    const m = n.sphere.material;
+    const target = n.alive ? 0.6 : 0.2;
+    m.emissiveIntensity += (target - m.emissiveIntensity) * Math.min(1, dt * 3);
+  });
+
+  // Pulses
+  const now = performance.now();
+  for (let i = pulseRings.length - 1; i >= 0; i--) {
+    const p = pulseRings[i];
+    const age = (now - p.born) / p.life;
+    if (age >= 1) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); pulseRings.splice(i, 1); continue; }
+    const s = 1 + age * (p.scaleMax || 5);
+    p.mesh.scale.set(s, s, s);
+    p.mesh.material.opacity = (1 - age) * 0.85;
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ── Hover tooltip: raycaster → service node → fetch tmux tail ─────────────
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2(-9999, -9999);
+const tooltip = document.getElementById('harmonyTooltip');
+// sphereTargets + sphereToName are already declared above and populated by addServiceNode
+
+let hoveredName = null;
+let tailCache = {}; // { name: { html, fetchedAt } }
+const TAIL_TTL_MS = 3000;
+
+function escapeHtmlSafe(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function highlightTail(s) {
+  const errRe = /\b[45]\d{2}\b|Error|ECONN[A-Z]+|ENOTFOUND|EACCES|Unhandled|TypeError|RangeError|ReferenceError/i;
+  const warnRe = /\bWARN|\bWarning\b|deprecated/i;
+  return escapeHtmlSafe(s).split('\n').map(line => {
+    if (errRe.test(line)) return '<span class="err">' + line + '</span>';
+    if (warnRe.test(line)) return '<span class="warn">' + line + '</span>';
+    return line;
+  }).join('\n');
+}
+
+async function fetchTail(name, session) {
+  const cached = tailCache[name];
+  if (cached && (Date.now() - cached.fetchedAt) < TAIL_TTL_MS) return cached;
+  try {
+    const r = await fetch('/superadmin/api/ops/tail?session=' + encodeURIComponent(session) + '&lines=50');
+    const d = await r.json();
+    const c = { tail: d.tail || '', errorCount: d.errorCount || 0, fetchedAt: Date.now() };
+    tailCache[name] = c;
+    return c;
+  } catch { return { tail: 'tail unavailable', errorCount: 0, fetchedAt: Date.now() }; }
+}
+
+function updateTooltipHtml(svc, c, isPinned) {
+  const errs = c.errorCount ? `<span style="color:#f87171;">${c.errorCount} err</span>` : '<span style="color:#737373;">no err</span>';
+  const closeBtn = isPinned ? '<button class="ht-close" style="position:absolute;top:6px;right:8px;background:transparent;border:none;color:#737373;font-size:14px;cursor:pointer;pointer-events:auto;">✕</button>' : '';
+  // Show Deprecate button when pinned + service appears dead (so we don't risk it on hover)
+  const node = nodeMap.get(svc.name);
+  const isDead = node && !node.alive;
+  const deprBtn = (isPinned && isDead && !svc.unregistered) ? `
+    <button class="ht-depr" style="margin-top:6px;background:transparent;border:1px solid #451a1a;color:#f87171;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;pointer-events:auto;">
+      Send to deprecation pipeline →
+    </button>` : '';
+  tooltip.innerHTML = `
+    <div class="ht-head">
+      <span class="ht-name">${escapeHtmlSafe(svc.name)}${svc.tmux ? ' · <span style="color:#737373;font-weight:400;">tmux:' + escapeHtmlSafe(svc.tmux) + '</span>' : ''}</span>
+      <span class="ht-meta">${escapeHtmlSafe(svc.category || '')} ${svc.port ? '· :' + svc.port : ''} · ${errs}${isPinned ? ' · <span style="color:#c9a848;">pinned</span>' : ''}</span>
+    </div>
+    <pre>${c.tail ? highlightTail(c.tail) : '(no recent output)'}</pre>${deprBtn}${closeBtn}`;
+  tooltip.style.pointerEvents = isPinned ? 'auto' : 'none';
+  if (isPinned) {
+    tooltip.querySelector('.ht-close')?.addEventListener('click', (e) => { e.stopPropagation(); hideTooltip(); });
+    tooltip.querySelector('.ht-depr')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('Send "' + svc.name + '" to the deprecation pipeline?\\n\\nMoves /srv/' + svc.name + ' → /srv/depricated/new/' + svc.name)) return;
+      const btn = e.currentTarget;
+      btn.textContent = 'Deprecating…'; btn.disabled = true;
+      try {
+        const r = await fetch('/superadmin/api/deprecation/ingest-service', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: svc.name }),
+        });
+        const d = await r.json();
+        if (d.ok) { btn.textContent = '✓ moved → ' + d.staged; setTimeout(() => location.reload(), 1200); }
+        else { btn.textContent = 'Failed: ' + (d.error || 'unknown'); btn.disabled = false; }
+      } catch (err) { btn.textContent = 'Error: ' + err.message; btn.disabled = false; }
+    });
+  }
+}
+
+// `pinned` = mobile long-press selection (sticks until tap-outside / X)
+let pinned = false;
+
+function hitAt(clientX, clientY) {
+  const rect = wrap.getBoundingClientRect();
+  pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(sphereTargets, false);
+  return { hits, rect };
+}
+
+function positionTooltip(clientX, clientY, rect) {
+  let x = clientX - rect.left + 14;
+  let y = clientY - rect.top + 14;
+  if (x + 380 > rect.width) x = clientX - rect.left - 390;
+  if (y + 240 > rect.height) y = clientY - rect.top - 250;
+  tooltip.style.left = Math.max(8, x) + 'px';
+  tooltip.style.top  = Math.max(8, y) + 'px';
+}
+
+function showTooltipFor(name, clientX, clientY, rect) {
+  const svc = servicesData.find(s => s.name === name);
+  if (!svc) return;
+  tooltip.style.display = 'block';
+  positionTooltip(clientX, clientY, rect);
+  frozen = true;
+  if (hoveredName !== name) {
+    hoveredName = name;
+    tooltip.innerHTML = '<div class="ht-head"><span class="ht-name">' + escapeHtmlSafe(svc.name) + '</span><span class="ht-meta">loading…</span></div><pre>…</pre>';
+    if (svc.tmux) fetchTail(name, svc.tmux).then(c => { if (hoveredName === name) updateTooltipHtml(svc, c, pinned); });
+    else updateTooltipHtml(svc, { tail: '(no tmux session)', errorCount: 0, fetchedAt: Date.now() }, pinned);
+  } else if (tailCache[name]) {
+    updateTooltipHtml(svc, tailCache[name], pinned);
+  }
+}
+
+function hideTooltip() {
+  tooltip.style.display = 'none';
+  hoveredName = null;
+  pinned = false;
+  frozen = false;
+}
+
+// Patch updateTooltipHtml to include a close button when pinned
+const _origUpdate = updateTooltipHtml;
+updateTooltipHtml = function(svc, c, isPinned) {
+  _origUpdate(svc, c);
+  if (isPinned) {
+    const close = document.createElement('button');
+    close.textContent = '✕';
+    close.style.cssText = 'position:absolute;top:6px;right:8px;background:transparent;border:none;color:#737373;font-size:14px;cursor:pointer;pointer-events:auto;';
+    close.addEventListener('click', (e) => { e.stopPropagation(); hideTooltip(); });
+    tooltip.style.pointerEvents = 'auto';
+    tooltip.appendChild(close);
+  } else {
+    tooltip.style.pointerEvents = 'none';
+  }
+};
+
+wrap.addEventListener('pointermove', (e) => {
+  if (pinned) return; // pinned tooltip ignores hover
+  const { hits, rect } = hitAt(e.clientX, e.clientY);
+  if (hits.length) {
+    const name = sphereToName.get(hits[0].object.uuid);
+    if (name) showTooltipFor(name, e.clientX, e.clientY, rect);
+  } else if (hoveredName) {
+    hideTooltip();
+  }
+});
+wrap.addEventListener('pointerleave', () => { if (!pinned) hideTooltip(); });
+
+// ── Mobile long-press: pin the tooltip + freeze animation ─────────────────
+let pressTimer = null;
+let pressStart = null;
+const LONG_PRESS_MS = 450;
+
+wrap.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'touch') return; // only long-press for touch
+  pressStart = { x: e.clientX, y: e.clientY };
+  pressTimer = setTimeout(() => {
+    const { hits, rect } = hitAt(e.clientX, e.clientY);
+    if (hits.length) {
+      const name = sphereToName.get(hits[0].object.uuid);
+      if (name) {
+        pinned = true;
+        showTooltipFor(name, e.clientX, e.clientY, rect);
+        try { navigator.vibrate && navigator.vibrate(30); } catch {}
+      }
+    }
+    pressTimer = null;
+  }, LONG_PRESS_MS);
+});
+function cancelPress() { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } pressStart = null; }
+wrap.addEventListener('pointermove', (e) => {
+  if (!pressStart) return;
+  if (Math.hypot(e.clientX - pressStart.x, e.clientY - pressStart.y) > 10) cancelPress();
+});
+wrap.addEventListener('pointerup', cancelPress);
+wrap.addEventListener('pointercancel', cancelPress);
+
+// Tap outside the tooltip → unpin
+document.addEventListener('pointerdown', (e) => {
+  if (!pinned) return;
+  if (tooltip.contains(e.target)) return;
+  if (wrap.contains(e.target)) {
+    const { hits } = hitAt(e.clientX, e.clientY);
+    if (hits.length) return; // tapping another node will re-fire hover-style flow
+  }
+  hideTooltip();
+});
+
+// Desktop: clicking a node also pins it (so you can move mouse away while reading)
+wrap.addEventListener('click', (e) => {
+  if (e.detail === 0) return; // ignore keyboard "clicks"
+  const { hits, rect } = hitAt(e.clientX, e.clientY);
+  if (!hits.length) return;
+  const name = sphereToName.get(hits[0].object.uuid);
+  if (name) {
+    pinned = true;
+    showTooltipFor(name, e.clientX, e.clientY, rect);
+  }
+});
+
+// ── Force-resize hook (called on fullscreen toggle / tab switch / window resize) ──
+function forceResize() {
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if (w > 0 && h > 0) {
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    renderer.setSize(w, h, false);
+  }
+}
+window.addEventListener('resize', forceResize);
+// Initial size retry — if layout wasn't ready at module run, ResizeObserver will catch up,
+// but also schedule a few rAF ticks to be safe.
+let initRetries = 0;
+function initialSizeKick() {
+  forceResize();
+  if ((wrap.clientWidth === 0 || wrap.clientHeight === 0) && initRetries++ < 30) requestAnimationFrame(initialSizeKick);
+}
+requestAnimationFrame(initialSizeKick);
+
+// Expose hooks
+window.serverHarmony = {
+  triggerPulse(name, kind) { spawnPulse(name, kind); },
+  resize() { forceResize(); },
+  hasNode(name) { return nodeMap.has(name); },
+  addService(svc) { return addServiceNode(svc, true); },
+  setAlive(name, alive) {
+    const n = nodeMap.get(name); if (!n) return;
+    n.alive = alive;
+    const c = alive ? (CATEGORY_COLOR[n.category] || 0xa3a3a3) : DOWN_COLOR;
+    n.baseColor = c;
+    n.sphere.material.color.setHex(c);
+    n.sphere.material.emissive.setHex(c);
+    n.halo.material.color.setHex(c);
+  },
+};
+</script>
+
+<!-- ═══════ PULSE POLLER + System Vitals + Sparkline ═══════ -->
+<script>
+(function() {
+  let spark = null;
+  const sparkData = { labels: [], conns: [], cpu: [] };
+
+  function ensureChart() {
+    if (spark || typeof Chart === 'undefined') return spark;
+    const ctx = document.getElementById('vitalsSpark')?.getContext('2d');
+    if (!ctx) return null;
+    window.vitalsSparkChart = spark = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: sparkData.labels,
+        datasets: [
+          { label: 'conns', data: sparkData.conns, borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.10)', tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true, yAxisID: 'y' },
+          { label: 'cpu%',  data: sparkData.cpu,   borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.05)',  tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: false, yAxisID: 'y2' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: { display: false },
+          y:  { display: false, beginAtZero: true },
+          y2: { display: false, beginAtZero: true, max: 100, position: 'right' },
+        },
+      },
+    });
+    return spark;
+  }
+
+  function fmtBytes(n) {
+    if (n == null) return '—';
+    const u = ['B','KB','MB','GB','TB']; let i = 0; let v = Number(n);
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return v.toFixed(v >= 100 ? 0 : 1) + ' ' + u[i];
+  }
+  function fmtUptime(sec) {
+    if (sec == null) return '—';
+    const d = Math.floor(sec/86400), h = Math.floor((sec%86400)/3600), m = Math.floor((sec%3600)/60);
+    if (d) return `${d}d ${h}h`;
+    if (h) return `${h}h ${m}m`;
+    return `${m}m`;
+  }
+
+  function renderVitals(sys) {
+    if (!sys) return;
+    const cpu = sys.cpuPct == null ? null : sys.cpuPct;
+    const mem = sys.mem || {};
+    const load = sys.load || {};
+    const cores = load.cores || 1;
+    const loadPct = Math.min(100, (load.m1 || 0) / cores * 100);
+    document.getElementById('vitalsCpuBar').style.width = (cpu == null ? 0 : cpu).toFixed(1) + '%';
+    document.getElementById('vitalsCpuVal').textContent = cpu == null ? '—' : cpu.toFixed(1) + '%';
+    document.getElementById('vitalsMemBar').style.width = (mem.usedPct || 0).toFixed(1) + '%';
+    document.getElementById('vitalsMemVal').textContent = mem.total ? `${fmtBytes(mem.used)} / ${fmtBytes(mem.total)}` : '—';
+    document.getElementById('vitalsLoadBar').style.width = loadPct.toFixed(1) + '%';
+    document.getElementById('vitalsLoadVal').textContent = (load.m1 != null) ? `${load.m1.toFixed(2)} / ${cores}c` : '—';
+    document.getElementById('vitalsUptime').textContent = 'up ' + fmtUptime(sys.uptimeSec);
+    document.getElementById('vitalsProcCount').textContent = sys.procs?.total ?? '—';
+    const top = sys.procs?.top || [];
+    const tbl = document.getElementById('vitalsProcs');
+    const head = '<div class="prow"><span>Process</span><span style="text-align:right;">CPU%</span><span style="text-align:right;">MEM%</span></div>';
+    const body = top.slice(0, 6).map(p => `<div class="prow"><span style="color:#e5e5e5;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">${p.name}</span><span style="text-align:right;color:#a3a3a3;">${p.cpu.toFixed(1)}</span><span style="text-align:right;color:#a3a3a3;">${p.mem.toFixed(1)}</span></div>`).join('');
+    tbl.innerHTML = head + body;
+  }
+
+  function updateSpark(history) {
+    ensureChart();
+    if (!spark || !history) return;
+    sparkData.labels.length = 0; sparkData.conns.length = 0; sparkData.cpu.length = 0;
+    history.forEach(p => { sparkData.labels.push(''); sparkData.conns.push(p.conns || 0); sparkData.cpu.push(p.cpu == null ? null : p.cpu); });
+    spark.update('none');
+  }
+
+  // ── Outbounds poller (lighter cadence: every 4 seconds) ─────────────────
+  async function pollOutbounds() {
+    try {
+      const r = await fetch('/superadmin/api/ops/outbounds');
+      const d = await r.json();
+      if (!d.ok) return;
+      const list = d.hosts || [];
+      document.getElementById('outboundsMeta').textContent = `${d.total} sockets · ${list.length} peers`;
+      const el = document.getElementById('outboundsList');
+      if (!list.length) { el.textContent = 'No outbound connections.'; return; }
+      el.innerHTML = list.slice(0, 14).map(h => {
+        const label = h.label || h.peerAddr;
+        const ports = h.ports.slice(0, 4).join(', ') + (h.ports.length > 4 ? '…' : '');
+        return `<div style="padding:5px 0;border-top:1px solid #1a1a1a;display:flex;justify-content:space-between;gap:8px;align-items:center;">
+          <div style="min-width:0;overflow:hidden;">
+            <div style="color:#e5e5e5;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">${escapeHtmlSafePage(label)}</div>
+            <div style="color:#525252;font-size:10px;">ports: ${ports}</div>
+          </div>
+          <div style="font-size:13px;color:#c9a848;font-weight:700;font-variant-numeric:tabular-nums;">${h.count}</div>
+        </div>`;
+      }).join('');
+    } catch (e) {}
+  }
+  function escapeHtmlSafePage(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  pollOutbounds();
+  setInterval(pollOutbounds, 4000);
+
+  let prevAlive = {};
+  async function pollPulse() {
+    try {
+      const r = await fetch('/superadmin/api/ops/pulse', { cache: 'no-store' });
+      if (!r.ok) return;
+      const d = await r.json();
+      // Update top stats
+      const aliveCount = d.services.filter(s => s.alive).length;
+      document.getElementById('harmonyStatusServices').textContent = aliveCount + ' up';
+      document.getElementById('harmonyStatusConns').textContent = d.totalConns + ' conns';
+      const pulsing = d.services.filter(s => s.pulse).length;
+      document.getElementById('harmonyStatusPulse').textContent = pulsing + ' active';
+
+      // Feed Workspace's live service map (alive/conns/unregistered/etc.)
+      if (typeof WS !== 'undefined') {
+        WS.pulseMap = {};
+        d.services.forEach(s => { WS.pulseMap[s.name] = s; });
+        if (document.body.classList.contains('workspace-active')) wsRender();
+      }
+      // Drive Three.js
+      d.services.forEach(s => {
+        // Discover new tmux sessions / services that weren't in the initial render
+        if (window.serverHarmony && !window.serverHarmony.hasNode(s.name)) {
+          window.serverHarmony.addService(s);
+        }
+        if (prevAlive[s.name] !== s.alive && window.serverHarmony) window.serverHarmony.setAlive(s.name, s.alive);
+        prevAlive[s.name] = s.alive;
+        if (s.pulse && window.serverHarmony) window.serverHarmony.triggerPulse(s.name, s.pulseKind);
+      });
+
+      document.getElementById('vitalsActiveSvc').textContent = aliveCount;
+      renderVitals(d.sys);
+      updateSpark(d.history);
+    } catch (e) { /* network blip, try again next tick */ }
+  }
+  pollPulse();
+  setInterval(pollPulse, 2000);
+})();
 </script>
 <span class="badge-overseer">SUPERADMIN</span>
 </body>
