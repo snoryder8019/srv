@@ -24,6 +24,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { getServices, getServicesByCategory, getService, PRODUCTS } from '../plugins/serviceRegistry.js';
+import scottsGatewayRouter, { redeemTvPair, tvOrSuper, missionControlHandler, publicPairRequest, publicPairPoll } from './superadmin/scottsGateway.js';
 
 const router = express.Router();
 
@@ -139,7 +140,33 @@ router.post('/subscribe', async (req, res) => {
 });
 
 // ── All routes below require superadmin ─────────────────────────────────────
+// ── scottsGateway: public TV-pair endpoints + mission-control bypass requireSuperAdmin.
+// TV is unauthenticated until it pairs; phone is authenticated for the redeem.
+// no-cache on every Gateway response so design changes don't need a hard-refresh.
+function noStore(req, res, next) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  next();
+}
+router.post('/scottsGateway/api/pair/request', noStore, publicPairRequest);
+router.get('/scottsGateway/api/pair/poll/:code', noStore, publicPairPoll);
+router.get('/scottsGateway/tv/:code', noStore, redeemTvPair);
+router.get('/scottsGateway/mission-control', noStore, tvOrSuper, missionControlHandler);
+// Read-only API endpoints the mission-control page polls — TV cookie acceptable.
+router.get('/scottsGateway/api/stream',        tvOrSuper, (req, res, next) => { req.url = '/api/stream';        scottsGatewayRouter.handle(req, res, next); });
+router.get('/scottsGateway/api/aggregate',     tvOrSuper, (req, res, next) => { req.url = '/api/aggregate';     scottsGatewayRouter.handle(req, res, next); });
+router.get('/scottsGateway/api/local-events',  tvOrSuper, (req, res, next) => { req.url = '/api/local-events';  scottsGatewayRouter.handle(req, res, next); });
+router.get('/scottsGateway/api/tasks',          tvOrSuper, (req, res, next) => { req.url = '/api/tasks';          scottsGatewayRouter.handle(req, res, next); });
+router.get('/scottsGateway/api/feeds',          tvOrSuper, (req, res, next) => { req.url = '/api/feeds';          scottsGatewayRouter.handle(req, res, next); });
+router.get('/scottsGateway/api/assets/mission-control', tvOrSuper, (req, res, next) => { req.url = '/api/assets/mission-control'; scottsGatewayRouter.handle(req, res, next); });
+router.get('/scottsGateway/api/finance/history', tvOrSuper, (req, res, next) => { req.url = '/api/finance/history'; scottsGatewayRouter.handle(req, res, next); });
+router.get('/scottsGateway/api/interests',        tvOrSuper, (req, res, next) => { req.url = '/api/interests';        scottsGatewayRouter.handle(req, res, next); });
+router.get('/scottsGateway/api/review/pending',   tvOrSuper, (req, res, next) => { req.url = '/api/review/pending';   scottsGatewayRouter.handle(req, res, next); });
+
 router.use(requireSuperAdmin);
+
+// Private family-ops cockpit — only Scott + spouse (additional allowlist inside).
+router.use('/scottsGateway', scottsGatewayRouter);
 
 // ── Dashboard (unified panel — services, tenants, tools, agents, activity) ──
 router.get('/', async (req, res) => {
@@ -493,6 +520,83 @@ router.post('/promos/send', async (req, res) => {
     console.error('[superadmin] Promo send failed:', err);
     res.redirect('/superadmin/promos?sent=error');
   }
+});
+
+// ── SEO / AEO / GEO / AAO analytics across all tenants ────────────────────
+router.get('/seo', async (req, res) => {
+  const slab = getSlabDb();
+  const tenants = await slab.collection('tenants').find().sort({ createdAt: -1 }).toArray();
+
+  // Per-tenant scoring — checks for the fields that power our seo middleware,
+  // robots.txt, sitemap.xml, llms.txt, and agents.json output.
+  const rows = await Promise.all(tenants.map(async (t) => {
+    const brand = t.brand || {};
+    const checks = {
+      name:        !!brand.name,
+      tagline:     !!brand.tagline,
+      description: !!brand.description,
+      industry:    !!brand.industry,
+      location:    !!brand.location,
+      services:    Array.isArray(brand.services) && brand.services.length > 0,
+      contact:     !!(brand.email || brand.phone),
+      social:      !!(brand.socialLinks && Object.values(brand.socialLinks || {}).some(v => typeof v === 'string' && v.startsWith('http'))),
+    };
+
+    let logo = false, pages = 0, posts = 0;
+    try {
+      const tdb = getTenantDb(t.db);
+      const [logoDoc, pagesCount, postsCount] = await Promise.all([
+        tdb.collection('brand_images').findOne({ slot: 'logo_primary' }),
+        tdb.collection('pages').countDocuments({ status: 'published' }).catch(() => 0),
+        tdb.collection('blog').countDocuments({ status: 'published' }).catch(() => 0),
+      ]);
+      logo = !!(logoDoc && logoDoc.url);
+      pages = pagesCount;
+      posts = postsCount;
+    } catch { /* tenant db missing — leave defaults */ }
+
+    checks.logo = logo;
+    const passed = Object.values(checks).filter(Boolean).length;
+    const total = Object.keys(checks).length;
+    const pct = Math.round((passed / total) * 100);
+    const health = pct >= 80 ? 'green' : pct >= 50 ? 'yellow' : 'red';
+
+    const isPreview = t.status === 'preview';
+    const indexable = !isPreview && t.status !== 'suspended';
+
+    return {
+      _id: t._id,
+      domain: t.domain,
+      brandName: brand.name || '(no brand)',
+      status: t.status || 'active',
+      isPreview,
+      indexable,
+      checks,
+      passed, total, pct, health,
+      sitemapUrls: 4 + pages + posts, // home, blog, terms, privacy + content
+      pages, posts,
+      lastSeen: t.meta?.lastSeenAt || null,
+    };
+  }));
+
+  // Aggregates
+  const agg = {
+    total: rows.length,
+    green: rows.filter(r => r.health === 'green').length,
+    yellow: rows.filter(r => r.health === 'yellow').length,
+    red: rows.filter(r => r.health === 'red').length,
+    indexable: rows.filter(r => r.indexable).length,
+    blocked: rows.filter(r => !r.indexable).length,
+    avgPct: rows.length ? Math.round(rows.reduce((s, r) => s + r.pct, 0) / rows.length) : 0,
+    fieldCoverage: {},
+  };
+  const fieldKeys = ['name','tagline','description','industry','location','services','contact','social','logo'];
+  for (const k of fieldKeys) {
+    const have = rows.filter(r => r.checks[k]).length;
+    agg.fieldCoverage[k] = { have, pct: rows.length ? Math.round((have/rows.length)*100) : 0 };
+  }
+
+  res.render('superadmin/seo', { user: req.superAdmin, rows, agg, fieldKeys });
 });
 
 // ── Activity Log (full page) ────────────────────────────────────────────────

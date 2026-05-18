@@ -84,6 +84,7 @@
     // Footer legal
     const footerLegal = c.footer_legal || '';
 
+
     const ctaHeading = c.contact_heading    || '';
     const ctaSub     = c.contact_subheading || c.contact_sub || '';
     const ctaBtn     = c.hero_cta           || 'Get Started';
@@ -133,8 +134,7 @@
     };
     const fontUrl = _FM[fontFamily] || _FM['Inter'];
   %>
-  <title><%= siteName %><% if (heroBadge) { %> — <%= heroBadge %><% } %></title>
-  <% if (heroSub) { %><meta name="description" content="<%= heroSub %>"><% } %>
+  <%- include('partials/seo-head') %>
   <link href="https://fonts.googleapis.com/css2?family=<%= fontUrl %>&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -279,8 +279,7 @@
       .prod-card-media { aspect-ratio:16/10; min-height:0; }
     }
 
-    /* ── Footer ── */
-    .footer { padding:32px 24px; border-top:1px solid var(--border); text-align:center; font-size:12px; color:#525252; }
+    /* ── Footer styles live in partials/footer.ejs ── */
 
     @media (max-width:640px) {
       .nav { padding:12px 16px; }
@@ -667,45 +666,7 @@
   <%- include('partials/_marquee-bar', { d, b, pos: 'fixed_bottom' }) %>
 <% } %>
 
-<% if (_vis.footer !== false) { %>
-<footer class="footer">
-  <div>&copy; <%= new Date().getFullYear() %> <% if (logoPre) { %><span style="color:var(--accent)"><%= logoPre %></span><% } %><%= logoPost %></div>
-  <% if (footerLegal) { %>
-  <div style="margin-top:10px;font-size:10px;color:#404040;line-height:1.8;max-width:600px;margin-left:auto;margin-right:auto;">
-    <%= footerLegal %>
-    <% if (c.terms_content) { %> <a href="/terms" style="color:#525252;text-decoration:underline;">Terms</a><% } %>
-    <% if (c.privacy_content) { %> <a href="/privacy" style="color:#525252;text-decoration:underline;">Privacy</a><% } %>
-  </div>
-  <% } %>
-  <!-- Footer QR Codes -->
-  <div id="footer-qr-codes" style="display:none;padding:16px 0 0;text-align:center;">
-    <div id="footer-qr-list" style="display:flex;justify-content:center;gap:20px;flex-wrap:wrap;"></div>
-  </div>
-  <% if (_vis.admin_link !== false) { %>
-  <div style="margin-top:12px;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(82,82,82,0.3);text-decoration:none;font-size:9px;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(82,82,82,0.7)'" onmouseout="this.style.color='rgba(82,82,82,0.3)'">Admin</a></div>
-  <% } %>
-</footer>
-<% } %>
-<script>
-(function() {
-  var container = document.getElementById('footer-qr-codes');
-  var list = document.getElementById('footer-qr-list');
-  if (!container || !list) return;
-  fetch('/api/footer-qr').then(function(r) { return r.json(); }).then(function(data) {
-    if (!data.links || !data.links.length) return;
-    data.links.forEach(function(link) {
-      var item = document.createElement('a');
-      item.href = link.url;
-      item.target = link.type === 'business-card' ? '_blank' : '_self';
-      item.style.cssText = 'text-decoration:none;text-align:center;display:inline-block;';
-      item.innerHTML = '<img src="' + link.dataUrl + '" alt="' + link.label + '" style="width:64px;height:64px;border-radius:4px;">'
-        + '<div style="font-size:0.6rem;color:rgba(82,82,82,0.5);margin-top:4px;">' + link.label + '</div>';
-      list.appendChild(item);
-    });
-    container.style.display = '';
-  }).catch(function() {});
-})();
-</script>
+<%- include('partials/footer') %>
 
 <% if (d.model_header_enabled === 'true' || d.model_logo_enabled === 'true') { %>
 <script src="/js/gltfViewer.js"></script>

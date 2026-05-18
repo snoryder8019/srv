@@ -67,6 +67,8 @@ router.get('/', async (req, res) => {
   settings.status = tenant.status;
   settings.plan = tenant.meta?.plan || 'free';
   settings.customDomain = tenant.meta?.customDomain || '';
+  settings.contactEmail = tenant.meta?.contactEmail || '';
+  settings.ownerEmail = tenant.meta?.ownerEmail || '';
 
   // Brand profile
   const brand = tenant.brand || {};
@@ -162,6 +164,11 @@ router.post('/', async (req, res) => {
     if (req.body[key] !== undefined) {
       updates[`public.${key}`] = req.body[key].trim();
     }
+  }
+
+  // Contact form recipient (where landing-page /contact submissions are emailed)
+  if (req.body.contactEmail !== undefined) {
+    updates['meta.contactEmail'] = req.body.contactEmail.trim().toLowerCase();
   }
 
   // Process secret fields — only update if not the masked placeholder

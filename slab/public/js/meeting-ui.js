@@ -289,7 +289,8 @@
       div.innerHTML = '<div class="asset-icon">' + ext + '</div>'
         + '<div class="asset-info"><div class="asset-name">' + escHtml(a.name) + '</div>'
         + '<div class="asset-meta">' + escHtml(a.uploadedBy || '') + (sizeStr ? ' &middot; ' + sizeStr : '') + '</div></div>'
-        + '<a class="asset-dl" href="' + a.url + '" target="_blank" rel="noopener">Open</a>';
+        + '<a class="asset-dl" href="' + a.url + '" target="_blank" rel="noopener">Open</a>'
+        + '<a class="asset-dl" href="' + a.url + '" download="' + escHtml(a.name || '') + '" title="Download">&#8682;</a>';
       assetsList.appendChild(div);
     }
 

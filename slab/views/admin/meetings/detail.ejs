@@ -57,6 +57,57 @@
     <% } %>
   </div>
 
+  <!-- SCHEDULE -->
+  <div class="card" style="margin-bottom:24px;">
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+      Schedule
+      <button class="btn btn-ghost btn-sm" id="sched-edit-btn">Edit</button>
+    </div>
+
+    <!-- Display mode -->
+    <div id="sched-display">
+      <% if (meeting.scheduledAt) { %>
+        <div style="display:flex;flex-wrap:wrap;gap:24px;font-size:0.88rem;">
+          <div>
+            <div style="font-size:0.65rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Start</div>
+            <strong><%= new Date(meeting.scheduledAt).toLocaleDateString('en-US', { weekday:'short', month:'long', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) %></strong>
+          </div>
+          <% if (meeting.durationMinutes) { %>
+            <div>
+              <div style="font-size:0.65rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Duration</div>
+              <strong><%= meeting.durationMinutes %> minutes</strong>
+            </div>
+            <div>
+              <div style="font-size:0.65rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:4px;">Ends</div>
+              <strong><%= new Date(new Date(meeting.scheduledAt).getTime() + meeting.durationMinutes * 60000).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) %></strong>
+            </div>
+          <% } %>
+        </div>
+      <% } else { %>
+        <p style="color:var(--slate);font-size:0.85rem;margin:0;">No scheduled time set. The invite link is valid until <%= new Date(meeting.expiresAt).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) %>.</p>
+      <% } %>
+    </div>
+
+    <!-- Edit mode -->
+    <div id="sched-edit" style="display:none;">
+      <div class="form-grid" style="gap:16px;">
+        <div class="form-field">
+          <label>Scheduled Start</label>
+          <input type="datetime-local" id="sched-at-input"
+            value="<% if (meeting.scheduledAt) { var d = new Date(meeting.scheduledAt); var pad = function(n){return String(n).padStart(2,'0');}; %><%= d.getFullYear() %>-<%= pad(d.getMonth()+1) %>-<%= pad(d.getDate()) %>T<%= pad(d.getHours()) %>:<%= pad(d.getMinutes()) %><% } %>">
+        </div>
+        <div class="form-field">
+          <label>Duration (minutes)</label>
+          <input type="number" id="sched-dur-input" min="5" max="1440" step="5" value="<%= meeting.durationMinutes || '' %>" placeholder="e.g. 30">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+        <button class="btn btn-ghost btn-sm" id="sched-cancel-btn">Cancel</button>
+        <button class="btn btn-gold btn-sm" id="sched-save-btn">Save Schedule</button>
+      </div>
+    </div>
+  </div>
+
   <div class="meet-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
 
     <!-- MEETING LINK + QR -->
@@ -303,7 +354,7 @@
                     <% } else { %>
                       <a href="<%= a.url %>" target="_blank" rel="noopener" class="btn btn-navy btn-sm">View</a>
                     <% } %>
-                    <a href="<%= a.url %>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" download>Download</a>
+                    <a href="/admin/meetings/<%= meeting._id %>/assets/<%= _idx %>/download" class="btn btn-ghost btn-sm">Download</a>
                     <% if (isRecording) { %>
                       <button class="btn btn-ghost btn-sm send-to-assets-btn"
                               data-asset-index="<%= _idx %>"
@@ -480,6 +531,44 @@ fetch('/meeting/<%= meeting.token %>/qr')
     document.getElementById('detail-qr').src = data.qr;
   })
   .catch(function() {});
+
+// Schedule edit toggle
+var schedDisplay = document.getElementById('sched-display');
+var schedEdit = document.getElementById('sched-edit');
+document.getElementById('sched-edit-btn').addEventListener('click', function() {
+  schedDisplay.style.display = 'none';
+  schedEdit.style.display = 'block';
+});
+document.getElementById('sched-cancel-btn').addEventListener('click', function() {
+  schedEdit.style.display = 'none';
+  schedDisplay.style.display = 'block';
+});
+document.getElementById('sched-save-btn').addEventListener('click', function() {
+  var at = document.getElementById('sched-at-input').value;
+  var dur = document.getElementById('sched-dur-input').value;
+  var btn = document.getElementById('sched-save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  fetch('/admin/meetings/<%= meeting._id %>/schedule', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scheduledAt: at || null, durationMinutes: dur || null }),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) location.reload();
+      else {
+        alert(data.error || 'Failed to save schedule');
+        btn.disabled = false;
+        btn.textContent = 'Save Schedule';
+      }
+    })
+    .catch(function() {
+      alert('Failed to save schedule');
+      btn.disabled = false;
+      btn.textContent = 'Save Schedule';
+    });
+});
 
 // Tags edit toggle
 var tagsDisplay = document.getElementById('tags-display');

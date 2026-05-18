@@ -1,0 +1,218 @@
+<%- include('../partials/head', { title: 'Analytics' }) %>
+<%- include('../partials/sidebar', { page: 'analytics', user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Analytics</div>
+  <div class="topbar-actions">
+    <a href="?range=day"   class="btn <%= range === 'day'   ? 'btn-navy' : 'btn-ghost' %> btn-sm">Today</a>
+    <a href="?range=week"  class="btn <%= range === 'week'  ? 'btn-navy' : 'btn-ghost' %> btn-sm">Week</a>
+    <a href="?range=month" class="btn <%= range === 'month' ? 'btn-navy' : 'btn-ghost' %> btn-sm">Month</a>
+  </div>
+</div>
+
+<style>
+  .an-section { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 18px 22px; margin-bottom: 16px; }
+  .an-section h2 { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--slate); margin: 0 0 14px; }
+  .an-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .an-stat { background: var(--ivory); border-radius: 5px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .an-stat-label { font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); }
+  .an-stat-value { font-size: 1.45rem; font-weight: 700; color: var(--on-surface); }
+  .an-stat-value.gold { color: var(--gold); }
+  .an-list { list-style: none; padding: 0; margin: 0; }
+  .an-list li { padding: 8px 0; border-bottom: 1px solid #f1efe9; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
+  .an-list li:last-child { border-bottom: none; }
+  .an-empty { color: var(--slate); font-size: 0.82rem; font-style: italic; }
+
+  /* Analytics agent panel */
+  .aa-card { background: var(--surface); border: 1px solid var(--gold); border-radius: 6px; padding: 18px 22px; margin-bottom: 16px; }
+  .aa-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .aa-title { font-size: 0.95rem; font-weight: 700; }
+  .aa-badge { font-size: 0.55rem; padding: 2px 7px; border-radius: 3px; background: var(--gold); color: #0F1B30; font-weight: 700; letter-spacing: 0.08em; }
+  .aa-row { display: flex; gap: 8px; }
+  .aa-row input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.88rem; }
+  .aa-report { margin-top: 14px; }
+  .aa-section-title { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--slate); margin: 14px 0 6px; }
+  .aa-headline { font-size: 0.95rem; font-weight: 600; color: var(--on-surface); }
+  .aa-bullets { margin: 0; padding-left: 18px; font-size: 0.85rem; color: var(--on-surface); line-height: 1.6; }
+  .aa-bullets li { margin: 2px 0; }
+  .aa-kpi { display: inline-block; font-size: 0.8rem; padding: 4px 12px; background: rgba(201,168,72,0.12); color: var(--gold); border: 1px solid var(--gold); border-radius: 4px; font-weight: 600; }
+  .aa-loading { font-size: 0.8rem; color: var(--slate); font-style: italic; }
+</style>
+
+<div class="content">
+
+  <!-- Analytics Agent -->
+  <div class="aa-card">
+    <div class="aa-header">
+      <span style="color: var(--gold); font-size: 1.1rem;">✦</span>
+      <span class="aa-title">Analytics Agent</span>
+      <span class="aa-badge">AI</span>
+      <span style="font-size: 0.72rem; color: var(--slate);">Scoped to read-only metrics — no content changes.</span>
+    </div>
+    <div class="aa-row">
+      <input id="aa-q" type="text" placeholder="Ask: how did email perform this week? what's our biggest concern?" />
+      <select id="aa-range" style="padding: 10px 12px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.82rem;">
+        <option value="day">Today</option>
+        <option value="week" selected>This Week</option>
+        <option value="month">This Month</option>
+      </select>
+      <button class="btn btn-gold" onclick="aaRun()">Analyze</button>
+    </div>
+    <div id="aa-out" class="aa-report"></div>
+  </div>
+
+  <!-- Content -->
+  <section class="an-section">
+    <h2>Content Created</h2>
+    <div class="an-grid">
+      <div class="an-stat"><span class="an-stat-label">Blog Posts</span><span class="an-stat-value"><%= metrics.content.blogNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Pages</span><span class="an-stat-value"><%= metrics.content.pagesNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Sections</span><span class="an-stat-value"><%= metrics.content.sectionsNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Portfolio</span><span class="an-stat-value"><%= metrics.content.portfolioNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Assets</span><span class="an-stat-value"><%= metrics.content.assetsNew %></span></div>
+    </div>
+  </section>
+
+  <!-- Email Marketing -->
+  <section class="an-section">
+    <h2>Email Marketing</h2>
+    <div class="an-grid">
+      <div class="an-stat"><span class="an-stat-label">Drafts Created</span><span class="an-stat-value"><%= metrics.email.campaignsNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Campaigns Sent</span><span class="an-stat-value gold"><%= metrics.email.campaignsSent %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Opens</span><span class="an-stat-value"><%= metrics.email.emailOpens %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Clicks</span><span class="an-stat-value"><%= metrics.email.emailClicks %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Bounces</span><span class="an-stat-value"><%= metrics.email.emailBounces %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Unsubscribes</span><span class="an-stat-value"><%= metrics.email.emailUnsubs %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Inbound Replies</span><span class="an-stat-value"><%= metrics.email.emailInbound %></span></div>
+    </div>
+  </section>
+
+  <!-- Revenue -->
+  <section class="an-section">
+    <h2>Revenue &amp; Invoicing</h2>
+    <div class="an-grid">
+      <div class="an-stat"><span class="an-stat-label">New Invoices</span><span class="an-stat-value"><%= metrics.revenue.invoicesNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Paid This Period</span><span class="an-stat-value gold"><%= metrics.revenue.invoicesPaid %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Revenue Paid</span><span class="an-stat-value gold">$<%= Number(metrics.revenue.revenuePaid || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }) %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Unpaid</span><span class="an-stat-value"><%= metrics.revenue.invoicesUnpaid %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Overdue</span><span class="an-stat-value" style="color:#B91C1C;"><%= metrics.revenue.invoicesOverdue %></span></div>
+    </div>
+  </section>
+
+  <!-- Audience -->
+  <section class="an-section">
+    <h2>Audience</h2>
+    <div class="an-grid">
+      <div class="an-stat"><span class="an-stat-label">New Contacts</span><span class="an-stat-value"><%= metrics.audience.contactsNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Total Contacts</span><span class="an-stat-value"><%= metrics.audience.contactsTotal %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Subscribed</span><span class="an-stat-value gold"><%= metrics.audience.contactsSubscribed %></span></div>
+      <div class="an-stat"><span class="an-stat-label">New Clients</span><span class="an-stat-value"><%= metrics.audience.clientsNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Total Clients</span><span class="an-stat-value"><%= metrics.audience.clientsTotal %></span></div>
+    </div>
+  </section>
+
+  <!-- Operations -->
+  <section class="an-section">
+    <h2>Operations</h2>
+    <div class="an-grid">
+      <div class="an-stat"><span class="an-stat-label">New Meetings</span><span class="an-stat-value"><%= metrics.operations.meetingsNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">New Inquiries</span><span class="an-stat-value"><%= metrics.operations.inquiriesNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Open Tickets</span><span class="an-stat-value"><%= metrics.operations.ticketsOpen %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Tickets Created</span><span class="an-stat-value"><%= metrics.operations.ticketsNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">New Onboarding Forms</span><span class="an-stat-value"><%= metrics.operations.onboardingNew %></span></div>
+      <div class="an-stat"><span class="an-stat-label">Form Responses</span><span class="an-stat-value"><%= metrics.operations.onboardingResponses %></span></div>
+    </div>
+  </section>
+
+  <!-- Top Campaigns / Posts -->
+  <section class="an-section">
+    <h2>Top Activity</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div>
+        <div style="font-size:0.7rem;font-weight:600;color:var(--slate);margin-bottom:8px;">Recent Campaigns Sent</div>
+        <ul class="an-list">
+          <% if (!metrics.top.campaigns?.length) { %>
+            <li class="an-empty">No campaigns sent this period.</li>
+          <% } else { %>
+            <% metrics.top.campaigns.forEach(camp => { %>
+              <li>
+                <span><%= camp.subject || '(untitled)' %></span>
+                <span style="color:var(--slate);font-size:0.78rem;"><%= camp.sentCount || 0 %> sent</span>
+              </li>
+            <% }) %>
+          <% } %>
+        </ul>
+      </div>
+      <div>
+        <div style="font-size:0.7rem;font-weight:600;color:var(--slate);margin-bottom:8px;">Recent Blog Posts</div>
+        <ul class="an-list">
+          <% if (!metrics.top.blogPosts?.length) { %>
+            <li class="an-empty">No blog posts this period.</li>
+          <% } else { %>
+            <% metrics.top.blogPosts.forEach(post => { %>
+              <li>
+                <a href="/admin/blog/<%= post._id %>/edit" style="color:var(--on-surface);text-decoration:none;"><%= post.title || '(untitled)' %></a>
+                <span style="color:var(--slate);font-size:0.78rem;"><%= post.status || 'draft' %></span>
+              </li>
+            <% }) %>
+          <% } %>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function aaRun() {
+  const q = document.getElementById('aa-q').value.trim();
+  const range = document.getElementById('aa-range').value;
+  const out = document.getElementById('aa-out');
+  out.innerHTML = '<div class="aa-loading">✦ Analyzing metrics…</div>';
+
+  try {
+    const r = await fetch('/admin/analytics/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q || 'Summarize how the business is doing', range }),
+    });
+    const data = await r.json();
+    if (data.error) {
+      out.innerHTML = '<div class="aa-loading" style="color:#B91C1C;">Error: ' + escapeHtml(data.error) + '</div>';
+      return;
+    }
+    const rep = data.report || {};
+    let html = '';
+    if (rep.headline) html += '<div class="aa-headline">' + escapeHtml(rep.headline) + '</div>';
+    if (rep.wins?.length) {
+      html += '<div class="aa-section-title">Wins</div><ul class="aa-bullets">' +
+        rep.wins.map(w => '<li>' + escapeHtml(w) + '</li>').join('') + '</ul>';
+    }
+    if (rep.concerns?.length) {
+      html += '<div class="aa-section-title">Concerns</div><ul class="aa-bullets">' +
+        rep.concerns.map(w => '<li>' + escapeHtml(w) + '</li>').join('') + '</ul>';
+    }
+    if (rep.recommendations?.length) {
+      html += '<div class="aa-section-title">Recommended Actions</div><ul class="aa-bullets">' +
+        rep.recommendations.map(w => '<li>' + escapeHtml(w) + '</li>').join('') + '</ul>';
+    }
+    if (rep.kpi_focus) {
+      html += '<div class="aa-section-title">Focus KPI</div><div class="aa-kpi">' + escapeHtml(rep.kpi_focus) + '</div>';
+    }
+    out.innerHTML = html || '<div class="aa-loading">No report returned.</div>';
+  } catch (e) {
+    out.innerHTML = '<div class="aa-loading" style="color:#B91C1C;">Connection error: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+document.getElementById('aa-q').addEventListener('keydown', e => { if (e.key === 'Enter') aaRun(); });
+</script>
+
+</div><!-- .main -->
+</div><!-- .layout -->
+</body>
+</html>

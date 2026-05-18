@@ -16,7 +16,7 @@ Analyze the user's request and determine which department should handle it.
 
 Output ONLY raw JSON — no prose, no fences:
 {
-  "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "email" | "invoice" | "outreach" | "navigate",
+  "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "email" | "invoice" | "outreach" | "research" | "onboarding" | "navigate",
   "task": "concise task description for the specialist",
   "section_type": "text" | "split" | "cta" | "cards" | "faq",
   "page_type": "content" | "landing" | "data-list",
@@ -37,27 +37,33 @@ Department guide:
 - email: DRAFTING email marketing campaigns, newsletters, promotional blasts
 - invoice: CREATING an invoice, billing a client, generating line items
 - outreach: DRAFTING a direct email to a specific person/client — follow-ups, updates, proposals, check-ins. Use this when user says "email [name]", "send [name] a message", "write to [client]"
+- research: RESEARCHING a prospective or existing client/business — competitor scan, web summary, onboarding knowledge base
+- onboarding: BUILDING or SUGGESTING fields for a client intake / onboarding form
 - navigate: GOING to a page, OPENING a section, SHOWING something. Use when user wants to go somewhere, not create something. Examples: "go to blog", "open meetings", "show clients", "take me to design", "check invoices", "open bookkeeping", "set up a meeting"
 
 Key parsing rules:
 - "email John" or "message the client" → outreach (draft an email TO someone)
 - "email campaign" or "newsletter" → email (marketing blast to subscribers)
+- "research [company]" / "look up [client]" / "what do you know about [business]" → research
+- "build an intake form" / "suggest onboarding fields" / "client intake" → onboarding
 - "go to email" or "open email marketing" → navigate
 - "set up a meeting" or "schedule a meeting" → navigate (nav_target: meetings)
 - "go to X" / "open X" / "show X" / "take me to X" → navigate
 - "create X" / "write X" / "draft X" / "build X" → the relevant content department`;
 
 const DEPT_ACTIONS = {
-  blog:    { label: 'Open Blog Editor', url: '/admin/blog/new',  color: '#2E4270' },
-  copy:    { label: 'Go to Site Copy',  url: '/admin/copy',      color: '#1C2B4A' },
-  section: { label: 'Go to Sections',   url: '/admin/sections',  color: '#5B3E2B' },
-  page:    { label: 'Open Page Editor', url: '/admin/pages/new', color: '#2E5B3E' },
-  design:  { label: 'Go to Design',     url: '/admin/design',    color: '#6B3FA0' },
-  asset:   { label: 'Open Asset Center', url: '/admin/assets',   color: '#C9A848' },
-  email:   { label: 'Open Email Marketing', url: '/admin/email-marketing', color: '#D4563A' },
-  invoice: { label: 'Open Bookkeeping',    url: '/admin/bookkeeping',     color: '#2B7A5B' },
-  outreach:{ label: 'Open Clients',        url: '/admin/clients',         color: '#4A6FA5' },
-  navigate:{ label: 'Go',                url: '/admin',                 color: '#555'    },
+  blog:       { label: 'Open Blog Editor',     url: '/admin/blog/new',         color: '#2E4270' },
+  copy:       { label: 'Go to Site Copy',      url: '/admin/copy',             color: '#1C2B4A' },
+  section:    { label: 'Go to Sections',       url: '/admin/sections',         color: '#5B3E2B' },
+  page:       { label: 'Open Page Editor',     url: '/admin/pages/new',        color: '#2E5B3E' },
+  design:     { label: 'Go to Design',         url: '/admin/design',           color: '#6B3FA0' },
+  asset:      { label: 'Open Asset Center',    url: '/admin/assets',           color: '#C9A848' },
+  email:      { label: 'Open Email Marketing', url: '/admin/email-marketing',  color: '#D4563A' },
+  invoice:    { label: 'Open Bookkeeping',     url: '/admin/bookkeeping',      color: '#2B7A5B' },
+  outreach:   { label: 'Open Clients',         url: '/admin/clients',          color: '#4A6FA5' },
+  research:   { label: 'Open Clients',         url: '/admin/clients',          color: '#3A7B8C' },
+  onboarding: { label: 'Open Onboarding',      url: '/admin/onboarding',       color: '#8C5A3A' },
+  navigate:   { label: 'Go',                   url: '/admin',                  color: '#555'    },
 };
 
 const NAV_MAP = {
@@ -65,7 +71,7 @@ const NAV_MAP = {
   blog: '/admin/blog', 'new blog': '/admin/blog/new', 'blog editor': '/admin/blog/new',
   pages: '/admin/pages', 'new page': '/admin/pages/new', 'page editor': '/admin/pages/new',
   copy: '/admin/copy', 'site copy': '/admin/copy',
-  design: '/admin/design', settings: '/admin/design', 'design settings': '/admin/design',
+  design: '/admin/design', settings: '/admin/settings', 'design settings': '/admin/design',
   assets: '/admin/assets', 'asset center': '/admin/assets',
   clients: '/admin/clients', 'client list': '/admin/clients',
   meetings: '/admin/meetings', 'new meeting': '/admin/meetings',
@@ -74,6 +80,17 @@ const NAV_MAP = {
   portfolio: '/admin/portfolio', 'new portfolio': '/admin/portfolio/new',
   sections: '/admin/sections',
   users: '/admin/users',
+  profile: '/admin/profile',
+  onboarding: '/admin/onboarding', 'intake form': '/admin/onboarding', forms: '/admin/onboarding',
+  notes: '/admin/notes', shorts: '/admin/notes', rants: '/admin/notes',
+  inquiries: '/admin/inquiries', leads: '/admin/inquiries',
+  tickets: '/admin/tickets', support: '/admin/tickets',
+  tutorials: '/admin/tutorials',
+  templates: '/admin/templates', 'template store': '/admin/template-store',
+  qrcodes: '/admin/qrcodes', qr: '/admin/qrcodes',
+  scanner: '/admin/scanner',
+  calculators: '/admin/calculators',
+  super: '/admin/super', 'super admin': '/admin/super',
   site: '/', 'live site': '/', 'view site': '/',
 };
 
@@ -86,7 +103,7 @@ Output ONLY raw JSON — no prose, no fences:
   "title": "short title (3-6 words)",
   "tasks": [
     {
-      "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "email" | "invoice" | "outreach",
+      "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "email" | "invoice" | "outreach" | "research" | "onboarding",
       "task": "specific instruction for the specialist agent",
       "label": "2-5 word human label",
       "section_type": "text" | "split" | "cta" | "cards" | "faq",
@@ -111,7 +128,9 @@ Department capabilities:
 - asset: create social media graphics and images
 - email: draft email marketing campaigns, newsletters, promotional emails
 - invoice: create invoices with line items for client billing
-- outreach: draft direct emails to clients — updates, follow-ups, proposals`;
+- outreach: draft direct emails to clients — updates, follow-ups, proposals
+- research: web-research a prospective client, summarize their business, suggest services
+- onboarding: design fields for a client intake/onboarding form`;
 
 function toSlug(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -401,6 +420,12 @@ router.post('/run-task', async (req, res) => {
     } else if (department === 'outreach') {
       toolName = 'draft_client_email';
       toolArgs = { task, context, brandContext: brandCtx };
+    } else if (department === 'research') {
+      toolName = 'research_client';
+      toolArgs = { prompt: task, notes: context, brandContext: brandCtx };
+    } else if (department === 'onboarding') {
+      toolName = 'suggest_onboarding_fields';
+      toolArgs = { prompt: task, brandContext: brandCtx };
     } else {
       toolName = 'fill_site_copy';
       toolArgs = { task, section: 'all', context, brandContext: brandCtx };
@@ -486,6 +511,12 @@ router.post('/', async (req, res) => {
     } else if (route.department === 'outreach') {
       toolName = 'draft_client_email';
       toolArgs = { task: route.task, context, brandContext: brandCtx };
+    } else if (route.department === 'research') {
+      toolName = 'research_client';
+      toolArgs = { prompt: route.task, notes: context, brandContext: brandCtx };
+    } else if (route.department === 'onboarding') {
+      toolName = 'suggest_onboarding_fields';
+      toolArgs = { prompt: route.task, brandContext: brandCtx };
     } else {
       toolName = 'fill_site_copy';
       toolArgs = { task: route.task, section: 'all', context, brandContext: brandCtx };
@@ -771,6 +802,269 @@ router.post('/execute', async (req, res) => {
     res.json({ ok: true, message: summary, editUrl });
   } catch (err) {
     console.error('[master-agent/execute] error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Cross-agent activity digest — GET /admin/master-agent/digest?range=day|week
+// Aggregates new items and alerts across every sub-agent scope so the dashboard
+// agent can report on what every other agent has produced + what needs attention.
+router.get('/digest', async (req, res) => {
+  const range = req.query.range === 'week' ? 'week' : 'day';
+  const days = range === 'week' ? 7 : 1;
+  const since = new Date(Date.now() - days * 86400000);
+
+  try {
+    const db = req.db;
+    const c = (name) => db.collection(name);
+
+    const safe = (p) => p.catch(() => 0);
+    const safeArr = (p) => p.catch(() => []);
+    const cd = (name, q) => safe(c(name).countDocuments(q));
+
+    const [
+      blogNew, pagesNew, sectionsNew, portfolioNew,
+      assetsNew, campaignsNew, campaignsSent,
+      invoicesNew, invoicesPaid, invoicesOverdue,
+      clientsNew, contactsNew, meetingsNew,
+      inquiriesNew, ticketsOpen, ticketsNew,
+      copyEdits, designEdits,
+      onboardingFormsNew, onboardingResponses,
+      scanLatest,
+      emailOpens, emailClicks, emailBounces, emailUnsubs,
+    ] = await Promise.all([
+      cd('blog',           { createdAt: { $gte: since } }),
+      cd('pages',          { createdAt: { $gte: since } }),
+      cd('custom_sections',{ createdAt: { $gte: since } }),
+      cd('portfolio',      { createdAt: { $gte: since } }),
+      cd('assets',         { uploadedAt: { $gte: since } }),
+      cd('campaigns',      { createdAt: { $gte: since } }),
+      cd('campaigns',      { sentAt:    { $gte: since } }),
+      cd('invoices',       { createdAt: { $gte: since } }),
+      cd('invoices',       { status: 'paid', updatedAt: { $gte: since } }),
+      cd('invoices',       { status: { $in: ['overdue'] } }),
+      cd('clients',        { createdAt: { $gte: since } }),
+      cd('contacts',       { createdAt: { $gte: since } }),
+      cd('meetings',       { createdAt: { $gte: since } }),
+      cd('inquiries',      { createdAt: { $gte: since } }),
+      cd('tickets',        { status: { $in: ['open', 'in-progress', 'escalated'] } }),
+      cd('tickets',        { createdAt: { $gte: since } }),
+      cd('copy',           { updatedAt: { $gte: since } }),
+      cd('design',         { updatedAt: { $gte: since } }),
+      cd('onboarding_forms', { createdAt: { $gte: since } }),
+      cd('onboarding_responses', { createdAt: { $gte: since } }),
+      safeArr(c('scan_results').find({}).sort({ 'summary.scannedAt': -1 }).limit(1).toArray()),
+      cd('campaign_events', { type: 'open',   ts: { $gte: since } }),
+      cd('campaign_events', { type: 'click',  ts: { $gte: since } }),
+      cd('campaign_events', { type: 'bounce', ts: { $gte: since } }),
+      cd('campaign_events', { type: 'unsubscribe', ts: { $gte: since } }),
+    ]);
+
+    const scanCounts = scanLatest?.[0]?.summary?.counts || {};
+    const scanCritHigh = (scanCounts.critical || 0) + (scanCounts.high || 0);
+
+    // Build per-agent activity rows so the UI can render "what each agent did"
+    const agents = [
+      { key: 'blog',       label: 'Blog',        count: blogNew,    url: '/admin/blog' },
+      { key: 'pages',      label: 'Pages',       count: pagesNew,   url: '/admin/pages' },
+      { key: 'sections',   label: 'Sections',    count: sectionsNew,url: '/admin/sections' },
+      { key: 'copy',       label: 'Site Copy',   count: copyEdits,  url: '/admin/copy' },
+      { key: 'design',     label: 'Design',      count: designEdits,url: '/admin/design' },
+      { key: 'assets',     label: 'Assets',      count: assetsNew,  url: '/admin/assets' },
+      { key: 'email',      label: 'Email Campaigns', count: campaignsNew, url: '/admin/email-marketing' },
+      { key: 'invoices',   label: 'Invoices',    count: invoicesNew, url: '/admin/bookkeeping' },
+      { key: 'clients',    label: 'Clients',     count: clientsNew, url: '/admin/clients' },
+      { key: 'contacts',   label: 'Contacts',    count: contactsNew,url: '/admin/email-marketing' },
+      { key: 'inquiries',  label: 'Inquiries',   count: inquiriesNew,url: '/admin/inquiries' },
+      { key: 'meetings',   label: 'Meetings',    count: meetingsNew, url: '/admin/meetings' },
+      { key: 'onboarding', label: 'Onboarding Forms', count: onboardingFormsNew, url: '/admin/onboarding' },
+      { key: 'portfolio',  label: 'Portfolio',   count: portfolioNew, url: '/admin/portfolio' },
+    ];
+
+    // Alerts — surface things that need the human's attention now
+    const alerts = [];
+    if (ticketsOpen > 0)      alerts.push({ level: 'warn',   label: `${ticketsOpen} open support ticket${ticketsOpen > 1 ? 's' : ''}`, url: '/admin/tickets' });
+    if (invoicesOverdue > 0)  alerts.push({ level: 'danger', label: `${invoicesOverdue} overdue invoice${invoicesOverdue > 1 ? 's' : ''}`, url: '/admin/bookkeeping' });
+    if (scanCritHigh > 0)     alerts.push({ level: 'danger', label: `${scanCritHigh} critical/high scan issue${scanCritHigh > 1 ? 's' : ''}`, url: '/admin/scanner' });
+    if (emailBounces > 0)     alerts.push({ level: 'warn',   label: `${emailBounces} email bounce${emailBounces > 1 ? 's' : ''}`, url: '/admin/email-marketing' });
+    if (emailUnsubs > 5)      alerts.push({ level: 'warn',   label: `${emailUnsubs} unsubscribes this ${range}`, url: '/admin/email-marketing' });
+
+    res.json({
+      range,
+      since: since.toISOString(),
+      agents,
+      analytics: {
+        invoicesPaid, invoicesOverdue,
+        campaignsSent, emailOpens, emailClicks, emailBounces, emailUnsubs,
+        ticketsNew, ticketsOpen,
+        onboardingResponses,
+      },
+      alerts,
+    });
+  } catch (err) {
+    console.error('[master-agent/digest] error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Welcome briefing — GET /admin/master-agent/briefing ──────────────────────
+// LLM-generated 2–3 sentence personal welcome that surfaces what actually needs
+// the tenant's attention RIGHT NOW: new inquiries, pending booking requests,
+// invoices paid, invoices past due. Returns a plain string the dashboard
+// renders in place of the static greeting.
+router.get('/briefing', async (req, res) => {
+  try {
+    const db = req.db;
+    const c = (name) => db.collection(name);
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);   // last 24h
+    const weekSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const safe = (p) => p.catch(() => 0);
+    const safeArr = (p) => p.catch(() => []);
+
+    const [
+      inquiriesNew,
+      pendingBookings,
+      bookingsNeedConfirm,
+      invoicesPaidToday, invoicesPaidWeek,
+      invoicesOverdueDocs,
+      ticketsOpen,
+    ] = await Promise.all([
+      safe(c('inquiries').countDocuments({ createdAt: { $gte: since } })),
+      safeArr(c('bookings').find({ status: 'pending' }).sort({ createdAt: -1 }).limit(10)
+        .project({ name: 1, email: 1, startAt: 1, createdAt: 1, status: 1 }).toArray()),
+      safe(c('bookings').countDocuments({ status: 'pending' })),
+      safe(c('invoices').countDocuments({ status: 'paid', updatedAt: { $gte: since } })),
+      safe(c('invoices').countDocuments({ status: 'paid', updatedAt: { $gte: weekSince } })),
+      safeArr(c('invoices').find({ status: 'overdue' }).sort({ dueDate: 1 }).limit(10)
+        .project({ amount: 1, clientName: 1, number: 1, dueDate: 1 }).toArray()),
+      safe(c('tickets').countDocuments({ status: { $in: ['open', 'in-progress', 'escalated'] } })),
+    ]);
+
+    const overdueCount = invoicesOverdueDocs.length;
+    const overdueAmount = invoicesOverdueDocs.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+
+    // Build structured facts the LLM will paraphrase. Keep this short — we
+    // want the model to summarize, not memorize, and we want the response to
+    // come back fast on every dashboard load.
+    const firstName = (req.adminUser?.displayName || req.adminUser?.email || '').split(/[\s@]/)[0] || '';
+    const brandName = req.tenant?.brand?.name || '';
+    const facts = {
+      tenant: brandName,
+      user: firstName,
+      inquiriesLast24h: inquiriesNew,
+      bookingsPendingConfirm: bookingsNeedConfirm,
+      bookingsPreview: pendingBookings.slice(0, 3).map(b => ({
+        name: b.name,
+        when: b.startAt ? new Date(b.startAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null,
+      })),
+      invoicesPaidToday,
+      invoicesPaidWeek,
+      invoicesOverdueCount: overdueCount,
+      invoicesOverdueAmount: overdueAmount,
+      ticketsOpen,
+    };
+
+    // Build deterministic bullets + suggested action chips from the facts.
+    // These accompany the LLM briefing so the dashboard can show a scannable
+    // list and one-click links to wherever the work actually lives.
+    const bullets = [];
+    const actions = [];
+    if (overdueCount) {
+      bullets.push(`${overdueCount} overdue invoice${overdueCount > 1 ? 's' : ''}${overdueAmount ? ` — $${overdueAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} outstanding` : ''}`);
+      actions.push({ label: 'Chase overdue invoices', href: '/admin/bookkeeping', icon: '💰' });
+    }
+    if (bookingsNeedConfirm) {
+      const previewName = pendingBookings[0]?.name;
+      bullets.push(`${bookingsNeedConfirm} booking${bookingsNeedConfirm > 1 ? 's' : ''} waiting for confirmation${previewName ? ` (${previewName} first up)` : ''}`);
+      actions.push({ label: 'Confirm bookings', href: '/admin/meetings', icon: '📅' });
+    }
+    if (inquiriesNew) {
+      bullets.push(`${inquiriesNew} new inquir${inquiriesNew > 1 ? 'ies' : 'y'} in the last 24h`);
+      actions.push({ label: 'Reply to inquiries', href: '/admin/inquiries', icon: '✉' });
+    }
+    if (invoicesPaidToday) {
+      bullets.push(`${invoicesPaidToday} invoice${invoicesPaidToday > 1 ? 's' : ''} paid today — nice`);
+    } else if (invoicesPaidWeek) {
+      bullets.push(`${invoicesPaidWeek} invoice${invoicesPaidWeek > 1 ? 's' : ''} paid this week`);
+    }
+    if (ticketsOpen) {
+      bullets.push(`${ticketsOpen} open support ticket${ticketsOpen > 1 ? 's' : ''}`);
+      actions.push({ label: 'Review tickets', href: '/admin/tickets', icon: '🎫' });
+    }
+
+    // Always offer at least a few generative shortcuts so the agent stays
+    // useful on quiet days. `prompt` chips drop text into the chat input.
+    const SUGGESTED = [
+      { label: 'Draft a blog post', prompt: 'Write a new blog post about ', icon: '✦' },
+      { label: 'Refresh homepage copy', prompt: 'Rewrite the homepage hero section to feel more current', icon: '✦' },
+      { label: 'Tune up site design', href: '/admin/design', icon: '🎨' },
+      { label: 'Add a portfolio item', href: '/admin/portfolio/new', icon: '📁' },
+    ];
+    for (const s of SUGGESTED) {
+      if (actions.length >= 5) break;
+      if (!actions.some(a => a.label === s.label)) actions.push(s);
+    }
+
+    // Empty-state path: skip the LLM entirely. Save tokens + latency when
+    // there's nothing to summarize.
+    const nothingToSay =
+      !inquiriesNew && !bookingsNeedConfirm && !invoicesPaidToday && !overdueCount && !ticketsOpen;
+    if (nothingToSay) {
+      const greeting = firstName ? `Good to see you, ${firstName}.` : 'Welcome back.';
+      return res.json({
+        briefing: `${greeting} No new inquiries, bookings, or overdue invoices — quiet morning. Tell me what to work on.`,
+        bullets: ['No new inquiries', 'No pending bookings', 'No overdue invoices'],
+        actions,
+        facts,
+      });
+    }
+
+    const systemPrompt = `You are the admin dashboard concierge for a small business owner.
+Write a 2–3 sentence personal welcome briefing based on the JSON facts below.
+
+Tone: warm, direct, peer-to-peer. Address the user by first name if provided.
+Cover ONLY what the facts say is non-zero — never invent numbers, never pad with generic encouragement, never list every metric.
+
+Priority order (mention the loudest signal first):
+1. Overdue invoices — name the count + dollar total if present.
+2. Pending booking requests waiting for confirmation.
+3. New inquiries in the last 24h.
+4. Invoices paid (today, then this week).
+5. Open support tickets.
+
+If pendingBookings has names, you may name one (e.g. "Sarah's booking is waiting") — but don't list more than one.
+End with a short forward-looking nudge (e.g. "Want to start with the overdue chase?" or "I can draft the confirmation reply.").
+
+Output ONLY the briefing text — no JSON, no preamble, no "Here is your briefing", no quotes.`;
+
+    let briefing = '';
+    try {
+      const raw = await callLLM(
+        [{ role: 'user', content: `Facts:\n${JSON.stringify(facts, null, 2)}` }],
+        systemPrompt,
+        20000,
+      );
+      briefing = (raw || '').trim().replace(/^["']|["']$/g, '');
+    } catch (e) {
+      console.warn('[master-agent/briefing] LLM failed, falling back:', e.message);
+    }
+
+    // Deterministic fallback if the LLM is slow / unavailable.
+    if (!briefing) {
+      const parts = [];
+      if (overdueCount) parts.push(`${overdueCount} overdue invoice${overdueCount > 1 ? 's' : ''}${overdueAmount ? ` ($${overdueAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : ''} need chasing`);
+      if (bookingsNeedConfirm) parts.push(`${bookingsNeedConfirm} booking${bookingsNeedConfirm > 1 ? 's' : ''} waiting for your confirmation`);
+      if (inquiriesNew) parts.push(`${inquiriesNew} new inquir${inquiriesNew > 1 ? 'ies' : 'y'}`);
+      if (invoicesPaidToday) parts.push(`${invoicesPaidToday} invoice${invoicesPaidToday > 1 ? 's' : ''} paid today`);
+      else if (invoicesPaidWeek) parts.push(`${invoicesPaidWeek} invoice${invoicesPaidWeek > 1 ? 's' : ''} paid this week`);
+      if (ticketsOpen) parts.push(`${ticketsOpen} open support ticket${ticketsOpen > 1 ? 's' : ''}`);
+      const greeting = firstName ? `Hi ${firstName} — ` : '';
+      briefing = `${greeting}${parts.join(', ')}. Where do you want to start?`;
+    }
+
+    res.json({ briefing, bullets, actions, facts });
+  } catch (err) {
+    console.error('[master-agent/briefing] error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -33,6 +33,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import multer from 'multer';
+import nodemailer from 'nodemailer';
 import { ObjectId } from 'mongodb';
 import { getSlabDb } from '../plugins/mongo.js';
 import { requireSuperAdmin } from '../middleware/superadmin.js';
@@ -57,19 +58,75 @@ const router = express.Router();
 const COOKIE_DOMAIN = config.NODE_ENV === 'production' ? '.madladslab.com' : undefined;
 
 // ── Commission schedule ─────────────────────────────────────────────────────
+// Percentage of NET tenant revenue (after platform owner tax). Net = gross × (1 − OWNER_TAX_RATE).
 const COMMISSION = {
-  1: 5.00,   // Year 1: $5 per account per month
-  2: 2.50,   // Year 2: $2.50
-  default: 2.00, // Year 3+: $2 lifetime royalty
+  1: 0.32,        // Year 1: 32% of net revenue
+  2: 0.12,        // Year 2: 12% of net revenue
+  default: 0.05,  // Year 3+: 5% lifetime royalty of net revenue
 };
+
+// Platform owner's effective tax rate used to compute "after taxes" net.
+// Federal + state blended — tune as your accounting becomes more precise.
+const OWNER_TAX_RATE = 0.30;
+
+// Plan → monthly-equivalent gross revenue (USD)
+const PLAN_MONTHLY = {
+  monthly:   50.00,
+  quarterly: 40.00,   // $120 / 3
+  annual:    25.00,   // $300 / 12
+  lifetime:  20.79,   // $499 / 24 — amortized over the window, then 0
+  starter:   0,       // free trial
+  free:      0,
+};
+const LIFETIME_AMORTIZE_MONTHS = 24;
 
 export function getCommissionRate(yearNumber) {
   return COMMISSION[yearNumber] || COMMISSION.default;
 }
 
+/**
+ * Compute monthly commission for one tenant assignment.
+ * Returns { plan, grossMonthly, ownerTax, netMonthly, year, rate, commission, inTrial, trialEndsAt }.
+ *
+ * Commission is $0 while the tenant is still inside their delegate-promo free trial
+ * (perks.trialEndsAt > now). This is what "promo negates 30 days commission" means.
+ */
+export function computeMonthlyCommission(tenant, attachedAt, now = new Date()) {
+  const plan = tenant?.meta?.plan || 'monthly';
+  let grossMonthly = PLAN_MONTHLY[plan] ?? PLAN_MONTHLY.monthly;
+
+  // Lifetime: only attribute revenue during the amortization window
+  if (plan === 'lifetime') {
+    const activatedAt = tenant?.meta?.activatedAt ? new Date(tenant.meta.activatedAt) : new Date(attachedAt);
+    const monthsSinceActive = Math.floor((now.getTime() - activatedAt.getTime()) / (30.44 * 86400 * 1000));
+    if (monthsSinceActive >= LIFETIME_AMORTIZE_MONTHS) grossMonthly = 0;
+  }
+
+  const yearsSinceAttach = Math.floor((now.getTime() - new Date(attachedAt).getTime()) / (365.25 * 86400 * 1000)) + 1;
+  const rate = getCommissionRate(yearsSinceAttach);
+  const ownerTax = grossMonthly * OWNER_TAX_RATE;
+  const netMonthly = grossMonthly - ownerTax;
+
+  const trialEndsAt = tenant?.perks?.trialEndsAt ? new Date(tenant.perks.trialEndsAt) : null;
+  const inTrial = !!(trialEndsAt && trialEndsAt > now);
+  const commission = inTrial ? 0 : +(netMonthly * rate).toFixed(2);
+
+  return {
+    plan,
+    grossMonthly,
+    ownerTax: +ownerTax.toFixed(2),
+    netMonthly: +netMonthly.toFixed(2),
+    year: yearsSinceAttach,
+    rate,
+    commission,
+    inTrial,
+    trialEndsAt,
+  };
+}
+
 // ── Delegate JWT helpers ────────────────────────────────────────────────────
 
-function issueDelegateJWT(delegate, res) {
+export function issueDelegateJWT(delegate, res) {
   const payload = {
     id: delegate._id.toString(),
     email: delegate.email,
@@ -248,21 +305,23 @@ router.get('/panel', async (req, res) => {
   // Calculate per-tenant commission info
   const tenantDetails = [];
   for (const t of delegate.tenants || []) {
-    const attachedAt = new Date(t.attachedAt);
-    const yearsSinceAttach = Math.floor((Date.now() - attachedAt.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) + 1;
-    const rate = getCommissionRate(yearsSinceAttach);
-    tenantDetails.push({
-      ...t,
-      year: yearsSinceAttach,
-      rate,
-    });
+    const tenant = await slab.collection('tenants').findOne({ _id: t.tenantId });
+    const calc = computeMonthlyCommission(tenant, t.attachedAt);
+    tenantDetails.push({ ...t, ...calc });
   }
+
+  const promoCodes = await slab.collection('delegate_promo_codes')
+    .find({ delegateId: delegate._id, active: true })
+    .sort({ createdAt: -1 })
+    .toArray();
 
   res.render('delegates/panel', {
     delegate,
     payouts,
     tenantDetails,
+    promoCodes,
     commission: COMMISSION,
+    ownerTaxRate: OWNER_TAX_RATE,
   });
 });
 
@@ -527,18 +586,21 @@ router.get('/admin/:id', async (req, res) => {
   // Calculate per-tenant commission info
   const tenantDetails = [];
   for (const t of delegate.tenants || []) {
-    const attachedAt = new Date(t.attachedAt);
-    const yearsSinceAttach = Math.floor((Date.now() - attachedAt.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) + 1;
-    const rate = getCommissionRate(yearsSinceAttach);
     const tenant = allTenants.find(at => at._id.toString() === t.tenantId.toString());
+    const calc = computeMonthlyCommission(tenant, t.attachedAt);
     tenantDetails.push({
       ...t,
-      year: yearsSinceAttach,
-      rate,
+      ...calc,
       brandName: tenant?.brand?.name || t.tenantDomain,
       tenantStatus: tenant?.status || 'unknown',
+      businessState: tenant?.meta?.businessState || tenant?.brand?.state || null,
     });
   }
+
+  const promoCodes = await slab.collection('delegate_promo_codes')
+    .find({ delegateId: delegate._id })
+    .sort({ createdAt: -1 })
+    .toArray();
 
   res.render('delegates/admin-detail', {
     user: req.superAdmin,
@@ -546,7 +608,12 @@ router.get('/admin/:id', async (req, res) => {
     payouts,
     tenantDetails,
     availableTenants,
+    promoCodes,
     commission: COMMISSION,
+    ownerTaxRate: OWNER_TAX_RATE,
+    domain: config.DOMAIN,
+    error: req.query.error || null,
+    msg: req.query.msg || null,
   });
 });
 
@@ -620,7 +687,7 @@ router.post('/admin/:id/detach', async (req, res) => {
 });
 
 router.post('/admin/:id/payout', async (req, res) => {
-  const { amount, note, method } = req.body;
+  const { amount, note, paypalTxn } = req.body;
   const parsedAmount = parseFloat(amount);
   if (!parsedAmount || parsedAmount <= 0) return res.redirect(`/delegates/admin/${req.params.id}`);
 
@@ -633,7 +700,8 @@ router.post('/admin/:id/payout', async (req, res) => {
     delegateId: delegate._id,
     delegateEmail: delegate.email,
     amount: parsedAmount,
-    method: method || 'manual',
+    method: 'paypal',
+    paypalTxn: (paypalTxn || '').trim() || null,
     note: (note || '').trim(),
     period: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
     createdAt: now,
@@ -652,10 +720,148 @@ router.post('/admin/:id/payout', async (req, res) => {
     category: 'admin_action', action: 'delegate_payout',
     status: 'success',
     actor: { email: req.superAdmin.email, role: 'superadmin' },
-    details: { delegateId: req.params.id, amount: parsedAmount, method },
+    details: { delegateId: req.params.id, amount: parsedAmount, method: 'paypal', paypalTxn: (paypalTxn || '').trim() || null },
   });
 
   res.redirect(`/delegates/admin/${req.params.id}`);
+});
+
+// ── Superadmin: create / list / expire delegate promo codes ──────────────
+// A promo code is a shareable token tied to a delegate. When used at /start?ref=CODE,
+// the tenant gets `freeDays` free trial AND no delegate commission accrues during that window.
+function generatePromoCode(base) {
+  const slug = (base || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PROMO';
+  const suffix = crypto.randomBytes(2).toString('hex').toUpperCase();
+  return `${slug}-${suffix}`;
+}
+
+router.post('/admin/:id/promo-codes', async (req, res) => {
+  const { code, freeDays, expiresAt, label } = req.body;
+  const slab = getSlabDb();
+  let delegate;
+  try { delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.params.id) }); }
+  catch { return res.redirect('/delegates/admin'); }
+  if (!delegate) return res.redirect('/delegates/admin');
+
+  const normalized = (code || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  const finalCode = normalized || generatePromoCode(delegate.lastName || delegate.refCode);
+  const days = Math.max(1, Math.min(365, parseInt(freeDays, 10) || 30));
+  const expDate = expiresAt ? new Date(expiresAt) : null;
+  if (expDate && isNaN(expDate.getTime())) {
+    return res.redirect(`/delegates/admin/${req.params.id}?error=Invalid+expiry`);
+  }
+
+  // Reject duplicate codes
+  const existing = await slab.collection('delegate_promo_codes').findOne({ code: finalCode });
+  if (existing) return res.redirect(`/delegates/admin/${req.params.id}?error=Code+already+exists`);
+
+  await slab.collection('delegate_promo_codes').insertOne({
+    code: finalCode,
+    label: (label || '').trim() || finalCode,
+    delegateId: delegate._id,
+    delegateEmail: delegate.email,
+    refCode: delegate.refCode,
+    freeDays: days,
+    expiresAt: expDate,
+    active: true,
+    usageCount: 0,
+    createdAt: new Date(),
+    createdBy: req.superAdmin.email,
+  });
+
+  logActivity({
+    category: 'admin_action', action: 'delegate_promo_code_created',
+    status: 'success',
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+    details: { delegateId: req.params.id, code: finalCode, freeDays: days, expiresAt: expDate },
+  });
+
+  res.redirect(`/delegates/admin/${req.params.id}`);
+});
+
+router.post('/admin/:id/promo-codes/:codeId/disable', async (req, res) => {
+  const slab = getSlabDb();
+  try {
+    await slab.collection('delegate_promo_codes').updateOne(
+      { _id: new ObjectId(req.params.codeId), delegateId: new ObjectId(req.params.id) },
+      { $set: { active: false, disabledAt: new Date(), disabledBy: req.superAdmin.email } }
+    );
+  } catch { /* invalid id */ }
+  res.redirect(`/delegates/admin/${req.params.id}`);
+});
+
+// ── Superadmin: send login reminder email to a delegate ──────────────────
+router.post('/admin/:id/send-reminder', async (req, res) => {
+  const slab = getSlabDb();
+  let delegate;
+  try { delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.params.id) }); }
+  catch { return res.redirect('/delegates/admin'); }
+  if (!delegate?.email) return res.redirect(`/delegates/admin/${req.params.id}?error=Delegate+missing+email`);
+
+  const zohoUser = process.env.ZOHO_USER;
+  const zohoPass = process.env.ZOHO_PASS;
+  if (!zohoUser || !zohoPass) {
+    return res.redirect(`/delegates/admin/${req.params.id}?error=Email+not+configured+(ZOHO_USER/ZOHO_PASS)`);
+  }
+
+  const loginUrl = `${config.DOMAIN}/delegates/login`;
+  const shareUrl = `${config.DOMAIN}/start?ref=${delegate.refCode}`;
+  const acctCount = (delegate.tenants || []).length;
+  const earned = (delegate.totalEarned || 0).toFixed(2);
+  const subject = `Your sLab Delegate account — log in and start sharing`;
+  const html = `<div style="font-family:Inter,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px;color:#1a1a1a;">
+  <h2 style="color:#c9a848;margin-bottom:8px;">Hi ${delegate.firstName || 'there'},</h2>
+  <p style="line-height:1.6;font-size:15px;">This is a quick reminder that your sLab Delegate account is active and ready to use.</p>
+
+  <table style="width:100%;border-collapse:collapse;margin:20px 0;background:#f7f4ec;border-radius:8px;">
+    <tr><td style="padding:14px 18px;border-bottom:1px solid #e6e1d6;font-size:13px;">Accounts attached</td><td style="padding:14px 18px;border-bottom:1px solid #e6e1d6;font-size:13px;text-align:right;font-weight:600;">${acctCount}</td></tr>
+    <tr><td style="padding:14px 18px;border-bottom:1px solid #e6e1d6;font-size:13px;">Total earned</td><td style="padding:14px 18px;border-bottom:1px solid #e6e1d6;font-size:13px;text-align:right;font-weight:600;color:#c9a848;">$${earned}</td></tr>
+    <tr><td style="padding:14px 18px;font-size:13px;">Your share code</td><td style="padding:14px 18px;font-size:13px;text-align:right;font-family:monospace;color:#c9a848;font-weight:600;">${delegate.refCode}</td></tr>
+  </table>
+
+  <p style="line-height:1.6;font-size:15px;">Log in to manage your leads, track commissions, and view your sales sheets:</p>
+  <p style="text-align:center;margin:28px 0;">
+    <a href="${loginUrl}" style="display:inline-block;padding:14px 32px;background:#c9a848;color:#0a0a0a;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;">Open Delegate Panel</a>
+  </p>
+
+  <p style="line-height:1.6;font-size:14px;color:#525252;">Share this link to refer a new tenant (they get a free trial, you earn commission once they convert):</p>
+  <p style="background:#f7f4ec;padding:12px 16px;border-radius:6px;font-family:monospace;font-size:13px;color:#1a1a1a;word-break:break-all;">${shareUrl}</p>
+
+  <p style="line-height:1.6;font-size:13px;color:#737373;margin-top:32px;">If you have any questions or need anything, just reply to this email.</p>
+  <p style="line-height:1.6;font-size:13px;color:#737373;">— The sLab Team</p>
+</div>`;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN',
+      auth: { user: zohoUser, pass: zohoPass },
+    });
+    await transporter.sendMail({
+      from: `"sLab Platform" <${zohoUser}>`,
+      to: delegate.email,
+      subject,
+      html,
+    });
+
+    logActivity({
+      category: 'admin_action', action: 'delegate_reminder_sent',
+      status: 'success',
+      actor: { email: req.superAdmin.email, role: 'superadmin' },
+      details: { delegateId: req.params.id, to: delegate.email, refCode: delegate.refCode },
+    });
+
+    res.redirect(`/delegates/admin/${req.params.id}?msg=Reminder+sent+to+${encodeURIComponent(delegate.email)}`);
+  } catch (err) {
+    console.error('[delegates] reminder email failed:', err.message);
+    logActivity({
+      category: 'admin_action', action: 'delegate_reminder_sent',
+      status: 'failed',
+      actor: { email: req.superAdmin.email, role: 'superadmin' },
+      details: { delegateId: req.params.id, to: delegate.email },
+      error: err.message,
+    });
+    res.redirect(`/delegates/admin/${req.params.id}?error=${encodeURIComponent('Send failed: ' + err.message)}`);
+  }
 });
 
 // ── Superadmin: download delegate W-9 ─────────────────────────────────────
@@ -882,18 +1088,44 @@ router.post('/admin/calculate-commissions', async (req, res) => {
   const slab = getSlabDb();
   const delegates = await slab.collection('sales_delegates').find({ status: 'active' }).toArray();
   const now = new Date();
+  const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const results = [];
 
   for (const d of delegates) {
     let monthlyTotal = 0;
+    const breakdown = [];
     for (const t of d.tenants || []) {
-      // Only count active tenants
       const tenant = await slab.collection('tenants').findOne({ _id: t.tenantId, status: 'active' });
       if (!tenant) continue;
 
-      const attachedAt = new Date(t.attachedAt);
-      const yearsSinceAttach = Math.floor((now.getTime() - attachedAt.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) + 1;
-      monthlyTotal += getCommissionRate(yearsSinceAttach);
+      const calc = computeMonthlyCommission(tenant, t.attachedAt, now);
+      if (calc.commission <= 0) continue;
+      monthlyTotal += calc.commission;
+      breakdown.push({
+        tenantId: tenant._id,
+        tenantDomain: tenant.domain,
+        plan: calc.plan,
+        year: calc.year,
+        rate: calc.rate,
+        grossMonthly: calc.grossMonthly,
+        netMonthly: calc.netMonthly,
+        commission: calc.commission,
+      });
+    }
+
+    monthlyTotal = +monthlyTotal.toFixed(2);
+
+    // Record the accrual so we have an auditable ledger separate from payouts
+    if (monthlyTotal > 0) {
+      await slab.collection('delegate_commission_accruals').insertOne({
+        delegateId: d._id,
+        delegateEmail: d.email,
+        period,
+        amount: monthlyTotal,
+        ownerTaxRate: OWNER_TAX_RATE,
+        breakdown,
+        createdAt: now,
+      });
     }
 
     await slab.collection('sales_delegates').updateOne(
@@ -910,9 +1142,85 @@ router.post('/admin/calculate-commissions', async (req, res) => {
   }
 
   if (req.headers.accept?.includes('application/json')) {
-    return res.json({ ok: true, results });
+    return res.json({ ok: true, period, results });
   }
   res.redirect('/delegates/admin');
+});
+
+// ── State tax compliance: revenue by tenant business state ──────────────────
+// Aggregates payment_captured activity log entries by tenant business state.
+// Use this as the source of truth handed to a CPA for multistate sales-tax filings.
+router.get('/admin/reports/state-tax', async (req, res) => {
+  const slab = getSlabDb();
+  const sinceDays = parseInt(req.query.days || '90', 10);
+  const since = new Date(Date.now() - sinceDays * 86400 * 1000);
+
+  const payments = await slab.collection('activity_log').find({
+    category: 'payment',
+    action: 'payment_captured',
+    status: 'success',
+    createdAt: { $gte: since },
+  }).toArray();
+
+  // Group by tenant, then resolve to business state
+  const tenantTotals = new Map();
+  for (const p of payments) {
+    const domain = p.tenantDomain;
+    if (!domain) continue;
+    const amount = parseFloat(p.details?.amount || 0);
+    if (!amount) continue;
+    tenantTotals.set(domain, (tenantTotals.get(domain) || 0) + amount);
+  }
+
+  const domains = [...tenantTotals.keys()];
+  const tenants = domains.length
+    ? await slab.collection('tenants').find({ domain: { $in: domains } }).toArray()
+    : [];
+  const tenantByDomain = new Map(tenants.map(t => [t.domain, t]));
+
+  const byState = new Map(); // state → { state, revenue, tenants:Set }
+  let unknownStateRevenue = 0;
+  for (const [domain, revenue] of tenantTotals) {
+    const t = tenantByDomain.get(domain);
+    const state = (t?.meta?.businessState || t?.brand?.state || '').trim().toUpperCase();
+    if (!state) { unknownStateRevenue += revenue; continue; }
+    if (!byState.has(state)) byState.set(state, { state, revenue: 0, tenants: new Set() });
+    const row = byState.get(state);
+    row.revenue += revenue;
+    row.tenants.add(domain);
+  }
+
+  const stateRows = [...byState.values()]
+    .map(r => ({ state: r.state, revenue: +r.revenue.toFixed(2), tenantCount: r.tenants.size, tenants: [...r.tenants] }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  const totalRevenue = stateRows.reduce((s, r) => s + r.revenue, 0) + unknownStateRevenue;
+
+  res.render('delegates/admin-state-tax', {
+    user: req.superAdmin,
+    sinceDays,
+    since,
+    stateRows,
+    unknownStateRevenue: +unknownStateRevenue.toFixed(2),
+    totalRevenue: +totalRevenue.toFixed(2),
+    ownerTaxRate: OWNER_TAX_RATE,
+  });
+});
+
+// Set a tenant's business state (used for state tax allocation)
+router.post('/admin/reports/tenant/:tenantId/business-state', async (req, res) => {
+  const { state } = req.body;
+  const clean = (state || '').trim().toUpperCase().slice(0, 2);
+  if (!/^[A-Z]{2}$/.test(clean)) return res.redirect('/delegates/admin/reports/state-tax?error=Invalid+state+code');
+
+  const slab = getSlabDb();
+  try {
+    await slab.collection('tenants').updateOne(
+      { _id: new ObjectId(req.params.tenantId) },
+      { $set: { 'meta.businessState': clean, updatedAt: new Date() } }
+    );
+  } catch { /* invalid ObjectId */ }
+  res.redirect('/delegates/admin/reports/state-tax');
 });
 
 export default router;

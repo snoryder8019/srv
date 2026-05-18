@@ -34,7 +34,7 @@ const PP_PLANS = {
   monthly:   { label: 'Monthly',     amount: '50.00',   days: 30 },
   quarterly: { label: 'Quarterly',   amount: '120.00',  days: 90 },   // ~$40/mo
   annual:    { label: 'Annual',      amount: '300.00',  days: 365 },  // $25/mo — half off
-  lifetime:  { label: 'Lifetime',    amount: '1200.00', days: null },  // 2-yr equiv
+  lifetime:  { label: 'Lifetime',    amount: '499.00',  days: null },  // one-time, ~$20.79/mo equiv over 24 mo
 };
 
 let _ppToken = null;
@@ -118,24 +118,44 @@ const PROMO_FREE_TEMPLATE_LIMIT = 10;
 const DELEGATE_PROMO_DAYS = 30;
 
 /**
- * Check for a valid delegate referral code and return the delegate doc (or null).
+ * Check for a valid delegate referral code and return { delegate, promoDays } or null.
+ * Accepts either:
+ *   - A delegate's personal refCode (SD-XXXXXXXX) → default 30-day trial
+ *   - A superadmin-created promo code from `delegate_promo_codes` → custom freeDays, must be active + unexpired
  */
 async function lookupDelegateRef(refCode) {
   if (!refCode || typeof refCode !== 'string') return null;
   const code = refCode.trim().toUpperCase();
-  if (!/^SD-[A-F0-9]{8}$/.test(code)) return null;
   const slab = getSlabDb();
-  return slab.collection('sales_delegates').findOne({ refCode: code, status: 'active' });
+  const now = new Date();
+
+  // Personal refCode path
+  if (/^SD-[A-F0-9]{8}$/.test(code)) {
+    const delegate = await slab.collection('sales_delegates').findOne({ refCode: code, status: 'active' });
+    if (!delegate) return null;
+    return { delegate, promoDays: DELEGATE_PROMO_DAYS, promoCode: null };
+  }
+
+  // Promo code path
+  const promo = await slab.collection('delegate_promo_codes').findOne({ code, active: true });
+  if (!promo) return null;
+  if (promo.expiresAt && new Date(promo.expiresAt) < now) return null;
+
+  const delegate = await slab.collection('sales_delegates').findOne({ _id: promo.delegateId, status: 'active' });
+  if (!delegate) return null;
+
+  return { delegate, promoDays: promo.freeDays || DELEGATE_PROMO_DAYS, promoCode: promo };
 }
 
 /**
  * Apply delegate referral promo to a newly provisioned tenant.
  * Sets 30-day free trial perk and tracks the referral.
  */
-async function applyDelegatePromo(slug, delegate, signupEmail) {
+async function applyDelegatePromo(slug, ref, signupEmail) {
   const slab = getSlabDb();
   const now = new Date();
-  const trialEndsAt = new Date(now.getTime() + DELEGATE_PROMO_DAYS * 24 * 60 * 60 * 1000);
+  const { delegate, promoDays, promoCode } = ref;
+  const trialEndsAt = new Date(now.getTime() + promoDays * 24 * 60 * 60 * 1000);
 
   await slab.collection('tenants').updateOne(
     { 'meta.subdomain': slug },
@@ -148,6 +168,7 @@ async function applyDelegatePromo(slug, delegate, signupEmail) {
           delegateId: delegate._id,
           delegateEmail: delegate.email,
           refCode: delegate.refCode,
+          promoCode: promoCode?.code || null,
         },
       },
     },
@@ -158,19 +179,28 @@ async function applyDelegatePromo(slug, delegate, signupEmail) {
     delegateId: delegate._id,
     delegateEmail: delegate.email,
     refCode: delegate.refCode,
+    promoCode: promoCode?.code || null,
     signupEmail: signupEmail.toLowerCase(),
     subdomain: slug,
-    promoDays: DELEGATE_PROMO_DAYS,
+    promoDays,
     trialEndsAt,
     convertedToPaid: false,
     createdAt: now,
   });
 
+  // Increment usage counter on the promo code (if used)
+  if (promoCode?._id) {
+    await slab.collection('delegate_promo_codes').updateOne(
+      { _id: promoCode._id },
+      { $inc: { usageCount: 1 }, $set: { lastUsedAt: now } }
+    );
+  }
+
   logActivity({
     category: 'registration', action: 'delegate_referral_applied',
     status: 'success',
     actor: { email: signupEmail, role: 'signup' },
-    details: { refCode: delegate.refCode, delegateEmail: delegate.email, trialEndsAt },
+    details: { refCode: delegate.refCode, delegateEmail: delegate.email, promoCode: promoCode?.code || null, promoDays, trialEndsAt },
   });
 }
 
@@ -238,6 +268,25 @@ router.get('/check-subdomain', async (req, res) => {
 });
 
 // ── Google One Tap signup — provisions tenant with Google account ───────────
+// Live-validate a promo / referral code typed on the /start form.
+// Returns { valid, freeDays, delegateName, codeType } — never leaks internal ids.
+router.get('/check-ref', async (req, res) => {
+  const code = (req.query.code || '').trim();
+  if (!code) return res.json({ valid: false });
+  try {
+    const ref = await lookupDelegateRef(code);
+    if (!ref) return res.json({ valid: false });
+    res.json({
+      valid: true,
+      freeDays: ref.promoDays,
+      delegateName: `${ref.delegate.firstName || ''} ${ref.delegate.lastName || ''}`.trim() || null,
+      codeType: ref.promoCode ? 'campaign' : 'personal',
+    });
+  } catch {
+    res.json({ valid: false });
+  }
+});
+
 router.post('/google-signup', async (req, res) => {
   try {
     const { credential, subdomain, brandName, brandLocation, design, tagline, ref } = req.body;
@@ -301,7 +350,8 @@ router.post('/google-signup', async (req, res) => {
       email: profile.email, brandName: brandName.trim(), subdomain: slug, domain: result.domain,
       source: 'google-one-tap', ip: req.ip, userAgent: req.get('user-agent'),
       freeTemplates: earnedFreeTemplates,
-      refCode: delegateRef?.refCode || null,
+      refCode: delegateRef?.delegate?.refCode || null,
+      promoCode: delegateRef?.promoCode?.code || null,
       createdAt: new Date(),
     });
     if (earnedFreeTemplates) {
@@ -318,7 +368,7 @@ router.post('/google-signup', async (req, res) => {
 
     logActivity({ category: 'registration', action: 'signup', tenantDomain: result.domain, status: 'success',
       actor: { email: profile.email, role: 'owner' },
-      details: { subdomain: slug, brandName: brandName.trim(), plan: 'free', design: design || 'classic', method: 'google', refCode: delegateRef?.refCode || null }, ip: req.ip,
+      details: { subdomain: slug, brandName: brandName.trim(), plan: 'free', design: design || 'classic', method: 'google', refCode: delegateRef?.delegate?.refCode || null, promoCode: delegateRef?.promoCode?.code || null }, ip: req.ip,
     });
     notifyAdmin({ type: 'signup', app: 'slab', email: profile.email, name: profile.name || '', ip: req.ip,
       data: { 'Brand': brandName.trim(), 'Domain': result.domain, 'Method': 'Google One Tap', 'Design': design || 'classic' } }).catch(() => {});
@@ -438,7 +488,8 @@ router.post('/signup', async (req, res) => {
       ip: req.ip,
       userAgent: req.get('user-agent'),
       freeTemplates: earnedFreeTemplates,
-      refCode: delegateRef?.refCode || null,
+      refCode: delegateRef?.delegate?.refCode || null,
+      promoCode: delegateRef?.promoCode?.code || null,
       createdAt: new Date(),
     });
 

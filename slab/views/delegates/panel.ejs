@@ -84,30 +84,62 @@
 
     <div class="section">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h2>Your Referral Code</h2>
+        <h2>Your Share Codes</h2>
       </div>
-      <div class="ref-code"><%= delegate.refCode %></div>
+      <div style="margin-bottom:14px;">
+        <div style="font-size:11px;color:#737373;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;">Personal Referral Code</div>
+        <div class="ref-code"><%= delegate.refCode %></div>
+        <div style="font-size:12px;color:#737373;margin-top:6px;">Share link: <code style="color:#c9a848;font-family:monospace;">/start?ref=<%= delegate.refCode %></code> &middot; 30-day free trial</div>
+      </div>
+
+      <% if (typeof promoCodes !== 'undefined' && promoCodes.length) { %>
+      <div style="font-size:11px;color:#737373;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;">Campaign Promo Codes</div>
+      <table>
+        <thead><tr><th>Code</th><th>Label</th><th>Free Days</th><th>Expires</th><th>Uses</th></tr></thead>
+        <tbody>
+          <% for (const p of promoCodes) { %>
+          <tr>
+            <td style="font-family:monospace;color:#c9a848;font-weight:600;"><%= p.code %></td>
+            <td style="color:#a3a3a3;"><%= p.label || '—' %></td>
+            <td><%= p.freeDays %></td>
+            <td style="color:#a3a3a3;"><%= p.expiresAt ? new Date(p.expiresAt).toLocaleDateString() : 'No expiry' %></td>
+            <td><%= p.usageCount || 0 %></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:#525252;margin-top:8px;">Share format: <code style="color:#c9a848;">/start?ref=YOURCODE</code></div>
+      <% } %>
     </div>
 
     <div class="commission-info">
       <h3>Commission Schedule</h3>
-      <div class="commission-row"><span class="label">Year 1</span><span class="value">$5.00 / account / month</span></div>
-      <div class="commission-row"><span class="label">Year 2</span><span class="value">$2.50 / account / month</span></div>
-      <div class="commission-row"><span class="label">Year 3+ (Lifetime)</span><span class="value">$2.00 / account / month</span></div>
+      <div class="commission-row"><span class="label">Year 1</span><span class="value">32% of net</span></div>
+      <div class="commission-row"><span class="label">Year 2</span><span class="value">12% of net</span></div>
+      <div class="commission-row"><span class="label">Year 3+ (Lifetime royalty)</span><span class="value">5% of net</span></div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid #262626;font-size:11px;color:#737373;line-height:1.6;">
+        Net = the account's monthly subscription revenue minus the platform's blended tax obligation (currently <%= (ownerTaxRate * 100).toFixed(0) %>%). Royalty continues for the life of the account.<br>
+        Payouts are issued via <strong>PayPal</strong>.
+      </div>
     </div>
 
     <div class="section">
       <h2>Assigned Accounts</h2>
       <% if (tenantDetails.length) { %>
       <table>
-        <thead><tr><th>Domain</th><th>Attached</th><th>Year</th><th>Monthly Rate</th></tr></thead>
+        <thead><tr><th>Domain</th><th>Attached</th><th>Plan</th><th>Yr</th><th>Rate</th><th>Est. Monthly Commission</th></tr></thead>
         <tbody>
           <% for (const t of tenantDetails) { %>
+          <% const rate = Number(t.rate || 0), comm = Number(t.commission || 0); %>
           <tr>
             <td><%= t.tenantDomain %></td>
             <td><%= new Date(t.attachedAt).toLocaleDateString() %></td>
-            <td>Yr <%= t.year %></td>
-            <td style="color:#c9a848;font-weight:600;">$<%= t.rate.toFixed(2) %></td>
+            <td style="text-transform:capitalize;"><%= t.plan || '—' %></td>
+            <td>Yr <%= t.year || '—' %></td>
+            <td><%= (rate * 100).toFixed(0) %>%</td>
+            <td style="color:<%= t.inTrial ? '#fdba74' : '#c9a848' %>;font-weight:600;">
+              $<%= comm.toFixed(2) %><% if (t.inTrial) { %> <span style="font-size:10px;color:#fdba74;">trial</span><% } %>
+            </td>
           </tr>
           <% } %>
         </tbody>

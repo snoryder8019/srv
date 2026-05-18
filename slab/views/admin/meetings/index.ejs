@@ -289,6 +289,7 @@
           <thead>
             <tr>
               <th>Title</th>
+              <th>Scheduled</th>
               <th>Invite Link</th>
               <th>Expires</th>
               <th>Participants</th>
@@ -299,6 +300,16 @@
             <% active.forEach(m => { %>
               <tr>
                 <td><strong><%= m.title %></strong></td>
+                <td style="white-space:nowrap;font-size:0.82rem;">
+                  <% if (m.scheduledAt) { %>
+                    <%= new Date(m.scheduledAt).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) %>
+                    <% if (m.durationMinutes) { %>
+                      <div style="color:var(--slate);font-size:0.72rem;"><%= m.durationMinutes %> min</div>
+                    <% } %>
+                  <% } else { %>
+                    <span style="color:var(--slate);">—</span>
+                  <% } %>
+                </td>
                 <td>
                   <div style="display:flex;align-items:center;gap:8px;">
                     <input type="text" readonly value="<%= domain %>/meeting/<%= m.token %>"
@@ -367,6 +378,9 @@
           <div class="hist-body-meta" style="display:flex;gap:24px;flex-wrap:wrap;font-size:0.78rem;color:var(--slate);margin-bottom:16px;">
             <span>Created by <strong><%= m.createdBy %></strong></span>
             <span>Created: <%= new Date(m.createdAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) %></span>
+            <% if (m.scheduledAt) { %>
+              <span>Scheduled: <strong><%= new Date(m.scheduledAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) %></strong><% if (m.durationMinutes) { %> · <%= m.durationMinutes %> min<% } %></span>
+            <% } %>
             <% if (m.closedAt) { %><span>Closed: <%= new Date(m.closedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) %></span><% } %>
             <span>Uses: <%= m.useCount %></span>
           </div>
@@ -497,7 +511,17 @@
         </div>
         <div class="form-grid" style="gap:16px;">
           <div class="form-field">
-            <label>Expires In</label>
+            <label>Scheduled Start <span style="color:var(--slate);font-weight:300;">(optional)</span></label>
+            <input type="datetime-local" name="scheduledAt">
+          </div>
+          <div class="form-field">
+            <label>Duration (min) <span style="color:var(--slate);font-weight:300;">(optional)</span></label>
+            <input type="number" name="durationMinutes" min="5" max="1440" step="5" placeholder="e.g. 30">
+          </div>
+        </div>
+        <div class="form-grid" style="gap:16px;">
+          <div class="form-field">
+            <label>Link Expires In</label>
             <select name="expiresInHours">
               <option value="1">1 hour</option>
               <option value="4">4 hours</option>

@@ -87,6 +87,52 @@
 .ma-msg-user  .ma-bubble { background: var(--navy); color: #fff; }
 .ma-bubble a { color: var(--gold); }
 
+/* Briefing bullets + suggested action chips */
+.ma-briefing-text { margin: 0 0 8px; }
+.ma-briefing-bullets {
+  list-style: none; padding: 0; margin: 8px 0 10px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.ma-briefing-bullets li {
+  font-size: 0.83rem;
+  line-height: 1.45;
+  padding-left: 16px;
+  position: relative;
+  color: var(--on-surface);
+}
+.ma-briefing-bullets li::before {
+  content: '•';
+  position: absolute; left: 4px; top: 0;
+  color: var(--gold); font-weight: 700;
+}
+.ma-briefing-actions-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin: 8px 0 6px;
+}
+.ma-briefing-actions {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.ma-briefing-action {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--navy);
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.ma-briefing-action:hover { background: var(--navy); border-color: var(--navy); color: #fff; }
+.ma-briefing-action .ma-action-icon { font-size: 0.85rem; line-height: 1; }
+
 /* Quick prompts */
 #ma-quick {
   display: flex;
@@ -455,6 +501,141 @@
     </div>
   </div>
 
+  <!-- BUSINESS PULSE — server-rendered weekly snapshot across revenue, comms, audience, ops -->
+  <% if (typeof pulse !== 'undefined' && pulse) { %>
+  <div class="card" style="margin-top:18px;padding:14px 18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="color:var(--gold);font-size:1.05rem;">●</span>
+        <span style="font-size:0.78rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);">Business Pulse</span>
+        <span style="font-size:0.7rem;color:var(--slate);">past 7 days</span>
+      </div>
+      <a class="btn btn-ghost btn-sm" href="/admin/analytics" style="font-size:0.65rem;">Full report ↗</a>
+    </div>
+
+    <div class="pulse-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+      <!-- Revenue -->
+      <div style="padding:12px;background:rgba(28,43,74,0.04);border:1px solid rgba(28,43,74,0.08);border-radius:5px;">
+        <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Revenue</div>
+        <div style="font-size:1.45rem;font-weight:700;color:var(--navy);">$<%= (pulse.revenue.revenuePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %></div>
+        <div style="font-size:0.65rem;color:var(--slate);margin-top:4px;">
+          <%= pulse.revenue.invoicesPaid %> paid · <%= pulse.revenue.invoicesUnpaid %> unpaid
+          <% if (pulse.revenue.invoicesOverdue) { %>
+            · <span style="color:var(--danger);font-weight:600;"><%= pulse.revenue.invoicesOverdue %> overdue</span>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- Communications -->
+      <div style="padding:12px;background:rgba(28,43,74,0.04);border:1px solid rgba(28,43,74,0.08);border-radius:5px;">
+        <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Communications</div>
+        <div style="font-size:1.45rem;font-weight:700;color:var(--navy);"><%= pulse.email.campaignsSent %></div>
+        <div style="font-size:0.65rem;color:var(--slate);margin-top:4px;">
+          campaigns sent ·
+          <%= pulse.email.emailOpens %> opens ·
+          <%= pulse.email.emailClicks %> clicks
+          <% if (pulse.email.emailInbound) { %> · <%= pulse.email.emailInbound %> inbound<% } %>
+        </div>
+      </div>
+
+      <!-- Audience -->
+      <div style="padding:12px;background:rgba(28,43,74,0.04);border:1px solid rgba(28,43,74,0.08);border-radius:5px;">
+        <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Audience</div>
+        <div style="font-size:1.45rem;font-weight:700;color:var(--navy);">+<%= pulse.audience.contactsNew + pulse.audience.clientsNew %></div>
+        <div style="font-size:0.65rem;color:var(--slate);margin-top:4px;">
+          <%= pulse.audience.clientsNew %> clients ·
+          <%= pulse.audience.contactsNew %> contacts ·
+          <%= pulse.audience.contactsTotal %> total list
+        </div>
+      </div>
+
+      <!-- Operations -->
+      <div style="padding:12px;background:rgba(28,43,74,0.04);border:1px solid rgba(28,43,74,0.08);border-radius:5px;">
+        <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;">Operations</div>
+        <div style="font-size:1.45rem;font-weight:700;color:var(--navy);"><%= pulse.operations.inquiriesNew + pulse.operations.meetingsNew %></div>
+        <div style="font-size:0.65rem;color:var(--slate);margin-top:4px;">
+          <%= pulse.operations.inquiriesNew %> inquiries ·
+          <%= pulse.operations.meetingsNew %> meetings
+          <% if (pulse.operations.ticketsOpen) { %>
+            · <span style="color:var(--gold);font-weight:600;"><%= pulse.operations.ticketsOpen %> open tickets</span>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </div>
+  <% } %>
+
+  <!-- RECENT ACTIVITY — unified feed across invoices/clients/inquiries/tickets/meetings/campaigns -->
+  <% if (typeof activity !== 'undefined' && activity && activity.length) { %>
+  <div class="card" style="margin-top:18px;padding:14px 18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="color:var(--gold);font-size:1.05rem;">⟳</span>
+        <span style="font-size:0.78rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);">Recent Activity</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;">
+      <% activity.forEach((item, idx) => {
+           const kindColors = {
+             'invoice-new':  '#1C2B4A',
+             'invoice-paid': '#15803D',
+             'client':       '#7C3AED',
+             'inquiry':      '#C5A55A',
+             'ticket':       '#B91C1C',
+             'meeting':      '#0E7490',
+             'campaign':     '#9333EA',
+           };
+           const kindLabels = {
+             'invoice-new':  'INVOICE',
+             'invoice-paid': 'PAID',
+             'client':       'CLIENT',
+             'inquiry':      'INQUIRY',
+             'ticket':       'TICKET',
+             'meeting':      'MEETING',
+             'campaign':     'CAMPAIGN',
+           };
+           const color = kindColors[item.kind] || 'var(--slate)';
+           const tag   = kindLabels[item.kind] || item.kind.toUpperCase();
+           const when  = new Date(item.ts);
+           const ago   = (function (d) {
+             const s = Math.max(1, Math.floor((Date.now() - d.getTime()) / 1000));
+             if (s < 60)    return s + 's ago';
+             if (s < 3600)  return Math.floor(s / 60) + 'm ago';
+             if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+             return Math.floor(s / 86400) + 'd ago';
+           })(when);
+      %>
+      <a href="<%= item.url %>" style="display:grid;grid-template-columns:80px 1fr auto;gap:10px;align-items:center;padding:8px 4px;border-bottom:<%= idx === activity.length - 1 ? '0' : '1px solid rgba(0,0,0,0.05)' %>;text-decoration:none;color:inherit;">
+        <span style="font-size:0.58rem;font-weight:700;letter-spacing:0.1em;color:<%= color %>;background:<%= color %>14;padding:3px 6px;border-radius:3px;text-align:center;"><%= tag %></span>
+        <div style="min-width:0;">
+          <div style="font-size:0.82rem;font-weight:500;color:var(--on-surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= item.label %></div>
+          <% if (item.detail) { %><div style="font-size:0.68rem;color:var(--slate);margin-top:1px;"><%= item.detail %></div><% } %>
+        </div>
+        <span style="font-size:0.65rem;color:var(--slate);white-space:nowrap;"><%= ago %></span>
+      </a>
+      <% }); %>
+    </div>
+  </div>
+  <% } %>
+
+  <!-- AGENT DIGEST — what every sub-agent has done in this range -->
+  <div class="card" id="agent-digest-card" style="margin-top:18px;padding:14px 18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="color:var(--gold);font-size:1.05rem;">✦</span>
+        <span style="font-size:0.78rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);">Agent Activity</span>
+        <span id="digest-summary" style="font-size:0.72rem;color:var(--slate);"></span>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-ghost btn-sm" id="digest-range-day"  onclick="loadDigest('day')"  style="font-size:0.65rem;">Today</button>
+        <button class="btn btn-ghost btn-sm" id="digest-range-week" onclick="loadDigest('week')" style="font-size:0.65rem;">Week</button>
+        <a class="btn btn-ghost btn-sm" href="/admin/analytics" style="font-size:0.65rem;">Analytics ↗</a>
+      </div>
+    </div>
+    <div id="digest-alerts" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+    <div id="digest-agents" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;"></div>
+  </div>
+
   <!-- MASTER AGENT -->
   <div class="card agent-card">
     <div class="agent-header">
@@ -473,15 +654,9 @@
     <div id="ma-messages">
       <div class="ma-msg ma-msg-agent">
         <div class="ma-bubble" id="ma-greeting">
-          <%= agentName %> is ready — what would you like to create or update today?
+          <span class="ma-briefing-loading" style="color:var(--slate);font-style:italic;">Pulling today's briefing…</span>
         </div>
       </div>
-    </div>
-
-    <!-- Quick prompts — cycling suggestions -->
-    <div id="ma-quick-wrap" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
-      <div id="ma-quick" style="display:flex;flex-wrap:wrap;gap:7px;flex:1;"></div>
-      <button class="btn btn-ghost btn-sm" id="ma-cycle-btn" onclick="maCycleSuggestions()" title="New suggestions" style="flex-shrink:0;padding:6px 10px;font-size:0.85rem;line-height:1;">&#x267B;</button>
     </div>
 
     <!-- Input -->
@@ -569,7 +744,57 @@
 
 <script>
 const AGENT_NAME = '<%= agentName.replace(/\\/g,"\\\\").replace(/'/g,"\\'") %>';
-const DEPT_COLORS = { blog: '#2E4270', copy: '#1C2B4A', section: '#5B3E2B', page: '#2E5B3E', design: '#6B3FA0', asset: '#C9A848', email: '#D4563A', invoice: '#2B7A5B', outreach: '#4A6FA5', navigate: '#555' };
+const DEPT_COLORS = { blog: '#2E4270', copy: '#1C2B4A', section: '#5B3E2B', page: '#2E5B3E', design: '#6B3FA0', asset: '#C9A848', email: '#D4563A', invoice: '#2B7A5B', outreach: '#4A6FA5', research: '#3A7B8C', onboarding: '#8C5A3A', navigate: '#555' };
+
+// ── Cross-agent digest ──────────────────────────────────────────────────────
+async function loadDigest(range = 'day') {
+  document.getElementById('digest-range-day').classList.toggle('btn-navy',  range === 'day');
+  document.getElementById('digest-range-day').classList.toggle('btn-ghost', range !== 'day');
+  document.getElementById('digest-range-week').classList.toggle('btn-navy',  range === 'week');
+  document.getElementById('digest-range-week').classList.toggle('btn-ghost', range !== 'week');
+
+  try {
+    const r = await fetch('/admin/master-agent/digest?range=' + range);
+    if (!r.ok) return;
+    const d = await r.json();
+
+    const total = (d.agents || []).reduce((s, a) => s + (a.count || 0), 0);
+    document.getElementById('digest-summary').textContent =
+      total + ' new item' + (total === 1 ? '' : 's') + ' this ' + (range === 'week' ? 'week' : 'day');
+
+    const alertsEl = document.getElementById('digest-alerts');
+    alertsEl.innerHTML = '';
+    if (!d.alerts?.length) {
+      alertsEl.innerHTML = '<span style="font-size:0.7rem;color:var(--slate);">No alerts — all clear.</span>';
+    } else {
+      for (const a of d.alerts) {
+        const color = a.level === 'danger' ? '#B91C1C' : a.level === 'warn' ? '#C5A55A' : '#1C2B4A';
+        const bg    = a.level === 'danger' ? 'rgba(185,28,28,0.08)' : a.level === 'warn' ? 'rgba(197,165,90,0.10)' : 'rgba(28,43,74,0.06)';
+        const link = document.createElement('a');
+        link.href = a.url || '#';
+        link.textContent = a.label;
+        link.style.cssText = `display:inline-flex;align-items:center;padding:5px 10px;background:${bg};color:${color};border:1px solid ${color}33;border-radius:4px;font-size:0.7rem;font-weight:600;text-decoration:none;`;
+        alertsEl.appendChild(link);
+      }
+    }
+
+    const agentsEl = document.getElementById('digest-agents');
+    agentsEl.innerHTML = '';
+    for (const a of (d.agents || [])) {
+      const tile = document.createElement('a');
+      tile.href = a.url;
+      const isActive = (a.count || 0) > 0;
+      tile.style.cssText = `display:flex;flex-direction:column;gap:2px;padding:9px 11px;background:${isActive ? 'rgba(201,168,72,0.08)' : 'var(--bg)'};border:1px solid ${isActive ? 'var(--gold)' : 'rgba(0,0,0,0.06)'};border-radius:4px;text-decoration:none;color:inherit;`;
+      tile.innerHTML =
+        '<span style="font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);">' + a.label + '</span>' +
+        '<span style="font-size:1.15rem;font-weight:700;color:' + (isActive ? 'var(--gold)' : 'var(--on-surface)') + ';">' + (a.count || 0) + '</span>';
+      agentsEl.appendChild(tile);
+    }
+  } catch (e) {
+    console.warn('[digest] load failed:', e);
+  }
+}
+document.addEventListener('DOMContentLoaded', () => loadDigest('day'));
 
 // Conversation history (multi-turn)
 let maHistory = [];
@@ -579,57 +804,59 @@ let maExecuting = false;
 // Workflow state
 let wf = { title: '', tasks: [], running: false, runAllMode: false };
 
-// ── Cycling Suggestions Pool ──────────────────────────────────────────────────
-const SUGGESTION_POOL = [
-  // Single actions — Copy
-  'Rewrite the hero section with a fresh compelling headline',
-  'Update our services descriptions with current offerings',
-  'Refresh the about section with a new brand story',
-  // Single actions — Blog
-  'Write a blog post about local SEO tips for local businesses',
-  'Write a post about social media trends for small businesses',
-  'Draft a blog about content marketing strategies',
-  // Single actions — Sections
-  'Create an FAQ section about our services and pricing',
-  'Add a CTA banner for free consultation bookings',
-  'Add a feature cards section showcasing key services',
-  // Single actions — Pages
-  'Create a landing page for our SEO services',
-  'Build a content page about our marketing process',
-  // Single actions — Design
-  'Switch to a modern dark blue and coral color palette',
-  'Try a warm earthy tone with serif headings',
-  'Toggle blog section visibility on the homepage',
-  // Single actions — Assets
-  'Design an Instagram post promoting our services',
-  'Create a Facebook cover with our brand colors',
-  'Make a YouTube thumbnail for a marketing tips video',
-  // Single actions — Email Marketing
-  'Draft a monthly newsletter for our subscribers',
-  'Create a re-engagement campaign for inactive leads',
-  'Write a promotional email blast for a seasonal offer',
-  'Draft a welcome email for new subscribers',
-  // Single actions — Invoicing
-  'Create a quick invoice for web design services',
-  'Draft an invoice for a monthly SEO retainer',
-  // Single actions — Client Outreach
-  'Draft a project kickoff email for a new client',
-  'Write a follow-up email checking in on deliverables',
-  'Draft a proposal email for social media management',
-  'Email a client with a project status update',
-  // Navigation
-  'Go to email marketing',
-  'Open the meetings page',
-  'Show me the client list',
-  'Open bookkeeping',
-  'Go to the asset center',
-  'Open the blog editor',
-  // Workflows
-  'Build a spring promotion — update hero, blog, CTA, and social graphic',
-  'Launch a new service — copy, blog, landing page, and email blast',
-  'Client onboarding — welcome email, invoice, and kickoff email',
-];
-let _suggestionIdx = 0;
+// ── Welcome briefing — replaces the static greeting with an LLM-written
+// summary plus bullets and suggested-action chips that link straight into
+// the relevant admin module or pre-fill the chat input.
+function _escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function _renderBriefingActions(actions) {
+  if (!Array.isArray(actions) || !actions.length) return '';
+  const chips = actions.map((a, i) => {
+    const icon = a.icon ? `<span class="ma-action-icon">${_escHtml(a.icon)}</span>` : '';
+    const label = _escHtml(a.label || 'Action');
+    if (a.href) {
+      return `<a class="ma-briefing-action" href="${_escHtml(a.href)}">${icon}${label}</a>`;
+    }
+    if (a.prompt) {
+      return `<button type="button" class="ma-briefing-action" data-prompt="${_escHtml(a.prompt)}" onclick="maRunBriefingPrompt(this)">${icon}${label}</button>`;
+    }
+    return '';
+  }).join('');
+  return `<div class="ma-briefing-actions-label">Suggested next</div><div class="ma-briefing-actions">${chips}</div>`;
+}
+function maRunBriefingPrompt(btn) {
+  const prompt = btn?.dataset?.prompt;
+  if (!prompt) return;
+  const input = document.getElementById('ma-input');
+  if (!input) return;
+  input.value = prompt;
+  input.focus();
+  if (/\s$/.test(prompt)) return;       // ends with space → user fills in topic
+  maSend();
+}
+async function loadBriefing() {
+  const el = document.getElementById('ma-greeting');
+  if (!el) return;
+  try {
+    const r = await fetch('/admin/master-agent/briefing');
+    if (!r.ok) throw new Error('briefing http ' + r.status);
+    const data = await r.json();
+    const briefingText = data?.briefing || (AGENT_NAME + ' is ready — what would you like to work on?');
+    const bullets = Array.isArray(data?.bullets) ? data.bullets : [];
+    const bulletsHtml = bullets.length
+      ? `<ul class="ma-briefing-bullets">${bullets.map(b => `<li>${_escHtml(b)}</li>`).join('')}</ul>`
+      : '';
+    const actionsHtml = _renderBriefingActions(data?.actions);
+    el.classList.remove('ma-briefing-loading');
+    el.innerHTML = `<p class="ma-briefing-text">${_escHtml(briefingText)}</p>${bulletsHtml}${actionsHtml}`;
+  } catch (e) {
+    console.warn('[briefing] load failed:', e);
+    el.classList.remove('ma-briefing-loading');
+    el.textContent = AGENT_NAME + ' is ready — what would you like to work on?';
+  }
+}
+document.addEventListener('DOMContentLoaded', loadBriefing);
 
 // ── TTS / STT ─────────────────────────────────────────────────────────────────
 let _maVoice = 'lessac';
@@ -1167,20 +1394,6 @@ function maShowResult(data) {
   execBtn.disabled = false;
   editorBtn.textContent = data.action?.label || 'Open in Editor';
   res.style.display = 'block';
-
-  // Update quick chips with contextual follow-up suggestions
-  const quick = document.getElementById('ma-quick');
-  quick.innerHTML = '';
-  if (Array.isArray(data.suggestions) && data.suggestions.length) {
-    data.suggestions.forEach(s => {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-ghost btn-sm ma-quick-btn';
-      btn.textContent = s;
-      btn.onclick = () => maQuickSend(s);
-      quick.appendChild(btn);
-    });
-    document.getElementById('ma-quick-wrap').style.display = 'flex';
-  }
 }
 
 // ── Apply Now ─────────────────────────────────────────────────────────────────
@@ -1233,67 +1446,6 @@ function maOpenEditor() {
   try { sessionStorage.setItem('slab_agent_fill', JSON.stringify(maLastResult)); } catch {}
   window.location.href = maLastResult.action?.url || '/admin';
 }
-
-// ── Cycling Suggestions ───────────────────────────────────────────────────────
-let _cycleSpinDeg = 0;
-
-function _renderChips(picks) {
-  const quick = document.getElementById('ma-quick');
-  quick.innerHTML = '';
-  picks.forEach((s, idx) => {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-ghost btn-sm ma-quick-btn ma-chip-enter';
-    const label = s.length <= 40 ? s : (s.match(/^[^—,]+/)?.[0]?.trim() || s.slice(0, 35)) + '…';
-    btn.textContent = label;
-    btn.title = s;
-    btn.onclick = () => maQuickSend(s);
-    quick.appendChild(btn);
-    setTimeout(() => btn.classList.replace('ma-chip-enter', 'ma-chip-visible'), 40 + idx * 70);
-  });
-  document.getElementById('ma-quick-wrap').style.display = 'flex';
-}
-
-async function maCycleSuggestions() {
-  const quick = document.getElementById('ma-quick');
-
-  // Fade out old chips
-  const oldBtns = quick.querySelectorAll('.ma-quick-btn');
-  oldBtns.forEach(b => { b.classList.remove('ma-chip-visible'); b.classList.add('ma-chip-enter'); });
-
-  // Spin the recycle icon
-  _cycleSpinDeg += 360;
-  const cycleBtn = document.getElementById('ma-cycle-btn');
-  if (cycleBtn) cycleBtn.style.transform = `rotate(${_cycleSpinDeg}deg)`;
-
-  const delay = oldBtns.length ? 180 : 0;
-
-  // Try server first for fresh randoms, fall back to local pool
-  let picks;
-  try {
-    const r = await fetch('/admin/master-agent/suggestions');
-    const data = await r.json();
-    if (data.suggestions?.length) picks = data.suggestions;
-  } catch { /* fall back to local */ }
-
-  if (!picks) {
-    picks = [];
-    for (let i = 0; i < 4; i++) {
-      picks.push(SUGGESTION_POOL[(_suggestionIdx + i) % SUGGESTION_POOL.length]);
-    }
-    _suggestionIdx = (_suggestionIdx + 4) % SUGGESTION_POOL.length;
-  }
-
-  setTimeout(() => _renderChips(picks), delay);
-}
-
-// Shuffle pool on load so each session feels fresh
-(function shufflePool() {
-  for (let i = SUGGESTION_POOL.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [SUGGESTION_POOL[i], SUGGESTION_POOL[j]] = [SUGGESTION_POOL[j], SUGGESTION_POOL[i]];
-  }
-  maCycleSuggestions();
-})();
 
 // ── Enter key ────────────────────────────────────────────────────────────────
 document.getElementById('ma-input').addEventListener('keydown', e => {
@@ -1430,11 +1582,10 @@ document.getElementById('ma-input').addEventListener('keydown', e => {
       }
     },
     {
-      targetSel: '#ma-quick',
-      targetSel2: '.ma-input-row',
+      targetSel: '.ma-input-row',
       shape: 'rect', pad: 10,
       label: 'Step 4 of 5',
-      msg: 'Choose a <strong>preset suggestion</strong> to get started quickly, or type any request in the chat bar. Your agent works best with clear, specific instructions.',
+      msg: 'Type any request in the chat bar — the dashboard agent will plan the workflow across blog, copy, design, invoices, and more. Each section also has its own focused agent on its admin page.',
       onNext() {}
     },
     {
@@ -1641,7 +1792,7 @@ document.getElementById('ma-input').addEventListener('keydown', e => {
       </label>
       <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#1a1a1a; border:1px solid #333; border-radius:6px; cursor:pointer; transition:border 0.2s;">
         <input type="radio" name="goPlan" value="annual" style="accent-color:#c9a848;">
-        <div><div style="font-size:14px; font-weight:500; color:#fff;">Annual — $360/yr</div><div style="font-size:11px; color:#737373;">Save 40% ($30/mo)</div></div>
+        <div><div style="font-size:14px; font-weight:500; color:#fff;">Annual — $300/yr</div><div style="font-size:11px; color:#737373;">Save 50% ($25/mo)</div></div>
       </label>
       <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#1a1a1a; border:1px solid #333; border-radius:6px; cursor:pointer; transition:border 0.2s;">
         <input type="radio" name="goPlan" value="lifetime" style="accent-color:#c9a848;">

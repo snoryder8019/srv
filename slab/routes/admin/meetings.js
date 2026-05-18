@@ -1,9 +1,12 @@
 import express from 'express';
 import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 import { ObjectId } from 'mongodb';
-import { getDb } from '../../plugins/mongo.js';
+import { getDb, getSlabDb } from '../../plugins/mongo.js';
 import { config } from '../../config/config.js';
 import { sendClientEmail } from '../../plugins/mailer.js';
+import { s3Client, BUCKET } from '../../plugins/s3.js';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 
 const router = express.Router();
 
@@ -82,22 +85,42 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Helper: parse a datetime-local string ("YYYY-MM-DDTHH:mm") into a Date, or null.
+function parseScheduledAt(raw) {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Helper: clamp duration in minutes — null if blank, otherwise 1..1440 (24h).
+function parseDurationMinutes(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(n, 1440);
+}
+
 // POST /admin/meetings — create a new meeting
 router.post('/', async (req, res) => {
   try {
     const db = req.db;
     const { title, expiresInHours, maxUses, tagClients, tagUsers,
+            scheduledAt, durationMinutes,
             consentRecording, consentTranscription, consentCustomText } = req.body;
     const token = crypto.randomBytes(24).toString('hex');
     const now = new Date();
     const expHours = parseInt(expiresInHours) || 24;
     const max = maxUses ? parseInt(maxUses) : null;
+    const scheduled = parseScheduledAt(scheduledAt);
+    const duration = parseDurationMinutes(durationMinutes);
 
     await db.collection('meetings').insertOne({
       title: title || 'Meeting',
       token,
       createdBy: req.adminUser.email,
       createdAt: now,
+      scheduledAt: scheduled,
+      durationMinutes: duration,
       expiresAt: new Date(now.getTime() + expHours * 60 * 60 * 1000),
       maxUses: max,
       useCount: 0,
@@ -120,6 +143,25 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error('[meetings] create error:', err);
     res.status(500).send('Error creating meeting');
+  }
+});
+
+// PUT /admin/meetings/:id/schedule — update scheduledAt + durationMinutes
+router.put('/:id/schedule', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const { scheduledAt, durationMinutes } = req.body || {};
+    await db.collection('meetings').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: {
+          scheduledAt: parseScheduledAt(scheduledAt),
+          durationMinutes: parseDurationMinutes(durationMinutes),
+        } }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[meetings] schedule update error:', err);
+    res.status(500).json({ error: 'Failed to update schedule' });
   }
 });
 
@@ -262,21 +304,198 @@ router.post('/booking', async (req, res) => {
   }
 });
 
-// POST /admin/meetings/booking/:id/status — update a booking status
+// Format a Date as a UTC iCalendar timestamp (YYYYMMDDTHHMMSSZ)
+function icsDate(d) {
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+// Build an .ics REQUEST body for a confirmed booking.
+function buildIcs({ uid, start, end, title, description, location, organizerName, organizerEmail, attendeeName, attendeeEmail }) {
+  const esc = (s) => String(s || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\r?\n/g, '\\n');
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//slab//meeting//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:REQUEST',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${icsDate(new Date())}`,
+    `DTSTART:${icsDate(start)}`,
+    `DTEND:${icsDate(end)}`,
+    `SUMMARY:${esc(title)}`,
+    `DESCRIPTION:${esc(description)}`,
+    location ? `LOCATION:${esc(location)}` : null,
+    organizerEmail ? `ORGANIZER;CN=${esc(organizerName || organizerEmail)}:mailto:${organizerEmail}` : null,
+    attendeeEmail ? `ATTENDEE;CN=${esc(attendeeName || attendeeEmail)};RSVP=TRUE:mailto:${attendeeEmail}` : null,
+    'STATUS:CONFIRMED',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n');
+}
+
+// POST /admin/meetings/booking/:id/status — update a booking status.
+// When status transitions to "confirmed", create a Meeting record (with join
+// token) and email the requestor a confirmation + .ics calendar attachment.
 router.post('/booking/:id/status', express.json(), async (req, res) => {
   try {
-    const { ObjectId } = await import('mongodb');
     const db = req.db;
     const { status } = req.body;
     if (!['confirmed', 'cancelled', 'completed', 'pending'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
-    await db.collection('bookings').updateOne(
-      { _id: new ObjectId(req.params.id) },
-      { $set: { status, updatedAt: new Date() } },
-    );
-    res.json({ ok: true });
+
+    const bookingId = new ObjectId(req.params.id);
+    const booking = await db.collection('bookings').findOne({ _id: bookingId });
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    const update = { status, updatedAt: new Date() };
+    let meetingDoc = null;
+    let inviteSent = false;
+    let inviteError = null;
+
+    // ── Confirm path: create meeting + invite ──────────────────────────────
+    if (status === 'confirmed' && booking.status !== 'confirmed') {
+      const startAt = booking.startAt instanceof Date ? booking.startAt : new Date(booking.startAt);
+      const endAt   = booking.endAt   instanceof Date ? booking.endAt   : (booking.endAt ? new Date(booking.endAt) : new Date(startAt.getTime() + (booking.duration || 30) * 60000));
+      const durationMinutes = Math.max(1, Math.round((endAt - startAt) / 60000));
+      const brandName = req.tenant?.brand?.name || req.tenant?.domain || 'Meeting';
+      const domain    = req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN;
+
+      // Reuse an existing meeting row tied to this booking if present (idempotent re-confirm).
+      meetingDoc = await db.collection('meetings').findOne({ bookingId });
+      if (!meetingDoc) {
+        const token = crypto.randomBytes(24).toString('hex');
+        const now = new Date();
+        // Expire the join link 24h after the scheduled end so the room is reachable
+        // for late arrivals but doesn't linger forever.
+        const expiresAt = new Date(endAt.getTime() + 24 * 60 * 60 * 1000);
+        const titleBase = booking.company ? `${booking.name} (${booking.company})` : booking.name;
+        const newDoc = {
+          title: `Booking — ${titleBase}`,
+          token,
+          createdBy: req.adminUser?.email || 'system',
+          createdAt: now,
+          scheduledAt: startAt,
+          durationMinutes,
+          expiresAt,
+          maxUses: null,
+          useCount: 0,
+          status: 'active',
+          participants: [],
+          notes: [],
+          assets: [],
+          tags: { clients: [], users: [] },
+          consent: { recordingNotice: false, transcriptionDisclaimer: false, customText: null },
+          bookingId,
+          requestor: {
+            name: booking.name,
+            email: booking.email,
+            phone: booking.phone || '',
+            company: booking.company || '',
+          },
+        };
+        const insertResult = await db.collection('meetings').insertOne(newDoc);
+        meetingDoc = { _id: insertResult.insertedId, ...newDoc };
+      }
+
+      update.meetingId = meetingDoc._id;
+      update.meetingToken = meetingDoc.token;
+      update.confirmedAt = new Date();
+
+      // ── Send invite email with .ics attachment ─────────────────────────
+      try {
+        const tenantRecord = req.tenant?._id
+          ? await getSlabDb().collection('tenants').findOne({ _id: req.tenant._id })
+          : null;
+        const zohoUser = tenantRecord?.secrets?.zohoUser || tenantRecord?.public?.zohoUser;
+        const zohoPass = tenantRecord?.secrets?.zohoPass;
+
+        if (!zohoUser || !zohoPass) {
+          inviteError = 'Email not configured — add Zoho credentials in Settings before confirming bookings.';
+        } else {
+          const meetingUrl = `${domain}/meeting/${meetingDoc.token}`;
+          const dateStr = startAt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+          const timeStr = startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' });
+
+          const description = `Your meeting with ${brandName} is confirmed. Join: ${meetingUrl}`;
+          const ics = buildIcs({
+            uid: `${meetingDoc._id}@${req.tenant?.domain || 'slab'}`,
+            start: startAt,
+            end: endAt,
+            title: `${brandName} — Meeting with ${booking.name}`,
+            description,
+            location: meetingUrl,
+            organizerName: brandName,
+            organizerEmail: zohoUser,
+            attendeeName: booking.name,
+            attendeeEmail: booking.email,
+          });
+
+          const transporter = nodemailer.createTransport({
+            host: 'smtppro.zoho.com', port: 465, secure: true,
+            authMethod: 'LOGIN',
+            auth: { user: zohoUser, pass: zohoPass },
+          });
+
+          const html = `
+<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#F5F3EF;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <div style="max-width:540px;margin:0 auto;padding:40px 24px;">
+    <div style="background:#1C2B4A;border-radius:4px;padding:36px 32px;">
+      <p style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:rgba(245,243,239,0.55);margin:0 0 6px;">Meeting Confirmed</p>
+      <h1 style="font-size:22px;font-weight:300;color:#C9A848;margin:0 0 24px;">${brandName}</h1>
+      <p style="font-size:15px;color:#F5F3EF;line-height:1.6;margin:0 0 18px;">Hi ${booking.name.split(' ')[0] || 'there'}, your meeting has been confirmed.</p>
+      <table style="width:100%;border-collapse:collapse;background:rgba(245,243,239,0.04);border-radius:3px;margin-bottom:24px;">
+        <tr><td style="padding:10px 14px;color:rgba(245,243,239,0.55);font-size:12px;width:90px;">Date</td><td style="padding:10px 14px;color:#F5F3EF;font-size:14px;font-weight:600;">${dateStr}</td></tr>
+        <tr><td style="padding:10px 14px;color:rgba(245,243,239,0.55);font-size:12px;">Time</td><td style="padding:10px 14px;color:#F5F3EF;font-size:14px;">${timeStr} · ${durationMinutes} min</td></tr>
+      </table>
+      <p style="margin:0 0 22px;text-align:center;">
+        <a href="${meetingUrl}" style="display:inline-block;padding:14px 40px;background:#C9A848;color:#0F1B30;text-decoration:none;border-radius:2px;font-size:13px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;">Join Meeting</a>
+      </p>
+      <p style="font-size:12px;color:rgba(245,243,239,0.5);margin:0 0 6px;">Link (save this):</p>
+      <p style="font-size:12px;color:#C9A848;word-break:break-all;margin:0 0 18px;"><a href="${meetingUrl}" style="color:#C9A848;text-decoration:underline;">${meetingUrl}</a></p>
+      <p style="font-size:12px;color:rgba(245,243,239,0.5);margin:18px 0 0;">A calendar invite is attached — open it to add this meeting to Google, Apple, or Outlook calendar.</p>
+    </div>
+    <p style="text-align:center;font-size:11px;color:#6B7380;margin-top:16px;">Replies to this email reach ${brandName}.</p>
+  </div>
+</body></html>`;
+
+          await transporter.sendMail({
+            from: `"${brandName}" <${zohoUser}>`,
+            to: booking.email,
+            replyTo: zohoUser,
+            subject: `Confirmed: ${brandName} on ${dateStr}`,
+            html,
+            alternatives: [{
+              contentType: 'text/calendar; method=REQUEST; charset=UTF-8',
+              content: ics,
+            }],
+            attachments: [{
+              filename: 'meeting.ics',
+              content: ics,
+              contentType: 'text/calendar; method=REQUEST; charset=UTF-8',
+            }],
+          });
+          inviteSent = true;
+        }
+      } catch (mailErr) {
+        console.error('[meetings/booking] invite send error:', mailErr);
+        inviteError = mailErr.message || 'Email send failed';
+      }
+    }
+
+    await db.collection('bookings').updateOne({ _id: bookingId }, { $set: update });
+
+    res.json({
+      ok: true,
+      meetingId: meetingDoc?._id || null,
+      meetingToken: meetingDoc?.token || null,
+      inviteSent,
+      inviteError,
+    });
   } catch (err) {
+    console.error('[meetings/booking] status error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -502,6 +721,47 @@ router.post('/:id/agreements', express.json(), async (req, res) => {
   } catch (err) {
     console.error('[meetings] send agreement error:', err);
     res.status(500).json({ error: 'Failed to send agreement' });
+  }
+});
+
+
+// GET /admin/meetings/:id/assets/:idx/download
+// Stream a meeting asset from S3 with Content-Disposition: attachment so the
+// browser actually downloads it. Direct <a download href="s3-url"> doesn't work
+// because the `download` attribute is ignored on cross-origin links — clicking
+// it just opens the file in a new tab.
+router.get('/:id/assets/:idx/download', async (req, res) => {
+  try {
+    const db = req.db;
+    const meeting = await db.collection('meetings').findOne({ _id: new ObjectId(req.params.id) });
+    if (!meeting) return res.status(404).send('Meeting not found');
+
+    const idx = parseInt(req.params.idx, 10);
+    const assets = Array.isArray(meeting.assets) ? meeting.assets : [];
+    const asset = assets[idx];
+    if (!asset || !asset.bucketKey) return res.status(404).send('Asset not found');
+
+    const s3Res = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET, Key: asset.bucketKey }));
+
+    const filename = (asset.name || asset.bucketKey.split('/').pop() || 'download')
+      .replace(/[\r\n"]/g, '_');
+    const safeAscii = filename.replace(/[^\x20-\x7E]/g, '_');
+    res.setHeader('Content-Type', asset.type || s3Res.ContentType || 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${safeAscii}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
+    if (s3Res.ContentLength) res.setHeader('Content-Length', String(s3Res.ContentLength));
+
+    s3Res.Body.on('error', (err) => {
+      console.error('[meetings] download stream error:', err);
+      if (!res.headersSent) res.status(500).end();
+      else res.destroy(err);
+    });
+    s3Res.Body.pipe(res);
+  } catch (err) {
+    console.error('[meetings] asset download error:', err);
+    if (!res.headersSent) res.status(500).send('Download failed');
   }
 });
 

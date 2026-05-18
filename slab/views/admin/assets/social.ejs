@@ -149,80 +149,107 @@
   }
   .sg-drop-overlay.visible { display: flex; }
 
-  /* ── FLOATING TOOL RAIL (mobile) ── */
-  .sg-fab-rail {
-    display: none; position: fixed; left: 8px; top: 50%; transform: translateY(-50%);
-    z-index: 50; flex-direction: column; gap: 8px;
+  /* ── BOTTOM DOCK (mobile) ── */
+  .sg-bot-dock {
+    display: none; position: fixed; bottom: 0; left: 0; right: 0;
+    z-index: 55; background: var(--surface); border-top: 1px solid var(--border);
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    gap: 4px; align-items: stretch;
+    box-shadow: 0 -2px 16px rgba(15,27,48,0.08);
+    font-family: 'Jost', sans-serif;
   }
-  .sg-fab {
-    width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
-    background: var(--navy); color: var(--surface); font-size: 1rem;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 10px rgba(15,27,48,0.25); transition: all 0.15s;
-    font-family: 'Jost', sans-serif; position: relative;
+  .sg-bd-btn {
+    flex: 1; padding: 8px 4px; border: none; background: transparent;
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--slate); cursor: pointer; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px; border-radius: 4px;
+    transition: all 0.12s; font-family: inherit;
   }
-  .sg-fab:hover, .sg-fab.active { background: var(--gold); color: var(--on-surface); }
-  .sg-fab-label {
-    display: none; position: absolute; left: 52px; top: 50%; transform: translateY(-50%);
-    background: var(--navy); color: var(--surface); padding: 4px 10px; border-radius: 2px;
-    font-size: 0.65rem; font-weight: 600; letter-spacing: 0.06em; white-space: nowrap;
-    pointer-events: none;
+  .sg-bd-btn .ico { font-size: 1.15rem; line-height: 1; }
+  .sg-bd-btn:hover, .sg-bd-btn.active { color: var(--navy); background: rgba(28,43,74,0.06); }
+  .sg-bd-btn.primary {
+    background: var(--gold); color: var(--on-surface);
+    box-shadow: 0 1px 3px rgba(201,168,72,0.4);
   }
-  .sg-fab:hover .sg-fab-label { display: block; }
+  .sg-bd-btn.primary:hover, .sg-bd-btn.primary.active { background: var(--gold); color: var(--on-surface); transform: translateY(-1px); }
 
-  /* ── MOBILE OVERLAY PANEL ── */
-  .sg-mob-overlay {
-    display: none; position: fixed; top: 0; left: 0; width: min(320px, 88vw); height: 100vh;
-    background: var(--surface); z-index: 60; flex-direction: column;
-    box-shadow: 4px 0 24px rgba(15,27,48,0.18);
-    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+  /* ── SHEET BACKDROP ── */
+  .sg-sheet-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 56;
+    background: rgba(15,27,48,0.35); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
   }
-  .sg-mob-overlay.open { display: flex; }
-  .sg-mob-overlay-head {
-    padding: 14px 16px; border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: space-between;
-    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.18em;
-    text-transform: uppercase; color: var(--slate); flex-shrink: 0;
+  .sg-sheet-backdrop.open { display: block; }
+
+  /* ── MOBILE PANEL CLOSE BUTTON ── */
+  .sg-panel-close {
+    display: none; background: none; border: none; cursor: pointer;
+    font-size: 1.5rem; line-height: 1; color: var(--slate); padding: 2px 8px;
+    font-family: 'Jost', sans-serif;
   }
-  .sg-mob-overlay-close {
-    background: none; border: none; font-size: 1.3rem; cursor: pointer;
-    color: var(--slate); padding: 4px; line-height: 1;
-  }
-  .sg-mob-overlay-close:hover { color: var(--on-surface); }
-  .sg-mob-overlay-body { flex: 1; overflow-y: auto; padding: 14px; }
-  .sg-mob-backdrop {
-    display: none; position: fixed; inset: 0; z-index: 55;
-    background: rgba(15,27,48,0.3); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
-  }
-  .sg-mob-backdrop.open { display: block; }
+  .sg-panel-close:hover { color: var(--on-surface); }
 
   /* ── RESPONSIVE ── */
-  @media (max-width: 1280px) { .sg-layout { grid-template-columns: 280px 1fr 280px; } }
-  @media (max-width: 1100px) { .sg-layout { grid-template-columns: 260px 1fr 240px; } }
+  @media (max-width: 1280px) { .sg-layout { grid-template-columns: 300px 1fr 300px; } }
+  @media (max-width: 1100px) { .sg-layout { grid-template-columns: 270px 1fr 260px; } }
   @media (max-width: 820px) {
-    .sg-fab-rail { display: flex; }
+    .sg-bot-dock { display: flex; }
     .sg-layout {
       grid-template-columns: 1fr; grid-template-rows: 1fr;
       height: calc(100vh - 64px); height: calc(100dvh - 64px); overflow: hidden;
     }
-    .sg-panel-left, .sg-panel-right { display: none !important; }
+    /* Left and right panels become bottom-sheets containing the REAL elements (no cloning). */
+    .sg-panel-left, .sg-panel-right {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      width: 100%; height: 78vh; height: 78dvh; max-height: 720px;
+      z-index: 60; transform: translateY(100%);
+      transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+      border: none !important;
+      border-top-left-radius: 16px; border-top-right-radius: 16px;
+      box-shadow: 0 -8px 32px rgba(15,27,48,0.2);
+      background: var(--surface);
+      will-change: transform;
+    }
+    .sg-panel-left.mob-open, .sg-panel-right.mob-open { transform: translateY(0); }
+    .sg-panel-head {
+      padding: 18px 16px 10px; font-size: 0.72rem;
+      position: relative;
+    }
+    .sg-panel-head::before {
+      content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+      width: 40px; height: 4px; background: var(--border); border-radius: 2px;
+    }
+    .sg-panel-close { display: inline-block; }
+    .sg-panel-scroll { padding: 8px 16px 100px; }
+    .sg-sec-head { padding: 12px 0; font-size: 0.7rem; }
+    .sg-sec-body { padding: 12px 0; }
+    .sg-input, .sg-select { font-size: 0.88rem; padding: 9px 10px; }
+    .sg-textarea { font-size: 0.85rem; padding: 9px 10px; min-height: 76px; }
+    .tool-btn { padding: 9px 12px; font-size: 0.74rem; }
+    .sz-grid { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .sz-btn { padding: 10px 6px; font-size: 0.65rem; }
+    .pal-swatch { width: 32px; height: 32px; }
+    .sg-lbl { font-size: 0.65rem; min-width: 52px; }
+    .lp-section { padding: 14px 16px 100px; }
     .sg-canvas-area {
-      display: flex; overflow: auto; padding: 10px 10px 10px 60px;
+      display: flex; overflow: auto;
+      padding: 10px 10px 70px;
       height: 100%; width: 100%; box-sizing: border-box;
     }
-    .sg-canvas-wrap { max-width: calc(100vw - 70px); max-height: calc(100vh - 100px); max-height: calc(100dvh - 100px); }
+    .sg-canvas-wrap {
+      max-width: calc(100vw - 20px);
+      max-height: calc(100vh - 160px); max-height: calc(100dvh - 160px);
+    }
     .sg-canvas-wrap canvas { max-width: 100%; max-height: 100%; height: auto; width: auto; object-fit: contain; }
-    .sg-canvas-info { font-size: 0.6rem; }
+    .sg-canvas-info { font-size: 0.65rem; margin-top: 6px; }
+    .sg-canvas-actions { margin-top: 8px; }
     .topbar-actions .btn { font-size: 0.62rem; padding: 4px 6px; }
   }
   @media (max-width: 520px) {
-    .sg-fab { width: 40px; height: 40px; font-size: 0.9rem; }
-    .sg-fab-rail { left: 6px; gap: 6px; }
-    .sg-canvas-area { padding-left: 52px; padding-right: 6px; }
-    .sg-canvas-wrap { max-width: calc(100vw - 58px); }
-    .sg-mob-overlay { width: min(300px, 92vw); }
-    .sg-mob-overlay-body .sg-input, .sg-mob-overlay-body .sg-select { font-size: 0.82rem; padding: 8px 10px; }
-    .sg-mob-overlay-body .tool-btn { padding: 10px 14px; }
+    .sg-bd-btn { font-size: 0.55rem; padding: 6px 2px; }
+    .sg-bd-btn .ico { font-size: 1rem; }
+    .sg-panel-left, .sg-panel-right { height: 82vh; height: 82dvh; }
+    .sg-canvas-wrap { max-width: calc(100vw - 16px); }
+    .sz-grid { grid-template-columns: 1fr 1fr; }
   }
 </style>
 
@@ -238,36 +265,43 @@
 <div style="padding:0 16px;">
   <%- include('../partials/advisory', { needs: 'ai,s3' }) %>
 </div>
-<!-- Mobile floating tool rail -->
-<div class="sg-fab-rail" id="sgFabRail">
-  <button class="sg-fab" data-fab="size" title="Canvas Size">⊞<span class="sg-fab-label">Size</span></button>
-  <button class="sg-fab" data-fab="layers" title="Layers">◫<span class="sg-fab-label">Layers</span></button>
-  <button class="sg-fab" data-fab="add" title="Add Layer">+<span class="sg-fab-label">Add</span></button>
-  <button class="sg-fab" data-fab="bg" title="Background">◐<span class="sg-fab-label">BG</span></button>
-  <button class="sg-fab" data-fab="palette" title="Colors">◈<span class="sg-fab-label">Colors</span></button>
-  <button class="sg-fab" data-fab="export" title="Export">↓<span class="sg-fab-label">Export</span></button>
-  <button class="sg-fab" data-fab="tools" title="All Tools" style="background:var(--gold);color:var(--on-surface);">≡<span class="sg-fab-label">All Tools</span></button>
+<!-- Mobile bottom dock -->
+<div class="sg-bot-dock">
+  <button class="sg-bd-btn" data-side="left" title="All tools">
+    <span class="ico">☰</span><span>Tools</span>
+  </button>
+  <button class="sg-bd-btn primary" data-side="left" data-section="secAdd" title="Add a layer">
+    <span class="ico">+</span><span>Layer</span>
+  </button>
+  <button class="sg-bd-btn" data-side="left" data-section="secAiBg" title="AI background">
+    <span class="ico">&#10024;</span><span>AI&nbsp;BG</span>
+  </button>
+  <button class="sg-bd-btn" data-side="left" data-section="secPal" title="Colors">
+    <span class="ico">&#9670;</span><span>Color</span>
+  </button>
+  <button class="sg-bd-btn" data-side="right" title="Layers list">
+    <span class="ico">&#9711;</span><span>Layers</span>
+  </button>
+  <button class="sg-bd-btn" data-side="left" data-section="secExport" title="Export">
+    <span class="ico">&#8595;</span><span>Save</span>
+  </button>
 </div>
-<div class="sg-mob-backdrop" id="sgMobBackdrop"></div>
-<div class="sg-mob-overlay" id="sgMobOverlay">
-  <div class="sg-mob-overlay-head">
-    <span id="sgMobOverlayTitle">Tools</span>
-    <button class="sg-mob-overlay-close" id="sgMobOverlayClose">&times;</button>
-  </div>
-  <div class="sg-mob-overlay-body" id="sgMobOverlayBody"></div>
-</div>
+<div class="sg-sheet-backdrop" id="sgSheetBackdrop"></div>
 
 <div class="sg-layout">
 
   <!-- ═══ LEFT PANEL ═══ -->
   <div class="sg-panel sg-panel-left" id="sgPanelLeft">
-    <div class="sg-panel-head">Tools</div>
+    <div class="sg-panel-head">
+      <span>Tools</span>
+      <button class="sg-panel-close" data-close="left" title="Close">&times;</button>
+    </div>
     <div class="sg-panel-scroll">
 
       <!-- SIZE -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secSize">Canvas Size <span>▸</span></div>
-        <div class="sg-sec-body collapsed" id="secSize">
+        <div class="sg-sec-head" data-toggle="secSize">Canvas Size <span>▾</span></div>
+        <div class="sg-sec-body" id="secSize">
           <div class="sz-grid" id="sizeGrid">
             <div class="sz-btn active" data-w="1080" data-h="1080" data-name="ig-post">IG Post<br>1:1</div>
             <div class="sz-btn" data-w="1080" data-h="1920" data-name="ig-story">Story<br>9:16</div>
@@ -289,8 +323,8 @@
 
       <!-- ADD LAYERS -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secAdd">Add Layers <span>▸</span></div>
-        <div class="sg-sec-body collapsed" id="secAdd">
+        <div class="sg-sec-head" data-toggle="secAdd">Add Layers <span>▾</span></div>
+        <div class="sg-sec-body" id="secAdd">
           <div class="tool-bar">
             <button class="tool-btn" id="addImageBtn">+ Image</button>
             <button class="tool-btn" id="addLocalBtn">+ Upload</button>
@@ -369,8 +403,8 @@
 
       <!-- PALETTE -->
       <div class="sg-sec">
-        <div class="sg-sec-head" data-toggle="secPal">Color Palette <span>▸</span></div>
-        <div class="sg-sec-body collapsed" id="secPal">
+        <div class="sg-sec-head" data-toggle="secPal">Color Palette <span>▾</span></div>
+        <div class="sg-sec-body" id="secPal">
           <div class="sg-row" style="margin-bottom:4px;">
             <span class="sg-lbl">Preset</span>
             <select class="sg-select" id="palPreset" style="flex:1;">
@@ -498,7 +532,14 @@
 
   <!-- ═══ RIGHT PANEL — LAYERS + PROPS ═══ -->
   <div class="sg-panel sg-panel-right" id="sgPanelRight">
-    <div class="sg-panel-head">Layers <button class="tool-btn" id="layerUpBtn" style="padding:2px 5px;font-size:0.6rem;">&#9650;</button><button class="tool-btn" id="layerDownBtn" style="padding:2px 5px;font-size:0.6rem;">&#9660;</button></div>
+    <div class="sg-panel-head">
+      <span>Layers</span>
+      <span style="display:flex;gap:4px;align-items:center;">
+        <button class="tool-btn" id="layerUpBtn" style="padding:2px 5px;font-size:0.6rem;" title="Move up">&#9650;</button>
+        <button class="tool-btn" id="layerDownBtn" style="padding:2px 5px;font-size:0.6rem;" title="Move down">&#9660;</button>
+        <button class="sg-panel-close" data-close="right" title="Close">&times;</button>
+      </span>
+    </div>
     <div class="sg-panel-scroll" id="layerListWrap">
       <div id="layerList"></div>
     </div>
@@ -516,199 +557,78 @@
 'use strict';
 
 // ═══════════════════════════════════════════
-//  MOBILE FLOATING TOOL RAIL
+//  MOBILE BOTTOM-SHEET PANELS
+//  Slides the REAL left/right panels up over the canvas.
+//  No cloning, no duplicate IDs, no listener re-binding —
+//  the original elements stay in place and keep their handlers.
 // ═══════════════════════════════════════════
-const sgMobOverlay = document.getElementById('sgMobOverlay');
-const sgMobBackdrop = document.getElementById('sgMobBackdrop');
-const sgMobBody = document.getElementById('sgMobOverlayBody');
-const sgMobTitle = document.getElementById('sgMobOverlayTitle');
+const sgPanelLeft   = document.getElementById('sgPanelLeft');
+const sgPanelRight  = document.getElementById('sgPanelRight');
+const sgBackdrop    = document.getElementById('sgSheetBackdrop');
 
-// Map FAB ids to which accordion section(s) to clone into the overlay
-const fabSectionMap = {
-  size:    ['secSize'],
-  add:     ['secAdd'],
-  bg:      ['secBg', 'secAiBg'],
-  palette: ['secPal'],
-  export:  ['secExport'],
-  layers:  '_layers',
-  tools:   '_all',
-};
-const fabTitleMap = {
-  size: 'Canvas Size', add: 'Add Layers', bg: 'Background',
-  palette: 'Colors', export: 'Export', layers: 'Layers', tools: 'All Tools',
-};
-
-function sgMobOpen(fabKey) {
-  if (!sgMobOverlay) return;
-  sgMobTitle.textContent = fabTitleMap[fabKey] || 'Tools';
-  sgMobBody.innerHTML = '';
-
-  const mapping = fabSectionMap[fabKey];
-  if (mapping === '_layers') {
-    // Clone layers panel content
-    const rp = document.getElementById('sgPanelRight');
-    if (rp) sgMobBody.innerHTML = rp.querySelector('.sg-panel-scroll')?.innerHTML || '';
-    const lp = document.getElementById('layerProps');
-    if (lp && lp.style.display !== 'none') sgMobBody.innerHTML += lp.outerHTML;
-  } else if (mapping === '_all') {
-    // Clone entire tools panel
-    const lp = document.getElementById('sgPanelLeft');
-    if (lp) sgMobBody.innerHTML = lp.querySelector('.sg-panel-scroll')?.innerHTML || '';
-  } else if (Array.isArray(mapping)) {
-    mapping.forEach(secId => {
-      const sec = document.getElementById(secId);
-      if (sec) sgMobBody.innerHTML += sec.parentElement.outerHTML;
-    });
-  }
-
-  // If bg overlay was just opened, re-render quick prompt chips into overlay copy
-  if (fabKey === 'bg') {
-    const mobWrap = sgMobBody.querySelector('#sdQuickWrap');
-    if (mobWrap) {
-      // Re-render current chip set into overlay wrap
-      const picks = [];
-      for (let i = 0; i < 4; i++) {
-        picks.push(SD_PROMPT_POOL[(_sdPromptIdx - 4 + i + SD_PROMPT_POOL.length) % SD_PROMPT_POOL.length]);
-      }
-      mobWrap.innerHTML = '';
-      picks.forEach((p) => {
-        const btn = document.createElement('button');
-        btn.className = 'tool-btn sd-quick';
-        btn.style.cssText = 'font-size:0.6rem;padding:3px 6px;';
-        btn.textContent = p.label;
-        btn.addEventListener('click', () => {
-          // Write to all sdPrompt copies
-          document.querySelectorAll('#sdPrompt').forEach(el => el.value = p.prompt);
-          generateSdBackground(p.prompt, document.getElementById('sdNegPrompt').value || 'text, words, letters, watermark, blurry, low quality');
-        });
-        mobWrap.appendChild(btn);
-      });
-    }
-    // Wire cycle button in overlay
-    const mobCycleBtn = sgMobBody.querySelector('#sdCycleBtn');
-    if (mobCycleBtn) {
-      mobCycleBtn.replaceWith(mobCycleBtn.cloneNode(true)); // remove inline onclick
-      const freshCycle = sgMobBody.querySelector('#sdCycleBtn');
-      if (freshCycle) freshCycle.addEventListener('click', () => {
-        window.sdCyclePrompts();
-        // Re-sync overlay chips after cycle
-        setTimeout(() => {
-          const mw = sgMobBody.querySelector('#sdQuickWrap');
-          if (mw) {
-            const picks2 = [];
-            for (let i = 0; i < 4; i++) {
-              picks2.push(SD_PROMPT_POOL[(_sdPromptIdx - 4 + i + SD_PROMPT_POOL.length) % SD_PROMPT_POOL.length]);
-            }
-            mw.innerHTML = '';
-            picks2.forEach((p) => {
-              const b2 = document.createElement('button');
-              b2.className = 'tool-btn sd-quick';
-              b2.style.cssText = 'font-size:0.6rem;padding:3px 6px;';
-              b2.textContent = p.label;
-              b2.addEventListener('click', () => {
-                document.querySelectorAll('#sdPrompt').forEach(el => el.value = p.prompt);
-                generateSdBackground(p.prompt, document.getElementById('sdNegPrompt').value || 'text, words, letters, watermark, blurry, low quality');
-              });
-              mw.appendChild(b2);
-            });
-          }
-        }, 250);
-      });
-    }
-    // Open the AI Background accordion in overlay by default
-    const aiBgHead = sgMobBody.querySelector('[data-toggle="secAiBg"]');
-    if (aiBgHead) {
-      const body = aiBgHead.nextElementSibling;
-      if (body?.classList.contains('collapsed')) {
-        body.classList.remove('collapsed');
-        const arrow = aiBgHead.querySelector('span');
-        if (arrow) arrow.textContent = '▾';
-      }
+function sgExpandSection(secId) {
+  const body = document.getElementById(secId);
+  if (!body) return;
+  body.classList.remove('collapsed');
+  const head = document.querySelector(`.sg-sec-head[data-toggle="${secId}"]`);
+  if (head) {
+    const arrow = head.querySelector('span:last-child');
+    if (arrow) arrow.textContent = '▾';
+    // Scroll within the scrollable panel container, not the page.
+    const scroller = head.closest('.sg-panel-scroll');
+    if (scroller) {
+      setTimeout(() => {
+        const top = head.offsetTop - scroller.offsetTop - 8;
+        scroller.scrollTo({ top, behavior: 'smooth' });
+      }, 80);
     }
   }
-
-  // Wire up accordion toggles inside overlay
-  sgMobBody.querySelectorAll('.sg-sec-head[data-toggle]').forEach(h => {
-    h.addEventListener('click', () => {
-      const body = h.nextElementSibling;
-      if (body) body.classList.toggle('collapsed');
-      const arrow = h.querySelector('span');
-      if (arrow) arrow.textContent = body?.classList.contains('collapsed') ? '▸' : '▾';
-    });
-  });
-
-  // Event delegation for size preset buttons in overlay
-  sgMobBody.querySelectorAll('.sz-btn').forEach(b => {
-    b.addEventListener('click', () => {
-      sgMobBody.querySelectorAll('.sz-btn').forEach(x => x.classList.remove('active'));
-      document.querySelectorAll('.sz-btn').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      if (typeof setCanvasSize === 'function') setCanvasSize(+b.dataset.w, +b.dataset.h, b.dataset.name);
-    });
-  });
-
-  // Event delegation for tool-btn clicks (add layer, generate, etc.)
-  sgMobBody.querySelectorAll('.tool-btn').forEach(btn => {
-    if (!btn.id) return;
-    if (btn.id === 'genBgBtn') {
-      // Wire generate button directly to overlay's own inputs — avoids duplicate-ID confusion
-      btn.addEventListener('click', function(e) {
-        e.preventDefault();
-        const promptEl = sgMobBody.querySelector('#sdPrompt');
-        const negEl    = sgMobBody.querySelector('#sdNegPrompt');
-        const statusEl = sgMobBody.querySelector('#sdStatus');
-        const prompt   = promptEl?.value?.trim() || '';
-        const neg      = negEl?.value?.trim()    || 'text, words, letters, watermark, blurry, low quality';
-        generateSdBackground(prompt, neg, { btn: this, status: statusEl });
-      });
-    } else if (btn.id === 'clearBgBtn') {
-      btn.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('clearBgBtn').click(); });
-    } else {
-      const orig = document.getElementById(btn.id);
-      if (orig && orig !== btn) btn.addEventListener('click', (e) => { e.preventDefault(); orig.click(); });
-    }
-  });
-
-  // Sync inputs back: listen for changes in overlay and relay to real panel
-  sgMobBody.querySelectorAll('input, select, textarea').forEach(el => {
-    if (!el.id) return;
-    const orig = document.getElementById(el.id);
-    if (!orig || orig === el) return;
-    // Sync current value from original to overlay copy
-    el.value = orig.value;
-    el.addEventListener('input', () => { orig.value = el.value; orig.dispatchEvent(new Event('input', {bubbles:true})); });
-    el.addEventListener('change', () => { orig.value = el.value; orig.dispatchEvent(new Event('change', {bubbles:true})); });
-  });
-  sgMobBody.querySelectorAll('button').forEach(btn => {
-    if (btn.id && !btn.classList.contains('tool-btn')) {
-      const orig = document.getElementById(btn.id);
-      if (orig && orig !== btn) btn.addEventListener('click', () => orig.click());
-    }
-  });
-
-  sgMobOverlay.classList.add('open');
-  sgMobBackdrop.classList.add('open');
-  document.querySelectorAll('.sg-fab').forEach(f => f.classList.toggle('active', f.dataset.fab === fabKey));
 }
 
-function sgMobClose() {
-  if (sgMobOverlay) sgMobOverlay.classList.remove('open');
-  if (sgMobBackdrop) sgMobBackdrop.classList.remove('open');
-  document.querySelectorAll('.sg-fab').forEach(f => f.classList.remove('active'));
+function sgClosePanels() {
+  sgPanelLeft?.classList.remove('mob-open');
+  sgPanelRight?.classList.remove('mob-open');
+  sgBackdrop?.classList.remove('open');
+  document.querySelectorAll('.sg-bd-btn').forEach(b => b.classList.remove('active'));
 }
 
-document.querySelectorAll('.sg-fab').forEach(fab => {
-  fab.addEventListener('click', () => {
-    const key = fab.dataset.fab;
-    if (sgMobOverlay?.classList.contains('open') && fab.classList.contains('active')) {
-      sgMobClose();
-    } else {
-      sgMobOpen(key);
-    }
+function sgOpenPanel(side, sectionId) {
+  const panel = side === 'right' ? sgPanelRight : sgPanelLeft;
+  const other = side === 'right' ? sgPanelLeft  : sgPanelRight;
+  if (!panel) return;
+  other?.classList.remove('mob-open');
+  panel.classList.add('mob-open');
+  sgBackdrop?.classList.add('open');
+  if (sectionId) sgExpandSection(sectionId);
+  // Highlight the matching dock button(s).
+  document.querySelectorAll('.sg-bd-btn').forEach(b => {
+    const matchSide = b.dataset.side === side;
+    const matchSec  = (b.dataset.section || '') === (sectionId || '');
+    b.classList.toggle('active', matchSide && matchSec);
+  });
+}
+
+document.querySelectorAll('.sg-bd-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const side = btn.dataset.side;
+    const sec  = btn.dataset.section || '';
+    const panel = side === 'right' ? sgPanelRight : sgPanelLeft;
+    const isOpen = panel?.classList.contains('mob-open');
+    const isActive = btn.classList.contains('active');
+    if (isOpen && isActive) sgClosePanels();
+    else sgOpenPanel(side, sec);
   });
 });
-document.getElementById('sgMobOverlayClose')?.addEventListener('click', sgMobClose);
-document.getElementById('sgMobBackdrop')?.addEventListener('click', sgMobClose);
+document.querySelectorAll('.sg-panel-close').forEach(btn => {
+  btn.addEventListener('click', sgClosePanels);
+});
+sgBackdrop?.addEventListener('click', sgClosePanels);
+
+// Close sheets if the viewport grows past the mobile breakpoint
+// (e.g. orientation change on tablets) so desktop layout is clean.
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 820) sgClosePanels();
+});
 
 // ═══════════════════════════════════════════
 //  STATE
@@ -781,7 +701,10 @@ loadPresetList();
 document.querySelectorAll('.sg-sec-head').forEach(h => {
   h.addEventListener('click', () => {
     const body = document.getElementById(h.dataset.toggle);
-    if (body) body.classList.toggle('collapsed');
+    if (!body) return;
+    body.classList.toggle('collapsed');
+    const arrow = h.querySelector('span:last-child');
+    if (arrow) arrow.textContent = body.classList.contains('collapsed') ? '▸' : '▾';
   });
 });
 

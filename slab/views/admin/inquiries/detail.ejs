@@ -1,0 +1,206 @@
+<%- include('../partials/head', { title: 'Inquiry — ' + (inquiry.name || inquiry.email) }) %>
+<%- include('../partials/sidebar', { page: 'inquiries', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">
+    <a href="/admin/inquiries" style="color:var(--slate);text-decoration:none;font-size:0.85rem;">‹ Inquiries</a>
+    <span style="margin:0 8px;color:var(--slate);">·</span>
+    <%= inquiry.name || inquiry.email %>
+  </div>
+</div>
+
+<div class="content">
+  <style>
+    .inq-grid { display:grid; grid-template-columns: 2fr 1fr; gap:24px; }
+    .inq-card { background:var(--surface); border:1px solid var(--border); padding:20px; border-radius:3px; margin-bottom:16px; }
+    .inq-card h3 { font-size:0.78rem; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--slate); margin:0 0 12px; }
+    .inq-meta { display:grid; grid-template-columns: 130px 1fr; gap:8px 12px; font-size:0.85rem; }
+    .inq-meta .k { color:var(--slate); font-size:0.78rem; }
+    .inq-meta .v { color:var(--navy); word-break:break-word; }
+    .inq-message { background:var(--ivory); padding:16px; border-radius:3px; font-size:0.9rem; line-height:1.55; white-space:pre-wrap; color:var(--on-surface); }
+    .inq-status { display:inline-block; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
+    .inq-status.new       { background:rgba(59,130,246,0.12); color:#1e40af; }
+    .inq-status.read      { background:rgba(0,0,0,0.06); color:#666; }
+    .inq-status.replied   { background:rgba(16,185,129,0.12); color:#059669; }
+    .inq-status.converted { background:rgba(201,168,72,0.15); color:#7a6024; }
+    .inq-status.archived  { background:rgba(0,0,0,0.04); color:#999; }
+    .inq-status.spam      { background:rgba(220,38,38,0.10); color:#b91c1c; }
+
+    .action-row { display:flex; flex-direction:column; gap:8px; }
+    .action-row form { margin:0; }
+    .action-btn { display:block; width:100%; text-align:left; padding:10px 14px; border:1px solid var(--border); background:var(--ivory); font-family:'Jost',sans-serif; font-size:0.85rem; font-weight:500; color:var(--navy); border-radius:3px; cursor:pointer; text-decoration:none; }
+    .action-btn:hover { border-color:var(--gold); background:rgba(201,168,72,0.06); }
+    .action-btn.primary { background:var(--navy); color:#fff; border-color:var(--navy); }
+    .action-btn.primary:hover { background:var(--gold); color:var(--navy); border-color:var(--gold); }
+    .action-btn.danger:hover { border-color:#b91c1c; color:#b91c1c; background:rgba(220,38,38,0.04); }
+    .action-btn .hint { display:block; font-size:0.7rem; color:var(--slate); font-weight:400; margin-top:2px; }
+    .action-btn .badge { float:right; font-size:0.65rem; color:var(--gold); font-weight:600; letter-spacing:0.06em; }
+
+    .inq-flash { padding:10px 14px; border-radius:3px; margin-bottom:14px; font-size:0.8rem; }
+    .inq-flash.ok { background:rgba(16,185,129,0.10); color:#059669; }
+    .inq-flash.err { background:rgba(220,38,38,0.10); color:#b91c1c; }
+    .inq-flash.info { background:rgba(59,130,246,0.10); color:#1e40af; }
+
+    .reply-form textarea, .reply-form input[type=text] { width:100%; padding:10px 12px; border:1px solid var(--border); background:var(--ivory); font-family:'Jost',sans-serif; font-size:0.85rem; border-radius:3px; }
+    .reply-form textarea { min-height:160px; resize:vertical; }
+    .reply-form label { display:block; font-size:0.7rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); margin:10px 0 4px; }
+
+    .reply-history { border-left:2px solid var(--gold); padding:8px 14px; margin-bottom:12px; }
+    .reply-history .meta { font-size:0.72rem; color:var(--slate); margin-bottom:4px; }
+    .reply-history .body { font-size:0.85rem; color:var(--on-surface); white-space:pre-wrap; }
+
+    @media (max-width: 880px) { .inq-grid { grid-template-columns: 1fr; } }
+  </style>
+
+  <% if (flash.saved) { %><div class="inq-flash ok">Saved.</div><% } %>
+  <% if (flash.error) { %><div class="inq-flash err"><%= flash.error %></div><% } %>
+  <% if (flash.info) { %><div class="inq-flash info"><%= flash.info %></div><% } %>
+
+  <div class="inq-grid">
+
+    <div>
+      <div class="inq-card">
+        <h3>Submission</h3>
+        <div class="inq-meta">
+          <div class="k">Name</div><div class="v"><strong><%= inquiry.name || '—' %></strong></div>
+          <div class="k">Email</div><div class="v"><a href="mailto:<%= inquiry.email %>" style="color:var(--navy);"><%= inquiry.email %></a></div>
+          <% if (inquiry.company) { %><div class="k">Company</div><div class="v"><%= inquiry.company %></div><% } %>
+          <% if (inquiry.service) { %><div class="k">Service</div><div class="v"><%= inquiry.service %></div><% } %>
+          <% for (const [k, v] of Object.entries(inquiry.customFields || {})) { %>
+            <div class="k" style="text-transform:capitalize;"><%= k.replace(/[_-]/g, ' ') %></div><div class="v"><%= v %></div>
+          <% } %>
+          <div class="k">Status</div><div class="v"><span class="inq-status <%= inquiry.status || 'new' %>"><%= inquiry.status || 'new' %></span></div>
+          <div class="k">Received</div><div class="v"><%= new Date(inquiry.createdAt).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) %></div>
+          <% if (inquiry.tenantDomain) { %><div class="k">Site</div><div class="v"><%= inquiry.tenantDomain %></div><% } %>
+        </div>
+
+        <% if (inquiry.message) { %>
+        <h3 style="margin-top:18px;">Message</h3>
+        <div class="inq-message"><%= inquiry.message %></div>
+        <% } %>
+      </div>
+
+      <% if (inquiry.replies && inquiry.replies.length) { %>
+      <div class="inq-card">
+        <h3>Reply History</h3>
+        <% for (const r of inquiry.replies) { %>
+        <div class="reply-history">
+          <div class="meta">
+            <strong><%= r.subject %></strong>
+            · sent <%= new Date(r.sentAt).toLocaleString() %>
+            <% if (r.sentBy) { %>by <%= r.sentBy %><% } %>
+          </div>
+          <div class="body"><%= r.body %></div>
+        </div>
+        <% } %>
+      </div>
+      <% } %>
+
+      <div class="inq-card reply-form">
+        <h3>Reply via Email</h3>
+        <% if (!locals.tenantHasZoho && !locals.integrations?.zoho) { %>
+          <div class="inq-flash err" style="margin:0 0 12px;">
+            Zoho is not configured for this tenant. <a href="/admin/settings#email" style="color:#b91c1c;text-decoration:underline;">Set it up</a> to send replies directly from your domain.
+          </div>
+        <% } %>
+        <form method="POST" action="/admin/inquiries/<%= inquiry._id %>/reply">
+          <label>Subject</label>
+          <input type="text" name="subject" value="Re: your inquiry<%= inquiry.service ? ' about ' + inquiry.service : '' %>">
+          <label>Message</label>
+          <textarea name="body" placeholder="Hi <%= (inquiry.name || '').split(' ')[0] || 'there' %>,&#10;&#10;Thanks for reaching out…"></textarea>
+          <div style="margin-top:12px;">
+            <button type="submit" class="action-btn primary" style="width:auto;display:inline-block;padding:10px 22px;">Send Reply</button>
+            <span class="text-slate" style="font-size:0.75rem;margin-left:10px;">Will be sent to <strong><%= inquiry.email %></strong> · marks status as <em>replied</em></span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <aside>
+      <div class="inq-card">
+        <h3>Actions</h3>
+        <div class="action-row">
+
+          <form method="POST" action="/admin/inquiries/<%= inquiry._id %>/convert-client">
+            <button type="submit" class="action-btn primary">
+              <% if (existingClient) { %>
+                Open Linked Client
+                <span class="hint">Already a client: <%= existingClient.name %></span>
+              <% } else { %>
+                Convert to Client
+                <span class="hint">Adds to /admin/clients as a Prospect</span>
+              <% } %>
+            </button>
+          </form>
+
+          <form method="POST" action="/admin/inquiries/<%= inquiry._id %>/push-marketing">
+            <input type="hidden" name="funnel" value="lead">
+            <button type="submit" class="action-btn">
+              <% if (existingContact) { %>
+                Refresh Marketing Tag
+                <span class="hint">Already on list as <em><%= existingContact.funnel %></em></span>
+              <% } else { %>
+                Push to Email Marketing
+                <span class="hint">Adds to /admin/email-marketing as a Lead</span>
+              <% } %>
+            </button>
+          </form>
+
+          <% if (inquiry.status !== 'archived') { %>
+          <form method="POST" action="/admin/inquiries/<%= inquiry._id %>/status" data-ajax>
+            <input type="hidden" name="status" value="archived">
+            <button type="submit" class="action-btn">Archive</button>
+          </form>
+          <% } %>
+
+          <% if (inquiry.status !== 'spam') { %>
+          <form method="POST" action="/admin/inquiries/<%= inquiry._id %>/status" data-ajax>
+            <input type="hidden" name="status" value="spam">
+            <button type="submit" class="action-btn">Mark as Spam</button>
+          </form>
+          <% } %>
+
+          <form method="POST" action="/admin/inquiries/<%= inquiry._id %>/delete" onsubmit="return confirm('Delete this inquiry permanently? This cannot be undone.');">
+            <button type="submit" class="action-btn danger">Delete</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="inq-card">
+        <h3>Lifecycle</h3>
+        <div class="inq-meta">
+          <div class="k">Created</div><div class="v"><%= new Date(inquiry.createdAt).toLocaleDateString() %></div>
+          <% if (inquiry.readAt) { %><div class="k">Read</div><div class="v"><%= new Date(inquiry.readAt).toLocaleDateString() %></div><% } %>
+          <% if (inquiry.repliedAt) { %><div class="k">Replied</div><div class="v"><%= new Date(inquiry.repliedAt).toLocaleDateString() %></div><% } %>
+          <% if (inquiry.convertedAt) { %><div class="k">Converted</div><div class="v"><%= new Date(inquiry.convertedAt).toLocaleDateString() %></div><% } %>
+          <% if (inquiry.marketingPushedAt) { %><div class="k">On List</div><div class="v"><%= new Date(inquiry.marketingPushedAt).toLocaleDateString() %> (<%= inquiry.marketingFunnel || 'lead' %>)</div><% } %>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<script>
+// AJAX status forms (Archive / Spam) — POST as JSON, then reload
+document.querySelectorAll('form[data-ajax]').forEach(function(f) {
+  f.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const status = f.querySelector('[name=status]').value;
+    try {
+      const r = await fetch(f.action, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const data = await r.json();
+      if (data.ok) location.href = '/admin/inquiries?info=' + encodeURIComponent('Status updated');
+      else alert('Error: ' + (data.error || 'Failed'));
+    } catch (err) { alert('Error: ' + err.message); }
+  });
+});
+</script>
+
+</div></div>
+</body>
+</html>

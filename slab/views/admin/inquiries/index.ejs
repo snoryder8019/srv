@@ -1,0 +1,101 @@
+<%- include('../partials/head', { title: 'Inquiries' }) %>
+<%- include('../partials/sidebar', { page: 'inquiries', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Contact Form Inquiries</div>
+  <div class="topbar-actions">
+    <a href="/admin/settings#email" class="btn" style="background:transparent;border:1px solid var(--border);color:var(--slate);">Configure recipient email</a>
+  </div>
+</div>
+
+<div class="content">
+  <style>
+    .inq-filters { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
+    .filter-btn { padding:6px 12px; border-radius:2px; font-size:0.7rem; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; background:var(--surface); border:1px solid var(--border); color:var(--slate); cursor:pointer; text-decoration:none; }
+    .filter-btn:hover, .filter-btn.active { border-color:var(--gold); color:var(--navy); background:rgba(201,168,72,0.06); }
+    .filter-btn .n { color:var(--slate); font-weight:500; margin-left:4px; }
+    .filter-btn.active .n { color:var(--navy); }
+    .inq-search { display:flex; gap:6px; margin-left:auto; }
+    .inq-search input { padding:6px 10px; border:1px solid var(--border); background:var(--ivory); font-family:'Jost',sans-serif; font-size:0.8rem; border-radius:2px; }
+    .inq-status { display:inline-block; padding:1px 8px; border-radius:10px; font-size:10px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; }
+    .inq-status.new       { background:rgba(59,130,246,0.12); color:#1e40af; }
+    .inq-status.read      { background:rgba(0,0,0,0.06); color:#666; }
+    .inq-status.replied   { background:rgba(16,185,129,0.12); color:#059669; }
+    .inq-status.converted { background:rgba(201,168,72,0.15); color:#7a6024; }
+    .inq-status.archived  { background:rgba(0,0,0,0.04); color:#999; }
+    .inq-status.spam      { background:rgba(220,38,38,0.10); color:#b91c1c; }
+    .msg-preview { color:var(--slate); font-size:0.78rem; max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .inq-flash { padding:10px 14px; border-radius:3px; margin-bottom:14px; font-size:0.8rem; }
+    .inq-flash.ok { background:rgba(16,185,129,0.10); color:#059669; }
+    .inq-flash.err { background:rgba(220,38,38,0.10); color:#b91c1c; }
+    .inq-flash.info { background:rgba(59,130,246,0.10); color:#1e40af; }
+  </style>
+
+  <% if (flash.saved) { %><div class="inq-flash ok">Saved.</div><% } %>
+  <% if (flash.error) { %><div class="inq-flash err"><%= flash.error %></div><% } %>
+  <% if (flash.info) { %><div class="inq-flash info"><%= flash.info %></div><% } %>
+
+  <div class="inq-filters">
+    <a href="/admin/inquiries" class="filter-btn <%= !status ? 'active' : '' %>">Inbox <span class="n"><%= tally.new + tally.read + tally.replied + tally.converted %></span></a>
+    <a href="/admin/inquiries?status=new" class="filter-btn <%= status === 'new' ? 'active' : '' %>">New <span class="n"><%= tally.new %></span></a>
+    <a href="/admin/inquiries?status=read" class="filter-btn <%= status === 'read' ? 'active' : '' %>">Read <span class="n"><%= tally.read %></span></a>
+    <a href="/admin/inquiries?status=replied" class="filter-btn <%= status === 'replied' ? 'active' : '' %>">Replied <span class="n"><%= tally.replied %></span></a>
+    <a href="/admin/inquiries?status=converted" class="filter-btn <%= status === 'converted' ? 'active' : '' %>">Converted <span class="n"><%= tally.converted %></span></a>
+    <a href="/admin/inquiries?status=archived" class="filter-btn <%= status === 'archived' ? 'active' : '' %>">Archived <span class="n"><%= tally.archived %></span></a>
+    <a href="/admin/inquiries?status=spam" class="filter-btn <%= status === 'spam' ? 'active' : '' %>">Spam <span class="n"><%= tally.spam %></span></a>
+
+    <form class="inq-search" method="GET">
+      <% if (status) { %><input type="hidden" name="status" value="<%= status %>"><% } %>
+      <input type="text" name="q" value="<%= q %>" placeholder="Search name, email, message…">
+      <button type="submit" class="filter-btn">Search</button>
+    </form>
+  </div>
+
+  <% if (!items.length) { %>
+    <div class="empty">
+      <div class="empty-icon">◇</div>
+      <p>No inquiries<%= status ? ` in "${status}"` : '' %>.<br>
+      <span class="text-slate" style="font-size:0.78rem;">Contact-form submissions on your landing page will appear here.</span></p>
+    </div>
+  <% } else { %>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>From</th>
+          <th>Message</th>
+          <th>Service</th>
+          <th>Status</th>
+          <th>Received</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (const i of items) { %>
+        <tr onclick="window.location='/admin/inquiries/<%= i._id %>'" style="cursor:pointer;<%= (!i.status || i.status === 'new') ? 'background:rgba(59,130,246,0.04);font-weight:500;' : '' %>">
+          <td>
+            <div style="font-weight:500;color:var(--navy);"><%= i.name || i.email %></div>
+            <div class="text-slate" style="font-size:0.74rem;"><%= i.email %><%= i.company ? ' · ' + i.company : '' %></div>
+          </td>
+          <td>
+            <div class="msg-preview"><%= (i.message || '').substring(0, 120) %></div>
+          </td>
+          <td><span class="text-slate" style="font-size:0.78rem;"><%= i.service || '—' %></span></td>
+          <td><span class="inq-status <%= i.status || 'new' %>"><%= i.status || 'new' %></span></td>
+          <td>
+            <span class="text-slate" style="font-size:0.75rem;">
+              <%= new Date(i.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) %>
+              <%= new Date(i.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) %>
+            </span>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+
+  <% } %>
+</div>
+</div></div>
+</body>
+</html>

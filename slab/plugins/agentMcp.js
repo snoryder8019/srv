@@ -226,17 +226,45 @@ function postProcessFill(fill) {
   return fill;
 }
 
+// Extract a sentinel-tagged block (e.g. <CONTENT>...</CONTENT>) so long-form
+// HTML can travel OUTSIDE the JSON envelope and skip escape hell entirely.
+// Returns { value, stripped } where `stripped` is the input with the block removed.
+function extractSentinelBlock(raw, tag) {
+  const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i');
+  const m = raw.match(re);
+  if (!m) return { value: null, stripped: raw };
+  return { value: m[1].trim(), stripped: raw.replace(re, '').trim() };
+}
+
 export function tryParseAgentResponse(raw) {
-  const cleaned = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+  // Pull long-form fields out of sentinel tags first — qwen2.5 can't reliably
+  // JSON-escape 400+ words of HTML, but sentinel blocks just need a closing tag.
+  let working = raw;
+  const sentinels = {};
+  for (const [tag, key] of [['CONTENT', 'content'], ['BODY', 'body'], ['HTML', 'html']]) {
+    const { value, stripped } = extractSentinelBlock(working, tag);
+    if (value !== null) {
+      sentinels[key] = value;
+      working = stripped;
+    }
+  }
+
+  const cleaned = working.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+
+  const merge = (parsed) => {
+    if (!parsed.fill || typeof parsed.fill !== 'object') parsed.fill = {};
+    // Sentinel always wins — a sentinel-delivered field is by definition more
+    // reliable than the JSON copy, which may be truncated or broken.
+    for (const [key, val] of Object.entries(sentinels)) parsed.fill[key] = val;
+    parsed.fill = postProcessFill(parsed.fill);
+    return parsed;
+  };
 
   try {
     const m = cleaned.match(/\{[\s\S]*\}/);
     if (m) {
       const p = JSON.parse(m[0]);
-      if (p.fill && typeof p.fill === 'object') {
-        p.fill = postProcessFill(p.fill);
-        return p;
-      }
+      if (p.fill && typeof p.fill === 'object') return merge(p);
     }
   } catch { /* fall through */ }
 
@@ -245,29 +273,41 @@ export function tryParseAgentResponse(raw) {
     const m = fixed.match(/\{[\s\S]*\}/);
     if (m) {
       const p = JSON.parse(m[0]);
-      if (p.fill && typeof p.fill === 'object') {
-        p.fill = postProcessFill(p.fill);
-        return p;
-      }
+      if (p.fill && typeof p.fill === 'object') return merge(p);
     }
   } catch { /* fall through */ }
 
   const fill = {};
+  // Each field has a double-quote variant AND a single-quote variant — qwen2.5
+  // sometimes wraps long HTML values in single quotes, which is not valid JSON.
   const fieldRe = {
-    title:    /"title"\s*:\s*"((?:[^"\\]|\\.*)*)"/,
-    excerpt:  /"excerpt"\s*:\s*"((?:[^"\\]|\\.*)*)"/,
-    category: /"category"\s*:\s*"((?:[^"\\]|\\.*)*)"/,
-    tags:     /"tags"\s*:\s*"((?:[^"\\]|\\.*)*)"/,
-    content:  /"content"\s*:\s*"([\s\S]*?)(?<!\\)"\s*[,}]/,
+    title:    [/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/,           /"title"\s*:\s*'((?:[^'\\]|\\.)*)'/],
+    excerpt:  [/"excerpt"\s*:\s*"((?:[^"\\]|\\.)*)"/,         /"excerpt"\s*:\s*'((?:[^'\\]|\\.)*)'/],
+    category: [/"category"\s*:\s*"((?:[^"\\]|\\.)*)"/,        /"category"\s*:\s*'((?:[^'\\]|\\.)*)'/],
+    tags:     [/"tags"\s*:\s*"((?:[^"\\]|\\.)*)"/,            /"tags"\s*:\s*'((?:[^'\\]|\\.)*)'/],
+    content:  [/"content"\s*:\s*"([\s\S]*?)(?<!\\)"\s*[,}]/,  /"content"\s*:\s*'([\s\S]*?)(?<!\\)'\s*[,}]/],
   };
-  for (const [key, re] of Object.entries(fieldRe)) {
-    const m = cleaned.match(re);
-    if (m) fill[key] = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  for (const [key, regexes] of Object.entries(fieldRe)) {
+    // Skip content if we already pulled it from a sentinel block
+    if (sentinels[key]) continue;
+    for (const re of regexes) {
+      const m = cleaned.match(re);
+      if (m) {
+        fill[key] = m[1]
+          .replace(/\\n/g, '\n')
+          .replace(/\\"/g, '"')
+          .replace(/\\'/g, "'")
+          .replace(/\\\\/g, '\\');
+        break;
+      }
+    }
   }
 
-  const msgMatch = cleaned.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-  const message = msgMatch ? msgMatch[1] : (Object.keys(fill).length ? 'Fields filled.' : cleaned.slice(0, 200));
-  return { message, fill: postProcessFill(fill) };
+  const msgMatch = cleaned.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/) ||
+                   cleaned.match(/"message"\s*:\s*'((?:[^'\\]|\\.)*)'/);
+  const haveAny = Object.keys(fill).length || Object.keys(sentinels).length;
+  const message = msgMatch ? msgMatch[1] : (haveAny ? 'Fields filled.' : cleaned.slice(0, 200));
+  return merge({ message, fill });
 }
 
 // ── MCP Tool Definitions (follows MCP spec schema) ───────────────────────────
@@ -411,6 +451,49 @@ export const MCP_TOOLS = [
       required: ['task'],
     },
   },
+  {
+    name: 'research_client',
+    description: 'Research a prospective or existing client — web-search their business, fetch their website, produce an onboarding knowledge base (business type, strengths, opportunities, competitors, suggested services).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        clientName: { type: 'string', description: 'Person or contact name' },
+        company:    { type: 'string', description: 'Company name' },
+        website:    { type: 'string', description: 'Company website URL (optional)' },
+        email:      { type: 'string', description: 'Client email (optional)' },
+        notes:      { type: 'string', description: 'Any pre-existing notes' },
+        prompt:     { type: 'string', description: 'Specific research focus' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'analyze_metrics',
+    description: 'Read a JSON metrics payload (counts, alerts, email/invoice/content stats) and produce a short business analyst report — top wins, concerns, and recommended next actions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: 'User question or focus area' },
+        metrics:  { type: 'object', description: 'Pre-aggregated metrics payload from /admin/analytics/metrics' },
+        range:    { type: 'string', description: 'day | week | month' },
+      },
+      required: ['metrics'],
+    },
+  },
+  {
+    name: 'suggest_onboarding_fields',
+    description: 'Suggest fields for a client/lead onboarding form. Returns form name, description, and a list of fields with key, label, type, options, section.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt:    { type: 'string', description: 'What kind of onboarding form to build' },
+        existing:  { type: 'string', description: 'Comma-separated list of existing field labels to avoid duplicating' },
+        formName:  { type: 'string', description: 'Current form title, if any' },
+        formDesc:  { type: 'string', description: 'Current form description, if any' },
+      },
+      required: ['prompt'],
+    },
+  },
 ];
 
 // ── Tool Handlers ─────────────────────────────────────────────────────────────
@@ -466,25 +549,24 @@ async function handleWriteBlogPost({ topic, context, brandContext }) {
 
   const systemPrompt = `You are a blog writing assistant for the business.
 ${brand}
-Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
-{
-  "message": "one short sentence describing what you wrote",
-  "fill": {
-    "title": "the post title",
-    "excerpt": "1-2 sentence plain text summary",
-    "content": "full HTML content as a single escaped string",
-    "category": "one category",
-    "tags": "tag1, tag2, tag3"
-  }
-}
+Your output MUST follow this two-part shape — a JSON line first, then the HTML content inside <CONTENT>…</CONTENT> sentinel tags. Nothing else.
 
-Rules for content field:
-- Write 400-800 words using <h2>, <p>, <strong>, <ul>, <li> tags
-- All double quotes inside HTML must be escaped as \\"
-- No literal newlines in the JSON string — use \\n instead
-- End with a soft CTA mentioning the business by name
+EXAMPLE OUTPUT (follow exactly):
+{"message":"Wrote a post on social media tips","fill":{"title":"Five Social Media Tips","excerpt":"Practical tactics.","category":"Marketing","tags":"social media, small business"}}
+<CONTENT>
+<h2>Heading</h2>
+<p>Paragraph with <strong>bold</strong> and a normal " quote — no escaping needed inside this block.</p>
+<ul><li>Tip one</li><li>Tip two</li></ul>
+<p>Closing call to action mentioning the business by name.</p>
+</CONTENT>
 
-Tailor content to the business and audience described above. Tone: practical, approachable.${contextNote}${researchCtx}`;
+RULES:
+- JSON object on ONE LINE with title, excerpt, category, tags (do NOT include "content" in the JSON — it lives in the sentinel block).
+- Inside <CONTENT>, write 400-800 words of raw HTML — no JSON escaping, real newlines and " quotes are fine.
+- Use <h2>, <p>, <strong>, <ul>, <li> tags.
+- End the HTML with a soft CTA mentioning the business by name.
+
+Tailor content to the business and audience above. Tone: practical, approachable.${contextNote}${researchCtx}`;
 
   const raw = await callLLM([{ role: 'user', content: `Write a blog post about: ${topic}` }], systemPrompt);
   return tryParseAgentResponse(raw);
@@ -877,19 +959,93 @@ ${siteContent ? `--- WEBSITE CONTENT ---\n${siteContent}` : ''}`;
   return tryParseAgentResponse(raw);
 }
 
+async function handleAnalyzeMetrics({ question, metrics, range, brandContext }) {
+  const brand = brandContext ? `\n${brandContext}\n` : '';
+  const rangeLabel = range || 'recent period';
+  const metricsJson = JSON.stringify(metrics || {}, null, 2).slice(0, 4000);
+
+  const systemPrompt = `You are a business analyst for the brand described below.
+${brand}
+You are given a JSON payload of metrics for the ${rangeLabel}. Read the numbers and report on what the business should know.
+
+Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
+{
+  "message": "one-line headline summary",
+  "fill": {
+    "headline":     "single sentence — what's the big story this ${rangeLabel}?",
+    "wins":         ["concrete win 1", "win 2", "win 3"],
+    "concerns":     ["concrete concern 1", "concern 2"],
+    "recommendations": ["next action 1", "next action 2", "next action 3"],
+    "kpi_focus":    "name the single metric to push next"
+  }
+}
+
+Rules:
+- Be specific — reference the actual numbers from the metrics payload
+- If a category has zero activity, mention it as a gap, not a win
+- Recommendations must be doable in the admin panel (write a campaign, follow up overdue invoices, draft a blog post, etc.)
+- Keep each list entry under 18 words`;
+
+  const userMessage = `Question: ${question || 'Summarize how the business is doing'}\n\nMetrics payload:\n${metricsJson}`;
+  const raw = await callLLM([{ role: 'user', content: userMessage }], systemPrompt);
+  return tryParseAgentResponse(raw);
+}
+
+async function handleSuggestOnboardingFields({ prompt, existing, formName, formDesc, brandContext }) {
+  const brand = brandContext ? `\n${brandContext}\n` : '';
+  const existingLine = existing ? `\nExisting fields on this form: ${existing}` : '';
+  const titleLine = formName ? `\nForm title: "${formName}"` : '';
+  const descLine  = formDesc ? `\nForm description: "${formDesc}"` : '';
+
+  const systemPrompt = `You are a form design assistant for a business onboarding platform.
+${brand}
+Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
+{
+  "message": "one sentence describing the suggested form",
+  "fill": {
+    "name": "Concise form title — empty string if existing title is fine",
+    "description": "One-sentence description — empty string if existing is fine",
+    "fields": [
+      {
+        "key": "field_key_snake_case",
+        "label": "Human Readable Label",
+        "type": "text|textarea|select|checkbox|radio|number|email|url|date|color|heading",
+        "placeholder": "hint text",
+        "helpText": "optional guidance",
+        "required": true,
+        "options": [{"label": "Option A", "value": "a"}],
+        "width": "full|half",
+        "section": "Section Name"
+      }
+    ]
+  }
+}
+
+Rules:
+- Field types: text, textarea, select, checkbox, radio, number, email, url, date, color, heading (section divider)
+- Only include "options" for select/radio/checkbox types
+- Generate 4-8 useful fields, tailored to the business and the user request
+- Do NOT duplicate any existing fields${titleLine}${descLine}${existingLine}`;
+
+  const raw = await callLLM([{ role: 'user', content: prompt || 'Suggest onboarding form fields for this business' }], systemPrompt);
+  return tryParseAgentResponse(raw);
+}
+
 const TOOL_HANDLERS = {
-  web_search:           ({ query }) => webSearch(query).then(r => ({ result: r })),
-  fill_site_copy:       handleFillSiteCopy,
-  write_blog_post:      handleWriteBlogPost,
-  fill_section:         handleFillSection,
-  write_page:           handleWritePage,
-  generate_social_image: handleGenerateSocialImage,
-  update_design:        handleUpdateDesign,
-  manage_assets:        handleManageAssets,
-  write_campaign:       handleWriteCampaign,
-  draft_invoice:        handleDraftInvoice,
-  draft_client_email:   handleDraftClientEmail,
-  research_client:      handleResearchClient,
+  web_search:               ({ query }) => webSearch(query).then(r => ({ result: r })),
+  fill_site_copy:           handleFillSiteCopy,
+  write_blog_post:          handleWriteBlogPost,
+  fill_section:             handleFillSection,
+  write_page:               handleWritePage,
+  generate_social_image:    handleGenerateSocialImage,
+  update_design:            handleUpdateDesign,
+  manage_assets:            handleManageAssets,
+  write_campaign:           handleWriteCampaign,
+  draft_invoice:            handleDraftInvoice,
+  draft_client_email:       handleDraftClientEmail,
+  research_client:          handleResearchClient,
+  suggest_onboarding_fields: handleSuggestOnboardingFields,
+  analyze_metrics:          handleAnalyzeMetrics,
 };
 
 export async function runTool(name, args) {

@@ -149,6 +149,63 @@ export const DESIGN_DEFAULTS = {
   // 'fixed_top'       → fixed to viewport top, above everything
   // 'fixed_bottom'    → fixed to viewport bottom
   ticker_position:      'below_services',
+  // ── Header structural layout (independent of landing_layout) ──
+  // standard | compact | spacious | centered | split
+  //   standard → brand left, links right (default)
+  //   compact  → reduced padding, smaller wordmark
+  //   spacious → tall header, large brand, more padding
+  //   centered → brand centered, links flow under
+  //   split    → links balanced both sides of a centered brand
+  header_layout:        'standard',
+  header_padding_y:     '20',          // px, vertical padding
+  header_padding_x:     '52',          // px, horizontal padding
+  header_sticky:        'true',        // fix to top of viewport
+  header_blur:          'true',        // backdrop blur over content
+  header_shadow:        'true',        // box-shadow when scrolled
+  // ── Footer structural layout ──
+  // simple | columns | centered | expanded | minimal | brand
+  //   simple   → one-line legal + admin (default behavior today)
+  //   columns  → multi-column with link sets + brand
+  //   centered → brand block centered, then links + legal stacked
+  //   expanded → brand + about copy + 3 link columns + newsletter
+  //   minimal  → copyright only, tiny
+  //   brand    → big brand + tagline + social row + copyright
+  footer_layout:        'simple',
+  footer_align:         'center',      // left | center | right
+  footer_columns:       '3',           // 1-4
+  footer_padding_y:     '32',          // px
+  footer_padding_x:     '24',          // px
+  footer_show_brand:    'true',        // render brand wordmark in footer
+  footer_show_tagline:  'true',        // render tagline under brand
+  footer_show_logo:     'false',       // render uploaded logo image
+  footer_show_social:   'true',        // render social link row
+  footer_show_newsletter:'false',      // render newsletter signup
+  footer_show_qr:       'true',        // render the QR codes block
+  // ── Footer typography ──
+  footer_heading_size:  '0.72',        // rem — column headings
+  footer_heading_weight:'600',
+  footer_heading_transform:'uppercase',
+  footer_heading_spacing:'0.12',       // em
+  footer_text_size:     '0.78',        // rem — body/copyright
+  footer_text_weight:   '400',
+  footer_brand_size:    '1.2',         // rem — footer wordmark
+  footer_brand_weight:  '500',
+  // ── Footer colors ──
+  footer_bg:            '',            // empty → layout-driven default
+  footer_text_color:    '',            // empty → muted on bg
+  footer_heading_color: '',            // empty → primary/accent
+  footer_link_color:    '',            // empty → text color
+  footer_link_hover_color:'',          // empty → accent
+  footer_border_color:  '',            // top border / dividers
+  footer_accent_color:  '',            // empty → color_accent
+  // ── Footer social links (kept on design, not copy — they're URLs not prose) ──
+  footer_social_facebook:  '',
+  footer_social_instagram: '',
+  footer_social_twitter:   '',
+  footer_social_linkedin:  '',
+  footer_social_youtube:   '',
+  footer_social_tiktok:    '',
+  footer_social_github:    '',
 };
 
 // ── Theme-saveable design keys (excludes agent settings / visibility) ──
@@ -170,6 +227,20 @@ export const THEME_KEYS = [
   'ticker_dot_color', 'ticker_font_size', 'ticker_padding',
   'ticker_uppercase', 'ticker_letter_spacing', 'ticker_item_gap',
   'ticker_position',
+  // header + footer structural / style tokens (not URLs/social handles)
+  'header_layout', 'header_padding_y', 'header_padding_x',
+  'header_sticky', 'header_blur', 'header_shadow',
+  'footer_layout', 'footer_align', 'footer_columns',
+  'footer_padding_y', 'footer_padding_x',
+  'footer_show_brand', 'footer_show_tagline', 'footer_show_logo',
+  'footer_show_social', 'footer_show_newsletter', 'footer_show_qr',
+  'footer_heading_size', 'footer_heading_weight',
+  'footer_heading_transform', 'footer_heading_spacing',
+  'footer_text_size', 'footer_text_weight',
+  'footer_brand_size', 'footer_brand_weight',
+  'footer_bg', 'footer_text_color', 'footer_heading_color',
+  'footer_link_color', 'footer_link_hover_color',
+  'footer_border_color', 'footer_accent_color',
 ];
 
 // Copy section field map — shared with copy.js
@@ -205,7 +276,24 @@ export const COPY_SECTIONS = {
            'contact_company_label', 'contact_company_placeholder',
            'contact_service_label', 'contact_service_placeholder',
            'contact_message_label', 'contact_message_placeholder',
-           'contact_service_fallback', 'contact_service_extra'],
+           'contact_service_fallback', 'contact_service_extra',
+           // Per-field visibility toggles (checkbox; empty = visible, 'true' = hidden)
+           'contact_fname_hidden', 'contact_lname_hidden', 'contact_email_hidden',
+           'contact_company_hidden', 'contact_service_hidden', 'contact_message_hidden'],
+  footer: [
+    // Brand / about
+    'footer_tagline', 'footer_about', 'footer_copyright',
+    // Column 1 — heading + pipe-separated label|url pairs (one per line)
+    'footer_col1_heading', 'footer_col1_links',
+    'footer_col2_heading', 'footer_col2_links',
+    'footer_col3_heading', 'footer_col3_links',
+    'footer_col4_heading', 'footer_col4_links',
+    // Newsletter
+    'footer_newsletter_heading', 'footer_newsletter_sub',
+    'footer_newsletter_placeholder', 'footer_newsletter_button',
+    // CTA / social label
+    'footer_social_heading',
+  ],
 };
 
 router.get('/', async (req, res) => {
@@ -254,7 +342,11 @@ router.post('/', async (req, res) => {
     const designOps = Object.keys(DESIGN_DEFAULTS).map(key => {
       const isBool = key.startsWith('vis_') || key.startsWith('model_')
         || key === 'snap_enabled' || key === 'gradient_enabled'
-        || key === 'card_hover_accent' || key === 'ticker_uppercase';
+        || key === 'card_hover_accent' || key === 'ticker_uppercase'
+        || key === 'header_sticky' || key === 'header_blur' || key === 'header_shadow'
+        || key === 'footer_show_brand' || key === 'footer_show_tagline'
+        || key === 'footer_show_logo' || key === 'footer_show_social'
+        || key === 'footer_show_newsletter' || key === 'footer_show_qr';
       const value = isBool
         ? (req.body[key] === 'on' ? 'true' : 'false')
         : (req.body[key] !== undefined && req.body[key] !== '' ? req.body[key] : DESIGN_DEFAULTS[key]);
@@ -268,16 +360,20 @@ router.post('/', async (req, res) => {
     // Save copy fields. Known fixed keys from COPY_SECTIONS plus any dynamic
     // repeater keys (service{N}_*, process{N}_*, about_stat{N}_*,
     // pricing_tier{N}_*) that the UI added at runtime.
-    const COPY_CHECKBOXES = ['promo_enabled', 'pricing_tier3_featured'];
+    const COPY_CHECKBOXES = ['promo_enabled', 'pricing_tier3_featured',
+      'contact_fname_hidden', 'contact_lname_hidden', 'contact_email_hidden',
+      'contact_company_hidden', 'contact_service_hidden', 'contact_message_hidden'];
     const allCopyKeys = Object.values(COPY_SECTIONS).flat();
     const REPEATER_PATTERNS = [
       /^service\d+_(title|desc|link|image)$/,
       /^process\d+_(title|desc)$/,
       /^about_stat\d+_(num|label)$/,
       /^pricing_tier\d+_(amount|unit|label|equiv|cta_link|featured)$/,
+      /^contact_field\d+_(name|label|placeholder|type|required|options)$/,
     ];
     const isRepeaterKey = (k) => REPEATER_PATTERNS.some(rx => rx.test(k));
-    const repeaterCheckboxes = (k) => /^pricing_tier\d+_featured$/.test(k);
+    const repeaterCheckboxes = (k) => /^pricing_tier\d+_featured$/.test(k)
+      || /^contact_field\d+_required$/.test(k);
 
     const dynamicKeys = Object.keys(req.body).filter(isRepeaterKey);
     const writeKeys = new Set([

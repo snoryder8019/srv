@@ -24,6 +24,7 @@ import meetingsRouter from './admin/meetings.js';
 import calculatorsRouter from './admin/calculators.js';
 import bookkeepingRouter from './admin/bookkeeping.js';
 import emailMarketingRouter from './admin/emailMarketing.js';
+import inquiriesRouter from './admin/inquiries.js';
 import usersRouter from './admin/users.js';
 import tutorialsRouter from './admin/tutorials.js';
 import profileRouter from './admin/profile.js';
@@ -40,6 +41,7 @@ import templatesRouter from './admin/templates.js';
 import templateStoreRouter from './admin/templateStore.js';
 import qrcodesRouter from './admin/qrcodes.js';
 import notesRouter from './admin/notes.js';
+import analyticsRouter, { buildMetrics } from './admin/analytics.js';
 
 const router = express.Router();
 
@@ -292,11 +294,14 @@ router.post('/recover', authLimiter, async (req, res) => {
   }
 });
 
-// AI health check — hits LB /health for GPU, SD, tunnel, and cold-start status
+// AI health check — hits LB /health for GPU, SD, tunnel, cold-start, and tier
+function ollamaBase() {
+  return config.OLLAMA_URL.replace(/\/v1\/chat\/completions$/, '');
+}
+
 router.get('/ai-health', async (req, res) => {
   try {
-    const base = config.OLLAMA_URL.replace(/\/v1\/chat\/completions$/, '');
-    const r = await fetch(`${base}/health`, {
+    const r = await fetch(`${ollamaBase()}/health`, {
       headers: { 'Authorization': `Bearer ${config.OLLAMA_KEY}` },
       signal: AbortSignal.timeout(6000),
     });
@@ -327,10 +332,31 @@ router.get('/ai-health', async (req, res) => {
       gpus,
       sd: data.sd?.status || 'down',
       tunnel: data.tunnel?.status || 'down',
+      tier: data.tier || null,
     });
   } catch (err) {
     console.error('[ai-health] fetch error:', err.message);
     res.json({ ok: false, cold: false, gpus: [], sd: 'down', error: err.message });
+  }
+});
+
+// Pre-wake the cluster (fire-and-forget from the browser). Proxies POST /wake.
+router.post('/ai-wake', async (req, res) => {
+  try {
+    const target = (req.body && typeof req.body.target === 'string') ? req.body.target : 'HOT';
+    const r = await fetch(`${ollamaBase()}/wake`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.OLLAMA_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ target }),
+      signal: AbortSignal.timeout(65000),
+    });
+    const data = await r.json().catch(() => ({}));
+    res.json({ ok: r.ok, tier: data.tier || null, status: data });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
   }
 });
 
@@ -366,11 +392,27 @@ router.get('/', async (req, res) => {
         .findOne({ type: 'tldr' }, { sort: { updatedAt: -1 } });
     } catch { /* ignore */ }
 
+    // Business pulse + recent activity (best-effort; do not block dashboard render)
+    let pulse = null;
+    let activity = [];
+    try {
+      pulse = await buildMetrics(db, 'week');
+    } catch (e) {
+      console.warn('[dashboard] pulse build failed:', e.message);
+    }
+    try {
+      activity = await buildRecentActivity(db, 12);
+    } catch (e) {
+      console.warn('[dashboard] activity build failed:', e.message);
+    }
+
     res.render('admin/dashboard', {
       user: req.adminUser,
       stats: { portfolioCount, clientCount, invoiceCount, blogCount, pageCount, openTicketCount },
       agentName,
       whatsNewTldr,
+      pulse,
+      activity,
       storage: {
         used: formatBytes(storageUsed),
         quota: getQuotaLabel(req.tenant),
@@ -384,10 +426,86 @@ router.get('/', async (req, res) => {
       stats: { portfolioCount: 0, clientCount: 0, invoiceCount: 0, blogCount: 0, pageCount: 0, openTicketCount: 0 },
       agentName: 'Assistant',
       whatsNewTldr: null,
+      pulse: null,
+      activity: [],
       storage: { used: '0 B', quota: '1 GB', pct: 0, plan: 'free' },
     });
   }
 });
+
+// Build a unified recent-activity feed across the operational collections.
+async function buildRecentActivity(db, limit = 12) {
+  const c = (name) => db.collection(name);
+  const project = (extra) => ({ _id: 1, createdAt: 1, updatedAt: 1, ...extra });
+  const safe = (p) => p.catch(() => []);
+
+  const [invoices, paidInvoices, clients, inquiries, tickets, meetings, campaigns] = await Promise.all([
+    safe(c('invoices').find({}).sort({ createdAt: -1 }).limit(limit)
+      .project(project({ amount: 1, status: 1, clientName: 1, number: 1 })).toArray()),
+    safe(c('invoices').find({ status: 'paid' }).sort({ updatedAt: -1 }).limit(limit)
+      .project(project({ amount: 1, clientName: 1, number: 1 })).toArray()),
+    safe(c('clients').find({}).sort({ createdAt: -1 }).limit(limit)
+      .project(project({ name: 1, company: 1 })).toArray()),
+    safe(c('inquiries').find({}).sort({ createdAt: -1 }).limit(limit)
+      .project(project({ name: 1, subject: 1, email: 1 })).toArray()),
+    safe(c('tickets').find({}).sort({ createdAt: -1 }).limit(limit)
+      .project(project({ subject: 1, priority: 1, status: 1 })).toArray()),
+    safe(c('meetings').find({}).sort({ createdAt: -1 }).limit(limit)
+      .project(project({ title: 1, scheduledAt: 1, attendee: 1 })).toArray()),
+    safe(c('campaigns').find({ sentAt: { $exists: true } }).sort({ sentAt: -1 }).limit(limit)
+      .project({ _id: 1, subject: 1, sentCount: 1, sentAt: 1 }).toArray()),
+  ]);
+
+  const items = [];
+
+  for (const x of invoices) items.push({
+    ts: x.createdAt, kind: 'invoice-new',
+    label: `New invoice #${x.number || ''} → ${x.clientName || 'client'}`,
+    detail: x.amount ? `$${Number(x.amount).toFixed(2)} · ${x.status || ''}` : (x.status || ''),
+    url: `/admin/bookkeeping`,
+  });
+  for (const x of paidInvoices) items.push({
+    ts: x.updatedAt, kind: 'invoice-paid',
+    label: `Invoice #${x.number || ''} paid`,
+    detail: x.amount ? `$${Number(x.amount).toFixed(2)} · ${x.clientName || ''}` : (x.clientName || ''),
+    url: `/admin/bookkeeping`,
+  });
+  for (const x of clients) items.push({
+    ts: x.createdAt, kind: 'client',
+    label: `New client: ${x.name || x.company || 'unnamed'}`,
+    detail: x.company && x.name ? x.company : '',
+    url: `/admin/clients`,
+  });
+  for (const x of inquiries) items.push({
+    ts: x.createdAt, kind: 'inquiry',
+    label: `Inquiry from ${x.name || x.email || 'visitor'}`,
+    detail: x.subject || '',
+    url: `/admin/inquiries`,
+  });
+  for (const x of tickets) items.push({
+    ts: x.createdAt, kind: 'ticket',
+    label: `Ticket: ${x.subject || 'no subject'}`,
+    detail: [x.priority, x.status].filter(Boolean).join(' · '),
+    url: `/admin/tickets`,
+  });
+  for (const x of meetings) items.push({
+    ts: x.createdAt, kind: 'meeting',
+    label: `Meeting: ${x.title || 'untitled'}`,
+    detail: x.attendee || '',
+    url: `/admin/meetings`,
+  });
+  for (const x of campaigns) items.push({
+    ts: x.sentAt, kind: 'campaign',
+    label: `Campaign sent: ${x.subject || 'untitled'}`,
+    detail: x.sentCount ? `${x.sentCount} recipients` : '',
+    url: `/admin/email-marketing`,
+  });
+
+  return items
+    .filter(i => i.ts)
+    .sort((a, b) => new Date(b.ts) - new Date(a.ts))
+    .slice(0, limit);
+}
 
 // ── My Slabs API — returns all slabs this admin email belongs to ─────────────
 router.get('/api/my-slabs', async (req, res) => {
@@ -400,16 +518,30 @@ router.get('/api/my-slabs', async (req, res) => {
       status: { $in: ['active', 'preview'] },
     }).toArray();
 
-    const slabs = [];
+    // Dedupe by tenant DB — a single slab can have multiple registry docs
+    // (custom-domain alias + wildcard subdomain). Prefer the doc whose own
+    // `domain` field already matches its custom domain, otherwise fall back to
+    // any doc for that db. Resolve the displayed URL via the same precedence
+    // tenant middleware uses: meta.customDomain → public.customDomain → domain.
+    const byDb = new Map();
     for (const t of tenants) {
+      const existing = byDb.get(t.db);
+      const customDomain = t.meta?.customDomain || t.public?.customDomain || null;
+      const score = (customDomain && t.domain === customDomain) ? 2 : (t.domain ? 1 : 0);
+      if (!existing || score > existing.score) byDb.set(t.db, { t, score, customDomain });
+    }
+
+    const slabs = [];
+    for (const { t, customDomain } of byDb.values()) {
       try {
         const db = getTenantDb(t.db);
         const user = await db.collection('users').findOne({ email });
         if (user && (user.isAdmin || user.isOwner)) {
+          const domain = customDomain || t.domain;
           slabs.push({
             tenantDb: t.db,
-            domain: t.domain,
-            brandName: t.brand?.name || t.domain,
+            domain,
+            brandName: t.brand?.name || domain,
             isOwner: user.isOwner || false,
             isAdmin: user.isAdmin || false,
             plan: t.meta?.plan || 'free',
@@ -444,6 +576,7 @@ router.use('/meetings', meetingsRouter);
 router.use('/calculators', calculatorsRouter);
 router.use('/bookkeeping', bookkeepingRouter);
 router.use('/email-marketing', emailMarketingRouter);
+router.use('/inquiries', inquiriesRouter);
 router.use('/users', usersRouter);
 router.use('/tutorials', tutorialsRouter);
 router.use('/profile', profileRouter);
@@ -460,5 +593,6 @@ router.use('/templates', templatesRouter);
 router.use('/template-store', templateStoreRouter);
 router.use('/qr-codes', qrcodesRouter);
 router.use('/notes', notesRouter);
+router.use('/analytics', analyticsRouter);
 
 export default router;

@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Remote · <%= remoteId %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Space+Grotesk:wght@600&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{font-family:'Inter',sans-serif;background:#070708;color:#e5e5e5;min-height:100vh;font-size:16px;line-height:1.4;padding-bottom:120px}
+
+    /* ── Top brand bar ── */
+    header{padding:12px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1a1a1d;background:#0a0a0a;position:sticky;top:0;z-index:20}
+    h1{font-family:'Space Grotesk',sans-serif;font-size:18px;color:#c9a848}
+    .me{font-size:11px;color:#737373}
+
+    /* ── Tab strip ── */
+    .tabs{display:grid;grid-template-columns:repeat(4,1fr);background:#0a0a0a;position:sticky;top:48px;z-index:19;border-bottom:1px solid #1a1a1d}
+    .tab{padding:14px 4px;font-size:12px;font-weight:600;color:#737373;border:0;background:transparent;cursor:pointer;text-align:center;letter-spacing:.6px;text-transform:uppercase;display:flex;flex-direction:column;align-items:center;gap:2px;border-bottom:2px solid transparent;transition:.1s}
+    .tab .ico{font-size:18px}
+    .tab.on{color:#c9a848;border-bottom-color:#c9a848}
+    .tab:active{background:#101014}
+
+    /* ── Panels ── */
+    main{padding:14px 14px 18px}
+    .panel{display:none}
+    .panel.on{display:block}
+
+    /* ── View panel — big TV view buttons ── */
+    .viewgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .vbtn{padding:22px 10px;font-size:14px;font-weight:600;border-radius:14px;border:1px solid #262629;background:#101014;color:#e5e5e5;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
+    .vbtn:active{transform:scale(.96)}
+    .vbtn.on{border-color:#c9a848;background:#1a1610;color:#c9a848}
+    .vbtn .ico{font-size:26px}
+
+    /* ── Add (quick-action) panel ── */
+    .quickrow{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
+    .qa{padding:18px 8px;font-size:14px;font-weight:600;border-radius:12px;border:1px solid #262629;background:#101014;color:#e5e5e5;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+    .qa.on{border-color:#c9a848;background:#1a1610;color:#c9a848}
+    .qa .ico{font-size:22px}
+
+    label.field{display:block;font-size:11px;color:#737373;text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin:14px 4px 6px}
+    input, textarea, select{width:100%;background:#101014;border:1px solid #262629;border-radius:12px;padding:14px;color:#e5e5e5;font-family:inherit;font-size:16px}
+    input:focus, textarea:focus, select:focus{outline:none;border-color:#c9a848}
+    textarea{min-height:80px;resize:vertical}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+
+    /* Pill rows */
+    .pills{display:flex;gap:6px;flex-wrap:wrap}
+    .pills label{flex:1;text-align:center;padding:11px 4px;font-size:13px;font-weight:600;border-radius:10px;border:1px solid #262629;background:#0f0f12;color:#a3a3a3;cursor:pointer;min-width:0;white-space:nowrap}
+    .pills input{display:none}
+    .pills input:checked + label{border-color:#c9a848;background:#1a1610;color:#c9a848}
+
+    /* Quick-date chips */
+    .chiprow{display:flex;gap:6px;flex-wrap:wrap}
+    .qchip{padding:10px 14px;font-size:13px;font-weight:500;border-radius:999px;border:1px solid #262629;background:#101014;color:#a3a3a3;cursor:pointer}
+    .qchip:active{transform:scale(.97);border-color:#c9a848;color:#c9a848}
+
+    .more-toggle{margin-top:14px;text-align:center;color:#737373;font-size:13px;cursor:pointer;padding:8px}
+    .advanced{display:none}
+    .advanced.on{display:block}
+
+    /* Action buttons */
+    .act-row{display:flex;gap:8px;margin-top:18px}
+    button.act{flex:1;padding:18px;font-size:16px;font-weight:700;border-radius:12px;border:0;background:#c9a848;color:#0a0a0a;cursor:pointer}
+    button.act:active{opacity:.85}
+    button.ghost{flex:1;padding:18px;font-size:15px;border-radius:12px;border:1px solid #262629;background:transparent;color:#a3a3a3;cursor:pointer}
+    button.danger{border-color:#451a1a;color:#f87171;background:transparent}
+
+    /* Calendar panel — tap a day to focus on TV */
+    .month-mini{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px}
+    .month-mini .dow{font-size:10px;color:#525252;text-align:center;text-transform:uppercase;letter-spacing:.4px;padding:4px 0}
+    .month-mini .d{aspect-ratio:1;background:#101014;border:1px solid #262629;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:14px;color:#a3a3a3;cursor:pointer;position:relative;gap:1px}
+    .month-mini .d:active{transform:scale(.94);background:#1a1610}
+    .month-mini .d.today{border-color:#c9a848;color:#c9a848;font-weight:600}
+    .month-mini .d.dim{opacity:.35}
+    .month-mini .d.has::after{content:'';position:absolute;bottom:4px;width:5px;height:5px;border-radius:50%;background:#c9a848}
+    .month-mini .d.focused{background:#c9a848;color:#0a0a0a;border-color:#c9a848;font-weight:700}
+    .month-mini .d .count{font-size:9px;color:#525252}
+
+    .month-nav{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+    .month-nav button{padding:10px 14px;border-radius:8px;background:#101014;border:1px solid #262629;color:#c9a848;font-size:16px;cursor:pointer}
+    .month-nav .ttl{flex:1;text-align:center;font-family:'Space Grotesk',sans-serif;font-size:15px;color:#fff}
+
+    /* Bills panel */
+    .billnav{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+    .billnav button{flex:none;padding:12px 16px;font-size:16px;background:#101014;border:1px solid #262629;color:#c9a848;border-radius:10px;cursor:pointer}
+    .billnav .ttl{flex:1;text-align:center;font-family:'Space Grotesk',sans-serif;font-size:15px;color:#fff}
+
+    /* Agent */
+    .agent-reply{margin-top:10px;padding:14px;background:#0f0f12;border:1px solid #1c1c1f;border-radius:10px;font-size:14px;line-height:1.5;color:#d4d4d4;white-space:pre-wrap;display:none}
+    .agent-reply.show{display:block}
+    .toggle{display:flex;align-items:center;gap:10px;font-size:14px;color:#a3a3a3;padding:6px 4px}
+    .toggle input{width:auto;transform:scale(1.2)}
+
+    /* Status footer */
+    .status{position:fixed;bottom:0;left:0;right:0;padding:11px 18px;background:#0a0a0a;border-top:1px solid #1a1a1d;font-size:11px;color:#737373;display:flex;justify-content:space-between;align-items:center;z-index:30}
+    .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#525252;margin-right:6px}
+    .dot.on{background:#34d399;box-shadow:0 0 6px #34d399}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏠 Gateway</h1>
+    <span class="me">📱 <%= remoteId %></span>
+  </header>
+
+  <nav class="tabs" style="grid-template-columns:repeat(5,1fr)">
+    <button class="tab on" data-pane="view"><span class="ico">📺</span>View</button>
+    <button class="tab" data-pane="add"><span class="ico">➕</span>Add</button>
+    <button class="tab" data-pane="cal"><span class="ico">📆</span>Calendar</button>
+    <button class="tab" data-pane="review"><span class="ico">✅</span>Review</button>
+    <button class="tab" data-pane="ask"><span class="ico">🤖</span>Ask</button>
+  </nav>
+
+  <main>
+    <!-- ── VIEW PANEL ── -->
+    <section class="panel on" data-pane="view">
+      <div class="viewgrid" id="viewGrid">
+        <button class="vbtn" data-view="overview"><span class="ico">🏠</span>Overview</button>
+        <button class="vbtn" data-view="calendar"><span class="ico">📆</span>Calendar</button>
+        <button class="vbtn" data-view="bills"><span class="ico">💸</span>Money</button>
+        <button class="vbtn" data-view="tasks"><span class="ico">✅</span>Tasks</button>
+        <button class="vbtn" data-view="meetings"><span class="ico">🎙️</span>Meetings</button>
+        <button class="vbtn" data-view="local"><span class="ico">📍</span>Greeley</button>
+        <button class="vbtn" data-view="agent"><span class="ico">🤖</span>Agent</button>
+        <button class="vbtn" data-view="photo"><span class="ico">🖼️</span>Photo</button>
+      </div>
+      <div class="act-row" style="margin-top:18px">
+        <button class="ghost" onclick="sendBroadcast()">📣 Broadcast Msg</button>
+        <button class="danger ghost" onclick="resetTv()">↺ Reset TV</button>
+      </div>
+
+      <label class="field">TV font size</label>
+      <div class="chiprow" style="align-items:center">
+        <button class="qchip" onclick="bumpFont(-0.1)" style="font-size:18px;font-weight:700">−</button>
+        <span id="fontPct" style="flex:1;text-align:center;font-family:'Space Grotesk',monospace;color:#c9a848;font-size:15px">100%</span>
+        <button class="qchip" onclick="bumpFont(0.1)" style="font-size:18px;font-weight:700">+</button>
+        <button class="qchip" onclick="setFont(1)">Reset</button>
+      </div>
+
+      <label class="field">Big calendar size</label>
+      <div class="pills" id="bigCalPills">
+        <input type="radio" name="bigcal" id="bc-month" value="month" checked>
+        <label for="bc-month" onclick="setBigCal('month')">30 day</label>
+        <input type="radio" name="bigcal" id="bc-week" value="week">
+        <label for="bc-week" onclick="setBigCal('week')">7 day</label>
+        <input type="radio" name="bigcal" id="bc-day" value="day">
+        <label for="bc-day" onclick="setBigCal('day')">1 day</label>
+      </div>
+
+      <label class="field">My Interests · headlines, sports</label>
+      <div id="interestsList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+      <div class="grid2">
+        <input id="newInterestLabel" placeholder="Label (e.g. Avalanche)">
+        <input id="newInterestTopic" placeholder="Search topic (e.g. Colorado Avalanche NHL)">
+      </div>
+      <div class="act-row" style="margin-top:8px">
+        <button class="ghost" onclick="addInterest()">➕ Add Interest</button>
+      </div>
+    </section>
+
+    <!-- ── ADD PANEL — quick-add tasks/bills/events ── -->
+    <section class="panel" data-pane="add">
+      <div class="quickrow" id="kindQuick">
+        <button class="qa on" data-kind="task"><span class="ico">✅</span>Task</button>
+        <button class="qa" data-kind="bill"><span class="ico">💸</span>Bill</button>
+        <button class="qa" data-kind="event"><span class="ico">📆</span>Event</button>
+        <button class="qa" data-kind="appointment"><span class="ico">🦷</span>Appt</button>
+      </div>
+
+      <label class="field">What</label>
+      <input id="taskText" placeholder="Dentist · pay rent · pick up Liam">
+
+      <label class="field">Who</label>
+      <div class="pills" id="whoPills">
+        <% ['Scott','Candace','Violet','Odin','Family'].forEach((p, i) => { %>
+          <input type="radio" name="who" id="who-<%= p %>" value="<%= p %>" <%= i===0?'checked':'' %>>
+          <label for="who-<%= p %>"><%= p %></label>
+        <% }) %>
+      </div>
+
+      <label class="field">When · quick-pick</label>
+      <div class="chiprow">
+        <button class="qchip" onclick="setQuickWhen('now')">Now</button>
+        <button class="qchip" onclick="setQuickWhen('today-evening')">Today 6pm</button>
+        <button class="qchip" onclick="setQuickWhen('tomorrow')">Tomorrow 9am</button>
+        <button class="qchip" onclick="setQuickWhen('friday')">This Fri</button>
+        <button class="qchip" onclick="setQuickWhen('next-monday')">Next Mon</button>
+        <button class="qchip" onclick="setQuickWhen('next-week')">+1 week</button>
+        <button class="qchip" onclick="setQuickWhen('next-month')">+1 month</button>
+      </div>
+      <input id="taskWhen" type="datetime-local" style="margin-top:8px">
+
+      <label class="field">Repeat</label>
+      <div class="pills" id="repeatPills">
+        <% ['none','daily','weekly','biweekly','monthly','yearly'].forEach((f, i) => { %>
+          <input type="radio" name="repeat" id="rep-<%= f %>" value="<%= f %>" <%= i===0?'checked':'' %>>
+          <label for="rep-<%= f %>"><%= f %></label>
+        <% }) %>
+      </div>
+
+      <!-- Bill-specific -->
+      <div id="billOnly" style="display:none">
+        <label class="field">Amount</label>
+        <input id="taskAmount" type="number" step="0.01" placeholder="$">
+
+        <label class="field">Category</label>
+        <div class="pills" id="billCategoryPills">
+          <% const _cats = [
+            ['none','None'],['utility','Utility'],['rent','Rent'],['mortgage','Mortgage'],
+            ['insurance','Insurance'],['subscription','Subscription'],['loan','Loan'],['other','Other']
+          ]; _cats.forEach(([v,l], i) => { %>
+            <input type="radio" name="billCategory" id="bcat-<%= v %>" value="<%= v %>" <%= i===0?'checked':'' %>>
+            <label for="bcat-<%= v %>"><%= l %></label>
+          <% }) %>
+        </div>
+
+        <label class="field">Business share — <span id="bizPctLabel">0%</span> of this bill is a business expense</label>
+        <input id="taskBizPct" type="range" min="0" max="100" step="1" value="0"
+               oninput="document.getElementById('bizPctLabel').textContent = this.value + '%'; updateBizSplitPreview();">
+        <div class="chiprow" style="margin-top:6px">
+          <button type="button" class="qchip" onclick="setBizPct(0)">0%</button>
+          <button type="button" class="qchip" onclick="setBizPct(25)">25%</button>
+          <button type="button" class="qchip" onclick="setBizPct(50)">50%</button>
+          <button type="button" class="qchip" onclick="setBizPct(75)">75%</button>
+          <button type="button" class="qchip" onclick="setBizPct(100)">100%</button>
+        </div>
+        <div id="bizSplitPreview" style="font-size:12px;color:#a3a3a3;margin-top:8px;padding:8px 10px;background:#0c0c10;border:1px solid #1f1f22;border-radius:6px;font-family:'Space Grotesk',monospace">
+          Personal: <b id="bizSplitPersonal" style="color:#fff">$0.00</b> · Business: <b id="bizSplitBusiness" style="color:#c9a848">$0.00</b>
+        </div>
+
+        <!-- Manual / inline help -->
+        <details style="margin-top:10px;font-size:12px;color:#737373;background:#0c0c10;border:1px solid #1f1f22;border-radius:6px;padding:8px 10px">
+          <summary style="cursor:pointer;color:#c9a848">📖 Manual — bill splits & business share</summary>
+          <div style="padding-top:8px;line-height:1.5">
+            <p><b>Business share</b> is the percent of this bill written off as a business expense.</p>
+            <p style="margin-top:6px"><b>Utility example:</b> if your home office is 25% of the house, set Utility → 25%. The TV will roll up <i>Personal</i> vs <i>Business</i> totals so you can hand the business portion to bookkeeping.</p>
+            <p style="margin-top:6px"><b>Other categories</b> behave the same — pick the closest match. <i>Subscription</i> is good for software/tools that may be 100% business; <i>Rent/Mortgage</i> use the home-office %.</p>
+            <p style="margin-top:6px"><b>Recurring bills</b> inherit the share each cycle.</p>
+          </div>
+        </details>
+      </div>
+
+      <div class="more-toggle" onclick="document.getElementById('advanced').classList.toggle('on'); this.textContent = this.textContent.includes('More') ? 'Hide details ▴' : 'More details ▾'">More details ▾</div>
+      <div class="advanced" id="advanced">
+        <label class="field">Where</label>
+        <input id="taskLoc" placeholder="Location (optional)">
+        <label class="field">Note</label>
+        <textarea id="taskNote" placeholder="Notes (optional)"></textarea>
+        <label class="field">Repeat until (optional)</label>
+        <input id="repUntil" type="date">
+      </div>
+
+      <div class="act-row">
+        <button class="act" onclick="addTask()">➕ Add</button>
+        <button class="ghost" onclick="clearForm()">Clear</button>
+      </div>
+    </section>
+
+    <!-- ── CALENDAR PANEL — tap a day to focus on TV ── -->
+    <section class="panel" data-pane="cal">
+      <div class="month-nav">
+        <button onclick="shiftCalMonth(-1)">‹</button>
+        <div class="ttl" id="calMonthTtl">—</div>
+        <button onclick="shiftCalMonth(1)">›</button>
+      </div>
+      <div class="month-mini" id="calMini"></div>
+      <p style="font-size:12px;color:#737373;text-align:center;margin-top:10px">Tap a day to bring it up on the TV</p>
+      <div class="act-row">
+        <button class="ghost" onclick="focusDay(null)">Clear focus</button>
+        <button class="act" onclick="cycleCalMode()">Cycle TV view (mo→wk→day)</button>
+      </div>
+    </section>
+
+    <!-- ── REVIEW PANEL — mark past items attended / canceled / missed / pushback ── -->
+    <section class="panel" data-pane="review">
+      <p style="font-size:12px;color:#737373;margin-bottom:8px">Last 30 days · mark what happened. Pushback bumps to a new date.</p>
+      <div id="reviewList" style="display:flex;flex-direction:column;gap:10px"></div>
+    </section>
+
+    <!-- ── ASK PANEL — agent ── -->
+    <section class="panel" data-pane="ask">
+      <label class="field">What can Wallace do for you?</label>
+      <textarea id="agentInp" placeholder="Add a dentist appointment for Candace next Tuesday at 2pm…"></textarea>
+      <div class="act-row">
+        <button class="ghost" id="micBtn"
+          onmousedown="micStart(event)" onmouseup="micStop(event)" onmouseleave="micStop(event)"
+          ontouchstart="micStart(event)" ontouchend="micStop(event)" ontouchcancel="micStop(event)"
+          style="flex:0 0 auto;padding:18px 22px">🎙 Hold</button>
+        <button class="act" id="agentBtn" onclick="askAgent()">Send</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="searchToggle" checked> Allow web search</label>
+      <div class="agent-reply" id="agentReply"></div>
+      <div id="micStatus" style="margin-top:6px;font-size:12px;color:#737373"></div>
+    </section>
+  </main>
+
+  <div class="status">
+    <span><span class="dot on" id="netDot"></span>connected</span>
+    <span>TV view: <b id="curView">—</b></span>
+  </div>
+
+<script>
+const remoteId = <%- JSON.stringify(remoteId) %>;
+let currentView = <%- JSON.stringify(state.view || 'overview') %>;
+
+// Seasonal accent (match TV)
+(function(){
+  const m = new Date().getMonth();
+  let accent = '#c9a848', bg = '#1a1610';
+  if (m === 0 || m === 1)      { accent = '#7dd3fc'; bg = '#0c2438'; }
+  else if (m >= 2 && m <= 4)   { accent = '#86efac'; bg = '#0e2818'; }
+  else if (m >= 5 && m <= 7)   { accent = '#fb923c'; bg = '#2e1a0a'; }
+  else if (m >= 8 && m <= 9)   { accent = '#f59e0b'; bg = '#2c1d07'; }
+  const s = document.createElement('style');
+  s.textContent = `h1, .tab.on, .vbtn.on, .qa.on, .pills input:checked + label, .month-nav button, .billnav button, .qchip:active { color: ${accent} !important; border-color: ${accent} !important; } .vbtn.on, .qa.on, .pills input:checked + label, .month-mini .d.focused { background: ${bg} !important; } button.act { background: ${accent} !important; } .tab.on { border-bottom-color: ${accent} !important; } .month-mini .d.focused { background: ${accent} !important; color: #0a0a0a !important; } input:focus, textarea:focus, select:focus { border-color: ${accent} !important; }`;
+  document.head.appendChild(s);
+})();
+
+// ── Tabs ──
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.dataset.pane === t.dataset.pane));
+  if (t.dataset.pane === 'cal') renderMini();
+  if (t.dataset.pane === 'view') loadInterests();
+  if (t.dataset.pane === 'review') loadReview();
+}));
+
+// ── Font scale (sent to TV via state.custom.fontScale) ──
+let fontScale = 1.0;
+function bumpFont(d){ setFont(Math.max(0.7, Math.min(1.8, fontScale + d))); }
+function setFont(s){
+  fontScale = Math.round(s * 100) / 100;
+  document.getElementById('fontPct').textContent = Math.round(fontScale * 100) + '%';
+  push({ custom: { fontScale } });
+}
+
+// ── Big calendar mode ──
+function setBigCal(mode){
+  document.getElementById('bc-' + mode).checked = true;
+  // Switching to day mode via the button means "today" — clear any stale day-focus
+  // left over from a previous tap on the mini-calendar. Tapping a specific day
+  // still sets focusDate in focusDay() below.
+  const patch = { bigCalMode: mode };
+  if (mode === 'day') patch.focusDate = null;
+  push({ custom: patch });
+}
+
+// ── Interests ──
+async function loadInterests(){
+  try {
+    const r = await fetch('/superadmin/scottsGateway/api/interests');
+    const j = await r.json();
+    if (!j.ok) return;
+    const list = document.getElementById('interestsList');
+    list.innerHTML = (j.topics || []).map(t => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#101014;border:1px solid #262629;border-radius:8px">
+        <span style="flex:1;font-size:13px"><b style="color:#c9a848">${escapeHtmlR(t.label)}</b><span style="color:#737373;font-size:11px;margin-left:6px">${escapeHtmlR(t.topic)}</span></span>
+        <button class="ghost" style="padding:6px 10px;font-size:13px;flex:0" onclick="dropInterest('${t.id}')">✕</button>
+      </div>`).join('') || '<div style="color:#525252;font-size:13px;font-style:italic">No interests yet — add one below.</div>';
+  } catch (e) {}
+}
+async function addInterest(){
+  const label = document.getElementById('newInterestLabel').value.trim();
+  const topic = document.getElementById('newInterestTopic').value.trim();
+  if (!topic) return alert('Topic is required');
+  try {
+    const r = await fetch('/superadmin/scottsGateway/api/interests', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ label: label || topic, topic }),
+    });
+    const j = await r.json();
+    if (!j.ok) return alert('Add failed: ' + j.error);
+    document.getElementById('newInterestLabel').value = '';
+    document.getElementById('newInterestTopic').value = '';
+    loadInterests();
+  } catch (e) { alert(e.message); }
+}
+async function dropInterest(id){
+  try { await fetch('/superadmin/scottsGateway/api/interests/' + encodeURIComponent(id), { method:'DELETE' }); loadInterests(); }
+  catch (e) {}
+}
+function escapeHtmlR(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ── Review (past + upcoming with edit/delete) ──
+async function loadReview(){
+  try {
+    const r = await fetch('/superadmin/scottsGateway/api/review/pending');
+    const j = await r.json();
+    if (!j.ok) return;
+    const items = j.items || [];
+    const upcoming = j.upcoming || [];
+    const list = document.getElementById('reviewList');
+
+    const fmtWhen = (w) => w ? new Date(w).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+
+    const pastHtml = items.length ? items.map(it => `
+      <div style="background:#101014;border:1px solid #262629;border-radius:12px;padding:12px">
+        <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;align-items:baseline">
+          <strong style="color:#fff;font-size:15px">${escapeHtmlR(it.text)}</strong>
+          <span style="color:#737373;font-size:11px;font-family:'Space Grotesk',monospace;white-space:nowrap">${fmtWhen(it.when)}</span>
+        </div>
+        <div style="font-size:12px;color:#737373;margin-bottom:10px">${escapeHtmlR(it.who||'')} · ${escapeHtmlR(it.kind)}${it.location?' · 📍 '+escapeHtmlR(it.location):''}</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+          <button class="qchip" onclick="markOutcome('${it.id}','attended')" style="border-color:#0f5132;color:#86efac">✓ Attended</button>
+          <button class="qchip" onclick="markOutcome('${it.id}','canceled')" style="border-color:#451a1a;color:#f87171">✕ Canceled</button>
+          <button class="qchip" onclick="markOutcome('${it.id}','missed')" style="border-color:#3a2410;color:#fbbf24">⚠ Missed</button>
+          <button class="qchip" onclick="markPushback('${it.id}')" style="border-color:#1c2540;color:#a5b4fc">↗ Pushback</button>
+        </div>
+      </div>`).join('')
+      : `<div style="color:#86efac;text-align:center;padding:20px;font-size:13px">✓ Nothing pending review.</div>`;
+
+    const upcomingHtml = upcoming.length ? upcoming.map(it => `
+      <div style="background:#101014;border:1px solid #262629;border-radius:12px;padding:12px">
+        <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;align-items:baseline">
+          <strong style="color:#fff;font-size:15px">${escapeHtmlR(it.text)}${it.recurring?' <span style="color:#a78bfa;font-size:11px">↻</span>':''}</strong>
+          <span style="color:#737373;font-size:11px;font-family:'Space Grotesk',monospace;white-space:nowrap">${fmtWhen(it.when)}</span>
+        </div>
+        <div style="font-size:12px;color:#737373;margin-bottom:10px">${escapeHtmlR(it.who||'')} · ${escapeHtmlR(it.kind)}${it.location?' · 📍 '+escapeHtmlR(it.location):''}</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          <button class="qchip" onclick="editUpcoming('${it.id}')" style="border-color:#1c2540;color:#a5b4fc">✎ Edit</button>
+          <button class="qchip" onclick="rescheduleUpcoming('${it.id}')" style="border-color:#3a2410;color:#fbbf24">↗ Reschedule</button>
+          <button class="qchip" onclick="deleteUpcoming('${it.id}')" style="border-color:#451a1a;color:#f87171">🗑 Delete</button>
+        </div>
+      </div>`).join('')
+      : `<div style="color:#525252;text-align:center;padding:14px;font-size:13px;font-style:italic">No upcoming items.</div>`;
+
+    list.innerHTML = `
+      <h3 style="font-size:12px;color:#737373;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px">Review · last 30 days</h3>
+      ${pastHtml}
+      <h3 style="font-size:12px;color:#737373;text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px">Upcoming · edit or delete</h3>
+      ${upcomingHtml}
+    `;
+  } catch (e) {}
+}
+async function markOutcome(id, outcome){
+  try { await fetch(`/superadmin/scottsGateway/api/tasks/${id}/outcome`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ outcome }) });
+    loadReview();
+  } catch (e) {}
+}
+async function markPushback(id){
+  const whenRaw = prompt('Reschedule to (YYYY-MM-DD HH:MM)?');
+  const iso = localPromptToIso(whenRaw);
+  if (!iso) return;
+  try { await fetch(`/superadmin/scottsGateway/api/tasks/${id}/outcome`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ outcome:'pushback', newWhen: iso }) });
+    loadReview();
+  } catch (e) {}
+}
+// Treat a freeform "YYYY-MM-DD HH:MM" (or any Date-parseable string) as local
+// time and serialize as an absolute UTC ISO before sending to the server.
+function localPromptToIso(s){
+  if (!s || !s.trim()) return null;
+  const d = new Date(s.trim().replace(' ', 'T'));
+  if (isNaN(d.getTime())) { alert('Could not parse "' + s + '" — try YYYY-MM-DD HH:MM'); return undefined; }
+  return d.toISOString();
+}
+async function editUpcoming(id){
+  const text = prompt('New text (leave blank to skip):');
+  const whenRaw = prompt('New date/time YYYY-MM-DD HH:MM (leave blank to skip):');
+  const patch = {};
+  if (text && text.trim()) patch.text = text.trim();
+  if (whenRaw && whenRaw.trim()) {
+    const iso = localPromptToIso(whenRaw);
+    if (iso === undefined) return;
+    patch.when = iso;
+  }
+  if (!Object.keys(patch).length) return;
+  try {
+    const r = await fetch(`/superadmin/scottsGateway/api/tasks/${id}`, {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(patch),
+    });
+    const j = await r.json();
+    if (!j.ok) return alert('Edit failed: ' + j.error);
+    loadReview();
+  } catch (e) { alert(e.message); }
+}
+async function rescheduleUpcoming(id){
+  const whenRaw = prompt('New date/time YYYY-MM-DD HH:MM:');
+  const iso = localPromptToIso(whenRaw);
+  if (!iso) return;
+  try {
+    const r = await fetch(`/superadmin/scottsGateway/api/tasks/${id}`, {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ when: iso }),
+    });
+    const j = await r.json();
+    if (!j.ok) return alert('Reschedule failed: ' + j.error);
+    loadReview();
+  } catch (e) { alert(e.message); }
+}
+async function deleteUpcoming(id){
+  if (!confirm('Delete this item? This cannot be undone.')) return;
+  try {
+    const r = await fetch(`/superadmin/scottsGateway/api/tasks/${id}`, { method:'DELETE' });
+    const j = await r.json();
+    if (!j.ok) return alert('Delete failed: ' + j.error);
+    loadReview();
+  } catch (e) { alert(e.message); }
+}
+
+// ── Push helper ──
+async function push(body){
+  document.getElementById('netDot').classList.remove('on');
+  try {
+    const r = await fetch('/superadmin/scottsGateway/api/state', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const j = await r.json();
+    document.getElementById('netDot').classList.add('on');
+    if (j.state?.view) markView(j.state.view);
+    return j;
+  } catch (e) { alert('Push failed: ' + e.message); }
+}
+function markView(v){ document.getElementById('curView').textContent = v; document.querySelectorAll('.vbtn').forEach(b => b.classList.toggle('on', b.dataset.view === v)); }
+markView(currentView);
+loadInterests();
+
+// ── View buttons ──
+document.getElementById('viewGrid').addEventListener('click', e => {
+  const b = e.target.closest('.vbtn'); if (!b) return;
+  push({ view: b.dataset.view });
+});
+
+function sendBroadcast(){
+  const v = prompt('Broadcast message:'); if (!v) return;
+  push({ message: v });
+}
+async function resetTv(){
+  if (!confirm('Reset TV?')) return;
+  await fetch('/superadmin/scottsGateway/api/state/reset', { method:'POST' });
+}
+
+// ── ADD panel ──
+document.getElementById('kindQuick').addEventListener('click', e => {
+  const b = e.target.closest('.qa'); if (!b) return;
+  document.querySelectorAll('.qa').forEach(x => x.classList.toggle('on', x === b));
+  document.getElementById('billOnly').style.display = b.dataset.kind === 'bill' ? 'block' : 'none';
+});
+
+function setQuickWhen(key){
+  const d = new Date();
+  if (key === 'now') { /* now */ }
+  else if (key === 'today-evening') { d.setHours(18,0,0,0); }
+  else if (key === 'tomorrow') { d.setDate(d.getDate()+1); d.setHours(9,0,0,0); }
+  else if (key === 'friday') { const diff = (5 - d.getDay() + 7) % 7 || 7; d.setDate(d.getDate()+diff); d.setHours(9,0,0,0); }
+  else if (key === 'next-monday') { const diff = (1 - d.getDay() + 7) % 7 || 7; d.setDate(d.getDate()+diff); d.setHours(9,0,0,0); }
+  else if (key === 'next-week') { d.setDate(d.getDate()+7); d.setHours(9,0,0,0); }
+  else if (key === 'next-month') { d.setMonth(d.getMonth()+1); d.setHours(9,0,0,0); }
+  // Format as local datetime-local
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('taskWhen').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function setBizPct(v){
+  const inp = document.getElementById('taskBizPct');
+  inp.value = v;
+  document.getElementById('bizPctLabel').textContent = v + '%';
+  updateBizSplitPreview();
+}
+function updateBizSplitPreview(){
+  const amt = parseFloat(document.getElementById('taskAmount').value) || 0;
+  const pct = parseFloat(document.getElementById('taskBizPct').value) || 0;
+  const biz = amt * pct / 100;
+  const per = amt - biz;
+  document.getElementById('bizSplitPersonal').textContent = '$' + per.toFixed(2);
+  document.getElementById('bizSplitBusiness').textContent = '$' + biz.toFixed(2);
+}
+// Recompute the split whenever the amount changes
+document.addEventListener('input', e => { if (e.target?.id === 'taskAmount') updateBizSplitPreview(); });
+
+async function addTask(){
+  const text = document.getElementById('taskText').value.trim();
+  if (!text) { alert('What needs doing?'); return; }
+  const kind = document.querySelector('.qa.on')?.dataset.kind || 'task';
+  const who = document.querySelector('input[name="who"]:checked')?.value || 'Family';
+  const repeat = document.querySelector('input[name="repeat"]:checked')?.value || 'none';
+  const repUntil = document.getElementById('repUntil').value || null;
+  // `datetime-local` returns "YYYY-MM-DDTHH:MM" with no timezone — the server
+  // would parse that as UTC and shift Mountain-time entries by 6/7 hours.
+  // Convert it through `new Date()` (which treats no-TZ strings as local) and
+  // serialize as a proper UTC ISO so the round-trip preserves the wall clock.
+  const rawWhen = document.getElementById('taskWhen').value;
+  const whenIso = rawWhen ? new Date(rawWhen).toISOString() : null;
+  const rawUntil = repUntil;
+  const untilIso = rawUntil ? new Date(rawUntil).toISOString() : null;
+  const body = {
+    text, kind, who,
+    when: whenIso,
+    location: document.getElementById('taskLoc').value.trim(),
+    note: document.getElementById('taskNote').value.trim(),
+    amount: parseFloat(document.getElementById('taskAmount').value) || null,
+    recurrence: repeat !== 'none' ? { freq: repeat, until: untilIso } : null,
+  };
+  if (kind === 'bill') {
+    const catRaw = document.querySelector('input[name="billCategory"]:checked')?.value || 'none';
+    body.category = catRaw === 'none' ? null : catRaw;
+    body.businessSharePct = parseFloat(document.getElementById('taskBizPct').value) || 0;
+  }
+  try {
+    const r = await fetch('/superadmin/scottsGateway/api/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!j.ok) { alert('Add failed: ' + j.error); return; }
+    push({ view: kind === 'bill' ? 'bills' : (kind === 'task' ? 'tasks' : 'calendar') });
+    clearForm();
+    document.querySelector('[data-pane="view"]').click();
+  } catch (e) { alert('Network: ' + e.message); }
+}
+function clearForm(){
+  ['taskText','taskWhen','taskAmount','taskLoc','taskNote','repUntil'].forEach(id => document.getElementById(id).value = '');
+  const bcatNone = document.getElementById('bcat-none'); if (bcatNone) bcatNone.checked = true;
+  const biz = document.getElementById('taskBizPct'); if (biz) biz.value = 0;
+  const lbl = document.getElementById('bizPctLabel'); if (lbl) lbl.textContent = '0%';
+  updateBizSplitPreview();
+}
+
+// ── CALENDAR panel (mini grid, tap-to-focus) ──
+let calMonthOffset = 0; // 0 = current month
+let focusedKey = null;
+function pad(n){ return String(n).padStart(2,'0'); }
+async function renderMini(){
+  // Pull aggregate so we can dot busy days
+  let agg = null;
+  try { const r = await fetch('/superadmin/scottsGateway/api/aggregate?days=90'); const j = await r.json(); if (j.ok) agg = j.data; } catch {}
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(today.getFullYear(), today.getMonth() + calMonthOffset, 1);
+  document.getElementById('calMonthTtl').textContent = target.toLocaleDateString([], {month:'long', year:'numeric'});
+  const start = new Date(target); start.setDate(1); start.setDate(1 - start.getDay());
+  const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const todayKey = dayKey(today);
+
+  // Build busy set
+  const busy = new Set();
+  const counts = {};
+  if (agg) {
+    const tag = (d) => { if (!d) return; const k = dayKey(new Date(d)); busy.add(k); counts[k] = (counts[k]||0)+1; };
+    agg.calendar.forEach(e => tag(e.startsAt||e.date));
+    agg.bookings.forEach(b => tag(b.startAt));
+    agg.meetings.forEach(m => tag(m.scheduledAt || m.createdAt));
+    agg.workdays.forEach(w => tag(w.date));
+  }
+
+  const cells = ['Su','Mo','Tu','We','Th','Fr','Sa'].map(l => `<div class="dow">${l}</div>`).join('');
+  let html = cells;
+  for (let i=0; i<42; i++) {
+    const d = new Date(start); d.setDate(start.getDate()+i);
+    const k = dayKey(d);
+    const dim = d.getMonth() !== target.getMonth();
+    const isToday = k === todayKey;
+    const has = busy.has(k);
+    const ct = counts[k];
+    html += `<div class="d ${isToday?'today':''} ${dim?'dim':''} ${has?'has':''} ${k===focusedKey?'focused':''}" data-day="${k}">${d.getDate()}${ct?`<div class="count">${ct}</div>`:''}</div>`;
+  }
+  document.getElementById('calMini').innerHTML = html;
+  document.querySelectorAll('#calMini .d').forEach(c => c.addEventListener('click', () => focusDay(c.dataset.day)));
+}
+function shiftCalMonth(delta){ calMonthOffset += delta; renderMini(); }
+function focusDay(k){
+  focusedKey = k;
+  document.querySelectorAll('#calMini .d').forEach(c => c.classList.toggle('focused', c.dataset.day === k));
+  push({ view: 'calendar', custom: { focusDate: k, calMode: 'day' } });
+}
+function cycleCalMode(){
+  // Server-state will rotate when the TV receives view='calendar' while already on calendar
+  push({ view: 'calendar' });
+}
+
+// ── ASK panel — agent + voice ──
+let recog = null, recogActive = false, baseText = '';
+function setupRecog(){
+  if (recog) return recog;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  recog = new SR();
+  recog.lang = 'en-US'; recog.interimResults = true; recog.continuous = true;
+  recog.onresult = (ev) => {
+    let interim = '', final = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i]; if (r.isFinal) final += r[0].transcript + ' '; else interim += r[0].transcript;
+    }
+    document.getElementById('agentInp').value = (baseText + ' ' + final + interim).trim();
+  };
+  recog.onerror = (e) => { setMicStatus('mic: ' + e.error, '#f87171'); recogActive=false; };
+  recog.onend = () => { recogActive=false; document.getElementById('micBtn').style.background=''; setMicStatus(''); };
+  return recog;
+}
+function setMicStatus(t, c){ const el = document.getElementById('micStatus'); el.textContent = t; el.style.color = c || '#737373'; }
+function micStart(ev){ if (ev) ev.preventDefault();
+  const r = setupRecog();
+  if (!r) { setMicStatus('Voice unsupported — use Chrome/Safari','#f87171'); return; }
+  if (recogActive) return;
+  baseText = document.getElementById('agentInp').value || '';
+  try { r.start(); recogActive=true; document.getElementById('micBtn').style.background='#451a1a'; setMicStatus('listening…','#fb923c'); }
+  catch (e) { setMicStatus('busy — release and retry','#f87171'); }
+}
+function micStop(ev){ if (ev) ev.preventDefault(); if (!recog || !recogActive) return; try { recog.stop(); } catch {} recogActive=false; document.getElementById('micBtn').style.background=''; }
+
+async function askAgent(){
+  const prompt = document.getElementById('agentInp').value.trim(); if (!prompt) return;
+  const search = document.getElementById('searchToggle').checked;
+  const btn = document.getElementById('agentBtn'); btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await fetch('/superadmin/scottsGateway/api/agent', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prompt, search }) });
+    const j = await r.json();
+    if (j.ok) {
+      const out = document.getElementById('agentReply'); out.textContent = j.reply || '(empty)'; out.classList.add('show');
+      push({ custom: { agentReply: j.reply || '' } });
+    } else alert(j.error);
+  } catch (e) { alert(e.message);
+  } finally { btn.disabled = false; btn.textContent = 'Send'; }
+}
+</script>
+</body>
+</html>

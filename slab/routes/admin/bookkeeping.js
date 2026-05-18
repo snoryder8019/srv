@@ -182,4 +182,26 @@ router.post('/:id/refund', async (req, res) => {
   }
 });
 
+// ── Delete an invoice ──
+router.post('/:id/delete', async (req, res) => {
+  try {
+    const db = req.db;
+    const invoiceId = new ObjectId(req.params.id);
+    const invoice = await db.collection('invoices').findOne({ _id: invoiceId });
+    if (!invoice) return res.redirect('/admin/bookkeeping?error=Invoice+not+found');
+
+    // Paid invoices must be refunded/voided first to preserve audit trail
+    if (invoice.status === 'paid') {
+      return res.redirect('/admin/bookkeeping?error=Refund+paid+invoices+before+deleting');
+    }
+
+    await db.collection('invoices').deleteOne({ _id: invoiceId });
+    console.log(`[Bookkeeping] Invoice ${invoice.invoiceNumber} deleted by ${req.adminUser?.displayName || 'admin'}`);
+    res.redirect('/admin/bookkeeping?success=Invoice+deleted');
+  } catch (err) {
+    console.error('Delete invoice error:', err);
+    res.redirect(`/admin/bookkeeping?error=${encodeURIComponent(err.message || 'Delete failed')}`);
+  }
+});
+
 export default router;

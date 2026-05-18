@@ -114,9 +114,17 @@ async function lookupTenant(domain) {
   const brand = doc.brand || {};
   const brandSetupComplete = !!(brand.name && brand.businessType && brand.industry) || !!doc.meta?.brandSetupAt;
 
+  // Prefer canonical custom domain for outbound URLs (invoice payment links,
+  // meeting invites, tracking, etc). Fall back to wildcard subdomain only when
+  // no custom domain is attached. The wildcard form stays on `wildcardDomain`.
+  const customDomain = doc.meta?.customDomain || doc.public?.customDomain || null;
+  const publicDomain = customDomain || doc.domain;
+
   return {
     _id: doc._id,
-    domain: doc.domain,
+    domain: publicDomain,
+    wildcardDomain: doc.domain,
+    customDomain,
     db: doc.db,
     status: doc.status || 'active',
     isPreview: doc.status === 'preview',

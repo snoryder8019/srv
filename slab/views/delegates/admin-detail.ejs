@@ -62,6 +62,7 @@
     <div class="topbar-right">
       <a href="/superadmin">Dashboard</a>
       <a href="/delegates/admin">Delegates</a>
+      <a href="/delegates/admin/reports/state-tax">State Tax</a>
       <a href="/superadmin/logout">Logout</a>
     </div>
   </div>
@@ -77,6 +78,13 @@
       &nbsp;&middot;&nbsp; Joined <%= new Date(delegate.createdAt).toLocaleDateString() %>
     </div>
 
+    <% if (typeof msg !== 'undefined' && msg) { %>
+    <div style="background:#14532d;border:1px solid #166534;color:#86efac;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;"><%= msg %></div>
+    <% } %>
+    <% if (typeof error !== 'undefined' && error) { %>
+    <div style="background:#451a1a;border:1px solid #602020;color:#fca5a5;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;"><%= error %></div>
+    <% } %>
+
     <!-- Status actions -->
     <div class="actions-row">
       <% if (delegate.status !== 'active') { %>
@@ -88,6 +96,9 @@
       <% if (delegate.status !== 'suspended') { %>
         <form method="POST" action="/delegates/admin/<%= delegate._id %>/status"><input type="hidden" name="status" value="suspended"><button class="btn btn-red" onclick="return confirm('Suspend this delegate?')">Suspend</button></form>
       <% } %>
+      <form method="POST" action="/delegates/admin/<%= delegate._id %>/send-reminder" style="margin-left:auto;">
+        <button type="submit" class="btn btn-gold" onclick="return confirm('Email <%= delegate.email %> a login reminder with their share code?')">Send Login Reminder</button>
+      </form>
     </div>
 
     <!-- Delegate info card -->
@@ -123,16 +134,22 @@
 
       <% if (tenantDetails.length) { %>
       <table>
-        <thead><tr><th>Domain</th><th>Brand</th><th>Status</th><th>Attached</th><th>Year</th><th>Rate</th><th></th></tr></thead>
+        <thead><tr><th>Domain</th><th>Brand</th><th>State</th><th>Plan</th><th>Yr</th><th>Rate</th><th>Gross/mo</th><th>Net/mo</th><th>Commission</th><th></th></tr></thead>
         <tbody>
           <% for (const t of tenantDetails) { %>
+          <% const gross = Number(t.grossMonthly || 0), net = Number(t.netMonthly || 0), comm = Number(t.commission || 0), rate = Number(t.rate || 0); %>
           <tr>
             <td><%= t.tenantDomain %></td>
             <td><%= t.brandName %></td>
-            <td><span class="status status-<%= t.tenantStatus %>"><%= t.tenantStatus %></span></td>
-            <td><%= new Date(t.attachedAt).toLocaleDateString() %></td>
-            <td>Yr <%= t.year %></td>
-            <td style="color:#c9a848;font-weight:600;">$<%= t.rate.toFixed(2) %>/mo</td>
+            <td style="color:<%= t.businessState ? '#e5e5e5' : '#f87171' %>;"><%= t.businessState || '—' %></td>
+            <td style="text-transform:capitalize;"><%= t.plan || '—' %></td>
+            <td><%= t.year || '—' %></td>
+            <td><%= (rate * 100).toFixed(0) %>%</td>
+            <td style="color:#737373;">$<%= gross.toFixed(2) %></td>
+            <td style="color:#a3a3a3;">$<%= net.toFixed(2) %></td>
+            <td style="color:<%= t.inTrial ? '#fdba74' : '#c9a848' %>;font-weight:600;" title="<%= t.inTrial ? 'In free trial until ' + new Date(t.trialEndsAt).toLocaleDateString() : '' %>">
+              $<%= comm.toFixed(2) %><% if (t.inTrial) { %> <span style="font-size:10px;color:#fdba74;">(trial)</span><% } %>
+            </td>
             <td>
               <form method="POST" action="/delegates/admin/<%= delegate._id %>/detach" style="display:inline;">
                 <input type="hidden" name="tenantId" value="<%= t.tenantId %>">
@@ -143,28 +160,93 @@
           <% } %>
         </tbody>
       </table>
+      <div style="margin-top:10px;font-size:11px;color:#525252;">
+        Net = gross &times; (1 &minus; <%= (ownerTaxRate * 100).toFixed(0) %>% owner tax). Commission = net &times; rate.
+      </div>
       <% } else { %>
         <div class="empty">No accounts attached yet.</div>
       <% } %>
     </div>
 
+    <!-- Promo codes -->
+    <div class="section">
+      <h2>Promo Codes</h2>
+      <div style="font-size:12px;color:#737373;margin-bottom:12px;line-height:1.6;">
+        Promo codes give a tenant a free trial when used at <code style="color:#c9a848;">/start?ref=CODE</code>.
+        During the trial period, the delegate's commission is also $0 — commission begins after the trial ends.<br>
+        Each delegate also has their personal share code <code style="color:#c9a848;"><%= delegate.refCode %></code> (30-day default).
+      </div>
+
+      <form method="POST" action="/delegates/admin/<%= delegate._id %>/promo-codes" class="payout-form" style="margin-bottom:18px;">
+        <div class="form-group">
+          <label>Code (optional)</label>
+          <input type="text" name="code" placeholder="auto-generated if blank" style="width:200px;text-transform:uppercase;">
+        </div>
+        <div class="form-group">
+          <label>Label</label>
+          <input type="text" name="label" placeholder="e.g. Instagram Launch" style="width:200px;">
+        </div>
+        <div class="form-group">
+          <label>Free Days</label>
+          <input type="number" name="freeDays" value="30" min="1" max="365" style="width:90px;">
+        </div>
+        <div class="form-group">
+          <label>Expires</label>
+          <input type="date" name="expiresAt" style="width:150px;">
+        </div>
+        <button type="submit" class="btn btn-gold">Create Promo Code</button>
+      </form>
+
+      <% if (promoCodes && promoCodes.length) { %>
+      <table>
+        <thead><tr><th>Code</th><th>Label</th><th>Free Days</th><th>Expires</th><th>Status</th><th>Uses</th><th>Share URL</th><th></th></tr></thead>
+        <tbody>
+          <% for (const p of promoCodes) { %>
+          <% const expired = p.expiresAt && new Date(p.expiresAt) < new Date(); %>
+          <% const live = p.active && !expired; %>
+          <tr>
+            <td style="font-family:monospace;color:#c9a848;font-weight:600;"><%= p.code %></td>
+            <td style="color:#a3a3a3;"><%= p.label || '—' %></td>
+            <td><%= p.freeDays %></td>
+            <td style="color:<%= expired ? '#f87171' : '#a3a3a3' %>;"><%= p.expiresAt ? new Date(p.expiresAt).toLocaleDateString() : 'No expiry' %></td>
+            <td>
+              <% if (!p.active) { %><span class="status status-suspended">disabled</span>
+              <% } else if (expired) { %><span class="status status-suspended">expired</span>
+              <% } else { %><span class="status status-active">active</span><% } %>
+            </td>
+            <td><%= p.usageCount || 0 %></td>
+            <td style="font-family:monospace;font-size:11px;color:#737373;"><%= (domain || 'https://slab.madladslab.com') %>/start?ref=<%= p.code %></td>
+            <td>
+              <% if (live) { %>
+              <form method="POST" action="/delegates/admin/<%= delegate._id %>/promo-codes/<%= p._id %>/disable" style="display:inline;">
+                <button type="submit" class="btn-sm" onclick="return confirm('Disable this promo code?')">Disable</button>
+              </form>
+              <% } %>
+            </td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <% } else { %>
+        <div class="empty">No promo codes yet. The delegate can still share their personal code <code style="color:#c9a848;"><%= delegate.refCode %></code>.</div>
+      <% } %>
+    </div>
+
     <!-- Log payout -->
     <div class="section">
-      <h2>Log Payout</h2>
+      <h2>Log PayPal Payout</h2>
+      <div style="font-size:12px;color:#737373;margin-bottom:10px;">
+        Payouts are PayPal-only to begin. Send via PayPal first, then record the transaction here.
+      </div>
       <form method="POST" action="/delegates/admin/<%= delegate._id %>/payout" class="payout-form">
+        <input type="hidden" name="method" value="paypal">
         <div class="form-group">
           <label>Amount ($)</label>
           <input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00" style="width:120px;">
         </div>
         <div class="form-group">
-          <label>Method</label>
-          <select name="method">
-            <option value="manual">Manual / Check</option>
-            <option value="paypal">PayPal</option>
-            <option value="venmo">Venmo</option>
-            <option value="zelle">Zelle</option>
-            <option value="wire">Wire Transfer</option>
-          </select>
+          <label>PayPal Transaction ID</label>
+          <input type="text" name="paypalTxn" placeholder="e.g. 7XW12345AB678901C" style="width:220px;">
         </div>
         <div class="form-group">
           <label>Note (optional)</label>
@@ -179,7 +261,7 @@
       <h2>Payout History</h2>
       <% if (payouts.length) { %>
       <table>
-        <thead><tr><th>Date</th><th>Period</th><th>Amount</th><th>Method</th><th>Note</th><th>By</th></tr></thead>
+        <thead><tr><th>Date</th><th>Period</th><th>Amount</th><th>Method</th><th>PayPal Txn</th><th>Note</th><th>By</th></tr></thead>
         <tbody>
           <% for (const p of payouts) { %>
           <tr>
@@ -187,6 +269,7 @@
             <td><%= p.period %></td>
             <td style="color:#4ade80;font-weight:600;">$<%= p.amount.toFixed(2) %></td>
             <td><%= p.method %></td>
+            <td style="font-family:monospace;font-size:11px;color:#a3a3a3;"><%= p.paypalTxn || '—' %></td>
             <td style="color:#737373;"><%= p.note || '—' %></td>
             <td style="color:#737373;"><%= p.createdBy %></td>
           </tr>

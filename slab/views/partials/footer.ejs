@@ -1,0 +1,262 @@
+<%
+  /* ── Shared tenant footer — single source of truth for all public pages ── */
+  const _fD = typeof design     !== 'undefined' && design     ? design     : {};
+  const _fC = typeof copy       !== 'undefined' && copy       ? copy       : {};
+  const _fB = typeof brand      !== 'undefined' && brand      ? brand      : {};
+  const _fL = typeof logos      !== 'undefined' && logos      ? logos      : {};
+  const _fV = typeof visibility !== 'undefined' && visibility ? visibility : {};
+  if (_fV.footer !== false) {
+    const _fSiteName    = _fB.name    || '';
+    const _fSiteTagline = _fB.tagline || '';
+    const _fSplitAt = parseInt(_fD.nav_logo_split) || 0;
+    const _fLogoPre  = _fSplitAt > 0 ? _fSiteName.slice(0, _fSplitAt) : '';
+    const _fLogoPost = _fSplitAt > 0 ? _fSiteName.slice(_fSplitAt)    : _fSiteName;
+
+    /* Structural tokens */
+    const _ftLayout    = _fD.footer_layout    || 'simple';
+    const _ftAlign     = _fD.footer_align     || 'center';
+    const _ftCols      = parseInt(_fD.footer_columns) || 3;
+    const _ftPadY      = _fD.footer_padding_y || '32';
+    const _ftPadX      = _fD.footer_padding_x || '24';
+    const _ftShowBrand    = _fD.footer_show_brand      !== 'false';
+    const _ftShowTagline  = _fD.footer_show_tagline    !== 'false';
+    const _ftShowLogo     = _fD.footer_show_logo       === 'true';
+    const _ftShowSocial   = _fD.footer_show_social     !== 'false';
+    const _ftShowNews     = _fD.footer_show_newsletter === 'true';
+    const _ftShowQR       = _fD.footer_show_qr         !== 'false';
+
+    /* Colors / typography — defaults intentionally produce a dark-footer/light-text
+       contrast that works on both light-bodied tenant pages (landing-styles.ejs) and
+       dark-bodied slab landing.ejs. Admin design panel can override per-tenant. */
+    const _accent       = _fD.color_accent || '#c9a848';
+    const _ftBg         = _fD.footer_bg            || 'var(--on-surface, ' + (_fD.color_primary_deep || '#0F1B30') + ')';
+    const _ftText       = _fD.footer_text_color    || 'rgba(253,252,250,0.85)';
+    const _ftHeading    = _fD.footer_heading_color || 'var(--accent, ' + _accent + ')';
+    const _ftLink       = _fD.footer_link_color    || 'rgba(253,252,250,0.65)';
+    const _ftLinkHover  = _fD.footer_link_hover_color || 'var(--accent, ' + _accent + ')';
+    const _ftBorder     = _fD.footer_border_color  || 'rgba(253,252,250,0.1)';
+    const _ftAccent     = _fD.footer_accent_color  || 'var(--accent, ' + _accent + ')';
+    const _ftBrandSize  = _fD.footer_brand_size    || '1.2';
+    const _ftBrandWeight= _fD.footer_brand_weight  || '500';
+    const _ftTextSize   = _fD.footer_text_size     || '0.78';
+    const _ftTextWeight = _fD.footer_text_weight   || '400';
+    const _ftHSize      = _fD.footer_heading_size  || '0.72';
+    const _ftHWeight    = _fD.footer_heading_weight|| '600';
+    const _ftHTransform = _fD.footer_heading_transform || 'uppercase';
+    const _ftHSpacing   = _fD.footer_heading_spacing   || '0.12';
+
+    /* Copy */
+    const _ftTagline    = _fC.footer_tagline   || '';
+    const _ftAbout      = _fC.footer_about     || '';
+    const _ftCopyright  = _fC.footer_copyright || '';
+    const _ftSocialHead = _fC.footer_social_heading       || '';
+    const _ftNewsHead   = _fC.footer_newsletter_heading   || '';
+    const _ftNewsSub    = _fC.footer_newsletter_sub       || '';
+    const _ftNewsPh     = _fC.footer_newsletter_placeholder || 'you@example.com';
+    const _ftNewsBtn    = _fC.footer_newsletter_button    || 'Subscribe';
+    const _ftLegal      = _fC.footer_legal || '';
+
+    function _ftParseLinks(raw) {
+      if (!raw) return [];
+      return String(raw).split(/\r?\n/).map(line => {
+        const parts = line.split('|').map(s => s.trim());
+        if (!parts[0]) return null;
+        return { label: parts[0], url: parts[1] || '#' };
+      }).filter(Boolean);
+    }
+    const _ftColumns = [1,2,3,4].map(n => ({
+      heading: _fC['footer_col'+n+'_heading'] || '',
+      links: _ftParseLinks(_fC['footer_col'+n+'_links']),
+    })).filter(col => col.heading || col.links.length);
+
+    const _ftSocials = [
+      { key:'facebook',  label:'Facebook',  url:_fD.footer_social_facebook  },
+      { key:'instagram', label:'Instagram', url:_fD.footer_social_instagram },
+      { key:'twitter',   label:'X',         url:_fD.footer_social_twitter   },
+      { key:'linkedin',  label:'LinkedIn',  url:_fD.footer_social_linkedin  },
+      { key:'youtube',   label:'YouTube',   url:_fD.footer_social_youtube   },
+      { key:'tiktok',    label:'TikTok',    url:_fD.footer_social_tiktok    },
+      { key:'github',    label:'GitHub',    url:_fD.footer_social_github    },
+    ].filter(s => s.url);
+
+    const _autoCr = '© ' + new Date().getFullYear() + ' ' + _fSiteName;
+    const _crText = _ftCopyright || _autoCr;
+    const _adminHref = typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login';
+%>
+<style>
+  .tnt-footer { padding:<%= _ftPadY %>px <%= _ftPadX %>px; border-top:1px solid <%= _ftBorder %>; background:<%= _ftBg %>; color:<%= _ftText %>; text-align:<%= _ftAlign %>; font-size:<%= _ftTextSize %>rem; font-weight:<%= _ftTextWeight %>; }
+  .tnt-footer a { color:<%= _ftLink %>; text-decoration:none; transition:color 0.18s; }
+  .tnt-footer a:hover { color:<%= _ftLinkHover %>; }
+  .tnt-footer .footer-brand { font-family:var(--font-heading); font-size:<%= _ftBrandSize %>rem; font-weight:<%= _ftBrandWeight %>; color:<%= _ftText %>; display:block; }
+  .tnt-footer .footer-tagline { font-size:0.85em; color:<%= _ftText %>; opacity:0.7; margin-top:6px; }
+  .tnt-footer .footer-about { font-size:0.85em; color:<%= _ftText %>; opacity:0.75; margin-top:10px; max-width:42em; line-height:1.55; }
+  .tnt-footer .footer-col-heading { font-size:<%= _ftHSize %>rem; font-weight:<%= _ftHWeight %>; text-transform:<%= _ftHTransform %>; letter-spacing:<%= _ftHSpacing %>em; color:<%= _ftHeading %>; margin:0 0 12px; }
+  .tnt-footer .footer-cols { display:grid; grid-template-columns:repeat(<%= _ftCols %>, minmax(0, 1fr)); gap:32px; }
+  .tnt-footer .footer-col ul { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px; }
+  .tnt-footer .footer-col li { line-height:1.5; }
+  .tnt-footer .footer-social { display:flex; gap:14px; justify-content:<%= _ftAlign === 'left' ? 'flex-start' : _ftAlign === 'right' ? 'flex-end' : 'center' %>; flex-wrap:wrap; margin-top:14px; }
+  .tnt-footer .footer-social a { display:inline-flex; align-items:center; gap:6px; font-size:0.82em; padding:4px 10px; border:1px solid <%= _ftBorder %>; border-radius:999px; color:<%= _ftLink %>; }
+  .tnt-footer .footer-social a:hover { border-color:<%= _ftAccent %>; color:<%= _ftLinkHover %>; }
+  .tnt-footer .footer-newsletter { display:flex; flex-direction:column; gap:8px; max-width:340px; <%= _ftAlign === 'center' ? 'margin:0 auto;' : '' %> }
+  .tnt-footer .footer-newsletter input[type=email] { padding:10px 12px; border:1px solid <%= _ftBorder %>; border-radius:6px; background:transparent; color:<%= _ftText %>; font-size:0.85em; }
+  .tnt-footer .footer-newsletter button { padding:10px 16px; border:0; border-radius:6px; background:<%= _ftAccent %>; color:var(--on-accent, #0F1B30); font-weight:600; cursor:pointer; font-size:0.85em; }
+  .tnt-footer .footer-newsletter button:hover { filter:brightness(1.08); }
+  .tnt-footer .footer-legal { margin-top:14px; font-size:0.72em; opacity:0.7; line-height:1.7; max-width:600px; <%= _ftAlign === 'center' ? 'margin-left:auto;margin-right:auto;' : '' %> }
+  .tnt-footer .footer-row { display:flex; flex-wrap:wrap; gap:32px; align-items:flex-start; justify-content:<%= _ftAlign === 'left' ? 'flex-start' : _ftAlign === 'right' ? 'flex-end' : 'space-between' %>; }
+  .tnt-footer .footer-brand-block { flex:0 1 auto; text-align:<%= _ftAlign %>; }
+  .tnt-footer .footer-divider { height:1px; background:<%= _ftBorder %>; opacity:0.4; margin:18px 0; }
+  @media (max-width:760px) {
+    .tnt-footer .footer-cols { grid-template-columns:repeat(<%= Math.min(2, _ftCols) %>, minmax(0, 1fr)); gap:24px; }
+    .tnt-footer .footer-row { flex-direction:column; align-items:<%= _ftAlign === 'left' ? 'flex-start' : _ftAlign === 'right' ? 'flex-end' : 'center' %>; }
+  }
+  @media (max-width:480px) { .tnt-footer .footer-cols { grid-template-columns:1fr; } }
+</style>
+<footer class="tnt-footer footer" data-footer-layout="<%= _ftLayout %>">
+
+  <%
+    function renderBrandBlock() { %>
+      <div class="footer-brand-block">
+        <% if (_ftShowLogo && (_fL.logo_white || _fL.logo_primary)) { %>
+          <img src="<%= _fL.logo_white || _fL.logo_primary %>" alt="<%= _fSiteName %>" style="height:40px;width:auto;object-fit:contain;margin-bottom:10px;">
+        <% } %>
+        <% if (_ftShowBrand) { %>
+          <span class="footer-brand"><% if (_fLogoPre) { %><span style="color:<%= _ftAccent %>"><%= _fLogoPre %></span><% } %><%= _fLogoPost %></span>
+        <% } %>
+        <% if (_ftShowTagline && (_ftTagline || _fSiteTagline)) { %>
+          <div class="footer-tagline"><%= _ftTagline || _fSiteTagline %></div>
+        <% } %>
+        <% if (_ftAbout && (_ftLayout === 'expanded' || _ftLayout === 'brand')) { %>
+          <p class="footer-about"><%= _ftAbout %></p>
+        <% } %>
+      </div>
+    <% }
+
+    function renderColumns() {
+      if (!_ftColumns.length) return; %>
+      <div class="footer-cols">
+        <% _ftColumns.forEach(function(col) { %>
+          <div class="footer-col">
+            <% if (col.heading) { %><div class="footer-col-heading"><%= col.heading %></div><% } %>
+            <% if (col.links.length) { %>
+              <ul>
+                <% col.links.forEach(function(lnk) { %>
+                  <li><a href="<%= lnk.url %>"><%= lnk.label %></a></li>
+                <% }) %>
+              </ul>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    <% }
+
+    function renderSocial() {
+      if (!_ftShowSocial || !_ftSocials.length) return; %>
+      <% if (_ftSocialHead) { %><div class="footer-col-heading" style="margin-top:14px;"><%= _ftSocialHead %></div><% } %>
+      <div class="footer-social">
+        <% _ftSocials.forEach(function(s) { %>
+          <a href="<%= s.url %>" target="_blank" rel="noopener" aria-label="<%= s.label %>"><%= s.label %></a>
+        <% }) %>
+      </div>
+    <% }
+
+    function renderNewsletter() {
+      if (!_ftShowNews) return; %>
+      <div class="footer-newsletter">
+        <% if (_ftNewsHead) { %><div class="footer-col-heading"><%= _ftNewsHead %></div><% } %>
+        <% if (_ftNewsSub) { %><div style="opacity:0.75;font-size:0.85em;"><%= _ftNewsSub %></div><% } %>
+        <form method="POST" action="/api/newsletter" style="display:flex;gap:6px;">
+          <input type="email" name="email" placeholder="<%= _ftNewsPh %>" required style="flex:1;">
+          <button type="submit"><%= _ftNewsBtn %></button>
+        </form>
+      </div>
+    <% }
+
+    function renderLegal() { %>
+      <div><%- _crText %></div>
+      <% if (_ftLegal || _fC.terms_content || _fC.privacy_content) { %>
+        <div class="footer-legal">
+          <% if (_ftLegal) { %><%= _ftLegal %><% } %>
+          <% if (_fC.terms_content) { %> <a href="/terms" style="text-decoration:underline;">Terms</a><% } %>
+          <% if (_fC.privacy_content) { %> <a href="/privacy" style="text-decoration:underline;">Privacy</a><% } %>
+        </div>
+      <% } %>
+      <% if (_ftShowQR) { %>
+        <div id="footer-qr-codes" style="display:none;padding:16px 0 0;text-align:<%= _ftAlign %>;">
+          <div id="footer-qr-list" style="display:flex;justify-content:<%= _ftAlign === 'left' ? 'flex-start' : _ftAlign === 'right' ? 'flex-end' : 'center' %>;gap:20px;flex-wrap:wrap;"></div>
+        </div>
+      <% } %>
+      <% if (_fV.admin_link !== false) { %>
+        <div style="margin-top:12px;"><a href="<%= _adminHref %>" style="color:<%= _ftLink %>;opacity:0.4;font-size:0.6rem;letter-spacing:0.04em;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='0.4'">Admin</a></div>
+      <% } %>
+    <% }
+  %>
+
+  <% if (_ftLayout === 'minimal') { %>
+    <%- _crText %>
+    <% if (_fV.admin_link !== false) { %>
+      &middot; <a href="<%= _adminHref %>" style="opacity:0.5;">Admin</a>
+    <% } %>
+
+  <% } else if (_ftLayout === 'columns') { %>
+    <div class="footer-row">
+      <% renderBrandBlock() %>
+      <% renderColumns() %>
+      <% if (_ftShowNews) { renderNewsletter() } %>
+    </div>
+    <div class="footer-divider"></div>
+    <% renderSocial() %>
+    <% renderLegal() %>
+
+  <% } else if (_ftLayout === 'centered') { %>
+    <% renderBrandBlock() %>
+    <% renderColumns() %>
+    <% renderSocial() %>
+    <% if (_ftShowNews) { %><div style="margin-top:18px;"><% renderNewsletter() %></div><% } %>
+    <div class="footer-divider"></div>
+    <% renderLegal() %>
+
+  <% } else if (_ftLayout === 'expanded') { %>
+    <div class="footer-row">
+      <div style="flex:1 1 280px;"><% renderBrandBlock() %><% renderSocial() %></div>
+      <div style="flex:2 1 360px;"><% renderColumns() %></div>
+      <% if (_ftShowNews) { %><div style="flex:1 1 280px;"><% renderNewsletter() %></div><% } %>
+    </div>
+    <div class="footer-divider"></div>
+    <% renderLegal() %>
+
+  <% } else if (_ftLayout === 'brand') { %>
+    <% renderBrandBlock() %>
+    <% renderSocial() %>
+    <% renderColumns() %>
+    <% if (_ftShowNews) { %><div style="margin-top:18px;"><% renderNewsletter() %></div><% } %>
+    <div class="footer-divider"></div>
+    <% renderLegal() %>
+
+  <% } else { /* simple */ %>
+    <% if (_ftShowBrand || _ftShowTagline) { renderBrandBlock() } %>
+    <% renderSocial() %>
+    <% renderLegal() %>
+  <% } %>
+
+</footer>
+<script>
+(function() {
+  var container = document.getElementById('footer-qr-codes');
+  var list = document.getElementById('footer-qr-list');
+  if (!container || !list) return;
+  fetch('/api/footer-qr').then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.links || !data.links.length) return;
+    data.links.forEach(function(link) {
+      var item = document.createElement('a');
+      item.href = link.url;
+      item.target = link.type === 'business-card' ? '_blank' : '_self';
+      item.style.cssText = 'text-decoration:none;text-align:center;display:inline-block;';
+      item.innerHTML = '<img src="' + link.dataUrl + '" alt="' + link.label + '" style="width:64px;height:64px;border-radius:4px;">'
+        + '<div style="font-size:0.6rem;color:rgba(82,82,82,0.5);margin-top:4px;">' + link.label + '</div>';
+      list.appendChild(item);
+    });
+    container.style.display = '';
+  }).catch(function() {});
+})();
+</script>
+<% } %>

@@ -111,6 +111,11 @@ router.get('/google/superadmin', (req, res) => {
   redirectToGoogle(req, res, { authType: 'superadmin' });
 });
 
+// ── Delegate Google OAuth ────────────────────────────────────────────────────
+router.get('/google/delegate', (req, res) => {
+  redirectToGoogle(req, res, { authType: 'delegate' });
+});
+
 // ── Shared callback — all OAuth flows return here ────────────────────────────
 router.get('/google/callback', async (req, res) => {
   try {
@@ -271,6 +276,29 @@ router.get('/google/callback', async (req, res) => {
       const dest = new URL('https://games.madladslab.com/auth/sso');
       dest.searchParams.set('token', gamesToken);
       return res.redirect(dest.toString());
+    }
+
+    // ── Delegate portal flow — match Google email to a sales_delegates record ──
+    if (authType === 'delegate') {
+      const slab = getSlabDb();
+      const delegate = await slab.collection('sales_delegates').findOne({ email: profile.email.toLowerCase() });
+      if (!delegate) {
+        return res.redirect(`https://${returnDomain}/delegates/login?error=${encodeURIComponent('No delegate account found for ' + profile.email + '. Apply to join the program first.')}`);
+      }
+      if (delegate.status === 'suspended') {
+        return res.redirect(`https://${returnDomain}/delegates/login?error=${encodeURIComponent('Your delegate account is suspended.')}`);
+      }
+      // Link Google to the delegate record (idempotent)
+      const updates = { updatedAt: new Date() };
+      if (!delegate.googleId) updates.googleId = profile.id;
+      if (!delegate.providers || !delegate.providers.includes('google')) {
+        updates.providers = [...(delegate.providers || []), 'google'].filter((v, i, a) => a.indexOf(v) === i);
+      }
+      await slab.collection('sales_delegates').updateOne({ _id: delegate._id }, { $set: updates });
+
+      const { issueDelegateJWT } = await import('./delegates.js');
+      issueDelegateJWT(delegate, res);
+      return res.redirect(`https://${returnDomain}/delegates/panel`);
     }
 
     // ── Central flow — find user's slabs, show picker or redirect ──

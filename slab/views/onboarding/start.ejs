@@ -247,6 +247,11 @@
         <!-- EMAIL/PASSWORD panel -->
         <div class="auth-method-panel active" id="authEmail">
           <div class="field">
+            <label>Promo / Referral Code <span style="font-size:8px;color:#333;text-transform:none;letter-spacing:0;">(optional)</span></label>
+            <input type="text" id="promoCode" placeholder="SD-XXXXXXXX or campaign code" value="<%= ref || '' %>" autocomplete="off" style="text-transform:uppercase;">
+            <div class="hint" id="promoHint" style="min-height:14px;"></div>
+          </div>
+          <div class="field">
             <label>Email</label>
             <input type="email" id="email" placeholder="you@business.com" required autocomplete="email">
           </div>
@@ -447,6 +452,22 @@ function switchAuthMethod(method) {
     dot1.className = 'step-dot current'; dot2.className = 'step-dot';
   });
 
+  // Live-validate promo code on blur
+  var promoInput = document.getElementById('promoCode');
+  var promoHint = document.getElementById('promoHint');
+  promoInput.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+  promoInput.addEventListener('blur', async function() {
+    var code = promoInput.value.trim();
+    if (!code) { promoHint.textContent = ''; promoHint.style.color = ''; return; }
+    promoHint.textContent = 'Checking…'; promoHint.style.color = '';
+    try {
+      var r = await fetch('/start/check-ref?code=' + encodeURIComponent(code));
+      var d = await r.json();
+      if (d.valid) { promoHint.textContent = '✓ ' + d.freeDays + ' days free — ' + (d.delegateName || 'delegate referral'); promoHint.style.color = '#4ade80'; }
+      else { promoHint.textContent = '✗ Code not recognized — you can still sign up without it'; promoHint.style.color = '#f87171'; }
+    } catch(e) { promoHint.textContent = ''; }
+  });
+
   // Submit
   submitBtn.addEventListener('click', async function() {
     var email = document.getElementById('email').value.trim();
@@ -459,7 +480,7 @@ function switchAuthMethod(method) {
     if (pw !== pwc) { alert('Passwords do not match.'); return; }
     submitBtn.disabled = true; submitBtn.textContent = 'Building your site...';
     try {
-      var refCode = '<%= ref || "" %>';
+      var refCode = (promoInput.value || '').trim();
       var body = { subdomain: subdomain.value, brandName: brandName.value.trim(), brandLocation: brandLocation.value.trim(), email: email, password: pw, design: designSelect.value, tagline: taglineInput.value.trim(), ref: refCode };
       var res = await fetch('/start/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       var data = await res.json();
@@ -507,7 +528,7 @@ async function handleGoogleSignup(response) {
         brandLocation: brandLocation,
         design: design,
         tagline: tagline,
-        ref: '<%= ref || "" %>',
+        ref: (document.getElementById('promoCode')?.value || '').trim(),
       }),
     });
     var data = await res.json();

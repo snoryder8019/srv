@@ -19,6 +19,17 @@ async function loadDesign(db) {
   return enrichDesignContrast(design);
 }
 
+// Redirect wildcard-subdomain hits to the tenant's canonical custom domain.
+// Lets already-sent invoice emails (which baked in the wildcard URL) land on
+// the right host.
+router.use((req, res, next) => {
+  const canonical = req.tenant?.customDomain;
+  if (canonical && req.hostname !== canonical) {
+    return res.redirect(301, `https://${canonical}${req.originalUrl}`);
+  }
+  next();
+});
+
 // Inject design settings into all pay views
 router.use(async (req, res, next) => {
   res.locals.design = await loadDesign(req.db);

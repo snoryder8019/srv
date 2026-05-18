@@ -150,7 +150,11 @@ async function getStatus() {
       maxPlayers,
       inviteCode: desc?.inviteCode || null,
       serverName: desc?.serverName || null,
-      directConnect: desc?.useDirect ? { enabled: true, address: desc.directAddress } : { enabled: false, address: null },
+      // Prefer the invite code once the server has one — the Windrose client doesn't resolve
+    // hostnames for direct-connect and we don't want to leak the raw production IP.
+    directConnect: (desc?.useDirect && !desc?.inviteCode)
+      ? { enabled: true, address: desc.directAddress }
+      : { enabled: false, address: null },
     };
   }
 
@@ -176,7 +180,11 @@ async function getStatus() {
     map: desc?.serverName || 'Windrose',
     inviteCode: desc?.inviteCode || null,
     serverName: desc?.serverName || 'MadLadsLab Windrose',
-    directConnect: desc?.useDirect ? { enabled: true, address: desc.directAddress } : { enabled: false, address: null },
+    // Prefer the invite code once the server has one — the Windrose client doesn't resolve
+    // hostnames for direct-connect and we don't want to leak the raw production IP.
+    directConnect: (desc?.useDirect && !desc?.inviteCode)
+      ? { enabled: true, address: desc.directAddress }
+      : { enabled: false, address: null },
   };
 }
 

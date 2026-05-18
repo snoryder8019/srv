@@ -6,7 +6,7 @@ import { generateInvoiceNumber, generatePaymentToken, calculateTotal, getNextGen
 import { sendInvoiceEmail, sendClientEmail } from '../../plugins/mailer.js';
 import { config } from '../../config/config.js';
 import { normalizeSubject } from '../../plugins/imapPoller.js';
-import { handleResearchClient } from '../../plugins/agentMcp.js';
+import { runTool } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import crypto from 'crypto';
 
@@ -173,7 +173,7 @@ router.post('/:id/agent', express.json(), async (req, res) => {
     const client = await db.collection('clients').findOne({ _id: new ObjectId(req.params.id) });
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
-    const result = await handleResearchClient({
+    const result = await runTool('research_client', {
       clientName: client.name,
       company: client.company,
       website: client.website,
@@ -306,12 +306,14 @@ router.post('/:id/invoices', async (req, res) => {
     const db = req.db;
     const { title, dueDate, notes, status } = req.body;
 
-    // Parse line items from form (arrays of description[], quantity[], unitPrice[])
+    // Parse line items from form. Inputs are named description[], quantity[],
+    // unitPrice[] — Express's `qs` parser (extended:true) strips the brackets
+    // and exposes them as arrays under `description`, `quantity`, `unitPrice`.
     let lineItems = [];
-    if (req.body['description[]']) {
-      const descs = [].concat(req.body['description[]']);
-      const qtys = [].concat(req.body['quantity[]']);
-      const prices = [].concat(req.body['unitPrice[]']);
+    if (req.body.description) {
+      const descs = [].concat(req.body.description);
+      const qtys = [].concat(req.body.quantity || []);
+      const prices = [].concat(req.body.unitPrice || []);
       for (let i = 0; i < descs.length; i++) {
         if (descs[i]?.trim()) {
           lineItems.push({

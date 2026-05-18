@@ -300,13 +300,17 @@
           <div class="field-revert-row" id="revert-row-tags"></div>
         </div>
         <div class="form-field span-2">
-          <label>Featured Image URL</label>
+          <label>
+            Featured Image URL
+            <span class="ai-badge" id="badge-featuredImageUrl" style="display:none;">AI</span>
+          </label>
           <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
             <div style="flex:1;min-width:200px;">
               <input type="url" id="featuredImageUrl" name="featuredImageUrl"
                 value="<%= post ? post.featuredImageUrl || '' : '' %>"
                 placeholder="https://…">
-              <span style="font-size:0.65rem;color:var(--slate);">Paste a direct image URL</span>
+              <span style="font-size:0.65rem;color:var(--slate);">Paste a direct image URL — agent auto-generates one on first write</span>
+              <div class="field-revert-row" id="revert-row-featuredImageUrl"></div>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;padding-top:2px;">
               <button type="button" class="btn btn-ghost btn-sm asset-pick-btn"
@@ -689,9 +693,14 @@ document.getElementById('agentSend').addEventListener('click', sendAgent);
 // ── TWO-STATE REVERT ──
 // fieldStates[key] = { original, ai }  (undefined until AI fills the field)
 const fieldStates = {};
-const FIELDS = ['title', 'excerpt', 'content', 'category', 'tags'];
+const FIELDS = ['title', 'excerpt', 'content', 'category', 'tags', 'featuredImageUrl'];
 
-function getFieldEl(key) { return document.getElementById('field-' + key); }
+// Most AI-fillable inputs use id="field-<key>", but featuredImageUrl predates
+// that convention and uses its own id.
+function getFieldEl(key) {
+  if (key === 'featuredImageUrl') return document.getElementById('featuredImageUrl');
+  return document.getElementById('field-' + key);
+}
 
 function fillField(key, aiValue) {
   const el = getFieldEl(key);
@@ -719,6 +728,15 @@ function fillField(key, aiValue) {
   // If content, update Quill editor
   if (key === 'content' && typeof window._blogContentSet === 'function') window._blogContentSet(aiValue);
 
+  // If featured image, update preview thumbnail
+  if (key === 'featuredImageUrl') {
+    const preview = document.getElementById('featuredImgPreview');
+    if (preview) {
+      preview.src = aiValue;
+      preview.style.display = aiValue ? '' : 'none';
+    }
+  }
+
   renderRevertRow(key, 'ai');
 }
 
@@ -742,6 +760,13 @@ function renderRevertRow(key, state) {
   }
 }
 
+function syncFeaturedPreview(url) {
+  const preview = document.getElementById('featuredImgPreview');
+  if (!preview) return;
+  preview.src = url || '';
+  preview.style.display = url ? '' : 'none';
+}
+
 function revertToOriginal(key) {
   const el = getFieldEl(key);
   if (!el || !fieldStates[key]) return;
@@ -752,6 +777,7 @@ function revertToOriginal(key) {
   if (key === 'title' && !slugEdited) autoSlug(fieldStates[key].original);
   if (key === 'content' && typeof window._blogContentSet === 'function') window._blogContentSet(fieldStates[key].original);
   if (key === 'tags' && typeof window._blogTagsRefresh === 'function') window._blogTagsRefresh();
+  if (key === 'featuredImageUrl') syncFeaturedPreview(fieldStates[key].original);
   renderRevertRow(key, 'original');
 }
 
@@ -765,6 +791,7 @@ function restoreAi(key) {
   if (key === 'title' && !slugEdited) autoSlug(fieldStates[key].ai);
   if (key === 'content' && typeof window._blogContentSet === 'function') window._blogContentSet(fieldStates[key].ai);
   if (key === 'tags' && typeof window._blogTagsRefresh === 'function') window._blogTagsRefresh();
+  if (key === 'featuredImageUrl') syncFeaturedPreview(fieldStates[key].ai);
   renderRevertRow(key, 'ai');
 }
 

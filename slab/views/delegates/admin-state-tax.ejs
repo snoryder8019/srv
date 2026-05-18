@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>State Tax Compliance — Superadmin — sLab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .badge { font-size:10px; text-transform:uppercase; letter-spacing:1.2px; color:#c9a848; background:#262626; padding:3px 8px; border-radius:4px; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; flex-wrap:wrap; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1100px; margin:0 auto; padding:24px; }
+    h1 { font-size:22px; font-weight:600; color:#fff; margin-bottom:4px; }
+    .meta-line { font-size:13px; color:#737373; margin-bottom:24px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:16px; margin-bottom:24px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:18px; }
+    .stat-label { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:4px; }
+    .stat-value { font-size:24px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; } .stat-value.green { color:#4ade80; } .stat-value.red { color:#f87171; }
+    h2 { font-size:15px; font-weight:600; color:#fff; margin-bottom:12px; }
+    .section { margin-bottom:32px; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    .empty { color:#525252; font-size:13px; padding:20px; text-align:center; }
+    .notice { background:rgba(201,168,72,0.08); border:1px solid rgba(201,168,72,0.2); color:#c9a848; padding:14px 16px; border-radius:6px; font-size:12px; line-height:1.6; margin-bottom:20px; }
+    .filters { display:flex; gap:10px; align-items:center; margin-bottom:16px; }
+    .filters a { font-size:12px; padding:6px 12px; border-radius:4px; border:1px solid #333; color:#a3a3a3; text-decoration:none; }
+    .filters a.active { background:#c9a848; color:#0a0a0a; border-color:#c9a848; }
+    .filters a:hover { border-color:#c9a848; color:#c9a848; }
+    .filters a.active:hover { color:#0a0a0a; }
+    .domain-list { font-family:monospace; font-size:11px; color:#737373; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo"><span>s</span>Lab</div>
+      <span class="badge">Superadmin</span>
+    </div>
+    <div class="topbar-right">
+      <span><%= user.email %></span>
+      <a href="/superadmin">Dashboard</a>
+      <a href="/delegates/admin">Delegates</a>
+      <a href="/delegates/admin/reports/state-tax">State Tax</a>
+      <a href="/superadmin/logout">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>State Tax Compliance Report</h1>
+    <div class="meta-line">
+      Tenant subscription revenue rolled up by the tenant's business state, from captured PayPal payments.
+      Use these totals to support multistate sales-tax filings and nexus evaluations.
+    </div>
+
+    <div class="notice">
+      <strong>Compliance note:</strong> Since <em>South Dakota v. Wayfair</em> (2018), many states require online sellers to collect sales tax once economic nexus is reached (commonly $100k gross or 200 transactions in a state). This report gives you the per-state totals to hand to your CPA &mdash; it does not compute filing obligations or rates.
+    </div>
+
+    <div class="filters">
+      <span style="font-size:11px;color:#737373;text-transform:uppercase;letter-spacing:0.8px;">Window:</span>
+      <% for (const d of [30, 90, 180, 365]) { %>
+        <a href="/delegates/admin/reports/state-tax?days=<%= d %>" class="<%= sinceDays === d ? 'active' : '' %>"><%= d %>d</a>
+      <% } %>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Period</div>
+        <div class="stat-value" style="font-size:16px;">Last <%= sinceDays %> days</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Total Revenue</div>
+        <div class="stat-value gold">$<%= totalRevenue.toFixed(2) %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">States Covered</div>
+        <div class="stat-value"><%= stateRows.length %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Unallocated (no state)</div>
+        <div class="stat-value <%= unknownStateRevenue > 0 ? 'red' : '' %>">$<%= unknownStateRevenue.toFixed(2) %></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Revenue by State</h2>
+      <% if (stateRows.length) { %>
+      <table>
+        <thead><tr><th>State</th><th>Tenants</th><th>Revenue</th><th>% of Total</th><th>Nexus ($100k)</th><th>Domains</th></tr></thead>
+        <tbody>
+          <% for (const r of stateRows) { %>
+          <tr>
+            <td style="font-weight:600;color:#fff;font-family:monospace;"><%= r.state %></td>
+            <td><%= r.tenantCount %></td>
+            <td style="color:#c9a848;font-weight:600;">$<%= r.revenue.toFixed(2) %></td>
+            <td style="color:#a3a3a3;"><%= totalRevenue ? ((r.revenue / totalRevenue) * 100).toFixed(1) : '0.0' %>%</td>
+            <td>
+              <% if (r.revenue >= 100000) { %>
+                <span style="color:#f87171;font-weight:600;">Likely &mdash; review</span>
+              <% } else { %>
+                <span style="color:#737373;">$<%= (100000 - r.revenue).toFixed(0) %> to threshold</span>
+              <% } %>
+            </td>
+            <td class="domain-list"><%= r.tenants.join(', ') %></td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+      <% } else { %>
+        <div class="empty">No captured tenant payments in this window.</div>
+      <% } %>
+    </div>
+
+    <% if (unknownStateRevenue > 0) { %>
+    <div class="section">
+      <h2>Tenants Missing Business State</h2>
+      <div class="notice">
+        <strong>$<%= unknownStateRevenue.toFixed(2) %> in revenue</strong> is not allocated to a state because the tenant has no <code>meta.businessState</code> or <code>brand.state</code> set. Set the state on each tenant to include them in compliance reporting.
+      </div>
+    </div>
+    <% } %>
+
+    <div class="section" style="margin-top:32px;font-size:11px;color:#525252;line-height:1.7;">
+      <strong>Methodology:</strong> Revenue is summed from <code>activity_log</code> records with <code>category=payment</code> and <code>action=payment_captured</code> within the selected window, then resolved to each tenant's <code>meta.businessState</code> (fallback: <code>brand.state</code>). Owner blended tax assumed at <%= (ownerTaxRate * 100).toFixed(0) %>% for delegate net-commission calculations.
+    </div>
+  </div>
+</body>
+</html>

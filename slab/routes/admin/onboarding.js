@@ -9,7 +9,7 @@
 
 import express from 'express';
 import { ObjectId } from 'mongodb';
-import { callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
+import { runTool } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { DESIGN_DEFAULTS } from './design.js';
 
@@ -94,43 +94,10 @@ router.post('/agent/suggest', express.json(), async (req, res) => {
   try {
     const db = req.db;
     const brandContext = await loadBrandContext(req.tenant, db, DESIGN_DEFAULTS);
-    const prompt = req.body.prompt || 'Suggest onboarding form fields for this business';
-
-    const systemPrompt = `You are a form design assistant for a business onboarding platform.
-${brandContext}
-
-Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
-{
-  "message": "one sentence describing the suggested form",
-  "fill": {
-    "name": "Concise form title (e.g. 'New Client Intake')",
-    "description": "One-sentence description of this form's purpose",
-    "fields": [
-      {
-        "key": "field_key_snake_case",
-        "label": "Human Readable Label",
-        "type": "text|textarea|select|checkbox|radio|number|email|url|date|color|heading",
-        "placeholder": "hint text",
-        "helpText": "optional guidance for the respondent",
-        "required": true,
-        "options": [{"label": "Option A", "value": "a"}],
-        "width": "full|half",
-        "section": "Section Name"
-      }
-    ]
-  }
-}
-
-Field types: text, textarea, select, checkbox, radio, number, email, url, date, color, heading (section divider).
-Only include "options" for select/radio/checkbox types.
-Generate 4-8 useful fields based on the business type and user prompt.
-Always include a sensible "name" and "description" for the form itself.`;
-
-    const raw = await callLLM(
-      [{ role: 'user', content: prompt }],
-      systemPrompt,
-    );
-    const parsed = tryParseAgentResponse(raw);
+    const parsed = await runTool('suggest_onboarding_fields', {
+      prompt: req.body.prompt || 'Suggest onboarding form fields for this business',
+      brandContext,
+    });
     res.json({
       success: true,
       message: parsed.message || 'Fields suggested',
@@ -377,49 +344,14 @@ router.post('/:id/agent', express.json(), async (req, res) => {
     const db = req.db;
     const form = await db.collection('onboarding_forms').findOne({ _id: new ObjectId(req.params.id) });
     const brandContext = await loadBrandContext(req.tenant, db, DESIGN_DEFAULTS);
-    const existingFields = form?.fields?.map(f => f.label).join(', ') || 'none';
 
-    const prompt = req.body.prompt || 'Suggest onboarding form fields for this business';
-
-    const systemPrompt = `You are a form design assistant for a business onboarding platform.
-${brandContext}
-
-The form currently has these fields: ${existingFields}
-The form is titled: "${form?.name || '(untitled)'}"
-The form description is: "${form?.description || '(none)'}"
-
-Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
-{
-  "message": "one sentence describing the suggested fields",
-  "fill": {
-    "name": "Concise form title — leave empty string if the existing title is already good",
-    "description": "One-sentence form description — leave empty string if the existing description is already good",
-    "fields": [
-      {
-        "key": "field_key_snake_case",
-        "label": "Human Readable Label",
-        "type": "text|textarea|select|checkbox|radio|number|email|url|date|color|heading",
-        "placeholder": "hint text",
-        "helpText": "optional guidance for the respondent",
-        "required": true,
-        "options": [{"label": "Option A", "value": "a"}],
-        "width": "full|half",
-        "section": "Section Name"
-      }
-    ]
-  }
-}
-
-Field types: text, textarea, select, checkbox, radio, number, email, url, date, color, heading (section divider).
-Only include "options" for select/radio/checkbox types.
-Generate 4-8 useful fields based on the business type and user prompt.
-Do NOT duplicate fields that already exist on the form.`;
-
-    const raw = await callLLM(
-      [{ role: 'user', content: prompt }],
-      systemPrompt,
-    );
-    const parsed = tryParseAgentResponse(raw);
+    const parsed = await runTool('suggest_onboarding_fields', {
+      prompt: req.body.prompt || 'Suggest onboarding form fields for this business',
+      existing: form?.fields?.map(f => f.label).join(', ') || '',
+      formName: form?.name || '',
+      formDesc: form?.description || '',
+      brandContext,
+    });
     res.json({
       success: true,
       message: parsed.message || 'Fields suggested',

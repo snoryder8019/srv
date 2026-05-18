@@ -66,12 +66,54 @@ router.get('/:token', async (req, res) => {
       domain: req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN,
       tenantDb: req.tenant?.db || '',
       consent: meeting.consent || {},
+      scheduledAt: meeting.scheduledAt || null,
+      durationMinutes: meeting.durationMinutes || null,
+      expiresAt: meeting.expiresAt || null,
     });
   } catch (err) {
     console.error('[meetings] public route error:', err);
     res.status(500).render('meeting-error', {
       message: 'Something went wrong. Please try again.',
     });
+  }
+});
+
+// GET /meeting/:token/info — JSON metadata for API/calendar consumers.
+// Returns scheduling details without exposing notes/assets/participants.
+router.get('/:token/info', async (req, res) => {
+  try {
+    const db = req.db;
+    const meeting = await db.collection('meetings').findOne(
+      { token: req.params.token },
+      { projection: {
+          title: 1, status: 1, token: 1,
+          scheduledAt: 1, durationMinutes: 1,
+          expiresAt: 1, createdAt: 1, closedAt: 1,
+          consent: 1,
+        } }
+    );
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    const url = `${req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN}/meeting/${meeting.token}`;
+    const scheduledEnd = (meeting.scheduledAt && meeting.durationMinutes)
+      ? new Date(new Date(meeting.scheduledAt).getTime() + meeting.durationMinutes * 60000)
+      : null;
+
+    res.json({
+      title: meeting.title,
+      status: meeting.status,
+      url,
+      scheduledAt: meeting.scheduledAt || null,
+      durationMinutes: meeting.durationMinutes || null,
+      scheduledEndAt: scheduledEnd,
+      expiresAt: meeting.expiresAt || null,
+      createdAt: meeting.createdAt || null,
+      closedAt: meeting.closedAt || null,
+      consent: meeting.consent || {},
+    });
+  } catch (err) {
+    console.error('[meetings] info error:', err);
+    res.status(500).json({ error: 'Failed to load meeting info' });
   }
 });
 
@@ -118,6 +160,9 @@ router.post('/:token/invite', express.json(), async (req, res) => {
     });
 
     const greeting = name ? `Hi ${name},` : 'Hi,';
+    const scheduleLine = meeting.scheduledAt
+      ? `<p style="font-size:14px;color:#C9A848;font-weight:600;letter-spacing:0.06em;margin:0 0 20px;">${new Date(meeting.scheduledAt).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })}${meeting.durationMinutes ? ` · ${meeting.durationMinutes} min` : ''}</p>`
+      : '';
 
     await transporter.sendMail({
       from: `"${req.tenant?.brand?.name || 'Meeting'}" <${config.ZOHO_USER}>`,
@@ -136,6 +181,7 @@ router.post('/:token/invite', express.json(), async (req, res) => {
       <p style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(245,243,239,0.5);margin:0 0 28px;">
         ${req.tenant?.brand?.name || ''}
       </p>
+      ${scheduleLine}
       <p style="font-size:16px;color:#F5F3EF;font-weight:300;line-height:1.6;margin:0 0 28px;">
         ${greeting}<br>You've been invited to a video meeting. Click below to join.
       </p>
@@ -174,12 +220,15 @@ router.post('/:token/upload', express.json(), meetingAssetUpload.single('file'),
     const file = req.file;
     if (!file) return res.status(400).json({ error: 'No file uploaded' });
 
-    const url = file.location || (file.key ? bucketUrl(file.key) : null);
+    // multer-s3's `file.location` returns a bare path-style URL (no scheme) on
+    // Linode Object Storage, which breaks links. Always rebuild from the key.
+    const url = file.key ? bucketUrl(file.key) : null;
     if (!url) return res.status(500).json({ error: 'Upload failed' });
 
     const asset = {
       name: file.originalname,
       url,
+      bucketKey: file.key,
       size: file.size,
       type: file.mimetype,
       uploadedBy: req.body.displayName || 'Unknown',
@@ -215,7 +264,9 @@ router.post('/:token/recording',
       const file = req.file;
       if (!file) return res.status(400).json({ error: 'No file uploaded' });
 
-      const url = file.location || (file.key ? bucketUrl(file.key) : null);
+      // multer-s3's `file.location` is path-style without a scheme on Linode,
+      // which renders as a broken relative link. Always rebuild from the key.
+      const url = file.key ? bucketUrl(file.key) : null;
       if (!url) return res.status(500).json({ error: 'Upload failed' });
 
       // Post-upload quota check — race-safe rollback.

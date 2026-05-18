@@ -10,8 +10,10 @@ import passport from './plugins/passport.js';
 import { connectDB } from './plugins/mongo.js';
 import { config } from './config/config.js';
 import { resolveTenant } from './middleware/tenant.js';
+import { seoMiddleware } from './middleware/seo.js';
 
 import indexRouter from './routes/index.js';
+import seoRouter from './routes/seo.js';
 import authRouter from './routes/auth.js';
 import adminRouter from './routes/admin.js';
 import meetingsRouter from './routes/meetings.js';
@@ -79,6 +81,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Tenant resolution — sets req.tenant, req.db, res.locals.brand ───────────
 app.use(resolveTenant);
+
+// ── SEO / AEO / GEO / AAO — sets res.locals.seo and SEO headers ─────────────
+app.use(seoMiddleware);
+
+// Tenant-aware SEO files (robots.txt, sitemap.xml, llms.txt, agents.json)
+app.use('/', seoRouter);
 
 // Maintenance cooldown — 10 min after boot
 app.use((req, res, next) => {

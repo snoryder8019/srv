@@ -1,0 +1,41 @@
+<%
+  /* ── Drop-in SEO / AEO / GEO head partial ─────────────────────────────────
+     Renders: <title>, <meta description/robots>, canonical, OG, Twitter card,
+     and JSON-LD blocks. Falls back gracefully if `seo` is not set. */
+  const _seo = (typeof seo !== 'undefined' && seo) ? seo : (locals && locals.seo) || {};
+  const _title    = _seo.title || (typeof brand !== 'undefined' && brand && brand.name) || 'Home';
+  const _desc     = _seo.description || '';
+  const _canon    = _seo.canonical || '';
+  const _robots   = _seo.robots || 'index,follow';
+  const _ogType   = _seo.ogType || 'website';
+  const _ogImg    = _seo.ogImage || (typeof logos !== 'undefined' && logos && (logos.logo_primary || logos.logo_white)) || '';
+  const _siteName = _seo.siteName || (typeof brand !== 'undefined' && brand && brand.name) || '';
+  const _tw       = _seo.twitterCard || 'summary_large_image';
+  const _twSite   = _seo.twitterSite || '';
+  const _locale   = _seo.locale || 'en_US';
+  const _theme    = _seo.themeColor || (typeof design !== 'undefined' && design && (design.color_primary || design.color_accent)) || '';
+  const _jsonLd   = Array.isArray(_seo.jsonLd) ? _seo.jsonLd : [];
+%>
+<title><%= _title %></title>
+<% if (_desc) { %><meta name="description" content="<%= _desc %>"><% } %>
+<meta name="robots" content="<%= _robots %>">
+<% if (_canon) { %><link rel="canonical" href="<%= _canon %>"><% } %>
+<% if (_theme) { %><meta name="theme-color" content="<%= _theme %>"><% } %>
+
+<meta property="og:type" content="<%= _ogType %>">
+<meta property="og:title" content="<%= _title %>">
+<% if (_desc) { %><meta property="og:description" content="<%= _desc %>"><% } %>
+<% if (_canon) { %><meta property="og:url" content="<%= _canon %>"><% } %>
+<% if (_siteName) { %><meta property="og:site_name" content="<%= _siteName %>"><% } %>
+<% if (_ogImg) { %><meta property="og:image" content="<%= _ogImg %>"><% } %>
+<meta property="og:locale" content="<%= _locale %>">
+
+<meta name="twitter:card" content="<%= _tw %>">
+<% if (_twSite) { %><meta name="twitter:site" content="<%= _twSite %>"><% } %>
+<meta name="twitter:title" content="<%= _title %>">
+<% if (_desc) { %><meta name="twitter:description" content="<%= _desc %>"><% } %>
+<% if (_ogImg) { %><meta name="twitter:image" content="<%= _ogImg %>"><% } %>
+
+<% _jsonLd.forEach(function(_obj) { %>
+<script type="application/ld+json"><%- JSON.stringify(_obj).replace(/</g, '\\u003c') %></script>
+<% }); %>

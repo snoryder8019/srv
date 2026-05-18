@@ -3,9 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta property="og:title" content="<%= brand?.name || 'Home' %> | <%= brand?.location || '' %>" />
-  <meta property="og:description" content="<%= brand?.tagline || '' %>" />
-  <title><%= brand?.name || 'Home' %> | <%= brand?.location || '' %></title>
+  <%- include('partials/seo-head') %>
   <%
     const _BI_auto = (brand?.name || '').split(/\s+/).map(w => w[0]).join('').toUpperCase();
     const _BI = (design.hero_name_large && design.hero_name_large.trim()) || _BI_auto;
@@ -304,12 +302,31 @@
   </div>
   <div class="contact-right">
     <form class="contact-form" id="contact-form" method="POST" action="/contact">
+      <%
+        const _fnameHidden = copy.contact_fname_hidden === 'true';
+        const _lnameHidden = copy.contact_lname_hidden === 'true';
+        const _emailHidden = copy.contact_email_hidden === 'true';
+        const _companyHidden = copy.contact_company_hidden === 'true';
+        const _serviceHidden = copy.contact_service_hidden === 'true';
+        const _messageHidden = copy.contact_message_hidden === 'true';
+      %>
+      <% if (!_fnameHidden && !_lnameHidden) { %>
       <div class="form-row">
         <div class="form-field"><label><%= copy.contact_fname_label %></label><input type="text" name="firstName" placeholder="<%= copy.contact_fname_placeholder %>" required></div>
         <div class="form-field"><label><%= copy.contact_lname_label %></label><input type="text" name="lastName" placeholder="<%= copy.contact_lname_placeholder %>" required></div>
       </div>
+      <% } else if (!_fnameHidden) { %>
+      <div class="form-field"><label><%= copy.contact_fname_label %></label><input type="text" name="firstName" placeholder="<%= copy.contact_fname_placeholder %>" required></div>
+      <% } else if (!_lnameHidden) { %>
+      <div class="form-field"><label><%= copy.contact_lname_label %></label><input type="text" name="lastName" placeholder="<%= copy.contact_lname_placeholder %>" required></div>
+      <% } %>
+      <% if (!_emailHidden) { %>
       <div class="form-field"><label><%= copy.contact_email_label %></label><input type="email" name="email" placeholder="<%= copy.contact_email_placeholder %>" required></div>
+      <% } %>
+      <% if (!_companyHidden) { %>
       <div class="form-field showcase-hide"><label><%= copy.contact_company_label %></label><input type="text" name="company" placeholder="<%= copy.contact_company_placeholder %>"></div>
+      <% } %>
+      <% if (!_serviceHidden) { %>
       <div class="form-field showcase-hide">
         <label><%= copy.contact_service_label %></label>
         <select name="service">
@@ -322,7 +339,41 @@
           <% } %>
         </select>
       </div>
+      <% } %>
+      <%
+        // Custom contact fields — collect contact_field{N}_* groups
+        const _customIdx = new Set();
+        Object.keys(copy).forEach(k => { const m = k.match(/^contact_field(\d+)_/); if (m) _customIdx.add(parseInt(m[1], 10)); });
+        const _customFields = [..._customIdx].sort((a, b) => a - b).map(i => ({
+          idx: i,
+          label: copy['contact_field' + i + '_label'] || '',
+          name: (copy['contact_field' + i + '_name'] || '').trim() || ('field' + i),
+          placeholder: copy['contact_field' + i + '_placeholder'] || '',
+          type: copy['contact_field' + i + '_type'] || 'text',
+          options: copy['contact_field' + i + '_options'] || '',
+          required: copy['contact_field' + i + '_required'] === 'yes',
+        })).filter(f => f.label || f.placeholder);
+      %>
+      <% _customFields.forEach(function(f) { %>
+        <div class="form-field">
+          <% if (f.label) { %><label><%= f.label %></label><% } %>
+          <% if (f.type === 'textarea') { %>
+            <textarea name="<%= f.name %>" placeholder="<%= f.placeholder %>"<%= f.required ? ' required' : '' %>></textarea>
+          <% } else if (f.type === 'select') { %>
+            <select name="<%= f.name %>"<%= f.required ? ' required' : '' %>>
+              <% if (f.placeholder) { %><option value=""><%= f.placeholder %></option><% } %>
+              <% f.options.split('|').map(o => o.trim()).filter(Boolean).forEach(function(o) { %>
+                <option value="<%= o %>"><%= o %></option>
+              <% }) %>
+            </select>
+          <% } else { %>
+            <input type="<%= f.type %>" name="<%= f.name %>" placeholder="<%= f.placeholder %>"<%= f.required ? ' required' : '' %>>
+          <% } %>
+        </div>
+      <% }) %>
+      <% if (!_messageHidden) { %>
       <div class="form-field"><label><%= copy.contact_message_label %></label><textarea name="message" placeholder="<%= copy.contact_message_placeholder %>"></textarea></div>
+      <% } %>
       <button type="submit" class="btn-submit"><%= copy.contact_btn %></button>
       <div id="form-msg"></div>
     </form>
@@ -416,45 +467,8 @@
 <% }); %>
 <% } %>
 
-<!-- FOOTER -->
-<% if (visibility.footer !== false) { %>
-<footer>
-  <div class="footer-top">
-    <div>
-      <% const footerLogo = logos.logo_white || logos.logo_primary; %>
-      <% if (footerLogo && (design.nav_logo_display === 'image' || design.nav_logo_display === 'both')) { %>
-        <img src="<%= footerLogo %>" alt="<%= brand?.name || '' %>" class="footer-logo">
-      <% } %>
-      <% if (design.nav_logo_display !== 'image' || !footerLogo) { %>
-        <div class="footer-brand-name"><% if (_sp > 0) { %><span style="color:var(--gold-light);"><%- (brand?.name||'').slice(0,_sp) %></span><%- (brand?.name||'').slice(_sp) %><% } else { %><%- brand?.name || '' %><% } %></div>
-      <% } %>
-      <div class="footer-brand-sub"><%= brand?.services?.length ? brand.services.slice(0,3).join(' • ') : (brand?.businessType || '') %><%= brand?.location ? ' • ' + brand.location : '' %></div>
-    </div>
-    <ul class="footer-links">
-      <li><a href="#services">Services</a></li>
-      <li><a href="#about">About</a></li>
-      <% if (typeof navPages !== 'undefined' && navPages.length) { %>
-        <% navPages.forEach(function(pg) { %><li><a href="/<%= pg.slug %>"><%- pg.title %></a></li><% }); %>
-      <% } %>
-      <% if (typeof navLinks !== 'undefined' && navLinks.length) { %>
-        <% navLinks.filter(l => l.location !== 'header').forEach(function(l) { %>
-          <li><a href="<%= l.url %>"<%= l.target === '_blank' ? ' target="_blank" rel="noopener"' : '' %>><%- l.label %></a></li>
-        <% }); %>
-      <% } %>
-      <li><a href="#contact">Contact</a></li>
-    </ul>
-  </div>
-  <div class="footer-divider"></div>
-  <div class="footer-copy">
-    <span>&copy; <%= new Date().getFullYear() %> <%= brand?.name || '' %> — <%= brand?.location || '' %>. All rights reserved.</span>
-    <span>
-      <% if (visibility.admin_link !== false) { %>
-        <a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.15);text-decoration:none;font-size:0.7rem;">Admin</a>
-      <% } %>
-    </span>
-  </div>
-</footer>
-<% } %>
+<!-- FOOTER (shared partial — driven by design.footer_* + copy.footer_* keys) -->
+<%- include('partials/footer') %>
 
 <script>
   if (new URLSearchParams(window.location.search).get('contacted')) {

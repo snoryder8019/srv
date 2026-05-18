@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEO / AEO / GEO / AAO — Superadmin</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    a { color:#c9a848; text-decoration:none; } a:hover { text-decoration:underline; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; } .logo span { color:#c9a848; }
+    .breadcrumb { font-size:13px; color:#525252; } .breadcrumb a { color:#737373; }
+    .container { max-width:1400px; margin:0 auto; padding:24px; }
+    h1 { font-size:22px; font-weight:600; margin-bottom:4px; }
+    h2 { font-size:15px; font-weight:500; margin:24px 0 12px; color:#a3a3a3; text-transform:uppercase; letter-spacing:1px; }
+    .lede { font-size:13px; color:#737373; margin-bottom:24px; line-height:1.6; }
+    .lede code { background:#1a1a1a; padding:2px 6px; border-radius:3px; color:#c9a848; font-size:12px; }
+
+    /* KPI cards */
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:24px; }
+    .kpi { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; }
+    .kpi-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:6px; }
+    .kpi-value { font-size:28px; font-weight:600; color:#fff; }
+    .kpi-sub { font-size:11px; color:#525252; margin-top:4px; }
+    .kpi.green .kpi-value { color:#22c55e; }
+    .kpi.yellow .kpi-value { color:#eab308; }
+    .kpi.red .kpi-value { color:#ef4444; }
+    .kpi.gold .kpi-value { color:#c9a848; }
+
+    /* Field coverage bars */
+    .field-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+    .field-bar { background:#141414; border:1px solid #262626; border-radius:6px; padding:10px 14px; }
+    .field-bar .fb-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+    .field-bar .fb-label { font-size:12px; color:#a3a3a3; text-transform:capitalize; }
+    .field-bar .fb-pct { font-size:13px; font-weight:600; color:#c9a848; }
+    .field-bar .fb-track { height:6px; background:#262626; border-radius:3px; overflow:hidden; }
+    .field-bar .fb-fill { height:100%; background:linear-gradient(90deg,#c9a848,#eab308); transition:width 0.4s; }
+    .field-bar.low .fb-fill { background:linear-gradient(90deg,#ef4444,#f97316); }
+    .field-bar.mid .fb-fill { background:linear-gradient(90deg,#eab308,#facc15); }
+    .field-bar.high .fb-fill { background:linear-gradient(90deg,#22c55e,#10b981); }
+
+    /* Tenant table */
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 12px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; white-space:nowrap; }
+    td { padding:10px 12px; font-size:12px; border-bottom:1px solid #1f1f1f; vertical-align:middle; }
+    tr:last-child td { border-bottom:0; }
+    tr:hover td { background:#181818; }
+    .domain { font-family:'SF Mono',Menlo,monospace; font-size:11px; color:#a3a3a3; }
+    .brand-name { font-weight:500; color:#fff; }
+    .health-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+    .health-green { background:#22c55e; box-shadow:0 0 6px rgba(34,197,94,0.5); }
+    .health-yellow { background:#eab308; box-shadow:0 0 6px rgba(234,179,8,0.5); }
+    .health-red { background:#ef4444; box-shadow:0 0 6px rgba(239,68,68,0.5); }
+    .badge { display:inline-block; padding:2px 8px; font-size:10px; border-radius:3px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; }
+    .badge.active { background:rgba(34,197,94,0.15); color:#22c55e; }
+    .badge.preview { background:rgba(234,179,8,0.15); color:#eab308; }
+    .badge.suspended { background:rgba(239,68,68,0.15); color:#ef4444; }
+    .badge.blocked { background:#262626; color:#737373; }
+    .badge.indexable { background:rgba(201,168,72,0.15); color:#c9a848; }
+    .checks { display:inline-flex; gap:3px; flex-wrap:wrap; }
+    .chk { display:inline-block; width:14px; height:14px; line-height:14px; text-align:center; border-radius:3px; font-size:9px; font-weight:600; }
+    .chk.on { background:#22c55e22; color:#22c55e; }
+    .chk.off { background:#3f3f46; color:#525252; }
+    .btn-sm { display:inline-block; padding:3px 8px; font-size:10px; border:1px solid #333; border-radius:3px; color:#a3a3a3; text-decoration:none; }
+    .btn-sm:hover { border-color:#c9a848; color:#c9a848; }
+    .pct-bar { display:inline-block; width:60px; height:5px; background:#262626; border-radius:3px; overflow:hidden; vertical-align:middle; margin-right:8px; }
+    .pct-fill { height:100%; }
+    .pct-fill.green { background:#22c55e; } .pct-fill.yellow { background:#eab308; } .pct-fill.red { background:#ef4444; }
+
+    .quick-links { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 8px; }
+    .quick-links a { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; background:#1a1a1a; border:1px solid #262626; border-radius:3px; font-size:11px; color:#a3a3a3; }
+    .quick-links a:hover { border-color:#c9a848; color:#c9a848; text-decoration:none; }
+
+    .filter-row { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+    .filter-row input, .filter-row select { background:#141414; border:1px solid #262626; color:#e5e5e5; padding:6px 10px; font-size:12px; border-radius:4px; font-family:inherit; }
+    .filter-row input { min-width:200px; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/superadmin" class="logo">mad<span>Labs</span>lab</a>
+    <div class="breadcrumb"><a href="/superadmin">Dashboard</a> / SEO / AEO / GEO / AAO</div>
+  </div>
+  <div class="container">
+    <h1>Discoverability Dashboard</h1>
+    <p class="lede">
+      Per-tenant signals for <strong>SEO</strong> (search engines),
+      <strong>AEO</strong> (answer engines / SGE),
+      <strong>GEO</strong> (LLM / generative engines like Perplexity, ChatGPT, Claude),
+      and <strong>AAO</strong> (autonomous AI agents).
+      Each tenant auto-emits <code>/robots.txt</code>, <code>/sitemap.xml</code>, <code>/llms.txt</code>,
+      and <code>/.well-known/agents.json</code> from its brand + content data.
+    </p>
+
+    <!-- KPIs -->
+    <h2>Overview</h2>
+    <div class="kpis">
+      <div class="kpi gold">
+        <div class="kpi-label">Avg SEO score</div>
+        <div class="kpi-value"><%= agg.avgPct %>%</div>
+        <div class="kpi-sub">across <%= agg.total %> tenants</div>
+      </div>
+      <div class="kpi green">
+        <div class="kpi-label">Healthy (≥80%)</div>
+        <div class="kpi-value"><%= agg.green %></div>
+        <div class="kpi-sub">tenants</div>
+      </div>
+      <div class="kpi yellow">
+        <div class="kpi-label">Needs work (50–79%)</div>
+        <div class="kpi-value"><%= agg.yellow %></div>
+        <div class="kpi-sub">tenants</div>
+      </div>
+      <div class="kpi red">
+        <div class="kpi-label">Critical (&lt;50%)</div>
+        <div class="kpi-value"><%= agg.red %></div>
+        <div class="kpi-sub">tenants</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Indexable</div>
+        <div class="kpi-value"><%= agg.indexable %></div>
+        <div class="kpi-sub"><%= agg.blocked %> blocked / preview</div>
+      </div>
+    </div>
+
+    <!-- Field coverage -->
+    <h2>Brand field coverage</h2>
+    <div class="field-grid">
+      <% for (const k of fieldKeys) { const fc = agg.fieldCoverage[k]; const cls = fc.pct >= 80 ? 'high' : fc.pct >= 50 ? 'mid' : 'low'; %>
+        <div class="field-bar <%= cls %>">
+          <div class="fb-top">
+            <span class="fb-label"><%= k %></span>
+            <span class="fb-pct"><%= fc.have %>/<%= agg.total %> · <%= fc.pct %>%</span>
+          </div>
+          <div class="fb-track"><div class="fb-fill" style="width:<%= fc.pct %>%"></div></div>
+        </div>
+      <% } %>
+    </div>
+
+    <!-- Per-tenant table -->
+    <h2>Per-tenant breakdown</h2>
+    <div class="filter-row">
+      <input type="text" id="filter-q" placeholder="Filter by domain or brand…">
+      <select id="filter-health">
+        <option value="">All health</option>
+        <option value="green">Healthy</option>
+        <option value="yellow">Needs work</option>
+        <option value="red">Critical</option>
+      </select>
+      <select id="filter-status">
+        <option value="">All status</option>
+        <option value="active">Active</option>
+        <option value="preview">Preview</option>
+        <option value="suspended">Suspended</option>
+      </select>
+    </div>
+
+    <table id="seoTable">
+      <thead>
+        <tr>
+          <th>Tenant</th>
+          <th>Status</th>
+          <th>Score</th>
+          <th>Indexing</th>
+          <th>Pages</th>
+          <th>Posts</th>
+          <th>Sitemap</th>
+          <th>Checks (name · tagline · desc · industry · loc · services · contact · social · logo)</th>
+          <th>Files</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (const r of rows) { %>
+          <tr data-health="<%= r.health %>" data-status="<%= r.status %>" data-q="<%= (r.brandName + ' ' + r.domain).toLowerCase() %>">
+            <td>
+              <div class="brand-name"><%= r.brandName %></div>
+              <div class="domain"><%= r.domain %></div>
+            </td>
+            <td><span class="badge <%= r.status %>"><%= r.status %></span></td>
+            <td>
+              <span class="health-dot health-<%= r.health %>"></span>
+              <span class="pct-bar"><span class="pct-fill <%= r.health %>" style="width:<%= r.pct %>%"></span></span>
+              <%= r.pct %>%
+            </td>
+            <td>
+              <% if (r.indexable) { %><span class="badge indexable">Indexable</span><% } else { %><span class="badge blocked">Blocked</span><% } %>
+            </td>
+            <td><%= r.pages %></td>
+            <td><%= r.posts %></td>
+            <td><%= r.sitemapUrls %></td>
+            <td>
+              <span class="checks">
+                <% for (const k of fieldKeys) { %>
+                  <span class="chk <%= r.checks[k] ? 'on' : 'off' %>" title="<%= k %><%= r.checks[k] ? ': ✓' : ': missing' %>"><%= r.checks[k] ? '✓' : '·' %></span>
+                <% } %>
+              </span>
+            </td>
+            <td>
+              <div class="quick-links">
+                <a href="https://<%= r.domain %>/robots.txt" target="_blank">robots</a>
+                <a href="https://<%= r.domain %>/sitemap.xml" target="_blank">sitemap</a>
+                <a href="https://<%= r.domain %>/llms.txt" target="_blank">llms</a>
+                <a href="https://<%= r.domain %>/.well-known/agents.json" target="_blank">agents</a>
+              </div>
+            </td>
+            <td><a href="/superadmin/tenants/<%= r._id %>" class="btn-sm">Manage</a></td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+
+    <h2>How scoring works</h2>
+    <p class="lede">
+      Each tenant is scored on 9 brand/content signals: <code>name</code>, <code>tagline</code>, <code>description</code>,
+      <code>industry</code>, <code>location</code>, <code>services</code>, <code>contact (email/phone)</code>,
+      <code>socialLinks</code>, and <code>logo</code>. These power Open Graph, JSON-LD (<code>Organization</code>,
+      <code>ContactPoint</code>, <code>LocalBusiness</code>), the agent manifest, and the LLM-readable
+      <code>llms.txt</code>. Preview &amp; suspended tenants are auto-set to <code>noindex,nofollow</code> via
+      <code>X-Robots-Tag</code> headers and a blanket <code>robots.txt</code>.
+    </p>
+  </div>
+
+  <script>
+    const q = document.getElementById('filter-q');
+    const hf = document.getElementById('filter-health');
+    const sf = document.getElementById('filter-status');
+    function applyFilter() {
+      const qv = q.value.trim().toLowerCase();
+      const hv = hf.value, sv = sf.value;
+      document.querySelectorAll('#seoTable tbody tr').forEach(tr => {
+        const matchQ = !qv || tr.dataset.q.includes(qv);
+        const matchH = !hv || tr.dataset.health === hv;
+        const matchS = !sv || tr.dataset.status === sv;
+        tr.style.display = (matchQ && matchH && matchS) ? '' : 'none';
+      });
+    }
+    q.addEventListener('input', applyFilter);
+    hf.addEventListener('change', applyFilter);
+    sf.addEventListener('change', applyFilter);
+  </script>
+</body>
+</html>

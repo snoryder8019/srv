@@ -59,13 +59,11 @@
         <div class="form-field">
           <label>Upload Image (Linode Bucket)</label>
           <input type="file" name="image" accept="image/*">
-          <% if (item?.imageUrl) { %>
-            <div style="margin-top:8px;">
-              <img id="portfolioImgPreview" src="<%= item.imageUrl %>" style="max-width:200px;max-height:140px;object-fit:cover;border-radius:2px;border:1px solid var(--border);">
-            </div>
-          <% } else { %>
-            <img id="portfolioImgPreview" style="display:none;max-width:200px;max-height:140px;object-fit:cover;border-radius:2px;border:1px solid var(--border);margin-top:8px;">
-          <% } %>
+          <input type="hidden" name="removeImage" id="removeImage" value="0">
+          <div id="portfolioImgWrap" style="margin-top:8px;<%= item?.imageUrl ? '' : 'display:none;' %>">
+            <img id="portfolioImgPreview" src="<%= item?.imageUrl || '' %>" style="max-width:200px;max-height:140px;object-fit:cover;border-radius:2px;border:1px solid var(--border);display:block;">
+            <button type="button" id="removeImageBtn" class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--danger,#a32a2a);">✕ Remove image</button>
+          </div>
         </div>
         <div class="form-field">
           <label>Image URL</label>
@@ -133,6 +131,29 @@
 <script>
 (function() {
   'use strict';
+  const itemId = <%- item?._id ? `'${item._id}'` : 'null' %>;
+  const removeBtn = document.getElementById('removeImageBtn');
+  const removeFlag = document.getElementById('removeImage');
+  const imgWrap = document.getElementById('portfolioImgWrap');
+  const imgPreview = document.getElementById('portfolioImgPreview');
+  const urlInput = document.getElementById('imageUrlManual');
+  if (removeBtn) {
+    removeBtn.addEventListener('click', async () => {
+      if (!confirm('Remove this image? This will delete the uploaded file from storage.')) return;
+      if (itemId) {
+        try {
+          const res = await fetch(`/admin/portfolio/${itemId}/image/delete`, { method: 'POST' });
+          const data = await res.json();
+          if (!data.ok) { alert(data.error || 'Delete failed'); return; }
+        } catch (e) { alert('Delete failed: ' + e.message); return; }
+      }
+      removeFlag.value = '1';
+      imgWrap.style.display = 'none';
+      imgPreview.removeAttribute('src');
+      if (urlInput) urlInput.value = '';
+    });
+  }
+
   const hidden = document.getElementById('galleryJson');
   const listEl = document.getElementById('galleryList');
   const addBtn = document.getElementById('galleryAddBtn');
@@ -165,12 +186,27 @@
     });
   }
 
-  listEl.addEventListener('click', (e) => {
+  listEl.addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const idx = +btn.dataset.idx;
     const act = btn.dataset.act;
-    if (act === 'del') gallery.splice(idx, 1);
+    if (act === 'del') {
+      const target = gallery[idx];
+      if (!confirm('Remove this image from the gallery?')) return;
+      if (itemId && target?.url) {
+        try {
+          const res = await fetch(`/admin/portfolio/${itemId}/gallery/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: target.url })
+          });
+          const data = await res.json();
+          if (!data.ok) { alert(data.error || 'Delete failed'); return; }
+        } catch (e) { alert('Delete failed: ' + e.message); return; }
+      }
+      gallery.splice(idx, 1);
+    }
     else if (act === 'up' && idx > 0) [gallery[idx-1], gallery[idx]] = [gallery[idx], gallery[idx-1]];
     else if (act === 'down' && idx < gallery.length - 1) [gallery[idx], gallery[idx+1]] = [gallery[idx+1], gallery[idx]];
     save(); render();

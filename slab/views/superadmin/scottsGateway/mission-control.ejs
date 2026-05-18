@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mission Control — Scott's Gateway</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    /* ── Reset + base ──────────────────────────────────────────────────── */
+    *{margin:0;padding:0;box-sizing:border-box;min-width:0;min-height:0}
+    html,body{height:100vh;width:100vw;overflow:hidden}
+
+    /* Seasonal palettes — color only, no holiday theming. Picked by month. */
+    :root           { --accent:#c9a848; --accent-bg:#2a2410; --bg-top:#0c0c11; --bg-bot:#000;     --line:#1a1a1d; --ui-scale:1; }
+    body.s-winter   { --accent:#7dd3fc; --accent-bg:#0c2438; --bg-top:#0a1218; --bg-bot:#000;     --line:#13202a; }  /* Jan–Feb cool blues */
+    body.s-spring   { --accent:#86efac; --accent-bg:#0e2818; --bg-top:#0b150e; --bg-bot:#000;     --line:#162519; }  /* Mar–May fresh greens */
+    body.s-summer   { --accent:#fb923c; --accent-bg:#2e1a0a; --bg-top:#161009; --bg-bot:#000;     --line:#2a1c0e; }  /* Jun–Aug warm orange */
+    body.s-autumn   { --accent:#f59e0b; --accent-bg:#2c1d07; --bg-top:#180f06; --bg-bot:#000;     --line:#2a1c08; }  /* Sep–Oct amber */
+    body.s-prewinter{ --accent:#c9a848; --accent-bg:#231a10; --bg-top:#100c08; --bg-bot:#000;     --line:#1f1610; }  /* Nov–Dec deep gold */
+
+    body{font-family:'Inter',sans-serif;background:radial-gradient(ellipse at top,var(--bg-top),var(--bg-bot));color:#e5e5e5;font-size:13px;line-height:1.35}
+    .frame{height:100vh;display:grid;grid-template-rows:44px 1fr 28px;gap:0}
+
+    /* ── Header (compact) ──────────────────────────────────────────────── */
+    header{display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid #1a1a1d}
+    .brand{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:#fff;letter-spacing:.02em;white-space:nowrap}
+    .brand span{color:#c9a848}
+    .clock{font-family:'Space Grotesk',monospace;font-size:14px;color:#c9a848;margin-left:auto}
+    .miniqr{display:flex;align-items:center;gap:6px;background:#0f0f12;border:1px solid #1c1c1f;border-radius:6px;padding:3px 6px}
+    .miniqr img{display:block;width:32px;height:32px;background:#fff;border-radius:3px;padding:2px}
+    .miniqr .lbl{font-size:9px;color:#737373;line-height:1.2}
+    .miniqr .lbl b{color:#c9a848;display:block}
+    .conn{display:flex;align-items:center;gap:5px;font-size:10px;color:#737373}
+    .dot{width:7px;height:7px;border-radius:50%;background:#525252}
+    .dot.on{background:#34d399;box-shadow:0 0 6px #34d399}
+
+    /* ── Main: every panel fills exactly 100% of available main height ── */
+    main{position:relative;overflow:hidden}
+    .panel{position:absolute;inset:0;padding:8px 12px;opacity:0;transition:opacity .25s;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+    .panel.show{opacity:1;z-index:2}
+    h2{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;color:#fff;display:flex;align-items:baseline;gap:10px;flex-shrink:0}
+    h2 em{color:#c9a848;font-style:normal}
+    h2 .modetag{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:#737373;font-weight:500;margin-left:auto}
+
+    /* ── Common tiles + lists ──────────────────────────────────────────── */
+    .tile{background:#101014;border:1px solid #1f1f22;border-radius:6px;padding:8px 10px;min-height:0;display:flex;flex-direction:column;justify-content:center}
+    .tile h4{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:#737373;margin-bottom:3px;white-space:nowrap}
+    .tile .v{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:#fff;line-height:1}
+    .tile .v.gold{color:#c9a848} .tile .v.red{color:#f87171} .tile .v.green{color:#34d399}
+    .listbox{background:#0f0f12;border:1px solid #1c1c1f;border-radius:6px;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+    .listbox h4{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:#737373;margin-bottom:6px;flex-shrink:0}
+    .listbox ul{list-style:none;display:flex;flex-direction:column;gap:3px;overflow:hidden;flex:1}
+    .listbox li{font-size:11px;color:#d4d4d4;display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed #1c1c1f;align-items:center;white-space:nowrap}
+    .listbox li:last-child{border-bottom:0}
+    .listbox li > span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+    .listbox li .when{font-family:'Space Grotesk',monospace;font-size:10px;color:#737373;flex-shrink:0}
+    .listbox li.done{opacity:.4;text-decoration:line-through}
+
+    .chip{display:inline-block;padding:1px 6px;font-size:9px;border-radius:3px;letter-spacing:.4px;text-transform:uppercase;margin-right:5px;background:#262629;color:#a3a3a3;font-weight:500}
+    .chip.scott{background:#1e3a5f;color:#7dd3fc}
+    .chip.candace{background:#3f1d3a;color:#f9a8d4}
+    .chip.violet{background:#2e1b4d;color:#c4b5fd}
+    .chip.odin{background:#1f3a2e;color:#86efac}
+    .chip.family{background:#2a2410;color:#c9a848}
+    .chip.bill{background:#451a1a;color:#f87171}
+    .chip.event{background:#1c1f3a;color:#a5b4fc}
+    .chip.reminder{background:#15101c;color:#d8b4fe}
+    .chip.appointment{background:#0c1a26;color:#7dd3fc}
+    .chip.task{background:#262629;color:#a3a3a3}
+    /* Brand chips — one per tenant, color-coded so eye can pick out source quickly */
+    .chip.brand{background:#1f1f22;color:#a3a3a3;font-weight:600}
+    .chip.brand-madladslab{background:#1c2540;color:#a5b4fc}
+    .chip.brand-w2marketing,.chip.brand-w2{background:#3f1d3a;color:#f9a8d4}
+    .chip.brand-slab{background:#2a2410;color:#c9a848}
+    .chip.brand-opstrain{background:#0f2c1e;color:#86efac}
+    .chip.brand-bih{background:#1a2a3a;color:#7dd3fc}
+    .chip.brand-ps{background:#2c1e3a;color:#c4b5fd}
+    .chip.brand-tripletwenty{background:#1c0f0f;color:#fb923c}
+    .chip.brand-household,.chip.brand-family{background:#262629;color:#737373}
+
+    /* Tile breakdowns — small inline rows under the big number */
+    .tile .breakdown{font-size:9px;color:#737373;margin-top:5px;display:flex;flex-direction:column;gap:1px;line-height:1.3}
+    .tile .breakdown .b-row{display:flex;justify-content:space-between;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tile .breakdown .b-row b{font-family:'Space Grotesk',monospace;font-weight:600;color:#d4d4d4}
+
+    /* ── Overview: nested flex (column outer, row bands) ─────────────────
+       Proportions are the same as the grid version: stats auto-row,
+       mid-row gets 2fr, bottom-row gets 1fr. */
+    .ov{display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;width:100%;height:100%}
+    .ov .row{display:flex;gap:6px;min-width:0}
+    .ov .row > *{min-width:0;min-height:0}
+    .ov .row-stats{flex-shrink:0}
+    .ov .row-stats > .tile{flex:1 1 0}
+    .ov .row-mid{flex:2 1 0;min-height:0}
+    .ov .row-bot{flex:1 1 0;min-height:0}
+    /* Mid band: feed 25% · month 50% · money 25% */
+    .ov .feed-stage{flex:1 1 0;background:#0f0f12;border:1px solid #1c1c1f;border-radius:6px;position:relative;overflow:hidden}
+    .ov .big-month {flex:2 1 0;background:#0f0f12;border:1px solid #1c1c1f;border-radius:6px;padding:8px 12px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+    .ov .money-mini{flex:1 1 0;background:#0f0f12;border:1px solid #1c1c1f;border-radius:6px;padding:6px 10px;display:flex;flex-direction:column;gap:5px;overflow:hidden}
+    /* Bottom band: next 50% · mini 25% · tasks 25% */
+    .ov .next      {flex:2 1 0}
+    .ov .mini-stage{flex:1 1 0;background:#0f0f12;border:1px solid #1c1c1f;border-radius:6px;position:relative;overflow:hidden}
+    .ov .tasks-mini{flex:1 1 0}
+    .ov .big-month h4{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:#737373;flex-shrink:0;display:flex;justify-content:space-between}
+    .ov .big-month h4 b{color:var(--accent);font-weight:600}
+    .money-mini{position:relative}
+    .money-card{position:absolute;inset:6px 10px;opacity:0;transition:opacity .45s;display:flex;flex-direction:column;gap:5px;overflow:hidden}
+    .money-card.show{opacity:1;z-index:2}
+    .money-card h4{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:#737373;flex-shrink:0;display:flex;justify-content:space-between}
+    .money-card h4 b{color:var(--accent);font-weight:600}
+    /* Bar chart (12-month income vs bills) */
+    .barchart{flex:1;display:flex;align-items:flex-end;gap:3px;padding-top:8px;min-height:0}
+    .barcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0}
+    .barcol .bars{display:flex;gap:1px;width:100%;height:100%;align-items:flex-end;min-height:0}
+    .barcol .bar{flex:1;border-radius:2px 2px 0 0;min-height:1px;position:relative}
+    .barcol .bar.in{background:linear-gradient(180deg,#34d399,#0f5132)}
+    .barcol .bar.out{background:linear-gradient(180deg,#f87171,#7f1d1d)}
+    .barcol .lbl{font-size:8px;color:#525252;text-transform:uppercase;letter-spacing:.3px}
+    .barcol.now .lbl{color:var(--accent);font-weight:600}
+    .chart-legend{display:flex;gap:10px;font-size:9px;color:#a3a3a3;justify-content:center;flex-shrink:0}
+    .chart-legend .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
+    /* Comparison rows */
+    .cmp{display:flex;flex-direction:column;gap:6px;flex:1;justify-content:center}
+    .cmp-row{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:#d4d4d4}
+    .cmp-row .label{color:#a3a3a3}
+    .cmp-row .val{font-family:'Space Grotesk',monospace;font-size:14px;font-weight:600;color:#fff}
+    .cmp-row .delta{font-family:'Space Grotesk',monospace;font-size:10px;margin-left:6px}
+    .cmp-row .delta.up{color:#34d399}.cmp-row .delta.down{color:#f87171}
+    .money-mini .mline{display:flex;justify-content:space-between;font-size:11px;color:#d4d4d4;padding:2px 0;flex-shrink:0}
+    .money-mini .mline b{font-family:'Space Grotesk',monospace;font-weight:600}
+    .money-mini .mline b.in{color:#34d399}
+    .money-mini .mline b.out{color:#f87171}
+    .money-mini .mm-items, .mm-items{list-style:none;display:flex;flex-direction:column;gap:2px;overflow:hidden;flex:1;min-height:0;padding:4px 0;border-top:1px dashed #1c1c1f;border-bottom:1px dashed #1c1c1f;margin:2px 0}
+    .money-mini .mm-items li{display:flex;justify-content:space-between;gap:6px;font-size:10px;color:#d4d4d4;padding:1px 0;align-items:center;white-space:nowrap;overflow:hidden}
+    .money-mini .mm-items li > span{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+    .money-mini .mm-items li b{font-family:'Space Grotesk',monospace;font-size:10px;font-weight:600;flex-shrink:0}
+    .money-mini .mm-items li b.in{color:#34d399}
+    .money-mini .mm-items li b.out{color:#f87171}
+    .money-mini .mm-items li b.overdue{color:#f87171}
+    .money-mini .net{margin-top:auto;padding-top:5px;border-top:1px solid #1c1c1f;font-family:'Space Grotesk',sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:baseline;flex-shrink:0}
+
+    /* Slideshow card layout — inset:0 + internal padding so the card fills the
+       full grid cell with no visible bg-color frame around it. */
+    .feed-card,.mini-card{position:absolute;inset:0;padding:8px 10px;opacity:0;transition:opacity .5s;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+    .feed-card.show,.mini-card.show{opacity:1;z-index:2}
+    .feed-card h3,.mini-card h5{font-size:9px;color:#737373;letter-spacing:.8px;text-transform:uppercase;flex-shrink:0;font-family:'Space Grotesk',sans-serif;font-weight:500}
+    .feed-now{display:flex;align-items:center;gap:12px;flex:1;min-height:0}
+    .feed-now .icon{font-size:38px;line-height:1}
+    .feed-now .big{font-family:'Space Grotesk',sans-serif;font-size:36px;font-weight:600;color:#fff;line-height:1}
+    .feed-now .sub{color:#a3a3a3;font-size:10px;margin-top:3px}
+    .feed-days{display:flex;gap:4px;flex:1;min-height:0;overflow:hidden}
+    /* Wider forecasts (10-day, snow) use a 5×2 grid so cells don't get squished */
+    .feed-days.grid{display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(2,1fr);gap:4px;flex:1;min-height:0;overflow:hidden}
+    .feed-days.grid .feed-day{flex:none;min-height:0}
+    .feed-day{background:#141417;border:1px solid #262629;border-radius:4px;padding:4px 5px;flex:1;text-align:center;display:flex;flex-direction:column;justify-content:center;min-width:0;overflow:hidden}
+    .feed-day .lbl{font-size:8px;color:#737373;letter-spacing:.3px;text-transform:uppercase}
+    .feed-day .ic{font-size:14px;line-height:1.1}
+    .feed-day .hi{font-family:'Space Grotesk',sans-serif;font-size:12px;color:#fff;font-weight:600;line-height:1.1}
+    .feed-day .lo{font-size:9px;color:#737373;line-height:1}
+    .feed-day .snow{color:#7dd3fc;font-size:8px;line-height:1}
+    .flow-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:4px;flex:1;overflow:hidden}
+    .flow-card{background:#141417;border:1px solid #262629;border-radius:4px;padding:4px 6px;display:flex;flex-direction:column;justify-content:center;min-width:0;overflow:hidden}
+    .flow-card .nm{font-size:8px;color:#737373;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .flow-card .cfs{font-family:'Space Grotesk',sans-serif;font-size:14px;color:#7dd3fc;font-weight:600;line-height:1.1}
+    .flow-card .ft{font-size:9px;color:#a3a3a3}
+    .agent-mini{font-size:11px;color:#d4d4d4;line-height:1.45;flex:1;overflow:hidden}
+    .ifeed{list-style:none;display:flex;flex-direction:column;gap:3px;overflow:hidden;flex:1;min-height:0}
+    .ifeed li{display:grid;grid-template-columns:auto 1fr auto;gap:6px;font-size:10px;line-height:1.3;padding:2px 0;border-bottom:1px dashed #1c1c1f;align-items:baseline;overflow:hidden}
+    .ifeed li:last-child{border-bottom:0}
+    .ifeed .src{color:var(--accent);font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis}
+    .ifeed .ttl{color:#d4d4d4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ifeed .ago{color:#525252;font-family:'Space Grotesk',monospace;font-size:9px;white-space:nowrap}
+    .agent-mini p{margin-bottom:5px}
+    .agent-mini ul{list-style:none;padding-left:0;margin:4px 0;display:flex;flex-direction:column;gap:3px}
+    .agent-mini li{position:relative;padding-left:14px;line-height:1.4}
+    .agent-mini li::before{content:'';position:absolute;left:0;top:7px;width:5px;height:5px;background:var(--accent);border-radius:50%}
+    .agent-mini strong{color:#fff;font-weight:600}
+    .agent-mini em{color:var(--accent);font-style:normal}
+
+    /* Mini calendar */
+    .mini-month{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;flex:1;min-height:0}
+    .mini-month .mdow{font-size:8px;color:#404040;text-align:center;text-transform:uppercase}
+    .mini-month .mday{background:#141417;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#a3a3a3;position:relative}
+    .mini-month .mday.today{background:var(--accent-bg);color:var(--accent);font-weight:600;border:1px solid var(--accent)}
+    .mini-month .mday.dim{opacity:.3}
+    .mini-month .mday.has::after{content:'';position:absolute;bottom:2px;width:3px;height:3px;border-radius:50%;background:var(--accent)}
+
+    /* Big month grid (overview's centerpiece) */
+    .big-month-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:auto repeat(5,1fr);gap:4px;flex:1;min-height:0;overflow:hidden}
+    .big-month-grid .dow{font-size:10px;color:#737373;text-align:center;text-transform:uppercase;letter-spacing:.5px;font-weight:500}
+    .big-month-grid .bmday{background:#141417;border:1px solid #1f1f22;border-radius:4px;padding:4px 6px;display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0}
+    .big-month-grid .bmday.today{background:var(--accent-bg);border-color:var(--accent)}
+    .big-month-grid .bmday.dim{opacity:.4}
+    .big-month-grid .bmday .num{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:#a3a3a3;line-height:1}
+    .big-month-grid .bmday.today .num{color:var(--accent)}
+    .big-month-grid .bmday .ev{padding:1px 4px;border-radius:2px;background:#1c1c1f;font-size:9px;color:#d4d4d4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
+    .big-month-grid .bmday .ev.work{background:#0f1f15;color:#86efac;border-left:2px solid #34d399}
+    .big-month-grid .bmday .ev.book{background:#15101c;color:#d8b4fe;border-left:2px solid #a78bfa}
+    .big-month-grid .bmday .ev.meet{background:#0c1a26;color:#7dd3fc;border-left:2px solid #38bdf8}
+    .big-month-grid .bmday .ev.event{background:#2a2410;color:var(--accent);border-left:2px solid var(--accent)}
+    .mini-week{display:flex;flex-direction:column;gap:3px;flex:1;overflow:hidden}
+    .mini-week .mw-day{background:#141417;border-radius:3px;padding:3px 6px;display:flex;justify-content:space-between;font-size:10px}
+    .mini-week .mw-day.today{background:#1a1610;border:1px solid #c9a848;color:#c9a848}
+    .mini-week .mw-day .ct{color:#737373;font-family:'Space Grotesk',monospace;font-size:9px}
+    .mini-day{display:flex;flex-direction:column;gap:3px;flex:1;overflow:hidden}
+    .mini-day .mdh{font-family:'Space Grotesk',sans-serif;font-size:11px;color:#c9a848;margin-bottom:2px}
+    .mini-day .mditem{background:#141417;border-radius:3px;padding:3px 6px;font-size:10px;color:#d4d4d4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mini-day .mditem .t{font-family:'Space Grotesk',monospace;font-size:9px;color:#737373;margin-right:4px}
+
+    /* Calendar panel (cycled) */
+    .month{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:auto repeat(5,1fr);gap:3px;flex:1;min-height:0;overflow:hidden}
+    .month .dow{font-size:9px;color:#525252;text-align:center;text-transform:uppercase;letter-spacing:.4px}
+    .day-cell{background:#101014;border:1px solid #1f1f22;border-radius:4px;padding:3px 4px;display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0}
+    .day-cell.today{border-color:#c9a848;background:#15110a}
+    .day-cell.dim{opacity:.35}
+    .day-cell .num{font-size:10px;font-weight:600;color:#a3a3a3;line-height:1}
+    .day-cell.today .num{color:#c9a848}
+    .day-cell .ev{padding:1px 4px;border-radius:2px;background:#1c1c1f;font-size:9px;color:#d4d4d4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
+    .day-cell .ev.work{background:#0f1f15;color:#86efac;border-left:2px solid #34d399}
+    .day-cell .ev.book{background:#15101c;color:#d8b4fe;border-left:2px solid #a78bfa}
+    .day-cell .ev.meet{background:#0c1a26;color:#7dd3fc;border-left:2px solid #38bdf8}
+    .day-cell .ev.event{background:#2a2410;color:#c9a848;border-left:2px solid #c9a848}
+
+    /* Money split panel */
+    .money-split{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1;min-height:0}
+    .money-col{background:#0f0f12;border:1px solid #1c1c1f;border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:5px;min-height:0;overflow:hidden}
+    .money-col.in{border-color:#1a3f2a}
+    .money-col.out{border-color:#3f1a1a}
+    .money-head{display:flex;justify-content:space-between;align-items:baseline;flex-shrink:0}
+    .money-head span{font-family:'Space Grotesk',sans-serif;font-size:12px;color:#fff;font-weight:500}
+    .money-head b{font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:700}
+    .money-sub{font-size:9px;color:#737373;border-bottom:1px solid #1f1f22;padding-bottom:4px;flex-shrink:0}
+    .billnav{display:flex;align-items:center;gap:8px;font-size:11px;flex-shrink:0;flex-wrap:wrap}
+    .billnav .mtitle{font-family:'Space Grotesk',sans-serif;font-size:13px;color:#fff}
+    .billnav .totals{display:flex;gap:10px;font-size:10px;color:#a3a3a3;margin-left:auto}
+    .billnav .totals b{font-family:'Space Grotesk',monospace;color:#c9a848;font-weight:600}
+
+    /* Local events (cards) */
+    .local-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));grid-auto-rows:minmax(0,1fr);gap:6px;flex:1;min-height:0;overflow:hidden}
+    .ecard{background:#101014;border:1px solid #1f1f22;border-radius:6px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+    .ecard .img{flex:1;background:#1a1a1d center/cover no-repeat;min-height:60px}
+    .ecard .img.placeholder{display:flex;align-items:center;justify-content:center;font-size:20px;color:#262629}
+    .ecard .body{padding:5px 8px;flex-shrink:0}
+    .ecard .src{font-size:8px;color:#c9a848;letter-spacing:.5px;text-transform:uppercase}
+    .ecard .ttl{font-size:11px;font-weight:600;color:#fff;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ecard .when{font-family:'Space Grotesk',monospace;font-size:9px;color:#a3a3a3}
+
+    /* Agent + photo */
+    .agent-out{font-size:13px;line-height:1.5;color:#d4d4d4;background:#0f0f12;border:1px solid #1c1c1f;border-radius:6px;padding:14px;flex:1;overflow:auto;white-space:pre-wrap}
+    .photo-msg{font-size:14px;color:#c9a848;font-style:italic;text-align:center;padding:40px}
+    .photo-stage{position:relative;flex:1;background:#000;border-radius:6px;overflow:hidden;min-height:0}
+    .photo-slide{position:absolute;inset:0;background:#000 center/contain no-repeat;opacity:0;transition:opacity 1s}
+    .photo-slide.show{opacity:1}
+    .photo-caption{position:absolute;bottom:8px;left:12px;right:12px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);color:#e5e5e5;padding:6px 10px;border-radius:4px;font-size:11px;display:flex;justify-content:space-between;gap:10px}
+    .photo-caption .who{color:#c9a848;font-weight:600}
+
+    /* Floating agent bubble (bottom-right overlay) */
+    .agent-bubble{position:absolute;right:14px;bottom:14px;max-width:38%;max-height:48%;background:#0f0f12;border:1px solid var(--accent);border-radius:10px;padding:12px 14px;box-shadow:0 4px 24px rgba(0,0,0,.55), 0 0 24px var(--accent-bg);display:flex;flex-direction:column;gap:6px;z-index:10;overflow:hidden;opacity:0;pointer-events:none;transform:translateY(12px);transition:opacity .35s ease, transform .35s ease}
+    .agent-bubble.show{opacity:1;pointer-events:auto;transform:none}
+    .agent-bubble .ab-head{display:flex;align-items:center;justify-content:space-between;font-family:'Space Grotesk',sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);flex-shrink:0}
+    .agent-bubble .ab-close{background:none;border:0;color:#737373;cursor:pointer;font-size:14px;padding:0 4px;line-height:1}
+    .agent-bubble .ab-close:hover{color:#f87171}
+    .agent-bubble .ab-body{font-size:12px;line-height:1.45;color:#d4d4d4;white-space:pre-wrap;overflow-y:auto;flex:1;min-height:0}
+    @keyframes bubbleIn{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+    @media (min-width:1900px){.agent-bubble{max-width:32%;padding:16px 18px} .agent-bubble .ab-body{font-size:14px}}
+    @media (min-width:2600px){.agent-bubble{max-width:28%;padding:20px 22px} .agent-bubble .ab-body{font-size:16px}}
+
+    /* ── Topic-background images (SD-generated, cached server-side) ─────
+       Each card/panel that opts in sets --topic-bg to a URL; a ::before
+       pseudo-element renders it as a soft underlay. Panels stay transparent
+       (the original look); cards get a hint of imagery without competing
+       with foreground text. */
+    /* Cards already have position:absolute — we do NOT add position:relative
+       here (that would collapse them to natural size). The ::before anchors
+       to the card's own positioning. Children get z-index:1 so they sit on
+       top of the underlay. */
+    .feed-card.tbg::before, .money-card.tbg::before, .mini-card.tbg::before{
+      content:'';position:absolute;inset:0;background-image:var(--topic-bg,none);
+      background-size:cover;background-position:center;opacity:.16;
+      pointer-events:none;transition:opacity .6s;z-index:0;border-radius:inherit;
+    }
+    .feed-card.tbg > *, .money-card.tbg > *, .mini-card.tbg > *{position:relative;z-index:1}
+
+    /* Footer */
+    footer{padding:0 14px;font-size:10px;color:#525252;border-top:1px solid #1a1a1d;display:flex;justify-content:space-between;align-items:center}
+    .msg{font-size:12px;color:#c9a848;font-style:italic}
+
+    /* ── Ultrawide bumps ──────────────────────────────────────────────── */
+    @media (min-width:1900px){
+      body{font-size:14px}
+      .frame{grid-template-rows:52px 1fr 32px}
+      .brand{font-size:15px}
+      .clock{font-size:18px}
+      .miniqr img{width:42px;height:42px}
+      h2{font-size:20px}
+      .tile .v{font-size:28px}
+      .feed-now .big{font-size:48px}
+      .feed-now .icon{font-size:48px}
+      .feed-day .hi{font-size:14px}
+      .listbox li{font-size:13px}
+      .listbox li .when{font-size:11px}
+      .day-cell .num{font-size:11px}
+      .day-cell .ev{font-size:10px}
+    }
+    @media (min-width:2600px){
+      body{font-size:16px}
+      .frame{grid-template-rows:64px 1fr 36px}
+      .brand{font-size:18px}
+      .clock{font-size:22px}
+      .miniqr img{width:54px;height:54px}
+      h2{font-size:24px}
+      .tile .v{font-size:36px}
+      .feed-now .big{font-size:60px}
+      .feed-now .icon{font-size:60px}
+      .feed-day .hi{font-size:16px}
+      .listbox li{font-size:15px}
+      .day-cell .num{font-size:13px}
+      .day-cell .ev{font-size:11px}
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <header>
+      <div class="brand">Wallace <span>Mission Control</span></div>
+      <a class="miniqr" id="miniqrLink" href="/superadmin/scottsGateway/remote/scan" target="_blank" rel="noopener" title="Click to open remote in a new tab — or scan with a phone" style="text-decoration:none;cursor:pointer">
+        <img id="remoteQr" alt="remote">
+        <div class="lbl"><b>Remote</b>tap or scan</div>
+      </a>
+      <div class="clock" id="clock">--:--</div>
+      <div class="conn"><span class="dot" id="dot"></span><span id="connTxt">…</span></div>
+    </header>
+
+    <main id="stage">
+      <!-- OVERVIEW: dense dashboard, everything visible -->
+      <section class="panel" data-view="overview" data-topic="overview">
+        <div class="ov">
+          <div class="row row-stats">
+            <div class="tile"><h4 id="ov-income-label">Income · this mo</h4><div class="v green" id="ov-income">—</div><div class="breakdown" id="ov-income-breakdown"></div></div>
+            <div class="tile"><h4>Invoices outstanding</h4><div class="v gold" id="ov-invoices">—</div><div class="breakdown" id="ov-inv-breakdown"></div></div>
+            <div class="tile"><h4>Chores validated <span style="color:#525252;font-size:8px">· this mo</span></h4><div class="v" id="ov-chores">—</div><div class="breakdown" id="ov-chores-breakdown"></div></div>
+            <div class="tile"><h4 id="ov-bills-label">Bills · this mo</h4><div class="v red" id="ov-bills">—</div><div class="breakdown" id="ov-bills-breakdown"></div></div>
+          </div>
+          <div class="row row-mid">
+            <div class="feed-stage" id="feed-stage">
+              <div class="feed-card tbg" data-feed="now"    data-topic="weather-now"></div>
+              <div class="feed-card tbg" data-feed="3day"   data-topic="weather-3day"></div>
+              <div class="feed-card tbg" data-feed="10day"  data-topic="weather-10day"></div>
+              <div class="feed-card tbg" data-feed="flows"  data-topic="river-flows"></div>
+              <div class="feed-card tbg" data-feed="interests" data-topic="interests"></div>
+              <div class="feed-card tbg" data-feed="review" data-topic="review"></div>
+              <div class="feed-card tbg" data-feed="agent"  data-topic="agent"></div>
+            </div>
+            <div class="big-month">
+              <h4>Calendar · <b id="bm-title">—</b></h4>
+              <div class="big-month-grid" id="bm-grid"></div>
+            </div>
+            <div class="money-mini" id="money-stage">
+              <!-- Cards injected by renderMoneyCards() — rotated by startMoneySlide() -->
+            </div>
+          </div><!-- /row-mid -->
+          <div class="row row-bot">
+            <div class="listbox next">
+              <h4>Next up</h4>
+              <ul id="ov-next"></ul>
+            </div>
+            <div class="mini-stage" id="mini-stage"></div>
+            <div class="listbox tasks-mini">
+              <h4>Kids <em style="color:#525252;font-weight:400">· Odin & Violet</em></h4>
+              <ul id="ov-tasks"></ul>
+            </div>
+          </div><!-- /row-bot -->
+        </div>
+        <div class="agent-bubble" id="agentBubble">
+          <div class="ab-head">
+            <span>🤖 Wallace</span>
+            <button class="ab-close" onclick="hideBubble()" title="dismiss">×</button>
+          </div>
+          <div class="ab-body" id="agentBubbleBody"></div>
+        </div>
+      </section>
+
+      <!-- CALENDAR (tap-to-cycle: month / week / day) -->
+      <section class="panel" data-view="calendar" data-topic="calendar">
+        <h2>Family <em>Calendar</em><span class="modetag" id="cal-modetag">month</span><span id="cal-focus-tag" style="font-size:12px;color:var(--accent);letter-spacing:.4px;font-weight:500;display:none"></span></h2>
+        <div id="cal-stage" style="flex:1;min-height:0;display:flex;flex-direction:column"></div>
+      </section>
+
+      <!-- MONEY split (Bills out / Invoices in) -->
+      <section class="panel" data-view="bills" data-topic="bills">
+        <h2>Money <em>· in / out</em><span class="modetag" id="bill-modetag">unpaid only</span></h2>
+        <div class="billnav">
+          <div class="mtitle" id="bill-mtitle">—</div>
+          <div class="totals">
+            <span>net: <b id="bill-net">$0</b></span>
+          </div>
+        </div>
+        <div class="money-split">
+          <div class="money-col in">
+            <div class="money-head"><span>Invoices (in)</span><b class="v green" id="inv-open">$0</b></div>
+            <div class="money-sub"><span id="inv-count">0</span> open · month total $<span id="inv-total">0</span></div>
+            <div class="listbox" style="border:0;padding:0;flex:1;min-height:0"><ul id="inv-list"></ul></div>
+          </div>
+          <div class="money-col out">
+            <div class="money-head"><span>Household (out)</span><b class="v red" id="bills-open">$0</b></div>
+            <div class="money-sub"><span id="bills-count">0</span> open · month total $<span id="bills-total">0</span></div>
+            <div class="listbox" style="border:0;padding:0;flex:1;min-height:0"><ul id="bills-list"></ul></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" data-view="tasks" data-topic="tasks">
+        <h2>Family <em>Tasks</em></h2>
+        <div class="listbox" style="flex:1;min-height:0"><ul id="task-list"><li>Loading…</li></ul></div>
+      </section>
+
+      <section class="panel" data-view="meetings" data-topic="meetings">
+        <h2>Active <em>Meetings</em></h2>
+        <div class="listbox" style="flex:1;min-height:0"><ul id="meet-list"></ul></div>
+      </section>
+
+      <section class="panel" data-view="local" data-topic="local">
+        <h2>Greeley <em>· UNC · Downtown</em></h2>
+        <div class="local-grid" id="local-grid"><div style="color:#525252">Loading…</div></div>
+      </section>
+
+      <section class="panel" data-view="agent" data-topic="agent">
+        <h2>Agent <em>Reply</em></h2>
+        <div class="agent-out" id="agent-out">Ask something from the remote.</div>
+      </section>
+
+      <section class="panel" data-view="photo" data-topic="photo">
+        <h2>Family <em>Display</em><span class="modetag" id="photo-modetag">mission-control folder</span></h2>
+        <div class="photo-stage" id="photo-stage">
+          <div class="photo-msg" id="photo-msg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">Loading…</div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>view: <b id="curView">overview</b></span>
+      <span class="msg" id="bcastMsg"></span>
+      <span>last touch: <b id="curBy">—</b></span>
+    </footer>
+  </div>
+
+<script>
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function whoChip(w){ const k = (w||'family').toLowerCase(); return `<span class="chip ${k}">${escapeHtml(w||'family')}</span>`; }
+function brandChip(brand, brandKey){
+  if (!brand) return '';
+  const k = (brandKey || brand).toLowerCase().replace(/[^a-z0-9]/g,'');
+  return `<span class="chip brand brand-${k}">${escapeHtml(brand)}</span>`;
+}
+function kindChip(k){ return `<span class="chip ${(k||'task').toLowerCase()}">${escapeHtml(k||'task')}</span>`; }
+const fmtFull = (x) => x ? new Date(x).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : 'no date';
+const fmtT = (x) => x ? new Date(x).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+
+// Mini QR
+(function(){ const url = `${location.protocol}//${location.host}/superadmin/scottsGateway/remote/scan`;
+  document.getElementById('remoteQr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data=' + encodeURIComponent(url);
+})();
+
+// Seasonal palette — picks one of 5 themes by month
+(function applySeason(){
+  const m = new Date().getMonth(); // 0=Jan
+  let cls = 's-prewinter';
+  if (m === 0 || m === 1) cls = 's-winter';
+  else if (m >= 2 && m <= 4) cls = 's-spring';
+  else if (m >= 5 && m <= 7) cls = 's-summer';
+  else if (m >= 8 && m <= 9) cls = 's-autumn';
+  document.body.classList.add(cls);
+})();
+
+const clock = document.getElementById('clock');
+function tick(){ clock.textContent = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+tick(); setInterval(tick, 30000);
+
+const dot = document.getElementById('dot');
+const connTxt = document.getElementById('connTxt');
+const panels = [...document.querySelectorAll('main .panel')];
+
+let calMode = 'month';
+let calFocusDate = null;          // 'YYYY-MM-DD' — when remote taps a day
+let billsMonth = monthKeyToday();
+let billsIncludePaid = false;
+let fontScale = 1.0;              // remote ± controls 0.8–1.6
+let bigCalMode = 'month';         // 'month' | 'week' | 'day' — toggled from remote
+function applyFontScale(){ document.body.style.fontSize = (13 * fontScale) + 'px'; }
+function monthKeyToday(){ const x=new Date(); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}`; }
+function prettyMonth(k){ const [y,m]=k.split('-').map(Number); return new Date(y, m-1, 1).toLocaleDateString([], {month:'long', year:'numeric'}); }
+
+function showView(view){
+  document.getElementById('curView').textContent = view;
+  let matched = false;
+  panels.forEach(p => { const on = p.dataset.view === view; p.classList.toggle('show', on); if (on) matched = true; });
+  if (!matched) panels[0].classList.add('show');
+  if (view === 'calendar') renderCalendar();
+  if (view === 'bills') renderBills();
+  if (view === 'local') loadLocal();
+  if (view === 'photo') loadPhotos();
+}
+
+let aggData = null, feedData = null, agentReply = '', tasks = [];
+
+async function loadAggregate(){
+  try {
+    const r = await fetch('/superadmin/scottsGateway/api/aggregate?days=180&paid=' + (billsIncludePaid?'1':'0'));
+    const j = await r.json();
+    if (!j.ok) return;
+    aggData = j.data;
+    renderOverview(); renderCalendar(); renderBills(); renderMeetings(); renderMiniCalendar();
+  } catch (e) {}
+}
+async function loadTasks(){
+  try { const r = await fetch('/superadmin/scottsGateway/api/tasks'); const j = await r.json();
+    if (j.ok) { tasks = j.tasks; renderTasks(); renderOverviewTasks(); }
+  } catch (e) {}
+}
+async function loadFeeds(){
+  try { const r = await fetch('/superadmin/scottsGateway/api/feeds'); const j = await r.json();
+    if (j.ok) { feedData = j; renderFeeds(); }
+  } catch (e) {}
+}
+
+function renderOverview(){
+  if (!aggData) return;
+
+  // ── Month bookkeeping (used by tiles) ──
+  const now = new Date();
+  const monthLabel = now.toLocaleDateString([], { month:'short' });
+  const monthKeyNow = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const monthKeyPrev = `${prevDate.getFullYear()}-${String(prevDate.getMonth()+1).padStart(2,'0')}`;
+  const inMonth = (d, key) => {
+    if (!d) return false;
+    const x = new Date(d);
+    return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}` === key;
+  };
+  const monthRow = (aggData.monthly || []).find(r => r.month === monthKeyNow) || null;
+  const prevRow  = (aggData.monthly || []).find(r => r.month === monthKeyPrev) || null;
+
+  // ── Tile 1: this-month income (paid invoices) across brands ──
+  const paidThisMonth = (i) => i.status === 'paid' && (inMonth(i.paidAt, monthKeyNow) || (!i.paidAt && inMonth(i.dueDate, monthKeyNow)));
+  const incomePaidThis = aggData.invoices
+    .filter(paidThisMonth)
+    .reduce((s, i) => s + Number(i.total || i.amount || 0), 0);
+  const incomeByBrand = {};
+  aggData.invoices.filter(paidThisMonth).forEach(i => {
+    const key = i.brand || '—';
+    if (!incomeByBrand[key]) incomeByBrand[key] = { brand:key, brandKey:i.brandKey, total:0, count:0 };
+    incomeByBrand[key].total += Number(i.total||i.amount||0); incomeByBrand[key].count++;
+  });
+  document.getElementById('ov-income-label').innerHTML = `Income · ${escapeHtml(monthLabel)}`;
+  document.getElementById('ov-income').textContent = '$' + Math.round(incomePaidThis).toLocaleString();
+
+  // ── Tile 2: invoices outstanding across all connected brands ──
+  const invOpen = (aggData.monthly || []).reduce((s, r) => s + (r.invoiceUnpaidTotal||0), 0);
+  document.getElementById('ov-invoices').textContent = '$' + Math.round(invOpen).toLocaleString();
+
+  // ── Tile 4: bills this month vs last month delta ──
+  const billsThis = monthRow?.billTotal || 0;
+  const billsPrev = prevRow?.billTotal  || 0;
+  const billsDelta = billsThis - billsPrev;
+  const billsPct = billsPrev ? ((billsDelta / Math.abs(billsPrev)) * 100) : null;
+  document.getElementById('ov-bills-label').innerHTML = `Bills · ${escapeHtml(monthLabel)}`;
+  document.getElementById('ov-bills').textContent = '$' + Math.round(billsThis).toLocaleString();
+
+  // ── Breakdown of open invoices / open bills + income by brand ──
+  const invByBrand = {};
+  aggData.invoices.filter(i => i.status !== 'paid').forEach(i => {
+    const key = i.brand || '—'; const amt = Number(i.total||i.amount||0);
+    if (!invByBrand[key]) invByBrand[key] = { brand: key, brandKey: i.brandKey, total: 0, count: 0 };
+    invByBrand[key].total += amt; invByBrand[key].count++;
+  });
+  const billsByBrand = {};
+  aggData.bills.filter(b => inMonth(b.dueDate, monthKeyNow)).forEach(b => {
+    const key = b.brand || b.who || 'Household';
+    if (!billsByBrand[key]) billsByBrand[key] = { brand: key, brandKey: (key||'household').toLowerCase(), total: 0, count: 0 };
+    billsByBrand[key].total += Number(b.amount||0); billsByBrand[key].count++;
+  });
+  const rowsHtml = (obj) => Object.values(obj).sort((a,b)=> b.total - a.total).slice(0, 4).map(r =>
+    `<div class="b-row" title="${escapeHtml(r.brand)} · ${r.count} item${r.count>1?'s':''}">${brandChip(r.brand, r.brandKey)}<b>$${Math.round(r.total).toLocaleString()}</b></div>`
+  ).join('') || `<div class="b-row"><span style="color:#525252;font-style:italic">none</span></div>`;
+  document.getElementById('ov-income-breakdown').innerHTML = rowsHtml(incomeByBrand);
+  document.getElementById('ov-inv-breakdown').innerHTML   = rowsHtml(invByBrand);
+
+  // Bills breakdown shows brand totals AND the +/- vs last month suggestion line
+  let billsBreakdownHtml = rowsHtml(billsByBrand);
+  if (billsPct !== null && billsPrev > 0) {
+    const up = billsDelta > 0;
+    const color = up ? '#f87171' : '#34d399';
+    const sym = up ? '▲' : '▼';
+    const help = up
+      ? (billsPct >= 10 ? 'higher than last month — review subscriptions?' : 'a touch higher')
+      : (billsPct <= -10 ? 'lower — nice trim' : 'about even');
+    billsBreakdownHtml += `<div class="b-row" style="border-top:1px solid #1f1f22;margin-top:3px;padding-top:3px"><span style="color:${color};font-size:9px">${sym} ${Math.abs(Math.round(billsPct))}% vs ${escapeHtml(prevDate.toLocaleDateString([],{month:'short'}))}</span><b style="color:${color}">${up?'+':'-'}$${Math.abs(Math.round(billsDelta)).toLocaleString()}</b></div>`;
+    billsBreakdownHtml += `<div class="b-row" style="color:#525252;font-size:8px;font-style:italic">${escapeHtml(help)}</div>`;
+  }
+  document.getElementById('ov-bills-breakdown').innerHTML = billsBreakdownHtml;
+
+  // ── Tile 3: chores validated this month (kid tasks completed) ──
+  renderChoresTile();
+
+  renderMoneyCards();
+
+  // ── Upcoming-only "Next up" list — drop past items ──
+  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const future = (when) => when && new Date(when).getTime() >= cutoff - 60*60*1000;
+  const merged = [
+    ...aggData.calendar.filter(e => future(e.startsAt||e.date)).map(e=>({ when: e.startsAt||e.date, who: e.who, brand: e.brand, brandKey: e.brandKey, what: e.title||'(event)', kind:'event' })),
+    ...aggData.bookings.filter(b => future(b.startAt)).map(b=>({ when: b.startAt, who: b.who, brand: b.brand, brandKey: b.brandKey, what: (b.service||'booking'), kind:'booking' })),
+    ...aggData.meetings.filter(m => future(m.scheduledAt || (m.status === 'active' ? m.createdAt : null))).map(m=>({
+      when: m.scheduledAt || (m.status === 'active' ? m.createdAt : null) || m.createdAt,
+      who: m.who, brand: m.brand, brandKey: m.brandKey,
+      what: (m.title||'meeting') +
+            (!m.scheduledAt && m.status==='active' ? ' · live now' : '') +
+            (m.durationMinutes?` · ${m.durationMinutes}min`:'') +
+            (m.participantCount?` · 👥${m.participantCount}`:'') +
+            (m.recording?' · 🔴 rec':'') +
+            (m.transcribing?' · 📝 transcribing':''),
+      kind:'meeting',
+    })),
+  ].sort((a,b)=> new Date(a.when||0)-new Date(b.when||0)).slice(0, 9);
+  document.getElementById('ov-next').innerHTML = merged.map(x =>
+    `<li><span>${whoChip(x.who)}${escapeHtml(x.what)}</span><span class="when">${fmtFull(x.when)}</span></li>`
+  ).join('') || '<li><span style="color:#525252;font-style:italic">Nothing upcoming.</span></li>';
+
+  renderBigMonth();
+}
+
+function renderChoresTile(){
+  const now = new Date();
+  const monthKeyNow = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const KIDS = ['Violet','Odin'];
+  const inMonthDate = (d) => {
+    if (!d) return false;
+    const x = new Date(d);
+    return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}` === monthKeyNow;
+  };
+  // chores = tasks (non-bill) for kids, completed or outcome=attended this month
+  const choreList = (tasks || []).filter(t => KIDS.includes(t.who) && t.kind !== 'bill');
+  const validated = choreList.filter(t => t.completed && inMonthDate(t.completedAt || t.when || t.createdAt));
+  const byKid = { Violet:0, Odin:0 };
+  validated.forEach(t => { byKid[t.who] = (byKid[t.who]||0) + 1; });
+  document.getElementById('ov-chores').textContent = validated.length;
+  document.getElementById('ov-chores-breakdown').innerHTML =
+    `<div class="b-row"><span class="chip violet">Violet</span><b>${byKid.Violet}</b></div>` +
+    `<div class="b-row"><span class="chip odin">Odin</span><b>${byKid.Odin}</b></div>`;
+}
+
+// ── Money panel: rotating slideshow of 4 analytical cards ─────────────
+let financeData = null;
+// ── Interests + Review data ──
+let interestsData = null;
+let reviewData = null;
+async function loadInterests(){
+  try { const r = await fetch('/superadmin/scottsGateway/api/interests'); const j = await r.json();
+    if (j.ok) { interestsData = j; renderFeeds(); } }
+  catch (e) {}
+}
+async function loadReview(){
+  try { const r = await fetch('/superadmin/scottsGateway/api/review/pending'); const j = await r.json();
+    if (j.ok) { reviewData = j; renderFeeds(); } }
+  catch (e) {}
+}
+function renderInterestsCard(){
+  if (!interestsData) return '<h3>Interests</h3><div style="color:#525252;font-size:11px">Loading…</div>';
+  const items = interestsData.items?.slice(0, 6) || [];
+  if (!items.length) return '<h3>Interests</h3><div style="color:#525252;font-size:11px">No headlines yet — add topics on the remote.</div>';
+  return `<h3>Headlines & Sports</h3><ul class="ifeed">${items.map(it => {
+    const ago = it.start ? new Date(it.start).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    return `<li><span class="src">${escapeHtml(it.source||'')}</span><span class="ttl">${escapeHtml(it.title||'').slice(0,90)}</span><span class="ago">${ago}</span></li>`;
+  }).join('')}</ul>`;
+}
+function renderReviewCard(){
+  if (!reviewData) return '<h3>Review</h3><div style="color:#525252;font-size:11px">Loading…</div>';
+  const items = reviewData.items?.slice(0, 6) || [];
+  if (!items.length) return `<h3>Review · last 30 days</h3><div style="color:#525252;font-size:12px">Nothing to review — caught up ✓</div>`;
+  return `<h3>Review · ${items.length} unmarked</h3><ul class="ifeed">${items.map(it => `
+    <li><span class="src">${escapeHtml(it.who||'')} · ${escapeHtml(it.kind)}</span><span class="ttl">${escapeHtml(it.text||'').slice(0,80)}</span><span class="ago">${it.when?new Date(it.when).toLocaleString([], {month:'short',day:'numeric'}):'—'}</span></li>
+  `).join('')}<li style="opacity:.7"><span class="src" style="color:var(--accent)">→ Use Review tab on remote</span></li></ul>`;
+}
+
+async function loadFinance(){
+  try { const r = await fetch('/superadmin/scottsGateway/api/finance/history?months=13'); const j = await r.json();
+    if (j.ok) { financeData = j; renderMoneyCards(); }
+  } catch (e) {}
+}
+function fmt$(n){ const v = Math.round(Number(n)||0); return (v<0?'-$':'$') + Math.abs(v).toLocaleString(); }
+function pctDelta(now, prev){
+  if (!prev) return null;
+  const d = ((now - prev) / Math.abs(prev)) * 100;
+  return { val: d, str: (d>=0?'+':'') + d.toFixed(0) + '%', up: d >= 0 };
+}
+
+function renderMoneyCards(){
+  const stage = document.getElementById('money-stage');
+  if (!stage) return;
+  const series = financeData?.series || [];
+  const tk = monthKeyToday();
+  const thisMonth = series.find(r => r.month === tk) || { income:0, bills:0, paid:0 };
+  const i = series.findIndex(r => r.month === tk);
+  const lastMonth = i > 0 ? series[i-1] : null;
+  // Last year same month: 12 months before "this month"
+  const lyKey = (() => { const [y,m] = tk.split('-').map(Number); return `${y-1}-${String(m).padStart(2,'0')}`; })();
+  const lastYear = series.find(r => r.month === lyKey) || null;
+
+  // ── Card 1: 12-month bar chart ──
+  const maxVal = Math.max(1, ...series.map(r => Math.max(r.income||0, r.bills||0)));
+  const bars = series.slice(-12).map(r => {
+    const ih = Math.max(1, (r.income / maxVal) * 100);
+    const oh = Math.max(1, (r.bills  / maxVal) * 100);
+    const isNow = r.month === tk;
+    const [y,m] = r.month.split('-').map(Number);
+    const lbl = new Date(y, m-1, 1).toLocaleDateString([], {month:'short'}).slice(0,3);
+    return `<div class="barcol ${isNow?'now':''}" title="${r.month}: in $${Math.round(r.income).toLocaleString()} · out $${Math.round(r.bills).toLocaleString()}">
+      <div class="bars"><div class="bar in" style="height:${ih}%"></div><div class="bar out" style="height:${oh}%"></div></div>
+      <div class="lbl">${lbl}</div>
+    </div>`;
+  }).join('');
+
+  // ── Card 2: vs last month ──
+  const dIn  = lastMonth ? pctDelta(thisMonth.income, lastMonth.income) : null;
+  const dOut = lastMonth ? pctDelta(thisMonth.bills,  lastMonth.bills)  : null;
+  // ── Card 3: vs last year same month ──
+  const yIn  = lastYear ? pctDelta(thisMonth.income, lastYear.income) : null;
+  const yOut = lastYear ? pctDelta(thisMonth.bills,  lastYear.bills)  : null;
+
+  // ── Card 4: itemized open (interleaved) ──
+  const openItems = aggData ? [
+    ...aggData.invoices.filter(x => x.status !== 'paid').map(x => ({
+      kind:'in', who:x.who, brand:x.brand, brandKey:x.brandKey, label:x.clientName||'(unnamed)', amt:Number(x.total||x.amount||0), due:x.dueDate,
+    })),
+    ...aggData.bills.filter(x => x.status !== 'paid').map(x => ({
+      kind:'out', who:x.who, brand:x.brand||'Household', brandKey:x.brandKey||'household', label:x.label||'(bill)', amt:Number(x.amount||0), due:x.dueDate,
+    })),
+  ].sort((a,b)=> new Date(a.due||9e15) - new Date(b.due||9e15)).slice(0, 8) : [];
+
+  stage.innerHTML = `
+    <div class="money-card tbg" data-money="chart" data-topic="bills">
+      <h4>Income vs Bills <b>· 12 mo</b></h4>
+      <div class="barchart">${bars || '<div style="color:#525252;font-size:11px;margin:auto">loading…</div>'}</div>
+      <div class="chart-legend"><span><span class="sw" style="background:#34d399"></span>Income</span><span><span class="sw" style="background:#f87171"></span>Bills</span></div>
+    </div>
+
+    <div class="money-card tbg" data-money="vslast" data-topic="money-in">
+      <h4>This month <b>vs last 30d</b></h4>
+      <div class="cmp">
+        <div class="cmp-row"><span class="label">Income</span><span><span class="val">${fmt$(thisMonth.income)}</span>${dIn?`<span class="delta ${dIn.up?'up':'down'}">${dIn.str}</span>`:''}</span></div>
+        <div class="cmp-row"><span class="label">Last month</span><span class="val" style="color:#737373">${fmt$(lastMonth?.income||0)}</span></div>
+        <div class="cmp-row"><span class="label">Bills</span><span><span class="val">${fmt$(thisMonth.bills)}</span>${dOut?`<span class="delta ${dOut.up?'down':'up'}">${dOut.str}</span>`:''}</span></div>
+        <div class="cmp-row"><span class="label">Last month</span><span class="val" style="color:#737373">${fmt$(lastMonth?.bills||0)}</span></div>
+        <div class="cmp-row" style="border-top:1px solid #1c1c1f;padding-top:5px"><span class="label">Net this mo</span><span class="val" style="color:${thisMonth.income-thisMonth.bills>=0?'#34d399':'#f87171'}">${fmt$(thisMonth.income-thisMonth.bills)}</span></div>
+      </div>
+    </div>
+
+    <div class="money-card tbg" data-money="vsly" data-topic="money-in">
+      <h4>This month <b>vs LY same month</b></h4>
+      <div class="cmp">
+        <div class="cmp-row"><span class="label">Income now</span><span><span class="val">${fmt$(thisMonth.income)}</span>${yIn?`<span class="delta ${yIn.up?'up':'down'}">${yIn.str}</span>`:''}</span></div>
+        <div class="cmp-row"><span class="label">Income LY</span><span class="val" style="color:#737373">${fmt$(lastYear?.income||0)}</span></div>
+        <div class="cmp-row"><span class="label">Bills now</span><span><span class="val">${fmt$(thisMonth.bills)}</span>${yOut?`<span class="delta ${yOut.up?'down':'up'}">${yOut.str}</span>`:''}</span></div>
+        <div class="cmp-row"><span class="label">Bills LY</span><span class="val" style="color:#737373">${fmt$(lastYear?.bills||0)}</span></div>
+        ${lastYear?'':'<div class="cmp-row"><span style="color:#525252;font-style:italic;font-size:10px">No data 12 mo ago</span></div>'}
+      </div>
+    </div>
+
+    <div class="money-card tbg" data-money="items" data-topic="money-out">
+      <h4>Open items <b>· by due date</b></h4>
+      <ul class="mm-items" style="flex:1">${
+        openItems.map(x => {
+          const overdue = x.due && new Date(x.due) < new Date();
+          return `<li><span>${whoChip(x.who)}${brandChip(x.brand, x.brandKey)}${escapeHtml(x.label).slice(0,22)}</span><b class="${x.kind} ${overdue?'overdue':''}">${x.kind==='in'?'+':'−'}${fmt$(x.amt)}</b></li>`;
+        }).join('') || '<li><span style="color:#525252;font-style:italic">No open items.</span></li>'
+      }</ul>
+    </div>`;
+  if (!moneySlideStarted) startMoneySlide();
+}
+let moneySlideStarted = false, moneyIdx = 0;
+function startMoneySlide(){
+  moneySlideStarted = true;
+  (function step(){
+    const cards = document.querySelectorAll('#money-stage .money-card');
+    cards.forEach((c,i) => c.classList.toggle('show', i === moneyIdx));
+    moneyIdx = (moneyIdx + 1) % Math.max(1, cards.length);
+    setTimeout(step, 7500);
+  })();
+}
+
+// Big calendar centerpiece on overview — mode is 'month' | 'week' | 'day'
+function renderBigMonth(){
+  if (!aggData) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dayKey = (d) => { const x=new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; };
+  const todayKey = dayKey(today);
+
+  const slots = [];
+  aggData.calendar.forEach(e => slots.push({ when: e.startsAt||e.date, kind:'event',label: e.title||'(event)' }));
+  aggData.bookings.forEach(b => slots.push({ when: b.startAt,           kind:'book', label: (b.service||'booking') + ' · ' + (b.name||'') }));
+  aggData.meetings.forEach(m => slots.push({ when: m.scheduledAt || m.createdAt, kind:'meet', label: m.title||'meeting' }));
+  aggData.workdays.forEach(w => slots.push({ when: w.date,               kind:'work', label: `${w.who} work` }));
+  const byDay = {};
+  slots.forEach(s => { if (!s.when) return; (byDay[dayKey(s.when)] ||= []).push(s); });
+  Object.values(byDay).forEach(arr => arr.sort((a,b)=> new Date(a.when)-new Date(b.when)));
+
+  const grid = document.getElementById('bm-grid');
+  const ttl = document.getElementById('bm-title');
+
+  if (bigCalMode === 'month') {
+    ttl.textContent = today.toLocaleDateString([], {month:'long', year:'numeric'}) + ' · 30 day';
+    grid.style.gridTemplateColumns = 'repeat(7,1fr)';
+    grid.style.gridTemplateRows = 'auto repeat(5,1fr)';
+    const first = new Date(today.getFullYear(), today.getMonth(), 1);
+    const start = new Date(first); start.setDate(first.getDate() - first.getDay());
+    let html = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(l => `<div class="dow">${l}</div>`).join('');
+    for (let i = 0; i < 35; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      const k = dayKey(d); const ev = byDay[k] || [];
+      const isToday = k === todayKey;
+      const otherMonth = d.getMonth() !== today.getMonth();
+      html += `<div class="bmday ${isToday?'today':''} ${otherMonth?'dim':''}"><div class="num">${d.getDate()}</div>`;
+      ev.slice(0, 3).forEach(s => { html += `<div class="ev ${s.kind}">${fmtT(s.when)} ${escapeHtml(s.label)}</div>`; });
+      if (ev.length > 3) html += `<div class="ev" style="background:transparent;color:#525252">+${ev.length-3}</div>`;
+      html += '</div>';
+    }
+    grid.innerHTML = html;
+  } else if (bigCalMode === 'week') {
+    const start = new Date(today); start.setDate(today.getDate() - today.getDay());
+    const end = new Date(start); end.setDate(start.getDate()+6);
+    ttl.textContent = `${start.toLocaleDateString([], {month:'short',day:'numeric'})} – ${end.toLocaleDateString([], {month:'short',day:'numeric'})} · 7 day`;
+    grid.style.gridTemplateColumns = 'repeat(7,1fr)';
+    grid.style.gridTemplateRows = 'auto 1fr';
+    let html = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(l => `<div class="dow">${l}</div>`).join('');
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      const k = dayKey(d); const ev = byDay[k] || [];
+      const isToday = k === todayKey;
+      html += `<div class="bmday ${isToday?'today':''}"><div class="num">${d.toLocaleDateString([],{weekday:'short'}).slice(0,2)} ${d.getDate()}</div>`;
+      ev.slice(0, 10).forEach(s => { html += `<div class="ev ${s.kind}">${fmtT(s.when)} ${escapeHtml(s.label)}</div>`; });
+      html += '</div>';
+    }
+    grid.innerHTML = html;
+  } else {
+    const d = calFocusDate ? (() => { const [y,mo,da] = calFocusDate.split('-').map(Number); return new Date(y,mo-1,da); })() : today;
+    const k = dayKey(d);
+    ttl.textContent = d.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'}) + ' · 1 day';
+    grid.style.gridTemplateColumns = '1fr';
+    grid.style.gridTemplateRows = 'auto 1fr';
+    const ev = byDay[k] || [];
+    let html = `<div class="dow" style="text-align:left;padding-left:8px">${d.toDateString()}</div><div class="bmday today" style="min-height:0">`;
+    if (!ev.length) html += `<div class="ev" style="color:#525252;font-style:italic">Open day — nothing scheduled.</div>`;
+    ev.forEach(s => html += `<div class="ev ${s.kind}">${fmtT(s.when)} ${escapeHtml(s.label)}</div>`);
+    html += '</div>';
+    grid.innerHTML = html;
+  }
+}
+
+function renderOverviewTasks(){
+  // Sidebar `mm-tasks` counter — still tracks ALL open tasks, not just kids.
+  const allOpen = tasks.filter(t => !t.completed);
+  const mm = document.getElementById('mm-tasks');
+  if (mm) mm.textContent = allOpen.length;
+
+  // The `tasks-mini` listbox is the Kids section — Odin & Violet only.
+  const KIDS = ['Violet','Odin'];
+  const kidOpen = allOpen.filter(t => KIDS.includes(t.who)).slice(0, 8);
+  document.getElementById('ov-tasks').innerHTML = kidOpen.map(t =>
+    `<li><span>${whoChip(t.who)}${escapeHtml(t.text)}</span><span class="when">${t.when?fmtFull(t.when):''}</span></li>`
+  ).join('') || '<li><span style="color:#525252;font-style:italic">No kid chores yet — add one from the remote.</span></li>';
+
+  // Chores-validated tile reads from `tasks` too — keep it in sync.
+  if (aggData) renderChoresTile();
+}
+
+// ── Feed slideshow ──────────────────────────────────────────────────────
+function renderFeeds(){
+  if (!feedData) return;
+  const cards = document.querySelectorAll('#feed-stage .feed-card');
+  const w = feedData.weather;
+  if (w) {
+    cards[0].innerHTML = `
+      <h3>${escapeHtml(w.place)} · now</h3>
+      <div class="feed-now"><div class="icon">${w.now.icon}</div>
+        <div><div class="big">${Math.round(w.now.tempF)}°</div>
+        <div class="sub">${escapeHtml(w.now.label)} · ${Math.round(w.now.wind||0)} mph · ${Math.round(w.now.humidity||0)}%</div></div></div>`;
+    const d3 = w.daily.slice(0,3);
+    cards[1].innerHTML = `<h3>3-day · ${escapeHtml(w.place)}</h3><div class="feed-days">${d3.map(d => `
+      <div class="feed-day"><div class="lbl">${new Date(d.date).toLocaleDateString([],{weekday:'short'})}</div>
+      <div class="ic">${d.icon}</div><div class="hi">${Math.round(d.hi)}°</div><div class="lo">${Math.round(d.lo)}°</div>
+      ${(d.snowIn||0)>0?`<div class="snow">❄${d.snowIn.toFixed(1)}″</div>`:''}</div>`).join('')}</div>`;
+    const d10 = w.daily.slice(0,10);
+    cards[2].innerHTML = `<h3>10-day · ${escapeHtml(w.place)}</h3><div class="feed-days grid">${d10.map(d => `
+      <div class="feed-day"><div class="lbl">${new Date(d.date).toLocaleDateString([],{weekday:'short'})}</div>
+      <div class="ic">${d.icon}</div><div class="hi">${Math.round(d.hi)}°</div><div class="lo">${Math.round(d.lo)}°</div>
+      ${(d.snowIn||0)>0?`<div class="snow">❄${d.snowIn.toFixed(1)}″</div>`:''}</div>`).join('')}</div>`;
+  }
+  if (feedData.winter && feedData.snow) {
+    cards[3].innerHTML = `<h3>Snow · ${escapeHtml(feedData.snow.place)}</h3><div class="feed-days">${feedData.snow.daily.slice(0,10).map(d => `
+      <div class="feed-day"><div class="lbl">${new Date(d.date).toLocaleDateString([],{weekday:'short'})}</div>
+      <div class="ic">${d.icon}</div><div class="hi">${Math.round(d.hi)}°</div><div class="lo">${Math.round(d.lo)}°</div>
+      <div class="snow">❄${(d.snowIn||0).toFixed(1)}″</div></div>`).join('')}</div>`;
+  } else if (feedData.flows?.length) {
+    cards[3].innerHTML = `<h3>River Flows · USGS</h3><div class="flow-list">${feedData.flows.map(f => `
+      <div class="flow-card"><div class="nm">${escapeHtml(f.label)}</div>
+      <div class="cfs">${f.cfs!=null?Math.round(f.cfs).toLocaleString()+' cfs':'—'}</div>
+      ${f.feet!=null?`<div class="ft">${f.feet.toFixed(2)} ft</div>`:''}</div>`).join('')}</div>`;
+  } else {
+    cards[3].innerHTML = `<h3>Flows / Snow</h3><div style="color:#525252;font-size:11px">No data right now.</div>`;
+  }
+  // Card 5: interests / headlines (live-loaded)
+  cards[4].innerHTML = renderInterestsCard();
+  // Card 6: review pending
+  cards[5].innerHTML = renderReviewCard();
+  // Card 7: agent
+  cards[6].innerHTML = `<h3>Agent insight</h3><div class="agent-mini">${agentReply ? renderMarkdownLite(agentReply) : 'Ask something from the remote.'}</div>`;
+  if (!feedSlideStarted) startFeedSlide();
+}
+let feedSlideStarted = false, feedIdx = 0;
+function startFeedSlide(){
+  feedSlideStarted = true;
+  const cards = document.querySelectorAll('#feed-stage .feed-card');
+  (function step(){ cards.forEach((c,i)=> c.classList.toggle('show', i===feedIdx)); feedIdx=(feedIdx+1)%cards.length; setTimeout(step, 8000); })();
+}
+
+// ── Mini calendar slideshow (week → month → day) ───────────────────────
+function renderMiniCalendar(){
+  if (!aggData) return;
+  const dayKey = (d) => { const x=new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; };
+  const todayKey = dayKey(new Date());
+  const byDay = {};
+  const slots = [];
+  aggData.calendar.forEach(e => slots.push({ when: e.startsAt||e.date, what: e.title||'(event)', who: e.who }));
+  aggData.bookings.forEach(b => slots.push({ when: b.startAt, what: b.service||'booking', who: b.who }));
+  aggData.meetings.forEach(m => slots.push({ when: m.scheduledAt || m.createdAt, what: m.title||'meeting', who: m.who }));
+  aggData.workdays.forEach(w => slots.push({ when: w.date, what: `${w.who} work`, who: w.who }));
+  slots.forEach(s => { if (!s.when) return; (byDay[dayKey(s.when)] ||= []).push(s); });
+
+  const stage = document.getElementById('mini-stage');
+  let html = '';
+  // Mini-slide rotates only week + day; month is now the big centerpiece.
+  for (const mode of ['week','day']) {
+    if (mode === 'month') {
+      const start = new Date(); start.setHours(0,0,0,0); start.setDate(start.getDate()-start.getDay());
+      let grid = ['S','M','T','W','T','F','S'].map(l=>`<div class="mdow">${l}</div>`).join('');
+      for (let i=0;i<35;i++){ const d=new Date(start); d.setDate(start.getDate()+i); const k=dayKey(d); const has=!!byDay[k]; const isToday=k===todayKey;
+        grid += `<div class="mday ${isToday?'today':''} ${d<new Date(new Date().setHours(0,0,0,0))&&!isToday?'dim':''} ${has?'has':''}">${d.getDate()}</div>`; }
+      html += `<div class="mini-card" data-mini="month"><h5>Month at a glance</h5><div class="mini-month">${grid}</div></div>`;
+    } else if (mode === 'week') {
+      const start = new Date(); start.setHours(0,0,0,0); start.setDate(start.getDate()-start.getDay());
+      let rows = '';
+      for (let i=0;i<7;i++){ const d=new Date(start); d.setDate(start.getDate()+i); const k=dayKey(d); const ev=byDay[k]||[]; const isToday=k===todayKey;
+        rows += `<div class="mw-day ${isToday?'today':''}"><span>${d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}</span><span class="ct">${ev.length||'—'}</span></div>`; }
+      html += `<div class="mini-card" data-mini="week"><h5>This week</h5><div class="mini-week">${rows}</div></div>`;
+    } else {
+      const d=new Date(); const k=dayKey(d); const ev=(byDay[k]||[]).sort((a,b)=> new Date(a.when)-new Date(b.when)).slice(0,6);
+      let rows = `<div class="mdh">${d.toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'})}</div>`;
+      if (!ev.length) rows += `<div style="color:#525252;font-size:9px;font-style:italic">Open day.</div>`;
+      ev.forEach(s => rows += `<div class="mditem"><span class="t">${fmtT(s.when)}</span>${escapeHtml(s.what)}</div>`);
+      html += `<div class="mini-card" data-mini="day"><h5>Today</h5><div class="mini-day">${rows}</div></div>`;
+    }
+  }
+  stage.innerHTML = html;
+  if (!miniSlideStarted) startMiniSlide();
+}
+let miniSlideStarted = false, miniIdx = 0;
+function startMiniSlide(){
+  miniSlideStarted = true;
+  (function step(){ const cards=document.querySelectorAll('#mini-stage .mini-card'); cards.forEach((c,i)=> c.classList.toggle('show', i===miniIdx)); miniIdx=(miniIdx+1)%cards.length; setTimeout(step, 9000); })();
+}
+
+// ── Calendar panel (cycles month/week/day on repeat-tap) ──────────────
+function renderCalendar(){
+  if (!aggData) return;
+  document.getElementById('cal-modetag').textContent = calMode;
+  const slots = [];
+  aggData.calendar.forEach(e => slots.push({ when: e.startsAt||e.date, kind:'event', who: e.who, label: e.title||'(event)', loc: e.location||'' }));
+  aggData.bookings.forEach(b => slots.push({ when: b.startAt, kind:'book', who: b.who, label: (b.service||'booking') + ' — ' + (b.name||''), loc:'' }));
+  aggData.meetings.forEach(m => slots.push({ when: m.scheduledAt || m.createdAt, kind:'meet', who: m.who, label: m.title||'meeting', loc:'' }));
+  aggData.workdays.forEach(w => slots.push({ when: w.date, kind:'work', who: w.who, label: `${w.who} work · ${w.start}–${w.end}`, loc:'' }));
+  const dayKey = (d) => { const x=new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; };
+  const byDay = {};
+  slots.forEach(s => { if (!s.when) return; (byDay[dayKey(s.when)] ||= []).push(s); });
+  Object.values(byDay).forEach(arr => arr.sort((a,b)=> new Date(a.when)-new Date(b.when)));
+  const todayKey = dayKey(new Date());
+  const stage = document.getElementById('cal-stage');
+
+  if (calMode === 'month') {
+    const start = new Date(); start.setHours(0,0,0,0); start.setDate(start.getDate()-start.getDay());
+    let html = '<div class="month">';
+    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(l => html += `<div class="dow">${l}</div>`);
+    for (let i=0;i<35;i++){ const d=new Date(start); d.setDate(start.getDate()+i); const k=dayKey(d); const ev=byDay[k]||[]; const isToday=k===todayKey;
+      html += `<div class="day-cell ${isToday?'today':''} ${d<new Date(new Date().setHours(0,0,0,0))&&!isToday?'dim':''}"><div class="num">${d.getDate()}</div>`;
+      ev.slice(0,3).forEach(s => html += `<div class="ev ${s.kind}">${fmtT(s.when)} ${escapeHtml(s.label)}</div>`);
+      if (ev.length>3) html += `<div class="ev" style="background:transparent;color:#525252">+${ev.length-3}</div>`;
+      html += '</div>'; }
+    html += '</div>';
+    stage.innerHTML = html;
+  } else if (calMode === 'week') {
+    const start = new Date(); start.setHours(0,0,0,0); start.setDate(start.getDate()-start.getDay());
+    let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;flex:1;min-height:0;overflow:hidden">';
+    for (let i=0;i<7;i++){ const d=new Date(start); d.setDate(start.getDate()+i); const k=dayKey(d); const ev=byDay[k]||[]; const isToday=k===todayKey;
+      html += `<div style="background:#101014;border:1px solid ${isToday?'#c9a848':'#1f1f22'};border-radius:4px;padding:6px;display:flex;flex-direction:column;gap:3px;overflow:hidden;min-height:0">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:${isToday?'#c9a848':'#fff'}">${d.toLocaleDateString([],{weekday:'short',day:'numeric'})}</div>`;
+      ev.slice(0,8).forEach(s => html += `<div class="ev ${s.kind}" style="padding:2px 4px;border-radius:2px;font-size:9px">${fmtT(s.when)} ${escapeHtml(s.label)}</div>`);
+      html += '</div>'; }
+    html += '</div>';
+    stage.innerHTML = html;
+  } else {
+    // Day mode — use focused date from remote if set, else today
+    const focusEl = document.getElementById('cal-focus-tag');
+    let d; let k;
+    if (calFocusDate) {
+      const [y,mo,da] = calFocusDate.split('-').map(Number);
+      d = new Date(y, mo-1, da);
+      k = calFocusDate;
+      focusEl.style.display = ''; focusEl.textContent = '· focused from remote';
+    } else {
+      d = new Date(); d.setHours(0,0,0,0); k = dayKey(d);
+      focusEl.style.display = 'none';
+    }
+    const ev = byDay[k] || [];
+    let html = `<div class="listbox" style="flex:1;min-height:0"><h4 style="font-family:'Space Grotesk',sans-serif;font-size:18px;color:var(--accent)">${d.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</h4><ul>`;
+    if (!ev.length) html += '<li><span style="color:#525252;font-style:italic">nothing scheduled this day</span></li>';
+    ev.forEach(s => html += `<li><span>${whoChip(s.who)}<span class="chip ${s.kind==='book'?'reminder':s.kind==='meet'?'appointment':s.kind==='work'?'odin':'event'}">${s.kind}</span>${escapeHtml(s.label)}${s.loc?` <span style="color:#737373">— ${escapeHtml(s.loc)}</span>`:''}</span><span class="when">${fmtT(s.when)}</span></li>`);
+    html += '</ul></div>';
+    stage.innerHTML = html;
+  }
+}
+
+// ── Bills view (split) ────────────────────────────────────────────────
+function renderBills(){
+  if (!aggData) return;
+  document.getElementById('bill-modetag').textContent = billsIncludePaid ? 'unpaid + paid' : 'unpaid only';
+  document.getElementById('bill-mtitle').textContent = prettyMonth(billsMonth);
+  const r = aggData.monthly.find(m => m.month === billsMonth) ||
+    { invoiceCount:0, invoiceTotal:0, invoiceUnpaidCount:0, invoiceUnpaidTotal:0, billCount:0, billTotal:0, billUnpaidCount:0, billUnpaidTotal:0 };
+  document.getElementById('inv-open').textContent  = '$' + Math.round(r.invoiceUnpaidTotal).toLocaleString();
+  document.getElementById('inv-total').textContent = Math.round(r.invoiceTotal).toLocaleString();
+  document.getElementById('inv-count').textContent = billsIncludePaid ? r.invoiceCount : r.invoiceUnpaidCount;
+  document.getElementById('bills-open').textContent  = '$' + Math.round(r.billUnpaidTotal).toLocaleString();
+  document.getElementById('bills-total').textContent = Math.round(r.billTotal).toLocaleString();
+  document.getElementById('bills-count').textContent = billsIncludePaid ? r.billCount : r.billUnpaidCount;
+  const net = (r.invoiceTotal||0) - (r.billTotal||0);
+  const netEl = document.getElementById('bill-net');
+  netEl.textContent = (net>=0?'+$':'-$') + Math.abs(net).toFixed(0);
+  netEl.style.color = net>=0 ? '#34d399' : '#f87171';
+
+  const invs  = aggData.invoices.filter(i => i.month === billsMonth).filter(i => billsIncludePaid || i.status !== 'paid');
+  const bills = aggData.bills.filter(b => b.month === billsMonth).filter(b => billsIncludePaid || b.status !== 'paid');
+
+  document.getElementById('inv-list').innerHTML = invs.map(i => {
+    const overdue = (i.status !== 'paid') && i.dueDate && new Date(i.dueDate) < new Date();
+    const label = i.clientName || '(unnamed)';
+    const titleAttr = `tenant:${i.tenantDb||'?'} · invoice:${i._id||'?'}${i.clientHint?' · '+i.clientHint:''}`;
+    const hint = !i.clientName ? `<span style="color:#737373;font-size:9px;margin-left:4px">${i.clientHint||'no client'}</span>` : '';
+    return `<li class="${i.status==='paid'?'done':''}" title="${escapeHtml(titleAttr)}"><span>${whoChip(i.who)}${brandChip(i.brand, i.brandKey)}<span class="chip ${overdue?'bill':'task'}">${overdue?'overdue':(i.status||'?')}</span>${escapeHtml(label)}${hint}</span><span class="when">$${Number(i.total||i.amount||0).toFixed(0)} · ${i.dueDate?new Date(i.dueDate).toLocaleDateString():'no due'}</span></li>`;
+  }).join('') || '<li><span style="color:#525252;font-style:italic">No invoices this month.</span></li>';
+
+  document.getElementById('bills-list').innerHTML = bills.map(b => {
+    const overdue = (b.status !== 'paid') && b.dueDate && new Date(b.dueDate) < new Date();
+    const bizPct = Number(b.businessSharePct) || 0;
+    const splitChip = bizPct > 0
+      ? ` <span class="chip" style="background:#2a2410;color:#c9a848" title="Business expense: $${Number(b.businessExpense||0).toFixed(2)} · Personal: $${Number(b.personalExpense||0).toFixed(2)}">biz ${bizPct}%</span>`
+      : '';
+    const catChip = b.category ? ` <span class="chip" style="background:#1a1a1d;color:#a3a3a3">${escapeHtml(b.category)}</span>` : '';
+    return `<li class="${b.status==='paid'?'done':''}"><span>${whoChip(b.who)}${brandChip(b.brand||'Household', b.brandKey||'household')}<span class="chip ${overdue?'bill':'task'}">${overdue?'overdue':(b.status||'?')}</span>${escapeHtml(b.label||'(unnamed)')}${catChip}${splitChip}</span><span class="when">$${Number(b.amount||0).toFixed(0)} · ${b.dueDate?new Date(b.dueDate).toLocaleDateString():'no due'}</span></li>`;
+  }).join('') || '<li><span style="color:#525252;font-style:italic">No bills this month.</span></li>';
+}
+
+function renderTasks(){
+  document.getElementById('task-list').innerHTML = tasks.map(t =>
+    `<li class="${t.completed?'done':''}"><span>${whoChip(t.who)}${kindChip(t.kind)}${escapeHtml(t.text)}${t.location?` <span style="color:#737373">📍 ${escapeHtml(t.location)}</span>`:''}</span><span class="when">${fmtFull(t.when)}</span></li>`
+  ).join('') || '<li>No tasks yet.</li>';
+}
+
+function renderMeetings(){
+  if (!aggData) return;
+  document.getElementById('meet-list').innerHTML = aggData.meetings.slice(0,14).map(m => {
+    const badges = [];
+    if (m.durationMinutes)   badges.push(`<span class="chip">${m.durationMinutes}min</span>`);
+    if (m.participantCount)  badges.push(`<span class="chip event">👥 ${m.participantCount}</span>`);
+    if (m.notesCount)        badges.push(`<span class="chip reminder">📝 ${m.notesCount} note${m.notesCount>1?'s':''}</span>`);
+    if (m.assetsCount)       badges.push(`<span class="chip appointment">📎 ${m.assetsCount}</span>`);
+    if (m.clientTagCount)    badges.push(`<span class="chip violet">🏷 ${m.clientTagCount} client${m.clientTagCount>1?'s':''}</span>`);
+    if (m.recording)         badges.push(`<span class="chip bill">🔴 rec</span>`);
+    if (m.transcribing)      badges.push(`<span class="chip odin">📝 transcribing</span>`);
+    if (m.status === 'active') badges.push(`<span class="chip family">● live</span>`);
+
+    // Date column: scheduled → started → expires fallback.
+    let whenLabel;
+    if (m.scheduledAt) {
+      whenLabel = fmtFull(m.scheduledAt);
+    } else if (m.status === 'active' && m.createdAt) {
+      whenLabel = 'started ' + fmtFull(m.createdAt);
+    } else if (m.createdAt) {
+      whenLabel = 'created ' + fmtFull(m.createdAt);
+    } else if (m.expiresAt) {
+      whenLabel = 'expires ' + fmtFull(m.expiresAt);
+    } else {
+      whenLabel = 'ad-hoc';
+    }
+
+    return `<li>
+      <span>
+        ${whoChip(m.who)}${brandChip(m.brand, m.brandKey)}<strong style="color:#fff">${escapeHtml(m.title||'(meeting)')}</strong>
+        <div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap">${badges.join('')}</div>
+        ${m.joinUrl?`<div style="font-size:10px;color:#525252;margin-top:3px">${escapeHtml(m.joinUrl)}</div>`:''}
+      </span>
+      <span class="when">${whenLabel}</span>
+    </li>`;
+  }).join('') || '<li>No active meetings.</li>';
+}
+
+// ── Agent reply bubble (overview overlay, bottom-right) ────────────────
+let bubbleTimer = null;
+const BUBBLE_TTL_MS = 45000;   // auto-fade after 45s of being on screen
+function renderMarkdownLite(text){
+  // Very small markdown subset: ** bold **, * em *, - bullets, blank-line paragraphs
+  const lines = String(text||'').split(/\r?\n/);
+  let html = '', inList = false;
+  const inline = (s) => escapeHtml(s)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[\s(])\*(?!\s)([^*]+?)\*(?=[\s).,!?]|$)/g, '$1<em>$2</em>');
+  for (let raw of lines) {
+    const line = raw.trim();
+    if (/^[-*]\s+/.test(line)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${inline(line.replace(/^[-*]\s+/, ''))}</li>`;
+    } else if (line === '') {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<br>';
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p>${inline(line)}</p>`;
+    }
+  }
+  if (inList) html += '</ul>';
+  return html;
+}
+function showBubble(text){
+  const b = document.getElementById('agentBubble');
+  document.getElementById('agentBubbleBody').innerHTML = renderMarkdownLite(text);
+  b.classList.add('show');
+  if (bubbleTimer) clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => b.classList.remove('show'), BUBBLE_TTL_MS);
+}
+function hideBubble(){
+  document.getElementById('agentBubble').classList.remove('show');
+  if (bubbleTimer) clearTimeout(bubbleTimer);
+}
+
+// ── Photo slideshow (assets across tenants in folder "mission-control") ──
+let photoItems = [], photoIdx = 0, photoTimer = null;
+async function loadPhotos(){
+  if (!photoItems.length) {
+    try { const r = await fetch('/superadmin/scottsGateway/api/assets/mission-control'); const j = await r.json();
+      if (j.ok) photoItems = j.items || [];
+    } catch (e) {}
+  }
+  renderPhotos();
+}
+function renderPhotos(){
+  const stage = document.getElementById('photo-stage');
+  if (!photoItems.length) {
+    stage.innerHTML = `<div class="photo-msg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#525252;font-size:14px;text-align:center;padding:20px">
+      Tag assets with the <b style="color:#c9a848">"mission-control"</b> folder in any tenant's <code>/admin/assets</code><br>and they'll slideshow here.</div>`;
+    return;
+  }
+  stage.innerHTML = photoItems.map((p, i) => `
+    <div class="photo-slide ${i===0?'show':''}" data-photo="${i}" style="background-image:url('${escapeHtml(p.url)}')"></div>
+    <div class="photo-caption" data-cap="${i}" style="display:${i===0?'flex':'none'}">
+      <span><span class="who">${escapeHtml(p.who)}</span> · ${escapeHtml(p.brand)}${p.title?' · '+escapeHtml(p.title):''}</span>
+      <span style="color:#737373">${i+1}/${photoItems.length}</span>
+    </div>`).join('');
+  photoIdx = 0;
+  if (photoTimer) clearInterval(photoTimer);
+  photoTimer = setInterval(advancePhoto, 7000);
+}
+function advancePhoto(){
+  const slides = document.querySelectorAll('#photo-stage .photo-slide');
+  const caps = document.querySelectorAll('#photo-stage .photo-caption');
+  if (!slides.length) return;
+  photoIdx = (photoIdx + 1) % slides.length;
+  slides.forEach((s, i) => s.classList.toggle('show', i === photoIdx));
+  caps.forEach((c, i) => c.style.display = i === photoIdx ? 'flex' : 'none');
+}
+
+async function loadLocal(){
+  try { const r = await fetch('/superadmin/scottsGateway/api/local-events'); const j = await r.json();
+    const grid = document.getElementById('local-grid');
+    if (!j.ok || !j.events.length) { grid.innerHTML = `<div style="color:#525252">No upcoming Greeley events.</div>`; return; }
+    grid.innerHTML = j.events.slice(0,12).map(e => `<div class="ecard">
+      ${e.image?`<div class="img" style="background-image:url('${escapeHtml(e.image)}')"></div>`:`<div class="img placeholder">📍</div>`}
+      <div class="body"><div class="src">${escapeHtml(e.source)}</div><div class="ttl">${escapeHtml(e.title)}</div>
+      <div class="when">${fmtFull(e.start)}</div></div></div>`).join('');
+  } catch (e) {}
+}
+
+function applyState(s){
+  const incoming = s.view || 'overview';
+  if (incoming === 'calendar' && document.getElementById('curView').textContent === 'calendar') {
+    calMode = calMode === 'month' ? 'week' : calMode === 'week' ? 'day' : 'month';
+  } else if (incoming === 'calendar' && s.custom?.calMode) {
+    calMode = s.custom.calMode;
+  }
+  if (s.custom?.billsMonth) billsMonth = s.custom.billsMonth;
+  if (s.custom?.focusDate !== undefined) { calFocusDate = s.custom.focusDate || null; if (document.getElementById('curView').textContent === 'calendar') renderCalendar(); }
+  if (typeof s.custom?.fontScale === 'number') { fontScale = Math.max(0.7, Math.min(1.8, s.custom.fontScale)); applyFontScale(); }
+  if (s.custom?.bigCalMode && ['month','week','day'].includes(s.custom.bigCalMode)) {
+    bigCalMode = s.custom.bigCalMode;
+    renderBigMonth();
+  }
+  if (typeof s.custom?.billsIncludePaid === 'boolean' && s.custom.billsIncludePaid !== billsIncludePaid) {
+    billsIncludePaid = s.custom.billsIncludePaid; loadAggregate();
+  }
+  showView(incoming);
+  document.getElementById('curBy').textContent = s.updatedBy || '—';
+  if (s.message) { document.getElementById('bcastMsg').textContent = s.message; setTimeout(()=> document.getElementById('bcastMsg').textContent = '', 12000); }
+  else if (s.message === '') { document.getElementById('bcastMsg').textContent = ''; }
+  if (s.custom?.agentReply !== undefined) {
+    agentReply = s.custom.agentReply;
+    document.getElementById('agent-out').textContent = agentReply || 'Ask something from the remote.';
+    renderFeeds();
+    if (agentReply) showBubble(agentReply); else hideBubble();
+  }
+  if (s.custom?.photoMsg)   document.getElementById('photo-msg').textContent = s.custom.photoMsg;
+}
+
+// ── Topic-background images (SD-generated, cached on server) ───────────
+// Fetches /api/topic-images and assigns each image URL as a CSS var on every
+// element tagged with [data-topic]. Re-applies after dynamic renderers swap
+// DOM, and polls so freshly-generated images (warm-up takes minutes on first
+// boot) light up as they finish.
+let topicMap = {};
+async function loadTopicImages(){
+  try {
+    const r = await fetch('/superadmin/scottsGateway/api/topic-images');
+    const j = await r.json();
+    if (!j.ok) return;
+    const next = {};
+    for (const it of j.items) if (it.ready && it.url) next[it.slug] = it.url;
+    topicMap = next;
+    applyTopicBackgrounds();
+  } catch (e) {}
+}
+function applyTopicBackgrounds(root){
+  const scope = root || document;
+  scope.querySelectorAll('[data-topic]').forEach(el => {
+    const slug = el.dataset.topic;
+    const url = topicMap[slug];
+    if (url) el.style.setProperty('--topic-bg', `url('${url}')`);
+  });
+}
+// Wrap dynamic renderers so backgrounds re-apply after each DOM swap.
+if (typeof renderMoneyCards === 'function') {
+  const _rmc = renderMoneyCards;
+  renderMoneyCards = function(){ _rmc.apply(this, arguments); applyTopicBackgrounds(document.getElementById('money-stage')); };
+}
+if (typeof renderFeeds === 'function') {
+  const _rf = renderFeeds;
+  renderFeeds = function(){
+    _rf.apply(this, arguments);
+    // cards[3] swaps between river-flows and snow depending on season
+    const flowsCard = document.querySelector('#feed-stage .feed-card[data-feed="flows"]');
+    if (flowsCard) flowsCard.dataset.topic = (typeof feedData !== 'undefined' && feedData && feedData.winter && feedData.snow) ? 'snow' : 'river-flows';
+    applyTopicBackgrounds(document.getElementById('feed-stage'));
+  };
+}
+
+let es;
+function connect(){
+  es = new EventSource('/superadmin/scottsGateway/api/stream');
+  es.addEventListener('open', () => { dot.classList.add('on'); connTxt.textContent = 'live'; });
+  es.addEventListener('state', (ev) => { try { applyState(JSON.parse(ev.data)); } catch {} });
+  es.addEventListener('tasks', (ev) => {
+    try { tasks = JSON.parse(ev.data).tasks; renderTasks(); renderOverviewTasks(); } catch {}
+    // A task change may have set an outcome on a past item — refresh the
+    // Review card so the TV reflects the remote's last action immediately.
+    loadReview();
+  });
+  es.addEventListener('error', () => { dot.classList.remove('on'); connTxt.textContent = 'reconnecting'; });
+}
+
+connect();
+loadAggregate(); loadTasks(); loadFeeds(); loadLocal(); loadPhotos(); loadFinance(); loadInterests(); loadReview(); loadTopicImages();
+setInterval(loadAggregate, 120000);
+setInterval(loadFinance, 10 * 60 * 1000);
+setInterval(loadFeeds, 30 * 60 * 1000);
+setInterval(loadLocal, 30 * 60 * 1000);
+setInterval(loadInterests, 30 * 60 * 1000);
+setInterval(loadReview, 5 * 60 * 1000);
+setInterval(() => { photoItems = []; loadPhotos(); }, 5 * 60 * 1000);
+setInterval(loadTopicImages, 30 * 1000);
+
+applyState(<%- JSON.stringify(state) %>);
+</script>
+</body>
+</html>

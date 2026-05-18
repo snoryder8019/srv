@@ -1,6 +1,23 @@
 # Recent Changes Summary
 
-Generated: 2026-05-14T07:30:00.019Z
+Generated: 2026-05-18T07:30:00.019Z
+
+---
+
+## Commit: video background and meeting updates killed tutorials
+
+- **Hash:** `11dd0f3`
+- **Author:** Scott
+- **Date:** 5/14/2026
+- **Changes:** 259 files, +10294/-25723 lines
+
+### Modified Areas:
+
+**Frontend:** 4 files
+**Backend:** 40 files
+**Views:** 77 files
+**Scripts:** 1 files
+**Documentation:** 6 files
 
 ---
 
@@ -58,21 +75,6 @@ Generated: 2026-05-14T07:30:00.019Z
 **Views:** 42 files
 **Scripts:** 2 files
 **Documentation:** 7 files
-
----
-
-## Commit: mobile meadows v0.1
-
-- **Hash:** `e2a03d7`
-- **Author:** Scott
-- **Date:** 4/14/2026
-- **Changes:** 110 files, +7617/-1566 lines
-
-### Modified Areas:
-
-**Backend:** 6 files
-**Views:** 74 files
-**Documentation:** 3 files
 
 ---
 

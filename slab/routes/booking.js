@@ -315,7 +315,7 @@ router.post('/', async (req, res) => {
     }).catch(() => {});
 
     // Email confirmation to visitor
-    const tenantRecord = await getSlabDb().collection('tenants').findOne({ domain: req.tenant?.domain });
+    const tenantRecord = await getSlabDb().collection('tenants').findOne({ _id: req.tenant?._id });
     const zohoUser = tenantRecord?.secrets?.zohoUser || tenantRecord?.public?.zohoUser || process.env.ZOHO_USER;
     const zohoPass = tenantRecord?.secrets?.zohoPass || process.env.ZOHO_PASS;
     const ownerEmail = tenantRecord?.meta?.ownerEmail;

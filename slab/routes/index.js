@@ -328,12 +328,22 @@ router.post('/contact', async (req, res) => {
 
     if (!email) return res.redirect('/#contact');
 
+    // Collect any custom fields the tenant added via the admin contact form builder.
+    // These come in alongside the stock keys but use tenant-chosen names; preserve them.
+    const STOCK_KEYS = new Set(['name', 'firstName', 'lastName', 'email', 'company', 'service', 'message']);
+    const customFields = {};
+    for (const [k, v] of Object.entries(req.body)) {
+      if (STOCK_KEYS.has(k) || k.startsWith('_')) continue;
+      if (typeof v === 'string' && v.trim()) customFields[k] = v.trim().slice(0, 2000);
+    }
+
     const inquiry = {
       name: contactName.trim(),
       email: email.toLowerCase().trim(),
       company: company?.trim() || '',
       service: service?.trim() || '',
       message: message?.trim() || '',
+      customFields,
       tenantDomain: req.tenant?.domain || '',
       createdAt: new Date(),
     };
@@ -344,31 +354,46 @@ router.post('/contact', async (req, res) => {
     notifyAdmin({ type: 'contact', app: 'slab', email: inquiry.email, name: inquiry.name, ip: req.ip,
       data: { 'Brand': brand.name || req.tenant?.domain || 'sLab tenant', 'Domain': req.tenant?.domain || '', 'Company': inquiry.company, 'Service': inquiry.service, 'Message': inquiry.message?.slice(0, 200) } }).catch(() => {});
 
-    // Forward to tenant owner if they have Zoho configured
+    // Forward to tenant's configured recipient. Prefer tenant's own Zoho (so it
+    // comes from their domain). Fall back to the platform Zoho so delivery
+    // never silently fails when a tenant hasn't connected their own mailbox yet.
     try {
-      const tenant = await import('../plugins/mongo.js').then(m => m.getSlabDb()).then(sdb => sdb.collection('tenants').findOne({ domain: req.tenant?.domain }));
-      const zohoUser = tenant?.secrets?.zohoUser || tenant?.public?.zohoUser;
-      const zohoPass = tenant?.secrets?.zohoPass;
-      const ownerEmail = tenant?.meta?.ownerEmail;
-      if (zohoUser && zohoPass && ownerEmail) {
-        const nodemailer = await import('nodemailer');
-        const t = nodemailer.default.createTransport({ host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN', auth: { user: zohoUser, pass: zohoPass } });
-        await t.sendMail({
-          from: `"${brand.name || 'Your Site'}" <${zohoUser}>`,
-          to: ownerEmail,
-          replyTo: inquiry.email,
-          subject: `New Contact: ${inquiry.name}${inquiry.service ? ' — ' + inquiry.service : ''}`,
-          html: `<div style="font-family:Inter,sans-serif;max-width:500px;padding:24px;background:#fff;color:#111">
-            <h2 style="font-size:18px;margin-bottom:16px">New Contact Form Submission</h2>
-            <table style="width:100%;border-collapse:collapse">
-              <tr><td style="padding:6px;color:#666;width:100px">Name</td><td style="padding:6px"><strong>${inquiry.name}</strong></td></tr>
-              <tr><td style="padding:6px;color:#666">Email</td><td style="padding:6px"><a href="mailto:${inquiry.email}">${inquiry.email}</a></td></tr>
-              ${inquiry.company ? `<tr><td style="padding:6px;color:#666">Company</td><td style="padding:6px">${inquiry.company}</td></tr>` : ''}
-              ${inquiry.service ? `<tr><td style="padding:6px;color:#666">Service</td><td style="padding:6px">${inquiry.service}</td></tr>` : ''}
-              <tr><td style="padding:6px;color:#666;vertical-align:top">Message</td><td style="padding:6px">${inquiry.message || '—'}</td></tr>
-            </table>
-          </div>`,
-        });
+      const tenant = await import('../plugins/mongo.js').then(m => m.getSlabDb()).then(sdb => sdb.collection('tenants').findOne({ _id: req.tenant?._id }));
+      const recipient = tenant?.meta?.contactEmail || tenant?.meta?.ownerEmail || tenant?.brand?.email;
+      if (recipient) {
+        const tenantZohoUser = tenant?.secrets?.zohoUser || tenant?.public?.zohoUser;
+        const tenantZohoPass = tenant?.secrets?.zohoPass;
+        const useTenantMailer = tenantZohoUser && tenantZohoPass;
+        const fromUser = useTenantMailer ? tenantZohoUser : process.env.ZOHO_USER;
+        const fromPass = useTenantMailer ? tenantZohoPass : process.env.ZOHO_PASS;
+        if (fromUser && fromPass) {
+          const nodemailer = await import('nodemailer');
+          const t = nodemailer.default.createTransport({ host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN', auth: { user: fromUser, pass: fromPass } });
+          const fromLabel = useTenantMailer
+            ? `"${brand.name || 'Your Site'}" <${fromUser}>`
+            : `"${brand.name || req.tenant?.domain || 'sLab'} (via MadLadsLab)" <${fromUser}>`;
+          await t.sendMail({
+            from: fromLabel,
+            to: recipient,
+            replyTo: inquiry.email,
+            subject: `New Contact: ${inquiry.name}${inquiry.service ? ' — ' + inquiry.service : ''}`,
+            html: `<div style="font-family:Inter,sans-serif;max-width:500px;padding:24px;background:#fff;color:#111">
+              <h2 style="font-size:18px;margin-bottom:16px">New Contact Form Submission</h2>
+              <table style="width:100%;border-collapse:collapse">
+                <tr><td style="padding:6px;color:#666;width:100px">Site</td><td style="padding:6px">${req.tenant?.domain || ''}</td></tr>
+                <tr><td style="padding:6px;color:#666">Name</td><td style="padding:6px"><strong>${inquiry.name}</strong></td></tr>
+                <tr><td style="padding:6px;color:#666">Email</td><td style="padding:6px"><a href="mailto:${inquiry.email}">${inquiry.email}</a></td></tr>
+                ${inquiry.company ? `<tr><td style="padding:6px;color:#666">Company</td><td style="padding:6px">${inquiry.company}</td></tr>` : ''}
+                ${inquiry.service ? `<tr><td style="padding:6px;color:#666">Service</td><td style="padding:6px">${inquiry.service}</td></tr>` : ''}
+                ${Object.entries(inquiry.customFields || {}).map(([k, v]) =>
+                  `<tr><td style="padding:6px;color:#666;text-transform:capitalize">${k.replace(/[_-]/g, ' ')}</td><td style="padding:6px">${v}</td></tr>`
+                ).join('')}
+                <tr><td style="padding:6px;color:#666;vertical-align:top">Message</td><td style="padding:6px">${inquiry.message || '—'}</td></tr>
+              </table>
+              ${!useTenantMailer ? `<p style="margin-top:18px;font-size:11px;color:#999">Sent via the MadLadsLab platform mailer. Connect Zoho in <a href="https://${req.tenant?.domain || ''}/admin/settings">Settings</a> to send these from your own domain.</p>` : ''}
+            </div>`,
+          });
+        }
       }
     } catch (emailErr) { console.error('[contact] Forward email error:', emailErr.message); }
 
@@ -537,6 +562,25 @@ router.get('/blog', async (req, res) => {
     ]);
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
+    const brandName = req.tenant?.brand?.name || 'Home';
+    res.setSeo?.({
+      title: `Blog — ${brandName}`,
+      description: `Latest posts and insights from ${brandName}.`,
+      ogType: 'website',
+      jsonLd: [{
+        '@context': 'https://schema.org',
+        '@type': 'Blog',
+        name: `${brandName} Blog`,
+        url: `${req.protocol}://${req.hostname}/blog`,
+        blogPost: posts.slice(0, 20).map(p => ({
+          '@type': 'BlogPosting',
+          headline: p.title,
+          url: `${req.protocol}://${req.hostname}/blog/${p.slug}`,
+          datePublished: p.publishedAt || p.createdAt,
+          ...(p.excerpt ? { description: p.excerpt } : {}),
+        })),
+      }],
+    });
     res.render('blog/index', { posts, design, copy, logos, brandModels, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
   } catch (err) {
     console.error(err);
@@ -558,6 +602,32 @@ router.get('/blog/:slug', async (req, res) => {
     if (!post) return res.status(404).render('404', { message: 'Post not found', design });
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
+    const brandName = req.tenant?.brand?.name || '';
+    const postUrl = `${req.protocol}://${req.hostname}/blog/${post.slug}`;
+    res.setSeo?.({
+      title: brandName ? `${post.title} — ${brandName}` : post.title,
+      description: post.excerpt || post.metaDescription || '',
+      canonical: postUrl,
+      ogType: 'article',
+      ogImage: post.coverImage || post.heroImage || post.ogImage || (logos && (logos.logo_primary || logos.logo_white)) || '',
+      jsonLd: [{
+        '@context': 'https://schema.org',
+        '@type': 'BlogPosting',
+        headline: post.title,
+        url: postUrl,
+        ...(post.excerpt ? { description: post.excerpt } : {}),
+        ...(post.coverImage || post.heroImage ? { image: post.coverImage || post.heroImage } : {}),
+        datePublished: post.publishedAt || post.createdAt,
+        dateModified: post.updatedAt || post.publishedAt || post.createdAt,
+        ...(post.author ? { author: { '@type': 'Person', name: post.author } } : {}),
+        publisher: {
+          '@type': 'Organization',
+          name: brandName || 'Slab',
+          ...(logos && logos.logo_primary ? { logo: { '@type': 'ImageObject', url: logos.logo_primary } } : {}),
+        },
+        mainEntityOfPage: postUrl,
+      }],
+    });
     res.render('blog/post', { post, design, copy, logos, brandModels, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
   } catch (err) {
     console.error(err);
@@ -585,8 +655,8 @@ router.get('/card/:slug', async (req, res, next) => {
     const domain = req.hostname;
     const websiteUrl = `https://${domain}`;
 
-    // Generate QR code pointing to this card's URL
-    const qrDataUrl = await QRCode.toDataURL(link.url, {
+    // Generate QR code pointing to the tenant's website
+    const qrDataUrl = await QRCode.toDataURL(websiteUrl, {
       width: 300, margin: 2,
       color: { dark: design.color_primary || '#1C2B4A', light: '#ffffff' },
     });
@@ -668,6 +738,33 @@ router.get('/:slug', async (req, res, next) => {
       getBrandLogos(db),
     ]);
     if (!pg) return next();
+
+    const brandName = req.tenant?.brand?.name || '';
+    const pgUrl = `${req.protocol}://${req.hostname}/${pg.slug}`;
+    res.setSeo?.({
+      title: brandName
+        ? `${pg.metaTitle || pg.title} — ${brandName}`
+        : (pg.metaTitle || pg.title),
+      description: pg.metaDescription || '',
+      canonical: pg.canonicalUrl || pgUrl,
+      robots: pg.robotsMeta || undefined,
+      ogImage: pg.ogImage || '',
+      ogType: 'website',
+      jsonLd: [{
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: pg.title,
+        url: pgUrl,
+        ...(pg.metaDescription ? { description: pg.metaDescription } : {}),
+        breadcrumb: {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: `${req.protocol}://${req.hostname}/` },
+            { '@type': 'ListItem', position: 2, name: pg.title, item: pgUrl },
+          ],
+        },
+      }],
+    });
 
     // Data-list pages: fetch paginated collection
     if (pg.pageType === 'data-list') {
