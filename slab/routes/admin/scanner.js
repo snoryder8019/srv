@@ -2,15 +2,18 @@
  * Slab — Admin Scanner Routes
  * Mounted at /admin/scanner in admin.js
  *
- * GET  /              → Scanner dashboard (last results + run controls)
+ * Scanner findings are NOT tickets. They live in `scan_results` and are
+ * surfaced to tenants as "under review by the dev team" until the
+ * superadmin marks them fixed.
+ *
+ * GET  /              → Scanner dashboard (last results + dev review status)
  * POST /run           → Start a scan (returns JSON progress/results)
  * GET  /results/:id   → View a specific scan result
- * POST /to-tickets    → Convert findings to tickets
  */
 
 import express from 'express';
 import { ObjectId } from 'mongodb';
-import { runScan, findingsToTickets } from '../../plugins/scanner.js';
+import { runScan } from '../../plugins/scanner.js';
 
 const router = express.Router();
 
@@ -91,31 +94,8 @@ router.get('/results/:id', async (req, res) => {
   }
 });
 
-// ── Convert findings to tickets ─────────────────────────────────────────────
-router.post('/to-tickets', async (req, res) => {
-  try {
-    const db = req.db;
-    const { scanId } = req.body;
-
-    if (!scanId) return res.status(400).json({ error: 'scanId required' });
-
-    const result = await db.collection('scan_results').findOne({ _id: new ObjectId(scanId) });
-    if (!result) return res.status(404).json({ error: 'Scan result not found' });
-
-    const tickets = await findingsToTickets(db, result.findings, req.tenant);
-
-    // Mark scan as ticketed
-    await db.collection('scan_results').updateOne(
-      { _id: result._id },
-      { $set: { ticketed: true, ticketCount: tickets.length, ticketedAt: new Date() } },
-    );
-
-    res.json({ ok: true, ticketCount: tickets.length });
-  } catch (err) {
-    console.error('[scanner] to-tickets error:', err);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
+// (removed: /to-tickets — scanner findings stay in scan_results,
+//  not tickets. Devs work them in the superadmin scan-reports portal.)
 
 // ── JSON export for email reports ───────────────────────────────────────────
 router.get('/latest-json', async (req, res) => {

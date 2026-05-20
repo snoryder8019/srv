@@ -1,0 +1,193 @@
+<%- include('../../partials/head', { title: 'AI Studio' }) %>
+<%- include('../../partials/nav') %>
+<main class="page-main admin-main">
+  <%- include('../../partials/flash') %>
+
+  <div class="admin-header">
+    <h1>AI Studio</h1>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <a href="/admin" class="btn btn-outline btn-sm">← Dashboard</a>
+      <button class="btn btn-outline btn-sm" id="ai-health">Ping LLM</button>
+      <span class="status-badge status-gray" id="ai-health-result">Model: <%= aiConfig.MODEL %></span>
+    </div>
+  </div>
+
+  <div class="ai-tabs">
+    <button class="ai-tab active" data-tab="copy">Copy Writer</button>
+    <button class="ai-tab" data-tab="seo">SEO &amp; Social</button>
+    <button class="ai-tab" data-tab="image">Image Studio</button>
+    <% if (isAdmin) { %>
+      <button class="ai-tab" data-tab="report">Blogger Report</button>
+      <button class="ai-tab" data-tab="moderate">Moderation</button>
+    <% } %>
+    <button class="ai-tab" data-tab="chat">Chat</button>
+  </div>
+
+  <!-- COPY WRITER -->
+  <section class="ai-panel" data-panel="copy">
+    <h2>Article Draft Generator</h2>
+    <div class="form-group">
+      <label>Topic</label>
+      <input type="text" id="draft-topic" placeholder="e.g. The proposed Greeley downtown parking garage">
+    </div>
+    <div class="form-group">
+      <label>Angle <span class="hint">(optional)</span></label>
+      <input type="text" id="draft-angle" placeholder="e.g. small-business owner perspective">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Length</label>
+        <select id="draft-length">
+          <option value="short">Short (~450 words)</option>
+          <option value="medium" selected>Medium (~800 words)</option>
+          <option value="long">Long (~1200 words)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tag seeds <span class="hint">(comma separated)</span></label>
+        <input type="text" id="draft-tags" placeholder="downtown, parking, weld-county">
+      </div>
+    </div>
+    <button class="btn btn-primary" id="btn-draft">Generate Draft</button>
+    <div class="ai-output" id="out-draft"></div>
+
+    <hr class="ai-divider">
+    <h3>Quick Tools <span class="hint">(paste a draft below)</span></h3>
+    <textarea id="quick-body" rows="8" placeholder="Paste article body here..."></textarea>
+    <input type="text" id="quick-title" placeholder="Optional title">
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;">
+      <button class="btn btn-outline btn-sm" id="btn-headlines">Suggest Headlines</button>
+      <button class="btn btn-outline btn-sm" id="btn-excerpt">Generate Excerpt</button>
+      <button class="btn btn-outline btn-sm" id="btn-tags">Suggest Tags</button>
+    </div>
+    <div class="ai-output" id="out-quick"></div>
+  </section>
+
+  <!-- SEO -->
+  <section class="ai-panel" data-panel="seo" hidden>
+    <h2>SEO &amp; Social Metadata</h2>
+    <div class="form-group">
+      <label>Article title</label>
+      <input type="text" id="seo-title">
+    </div>
+    <div class="form-group">
+      <label>Article body / excerpt</label>
+      <textarea id="seo-body" rows="6"></textarea>
+    </div>
+    <button class="btn btn-primary" id="btn-seo">Generate SEO Pack</button>
+    <div class="ai-output" id="out-seo"></div>
+  </section>
+
+  <!-- IMAGE -->
+  <section class="ai-panel" data-panel="image" hidden>
+    <h2>Stable Diffusion Image Studio</h2>
+    <p class="hint">15-45s per image. Output saved to /uploads/ai/ and copyable as a URL.</p>
+    <div class="form-group">
+      <label>Prompt</label>
+      <textarea id="img-prompt" rows="3" placeholder="photographic, downtown greeley colorado at golden hour, civic plaza, editorial"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Negative prompt <span class="hint">(optional)</span></label>
+      <input type="text" id="img-neg" placeholder="blurry, low quality, text, watermark">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Size</label>
+        <select id="img-size">
+          <option value="512x512">512×512 (square)</option>
+          <option value="768x512" selected>768×512 (wide hero)</option>
+          <option value="512x768">512×768 (portrait)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Steps</label>
+        <input type="number" id="img-steps" value="28" min="10" max="50">
+      </div>
+      <div class="form-group">
+        <label>Guidance</label>
+        <input type="number" id="img-guidance" value="7.5" step="0.5" min="1" max="20">
+      </div>
+      <div class="form-group">
+        <label>Seed <span class="hint">(optional)</span></label>
+        <input type="number" id="img-seed">
+      </div>
+    </div>
+    <button class="btn btn-primary" id="btn-image">Generate Image</button>
+    <button class="btn btn-outline" id="btn-imgprompt">Suggest prompt from article →</button>
+    <div class="form-group" style="margin-top:.5rem;">
+      <label>(Optional) article title for prompt suggest</label>
+      <input type="text" id="imgsuggest-title">
+      <textarea id="imgsuggest-body" rows="3" placeholder="article excerpt"></textarea>
+    </div>
+    <div class="ai-output" id="out-image"></div>
+  </section>
+
+  <% if (isAdmin) { %>
+  <!-- REPORT -->
+  <section class="ai-panel" data-panel="report" hidden>
+    <h2>Weekly Editorial Briefing</h2>
+    <p class="hint">Pulls live stats and asks the LLM for wins, watch-list, idea pitches, and Greeley civic hooks.</p>
+    <button class="btn btn-primary" id="btn-report">Generate This Week's Report</button>
+    <div class="ai-output" id="out-report"></div>
+  </section>
+
+  <!-- MODERATE -->
+  <section class="ai-panel" data-panel="moderate" hidden>
+    <h2>AI Moderation Pass</h2>
+    <p class="hint">Screens up to 25 pending items at a time and tags each as approve / review / reject. Recommendations only — no auto-action.</p>
+    <button class="btn btn-primary" id="btn-moderate">Run on Pending Queue</button>
+    <div class="ai-output" id="out-moderate"></div>
+  </section>
+  <% } %>
+
+  <!-- CHAT -->
+  <section class="ai-panel" data-panel="chat" hidden>
+    <h2>Editor Chat</h2>
+    <div id="chat-log" class="ai-chat-log"></div>
+    <div class="chat-input-row">
+      <textarea id="chat-input" rows="2" placeholder="Ask anything — brainstorm, rewrite, fact-check angles..."></textarea>
+      <button class="btn btn-primary" id="btn-chat">Send</button>
+    </div>
+  </section>
+</main>
+
+<style>
+.ai-tabs { display:flex; gap:.25rem; flex-wrap:wrap; border-bottom:2px solid var(--border, #2a2a2a); margin:1rem 0; }
+.ai-tab { background:transparent; border:none; padding:.6rem 1.1rem; color:inherit; cursor:pointer; border-radius:6px 6px 0 0; font-weight:600; opacity:.6; }
+.ai-tab:hover { opacity:.9; background:rgba(255,255,255,.04); }
+.ai-tab.active { opacity:1; background:rgba(244,162,97,.12); color:#F4A261; border-bottom:2px solid #F4A261; margin-bottom:-2px; }
+.ai-panel { padding:1rem 0; }
+.ai-panel .form-group { margin-bottom:.75rem; }
+.ai-panel input[type="text"], .ai-panel input[type="number"], .ai-panel textarea, .ai-panel select {
+  width:100%; padding:.55rem .75rem; background:#1a1a1a; color:inherit; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:.95rem;
+}
+.ai-panel .form-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.5rem; }
+.ai-output { margin-top:1rem; padding:1rem; background:rgba(255,255,255,.03); border-radius:8px; min-height:1em; }
+.ai-output:empty { display:none; }
+.ai-output pre { white-space:pre-wrap; word-wrap:break-word; margin:0; font-family:inherit; }
+.ai-output .draft-preview { background:#0d0d0d; padding:1rem; border-radius:6px; margin-top:.5rem; max-height:400px; overflow:auto; }
+.ai-output .copy-row { display:flex; gap:.5rem; align-items:center; margin:.4rem 0; }
+.ai-output .copy-row code { flex:1; padding:.4rem .6rem; background:#0d0d0d; border-radius:4px; font-size:.85rem; overflow-x:auto; }
+.ai-divider { border:none; border-top:1px solid #333; margin:1.5rem 0; }
+.ai-chat-log { background:#0d0d0d; border-radius:6px; padding:.75rem; min-height:300px; max-height:500px; overflow-y:auto; margin-bottom:.5rem; }
+.ai-chat-log .msg { padding:.6rem .85rem; border-radius:8px; margin-bottom:.5rem; max-width:85%; }
+.ai-chat-log .msg.user { background:#1d3a52; margin-left:auto; }
+.ai-chat-log .msg.bot { background:#2a2a2a; }
+.chat-input-row { display:flex; gap:.5rem; }
+.chat-input-row textarea { flex:1; }
+.ai-spinner { display:inline-block; width:14px; height:14px; border:2px solid #555; border-top-color:#F4A261; border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle; margin-right:.4rem; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.verdict-approve { color:#4ade80; font-weight:700; }
+.verdict-review { color:#facc15; font-weight:700; }
+.verdict-reject { color:#f87171; font-weight:700; }
+.mod-card { padding:.75rem; background:#0d0d0d; border-radius:6px; margin-bottom:.5rem; border-left:3px solid #444; }
+.mod-card.verdict-approve { border-left-color:#4ade80; }
+.mod-card.verdict-review { border-left-color:#facc15; }
+.mod-card.verdict-reject { border-left-color:#f87171; }
+.ai-img-result img { max-width:100%; border-radius:8px; margin-top:.5rem; }
+.idea-pitch { padding:.6rem .85rem; background:#0d0d0d; border-radius:6px; margin:.4rem 0; }
+.idea-pitch h4 { margin:0 0 .25rem; color:#F4A261; }
+</style>
+
+<script src="/js/admin-ai.js"></script>
+<%- include('../../partials/footer') %>

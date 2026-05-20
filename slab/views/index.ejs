@@ -17,8 +17,22 @@
   const heroBgMediaType = (design.hero_bg_media_type || '').trim();
   const heroBgMediaPoster = (design.hero_bg_media_poster || '').trim();
   const heroFullBg = !!heroBgMediaUrl && (heroBgMediaType === 'image' || heroBgMediaType === 'video');
+  const heroStyle = (design.hero_style || 'split');
+
+  /* Slideshow slides: copy keys slide{N}_image|heading|sub|eyebrow|link|cta */
+  const _slideIdx = new Set();
+  Object.keys(copy || {}).forEach(k => { const m = k.match(/^slide(\d+)_/); if (m) _slideIdx.add(parseInt(m[1], 10)); });
+  const heroSlides = [..._slideIdx].sort((a, b) => a - b).map(i => ({
+    image:   copy['slide' + i + '_image']   || '',
+    heading: copy['slide' + i + '_heading'] || '',
+    sub:     copy['slide' + i + '_sub']     || '',
+    eyebrow: copy['slide' + i + '_eyebrow'] || '',
+    link:    copy['slide' + i + '_link']    || '',
+    cta:     copy['slide' + i + '_cta']     || '',
+    tag:     copy['slide' + i + '_tag']     || '',
+  })).filter(s => s.image || s.heading);
 %>
-<body data-layout="<%= design.landing_layout || 'classic' %>" data-gradient="<%= design.gradient_enabled || 'false' %>" data-card-hover-accent="<%= design.card_hover_accent || 'true' %>" data-hero-pattern="<%= design.hero_bg_pattern || 'none' %>" data-hero-full-bg="<%= heroFullBg ? heroBgMediaType : '' %>" data-portfolio-layout="<%= design.portfolio_layout || 'grid' %>" data-blog-layout="<%= design.blog_layout || 'grid' %>">
+<body data-layout="<%= design.landing_layout || 'classic' %>" data-gradient="<%= design.gradient_enabled || 'false' %>" data-card-hover-accent="<%= design.card_hover_accent || 'true' %>" data-hero-pattern="<%= design.hero_bg_pattern || 'none' %>" data-hero-full-bg="<%= heroFullBg ? heroBgMediaType : '' %>" data-hero-style="<%= heroStyle %>" data-portfolio-layout="<%= design.portfolio_layout || 'grid' %>" data-blog-layout="<%= design.blog_layout || 'grid' %>">
 
 <% if (visibility.header !== false) { %>
 <%- include('partials/header', { activePage: 'home' }) %>
@@ -26,6 +40,106 @@
 
 <!-- HERO -->
 <% if (visibility.hero) { %>
+<% if (heroStyle === 'slideshow' && heroSlides.length) { %>
+  <%
+    const _interval = parseInt(design.hero_slideshow_interval || '6', 10);
+    const _showDots = design.hero_slideshow_dots !== 'false';
+    const _showArrows = design.hero_slideshow_arrows !== 'false';
+  %>
+  <section class="hero hero--slideshow" data-interval="<%= _interval %>" data-count="<%= heroSlides.length %>">
+    <div class="hero-slides">
+      <% heroSlides.forEach((s, i) => { %>
+        <% if (s.link) { %>
+        <a class="hero-slide<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>" href="<%= s.link %>">
+        <% } else { %>
+        <div class="hero-slide<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>">
+        <% } %>
+          <% if (s.image) { %><div class="hero-slide-bg" style="background-image:url('<%= s.image %>');"></div><% } %>
+          <div class="hero-slide-overlay"></div>
+          <div class="hero-slide-text">
+            <% if (s.tag) { %><span class="hero-slide-tag"><%= s.tag %></span><% } %>
+            <% if (s.eyebrow) { %><p class="hero-eyebrow"><%= s.eyebrow %></p><% } %>
+            <% if (s.heading) { %><h2 class="hero-heading"><%= s.heading %></h2><% } %>
+            <% if (s.sub) { %><p class="hero-sub"><%= s.sub %></p><% } %>
+            <% if (s.cta && s.link) { %><span class="btn-primary hero-slide-cta"><%= s.cta %></span><% } %>
+          </div>
+        <% if (s.link) { %></a><% } else { %></div><% } %>
+      <% }) %>
+    </div>
+    <% if (_showArrows && heroSlides.length > 1) { %>
+      <button type="button" class="hero-arrow hero-arrow--prev" aria-label="Previous slide">&#8249;</button>
+      <button type="button" class="hero-arrow hero-arrow--next" aria-label="Next slide">&#8250;</button>
+    <% } %>
+    <% if (_showDots && heroSlides.length > 1) { %>
+      <div class="hero-dots" role="tablist">
+        <% heroSlides.forEach((s, i) => { %>
+          <button type="button" class="hero-dot<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>" aria-label="Go to slide <%= i + 1 %>"></button>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+  <script>
+  (function(){
+    var root = document.querySelector('.hero--slideshow'); if (!root) return;
+    var slides = [].slice.call(root.querySelectorAll('.hero-slide'));
+    var dots = [].slice.call(root.querySelectorAll('.hero-dot'));
+    var count = slides.length; if (count < 2) return;
+    var idx = 0, timer = null;
+    var interval = parseInt(root.getAttribute('data-interval'), 10) || 0;
+    function show(n) {
+      idx = (n + count) % count;
+      slides.forEach(function(s, i){ s.classList.toggle('is-active', i === idx); });
+      dots.forEach(function(d, i){ d.classList.toggle('is-active', i === idx); });
+    }
+    function next(){ show(idx + 1); }
+    function prev(){ show(idx - 1); }
+    function start(){ if (interval > 0) timer = setInterval(next, interval * 1000); }
+    function stop(){ if (timer) { clearInterval(timer); timer = null; } }
+    dots.forEach(function(d){ d.addEventListener('click', function(){ stop(); show(parseInt(d.getAttribute('data-idx'),10)); start(); }); });
+    var pBtn = root.querySelector('.hero-arrow--prev'), nBtn = root.querySelector('.hero-arrow--next');
+    if (pBtn) pBtn.addEventListener('click', function(){ stop(); prev(); start(); });
+    if (nBtn) nBtn.addEventListener('click', function(){ stop(); next(); start(); });
+    root.addEventListener('mouseenter', stop); root.addEventListener('mouseleave', start);
+    start();
+  })();
+  </script>
+<% } else if (heroStyle === 'image_card') { %>
+  <%
+    const _cardBg   = (media.hero_image || heroBgMediaUrl || '');
+    const _cardType = heroBgMediaType === 'video' ? 'video' : 'image';
+  %>
+  <section class="hero hero--image-card" data-card-pos="<%= design.hero_card_position || 'left' %>">
+    <div class="hero-bg-media" aria-hidden="true">
+      <% if (_cardType === 'video' && heroBgMediaUrl) { %>
+        <video class="hero-bg-video" autoplay muted loop playsinline preload="metadata"<% if (heroBgMediaPoster) { %> poster="<%= heroBgMediaPoster %>"<% } %>>
+          <source src="<%= heroBgMediaUrl %>">
+        </video>
+      <% } else if (_cardBg) { %>
+        <div class="hero-bg-image" style="background-image:url('<%= _cardBg %>');"></div>
+      <% } %>
+      <div class="hero-bg-overlay"></div>
+    </div>
+    <div class="hero-card-wrap">
+      <div class="hero-card<%= design.hero_card_shadow === 'false' ? '' : ' hero-card--shadow' %>">
+        <div class="hero-text">
+          <% if (copy.hero_eyebrow) { %><p class="hero-eyebrow"><%= copy.hero_eyebrow %></p><% } %>
+          <h1 class="hero-heading"><%= copy.hero_heading %><% if (copy.hero_heading_em) { %> <em><%= copy.hero_heading_em %></em><% } %></h1>
+          <% if (copy.hero_sub) { %><p class="hero-sub"><%= copy.hero_sub %></p><% } %>
+          <div class="hero-btns">
+            <% if (copy.hero_cta_primary) { %><a href="<%= copy.hero_cta_primary_link || '#contact' %>" class="btn-primary"><%= copy.hero_cta_primary %></a><% } %>
+            <% if (copy.hero_cta_secondary) { %><a href="<%= copy.hero_cta_secondary_link || '#services' %>" class="btn-ghost"><%= copy.hero_cta_secondary %></a><% } %>
+          </div>
+        </div>
+      </div>
+      <% if (copy.hero_badge) { %>
+        <div class="hero-badge hero-badge--floating">
+          <div class="hero-badge-dot"></div>
+          <span class="hero-badge-text"><%= copy.hero_badge %></span>
+        </div>
+      <% } %>
+    </div>
+  </section>
+<% } else { %>
 <section class="hero<%= heroFullBg ? ' hero--full-bg' : '' %>">
   <% if (heroFullBg) { %>
     <div class="hero-bg-media" aria-hidden="true">
@@ -73,6 +187,7 @@
     </div>
   <% } %>
 </section>
+<% } %>
 <% } %>
 
 <!-- MARQUEE / TICKER -->

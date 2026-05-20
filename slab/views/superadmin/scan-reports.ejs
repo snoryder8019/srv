@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan Reports — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:18px; font-weight:500; color:#fff; font-family:'Space Grotesk',sans-serif; letter-spacing:0.05em; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1200px; margin:0 auto; padding:24px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:12px; margin-bottom:24px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:14px; text-align:center; }
+    .stat-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:4px; }
+    .stat-value { font-size:22px; font-weight:700; color:#fff; }
+    .stat-value.gold { color:#c9a848; } .stat-value.green { color:#34d399; } .stat-value.red { color:#f87171; } .stat-value.orange { color:#f97316; } .stat-value.blue { color:#38bdf8; }
+    .toolbar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
+    .filter-btn { padding:5px 12px; font-size:11px; border-radius:5px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; text-decoration:none; font-family:'Inter',sans-serif; }
+    .filter-btn:hover { border-color:#c9a848; color:#c9a848; }
+    .filter-btn.active { background:#c9a848; color:#0a0a0a; border-color:#c9a848; font-weight:600; }
+    table { width:100%; border-collapse:collapse; background:#141414; border-radius:8px; overflow:hidden; border:1px solid #262626; }
+    th { text-align:left; padding:10px 14px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; white-space:nowrap; }
+    td { padding:10px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    tr:last-child td { border-bottom:0; }
+    tr:hover td { background:#1a1a1a; }
+    .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:500; white-space:nowrap; }
+    .status-pending-review { background:#451a1a; color:#fca5a5; }
+    .status-in-progress { background:#1e3a5f; color:#7dd3fc; }
+    .status-fixed { background:#14532d; color:#86efac; }
+    .status-clean { background:#262626; color:#a3a3a3; }
+    .link { color:#c9a848; text-decoration:none; font-size:12px; } .link:hover { text-decoration:underline; }
+    .tenant-tag { color:#c9a848; font-size:11px; }
+    .empty { color:#525252; font-size:13px; padding:40px; text-align:center; }
+    .sev-pill { display:inline-block; padding:1px 6px; border-radius:8px; font-size:10px; margin-right:4px; }
+    .sev-c { background:#fef2f2; color:#dc2626; font-weight:700; }
+    .sev-h { background:#fff7ed; color:#ea580c; font-weight:600; }
+    .table-wrap { overflow-x:auto; border-radius:8px; }
+    .table-wrap table { min-width:680px; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">mad<span>Labs</span>lab</div>
+      <span style="color:#737373; font-size:13px;">/ Scan Reports</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin">&larr; Dashboard</a>
+      <a href="/superadmin/all-tickets">Tickets</a>
+      <span><%= superAdmin.email %></span>
+    </div>
+  </div>
+
+  <div class="container">
+    <p style="color:#737373; font-size:13px; margin-bottom:20px;">Site-scanner findings (separate from tenant tickets). Tenants see the dev status on their own scanner page until you mark a report fixed.</p>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Total Sites</div><div class="stat-value gold"><%= stats.total %></div></div>
+      <div class="stat"><div class="stat-label">Pending Review</div><div class="stat-value red"><%= stats['pending-review'] %></div></div>
+      <div class="stat"><div class="stat-label">In Progress</div><div class="stat-value blue"><%= stats['in-progress'] %></div></div>
+      <div class="stat"><div class="stat-label">Fixed</div><div class="stat-value green"><%= stats.fixed %></div></div>
+      <div class="stat"><div class="stat-label">Clean</div><div class="stat-value"><%= stats.clean %></div></div>
+    </div>
+
+    <div class="toolbar">
+      <a class="filter-btn <%= !filters.status ? 'active' : '' %>" href="/superadmin/scan-reports">All</a>
+      <a class="filter-btn <%= filters.status === 'pending-review' ? 'active' : '' %>" href="/superadmin/scan-reports?status=pending-review">Pending Review</a>
+      <a class="filter-btn <%= filters.status === 'in-progress' ? 'active' : '' %>" href="/superadmin/scan-reports?status=in-progress">In Progress</a>
+      <a class="filter-btn <%= filters.status === 'fixed' ? 'active' : '' %>" href="/superadmin/scan-reports?status=fixed">Fixed</a>
+      <a class="filter-btn <%= filters.status === 'clean' ? 'active' : '' %>" href="/superadmin/scan-reports?status=clean">Clean</a>
+    </div>
+
+    <% if (reports.length === 0) { %>
+      <div class="empty">No scan reports for this filter.</div>
+    <% } else { %>
+      <div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th>Tenant</th>
+            <th>Findings</th>
+            <th>Severity Breakdown</th>
+            <th>Dev Status</th>
+            <th>Scanned</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% reports.forEach(r => { %>
+          <% const c = r.summary?.counts || {}; %>
+          <tr>
+            <td><span class="tenant-tag"><%= r._tenantName %></span></td>
+            <td><strong><%= r.summary?.total || 0 %></strong></td>
+            <td>
+              <% if (c.critical) { %><span class="sev-pill sev-c"><%= c.critical %> crit</span><% } %>
+              <% if (c.high) { %><span class="sev-pill sev-h"><%= c.high %> high</span><% } %>
+              <% if (!c.critical && !c.high) { %><span style="color:#525252; font-size:11px;">no crit/high</span><% } %>
+            </td>
+            <td><span class="status status-<%= r.devStatus %>"><%= r.devStatus %></span></td>
+            <td style="font-size:12px; color:#525252;">
+              <%= r.summary?.scannedAt ? new Date(r.summary.scannedAt).toLocaleDateString() : '—' %>
+            </td>
+            <td><a class="link" href="/superadmin/scan-reports/<%= r._tenantDb %>/<%= r._id %>">Open</a></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+    <% } %>
+  </div>
+</body>
+</html>

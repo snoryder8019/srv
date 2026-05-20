@@ -22,6 +22,7 @@
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const saveMetaBtn = document.getElementById('saveMetaBtn');
   const deleteAssetBtn = document.getElementById('deleteAssetBtn');
+  const downloadAssetBtn = document.getElementById('downloadAssetBtn');
   const uploadZone = document.getElementById('uploadZone');
   const fileInput = document.getElementById('fileInput');
   const progressEl = document.getElementById('uploadProgress');
@@ -308,6 +309,29 @@
     if (cnt) cnt.textContent = bulkSelected.size;
   }
 
+  // Bulk download — fires one hidden <a download> click per asset.
+  // Browsers serialise these; some throttle after ~10. For more than that,
+  // a server-side zip stream would be the next step.
+  const bulkDownloadBtn = document.getElementById('bulkDownloadBtn');
+  if (bulkDownloadBtn) {
+    bulkDownloadBtn.addEventListener('click', () => {
+      if (!bulkSelected.size) return;
+      if (bulkSelected.size > 20 && !confirm(`Download ${bulkSelected.size} files? Your browser may prompt to allow multiple downloads.`)) return;
+      const ids = [...bulkSelected];
+      ids.forEach((id, i) => {
+        setTimeout(() => {
+          const a = document.createElement('a');
+          a.href = `/admin/assets/${id}/download`;
+          a.download = '';
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => a.remove(), 1000);
+        }, i * 250);
+      });
+    });
+  }
+
   // Bulk delete
   const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
   if (bulkDeleteBtn) {
@@ -396,6 +420,7 @@
     if (bulkMode && bulkSelected.has(asset._id)) card.classList.add('selected');
 
     let thumbHtml = '';
+    const isSvg = asset.mimeType === 'image/svg+xml' || /\.svg$/i.test(asset.originalName || '');
     if (asset.fileType === 'image') {
       thumbHtml = `<img src="${asset.publicUrl}" alt="${escHtml(asset.title)}" loading="lazy">`;
     } else if (asset.fileType === 'video') {
@@ -410,7 +435,7 @@
 
     card.innerHTML = `
       ${checkHtml}
-      <div class="asset-thumb">${thumbHtml}</div>
+      <div class="asset-thumb${isSvg ? ' is-svg' : ''}">${thumbHtml}</div>
       <div class="asset-name">
         <span class="asset-type-badge ${badge}">${asset.fileType}</span>${clientBadge}${escHtml(asset.title || asset.originalName)}
       </div>`;
@@ -442,6 +467,10 @@
     selectedAsset = asset;
     copyUrlBtn.style.display = '';
     metaFooter.style.display = '';
+    if (downloadAssetBtn) {
+      downloadAssetBtn.href = `/admin/assets/${asset._id}/download`;
+      downloadAssetBtn.setAttribute('download', asset.originalName || asset.title || 'download');
+    }
     renderMeta(asset);
   }
 
@@ -449,6 +478,7 @@
     selectedAsset = null;
     copyUrlBtn.style.display = 'none';
     metaFooter.style.display = 'none';
+    if (downloadAssetBtn) { downloadAssetBtn.href = '#'; downloadAssetBtn.removeAttribute('download'); }
     metaBody.innerHTML = '<div class="meta-preview"><div class="no-select">Select an asset<br>to view details</div></div>';
   }
 

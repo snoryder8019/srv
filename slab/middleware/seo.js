@@ -95,6 +95,59 @@ function buildWebsiteLd(brand, baseUrl) {
   };
 }
 
+function isSoftwareBusiness(brand) {
+  const bt = (brand?.businessType || '').toLowerCase();
+  const ind = (brand?.industry || '').toLowerCase();
+  return /platform|saas|software|app|api|tech/.test(bt) ||
+         /saas|software|technology|cloud|developer/.test(ind);
+}
+
+function buildSoftwareApplicationLd(brand, baseUrl, logoUrl) {
+  if (!brand?.name || !isSoftwareBusiness(brand)) return null;
+  const node = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: brand.name,
+    url: baseUrl,
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web',
+  };
+  if (brand.description) node.description = brand.description;
+  if (brand.tagline)     node.alternateName = brand.tagline;
+  if (logoUrl)           node.image = logoUrl;
+  if (Array.isArray(brand.services) && brand.services.length) {
+    node.featureList = brand.services.join(', ');
+  }
+  if (Array.isArray(brand.pricingTiers) && brand.pricingTiers.length) {
+    node.offers = brand.pricingTiers.map(t => ({
+      '@type': 'Offer',
+      name: t.label || 'Plan',
+      price: String(t.amount || '0').replace(/[^0-9.]/g, '') || '0',
+      priceCurrency: t.currency || 'USD',
+      ...(t.unit ? { description: t.unit } : {}),
+    }));
+  }
+  return node;
+}
+
+function buildFaqLd(brand) {
+  const faq = Array.isArray(brand?.faq) ? brand.faq : null;
+  if (!faq || !faq.length) return null;
+  const entries = faq
+    .filter(q => q && q.question && q.answer)
+    .map(q => ({
+      '@type': 'Question',
+      name: String(q.question),
+      acceptedAnswer: { '@type': 'Answer', text: String(q.answer) },
+    }));
+  if (!entries.length) return null;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: entries,
+  };
+}
+
 export function seoMiddleware(req, res, next) {
   const host = req.hostname;
   const proto = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
@@ -105,14 +158,16 @@ export function seoMiddleware(req, res, next) {
   const brand = tenant?.brand || res.locals.brand || {};
   const isPreview = tenant?.isPreview || tenant?.status === 'preview';
   const privateArea = isPrivatePath(req.path);
-  const isPublicGet = req.method === 'GET' && !privateArea && !isPreview;
+  // HEAD requests get the same indexability signals as GET — crawlers use HEAD
+  // for freshness checks and a noindex header here would be read as authoritative.
+  const isCrawlable = (req.method === 'GET' || req.method === 'HEAD') && !privateArea && !isPreview;
 
-  const robots = isPublicGet ? PUBLIC_ROBOTS : PRIVATE_ROBOTS;
+  const robots = isCrawlable ? PUBLIC_ROBOTS : PRIVATE_ROBOTS;
 
   // Header-level signals
-  if (!isPublicGet) res.set('X-Robots-Tag', 'noindex, nofollow');
+  if (!isCrawlable) res.set('X-Robots-Tag', 'noindex, nofollow');
   res.set('Vary', 'Accept-Encoding, User-Agent');
-  if (isPublicGet) {
+  if (isCrawlable) {
     res.set('Link', `<${canonical}>; rel="canonical"`);
   }
 
@@ -125,6 +180,10 @@ export function seoMiddleware(req, res, next) {
   jsonLd.push(buildWebsiteLd(brand, baseUrl));
   const org = buildOrganizationLd(brand, baseUrl, null);
   if (org) jsonLd.push(org);
+  const softwareApp = buildSoftwareApplicationLd(brand, baseUrl, null);
+  if (softwareApp) jsonLd.push(softwareApp);
+  const faq = buildFaqLd(brand);
+  if (faq) jsonLd.push(faq);
 
   res.locals.seo = {
     title,

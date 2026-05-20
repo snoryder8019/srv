@@ -3,22 +3,36 @@
 <main class="page-main form-page">
   <%- include('../partials/flash') %>
   <div class="form-header"><h1>Edit Article</h1></div>
-  <form class="content-form" action="/posts/<%= post._id %>?_method=PUT" method="POST" enctype="multipart/form-data">
+  <% if (user && (user.isAdmin || user.isVerified)) { %>
+  <div class="ai-assist-bar">
+    <strong>AI assist:</strong>
+    <button type="button" class="btn btn-outline btn-xs" data-ai="headlines">Suggest headlines</button>
+    <button type="button" class="btn btn-outline btn-xs" data-ai="excerpt">Generate excerpt</button>
+    <button type="button" class="btn btn-outline btn-xs" data-ai="tags">Suggest tags</button>
+    <button type="button" class="btn btn-outline btn-xs" data-ai="seo">SEO pack</button>
+    <button type="button" class="btn btn-outline btn-xs" data-ai="image">Generate cover image</button>
+    <a href="/admin/ai" class="btn btn-outline btn-xs">Open AI Studio →</a>
+    <span class="ai-status" id="ai-status"></span>
+  </div>
+  <% } %>
+  <form class="content-form" action="/posts/<%= post._id %>?_method=PUT" method="POST" enctype="multipart/form-data" id="post-form">
     <div class="form-group">
       <label>Title</label>
-      <input type="text" name="title" value="<%= post.title %>" required>
+      <input type="text" name="title" id="post-title" value="<%= post.title %>" required>
     </div>
     <div class="form-group">
       <label>New Cover Image <span class="hint">(leave blank to keep current)</span></label>
       <input type="file" name="coverImage" accept="image/*">
+      <input type="hidden" name="coverImageUrl" id="cover-image-url">
+      <div id="ai-cover-preview"></div>
     </div>
     <div class="form-group">
       <label>Tags <span class="hint">(comma-separated)</span></label>
-      <input type="text" name="tags" value="<%= post.tags ? post.tags.join(', ') : '' %>">
+      <input type="text" name="tags" id="post-tags" value="<%= post.tags ? post.tags.join(', ') : '' %>">
     </div>
     <div class="form-group">
       <label>Content</label>
-      <textarea name="body" rows="16" required><%= post.body %></textarea>
+      <textarea name="body" id="post-body" rows="16" required><%= post.body %></textarea>
     </div>
     <div class="form-actions">
       <a href="/posts/<%= post._id %>" class="btn btn-outline">Cancel</a>
@@ -26,4 +40,7 @@
     </div>
   </form>
 </main>
+<% if (user && (user.isAdmin || user.isVerified)) { %>
+<script src="/js/post-ai-assist.js"></script>
+<% } %>
 <%- include('../partials/footer') %>

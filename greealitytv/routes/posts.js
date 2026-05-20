@@ -31,13 +31,17 @@ router.post('/', ensureAuth, (req, res, next) => {
     const tagArray = tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
     const excerpt = body.replace(/<[^>]*>/g, '').substring(0, 200) + '...';
 
+    const coverImage = req.file
+      ? req.file.location
+      : (req.body.coverImageUrl && req.body.coverImageUrl.startsWith('/uploads/ai/') ? req.body.coverImageUrl : null);
+
     await Post.create({
       title,
       body,
       excerpt,
       tags: tagArray,
       author: req.user._id,
-      coverImage: req.file ? req.file.location : null,
+      coverImage,
       published: false,
       status: 'pending'
     });
@@ -99,6 +103,7 @@ router.put('/:id', ensureAuth, (req, res, next) => {
 
     const update = { title, body, excerpt, tags: tagArray, updatedAt: new Date() };
     if (req.file) update.coverImage = req.file.location;
+    else if (req.body.coverImageUrl && req.body.coverImageUrl.startsWith('/uploads/ai/')) update.coverImage = req.body.coverImageUrl;
 
     await Post.findByIdAndUpdate(req.params.id, update);
     req.flash('success', 'Post updated.');

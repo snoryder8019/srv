@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan Report — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:18px; font-weight:500; color:#fff; font-family:'Space Grotesk',sans-serif; letter-spacing:0.05em; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1000px; margin:0 auto; padding:24px; }
+    .card { background:#141414; border:1px solid #262626; border-radius:8px; padding:20px; margin-bottom:18px; }
+    h2 { font-size:18px; margin-bottom:8px; }
+    .meta { display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:#737373; }
+    .meta strong { color:#c9a848; }
+    .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
+    .status-pending-review { background:#451a1a; color:#fca5a5; }
+    .status-in-progress { background:#1e3a5f; color:#7dd3fc; }
+    .status-fixed { background:#14532d; color:#86efac; }
+    .status-clean { background:#262626; color:#a3a3a3; }
+    label { display:block; font-size:11px; color:#737373; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px; }
+    select, textarea { width:100%; background:#0a0a0a; border:1px solid #333; color:#e5e5e5; padding:8px 10px; border-radius:6px; font-family:'Inter',sans-serif; font-size:13px; }
+    textarea { min-height:80px; resize:vertical; }
+    .btn { padding:8px 14px; font-size:13px; border-radius:6px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; text-decoration:none; display:inline-block; }
+    .btn:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-gold { background:#c9a848; color:#0a0a0a; border-color:#c9a848; font-weight:600; } .btn-gold:hover { background:#b8960b; }
+    table { width:100%; border-collapse:collapse; }
+    th { text-align:left; padding:8px 10px; font-size:10px; text-transform:uppercase; color:#737373; background:#1a1a1a; border-bottom:1px solid #262626; }
+    td { padding:8px 10px; font-size:12px; border-bottom:1px solid #1f1f1f; vertical-align:top; }
+    .sev { display:inline-block; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:600; }
+    .sev-critical { background:#fef2f2; color:#dc2626; }
+    .sev-high { background:#fff7ed; color:#ea580c; }
+    .sev-medium { background:#fefce8; color:#ca8a04; }
+    .sev-low { background:#eff6ff; color:#2563eb; }
+    .sev-info { background:#f0fdf4; color:#16a34a; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">mad<span>Labs</span>lab</div>
+      <span style="color:#737373; font-size:13px;">/ <a href="/superadmin/scan-reports" style="color:#737373; text-decoration:none;">Scan Reports</a> / Detail</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin/scan-reports">&larr; All Reports</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <h2>Scan — <%= tenantDbName %></h2>
+      <div class="meta">
+        <span>Status: <span class="status status-<%= report.devStatus || 'pending-review' %>"><%= report.devStatus || 'pending-review' %></span></span>
+        <span>Scanned: <strong><%= report.summary?.scannedAt ? new Date(report.summary.scannedAt).toLocaleString() : '—' %></strong></span>
+        <span>Findings: <strong><%= report.summary?.total || 0 %></strong></span>
+        <span>Critical: <strong><%= report.summary?.counts?.critical || 0 %></strong></span>
+        <span>High: <strong><%= report.summary?.counts?.high || 0 %></strong></span>
+        <% if (report.devReviewedBy) { %><span>Last touched by <strong><%= report.devReviewedBy %></strong></span><% } %>
+      </div>
+    </div>
+
+    <div class="card">
+      <form method="POST" action="/superadmin/scan-reports/<%= tenantDbName %>/<%= report._id %>/status">
+        <label>Dev status (what the tenant sees on their scanner page)</label>
+        <select name="devStatus">
+          <% const cur = report.devStatus || 'pending-review'; %>
+          <option value="pending-review" <%= cur === 'pending-review' ? 'selected' : '' %>>Pending review</option>
+          <option value="in-progress" <%= cur === 'in-progress' ? 'selected' : '' %>>In progress — dev is working on it</option>
+          <option value="fixed" <%= cur === 'fixed' ? 'selected' : '' %>>Fixed</option>
+          <option value="clean" <%= cur === 'clean' ? 'selected' : '' %>>Clean (no crit/high)</option>
+        </select>
+        <div style="margin-top:12px;">
+          <label>Internal dev notes (not shown to tenant)</label>
+          <textarea name="devNotes" placeholder="What we're doing, blockers, PR/commit refs..."><%= report.devNotes || '' %></textarea>
+        </div>
+        <div style="margin-top:12px;">
+          <button type="submit" class="btn btn-gold">Save</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3 style="font-size:14px; color:#a3a3a3; margin-bottom:12px;">Findings (<%= (report.findings || []).length %>)</h3>
+      <% if (!report.findings || !report.findings.length) { %>
+        <div style="color:#525252; font-size:13px;">No findings recorded.</div>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr><th>Sev</th><th>Title</th><th>Detail</th><th>URL</th></tr>
+          </thead>
+          <tbody>
+            <% report.findings.forEach(f => { %>
+            <tr>
+              <td><span class="sev sev-<%= f.severity %>"><%= f.severity %></span></td>
+              <td><strong><%= f.title %></strong></td>
+              <td style="color:#a3a3a3; max-width:380px; word-break:break-word;"><%= (f.detail || '').slice(0, 280) %></td>
+              <td style="font-size:11px;"><a href="<%= f.url %>" target="_blank" style="color:#c9a848;"><%= (f.url || '').replace(/^https?:\/\//, '') %></a></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

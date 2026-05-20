@@ -66,9 +66,12 @@
       </div>
     </div>
 
+    <div id="devReviewBanner" class="card" style="display:none;margin-bottom:16px;padding:14px 18px;background:#eff6ff;border-left:3px solid #2563eb;">
+      <div style="font-weight:600;font-size:0.9rem;color:#1e40af;">Our dev team has been notified.</div>
+      <div style="font-size:0.82rem;color:#1e40af;margin-top:4px;">Critical and high-severity findings on this site are queued for review by platform engineering. You'll see them disappear from this list as fixes ship.</div>
+    </div>
+
     <div style="display:flex;gap:10px;margin-bottom:16px;">
-      <button id="toTickets" class="btn btn-navy" style="display:none;">Create Tickets from Findings</button>
-      <span id="ticketResult" style="font-size:0.82rem;color:var(--success);align-self:center;"></span>
       <span id="scanDuration" style="font-size:0.78rem;color:var(--slate);align-self:center;margin-left:auto;"></span>
     </div>
   </div>
@@ -104,7 +107,7 @@
             <th>Critical</th>
             <th>High</th>
             <th>Duration</th>
-            <th>Ticketed</th>
+            <th>Dev Status</th>
           </tr>
         </thead>
         <tbody>
@@ -116,7 +119,12 @@
             <td style="color:#dc2626;font-weight:600;"><%= r.summary?.counts?.critical || 0 %></td>
             <td style="color:#ea580c;"><%= r.summary?.counts?.high || 0 %></td>
             <td style="font-size:0.78rem;"><%= r.summary?.duration ? Math.round(r.summary.duration / 1000) + 's' : '' %></td>
-            <td><%= r.ticketed ? 'Yes (' + r.ticketCount + ')' : '' %></td>
+            <td>
+              <% const ds = r.devStatus || 'pending-review'; %>
+              <% const dsClass = ds === 'fixed' ? 'badge-active' : ds === 'in-progress' ? 'badge-featured' : ds === 'clean' ? 'badge-active' : 'badge-prospect'; %>
+              <% const dsLabel = ds === 'pending-review' ? 'awaiting dev review' : ds === 'in-progress' ? 'dev working on it' : ds === 'fixed' ? 'fixed' : ds; %>
+              <span class="badge <%= dsClass %>" style="font-size:0.7rem;"><%= dsLabel %></span>
+            </td>
           </tr>
           <% } %>
         </tbody>
@@ -152,7 +160,7 @@
   const summary = document.getElementById('scanSummary');
   const findingsWrap = document.getElementById('findingsWrap');
   const findingsBody = document.getElementById('findingsBody');
-  const toTicketsBtn = document.getElementById('toTickets');
+  const devBanner = document.getElementById('devReviewBanner');
   let currentScanId = null;
 
   const sevClass = { critical:'sev-critical', high:'sev-high', medium:'sev-medium', low:'sev-low', info:'sev-info' };
@@ -194,8 +202,7 @@
     progress.style.display = '';
     summary.style.display = 'none';
     findingsWrap.style.display = 'none';
-    toTicketsBtn.style.display = 'none';
-    document.getElementById('ticketResult').textContent = '';
+    devBanner.style.display = 'none';
 
     try {
       const r = await fetch('/admin/scanner/run', {
@@ -210,9 +217,8 @@
       renderSummary(data.summary);
       renderFindings(data.findings);
 
-      if (data.findings.length > 0) {
-        toTicketsBtn.style.display = '';
-      }
+      const critHigh = (data.summary?.counts?.critical || 0) + (data.summary?.counts?.high || 0);
+      if (critHigh > 0) devBanner.style.display = '';
 
       document.getElementById('scanStatus').textContent = 'Scan complete';
       document.getElementById('scanDetail').textContent = `${data.findings.length} findings across ${modules.length} modules`;
@@ -225,30 +231,6 @@
     }
   });
 
-  toTicketsBtn.addEventListener('click', async () => {
-    if (!currentScanId) return;
-    toTicketsBtn.disabled = true;
-    try {
-      const r = await fetch('/admin/scanner/to-tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scanId: currentScanId }),
-      });
-      const data = await r.json();
-      if (data.ok) {
-        document.getElementById('ticketResult').textContent = `Created ${data.ticketCount} ticket(s)`;
-        toTicketsBtn.style.display = 'none';
-      } else {
-        document.getElementById('ticketResult').textContent = 'Error: ' + (data.error || 'Unknown');
-        document.getElementById('ticketResult').style.color = 'var(--danger)';
-      }
-    } catch (err) {
-      document.getElementById('ticketResult').textContent = err.message;
-    } finally {
-      toTicketsBtn.disabled = false;
-    }
-  });
-
   window.loadResult = async function(id) {
     try {
       const r = await fetch('/admin/scanner/results/' + id);
@@ -257,11 +239,8 @@
         renderSummary(data.summary);
         renderFindings(data.findings || []);
         currentScanId = id;
-        if ((data.findings || []).length > 0 && !data.ticketed) {
-          toTicketsBtn.style.display = '';
-        } else {
-          toTicketsBtn.style.display = 'none';
-        }
+        const critHigh = (data.summary?.counts?.critical || 0) + (data.summary?.counts?.high || 0);
+        devBanner.style.display = (critHigh > 0 && data.devStatus !== 'fixed') ? '' : 'none';
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     } catch (err) { alert('Failed to load: ' + err.message); }

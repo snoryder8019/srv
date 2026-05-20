@@ -1,0 +1,120 @@
+<%- include('../partials/head', { title }) %>
+
+<style>
+  .email-preview-page { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  .epp-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 12px; }
+  .epp-header h1 { font-family: var(--font-heading); font-size: 1.8rem; margin: 0; color: var(--on-surface); }
+  .epp-header .back { font-size: 0.85rem; color: var(--slate); text-decoration: none; }
+  .epp-header .back:hover { color: var(--on-surface); }
+  .epp-subtitle { color: var(--slate); font-size: 0.95rem; margin: 0 0 24px; }
+
+  .epp-grid { display: grid; grid-template-columns: 320px 1fr; gap: 24px; }
+  @media (max-width: 900px) { .epp-grid { grid-template-columns: 1fr; } }
+
+  .epp-sidebar { position: sticky; top: 24px; align-self: start; }
+  .epp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; margin-bottom: 16px; }
+  .epp-card h3 { margin: 0 0 12px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--slate); }
+
+  .swatch-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 0.85rem; }
+  .swatch { width: 22px; height: 22px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.08); flex-shrink: 0; }
+  .swatch-row .name { color: var(--on-surface); }
+  .swatch-row .hex { margin-left: auto; color: var(--slate); font-family: Menlo, Consolas, monospace; font-size: 0.78rem; }
+
+  .diag-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 0.82rem; border-bottom: 1px solid var(--border); }
+  .diag-row:last-child { border-bottom: none; }
+  .diag-pair { display: flex; gap: 2px; flex-shrink: 0; }
+  .diag-pair span { width: 16px; height: 16px; border: 1px solid rgba(0,0,0,0.1); }
+  .diag-info { flex: 1; min-width: 0; }
+  .diag-label { color: var(--on-surface); font-size: 0.78rem; }
+  .diag-ratio { font-family: Menlo, Consolas, monospace; font-size: 0.72rem; color: var(--slate); }
+  .badge-ok { background: #DCFCE7; color: #15803D; font-size: 0.65rem; padding: 2px 6px; border-radius: 3px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+  .badge-warn { background: #FEF3C7; color: #92400E; font-size: 0.65rem; padding: 2px 6px; border-radius: 3px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+  .badge-fail { background: #FEE2E2; color: #B91C1C; font-size: 0.65rem; padding: 2px 6px; border-radius: 3px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+
+  .epp-content { min-width: 0; }
+  .preview-block { margin-bottom: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .preview-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .preview-head h2 { margin: 0; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.04em; color: var(--on-surface); }
+  .preview-head a { font-size: 0.78rem; color: var(--slate); text-decoration: none; }
+  .preview-head a:hover { color: var(--on-surface); }
+  .preview-frame { width: 100%; height: 720px; border: none; display: block; background: #F5F3EF; }
+
+  .tip { background: #EFF6FF; border-left: 3px solid #2563EB; padding: 12px 14px; border-radius: 4px; color: #1E40AF; font-size: 0.85rem; line-height: 1.55; margin-bottom: 16px; }
+  .tip strong { display: block; margin-bottom: 4px; }
+</style>
+
+<div class="email-preview-page">
+  <div class="epp-header">
+    <div>
+      <h1>Email Preview</h1>
+      <p class="epp-subtitle">Live render of every outbound email with your current brand tokens. Edit colors in <a href="/admin/design">Design</a> and refresh.</p>
+    </div>
+    <a href="/admin/design" class="back">← Back to Design</a>
+  </div>
+
+  <div class="epp-grid">
+    <aside class="epp-sidebar">
+      <div class="epp-card">
+        <h3>Brand Palette</h3>
+        <div class="swatch-row"><span class="swatch" style="background:<%= theme.c_primary %>"></span><span class="name">Primary</span><span class="hex"><%= theme.c_primary %></span></div>
+        <div class="swatch-row"><span class="swatch" style="background:<%= theme.c_accent %>"></span><span class="name">Accent</span><span class="hex"><%= theme.c_accent %></span></div>
+        <div class="swatch-row"><span class="swatch" style="background:<%= theme.c_bg %>"></span><span class="name">Background</span><span class="hex"><%= theme.c_bg %></span></div>
+        <div class="swatch-row"><span class="swatch" style="background:<%= theme.c_white %>"></span><span class="name">Surface</span><span class="hex"><%= theme.c_white %></span></div>
+      </div>
+
+      <div class="epp-card">
+        <h3>Auto-derived (email)</h3>
+        <div class="swatch-row"><span class="swatch" style="background:<%= theme.on_primary %>"></span><span class="name">on_primary</span><span class="hex"><%= theme.on_primary %></span></div>
+        <div class="swatch-row"><span class="swatch" style="background:<%= theme.on_primary_muted %>"></span><span class="name">on_primary_muted</span><span class="hex"><%= theme.on_primary_muted %></span></div>
+        <div class="swatch-row"><span class="swatch" style="background:<%= theme.accent_on_primary %>"></span><span class="name">accent_on_primary</span><span class="hex"><%= theme.accent_on_primary %></span></div>
+        <div class="swatch-row"><span class="swatch" style="background:<%= theme.badge_bg %>"></span><span class="name">badge_bg</span><span class="hex"><%= theme.badge_bg %></span></div>
+        <div class="swatch-row"><span class="swatch" style="background:<%= theme.button_bg %>"></span><span class="name">button_bg</span><span class="hex"><%= theme.button_bg %></span></div>
+      </div>
+
+      <div class="epp-card">
+        <h3>Contrast Check</h3>
+        <% diagnostics.forEach(function(d) { %>
+          <div class="diag-row">
+            <div class="diag-pair">
+              <span style="background:<%= d.bg %>"></span>
+              <span style="background:<%= d.fg %>"></span>
+            </div>
+            <div class="diag-info">
+              <div class="diag-label"><%= d.label %></div>
+              <div class="diag-ratio"><%= d.ratio %>:1</div>
+            </div>
+            <% if (d.aa) { %><span class="badge-ok">AA</span><% } else if (d.aaLarge) { %><span class="badge-warn">AA-Lg</span><% } else { %><span class="badge-fail">FAIL</span><% } %>
+          </div>
+        <% }); %>
+      </div>
+
+      <div class="epp-card">
+        <h3>Typography</h3>
+        <div style="font-size:0.85rem;line-height:1.6;color:var(--on-surface);">
+          <strong style="font-family: '<%= theme.font_heading %>', serif;">Heading:</strong> <%= theme.font_heading %><br>
+          <strong style="font-family: '<%= theme.font_body %>', sans-serif;">Body:</strong> <%= theme.font_body %>
+        </div>
+      </div>
+    </aside>
+
+    <div class="epp-content">
+      <div class="tip">
+        <strong>How tenant email theming works</strong>
+        Emails read your brand tokens (<code>color_primary</code>, <code>color_accent</code>, <code>color_bg</code>, <code>font_heading</code>, <code>font_body</code>) from the Design panel. Text, badge, and button colors are then auto-derived for WCAG contrast — e.g. a light primary color flips header text to dark, and an accent that clashes with primary swaps the badge to a cream-on-primary fallback. Change a color and reload this page to see the new emails.
+      </div>
+
+      <% templates.forEach(function(tpl) { %>
+        <div class="preview-block">
+          <div class="preview-head">
+            <h2><%= tpl.label %></h2>
+            <a href="/admin/design/email-preview/<%= tpl.key %>" target="_blank" rel="noopener">Open standalone ↗</a>
+          </div>
+          <iframe class="preview-frame" src="/admin/design/email-preview/<%= tpl.key %>" loading="lazy" title="<%= tpl.label %> preview"></iframe>
+        </div>
+      <% }); %>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

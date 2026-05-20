@@ -1,6 +1,21 @@
 # Recent Changes Summary
 
-Generated: 2026-05-18T07:30:00.019Z
+Generated: 2026-05-20T07:30:00.037Z
+
+---
+
+## Commit: wired in consumable apis for interconnectivity on tennat accounts. admin menu reorganized, inquires into email mrkting
+
+- **Hash:** `cb2962a`
+- **Author:** Scott
+- **Date:** 5/18/2026
+- **Changes:** 100 files, +54771/-946 lines
+
+### Modified Areas:
+
+**Backend:** 23 files
+**Views:** 38 files
+**Documentation:** 4 files
 
 ---
 
@@ -59,22 +74,6 @@ Generated: 2026-05-18T07:30:00.019Z
 
 ### Modified Areas:
 
-
----
-
-## Commit: games updates mods winrose
-
-- **Hash:** `f030651`
-- **Author:** Scott
-- **Date:** 4/28/2026
-- **Changes:** 154 files, +103489/-3120 lines
-
-### Modified Areas:
-
-**Backend:** 25 files
-**Views:** 42 files
-**Scripts:** 2 files
-**Documentation:** 7 files
 
 ---
 

@@ -6,22 +6,35 @@
     <h1>Write an Article</h1>
     <p>Share your voice with Greeley.</p>
   </div>
-  <form class="content-form" action="/posts" method="POST" enctype="multipart/form-data">
+  <% if (user && (user.isAdmin || user.isVerified)) { %>
+  <div class="ai-assist-bar">
+    <strong>AI assist:</strong>
+    <button type="button" class="btn btn-outline btn-xs" data-ai="draft">Draft from topic</button>
+    <button type="button" class="btn btn-outline btn-xs" data-ai="headlines">Suggest headlines</button>
+    <button type="button" class="btn btn-outline btn-xs" data-ai="tags">Suggest tags</button>
+    <button type="button" class="btn btn-outline btn-xs" data-ai="image">Generate cover image</button>
+    <a href="/admin/ai" class="btn btn-outline btn-xs">Open AI Studio →</a>
+    <span class="ai-status" id="ai-status"></span>
+  </div>
+  <% } %>
+  <form class="content-form" action="/posts" method="POST" enctype="multipart/form-data" id="post-form">
     <div class="form-group">
       <label>Title</label>
-      <input type="text" name="title" placeholder="Give it a bold headline..." required>
+      <input type="text" name="title" id="post-title" placeholder="Give it a bold headline..." required>
     </div>
     <div class="form-group">
       <label>Cover Image</label>
       <input type="file" name="coverImage" accept="image/*">
+      <input type="hidden" name="coverImageUrl" id="cover-image-url">
+      <div id="ai-cover-preview"></div>
     </div>
     <div class="form-group">
       <label>Tags <span class="hint">(comma-separated)</span></label>
-      <input type="text" name="tags" placeholder="politics, local news, development">
+      <input type="text" name="tags" id="post-tags" placeholder="politics, local news, development">
     </div>
     <div class="form-group">
       <label>Content</label>
-      <textarea name="body" rows="16" placeholder="Tell the story..." required></textarea>
+      <textarea name="body" id="post-body" rows="16" placeholder="Tell the story..." required></textarea>
     </div>
     <div class="form-actions">
       <a href="/posts" class="btn btn-outline">Cancel</a>
@@ -29,4 +42,7 @@
     </div>
   </form>
 </main>
+<% if (user && (user.isAdmin || user.isVerified)) { %>
+<script src="/js/post-ai-assist.js"></script>
+<% } %>
 <%- include('../partials/footer') %>

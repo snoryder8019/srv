@@ -19,6 +19,18 @@ exports.ensureRole = (...roles) => (req, res, next) => {
   res.status(403).render('error', { message: 'You do not have permission to access this page.' });
 };
 
+exports.ensureAiAccess = (req, res, next) => {
+  if (!req.isAuthenticated()) {
+    req.flash('error', 'Please sign in to continue.');
+    return res.redirect('/auth/google');
+  }
+  if (req.user.isAdmin || req.user.isVerified) return next();
+  if (req.xhr || req.path.startsWith('/api/') || req.headers.accept?.includes('application/json')) {
+    return res.status(403).json({ error: 'AI tools require verified-author or admin access.' });
+  }
+  res.status(403).render('error', { message: 'AI tools require verified-author or admin access.' });
+};
+
 exports.ensureCan = (perm) => (req, res, next) => {
   if (!req.isAuthenticated()) {
     req.flash('error', 'Please sign in to continue.');

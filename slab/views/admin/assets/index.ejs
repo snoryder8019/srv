@@ -101,19 +101,37 @@
     background: var(--surface); border: 2px solid transparent;
     border-radius: 2px; cursor: pointer;
     transition: all 0.12s; overflow: hidden;
-    aspect-ratio: 1;
-    display: flex; flex-direction: column;
+    display: block;
+    align-self: start;
   }
   .asset-card:hover { border-color: var(--border); box-shadow: 0 2px 8px rgba(15,27,48,0.08); }
   .asset-card.selected { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(201,168,72,0.15); }
+  /* Padding-top 100% trick: forces thumb to be a true square regardless of
+     parent flex/grid sizing. Children are absolutely positioned inside. */
   .asset-thumb {
-    flex: 1; overflow: hidden; background: var(--ivory);
+    position: relative;
+    width: 100%;
+    padding-top: 100%;
+    overflow: hidden;
+    background: var(--ivory);
+  }
+  .asset-thumb > img, .asset-thumb > video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover; display: block;
+  }
+  .asset-thumb > .asset-icon {
+    position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; color: var(--slate);
   }
-  .asset-thumb img, .asset-thumb video {
-    width: 100%; height: 100%; object-fit: cover; display: block;
+  /* SVG icons (from imported packs) — contain + padding so they aren't cropped */
+  .asset-thumb.is-svg { background: var(--surface); }
+  .asset-thumb.is-svg > img {
+    object-fit: contain;
+    padding: 12px;
+    box-sizing: border-box;
   }
-  .asset-thumb .asset-icon { font-size: 2rem; color: var(--slate); }
   .asset-name {
     padding: 6px 8px; font-size: 0.65rem; font-weight: 500;
     color: var(--slate); white-space: nowrap; overflow: hidden;
@@ -351,6 +369,7 @@
 <div class="topbar">
   <div class="topbar-title">Asset Control Center</div>
   <div class="topbar-actions">
+    <a href="/admin/assets/packs" class="btn btn-ghost btn-sm">Asset Packs</a>
     <a href="/admin/assets/social" class="btn btn-ghost btn-sm">Asset Generator</a>
     <a href="/admin/assets/trim" class="btn btn-ghost btn-sm">Video Trimmer</a>
   </div>
@@ -447,6 +466,7 @@
         <option value="">Attach to client...</option>
       </select>
       <button class="btn btn-gold btn-sm" id="bulkMoveBtn">Move</button>
+      <button class="btn btn-ghost btn-sm" id="bulkDownloadBtn">⤓ Download</button>
       <button class="btn btn-danger btn-sm" id="bulkDeleteBtn">Delete</button>
     </div>
 
@@ -482,6 +502,7 @@
     </div>
     <div class="meta-footer" id="metaFooter" style="display:none;">
       <button class="btn btn-navy btn-sm" id="saveMetaBtn">Save</button>
+      <a class="btn btn-ghost btn-sm" id="downloadAssetBtn" href="#" download>⤓ Download</a>
       <button class="btn btn-danger btn-sm" id="deleteAssetBtn">Delete</button>
     </div>
   </div>

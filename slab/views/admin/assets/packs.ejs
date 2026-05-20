@@ -1,0 +1,241 @@
+<%- include('../partials/head', { title: 'Asset Packs' }) %>
+<%- include('../partials/sidebar', { page: 'assets', user: user }) %>
+
+<style>
+  .pp-wrap { padding: 16px 20px 80px; max-width: 1400px; margin: 0 auto; }
+  .pp-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+  .pp-title { font-size: 1.4rem; font-weight: 700; color: var(--on-surface); }
+  .pp-sub { font-size: 0.78rem; color: var(--slate); margin-top: 2px; }
+
+  .pp-packs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .pp-pack-btn {
+    padding: 8px 14px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 3px; cursor: pointer; font-size: 0.78rem; color: var(--slate); font-weight: 600;
+    transition: all 0.15s;
+  }
+  .pp-pack-btn:hover { color: var(--navy); border-color: var(--navy-mid); }
+  .pp-pack-btn.active { background: var(--navy); color: var(--surface); border-color: var(--navy); }
+  .pp-pack-btn .pp-license { font-size: 0.55rem; opacity: 0.7; margin-left: 6px; letter-spacing: 0.08em; }
+
+  .pp-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .pp-search { flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.82rem; background: var(--surface); color: var(--on-surface); }
+  .pp-folder-sel { padding: 8px 10px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.78rem; background: var(--surface); color: var(--on-surface); }
+  .pp-count { font-size: 0.72rem; color: var(--slate); }
+  .pp-import-btn { background: var(--navy); color: var(--surface); border: none; padding: 8px 16px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border-radius: 3px; }
+  .pp-import-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .pp-grid {
+    display: grid; gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+  .pp-tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 3px;
+    padding: 12px 6px 8px; cursor: pointer; transition: all 0.12s;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    position: relative;
+  }
+  .pp-tile:hover { border-color: var(--navy-mid); }
+  .pp-tile.selected { border-color: var(--gold); background: rgba(201,168,72,0.08); }
+  .pp-tile .pp-tile-icon { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; color: var(--on-surface); }
+  .pp-tile .pp-tile-icon img, .pp-tile .pp-tile-icon svg { max-width: 100%; max-height: 100%; }
+  .pp-tile .pp-tile-name { font-size: 0.62rem; color: var(--slate); text-align: center; word-break: break-word; line-height: 1.2; }
+  .pp-tile .pp-tile-check {
+    position: absolute; top: 4px; right: 4px; width: 16px; height: 16px;
+    border: 1px solid var(--border); background: var(--surface); border-radius: 2px;
+    display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--gold);
+  }
+  .pp-tile.selected .pp-tile-check::after { content: '✓'; }
+
+  .pp-status { padding: 10px 0; font-size: 0.78rem; color: var(--slate); }
+  .pp-empty { padding: 40px 20px; text-align: center; color: var(--slate); font-size: 0.85rem; }
+  .pp-error { padding: 10px; background: rgba(185,28,28,0.08); color: #B91C1C; font-size: 0.78rem; border-radius: 3px; }
+
+  .pp-license-bar {
+    margin-top: 16px; padding: 10px 12px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 3px; font-size: 0.7rem; color: var(--slate);
+  }
+  .pp-license-bar a { color: var(--navy); }
+
+  .pp-toast {
+    position: fixed; bottom: 24px; right: 24px; padding: 12px 18px;
+    background: var(--navy); color: var(--surface); border-radius: 4px;
+    font-size: 0.82rem; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    z-index: 1000; opacity: 0; transition: opacity 0.2s;
+  }
+  .pp-toast.show { opacity: 1; }
+  .pp-toast.error { background: #B91C1C; }
+</style>
+
+<div class="pp-wrap">
+  <div class="pp-head">
+    <div>
+      <div class="pp-title">Asset Packs</div>
+      <div class="pp-sub">Browse free CC0 / MIT / ISC icon and illustration libraries. Selected items copy into your asset library.</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <a href="/admin/assets" class="btn btn-ghost btn-sm">← Back to Assets</a>
+    </div>
+  </div>
+
+  <div class="pp-packs" id="ppPacks">
+    <% packs.forEach((p, i) => { %>
+      <button class="pp-pack-btn <%= i === 0 ? 'active' : '' %>" data-pack="<%= p.id %>">
+        <%= p.name %><span class="pp-license"><%= p.license %></span>
+      </button>
+    <% }) %>
+  </div>
+
+  <div class="pp-toolbar">
+    <input type="text" class="pp-search" id="ppSearch" placeholder="Search icons by name (e.g. arrow, user, check)…">
+    <label style="font-size:0.72rem;color:var(--slate);">Folder:</label>
+    <select class="pp-folder-sel" id="ppFolder">
+      <option value="icons">icons</option>
+      <option value="general">general</option>
+      <option value="sections">sections</option>
+      <option value="portfolio">portfolio</option>
+      <option value="blog">blog</option>
+      <option value="pages">pages</option>
+    </select>
+    <span class="pp-count" id="ppCount">—</span>
+    <button class="pp-import-btn" id="ppImportBtn" disabled>Import 0 selected</button>
+  </div>
+
+  <div class="pp-status" id="ppStatus">Choose a pack to browse…</div>
+  <div class="pp-grid" id="ppGrid"></div>
+
+  <div class="pp-license-bar" id="ppLicense"></div>
+</div>
+
+<div class="pp-toast" id="ppToast"></div>
+
+<script>
+(function() {
+  const PAGE_LIMIT = 200;
+  const packs = <%- JSON.stringify(packs) %>;
+  const grid = document.getElementById('ppGrid');
+  const search = document.getElementById('ppSearch');
+  const status = document.getElementById('ppStatus');
+  const count = document.getElementById('ppCount');
+  const importBtn = document.getElementById('ppImportBtn');
+  const licenseBar = document.getElementById('ppLicense');
+  const folderSel = document.getElementById('ppFolder');
+  const toast = document.getElementById('ppToast');
+
+  let activePack = packs[0]?.id || null;
+  let selected = new Set();
+  let lastQuery = '';
+  let searchTimer = null;
+
+  function showToast(msg, isError) {
+    toast.textContent = msg;
+    toast.classList.toggle('error', !!isError);
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
+  function updateImportBtn() {
+    importBtn.disabled = selected.size === 0;
+    importBtn.textContent = `Import ${selected.size} selected`;
+  }
+
+  function renderLicense(packMeta) {
+    if (!packMeta) { licenseBar.innerHTML = ''; return; }
+    licenseBar.innerHTML =
+      `<strong>${packMeta.name}</strong> — License: <strong>${packMeta.license}</strong>. ` +
+      `Source: <a href="${packMeta.source}" target="_blank" rel="noopener">${packMeta.source}</a>. ` +
+      `Free for commercial use. Imported files are copied into your tenant's S3 bucket; the upstream source is referenced in the asset metadata.`;
+  }
+
+  async function loadPack(packId, q) {
+    activePack = packId;
+    selected.clear();
+    updateImportBtn();
+    document.querySelectorAll('.pp-pack-btn').forEach(b => b.classList.toggle('active', b.dataset.pack === packId));
+    status.textContent = 'Loading…';
+    grid.innerHTML = '';
+    try {
+      const url = `/admin/assets/packs/${encodeURIComponent(packId)}/items?limit=${PAGE_LIMIT}` + (q ? `&q=${encodeURIComponent(q)}` : '');
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('Failed to load pack (' + r.status + ')');
+      const data = await r.json();
+      renderLicense(data.pack);
+      count.textContent = `${data.items.length} of ${data.total} shown` + (q ? ` for "${q}"` : '');
+      if (!data.items.length) {
+        status.textContent = '';
+        grid.innerHTML = '<div class="pp-empty">No matches.</div>';
+        return;
+      }
+      status.textContent = '';
+      const frag = document.createDocumentFragment();
+      data.items.forEach(item => {
+        const tile = document.createElement('div');
+        tile.className = 'pp-tile';
+        tile.dataset.name = item.name;
+        tile.innerHTML =
+          '<div class="pp-tile-icon"><img src="' + item.url + '" loading="lazy" alt="' + item.name + '"></div>' +
+          '<div class="pp-tile-name">' + item.name + '</div>' +
+          '<div class="pp-tile-check"></div>';
+        tile.addEventListener('click', () => {
+          if (selected.has(item.name)) { selected.delete(item.name); tile.classList.remove('selected'); }
+          else { selected.add(item.name); tile.classList.add('selected'); }
+          updateImportBtn();
+        });
+        frag.appendChild(tile);
+      });
+      grid.appendChild(frag);
+    } catch (err) {
+      status.innerHTML = '<div class="pp-error">' + err.message + '</div>';
+    }
+  }
+
+  // Pack switcher
+  document.querySelectorAll('.pp-pack-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      search.value = '';
+      lastQuery = '';
+      loadPack(btn.dataset.pack, '');
+    });
+  });
+
+  // Debounced search
+  search.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      const q = search.value.trim();
+      if (q === lastQuery) return;
+      lastQuery = q;
+      loadPack(activePack, q);
+    }, 280);
+  });
+
+  // Import
+  importBtn.addEventListener('click', async () => {
+    if (!selected.size) return;
+    const names = [...selected];
+    importBtn.disabled = true;
+    importBtn.textContent = `Importing ${names.length}…`;
+    try {
+      const r = await fetch('/admin/assets/packs/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId: activePack, names, folder: folderSel.value }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Import failed');
+      const okN = data.importedCount;
+      const errN = (data.errors || []).length;
+      showToast(`Imported ${okN}${errN ? ` (${errN} skipped)` : ''}`, false);
+      selected.clear();
+      document.querySelectorAll('.pp-tile.selected').forEach(t => t.classList.remove('selected'));
+    } catch (err) {
+      showToast('Error: ' + err.message, true);
+    } finally {
+      updateImportBtn();
+    }
+  });
+
+  // Initial load
+  if (activePack) loadPack(activePack, '');
+})();
+</script>
+</div></div></body></html>

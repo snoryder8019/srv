@@ -633,6 +633,7 @@
       </div>
 
       <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">LOGO</div>
+      <div class="ep-hint" style="margin-bottom:6px;">Upload or replace logo images on the <a href="#" onclick="dpSwitch('brand');document.getElementById('brand-images')?.scrollIntoView({behavior:'smooth'});return false;" style="color:var(--navy);font-weight:600;">Brand tab →</a></div>
       <div class="ep-row">
         <div class="ep-field">
           <label>Logo Display</label>
@@ -1217,6 +1218,80 @@
         <label>CTA Link</label>
         <input type="text" name="hero_cta_secondary_link" value="<%= copy.hero_cta_secondary_link || '' %>" placeholder="/portfolio">
       </div>
+    </div>
+  </div>
+</div>
+
+<%# ─── 5b. HERO SLIDES (slideshow hero style) ─── %>
+<div class="editor-section" data-tab="copy">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Hero Slides <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-hint" style="margin-bottom:10px;">
+      Used when <strong>Hero Style = Slideshow</strong>. Each slide gets a background image, headline, optional tag chip,
+      and a link target. Quick-anchor buttons jump straight to common public landing sections.
+    </div>
+    <%
+      const _slideIdxAdm = new Set();
+      Object.keys(copy).forEach(k => { const m = k.match(/^slide(\d+)_/); if (m) _slideIdxAdm.add(parseInt(m[1], 10)); });
+      const _slideArr = [..._slideIdxAdm].sort((a, b) => a - b);
+      if (_slideArr.length === 0) _slideArr.push(1, 2, 3);
+    %>
+    <div class="dp-repeater"
+         data-prefix="slide"
+         data-noun="Slide"
+         data-fields='[{"key":"image","label":"Background Image","type":"text","placeholder":"/uploads/..."},{"key":"tag","label":"Tag Chip","type":"text","placeholder":"e.g. FEATURED"},{"key":"eyebrow","label":"Eyebrow","type":"text"},{"key":"heading","label":"Heading","type":"text"},{"key":"sub","label":"Subtext","type":"textarea","rows":2},{"key":"link","label":"Link","type":"text","placeholder":"#services or /pricing"},{"key":"cta","label":"CTA Button Text","type":"text","placeholder":"Learn more"}]'>
+      <% _slideArr.forEach(function(i, iArr) { %>
+      <div class="dp-rep-item" data-idx="<%= i %>">
+        <div class="dp-rep-head">
+          <span>Slide <%= i %></span>
+          <div class="dp-rep-actions">
+            <button type="button" data-dir="-1" onclick="repMove(this, -1)" title="Move up"<%= iArr === 0 ? ' disabled' : '' %>>↑</button>
+            <button type="button" data-dir="1" onclick="repMove(this, 1)" title="Move down"<%= iArr === _slideArr.length - 1 ? ' disabled' : '' %>>↓</button>
+            <button type="button" class="dp-rep-remove" onclick="repRemove(this)" title="Remove this slide">✕</button>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Background Image URL</label>
+          <input type="text" name="slide<%= i %>_image" value="<%= copy['slide' + i + '_image'] || '' %>" placeholder="/uploads/...">
+        </div>
+        <div class="ep-row">
+          <div class="ep-field">
+            <label>Tag Chip <span style="font-weight:400;color:var(--on-surface-muted);">(small badge)</span></label>
+            <input type="text" name="slide<%= i %>_tag" value="<%= copy['slide' + i + '_tag'] || '' %>" placeholder="e.g. FEATURED, NEW">
+          </div>
+          <div class="ep-field">
+            <label>Eyebrow</label>
+            <input type="text" name="slide<%= i %>_eyebrow" value="<%= copy['slide' + i + '_eyebrow'] || '' %>" placeholder="optional small text above heading">
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>Heading</label>
+          <input type="text" name="slide<%= i %>_heading" value="<%= copy['slide' + i + '_heading'] || '' %>">
+        </div>
+        <div class="ep-field">
+          <label>Subtext</label>
+          <textarea name="slide<%= i %>_sub" rows="2"><%= copy['slide' + i + '_sub'] || '' %></textarea>
+        </div>
+        <div class="ep-field">
+          <label>Link Target — wraps the whole slide, so a click anywhere navigates</label>
+          <input type="text" name="slide<%= i %>_link" id="slide_<%= i %>_link" value="<%= copy['slide' + i + '_link'] || '' %>" placeholder="#services, /pricing, https://...">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+            <% ['#services','#portfolio','#about','#process','#pricing','#contact','/blog','/start'].forEach(function(anchor) { %>
+              <button type="button"
+                      onclick="document.getElementById('slide_<%= i %>_link').value='<%= anchor %>';document.getElementById('slide_<%= i %>_link').dispatchEvent(new Event('input',{bubbles:true}));"
+                      style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:4px 8px;border:1px solid var(--border);border-radius:2px;background:var(--ivory);color:var(--navy);cursor:pointer;font-family:var(--font-body);">→ <%= anchor %></button>
+            <% }); %>
+          </div>
+        </div>
+        <div class="ep-field">
+          <label>CTA Button Text <span style="font-weight:400;color:var(--on-surface-muted);">(only rendered if Link is set)</span></label>
+          <input type="text" name="slide<%= i %>_cta" value="<%= copy['slide' + i + '_cta'] || '' %>" placeholder="Learn more">
+        </div>
+      </div>
+      <% }); %>
+      <button type="button" class="dp-rep-add" onclick="repAdd(this)">+ Add Slide</button>
     </div>
   </div>
 </div>
@@ -1995,6 +2070,74 @@
   </button>
   <div class="editor-section-body">
 
+    <%# ── Hero style picker (split / slideshow / image_card) ── %>
+    <div class="ep-field">
+      <label>Hero Style</label>
+      <select name="hero_style" id="field-hero_style" onchange="document.querySelectorAll('[data-hero-style-only]').forEach(function(el){ el.style.display = (el.getAttribute('data-hero-style-only').split(',').indexOf(this.value) >= 0) ? '' : 'none'; }.bind(this));">
+        <option value="split"       <%= (design.hero_style || 'split') === 'split'       ? 'selected' : '' %>>Split — Text-Typeface Heavy (current)</option>
+        <option value="slideshow"   <%= design.hero_style === 'slideshow'                ? 'selected' : '' %>>Slideshow — Multi-slide with dots + linkable</option>
+        <option value="image_card"  <%= design.hero_style === 'image_card'               ? 'selected' : '' %>>Image Card — Static image with shadow card overlay</option>
+      </select>
+      <div class="ep-hint" style="margin-top:6px;">Switch how the top of the landing page renders. Slideshow uses the "Hero Slides" panel below for content.</div>
+    </div>
+
+    <%# ── Slideshow-only controls ── %>
+    <div data-hero-style-only="slideshow" style="<%= design.hero_style === 'slideshow' ? '' : 'display:none;' %>border:1px solid var(--border);border-radius:2px;padding:12px;margin:10px 0;background:var(--surface);">
+      <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:10px;">Slideshow Settings</div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Auto-advance (seconds, 0 = off)</label>
+          <input type="number" min="0" max="60" step="1" name="hero_slideshow_interval" value="<%= design.hero_slideshow_interval || '6' %>">
+        </div>
+        <div class="ep-field">
+          <label>Active Dot Color</label>
+          <input type="color" name="hero_slideshow_dot_color" value="<%= design.hero_slideshow_dot_color || design.color_accent || '#C9A848' %>">
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+        <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" name="hero_slideshow_dots" <%= design.hero_slideshow_dots !== 'false' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);"> Show dot indicators
+        </label>
+        <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" name="hero_slideshow_arrows" <%= design.hero_slideshow_arrows !== 'false' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);"> Show prev/next arrows
+        </label>
+      </div>
+      <div class="ep-hint" style="margin-top:8px;">Add slides in the <strong>Hero Slides</strong> copy panel (under the Copy tab). Each slide can have its own image, heading, tag, and link target.</div>
+    </div>
+
+    <%# ── Image-card only controls ── %>
+    <div data-hero-style-only="image_card" style="<%= design.hero_style === 'image_card' ? '' : 'display:none;' %>border:1px solid var(--border);border-radius:2px;padding:12px;margin:10px 0;background:var(--surface);">
+      <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:10px;">Image Card Settings</div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Card Position</label>
+          <select name="hero_card_position">
+            <option value="left"   <%= (design.hero_card_position || 'left') === 'left'   ? 'selected' : '' %>>Left</option>
+            <option value="center" <%= design.hero_card_position === 'center'             ? 'selected' : '' %>>Center</option>
+            <option value="right"  <%= design.hero_card_position === 'right'              ? 'selected' : '' %>>Right</option>
+          </select>
+        </div>
+        <div class="ep-field">
+          <label>Card Blur (<%= design.hero_card_blur || '8' %>px)</label>
+          <input type="range" min="0" max="24" step="1" name="hero_card_blur" value="<%= design.hero_card_blur || '8' %>" style="width:100%;">
+        </div>
+      </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Card Background (CSS color)</label>
+          <input type="text" name="hero_card_bg" value="<%= design.hero_card_bg || '' %>" placeholder="rgba(253,252,250,0.92)">
+        </div>
+        <div class="ep-field">
+          <label>Card Text Color</label>
+          <input type="text" name="hero_card_text_color" value="<%= design.hero_card_text_color || '' %>" placeholder="auto">
+        </div>
+      </div>
+      <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;">
+        <input type="checkbox" name="hero_card_shadow" <%= design.hero_card_shadow !== 'false' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);"> Drop shadow on card
+      </label>
+      <div class="ep-hint" style="margin-top:8px;">Background uses the <strong>Hero Section Image</strong> (Assets → Hero) or the full-bleed media below. The card holds your existing hero copy with the shadow-box treatment.</div>
+    </div>
+
     <%# ── Full-bleed hero background (image or video from tenant assets) ── %>
     <div id="heroBgMediaBlock" style="border:1px solid var(--border);border-radius:2px;padding:10px 12px;margin-bottom:12px;background:var(--surface);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;">
@@ -2228,54 +2371,54 @@
   <form id="tpl-deact-<%= tpl._id %>" action="/admin/templates/<%= tpl._id %>/deactivate" method="POST" hidden></form>
 <% }); %>
 
-<%# ─── 14. BRAND IMAGES ─── %>
-<div class="editor-section" data-tab="brand">
+<%# ─── 14. LOGOS & BRAND IMAGES ─── %>
+<div class="editor-section open" id="brand-images" data-tab="brand">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
-    Brand Images <span class="arrow">&#9654;</span>
+    Logos &amp; Brand Images <span class="arrow">&#9654;</span>
   </button>
   <div class="editor-section-body">
     <%
       const logoSlots = [
-        { slot: 'logo_primary', label: 'Primary Logo' },
-        { slot: 'logo_white',   label: 'White Logo' },
-        { slot: 'logo_icon',    label: 'Icon/Favicon' },
-        { slot: 'banner',       label: 'Banner' },
+        { slot: 'logo_primary', label: 'Primary Logo',  hint: 'Header & default logo' },
+        { slot: 'logo_white',   label: 'White Logo',    hint: 'For dark backgrounds (footer)' },
+        { slot: 'logo_icon',    label: 'Icon / Favicon', hint: 'Browser tab + small contexts' },
+        { slot: 'banner',       label: 'Banner',        hint: 'Hero / share image' },
       ];
     %>
-    <div class="brand-img-grid">
-      <% logoSlots.forEach(ls => { %>
-        <% const existing = brandImages.find(i => i.slot === ls.slot); %>
-        <div class="brand-img-slot">
-          <% if (existing) { %>
-            <img src="<%= existing.url %>" alt="<%= ls.label %>" style="<%= ls.slot === 'logo_white' ? 'background:var(--navy-deep);' : '' %>">
-          <% } else { %>
-            <div style="height:60px;background:var(--ivory);display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:var(--slate);">None</div>
-          <% } %>
-          <div class="lbl"><%= ls.label %></div>
-        </div>
-      <% }) %>
-    </div>
-    <div style="margin-top:10px;">
-      <div class="ep-hint" style="margin-bottom:6px;">Upload and manage images on the brand images page.</div>
-      <% const supportCount = brandImages.filter(i => i.slot === 'support').length; %>
-      <div class="ep-hint"><%= supportCount %> support image<%= supportCount !== 1 ? 's' : '' %> uploaded.</div>
-    </div>
+    <div class="ep-hint" style="margin-bottom:10px;">Upload your logos and brand assets below. Each slot replaces the previous file when you upload a new one. Changes appear after a refresh.</div>
 
-    <%# Inline upload forms for logos %>
-    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
-      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin-bottom:8px;">UPLOAD / REPLACE</div>
+    <%# Combined preview + upload row per slot %>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
       <% logoSlots.forEach(ls => { %>
         <% const existing = brandImages.find(i => i.slot === ls.slot); %>
-        <div style="margin-bottom:8px;">
-          <div style="font-size:0.68rem;color:var(--on-surface);margin-bottom:4px;"><%= ls.label %></div>
+        <div style="border:1px solid var(--border);border-radius:3px;padding:10px;display:flex;flex-direction:column;gap:6px;">
+          <div style="font-size:0.7rem;font-weight:700;color:var(--on-surface);letter-spacing:0.04em;"><%= ls.label %></div>
+          <div style="font-size:0.6rem;color:var(--slate);"><%= ls.hint %></div>
+          <div style="height:70px;border:1px dashed var(--border);background:<%= ls.slot === 'logo_white' ? 'var(--navy-deep)' : 'var(--ivory)' %>;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+            <% if (existing) { %>
+              <img src="<%= existing.url %>" alt="<%= ls.label %>" style="max-height:60px;max-width:90%;object-fit:contain;">
+            <% } else { %>
+              <span style="font-size:0.62rem;color:var(--slate);">No image uploaded</span>
+            <% } %>
+          </div>
           <form method="POST" action="/admin/design/images" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
             <input type="hidden" name="slot" value="<%= ls.slot %>">
             <input type="hidden" name="label" value="<%= ls.label %>">
-            <input type="file" name="image" accept="image/*" required style="font-size:0.65rem;max-width:160px;">
-            <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:3px 8px;"><%= existing ? 'Replace' : 'Upload' %></button>
+            <input type="file" name="image" accept="image/*" required style="font-size:0.62rem;flex:1;min-width:0;">
+            <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.62rem;padding:4px 10px;"><%= existing ? 'Replace' : 'Upload' %></button>
           </form>
+          <% if (existing) { %>
+            <form method="POST" action="/admin/design/images/<%= existing._id %>/delete" style="margin:0;" onsubmit="return confirm('Remove this <%= ls.label %>?');">
+              <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.58rem;padding:2px 6px;color:var(--slate);">Remove</button>
+            </form>
+          <% } %>
         </div>
       <% }) %>
+    </div>
+
+    <% const supportCount = brandImages.filter(i => i.slot === 'support').length; %>
+    <div class="ep-hint" style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border);">
+      <%= supportCount %> additional support image<%= supportCount !== 1 ? 's' : '' %> uploaded. Manage these from the <a href="/admin/assets" style="color:var(--navy);">Assets page</a>.
     </div>
   </div>
 </div>

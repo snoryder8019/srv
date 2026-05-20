@@ -97,10 +97,25 @@ export const DESIGN_DEFAULTS = {
   model_header_enabled: 'false',
   model_logo_enabled:   'false',
   // ── Hero & section styling ──
+  // 'split'       → current split-panel text-typeface heavy hero (default)
+  // 'slideshow'   → fading slides with dots + linkable slide CTAs (slide{N}_* copy keys)
+  // 'image_card'  → static background image with a shadow card over big typeface
+  hero_style:           'split',
   hero_overlay_opacity: '55',          // 0-100, darkness of overlay on hero bg image
   hero_overlay_color:   '',            // hex — defaults to color_primary_deep if empty
   hero_text_align:      'left',        // left, center, right
   hero_height:          '100vh',       // 100vh, 80vh, 60vh, auto
+  // ── Slideshow hero ──
+  hero_slideshow_interval: '6',        // seconds between auto-advance (0 = manual only)
+  hero_slideshow_dots:     'true',     // show dot indicators
+  hero_slideshow_arrows:   'true',     // show prev/next arrows
+  hero_slideshow_dot_color:'',         // empty → color_accent
+  // ── Image-card hero (static image + shadow card) ──
+  hero_card_position:   'left',        // left, center, right
+  hero_card_bg:         '',            // empty → semi-opaque surface
+  hero_card_text_color: '',            // empty → on_surface
+  hero_card_blur:       '8',           // 0-24 px backdrop blur
+  hero_card_shadow:     'true',        // drop shadow on card
   section_animation:    'fade',        // none, fade, slide
   // ── Scroll-snap layout ──
   snap_enabled:         'false',       // full-page snap scrolling (ACM-style)
@@ -217,7 +232,9 @@ export const THEME_KEYS = [
   'color_success', 'color_danger',
   'font_heading', 'font_body',
   'portfolio_layout', 'blog_layout', 'nav_logo_display', 'nav_logo_split', 'landing_layout',
-  'hero_overlay_opacity', 'hero_text_align', 'hero_height',
+  'hero_style', 'hero_overlay_opacity', 'hero_text_align', 'hero_height',
+  'hero_slideshow_interval', 'hero_slideshow_dots', 'hero_slideshow_arrows', 'hero_slideshow_dot_color',
+  'hero_card_position', 'hero_card_bg', 'hero_card_text_color', 'hero_card_blur', 'hero_card_shadow',
   'snap_enabled', 'gradient_enabled', 'gradient_angle',
   'hero_bg_pattern', 'card_hover_accent', 'card_border_radius',
   'hero_bg_media_url', 'hero_bg_media_type', 'hero_bg_media_poster',
@@ -346,7 +363,9 @@ router.post('/', async (req, res) => {
         || key === 'header_sticky' || key === 'header_blur' || key === 'header_shadow'
         || key === 'footer_show_brand' || key === 'footer_show_tagline'
         || key === 'footer_show_logo' || key === 'footer_show_social'
-        || key === 'footer_show_newsletter' || key === 'footer_show_qr';
+        || key === 'footer_show_newsletter' || key === 'footer_show_qr'
+        || key === 'hero_slideshow_dots' || key === 'hero_slideshow_arrows'
+        || key === 'hero_card_shadow';
       const value = isBool
         ? (req.body[key] === 'on' ? 'true' : 'false')
         : (req.body[key] !== undefined && req.body[key] !== '' ? req.body[key] : DESIGN_DEFAULTS[key]);
@@ -370,6 +389,7 @@ router.post('/', async (req, res) => {
       /^about_stat\d+_(num|label)$/,
       /^pricing_tier\d+_(amount|unit|label|equiv|cta_link|featured)$/,
       /^contact_field\d+_(name|label|placeholder|type|required|options)$/,
+      /^slide\d+_(image|heading|sub|eyebrow|link|cta|tag)$/,
     ];
     const isRepeaterKey = (k) => REPEATER_PATTERNS.some(rx => rx.test(k));
     const repeaterCheckboxes = (k) => /^pricing_tier\d+_featured$/.test(k)
@@ -829,6 +849,127 @@ ${designCtx}`;
   } catch (err) {
     console.error('Design agent error:', err);
     res.status(500).json({ error: 'Agent error: ' + err.message });
+  }
+});
+
+/* ─── Email preview ───────────────────────────────────────────────
+ * Renders the tenant's transactional email templates with their
+ * current design tokens. Templates resolve `c_primary`, `accent_on_primary`,
+ * `badge_bg`, `button_text`, etc. via plugins/mailer.js → themeFromDesign.
+ * ──────────────────────────────────────────────────────────────── */
+const EMAIL_TEMPLATES = [
+  { key: 'invoice',              label: 'Invoice' },
+  { key: 'payment-receipt',      label: 'Payment Receipt' },
+  { key: 'welcome',              label: 'Welcome' },
+  { key: 'booking-confirmation', label: 'Booking Confirmation' },
+  { key: 'password-reset',       label: 'Password Reset' },
+  { key: 'campaign',             label: 'Marketing Campaign' },
+];
+
+async function renderEmailForPreview(key, tenant, theme) {
+  const mailer = await import('../../plugins/mailer.js');
+  switch (key) {
+    case 'invoice':
+      return mailer.renderInvoiceEmail({
+        invoice: {
+          invoiceNumber: 'INV-1042',
+          title: 'Monthly retainer',
+          amount: 1850.00,
+          dueDate: new Date(Date.now() + 5 * 86400000),
+          notes: 'Net 15. Payment via Stripe or ACH. Thanks again for the continued partnership.',
+          lineItems: [
+            { description: 'Hosting + monitoring (May)',       quantity: 1, unitPrice: 149.00 },
+            { description: 'Content updates (4 articles)',     quantity: 4, unitPrice: 175.00 },
+            { description: 'SEO audit & on-page improvements', quantity: 1, unitPrice: 450.00 },
+            { description: 'Strategy call (60 min)',           quantity: 1, unitPrice: 151.00 },
+          ],
+        },
+        clientDoc:  { name: 'Casey Morgan', company: 'Front Range Outfitters', email: 'casey@example.com' },
+        paymentUrl: '#',
+        tenant, theme,
+      });
+    case 'payment-receipt':
+      return mailer.renderPaymentReceiptEmail({
+        payment: { receiptNumber: 'RCT-7741X', invoiceNumber: 'INV-1042', description: 'Monthly retainer', method: 'Visa ending 4242', amount: 1850.00, paidOn: new Date() },
+        clientDoc: { name: 'Casey Morgan' },
+        viewUrl: '#', tenant, theme,
+      });
+    case 'welcome':
+      return mailer.renderWelcomeEmail({
+        user: { name: 'Casey Morgan', email: 'casey@example.com' },
+        dashboardUrl: '#',
+        tagline: `Your account is ready. Build a site, launch in days, and own every byte of it.`,
+        tenant, theme,
+      });
+    case 'booking-confirmation':
+      return mailer.renderBookingConfirmationEmail({
+        booking: {
+          title: 'Discovery call & site walkthrough',
+          start: new Date(Date.now() + 3 * 86400000 + 14.5 * 3600000),
+          location: tenant?.brand?.location || 'Online (Zoom link in calendar invite)',
+          prepNotes: "Bring the top 3 things you want visitors to do on your site. We'll review analytics, sketch the structure, and have an estimate ready.",
+          googleCalUrl: '#', icsUrl: '#', manageUrl: '#',
+        },
+        tenant, theme,
+      });
+    case 'password-reset':
+      return mailer.renderPasswordResetEmail({
+        userEmail: 'casey@example.com',
+        resetUrl: 'https://example.com/auth/reset?token=preview-token',
+        expiresIn: '30 minutes',
+        tenant, theme,
+      });
+    case 'campaign':
+      return mailer.renderCampaignEmail({
+        toEmail: 'casey@example.com', toName: 'Casey',
+        subject: 'A few quick wins',
+        preheader: 'Three things we noticed that could double your inquiries.',
+        body: `Hi Casey,\n\nWe've been keeping an eye on the way prospects move through your site. A few patterns jumped out — and they're easy fixes.\n\n<strong>1. The contact form is a scroll away.</strong> 64% of mobile visitors never reach it.\n\n<strong>2. Your reviews section is underselling you.</strong> Real testimonials sitting below the fold.\n\n<strong>3. The "About" page is your second-most-visited.</strong> People want to know who you are.`,
+        brandDomain: tenant?.domain ? `https://${tenant.domain}` : '',
+        tenant, theme,
+      });
+    default: return null;
+  }
+}
+
+router.get('/email-preview', async (req, res) => {
+  try {
+    const { loadTenantTheme } = await import('../../plugins/mailer.js');
+    const theme = await loadTenantTheme(req.tenant);
+
+    // Compute contrast diagnostics for the panel
+    const { contrastRatio } = await import('../../plugins/colorContrast.js');
+    const diagnostics = [
+      { label: 'Header text on primary',  fg: theme.on_primary,       bg: theme.c_primary },
+      { label: 'Eyebrow on primary',      fg: theme.accent_on_primary, bg: theme.c_primary },
+      { label: 'Badge text on badge bg',  fg: theme.badge_text,       bg: theme.badge_bg },
+      { label: 'Button text on button',   fg: theme.button_text,      bg: theme.button_bg },
+      { label: 'Body text on white',      fg: theme.on_white,         bg: theme.c_white },
+    ].map(d => {
+      const r = contrastRatio(d.fg, d.bg);
+      return { ...d, ratio: r.toFixed(2), aa: r >= 4.5, aaLarge: r >= 3 };
+    });
+
+    res.render('admin/design/email-preview', {
+      user: req.adminUser, page: 'design', title: 'Email Preview',
+      tenant: req.tenant, theme, diagnostics, templates: EMAIL_TEMPLATES,
+    });
+  } catch (err) {
+    console.error('Email preview error:', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+router.get('/email-preview/:template', async (req, res) => {
+  try {
+    const { loadTenantTheme } = await import('../../plugins/mailer.js');
+    const theme = await loadTenantTheme(req.tenant);
+    const result = await renderEmailForPreview(req.params.template, req.tenant, theme);
+    if (!result) return res.status(404).send('Unknown template');
+    res.type('html').send(result.html);
+  } catch (err) {
+    console.error('Email preview render error:', err);
+    res.status(500).send('Preview error: ' + err.message);
   }
 });
 

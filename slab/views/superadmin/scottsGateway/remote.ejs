@@ -133,12 +133,9 @@
         <button class="danger ghost" onclick="resetTv()">↺ Reset TV</button>
       </div>
 
-      <label class="field">TV font size</label>
+      <label class="field">TV readability</label>
       <div class="chiprow" style="align-items:center">
-        <button class="qchip" onclick="bumpFont(-0.1)" style="font-size:18px;font-weight:700">−</button>
-        <span id="fontPct" style="flex:1;text-align:center;font-family:'Space Grotesk',monospace;color:#c9a848;font-size:15px">100%</span>
-        <button class="qchip" onclick="bumpFont(0.1)" style="font-size:18px;font-weight:700">+</button>
-        <button class="qchip" onclick="setFont(1)">Reset</button>
+        <button class="qchip" id="couchBtn" onclick="toggleCouch()" style="flex:1;padding:14px;font-size:15px;font-weight:600">🛋 Couch Mode: off</button>
       </div>
 
       <label class="field">Big calendar size</label>
@@ -306,6 +303,7 @@
 <script>
 const remoteId = <%- JSON.stringify(remoteId) %>;
 let currentView = <%- JSON.stringify(state.view || 'overview') %>;
+const initialCouch = <%- JSON.stringify(!!(state.custom && state.custom.couch)) %>;
 
 // Seasonal accent (match TV)
 (function(){
@@ -329,13 +327,19 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   if (t.dataset.pane === 'review') loadReview();
 }));
 
-// ── Font scale (sent to TV via state.custom.fontScale) ──
-let fontScale = 1.0;
-function bumpFont(d){ setFont(Math.max(0.7, Math.min(1.8, fontScale + d))); }
-function setFont(s){
-  fontScale = Math.round(s * 100) / 100;
-  document.getElementById('fontPct').textContent = Math.round(fontScale * 100) + '%';
-  push({ custom: { fontScale } });
+// ── Couch mode (sent to TV via state.custom.couch) ──
+let couchMode = false;
+function paintCouchBtn(){
+  const btn = document.getElementById('couchBtn');
+  btn.textContent = '🛋 Couch Mode: ' + (couchMode ? 'on' : 'off');
+  btn.style.background = couchMode ? '#1a1610' : '';
+  btn.style.color = couchMode ? '#c9a848' : '';
+  btn.style.borderColor = couchMode ? '#c9a848' : '';
+}
+function toggleCouch(){
+  couchMode = !couchMode;
+  paintCouchBtn();
+  push({ custom: { couch: couchMode } });
 }
 
 // ── Big calendar mode ──
@@ -520,6 +524,7 @@ async function push(body){
 function markView(v){ document.getElementById('curView').textContent = v; document.querySelectorAll('.vbtn').forEach(b => b.classList.toggle('on', b.dataset.view === v)); }
 markView(currentView);
 loadInterests();
+couchMode = initialCouch; paintCouchBtn();
 
 // ── View buttons ──
 document.getElementById('viewGrid').addEventListener('click', e => {

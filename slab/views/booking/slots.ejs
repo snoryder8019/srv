@@ -3,83 +3,67 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title><%= settings.title || 'Book a Service' %> — <%= brand.name || '' %></title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <%- include('../partials/seo-head', { seo: { title: (settings.title || 'Book a Service') + ' — ' + (brand?.name || '') } }) %>
+  <%- include('../partials/font-vars') %>
+  <%- include('../partials/landing-styles') %>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    :root{
-      --accent: <%= design.color_primary || '#C9A848' %>;
-      --bg: <%= design.color_bg || '#FAFAF8' %>;
-      --ink: <%= design.color_text || '#0F1B30' %>;
-      --muted: #6B7380;
-      --border: #E6E1D6;
-      --surface: #fff;
-    }
-    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;line-height:1.5}
-    .site-header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
-    .site-logo{font-size:18px;font-weight:700;color:var(--ink);text-decoration:none}
-    .back-link{font-size:13px;color:var(--muted);text-decoration:none}
-    .back-link:hover{color:var(--ink)}
+    body.booking-page { background: var(--bg, var(--ivory)); color: var(--on-ivory, var(--dark)); padding-top: 96px; line-height: 1.5; }
 
-    .hero{padding:40px 24px 0;text-align:center;max-width:640px;margin:0 auto}
-    .hero h1{font-size:26px;font-weight:700;margin-bottom:8px}
-    .hero p{font-size:15px;color:var(--muted)}
+    .booking-hero { padding: 24px 24px 0; text-align: center; max-width: 720px; margin: 0 auto; }
+    .booking-hero h1 { font-family: var(--font-heading), serif; font-size: clamp(1.8rem, 3.4vw, 2.6rem); font-weight: 400; color: var(--on-ivory, var(--dark)); margin-bottom: 10px; line-height: 1.15; }
+    .booking-hero p { font-size: 1rem; color: var(--on-ivory-muted, var(--muted)); }
 
-    .alert{max-width:640px;margin:16px auto;padding:12px 18px;border-radius:6px;font-size:14px}
-    .alert-success{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
-    .alert-error{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}
+    .alert { max-width: 720px; margin: 16px auto; padding: 12px 18px; border-radius: var(--card-radius, 4px); font-size: 14px; }
+    .alert-success { background: color-mix(in srgb, var(--success, #15803d) 12%, transparent); border: 1px solid color-mix(in srgb, var(--success, #15803d) 30%, transparent); color: var(--success, #15803d); }
+    .alert-error { background: color-mix(in srgb, var(--crimson, #b91c1c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--crimson, #b91c1c) 30%, transparent); color: var(--crimson, #b91c1c); }
 
-    /* Service-type filter pills */
-    .service-pills{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:720px;margin:24px auto 0;padding:0 16px}
-    .pill{padding:8px 16px;background:var(--surface);border:1px solid var(--border);border-radius:999px;font-size:13px;font-weight:500;color:var(--ink);text-decoration:none;transition:all .15s}
-    .pill:hover{border-color:var(--accent)}
-    .pill.active{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+    .service-pills { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 720px; margin: 24px auto 0; padding: 0 16px; }
+    .pill { padding: 8px 16px; background: var(--surface, #fff); border: 1px solid var(--border, var(--ivory-mid)); border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--on-surface, var(--on-ivory)); text-decoration: none; transition: all .15s; font-family: var(--font-body), sans-serif; }
+    .pill:hover { border-color: var(--accent, var(--gold)); }
+    .pill.active { background: var(--accent, var(--gold)); color: var(--on-gold, var(--white)); border-color: var(--accent, var(--gold)); }
 
-    /* Days + slots layout */
-    .layout{max-width:900px;margin:32px auto;padding:0 16px 60px}
-    .empty-state{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:48px 24px;text-align:center;color:var(--muted)}
-    .empty-state h3{color:var(--ink);margin-bottom:8px;font-weight:600}
+    .layout { max-width: 900px; margin: 32px auto; padding: 0 16px 80px; }
+    .empty-state { background: var(--surface, #fff); border: 1px solid var(--border, var(--ivory-mid)); border-radius: var(--card-radius, 4px); padding: 48px 24px; text-align: center; color: var(--on-surface-muted, var(--muted)); }
+    .empty-state h3 { color: var(--on-surface, var(--on-ivory)); margin-bottom: 8px; font-weight: 600; font-family: var(--font-heading), serif; }
 
-    .day-block{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
-    .day-header{padding:14px 18px;background:#fafaf6;border-bottom:1px solid var(--border);font-weight:600;font-size:15px}
-    .slot-list{padding:8px}
-    .slot-row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:14px 12px;border-bottom:1px solid #f3f1ea;cursor:pointer;transition:background .15s;border-radius:5px}
-    .slot-row:last-child{border-bottom:none}
-    .slot-row:hover{background:#fffdf5}
-    .slot-row.selected{background:#fff8e8;outline:2px solid var(--accent);outline-offset:-2px}
-    .slot-time{font-weight:700;color:var(--accent);min-width:120px;font-size:14px}
-    .slot-svc{font-size:14px;font-weight:500;color:var(--ink);flex:1;min-width:140px}
-    .slot-loc{font-size:12px;color:var(--muted)}
-    .slot-cap{font-size:11px;color:var(--muted);margin-left:auto}
+    .day-block { background: var(--surface, #fff); border: 1px solid var(--border, var(--ivory-mid)); border-radius: var(--card-radius, 4px); margin-bottom: 16px; overflow: hidden; }
+    .day-header { padding: 14px 18px; background: color-mix(in srgb, var(--on-surface, var(--dark)) 4%, var(--surface, #fff)); border-bottom: 1px solid var(--border, var(--ivory-mid)); font-weight: 600; font-size: 15px; font-family: var(--font-heading), serif; color: var(--on-surface, var(--on-ivory)); }
+    .slot-list { padding: 8px; }
+    .slot-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 14px 12px; border-bottom: 1px solid color-mix(in srgb, var(--border, var(--ivory-mid)) 60%, transparent); cursor: pointer; transition: background .15s; border-radius: var(--card-radius, 4px); }
+    .slot-row:last-child { border-bottom: none; }
+    .slot-row:hover { background: color-mix(in srgb, var(--accent, var(--gold)) 6%, var(--surface, #fff)); }
+    .slot-row.selected { background: color-mix(in srgb, var(--accent, var(--gold)) 12%, var(--surface, #fff)); outline: 2px solid var(--accent, var(--gold)); outline-offset: -2px; }
+    .slot-time { font-weight: 700; color: var(--accent, var(--gold)); min-width: 120px; font-size: 14px; }
+    .slot-svc { font-size: 14px; font-weight: 500; color: var(--on-surface, var(--on-ivory)); flex: 1; min-width: 140px; }
+    .slot-loc { font-size: 12px; color: var(--on-surface-muted, var(--muted)); margin-top: 2px; }
+    .slot-cap { font-size: 11px; color: var(--on-surface-muted, var(--muted)); margin-left: auto; }
 
-    /* Booking form */
-    .form-panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:24px;padding:24px;display:none}
-    .form-panel.visible{display:block}
-    .form-panel h3{font-size:16px;margin-bottom:6px}
-    .form-summary{background:#fafaf6;border-radius:6px;padding:12px 14px;font-size:13px;margin-bottom:16px;border-left:3px solid var(--accent)}
-    .form-row{margin-bottom:14px}
-    .form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    @media(max-width:520px){.form-grid-2{grid-template-columns:1fr}}
-    label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
-    input,textarea{width:100%;padding:9px 12px;font-size:14px;border:1px solid var(--border);border-radius:5px;font-family:inherit;background:var(--surface);color:var(--ink)}
-    input:focus,textarea:focus{outline:none;border-color:var(--accent)}
-    textarea{min-height:80px;resize:vertical}
-    .vehicle-block{background:#fafaf6;border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:14px;display:none}
-    .vehicle-block.visible{display:block}
-    .vehicle-block h4{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
-    .submit-btn{background:var(--accent);color:var(--surface);border:none;border-radius:5px;padding:12px 32px;font-size:14px;font-weight:600;cursor:pointer;width:100%;font-family:inherit}
-    .submit-btn:hover{opacity:.9}
-    .submit-btn:disabled{opacity:.5;cursor:not-allowed}
+    .form-panel { background: var(--surface, #fff); border: 1px solid var(--border, var(--ivory-mid)); border-radius: var(--card-radius, 4px); margin-top: 24px; padding: 24px; display: none; }
+    .form-panel.visible { display: block; }
+    .form-panel h3 { font-size: 1.05rem; margin-bottom: 6px; font-family: var(--font-heading), serif; font-weight: 500; color: var(--on-surface, var(--on-ivory)); }
+    .form-summary { background: color-mix(in srgb, var(--accent, var(--gold)) 8%, var(--surface, #fff)); border-radius: var(--card-radius, 4px); padding: 12px 14px; font-size: 13px; margin-bottom: 16px; border-left: 3px solid var(--accent, var(--gold)); color: var(--on-surface, var(--on-ivory)); }
+    .form-row { margin-bottom: 14px; }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 520px) { .form-grid-2 { grid-template-columns: 1fr; } }
+    .form-panel label { display: block; font-size: 11px; font-weight: 600; color: var(--on-surface-muted, var(--muted)); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 5px; }
+    .form-panel input, .form-panel textarea { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid var(--border, var(--ivory-mid)); border-radius: var(--card-radius, 4px); font-family: var(--font-body), sans-serif; background: var(--surface, #fff); color: var(--on-surface, var(--on-ivory)); }
+    .form-panel input:focus, .form-panel textarea:focus { outline: none; border-color: var(--accent, var(--gold)); }
+    .form-panel textarea { min-height: 80px; resize: vertical; }
+    .vehicle-block { background: color-mix(in srgb, var(--on-surface, var(--dark)) 3%, var(--surface, #fff)); border: 1px solid var(--border, var(--ivory-mid)); border-radius: var(--card-radius, 4px); padding: 14px; margin-bottom: 14px; display: none; }
+    .vehicle-block.visible { display: block; }
+    .vehicle-block h4 { font-size: 12px; font-weight: 600; color: var(--on-surface-muted, var(--muted)); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+    .submit-btn { background: var(--primary, var(--navy)); color: var(--on-navy, var(--white)); border: none; border-radius: var(--card-radius, 4px); padding: 13px 32px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; font-family: var(--font-body), sans-serif; letter-spacing: .08em; text-transform: uppercase; transition: opacity .15s, transform .15s; }
+    .submit-btn:hover { opacity: .92; transform: translateY(-1px); }
+    .submit-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
   </style>
 </head>
-<body>
+<body class="booking-page" data-layout="<%= design.landing_layout || 'classic' %>">
 
-<header class="site-header">
-  <a href="/" class="site-logo"><%= brand.name || 'Home' %></a>
-  <a href="/" class="back-link">← Back to site</a>
-</header>
+<% if (visibility.header !== false) { %>
+<%- include('../partials/header', { activePage: 'book' }) %>
+<% } %>
 
-<section class="hero">
+<section class="booking-hero">
   <h1><%= settings.title || 'Book a Service' %></h1>
   <% if (settings.subtitle) { %><p><%= settings.subtitle %></p><% } %>
 </section>
@@ -186,6 +170,10 @@
     <button type="submit" class="submit-btn">Request Booking</button>
   </form>
 </div>
+
+<% if (visibility.footer !== false) { %>
+<%- include('../partials/footer') %>
+<% } %>
 
 <script>
   const form        = document.getElementById('bookingForm');

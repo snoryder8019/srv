@@ -131,12 +131,23 @@ router.post('/save', express.json({ limit: '500kb' }), async (req, res) => {
       name, businessType, industry, tagline, description,
       location, serviceArea, phone, email, ownerName,
       services, pricingNotes, targetAudience, brandVoice,
-      socialLinks,
+      socialLinks, faq,
     } = req.body;
 
     if (!name?.trim()) return res.status(400).json({ error: 'Business name is required' });
     if (!businessType?.trim()) return res.status(400).json({ error: 'Business type is required' });
     if (!industry?.trim()) return res.status(400).json({ error: 'Industry is required' });
+
+    const cleanFaq = Array.isArray(faq)
+      ? faq
+          .filter(item => item && typeof item.question === 'string' && typeof item.answer === 'string')
+          .map(item => ({
+            question: item.question.trim().slice(0, 300),
+            answer:   item.answer.trim().slice(0, 2000),
+          }))
+          .filter(item => item.question && item.answer)
+          .slice(0, 20)
+      : [];
 
     const slab = getSlabDb();
     const brandUpdate = {
@@ -155,6 +166,7 @@ router.post('/save', express.json({ limit: '500kb' }), async (req, res) => {
       targetAudience: (targetAudience || '').trim(),
       brandVoice: (brandVoice || '').trim(),
       socialLinks: socialLinks || {},
+      faq: cleanFaq,
     };
 
     await slab.collection('tenants').updateOne(

@@ -10,7 +10,7 @@
 
 import { config } from '../config/config.js';
 import { connectDB, getSlabDb, getTenantDb } from '../plugins/mongo.js';
-import { runScan, findingsToTickets } from '../plugins/scanner.js';
+import { runScan } from '../plugins/scanner.js';
 import nodemailer from 'nodemailer';
 import https from 'https';
 
@@ -104,19 +104,20 @@ async function scanAllTenants() {
         db,
       });
 
-      // Save to DB
+      // Save to DB — scan reports are NOT tickets; devs work them in
+      // the superadmin scan-reports portal.
+      const newCritHigh = (result.summary?.counts?.critical || 0) + (result.summary?.counts?.high || 0);
       await db.collection('scan_results').insertOne({
         ...result,
         runBy: 'slab-scanner-cron',
+        devStatus: newCritHigh > 0 ? 'pending-review' : 'clean',
+        devNotes: '',
         createdAt: new Date(),
       });
 
-      // Create tickets (with deduplication)
-      const tickets = await findingsToTickets(db, result.findings, tenant);
-      const skipped = tickets.skipped || 0;
-      console.log(`[scanner] ${label}: ${result.summary.total} findings, ${tickets.length} new tickets, ${skipped} skipped (dupes)`);
+      console.log(`[scanner] ${label}: ${result.summary.total} findings (${newCritHigh} crit/high)`);
 
-      results.push({ tenant: label, domain: tenant.domain, db: tenant.db, ...result, newTickets: tickets.length, skippedTickets: skipped });
+      results.push({ tenant: label, domain: tenant.domain, db: tenant.db, ...result });
     } catch (err) {
       console.error(`[scanner] ${label} ERROR:`, err.message);
       results.push({ tenant: label, domain: tenant.domain, error: err.message });
@@ -141,7 +142,7 @@ function buildReportHtml(scanResults, ollamaHtml) {
 
     <h3 style="color:#1C2B4A;">Site Scanner Results</h3>`;
 
-  let totalCritical = 0, totalHigh = 0, totalAll = 0, totalNew = 0, totalSkipped = 0;
+  let totalCritical = 0, totalHigh = 0, totalAll = 0;
 
   for (const r of scanResults) {
     if (r.error) {
@@ -156,8 +157,6 @@ function buildReportHtml(scanResults, ollamaHtml) {
     totalCritical += c.critical || 0;
     totalHigh += c.high || 0;
     totalAll += r.summary?.total || 0;
-    totalNew += r.newTickets || 0;
-    totalSkipped += r.skippedTickets || 0;
 
     const borderColor = c.critical > 0 ? '#dc2626' : c.high > 0 ? '#ea580c' : '#16a34a';
 
@@ -175,7 +174,7 @@ function buildReportHtml(scanResults, ollamaHtml) {
         ${r.summary.total === 0 ? `<span style="background:#f0fdf4;color:#16a34a;padding:3px 8px;border-radius:4px;font-size:12px;font-weight:600;">ALL CLEAR</span>` : ''}
       </div>
       <div style="font-size:12px;color:#666;">
-        ${r.newTickets || 0} new ticket(s)${r.skippedTickets ? ` | ${r.skippedTickets} skipped (already open)` : ''}
+        Awaiting dev review in <a href="/superadmin/scan-reports">superadmin scan-reports portal</a>.
       </div>`;
 
     // Top critical/high findings
@@ -200,7 +199,7 @@ function buildReportHtml(scanResults, ollamaHtml) {
   html += `
     <div style="background:#f9fafb;border:2px solid ${totalColor};border-radius:8px;padding:14px;margin-top:20px;text-align:center;">
       <div style="font-weight:700;font-size:15px;color:${totalColor};">
-        ${totalAll === 0 ? 'All Clear' : `${totalAll} Findings | ${totalNew} New Tickets | ${totalSkipped} Skipped`}
+        ${totalAll === 0 ? 'All Clear' : `${totalAll} Findings across all tenants`}
       </div>
       <div style="font-size:12px;color:#666;margin-top:4px;">
         ${totalCritical} critical | ${totalHigh} high | ${totalAll - totalCritical - totalHigh} other
@@ -208,7 +207,7 @@ function buildReportHtml(scanResults, ollamaHtml) {
     </div>
   </div>`;
 
-  return { html, totalCritical, totalHigh, totalAll, totalNew };
+  return { html, totalCritical, totalHigh, totalAll, totalNew: 0 };
 }
 
 // ── Email sender ────────────────────────────────────────────────────────────
@@ -265,8 +264,6 @@ async function doReport(scanResults) {
           tenant: t.brand?.name || t.domain,
           domain: t.domain,
           ...latest[0],
-          newTickets: 0,
-          skippedTickets: 0,
         });
       }
     }
@@ -288,7 +285,7 @@ async function doReport(scanResults) {
     : totalHigh > 0
     ? `🟠 Slab Health Report — ${totalHigh} HIGH findings`
     : totalAll > 0
-    ? `🟡 Slab Health Report — ${totalAll} findings${totalNew > 0 ? `, ${totalNew} new tickets` : ''}`
+    ? `🟡 Slab Health Report — ${totalAll} findings`
     : `✅ Slab Health Report — All Clear`;
 
   await sendEmail(subject, html);

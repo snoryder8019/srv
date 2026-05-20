@@ -31,6 +31,33 @@ async function loadDesign(db) {
   return enrichDesignContrast(design);
 }
 
+async function loadLogos(db) {
+  try {
+    const rows = await db.collection('brand_images').find({
+      slot: { $in: ['logo_primary', 'logo_white', 'logo_icon'] },
+    }).toArray();
+    const out = {};
+    for (const r of rows) out[r.slot] = r.url;
+    return out;
+  } catch { return {}; }
+}
+
+async function loadBrandModels(db) {
+  try {
+    const rows = await db.collection('brand_models').find({}).toArray();
+    const out = {};
+    for (const r of rows) out[r.slot] = r.url;
+    return out;
+  } catch { return {}; }
+}
+
+function buildVisibility(design) {
+  return {
+    header: design.vis_header !== 'false',
+    footer: design.vis_footer !== 'false',
+  };
+}
+
 async function loadSettings(db) {
   const doc = await db.collection('booking_settings').findOne({ key: 'config' });
   return doc?.value || {
@@ -99,12 +126,18 @@ router.get('/', async (req, res) => {
       // No tenant resolved (direct IP / platform domain) — show generic unavailable
       return res.status(404).send('Booking page not found. Visit a tenant site to book a meeting.');
     }
-    const settings = await loadSettings(db);
-    const design   = await loadDesign(db);
-    const brand    = res.locals.brand || {};
+    const [settings, design, logos, brandModels] = await Promise.all([
+      loadSettings(db),
+      loadDesign(db),
+      loadLogos(db),
+      loadBrandModels(db),
+    ]);
+    const brand      = res.locals.brand || {};
+    const visibility = buildVisibility(design);
+    const copy       = {};
 
     if (!settings.enabled) {
-      return res.render('booking/unavailable', { design, brand, settings });
+      return res.render('booking/unavailable', { design, brand, settings, logos, brandModels, visibility, copy });
     }
 
     // ── service-slots mode: list admin-created CalendarSlot docs ──
@@ -143,6 +176,7 @@ router.get('/', async (req, res) => {
 
       return res.render('booking/slots', {
         design, brand, settings, days,
+        logos, brandModels, visibility, copy,
         serviceTypes: settings.serviceTypes || [],
         requestedService,
         success: req.query.success || null,
@@ -179,6 +213,7 @@ router.get('/', async (req, res) => {
 
     res.render('booking/index', {
       design, brand, settings, days,
+      logos, brandModels, visibility, copy,
       success: req.query.success || null,
       error: req.query.error || null,
     });

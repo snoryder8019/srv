@@ -1514,6 +1514,110 @@ router.get('/all-tickets', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SCAN REPORTS — Site-scanner findings, separate from tickets
+// Devs review and mark fixed here. Tenants see the resulting devStatus on
+// their /admin/scanner page.
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/scan-reports', async (req, res) => {
+  const slab = getSlabDb();
+  const tenants = await slab.collection('tenants')
+    .find({}, { projection: { db: 1, domain: 1, 'brand.name': 1 } }).toArray();
+
+  const statusFilter = req.query.status || '';
+  const reports = [];
+
+  for (const tenant of tenants) {
+    try {
+      const tDb = getTenantDb(tenant.db);
+      const latest = await tDb.collection('scan_results')
+        .find({}).sort({ 'summary.scannedAt': -1 }).limit(1).toArray();
+      if (!latest.length) continue;
+      const r = latest[0];
+      const devStatus = r.devStatus || (r.summary?.counts?.critical || r.summary?.counts?.high ? 'pending-review' : 'clean');
+      if (statusFilter && statusFilter !== 'all' && devStatus !== statusFilter) continue;
+      reports.push({
+        ...r,
+        devStatus,
+        _tenantDb: tenant.db,
+        _tenantDomain: tenant.domain,
+        _tenantName: tenant.brand?.name || tenant.domain,
+      });
+    } catch { /* skip dead tenants */ }
+  }
+
+  reports.sort((a, b) => (b.summary?.scannedAt || 0) - (a.summary?.scannedAt || 0));
+
+  const stats = reports.reduce((acc, r) => {
+    acc[r.devStatus] = (acc[r.devStatus] || 0) + 1;
+    return acc;
+  }, { 'pending-review': 0, 'in-progress': 0, fixed: 0, clean: 0 });
+  stats.total = reports.length;
+
+  res.render('superadmin/scan-reports', {
+    superAdmin: req.superAdmin,
+    reports,
+    stats,
+    filters: { status: statusFilter },
+  });
+});
+
+router.get('/scan-reports/:tenantDb/:scanId', async (req, res) => {
+  try {
+    const tDb = getTenantDb(req.params.tenantDb);
+    const report = await tDb.collection('scan_results').findOne({ _id: new ObjectId(req.params.scanId) });
+    if (!report) return res.redirect('/superadmin/scan-reports');
+    res.render('superadmin/scan-report-detail', {
+      superAdmin: req.superAdmin,
+      report,
+      tenantDbName: req.params.tenantDb,
+    });
+  } catch {
+    res.redirect('/superadmin/scan-reports');
+  }
+});
+
+router.post('/scan-reports/:tenantDb/:scanId/status', async (req, res) => {
+  const { devStatus, devNotes } = req.body;
+  const valid = ['pending-review', 'in-progress', 'fixed', 'clean'];
+  if (!valid.includes(devStatus)) return res.redirect(`/superadmin/scan-reports/${req.params.tenantDb}/${req.params.scanId}`);
+  const tDb = getTenantDb(req.params.tenantDb);
+  await tDb.collection('scan_results').updateOne(
+    { _id: new ObjectId(req.params.scanId) },
+    { $set: { devStatus, devNotes: (devNotes || '').trim(), devReviewedBy: req.superAdmin.email, devReviewedAt: new Date() } },
+  );
+  res.redirect(`/superadmin/scan-reports/${req.params.tenantDb}/${req.params.scanId}`);
+});
+
+// ── AI agentry for ticket detail (suggest reply / summarize / classify) ────
+router.post('/tickets/:tenantDb/:ticketId/agent', async (req, res) => {
+  try {
+    const { callLLM } = await import('../plugins/agentMcp.js');
+    const tenantDb = getTenantDb(req.params.tenantDb);
+    const ticket = await tenantDb.collection('tickets').findOne({ _id: new ObjectId(req.params.ticketId) });
+    if (!ticket) return res.status(404).json({ ok: false, error: 'Ticket not found' });
+
+    const action = req.body.action || 'reply';
+    const replies = (ticket.replies || []).map(r => `${r.author?.displayName || r.author?.email || 'Unknown'} (${r.author?.type || 'tenant'}):\n${r.body}`).join('\n\n---\n\n');
+    const threadText = `Subject: ${ticket.subject || '(no subject)'}\nFrom: ${ticket.submittedBy?.displayName || ticket.submittedBy?.email || 'tenant'}\nTenant: ${req.params.tenantDb} (${ticket.tenantBrandName || ''})\nPriority: ${ticket.priority || 'medium'} | Category: ${ticket.category || 'other'}\n\nBody:\n${ticket.description || ticket.body || '(empty)'}\n\nReplies so far:\n${replies || '(none)'}`;
+
+    let systemPrompt;
+    if (action === 'summarize') {
+      systemPrompt = 'You are a senior platform engineer summarizing a customer support ticket for the dev team. Write a 2-3 sentence summary identifying the core issue, what has been tried, and what is still blocking. Return plain prose. No fluff.';
+    } else if (action === 'classify') {
+      systemPrompt = 'You triage support tickets for a multi-tenant SaaS. Return ONLY JSON: {"category": "bug|improvement|question|onboarding|billing|other", "priority": "low|medium|high|critical", "reasoning": "one short sentence"}. No fences, no prose.';
+    } else {
+      systemPrompt = 'You are platform support staff (signed as "Platform Support") drafting a reply to a tenant. Be concise (3-6 sentences), professional, warm. Acknowledge the issue, state next steps, give a realistic timeframe. If technical info is needed, ask one focused question. Do NOT invent platform features. Return plain prose only, no signature.';
+    }
+
+    const raw = await callLLM([{ role: 'user', content: threadText }], systemPrompt, 60000);
+    res.json({ ok: true, action, output: raw.trim() });
+  } catch (err) {
+    console.error('[superadmin] ticket agent error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // GLOBAL USERS — Cross-tenant user management
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/users', async (req, res) => {

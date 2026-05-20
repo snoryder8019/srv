@@ -39,6 +39,15 @@
     .btn-green { background:#14532d; color:#86efac; border-color:#14532d; } .btn-green:hover { background:#166534; }
     .btn-red { background:#451a1a; color:#fca5a5; border-color:#451a1a; } .btn-red:hover { background:#7f1d1d; }
     .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .agent-panel { background:#0f1a2c; border:1px solid #1e3a5f; border-radius:8px; padding:18px; margin-bottom:18px; }
+    .agent-panel h3 { font-size:13px; font-weight:500; color:#7dd3fc; margin-bottom:10px; letter-spacing:0.04em; text-transform:uppercase; }
+    .agent-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    .agent-btn { padding:7px 14px; font-size:12px; border-radius:6px; border:1px solid #1e3a5f; background:#0a0a0a; color:#7dd3fc; cursor:pointer; font-family:'Inter',sans-serif; }
+    .agent-btn:hover { border-color:#38bdf8; color:#38bdf8; }
+    .agent-btn:disabled { opacity:0.6; cursor:wait; }
+    .agent-out { background:#0a0a0a; border:1px solid #262626; border-radius:6px; padding:12px; font-size:13px; line-height:1.5; min-height:40px; color:#d1d5db; white-space:pre-wrap; }
+    .agent-out.empty { color:#525252; font-style:italic; }
+    .agent-use { margin-top:8px; }
     @media (max-width:768px) {
       .topbar { padding:10px 14px; flex-wrap:wrap; gap:8px; }
       .topbar-left { gap:10px; } .topbar-right { gap:8px; font-size:11px; }
@@ -99,15 +108,76 @@
       </div>
     <% } %>
 
+    <div class="agent-panel">
+      <h3>AI Agent</h3>
+      <div class="agent-actions">
+        <button class="agent-btn" data-action="summarize" type="button">Summarize thread</button>
+        <button class="agent-btn" data-action="reply" type="button">Draft reply</button>
+        <button class="agent-btn" data-action="classify" type="button">Classify (priority + category)</button>
+      </div>
+      <div id="agentOut" class="agent-out empty">Click an action above. Output appears here.</div>
+      <div class="agent-use" id="agentUse" style="display:none;">
+        <button id="useDraft" type="button" class="btn btn-gold">Use as reply →</button>
+      </div>
+    </div>
+
     <div class="reply-form">
       <h3>Reply</h3>
       <form method="POST" action="/superadmin/tickets/<%= tenantDbName %>/<%= ticket._id %>/reply">
-        <textarea name="body" placeholder="Type your reply..." required></textarea>
+        <textarea name="body" id="replyBody" placeholder="Type your reply..." required></textarea>
         <div style="margin-top:10px;">
           <button type="submit" class="btn btn-gold">Send Reply</button>
         </div>
       </form>
     </div>
+
+    <script>
+      (function() {
+        const out = document.getElementById('agentOut');
+        const useWrap = document.getElementById('agentUse');
+        const useBtn = document.getElementById('useDraft');
+        const replyBody = document.getElementById('replyBody');
+        let lastDraft = '';
+        let lastAction = '';
+
+        document.querySelectorAll('.agent-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const action = btn.dataset.action;
+            lastAction = action;
+            btn.disabled = true;
+            out.classList.remove('empty');
+            out.textContent = 'Thinking…';
+            useWrap.style.display = 'none';
+            try {
+              const r = await fetch('/superadmin/tickets/<%= tenantDbName %>/<%= ticket._id %>/agent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action }),
+              });
+              const data = await r.json();
+              if (!data.ok) throw new Error(data.error || 'Agent failed');
+              out.textContent = data.output;
+              if (action === 'reply') {
+                lastDraft = data.output;
+                useWrap.style.display = '';
+              }
+            } catch (err) {
+              out.textContent = 'Agent error: ' + err.message;
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+
+        useBtn.addEventListener('click', () => {
+          if (lastDraft) {
+            replyBody.value = lastDraft;
+            replyBody.focus();
+            replyBody.scrollIntoView({ behavior:'smooth', block:'center' });
+          }
+        });
+      })();
+    </script>
 
     <div class="actions">
       <% if (ticket.status !== 'resolved') { %>

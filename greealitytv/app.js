@@ -65,6 +65,7 @@ app.use('/gigs', require('./routes/gigs'));
 app.use('/profile', require('./routes/profile'));
 app.use('/shares', require('./routes/shares'));
 app.use('/admin', require('./routes/admin'));
+app.use('/admin/ai', require('./routes/admin/ai'));
 app.use('/admin/delegates', require('./routes/admin/delegates'));
 app.use('/delegates', require('./routes/delegates'));
 
