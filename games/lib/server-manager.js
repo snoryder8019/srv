@@ -135,9 +135,20 @@ function runningList() {
 }
 
 // ── Request to start a game ───────────────────────────────────────────────
-async function requestStart(game, requestedBy) {
+// `userInfo` is either the legacy string `userId` or an object
+// `{ userId, userName, premium, worldSaveId? }`. Premium users (or admins) skip the
+// queue and get a Linode immediately when local slots are full; free users
+// are queued and notified when a slot opens up. `worldSaveId` is an optional
+// world_backups _id — when present the requested game starts from that save
+// instead of its current on-disk world (local: restored before start; Linode:
+// queued for restore once the host is reachable).
+async function requestStart(game, userInfo) {
   const lib = GAME_LIBS[game];
   if (!lib) return { ok: false, error: 'Unknown game: ' + game };
+
+  // Normalize userInfo for back-compat with the older signature.
+  const info = (typeof userInfo === 'string') ? { userId: userInfo } : (userInfo || {});
+  const { userId, userName, premium, worldSaveId } = info;
 
   const gameLib = lib();
 
@@ -149,39 +160,184 @@ async function requestStart(game, requestedBy) {
   const running = countRunning();
 
   if (running >= MAX_LOCAL) {
-    // Provision a Linode instead
-    console.log('[server-manager] Local slots full (' + running + '/' + MAX_LOCAL + ') — provisioning Linode for', game);
+    // Free users wait for a local slot rather than burning a Linode.
+    if (!premium) {
+      const queued = await _enqueueRequest(game, userId, userName);
+      _emit('server:queued', { game, userId, position: queued.position });
+      return {
+        ok: true,
+        status: 'queued',
+        message: 'Both servers are currently in use. Your request is queued — we will notify you when your server is ready.',
+        queueId: queued.queueId,
+        position: queued.position,
+        premiumPriceUsd: 5.99,
+        premiumPitch: 'Upgrade to MadLadsLab Premium for $5.99/mo — instant access to any dedicated server, no queue.',
+      };
+    }
+
+    // Premium / admin path — provision a Linode.
+    console.log('[server-manager] Local slots full (' + running + '/' + MAX_LOCAL + ') — provisioning Linode for', game, '(premium)');
     try {
-      const server = await provisioner.provisionServer(game, requestedBy);
+      const server = await provisioner.provisionServer(game, userId);
+      // Persist the requested save (+ its wrapper) on the linode record. The
+      // /api/provisioned-status poller picks this up once SSH is reachable
+      // and applies the restore exactly once.
+      if (db && worldSaveId) {
+        let wrapper = null;
+        try {
+          const save = await require('./world-backup').getBackup(worldSaveId);
+          if (save) wrapper = save.wrapper || null;
+        } catch {}
+        await db.collection('provisioned_servers').updateOne(
+          { linodeId: server.linodeId },
+          { $set: { pendingRestoreId: worldSaveId, wrapper, requestedBy: userId } }
+        );
+      }
       if (db) {
         await db.collection('server_requests').insertOne({
-          userId: requestedBy, game, status: 'provisioned',
-          linodeId: server.linodeId, createdAt: new Date(),
+          userId, userName, game, status: 'provisioned',
+          linodeId: server.linodeId,
+          worldSaveId: worldSaveId || null,
+          createdAt: new Date(),
         });
       }
-      _emit('server:provisioning', { game, ip: server.ip, linodeId: server.linodeId });
+      _emit('server:provisioning', { game, ip: server.ip, linodeId: server.linodeId, worldSaveId: worldSaveId || null });
       return {
         ok: true, status: 'provisioning',
-        message: game + ' provisioning on new Linode (local slots full)',
+        message: game + ' provisioning on new Linode (local slots full)' + (worldSaveId ? ' — saved world will be restored once host is reachable' : ''),
         linodeId: server.linodeId, ip: server.ip,
+        worldSaveId: worldSaveId || null,
       };
     } catch (e) {
       return { ok: false, error: 'Could not provision: ' + e.message };
     }
   }
 
-  // Start locally
-  console.log('[server-manager] Starting', game, 'locally (' + running + '/' + MAX_LOCAL + ' slots used)');
-  const result = gameLib.startServer();
+  // Start locally — optionally restore a saved world first.
+  let restored = null;
+  let wrapperUsed = null;
+  if (worldSaveId) {
+    try {
+      const worldBackup = require('./world-backup');
+      const save = await worldBackup.getBackup(worldSaveId);
+      if (save) wrapperUsed = save.wrapper || null;
+      console.log('[server-manager] Restoring world save', worldSaveId, 'before starting', game);
+      restored = await worldBackup.restoreLocal(game, worldSaveId);
+      if (!restored.ok) {
+        console.error('[server-manager] World restore failed:', restored.message);
+        return { ok: false, error: 'World restore failed: ' + (restored.message || 'unknown') };
+      }
+    } catch (e) {
+      console.error('[server-manager] World restore error:', e.message);
+      return { ok: false, error: 'World restore failed: ' + e.message };
+    }
+  }
+
+  console.log('[server-manager] Starting', game, 'locally (' + running + '/' + MAX_LOCAL + ' slots used)' + (wrapperUsed ? ' (wrapper=' + wrapperUsed + ')' : ''));
+  // Game libs are free to read process.env.GAME_WRAPPER from start scripts.
+  // We set it process-wide for the duration of the spawn; the child inherits
+  // it. Once spawned we clear it so a subsequent default start isn't sticky.
+  const priorWrapper = process.env.GAME_WRAPPER;
+  if (wrapperUsed) process.env.GAME_WRAPPER = wrapperUsed;
+  let result;
+  try {
+    result = gameLib.startServer({ wrapper: wrapperUsed, worldSaveId: worldSaveId || null });
+  } finally {
+    if (wrapperUsed) {
+      if (priorWrapper === undefined) delete process.env.GAME_WRAPPER;
+      else process.env.GAME_WRAPPER = priorWrapper;
+    }
+  }
 
   if (result.ok !== false) {
     _startInactivityWatch(game);
-    _emit('server:starting', { game });
+    _emit('server:starting', { game, worldSaveId: worldSaveId || null, wrapper: wrapperUsed });
     // Push updated status after short boot delay
     setTimeout(() => _pushStatus(game), 5000);
   }
 
-  return { ok: true, status: 'starting', message: game + ' starting up', ...result };
+  return {
+    ok: true,
+    status: 'starting',
+    message: game + ' starting up' + (worldSaveId ? ' (restoring saved world)' : ''),
+    worldSaveId: worldSaveId || null,
+    wrapper: wrapperUsed,
+    ...result,
+  };
+}
+
+// ── Request queue ─────────────────────────────────────────────────────────
+// Free users land here when both local slots are taken. A slot becoming
+// available (server:stopped) triggers _drainQueue which pops the oldest
+// pending request and starts the requested game locally for them.
+async function _enqueueRequest(game, userId, userName) {
+  if (!db) return { position: 1 };
+
+  // Idempotent — if this user already has a pending request for this game,
+  // surface their existing position instead of stacking duplicates.
+  const existing = await db.collection('server_requests').findOne({
+    userId, game, status: 'queued',
+  });
+
+  let queueId;
+  if (existing) {
+    queueId = existing._id;
+  } else {
+    const ins = await db.collection('server_requests').insertOne({
+      userId, userName, game, status: 'queued', createdAt: new Date(),
+    });
+    queueId = ins.insertedId;
+  }
+
+  // Position = count of earlier-or-equal pending requests.
+  const position = await db.collection('server_requests').countDocuments({
+    status: 'queued',
+    _id: { $lte: queueId },
+  });
+
+  return { queueId, position };
+}
+
+async function _drainQueue() {
+  if (!db) return;
+  if (countRunning() >= MAX_LOCAL) return;
+
+  const next = await db.collection('server_requests').findOne(
+    { status: 'queued' },
+    { sort: { createdAt: 1 } }
+  );
+  if (!next) return;
+
+  // Mark fulfilled before starting so a parallel drain doesn't double-pop.
+  await db.collection('server_requests').updateOne(
+    { _id: next._id, status: 'queued' },
+    { $set: { status: 'starting', fulfilledAt: new Date() } }
+  );
+
+  const lib = GAME_LIBS[next.game];
+  if (!lib) return;
+  try {
+    const gameLib = lib();
+    if (!gameLib.isRunning()) {
+      const result = gameLib.startServer();
+      if (result && result.ok !== false) {
+        _startInactivityWatch(next.game);
+        _emit('server:starting', { game: next.game });
+        setTimeout(() => _pushStatus(next.game), 5000);
+      }
+    }
+    _emit('server:queue-ready', {
+      game: next.game,
+      userId: next.userId,
+      message: 'Your ' + next.game + ' server is starting up.',
+    });
+  } catch (e) {
+    console.error('[server-manager] Drain queue start failed:', next.game, e.message);
+    await db.collection('server_requests').updateOne(
+      { _id: next._id },
+      { $set: { status: 'failed', error: e.message } }
+    );
+  }
 }
 
 // ── Stop a game ───────────────────────────────────────────────────────────
@@ -197,6 +353,8 @@ function stop(game, reason) {
   }
   _emit('server:stopped', { game, reason: reason || 'manual' });
   _pushStatus(game);
+  // A slot just opened — promote the next queued free-tier request, if any.
+  _drainQueue().catch(e => console.error('[server-manager] drainQueue:', e.message));
   return result;
 }
 
@@ -290,6 +448,7 @@ async function _checkInactivity(game) {
           _emit('server:stopped', { game, reason: 'inactivity' });
           _pushStatus(game);
           console.log('[server-manager]', game, 'stopped — inactivity');
+          _drainQueue().catch(e => console.error('[server-manager] drainQueue:', e.message));
         } catch (e) {
           console.error('[server-manager] Auto-shutdown error:', game, e.message);
         }

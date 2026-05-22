@@ -1,5 +1,8 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
+const QRCode = require('qrcode');
 const rust = require('../lib/rust');
 const valheim = require('../lib/valheim');
 const l4d2 = require('../lib/l4d2');
@@ -211,12 +214,56 @@ router.post('/windrose/rcon', requireAdmin, async (req, res) => {
 router.get('/me', requireAuth, (req, res) => {
   const u = req.user;
   const gamesPerm = u.permissions && u.permissions.get ? u.permissions.get('games') : (u.permissions || {})['games'];
+  const isAdmin = u.isAdmin || gamesPerm === 'admin';
+  // Only the public-safe handle is returned to the browser. displayName/email
+  // never leave the server through this endpoint; the dashboard renders the
+  // username only.
   res.json({
     id: u._id,
-    displayName: u.displayName,
-    email: u.email,
-    isAdmin: u.isAdmin || gamesPerm === 'admin',
+    username: require('../lib/username').displayFor(u),
+    isAdmin,
+    premium: !!u.premium,
+    // World-saves dropdown shows for admins + premium subscribers.
+    canManageWorlds: isAdmin || !!u.premium,
   });
+});
+
+// Per-game Discord voice invites. The discord bot mints temporary invites for
+// each game's stats voice channel and stores the codes in its config.json.
+// `temporary: true` means non-members get kicked when they disconnect from
+// voice, so the invite scope is effectively just that channel.
+const DISCORD_CONFIG_PATH = path.join(__dirname, '..', 'discord', 'config.json');
+router.get('/discord/voice-invites', (req, res) => {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(DISCORD_CONFIG_PATH, 'utf8'));
+    const codes = cfg.voiceInvites || {};
+    const urls = {};
+    for (const [k, code] of Object.entries(codes)) urls[k] = `https://discord.gg/${code}`;
+    res.json(urls);
+  } catch (e) {
+    res.json({});
+  }
+});
+
+// Landing-page share QR for games.madladslab.com. URL is static so the PNG is
+// generated once and cached in memory.
+const SHARE_URL = 'https://games.madladslab.com';
+let shareQrBuf = null;
+router.get('/share-qr', async (req, res) => {
+  try {
+    if (!shareQrBuf) {
+      shareQrBuf = await QRCode.toBuffer(SHARE_URL, {
+        width: 260,
+        margin: 2,
+        color: { dark: '#cd412b', light: '#0d0d0d' },
+      });
+    }
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(shareQrBuf);
+  } catch (e) {
+    res.status(500).json({ error: 'QR generation failed' });
+  }
 });
 
 module.exports = router;

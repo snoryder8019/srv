@@ -43,6 +43,22 @@ function requireSuperAdmin(req, res, next) {
   next();
 }
 
+// Admins and premium subscribers can manage world saves (create named saves,
+// pick a save when spinning up). Free users still see public servers.
+function requireAdminOrPremium(req, res, next) {
+  if (!req.isAuthenticated()) return res.status(401).json({ error: 'Login required' });
+  const u = req.user;
+  const gamesPerm = u.permissions && u.permissions['games'];
+  if (u.isAdmin || gamesPerm === 'admin' || u.premium) return next();
+  res.status(403).json({ error: 'World saves are an admin / premium feature' });
+}
+
+function isAdminOrPremium(u) {
+  if (!u) return false;
+  const gamesPerm = u.permissions && u.permissions['games'];
+  return !!(u.isAdmin || gamesPerm === 'admin' || u.premium);
+}
+
 // ── Community server request — admin only (controls server starts + Linode provisioning) ──
 const GAME_LIBS = {
   rust: () => require('../lib/rust'),
@@ -56,22 +72,45 @@ const GAME_LIBS = {
 
 router.post('/api/request', requireAuth, async (req, res) => {
   try {
-    const { game } = req.body;
+    const { game, worldSaveId } = req.body;
     const validGames = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
     if (!game || !validGames.includes(game)) {
       return res.status(400).json({ error: 'Invalid game. Choose: ' + validGames.join(', ') });
     }
 
     const serverManager = req.app.locals.serverManager;
-    const result = await serverManager.requestStart(game, req.user._id.toString());
+    const userName = require('../lib/username').displayFor(req.user);
+    // Admins always skip the queue alongside premium subscribers.
+    const isPremium = !!(req.user.premium || req.user.isAdmin || (req.user.permissions && req.user.permissions.games === 'admin'));
+
+    // Only admins / premium can pick a specific saved world. Silently drop the
+    // hint for free users so a forged request can't trigger a restore.
+    let resolvedSaveId = null;
+    if (worldSaveId && isAdminOrPremium(req.user)) {
+      const save = await worldBackup.getBackup(worldSaveId);
+      if (!save || save.game !== game) {
+        return res.status(400).json({ error: 'World save not found for ' + game });
+      }
+      resolvedSaveId = worldSaveId;
+    }
+
+    const result = await serverManager.requestStart(game, {
+      userId: req.user._id.toString(),
+      userName,
+      premium: isPremium,
+      worldSaveId: resolvedSaveId,
+    });
 
     // Log to DB + stats feed
     const db = req.app.locals.db;
-    const userName = req.user.displayName || req.user.email;
-    await db.collection('server_requests').insertOne({
-      userId: req.user._id.toString(), userName, game,
-      status: result.status || 'requested', createdAt: new Date(),
-    }).catch(() => {});
+    // The queue path already wrote a server_requests record from inside
+    // requestStart — don't double-log.
+    if (result.status !== 'queued') {
+      await db.collection('server_requests').insertOne({
+        userId: req.user._id.toString(), userName, game,
+        status: result.status || 'requested', createdAt: new Date(),
+      }).catch(() => {});
+    }
 
     if (result.status === 'starting' || result.status === 'already_running') {
       const event = { game, type: 'server_start', ts: new Date(), name: userName };
@@ -116,6 +155,35 @@ router.get('/api/provisioned-status/:game', requireAuth, async (req, res) => {
               await db.collection('provisioned_servers').updateOne(
                 { linodeId: server.linodeId },
                 { $set: { status: 'running', lastActivity: new Date() } }
+              );
+            }
+          }
+
+          // Pending world-save restore — apply once on the first poll where
+          // SSH is reachable. We stop the gameserver, SCP the save in, then
+          // restart so the binary picks up the restored files.
+          if (sshUp && server.pendingRestoreId && !server.restoreAppliedAt) {
+            try {
+              await db.collection('provisioned_servers').updateOne(
+                { linodeId: server.linodeId, restoreAppliedAt: { $exists: false } },
+                { $set: { restoreAppliedAt: new Date(), restoreStatus: 'applying' } }
+              );
+              const { execSync } = require('child_process');
+              const sshOpts = '-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes';
+              try { execSync(`ssh ${sshOpts} root@${server.ip} "systemctl stop gameserver"`, { timeout: 20000 }); } catch {}
+              const restoreOwner = server.requestedBy || req.user._id.toString();
+              const restoreResult = await worldBackup.restoreToLinode(server.ip, server.game, restoreOwner, server.pendingRestoreId);
+              try { execSync(`ssh ${sshOpts} root@${server.ip} "chown -R gameserver:gameserver /srv/game && systemctl start gameserver"`, { timeout: 20000 }); } catch {}
+              await db.collection('provisioned_servers').updateOne(
+                { linodeId: server.linodeId },
+                { $set: { restoreStatus: restoreResult.ok ? 'applied' : 'failed', restoreMessage: restoreResult.message || null } }
+              );
+              console.log('[servers] Applied pending world restore for linode', server.linodeId, '->', restoreResult.ok ? 'ok' : restoreResult.message);
+            } catch (e) {
+              console.error('[servers] Pending restore failed:', e.message);
+              await db.collection('provisioned_servers').updateOne(
+                { linodeId: server.linodeId },
+                { $set: { restoreStatus: 'failed', restoreMessage: e.message } }
               );
             }
           }
@@ -280,14 +348,62 @@ router.get('/api/backups', requireAuth, async (req, res) => {
   }
 });
 
-// Admin: backup local server
-router.post('/api/backups/local/:game', requireAdmin, async (req, res) => {
+// Admin / premium: backup local server (optionally with a user-supplied label
+// and a launch-wrapper choice that locks the save to that runtime)
+router.post('/api/backups/local/:game', requireAdminOrPremium, async (req, res) => {
   try {
-    const result = await worldBackup.backupLocal(req.params.game, req.user._id.toString());
+    const rawLabel = typeof req.body?.label === 'string' ? req.body.label.trim() : '';
+    const label = rawLabel ? rawLabel.slice(0, 80) : null;
+    const wrapper = typeof req.body?.wrapper === 'string' ? req.body.wrapper : null;
+    if (wrapper && !worldBackup.isValidWrapper(req.params.game, wrapper)) {
+      return res.status(400).json({ error: 'Unknown wrapper for ' + req.params.game });
+    }
+    const userName = require('../lib/username').displayFor(req.user);
+    const result = await worldBackup.backupLocal(req.params.game, req.user._id.toString(), {
+      label,
+      userName,
+      wrapper,
+    });
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// Admin / premium: list saved worlds for a game (used by the spin-up dropdown)
+router.get('/api/world-saves/:game', requireAdminOrPremium, async (req, res) => {
+  try {
+    const saves = await worldBackup.listBackupsByGame(req.params.game, 100);
+    const me = req.user._id.toString();
+    const slim = saves.map(s => ({
+      id: s._id.toString(),
+      label: s.label || null,
+      userName: s.userName || null,
+      userId: s.userId,
+      mine: s.userId === me,
+      source: s.source,
+      wrapper: s.wrapper || worldBackup.defaultWrapper(s.game),
+      createdAt: s.createdAt,
+      fileSize: s.fileSize,
+    }));
+    res.json({
+      saves: slim,
+      wrappers: worldBackup.listWrappers(req.params.game),
+      defaultWrapper: worldBackup.defaultWrapper(req.params.game),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Anyone with the manage-worlds gate can read the wrapper list for a game.
+// Used by the "Save current world" modal so we don't have to inline the
+// per-game wrapper list in the page.
+router.get('/api/world-wrappers/:game', requireAdminOrPremium, (req, res) => {
+  res.json({
+    wrappers: worldBackup.listWrappers(req.params.game),
+    defaultWrapper: worldBackup.defaultWrapper(req.params.game),
+  });
 });
 
 // Admin: restore a specific backup to local server
@@ -329,9 +445,16 @@ router.post('/api/backups/:id/restore-linode', requireAdmin, async (req, res) =>
   }
 });
 
-// Superadmin only: delete a backup
-router.delete('/api/backups/:id', requireSuperAdmin, async (req, res) => {
+// Delete a backup — only the original requestor or a superadmin.
+router.delete('/api/backups/:id', requireAuth, async (req, res) => {
   try {
+    const backup = await worldBackup.getBackup(req.params.id);
+    if (!backup) return res.status(404).json({ error: 'Backup not found' });
+    const me = req.user._id.toString();
+    const allowed = req.user.isAdmin === true || backup.userId === me;
+    if (!allowed) {
+      return res.status(403).json({ error: 'Only the creator of this save (or a superadmin) can delete it' });
+    }
     const result = await worldBackup.deleteBackup(req.params.id);
     res.json(result);
   } catch (e) {

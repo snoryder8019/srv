@@ -39,4 +39,15 @@ router.post('/:game/restart', requireInternal, (req, res) => {
   res.json(lib.restartServer());
 });
 
+// Discord bot bridge — bot listens for voiceStateUpdate on the designated
+// Games voice channel and POSTs here. We rebroadcast on the /stats namespace
+// so the portal index toasts it.
+router.post('/discord/voice-join', requireInternal, (req, res) => {
+  const { user, channel } = req.body || {};
+  if (!user) return res.status(400).json({ error: 'user required' });
+  const io = req.app.get('io');
+  if (io) io.of('/stats').emit('discord:voice-join', { user, channel: channel || null });
+  res.json({ ok: true });
+});
+
 module.exports = router;

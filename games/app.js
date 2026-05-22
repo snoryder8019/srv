@@ -12,12 +12,17 @@ const http = require('http');
 const { Server: SocketIO } = require('socket.io');
 const broadcasts = require('./lib/broadcasts');
 const statsCollector = require('./lib/stats-collector');
+const gameChat = require('./lib/game-chat');
+const username = require('./lib/username');
 const sfu = require('./lib/sfu');
 const provisioner = require('./lib/linode-provisioner');
 const serverManager = require('./lib/server-manager');
 const playtime = require('./lib/playtime');
 const worldBackup = require('./lib/world-backup');
 const serverCam = require('./lib/server-cam');
+const newsletter = require('./lib/newsletter');
+const assets = require('./lib/assets');
+const windroseMcp = require('./lib/windrose-mcp');
 
 const app = express();
 const server = http.createServer(app);
@@ -45,11 +50,17 @@ client.connect().then(() => {
   app.locals.db = db;
   app.locals.serverManager = serverManager;
   statsCollector.init(db);
+  gameChat.init(db).catch(e => console.error('[chat] init failed:', e.message));
+  broadcasts.init(db).catch(e => console.error('[broadcast] init failed:', e.message));
+  username.backfillAll(db).catch(e => console.error('[username] backfill failed:', e.message));
   provisioner.init(db);
   serverManager.init(io, provisioner, db);
   playtime.init(db);
   worldBackup.init(db);
   serverCam.init();
+  newsletter.init(db).catch(e => console.error('[newsletter] init failed:', e.message));
+  assets.init(db).catch(e => console.error('[assets] init failed:', e.message));
+  windroseMcp.init(db);
   sfu.init().catch(e => console.error('[sfu] Init failed:', e.message));
   // Check for inactive provisioned servers every 10 minutes
   setInterval(() => provisioner.checkInactivity().catch(() => {}), 10 * 60 * 1000);
@@ -60,6 +71,20 @@ client.connect().then(() => {
 });
 
 // --- Passport ---
+// Block banned users and users whose suspension is still active. Suspension
+// expires automatically once suspendedUntil has passed — we just don't reject
+// at that point.
+function _accessDenialReason(user) {
+  if (!user) return null;
+  if (user.banned === true) return 'Account banned';
+  if (user.suspended === true) {
+    if (!user.suspendedUntil || new Date(user.suspendedUntil).getTime() > Date.now()) {
+      return 'Account suspended';
+    }
+  }
+  return null;
+}
+
 passport.use(new LocalStrategy(
   { usernameField: 'email' },
   async (email, password, done) => {
@@ -68,6 +93,8 @@ passport.use(new LocalStrategy(
       if (!user) return done(null, false, { message: 'Email not found' });
       const match = await bcrypt.compare(password, user.password || '');
       if (!match) return done(null, false, { message: 'Incorrect password' });
+      const denied = _accessDenialReason(user);
+      if (denied) return done(null, false, { message: denied });
       return done(null, user);
     } catch (e) {
       done(e);
@@ -103,7 +130,13 @@ passport.use(new GoogleStrategy(
           subscription: 'free',
         });
         user = await users.findOne({ _id: result.insertedId });
+        // New users get a generated username immediately — no UI surface should
+        // ever fall back to displayName/email for a user without one.
+        await username.backfillAll(db).catch(() => {});
+        user = await users.findOne({ _id: result.insertedId });
       }
+      const denied = _accessDenialReason(user);
+      if (denied) return done(null, false, { message: denied });
       done(null, user);
     } catch (e) {
       done(e);
@@ -115,6 +148,7 @@ passport.serializeUser((user, done) => done(null, user._id.toString()));
 passport.deserializeUser(async (id, done) => {
   try {
     const user = await db.collection('users').findOne({ _id: new ObjectId(id) });
+    if (user && _accessDenialReason(user)) return done(null, false);
     done(null, user || false);
   } catch (e) {
     done(e);
@@ -168,9 +202,14 @@ app.use('/', require('./routes/index'));
 app.use('/api', require('./routes/api'));
 app.use('/internal', require('./routes/internal'));
 app.use('/admin/modbuilder', require('./routes/modbuilder'));
+app.use('/mcp/windrose', require('./routes/windrose-mcp'));
+app.use('/windrose-map', require('./routes/windrose-map'));
 app.use('/admin', require('./routes/admin'));
 app.use('/broadcasts', require('./routes/broadcasts'));
 app.use('/stats', require('./routes/stats'));
+app.use('/api/chat', require('./routes/chat'));
+app.use('/profile', require('./routes/profile'));
+app.use('/newsletter', require('./routes/newsletter'));
 app.use('/suggest', require('./routes/suggest'));
 app.use('/plugins', require('./routes/plugins'));
 app.use('/servers', require('./routes/servers'));
@@ -281,6 +320,21 @@ statsCollector.emitter.on('playerlist', (data) => {
   statsNs.to('game:all').emit('stats:playerlist', data);
 });
 
+// Pipe in-game chat through the same /stats namespace so a single subscription
+// covers events + chat — saves opening a second socket per card.
+gameChat.emitter.on('chat', (msg) => {
+  const safe = {
+    game: msg.game,
+    userId: msg.userId,
+    name: msg.name,
+    message: msg.message,
+    isAdmin: !!msg.isAdmin,
+    ts: msg.ts,
+  };
+  statsNs.to('game:' + msg.game).emit('stats:chat', safe);
+  statsNs.to('game:all').emit('stats:chat', safe);
+});
+
 const broadcastNs = io.of('/broadcasts');
 
 // Auth is OPTIONAL for broadcasts — viewers can be anonymous
@@ -303,7 +357,7 @@ broadcastNs.use((socket, next) => {
 broadcastNs.on('connection', (socket) => {
   const user = socket.request.user || null;
   const uid = user ? user._id.toString() : null;
-  const uname = user ? (user.displayName || user.firstName || user.email) : 'Viewer';
+  const uname = username.displayFor(user) || 'Viewer';
   const urole = broadcasts.getUserRole(user);
 
   socket.on('broadcast:join', (code) => {
@@ -340,6 +394,28 @@ broadcastNs.on('connection', (socket) => {
 
     broadcasts.setLive(code, socket.id);
     broadcastNs.to(code).emit('broadcast:live');
+
+    // P2P fallback: viewers already on the page before go-live never got a
+    // `broadcast:viewer-joined` for the broadcaster to peer with. Replay it
+    // now for every connected viewer so the broadcaster pushes an offer.
+    for (const [, s] of broadcastNs.sockets) {
+      if (s.id === socket.id) continue;
+      if (s.broadcastCode !== code) continue;
+      const su = s.request.user;
+      broadcastNs.to(socket.id).emit('broadcast:viewer-joined', {
+        socketId: s.id,
+        name: username.displayFor(su) || 'Viewer',
+      });
+    }
+
+    // Cross-page flash: anyone on the games portal index gets a toast inviting
+    // them to watch. We emit on /stats since that's the namespace the index is
+    // already subscribed to for global server events.
+    statsNs.emit('broadcast:live-global', {
+      code,
+      game: b.game,
+      host: uname,
+    });
     console.log('[broadcast] LIVE:', code, '(' + b.game + ') by', uname);
   });
 
@@ -540,6 +616,7 @@ broadcastNs.on('connection', (socket) => {
     const voiceRoom = 'voice:' + code;
     socket.join(voiceRoom);
     socket.inVoice = true;
+    broadcasts.noteVoiceJoin(code, uid);
 
     // Tell everyone in voice about this new peer
     socket.to(voiceRoom).emit('voice:peer-joined', {
@@ -553,7 +630,7 @@ broadcastNs.on('connection', (socket) => {
         const su = s.request.user;
         peers.push({
           socketId: s.id,
-          name: su ? (su.displayName || su.firstName || su.email) : 'Viewer',
+          name: username.displayFor(su) || 'Viewer',
           userId: su ? su._id.toString() : null,
         });
       }
@@ -567,6 +644,7 @@ broadcastNs.on('connection', (socket) => {
     const voiceRoom = 'voice:' + socket.broadcastCode;
     socket.leave(voiceRoom);
     socket.inVoice = false;
+    broadcasts.noteVoiceLeave(socket.broadcastCode, uid);
     broadcastNs.to(voiceRoom).emit('voice:peer-left', { socketId: socket.id });
     broadcastNs.to(socket.broadcastCode).emit('broadcast:system', uname + ' left voice');
   });
@@ -606,6 +684,7 @@ broadcastNs.on('connection', (socket) => {
 
     // Clean up voice
     if (socket.inVoice) {
+      broadcasts.noteVoiceLeave(code, uid);
       broadcastNs.to('voice:' + code).emit('voice:peer-left', { socketId: socket.id });
     }
 

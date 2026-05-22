@@ -1,6 +1,22 @@
 # Recent Changes Summary
 
-Generated: 2026-05-20T07:30:00.037Z
+Generated: 2026-05-22T07:30:00.022Z
+
+---
+
+## Commit: revised landings for opsT and grafTV, slab updates to tickets and /book design +0.0.2 slab
+
+- **Hash:** `18f03f3`
+- **Author:** Scott
+- **Date:** 5/20/2026
+- **Changes:** 64 files, +29152/-1103 lines
+
+### Modified Areas:
+
+**Backend:** 9 files
+**Views:** 32 files
+**Scripts:** 2 files
+**Documentation:** 3 files
 
 ---
 
@@ -59,18 +75,6 @@ Generated: 2026-05-20T07:30:00.037Z
 - **Author:** Scott
 - **Date:** 4/28/2026
 - **Changes:** 2 files, +9/-1 lines
-
-### Modified Areas:
-
-
----
-
-## Commit: good pusjh on stats for windrose
-
-- **Hash:** `71bf0e8`
-- **Author:** Scott
-- **Date:** 4/28/2026
-- **Changes:** 7 files, +240/-18 lines
 
 ### Modified Areas:
 

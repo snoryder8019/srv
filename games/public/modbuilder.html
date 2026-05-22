@@ -17,6 +17,11 @@
       --warn: #d29922;
       --bad: #f85149;
       --idle: #8b949e;
+      --boss: #d4a34a;
+      --mob: #f85149;
+      --npc: #a371f7;
+      --ship: #58a6ff;
+      --item: #3fb950;
     }
     * { box-sizing: border-box; }
     body {
@@ -32,16 +37,18 @@
       align-items: center;
       gap: 16px;
     }
-    header h1 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 600;
-    }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
     header .ver { color: var(--dim); font-family: monospace; font-size: 12px; }
     header a { color: var(--accent); text-decoration: none; margin-left: auto; }
     .grid {
       display: grid;
       grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.4fr) minmax(320px, 1fr);
+      gap: 16px;
+      padding: 16px 24px 0;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
       gap: 16px;
       padding: 16px 24px;
     }
@@ -62,6 +69,16 @@
       color: var(--dim);
       font-weight: 600;
     }
+    .card h2 .badge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 1px 7px;
+      background: var(--panel2);
+      color: var(--text);
+      border-radius: 999px;
+      font-size: 10px;
+      letter-spacing: 0;
+    }
     .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--panel2); }
     .row:last-child { border-bottom: none; }
     .row .k { color: var(--dim); }
@@ -74,10 +91,12 @@
       font-weight: 600;
       text-transform: uppercase;
     }
-    .pill.active { background: rgba(63,185,80,.15); color: var(--good); }
-    .pill.idle   { background: rgba(139,148,158,.15); color: var(--idle); }
-    .pill.boot   { background: rgba(210,153,34,.15); color: var(--warn); }
-    .pill.dead   { background: rgba(248,81,73,.15); color: var(--bad); }
+    .pill.active  { background: rgba(63,185,80,.15); color: var(--good); }
+    .pill.idle    { background: rgba(139,148,158,.15); color: var(--idle); }
+    .pill.boot    { background: rgba(210,153,34,.15); color: var(--warn); }
+    .pill.dead    { background: rgba(248,81,73,.15); color: var(--bad); }
+    .pill.running { background: rgba(63,185,80,.15); color: var(--good); }
+    .pill.error   { background: rgba(248,81,73,.15); color: var(--bad); }
     .invite {
       font-family: monospace;
       font-size: 16px;
@@ -111,10 +130,15 @@
     }
     .event.player_join .ty { color: var(--good); }
     .event.player_leave .ty { color: var(--warn); }
-    .event.death .ty { color: var(--bad); background: rgba(248,81,73,.1); }
-    .event.heartbeat .ty { color: var(--dim); }
+    .event.death .ty       { color: var(--bad); background: rgba(248,81,73,.1); }
+    .event.boss_kill .ty   { color: var(--boss); background: rgba(212,163,74,.12); }
+    .event.mob_kill .ty    { color: var(--mob); }
+    .event.npc_kill .ty    { color: var(--npc); }
+    .event.ship_sunk .ty   { color: var(--ship); }
+    .event.item_drop .ty   { color: var(--item); }
+    .event.heartbeat .ty   { color: var(--dim); }
     .event.server_start .ty { color: var(--accent); }
-    .event.command .ty { color: var(--accent); }
+    .event.command .ty     { color: var(--accent); }
     .player {
       display: grid;
       grid-template-columns: 1fr auto auto;
@@ -146,7 +170,82 @@
     }
     .count .n { font-size: 22px; font-weight: 700; color: var(--accent); }
     .count .l { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; }
-    .updated { color: var(--dim); font-size: 11px; margin-top: 12px; text-align: right; }
+    .count.boss .n { color: var(--boss); }
+    .count.mob  .n { color: var(--mob); }
+    .count.npc  .n { color: var(--npc); }
+    .count.ship .n { color: var(--ship); }
+    .count.item .n { color: var(--item); }
+    .counts-5 {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 1fr 50px;
+      gap: 8px;
+      align-items: center;
+      padding: 4px 0;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    .bar-row .label { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar-row .value { color: var(--dim); text-align: right; }
+    .bar-bar {
+      grid-column: 1 / -1;
+      height: 3px;
+      background: var(--panel2);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .bar-bar > div { height: 100%; background: var(--accent); }
+    .donut {
+      position: relative;
+      width: 110px;
+      height: 110px;
+      margin: 0 auto 12px;
+    }
+    .donut svg { transform: rotate(-90deg); }
+    .donut .label {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: monospace;
+    }
+    .donut .label .big { font-size: 22px; font-weight: 700; }
+    .donut .label .sm  { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; }
+    .console {
+      background: #0b0f14;
+      border: 1px solid var(--panel2);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 180px;
+      overflow-y: auto;
+      color: var(--dim);
+    }
+    .console .cmd { color: var(--accent); }
+    .updated { color: var(--dim); font-size: 11px; margin-top: 12px; text-align: right; padding: 0 24px 16px; }
+    .island-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+    }
+    .island-tile {
+      background: var(--panel2);
+      border-radius: 4px;
+      padding: 6px 4px;
+      text-align: center;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    .island-tile .n { display: block; color: var(--accent); font-size: 14px; font-weight: 700; }
+    .island-tile .l { color: var(--dim); font-size: 10px; }
   </style>
 </head>
 <body>
@@ -156,6 +255,7 @@
     <a href="/admin">← admin</a>
   </header>
 
+  <!-- Row 1: server + recent events + players -->
   <div class="grid">
     <div>
       <div class="card">
@@ -171,7 +271,7 @@
       </div>
 
       <div class="card" style="margin-top:16px">
-        <h2>Last 24h</h2>
+        <h2>Activity · last 24h</h2>
         <div class="counts" id="counts"></div>
       </div>
 
@@ -196,7 +296,64 @@
     </div>
   </div>
 
-  <div class="updated" id="updated" style="padding:0 24px 16px"></div>
+  <!-- Row 2: combat / POIs / world resources / mod health / RCON -->
+  <div class="grid-2">
+    <div class="card">
+      <h2>Combat · last 24h <span class="badge" id="combatTotal">0</span></h2>
+      <div class="counts-5">
+        <div class="count boss"><div class="n" id="cnt-boss">0</div><div class="l">Bosses</div></div>
+        <div class="count mob"><div class="n"  id="cnt-mob">0</div><div class="l">Mobs</div></div>
+        <div class="count npc"><div class="n"  id="cnt-npc">0</div><div class="l">NPCs</div></div>
+        <div class="count ship"><div class="n" id="cnt-ship">0</div><div class="l">Ships</div></div>
+        <div class="count item"><div class="n" id="cnt-item">0</div><div class="l">Drops</div></div>
+      </div>
+      <h2 style="margin-top:14px">Top kills by class</h2>
+      <div id="combatBreakdown"><div class="empty">no combat in last 24h</div></div>
+    </div>
+
+    <div class="card">
+      <h2>World map · POIs <span class="badge" id="poiTotal">0</span></h2>
+      <div id="poiSummary" class="empty">loading…</div>
+      <h2 style="margin-top:14px">Top islands</h2>
+      <div id="islandGrid" class="island-grid"></div>
+    </div>
+
+    <div class="card">
+      <h2>World resources <span class="badge" id="worldActors">0 actors</span></h2>
+      <div id="worldSummary" class="empty">loading…</div>
+      <h2 style="margin-top:14px">Top classes</h2>
+      <div id="worldTop"><div class="empty">no data</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Mod health · MadLadsStats</h2>
+      <div class="donut">
+        <svg width="110" height="110" viewBox="0 0 110 110">
+          <circle cx="55" cy="55" r="45" stroke="#1c2128" stroke-width="14" fill="none"/>
+          <circle id="hookArc" cx="55" cy="55" r="45" stroke="#3fb950" stroke-width="14"
+                  fill="none" stroke-dasharray="283" stroke-dashoffset="283" stroke-linecap="round"/>
+        </svg>
+        <div class="label"><span class="big" id="hookRatio">—</span><span class="sm">hooks live</span></div>
+      </div>
+      <div class="row"><span class="k">Registered</span><span class="v" id="hookReg">—</span></div>
+      <div class="row"><span class="k">Failed</span><span class="v" id="hookFail">—</span></div>
+      <div class="row"><span class="k">Total attempted</span><span class="v" id="hookTotal">—</span></div>
+      <div class="row"><span class="k">Last armed</span><span class="v" id="hookArmedAt">—</span></div>
+    </div>
+
+    <div class="card">
+      <h2>RCON bridge</h2>
+      <div class="row"><span class="k">State</span><span class="v" id="rconState"><span class="pill idle">unknown</span></span></div>
+      <div class="row"><span class="k">Detail</span><span class="v" id="rconDetail">—</span></div>
+      <div class="row"><span class="k">Bridge version</span><span class="v" id="rconVer">—</span></div>
+      <div class="row"><span class="k">Last update</span><span class="v" id="rconTs">—</span></div>
+      <div class="row"><span class="k">Last error</span><span class="v" id="rconErr">—</span></div>
+      <h2 style="margin-top:14px">Console history</h2>
+      <div class="console" id="rconConsole"><div class="empty">no commands yet</div></div>
+    </div>
+  </div>
+
+  <div class="updated" id="updated"></div>
 
 <script>
   const $ = id => document.getElementById(id);
@@ -218,6 +375,16 @@
     if (s < 86400) return `${Math.floor(s/3600)}h ago`;
     return `${Math.floor(s/86400)}d ago`;
   }
+  // Strip the BP_/_C wrapper so "BP_Mob_BlackBeard_Regular_Sailor_C" reads as
+  // "BlackBeard Regular Sailor" in the combat panel.
+  function prettyClass(cls) {
+    if (!cls) return '';
+    return String(cls)
+      .replace(/^BP_(Boss|Mob|NPC|AIShip|Carrying|Sc_)/i, '')
+      .replace(/_C$/, '')
+      .replace(/_/g, ' ')
+      .trim();
+  }
 
   async function refresh() {
     try {
@@ -234,9 +401,6 @@
     const status = s.status || {};
     const server = status.server || {};
     const snap = s.latestSnapshot || {};
-    const lastEvent = s.events[0];
-    // s.events no longer contains heartbeats — the API surfaces the latest one
-    // separately so the feed isn't dominated by keep-alives.
     const lastHb = s.lastHeartbeat || null;
 
     const mode = lastHb?.mode || (snap.running ? 'idle' : 'dead');
@@ -246,17 +410,17 @@
     $('map').textContent = server.game || '—';
     $('gameVer').textContent = server.version || '—';
     $('modVer').textContent = server.windrose_plus || '—';
-    $('rcon').textContent = (s.config?.rconPasswordSet ? 'enabled' : 'disabled (set password)');
+    $('rcon').textContent = (s.rcon?.state === 'running' ? 'live · polling' : (s.config?.rconPasswordSet ? 'enabled' : 'disabled'));
     $('invite').textContent = server.invite_code || '—';
     $('version').textContent = server.windrose_plus ? `WindrosePlus ${server.windrose_plus}` : '';
 
-    // Counts
+    // Counts panel (left column)
     const c = s.counts24h || {};
     const wantedCounts = [
       ['player_join', 'Joins'],
       ['player_leave', 'Leaves'],
-      ['death', 'Deaths'],
       ['heartbeat', 'Heartbeats'],
+      ['command', 'Cmds'],
     ];
     $('counts').innerHTML = wantedCounts.map(([k, l]) =>
       `<div class="count"><div class="n">${c[k] || 0}</div><div class="l">${l}</div></div>`
@@ -268,18 +432,28 @@
       ? Object.entries(m).map(([k, v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v}×</span></div>`).join('')
       : '<div class="empty">no data</div>';
 
-    // Events — filter out noisy internals (mod boot/status/discovery hooks).
-    // Heartbeats are excluded server-side too, but we keep the guard here so a
-    // stray heartbeat wouldn't sneak in if the API ever changes.
-    const SHOW_TYPES = new Set(['player_join', 'player_leave', 'death', 'command']);
+    // Events feed — surface combat events alongside player join/leave so the
+    // panel reflects everything the mod is actually emitting. `hook_fired`
+    // (unclassified destroys) is still hidden via UI_SUPPRESSED on the server.
+    const SHOW_TYPES = new Set([
+      'player_join', 'player_leave', 'death', 'command',
+      'boss_kill', 'mob_kill', 'npc_kill', 'ship_sunk', 'item_drop',
+      'server_start', 'server_ready',
+    ]);
     const visibleEvents = s.events.filter(e => SHOW_TYPES.has(e.type));
     $('events').innerHTML = visibleEvents.length
       ? visibleEvents.map(e => {
           const detail =
-            e.type === 'player_join'  ? `${e.name || '?'} joined`        :
-            e.type === 'player_leave' ? `${e.name || '?'} left`          :
-            e.type === 'death'        ? `${e.name || '?'} died`          :
-            e.type === 'heartbeat'    ? `mode=${e.mode || '?'} players=${e.playerCount ?? 0}` :
+            e.type === 'player_join'  ? `${e.name || '?'} joined`                          :
+            e.type === 'player_leave' ? `${e.name || '?'} left`                            :
+            e.type === 'death'        ? `${e.name || '?'} died`                            :
+            e.type === 'boss_kill'    ? `boss defeated · ${prettyClass(e.boss   || e.actorClass)}` :
+            e.type === 'mob_kill'     ? `mob killed · ${prettyClass(e.victim   || e.actorClass)}`  :
+            e.type === 'npc_kill'     ? `npc killed · ${prettyClass(e.victim   || e.actorClass)}`  :
+            e.type === 'ship_sunk'    ? `ship sunk · ${prettyClass(e.victim   || e.actorClass)}`   :
+            e.type === 'item_drop'    ? `item dropped · ${prettyClass(e.item   || e.actorClass)}`  :
+            e.type === 'server_start' ? 'server started' :
+            e.type === 'server_ready' ? 'server ready'   :
             (e.message || e.raw?.slice(0, 80) || '');
           return `<div class="event ${e.type}"><span class="t">${fmtTime(e.ts)}</span><span class="ty">${e.type}</span><span>${escapeHtml(detail)}</span></div>`;
         }).join('')
@@ -304,11 +478,126 @@
       if (server.invite_code) navigator.clipboard?.writeText(server.invite_code);
     };
 
+    // ── Combat panel ──
+    const combat = s.combat || { totals: {}, breakdown: {} };
+    const ct = combat.totals || {};
+    $('cnt-boss').textContent = ct.bossKills || 0;
+    $('cnt-mob').textContent  = ct.mobKills  || 0;
+    $('cnt-npc').textContent  = ct.npcKills  || 0;
+    $('cnt-ship').textContent = ct.shipsSunk || 0;
+    $('cnt-item').textContent = ct.itemDrops || 0;
+    const combatSum = (ct.bossKills || 0) + (ct.mobKills || 0) + (ct.npcKills || 0) + (ct.shipsSunk || 0) + (ct.itemDrops || 0);
+    $('combatTotal').textContent = combatSum;
+    // Merge all categories into one ranked list with a colour-coded label.
+    const allKills = [];
+    const tag = (t) => ({ boss_kill: '👑', mob_kill: '🗡️', npc_kill: '☠️', ship_sunk: '⛵', item_drop: '📦' }[t] || '·');
+    for (const [type, arr] of Object.entries(combat.breakdown || {})) {
+      for (const row of arr) allKills.push({ type, ...row });
+    }
+    allKills.sort((a, b) => b.count - a.count);
+    const maxKill = allKills[0]?.count || 1;
+    $('combatBreakdown').innerHTML = allKills.length
+      ? allKills.slice(0, 10).map(r => `
+          <div class="bar-row">
+            <span class="label">${tag(r.type)} ${escapeHtml(prettyClass(r.class))}</span>
+            <span class="value">${r.count}</span>
+            <div class="bar-bar"><div style="width:${Math.round((r.count / maxKill) * 100)}%;background:var(--${r.type === 'boss_kill' ? 'boss' : r.type === 'mob_kill' ? 'mob' : r.type === 'npc_kill' ? 'npc' : r.type === 'ship_sunk' ? 'ship' : 'item'})"></div></div>
+          </div>
+        `).join('')
+      : '<div class="empty">no combat in last 24h</div>';
+
+    // ── POI / world map panel ──
+    const p = s.pois;
+    if (p) {
+      $('poiTotal').textContent = p.total;
+      const audio = p.kindCounts.audio || 0;
+      const overlap = p.kindCounts.overlap || 0;
+      $('poiSummary').innerHTML = `
+        <div class="row"><span class="k">Total POIs</span><span class="v">${p.total}</span></div>
+        <div class="row"><span class="k">Islands</span><span class="v">${p.islandCount}</span></div>
+        <div class="row"><span class="k">Sub-types</span><span class="v">${p.subTypeCount}</span></div>
+        <div class="row"><span class="k">Audio / overlap</span><span class="v">${audio} / ${overlap}</span></div>
+        <div class="row"><span class="k">Actors scanned</span><span class="v">${p.actorsScanned.toLocaleString()}</span></div>
+        <div class="row"><span class="k">Missing position</span><span class="v">${p.missingPosition}</span></div>
+        <div class="row"><span class="k">Last scan</span><span class="v">${p.timestamp ? fmtAgo(p.timestamp * 1000) : '—'}</span></div>
+      `;
+      $('islandGrid').innerHTML = (p.islandTop || []).map(i => `
+        <div class="island-tile"><span class="n">${i.count}</span><span class="l">island ${i.id.replace(/^I/,'')}</span></div>
+      `).join('') || '<div class="empty">no islands scanned</div>';
+    } else {
+      $('poiSummary').textContent = 'no POI scan on disk';
+      $('islandGrid').innerHTML = '';
+    }
+
+    // ── World resources panel ──
+    const w = s.world;
+    if (w) {
+      $('worldActors').textContent = `${w.totalActors.toLocaleString()} actors · ${w.totalClasses} classes`;
+      $('worldSummary').innerHTML = `
+        <div class="row"><span class="k">Farming plots</span><span class="v">${w.farmingCount.toLocaleString()}</span></div>
+        <div class="row"><span class="k">Mob spawns (static)</span><span class="v">${w.mobsCount.toLocaleString()}</span></div>
+        <div class="row"><span class="k">AI Ships</span><span class="v">${w.shipsCount.toLocaleString()}</span></div>
+        <div class="row"><span class="k">Bosses</span><span class="v">${w.bossesCount.toLocaleString()}</span></div>
+        <div class="row"><span class="k">Last census</span><span class="v">${w.lastUpdated ? fmtAgo(w.lastUpdated * 1000) : '—'}</span></div>
+      `;
+      const maxC = w.top[0]?.count || 1;
+      $('worldTop').innerHTML = w.top.map(c => `
+        <div class="bar-row">
+          <span class="label">${escapeHtml(c.class)}</span>
+          <span class="value">${c.count}</span>
+          <div class="bar-bar"><div style="width:${Math.round((c.count / maxC) * 100)}%"></div></div>
+        </div>
+      `).join('');
+    } else {
+      $('worldSummary').textContent = 'no class census on disk';
+      $('worldTop').innerHTML = '';
+    }
+
+    // ── Mod health donut ──
+    const mh = s.modHealth;
+    if (mh && mh.total) {
+      const pct = mh.registered / mh.total;
+      // Circle circumference for r=45 is ~283; offset shrinks the unfilled gap.
+      const dashOffset = Math.round(283 * (1 - pct));
+      const arc = document.getElementById('hookArc');
+      arc.setAttribute('stroke-dashoffset', dashOffset);
+      arc.setAttribute('stroke', pct >= 0.5 ? '#3fb950' : pct >= 0.25 ? '#d29922' : '#f85149');
+      $('hookRatio').textContent = `${mh.registered}/${mh.total}`;
+      $('hookReg').textContent   = mh.registered;
+      $('hookFail').textContent  = mh.failed;
+      $('hookTotal').textContent = mh.total;
+      $('hookArmedAt').textContent = fmtAgo(mh.lastArmedAt);
+    } else {
+      $('hookRatio').textContent = '—';
+      $('hookReg').textContent = '—';
+      $('hookFail').textContent = '—';
+      $('hookTotal').textContent = '—';
+      $('hookArmedAt').textContent = '—';
+    }
+
+    // ── RCON panel ──
+    const rc = s.rcon || {};
+    const rcState = rc.state || 'unknown';
+    $('rconState').innerHTML = `<span class="pill ${rcState === 'running' ? 'running' : rcState === 'error' ? 'error' : 'idle'}">${rcState}</span>`;
+    $('rconDetail').textContent = rc.detail || '—';
+    $('rconVer').textContent = rc.version || '—';
+    $('rconTs').textContent = rc.ts ? fmtAgo(rc.ts * 1000) : '—';
+    $('rconErr').textContent = rc.last_error || '—';
+    const ch = s.consoleHistory || [];
+    $('rconConsole').innerHTML = ch.length
+      ? ch.map(h => {
+          if (typeof h === 'string') return `<div><span class="cmd">$</span> ${escapeHtml(h)}</div>`;
+          const cmd = h.cmd || h.command || '';
+          const out = h.out || h.response || '';
+          return `<div><span class="cmd">$</span> ${escapeHtml(cmd)}${out ? `<br>&nbsp;&nbsp;${escapeHtml(out).slice(0,200)}` : ''}</div>`;
+        }).join('')
+      : '<div class="empty">no commands yet</div>';
+
     $('updated').textContent = `updated ${new Date().toLocaleTimeString()}`;
   }
 
   function escapeHtml(s) {
-    return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
   }
 
   refresh();

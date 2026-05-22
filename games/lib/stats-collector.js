@@ -29,6 +29,14 @@ const UI_SUPPRESSED_EVENT_TYPES = new Set([
   'hook.registered',
   'hook.failed',
   'madlads_stats.armed',
+  // WindrosePlus 1.3.5 added these. tick.beat fires every ~30s (a fast
+  // heartbeat) — would dominate the feed. poiscan.gate is a scan-window
+  // signal, module.load.fail is a boot diagnostic (rare; surface elsewhere if
+  // we ever want it). Kept under their raw dot-namespaced names so we don't
+  // collapse the new vocabulary into 'heartbeat' and lose the distinction.
+  'tick.beat',
+  'poiscan.gate',
+  'module.load.fail',
 ]);
 
 // Log file positions (for tailing)
@@ -49,7 +57,12 @@ const LOG_PATHS = {
   palworld: path.join(__dirname, '..', 'palworld', 'logs', 'server.log'),
   windrose: path.join(__dirname, '..', 'windrose', 'logs', 'server.log'),
   windrose_events: path.join(__dirname, '..', 'windrose', 'WindrosePlus', 'logs', 'activity.log'),
-  madlads_stats: path.join(__dirname, '..', 'windrose', 'windrose_plus_data', 'madlads_stats.log'),
+  // madlads_stats: intentionally NOT tailed. The MadLadsStats discovery mod is
+  // disabled in mods.txt and its K2_DestroyActor hook fires never represented
+  // player kills — they fire on any actor destruction (scene cleanup, despawn,
+  // server stop). Tailing it produced false npc_kill/ship_sunk inflation on
+  // the windrose card. If MadLadsStats is ever re-enabled with a proper death
+  // hook, re-add it here AND scope the reclassifier to player-attributed paths.
 };
 
 // Fallback log paths
@@ -73,7 +86,7 @@ function resolveWindrosePlusLog() {
 const LOG_GAME_MAP = {
   rust: 'rust', valheim: 'valheim', valheim_events: 'valheim',
   l4d2: 'l4d2', '7dtd': '7dtd', se: 'se', palworld: 'palworld',
-  windrose: 'windrose', windrose_events: 'windrose', madlads_stats: 'windrose',
+  windrose: 'windrose', windrose_events: 'windrose',
 };
 
 // Sources whose lines are NDJSON instead of free-form text
@@ -374,6 +387,26 @@ const JSON_TYPE_MAP = {
   'madlads_stats.hooks': 'mod_status',
 };
 
+// K2_DestroyActor fires for every actor that gets destroyed. The leading token
+// of payload.self is the BlueprintGeneratedClass name; we route it to a named
+// event type so the activity feed shows "Boss Boatswain defeated" instead of
+// raw hook_fired noise. Unmatched classes stay as hook_fired (suppressed).
+const DESTROYED_ACTOR_HOOK = '/Script/Engine.Actor:K2_DestroyActor';
+function classifyDestroyedActor(selfPath) {
+  if (!selfPath || typeof selfPath !== 'string') return null;
+  const cls = selfPath.split(/\s|\//, 1)[0];
+  if (!cls) return null;
+  // Boss arena reset volumes confirm a boss event but we already count the boss
+  // itself; skip them so we don't double-count.
+  if (/BossArena.*VFX_Reset/i.test(cls)) return null;
+  if (/^BP_Boss_/i.test(cls))      return { type: 'boss_kill', actorClass: cls, boss: cls.replace(/^BP_Boss_/i,'').replace(/_C$/,'') };
+  if (/^BP_Mob_/i.test(cls))       return { type: 'mob_kill',  actorClass: cls, victim: cls.replace(/^BP_Mob_/i,'').replace(/_C$/,'') };
+  if (/^BP_NPC_/i.test(cls))       return { type: 'npc_kill',  actorClass: cls, victim: cls.replace(/^BP_NPC_/i,'').replace(/_C$/,'') };
+  if (/^BP_AIShip_/i.test(cls))    return { type: 'ship_sunk', actorClass: cls, victim: cls.replace(/^BP_AIShip_/i,'').replace(/_C$/,'') };
+  if (/^BP_Carrying/i.test(cls))   return { type: 'item_drop', actorClass: cls, item:   cls.replace(/^BP_Carrying/i,'').replace(/_C$/,'') };
+  return null;
+}
+
 function processJsonLogLine(source, line) {
   const limit = DEBUG_DUMP_LIMITS[source];
   if (limit) {
@@ -410,11 +443,38 @@ function processJsonLogLine(source, line) {
   if (p.message || p.text) event.message = p.message || p.text;
   if (p.x != null && p.y != null) event.pos = `${p.x},${p.y},${p.z != null ? p.z : 0}`;
   if (p.player_count != null) event.playerCount = p.player_count;
+  // WindrosePlus 1.3.5 added an `alive` flag to player.join/leave. It's null
+  // today but if upstream starts populating it (e.g. `alive: false` on
+  // post-death respawn join), we'll have it stored to backfill death stats.
+  if (p.alive != null) event.alive = p.alive;
   if (p.mode) event.mode = p.mode;
   if (p.attacker) event.attacker = p.attacker;
   if (p.victim) event.victim = p.victim;
   if (p.attackerId) event.attackerId = String(p.attackerId);
   if (p.victimId) event.victimId = String(p.victimId);
+
+  // Reclassify K2_DestroyActor hook fires into a named event type so the
+  // activity feed surfaces them with player-friendly labels instead of
+  // showing the raw `hook_fired` plumbing.
+  if (event.type === 'hook_fired' && p.path === DESTROYED_ACTOR_HOOK) {
+    const cls = classifyDestroyedActor(p.self);
+    if (cls) {
+      event.type = cls.type;
+      event.actorClass = cls.actorClass;
+      if (cls.boss)   event.boss   = cls.boss;
+      if (cls.victim) event.victim = cls.victim;
+      if (cls.item)   event.item   = cls.item;
+    }
+  }
+
+  // madlads_stats.armed payload carries the hook-health gauge (registered /
+  // total / failed). Hoist these to top-level fields so the API can query the
+  // latest one without unpacking raw JSON.
+  if (rawType === 'madlads_stats.armed') {
+    if (p.registered != null) event.hooksRegistered = p.registered;
+    if (p.total      != null) event.hooksTotal      = p.total;
+    if (p.failed     != null) event.hooksFailed     = p.failed;
+  }
 
   storeEvent(event);
 }
@@ -516,19 +576,28 @@ async function nameKeyedJoinUpsert(game, name, ts) {
 // multiple log patterns (engine init, session loaded, mod boot, invite code,
 // etc.) — we collapse them down to one `server_start` and one `server_ready`
 // notice per game per minute.
-const BOOT_DEDUPE_TYPES = new Set(['server_start', 'server_ready']);
-const BOOT_DEDUPE_WINDOW_MS = 60_000;
-const lastBootEventAt = {}; // `${game}:${type}` → ms timestamp
+// Per-(game, type) dedupe window. `raid_end` is here because Valheim's
+// MadLadsEventLogger BepInEx plugin can emit thousands of identical
+// `raid_end | event_ended` lines in a tight loop (observed 568k+ in
+// events.log) — one per minute per game is plenty to represent the
+// real-world cadence of Valheim random events.
+const DEDUPE_WINDOW_MS = {
+  server_start: 60_000,
+  server_ready: 60_000,
+  raid_end: 60_000,
+};
+const lastDedupedEventAt = {}; // `${game}:${type}` → ms timestamp
 
 // ── Event Storage ──
 async function storeEvent(event) {
   try {
-    if (BOOT_DEDUPE_TYPES.has(event.type)) {
+    const dedupeWindow = DEDUPE_WINDOW_MS[event.type];
+    if (dedupeWindow) {
       const key = `${event.game}:${event.type}`;
       const now = event.ts ? event.ts.getTime() : Date.now();
-      const last = lastBootEventAt[key] || 0;
-      if (now - last < BOOT_DEDUPE_WINDOW_MS) return;
-      lastBootEventAt[key] = now;
+      const last = lastDedupedEventAt[key] || 0;
+      if (now - last < dedupeWindow) return;
+      lastDedupedEventAt[key] = now;
     }
 
     // Cache any name+steamId pair we can learn from this event…
@@ -727,6 +796,7 @@ async function getRecentEvents(game, limit = 50, opts = {}) {
   // Heartbeats + mod-internal probes dominate the event stream and would push
   // real events out of any reasonable limit. Strip them unless callers opt in.
   if (!opts.includeNoise) query.type = { $nin: Array.from(UI_SUPPRESSED_EVENT_TYPES) };
+  if (opts.before) query.ts = { $lt: new Date(opts.before) };
   return db.collection('game_events')
     .find(query)
     .sort({ ts: -1 })
@@ -796,6 +866,12 @@ async function getServerSummary(game) {
     bossKills24h: evMap.boss_kill || 0,
     raids24h: evMap.raid_start || 0,
     piecesPlaced24h: evMap.piece_place || 0,
+    // Windrose-only combat telemetry derived from K2_DestroyActor hook fires.
+    // For other games these will sit at 0.
+    mobKills24h: evMap.mob_kill || 0,
+    npcKills24h: evMap.npc_kill || 0,
+    shipsSunk24h: evMap.ship_sunk || 0,
+    itemDrops24h: evMap.item_drop || 0,
   };
 }
 
@@ -817,15 +893,39 @@ async function getGameAllTimeStats(game) {
     },
   ];
   const result = await db.collection('player_stats').aggregate(pipeline).toArray();
-  return result[0] || {
+  const base = result[0] || {
     totalSessions: 0, totalPlaytime: 0, totalKills: 0,
     totalDeaths: 0, totalBossKills: 0, totalPiecesPlaced: 0, playerCount: 0,
   };
+
+  // Windrose: WindrosePlus doesn't attribute kills to players, so player_stats
+  // counters are always 0. Pull combat counts from game_events instead. Note
+  // game_events has a 30-day TTL — these are effectively "last 30 days" totals
+  // surfaced under "all-time" tiles because they're the most-permanent record
+  // we have for windrose combat.
+  if (game === 'windrose') {
+    const combatAgg = await db.collection('game_events').aggregate([
+      { $match: { game: 'windrose', type: { $in: ['npc_kill', 'mob_kill', 'ship_sunk', 'boss_kill', 'item_drop'] } } },
+      { $group: { _id: '$type', count: { $sum: 1 } } },
+    ]).toArray();
+    const byType = combatAgg.reduce((acc, r) => { acc[r._id] = r.count; return acc; }, {});
+    base.totalNpcKills  = byType.npc_kill  || 0;
+    base.totalMobKills  = byType.mob_kill  || 0;
+    base.totalShipsSunk = byType.ship_sunk || 0;
+    base.totalBossKills = byType.boss_kill || base.totalBossKills || 0;
+    base.totalItemDrops = byType.item_drop || 0;
+  }
+
+  return base;
 }
 
 // ── Recent notable events (deaths, boss kills, raids) for a game ──
 async function getNotableEvents(game, limit = 20) {
-  const notableTypes = ['death', 'boss_kill', 'kill', 'raid_start', 'raid_end'];
+  // Windrose's combat lacks player attribution, so we'd never see it under the
+  // standard kill/death set — include its K2_DestroyActor-derived event types
+  // so the RECENT EVENTS panel has something to show on the windrose card.
+  const notableTypes = ['death', 'boss_kill', 'kill', 'raid_start', 'raid_end',
+                        'npc_kill', 'mob_kill', 'ship_sunk', 'item_drop'];
   return db.collection('game_events')
     .find({ game, type: { $in: notableTypes } })
     .sort({ ts: -1 })

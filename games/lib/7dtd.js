@@ -21,6 +21,9 @@ const MODS_DISABLED_DIR = path.join(SDTD_DIR, 'Mods_disabled');
 const INACTIVITY_LIMIT_MS = 60 * 60 * 1000;
 let lastPlayerActivity = null;
 let inactivityTimer = null;
+// Once we observe "StartGame done" after the latest StartAsServer, we cache it
+// so the booting flag doesn't flap as the log churns past a tail window.
+let _readySince = null;
 
 // --- tmux helpers ---
 
@@ -38,6 +41,7 @@ function startServer() {
   if (!fs.existsSync(START_SCRIPT)) return { ok: false, message: 'start-7dtd.sh not found' };
   try {
     execSync(`bash ${START_SCRIPT}`, { stdio: 'pipe' });
+    _readySince = null;
     resetInactivityTimer();
     return { ok: true, message: 'Server starting...' };
   } catch (e) {
@@ -50,6 +54,7 @@ function stopServer(reason) {
   try {
     execSync(`sudo -u ${GS_USER} tmux kill-session -t ${SESSION} 2>/dev/null`);
     clearInactivityTimer();
+    _readySince = null;
     console.log(`[games] 7DTD server stopped${reason ? ': ' + reason : ''}`);
     return { ok: true, message: 'Server stopped' };
   } catch (e) {
@@ -64,26 +69,33 @@ function restartServer() {
 }
 
 // --- Status ---
-// 7DTD log patterns:
-//   "GameManager Awake done" or "StartGame" → server ready
-//   "Player connected, entityid=..." → player joined
-//   "Player disconnected, entityid=..." → player left
+// 7DTD log patterns (V1.x+ build):
+//   "StartAsServer"                                  → boot start (anchor for current run)
+//   "StartGame done"                                 → server ready, accepting connections
+//   "GMSG: Player 'X' joined the game"               → player entered the world
+//   "GMSG: Player 'X' left the game"                 → player left the world
+//   "GamePref.GameWorld = <world>"                   → map name
+//   "GamePref.WorldGenSeed = <seed>"                 → seed
+
+// Slice the log file down to just the most recent run.
+// Anchor: `INF StartGame` at end of line (NOT `INF StartGame done`), since
+// GameWorld/WorldGenSeed lines come before StartAsServer in the boot sequence.
+function _currentRunSlice(content) {
+  const re = /INF StartGame$/gm;
+  let last = -1;
+  let m;
+  while ((m = re.exec(content)) !== null) last = m.index;
+  return last === -1 ? content : content.slice(last);
+}
 
 function getPlayerCount() {
   if (!fs.existsSync(LOG_FILE)) return 0;
   try {
-    const lines = fs.readFileSync(LOG_FILE, 'utf8').split('\n');
-    let startIdx = 0;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].includes('GameManager Awake done') || lines[i].includes('StartGame')) {
-        startIdx = i;
-        break;
-      }
-    }
+    const content = _currentRunSlice(fs.readFileSync(LOG_FILE, 'utf8'));
     let count = 0;
-    for (let i = startIdx; i < lines.length; i++) {
-      if (/Player connected,/.test(lines[i])) count++;
-      if (/Player disconnected,/.test(lines[i])) count = Math.max(0, count - 1);
+    for (const line of content.split('\n')) {
+      if (/GMSG: Player '[^']+' joined the game/.test(line)) count++;
+      else if (/GMSG: Player '[^']+' left the game/.test(line)) count = Math.max(0, count - 1);
     }
     return count;
   } catch {
@@ -93,18 +105,28 @@ function getPlayerCount() {
 
 async function getStatus() {
   const running = isRunning();
-  if (!running) return { running: false, players: 0, maxPlayers: 0 };
+  if (!running) {
+    _readySince = null;
+    return { running: false, players: 0, maxPlayers: 0 };
+  }
 
-  let booting = true;
+  let booting = _readySince === null;
   let map = null;
   let seed = null;
+
   if (fs.existsSync(LOG_FILE)) {
-    const tail = fs.readFileSync(LOG_FILE, 'utf8').split('\n').slice(-80).join('\n');
-    booting = !tail.includes('GameManager Awake done') && !tail.includes('StartGame');
-    const worldMatch = tail.match(/World '[^']*' loaded/i) || tail.match(/Loaded World: ([^\n]+)/);
-    if (worldMatch) map = worldMatch[1] || worldMatch[0];
-    const seedMatch = tail.match(/Seed: (\d+)/);
-    if (seedMatch) seed = seedMatch[1];
+    const content = fs.readFileSync(LOG_FILE, 'utf8');
+    const run = _currentRunSlice(content);
+
+    if (booting && run.includes('StartGame done')) {
+      _readySince = Date.now();
+      booting = false;
+    }
+
+    const worldMatch = run.match(/GamePref\.GameWorld\s*=\s*([^\r\n]+)/);
+    if (worldMatch) map = worldMatch[1].trim();
+    const seedMatch = run.match(/GamePref\.WorldGenSeed\s*=\s*([^\r\n]+)/);
+    if (seedMatch) seed = seedMatch[1].trim();
   }
 
   const players = booting ? 0 : getPlayerCount();
@@ -114,7 +136,7 @@ async function getStatus() {
     booting,
     players,
     maxPlayers: 8,
-    map: map ? map.replace(/World '(.+)' loaded/i, '$1').trim() : '—',
+    map: map || '—',
     seed: seed || null,
   };
 }

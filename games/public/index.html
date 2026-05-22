@@ -155,6 +155,75 @@
     .btn-request:hover { background: rgba(230,184,0,0.1); }
     .btn-request.sent { border-color: var(--green); color: var(--green); cursor: default; }
 
+    /* Client-mods chip in the connect bar */
+    .btn-mods {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      font-family: inherit; font-size: 0.65rem; font-weight: bold; padding: 6px 10px;
+      border-radius: 3px; cursor: pointer; letter-spacing: 0.05em; text-transform: uppercase;
+      white-space: nowrap; transition: all 0.15s;
+    }
+    .btn-mods:hover { color: var(--text); border-color: var(--muted); }
+    .btn-mods.required { border-color: var(--yellow); color: var(--yellow); }
+    .btn-mods.required:hover { background: rgba(230,184,0,0.1); }
+    .btn-mods.acked { border-color: var(--green); color: var(--green); }
+
+    /* Mods modal */
+    .mods-modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9000;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .mods-modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+      max-width: 560px; width: 100%; color: var(--text); font-family: inherit;
+      max-height: 80vh; display: flex; flex-direction: column;
+    }
+    .mods-modal-head {
+      padding: 18px 22px 12px; border-bottom: 1px solid var(--border);
+    }
+    .mods-modal-eyebrow {
+      font-size: 0.65rem; letter-spacing: 0.12em; color: var(--muted);
+      text-transform: uppercase; margin-bottom: 6px;
+    }
+    .mods-modal-title { font-size: 1.05rem; font-weight: 600; }
+    .mods-modal-body { padding: 14px 22px; overflow-y: auto; flex: 1; }
+    .mods-modal-foot {
+      padding: 12px 22px; border-top: 1px solid var(--border);
+      display: flex; justify-content: flex-end; gap: 8px; align-items: center;
+    }
+    .mod-item {
+      border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px;
+      margin-bottom: 10px; background: var(--bg);
+    }
+    .mod-item.required { border-left: 3px solid var(--yellow); }
+    .mod-item.info { border-left: 3px solid var(--accent); }
+    .mod-item-head {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;
+    }
+    .mod-item-name { font-weight: 600; font-size: 0.92rem; }
+    .mod-item-version {
+      font-size: 0.65rem; color: var(--muted); background: var(--card);
+      padding: 2px 6px; border-radius: 2px; letter-spacing: 0.05em;
+    }
+    .mod-item-tag {
+      font-size: 0.6rem; padding: 2px 6px; border-radius: 2px;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .mod-item-tag.required { background: var(--yellow); color: #0d0d0d; }
+    .mod-item-tag.optional { background: var(--border); color: var(--muted); }
+    .mod-item-tag.info { background: var(--accent); color: #fff; }
+    .mod-item-notes { font-size: 0.78rem; color: var(--muted); line-height: 1.45; margin: 6px 0 0; }
+    .mod-item-action {
+      display: inline-block; margin-top: 8px; font-size: 0.7rem; font-weight: bold;
+      letter-spacing: 0.05em; padding: 6px 12px; border-radius: 3px;
+      background: var(--accent); color: #fff; text-decoration: none;
+    }
+    .mod-item-action:hover { filter: brightness(1.15); }
+    .mods-ack-row {
+      flex: 1; display: flex; align-items: center; gap: 8px;
+      font-size: 0.75rem; color: var(--muted); cursor: pointer; user-select: none;
+    }
+    .mods-ack-row input { cursor: pointer; }
+
     /* Leaderboard */
     .leaderboard { padding: 0; }
     .lb-header {
@@ -210,24 +279,54 @@
     .btn-stop { background: #333; color: #ff6b6b; border: 1px solid #ff4040; }
     .btn-restart { background: #2a2a00; color: var(--yellow); border: 1px solid var(--yellow); }
 
-    /* RCON console */
-    .rcon-section { margin-top: 14px; }
-    .rcon-label { font-size: 0.6rem; color: var(--muted); letter-spacing: 0.08em; margin-bottom: 6px; }
-    .rcon-output {
-      background: #080808; border: 1px solid var(--border); border-radius: 3px;
-      padding: 10px; font-size: 0.72rem; color: #aaa; height: 110px;
-      overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin-bottom: 6px;
+    /* In-game chat */
+    .chat-section { margin-top: 14px; }
+    .chat-label {
+      font-size: 0.6rem; color: var(--muted); letter-spacing: 0.08em;
+      margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;
     }
-    .rcon-input-row { display: flex; gap: 6px; }
-    .rcon-input {
+    .chat-presence {
+      font-size: 0.58rem; color: var(--green); letter-spacing: 0.05em;
+      padding: 2px 7px; border-radius: 999px; background: rgba(76,175,130,0.12);
+    }
+    .chat-presence.offline { color: var(--muted); background: rgba(85,85,85,0.15); }
+    .chat-log {
+      background: #080808; border: 1px solid var(--border); border-radius: 3px;
+      padding: 10px; font-size: 0.72rem; color: var(--text); height: 140px;
+      overflow-y: auto; word-break: break-word; margin-bottom: 6px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .chat-msg { display: flex; align-items: baseline; gap: 6px; line-height: 1.35; }
+    .chat-msg .who { color: var(--yellow); font-weight: bold; flex-shrink: 0; }
+    .chat-msg .body { color: var(--text); }
+    .chat-msg .stamp { color: var(--muted); font-size: 0.58rem; margin-left: auto; flex-shrink: 0; }
+    .chat-msg.staff .who { color: var(--accent); }
+    .chat-msg.staff .body::before { content: '[STAFF] '; color: var(--accent); font-weight: bold; }
+    .chat-input-row { display: flex; gap: 6px; }
+    .chat-input {
       flex: 1; background: #111; border: 1px solid var(--border); color: var(--text);
       font-family: inherit; font-size: 0.78rem; padding: 7px 10px; border-radius: 3px; outline: none;
     }
-    .rcon-input:focus { border-color: var(--accent); }
-    .btn-rcon {
+    .chat-input:focus { border-color: var(--accent); }
+    .chat-input:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-chat {
       background: var(--accent); color: #fff; font-family: inherit;
       font-size: 0.72rem; font-weight: bold; padding: 7px 12px; border: none; border-radius: 3px; cursor: pointer;
     }
+    .btn-chat:disabled { opacity: 0.35; cursor: not-allowed; }
+    .chat-hint { font-size: 0.58rem; color: var(--muted); margin-top: 4px; font-style: italic; }
+    .chat-hint.error { color: var(--accent); font-style: normal; }
+    .chat-history-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 0.58rem; color: var(--muted); margin-bottom: 4px;
+    }
+    .btn-history {
+      background: transparent; color: var(--accent); border: 1px solid var(--border);
+      font-family: inherit; font-size: 0.58rem; padding: 2px 8px; cursor: pointer; border-radius: 2px;
+    }
+    .btn-history:hover { border-color: var(--accent); }
+    .btn-history:disabled { opacity: 0.4; cursor: not-allowed; }
+    .chat-stats { font-style: italic; }
 
     /* Plugins */
     .plugins-section { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; }
@@ -284,6 +383,14 @@
     }
     .event-feed-count { font-size: 0.6rem; color: var(--muted); }
     .event-list { max-height: 280px; overflow-y: auto; padding: 6px 0; }
+    .event-load-older {
+      display: block; width: calc(100% - 36px); margin: 4px 18px 8px;
+      padding: 6px 10px; font-size: 0.62rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--accent); background: transparent;
+      border: 1px dashed var(--border); border-radius: 4px; cursor: pointer;
+    }
+    .event-load-older:hover:not(:disabled) { border-color: var(--accent); background: rgba(255,255,255,0.02); }
+    .event-load-older:disabled { opacity: 0.5; cursor: default; }
     .event-item {
       padding: 5px 18px; font-size: 0.7rem; display: flex;
       align-items: baseline; gap: 8px; border-bottom: 1px solid rgba(42,42,42,0.3);
@@ -305,6 +412,122 @@
     .event-icon { font-size: 0.78rem; flex-shrink: 0; }
     .event-text { color: var(--text); flex: 1; }
     .event-text .name { color: var(--yellow); font-weight: bold; }
+    .event-count { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 8px; background: rgba(255,255,255,0.1); color: var(--muted); font-size: 0.65rem; font-weight: bold; vertical-align: middle; }
+    .notable-text .event-count { background: rgba(255,255,255,0.08); }
+
+    /* Windrose-only live stats inside Stats tab */
+    .wr-extras { padding: 0 14px 16px; }
+    .wr-section-label {
+      font-size: 0.58rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.1em; margin: 16px 0 6px; display: flex; align-items: center; gap: 8px;
+      padding-top: 12px; border-top: 1px solid var(--border);
+    }
+    .wr-section-label:first-child { border-top: none; padding-top: 0; margin-top: 8px; }
+    .wr-section-sub {
+      font-size: 0.6rem; color: var(--text); letter-spacing: 0;
+      background: rgba(255,255,255,0.05); padding: 1px 7px; border-radius: 999px;
+    }
+    .wr-combat-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+    }
+    .wr-tile {
+      background: #0d0d0d; border: 1px solid var(--border); border-radius: 3px;
+      padding: 6px 4px; text-align: center;
+    }
+    .wr-tile .n { font-size: 1.1rem; font-weight: bold; font-family: monospace; }
+    .wr-tile .l { font-size: 0.5rem; color: var(--muted); letter-spacing: 0.08em; margin-top: 2px; }
+    .wr-tile.boss .n { color: #d4a34a; }
+    .wr-tile.mob  .n { color: #f85149; }
+    .wr-tile.npc  .n { color: #a371f7; }
+    .wr-tile.ship .n { color: #58a6ff; }
+    .wr-tile.item .n { color: var(--green); }
+    .wr-bars { margin-top: 8px; }
+    .wr-bar-row {
+      display: grid; grid-template-columns: 1fr 32px; gap: 6px;
+      align-items: center; padding: 3px 0;
+      font-size: 0.68rem; font-family: monospace;
+    }
+    .wr-bar-row .lbl { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wr-bar-row .val { color: var(--muted); text-align: right; }
+    .wr-bar-track {
+      grid-column: 1 / -1;
+      height: 2px; background: #161616; border-radius: 1px; overflow: hidden;
+      margin: 2px 0 4px;
+    }
+    .wr-bar-track > div { height: 100%; }
+    .wr-bar-row.boss .lbl::before { content: '👑 '; }
+    .wr-bar-row.mob  .lbl::before { content: '🗡️ '; }
+    .wr-bar-row.npc  .lbl::before { content: '☠️ '; }
+    .wr-bar-row.ship .lbl::before { content: '⛵ '; }
+    .wr-bar-row.item .lbl::before { content: '📦 '; }
+    .wr-mini-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
+    }
+    .wr-mini {
+      background: #0d0d0d; border: 1px solid var(--border); border-radius: 3px;
+      padding: 6px 8px;
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 0.7rem;
+    }
+    .wr-mini .k { color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .wr-mini .v { color: var(--text); font-family: monospace; font-weight: bold; }
+    .wr-hooks { padding: 4px 0; }
+    .wr-hook-bar {
+      height: 8px; background: #161616; border-radius: 4px;
+      overflow: hidden; margin-bottom: 4px;
+    }
+    .wr-hook-fill { height: 100%; width: 0; background: var(--green); transition: width 0.4s, background 0.4s; }
+    .wr-hook-label { font-size: 0.65rem; color: var(--muted); font-family: monospace; }
+    .wr-rcon-row {
+      display: flex; align-items: center; gap: 10px; font-size: 0.7rem; padding: 4px 0;
+    }
+    .wr-rcon-state {
+      padding: 2px 8px; border-radius: 999px; font-size: 0.55rem;
+      letter-spacing: 0.08em; text-transform: uppercase; font-weight: bold;
+      background: rgba(139,148,158,0.2); color: var(--muted);
+    }
+    .wr-rcon-state.running { background: rgba(76,175,130,0.2); color: var(--green); }
+    .wr-rcon-state.error   { background: rgba(248,81,73,0.2); color: var(--accent); }
+    .wr-rcon-detail { color: var(--muted); font-family: monospace; font-size: 0.62rem; }
+
+    /* Windrose-only Build tab (admin MCP control panel) */
+    .wr-build-block { background: #0d0d0d; border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; }
+    .wr-build-label {
+      font-size: 0.62rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.1em; margin-bottom: 8px; font-weight: 600;
+    }
+    .wr-build-endpoint { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .wr-build-endpoint code {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      padding: 6px 10px; border-radius: 3px; font-family: ui-monospace, monospace;
+      color: var(--green); font-size: 0.78rem; word-break: break-all;
+    }
+    .wr-build-hint { font-size: 0.68rem; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+    .wr-build-hint code {
+      font-family: ui-monospace, monospace; background: rgba(255,255,255,0.04);
+      padding: 1px 5px; border-radius: 3px;
+    }
+    .wr-build-mod-row, .wr-build-token-row {
+      display: grid; grid-template-columns: 16px 1fr auto auto; gap: 8px;
+      align-items: center; padding: 4px 0; font-size: 0.74rem;
+    }
+    .wr-build-mod-status.on  { color: var(--green); }
+    .wr-build-mod-status.off { color: var(--muted); }
+    .wr-build-mod-name { font-family: ui-monospace, monospace; color: var(--text); }
+    .wr-build-mod-toggle {
+      font-size: 0.6rem; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase;
+      grid-column: 3 / span 2;
+    }
+    .wr-build-token-row { grid-template-columns: 1fr 1fr auto; }
+    .wr-build-token-label { font-family: ui-monospace, monospace; color: var(--text); }
+    .wr-build-token-meta { font-size: 0.62rem; color: var(--muted); text-align: right; }
+    .btn-mini {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      font-family: inherit; font-size: 0.7rem; padding: 4px 10px; border-radius: 3px;
+      cursor: pointer; letter-spacing: 0.04em;
+    }
+    .btn-mini:hover { border-color: var(--yellow); color: var(--yellow); }
+    .btn-mini.btn-mini-danger:hover { border-color: var(--accent); color: var(--accent); }
 
     /* All-time stat banner */
     .alltime-bar {
@@ -329,11 +552,11 @@
     .nav-dd-admin:hover { background: #1a1500 !important; }
     .nav-dd-logout:hover { background: #1a0a0a !important; color: var(--accent) !important; }
     .nav-dd-divider { border-top: 1px solid var(--border); margin: 4px 0; }
-    .server-card { transition: border-color 0.3s; }
-    .server-card.state-online  { border-color: #22373a; }
-    .server-card.state-booting { border-color: #37350a; }
-    .server-card.state-offline { border-color: var(--border); }
-    .server-card.state-warning { border-color: #5a1a0a; animation: warn-pulse 2s infinite; }
+    .server-card { transition: border-color 0.3s; order: 4; }
+    .server-card.state-online  { border-color: #22373a; order: 1; }
+    .server-card.state-booting { border-color: #37350a; order: 2; }
+    .server-card.state-warning { border-color: #5a1a0a; animation: warn-pulse 2s infinite; order: 3; }
+    .server-card.state-offline { border-color: var(--border); order: 5; }
     @keyframes warn-pulse { 0%,100%{border-color:#5a1a0a}50%{border-color:#cd412b} }
     .shutdown-warning { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1a0500; border: 1px solid var(--accent); border-radius: 6px; padding: 12px 20px; font-size: 0.8rem; color: var(--accent); z-index: 1000; display: none; text-align: center; max-width: 400px; }
     .shutdown-warning.show { display: block; }
@@ -350,7 +573,8 @@
         <span></span><span></span><span></span>
       </button>
       <div class="nav-dropdown" id="navDropdown">
-        <a href="/" class="nav-dd-item">📡 Broadcasts</a>
+        <a href="/" class="nav-dd-item">🏠 Home</a>
+        <a href="/profile" class="nav-dd-item">👤 Profile</a>
         <a href="/suggest" class="nav-dd-item">💡 Suggest a Game</a>
         <div class="nav-dd-divider"></div>
         <a href="/admin" class="nav-dd-item nav-dd-admin" id="adminLink" style="display:none">⚙️ Admin Panel</a>
@@ -385,10 +609,21 @@
 
 <script>
 let isAdmin = false;
+let canManageWorlds = false;     // admin OR premium — gates the save-world UI
+let isPremium = false;
 let pollInterval = null;
+// Per-game world-saves cache + selection. Selection drives which save (if any)
+// gets restored when the user hits REQUEST SERVER.
+const worldSaves = {};           // { [gameId]: [{id,label,userName,wrapper,mine,...}] }
+const worldPick  = {};           // { [gameId]: saveId | '' }
 
 // ── Game Config (drives card rendering) ──
-const GAMES = [
+// clientMods schema (per-game array, omit/empty when no client install is needed):
+//   { name, version?, required: bool, installer: 'mod-launcher'|'thunderstore'|'r2modman'|'steam-workshop'|'manual'|'info',
+//     url?, notes? }
+// `required: true` mods gate the JOIN button behind a one-time install ack (localStorage).
+// `installer: 'info'` is purely informational (no download — just a launch tip), like EAC toggles.
+let GAMES = [
   {
     id: 'rust', name: 'Rust', badge: 'RUST', color: '#cd412b', img: '/static/img/rust.jpg',
     connect: 'client.connect games.madladslab.com:28015', steam: 'steam://connect/games.madladslab.com:28015',
@@ -396,6 +631,7 @@ const GAMES = [
     hasRcon: true, pluginType: 'Oxide Plugins', pluginApi: '/api/rust/plugins',
     statFields: ['status', 'players', 'map', 'worldSize', 'seed', 'fps'],
     stat24: ['peak', 'unique', 'joins', 'kills'],
+    clientMods: [],
   },
   {
     id: 'l4d2', name: 'Left 4 Dead 2', badge: 'L4D2', color: '#2e7d32', img: '/static/img/l4d2.jpg',
@@ -404,6 +640,7 @@ const GAMES = [
     hasRcon: false, pluginType: 'SourceMod Plugins', pluginApi: '/api/l4d2/plugins',
     statFields: ['status', 'players', 'map'],
     stat24: ['peak', 'unique', 'joins', 'kills'],
+    clientMods: [],
   },
   {
     id: '7dtd', name: '7 Days to Die', badge: '7DTD', color: '#7b3500', img: '/static/img/7dtd.jpg',
@@ -412,6 +649,14 @@ const GAMES = [
     hasRcon: false, pluginType: 'Mods', pluginApi: '/api/7dtd/mods',
     statFields: ['status', 'players', 'map', 'seed'],
     stat24: ['peak', 'unique', 'joins', 'kills'],
+    clientMods: [
+      {
+        name: 'EAC required',
+        required: false,
+        installer: 'info',
+        notes: 'Server has Easy Anti-Cheat ON. In the launcher pick "Play 7 Days to Die" (with EAC), not "Launch game without EAC" — the without-EAC option will fail to connect.',
+      },
+    ],
   },
   {
     id: 'valheim', name: 'Valheim', badge: 'VALHEIM', color: '#4a7c9e', img: '/static/img/valheim.jpg',
@@ -420,6 +665,7 @@ const GAMES = [
     hasRcon: false, pluginType: 'BepInEx Plugins', pluginApi: '/api/valheim/plugins',
     statFields: ['status', 'players', 'map', 'maxPlayers'],
     stat24: ['peak', 'unique', 'joins', 'deaths', 'bossKills', 'raids'],
+    clientMods: [],
   },
   {
     id: 'se', name: 'Space Engineers', badge: 'SE', color: '#2b5ea6', img: '/static/img/se.jpg',
@@ -428,6 +674,7 @@ const GAMES = [
     hasRcon: false, pluginType: 'Mods', pluginApi: '/api/se/mods',
     statFields: ['status', 'players', 'map', 'maxPlayers'],
     stat24: ['peak', 'unique', 'joins'],
+    clientMods: [],
   },
   {
     id: 'palworld', name: 'Palworld', badge: 'PALWORLD', color: '#3db87a', img: '/static/img/palworld.jpg',
@@ -436,13 +683,15 @@ const GAMES = [
     hasRcon: false, pluginType: null, pluginApi: null,
     statFields: ['status', 'players', 'map', 'maxPlayers'],
     stat24: ['peak', 'unique', 'joins'],
+    clientMods: [],
   },
   {
     id: 'windrose', name: 'Windrose', badge: 'WINDROSE', color: '#b8863a', img: '/static/img/windrose.jpg',
     connect: 'Invite code (see server console)', steam: null, usesInviteCode: true,
     hasRcon: true, pluginType: null, pluginApi: null,
     statFields: ['status', 'players', 'map', 'maxPlayers'],
-    stat24: ['peak', 'unique', 'joins'],
+    stat24: ['peak', 'unique', 'joins', 'npcKills', 'shipsSunk'],
+    clientMods: [],
   },
   {
     id: 'minecraft', name: 'Minecraft Java', badge: 'MC', color: '#4caf50', img: '/static/img/minecraft.svg',
@@ -451,6 +700,7 @@ const GAMES = [
     statFields: ['status', 'players'],
     stat24: ['peak', 'unique'],
     isPrivate: true,
+    clientMods: [],
   },
 ];
 
@@ -461,9 +711,11 @@ const API_MAP = {
 const STAT24_LABELS = {
   peak: 'PEAK 24H', unique: 'UNIQUE 24H', joins: 'JOINS 24H', kills: 'KILLS 24H',
   deaths: 'DEATHS 24H', bossKills: 'BOSSES 24H', raids: 'RAIDS 24H',
+  npcKills: 'NPC KILLS 24H', shipsSunk: 'SHIPS SUNK 24H',
 };
 const STAT24_COLORS = {
   peak: '', unique: 'green', joins: '', kills: 'accent', deaths: 'accent', bossKills: 'yellow', raids: 'yellow',
+  npcKills: 'accent', shipsSunk: 'yellow',
 };
 
 // ── Build Cards ──
@@ -495,23 +747,37 @@ function buildCard(g) {
     </div>
     <div class="stats-24h">${stat24Html}</div>
     <div class="connect-bar">
-      ${g.steam ? `<a href="#" class="btn-join" id="${id}_join" onclick="return joinServer(this)" data-connect="${g.connect}" data-steam="${g.steam}" style="display:none">JOIN SERVER</a>
+      ${g.steam ? `<a href="#" class="btn-join" id="${id}_join" onclick="return joinServer(this)" data-connect="${g.connect}" data-steam="${g.steam}" data-gameid="${id}" style="display:none">JOIN SERVER</a>
         <span class="connect-cmd" id="${id}_connect" onclick="copyConnect(this)" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:0.78rem;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-default="${g.connect}" data-uses-invite="${g.usesInviteCode ? '1' : ''}">${g.connect}</span>` :
         `<span class="connect-cmd" id="${id}_connect" onclick="copyConnect(this)" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--green);font-family:inherit;font-size:0.78rem;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-default="${g.connect}" data-uses-invite="${g.usesInviteCode ? '1' : ''}">${g.connect}</span>`}
-      <button class="btn-request" id="${id}_request" onclick="requestServer('${id}')" style="display:none">START SERVER</button>
+      ${buildModsChip(g)}
+      <select class="world-save-pick" id="${id}_worldPick" onchange="onWorldPick('${id}', this.value)" style="display:none;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-size:0.7rem;padding:5px 6px;border-radius:3px;max-width:170px;">
+        <option value="">Fresh world</option>
+      </select>
+      <button class="btn btn-save-world" id="${id}_saveWorld" onclick="openSaveWorldModal('${id}')" style="display:none;font-size:0.66rem;padding:5px 9px;background:rgba(190,140,40,0.16);border:1px solid #b08a30;color:#ffd58a;border-radius:3px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase">SAVE WORLD</button>
+      <button class="btn-request" id="${id}_request" onclick="requestServer('${id}')" style="display:none">REQUEST SERVER</button>
     </div>
     <div class="pw-bar" id="${id}_pwbar" style="display:${g.password ? 'flex' : 'none'};gap:6px;padding:0 14px 10px;align-items:center;font-size:0.7rem;color:var(--muted)">
       <span style="letter-spacing:0.08em;text-transform:uppercase">Password</span>
       <span class="connect-cmd" id="${id}_password" onclick="copyPassword(this)" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--yellow);font-family:inherit;font-size:0.78rem;padding:4px 10px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-default="${g.password || ''}" data-copy="${g.password || ''}">${g.password || '—'}</span>
     </div>`;
 
-  // Stats/leaderboard tab
+  // Stats/leaderboard tab. Windrose can't track per-player kills/deaths
+  // (WindrosePlus 1.0.16 doesn't attribute combat), so its last two tiles
+  // pull from event-derived totals (npc kills, ships sunk) instead.
+  const wrAlltime = id === 'windrose';
+  const tile3 = wrAlltime
+    ? `<div class="alltime-stat"><div class="alltime-label">NPC KILLS (30D)</div><div class="alltime-value" id="${id}_at_npcKills">--</div></div>`
+    : `<div class="alltime-stat"><div class="alltime-label">TOTAL KILLS</div><div class="alltime-value" id="${id}_at_kills">--</div></div>`;
+  const tile4 = wrAlltime
+    ? `<div class="alltime-stat"><div class="alltime-label">SHIPS SUNK (30D)</div><div class="alltime-value" id="${id}_at_shipsSunk">--</div></div>`
+    : `<div class="alltime-stat"><div class="alltime-label">TOTAL DEATHS</div><div class="alltime-value" id="${id}_at_deaths">--</div></div>`;
   const statsTab = `
     <div class="alltime-bar" id="${id}_alltime">
       <div class="alltime-stat"><div class="alltime-label">TOTAL PLAYERS</div><div class="alltime-value" id="${id}_at_players">--</div></div>
       <div class="alltime-stat"><div class="alltime-label">TOTAL SESSIONS</div><div class="alltime-value" id="${id}_at_sessions">--</div></div>
-      <div class="alltime-stat"><div class="alltime-label">TOTAL KILLS</div><div class="alltime-value" id="${id}_at_kills">--</div></div>
-      <div class="alltime-stat"><div class="alltime-label">TOTAL DEATHS</div><div class="alltime-value" id="${id}_at_deaths">--</div></div>
+      ${tile3}
+      ${tile4}
     </div>
     <div class="leaderboard">
       <div class="lb-header">
@@ -523,27 +789,73 @@ function buildCard(g) {
       <div id="${id}_lb"><div class="lb-empty">Loading...</div></div>
     </div>
     <div style="padding:6px 14px;font-size:0.6rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;border-top:1px solid var(--border)">RECENT EVENTS</div>
-    <div class="notable-feed" id="${id}_notable"><div class="lb-empty">No events yet</div></div>`;
+    <div class="notable-feed" id="${id}_notable"><div class="lb-empty">No events yet</div></div>
+    ${id === 'windrose' ? `
+    <div class="wr-extras" id="${id}_wrExtras">
+      <div class="wr-section-label">COMBAT &middot; 24H <span class="wr-section-sub" id="wr_combatSum">0 actions</span></div>
+      <div class="wr-combat-grid">
+        <div class="wr-tile boss"><div class="n" id="wr_cnt_boss">0</div><div class="l">BOSS</div></div>
+        <div class="wr-tile mob"><div class="n"  id="wr_cnt_mob">0</div><div class="l">MOB</div></div>
+        <div class="wr-tile npc"><div class="n"  id="wr_cnt_npc">0</div><div class="l">NPC</div></div>
+        <div class="wr-tile ship"><div class="n" id="wr_cnt_ship">0</div><div class="l">SHIP</div></div>
+        <div class="wr-tile item"><div class="n" id="wr_cnt_item">0</div><div class="l">DROP</div></div>
+      </div>
+      <div class="wr-bars" id="wr_combatBars"><div class="lb-empty">No combat in last 24h</div></div>
 
-  // Controls tab (admin only)
+      <div class="wr-section-label">WORLD &middot; POIs <span class="wr-section-sub" id="wr_poiTotal">0</span></div>
+      <div class="wr-mini-grid" id="wr_poiGrid"><div class="lb-empty">Loading&hellip;</div></div>
+
+      <div class="wr-section-label">RESOURCES <span class="wr-section-sub" id="wr_resSub"></span></div>
+      <div class="wr-mini-grid" id="wr_resGrid"><div class="lb-empty">Loading&hellip;</div></div>
+
+      <div class="wr-section-label">MOD HEALTH</div>
+      <div class="wr-hooks">
+        <div class="wr-hook-bar"><div class="wr-hook-fill" id="wr_hookFill"></div></div>
+        <div class="wr-hook-label" id="wr_hookLabel">&mdash; hooks live</div>
+      </div>
+
+      <div class="wr-section-label">RCON BRIDGE</div>
+      <div class="wr-rcon-row">
+        <span class="wr-rcon-state" id="wr_rconState">unknown</span>
+        <span class="wr-rcon-detail" id="wr_rconDetail">&mdash;</span>
+      </div>
+    </div>` : ''}`;
+
+  // Live tab — admin controls + plugins + in-game chat (RCON console removed)
   const controlsTab = `
     <div class="admin-panel visible" id="${id}_admin">
-      <div class="admin-title">Server Controls</div>
-      <div class="btn-row">
+      <a class="btn btn-voice" id="${id}_btnVoice" href="#" target="_blank" rel="noopener"
+         style="display:none;background:#5865f2;color:#fff;text-decoration:none;margin-bottom:8px;text-align:center"
+         title="Join the ${g.name} voice channel in Discord. You'll be kicked from the server when you disconnect.">
+        🎤 JOIN ${g.name.toUpperCase()} VOICE
+      </a>
+      <div class="admin-title" id="${id}_adminTitle">Server Controls</div>
+      <div class="btn-row" id="${id}_btnRow">
         <button class="btn btn-start" id="${id}_btnStart" onclick="gameAction('${apiId}','start','${id}')">&#9654; START</button>
         <button class="btn btn-stop" id="${id}_btnStop" onclick="gameAction('${apiId}','stop','${id}')">&#9632; STOP</button>
         <button class="btn btn-restart" id="${id}_btnRestart" onclick="gameAction('${apiId}','restart','${id}')">&#8634; RESTART</button>
-        <button class="btn" style="background:#cd412b;margin-left:auto;color:#fff" onclick="playBroadcast('${id}')">&#9654; BROADCAST</button>
+        <button class="btn" id="${id}_btnBroadcast" style="background:#cd412b;margin-left:auto;color:#fff" onclick="playBroadcast('${id}')">&#9654; BROADCAST</button>
       </div>
-      ${g.hasRcon ? `
-      <div class="rcon-section">
-        <div class="rcon-label">RCON CONSOLE</div>
-        <div class="rcon-output" id="${id}_rconOutput"></div>
-        <div class="rcon-input-row">
-          <input class="rcon-input" id="${id}_rconInput" placeholder="status, playerlist ..." onkeydown="if(event.key==='Enter')sendRcon('${apiId}','${id}')">
-          <button class="btn-rcon" onclick="sendRcon('${apiId}','${id}')">SEND</button>
+      <div class="chat-section" id="${id}_chatSection">
+        <div class="chat-label">
+          IN-GAME CHAT
+          <span class="chat-presence" id="${id}_chatPresence">0 in-game</span>
         </div>
-      </div>` : ''}
+        <div class="chat-history-bar">
+          <span class="chat-stats" id="${id}_chatStats">channel history</span>
+          <button class="btn-history" id="${id}_chatLoadOlder" onclick="loadOlderChat('${id}')">&#8593; Load older</button>
+        </div>
+        <div class="chat-log" id="${id}_chatLog"><div class="empty">No messages yet</div></div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="${id}_chatInput"
+                 placeholder="Join the server to chat…"
+                 disabled
+                 maxlength="240"
+                 onkeydown="if(event.key==='Enter')sendChat('${id}')">
+          <button class="btn-chat" id="${id}_chatBtn" onclick="sendChat('${id}')" disabled>SEND</button>
+        </div>
+        <div class="chat-hint" id="${id}_chatHint">Sign in &amp; appear in the live player list to post.</div>
+      </div>
       ${g.pluginType ? `
       <div class="plugins-section">
         <div class="admin-title">${g.pluginType}</div>
@@ -562,45 +874,351 @@ function buildCard(g) {
     <div class="card-tabs">
       <button class="card-tab active" onclick="switchTab('${id}','server',this)">Server</button>
       <button class="card-tab" onclick="switchTab('${id}','stats',this)">Stats</button>
-      <button class="card-tab admin-only" onclick="switchTab('${id}','controls',this)" id="${id}_controlsTab" style="display:none">Controls</button>
+      <button class="card-tab" onclick="switchTab('${id}','controls',this)" id="${id}_controlsTab">Live</button>
+      ${id === 'windrose' ? `<button class="card-tab" onclick="switchTab('${id}','map',this)">Map</button>` : ''}
+      ${id === 'windrose' ? `<button class="card-tab" onclick="switchTab('${id}','build',this)" id="${id}_buildTab" style="display:none">Build</button>` : ''}
     </div>
     <div class="tab-panel active" id="${id}_panel_server">${serverTab}</div>
     <div class="tab-panel" id="${id}_panel_stats">${statsTab}</div>
     <div class="tab-panel" id="${id}_panel_controls">${controlsTab}</div>
+    ${id === 'windrose' ? `<div class="tab-panel" id="${id}_panel_map">${mapTabHtml()}</div>` : ''}
+    ${id === 'windrose' ? `<div class="tab-panel" id="${id}_panel_build">${buildTabHtml()}</div>` : ''}
   </div>`;
 }
 
+// Windrose-only Map tab — public-facing, visible to every signed-in player.
+// The overlay (extension.html/css/js) is authored by the mod-builder Claude
+// via the MCP into /srv/games/public/windrose-map/.
+function mapTabHtml() {
+  return `
+    <div class="wr-map-host" style="padding:14px">
+      <link rel="stylesheet" href="/static/windrose-map/extension.css?cb=${Date.now()}">
+      <div id="windrose_map_ext_slot"><div class="lb-empty">Loading map&hellip;</div></div>
+    </div>`;
+}
+
+// Windrose-only Build tab. Loads the sandboxed overlay from /static/windrose-build/
+// and renders MCP connection info on demand.
+function buildTabHtml() {
+  return `
+    <div class="wr-build" style="padding:14px;display:flex;flex-direction:column;gap:14px">
+      <div class="wr-build-block">
+        <div class="wr-build-label">MCP ENDPOINT</div>
+        <div class="wr-build-endpoint">
+          <code id="wr_build_endpoint">https://games.madladslab.com/mcp/windrose</code>
+          <button class="btn-mini" onclick="wrBuildCopyEndpoint()">Copy URL</button>
+          <button class="btn-mini" onclick="wrBuildCopyConfig()">Copy Claude config</button>
+        </div>
+        <div class="wr-build-hint">Streamable HTTP transport. Auth: <code>Authorization: Bearer &lt;token&gt;</code>.</div>
+      </div>
+
+      <div class="wr-build-block" id="wr_build_tokens_block">
+        <div class="wr-build-label">TOKENS</div>
+        <div id="wr_build_tokens"><div class="lb-empty">Loading&hellip;</div></div>
+        <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+          <input id="wr_build_token_label" placeholder="label (e.g. 'jane-the-modder')" maxlength="80"
+                 style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:0.78rem;padding:6px 8px;border-radius:3px">
+          <button class="btn-mini" onclick="wrBuildMintToken()">Mint token</button>
+        </div>
+        <div id="wr_build_new_token" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.4);border-radius:4px"></div>
+      </div>
+
+      <div class="wr-build-block">
+        <div class="wr-build-label">INSTALLED MODS</div>
+        <div id="wr_build_mods"><div class="lb-empty">Loading&hellip;</div></div>
+      </div>
+
+      <div class="wr-build-block">
+        <div class="wr-build-label">UE4SS LOG &middot; last 20 lines
+          <button class="btn-mini" style="margin-left:8px" onclick="wrBuildLoadStatus()">Refresh</button>
+        </div>
+        <pre id="wr_build_log" style="background:#0b0f14;border:1px solid var(--border);border-radius:3px;padding:8px;max-height:200px;overflow:auto;font-family:ui-monospace,monospace;font-size:0.72rem;color:var(--muted);margin:0;white-space:pre-wrap"></pre>
+      </div>
+
+      <div class="wr-build-block">
+        <div class="wr-build-label">UI OVERLAY <span style="color:var(--muted);font-weight:normal;letter-spacing:0">/static/windrose-build/</span></div>
+        <link rel="stylesheet" href="/static/windrose-build/extension.css?cb=${Date.now()}">
+        <div id="windrose_build_ext_slot"><div class="lb-empty">Loading overlay&hellip;</div></div>
+      </div>
+    </div>`;
+}
+
 function switchTab(gameId, tab, btn) {
-  ['server','stats','controls'].forEach(t => {
+  ['server','stats','controls','build','map'].forEach(t => {
     const panel = document.getElementById(gameId + '_panel_' + t);
     if (panel) panel.classList.toggle('active', t === tab);
   });
   btn.parentElement.querySelectorAll('.card-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  if (gameId === 'windrose' && tab === 'build') wrBuildOnOpen();
+  if (gameId === 'windrose' && tab === 'map')   wrMapOnOpen();
+}
+
+// ── Windrose Map tab (public, signed-in players) ──
+let _wrMapLoaded = false;
+async function wrMapOnOpen() {
+  // Always re-fetch the overlay files (cache-busted) so a mod-author edit
+  // becomes visible without a hard reload.
+  const slot = document.getElementById('windrose_map_ext_slot');
+  if (!slot) return;
+  try {
+    const cb = Date.now();
+    const [html, state] = await Promise.all([
+      fetch(`/static/windrose-map/extension.html?cb=${cb}`).then(r => r.text()),
+      fetch('/windrose-map/api/state', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null),
+    ]);
+    slot.innerHTML = html;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = `/static/windrose-map/extension.js?cb=${cb}`;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('extension.js failed to load'));
+      document.body.appendChild(s);
+    });
+    if (window.windroseMapExt && typeof window.windroseMapExt.boot === 'function') {
+      window.windroseMapExt.boot({
+        panel: slot,
+        state,
+        api: (method, path, body) => fetch('/windrose-map/api' + path, {
+          method, credentials: 'same-origin',
+          headers: body ? { 'Content-Type': 'application/json' } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        }).then(r => r.json()),
+      });
+    }
+    _wrMapLoaded = true;
+  } catch (e) {
+    slot.innerHTML = `<div class="lb-empty">Map load failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ── Windrose Build tab (admin-only MCP control panel) ──
+let _wrBuildLoaded = false;
+function wrBuildOnOpen() {
+  if (_wrBuildLoaded) return;
+  _wrBuildLoaded = true;
+  wrBuildLoadStatus();
+  wrBuildLoadTokens();
+  wrBuildLoadOverlay();
+}
+
+async function wrBuildLoadStatus() {
+  try {
+    const r = await fetch('/mcp/windrose/status', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const s = await r.json();
+    document.getElementById('wr_build_endpoint').textContent = location.origin + s.endpoint;
+    const mods = s.mods || {};
+    const declared = Array.isArray(mods.declared) ? mods.declared : [];
+    const orphans = Array.isArray(mods.onDiskButNotDeclared) ? mods.onDiskButNotDeclared : [];
+    const modsEl = document.getElementById('wr_build_mods');
+    modsEl.innerHTML = declared.length
+      ? declared.map(m => `
+          <div class="wr-build-mod-row">
+            <span class="wr-build-mod-status ${m.enabled ? 'on' : 'off'}">${m.enabled ? '●' : '○'}</span>
+            <span class="wr-build-mod-name">${escapeHtml(m.name)}</span>
+            <span class="wr-build-mod-toggle">${m.enabled ? 'enabled' : 'disabled'}</span>
+          </div>
+        `).join('') + (orphans.length
+          ? `<div class="wr-build-hint" style="margin-top:6px">${orphans.length} mod dir(s) on disk but not in mods.txt: ${orphans.map(escapeHtml).join(', ')}</div>`
+          : '')
+      : '<div class="lb-empty">No mods declared</div>';
+    document.getElementById('wr_build_log').textContent = (s.ue4ssTail || []).join('\n') || '(log not yet on disk)';
+  } catch (e) {
+    document.getElementById('wr_build_mods').innerHTML = `<div class="lb-empty">Status load failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function wrBuildLoadTokens() {
+  try {
+    const r = await fetch('/mcp/windrose/tokens', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { tokens } = await r.json();
+    const active = (tokens || []).filter(t => t.active);
+    const el = document.getElementById('wr_build_tokens');
+    el.innerHTML = active.length
+      ? active.map(t => `
+          <div class="wr-build-token-row">
+            <span class="wr-build-token-label">${escapeHtml(t.label)}</span>
+            <span class="wr-build-token-meta">${t.callCount} calls · last ${t.lastUsedAt ? new Date(t.lastUsedAt).toLocaleString() : 'never'}</span>
+            <button class="btn-mini btn-mini-danger" onclick="wrBuildRevokeToken('${t.id}')">Revoke</button>
+          </div>
+        `).join('')
+      : '<div class="lb-empty">No active tokens. Mint one to share with a mod author.</div>';
+  } catch (e) {
+    document.getElementById('wr_build_tokens').innerHTML = '<div class="lb-empty">Token load failed</div>';
+  }
+}
+
+async function wrBuildMintToken() {
+  const label = (document.getElementById('wr_build_token_label').value || '').trim() || 'mod-builder';
+  try {
+    const r = await fetch('/mcp/windrose/tokens', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const out = await r.json();
+    const box = document.getElementById('wr_build_new_token');
+    box.style.display = '';
+    box.innerHTML = `
+      <div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--green);margin-bottom:4px">NEW TOKEN — copy now, it will not be shown again</div>
+      <code style="display:block;font-family:ui-monospace,monospace;word-break:break-all;color:var(--text)">${escapeHtml(out.token)}</code>
+      <button class="btn-mini" style="margin-top:6px" onclick="navigator.clipboard?.writeText('${out.token}')">Copy token</button>`;
+    document.getElementById('wr_build_token_label').value = '';
+    wrBuildLoadTokens();
+  } catch (e) {
+    alert('Mint failed: ' + e.message);
+  }
+}
+
+async function wrBuildRevokeToken(id) {
+  if (!confirm('Revoke this token? Anyone holding it will be locked out immediately.')) return;
+  try {
+    const r = await fetch('/mcp/windrose/tokens/' + encodeURIComponent(id) + '/revoke', {
+      method: 'POST', credentials: 'same-origin',
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    wrBuildLoadTokens();
+  } catch (e) {
+    alert('Revoke failed: ' + e.message);
+  }
+}
+
+async function wrBuildLoadOverlay() {
+  const slot = document.getElementById('windrose_build_ext_slot');
+  try {
+    const cb = Date.now();
+    const html = await fetch(`/static/windrose-build/extension.html?cb=${cb}`).then(r => r.text());
+    slot.innerHTML = html;
+    // Inject the overlay script. Existing extension.js sets window.windroseBuildExt.
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = `/static/windrose-build/extension.js?cb=${cb}`;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('extension.js failed to load'));
+      document.body.appendChild(s);
+    });
+    if (window.windroseBuildExt && typeof window.windroseBuildExt.boot === 'function') {
+      let status = null;
+      try {
+        status = await fetch('/mcp/windrose/status', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null);
+      } catch (_e) { status = null; }
+      window.windroseBuildExt.boot({
+        panel: slot,
+        status,
+        api: (method, path, body) => fetch('/mcp/windrose' + path, {
+          method, credentials: 'same-origin',
+          headers: body ? { 'Content-Type': 'application/json' } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        }).then(r => r.json()),
+      });
+    }
+  } catch (e) {
+    slot.innerHTML = `<div class="lb-empty">Overlay load failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function wrBuildCopyEndpoint() {
+  const url = document.getElementById('wr_build_endpoint').textContent.trim();
+  navigator.clipboard?.writeText(url);
+}
+function wrBuildCopyConfig() {
+  const url = document.getElementById('wr_build_endpoint').textContent.trim();
+  const cfg = {
+    mcpServers: {
+      windrose: {
+        type: 'http',
+        url,
+        headers: { Authorization: 'Bearer <PASTE_TOKEN_HERE>' },
+      },
+    },
+  };
+  navigator.clipboard?.writeText(JSON.stringify(cfg, null, 2));
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 // ── Init ──
 async function init() {
   const me = await api('GET', '/api/me');
   if (!me) return (location.href = '/login');
-  document.getElementById('navUser').textContent = me.displayName || me.email;
+  document.getElementById('navUser').textContent = me.username || 'Player';
   isAdmin = me.isAdmin || (me.permissions && me.permissions.games === 'admin');
+  isPremium = !!me.premium;
+  canManageWorlds = !!me.canManageWorlds || isAdmin || isPremium;
   if (isAdmin) {
     var al=document.getElementById('adminLink'); if(al) al.style.display='';
   }
+  // Build tab on the Windrose card is admin-only — token minting + UI overlay
+  // editing live behind it.
+  if (isAdmin) {
+    setTimeout(() => {
+      const bt = document.getElementById('windrose_buildTab');
+      if (bt) bt.style.display = '';
+    }, 0);
+  }
+
+  // Strip titles an admin has hidden from public view (admin/server-control toggle).
+  try {
+    const h = await fetch('/admin/api/hidden-games').then(r => r.json());
+    const hide = new Set(h.hidden || []);
+    if (hide.size) GAMES = GAMES.filter(g => !hide.has(g.id));
+  } catch (e) {}
 
   buildCards();
 
-  if (isAdmin) {
-    GAMES.forEach(g => {
-      const tab = document.getElementById(g.id + '_controlsTab');
-      if (tab) tab.style.display = '';
-      if (g.pluginApi) loadPlugins(g.id, g.pluginApi);
-    });
-  }
+  // Non-admins still see the Live tab (it carries the in-game chat), but the
+  // start/stop/restart row + broadcast + plugin panel are admin-only.
+  GAMES.forEach(g => {
+    if (!isAdmin) {
+      const btnRow = document.getElementById(g.id + '_btnRow');
+      if (btnRow) btnRow.style.display = 'none';
+      const title = document.getElementById(g.id + '_adminTitle');
+      if (title) title.style.display = 'none';
+      // The plugin panel is wrapped in its own .plugins-section; hide it too.
+      const plugList = document.getElementById(g.id + '_pluginList');
+      if (plugList && plugList.parentElement) plugList.parentElement.style.display = 'none';
+    } else if (g.pluginApi) {
+      loadPlugins(g.id, g.pluginApi);
+    }
+    // Chat is loaded for every visitor — non-admins can read; only matched
+    // in-game players can post (gated server-side and reflected in the UI).
+    loadChat(g.id);
+  });
 
   pollAllGames();
   pollInterval = setInterval(pollAllGames, 15000);
+  // Refresh chat presence + history every 20s as a fallback for the socket.
+  setInterval(() => { GAMES.forEach(g => loadChat(g.id)); }, 20000);
+
+  if (canManageWorlds) {
+    GAMES.forEach(g => loadWorldSaves(g.id));
+    // Reload every 60s so newly-named saves from another admin show up.
+    setInterval(() => { GAMES.forEach(g => loadWorldSaves(g.id)); }, 60000);
+  }
+
+  loadVoiceInvites();
+}
+
+// Per-game Discord voice-channel join buttons. The discord bot mints temporary
+// channel-scoped invites and the portal exposes them at /api/discord/voice-invites.
+async function loadVoiceInvites() {
+  try {
+    const map = await api('GET', '/api/discord/voice-invites') || {};
+    GAMES.forEach(g => {
+      const url = map[g.id];
+      const btn = document.getElementById(g.id + '_btnVoice');
+      if (btn && url) {
+        btn.href = url;
+        btn.style.display = '';
+      }
+    });
+  } catch (e) { /* invites are optional — bot may be offline */ }
 }
 
 // ── Poll all games ──
@@ -618,6 +1236,7 @@ async function pollGame(g) {
     if (dot) dot.className = 'status-dot online';
     if (statusEl) { statusEl.textContent = 'AVAILABLE'; statusEl.style.color = 'var(--green)'; }
     if (playersEl) { playersEl.textContent = 'Private'; playersEl.className = 'stat-value green'; }
+    setCardState(g.id, 'online');
     return;
   }
   const id = g.id;
@@ -654,12 +1273,15 @@ async function pollGame(g) {
   if (s.running && !s.booting) {
     dot.classList.add('online');
     statusEl.textContent = 'ONLINE'; statusEl.style.color = 'var(--green)';
+    setCardState(id, 'online');
   } else if (s.booting) {
     dot.classList.add('booting');
     statusEl.textContent = 'BOOTING'; statusEl.style.color = 'var(--yellow)';
+    setCardState(id, 'booting');
   } else {
     dot.classList.add('offline');
     statusEl.textContent = 'OFFLINE'; statusEl.style.color = 'var(--muted)';
+    setCardState(id, 'offline');
   }
 
   const playersEl = document.getElementById(id + '_players');
@@ -682,6 +1304,7 @@ async function pollGame(g) {
   const reqEl = document.getElementById(id + '_request');
   if (joinEl) joinEl.style.display = (s.running && !s.booting) ? '' : 'none';
   if (reqEl) reqEl.style.display = (!s.running) ? '' : 'none';
+  updateWorldControls(id, s);
 
   // Update dynamic connect info (invite codes, server names, etc.)
   updateConnectInfo(id, s);
@@ -803,21 +1426,134 @@ async function playBroadcast(game) {
   window.location.href = '/broadcasts/' + bcRes.broadcast.code + '?broadcast=start';
 }
 
-// ── RCON ──
-async function sendRcon(apiId, id) {
-  const input = document.getElementById(id + '_rconInput');
-  const cmd = input.value.trim();
-  if (!cmd) return;
-  input.value = '';
-  appendRcon(id, '> ' + cmd);
-  const res = await api('POST', `/api/${apiId}/rcon`, { cmd });
-  if (res) appendRcon(id, res.output || res.error || '(no output)');
+// ── In-game chat ──
+// State is keyed by id (the same key used everywhere in this page — windrose,
+// rust, etc.) so the socket handler can append to the right card without an
+// extra lookup.
+const chatState = {}; // id → { canPost, presence: {count, names} }
+
+function chatRowHtml(m) {
+  const stamp = new Date(m.ts).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  const cls = m.isAdmin ? 'chat-msg staff' : 'chat-msg';
+  return '<div class="' + cls + '">'
+    + '<span class="who">' + esc(m.name || 'Player') + ':</span>'
+    + '<span class="body">' + esc(m.message || '') + '</span>'
+    + '<span class="stamp">' + stamp + '</span>'
+    + '</div>';
 }
-function appendRcon(id, text) {
-  const el = document.getElementById(id + '_rconOutput');
-  if (!el) return;
-  el.textContent += (el.textContent ? '\n' : '') + text;
-  el.scrollTop = el.scrollHeight;
+
+function renderChatPresence(id, presence, canPost) {
+  const p = document.getElementById(id + '_chatPresence');
+  if (p) {
+    p.textContent = (presence?.count || 0) + ' in-game';
+    p.className = 'chat-presence' + (presence && presence.count ? '' : ' offline');
+  }
+  const input = document.getElementById(id + '_chatInput');
+  const btn   = document.getElementById(id + '_chatBtn');
+  const hint  = document.getElementById(id + '_chatHint');
+  if (input && btn && hint) {
+    if (canPost) {
+      input.disabled = false; btn.disabled = false;
+      input.placeholder = 'Say something to the table…';
+      hint.textContent = '';
+    } else {
+      input.disabled = true; btn.disabled = true;
+      input.placeholder = 'Join the server to chat…';
+      hint.textContent = presence && presence.count
+        ? 'Your portal name doesn’t match any active player. Join the game to post.'
+        : 'No one is in the game right now.';
+      hint.className = 'chat-hint';
+    }
+  }
+}
+
+async function loadChat(id) {
+  const data = await api('GET', '/api/chat/' + id);
+  if (!data || data.error) return;
+  chatState[id] = {
+    canPost: !!data.canPost,
+    presence: data.presence,
+    earliestTs: (data.messages && data.messages[0] && data.messages[0].ts) || null,
+    hasMore: true, // assume there may be older messages until /history says otherwise
+  };
+  const log = document.getElementById(id + '_chatLog');
+  if (log) {
+    log.innerHTML = (data.messages || []).length
+      ? data.messages.map(chatRowHtml).join('')
+      : '<div class="empty">No messages yet</div>';
+    log.scrollTop = log.scrollHeight;
+  }
+  renderChatPresence(id, data.presence, data.canPost);
+  // Backfill channel-wide stats line (total messages, unique posters).
+  fetch('/api/chat/' + id + '/stats').then(r => r.json()).then(s => {
+    const el = document.getElementById(id + '_chatStats');
+    if (!el || !s || s.error) return;
+    const t = s.total || 0;
+    const u = s.uniquePosters || 0;
+    el.textContent = t === 0 ? 'channel history empty'
+      : t + ' message' + (t === 1 ? '' : 's') + ' · ' + u + ' poster' + (u === 1 ? '' : 's');
+  }).catch(() => {});
+}
+
+async function loadOlderChat(id) {
+  const state = chatState[id];
+  if (!state || state.hasMore === false) return;
+  const btn = document.getElementById(id + '_chatLoadOlder');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  const before = state.earliestTs ? encodeURIComponent(state.earliestTs) : '';
+  const data = await api('GET', '/api/chat/' + id + '/history?limit=50' + (before ? '&before=' + before : ''));
+  if (btn) btn.textContent = '↑ Load older';
+  if (!data || data.error || !Array.isArray(data.messages)) { if (btn) btn.disabled = false; return; }
+  const log = document.getElementById(id + '_chatLog');
+  if (log) {
+    if (log.querySelector('.empty')) log.innerHTML = '';
+    if (data.messages.length === 0) {
+      state.hasMore = false;
+      if (btn) { btn.textContent = '— start of channel —'; btn.disabled = true; }
+      return;
+    }
+    // Preserve scroll position so the user keeps their place while older
+    // messages are inserted at the top.
+    const prevScrollHeight = log.scrollHeight;
+    log.insertAdjacentHTML('afterbegin', data.messages.map(chatRowHtml).join(''));
+    log.scrollTop = log.scrollHeight - prevScrollHeight;
+    state.earliestTs = data.messages[0].ts;
+    state.hasMore = !!data.hasMore;
+    if (btn) {
+      if (!state.hasMore) { btn.textContent = '— start of channel —'; btn.disabled = true; }
+      else btn.disabled = false;
+    }
+  }
+}
+
+async function sendChat(id) {
+  const input = document.getElementById(id + '_chatInput');
+  if (!input || input.disabled) return;
+  const message = input.value.trim();
+  if (!message) return;
+  const res = await api('POST', '/api/chat/' + id, { message });
+  if (!res || res.error) {
+    const hint = document.getElementById(id + '_chatHint');
+    if (hint) {
+      hint.textContent = res && res.code === 'NOT_IN_GAME'
+        ? 'You’re not in the live player list right now — join the game to post.'
+        : (res?.error || 'Send failed');
+      hint.className = 'chat-hint error';
+    }
+    return;
+  }
+  input.value = '';
+  // Socket will broadcast the message back to us — no need to optimistically
+  // append; if the socket is down, the next poll will pick it up.
+}
+
+function appendChatMessage(id, msg) {
+  const log = document.getElementById(id + '_chatLog');
+  if (!log) return;
+  // First message replaces the empty placeholder.
+  if (log.querySelector('.empty')) log.innerHTML = '';
+  log.insertAdjacentHTML('beforeend', chatRowHtml(msg));
+  log.scrollTop = log.scrollHeight;
 }
 
 // ── Plugins ──
@@ -849,7 +1585,101 @@ async function togglePlugin(id, file, enable) {
 }
 
 // ── Join / Request ──
+// ── Client mods (per-game required/optional install hints on the connect bar) ──
+function modsAckKey(id) { return 'mods_ack:' + id; }
+function modsAcked(id) {
+  try { return localStorage.getItem(modsAckKey(id)) === '1'; } catch (e) { return false; }
+}
+function buildModsChip(g) {
+  var mods = g.clientMods || [];
+  if (!mods.length) return '';
+  var required = mods.some(function(m){ return m.required; });
+  var acked = modsAcked(g.id);
+  var cls = 'btn-mods' + (required ? ' required' : '') + (required && acked ? ' acked' : '');
+  var label = required
+    ? (acked ? '✓ MODS · ' + mods.length : '⚠ MODS · ' + mods.length)
+    : '📦 MODS · ' + mods.length;
+  return '<button class="' + cls + '" id="' + g.id + '_modsChip" onclick="openModsModal(\'' + g.id + '\')">' + label + '</button>';
+}
+function refreshModsChip(id) {
+  var g = GAMES.find(function(x){ return x.id === id; });
+  if (!g) return;
+  var oldChip = document.getElementById(id + '_modsChip');
+  if (!oldChip) return;
+  var wrap = document.createElement('div');
+  wrap.innerHTML = buildModsChip(g).trim();
+  if (wrap.firstChild) oldChip.replaceWith(wrap.firstChild);
+}
+function openModsModal(id) {
+  var g = GAMES.find(function(x){ return x.id === id; });
+  if (!g || !g.clientMods || !g.clientMods.length) return;
+  closeModsModal();
+  var hasRequired = g.clientMods.some(function(m){ return m.required; });
+  var items = g.clientMods.map(function(m) {
+    var typeClass = m.installer === 'info' ? 'info' : (m.required ? 'required' : '');
+    var tag = m.installer === 'info'
+      ? '<span class="mod-item-tag info">Info</span>'
+      : (m.required ? '<span class="mod-item-tag required">Required</span>' : '<span class="mod-item-tag optional">Optional</span>');
+    var version = m.version ? '<span class="mod-item-version">' + esc(m.version) + '</span>' : '';
+    var notes = m.notes ? '<p class="mod-item-notes">' + esc(m.notes) + '</p>' : '';
+    var actionLabel = ({
+      'mod-launcher': 'Open Mod Launcher',
+      'thunderstore': 'Open Thunderstore',
+      'r2modman': 'Install via r2modman',
+      'steam-workshop': 'Open Steam Workshop',
+      'manual': 'Download',
+    })[m.installer] || null;
+    var action = (m.url && actionLabel)
+      ? '<a class="mod-item-action" href="' + esc(m.url) + '" target="_blank" rel="noopener">' + actionLabel + ' ↗</a>'
+      : '';
+    return '<div class="mod-item ' + typeClass + '">' +
+             '<div class="mod-item-head">' +
+               '<span class="mod-item-name">' + esc(m.name) + '</span>' +
+               version + tag +
+             '</div>' + notes + action +
+           '</div>';
+  }).join('');
+  var ackRow = hasRequired
+    ? '<label class="mods-ack-row"><input type="checkbox" id="modsAckChk" ' + (modsAcked(id) ? 'checked' : '') + ' onchange="ackMods(\'' + id + '\', this.checked)"> I have installed the required mods</label>'
+    : '<div style="flex:1"></div>';
+  var modal = document.createElement('div');
+  modal.id = 'modsModal';
+  modal.className = 'mods-modal-overlay';
+  modal.onclick = function(e) { if (e.target === modal) closeModsModal(); };
+  modal.innerHTML =
+    '<div class="mods-modal">' +
+      '<div class="mods-modal-head">' +
+        '<div class="mods-modal-eyebrow">' + esc(g.name) + ' · Client setup</div>' +
+        '<div class="mods-modal-title">' + (hasRequired ? 'Required mods & install steps' : 'Client info & optional mods') + '</div>' +
+      '</div>' +
+      '<div class="mods-modal-body">' + items + '</div>' +
+      '<div class="mods-modal-foot">' +
+        ackRow +
+        '<button class="btn" onclick="closeModsModal()">Close</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+}
+function closeModsModal() {
+  var m = document.getElementById('modsModal');
+  if (m) m.remove();
+}
+function ackMods(id, checked) {
+  try {
+    if (checked) localStorage.setItem(modsAckKey(id), '1');
+    else localStorage.removeItem(modsAckKey(id));
+  } catch (e) {}
+  refreshModsChip(id);
+}
+
 function joinServer(el) {
+  var gameId = el.dataset.gameid;
+  var g = gameId ? GAMES.find(function(x){ return x.id === gameId; }) : null;
+  if (g && g.clientMods && g.clientMods.some(function(m){ return m.required; }) && !modsAcked(gameId)) {
+    openModsModal(gameId);
+    toast('Confirm you\'ve installed the required mods before joining', false);
+    return false;
+  }
   var connectCmd = el.dataset.connect;
   navigator.clipboard.writeText(connectCmd).then(function() {
     el.textContent = 'COPIED!';
@@ -858,37 +1688,191 @@ function joinServer(el) {
   return false;
 }
 
+// ── Saved Worlds (admin / premium) ──────────────────────────────────────────
+async function loadWorldSaves(game) {
+  try {
+    var r = await fetch('/servers/api/world-saves/' + game);
+    if (!r.ok) return;
+    var d = await r.json();
+    worldSaves[game] = d.saves || [];
+    renderWorldPick(game);
+  } catch (e) {}
+}
+
+function renderWorldPick(game) {
+  var sel = document.getElementById(game + '_worldPick');
+  if (!sel) return;
+  var saves = worldSaves[game] || [];
+  // Build options, preserving the currently-selected value if it still exists.
+  var current = worldPick[game] || '';
+  var html = '<option value="">Fresh world</option>';
+  saves.forEach(function(s) {
+    var who = s.mine ? 'You' : (s.userName || 'Someone');
+    var labelTxt = s.label || ('Save ' + new Date(s.createdAt).toLocaleDateString());
+    var wrap = s.wrapper && s.wrapper !== 'native' ? ' · ' + s.wrapper : '';
+    html += '<option value="' + esc(s.id) + '">' + esc(labelTxt) + ' — ' + esc(who) + esc(wrap) + '</option>';
+  });
+  sel.innerHTML = html;
+  if (current && saves.some(function(s){return s.id===current;})) sel.value = current;
+  else worldPick[game] = '';
+}
+
+function onWorldPick(game, id) {
+  worldPick[game] = id || '';
+}
+
+// Toggle the saved-worlds dropdown visibility alongside REQUEST SERVER, and
+// the "Save World" button alongside JOIN SERVER. Called from updateConnectInfo
+// once we know the server's running state.
+function updateWorldControls(game, status) {
+  if (!canManageWorlds) return;
+  var pick = document.getElementById(game + '_worldPick');
+  var save = document.getElementById(game + '_saveWorld');
+  var isOnline = status && status.running && !status.booting;
+  if (pick) pick.style.display = (!status.running) ? '' : 'none';
+  if (save) save.style.display = isOnline ? '' : 'none';
+}
+
+async function openSaveWorldModal(game) {
+  // Fetch the per-game wrapper list so the dropdown can lock the save to a
+  // specific runtime (Proton-GE, Wine, native).
+  var wrappers = [{ id: 'native', label: 'Native Linux' }];
+  var defaultWrapper = 'native';
+  try {
+    var r = await fetch('/servers/api/world-wrappers/' + game);
+    if (r.ok) {
+      var d = await r.json();
+      wrappers = d.wrappers || wrappers;
+      defaultWrapper = d.defaultWrapper || defaultWrapper;
+    }
+  } catch (e) {}
+
+  var existing = document.getElementById('saveWorldModal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = 'saveWorldModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  var wrapHtml = wrappers.map(function(w){
+    var sel = w.id === defaultWrapper ? ' selected' : '';
+    return '<option value="' + esc(w.id) + '"' + sel + '>' + esc(w.label) + '</option>';
+  }).join('');
+  var wrapperRow = wrappers.length > 1
+    ? '<div style="margin-bottom:12px"><label style="display:block;font-size:0.62rem;letter-spacing:0.12em;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Launch wrapper (locked to this save)</label>' +
+        '<select id="saveWorldWrapper" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 8px;border-radius:3px;font-size:0.82rem">' + wrapHtml + '</select>' +
+      '<div style="font-size:0.62rem;color:var(--muted);margin-top:4px">Spinning up from this save will re-use this wrapper.</div></div>'
+    : '<input type="hidden" id="saveWorldWrapper" value="' + esc(defaultWrapper) + '">';
+  modal.innerHTML =
+    '<div style="background:#1a1a1a;border:1px solid #333;border-radius:6px;max-width:440px;width:100%;padding:22px;color:#eee;font-family:inherit">' +
+      '<div style="font-size:0.66rem;letter-spacing:0.12em;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Save world</div>' +
+      '<div style="font-size:1rem;font-weight:600;margin-bottom:14px">' + esc(game.toUpperCase()) + ' — name this save</div>' +
+      '<div style="margin-bottom:12px"><label style="display:block;font-size:0.62rem;letter-spacing:0.12em;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Save name</label>' +
+        '<input id="saveWorldLabel" maxlength="80" placeholder="e.g. PVP wipe day 12" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 8px;border-radius:3px;font-size:0.82rem"></div>' +
+      wrapperRow +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button class="btn" onclick="document.getElementById(\'saveWorldModal\').remove()">Cancel</button>' +
+        '<button class="btn" style="background:#22c55e;color:#000" onclick="confirmSaveWorld(\'' + esc(game) + '\')">Save now</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+  setTimeout(function(){
+    var el = document.getElementById('saveWorldLabel');
+    if (el) el.focus();
+  }, 30);
+}
+
+async function confirmSaveWorld(game) {
+  var labelEl = document.getElementById('saveWorldLabel');
+  var wrapEl  = document.getElementById('saveWorldWrapper');
+  var label = (labelEl && labelEl.value || '').trim();
+  var wrapper = wrapEl && wrapEl.value || null;
+  var modal = document.getElementById('saveWorldModal');
+  if (modal) modal.remove();
+  toast('Saving world…', true);
+  try {
+    var r = await fetch('/servers/api/backups/local/' + game, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: label || null, wrapper: wrapper || null }),
+    });
+    var d = await r.json();
+    if (d.ok) {
+      toast('World saved' + (label ? ' as "' + label + '"' : ''), true);
+      loadWorldSaves(game);
+    } else {
+      toast(d.message || d.error || 'Save failed', false);
+    }
+  } catch (e) {
+    toast('Save failed', false);
+  }
+}
+
 async function requestServer(game) {
   var btn = event.target;
   btn.disabled = true;
-  btn.textContent = 'STARTING...';
+  btn.textContent = 'REQUESTING...';
+  var worldSaveId = worldPick[game] || null;
   try {
     var r = await fetch('/servers/api/request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game }),
+      body: JSON.stringify({ game, worldSaveId }),
     });
     var d = await r.json();
     if (d.ok) {
-      toast(d.message, true);
-      btn.classList.add('sent');
-      if (d.status === 'provisioning') {
-        btn.textContent = 'PROVISIONING...';
-        startProvisionPoller(game, btn);
+      if (d.status === 'queued') {
+        // Both local slots are taken; the free-tier user lands in the queue.
+        // server-manager fires `server:queue-ready` over Socket.IO when a slot
+        // frees and their game starts up.
+        btn.classList.add('sent');
+        btn.textContent = 'QUEUED · #' + (d.position || '?');
+        showQueueModal(game, d);
       } else {
-        btn.textContent = 'BOOTING...';
+        toast(d.message, true);
+        btn.classList.add('sent');
+        if (d.status === 'provisioning') {
+          btn.textContent = 'PROVISIONING...';
+          startProvisionPoller(game, btn);
+        } else {
+          btn.textContent = 'BOOTING...';
+        }
       }
       setTimeout(pollAllGames, 5000);
     } else {
       toast(d.error, false);
-      btn.textContent = 'START SERVER';
+      btn.textContent = 'REQUEST SERVER';
       btn.disabled = false;
     }
   } catch (e) {
     toast('Request failed', false);
-    btn.textContent = 'START SERVER';
+    btn.textContent = 'REQUEST SERVER';
     btn.disabled = false;
   }
+}
+
+// Queue + premium upsell — shown to free users when both local slots are in use.
+function showQueueModal(game, d) {
+  var existing = document.getElementById('queueModal');
+  if (existing) existing.remove();
+  var price = (d.premiumPriceUsd != null) ? '$' + d.premiumPriceUsd.toFixed(2) : '$5.99';
+  var modal = document.createElement('div');
+  modal.id = 'queueModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML =
+    '<div style="background:var(--bg-card,#1a1a1a);border:1px solid var(--border,#333);border-radius:6px;max-width:480px;width:100%;padding:24px;color:var(--text,#eee);font-family:inherit">' +
+      '<div style="font-size:0.7rem;letter-spacing:0.12em;color:var(--muted,#888);text-transform:uppercase;margin-bottom:8px">Server queue</div>' +
+      '<div style="font-size:1.05rem;font-weight:600;margin-bottom:12px">You are in line for ' + esc(game.toUpperCase()) + ' · position #' + (d.position || '?') + '</div>' +
+      '<p style="margin:0 0 18px;font-size:0.85rem;line-height:1.45;color:var(--muted,#aaa)">' + esc(d.message || 'Both servers are currently in use. We will notify you when your server is ready.') + '</p>' +
+      '<div style="border-top:1px solid var(--border,#333);padding-top:16px;margin-top:8px">' +
+        '<div style="font-size:0.7rem;letter-spacing:0.1em;color:var(--accent,#cd412b);text-transform:uppercase;margin-bottom:6px">Skip the queue</div>' +
+        '<div style="font-weight:600;margin-bottom:6px">MadLadsLab Premium · ' + price + '/mo</div>' +
+        '<p style="margin:0 0 14px;font-size:0.8rem;line-height:1.45;color:var(--muted,#aaa)">Instant access to any MadLadsLab dedicated server, any time. No queue.</p>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="btn" onclick="document.getElementById(\'queueModal\').remove()">Wait in queue</button>' +
+          '<button class="btn" style="background:#cd412b;color:#fff" onclick="alert(\'Premium checkout coming soon — ask an admin to enable Premium on your account.\')">Go Premium</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
 }
 
 // ── Provision Poller ──
@@ -911,7 +1895,7 @@ function startProvisionPoller(game, btn) {
         btn.style.display = 'none';
         var joinBtn = document.createElement('a');
         joinBtn.href = '#'; joinBtn.className = 'btn-join'; joinBtn.textContent = 'JOIN SERVER';
-        joinBtn.dataset.connect = d.connect; joinBtn.dataset.steam = d.steam;
+        joinBtn.dataset.connect = d.connect; joinBtn.dataset.steam = d.steam; joinBtn.dataset.gameid = game;
         joinBtn.onclick = function() { return joinServer(joinBtn); };
         btn.parentElement.appendChild(joinBtn);
         return;
@@ -965,20 +1949,29 @@ async function loadNotable(gameId) {
     container.innerHTML = '<div class="lb-empty">No events yet</div>';
     return;
   }
-  const icons = { death: '\u{1F480}', boss_kill: '\u{1F451}', kill: '\u{2694}', raid_start: '\u{26A1}', raid_end: '\u{1F6E1}' };
-  container.innerHTML = data.events.map(ev => {
+  const icons = { death: '\u{1F480}', boss_kill: '\u{1F451}', kill: '\u{2694}', raid_start: '\u{26A1}', raid_end: '\u{1F6E1}',
+                  npc_kill: '\u{1F480}', mob_kill: '\u{1F5E1}', ship_sunk: '\u{26F5}', item_drop: '\u{1F4E6}' };
+  const grouped = consolidateFeedEvents(data.events);
+  container.innerHTML = grouped.map(ev => {
     const time = new Date(ev.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const countSuffix = ev._count > 1 ? ` <span class="event-count">×${ev._count}</span>` : '';
     let text = '';
     if (ev.type === 'death') {
       text = `<span class="name">${esc(ev.victim||'?')}</span> killed by <span class="name">${esc(ev.attacker||'?')}</span>`;
     } else if (ev.type === 'boss_kill') {
-      text = `<span class="name">${esc(ev.killedBy||'?')}</span> slew <span class="name">${esc(ev.boss||'?')}</span>`;
+      text = `<span class="name">${esc(ev.killedBy||prettyActorClass(ev.boss)||'?')}</span> slew <span class="name">${esc(ev.boss||'?')}</span>`;
     } else if (ev.type === 'kill') {
       text = `<span class="name">${esc(ev.attacker||'?')}</span> killed <span class="name">${esc(ev.victim||'?')}</span>`;
     } else if (ev.type === 'raid_start') {
       text = `Raid: <span class="name">${esc(ev.raidEvent||ev.name||'?')}</span>`;
     } else if (ev.type === 'raid_end') {
-      text = 'Raid ended';
+      text = 'Raid ended' + countSuffix;
+    } else if (ev.type === 'npc_kill' || ev.type === 'mob_kill') {
+      text = `<span class="name">${esc(prettyActorClass(ev.actorClass) || ev.victim || '?')}</span> defeated` + countSuffix;
+    } else if (ev.type === 'ship_sunk') {
+      text = `Sunk <span class="name">${esc(prettyActorClass(ev.actorClass) || ev.victim || '?')}</span>` + countSuffix;
+    } else if (ev.type === 'item_drop') {
+      text = `Dropped <span class="name">${esc(prettyActorClass(ev.actorClass) || ev.item || '?')}</span>` + countSuffix;
     }
     return `<div class="notable-item"><span class="notable-time">${time}</span><span class="notable-icon">${icons[ev.type]||'\u{2022}'}</span><span class="notable-text">${text}</span></div>`;
   }).join('');
@@ -1005,14 +1998,21 @@ async function loadDashboard() {
       else if (k === 'deaths') el.textContent = s.deaths24h || 0;
       else if (k === 'bossKills') el.textContent = s.bossKills24h || 0;
       else if (k === 'raids') el.textContent = s.raids24h || 0;
+      else if (k === 'npcKills') el.textContent = s.npcKills24h || 0;
+      else if (k === 'shipsSunk') el.textContent = s.shipsSunk24h || 0;
     });
 
     // All-time stats
     if (s.allTime) {
       setEl(id + '_at_players', s.allTime.playerCount || 0);
       setEl(id + '_at_sessions', s.allTime.totalSessions || 0);
-      setEl(id + '_at_kills', s.allTime.totalKills || 0);
-      setEl(id + '_at_deaths', s.allTime.totalDeaths || 0);
+      if (id === 'windrose') {
+        setEl(id + '_at_npcKills',  s.allTime.totalNpcKills  || 0);
+        setEl(id + '_at_shipsSunk', s.allTime.totalShipsSunk || 0);
+      } else {
+        setEl(id + '_at_kills', s.allTime.totalKills || 0);
+        setEl(id + '_at_deaths', s.allTime.totalDeaths || 0);
+      }
     }
 
     // Leaderboard (top 5 by playtime)
@@ -1045,12 +2045,29 @@ async function api(method, url, body) {
   } catch { return null; }
 }
 
-function toast(msg, ok = true) {
+function toast(msg, ok = true, hold = 3000) {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.className = 'show' + (ok ? ' ok' : '');
   clearTimeout(el._t);
-  el._t = setTimeout(() => el.className = '', 3000);
+  el._t = setTimeout(() => { el.className = ''; el.onclick = null; el.style.cursor = ''; }, hold);
+}
+
+// Suppress repeat player_join toasts for the same (game, player) within 10s —
+// reconnect storms (laggy clients, server hiccups) re-fire join events and the
+// toast otherwise becomes background noise.
+const _joinSeen = new Map();
+function maybeToastPlayerJoin(ev) {
+  const key = ev.game + ':' + (ev.steamId || ev.name || '');
+  const now = Date.now();
+  const last = _joinSeen.get(key) || 0;
+  if (now - last < 10000) return;
+  _joinSeen.set(key, now);
+  if (_joinSeen.size > 200) {
+    for (const [k, t] of _joinSeen) { if (now - t > 60000) _joinSeen.delete(k); }
+  }
+  const who = ev.name || 'A player';
+  toast(who + ' joined ' + ev.game.toUpperCase(), true);
 }
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -1064,7 +2081,15 @@ const EVENT_ICONS = {
   map_change: '\u{1F5FA}', server_start: '\u{26A1}', server_ready: '\u{1F7E2}',
   boss_kill: '\u{1F451}', raid_start: '\u{26A1}', raid_end: '\u{1F6E1}',
   piece_place: '\u{1F3D7}', character_name: '\u{1F464}',
+  mob_kill: '\u{1F5E1}', npc_kill: '\u{1F480}',
+  ship_sunk: '\u{26F5}', item_drop: '\u{1F4E6}',
 };
+// Reuse the modbuilder's class label cleaner so windrose combat events read as
+// "BlackBeard Regular Sailor" rather than "BP_Mob_BlackBeard_Regular_Sailor_C".
+function prettyActorClass(c) {
+  if (!c) return '';
+  return String(c).replace(/^BP_(Boss|Mob|NPC|AIShip|Carrying|Sc_)/i, '').replace(/_C$/, '').replace(/_/g, ' ').trim();
+}
 const GAME_CSS = { rust: 'rust', valheim: 'valheim', l4d2: 'l4d2', '7dtd': 'sdtd', se: 'se', palworld: 'palworld', windrose: 'windrose' };
 const GAME_NAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7DTD', se: 'SE', palworld: 'PAL', windrose: 'WIND' };
 // Mirrors lib/stats-collector.js — server already strips these, but a stale
@@ -1072,22 +2097,192 @@ const GAME_NAMES = { rust: 'RUST', valheim: 'VALHEIM', l4d2: 'L4D2', '7dtd': '7D
 const UI_SUPPRESSED_EVENT_TYPES = new Set(['heartbeat', 'hook_fired', 'mod_boot', 'mod_status', 'config_load', 'config_load_fail', 'hook.registered', 'hook.failed', 'madlads_stats.armed']);
 
 let feedEvents = [];
+let feedCap = 100;
+let feedHasMore = true;
+let feedLoadingOlder = false;
+const FEED_PAGE_SIZE = 30;
 
 async function loadRecentEvents() {
-  const data = await api('GET', '/stats/events?limit=30');
+  const data = await api('GET', '/stats/events?limit=' + FEED_PAGE_SIZE);
   if (!data || !data.events) return;
   feedEvents = data.events.reverse();
+  feedHasMore = data.events.length === FEED_PAGE_SIZE;
   renderFeed();
 }
 
-function renderFeed() {
+async function loadOlderEvents() {
+  if (feedLoadingOlder || !feedHasMore || !feedEvents.length) return;
+  feedLoadingOlder = true;
+  const btn = document.getElementById('feedLoadOlder');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading older events…'; }
+
+  // Preserve scroll position so the row the user was reading stays put
+  // after we prepend the older events.
+  const list = document.getElementById('eventList');
+  const prevHeight = list.scrollHeight;
+  const prevTop = list.scrollTop;
+
+  try {
+    const oldest = feedEvents[0].ts;
+    const url = '/stats/events?limit=' + FEED_PAGE_SIZE + '&before=' + encodeURIComponent(oldest);
+    const data = await api('GET', url);
+    const older = (data && data.events) ? data.events.reverse() : [];
+    if (older.length < FEED_PAGE_SIZE) feedHasMore = false;
+    if (older.length) {
+      feedEvents = older.concat(feedEvents);
+      feedCap = Math.max(feedCap, feedEvents.length + FEED_PAGE_SIZE);
+      renderFeed({ preserveScroll: true, prevHeight, prevTop });
+    } else {
+      renderFeed({ preserveScroll: true, prevHeight, prevTop });
+    }
+  } catch {
+    if (btn) { btn.disabled = false; btn.textContent = 'Load older events'; }
+  } finally {
+    feedLoadingOlder = false;
+  }
+}
+
+// ── Windrose live extras (combat / POI / world / mod-health / RCON) ──
+// Drives the windrose-only panels at the bottom of the Stats tab.
+async function loadWindroseLive() {
+  if (!document.getElementById('wr_combatSum')) return; // card not built yet
+  let data;
+  try {
+    const r = await fetch('/stats/windrose-live');
+    if (!r.ok) return;
+    data = await r.json();
+  } catch { return; }
+  if (!data) return;
+
+  const ct = data.combat?.totals || {};
+  const sum = (ct.bossKills||0) + (ct.mobKills||0) + (ct.npcKills||0) + (ct.shipsSunk||0) + (ct.itemDrops||0);
+  document.getElementById('wr_combatSum').textContent = sum + ' action' + (sum === 1 ? '' : 's');
+  document.getElementById('wr_cnt_boss').textContent = ct.bossKills || 0;
+  document.getElementById('wr_cnt_mob').textContent  = ct.mobKills  || 0;
+  document.getElementById('wr_cnt_npc').textContent  = ct.npcKills  || 0;
+  document.getElementById('wr_cnt_ship').textContent = ct.shipsSunk || 0;
+  document.getElementById('wr_cnt_item').textContent = ct.itemDrops || 0;
+
+  // Top kills by class — merge categories, sort, cap at 6 so the card stays compact.
+  const all = [];
+  for (const [type, arr] of Object.entries(data.combat?.breakdown || {})) {
+    for (const r of arr) all.push({ type, ...r });
+  }
+  all.sort((a, b) => b.count - a.count);
+  const maxC = all[0]?.count || 1;
+  const colorFor = t => ({ boss_kill:'#d4a34a', mob_kill:'#f85149', npc_kill:'#a371f7', ship_sunk:'#58a6ff', item_drop:'#4caf82' }[t] || '#888');
+  const cssTag   = t => ({ boss_kill:'boss', mob_kill:'mob', npc_kill:'npc', ship_sunk:'ship', item_drop:'item' }[t] || '');
+  document.getElementById('wr_combatBars').innerHTML = all.length
+    ? all.slice(0, 6).map(r => `
+        <div class="wr-bar-row ${cssTag(r.type)}">
+          <span class="lbl">${esc(prettyActorClass(r.class))}</span>
+          <span class="val">${r.count}</span>
+          <div class="wr-bar-track"><div style="width:${Math.round((r.count/maxC)*100)}%;background:${colorFor(r.type)}"></div></div>
+        </div>`).join('')
+    : '<div class="lb-empty">No combat in last 24h</div>';
+
+  // POI summary
+  const p = data.pois;
+  const poiGrid = document.getElementById('wr_poiGrid');
+  if (p) {
+    document.getElementById('wr_poiTotal').textContent = p.total;
+    const audio = p.kindCounts.audio || 0;
+    const overlap = p.kindCounts.overlap || 0;
+    poiGrid.innerHTML = `
+      <div class="wr-mini"><span class="k">Islands</span><span class="v">${p.islandCount}</span></div>
+      <div class="wr-mini"><span class="k">Sub-types</span><span class="v">${p.subTypeCount}</span></div>
+      <div class="wr-mini"><span class="k">Audio</span><span class="v">${audio}</span></div>
+      <div class="wr-mini"><span class="k">Overlap</span><span class="v">${overlap}</span></div>
+      <div class="wr-mini"><span class="k">Actors scanned</span><span class="v">${p.actorsScanned.toLocaleString()}</span></div>
+      <div class="wr-mini"><span class="k">Missing pos</span><span class="v">${p.missingPosition}</span></div>`;
+  } else {
+    document.getElementById('wr_poiTotal').textContent = '0';
+    poiGrid.innerHTML = '<div class="lb-empty">No POI scan on disk</div>';
+  }
+
+  // World resources
+  const w = data.world;
+  const resGrid = document.getElementById('wr_resGrid');
+  if (w) {
+    document.getElementById('wr_resSub').textContent = `${w.totalActors.toLocaleString()} actors · ${w.totalClasses} classes`;
+    resGrid.innerHTML = `
+      <div class="wr-mini"><span class="k">Farming plots</span><span class="v">${w.farmingCount.toLocaleString()}</span></div>
+      <div class="wr-mini"><span class="k">Mob spawns</span><span class="v">${w.mobsCount.toLocaleString()}</span></div>
+      <div class="wr-mini"><span class="k">AI ships</span><span class="v">${w.shipsCount.toLocaleString()}</span></div>
+      <div class="wr-mini"><span class="k">Bosses</span><span class="v">${w.bossesCount.toLocaleString()}</span></div>`;
+  } else {
+    document.getElementById('wr_resSub').textContent = '';
+    resGrid.innerHTML = '<div class="lb-empty">No class census on disk</div>';
+  }
+
+  // Mod health bar (registered / total)
+  const mh = data.modHealth;
+  const fill = document.getElementById('wr_hookFill');
+  const label = document.getElementById('wr_hookLabel');
+  if (mh && mh.total) {
+    const pct = mh.registered / mh.total;
+    fill.style.width = Math.round(pct * 100) + '%';
+    fill.style.background = pct >= 0.5 ? 'var(--green)' : pct >= 0.25 ? 'var(--yellow)' : 'var(--accent)';
+    label.textContent = `${mh.registered}/${mh.total} hooks live · ${mh.failed} failed`;
+  } else {
+    fill.style.width = '0%';
+    label.textContent = '— hooks live';
+  }
+
+  // RCON bridge
+  const rc = data.rcon || {};
+  const state = rc.state || 'unknown';
+  const sEl = document.getElementById('wr_rconState');
+  sEl.textContent = state;
+  sEl.className = 'wr-rcon-state ' + (state === 'running' ? 'running' : state === 'error' ? 'error' : '');
+  document.getElementById('wr_rconDetail').textContent = (rc.last_error || rc.detail || '—');
+
+  // Update the chat presence badge — only windrose has live player names today.
+  const pres = document.getElementById('windrose_chatPresence');
+  if (pres) {
+    const n = (data.activePlayers || []).length;
+    pres.textContent = n + ' in-game';
+  }
+}
+
+// Collapses runs of repeated low-signal events (e.g. raid_end) into a
+// single row carrying a _count and the most recent ts. Keeps the feed
+// readable when Valheim's MadLadsEventLogger fires multiple raid_end
+// notices for stacked random events.
+function consolidateFeedEvents(events) {
+  const COLLAPSIBLE = new Set(['raid_end']);
+  const out = [];
+  for (const ev of events) {
+    const last = out[out.length - 1];
+    if (last && COLLAPSIBLE.has(ev.type) && last.type === ev.type && last.game === ev.game) {
+      last._count = (last._count || 1) + 1;
+      last.ts = ev.ts;
+    } else {
+      out.push({ ...ev });
+    }
+  }
+  return out;
+}
+
+function renderFeed(opts = {}) {
   const list = document.getElementById('eventList');
   if (!feedEvents.length) {
     list.innerHTML = '<div class="event-item"><span class="event-text" style="color:var(--muted);font-style:italic;">No events yet</span></div>';
+    document.getElementById('feedCount').textContent = '0 events';
     return;
   }
-  list.innerHTML = feedEvents.map(renderEventItem).join('');
-  list.scrollTop = list.scrollHeight;
+  const grouped = consolidateFeedEvents(feedEvents);
+  const loaderRow = feedHasMore
+    ? '<button class="event-load-older" id="feedLoadOlder" onclick="loadOlderEvents()"' +
+      (feedLoadingOlder ? ' disabled>Loading older events…' : '>Load older events') + '</button>'
+    : '';
+  list.innerHTML = loaderRow + grouped.map(renderEventItem).join('');
+  if (opts.preserveScroll) {
+    // Keep the user anchored on the row they were reading after a prepend.
+    list.scrollTop = (list.scrollHeight - opts.prevHeight) + opts.prevTop;
+  } else {
+    list.scrollTop = list.scrollHeight;
+  }
   document.getElementById('feedCount').textContent = feedEvents.length + ' events';
 }
 
@@ -1112,11 +2307,23 @@ function renderEventItem(ev) {
     case 'death':
       text = '<span class="name">' + esc(ev.victim || '?') + '</span> killed by <span class="name">' + esc(ev.attacker || '?') + '</span>'; break;
     case 'boss_kill':
-      text = '<span class="name">' + esc(ev.killedBy || '?') + '</span> slew boss <span class="name">' + esc(ev.boss || '?') + '</span>'; break;
+      // Valheim emits killedBy + boss names; Windrose's K2_DestroyActor route
+      // only knows the actor class, so fall back to the cleaned class name.
+      text = ev.killedBy
+        ? '<span class="name">' + esc(ev.killedBy) + '</span> slew boss <span class="name">' + esc(ev.boss || prettyActorClass(ev.actorClass)) + '</span>'
+        : 'Boss defeated · <span class="name">' + esc(prettyActorClass(ev.boss || ev.actorClass)) + '</span>'; break;
+    case 'mob_kill':
+      text = 'Mob killed · ' + esc(prettyActorClass(ev.victim || ev.actorClass)); break;
+    case 'npc_kill':
+      text = 'NPC killed · ' + esc(prettyActorClass(ev.victim || ev.actorClass)); break;
+    case 'ship_sunk':
+      text = 'Ship sunk · <span class="name">' + esc(prettyActorClass(ev.victim || ev.actorClass)) + '</span>'; break;
+    case 'item_drop':
+      text = 'Item dropped · ' + esc(prettyActorClass(ev.item || ev.actorClass)); break;
     case 'raid_start':
       text = 'Raid started: <span class="name">' + esc(ev.raidEvent || '?') + '</span>'; break;
     case 'raid_end':
-      text = 'Raid ended'; break;
+      text = 'Raid ended' + (ev._count > 1 ? ' <span class="event-count">×' + ev._count + '</span>' : ''); break;
     case 'piece_place':
       text = '<span class="name">' + esc(ev.name || '?') + '</span> built <span class="name">' + esc(ev.piece || '?') + '</span>'; break;
     case 'map_change':
@@ -1160,15 +2367,45 @@ function connectServerState() {
     setCardState(game, 'warning'); showShutdownWarning(game, idleMinutes);
   });
   sock.on('server:provisioning', ({ game }) => toast(game.toUpperCase() + ' provisioning on Linode (~10 min)', true));
+  sock.on('server:queue-ready', ({ game, message }) => {
+    // Free-tier user just had their slot pop. Reset their REQUEST SERVER button
+    // back to baseline so the dashboard refresh shows JOIN SERVER once the
+    // game finishes booting.
+    const btn = document.getElementById(game + '_request');
+    if (btn) {
+      btn.classList.remove('sent');
+      btn.disabled = false;
+      btn.textContent = 'REQUEST SERVER';
+    }
+    const modal = document.getElementById('queueModal');
+    if (modal) modal.remove();
+    toast(message || (game.toUpperCase() + ' is ready — your server is starting up.'), true, 6000);
+    setTimeout(pollAllGames, 3000);
+  });
   sock.on('stats:event', (ev) => {
     if (!ev || !ev.game) return;
     if (UI_SUPPRESSED_EVENT_TYPES.has(ev.type)) return;
     feedEvents.push(ev);
-    if (feedEvents.length > 100) feedEvents = feedEvents.slice(-100);
-    const list = document.getElementById('eventList');
-    if (list) { list.insertAdjacentHTML('beforeend', renderEventItem(ev)); list.scrollTop = list.scrollHeight; }
-    const fc = document.getElementById('feedCount');
-    if (fc) fc.textContent = feedEvents.length + ' events';
+    if (feedEvents.length > feedCap) feedEvents = feedEvents.slice(-feedCap);
+    // Re-render so consecutive collapsible events (raid_end) merge their counters.
+    if (document.getElementById('eventList')) renderFeed();
+    if (ev.type === 'player_join') maybeToastPlayerJoin(ev);
+  });
+  sock.on('broadcast:live-global', ({ code, game, host }) => {
+    const label = (host || 'Someone') + ' is broadcasting ' + (game ? game.toUpperCase() : 'a game');
+    toast(label + ' — click to watch', true, 6000);
+    const el = document.getElementById('toast');
+    if (el && code) {
+      el.style.cursor = 'pointer';
+      el.onclick = () => { location.href = '/broadcasts/' + code; };
+    }
+  });
+  sock.on('discord:voice-join', ({ user, channel }) => {
+    toast((user || 'Someone') + ' joined ' + (channel || 'Discord voice'), true);
+  });
+  sock.on('stats:chat', (msg) => {
+    if (!msg || !msg.game) return;
+    appendChatMessage(msg.game, msg);
   });
 }
 
@@ -1235,11 +2472,8 @@ function connectStatsFeed() {
   });
   statsSocket.on('stats:event', function(ev) {
     feedEvents.push(ev);
-    if (feedEvents.length > 100) feedEvents = feedEvents.slice(-100);
-    var list = document.getElementById('eventList');
-    list.insertAdjacentHTML('beforeend', renderEventItem(ev));
-    list.scrollTop = list.scrollHeight;
-    document.getElementById('feedCount').textContent = feedEvents.length + ' events';
+    if (feedEvents.length > feedCap) feedEvents = feedEvents.slice(-feedCap);
+    if (document.getElementById('eventList')) renderFeed();
   });
 }
 
@@ -1247,7 +2481,7 @@ function connectStatsFeed() {
 loadDashboard();
 setInterval(loadDashboard, 60000);
 </script>
-<script src="/static/js/socket.io.min.js" onload="connectServerState();connectStatsFeed();loadRecentEvents();"></script>
+<script src="/static/js/socket.io.min.js" onload="connectServerState();connectStatsFeed();loadRecentEvents();loadWindroseLive();setInterval(loadWindroseLive, 10000);"></script>
 <script src="/static/js/maintenance.js"></script>
 <script>fetch('/api/version').then(r=>r.json()).then(d=>{document.getElementById('appVersion').textContent='v'+d.version}).catch(()=>{})</script>
 </body>

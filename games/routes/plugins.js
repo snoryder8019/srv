@@ -101,7 +101,7 @@ router.post('/api/upload', requireSuperAdmin, express.raw({ type: '*/*', limit: 
       fileData: content, // Buffer stored as Binary
       fileSize: content.length,
       uploadedBy: req.user._id.toString(),
-      uploadedByName: req.user.displayName || req.user.email,
+      uploadedByName: require('../lib/username').displayFor(req.user),
       uploadedAt: new Date(),
       updatedAt: new Date(),
       installs: 0,

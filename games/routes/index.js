@@ -16,6 +16,18 @@ router.get('/api/version', (req, res) => {
   }
 });
 
+// Public announcements feed — landing page renders the active strip.
+// The admin-side CRUD lives at /admin/api/announcements (superadmin gated).
+router.get('/api/announcements', (req, res) => {
+  try {
+    const announcements = require('../lib/announcements');
+    const activeOnly = req.query.active !== '0'; // default to active-only for public
+    res.json({ ok: true, announcements: announcements.list({ activeOnly }) });
+  } catch (e) {
+    res.json({ ok: false, announcements: [] });
+  }
+});
+
 // Patch notes endpoint — returns recent version history with TLDR summaries
 router.get('/api/patch-notes', (req, res) => {
   try {

@@ -1,0 +1,54 @@
+#!/bin/bash
+# Windrose Dedicated Server Startup Script (Wine 11.0 — STAGED, not active)
+# This is the wine-swap experiment per AGENT-CHAT.md ~02:30Z.
+# Promote with: mv start-windrose.sh start-windrose.sh.proton-backup && mv start-windrose.sh.wine-staged start-windrose.sh
+# Revert with:  mv start-windrose.sh start-windrose.sh.wine-staged && mv start-windrose.sh.proton-backup start-windrose.sh
+#
+# Hypothesis (Mike's Docker diff, 2026-05-22): Proton-GE 10-34's DXVK layer
+# may be blocking the RHI init paths that HeightmapExporter / UE4SS FindAllOf
+# from non-WP mods rely on. Switching to plain Wine 11.0 (matching the
+# `indifferentbroccoli/windrose-server-docker` image that produces tiles in
+# 5 min) is the test.
+#
+# Prereq: WineHQ stable PPA installed and `wine` resolves to 11.0:
+#   sudo dpkg --add-architecture i386
+#   sudo mkdir -pm755 /etc/apt/keyrings
+#   sudo wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key
+#   sudo wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/noble/winehq-noble.sources
+#   sudo apt update && sudo apt install --install-recommends winehq-stable
+
+WINDROSE_DIR="/srv/games/windrose"
+SESSION="windrose"
+GS_USER="gs-windrose"
+
+LOG_FILE="$WINDROSE_DIR/logs/server.log"
+# Wine prefix — separate from Proton's compat dir so we can flip back without
+# rebuilding Proton's prefix. First boot under Wine will auto-init this prefix.
+WINEPREFIX="$WINDROSE_DIR/.wine"
+
+SERVER_EXE="$WINDROSE_DIR/R5/Binaries/Win64/WindroseServer-Win64-Shipping.exe"
+
+# Kill existing session if running
+sudo -u $GS_USER tmux kill-session -t $SESSION 2>/dev/null
+
+sudo -u $GS_USER tmux new-session -d -s $SESSION -x 220 -y 50
+
+# WINEDLLOVERRIDES forces Wine's loader to prefer the UE4SS-shipped dwmapi.dll
+# (proxy/loader sitting next to the EXE) over Wine's builtin. Same env var that
+# Proton-GE respected — Wine handles it identically.
+# WINEDEBUG=-all silences Wine's verbose tracing in production. Drop for triage.
+sudo -u $GS_USER tmux send-keys -t $SESSION "cd $WINDROSE_DIR && \
+  WINEPREFIX=$WINEPREFIX \
+  WINEDLLOVERRIDES='dwmapi=n,b' \
+  WINEDEBUG=-all \
+  xvfb-run -a wine $SERVER_EXE -log 2>&1 | tee -a $LOG_FILE" Enter
+
+echo "Windrose server started in tmux session '$SESSION' (user: $GS_USER, runtime: Wine 11.0)"
+echo "Attach with: sudo -u $GS_USER tmux attach -t $SESSION"
+echo ""
+echo "Networking: Windrose uses NAT punch-through + invite codes."
+echo "Invite code is in $WINDROSE_DIR/R5/Saved/Config/... or server console."
+echo ""
+echo "Post-boot verification:"
+echo "  tail -F $WINDROSE_DIR/R5/Binaries/Win64/ue4ss/UE4SS.log | grep -iE 'rhi|heightmap|v1\\.3\\.5'"
+echo "  find $WINDROSE_DIR/windrose_plus_data/heightmaps -type f 2>/dev/null | head"

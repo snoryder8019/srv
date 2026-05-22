@@ -16,6 +16,40 @@ const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = re
 const BACKUP_DIR = '/srv/games/backups';
 const S3_PREFIX = 'game-saves';
 
+// Per-game launch wrappers. The first entry is the default the server picks
+// when a save was created without an explicit wrapper. Wrappers are bound to a
+// save at backup-time so a Windows-build save can never be relaunched under
+// vanilla Wine after it was authored under Proton-GE (and vice versa). Native
+// Linux builds list a single "native" wrapper so the dropdown stays uniform.
+const WRAPPERS = {
+  rust:      [{ id: 'native', label: 'Native Linux' }],
+  valheim:   [{ id: 'native', label: 'Native Linux' }],
+  l4d2:      [{ id: 'native', label: 'Native Linux' }],
+  '7dtd':    [{ id: 'native', label: 'Native Linux' }],
+  se:        [{ id: 'native', label: 'Native Linux' }],
+  palworld:  [{ id: 'native', label: 'Native Linux' }],
+  windrose:  [
+    { id: 'proton-ge-10-34', label: 'Proton-GE 10-34 (default)' },
+    { id: 'proton-ge-9',     label: 'Proton-GE 9' },
+    { id: 'wine-stable',     label: 'Wine 9 (experimental)' },
+  ],
+};
+
+function defaultWrapper(game) {
+  const list = WRAPPERS[game];
+  return list && list[0] ? list[0].id : 'native';
+}
+
+function isValidWrapper(game, wrapperId) {
+  const list = WRAPPERS[game];
+  if (!list) return false;
+  return list.some(w => w.id === wrapperId);
+}
+
+function listWrappers(game) {
+  return (WRAPPERS[game] || []).slice();
+}
+
 // S3 client for Linode Object Storage
 let s3 = null;
 function getS3() {
@@ -101,9 +135,13 @@ async function ensureIndexes() {
 /**
  * Backup from a provisioned Linode → tar → upload to bucket → record in DB.
  */
-async function backupFromLinode(ip, game, userId) {
+async function backupFromLinode(ip, game, userId, opts) {
   const saves = SAVE_PATHS[game];
   if (!saves) throw new Error('No save paths for ' + game);
+  const { label, userName } = opts || {};
+  let { wrapper } = opts || {};
+  if (wrapper && !isValidWrapper(game, wrapper)) wrapper = defaultWrapper(game);
+  if (!wrapper) wrapper = defaultWrapper(game);
 
   const timestamp = Date.now();
   const tarName = game + '-' + timestamp + '.tar.gz';
@@ -155,6 +193,9 @@ async function backupFromLinode(ip, game, userId) {
   const record = {
     userId, game, s3Key, fileSize,
     source: 'linode', sourceIp: ip,
+    label: label || null,
+    userName: userName || null,
+    wrapper,
     createdAt: new Date(),
   };
   await db.collection('world_backups').insertOne(record);
@@ -166,7 +207,11 @@ async function backupFromLinode(ip, game, userId) {
 /**
  * Backup local server to bucket.
  */
-async function backupLocal(game, userId) {
+async function backupLocal(game, userId, opts) {
+  const { label, userName } = opts || {};
+  let { wrapper } = opts || {};
+  if (wrapper && !isValidWrapper(game, wrapper)) wrapper = defaultWrapper(game);
+  if (!wrapper) wrapper = defaultWrapper(game);
   const localPath = LOCAL_PATHS[game];
   if (!localPath || !fs.existsSync(localPath)) {
     return { ok: false, message: 'No local saves for ' + game };
@@ -192,6 +237,9 @@ async function backupLocal(game, userId) {
   const record = {
     userId, game, s3Key, fileSize,
     source: 'local',
+    label: label || null,
+    userName: userName || null,
+    wrapper,
     createdAt: new Date(),
   };
   await db.collection('world_backups').insertOne(record);
@@ -251,6 +299,18 @@ async function listBackups(userId, game) {
 
 async function listAllBackups(limit) {
   return db.collection('world_backups').find().sort({ createdAt: -1 }).limit(limit || 50).toArray();
+}
+
+/**
+ * List all backups for a single game across all users.
+ * Used by the saved-worlds dropdown on the main page.
+ */
+async function listBackupsByGame(game, limit) {
+  return db.collection('world_backups')
+    .find({ game })
+    .sort({ createdAt: -1 })
+    .limit(limit || 50)
+    .toArray();
 }
 
 /**
@@ -324,5 +384,6 @@ async function deleteBackup(backupId) {
 
 module.exports = {
   init, backupFromLinode, backupLocal, restoreToLinode, restoreLocal,
-  listBackups, listAllBackups, getBackup, deleteBackup,
+  listBackups, listAllBackups, listBackupsByGame, getBackup, deleteBackup,
+  WRAPPERS, listWrappers, defaultWrapper, isValidWrapper,
 };

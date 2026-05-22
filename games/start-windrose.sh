@@ -34,6 +34,7 @@ sudo -u $GS_USER tmux send-keys -t $SESSION "cd $WINDROSE_DIR && \
   STEAM_COMPAT_DATA_PATH=$COMPAT_DATA \
   STEAM_COMPAT_CLIENT_INSTALL_PATH=$PROTON_DIR \
   WINEDLLOVERRIDES='dwmapi=n,b' \
+  PROTON_USE_WINED3D=1 \
   xvfb-run -a $PROTON_DIR/proton run $SERVER_EXE -log 2>&1 | tee -a $LOG_FILE" Enter
 
 echo "Windrose server started in tmux session '$SESSION' (user: $GS_USER, runtime: Proton-GE)"

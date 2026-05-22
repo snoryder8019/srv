@@ -391,12 +391,24 @@
     }
   }
 
+  // Streams held during a live broadcast so we can stop everything cleanly
+  // when the broadcaster ends the share or the page unloads.
+  var screenStream = null;
+  var cameraStream = null;
+  var micStream = null;
+  var compositeCanvas = null;
+  var compositeRAF = null;
+
   // ── Start Broadcast (screen share) ──
   window.startBroadcastStream = async function () {
     if (!me.authed) return;
     try {
-      localStream = await navigator.mediaDevices.getDisplayMedia({
+      // displaySurface: 'window' is a hint — most browsers honor it by
+      // pre-selecting the Window tab in the picker, but they still allow
+      // the user to pick a screen or tab. We validate post-pick below.
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
+          displaySurface: 'window',
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
           frameRate: { ideal: 30, max: 60 },
@@ -409,9 +421,73 @@
         },
       });
 
+      var screenTrack = screenStream.getVideoTracks()[0];
+      var settings = (screenTrack.getSettings && screenTrack.getSettings()) || {};
+      // Reject screen/tab/monitor picks — broadcasts are meant for a single
+      // game window so personal desktop content doesn't leak to viewers.
+      if (settings.displaySurface && settings.displaySurface !== 'window') {
+        screenStream.getTracks().forEach(function (t) { t.stop(); });
+        screenStream = null;
+        toast('Please share a game WINDOW (not your full screen or a browser tab).');
+        return;
+      }
+
+      if (screenTrack.contentHint !== undefined) {
+        screenTrack.contentHint = 'motion';
+      }
+
+      // Try to grab the camera + mic in one prompt. If the user denies the
+      // camera but the mic is still available we re-prompt for mic-only so
+      // host voice always makes it through to viewers (one-way; viewers
+      // never publish back).
+      try {
+        var camAndMic = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 320, max: 640 }, height: { ideal: 240, max: 480 }, frameRate: { ideal: 24, max: 30 } },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000, channelCount: 1 },
+        });
+        // Split the combined stream into camera-video and mic-audio so we
+        // can place the camera into the composite canvas without dragging
+        // the audio through it (canvas.captureStream is video-only).
+        var camVideoTracks = camAndMic.getVideoTracks();
+        var camAudioTracks = camAndMic.getAudioTracks();
+        if (camVideoTracks.length) {
+          cameraStream = new MediaStream(camVideoTracks);
+        }
+        if (camAudioTracks.length) {
+          micStream = new MediaStream(camAudioTracks);
+        }
+      } catch (camErr) {
+        console.warn('[broadcast] camera+mic unavailable:', camErr && camErr.message);
+      }
+
+      // No combined permission? Try mic alone — host voice is the priority.
+      if (!micStream) {
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000, channelCount: 1 },
+            video: false,
+          });
+        } catch (micErr) {
+          console.warn('[broadcast] mic unavailable:', micErr && micErr.message);
+        }
+      }
+
+      // Build the broadcast stream — either compositor canvas (screen +
+      // camera overlay) or the raw screen stream when no camera is present.
+      localStream = cameraStream
+        ? buildCompositeStream(screenStream, cameraStream)
+        : screenStream;
+
+      // Mix the mic into the outgoing stream so viewers hear the host.
+      // The composite canvas only carries video, so audio always lives on
+      // the localStream as a separate track regardless of camera presence.
+      if (micStream) {
+        micStream.getAudioTracks().forEach(function (t) { localStream.addTrack(t); });
+      }
+
       var vTrack = localStream.getVideoTracks()[0];
-      if (vTrack.contentHint !== undefined) {
-        vTrack.contentHint = 'motion'; // optimize for game footage (smooth framerate over sharpness)
+      if (vTrack && vTrack.contentHint !== undefined) {
+        vTrack.contentHint = 'motion';
       }
 
       // Don't play video back to broadcaster — saves CPU/bandwidth
@@ -419,7 +495,8 @@
       video.style.display = 'none';
       hideLaunchPanel();
       $id('videoOffline').classList.remove('hidden');
-      $id('videoOffline').innerHTML = '<div class="video-offline-icon" style="color:var(--green)">&#128308;</div><div style="color:var(--green)">YOU ARE LIVE</div><div style="color:var(--muted);font-size:0.65rem;margin-top:8px;">Viewers are watching your screen share</div>';
+      $id('videoOffline').innerHTML = '<div class="video-offline-icon" style="color:var(--green)">&#128308;</div><div style="color:var(--green)">YOU ARE LIVE</div><div style="color:var(--muted);font-size:0.65rem;margin-top:8px;">Viewers are watching your game window' + (cameraStream ? ' + camera' : '') + '</div>';
+      renderBroadcasterCameraPreview();
 
       // Use SFU if available, otherwise P2P continues via viewer-joined events
       if (useSFU && msDevice) {
@@ -428,16 +505,101 @@
 
       socket.emit('broadcast:go-live', broadcastCode);
 
-      vTrack.onended = function () {
+      // Screen-share end (broadcaster clicks "Stop sharing" in browser chrome)
+      // is the canonical end signal — tear everything else down with it.
+      screenTrack.onended = function () {
         socket.emit('broadcast:stop', broadcastCode);
+        stopCompositeAndCamera();
         cleanupWebRTC();
       };
     } catch (e) {
+      stopCompositeAndCamera();
       if (e.name !== 'NotAllowedError') {
         toast('Screen share failed: ' + e.message);
       }
     }
   };
+
+  // Composite screen + camera onto a canvas so a single combined track ships
+  // through the SFU. Camera lives in the bottom-right at ~22% of the frame
+  // width so it stays readable without dominating the gameplay view.
+  function buildCompositeStream(screenSrc, camSrc) {
+    var screenSettings = screenSrc.getVideoTracks()[0].getSettings() || {};
+    var W = screenSettings.width  || 1280;
+    var H = screenSettings.height || 720;
+
+    compositeCanvas = document.createElement('canvas');
+    compositeCanvas.width = W;
+    compositeCanvas.height = H;
+    var ctx = compositeCanvas.getContext('2d');
+
+    var sv = document.createElement('video');
+    sv.muted = true; sv.playsInline = true; sv.srcObject = screenSrc;
+    sv.play().catch(function () {});
+
+    var cv = document.createElement('video');
+    cv.muted = true; cv.playsInline = true; cv.srcObject = camSrc;
+    cv.play().catch(function () {});
+
+    function draw() {
+      try {
+        if (sv.readyState >= 2) ctx.drawImage(sv, 0, 0, W, H);
+        if (cv.readyState >= 2) {
+          var camW = Math.round(W * 0.22);
+          var camH = Math.round(camW * (cv.videoHeight / Math.max(1, cv.videoWidth)) || camW * 0.75);
+          var pad = Math.round(W * 0.015);
+          var x = W - camW - pad;
+          var y = H - camH - pad;
+          // Soft border so the cam overlay reads as a distinct tile
+          ctx.fillStyle = 'rgba(0,0,0,0.55)';
+          ctx.fillRect(x - 3, y - 3, camW + 6, camH + 6);
+          ctx.drawImage(cv, x, y, camW, camH);
+        }
+      } catch (e) {}
+      compositeRAF = requestAnimationFrame(draw);
+    }
+    draw();
+
+    var stream = compositeCanvas.captureStream(30);
+    // Host mic is the only audio source — see startBroadcastStream where it
+    // is added to localStream after this returns. Window-audio capture from
+    // getDisplayMedia is unreliable across OSes and would compete with the
+    // mic for the single SFU audio producer slot, so drop it.
+    return stream;
+  }
+
+  // Render a small mirrored self-view to the broadcaster so they can see
+  // what their camera is showing without having to peek at viewer chat.
+  function renderBroadcasterCameraPreview() {
+    var host = $id('videoOffline');
+    if (!host || !cameraStream) return;
+    var prev = document.getElementById('broadcasterCamPreview');
+    if (prev) prev.remove();
+    var wrap = document.createElement('div');
+    wrap.id = 'broadcasterCamPreview';
+    wrap.style.cssText = 'position:absolute;right:14px;bottom:14px;width:160px;border:1px solid rgba(255,255,255,0.15);border-radius:4px;overflow:hidden;background:#000;z-index:2;';
+    var v = document.createElement('video');
+    v.autoplay = true; v.muted = true; v.playsInline = true;
+    v.style.cssText = 'width:100%;display:block;transform:scaleX(-1);';
+    v.srcObject = cameraStream;
+    wrap.appendChild(v);
+    var label = document.createElement('div');
+    label.textContent = 'You · cam preview';
+    label.style.cssText = 'font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:#aaa;padding:3px 6px;background:rgba(0,0,0,0.6);';
+    wrap.appendChild(label);
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    host.appendChild(wrap);
+  }
+
+  function stopCompositeAndCamera() {
+    if (compositeRAF) { cancelAnimationFrame(compositeRAF); compositeRAF = null; }
+    if (compositeCanvas) compositeCanvas = null;
+    if (cameraStream) { cameraStream.getTracks().forEach(function (t) { t.stop(); }); cameraStream = null; }
+    if (micStream)    { micStream.getTracks().forEach(function (t) { t.stop(); });    micStream = null;    }
+    if (screenStream)  { screenStream.getTracks().forEach(function (t) { t.stop(); });  screenStream = null;  }
+    var prev = document.getElementById('broadcasterCamPreview');
+    if (prev) prev.remove();
+  }
 
   // ── SFU Broadcast (single upload) ──
   async function startSFUBroadcast() {
@@ -564,7 +726,43 @@
       $id('videoOffline').classList.add('hidden');
     }
     $id('chatViewerCount').textContent = (data.viewerCount || 0) + ' watching';
+    refreshBroadcastStats();
   }
+
+  // Pull the persisted stats roll-up for this broadcast. Called on header
+  // refresh and once every 20s while the page is open so the title-card
+  // counters stay in sync without needing a stats-specific socket event.
+  function refreshBroadcastStats() {
+    if (!broadcastCode) return;
+    fetch('/broadcasts/api/' + broadcastCode + '/stats')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d || !d.stats) return;
+        var s = d.stats;
+        var bar = $id('bcStats'); if (!bar) return;
+        bar.classList.remove('hidden');
+        $id('bcsPeak').textContent   = s.peakViewers || 0;
+        $id('bcsUnique').textContent = s.uniqueViewers || 0;
+        $id('bcsChats').textContent  = s.totalChatMessages || 0;
+        $id('bcsVoice').textContent  = s.peakVoicePeers || 0;
+        // Duration: render whichever side has it. Mongo decimal js Number.
+        var ms = s.durationMs || 0;
+        var mins = Math.floor(ms / 60000);
+        var hrs  = Math.floor(mins / 60);
+        $id('bcsDuration').textContent = hrs > 0
+          ? hrs + 'h ' + (mins % 60) + 'm'
+          : mins + 'm';
+        var lt = s.hostLifetime || {};
+        $id('bcsHostHandle').textContent = (s.host && s.host.handle) || lt.handle || 'host';
+        var ltAirHrs = Math.round(((lt.totalAirtimeMs || 0) / 3600000) * 10) / 10;
+        $id('bcsHostLine').textContent =
+          'host · ' + (lt.broadcasts || 0) + ' broadcasts · ' + ltAirHrs + 'h aired · peak ' + (lt.peakViewersEver || 0);
+      }).catch(function() {});
+  }
+
+  // Refresh stats every 20s. The bar stays visible after the broadcast ends
+  // so viewers on the result screen can still see the final tallies.
+  setInterval(function() { refreshBroadcastStats(); }, 20000);
 
   // ── Chat ──
   function sendChat() {
@@ -695,6 +893,10 @@
       localStream.getTracks().forEach(function (t) { t.stop(); });
       localStream = null;
     }
+    // Also tear down any composite-canvas RAF + the raw screen/camera tracks
+    // that fed it. Safe to call even if the broadcaster never opted into a
+    // camera tile (the helper no-ops on null sources).
+    stopCompositeAndCamera();
     Object.keys(viewerPeers).forEach(function (k) {
       viewerPeers[k].close();
     });

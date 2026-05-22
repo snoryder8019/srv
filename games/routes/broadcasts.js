@@ -4,6 +4,7 @@ const express = require('express');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
 const broadcasts = require('../lib/broadcasts');
+const username = require('../lib/username');
 const router = express.Router();
 
 // Generate time-limited TURN credentials (coturn HMAC auth)
@@ -103,13 +104,72 @@ router.post('/api/:code/end', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Public: per-broadcast stats (live snapshot + host lifetime totals) ──
+// Used by the title card on landing.html and broadcast.html. Host identity
+// in the response is anonymized via `host.handle` — name is only included
+// for live broadcasts since the host is actively self-publishing.
+router.get('/api/:code/stats', async (req, res) => {
+  try {
+    const stats = await broadcasts.getBroadcastStats(req.params.code);
+    if (!stats) return res.status(404).json({ error: 'Broadcast not found' });
+    res.json({ stats });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Auth: current user's own broadcast stats ──
+router.get('/api/stats/me', requireAuth, async (req, res) => {
+  try {
+    const stats = await broadcasts.getUserStats(req.user._id.toString());
+    res.json({ stats });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Public: anonymized per-user stats by handle (user_<8hex>) ──
+// Real userIds are NOT exposed in the response; the URL also accepts a
+// userId but the lookup result is the same anonymized projection.
+router.get('/api/stats/user/:handle', async (req, res) => {
+  try {
+    const stats = await broadcasts.getPublicUserStats(req.params.handle);
+    if (!stats) return res.status(404).json({ error: 'No stats for this user' });
+    res.json({ stats });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Public: anonymized leaderboard ──
+// sort ∈ {airtime, broadcasts, peakViewers, uniqueViewers, watch}
+router.get('/api/stats/leaderboard', async (req, res) => {
+  try {
+    const rows = await broadcasts.getLeaderboard(req.query.sort, req.query.limit);
+    res.json({ leaderboard: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Public: recently-ended sessions (no hostId leak) ──
+router.get('/api/stats/sessions', async (req, res) => {
+  try {
+    const rows = await broadcasts.getRecentSessions(req.query.game || null, req.query.limit);
+    res.json({ sessions: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Auth: current user info ──
 router.get('/api/me', (req, res) => {
-  if (!req.isAuthenticated()) return res.json({ id: null, name: null, role: 'viewer', authed: false });
+  if (!req.isAuthenticated()) return res.json({ id: null, username: null, role: 'viewer', authed: false });
   const u = req.user;
   res.json({
     id: u._id.toString(),
-    name: u.displayName || u.firstName || u.email,
+    username: username.displayFor(u),
+    handle: broadcasts.anonHandle(u._id.toString()),
     role: broadcasts.getUserRole(u),
     authed: true,
   });
