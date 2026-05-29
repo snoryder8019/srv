@@ -551,12 +551,26 @@ app.post('/mcp', authenticate, express.json(), async (req, res) => {
   try {
     // Check for existing session
     const sessionId = req.headers['mcp-session-id'];
-    let transport = transports[sessionId];
+    let transport = sessionId ? transports[sessionId] : undefined;
 
     if (transport) {
       // Existing session
       await transport.handleRequest(req, res, req.body);
       return;
+    }
+
+    // A session id was supplied but we don't have it (e.g. the server restarted
+    // and the in-memory session map was lost). Per the MCP Streamable HTTP spec
+    // we MUST answer 404 so the client drops the dead session and re-sends an
+    // InitializeRequest WITHOUT a session id — otherwise it loops forever on
+    // "Server not initialized" (400) replaying calls against a session we can
+    // never resurrect.
+    if (sessionId) {
+      return res.status(404).json({
+        jsonrpc: '2.0',
+        error: { code: -32001, message: 'Session not found' },
+        id: req.body?.id ?? null,
+      });
     }
 
     // New session - create transport and server
