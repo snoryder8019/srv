@@ -11,43 +11,161 @@
  * - ALWAYS use tmux session management for service control
  */
 
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
+import { readFileSync } from 'fs';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { spawn } from 'child_process';
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { join, resolve } from 'path';
+import { verifyJWT } from './lib/jwtVerify.js';
 
 const PORT = process.env.MCP_PORT || 3650;
+
+// ── Auth config (resource server) ─────────────────────────────────
+// /mcp accepts either: (a) a static bearer key — for curl / Claude Code / the
+// API connector; or (b) an RS256 JWT minted by the mllOauth service — for the
+// claude.ai web connector. Unauthenticated requests get a 401 with a
+// WWW-Authenticate challenge so Claude can discover the OAuth flow.
+const STATIC_TOKENS = (process.env.MCP_STATIC_TOKENS || '').split(',').map(s => s.trim()).filter(Boolean);
+const OAUTH_ISSUER = process.env.MCP_OAUTH_ISSUER || 'https://mcp.madladslab.com';
+const OAUTH_RESOURCE = process.env.MCP_RESOURCE || 'https://mcp.madladslab.com/mcp';
+const PRM_URL = process.env.MCP_PROTECTED_RESOURCE_METADATA
+  || 'https://mcp.madladslab.com/.well-known/oauth-protected-resource';
+let OAUTH_PUBLIC_KEY = null;
+try {
+  if (process.env.MCP_OAUTH_PUBLIC_KEY) OAUTH_PUBLIC_KEY = readFileSync(process.env.MCP_OAUTH_PUBLIC_KEY, 'utf8');
+} catch (e) {
+  console.warn(`Could not read OAuth public key (${process.env.MCP_OAUTH_PUBLIC_KEY}): ${e.message}`);
+}
+
+function authenticate(req, res, next) {
+  const challenge = () => res
+    .set('WWW-Authenticate', `Bearer resource_metadata="${PRM_URL}"`)
+    .status(401)
+    .json({ error: 'unauthorized', error_description: 'Bearer token required' });
+
+  const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
+  if (!m) return challenge();
+  const token = m[1].trim();
+
+  // (a) static pre-shared keys
+  if (STATIC_TOKENS.includes(token)) return next();
+
+  // (b) OAuth-issued JWT
+  if (OAUTH_PUBLIC_KEY) {
+    try {
+      verifyJWT(token, OAUTH_PUBLIC_KEY, { issuer: OAUTH_ISSUER, audience: OAUTH_RESOURCE });
+      return next();
+    } catch (e) {
+      console.warn(`JWT rejected: ${e.message}`);
+    }
+  }
+  return challenge();
+}
 
 // Security configuration
 const ALLOWED_BASE_PATHS = ['/srv'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const COMMAND_TIMEOUT = 30000;
 
-const KNOWN_SESSIONS = [
-  { name: 'ps', port: 3399, description: 'Stringborn Universe service' },
-  { name: 'game-state', port: 3500, description: 'Game state service' },
-  { name: 'madladslab', port: 3000, description: 'Main lab service' },
-  { name: 'acm', port: null, description: 'ACM service' },
-  { name: 'nocometalworkz', port: null, description: 'NoCoMetalWorkz service' },
-  { name: 'sfg', port: null, description: 'SFG service' },
-  { name: 'sna', port: null, description: 'SNA service' },
-  { name: 'twww', port: null, description: 'TWWW service' },
-  { name: 'w2portal', port: null, description: 'W2 Portal service' },
-  { name: 'madThree', port: null, description: 'Mad Three service' },
-  { name: 'opsTrain', port: 3603, description: 'OpsTrain service' },
-  { name: 'bih', port: 3055, description: 'BIH gaming hub' },
-  { name: 'w2marketing', port: 3601, description: 'W2 Marketing service' },
+// ── Session metadata (cosmetic only) ──────────────────────────────
+// The source of truth for what is running is ALWAYS live `tmux`/`lsof`/`ps`
+// output, resolved at request time. This map only supplies a friendly label
+// when we happen to recognize a session name (after stripping a trailing
+// "_session"). Unknown/new sessions still report fully — nothing here gates
+// whether a session is considered running. Add/remove services freely; the
+// report tracks reality without edits to this file.
+const SESSION_META = {
+  ps: 'Stringborn Universe service',
+  'game-state-service': 'Game state service',
+  'game-state': 'Game state service',
+  madladslab: 'Main lab service',
+  slab: 'Main lab service',
+  servers: 'Servers service',
+  opsTrain: 'OpsTrain service',
+  bih: 'BIH gaming hub',
+  w2marketing: 'W2 Marketing service',
+  mcp: 'MCP server (this connector)',
+  'mcp-streamable': 'MCP Streamable HTTP server (this connector)',
+  mllOauth: 'MLL OAuth (claude.ai connector auth)',
+  mllPitches: 'MLL Pitches service',
+  coDevs: 'CoDevs service',
+  games: 'Games service',
+  'graffiti-tv': 'Graffiti TV service',
+  greealitytv: 'Greeality TV service',
+  'piper-tts': 'Piper TTS service',
+  'triple-twenty': 'Triple Twenty service',
+};
+
+function normalizeSession(name) {
+  return name.replace(/_session$/, '');
+}
+
+// Build pid -> Set(ports) from a single `lsof -F pn` listen scan.
+function parseListenPorts(lsofStdout) {
+  const map = {};
+  let pid = null;
+  for (const line of lsofStdout.split('\n')) {
+    if (!line) continue;
+    const tag = line[0], val = line.slice(1);
+    if (tag === 'p') pid = val;
+    else if (tag === 'n' && pid) {
+      const m = val.match(/:(\d+)$/);
+      if (m) (map[pid] = map[pid] || new Set()).add(Number(m[1]));
+    }
+  }
+  return map;
+}
+
+// Build pid -> children[] from `ps -eo pid=,ppid=`.
+function parseProcTree(psStdout) {
+  const children = {};
+  for (const line of psStdout.split('\n')) {
+    const m = line.trim().match(/^(\d+)\s+(\d+)$/);
+    if (m) (children[m[2]] = children[m[2]] || []).push(m[1]);
+  }
+  return children;
+}
+
+// Depth-first collect a pid and all its descendants.
+function collectSubtree(children, root) {
+  const out = [], stack = [String(root)], seen = new Set();
+  while (stack.length) {
+    const p = stack.pop();
+    if (seen.has(p)) continue;
+    seen.add(p); out.push(p);
+    for (const c of (children[p] || [])) stack.push(c);
+  }
+  return out;
+}
+
+// Patterns matched against the full command (case-insensitive). A blacklist is
+// defense-in-depth only — the real boundary is the Apache bearer token + the
+// loopback bind. These catch the foot-guns that take the whole VM down.
+const FORBIDDEN_PATTERNS = [
+  /\bkillall\b/i,                 // kills every matching process incl. all node
+  /\bpkill\b/i,                   // any pkill (not just -9) can nuke services
+  /\bkill\s+-9\b/i,               // forceful kills
+  /\brm\s+-[a-z]*r[a-z]*f?\s+\//i,// rm -rf / and recursive deletes from root
+  /\bdd\s+if=/i,                  // raw disk writes
+  /\bmkfs\b/i,                    // format filesystem
+  /\b(reboot|shutdown|halt|poweroff)\b/i,
+  /\binit\s+[06]\b/i,             // runlevel 0/6
+  /\bsystemctl\s+(stop|disable|mask|poweroff|reboot)\b/i,
+  /:\s*\(\s*\)\s*\{.*\}\s*;\s*:/, // fork bomb :(){ :|:& };:
+  /\bchmod\s+-R\s+0*777\s+\//i,   // recursive world-writable from root
+  /\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(bash|sh|zsh)\b/i, // pipe remote -> shell
+  />\s*\/dev\/(sd|nvme|vd|xvd)/i, // clobber a block device
 ];
 
-const FORBIDDEN_COMMANDS = [
-  'killall', 'pkill -9', 'rm -rf /', 'dd if=', 'mkfs',
-  'reboot', 'shutdown', 'init 0', 'init 6'
-];
+function describeForbidden() {
+  return FORBIDDEN_PATTERNS.map(p => p.source).join(', ');
+}
 
 function isPathAllowed(filePath) {
   const resolved = resolve(filePath);
@@ -55,13 +173,13 @@ function isPathAllowed(filePath) {
 }
 
 function isForbiddenCommand(command) {
-  return FORBIDDEN_COMMANDS.some(forbidden => command.includes(forbidden));
+  return FORBIDDEN_PATTERNS.some(pattern => pattern.test(command));
 }
 
 async function executeCommand(command, timeout = COMMAND_TIMEOUT) {
   return new Promise((resolve, reject) => {
     if (isForbiddenCommand(command)) {
-      reject(new Error(`FORBIDDEN: Command contains dangerous operation. Never use: ${FORBIDDEN_COMMANDS.join(', ')}`));
+      reject(new Error(`FORBIDDEN: Command matched a dangerous pattern. Blocked: ${describeForbidden()}`));
       return;
     }
 
@@ -231,28 +349,118 @@ async function handleTool(name, args) {
     }
 
     case 'tmux_list_sessions': {
-      const result = await executeCommand('tmux ls 2>/dev/null || echo "No sessions"');
-      const sessions = result.stdout.split('\n').filter(Boolean);
-      const sessionInfo = KNOWN_SESSIONS.map(known => ({
-        ...known,
-        running: sessions.some(s => s.startsWith(known.name + ':')),
-        status: sessions.some(s => s.startsWith(known.name + ':')) ? 'active' : 'stopped',
-      }));
-      return JSON.stringify({ sessions: sessionInfo, raw: result.stdout }, null, 2);
+      // Source of truth = live tmux. Each real session is enriched with the
+      // port it is actually listening on (resolved from its process subtree),
+      // the working directory of that process, and an optional friendly label.
+      // Nothing is hardcoded as "running": if a session isn't in tmux, it
+      // isn't reported. New services appear automatically.
+      const fmt = '#{session_name}|#{session_created}|#{session_attached}|#{session_windows}';
+      const ls = await executeCommand(`tmux list-sessions -F '${fmt}' 2>/dev/null || true`);
+      const lines = ls.stdout.split('\n').map(s => s.trim()).filter(Boolean);
+      if (lines.length === 0) {
+        return JSON.stringify({ count: 0, sessions: [], raw: ls.stdout, note: 'No tmux sessions running' }, null, 2);
+      }
+
+      const [lsof, ps, panes] = await Promise.all([
+        executeCommand('lsof -nP -iTCP -sTCP:LISTEN -F pn 2>/dev/null || true'),
+        executeCommand('ps -eo pid=,ppid= 2>/dev/null || true'),
+        executeCommand(`tmux list-panes -a -F '#{session_name}|#{pane_pid}' 2>/dev/null || true`),
+      ]);
+
+      const pidToPorts = parseListenPorts(lsof.stdout);
+      const children = parseProcTree(ps.stdout);
+      const panePidsBySession = {};
+      for (const line of panes.stdout.split('\n')) {
+        const idx = line.indexOf('|');
+        if (idx === -1) continue;
+        const sess = line.slice(0, idx).trim();
+        const pid = line.slice(idx + 1).trim();
+        if (sess && pid) (panePidsBySession[sess] = panePidsBySession[sess] || []).push(pid);
+      }
+
+      const sessions = [];
+      for (const line of lines) {
+        const [name, created, attached, windows] = line.split('|');
+        const pids = (panePidsBySession[name] || []).flatMap(pp => collectSubtree(children, pp));
+        let port = null, listenPid = null;
+        for (const pid of pids) {
+          if (pidToPorts[pid] && pidToPorts[pid].size) {
+            port = Math.min(...pidToPorts[pid]);
+            listenPid = pid;
+            break;
+          }
+        }
+        let cwd = null;
+        if (listenPid) {
+          const cwdRes = await executeCommand(`readlink /proc/${listenPid}/cwd 2>/dev/null || true`);
+          cwd = cwdRes.stdout.trim() || null;
+        }
+        sessions.push({
+          name,
+          running: true,
+          status: 'active',
+          port,
+          pid: listenPid ? Number(listenPid) : (pids[0] ? Number(pids[0]) : null),
+          cwd,
+          attached: attached === '1',
+          windows: Number(windows) || null,
+          created: created ? new Date(Number(created) * 1000).toISOString() : null,
+          description: SESSION_META[normalizeSession(name)] || null,
+        });
+      }
+      sessions.sort((a, b) => (a.port ?? 1e9) - (b.port ?? 1e9));
+      return JSON.stringify({ count: sessions.length, sessions, raw: ls.stdout }, null, 2);
     }
 
     case 'tmux_session_status': {
-      const listResult = await executeCommand(`tmux list-sessions 2>/dev/null | grep "^${args.session}:" || echo "Not running"`);
-      const portCheck = KNOWN_SESSIONS.find(s => s.name === args.session);
-      let portStatus = null;
-      if (portCheck?.port) {
-        const portResult = await executeCommand(`lsof -ti:${portCheck.port} 2>/dev/null || echo ""`);
-        portStatus = portResult.stdout ? 'listening' : 'not listening';
+      // Resolve everything live: tmux presence, the port the session's process
+      // subtree is listening on, and that listener's status — no static map.
+      const listResult = await executeCommand(
+        `tmux list-sessions -F '#{session_name}|#{session_created}|#{session_attached}|#{session_windows}' 2>/dev/null | grep "^${args.session}|" || echo "Not running"`
+      );
+      const running = !listResult.stdout.includes('Not running') && listResult.stdout.trim() !== '';
+
+      let port = null, listenPid = null, cwd = null, portStatus = null;
+      if (running) {
+        const [panes, ps, lsof] = await Promise.all([
+          executeCommand(`tmux list-panes -a -F '#{session_name}|#{pane_pid}' 2>/dev/null || true`),
+          executeCommand('ps -eo pid=,ppid= 2>/dev/null || true'),
+          executeCommand('lsof -nP -iTCP -sTCP:LISTEN -F pn 2>/dev/null || true'),
+        ]);
+        const children = parseProcTree(ps.stdout);
+        const pidToPorts = parseListenPorts(lsof.stdout);
+        const panePids = [];
+        for (const line of panes.stdout.split('\n')) {
+          const idx = line.indexOf('|');
+          if (idx === -1) continue;
+          if (line.slice(0, idx).trim() === args.session) panePids.push(line.slice(idx + 1).trim());
+        }
+        const pids = panePids.flatMap(pp => collectSubtree(children, pp));
+        for (const pid of pids) {
+          if (pidToPorts[pid] && pidToPorts[pid].size) {
+            port = Math.min(...pidToPorts[pid]);
+            listenPid = pid;
+            portStatus = 'listening';
+            break;
+          }
+        }
+        if (listenPid) {
+          const cwdRes = await executeCommand(`readlink /proc/${listenPid}/cwd 2>/dev/null || true`);
+          cwd = cwdRes.stdout.trim() || null;
+        } else {
+          portStatus = 'no listening port';
+        }
       }
+
       return JSON.stringify({
-        session: args.session, tmux_status: listResult.stdout,
-        port: portCheck?.port, port_status: portStatus,
-        running: !listResult.stdout.includes('Not running'),
+        session: args.session,
+        running,
+        tmux_status: listResult.stdout,
+        port,
+        port_status: portStatus,
+        pid: listenPid ? Number(listenPid) : null,
+        cwd,
+        description: SESSION_META[normalizeSession(args.session)] || null,
       }, null, 2);
     }
 
@@ -338,8 +546,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', transport: 'streamable-http', sessions: Object.keys(transports).length });
 });
 
-// MCP endpoint - handle all methods
-app.post('/mcp', express.json(), async (req, res) => {
+// MCP endpoint - handle all methods (auth enforced in-process)
+app.post('/mcp', authenticate, express.json(), async (req, res) => {
   try {
     // Check for existing session
     const sessionId = req.headers['mcp-session-id'];
@@ -376,7 +584,7 @@ app.post('/mcp', express.json(), async (req, res) => {
 });
 
 // Handle GET for SSE streams
-app.get('/mcp', async (req, res) => {
+app.get('/mcp', authenticate, async (req, res) => {
   const sessionId = req.headers['mcp-session-id'];
   const transport = transports[sessionId];
   if (!transport) {
@@ -387,7 +595,7 @@ app.get('/mcp', async (req, res) => {
 });
 
 // Handle DELETE for session cleanup
-app.delete('/mcp', async (req, res) => {
+app.delete('/mcp', authenticate, async (req, res) => {
   const sessionId = req.headers['mcp-session-id'];
   const transport = transports[sessionId];
   if (!transport) {
@@ -397,8 +605,10 @@ app.delete('/mcp', async (req, res) => {
   await transport.handleRequest(req, res);
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`MCP Streamable HTTP server running on port ${PORT}`);
+// Bind to loopback only. Apache (mcp.madladslab.com) proxies from localhost
+// and enforces the bearer token; never expose this port directly.
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`MCP Streamable HTTP server running on 127.0.0.1:${PORT}`);
   console.log(`Endpoint: http://localhost:${PORT}/mcp`);
   console.log(`Health: http://localhost:${PORT}/health`);
 });

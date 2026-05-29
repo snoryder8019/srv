@@ -80,6 +80,38 @@ jq -r 'to_entries[] | "\(.key) \(.value)"' "$CONFIG_FILE" | while read -r dir cm
     fi
 done
 
+# ── Special case: MCP HTTP streamable server ──────────────────────
+# The JSON loop above starts the stdio MCP server (key "mcp" -> mcp_session
+# via `npm start` -> node server.js, used by Android/SSH). The HTTP streamable
+# server needs a custom session name + command that the key-derived loop can't
+# express, so start it explicitly here. Session/cmd MUST match
+# service-watchdog.json so the watchdog doesn't spawn a duplicate.
+echo "" >> "$LOG_FILE"
+if tmux has-session -t "mcp-streamable" 2>/dev/null; then
+    tmux kill-session -t "mcp-streamable" 2>&1 >> "$LOG_FILE"
+    sleep 1
+fi
+tmux new-session -d -s "mcp-streamable" -c "/srv/mcp" "node mcp-http.js" 2>&1
+if tmux has-session -t "mcp-streamable" 2>/dev/null; then
+    echo "✓ Started tmux session 'mcp-streamable' (node mcp-http.js, port 3650)" >> "$LOG_FILE"
+else
+    echo "✗ FAILED to start 'mcp-streamable'" >> "$LOG_FILE"
+fi
+
+# ── Special case: mllOauth (OAuth 2.1 AS for the MCP resource) ────
+# Custom session name + command, so the key-derived loop can't express it.
+# Must match service-watchdog.json so the watchdog doesn't spawn a duplicate.
+if tmux has-session -t "mllOauth" 2>/dev/null; then
+    tmux kill-session -t "mllOauth" 2>&1 >> "$LOG_FILE"
+    sleep 1
+fi
+tmux new-session -d -s "mllOauth" -c "/srv/mllOauth" "node server.js" 2>&1
+if tmux has-session -t "mllOauth" 2>/dev/null; then
+    echo "✓ Started tmux session 'mllOauth' (node server.js, port 3651)" >> "$LOG_FILE"
+else
+    echo "✗ FAILED to start 'mllOauth'" >> "$LOG_FILE"
+fi
+
 echo "========================================" >> "$LOG_FILE"
 echo "Auto-start script completed at $(date)" >> "$LOG_FILE"
 echo "========================================" >> "$LOG_FILE"
