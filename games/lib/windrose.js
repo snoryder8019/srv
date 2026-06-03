@@ -20,6 +20,7 @@ const UE5_LOG = path.join(WINDROSE_DIR, 'R5', 'Saved', 'Logs', 'R5.log');
 const SERVER_DESC = path.join(WINDROSE_DIR, 'R5', 'ServerDescription.json');
 const PLUS_STATUS = path.join(WINDROSE_DIR, 'windrose_plus_data', 'server_status.json');
 const PLUS_CONFIG = path.join(WINDROSE_DIR, 'windrose_plus.json');
+const PLUS_DATA_DIR = path.join(WINDROSE_DIR, 'windrose_plus_data');
 const RCON_SPOOL_DIR = path.join(WINDROSE_DIR, 'windrose_plus_data', 'rcon');
 const RCON_INDEX_FILE = path.join(RCON_SPOOL_DIR, 'pending_commands.txt');
 const RCON_TIMEOUT_MS = 10_000;
@@ -124,16 +125,90 @@ function readPlusStatus() {
   }
 }
 
+// Reconstruct the active-player set from the NDJSON activity log when
+// server_status.json is unusable. WindrosePlus emits `player.join` and
+// `player.leave` events keyed on display name; we replay the tail of today's
+// log to derive who's currently in. Capped read size keeps this cheap even
+// on chatty days. Used as a fallback when the mod is degraded (the LiveMap
+// subsystem can't poll, so plus.players is stale) or when the JSON is missing.
+function _resolveActivityLog() {
+  const candidates = [path.join(PLUS_DATA_DIR, 'logs'), PLUS_DATA_DIR];
+  let bestName = '';
+  let bestPath = null;
+  for (const dir of candidates) {
+    try {
+      if (!fs.existsSync(dir)) continue;
+      const files = fs.readdirSync(dir).filter(f => /^\d{4}-\d{2}-\d{2}\.log$/.test(f));
+      for (const f of files) { if (f > bestName) { bestName = f; bestPath = path.join(dir, f); } }
+    } catch {}
+  }
+  return bestPath;
+}
+
+function _activePlayersFromLog() {
+  const logPath = _resolveActivityLog();
+  if (!logPath) return null;
+  let raw;
+  try {
+    const stat = fs.statSync(logPath);
+    // Read at most the tail 256KB — joins/leaves are tiny lines, this covers
+    // many hours of normal traffic without slurping the whole day.
+    const READ_MAX = 256 * 1024;
+    const fd = fs.openSync(logPath, 'r');
+    try {
+      const len = Math.min(stat.size, READ_MAX);
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, Math.max(0, stat.size - len));
+      raw = buf.toString('utf8');
+    } finally { fs.closeSync(fd); }
+  } catch { return null; }
+
+  const active = new Set();
+  // If we read a partial file the first line may be truncated — drop it.
+  const lines = raw.split('\n');
+  if (lines.length > 1 && raw.length === 256 * 1024) lines.shift();
+  for (const line of lines) {
+    if (!line || line[0] !== '{') continue;
+    let evt;
+    try { evt = JSON.parse(line); } catch { continue; }
+    if (!evt || !evt.ev) continue;
+    if (evt.ev === 'player.join') {
+      const name = evt.payload && (evt.payload.name || evt.payload.player_name);
+      if (name) active.add(name);
+    } else if (evt.ev === 'player.leave') {
+      const name = evt.payload && (evt.payload.name || evt.payload.player_name);
+      if (name) active.delete(name);
+    } else if (evt.ev === 'mod.boot') {
+      // A fresh boot wipes the in-memory active set — anyone "joined" prior
+      // is gone now. We see this when the server (and WindrosePlus) restart.
+      active.clear();
+    }
+  }
+  return { count: active.size, players: Array.from(active) };
+}
+
 function getPlayerCount() {
-  // Authoritative source: WindrosePlus rewrites server_status.json every heartbeat
-  // with the current player set. The UE5 log fallback was unreliable — its join
-  // regex matched but the leave regex never did, so the count only ever grew.
+  // Primary source: WindrosePlus server_status.json — accurate when the mod
+  // is in `ready`/`idle` mode (LiveMap subsystem can poll the in-game thread).
   const plus = readPlusStatus();
-  if (plus) {
+  if (plus && !plus.degraded) {
     if (Array.isArray(plus.players)) return plus.players.length;
     if (typeof plus?.server?.player_count === 'number') return plus.server.player_count;
     if (typeof plus.player_count === 'number') return plus.player_count;
     return 0;
+  }
+  // Fallback: WindrosePlus is degraded or the status file is missing/stale.
+  // Reconstruct active set from the NDJSON player.join/leave stream — those
+  // events still fire on the WindrosePlus core thread even when the in-game
+  // thread queue starves (the LiveMap query is what gets blocked, not event
+  // emission). This keeps the player count live across degraded windows.
+  const derived = _activePlayersFromLog();
+  if (derived) return derived.count;
+  // Last resort: if the file exists but is degraded, surface the stale value
+  // it does have — better than zeroing the card.
+  if (plus) {
+    if (Array.isArray(plus.players)) return plus.players.length;
+    if (typeof plus?.server?.player_count === 'number') return plus.server.player_count;
   }
   return 0;
 }

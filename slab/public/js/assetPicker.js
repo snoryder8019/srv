@@ -207,7 +207,7 @@
 
         let thumb = '';
         if (asset.fileType === 'image') {
-          thumb = `<img src="${asset.publicUrl}" alt="${asset.title}" loading="lazy">`;
+          thumb = `<img src="${asset.publicUrl}" alt="${asset.altText || asset.title || ''}" loading="lazy">`;
         } else if (asset.fileType === 'video') {
           thumb = `<video src="${asset.publicUrl}" muted preload="metadata" style="pointer-events:none;"></video>`;
         } else {

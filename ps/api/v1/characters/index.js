@@ -898,6 +898,74 @@ router.get('/:id/ship', async (req, res) => {
   }
 });
 
+// Get ship cargo (with itemDetails joined). Returns { cargo: { items, capacity, usedSpace } }
+router.get('/:id/ship/cargo', async (req, res) => {
+  try {
+    const { Item } = await import('../models/Item.js');
+    const character = await Character.findById(req.params.id);
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    const cargoHold = character.ship?.cargoHold || { items: [], capacity: 200 };
+    const rawItems = cargoHold.items || [];
+
+    const items = await Promise.all(rawItems.map(async (entry) => {
+      const details = entry.itemId ? await Item.findById(entry.itemId).catch(() => null) : null;
+      return {
+        ...entry,
+        itemId: entry.itemId ? entry.itemId.toString() : null,
+        itemDetails: details
+      };
+    }));
+
+    const usedSpace = items.reduce((sum, it) => {
+      const vol = (it.itemDetails?.volume || 1) * (it.quantity || 1);
+      return sum + vol;
+    }, 0);
+
+    res.json({
+      cargo: {
+        items,
+        capacity: cargoHold.capacity || 200,
+        usedSpace
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching ship cargo:', err);
+    res.status(500).json({ error: 'Failed to fetch ship cargo' });
+  }
+});
+
+// Get ship fittings (slot arrays with itemDetails joined). Returns { highSlots, midSlots, lowSlots, rigSlots }
+router.get('/:id/ship/fittings', async (req, res) => {
+  try {
+    const { Item } = await import('../models/Item.js');
+    const character = await Character.findById(req.params.id);
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    const fittings = character.ship?.fittings || {};
+    const slotTypes = ['highSlots', 'midSlots', 'lowSlots', 'rigSlots'];
+
+    const populated = {};
+    for (const slotType of slotTypes) {
+      const slotArray = Array.isArray(fittings[slotType]) ? fittings[slotType] : [];
+      populated[slotType] = await Promise.all(slotArray.map(async (slot) => {
+        if (!slot || !slot.itemId) return slot;
+        const details = await Item.findById(slot.itemId).catch(() => null);
+        return {
+          ...slot,
+          itemId: slot.itemId.toString(),
+          itemDetails: details
+        };
+      }));
+    }
+
+    res.json(populated);
+  } catch (err) {
+    console.error('Error fetching ship fittings:', err);
+    res.status(500).json({ error: 'Failed to fetch ship fittings' });
+  }
+});
+
 // Update ship fitting (equip module to slot)
 router.post('/:id/ship/fit', async (req, res) => {
   try {

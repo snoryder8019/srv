@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Matchmaking · MadLadsLab</title>
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,sans-serif;
+         background:radial-gradient(circle at 50% 30%, #14241b, #070a08); color:#e9ecef;
+         display:flex; align-items:center; justify-content:center; padding:18px; }
+  .card { width:100%; max-width:420px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07);
+          border-radius:18px; padding:24px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.4); }
+  .kicker { font-size:11px; letter-spacing:.25em; color:#9fb0a6; text-transform:uppercase; }
+  h1 { margin:6px 0 4px; font-size:30px; letter-spacing:.04em; }
+  .blurb { color:#9fb0a6; font-size:13.5px; margin:0 0 4px; }
+  .who { color:#e3c567; font-size:12.5px; margin:10px 0 20px; }
+  .art { width:100%; height:150px; object-fit:contain; border-radius:12px; margin:14px 0 6px; background:#0a3a24; padding:8px; }
+  button { width:100%; border:none; border-radius:11px; padding:14px; font-size:15px; font-weight:800;
+           cursor:pointer; margin-top:10px; }
+  .primary { background:#2fbf71; color:#05230f; }
+  .ghost { background:#1d3b2b; color:#e9ecef; }
+  .note { color:#7e9388; font-size:11.5px; margin-top:14px; }
+  .spin { display:none; color:#9fb0a6; font-size:13px; margin-top:14px; }
+  #invitePanel { display:none; margin-top:12px; text-align:left; }
+  #invitePanel.show { display:block; }
+  #inviteList .u { display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:#0f2418; border:1px solid rgba(255,255,255,.06); border-radius:10px; padding:8px 12px; margin-top:8px; }
+  #inviteList .u .n { font-size:14px; color:#e9ecef; }
+  #inviteList .u button { width:auto; margin:0; padding:8px 14px; font-size:13px; }
+  .muted { color:#7e9388; font-size:13px; margin-top:10px; text-align:center; }
+  #resumeBtn { background:#e3c567; color:#241d05; }
+  /* share link + QR */
+  #sharePanel { display:none; margin-top:12px; background:#0f2418; border:1px solid rgba(255,255,255,.06); border-radius:12px; padding:14px; }
+  #sharePanel.show { display:block; }
+  #shareQR { width:180px; height:180px; background:#fff; border-radius:10px; margin:6px auto 10px; display:block; }
+  .linkrow { display:flex; gap:8px; }
+  #shareLink { flex:1; background:#06140d; border:1px solid rgba(255,255,255,.1); color:#cfe7d8; border-radius:9px; padding:9px 10px; font-size:12px; overflow:hidden; text-overflow:ellipsis; }
+  .linkrow button { width:auto; margin:0; padding:9px 14px; font-size:13px; }
+  #shareEnter { margin-top:10px; }
+  /* incoming invite banner */
+  #inviteBanner { display:none; position:fixed; left:50%; top:16px; transform:translateX(-50%); z-index:60;
+    background:#11231a; border:1px solid #2fbf71; border-radius:12px; padding:14px 16px; width:min(92vw,360px); text-align:center; box-shadow:0 16px 50px rgba(0,0,0,.5); }
+  #inviteBanner.show { display:block; }
+  #inviteBanner .t { color:#e9ecef; font-size:14px; margin-bottom:10px; }
+  #inviteBanner .vrow { display:flex; gap:8px; }
+  #inviteBanner button { margin:0; }
+  /* per-game settings */
+  #settings { display:none; text-align:left; background:#0f2418; border:1px solid rgba(255,255,255,.06); border-radius:12px; padding:12px 14px; margin:6px 0 4px; }
+  #settings.show { display:block; }
+  #settings h3 { margin:0 0 10px; font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:#9fb0a6; font-weight:700; }
+  #settings .field { margin-bottom:12px; }
+  #settings .field:last-child { margin-bottom:2px; }
+  #settings label { display:block; font-size:12.5px; color:#cfe7d8; margin-bottom:6px; }
+  #settings .seg { display:flex; gap:6px; }
+  #settings .seg button { flex:1; width:auto; margin:0; padding:9px 6px; font-size:12.5px; font-weight:700; background:#0a1c13; color:#9fb0a6; border:1px solid rgba(255,255,255,.08); border-radius:8px; }
+  #settings .seg button.on { background:#2fbf71; color:#05230f; border-color:#2fbf71; }
+  #settings .hint { font-size:11px; color:#7e9388; margin-top:5px; }
+</style>
+</head>
+<body>
+  <div id="inviteBanner"><div class="t" id="inviteBannerText"></div>
+    <div class="vrow"><button class="primary" id="inviteAccept">Join</button>
+    <button class="ghost" id="inviteDismiss">Later</button></div></div>
+  <div class="card">
+    <div class="kicker">Matchmaking</div>
+    <h1 id="name">…</h1>
+    <p class="blurb" id="blurb"></p>
+    <img class="art" id="art" alt="" />
+    <div class="who" id="who"></div>
+    <button id="resumeBtn" style="display:none">↩ Rejoin game in progress</button>
+    <div id="settings">
+      <h3>Game Settings</h3>
+      <div class="field" id="fld-spinner">
+        <label>Spinner rule</label>
+        <div class="seg" id="seg-spinner">
+          <button data-v="first" class="on">First double</button>
+          <button data-v="all">Every double</button>
+          <button data-v="none">No spinners</button>
+        </div>
+        <div class="hint">Spinners let doubles branch the line. The double's two ends must both be played before its arms open.</div>
+      </div>
+      <div class="field" id="fld-target">
+        <label>Play to (points)</label>
+        <div class="seg" id="seg-target">
+          <button data-v="50">50</button>
+          <button data-v="100" class="on">100</button>
+          <button data-v="150">150</button>
+          <button data-v="200">200</button>
+        </div>
+      </div>
+      <div class="field" id="fld-draw">
+        <label>When stuck</label>
+        <div class="seg" id="seg-draw">
+          <button data-v="true" class="on">Draw from boneyard</button>
+          <button data-v="false">Block (pass)</button>
+        </div>
+      </div>
+    </div>
+    <button class="primary" id="bots">Play vs Bots</button>
+    <button class="ghost" id="quick">Quick Match</button>
+    <button class="ghost" id="invite">Invite a Friend</button>
+    <div id="invitePanel">
+      <div class="muted" id="inviteStatus">Loading players online…</div>
+      <div id="inviteList"></div>
+      <button class="ghost" id="shareBtn" style="margin-top:12px">🔗 Share a link / QR instead</button>
+      <div id="sharePanel">
+        <img id="shareQR" alt="invite QR" />
+        <div class="linkrow"><div id="shareLink"></div><button class="primary" id="copyBtn">Copy</button></div>
+        <button class="primary" id="shareEnter">Enter table &amp; wait for them</button>
+        <div class="muted" id="shareHint">Send this to a friend. First to open it joins your table.</div>
+      </div>
+    </div>
+    <div class="spin" id="spin">Forming your table…</div>
+    <div class="note" id="note"></div>
+  </div>
+<script>
+  const game = decodeURIComponent(location.pathname.split('/')[2] || '');
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+  const api = (p) => `/intake/${encodeURIComponent(game)}${p}`;
+
+  // per-game settings model (only sent for games that show the panel)
+  const settings = { spinnerRule:'first', target:'100', drawGame:'true' };
+  function wireSeg(segId, key){
+    const seg = $(segId); if(!seg) return;
+    seg.querySelectorAll('button').forEach(b=>{
+      b.onclick = () => {
+        seg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+        b.classList.add('on'); settings[key] = b.dataset.v;
+      };
+    });
+  }
+  wireSeg('seg-spinner','spinnerRule'); wireSeg('seg-target','target'); wireSeg('seg-draw','drawGame');
+
+  function settingsQuery(){
+    if(!$('settings').classList.contains('show')) return '';
+    const p = new URLSearchParams();
+    p.set('spinnerRule', settings.spinnerRule);
+    p.set('target', settings.target);
+    p.set('drawGame', settings.drawGame);
+    return '&' + p.toString();
+  }
+
+  function go(mode){
+    $('bots').disabled = true; $('quick').disabled = true; $('invite').disabled = true;
+    $('spin').style.display = 'block';
+    location.href = api(`/go?mode=${mode}${settingsQuery()}`);
+  }
+  $('bots').onclick = () => go('bots');
+  $('quick').onclick = () => go('quick');
+
+  // ---- Invite a friend: online users ----
+  $('invite').onclick = async () => {
+    const panel = $('invitePanel');
+    if (panel.classList.contains('show')) { panel.classList.remove('show'); return; }
+    panel.classList.add('show');
+    $('inviteStatus').textContent = 'Loading players online…';
+    $('inviteList').innerHTML = '';
+    try {
+      const d = await fetch(api('/online'), { credentials:'same-origin' }).then(r=>r.json());
+      const users = (d && d.users) || [];
+      if (!users.length) {
+        $('inviteStatus').textContent = 'No one else is online right now — share a link instead:';
+      } else {
+        $('inviteStatus').textContent = 'Invite someone who is online now:';
+        $('inviteList').innerHTML = users.map(u =>
+          `<div class="u"><span class="n">${esc(u.name)}</span>`
+          + `<button class="primary" data-pid="${esc(u.platformId)}" data-name="${esc(u.name)}">Invite</button></div>`
+        ).join('');
+        $('inviteList').querySelectorAll('button[data-pid]').forEach(b => {
+          b.onclick = () => {
+            $('spin').style.display = 'block';
+            $('invite').disabled = $('bots').disabled = $('quick').disabled = true;
+            location.href = api(`/invite?to=${encodeURIComponent(b.dataset.pid)}&name=${encodeURIComponent(b.dataset.name)}`);
+          };
+        });
+      }
+    } catch (e) { $('inviteStatus').textContent = 'Could not load online players.'; }
+  };
+
+  // ---- Share link + QR ----
+  let shareData = null;
+  $('shareBtn').onclick = async () => {
+    const sp = $('sharePanel');
+    if (sp.classList.contains('show')) { sp.classList.remove('show'); return; }
+    sp.classList.add('show');
+    $('shareLink').textContent = 'Creating link…';
+    try {
+      shareData = await fetch(api('/share'), { credentials:'same-origin' }).then(r=>r.json());
+      if (!shareData.ok) throw new Error(shareData.error||'failed');
+      $('shareLink').textContent = shareData.joinUrl;
+      // QR via goqr.me (renders the join URL). No dependency, just an <img>.
+      $('shareQR').src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=' + encodeURIComponent(shareData.joinUrl);
+    } catch (e) { $('shareLink').textContent = 'Could not create link.'; }
+  };
+  $('copyBtn').onclick = async () => {
+    if (!shareData) return;
+    try { await navigator.clipboard.writeText(shareData.joinUrl); $('copyBtn').textContent = 'Copied!'; setTimeout(()=>$('copyBtn').textContent='Copy', 1500); }
+    catch (e) {
+      // fallback: select the text
+      const r = document.createRange(); r.selectNode($('shareLink'));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      try { document.execCommand('copy'); $('copyBtn').textContent='Copied!'; setTimeout(()=>$('copyBtn').textContent='Copy',1500); } catch(_){}
+      sel.removeAllRanges();
+    }
+  };
+  $('shareEnter').onclick = () => { if (shareData && shareData.hostUrl) { $('spin').style.display='block'; location.href = shareData.hostUrl; } };
+
+  // ---- Incoming invite (poll while sitting in matchmaking) ----
+  let inviteShown = false;
+  async function pollInvite(){
+    try {
+      const d = await fetch(api('/poll-invite'), { credentials:'same-origin' }).then(r=>r.json());
+      if (d && d.invite && !inviteShown) {
+        inviteShown = true;
+        $('inviteBannerText').innerHTML = '<b>'+esc(d.invite.fromName)+'</b> invited you to <b>'+esc(d.invite.game)+'</b>';
+        $('inviteAccept').onclick = () => { location.href = d.invite.joinUrl; };
+        $('inviteDismiss').onclick = () => { $('inviteBanner').classList.remove('show'); };
+        $('inviteBanner').classList.add('show');
+      }
+    } catch (e) {}
+  }
+
+  // ---- heartbeat so this player is invitable while in matchmaking ----
+  function heartbeat(){ fetch(api('/heartbeat'), { credentials:'same-origin' }).catch(()=>{}); }
+
+  // surface a rejoin path if the player is mid-game (cards is source of truth)
+  fetch('/active', { credentials:'same-origin' })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if (d && d.active) { const b = $('resumeBtn'); b.style.display = 'block'; b.onclick = () => { location.href = '/resume'; }; } })
+    .catch(() => {});
+
+  fetch(api('/info'), { credentials:'same-origin' })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) throw new Error(d.error || 'unavailable');
+      $('name').textContent = d.game.name;
+      $('blurb').textContent = d.game.blurb || '';
+      $('who').textContent = `Signed in as ${d.user.displayName} · seats ${d.game.players}`;
+      if (d.game.image) $('art').src = d.game.image;
+      else $('art').style.display = 'none';
+      if (game === 'dominoes') $('settings').classList.add('show');
+      $('note').textContent = 'Quick Match fills empty seats with bots until more players are online.';
+      // start heartbeat + invite polling now that we know we're signed in
+      heartbeat(); setInterval(heartbeat, 20000);
+      pollInvite(); setInterval(pollInvite, 5000);
+    })
+    .catch(e => { $('name').textContent = 'Unavailable'; $('blurb').textContent = String(e.message||e); });
+</script>
+<script src="https://games.madladslab.com/modal/loader.js" defer data-surface="match"></script>
+</body>
+</html>

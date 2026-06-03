@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head><%- include('../partials/head') %></head>
+<body class="mll-page">
+  <%- include('../partials/header') %>
+  <main class="mll-admin">
+    <header class="mll-admin__head">
+      <div>
+        <h1>Admin · Left Field</h1>
+        <p>Signed in as <strong><%= user.name %></strong> · <%= user.email %></p>
+      </div>
+      <a class="mll-cta mll-cta--ghost" href="/auth/logout">Sign out</a>
+    </header>
+
+    <section class="mll-admin__row">
+      <div class="mll-admin__stat"><div class="mll-admin__stat-val"><%= pitches.length %></div><div class="mll-admin__stat-lbl">Pitches</div></div>
+      <div class="mll-admin__stat"><div class="mll-admin__stat-val"><%= submissions.length %></div><div class="mll-admin__stat-lbl">Scope submissions</div></div>
+      <div class="mll-admin__stat"><div class="mll-admin__stat-val"><%= contacts.length %></div><div class="mll-admin__stat-lbl">Contact messages</div></div>
+      <div class="mll-admin__stat">
+        <div class="mll-admin__stat-val">$<%= submissions.reduce((a, s) => a + (s.totals?.cost || 0), 0).toLocaleString() %></div>
+        <div class="mll-admin__stat-lbl">Pipeline value</div>
+      </div>
+    </section>
+
+    <% if (contacts.length) { %>
+      <section class="mll-chart-block">
+        <h2>Recent contact messages</h2>
+        <div class="mll-admin__subs">
+          <% contacts.slice(0, 25).forEach((c) => { %>
+            <a class="mll-admin__sub" href="/admin/contact/<%= c.id %>">
+              <div class="mll-admin__sub-when"><%= new Date(c.submittedAt).toLocaleString() %></div>
+              <div class="mll-admin__sub-client"><%= c.name %> <% if (c.company) { %>· <%= c.company %><% } %></div>
+              <div class="mll-admin__sub-contact"><%= c.email %><% if (c.topic) { %> · <%= c.topic %><% } %></div>
+              <div class="mll-admin__sub-totals">
+                <span class="mll-admin__sub-preview"><%= (c.message || '').slice(0, 80) %><% if ((c.message||'').length > 80) { %>…<% } %></span>
+              </div>
+            </a>
+          <% }) %>
+        </div>
+      </section>
+    <% } %>
+
+    <section class="mll-chart-block">
+      <h2>Pitches</h2>
+      <div class="mll-admin__pitches">
+        <% pitches.forEach((p) => { %>
+          <a class="mll-card" href="/admin/pitch/<%= p.slug %>">
+            <div class="mll-card__meta"><%= p.industry %> · <%= p.date %></div>
+            <h3 class="mll-card__title"><%= p.client %></h3>
+            <p class="mll-card__summary"><%= p.summary %></p>
+            <span class="mll-card__cta">Open in admin →</span>
+          </a>
+        <% }) %>
+      </div>
+    </section>
+
+    <section class="mll-chart-block">
+      <h2>Recent submissions</h2>
+      <% if (!submissions.length) { %>
+        <p class="mll-empty">No submissions yet.</p>
+      <% } else { %>
+        <div class="mll-admin__subs">
+          <% submissions.slice(0, 50).forEach((s) => { %>
+            <a class="mll-admin__sub" href="/admin/submission/<%= s.id %>">
+              <div class="mll-admin__sub-when"><%= new Date(s.submittedAt).toLocaleString() %></div>
+              <div class="mll-admin__sub-client"><%= s.client %></div>
+              <div class="mll-admin__sub-contact"><%= s.contact?.name || 'anon' %> · <%= s.contact?.email || '' %></div>
+              <div class="mll-admin__sub-totals">
+                <span><%= s.totals?.hours || 0 %> hrs</span>
+                <span class="mll-admin__sub-cost">$<%= (s.totals?.cost || 0).toLocaleString() %></span>
+              </div>
+            </a>
+          <% }) %>
+        </div>
+      <% } %>
+    </section>
+  </main>
+  <%- include('../partials/footer') %>
+</body>
+</html>

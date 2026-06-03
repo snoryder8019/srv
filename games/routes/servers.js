@@ -5,6 +5,7 @@ const net = require('net');
 const provisioner = require('../lib/linode-provisioner');
 const playtime = require('../lib/playtime');
 const worldBackup = require('../lib/world-backup');
+const worldConfig = require('../lib/world-config');
 const router = express.Router();
 
 // TCP reachability check — Valheim/Rust/etc use UDP, so this only tells us the
@@ -370,8 +371,10 @@ router.post('/api/backups/local/:game', requireAdminOrPremium, async (req, res) 
   }
 });
 
-// Admin / premium: list saved worlds for a game (used by the spin-up dropdown)
-router.get('/api/world-saves/:game', requireAdminOrPremium, async (req, res) => {
+// Saved worlds list is readable by any signed-in user — the dropdown is how
+// players pick which world to spin up. Authoring (save / new world) is still
+// admin-gated below.
+router.get('/api/world-saves/:game', requireAuth, async (req, res) => {
   try {
     const saves = await worldBackup.listBackupsByGame(req.params.game, 100);
     const me = req.user._id.toString();
@@ -404,6 +407,134 @@ router.get('/api/world-wrappers/:game', requireAdminOrPremium, (req, res) => {
     wrappers: worldBackup.listWrappers(req.params.game),
     defaultWrapper: worldBackup.defaultWrapper(req.params.game),
   });
+});
+
+// ── New-world authoring (admin only) ──
+// GET /api/world/schema/:game — schema + current on-disk values for the modal
+router.get('/api/world/schema/:game', requireAdmin, (req, res) => {
+  const game = req.params.game;
+  if (!worldConfig.isSupported(game)) {
+    return res.status(400).json({ error: 'No editable config for ' + game });
+  }
+  res.json({
+    schema: worldConfig.getSchema(game),
+    current: worldConfig.readCurrent(game),
+  });
+});
+
+// POST /api/world/new/:game — admin spins up a fresh world.
+// Flow: stop server (if running) → auto-backup current world → wipe save dir
+//   → apply config overrides → start the server.
+// Body: { label?: string, settings: { [key]: value }, wipeWorld?: boolean,
+//         saveCurrent?: boolean (default true) }
+router.post('/api/world/new/:game', requireAdmin, async (req, res) => {
+  const game = req.params.game;
+  if (!worldConfig.isSupported(game)) {
+    return res.status(400).json({ error: 'No editable config for ' + game });
+  }
+  const settings    = (req.body && req.body.settings) || {};
+  const rawLabel    = typeof req.body?.label === 'string' ? req.body.label.trim() : '';
+  const label       = rawLabel ? rawLabel.slice(0, 80) : null;
+  const wantWipe    = req.body?.wipeWorld !== false;
+  const saveCurrent = req.body?.saveCurrent !== false;
+
+  const GAME_LIBS_LOCAL = {
+    rust: () => require('../lib/rust'),
+    valheim: () => require('../lib/valheim'),
+    '7dtd': () => require('../lib/7dtd'),
+    se: () => require('../lib/se'),
+    palworld: () => require('../lib/palworld'),
+    windrose: () => require('../lib/windrose'),
+  };
+
+  const steps = [];
+
+  try {
+    // 1. Stop the server if running — wipe + config edits aren't safe live.
+    try {
+      const lib = GAME_LIBS_LOCAL[game] && GAME_LIBS_LOCAL[game]();
+      if (lib && lib.isRunning()) {
+        const serverManager = req.app.locals.serverManager;
+        if (serverManager) serverManager.stop(game, 'new world reset');
+        else lib.stopServer('new world reset');
+        steps.push({ step: 'stop', ok: true });
+        // Brief settle window so file locks release before we wipe.
+        await new Promise(r => setTimeout(r, 1500));
+      } else {
+        steps.push({ step: 'stop', ok: true, message: 'was not running' });
+      }
+    } catch (e) {
+      steps.push({ step: 'stop', ok: false, message: e.message });
+    }
+
+    // 2. Auto-backup the world we're about to overwrite.
+    if (saveCurrent) {
+      try {
+        const userName = require('../lib/username').displayFor(req.user);
+        const autoLabel = 'Pre-reset ' + new Date().toISOString().replace('T', ' ').slice(0, 16);
+        const bk = await worldBackup.backupLocal(game, req.user._id.toString(), {
+          label: autoLabel,
+          userName,
+        });
+        steps.push({ step: 'backup', ok: !!bk.ok, message: bk.message || null, id: bk.record?._id });
+      } catch (e) {
+        steps.push({ step: 'backup', ok: false, message: e.message });
+      }
+    } else {
+      steps.push({ step: 'backup', ok: true, message: 'skipped' });
+    }
+
+    // 3. Wipe the save directory.
+    if (wantWipe) {
+      const w = worldConfig.wipeWorld(game);
+      steps.push({ step: 'wipe', ok: w.ok, wiped: (w.wiped || []).length });
+    } else {
+      steps.push({ step: 'wipe', ok: true, message: 'skipped' });
+    }
+
+    // 4. Apply config overrides.
+    const applied = worldConfig.applySettings(game, settings);
+    steps.push({
+      step: 'config',
+      ok: applied.ok,
+      changed: applied.changed || [],
+      errors: applied.errors || [],
+      file: applied.file,
+    });
+
+    // 5. Start the server through serverManager (handles slot accounting,
+    //    Linode overflow, etc.). Mark this admin as premium so we skip the
+    //    queue path — they just authored the world, they should be on it.
+    const serverManager = req.app.locals.serverManager;
+    const userName = require('../lib/username').displayFor(req.user);
+    const start = await serverManager.requestStart(game, {
+      userId: req.user._id.toString(),
+      userName,
+      premium: true,
+    });
+    steps.push({ step: 'start', ok: start.ok !== false, status: start.status, message: start.message });
+
+    // Audit trail
+    const db = req.app.locals.db;
+    if (db) {
+      await db.collection('world_resets').insertOne({
+        game,
+        userId: req.user._id.toString(),
+        userName,
+        label,
+        settings,
+        wipeWorld: wantWipe,
+        saveCurrent,
+        steps,
+        createdAt: new Date(),
+      }).catch(() => {});
+    }
+
+    res.json({ ok: true, steps, start });
+  } catch (e) {
+    steps.push({ step: 'fatal', ok: false, message: e.message });
+    res.status(500).json({ ok: false, error: e.message, steps });
+  }
 });
 
 // Admin: restore a specific backup to local server

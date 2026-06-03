@@ -905,6 +905,14 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
    * Update HUD display
    */
   updateHUD() {
+    // Bail early if this view doesn't include the combat HUD DOM
+    // (e.g. system-map-3d embeds the combat sim but not the cockpit HUD)
+    if (!this._hudPresent) {
+      if (this._hudPresent === false) return;
+      this._hudPresent = !!document.getElementById('hullValue');
+      if (!this._hudPresent) return;
+    }
+
     const hull = (this.playerShip.hull / this.playerShip.hullMax * 100).toFixed(0);
     const shields = (this.playerShip.shields / this.playerShip.shieldsMax * 100).toFixed(0);
     const energy = (this.playerShip.energy / this.playerShip.energyMax * 100).toFixed(0);
@@ -2183,13 +2191,23 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
         continue;
       }
 
-      // Check enemy collisions
+      if (proj.fromEnemy) {
+        // Enemy projectile — check against player
+        const distToPlayer = proj.position.distanceTo(this.playerShip.position);
+        if (distToPlayer < 8) {
+          this.damagePlayer(proj.damage);
+          this.projectileGroup.remove(proj.mesh);
+          this.projectiles.splice(i, 1);
+        }
+        continue;
+      }
+
+      // Player projectile — check against enemies
       for (let j = 0; j < this.enemies.length; j++) {
         const enemy = this.enemies[j];
         const dist = proj.position.distanceTo(enemy.position);
 
         if (dist < 5) {
-          // Hit!
           this.damageEnemy(enemy, proj.damage);
           this.projectileGroup.remove(proj.mesh);
           this.projectiles.splice(i, 1);
@@ -2200,9 +2218,96 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
   }
 
   /**
+   * Apply damage to the player ship
+   */
+  damagePlayer(damage) {
+    this.playerShip.shields -= damage;
+    if (this.playerShip.shields < 0) {
+      this.playerShip.hull += this.playerShip.shields;
+      this.playerShip.shields = 0;
+    }
+    console.log(`🔥 Player hit! Hull: ${this.playerShip.hull.toFixed(0)}, Shields: ${this.playerShip.shields.toFixed(0)}`);
+    // Mirror to the in-page status panel if present
+    const hullEl = document.getElementById('shipHullText');
+    if (hullEl) hullEl.textContent = `${Math.max(0, this.playerShip.hull).toFixed(0)}/${this.playerShip.hullMax}`;
+    const shieldEl = document.getElementById('shipShieldsText');
+    if (shieldEl) shieldEl.textContent = `${Math.max(0, this.playerShip.shields).toFixed(0)}/${this.playerShip.shieldsMax}`;
+  }
+
+  /**
+   * Per-frame enemy AI tick — passive drift; retaliate (pursue + fire) once provoked.
+   */
+  updateEnemies(deltaTime) {
+    if (!this.enemies || this.enemies.length === 0) return;
+    const now = Date.now() / 1000;
+    const enemyMaxSpeed = 60;            // u/s
+    const enemyAccel = 25;               // u/s^2 when pursuing
+    const enemyFireRange = 800;
+    const enemyFireCooldown = 1.6;       // seconds
+
+    for (const enemy of this.enemies) {
+      if (!enemy.mesh) continue;
+
+      const toPlayer = new THREE.Vector3().subVectors(this.playerShip.position, enemy.position);
+      const distToPlayer = toPlayer.length();
+
+      if (enemy.provoked) {
+        // Pursue: accelerate toward player up to enemyMaxSpeed
+        const desiredDir = toPlayer.clone().normalize();
+        enemy.velocity.add(desiredDir.multiplyScalar(enemyAccel * deltaTime));
+        if (enemy.velocity.length() > enemyMaxSpeed) {
+          enemy.velocity.setLength(enemyMaxSpeed);
+        }
+
+        // Fire when in range and cooldown elapsed
+        if (distToPlayer < enemyFireRange && (now - (enemy.lastFireAt || 0)) > enemyFireCooldown) {
+          this.fireEnemyWeapon(enemy);
+          enemy.lastFireAt = now;
+        }
+      } else {
+        // Passive idle drift — very slow, decays toward zero
+        enemy.velocity.multiplyScalar(0.99);
+      }
+
+      enemy.position.add(enemy.velocity.clone().multiplyScalar(deltaTime));
+      enemy.mesh.position.copy(enemy.position);
+
+      // Orient toward player (visual only)
+      if (distToPlayer > 0.001) {
+        enemy.mesh.lookAt(this.playerShip.position);
+        enemy.mesh.rotateX(-Math.PI / 2); // cone tip toward player
+      }
+    }
+  }
+
+  /**
+   * Enemy fires a projectile at the player.
+   */
+  fireEnemyWeapon(enemy) {
+    const speed = 320;
+    const dir = new THREE.Vector3().subVectors(this.playerShip.position, enemy.position).normalize();
+    const projectile = {
+      position: enemy.position.clone(),
+      velocity: dir.clone().multiplyScalar(speed),
+      damage: 6,
+      createdAt: Date.now() / 1000,
+      lifetime: 5,
+      fromEnemy: true
+    };
+    const geom = new THREE.SphereGeometry(0.8, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.position.copy(projectile.position);
+    this.projectileGroup.add(mesh);
+    projectile.mesh = mesh;
+    this.projectiles.push(projectile);
+  }
+
+  /**
    * Damage an enemy
    */
   damageEnemy(enemy, damage) {
+    enemy.provoked = true; // start retaliating on first hit
     enemy.shields -= damage;
 
     if (enemy.shields < 0) {
@@ -2472,6 +2577,9 @@ rightWing.position.set(${values.wings.positionX}, 0, ${values.wings.positionZ});
 
     // Update projectiles
     this.updateProjectiles(deltaTime);
+
+    // Tick enemy AI (idle drift; pursue + fire when provoked)
+    this.updateEnemies(deltaTime);
 
     // Update target reticle position
     if (this.targetReticle && this.targetedEnemy) {

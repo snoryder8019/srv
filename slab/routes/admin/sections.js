@@ -236,13 +236,16 @@ router.post('/:section/image', (req, res) => {
 router.post('/:section/image-url', async (req, res) => {
   const { section } = req.params;
   if (!SECTIONS_META[section]) return res.status(404).json({ error: 'Unknown section' });
-  const { imageKey, url } = req.body;
+  const { imageKey, url, altText, caption } = req.body;
   if (!imageKey || !url) return res.status(400).json({ error: 'imageKey and url required' });
   try {
     const db = req.db;
+    const $set = { key: imageKey, section, url, bucketKey: '', updatedAt: new Date() };
+    if (altText !== undefined) $set.altText = String(altText).slice(0, 250);
+    if (caption !== undefined) $set.caption = String(caption).slice(0, 500);
     await db.collection('section_media').updateOne(
       { key: imageKey },
-      { $set: { key: imageKey, section, url, bucketKey: '', updatedAt: new Date() } },
+      { $set },
       { upsert: true }
     );
     res.json({ ok: true, url, key: imageKey });
@@ -364,15 +367,18 @@ router.post('/custom/:id/image', (req, res) => {
 
 // ── CUSTOM SECTIONS: set image from asset URL (no upload) ────────────────────
 router.post('/custom/:id/image-url', async (req, res) => {
-  const { imageKey, url } = req.body;
+  const { imageKey, url, altText, caption } = req.body;
   if (!imageKey || !url) return res.status(400).json({ error: 'imageKey and url required' });
   try {
     const db = req.db;
     const sec = await db.collection('custom_sections').findOne({ _id: new ObjectId(req.params.id) });
     if (!sec) return res.status(404).json({ error: 'Not found' });
+    const imgValue = { url, bucketKey: '' };
+    if (altText !== undefined) imgValue.altText = String(altText).slice(0, 250);
+    if (caption !== undefined) imgValue.caption = String(caption).slice(0, 500);
     await db.collection('custom_sections').updateOne(
       { _id: new ObjectId(req.params.id) },
-      { $set: { [`images.${imageKey}`]: { url, bucketKey: '' }, updatedAt: new Date() } }
+      { $set: { [`images.${imageKey}`]: imgValue, updatedAt: new Date() } }
     );
     res.json({ ok: true, url, key: imageKey });
   } catch (e) {

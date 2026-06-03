@@ -1,0 +1,108 @@
+/**
+ * card3d.js — playing-card meshes for the 3D table (shared by hearts, euchre, …).
+ *
+ * A card is a thin rounded box with a canvas-drawn face texture (rank + suit pips)
+ * on top and a patterned back underneath. Faces are cached by code so a 52-card
+ * deck costs 52 textures at most. Card codes are the engine's: rank + suit initial
+ * e.g. "QS" (Q♠), "2C" (2♣), "10H" / "TH" (10♥), "AD" (A♦).
+ *
+ * Real-world-ish proportions: 2.5 x 3.5 ratio. World size set by CARD_W/CARD_H.
+ */
+import * as THREE from 'three';
+
+export const CARD_W = 2.3, CARD_H = 3.2, CARD_T = 0.05;
+
+const SUIT_BY_INITIAL = { H: 'hearts', D: 'diamonds', C: 'clubs', S: 'spades' };
+const SUIT_GLYPH = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
+const SUIT_RED = { hearts: true, diamonds: true, clubs: false, spades: false };
+
+export function parseCardCode(code) {
+  const init = code.slice(-1);
+  let rank = code.slice(0, -1);
+  if (rank === 'T') rank = '10';
+  return { rank, suit: SUIT_BY_INITIAL[init] || 'spades' };
+}
+
+// --- face texture cache ---
+const _faceCache = new Map();
+let _backTex = null;
+
+function drawRoundRect(c, x, y, w, h, r) {
+  c.beginPath(); c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+
+function makeFaceTexture(code) {
+  if (_faceCache.has(code)) return _faceCache.get(code);
+  const { rank, suit } = parseCardCode(code);
+  const red = SUIT_RED[suit];
+  const W = 256, H = 356;
+  const cvs = document.createElement('canvas'); cvs.width = W; cvs.height = H;
+  const c = cvs.getContext('2d');
+  // card body
+  c.fillStyle = '#fbfaf6'; drawRoundRect(c, 4, 4, W - 8, H - 8, 26); c.fill();
+  c.strokeStyle = '#d9d4c6'; c.lineWidth = 2; c.stroke();
+  const ink = red ? '#c0392b' : '#1a1d22';
+  c.fillStyle = ink;
+  const glyph = SUIT_GLYPH[suit];
+  // corner index (top-left + bottom-right rotated)
+  c.textAlign = 'center';
+  c.font = 'bold 52px Georgia, "Times New Roman", serif';
+  c.fillText(rank, 36, 56);
+  c.font = '40px serif';
+  c.fillText(glyph, 36, 98);
+  c.save(); c.translate(W - 36, H - 56); c.rotate(Math.PI);
+  c.font = 'bold 52px Georgia, serif'; c.fillText(rank, 0, 0);
+  c.font = '40px serif'; c.fillText(glyph, 0, 42); c.restore();
+  // center: big suit glyph (face cards get a letter block, number cards a large pip)
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  if (['J', 'Q', 'K', 'A'].includes(rank)) {
+    c.font = 'bold 150px Georgia, serif'; c.fillText(rank, W / 2, H / 2 - 6);
+    c.font = '60px serif'; c.fillText(glyph, W / 2, H / 2 + 96);
+  } else {
+    c.font = '150px serif'; c.fillText(glyph, W / 2, H / 2);
+  }
+  c.textBaseline = 'alphabetic';
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  _faceCache.set(code, tex);
+  return tex;
+}
+
+function makeBackTexture() {
+  if (_backTex) return _backTex;
+  const W = 256, H = 356;
+  const cvs = document.createElement('canvas'); cvs.width = W; cvs.height = H;
+  const c = cvs.getContext('2d');
+  c.fillStyle = '#7a1f2b'; drawRoundRect(c, 4, 4, W - 8, H - 8, 26); c.fill();
+  c.strokeStyle = '#e9c46a'; c.lineWidth = 3; drawRoundRect(c, 16, 16, W - 32, H - 32, 18); c.stroke();
+  // diamond lattice
+  c.strokeStyle = 'rgba(233,196,106,0.5)'; c.lineWidth = 1.5;
+  for (let i = -H; i < W; i += 22) {
+    c.beginPath(); c.moveTo(i, 0); c.lineTo(i + H, H); c.stroke();
+    c.beginPath(); c.moveTo(i + H, 0); c.lineTo(i, H); c.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _backTex = tex; return tex;
+}
+
+const _edgeMat = new THREE.MeshStandardMaterial({ color: 0xeeeae0, roughness: 0.6 });
+
+// Build a card mesh. code null => face-down (back showing). Top (+Y) is the face.
+export function buildCard(code) {
+  const geo = new THREE.BoxGeometry(CARD_W, CARD_T, CARD_H);
+  const faceMat = new THREE.MeshStandardMaterial({
+    map: code ? makeFaceTexture(code) : makeBackTexture(), roughness: 0.5, metalness: 0.0,
+  });
+  const backMat = new THREE.MeshStandardMaterial({ map: makeBackTexture(), roughness: 0.5 });
+  // BoxGeometry material order: +X,-X,+Y,-Y,+Z,-Z. +Y is the top (face up).
+  const mats = [_edgeMat, _edgeMat, faceMat, backMat, _edgeMat, _edgeMat];
+  const mesh = new THREE.Mesh(geo, mats);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  mesh.userData = { code };
+  return mesh;
+}
+
+export function preloadDeck() { makeBackTexture(); } // faces lazy-cache on first use

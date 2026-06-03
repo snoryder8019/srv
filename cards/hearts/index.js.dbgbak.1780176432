@@ -1,0 +1,457 @@
+/**
+ * Hearts — standard 4-player Hearts, seated inside the cards platform.
+ * (/srv/cards is the scaffolding; this folder is the variant + its config.)
+ *
+ * Implements the cards-platform variant contract (../lib/variants/contract.js).
+ * The engine (../engine) owns deal/shuffle/trick mechanics; hearts owns the
+ * rules the engine leaves open: a 52-card deck, the pre-hand passing phase, the
+ * 2♣ opening lead, follow-suit legality with the "hearts broken" + first-trick
+ * restrictions, penalty scoring (hearts=1, Q♠=13), shooting the moon, and
+ * individual cumulative scoring to a cap where the LOWEST total wins.
+ *
+ * Hearts is free-for-all (no partnerships), so it does NOT use the runtime's
+ * 2-team `scores`. It keeps per-player `points` in table.hand.match and exposes
+ * game results via the optional variant seams `gameResult(table)` and
+ * `standings(table)`; the runtime/socket use those when present.
+ *
+ * Hand state (table.hand):
+ *   phase    'passing' | 'playing'
+ *   hands    Card[][]  seat -> cards
+ *   passDir  'left'|'right'|'across'|'hold'
+ *   pending  Card[][]  seat -> the 3 cards each seat has chosen to pass (passing)
+ *   passed   bool[]    which seats have submitted their pass
+ *   handPts  number[4] penalty points taken THIS hand (per seat)
+ *   takenHearts, queenTaken — for moon detection
+ *   leader, turn, plays[], tricksPlayed, heartsBroken, firstTrick
+ *   match    { totals:number[4], handNo }  cumulative game state (persists across hands)
+ */
+import {
+  buildDeck, shuffle, deal, cardCode, rankValue, SUITS,
+} from '../engine/index.js';
+import cfg from './config.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const catalog = JSON.parse(readFileSync(join(__dirname, 'meta.json'), 'utf8'));
+
+const SUIT_BY_INITIAL = { H: 'hearts', D: 'diamonds', C: 'clubs', S: 'spades' };
+const SUIT_SYMBOL = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
+const QUEEN_SPADES = 'QS';
+const TWO_CLUBS = '2C';
+
+function parseCode(code) {
+  const init = code.slice(-1);
+  const rank = code.slice(0, -1);
+  return { suit: SUIT_BY_INITIAL[init], rank };
+}
+
+// Penalty value of a card: each heart 1, Q♠ 13, else 0.
+function penalty(card) {
+  if (card.suit === 'hearts') return cfg.scoring.heart;
+  if (card.rank === 'Q' && card.suit === 'spades') return cfg.scoring.queenSpades;
+  return 0;
+}
+
+// Plain trick comparator: highest card of the LED suit wins (no trump in hearts).
+function heartsComparator(plays) {
+  const led = plays[0].card.suit;
+  let best = plays[0];
+  for (let i = 1; i < plays.length; i++) {
+    const c = plays[i].card;
+    if (c.suit === led && rankValue(c.rank) > rankValue(best.card.rank)) best = plays[i];
+  }
+  return best.seat;
+}
+
+// Pass target seat given direction (seats 0..3 clockwise).
+function passTarget(seat, dir) {
+  if (dir === 'left') return (seat + 1) % 4;
+  if (dir === 'right') return (seat + 3) % 4;
+  if (dir === 'across') return (seat + 2) % 4;
+  return seat; // hold
+}
+
+const hearts = {
+  id: 'hearts',
+  name: 'Hearts',
+  meta: cfg,
+  catalog,
+  defaults: {
+    ranks: cfg.deck.ranks,
+    losingScore: cfg.scoring.losingScore,
+    passCount: cfg.rules.passCount,
+  },
+
+  // Ensure cumulative match state exists across hands of one game.
+  _ensureMatch(table) {
+    if (!table._heartsMatch) table._heartsMatch = { totals: [0, 0, 0, 0], handNo: 0 };
+    return table._heartsMatch;
+  },
+
+  startHand(table, rng) {
+    const match = this._ensureMatch(table);
+    match.handNo += 1;
+    const deck = shuffle(buildDeck({ ranks: table.config.ranks }), rng);
+    const { hands } = deal(deck, { players: cfg.deal.players, cardsPer: cfg.deal.cardsPer });
+    const dir = cfg.rules.passCycle[(match.handNo - 1) % cfg.rules.passCycle.length];
+
+    table.hand = {
+      phase: dir === 'hold' ? 'playing' : 'passing',
+      hands,
+      passDir: dir,
+      pending: [[], [], [], []],
+      passed: [false, false, false, false],
+      handPts: [0, 0, 0, 0],
+      takenHearts: 0, queenTaken: false,
+      heartsBroken: false,
+      firstTrick: true,
+      leader: null, turn: null, plays: [], tricksPlayed: 0,
+      match,
+    };
+
+    // On a hold hand, go straight to play; the 2♣ holder leads.
+    if (table.hand.phase === 'playing') this._beginPlay(table, table.hand, []);
+    return table.hand;
+  },
+
+  _seatWith(table, code) {
+    const h = table.hand;
+    for (let s = 0; s < 4; s++) if (h.hands[s].some((c) => cardCode(c) === code)) return s;
+    return 0;
+  },
+
+  _beginPlay(table, h, events) {
+    h.phase = 'playing';
+    const lead = this._seatWith(table, TWO_CLUBS);
+    h.leader = lead; h.turn = lead; h.plays = [];
+    h.firstTrick = true;
+    events.push({ type: 'play:begin', leader: lead });
+  },
+
+  currentTurn(table) {
+    const h = table.hand;
+    if (!h) return null;
+    if (h.phase === 'passing') {
+      // everyone passes "simultaneously"; report the first seat that hasn't.
+      const s = h.passed.findIndex((p) => !p);
+      return s < 0 ? null : s;
+    }
+    if (h.phase === 'playing') return h.turn;
+    return null;
+  },
+
+  // Simultaneous-phase awareness for the bot driver: during passing, EVERY seat
+  // that hasn't passed can act at once (order-independent); during play it's the
+  // seat on turn. The socket layer drives all returned bot seats.
+  botSeatsToAct(table) {
+    const h = table.hand;
+    if (!h) return [];
+    if (h.phase === 'passing') {
+      const seats = [];
+      for (let i = 0; i < 4; i++) if (!h.passed[i]) seats.push(i);
+      return seats;
+    }
+    if (h.phase === 'playing') return h.turn != null ? [h.turn] : [];
+    return [];
+  },
+
+  legalActions(table, seat) {
+    const h = table.hand;
+    if (!h) return [];
+
+    if (h.phase === 'passing') {
+      if (h.passed[seat]) return []; // already chose
+      // legal "pass" = choosing exactly passCount cards; expose each card as a toggle
+      // candidate. The client selects passCount and submits a single pass action.
+      return h.hands[seat].map((c) => ({ type: 'passCard', card: cardCode(c) }));
+    }
+
+    if (h.phase === 'playing') {
+      if (seat !== h.turn) return [];
+      const hand = h.hands[seat];
+      const leading = h.plays.length === 0;
+
+      if (leading) {
+        // first trick: must lead 2♣
+        if (h.firstTrick) {
+          const two = hand.find((c) => cardCode(c) === TWO_CLUBS);
+          if (two) return [{ type: 'play', card: TWO_CLUBS }];
+        }
+        // cannot lead hearts until broken (unless only hearts remain)
+        let pool = hand;
+        if (!h.heartsBroken) {
+          const nonHearts = hand.filter((c) => c.suit !== 'hearts');
+          if (nonHearts.length) pool = nonHearts;
+        }
+        return pool.map((c) => ({ type: 'play', card: cardCode(c) }));
+      }
+
+      const led = h.plays[0].card.suit;
+      const inSuit = hand.filter((c) => c.suit === led);
+      let pool = inSuit.length ? inSuit : hand;
+      // first trick: no penalty cards (hearts or Q♠) unless forced
+      if (h.firstTrick && cfg.rules.noFirstTrickPenalty) {
+        const safe = pool.filter((c) => penalty(c) === 0);
+        if (safe.length) pool = safe;
+      }
+      return pool.map((c) => ({ type: 'play', card: cardCode(c) }));
+    }
+    return [];
+  },
+
+  applyAction(table, seat, action) {
+    const h = table.hand;
+    if (!h) return { ok: false, error: 'no hand in progress' };
+    if (!action || !action.type) return { ok: false, error: 'no action' };
+
+    // ---- passing phase: each seat submits exactly passCount cards ----
+    if (h.phase === 'passing') {
+      if (action.type === 'passCard') {
+        // 'passCard' is a client SELECTION candidate, not a submittable action.
+        // Submit a single { type:'pass', cards:[...] } once passCount are chosen.
+        return { ok: false, error: 'select cards then submit one pass action' };
+      }
+      if (action.type !== 'pass' || !Array.isArray(action.cards)) {
+        return { ok: false, error: 'pass requires an array of cards' };
+      }
+      if (h.passed[seat]) return { ok: false, error: 'already passed' };
+      const need = table.config.passCount;
+      if (action.cards.length !== need) return { ok: false, error: `must pass exactly ${need} cards` };
+      const hand = h.hands[seat];
+      const chosen = [];
+      for (const code of action.cards) {
+        const idx = hand.findIndex((c) => cardCode(c) === code);
+        if (idx < 0) return { ok: false, error: 'card not in hand' };
+        if (chosen.includes(code)) return { ok: false, error: 'duplicate card' };
+        chosen.push(code);
+      }
+      h.pending[seat] = chosen.map((code) => hand.find((c) => cardCode(c) === code));
+      h.passed[seat] = true;
+      const events = [{ type: 'passed', seat }];
+
+      if (h.passed.every(Boolean)) {
+        // execute all passes simultaneously
+        const removed = [[], [], [], []];
+        for (let s = 0; s < 4; s++) {
+          for (const card of h.pending[s]) {
+            const i = h.hands[s].findIndex((c) => cardCode(c) === cardCode(card));
+            if (i >= 0) removed[s].push(h.hands[s].splice(i, 1)[0]);
+          }
+        }
+        for (let s = 0; s < 4; s++) {
+          const tgt = passTarget(s, h.passDir);
+          h.hands[tgt].push(...removed[s]);
+        }
+        events.push({ type: 'passComplete', dir: h.passDir });
+        this._beginPlay(table, h, events);
+      }
+      return { ok: true, events, handOver: false, gameOver: false };
+    }
+
+    // ---- trick play ----
+    if (h.phase === 'playing') {
+      if (seat !== h.turn) return { ok: false, error: 'not your turn' };
+      if (action.type !== 'play' || !action.card) return { ok: false, error: 'expected a play action' };
+      const code = action.card;
+      const legal = this.legalActions(table, seat).map((a) => a.card);
+      if (!legal.includes(code)) return { ok: false, error: 'illegal play' };
+
+      const hand = h.hands[seat];
+      const [card] = hand.splice(hand.findIndex((c) => cardCode(c) === code), 1);
+      h.plays.push({ seat, card });
+      if (card.suit === 'hearts') h.heartsBroken = true;
+      if (cfg.rules.queenBreaksHearts && code === QUEEN_SPADES) h.heartsBroken = true;
+      const events = [{ type: 'play', seat, card: code }];
+
+      if (h.plays.length === 4) {
+        const winner = heartsComparator(h.plays);
+        const pts = h.plays.reduce((sum, p) => sum + penalty(p.card), 0);
+        h.handPts[winner] += pts;
+        for (const p of h.plays) {
+          if (p.card.suit === 'hearts') h.takenHearts += 1;
+          if (cardCode(p.card) === QUEEN_SPADES) h.queenTaken = true;
+        }
+        h.tricksPlayed += 1;
+        events.push({
+          type: 'trickWon', seat: winner, points: pts,
+          cards: h.plays.map((p) => ({ seat: p.seat, card: cardCode(p.card) })),
+        });
+        h.plays = [];
+        h.leader = winner; h.turn = winner;
+        h.firstTrick = false;
+
+        if (h.tricksPlayed === 13) {
+          return this._scoreHand(table, h, events);
+        }
+      } else {
+        h.turn = (h.turn + 1) % 4;
+      }
+      return { ok: true, events, handOver: false, gameOver: false };
+    }
+
+    return { ok: false, error: `cannot act in phase ${h.phase}` };
+  },
+
+  // End-of-hand scoring: apply hearts/Q♠, handle shooting the moon, update match
+  // totals, and decide whether the GAME is over (someone hit the cap).
+  _scoreHand(table, h, events) {
+    const match = h.match;
+    // shoot-the-moon check: did one seat take ALL penalty (26)?
+    const totalPenalty = h.handPts.reduce((a, b) => a + b, 0); // should be 26 if all collected
+    const shooter = h.handPts.findIndex((p) => p === cfg.scoring.moon);
+    let applied = h.handPts.slice();
+    let mooned = false;
+    if (shooter >= 0 && totalPenalty === cfg.scoring.moon) {
+      mooned = true;
+      // shooter 0, everyone else +26
+      applied = [0, 0, 0, 0].map((_, s) => (s === shooter ? 0 : cfg.scoring.moon));
+    }
+    for (let s = 0; s < 4; s++) match.totals[s] += applied[s];
+
+    events.push({
+      type: 'handScored',
+      handPoints: applied,
+      totals: match.totals.slice(),
+      mooned, shooter: mooned ? shooter : null,
+    });
+
+    const gameOver = match.totals.some((t) => t >= table.config.losingScore);
+    if (gameOver) {
+      // lowest total wins; record the result on the table for the shared end-game flow
+      const min = Math.min(...match.totals);
+      table._heartsResult = {
+        totals: match.totals.slice(),
+        winnerSeat: match.totals.indexOf(min),
+      };
+      events.push({ type: 'gameWon', totals: match.totals.slice(), winnerSeat: match.totals.indexOf(min) });
+    }
+    return { ok: true, events, handOver: true, gameOver };
+  },
+
+  // --- optional runtime seams for non-partnership scoring ---------------------
+  // The runtime falls back to its 2-team logic when these are absent; hearts
+  // provides them so end-game/standings/stats reflect individual play.
+  gameResult(table) {
+    const r = table._heartsResult || { totals: (table._heartsMatch || { totals: [0, 0, 0, 0] }).totals, winnerSeat: 0 };
+    return { mode: 'individual', winnerSeat: r.winnerSeat, totals: r.totals };
+  },
+  standings(table) {
+    const r = table._heartsResult || { totals: (table._heartsMatch || { totals: [0, 0, 0, 0] }).totals };
+    const totals = r.totals;
+    const min = Math.min(...totals);
+    return table.seats.map((s) => ({
+      seat: s.seat,
+      team: s.seat,           // individual: team == seat
+      displayName: s.displayName,
+      bot: s.bot,
+      score: totals[s.seat],
+      won: totals[s.seat] === min,
+    }));
+  },
+  // Reset cumulative match state on a rematch.
+  resetMatch(table) { table._heartsMatch = { totals: [0, 0, 0, 0], handNo: 0 }; table._heartsResult = null; },
+
+  publicView(table) {
+    const h = table.hand;
+    if (!h) return { phase: 'lobby' };
+    return {
+      phase: h.phase,
+      dealer: table.dealer,
+      turn: this.currentTurn(table),
+      passDir: h.passDir,
+      passed: h.passed.slice(),
+      heartsBroken: h.heartsBroken,
+      firstTrick: h.firstTrick,
+      trick: h.plays.map((p) => ({ seat: p.seat, card: cardCode(p.card) })),
+      tricksPlayed: h.tricksPlayed,
+      handCounts: h.hands.map((hh) => hh.length),
+      handPoints: h.handPts.slice(),
+      totals: (h.match ? h.match.totals.slice() : [0, 0, 0, 0]),
+      losingScore: table.config.losingScore,
+    };
+  },
+
+  privateView(table, seat) {
+    const h = table.hand;
+    if (!h) return { seat, hand: [], legal: [] };
+    return {
+      seat,
+      hand: (h.hands[seat] || []).map(cardCode),
+      phase: h.phase,
+      legal: this.legalActions(table, seat),
+      passDir: h.passDir,
+      passCount: table.config.passCount,
+      needToPass: h.phase === 'passing' && !h.passed[seat],
+      heartsBroken: h.heartsBroken,
+    };
+  },
+
+  botAction(table, seat) {
+    const h = table.hand;
+    if (!h) return null;
+
+    if (h.phase === 'passing') {
+      if (h.passed[seat]) return null;
+      // pass the 3 highest-risk cards: Q♠, high hearts, then high spades/cards
+      const hand = h.hands[seat].slice();
+      const risk = (c) => {
+        if (cardCode(c) === QUEEN_SPADES) return 1000;
+        if (c.suit === 'spades' && (c.rank === 'A' || c.rank === 'K')) return 500 + rankValue(c.rank); // dump A/K spades (Q risk)
+        if (c.suit === 'hearts') return 100 + rankValue(c.rank);
+        return rankValue(c.rank);
+      };
+      hand.sort((a, b) => risk(b) - risk(a));
+      const cards = hand.slice(0, table.config.passCount).map(cardCode);
+      return { type: 'pass', cards };
+    }
+
+    if (h.phase === 'playing') {
+      const legal = this.legalActions(table, seat);
+      if (!legal.length) return null;
+      const cards = legal.map((a) => parseCode(a.card));
+      const leading = h.plays.length === 0;
+
+      if (leading) {
+        // lead the lowest non-penalty card available
+        let lo = cards[0];
+        for (const c of cards) {
+          if (penalty(c) < penalty(lo) || (penalty(c) === penalty(lo) && rankValue(c.rank) < rankValue(lo.rank))) lo = c;
+        }
+        return { type: 'play', card: cardCode(lo) };
+      }
+
+      const led = h.plays[0].card.suit;
+      const following = cards.filter((c) => c.suit === led);
+      const curWinnerSeat = heartsComparator(h.plays);
+      const highLed = h.plays.filter((p) => p.card.suit === led)
+        .reduce((a, b) => (rankValue(b.card.rank) > rankValue(a.card.rank) ? b : a));
+
+      if (following.length) {
+        // duck: play the highest card that still stays UNDER the current high; else dump lowest
+        const under = following.filter((c) => rankValue(c.rank) < rankValue(highLed.card.rank));
+        if (under.length) {
+          let hi = under[0];
+          for (const c of under) if (rankValue(c.rank) > rankValue(hi.rank)) hi = c;
+          return { type: 'play', card: cardCode(hi) };
+        }
+        // must overtake — play lowest of the suit to minimize future exposure
+        let lo = following[0];
+        for (const c of following) if (rankValue(c.rank) < rankValue(lo.rank)) lo = c;
+        return { type: 'play', card: cardCode(lo) };
+      }
+
+      // void in led suit: dump the most dangerous card (Q♠ first, then high hearts, then high cards)
+      let dump = cards[0];
+      const danger = (c) => (cardCode(c) === QUEEN_SPADES ? 1000 : (c.suit === 'hearts' ? 100 + rankValue(c.rank) : rankValue(c.rank)));
+      for (const c of cards) if (danger(c) > danger(dump)) dump = c;
+      return { type: 'play', card: cardCode(dump) };
+    }
+
+    return null;
+  },
+};
+
+export default hearts;
+export { heartsComparator, penalty, passTarget, parseCode };

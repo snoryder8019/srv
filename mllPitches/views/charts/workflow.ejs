@@ -1,0 +1,97 @@
+<section class="mll-chart-block">
+  <h2>Pipeline dashboard</h2>
+  <p class="mll-chart-block__lead">
+    Operator dashboard for the whole firm — active deals, cycle time, blocked items. Filters change the KPIs and sparklines live.
+  </p>
+
+  <div class="mll-wf-filters">
+    <label class="mll-dr__field">
+      <span>Time range</span>
+      <select data-wf-range>
+        <% (view.data.dashboard.filters.timeRanges || []).forEach((r) => { %><option value="<%= r.id %>"><%= r.label %></option><% }) %>
+      </select>
+    </label>
+    <label class="mll-dr__field">
+      <span>Partner group</span>
+      <select data-wf-partner>
+        <% (view.data.dashboard.filters.partners || []).forEach((p) => { %><option value="<%= p.id %>"><%= p.label %></option><% }) %>
+      </select>
+    </label>
+    <div class="mll-wf-badge" data-wf-badge>Showing: this week · All partners</div>
+  </div>
+
+  <div class="mll-wf-kpis">
+    <div class="mll-wf-kpi"><div class="mll-wf-kpi-val" data-wf-kpi="activeDeals">0</div><div class="mll-wf-kpi-lbl">Active deals</div></div>
+    <div class="mll-wf-kpi mll-wf-kpi--warn"><div class="mll-wf-kpi-val" data-wf-kpi="avgCycleDays">0</div><div class="mll-wf-kpi-lbl">Avg cycle (days)</div><div class="mll-wf-kpi-sub" data-wf-kpi-sub="targetCycleDays">target 0d</div></div>
+    <div class="mll-wf-kpi mll-wf-kpi--danger"><div class="mll-wf-kpi-val" data-wf-kpi="blockedItems">0</div><div class="mll-wf-kpi-lbl">Blocked items</div></div>
+    <div class="mll-wf-kpi mll-wf-kpi--ok"><div class="mll-wf-kpi-val" data-wf-kpi="onTimeStages">0/0</div><div class="mll-wf-kpi-lbl">On-time stages</div></div>
+    <div class="mll-wf-kpi mll-wf-kpi--accent"><div class="mll-wf-kpi-val" data-wf-kpi="uploadsToday">0</div><div class="mll-wf-kpi-lbl">DR uploads</div></div>
+  </div>
+
+  <div class="mll-wf-sparks" data-wf-sparks></div>
+
+  <script id="wfDashboardData" type="application/json"><%- JSON.stringify(view.data.dashboard || {}) %></script>
+</section>
+
+<section class="mll-chart-block">
+  <h2>Deal timeline · LOI → Delivery</h2>
+  <p class="mll-chart-block__lead">
+    Each node is a stage with live completion. Hover any node to see what's done and what's still needed. Color tracks % complete — red is blocked, green is closed.
+  </p>
+
+  <div class="mll-timeline" id="dealTimeline">
+    <div class="mll-timeline__track" aria-hidden="true"></div>
+    <% (view.data.nodes || []).forEach((n) => { %>
+      <button type="button"
+        class="mll-timeline__node <%= n.id === 'data-room' ? 'is-edge' : '' %>"
+        data-node-id="<%= n.id %>"
+        data-pct="<%= n.completion %>"
+        aria-label="<%= n.name %> · <%= n.completion %>% complete">
+        <span class="mll-timeline__bubble" data-pct-fill="<%= n.completion %>">
+          <span class="mll-timeline__bubble-pct"><%= n.completion %>%</span>
+        </span>
+        <span class="mll-timeline__label">
+          <span class="mll-timeline__name"><%= n.name %></span>
+          <span class="mll-timeline__sla"><%= n.sla %> · <%= n.owner %></span>
+        </span>
+      </button>
+    <% }) %>
+  </div>
+
+  <div class="mll-timeline__legend">
+    <span class="mll-timeline__legend-dot" style="background:hsl(0,70%,52%)"></span> Blocked
+    <span class="mll-timeline__legend-dot" style="background:hsl(35,80%,55%)"></span> In progress
+    <span class="mll-timeline__legend-dot" style="background:hsl(75,75%,50%)"></span> Near done
+    <span class="mll-timeline__legend-dot" style="background:hsl(120,60%,45%)"></span> Closed
+    <span class="mll-timeline__legend-edge">▣ Edge node (shared subsystem)</span>
+  </div>
+
+  <div class="mll-timeline__popover" id="timelinePopover" role="dialog" hidden>
+    <header class="mll-timeline__pop-head">
+      <strong data-pop-name></strong>
+      <span class="mll-timeline__pop-pct" data-pop-pct></span>
+    </header>
+    <div class="mll-timeline__pop-meta" data-pop-meta></div>
+    <div class="mll-timeline__pop-cols">
+      <div>
+        <h4>Completed</h4>
+        <ul data-pop-completed></ul>
+      </div>
+      <div>
+        <h4>Still needed</h4>
+        <ul data-pop-needed></ul>
+      </div>
+    </div>
+  </div>
+
+  <script id="timelineData" type="application/json"><%- JSON.stringify(view.data.nodes || []) %></script>
+</section>
+
+<section class="mll-chart-block">
+  <h2>Throughput · current vs. with MLL</h2>
+  <p class="mll-chart-block__lead">
+    Average days per stage today, side-by-side with what we'd target. Switch the chart style above.
+  </p>
+  <div class="mll-chart"><canvas id="workflowChart" height="260"></canvas></div>
+  <script id="workflowData" type="application/json"><%- JSON.stringify(view.data || {}) %></script>
+</section>

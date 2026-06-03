@@ -225,20 +225,19 @@ class GalacticMap3D {
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Add stars
-      const starCount = 3000; // Dense starfield
+      // Add stars — dimmed so foreground assets dominate the view
+      const starCount = 1800; // Sparser starfield
       for (let i = 0; i < starCount; i++) {
         const x = Math.random() * canvas.width;
         const y = Math.random() * canvas.height;
-        const radius = Math.random() * 1.5 + 0.5; // 0.5-2px stars
-        const brightness = Math.random() * 0.5 + 0.5; // 50-100% brightness
+        const radius = Math.random() * 1.2 + 0.3; // 0.3-1.5px stars (smaller)
+        const brightness = Math.random() * 0.25 + 0.1; // 10-35% brightness (was 50-100%)
 
-        // Variety of star colors (blue-white to yellow-white)
         const colors = [
-          `rgba(255, 255, 255, ${brightness})`,      // White
-          `rgba(200, 220, 255, ${brightness})`,      // Blue-white
-          `rgba(255, 250, 220, ${brightness})`,      // Yellow-white
-          `rgba(255, 200, 150, ${brightness * 0.8})` // Orange (rare)
+          `rgba(255, 255, 255, ${brightness})`,
+          `rgba(200, 220, 255, ${brightness})`,
+          `rgba(255, 250, 220, ${brightness})`,
+          `rgba(255, 200, 150, ${brightness * 0.7})`
         ];
         const color = colors[Math.floor(Math.random() * colors.length)];
 
@@ -247,11 +246,11 @@ class GalacticMap3D {
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // Add glow to some stars
-        if (Math.random() > 0.85) {
-          ctx.fillStyle = `rgba(255, 255, 255, ${brightness * 0.3})`;
+        // Only a few stars get faint glow halos (was 15%, now 3%)
+        if (Math.random() > 0.97) {
+          ctx.fillStyle = `rgba(255, 255, 255, ${brightness * 0.15})`;
           ctx.beginPath();
-          ctx.arc(x, y, radius * 2, 0, Math.PI * 2);
+          ctx.arc(x, y, radius * 1.8, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -886,6 +885,24 @@ class GalacticMap3D {
       mesh.frustumCulled = false;
       mesh.visible = true;
 
+      // Invisible larger click sphere — generous hit area so users can click
+      // anywhere near the star (covers the orbital region)
+      const hitRadius = adjustedSize * 4;
+      const hitGeometry = new THREE.SphereGeometry(hitRadius, 16, 16);
+      const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
+      const hitSphere = new THREE.Mesh(hitGeometry, hitMaterial);
+      hitSphere.position.copy(position);
+      hitSphere.frustumCulled = false;
+      // Mirror userData so raycast resolution finds this and treats it as the star
+      hitSphere.userData = {
+        id: _id,
+        type: 'star',
+        title: title,
+        data: assetData,
+        isHitProxy: true
+      };
+      this.assetsGroup.add(hitSphere);
+
       console.log(`🌟 Star orb: ${title} at (${position.x.toFixed(0)}, ${position.y.toFixed(0)}, ${position.z.toFixed(0)})`);
 
       // Add simple text label
@@ -1134,13 +1151,14 @@ class GalacticMap3D {
   createGalacticConnections() {
     console.log('🌌 Creating travelable routes with connection limits...');
 
-    // Collect all anomalies
+    // Collect all anomalies (keep live mesh ref so connections can follow movement)
     const anomalies = [];
     for (const [id, asset] of this.assets) {
       if (asset.mesh.userData.type === 'anomaly') {
         anomalies.push({
           id: id,
-          pos: asset.mesh.position.clone(),
+          pos: asset.mesh.position,
+          mesh: asset.mesh,
           title: asset.mesh.userData.title,
           connectionCount: 0,
           maxConnections: 5
@@ -1154,7 +1172,7 @@ class GalacticMap3D {
       if (asset.mesh.userData.type === 'galaxy') {
         galaxies.push({
           id: id,
-          pos: asset.mesh.position.clone(),
+          pos: asset.mesh.position,
           title: asset.mesh.userData.title,
           parentAnomaly: asset.mesh.userData.parentAnomaly || null,
           mesh: asset.mesh,
@@ -1189,8 +1207,8 @@ class GalacticMap3D {
       }
 
       this.createTravelRoute(
-        parentAnomaly.pos,
-        galaxy.pos,
+        parentAnomaly.mesh,
+        galaxy.mesh,
         0x00ff88,
         `${parentAnomaly.title} ↔ ${galaxy.title}`
       );
@@ -1233,8 +1251,8 @@ class GalacticMap3D {
 
         // Create the connection
         this.createTravelRoute(
-          galaxy.pos,
-          otherGalaxy.pos,
+          galaxy.mesh,
+          otherGalaxy.mesh,
           0x00aaff,  // Blue for galaxy-to-galaxy
           `${galaxy.title} ↔ ${otherGalaxy.title}`
         );
@@ -1381,10 +1399,12 @@ class GalacticMap3D {
   /**
    * Create a travel route line between two points
    */
-  createTravelRoute(posA, posB, color, label) {
-    // Create connection line
-    const points = [posA, posB];
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  createTravelRoute(fromMesh, toMesh, color, label) {
+    const posA = fromMesh.position;
+    const posB = toMesh.position;
+
+    // Create connection line — initialize with current endpoint positions
+    const geometry = new THREE.BufferGeometry().setFromPoints([posA, posB]);
 
     const material = new THREE.LineBasicMaterial({
       color: color,
@@ -1394,8 +1414,11 @@ class GalacticMap3D {
     });
 
     const line = new THREE.Line(geometry, material);
-    line.userData.isConnection = true; // Flag for toggle control
+    line.userData.isConnection = true;
     line.userData.routeLabel = label;
+    // Store live mesh refs so animate() can keep the line attached to moving endpoints
+    line.userData.fromMesh = fromMesh;
+    line.userData.toMesh = toMesh;
     this.connectionsGroup.add(line);
 
     // Add small markers at endpoints
@@ -1406,25 +1429,54 @@ class GalacticMap3D {
       opacity: 0.5
     });
 
-    // Marker at start
     const markerA = new THREE.Mesh(
       new THREE.SphereGeometry(markerSize, 6, 6),
       markerMaterial
     );
     markerA.position.copy(posA);
     markerA.userData.isConnection = true;
+    markerA.userData.followMesh = fromMesh;
     this.connectionsGroup.add(markerA);
 
-    // Marker at end
     const markerB = new THREE.Mesh(
       new THREE.SphereGeometry(markerSize, 6, 6),
       markerMaterial
     );
     markerB.position.copy(posB);
     markerB.userData.isConnection = true;
+    markerB.userData.followMesh = toMesh;
     this.connectionsGroup.add(markerB);
 
+    // Cross-reference markers on the line so they can be culled together later if needed
+    line.userData.markerA = markerA;
+    line.userData.markerB = markerB;
+
     console.log(`    ✓ Route: ${label}`);
+  }
+
+  /**
+   * Refresh connection line vertices and endpoint markers to track moving endpoints.
+   * Called each animation frame so anomalies/galaxies in orbit stay connected.
+   */
+  updateConnectionLines() {
+    if (!this.connectionsGroup || this.connectionsGroup.children.length === 0) return;
+
+    for (const child of this.connectionsGroup.children) {
+      // Lines with live mesh refs
+      if (child.isLine && child.userData.fromMesh && child.userData.toMesh) {
+        const a = child.userData.fromMesh.position;
+        const b = child.userData.toMesh.position;
+        const posAttr = child.geometry.attributes.position;
+        posAttr.setXYZ(0, a.x, a.y, a.z);
+        posAttr.setXYZ(1, b.x, b.y, b.z);
+        posAttr.needsUpdate = true;
+        child.geometry.computeBoundingSphere();
+      }
+      // Endpoint markers that follow a mesh
+      if (child.userData.followMesh) {
+        child.position.copy(child.userData.followMesh.position);
+      }
+    }
   }
 
   /**
@@ -1771,63 +1823,105 @@ class GalacticMap3D {
       a.assetType === 'planet' && a.parentId === starData.id
     ).length : 0;
 
+    // Are we already docked at this star?
+    const dockedHere = window.currentCharacter?.location?.dockedStarId === starData.id;
+
+    const btnBase = `width:100%; padding:10px; margin-top:10px; border:none; border-radius:5px; font-weight:bold; cursor:pointer; font-size:13px; transition:all 0.2s;`;
+
     modal.innerHTML = `
       <h3 style="margin: 0 0 10px 0; color: #6dd5ed; text-shadow: 0 0 10px rgba(109, 213, 237, 0.5);">⭐ ${starData.title || 'Unknown Star'}</h3>
       <div style="margin: 10px 0; font-size: 14px; color: #6dd5ed;">
         <div>Type: Star</div>
         <div>Planets: ${planetCount}</div>
-        <div style="margin-top: 10px; font-size: 12px; color: #2193b0;">Camera following star...</div>
+        ${dockedHere ? '<div style="color:#00ff88; margin-top:5px;">✓ Docked here</div>' : ''}
+        <div style="margin-top: 10px; font-size: 12px; color: #2193b0;">Camera following star…</div>
       </div>
-      <button id="view-system-btn" style="
-        width: 100%;
-        padding: 10px;
-        margin-top: 15px;
-        background: linear-gradient(45deg, #6dd5ed, #2193b0);
-        border: none;
-        border-radius: 5px;
-        color: #000;
-        font-weight: bold;
-        cursor: pointer;
-        font-size: 14px;
-        box-shadow: 0 0 10px rgba(109, 213, 237, 0.3);
-        transition: all 0.3s;
-      ">
+
+      <button id="view-system-btn" style="${btnBase} background:linear-gradient(45deg,#6dd5ed,#2193b0); color:#001a2e; box-shadow:0 0 10px rgba(109,213,237,0.3);">
         🚀 View Solar System
       </button>
-      <button id="stop-following-btn" style="
-        width: 100%;
-        padding: 8px;
-        margin-top: 10px;
-        background: rgba(0, 20, 40, 0.6);
-        border: 1px solid #2193b0;
-        border-radius: 5px;
-        color: #6dd5ed;
-        cursor: pointer;
-        font-size: 12px;
-        transition: all 0.3s;
-      ">
+
+      <button id="travel-to-star-btn" style="${btnBase} background:linear-gradient(45deg,#ffaa00,#cc7700); color:#1a1000; box-shadow:0 0 10px rgba(255,170,0,0.3); ${dockedHere ? 'opacity:0.5; cursor:not-allowed;' : ''}" ${dockedHere ? 'disabled' : ''}>
+        🌟 Travel To Star
+      </button>
+
+      <button id="scan-star-btn" style="${btnBase} background:rgba(0,20,40,0.6); border:1px solid #6dd5ed; color:#6dd5ed; font-weight:normal;">
+        📊 Scan
+      </button>
+
+      <button id="stop-following-btn" style="${btnBase} background:rgba(0,20,40,0.6); border:1px solid #2193b0; color:#6dd5ed; font-weight:normal; font-size:12px; padding:8px;">
         ✋ Stop Following
       </button>
     `;
 
     modal.style.display = 'block';
+    ['click','mousedown','mouseup'].forEach(evt => modal.addEventListener(evt, e => e.stopPropagation()));
 
-    // Add button handlers
-    const viewSystemBtn = document.getElementById('view-system-btn');
-    if (viewSystemBtn) {
-      viewSystemBtn.onclick = () => {
-        window.location.href = `/universe/system-map-3d?star=${starData.id}`;
+    document.getElementById('view-system-btn').onclick = () => {
+      window.location.href = `/universe/system-map-3d?star=${starData.id}`;
+    };
+
+    const travelBtn = document.getElementById('travel-to-star-btn');
+    if (travelBtn && !dockedHere) {
+      travelBtn.onclick = async () => {
+        const characterId = window.currentCharacter?._id;
+        if (!characterId) {
+          alert('No active character.');
+          return;
+        }
+        travelBtn.disabled = true;
+        travelBtn.textContent = '⏳ Docking…';
+        try {
+          const response = await fetch(`/api/v1/characters/${characterId}/dock`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ assetId: starData.id })
+          });
+          const result = await response.json();
+          if (result.success) {
+            travelBtn.textContent = '✓ Docked';
+            if (window.currentCharacter) {
+              const { x, y, z } = result.asset;
+              window.currentCharacter.location = {
+                ...window.currentCharacter.location,
+                dockedStarId: starData.id,
+                dockedStarName: starData.title,
+                assetId: starData.id,
+                assetType: 'star',
+                x, y, z
+              };
+            }
+            setTimeout(() => this.showStarInfoModal(starData), 800); // refresh modal state
+          } else {
+            travelBtn.textContent = '✗ Failed';
+            console.error('Dock failed:', result.error);
+          }
+        } catch (err) {
+          travelBtn.textContent = '✗ Error';
+          console.error('Dock request error:', err);
+        }
       };
     }
 
-    const stopBtn = document.getElementById('stop-following-btn');
-    if (stopBtn) {
-      stopBtn.onclick = () => {
-        this.followingStar = false;
-        this.selectedStar = null;
-        this.hideStarInfoModal();
-      };
-    }
+    document.getElementById('scan-star-btn').onclick = () => {
+      const raw = starData.data || starData;
+      const lines = [
+        `★ ${starData.title}`,
+        `Type: ${raw.assetType || 'star'}`,
+        `Planets: ${planetCount}`,
+        raw.coordinates ? `Coords: (${raw.coordinates.x?.toFixed(0)}, ${raw.coordinates.y?.toFixed(0)}, ${raw.coordinates.z?.toFixed(0)})` : null,
+        raw.mass ? `Mass: ${raw.mass}` : null,
+        raw.description || null
+      ].filter(Boolean);
+      alert(lines.join('\n'));
+    };
+
+    document.getElementById('stop-following-btn').onclick = () => {
+      this.followingStar = false;
+      this.selectedStar = null;
+      this.hideStarInfoModal();
+    };
   }
 
   /**
@@ -3143,6 +3237,9 @@ class GalacticMap3D {
 
       // Update traveling character position (connection travel animation)
       this.updateTravelingCharacter();
+
+      // Keep travel-route lines & endpoint markers attached to live mesh positions
+      this.updateConnectionLines();
 
       // Update OrbitControls (if available)
       if (this.controls) {
@@ -5222,9 +5319,10 @@ class GalacticMap3D {
       const characterId = window.currentCharacter?._id;
       if (!characterId) return;
 
-      const response = await fetch('/api/v1/characters/travel-status', {
+      const response = await fetch('/api/v1/travel/travel-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
           characterId,
           isInTransit: true,
@@ -5405,14 +5503,13 @@ class GalacticMap3D {
         return;
       }
 
-      // Update character location via API
-      const response = await fetch('/api/v1/characters/location', {
+      // Update character location via API — dock at the destination asset
+      const response = await fetch(`/api/v1/characters/${characterId}/dock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
-          characterId,
-          dockedGalaxyId: destinationAssetId,
-          updateType: 'dock'
+          assetId: destinationAssetId
         })
       });
 
@@ -5420,24 +5517,31 @@ class GalacticMap3D {
       if (result.success) {
         console.log('✅ Character location updated on server');
 
-        // Get destination asset to get coordinates
+        // Get destination asset to read its live position.
+        // this.assets stores { mesh, glow } — coordinates live on mesh.position;
+        // title/type live on mesh.userData.
         const destinationAsset = this.assets.get(destinationAssetId);
-        if (!destinationAsset) {
-          console.error('❌ Destination asset not found');
+        if (!destinationAsset || !destinationAsset.mesh) {
+          console.error('❌ Destination asset (mesh) not found for id', destinationAssetId);
           return;
         }
 
-        const destCoords = destinationAsset.coordinates;
+        const meshPos = destinationAsset.mesh.position;
+        const destCoords = { x: meshPos.x, y: meshPos.y, z: meshPos.z };
+        const destAssetType = destinationAsset.mesh.userData?.type;
+        const destTitle = destinationAsset.mesh.userData?.title;
 
-        // Update character data
+        // Update character data — keep the in-memory snapshot in sync with what the server just wrote
         if (window.currentCharacter) {
           window.currentCharacter.location = {
             ...window.currentCharacter.location,
-            dockedGalaxyId: destinationAssetId,
+            dockedGalaxyId: destAssetType === 'galaxy' ? destinationAssetId : (window.currentCharacter.location?.dockedGalaxyId || null),
+            dockedGalaxyName: destAssetType === 'galaxy' ? destTitle : window.currentCharacter.location?.dockedGalaxyName,
             assetId: destinationAssetId,
+            assetType: destAssetType,
             x: destCoords.x,
             y: destCoords.y,
-            z: destCoords.z || 0,
+            z: destCoords.z,
             type: 'galactic'
           };
         }
@@ -5468,7 +5572,7 @@ class GalacticMap3D {
         }, 100); // Small delay to ensure pin is fully created
 
         // Show arrival notification in status bar
-        const destinationName = destinationAsset.title || destinationAsset.name || 'Unknown';
+        const destinationName = destTitle || 'Unknown';
         if (window.showTravelStatus) {
           window.showTravelStatus(
             `✅ Arrived at ${destinationName}`,

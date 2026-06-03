@@ -3,15 +3,41 @@
 <main class="td-game">
   <div id="td-canvas-host" class="canvas-host">
     <div class="orient-hint" id="orient-hint">↻ Rotate to landscape for a better view</div>
+    <div class="wave-forecast" id="td-forecast"></div>
+    <div class="card-hand" id="td-hand"></div>
+    <div class="action-hand" id="td-action-hand"></div>
+    <div class="apply-hint" id="apply-hint"></div>
+
+    <!-- MOBILE chrome (hidden on desktop via CSS) -->
+    <div class="mg-status" id="mg-status">
+      <div class="mg-pill"><span class="mp-k">Wave</span><span class="mp-v" id="mg-wave">-</span></div>
+      <div class="mg-pill base"><span class="mp-k">Base</span><span class="mp-v" id="mg-base">-</span></div>
+      <div class="mg-pill cur"><span class="mp-k">🎯</span><span class="mp-v" id="mg-ammo">-</span></div>
+      <div class="mg-pill loot"><span class="mp-k">⬡</span><span class="mp-v" id="mg-loot">0|0|0</span></div>
+    </div>
+
+    <div class="mg-tray" id="mg-tray"></div>
+
+    <div class="mg-dock" id="mg-dock">
+      <button class="mg-btn" id="mg-towers" title="Towers" type="button">🏗</button>
+      <button class="mg-btn" id="mg-recenter" title="Recenter camera" type="button">⊙</button>
+      <button class="mg-horizon" id="mg-horizon" type="button">Deploy Tower</button>
+    </div>
   </div>
+
+  <div class="lo-overlay" id="td-loadout"></div>
+  <div class="es-overlay" id="td-endscreen"></div>
+  <div class="td-toast" id="td-toast"></div>
+
   <aside class="td-hud" id="td-hud">
     <button class="hud-toggle" id="hud-toggle" type="button" aria-label="Toggle HUD">▼ HUD</button>
     <div class="hud-section">
       <h3>Status</h3>
       <div>Wave: <span id="hud-wave">-</span></div>
       <div>Base: <span id="hud-health">-</span></div>
-      <div>$: <span id="hud-currency">-</span></div>
+      <div>Ammo: <span id="hud-ammo">-</span></div>
       <div>Score: <span id="hud-score">0</span></div>
+      <div>Loot: <span id="hud-loot">0 ammo · 0 parts · 0 tokens</span></div>
     </div>
     <div class="hud-section">
       <h3>Towers</h3>
@@ -24,6 +50,9 @@
 </main>
 
 <script src="/socket.io/socket.io.js"></script>
+<!-- siege-kit: server-verified InstanceDescriptor (or null for free play). Set
+     before the game module runs so play.js can boot the right board/mode. -->
+<script>window.__SIEGE__ = <%- typeof siegeJson !== 'undefined' ? siegeJson : 'null' %>;</script>
 <script type="importmap">
 {
   "imports": {
@@ -34,8 +63,8 @@
 </script>
 <script type="module" src="/js/game/play.js"></script>
 <script>
-  // HUD collapse toggle (mobile)
   (function () {
+    // ---- Desktop HUD collapse (unchanged) ----
     const hud = document.getElementById('td-hud');
     const btn = document.getElementById('hud-toggle');
     if (btn && hud) {
@@ -44,12 +73,62 @@
         btn.textContent = hud.classList.contains('collapsed') ? '▲ HUD' : '▼ HUD';
       });
     }
-    // Orientation hint - show in portrait on small screens for ~5 seconds
     const hint = document.getElementById('orient-hint');
     if (hint && window.matchMedia('(max-width: 640px) and (orientation: portrait)').matches) {
       hint.classList.add('show');
-      setTimeout(() => hint.classList.remove('show'), 5000);
+      setTimeout(() => hint.classList.remove('show'), 4000);
     }
+
+    // ---- Mobile chrome: mirror HUD values into the slim status pills ----
+    function mirror(srcId, dstId, fmt) {
+      const src = document.getElementById(srcId), dst = document.getElementById(dstId);
+      if (!src || !dst) return;
+      const obs = new MutationObserver(() => { dst.textContent = fmt ? fmt(src.textContent) : src.textContent; });
+      obs.observe(src, { childList: true, characterData: true, subtree: true });
+      dst.textContent = src.textContent;
+    }
+    mirror('hud-wave', 'mg-wave');
+    mirror('hud-health', 'mg-base');
+
+    // ---- Mobile dock buttons ----
+    const tray = document.getElementById('mg-tray');
+    const towersBtn = document.getElementById('mg-towers');
+    const picker = document.getElementById('hud-tower-picker');
+
+    // The tower picker lives in the desktop HUD; on mobile we clone its buttons
+    // into the slim tray. Re-clone whenever it changes (towers load async).
+    function syncTray() {
+      if (!tray || !picker) return;
+      tray.innerHTML = '';
+      picker.querySelectorAll('.tower-pick').forEach((b) => {
+        const c = b.cloneNode(true);
+        c.addEventListener('click', () => { b.click(); tray.classList.remove('open'); towersBtn.classList.remove('on'); });
+        tray.appendChild(c);
+      });
+      if (!tray.children.length) tray.innerHTML = '<span style="color:var(--fg-dim);font-size:12px;padding:8px">No towers yet</span>';
+    }
+    if (towersBtn) towersBtn.addEventListener('click', () => {
+      const open = tray.classList.toggle('open');
+      towersBtn.classList.toggle('on', open);
+      if (open) syncTray();
+    });
+    if (picker) new MutationObserver(syncTray).observe(picker, { childList: true, subtree: true });
+
+    // Recenter camera (play.js exposes window.__td)
+    const recenter = document.getElementById('mg-recenter');
+    if (recenter) recenter.addEventListener('click', () => {
+      if (window.__td && window.__td.camera) {
+        window.__td.camera.position.set(0, 52, 52);
+        if (window.__td.controls) window.__td.controls.target.set(0, 0, 0);
+      }
+    });
+
+    // Horizon button = primary action: open tower tray if nothing selected,
+    // else it's a hint to tap the board to place the selected tower.
+    const horizon = document.getElementById('mg-horizon');
+    if (horizon) horizon.addEventListener('click', () => {
+      if (!tray.classList.contains('open')) { tray.classList.add('open'); towersBtn.classList.add('on'); syncTray(); }
+    });
   })();
 </script>
 

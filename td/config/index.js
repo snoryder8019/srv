@@ -36,11 +36,17 @@ export const config = {
 
   oauth: {
     google: {
-      clientId: process.env.GGLCID || '',
-      clientSecret: process.env.GGLSEC || '',
+      clientId: process.env.GOOGLE_CLIENT_ID || process.env.GGLCID || '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || process.env.GGLSEC || '',
       callbackPath: '/auth/google/callback',
       callbackUrl: (process.env.PUBLIC_URL || 'https://towers.madladslab.com') + '/auth/google/callback',
     },
+  },
+
+  platform: {
+    url: (process.env.PLATFORM_URL || 'https://games.madladslab.com').replace(/\/+$/, ''),
+    slug: process.env.PLATFORM_GAME_SLUG || 'towers',
+    bridgeSecret: process.env.BRIDGE_SECRET || '',
   },
 
   session: {
@@ -51,6 +57,13 @@ export const config = {
   upload: {
     maxSizeMb: parseInt(process.env.ASSET_MAX_SIZE_MB || '25', 10),
     allowedExt: ['.gltf', '.glb'],
+  },
+
+  ai: {
+    baseUrl: (process.env.OLLAMA_URL || "https://ollama.madladslab.com").replace(/\/+$/, ""),
+    key: process.env.OLLAMA_KEY || "",
+    model: process.env.OLLAMA_MODEL || "qwen2.5:7b",
+    npcEnabled: String(process.env.AI_NPC_ENABLED || "true") === "true",
   },
 
   logging: {

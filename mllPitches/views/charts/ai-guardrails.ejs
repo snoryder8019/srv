@@ -1,0 +1,85 @@
+<section class="mll-chart-block">
+  <h2>Where the LLM runs · 3 options</h2>
+  <p class="mll-chart-block__lead">
+    Same product surface, three deployment shapes. You can mix per task — high-sensitivity tabs stay local, lower-stakes drafting can use a stronger frontier model if you opt in.
+  </p>
+
+  <div class="mll-ai-deploys">
+    <% (view.data.deployments || []).forEach((d) => { %>
+      <div class="mll-ai-deploy mll-ai-deploy--<%= d.id %>">
+        <div class="mll-ai-deploy__head">
+          <div class="mll-ai-deploy__name"><%= d.name %></div>
+          <div class="mll-ai-deploy__tag"><%= d.tagline %></div>
+        </div>
+        <dl class="mll-ai-deploy__facts">
+          <dt>Model</dt><dd><%= d.model %></dd>
+          <dt>Harvesting</dt>
+          <dd>
+            <% if (d.harvesting === false) { %><span class="mll-pill mll-pill--ok">No harvesting</span>
+            <% } else { %><span class="mll-pill mll-pill--warn"><%= d.harvesting %></span><% } %>
+          </dd>
+          <dt>Internet egress</dt>
+          <dd>
+            <% if (d.internetEgress === false) { %><span class="mll-pill mll-pill--ok">None</span>
+            <% } else { %><span class="mll-pill mll-pill--warn"><%= d.internetEgress %></span><% } %>
+          </dd>
+          <dt>Audit</dt><dd><%= d.audit %></dd>
+          <dt>Best for</dt><dd><%= d.bestFor %></dd>
+        </dl>
+        <div class="mll-ai-deploy__cols">
+          <div>
+            <div class="mll-ai-deploy__col-label">Pros</div>
+            <ul class="mll-ai-deploy__pros">
+              <% (d.pros || []).forEach((p) => { %><li><%= p %></li><% }) %>
+            </ul>
+          </div>
+          <div>
+            <div class="mll-ai-deploy__col-label">Trade-offs</div>
+            <ul class="mll-ai-deploy__cons">
+              <% (d.cons || []).forEach((c) => { %><li><%= c %></li><% }) %>
+            </ul>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</section>
+
+<section class="mll-chart-block">
+  <h2>Guardrail pipeline · ECharts</h2>
+  <p class="mll-chart-block__lead">
+    Every LLM call flows through scrub → policy → schema → router → inference → validator → provenance → signed audit. Click any node for the responsible scope item.
+  </p>
+  <div class="mll-chart" id="aiPipeline" style="height:420px"></div>
+</section>
+
+<section class="mll-chart-block">
+  <h2>Where the LLM shows up in this pitch</h2>
+  <p class="mll-chart-block__lead">
+    Each Upland view above has a recommended deployment + the specific guardrails we'd put on it.
+  </p>
+  <div class="mll-ai-table">
+    <div class="mll-ai-table__row mll-ai-table__row--head">
+      <div>View</div>
+      <div>LLM task</div>
+      <div>Default deployment</div>
+      <div>Guardrails</div>
+    </div>
+    <% (view.data.viewMap || []).forEach((row) => { %>
+      <div class="mll-ai-table__row">
+        <div class="mll-ai-table__view"><%= row.view %></div>
+        <div><%= row.task %></div>
+        <div>
+          <span class="mll-pill mll-pill--<%= row.deployment === 'Local' ? 'ok' : (row.deployment === 'MLL API' ? 'accent' : 'warn') %>"><%= row.deployment %></span>
+        </div>
+        <div>
+          <ul>
+            <% (row.guardrails || []).forEach((g) => { %><li><%= g %></li><% }) %>
+          </ul>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</section>
+
+<script id="aiPipelineData" type="application/json"><%- JSON.stringify(view.data.pipeline || {}) %></script>

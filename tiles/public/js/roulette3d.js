@@ -1,0 +1,701 @@
+/**
+ * roulette3d.js — Roulette on the shared 3D table.
+ *
+ * Bet → spin → settle. Rendering:
+ *   • a 3D wheel (wheel3d) that spins and lands the ball on the server's pocket
+ *   • each seat's bankroll + current bet on its plate
+ *   • outside bets (red/black/even/odd/low/high) + quick straight 7 / 0 as buttons
+ *   • the last result shown in the action bar and on the wheel
+ */
+import { createTable3D } from './table3d.js?v=1780540000000';
+import { createTableClient } from './tableclient3d.js?v=1780348653535';
+import { createHUD } from './hud3d.js?v=1780348653535';
+import { buildWheel, spinTo, colorOf } from './wheel3d.js?v=1780348653535';
+import { buildRouletteFelt } from './felt3d.js?v=1780348653535';
+import { dropStack, seatColor } from './chip3d.js?v=1780348653535';
+import { showResult, renderHistory, makeDeltaTracker } from './casino-fx.js?v=1780480000000';
+import { createBetBar } from './betbar.js?v=1780480000000';
+import { createAudioBus } from './audiobus.js?v=1780540000000';
+import { createDealerFx } from './dealerfx.js?v=1780413600000';
+import { createChipBurst } from './chipburst.js?v=1780520000000';
+
+const T = createTable3D({
+  tableRadius: 34, feltColor: 0x0e5c3a,
+  bgScene: 'roulette',
+  cameraStart: { x: 0, y: 48, z: 96 },
+  cameraTarget: { x: 0, y: 4, z: 0 },
+});
+T.setCamera({ maxDistance: 320 });
+const THREE = T.THREE;
+const _delta = makeDeltaTracker();
+const _history = [];
+let _fxSeenKey = '';
+
+const FELT = buildRouletteFelt(); FELT.position.set(0, 0.03, 6); T.scene.add(FELT);
+const WHEEL = buildWheel(); WHEEL.position.set(0, 0, -14); WHEEL.scale.setScalar(0.92); T.scene.add(WHEEL);
+const BURST = createChipBurst(T);   // shared gold win burst
+
+const C = createTableClient({
+  onState(s) { onState(s); },
+  onPriv() { HUD.render(); syncBetBar(); },
+  onEvent(ev) { onEvent(ev); },
+  onOver(o) { HUD.showOver(o); },
+  onReconnect(on, msg, rejoin) { HUD.showReconnect(on, msg, rejoin); },
+  onError(msg) { HUD.setStatus('⚠ ' + msg); },
+});
+
+let lastSeatCount = 0, _lastPocketKey = '';
+function onState(s) {
+  const v = s.view || {};
+  const n = (s.seats || []).length;
+  if (n && n !== lastSeatCount) { T.buildSeats(n, C.mySeat); lastSeatCount = n; }
+  updateSeats(s, v);
+  renderAllBets(v);
+  if (_delta.last == null) { const b = myChips(); if (b != null) _delta.prime(b); }
+  maybeSpin(v);
+  HUD.render();
+  syncBetBar();
+  HUD.renderVote(s.vote);
+  renderScoreboard();
+  if (s.phase === 'lobby') HUD.hideOver();
+}
+
+function pushHistory(pocket, color) {
+  // de-dupe against the last entry (state can re-broadcast the same result)
+  const lastEntry = _history[_history.length - 1];
+  if (lastEntry && lastEntry.key === _lastPocketKey) return;
+  _history.push({ label: String(pocket), color, key: _lastPocketKey });
+  renderHistory(_history);
+}
+
+function maybeSpin(v) {
+  if (v.lastPocket == null) return;
+  const key = v.round + ':' + v.lastPocket;
+  if (key === _lastPocketKey) return;
+  const first = _lastPocketKey === '';
+  _lastPocketKey = key;
+  const pocket = v.lastPocket, color = v.lastColor || 'black';
+
+  // History populates immediately on every new result (and on the instant
+  // first-render when joining mid-table) — independent of the spin animation.
+  pushHistory(pocket, color);
+
+  if (first) { spinTo(WHEEL, pocket, { dur: 1 }); return; }
+  if (T.Sound) T.Sound.tick && T.Sound.tick();
+  spinTo(WHEEL, pocket, {
+    onTap: () => { if (T.Sound) T.Sound.tick && T.Sound.tick(); },
+    onDone: () => {
+      if (T.Sound) T.Sound.trick && T.Sound.trick();
+      const bal = myChips();
+      const d = _delta.delta(bal);
+      showResult({
+        title: String(pocket),
+        titleColor: color,
+        sub: color.toUpperCase(),
+        delta: d,
+        balance: bal,
+      });
+      if (typeof d === 'number' && d >= 100) DEALER.bigWin('Winner — pay it out!');
+      if (typeof d === 'number' && d > 0) { BURST.spawn(0, 6, { n: Math.max(12, Math.min(26, 12 + Math.round(d / 18))) }); try { T.Sound.coin && T.Sound.coin(); if (d >= 100) AUDIO.applause(); } catch (e) {} }
+      placeDolly(pocket);
+      _rakeHoldUntil = Math.max(_rakeHoldUntil, performance.now() + 1400);
+    },
+  });
+}
+
+function seatChips(seat, v, i) {
+  // authoritative wallet balance first (real bettors), then in-engine bankroll
+  if (seat && typeof seat.chips === 'number') return seat.chips;
+  if (v.bankrolls && typeof v.bankrolls[i] === 'number') return v.bankrolls[i];
+  return null;
+}
+function updateSeats(s, v) {
+  for (let i = 0; i < (s.seats || []).length; i++) {
+    const seat = s.seats[i]; if (!seat) continue;
+    const chips = seatChips(seat, v, i);
+    const bets = v.bets && v.bets[i];     // array of bets this round (roulette is multi-bet)
+    const name = (seat.displayName || ('Seat ' + i)) + (seat.bot ? ' 🤖' : '');
+    let sub;
+    if (s.phase === 'lobby') {
+      sub = seat.ready ? 'ready' : (seat.platformId ? 'waiting' : 'empty');
+    } else if (!seat.platformId && !seat.bot) {
+      sub = 'open';
+    } else {
+      let betStr = '';
+      if (Array.isArray(bets) && bets.length) {
+        const total = bets.reduce((acc, b) => acc + (b.amount || 0), 0);
+        betStr = ` · ${bets.length} bet${bets.length > 1 ? 's' : ''} (${total})`;
+      } else if (bets && bets.amount != null) {
+        betStr = ` · ${bets.side === 'number' ? ('#' + bets.n) : bets.side} ${bets.amount}`;
+      }
+      sub = (chips != null ? `${chips} chips` : '—') + betStr;
+    }
+    const turn = v.phase === 'bets' && v.turn === i;
+    const occupied = !!(seat.platformId || seat.bot);
+    T.updateSeat(i, { name, sub, turn, you: i === C.mySeat, color: occupied ? seatColor(i) : null });
+    if (T.setSeatAvatar) T.setSeatAvatar(i, { present: occupied, color: seatColor(i), active: !!turn });
+  }
+}
+
+let _pendingRake = null;   // { wonBets, deltas } captured at settle, raked after a beat
+let _rakeHoldUntil = 0;
+function onEvent(ev) {
+  if (!ev || !ev.type) return;
+  if (ev.type === 'bet') DEALER.onBet(ev);
+  if (ev.type === 'gameWon' && T.Sound) T.Sound.win && T.Sound.win();
+  if (ev.type === 'vote:open' || ev.type === 'vote:update') HUD.renderVote(ev);
+  if (ev.type === 'vote:result') HUD.renderVote(null);
+  if (ev.type === 'settle') {
+    // hold the board so the winning stacks stay visible, then rake.
+    _pendingRake = { wonBets: ev.wonBets || [], deltas: ev.deltas || [] };
+    _rakeHoldUntil = performance.now() + 1200;   // ~1.2s before the rake
+    if (ev.stats) renderScoreboard(ev.stats);
+  }
+}
+
+// Visually settle the board: winning stacks glow + pop briefly, losing stacks slide
+// off toward the wheel, then everything clears (raked) and the next round renders.
+function rakeChips() {
+  const won = new Set((_pendingRake.wonBets || []).map((w) => w.seat + ':' + w.idx));
+  const kids = CHIPS.children.slice();
+  // tag each chip group we created with seat/idx so we can tell winners from losers
+  for (const g of kids) {
+    const isWin = ((g.userData && g.userData.betRefs) || []).some((r) => won.has(r));
+    if (isWin) {
+      // pop the winners up briefly, then clear
+      const t0 = performance.now();
+      const baseY = g.position.y;
+      const tick = () => {
+        const p = Math.min(1, (performance.now() - t0) / 420);
+        g.position.y = baseY + Math.sin(p * Math.PI) * 2.4;
+        if (p < 1) requestAnimationFrame(tick); else CHIPS.remove(g);
+      };
+      requestAnimationFrame(tick);
+    } else {
+      // rake losers toward the wheel (-Z) and fade by dropping through the felt
+      const t0 = performance.now();
+      const fromX = g.position.x, fromZ = g.position.z;
+      const toX = 0, toZ = WHEEL.position.z;   // sweep toward the wheel
+      const tick = () => {
+        const p = Math.min(1, (performance.now() - t0) / 380);
+        const e = 1 - Math.pow(1 - p, 2);
+        g.position.x = fromX + (toX - fromX) * e;
+        g.position.z = fromZ + (toZ - fromZ) * e;
+        g.position.y = 0.05 - p * 0.4;   // sink slightly
+        if (p < 1) requestAnimationFrame(tick); else CHIPS.remove(g);
+      };
+      requestAnimationFrame(tick);
+    }
+  }
+  if (T.Sound) T.Sound.click && T.Sound.click();
+  clearDolly();
+  _pendingRake = null;
+  _betsKey = '__raked__';   // force a fresh render for the next round's bets
+}
+
+const OUTSIDE = [
+  { side: 'red', label: 'Red', cls: 'red' }, { side: 'black', label: 'Black', cls: 'black' },
+  { side: 'even', label: 'Even', cls: 'ghost' }, { side: 'odd', label: 'Odd', cls: 'ghost' },
+  { side: 'low', label: '1–18', cls: 'ghost' }, { side: 'high', label: '19–36', cls: 'ghost' },
+];
+
+const HUD = createHUD({
+  client: C, Sound: T.Sound, title: 'ROULETTE',
+  lowerWins: false, scoreLabel: 'Most chips wins',
+  onResetCam: () => T.resetCamera(),
+  statusLine(v, c) {
+    if (v.phase === 'bets') return v.turn === c.mySeat ? '<b>Place your bet</b>' : 'Betting…';
+    const r = v.lastPocket != null ? ` · landed ${v.lastPocket} ${v.lastColor || ''}` : '';
+    return 'Spinning…' + r;
+  },
+  renderActions(box, { priv, myTurn }) {
+    if (!priv || !myTurn) return;
+    const placed = (priv.myBets && priv.myBets.length) || 0;
+    const hint = document.createElement('div');
+    hint.style.cssText = 'color:#bfe0cd;font-size:13px;align-self:center;text-align:center;line-height:1.4';
+    hint.innerHTML = placed
+      ? `tap the felt to add bets · build your stake in the tray · tap <b>Spin</b> · ${placed} bet${placed > 1 ? 's' : ''}`
+      : 'tap a felt number to bet · build your stake in the tray · then tap <b>Spin</b>';
+    box.appendChild(hint);
+  },
+  scoreFor(v, seat) {
+    return { score: (v.bankrolls && v.bankrolls[seat] != null) ? v.bankrolls[seat] : 0, sub: 'chips' };
+  },
+  scoreFootText: (v) => `Round ${v.round ?? '—'} · table runs until you leave`,
+  infoHTML() {
+    return `
+      <div class="k"><span>Goal</span><b>Most chips wins</b></div>
+      <ul>
+        <li>Bet on a color, even/odd, or half (1–18 / 19–36) — all pay even money.</li>
+        <li>A straight number (the quick 7 / 0 here) pays 35:1.</li>
+        <li>European single-zero wheel. Build the biggest bankroll before the spins run out.</li>
+      </ul>`;
+  },
+});
+document.title = 'Roulette · tiles.madladslab';
+
+// keep the wheel gently idling between spins for life
+let _idle = 0;
+T.onFrame((now, dt) => {
+  const v = (C.state && C.state.view) || {};
+  if (v.phase === 'bets' && WHEEL.userData.head) { WHEEL.userData.head.rotation.y += 0.0016 * (dt || 16); }
+});
+
+
+
+// ───────────────────────── table scoreboard (W/L/net) ─────────────────────────
+function ensureScoreboard() {
+  let el = document.getElementById('rouletteScores');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'rouletteScores';
+  el.style.cssText = [
+    'position:fixed', 'left:10px', 'top:60px', 'z-index:60', 'pointer-events:none',
+    'background:rgba(6,14,9,.82)', 'border:1px solid rgba(255,255,255,.12)',
+    'border-radius:12px', 'padding:8px 10px', 'min-width:172px',
+    'font-family:system-ui', 'box-shadow:0 8px 28px rgba(0,0,0,.5)',
+  ].join(';');
+  document.body.appendChild(el);
+  return el;
+}
+let _scoreKey = '';
+function renderScoreboard(stats) {
+  const s = C.state; if (!s || !s.seats) return;
+  stats = stats || (s.view && s.view.stats);
+  if (!stats || !stats.net) return;
+  const rows = [];
+  for (let i = 0; i < s.seats.length; i++) {
+    const seat = s.seats[i]; if (!seat) continue;
+    const occupied = !!(seat.platformId || seat.bot);
+    if (!occupied) continue;
+    rows.push({
+      i, you: i === C.mySeat,
+      name: (seat.displayName || ('Seat ' + i)) + (seat.bot ? ' 🤖' : ''),
+      color: seatColor(i),
+      wins: (stats.wins && stats.wins[i]) || 0,
+      losses: (stats.losses && stats.losses[i]) || 0,
+      net: (stats.net && stats.net[i]) || 0,
+    });
+  }
+  // sort by net desc so the leader is on top
+  rows.sort((a, b) => b.net - a.net);
+  const key = JSON.stringify(rows.map((r) => [r.i, r.wins, r.losses, r.net]));
+  if (key === _scoreKey) return;
+  _scoreKey = key;
+  const el = ensureScoreboard();
+  const hex = (c) => '#' + (c >>> 0).toString(16).padStart(6, '0');
+  el.innerHTML =
+    '<div style="color:#e3c567;font-weight:800;font-size:12px;letter-spacing:.08em;margin-bottom:6px">TABLE · W / L / NET</div>' +
+    rows.map((r) => {
+      const netCol = r.net > 0 ? '#3fd07f' : (r.net < 0 ? '#ff6f52' : '#9fb0a6');
+      const netStr = (r.net > 0 ? '+' : '') + r.net;
+      return '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin:2px 0;' +
+        (r.you ? 'font-weight:800' : '') + '">' +
+        '<span style="width:9px;height:9px;border-radius:50%;background:' + hex(r.color) + ';flex:none;border:1px solid rgba(255,255,255,.5)"></span>' +
+        '<span style="flex:1;color:' + (r.you ? '#ffe9a8' : '#dfeae2') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px">' + r.name + '</span>' +
+        '<span style="color:#9fb0a6">' + r.wins + '/' + r.losses + '</span>' +
+        '<span style="color:' + netCol + ';font-weight:800;min-width:38px;text-align:right">' + netStr + '</span>' +
+        '</div>';
+    }).join('');
+}
+
+// ───────────────────────── full betting board (DOM overlay) ─────────────────────────
+const RED_N = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+function numColor(n) { return n === 0 ? '#2f8f5b' : (RED_N.has(n) ? '#b5482f' : '#15171a'); }
+const BAR = createBetBar({
+  Sound: T.Sound,
+  action: { label: 'Spin ▸', onClick: () => { C.emitAction({ type: 'done' }); } },
+});
+function syncBetBar() {
+  const p = C.priv || {};
+  const legal = p.legal || [];
+  const canBet = p.phase === 'bets' && !!p.yourTurn;
+  const canSpin = canBet && legal.some((a) => a.type === 'done');
+  BAR.setVisible(!!canBet);
+  BAR.setActionVisible(!!canSpin);
+}
+const AUDIO = createAudioBus({ ttsBase: '/tts', voice: 'ryan', onMuteChange: (m) => { try { T.Sound.setMuted(m); } catch (e) {} } });
+try { AUDIO.setMuted(T.Sound.isMuted()); } catch (e) {}
+AUDIO.buildMixer(document.getElementById('mutebtn'));
+AUDIO.startBeds();
+function rouletteCall(bet) {
+  if (!bet) return null;
+  if (bet.side === 'number') return bet.n === 0 ? 'Zero!' : (bet.n + ' straight up!');
+  return {
+    red: 'Red!', black: 'Black!', even: 'Even!', odd: 'Odd!',
+    low: 'Low — one to eighteen!', high: 'High — nineteen to thirty-six!',
+    dozen1: 'First dozen!', dozen2: 'Second dozen!', dozen3: 'Third dozen!',
+    col1: 'Column bet!', col2: 'Column bet!', col3: 'Column bet!',
+    split: 'Split!', street: 'Street!', corner: 'Corner!', line: 'Six-line!',
+  }[bet.side] || null;
+}
+const DEALER = createDealerFx({ audio: AUDIO, every: 3, callFor: rouletteCall });
+
+function ensureBoard() {
+  if (document.getElementById('rouletteBoard')) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'rouletteBoard';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;background:rgba(4,7,5,.78);padding:12px';
+  wrap.innerHTML = `
+    <div style="width:100%;max-width:520px;background:#0c1d14;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px;box-shadow:0 24px 70px rgba(0,0,0,.6)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-weight:800;letter-spacing:.04em">PLACE YOUR BET</div>
+        <button id="rbClose" style="width:32px;height:32px;border-radius:8px;background:#1d3b2b;color:#cfe7d8;border:none;font-size:14px;cursor:pointer">✕</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="color:#9fb0a6;font-size:12px">Build your bet with the chip tray below, then tap a square.</span>
+        <span id="rbWallet" style="margin-left:auto;color:#e3c567;font-weight:800;font-size:13px">…chips</span>
+      </div>
+      <div id="rbGrid"></div>
+    </div>`;
+  document.body.appendChild(wrap);
+  document.getElementById('rbClose').onclick = () => { wrap.style.display = 'none'; };
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) wrap.style.display = 'none'; });
+  buildGrid();
+}
+
+function bet(side, n) {
+  const action = { type: 'bet', side, amount: BAR.getStake() };
+  if (side === 'number') action.n = n;
+  C.emitAction(action);
+  const w = document.getElementById('rouletteBoard'); if (w) w.style.display = 'none';
+}
+
+function cell(label, bg, fg, onclick, flex) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.style.cssText = 'border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 0;font-weight:700;font-size:12.5px;cursor:pointer;color:' + (fg || '#f3efe2') + ';background:' + bg + ';flex:' + (flex || 1);
+  b.onclick = onclick;
+  return b;
+}
+
+function buildGrid() {
+  const grid = document.getElementById('rbGrid'); if (!grid) return;
+  grid.innerHTML = '';
+  // zero (full width-ish)
+  const zeroRow = document.createElement('div'); zeroRow.style.cssText = 'display:flex;gap:4px;margin-bottom:4px';
+  zeroRow.appendChild(cell('0', numColor(0), '#fff', () => bet('number', 0), 1));
+  grid.appendChild(zeroRow);
+  // numbers 1..36 in three rows (top row 3,6,9..; standard layout) + a column bet at the end
+  for (let row = 0; row < 3; row++) {
+    const r = document.createElement('div'); r.style.cssText = 'display:flex;gap:4px;margin-bottom:4px';
+    for (let col = 0; col < 12; col++) {
+      const n = col * 3 + (3 - row); // top row ends in 3,6,9.. ; standard orientation
+      r.appendChild(cell(String(n), numColor(n), '#fff', () => bet('number', n), 1));
+    }
+    // column bet (2:1) at the right of each row: row0->col3 (3,6,9..), row1->col2, row2->col1
+    const colSide = row === 0 ? 'col3' : (row === 1 ? 'col2' : 'col1');
+    r.appendChild(cell('2:1', '#1d3b2b', '#cfe7d8', () => bet(colSide), 1));
+    grid.appendChild(r);
+  }
+  // dozens
+  const dz = document.createElement('div'); dz.style.cssText = 'display:flex;gap:4px;margin-bottom:4px';
+  dz.appendChild(cell('1st 12', '#143726', '#cfe7d8', () => bet('dozen1'), 1));
+  dz.appendChild(cell('2nd 12', '#143726', '#cfe7d8', () => bet('dozen2'), 1));
+  dz.appendChild(cell('3rd 12', '#143726', '#cfe7d8', () => bet('dozen3'), 1));
+  grid.appendChild(dz);
+  // even-money outsides
+  const ev = document.createElement('div'); ev.style.cssText = 'display:flex;gap:4px';
+  ev.appendChild(cell('1-18', '#1d3b2b', '#cfe7d8', () => bet('low'), 1));
+  ev.appendChild(cell('EVEN', '#1d3b2b', '#cfe7d8', () => bet('even'), 1));
+  ev.appendChild(cell('RED', '#b5482f', '#fff', () => bet('red'), 1));
+  ev.appendChild(cell('BLACK', '#15171a', '#fff', () => bet('black'), 1));
+  ev.appendChild(cell('ODD', '#1d3b2b', '#cfe7d8', () => bet('odd'), 1));
+  ev.appendChild(cell('19-36', '#1d3b2b', '#cfe7d8', () => bet('high'), 1));
+  grid.appendChild(ev);
+}
+
+function myChips() {
+  const s = C.state; if (!s || !s.seats) return null;
+  const me = s.seats[C.mySeat];
+  if (me && typeof me.chips === 'number') return me.chips;
+  const v = s.view || {};
+  if (v.bankrolls && typeof v.bankrolls[C.mySeat] === 'number') return v.bankrolls[C.mySeat];
+  return null;
+}
+function refreshWallet() {
+  const el = document.getElementById('rbWallet'); if (!el) return;
+  const c = myChips();
+  el.textContent = (c == null) ? '' : (c + ' chips');
+}
+
+function openBoard() {
+  ensureBoard();
+  refreshWallet();
+  document.getElementById('rouletteBoard').style.display = 'flex';
+}
+
+
+// ───────────────────────── tappable felt + chip stacks ─────────────────────────
+// The felt plane is 64x32 world units, centered at FELT.position, lying flat
+// (rotation.x = -PI/2). Its texture is 2048x1024. We map a world-space hit on the
+// felt to canvas coords, then to a bet zone matching the felt3d.js layout.
+const FELT_W = 64, FELT_H = 32, TEX_W = 2048, TEX_H = 1024;
+const CHIPS = new THREE.Group(); T.scene.add(CHIPS);
+
+// The winning-number marker ("dolly") — sits on the hit number from when the ball
+// lands until the rake clears, so the result reads on the layout, casino-style.
+const DOLLY = new THREE.Group(); T.scene.add(DOLLY);
+function clearDolly() { for (const m of DOLLY.children.slice()) DOLLY.remove(m); }
+function placeDolly(pocket) {
+  clearDolly();
+  const tex = betToTex({ side: 'number', n: pocket });
+  if (!tex) return;
+  const w = texToWorld(tex.px, tex.py);
+  const colHex = pocket === 0 ? '#2f8f5b' : (RED_N.has(pocket) ? '#b5482f' : '#15171a');
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.15, 1.4, 0.55, 24),
+    new THREE.MeshStandardMaterial({ color: 0xe3c567, roughness: 0.4, metalness: 0.35 }));
+  base.position.y = 0.27; base.castShadow = true;
+  const S = 128, cvs = document.createElement('canvas'); cvs.width = cvs.height = S;
+  const c = cvs.getContext('2d');
+  c.fillStyle = colHex; c.beginPath(); c.arc(S / 2, S / 2, S / 2 - 4, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#fff'; c.font = 'bold 64px system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(String(pocket), S / 2, S / 2 + 2);
+  const t = new THREE.CanvasTexture(cvs); t.colorSpace = THREE.SRGBColorSpace;
+  const plate = new THREE.Mesh(new THREE.CircleGeometry(1.05, 24), new THREE.MeshBasicMaterial({ map: t }));
+  plate.rotation.x = -Math.PI / 2; plate.position.y = 0.56;
+  const g = new THREE.Group(); g.add(base); g.add(plate);
+  g.position.set(w.x, 0, w.z);
+  DOLLY.add(g);
+}
+
+// layout geometry (must mirror felt3d.buildRouletteFelt)
+const gridX = 220, gridY = 360, cellW = 130, cellH = 130;
+
+function worldToTex(point) {
+  // local felt coords: felt lies in XZ; plane local x maps to world.x - FELT.x,
+  // plane local y maps to -(world.z - FELT.z) because of the -PI/2 x-rotation.
+  const lx = point.x - FELT.position.x;
+  const lz = point.z - FELT.position.z;
+  // u: 0..1 across width (left to right), v: 0..1 down the texture (top to bottom)
+  const u = (lx / FELT_W) + 0.5;
+  const v = (lz / FELT_H) + 0.5;
+  if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+  return { px: u * TEX_W, py: v * TEX_H };
+}
+
+// inverse of worldToTex: texture px/py -> world point on the felt
+function texToWorld(px, py) {
+  const u = px / TEX_W, v = py / TEX_H;
+  const lx = (u - 0.5) * FELT_W, lz = (v - 0.5) * FELT_H;
+  return { x: lx + FELT.position.x, z: lz + FELT.position.z };
+}
+
+// center texture px/py for a given bet (mirror of zoneAt / felt3d layout)
+function colRowOfNum(n) {
+  // inverse of numAt: n = col*3 + (3-row)  => for n in 1..36
+  const col = Math.floor((n - 1) / 3);
+  const row = 3 - (n - col * 3);
+  return { col, row };
+}
+function betToTex(bet) {
+  const gx0 = gridX, gy0 = gridY;
+  const side = bet.side;
+  if (side === 'number') {
+    if (bet.n === 0) return { px: gridX - cellW / 2, py: gy0 + cellH * 1.5 };
+    const { col, row } = colRowOfNum(bet.n);
+    return { px: gx0 + col * cellW + cellW / 2, py: gy0 + row * cellH + cellH / 2 };
+  }
+  if ((side === 'split' || side === 'street' || side === 'corner' || side === 'line') && Array.isArray(bet.nums) && bet.nums.length) {
+    // place the chip at the average center of its covered cells (sits on the shared edge/corner)
+    let sx = 0, sy = 0, k = 0;
+    for (const n of bet.nums) {
+      if (n === 0) { sx += gridX - cellW / 2; sy += gy0 + cellH * 1.5; k++; continue; }
+      const { col, row } = colRowOfNum(n);
+      sx += gx0 + col * cellW + cellW / 2; sy += gy0 + row * cellH + cellH / 2; k++;
+    }
+    return { px: sx / k, py: sy / k };
+  }
+  // 2:1 columns (right of grid)
+  if (side === 'col3') return { px: gx0 + 12 * cellW + cellW / 2, py: gy0 + 0 * cellH + cellH / 2 };
+  if (side === 'col2') return { px: gx0 + 12 * cellW + cellW / 2, py: gy0 + 1 * cellH + cellH / 2 };
+  if (side === 'col1') return { px: gx0 + 12 * cellW + cellW / 2, py: gy0 + 2 * cellH + cellH / 2 };
+  // dozens
+  const dy = gy0 + 3 * cellH;
+  if (side === 'dozen1') return { px: gx0 + 0 * 4 * cellW + 2 * cellW, py: dy + 45 };
+  if (side === 'dozen2') return { px: gx0 + 1 * 4 * cellW + 2 * cellW, py: dy + 45 };
+  if (side === 'dozen3') return { px: gx0 + 2 * 4 * cellW + 2 * cellW, py: dy + 45 };
+  // even-money bar
+  const ey = dy + 90;
+  const evIdx = { low: 0, even: 1, red: 2, black: 3, odd: 4, high: 5 }[side];
+  if (evIdx != null) return { px: gx0 + evIdx * 2 * cellW + cellW, py: ey + 45 };
+  return null;
+}
+
+// Render EVERY seat's bets on the board from authoritative state (humans + bots).
+// Cleared and redrawn whenever the set of bets changes.
+let _betsKey = '';
+function renderAllBets(v) {
+  if (_pendingRake || performance.now() < _rakeHoldUntil) return;   // holding the settled board
+  const bets = v.bets || [];
+  const key = (v.round || 0) + '|' + JSON.stringify(bets);
+  if (key === _betsKey) return;        // nothing changed
+  _betsKey = key;
+  for (const m of CHIPS.children.slice()) CHIPS.remove(m);
+  for (let seat = 0; seat < bets.length; seat++) {
+    const list = bets[seat]; if (!Array.isArray(list)) continue;
+    // pile up: same-zone bets merge into one growing stack; keep every bet's ref
+    // so the rake can still tell a winning pile from a losing one.
+    const byZone = new Map();
+    for (let bi = 0; bi < list.length; bi++) {
+      const bet = list[bi];
+      const tex = betToTex(bet); if (!tex) continue;
+      const k = bet.side + '|' + (bet.n != null ? bet.n : '') + '|' + (bet.nums ? bet.nums.join(',') : '');
+      const cur = byZone.get(k) || { tex, amount: 0, refs: [] };
+      cur.amount += (bet.amount || 0);
+      cur.refs.push(seat + ':' + bi);
+      byZone.set(k, cur);
+    }
+    const ox = ((seat % 3) - 1) * 0.7;
+    const oz = (Math.floor(seat / 3) - 0.5) * 0.7;
+    for (const { tex, amount, refs } of byZone.values()) {
+      const w = texToWorld(tex.px, tex.py);
+      const g = dropStack(CHIPS, w.x + ox, w.z + oz, amount, { dur: 1, seatColor: seatColor(seat) });
+      if (g) g.userData.betRefs = refs;
+    }
+  }
+}
+
+function numAt(col, row) { // col 0..11, row 0..2 (top row = 3,6,9..)
+  const n = col * 3 + (3 - row);
+  return (n >= 1 && n <= 36) ? n : null;
+}
+// Edge-aware: tapping a cell center = straight; near a shared edge = split; near a
+// shared corner = corner; the left/right outer strips of the grid = street/line.
+function zoneAt(px, py) {
+  // zero (left tall cell)
+  if (px >= gridX - cellW && px < gridX && py >= gridY && py < gridY + cellH * 3) return { side: 'number', n: 0 };
+
+  const gx0 = gridX, gx1 = gridX + 12 * cellW, gy0 = gridY, gy1 = gridY + 3 * cellH;
+  if (px >= gx0 && px < gx1 && py >= gy0 && py < gy1) {
+    const col = Math.floor((px - gx0) / cellW);
+    const row = Math.floor((py - gy0) / cellH);
+    const fx = ((px - gx0) % cellW) / cellW;   // 0..1 within cell
+    const fy = ((py - gy0) % cellH) / cellH;
+    const M = 0.12;                            // edge margin (tight: most of the cell = straight number)
+    const nearL = fx < M, nearR = fx > 1 - M, nearT = fy < M, nearB = fy > 1 - M;
+    const here = numAt(col, row);
+
+    // corner: near a vertical AND horizontal interior boundary -> 4 numbers
+    if ((nearL || nearR) && (nearT || nearB)) {
+      const c2 = nearR ? col + 1 : col - 1;
+      const r2 = nearB ? row + 1 : row - 1;
+      const ns = [numAt(col, row), numAt(c2, row), numAt(col, r2), numAt(c2, r2)].filter((x) => x);
+      if (ns.length === 4) return { side: 'corner', nums: ns };
+    }
+    // split: near a single interior boundary -> 2 numbers
+    if (nearL || nearR) {
+      const c2 = nearR ? col + 1 : col - 1;
+      const ns = [here, numAt(c2, row)].filter((x) => x);
+      if (ns.length === 2) return { side: 'split', nums: ns };
+    }
+    if (nearT || nearB) {
+      const r2 = nearB ? row + 1 : row - 1;
+      const ns = [here, numAt(col, r2)].filter((x) => x);
+      if (ns.length === 2) return { side: 'split', nums: ns };
+    }
+    // center -> straight
+    if (here) return { side: 'number', n: here };
+  }
+
+  // street: tap just ABOVE the top row of a column (thin strip) -> that column's row triple
+  // (we map the top edge of the grid as the street zone for the 3 numbers in that grid column)
+  const streetY = gy0 - 26;
+  if (py >= streetY && py < gy0 && px >= gx0 && px < gx1) {
+    const col = Math.floor((px - gx0) / cellW);
+    const ns = [numAt(col, 0), numAt(col, 1), numAt(col, 2)].filter((x) => x);
+    if (ns.length === 3) return { side: 'street', nums: ns };
+  }
+  // line (double street): tap on the boundary between two grid columns at the top strip
+  if (py >= streetY && py < gy0 && px >= gx0 && px < gx1) {
+    const col = Math.floor((px - gx0) / cellW);
+    const ns = [];
+    for (const cc of [col, col + 1]) for (let r = 0; r < 3; r++) { const v = numAt(cc, r); if (v) ns.push(v); }
+    if (ns.length === 6) return { side: 'line', nums: ns };
+  }
+
+  // 2:1 columns (right of grid)
+  if (px >= gx1 && px < gx1 + cellW && py >= gy0 && py < gy1) {
+    const row = Math.floor((py - gy0) / cellH);
+    return { side: row === 0 ? 'col3' : (row === 1 ? 'col2' : 'col1') };
+  }
+  // dozens
+  const dy = gy0 + 3 * cellH;
+  if (py >= dy && py < dy + 90 && px >= gx0 && px < gx1) {
+    const d = Math.floor((px - gx0) / (4 * cellW));
+    return { side: 'dozen' + (d + 1) };
+  }
+  // even-money bar
+  const ey = dy + 90;
+  if (py >= ey && py < ey + 90 && px >= gx0 && px < gx1) {
+    const i = Math.floor((px - gx0) / (2 * cellW));
+    return { side: ['low', 'even', 'red', 'black', 'odd', 'high'][i] };
+  }
+  return null;
+}
+
+function placeFeltBet(zone, worldPoint) {
+  if (!zone) return;
+  // only on my betting turn
+  const priv = C.priv;
+  if (!priv || !priv.yourTurn || priv.phase !== 'bets') return;
+  const action = { type: 'bet', side: zone.side, amount: BAR.getStake() };
+  if (zone.side === 'number') action.n = zone.n;
+  if (zone.nums) action.nums = zone.nums;
+  C.emitAction(action);
+  if (T.Sound) T.Sound.click && T.Sound.click();
+}
+
+function feltBetZones(clientX, clientY) {
+  const hits = T.raycast(clientX, clientY, [FELT]);
+  if (!hits.length) return;
+  const tex = worldToTex(hits[0].point);
+  if (!tex) return;
+  const zone = zoneAt(tex.px, tex.py);
+  placeFeltBet(zone, hits[0].point);
+}
+
+// clear chip stacks at the start of each new betting round (lastPocket changes / round bump)
+let _lastRound = -1;
+function clearChipsIfNewRound() {
+  if (_pendingRake || performance.now() < _rakeHoldUntil) return;
+  const v = (C.state && C.state.view) || {};
+  if (v.round != null && v.round !== _lastRound) {
+    _lastRound = v.round;
+    clearDolly();
+    if (_betsKey !== '__raked__') _betsKey = '';   // fresh render unless we just raked
+  }
+}
+
+// tap handler on the canvas
+// Tap-vs-drag: only a genuine tap (pointer down + up at ~same spot, quickly)
+// places a bet. A drag — i.e. orbiting/panning the camera — must NOT bet.
+let _tapStart = null;
+const TAP_MOVE_PX = 10;     // max travel to still count as a tap
+const TAP_MS = 500;         // max duration to still count as a tap
+T.renderer.domElement.addEventListener('pointerdown', (e) => {
+  _tapStart = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+}, false);
+T.renderer.domElement.addEventListener('pointermove', (e) => {
+  if (!_tapStart || e.pointerId !== _tapStart.id) return;
+  const moved = Math.hypot(e.clientX - _tapStart.x, e.clientY - _tapStart.y);
+  if (moved > TAP_MOVE_PX) _tapStart = null;   // became a drag — cancel the tap
+}, false);
+T.renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!_tapStart || e.pointerId !== _tapStart.id) { _tapStart = null; return; }
+  const moved = Math.hypot(e.clientX - _tapStart.x, e.clientY - _tapStart.y);
+  const dt = performance.now() - _tapStart.t;
+  const wasTap = moved <= TAP_MOVE_PX && dt <= TAP_MS;
+  _tapStart = null;
+  if (wasTap) feltBetZones(e.clientX, e.clientY);
+}, false);
+T.renderer.domElement.addEventListener('pointercancel', () => { _tapStart = null; }, false);
+
+// hook round-clear + delayed rake into the render loop
+T.onFrame(() => {
+  if (_pendingRake && performance.now() >= _rakeHoldUntil) rakeChips();
+  if (!_pendingRake) clearChipsIfNewRound();
+  const dly = DOLLY.children[0];
+  if (dly) dly.scale.setScalar(1 + Math.sin(performance.now() / 300) * 0.05);
+});

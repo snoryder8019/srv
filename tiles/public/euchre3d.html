@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Euchre 3D · tiles.madladslab</title>
+<style>
+  :root { --ink:#e9ecef; --muted:#9fb0a6; --gold:#e3c567; --green:#2fbf71; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#070a08; color:var(--ink); font-family:system-ui,-apple-system,sans-serif; }
+  #scene { position:fixed; inset:0; touch-action:none; }
+  #hud { position:fixed; inset:0; pointer-events:none; z-index:10; }
+  #hud > * { pointer-events:auto; }
+  #topbar { position:fixed; top:0; left:0; right:0; display:flex; align-items:center; gap:10px; padding:8px 12px;
+            background:linear-gradient(#070a08cc,#070a0800); font-size:12.5px; color:var(--muted); }
+  #topbar b { color:var(--gold); }
+  #status { flex:1; min-width:0; }
+  .iconbtn { width:38px; height:38px; border-radius:10px; background:rgba(17,35,26,.85); color:#cfe7d8; border:1px solid rgba(255,255,255,.14); font-size:16px; cursor:pointer; }
+  #controls { position:fixed; left:0; right:0; bottom:24px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:0 12px; }
+  button.act { background:var(--green); color:#05230f; border:none; border-radius:10px; padding:11px 16px; font-weight:800; cursor:pointer; font-size:14px; box-shadow:0 4px 14px rgba(0,0,0,.4); }
+  button.act.ghost { background:#1d3b2b; color:var(--ink); }
+  button.act.gold { background:var(--gold); color:#241d05; }
+  button.act:disabled { opacity:.4; cursor:default; }
+  #camhint { position:fixed; left:12px; bottom:14px; font-size:10px; color:#6f8478; pointer-events:none; }
+  #over { position:fixed; inset:0; background:rgba(4,7,5,.82); display:none; align-items:center; justify-content:center; padding:18px; z-index:50; }
+  #over.show { display:flex; }
+  .overcard { width:100%; max-width:440px; background:#10231a; border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:24px; text-align:center; box-shadow:0 24px 70px rgba(0,0,0,.5); }
+  .overcard .result { font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  .overcard h2 { margin:6px 0 2px; font-size:32px; }
+  .overcard .score { font-size:15px; color:var(--gold); margin-bottom:14px; font-weight:800; }
+  .stand { text-align:left; background:#0a1812; border-radius:10px; padding:8px 12px; margin:10px 0 16px; }
+  .stand .r { display:flex; justify-content:space-between; font-size:13px; padding:3px 0; color:#cfe; }
+  .stand .r .w { color:var(--green); font-weight:700; } .stand .r .l { color:var(--muted); }
+  .overcard button { width:100%; border:none; border-radius:11px; padding:13px; font-size:15px; font-weight:800; cursor:pointer; margin-top:9px; }
+  .overcard .primary { background:var(--green); color:#05230f; } .overcard .danger { background:#3a1d1d; color:#f0c9c9; }
+  #reconnect { display:none; position:fixed; top:0; left:0; right:0; z-index:80; background:#3a2f12; color:#ffe9a8; text-align:center; padding:8px 12px; font-size:13px; }
+  #reconnect.show { display:block; }
+  #reconnect button { margin-left:10px; background:#e3c567; color:#241d05; border:none; border-radius:6px; padding:5px 12px; font-weight:800; cursor:pointer; }
+  #votePanel { display:none; position:fixed; left:50%; top:52px; transform:translateX(-50%); z-index:75; background:#1a1206; border:1px solid #e3c567; border-radius:12px; padding:14px 16px; width:min(92vw,360px); text-align:center; box-shadow:0 16px 50px rgba(0,0,0,.55); }
+  #votePanel.show { display:block; }
+  #votePanel .vt { color:#ffe9a8; font-size:14px; font-weight:700; margin-bottom:6px; }
+  #votePanel .vc { color:#9fb0a6; font-size:12px; margin-bottom:10px; }
+  #votePanel .vrow { display:flex; gap:10px; } #votePanel button { flex:1; border:none; border-radius:10px; padding:12px; font-weight:800; font-size:14px; cursor:pointer; }
+  #votePanel .wait { background:var(--green); color:#05230f; } #votePanel .kick { background:#b5482f; color:#fff; }
+  .panel { position:fixed; inset:0; background:rgba(4,7,5,.7); display:none; align-items:center; justify-content:center; padding:18px; z-index:60; }
+  .panel.show { display:flex; }
+  .panelcard { width:100%; max-width:420px; background:#0e2118; border:1px solid rgba(255,255,255,.1); border-radius:16px; padding:18px 20px; box-shadow:0 24px 70px rgba(0,0,0,.55); }
+  .panelhead { display:flex; align-items:center; justify-content:space-between; font-size:15px; font-weight:800; letter-spacing:.04em; color:#e9ecef; margin-bottom:12px; }
+  .panelhead .x { width:32px; height:32px; border-radius:8px; background:#1d3b2b; color:#cfe7d8; border:none; font-size:14px; cursor:pointer; }
+  #scoreBody .row { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; padding:9px 10px; border-radius:9px; font-size:13.5px; }
+  #scoreBody .row + .row { margin-top:5px; }
+  #scoreBody .row.me { background:rgba(227,197,103,.10); }
+  #scoreBody .row.turn { background:rgba(47,191,113,.16); }
+  #scoreBody .nm { color:#eef6ef; font-weight:600; }
+  #scoreBody .nm .tag { color:#9fb0a6; font-weight:400; font-size:11.5px; }
+  #scoreBody .tiles { color:#9fb0a6; font-size:12px; }
+  #scoreBody .pts { color:#e3c567; font-weight:800; font-variant-numeric:tabular-nums; }
+  .panelfoot { color:#7e9388; font-size:11.5px; margin-top:12px; text-align:center; }
+  #infoBody { color:#cfe7d8; font-size:13px; line-height:1.5; }
+  #infoBody b { color:#e3c567; }
+  #infoBody .k { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+  #infoBody ul { margin:8px 0; padding-left:18px; } #infoBody li { margin:4px 0; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="hud">
+  <div id="topbar">
+    <span id="status">connecting…</span>
+    <button class="iconbtn" id="scorebtn" title="Scoreboard">📊</button>
+    <button class="iconbtn" id="infobtn" title="Game info">ℹ️</button>
+    <button class="iconbtn" id="resetcam" title="Reset camera">⟲</button>
+    <button class="iconbtn" id="mutebtn" title="Mute">🔊</button>
+  </div>
+  <div id="camhint">drag rotate · 2-finger / right-drag pan · scroll zoom</div>
+  <div id="controls"></div>
+</div>
+<div id="scorePanel" class="panel"><div class="panelcard">
+  <div class="panelhead"><span>Scoreboard</span><button class="x" id="scoreClose">✕</button></div>
+  <div id="scoreBody"></div>
+  <div class="panelfoot" id="scoreFoot"></div>
+</div></div>
+<div id="infoPanel" class="panel"><div class="panelcard">
+  <div class="panelhead"><span>How to play · Euchre</span><button class="x" id="infoClose">✕</button></div>
+  <div id="infoBody"></div>
+</div></div>
+<div id="reconnect">Reconnecting…</div>
+<div id="votePanel"><div class="vt" id="voteTitle"></div><div class="vc" id="voteCount"></div><div class="vrow"><button class="wait" id="voteWait">Wait</button><button class="kick" id="voteKick">Kick → bot</button></div></div>
+<div id="over"><div class="overcard">
+  <div class="result" id="overResult">Game over</div>
+  <h2 id="overTitle">Game Over</h2>
+  <div class="score" id="overScore"></div>
+  <div class="stand" id="overStand"></div>
+  <button class="primary" id="btnRematch">Rematch</button>
+  <button class="danger" id="btnExit">Exit to arcade</button>
+</div></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="/static/js/euchre3d.js"></script>
+<script src="https://games.madladslab.com/modal/loader.js" defer data-surface="tiles" data-game="euchre"></script>
+</body>
+</html>

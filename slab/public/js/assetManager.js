@@ -299,6 +299,8 @@
       bulkToggle.classList.toggle('active', bulkMode);
       if (bulkBar) bulkBar.style.display = bulkMode ? 'flex' : 'none';
       updateBulkCount();
+      if (bulkMode) renderBulkMeta();
+      else clearSelection();
       // Re-render cards with checkboxes
       loadAssets();
     });
@@ -309,86 +311,232 @@
     if (cnt) cnt.textContent = bulkSelected.size;
   }
 
-  // Bulk download — fires one hidden <a download> click per asset.
-  // Browsers serialise these; some throttle after ~10. For more than that,
-  // a server-side zip stream would be the next step.
-  const bulkDownloadBtn = document.getElementById('bulkDownloadBtn');
-  if (bulkDownloadBtn) {
-    bulkDownloadBtn.addEventListener('click', () => {
-      if (!bulkSelected.size) return;
-      if (bulkSelected.size > 20 && !confirm(`Download ${bulkSelected.size} files? Your browser may prompt to allow multiple downloads.`)) return;
-      const ids = [...bulkSelected];
-      ids.forEach((id, i) => {
-        setTimeout(() => {
-          const a = document.createElement('a');
-          a.href = `/admin/assets/${id}/download`;
-          a.download = '';
-          a.style.display = 'none';
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => a.remove(), 1000);
-        }, i * 250);
+  /* ── BULK META PANEL ── */
+  function renderBulkMeta() {
+    if (!bulkMode) return;
+    copyUrlBtn.style.display = 'none';
+
+    if (bulkSelected.size === 0) {
+      metaBody.innerHTML = '<div class="meta-preview"><div class="no-select">Bulk mode active<br>Select assets to edit</div></div>';
+      metaFooter.style.display = 'none';
+      return;
+    }
+
+    // Folder checkboxes (built-in + custom)
+    const folderOptions = [...BUILTIN_FOLDERS, ...customFolders.map(f => f.slug)];
+    let folderChecks = '';
+    folderOptions.forEach(f => {
+      const cf = customFolders.find(c => c.slug === f);
+      const label = cf ? cf.name : (f.charAt(0).toUpperCase() + f.slice(1));
+      folderChecks += `<label class="meta-folder-check"><input type="checkbox" name="bulkFolders" value="${f}"> ${escHtml(label)}</label>`;
+    });
+
+    // Client dropdown — "Keep current" is the default so save doesn't blank it out
+    let clientOpts = '<option value="__keep__" selected>— Keep current —</option><option value="">— No Client —</option>';
+    clientsList.forEach(c => {
+      const label = c.company ? `${c.name} (${c.company})` : c.name;
+      clientOpts += `<option value="${c._id}">${escHtml(label)}</option>`;
+    });
+
+    // Preview strip — pull thumbs from already-rendered cards (max 12)
+    const selectedIds = [...bulkSelected];
+    const previewCap = 12;
+    let stripHtml = '';
+    for (let i = 0; i < Math.min(selectedIds.length, previewCap); i++) {
+      const card = document.querySelector(`.asset-card[data-id="${selectedIds[i]}"]`);
+      const media = card?.querySelector('.asset-thumb > img, .asset-thumb > video');
+      if (media) {
+        const src = media.getAttribute('src');
+        stripHtml += `<div class="bulk-thumb">${media.tagName === 'IMG'
+          ? `<img src="${src}" alt="">`
+          : `<video src="${src}" muted></video>`}</div>`;
+      } else {
+        stripHtml += '<div class="bulk-thumb"><span style="color:var(--slate);font-size:0.7rem;">◻</span></div>';
+      }
+    }
+    if (selectedIds.length > previewCap) {
+      stripHtml += `<div class="bulk-thumb bulk-thumb-more">+${selectedIds.length - previewCap}</div>`;
+    }
+
+    metaBody.innerHTML = `
+      <div class="bulk-meta-header">
+        <div class="bulk-meta-count">${bulkSelected.size} selected</div>
+        <div class="bulk-meta-strip">${stripHtml}</div>
+        <button class="btn btn-ghost btn-sm" id="bulkClearBtn" style="font-size:0.65rem;margin-top:8px;">Clear selection</button>
+      </div>
+      <div class="meta-field">
+        <label class="meta-label">Assign Folders</label>
+        <div class="meta-info" style="margin-bottom:6px;font-size:0.65rem;">Checked folders replace the current folder set on save. Leave all unchecked to keep folders as-is.</div>
+        <div class="meta-folder-grid">${folderChecks}</div>
+      </div>
+      <div class="meta-field">
+        <label class="meta-label">Attach to Client</label>
+        <select class="meta-select" id="bulkClient">${clientOpts}</select>
+      </div>
+      <div class="meta-field">
+        <label class="meta-label">Broadcast Alt Text <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--slate);">(applies to all selected on save)</span></label>
+        <input type="text" class="meta-input" id="bulkAlt" maxlength="250" placeholder="Leave blank to keep each asset's current alt">
+      </div>
+      <div class="meta-field">
+        <label class="meta-label">Broadcast Caption <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--slate);">(optional)</span></label>
+        <textarea class="meta-input" id="bulkCaption" maxlength="500" rows="2" style="resize:vertical;min-height:54px;" placeholder="Leave blank to keep each asset's current caption"></textarea>
+      </div>`;
+
+    document.getElementById('bulkClearBtn')?.addEventListener('click', () => {
+      bulkSelected.clear();
+      updateBulkCount();
+      document.querySelectorAll('.asset-card.selected').forEach(c => c.classList.remove('selected'));
+      document.querySelectorAll('.bulk-check.checked').forEach(c => c.classList.remove('checked'));
+      renderBulkMeta();
+    });
+
+    metaFooter.style.display = '';
+    // Open the meta drawer on mobile so the user sees the editor
+    if (isMobile()) openDrawer(metaPanel);
+  }
+
+  /* ── SHARED BULK ACTIONS (used by bulk-bar + meta footer) ── */
+  async function performBulkDelete() {
+    if (!bulkSelected.size) return;
+    if (!confirm(`Delete ${bulkSelected.size} asset${bulkSelected.size > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    try {
+      const r = await fetch('/admin/assets/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [...bulkSelected] }),
       });
+      const data = await r.json();
+      if (data.success) {
+        bulkSelected.clear();
+        updateBulkCount();
+        renderBulkMeta();
+        loadAssets();
+        loadFolderCounts();
+      }
+    } catch (err) { alert('Error: ' + err.message); }
+  }
+
+  function performBulkDownload() {
+    if (!bulkSelected.size) return;
+    if (bulkSelected.size > 20 && !confirm(`Download ${bulkSelected.size} files? Your browser may prompt to allow multiple downloads.`)) return;
+    const ids = [...bulkSelected];
+    ids.forEach((id, i) => {
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = `/admin/assets/${id}/download`;
+        a.download = '';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => a.remove(), 1000);
+      }, i * 250);
     });
   }
 
-  // Bulk delete
-  const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
-  if (bulkDeleteBtn) {
-    bulkDeleteBtn.addEventListener('click', async () => {
-      if (!bulkSelected.size) return;
-      if (!confirm(`Delete ${bulkSelected.size} asset${bulkSelected.size > 1 ? 's' : ''}? This cannot be undone.`)) return;
-      try {
-        const r = await fetch('/admin/assets/bulk-delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: [...bulkSelected] }),
-        });
-        const data = await r.json();
-        if (data.success) {
-          bulkSelected.clear();
-          updateBulkCount();
-          loadAssets();
-          loadFolderCounts();
-        }
-      } catch (err) { alert('Error: ' + err.message); }
-    });
+  async function performBulkSave() {
+    if (!bulkSelected.size) return;
+    const folders = [...document.querySelectorAll('input[name="bulkFolders"]:checked')].map(cb => cb.value);
+    const clientSel = document.getElementById('bulkClient');
+    const clientVal = clientSel ? clientSel.value : '__keep__';
+    const altVal = document.getElementById('bulkAlt')?.value?.trim() || '';
+    const captionVal = document.getElementById('bulkCaption')?.value?.trim() || '';
+    if (!folders.length && clientVal === '__keep__' && !altVal && !captionVal) {
+      return alert('Pick folders, a client, alt text, or a caption to apply.');
+    }
+    const body = { ids: [...bulkSelected] };
+    if (folders.length) body.folders = folders;
+    if (clientVal !== '__keep__') body.clientId = clientVal || null;
+    if (altVal) body.altText = altVal;
+    if (captionVal) body.caption = captionVal;
+
+    try {
+      saveMetaBtn.textContent = 'Saving...';
+      saveMetaBtn.disabled = true;
+      const r = await fetch('/admin/assets/bulk-move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (data.success) {
+        saveMetaBtn.textContent = `✓ Saved ${data.updated || bulkSelected.size}`;
+        setTimeout(() => { saveMetaBtn.textContent = 'Save'; saveMetaBtn.disabled = false; }, 1500);
+        bulkSelected.clear();
+        updateBulkCount();
+        renderBulkMeta();
+        loadAssets();
+        loadFolderCounts();
+      } else {
+        alert(data.error || 'Save failed');
+        saveMetaBtn.textContent = 'Save';
+        saveMetaBtn.disabled = false;
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+      saveMetaBtn.textContent = 'Save';
+      saveMetaBtn.disabled = false;
+    }
   }
 
-  // Bulk move
-  const bulkMoveBtn = document.getElementById('bulkMoveBtn');
-  if (bulkMoveBtn) {
-    bulkMoveBtn.addEventListener('click', async () => {
-      if (!bulkSelected.size) return;
-      const folder = document.getElementById('bulkMoveFolder')?.value;
-      const clientId = document.getElementById('bulkMoveClient')?.value || null;
-      if (!folder && !clientId) return alert('Select a folder or client');
-      try {
-        const body = { ids: [...bulkSelected] };
-        if (folder) body.folder = folder;
-        if (clientId !== null) body.clientId = clientId;
-        const r = await fetch('/admin/assets/bulk-move', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const data = await r.json();
-        if (data.success) {
-          bulkSelected.clear();
-          updateBulkCount();
-          loadAssets();
-          loadFolderCounts();
-        }
-      } catch (err) { alert('Error: ' + err.message); }
-    });
+  // Bulk-bar buttons (top action strip) — wire to shared functions
+  document.getElementById('bulkDownloadBtn')?.addEventListener('click', performBulkDownload);
+  document.getElementById('bulkDeleteBtn')?.addEventListener('click', performBulkDelete);
+  document.getElementById('bulkMoveBtn')?.addEventListener('click', async () => {
+    if (!bulkSelected.size) return;
+    const folder = document.getElementById('bulkMoveFolder')?.value;
+    const clientId = document.getElementById('bulkMoveClient')?.value || null;
+    if (!folder && !clientId) return alert('Select a folder or client');
+    try {
+      const body = { ids: [...bulkSelected] };
+      if (folder) body.folder = folder;
+      if (clientId !== null) body.clientId = clientId;
+      const r = await fetch('/admin/assets/bulk-move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (data.success) {
+        bulkSelected.clear();
+        updateBulkCount();
+        renderBulkMeta();
+        loadAssets();
+        loadFolderCounts();
+      }
+    } catch (err) { alert('Error: ' + err.message); }
+  });
+
+  /* ── INTERSECTION-OBSERVER LAZY LOAD ── */
+  // Holds off setting img.src / video.src until the card scrolls within ~400px
+  // of the viewport. Heavy thumbs would otherwise all decode at once on load.
+  let thumbObserver = null;
+  function getThumbObserver() {
+    if (thumbObserver) return thumbObserver;
+    if (!('IntersectionObserver' in window)) return null;
+    thumbObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const el = entry.target;
+        const src = el.dataset.src;
+        if (src) { el.setAttribute('src', src); el.removeAttribute('data-src'); }
+        thumbObserver.unobserve(el);
+      });
+    }, { rootMargin: '400px 0px', threshold: 0.01 });
+    return thumbObserver;
   }
 
   /* ── LOAD ASSETS ── */
+  const PAGE_SIZE = 60;
+  let allAssetsCache = [];
+  let renderedCount = 0;
+
   async function loadAssets() {
     grid.innerHTML = '<div class="grid-loading">Loading...</div>';
     clearSelection();
+    // Reset observer so stale entries don't linger
+    if (thumbObserver) { thumbObserver.disconnect(); thumbObserver = null; }
     try {
-      const params = new URLSearchParams({ limit: 200 });
+      const params = new URLSearchParams({ limit: 500 });
       if (currentFolder !== 'all') params.set('folder', currentFolder);
       if (currentType !== 'all') params.set('type', currentType);
       if (currentSearch) params.set('search', currentSearch);
@@ -403,13 +551,30 @@
         return;
       }
 
+      allAssetsCache = data.assets;
+      renderedCount = 0;
       grid.innerHTML = '';
-      data.assets.forEach(asset => {
-        const card = buildCard(asset);
-        grid.appendChild(card);
-      });
+      renderNextPage();
     } catch (err) {
       grid.innerHTML = `<div class="grid-empty">Error: ${err.message}</div>`;
+    }
+  }
+
+  // Render the next PAGE_SIZE cards and append a "Show more" sentinel
+  function renderNextPage() {
+    const slice = allAssetsCache.slice(renderedCount, renderedCount + PAGE_SIZE);
+    slice.forEach(asset => grid.appendChild(buildCard(asset)));
+    renderedCount += slice.length;
+
+    // Remove any prior sentinel
+    grid.querySelector('.grid-more-sentinel')?.remove();
+
+    if (renderedCount < allAssetsCache.length) {
+      const sentinel = document.createElement('div');
+      sentinel.className = 'grid-more-sentinel';
+      sentinel.innerHTML = `<button class="btn btn-ghost btn-sm" type="button">Show ${Math.min(PAGE_SIZE, allAssetsCache.length - renderedCount)} more (${allAssetsCache.length - renderedCount} remaining)</button>`;
+      sentinel.querySelector('button').addEventListener('click', renderNextPage);
+      grid.appendChild(sentinel);
     }
   }
 
@@ -422,9 +587,11 @@
     let thumbHtml = '';
     const isSvg = asset.mimeType === 'image/svg+xml' || /\.svg$/i.test(asset.originalName || '');
     if (asset.fileType === 'image') {
-      thumbHtml = `<img src="${asset.publicUrl}" alt="${escHtml(asset.title)}" loading="lazy">`;
+      // Don't fill src — IntersectionObserver swaps data-src→src on near-viewport
+      thumbHtml = `<img data-src="${asset.publicUrl}" alt="${escHtml(asset.title)}" loading="lazy" decoding="async">`;
     } else if (asset.fileType === 'video') {
-      thumbHtml = `<video src="${asset.publicUrl}" muted preload="metadata" style="pointer-events:none;"></video>`;
+      // Static placeholder. Full video plays in the meta-panel preview.
+      thumbHtml = `<div class="asset-icon" style="background:var(--ivory);">▶</div>`;
     } else {
       thumbHtml = `<div class="asset-icon">◻</div>`;
     }
@@ -453,10 +620,19 @@
           card.querySelector('.bulk-check')?.classList.add('checked');
         }
         updateBulkCount();
+        renderBulkMeta();
         return;
       }
       selectAsset(asset, card);
     });
+
+    // Register thumbnail for IntersectionObserver lazy load
+    const lazyImg = card.querySelector('img[data-src]');
+    if (lazyImg) {
+      const obs = getThumbObserver();
+      if (obs) obs.observe(lazyImg);
+      else { lazyImg.src = lazyImg.dataset.src; lazyImg.removeAttribute('data-src'); }
+    }
     return card;
   }
 
@@ -480,6 +656,8 @@
     metaFooter.style.display = 'none';
     if (downloadAssetBtn) { downloadAssetBtn.href = '#'; downloadAssetBtn.removeAttribute('download'); }
     metaBody.innerHTML = '<div class="meta-preview"><div class="no-select">Select an asset<br>to view details</div></div>';
+    // In bulk mode the right-panel is the bulk editor — restore it instead of the empty placeholder
+    if (bulkMode) renderBulkMeta();
   }
 
   function renderMeta(asset) {
@@ -526,6 +704,14 @@
       <div class="meta-field">
         <label class="meta-label">Title</label>
         <input type="text" class="meta-input" id="metaTitle" value="${escHtml(asset.title || '')}">
+      </div>
+      <div class="meta-field">
+        <label class="meta-label">Alt Text <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--slate);">(SEO / accessibility — describe the image)</span></label>
+        <input type="text" class="meta-input" id="metaAlt" maxlength="250" value="${escHtml(asset.altText || '')}" placeholder="e.g. Sleek black coffee machine on marble counter">
+      </div>
+      <div class="meta-field">
+        <label class="meta-label">Caption <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--slate);">(optional — shown under image)</span></label>
+        <textarea class="meta-input" id="metaCaption" maxlength="500" rows="2" style="resize:vertical;min-height:54px;">${escHtml(asset.caption || '')}</textarea>
       </div>
       <div class="meta-field">
         <label class="meta-label">Tags (comma separated)</label>
@@ -578,10 +764,23 @@
     if (selectedAsset) copyToClipboard(selectedAsset.publicUrl, 'URL copied');
   });
 
+  // Download button in meta footer — in bulk mode, fan out per selected asset
+  if (downloadAssetBtn) {
+    downloadAssetBtn.addEventListener('click', (e) => {
+      if (bulkMode) {
+        e.preventDefault();
+        performBulkDownload();
+      }
+    });
+  }
+
   /* ── SAVE META ── */
   saveMetaBtn.addEventListener('click', async () => {
+    if (bulkMode) return performBulkSave();
     if (!selectedAsset) return;
     const title = document.getElementById('metaTitle')?.value?.trim() || '';
+    const altText = document.getElementById('metaAlt')?.value?.trim() || '';
+    const caption = document.getElementById('metaCaption')?.value?.trim() || '';
     const tags = document.getElementById('metaTags')?.value || '';
     // Collect checked folders
     const folderChecks = document.querySelectorAll('input[name="metaFolders"]:checked');
@@ -594,11 +793,13 @@
       const r = await fetch(`/admin/assets/${selectedAsset._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, tags, folders, clientId }),
+        body: JSON.stringify({ title, altText, caption, tags, folders, clientId }),
       });
       const data = await r.json();
       if (data.success) {
         selectedAsset.title = title;
+        selectedAsset.altText = altText;
+        selectedAsset.caption = caption;
         selectedAsset.folders = folders;
         selectedAsset.folder = folders[0];
         selectedAsset.clientId = clientId || null;
@@ -627,6 +828,7 @@
 
   /* ── DELETE ── */
   deleteAssetBtn.addEventListener('click', async () => {
+    if (bulkMode) return performBulkDelete();
     if (!selectedAsset) return;
     if (!confirm(`Delete "${selectedAsset.title || selectedAsset.originalName}"? This cannot be undone.`)) return;
     try {

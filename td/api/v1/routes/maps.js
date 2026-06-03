@@ -3,7 +3,7 @@
  */
 import express from 'express';
 import GameMap from '../models/Map.js';
-import { generateHexBoard } from '../../../services/hex-grid.js';
+import { generateHexBoard } from '../../../services/game/hex-grid.js';
 
 const router = express.Router();
 

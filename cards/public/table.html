@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cards · table</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0b0b0d; color:#e7e7ea; margin:0; padding:18px; }
+  h1 { font-size:15px; letter-spacing:.18em; color:#8a8a93; font-weight:600; margin:0 0 12px; }
+  #wrap { max-width:640px; margin:0 auto; }
+  canvas { width:100%; background:#10331f; border-radius:14px; display:block; margin:10px 0; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+  .card { background:#fafafa; color:#111; border:none; border-radius:8px; padding:10px 12px;
+          font-size:16px; font-weight:700; cursor:pointer; min-width:42px; }
+  .card.red { color:#c0392b; }
+  .card:disabled { opacity:.35; cursor:default; }
+  button.act { background:#2b6; color:#04210f; border:none; border-radius:8px; padding:9px 14px; font-weight:700; cursor:pointer; }
+  #log { font:12px ui-monospace,monospace; color:#9aa; white-space:pre-wrap; max-height:160px; overflow:auto;
+         background:#08080a; border-radius:10px; padding:10px; margin-top:10px; }
+  .pill { font-size:12px; color:#9aa; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>CARDS · LIVE TABLE</h1>
+  <div class="row"><span id="status" class="pill">connecting…</span></div>
+  <canvas id="felt" width="640" height="240"></canvas>
+  <div class="row" id="controls">
+    <button class="act" id="ready">Ready</button>
+    <span id="turn" class="pill"></span>
+  </div>
+  <div class="row" id="hand"></div>
+  <div id="log"></div>
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const qs = new URLSearchParams(location.search);
+  const ticket = qs.get('ticket');
+  const $ = (id) => document.getElementById(id);
+  const log = (m) => { $('log').textContent = (m + '\n' + $('log').textContent).slice(0, 4000); };
+  const SUIT = { H:'♥', D:'♦', C:'♣', S:'♠' };
+  const isRed = (c) => c.endsWith('H') || c.endsWith('D');
+  const pretty = (c) => c.replace(/(10|[9JQKA])([HDCS])/, (_, r, s) => r + SUIT[s]);
+
+  const socket = io({ transports:['websocket','polling'], withCredentials:true });
+  let mySeat = null, myLegal = [], state = null;
+
+  socket.on('connect', () => { $('status').textContent = 'connected'; if (ticket) socket.emit('table:join', { ticket }); else log('no ?ticket= in URL'); });
+  socket.on('table:error', (e) => log('ERROR: ' + e.message));
+  socket.on('seat:hand', (h) => { mySeat = h.seat; myLegal = h.legal || []; renderHand(h.hand || []); });
+  socket.on('table:event', (ev) => log('· ' + JSON.stringify(ev)));
+  socket.on('table:state', (s) => { state = s; renderState(); });
+
+  $('ready').onclick = () => socket.emit('seat:ready', { ready:true });
+
+  function renderHand(hand) {
+    const box = $('hand'); box.innerHTML = '';
+    hand.forEach((c) => {
+      const b = document.createElement('button');
+      b.className = 'card' + (isRed(c) ? ' red' : '');
+      b.textContent = pretty(c);
+      b.disabled = !myLegal.includes(c) || !state || state.phase !== 'playing' || state.view?.turn !== mySeat;
+      b.onclick = () => socket.emit('game:action', { action: { type:'play', card: c } });
+      box.appendChild(b);
+    });
+  }
+
+  function renderState() {
+    if (!state) return;
+    $('status').textContent = `${state.game} · ${state.phase} · scores ${state.scores.join('–')}`;
+    const turn = state.view?.turn;
+    $('turn').textContent = state.phase === 'playing'
+      ? (turn === mySeat ? 'YOUR TURN' : `seat ${turn} to play`) : '';
+    $('ready').style.display = state.phase === 'lobby' ? '' : 'none';
+    // re-evaluate hand button enabled state on turn changes
+    [...$('hand').children].forEach((b) => {
+      const c = b.textContent.replace(/[♥♦♣♠]/, (m) => Object.keys(SUIT).find((k) => SUIT[k] === m));
+      b.disabled = !myLegal.includes(c) || state.phase !== 'playing' || turn !== mySeat;
+    });
+    drawFelt();
+  }
+
+  function drawFelt() {
+    const cv = $('felt'), ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const trick = state?.view?.trick || [];
+    const pos = [[320,200],[540,120],[320,40],[100,120]]; // seat 0 bottom, clockwise
+    trick.forEach((p) => {
+      const [x, y] = pos[p.seat];
+      ctx.fillStyle = '#fafafa'; ctx.fillRect(x-22, y-30, 44, 60);
+      ctx.fillStyle = isRed(p.card) ? '#c0392b' : '#111';
+      ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(pretty(p.card), x, y);
+    });
+    const counts = state?.view?.trickWins;
+    if (counts) { ctx.fillStyle = '#bfe'; ctx.font = '12px system-ui';
+      ctx.fillText(`tricks ${counts.join(' ')}`, cv.width/2, cv.height-12); }
+  }
+</script>
+</body>
+</html>

@@ -10,6 +10,7 @@ import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { config } from '../config/config.js';
 import { notifyAdmin } from '../plugins/notify.js';
+import { normalizeEmail } from '../plugins/emailNormalize.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TENANT_VIEWS_ROOT = path.resolve(__dirname, '..', 'views', 'tenants');
@@ -328,6 +329,16 @@ router.post('/contact', async (req, res) => {
 
     if (!email) return res.redirect('/#contact');
 
+    // Spam blocklist check — sender (or a normalized variant) has been flagged
+    // by an admin. Silently drop: redirect like a normal submission so the
+    // sender gets no signal that their address is blocked.
+    const emailLower = email.toLowerCase().trim();
+    const emailNorm = normalizeEmail(email);
+    const blocked = await db.collection('spam_emails').findOne({
+      $or: [{ email: emailLower }, { emailNormalized: emailNorm }],
+    });
+    if (blocked) return res.redirect('/?contacted=1#contact');
+
     // Collect any custom fields the tenant added via the admin contact form builder.
     // These come in alongside the stock keys but use tenant-chosen names; preserve them.
     const STOCK_KEYS = new Set(['name', 'firstName', 'lastName', 'email', 'company', 'service', 'message']);
@@ -503,7 +514,13 @@ router.get('/', async (req, res) => {
     const copy = { ...COPY_DEFAULTS };
     for (const item of rawCopy) copy[item.key] = item.value;
     const media = {};
-    for (const item of rawMedia) media[item.key] = item.url;
+    const mediaAlts = {};
+    const mediaCaptions = {};
+    for (const item of rawMedia) {
+      media[item.key] = item.url;
+      if (item.altText) mediaAlts[item.key] = item.altText;
+      if (item.caption) mediaCaptions[item.key] = item.caption;
+    }
 
     // Latest 3 blog posts for home page blog section
     const latestPosts = design.vis_blog === 'true'
@@ -519,7 +536,7 @@ router.get('/', async (req, res) => {
     if (effectiveLayout === 'startup') {
       return res.render('landing', {
         design: { ...design, landing_layout: effectiveLayout },
-        copy, logos, brandModels, media,
+        copy, logos, brandModels, media, mediaAlts, mediaCaptions,
         reviews, portfolio, customSections,
         latestPosts, visibility: buildVisibility(design),
         contacted: req.query.contacted,
@@ -531,7 +548,7 @@ router.get('/', async (req, res) => {
     res.render('index', {
       copy, reviews, portfolio,
       design: { ...design, landing_layout: effectiveLayout },
-      media,
+      media, mediaAlts, mediaCaptions,
       visibility: buildVisibility(design),
       latestPosts, customSections, logos, brandModels,
       centralAuthUrl,
@@ -541,7 +558,7 @@ router.get('/', async (req, res) => {
     console.error(err);
     res.render('index', {
       copy: COPY_DEFAULTS, reviews: null, portfolio: [],
-      design: DESIGN_DEFAULTS, media: {},
+      design: DESIGN_DEFAULTS, media: {}, mediaAlts: {}, mediaCaptions: {},
       visibility: buildVisibility(DESIGN_DEFAULTS),
       latestPosts: [], customSections: [], logos: {}, brandModels: {},
       centralAuthUrl: config.DOMAIN + '/auth/login',
@@ -773,7 +790,11 @@ router.get('/:slug', async (req, res, next) => {
       const perPage = Math.min(Math.max(parseInt(pg.dataPageSize) || 9, 1), 100);
       const p       = Math.max(1, parseInt(req.query.p) || 1);
       const skip    = (p - 1) * perPage;
-      const query   = { status: 'published' };
+      // Portfolio items don't have a draft workflow — treat anything not explicitly drafted as visible.
+      // Blog posts do have draft/published, so keep the strict filter there.
+      const query   = col === 'portfolio'
+        ? { status: { $ne: 'draft' } }
+        : { status: 'published' };
       if (col === 'portfolio' && pg.dataGroup) query.group = pg.dataGroup;
       const [total, items] = await Promise.all([
         db.collection(col).countDocuments(query),

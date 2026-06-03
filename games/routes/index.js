@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
 const router = express.Router();
+const username = require('../lib/username');
 
 // Version endpoint — reads fresh from disk so cron bumps are reflected without restart
 router.get('/api/version', (req, res) => {
@@ -48,10 +49,14 @@ function requireAuth(req, res, next) {
 
 // Validate redirect targets — only allow relative paths or trusted domains
 const TRUSTED_ORIGINS = [
+  'https://cards.madladslab.com',
+  'https://match.madladslab.com',
   'https://games.madladslab.com',
   'https://madladslab.com',
   'https://bih.madladslab.com',
   'https://www.madladslab.com',
+  'https://towers.madladslab.com',
+  'https://madlands.madladslab.com',
 ];
 
 function isSafeRedirect(url) {
@@ -71,9 +76,16 @@ router.get('/', (req, res) => {
   res.sendFile('landing.html', { root: __dirname + '/../public' });
 });
 
-// Authenticated dashboard — server management
-router.get('/dashboard', requireAuth, (req, res) => {
+// Authenticated server-management page. "Servers" is the canonical name now;
+// /dashboard is kept as a working alias so existing links and login redirects
+// still land here.
+router.get(['/servers', '/dashboard'], requireAuth, (req, res) => {
   res.sendFile('index.html', { root: __dirname + '/../public' });
+});
+
+// Authenticated Arcade hub — game cards, stats/leaderboards, arcade-wide chat.
+router.get('/arcade/home', requireAuth, (req, res) => {
+  res.sendFile('arcade.html', { root: __dirname + '/../public' });
 });
 
 // Login page
@@ -92,7 +104,7 @@ router.post('/login', (req, res, next) => {
   passport.authenticate('local', (err, user) => {
     if (err) return next(err);
     if (!user) return res.redirect('/login?error=1');
-    req.login(user, (loginErr) => {
+    req.login(user, { keepSessionInfo: true }, (loginErr) => {
       if (loginErr) return next(loginErr);
       const dest = req.session.loginNext || '/dashboard';
       delete req.session.loginNext;
@@ -104,7 +116,7 @@ router.post('/login', (req, res, next) => {
 // Google OAuth
 router.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'], prompt: 'select_account' }));
 router.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/login?error=1' }),
+  passport.authenticate('google', { failureRedirect: '/login?error=1', keepSessionInfo: true }),
   (req, res) => {
     const dest = req.session.loginNext || '/dashboard';
     delete req.session.loginNext;
@@ -116,7 +128,7 @@ router.get('/auth/google/callback',
 router.post('/logout', (req, res) => {
   req.logout(() => {
     req.session.destroy(() => {
-      res.clearCookie('connect.sid');
+      res.clearCookie('games.sid');
       res.redirect('/');
     });
   });
@@ -134,8 +146,8 @@ router.get('/auth/bridge', (req, res) => {
   const token = jwt.sign(
     {
       id: u._id,
-      email: u.email,
-      displayName: u.displayName || u.firstName || u.email,
+      email: u.email, // server-only: used by games for account linking, never displayed
+      displayName: username.displayFor(u), // public screen name only — never real name/email
       isAdmin: u.isAdmin || false,
       permissions: u.permissions || {},
     },
@@ -191,7 +203,7 @@ router.get('/auth/sso', async (req, res) => {
       await db.collection('users').updateOne({ _id: user._id }, { $set: { googleId: payload.googleId } });
     }
     if (!user) return res.redirect('/login?error=1');
-    req.login(user, (err) => {
+    req.login(user, { keepSessionInfo: true }, (err) => {
       if (err) return res.redirect('/login?error=1');
       const dest = req.session.loginNext || '/dashboard';
       delete req.session.loginNext;

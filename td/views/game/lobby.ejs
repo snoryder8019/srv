@@ -1,0 +1,190 @@
+<%- include('../partials/header') %>
+
+<style>
+  /* War-map + Campaign sections — inline so they ship with the lobby view;
+     mirror the lobby panel/card vibe without touching main.css. */
+  .warmap-panel { margin-bottom: 1.25rem; }
+  .warmap-host {
+    position: relative;
+    width: 100%;
+    height: 46vh;
+    min-height: 300px;
+    margin-top: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #05080f;
+    touch-action: none;
+  }
+  .warmap-host canvas { display: block; width: 100% !important; height: 100% !important; }
+  .warmap-tip {
+    position: absolute;
+    pointer-events: none;
+    max-width: 240px;
+    padding: 8px 10px;
+    background: rgba(8, 12, 22, 0.92);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    color: var(--fg);
+    font-size: 12px;
+    line-height: 1.4;
+    z-index: 3;
+    transform: translate(-50%, calc(-100% - 14px));
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+  }
+  .warmap-tip strong { color: var(--accent); display: block; font-size: 13px; margin-bottom: 2px; }
+  .warmap-tip .wm-badge { color: var(--warn); }
+  .warmap-tip .wm-cta { color: var(--accent-2); display: block; margin-top: 4px; }
+  .warmap-hint {
+    position: absolute; left: 0; right: 0; bottom: 6px;
+    text-align: center; font-size: 10px; color: var(--fg-dim);
+    pointer-events: none; z-index: 2; letter-spacing: 0.5px;
+  }
+  .warmap-dive {
+    position: absolute; inset: 0; z-index: 4;
+    background: radial-gradient(circle at center, rgba(120,220,255,0.0) 0%, #03060c 70%);
+    opacity: 0; pointer-events: none; transition: none;
+  }
+  .campaign-panel { margin-bottom: 1.25rem; }
+  .campaign-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-top: 0.75rem;
+  }
+  .campaign-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    color: inherit;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .15s, transform .15s, box-shadow .15s;
+  }
+  .campaign-card:hover {
+    border-color: rgba(120, 200, 255, 0.55);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+  .campaign-card.sel { border-color: rgba(120, 200, 255, 0.9); }
+  .cc-banner {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: block;
+    background: rgba(0, 0, 0, 0.25);
+  }
+  .cc-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    padding: 0 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(20, 30, 45, 0.85);
+    border: 1px solid rgba(120, 200, 255, 0.55);
+    color: #cfe9ff;
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+  .cc-body { padding: 0.7rem 0.8rem 0.85rem; display: flex; flex-direction: column; gap: 0.35rem; flex: 1; }
+  .cc-name { font-weight: 700; font-size: 1.02rem; }
+  .cc-desc { font-size: 0.85rem; opacity: 0.75; line-height: 1.3; }
+  .cc-deploy {
+    margin-top: auto;
+    align-self: flex-start;
+    margin-top: 0.4rem;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid rgba(120, 200, 255, 0.5);
+    border-radius: 6px;
+    background: rgba(120, 200, 255, 0.14);
+    color: #e6f4ff;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .cc-deploy:hover { background: rgba(120, 200, 255, 0.28); }
+</style>
+
+<main class="td-lobby">
+  <section class="lobby-hero">
+    <h1>Command Lobby</h1>
+    <p class="muted">Choose your theater, review your cache, then deploy. Downtime between sieges lives here.</p>
+    <div class="lobby-stats" id="lobby-stats">
+      <div class="ls-item"><span class="ls-k">Level</span><span class="ls-v" id="ls-level">–</span></div>
+      <div class="ls-item"><span class="ls-k">XP</span><span class="ls-v" id="ls-xp">–</span></div>
+      <div class="ls-item"><span class="ls-k">Best Score</span><span class="ls-v" id="ls-best">–</span></div>
+      <div class="ls-item"><span class="ls-k">Highest Wave</span><span class="ls-v" id="ls-wave">–</span></div>
+      <div class="ls-item"><span class="ls-k">Wins</span><span class="ls-v" id="ls-wins">–</span></div>
+    </div>
+    <div class="econ-bar" id="econ-bar"><span class="muted">Loading supplies…</span></div>
+  </section>
+
+  <section class="lobby-panel warmap-panel" id="panel-warmap" style="display:none">
+    <h2>War Map</h2>
+    <p class="muted">Contested theaters across the front. Tap a conflict to drop into the siege.</p>
+    <div class="warmap-host" id="conflict-map-host">
+      <div class="warmap-tip" id="warmap-tip" hidden></div>
+      <div class="warmap-dive" id="warmap-dive"></div>
+      <div class="warmap-hint">drag to look · scroll to zoom · tap a beacon to deploy</div>
+    </div>
+  </section>
+
+  <section class="lobby-panel campaign-panel" id="panel-campaign" style="display:none">
+    <h2>Campaign</h2>
+    <p class="muted">Ordered missions — clear each theater to advance the war effort.</p>
+    <div class="campaign-list" id="lobby-campaign"></div>
+  </section>
+
+  <div class="lobby-grid">
+    <section class="lobby-panel" id="panel-levels">
+      <h2>Theaters</h2>
+      <p class="muted">Pick a map. Each runs continuous, escalating waves until your core falls.</p>
+      <div class="level-list" id="level-list">Loading theaters…</div>
+    </section>
+
+    <section class="lobby-panel" id="panel-cache">
+      <h2>Weapons Cache</h2>
+      <p class="muted">Build defenses from parts, or buy with chips. Ammo arms each deployment in a run.</p>
+      <div class="shop-row">
+        <button class="btn small" id="buy-parts">🪙 Buy parts pack</button>
+        <button class="btn small" id="buy-ammo">🪙 Buy ammo pack</button>
+      </div>
+      <div class="cache-tabs">
+        <button class="cache-tab active" data-tab="towers">Defenses</button>
+        <button class="cache-tab" data-tab="cards">Action Cards</button>
+      </div>
+      <div class="cache-body" id="cache-towers">Loading cache…</div>
+      <div class="cache-body" id="cache-cards" style="display:none">Loading cards…</div>
+    </section>
+  </div>
+
+  <div class="lobby-deploy">
+    <div class="deploy-summary" id="deploy-summary">Select a theater to deploy.</div>
+    <div class="deploy-actions">
+      <button class="btn" id="btn-coop" title="Invite a second commander">＋ Co-op (2P)</button>
+      <button class="btn primary" id="btn-deploy" disabled>Deploy ▸</button>
+    </div>
+  </div>
+  <div class="td-toast" id="td-toast"></div>
+</main>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="/js/game/lobby.js"></script>
+<script type="module" src="/js/game/lobby-map.js"></script>
+<%- include('../partials/footer') %>

@@ -1,0 +1,125 @@
+<% const variant = (view.controls && view.controls.variants && view.controls.variants[0] && view.controls.variants[0].id) || 'dashboard'; %>
+<%
+  const drCopy = (view.copy && view.copy.dataroom) || {};
+  const drTitle = drCopy.title || 'Data Room';
+  const drLead = drCopy.lead || 'Switch the view above. Dashboard surfaces uploads, filters, and live activity for operators. Folder grid is the buyer-facing layout.';
+  const drStatLabels = drCopy.statLabels || { total: 'Total docs', ready: 'Ready', pending: 'Pending', blocked: 'Blocked', activeViewers: 'Active viewers', uploadsWeek: 'Uploads this wk' };
+  const drRoleLabel = drCopy.roleLabel || 'Role';
+  const drStatusLabel = drCopy.statusLabel || 'Status';
+  const drRoleFilters = (view.data && view.data.roleFilters) || [
+    { id: 'buyer', label: 'Buyer' },
+    { id: 'lender', label: 'Lender' },
+    { id: 'counsel', label: 'Counsel' },
+    { id: 'techdd', label: 'Tech DD' }
+  ];
+  const drStatusFilters = (view.data && view.data.statusFilters) || [
+    { id: 'ready', label: 'Ready' },
+    { id: 'pending', label: 'Pending' },
+    { id: 'blocked', label: 'Blocked' }
+  ];
+  const drUploadFolders = (view.data && view.data.uploadFolders) || ((view.data && view.data.folders) || []).map((f) => f.name);
+%>
+
+<section class="mll-chart-block" data-dr-variant-host>
+  <h2><%= drTitle %></h2>
+  <p class="mll-chart-block__lead"><%= drLead %></p>
+
+  <!-- DASHBOARD -->
+  <div class="mll-dr" data-dr-view="dashboard">
+    <div class="mll-dr__stats">
+      <% const s = view.data.stats || {}; %>
+      <div class="mll-dr__stat"><div class="mll-dr__stat-val" data-dr-stat="total"><%= s.totalDocs %></div><div class="mll-dr__stat-lbl"><%= drStatLabels.total %></div></div>
+      <div class="mll-dr__stat mll-dr__stat--ok"><div class="mll-dr__stat-val" data-dr-stat="ready"><%= s.ready %></div><div class="mll-dr__stat-lbl"><%= drStatLabels.ready %></div></div>
+      <div class="mll-dr__stat mll-dr__stat--warn"><div class="mll-dr__stat-val" data-dr-stat="pending"><%= s.pending %></div><div class="mll-dr__stat-lbl"><%= drStatLabels.pending %></div></div>
+      <div class="mll-dr__stat mll-dr__stat--danger"><div class="mll-dr__stat-val" data-dr-stat="blocked"><%= s.blocked %></div><div class="mll-dr__stat-lbl"><%= drStatLabels.blocked %></div></div>
+      <div class="mll-dr__stat mll-dr__stat--accent"><div class="mll-dr__stat-val"><%= s.activeViewers %></div><div class="mll-dr__stat-lbl"><%= drStatLabels.activeViewers %></div></div>
+      <div class="mll-dr__stat"><div class="mll-dr__stat-val">+<%= s.uploadsWeek %></div><div class="mll-dr__stat-lbl"><%= drStatLabels.uploadsWeek %></div></div>
+    </div>
+
+    <div class="mll-dr__filters">
+      <label class="mll-dr__field">
+        <span>Search</span>
+        <input type="search" placeholder="filename…" data-dr-search />
+      </label>
+      <label class="mll-dr__field">
+        <span><%= drRoleLabel %></span>
+        <select data-dr-role>
+          <option value="">All</option>
+          <% drRoleFilters.forEach((r) => { %><option value="<%= r.id %>"><%= r.label %></option><% }) %>
+        </select>
+      </label>
+      <label class="mll-dr__field">
+        <span><%= drStatusLabel %></span>
+        <select data-dr-status>
+          <option value="">All</option>
+          <% drStatusFilters.forEach((st) => { %><option value="<%= st.id %>"><%= st.label %></option><% }) %>
+        </select>
+      </label>
+      <button type="button" class="mll-dr__upload-btn" data-dr-upload>＋ Upload</button>
+    </div>
+
+    <div class="mll-dr__upload-zone" data-dr-zone hidden>
+      <div class="mll-dr__upload-zone-inner">
+        <strong>Drop files here</strong>
+        <span>or pick a folder below — this is a demo, files stay client-side</span>
+        <div class="mll-dr__upload-row">
+          <input type="text" placeholder="Filename.ext" data-dr-fname />
+          <select data-dr-fdest>
+            <% drUploadFolders.forEach((name, i) => { %>
+              <option value="<%= name %>" <%= i === 0 ? 'selected' : '' %>><%= name %></option>
+            <% }) %>
+          </select>
+          <button type="button" data-dr-fadd>Add</button>
+          <button type="button" class="mll-dr__upload-cancel" data-dr-fcancel>Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="mll-dr__grid">
+      <div class="mll-dr__files">
+        <div class="mll-dr__files-head">
+          <span>Files (<span data-dr-count>0</span>)</span>
+          <span class="mll-dr__hint">Filtered by your controls</span>
+        </div>
+        <div class="mll-dr__table" data-dr-files></div>
+      </div>
+
+      <aside class="mll-dr__feed">
+        <div class="mll-dr__feed-head">Recent activity</div>
+        <ul class="mll-dr__feed-list" data-dr-activity></ul>
+      </aside>
+    </div>
+  </div>
+
+  <!-- GRID (legacy folder layout) -->
+  <div class="mll-dr" data-dr-view="grid" hidden>
+    <div class="mll-dataroom">
+      <% (view.data.folders || []).forEach((folder) => { %>
+        <div class="mll-dataroom__folder">
+          <div class="mll-dataroom__folder-head">
+            <div class="mll-dataroom__folder-name"><%= folder.name %></div>
+            <div class="mll-dataroom__folder-meta">
+              <span><%= folder.docs %> docs</span>
+              <span>·</span>
+              <span><%= folder.access %></span>
+              <span>·</span>
+              <span class="mll-dataroom__status mll-dataroom__status--<%= folder.status %>"><%= folder.status %></span>
+            </div>
+          </div>
+          <ul class="mll-dataroom__list">
+            <% (folder.items || []).forEach((it) => { %>
+              <li>
+                <span><%= it.name %></span>
+                <span class="mll-dataroom__roles">
+                  <% (it.roles || []).forEach((r) => { %><span class="mll-tag"><%= r %></span><% }) %>
+                </span>
+              </li>
+            <% }) %>
+          </ul>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+
+  <script id="dataroomData" type="application/json"><%- JSON.stringify(view.data || {}) %></script>
+</section>

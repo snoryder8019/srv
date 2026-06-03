@@ -1056,9 +1056,11 @@ router.post('/trim-upload', assetMem.single('video'), async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const db = req.db;
-    const { title, tags, folders, folder, clientId } = req.body;
+    const { title, tags, folders, folder, clientId, altText, caption } = req.body;
     const $set = { updatedAt: new Date() };
     if (title !== undefined) $set.title = title;
+    if (altText !== undefined) $set.altText = String(altText).slice(0, 250);
+    if (caption !== undefined) $set.caption = String(caption).slice(0, 500);
     // Support `folders` array or legacy `folder` string
     if (folders !== undefined) {
       const arr = Array.isArray(folders) ? folders : folders.split(',').map(f => f.trim()).filter(Boolean);
@@ -1154,6 +1156,7 @@ router.post('/bulk-move', async (req, res) => {
     const { ids, folder, folders, clientId } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'No IDs provided' });
 
+    const { altText, caption } = req.body;
     const objectIds = ids.map(id => new ObjectId(id));
     const $set = { updatedAt: new Date() };
     if (folders && Array.isArray(folders) && folders.length) {
@@ -1164,6 +1167,8 @@ router.post('/bulk-move', async (req, res) => {
       $set.folders = [folder];
     }
     if (clientId !== undefined) $set.clientId = clientId || null;
+    if (altText !== undefined) $set.altText = String(altText).slice(0, 250);
+    if (caption !== undefined) $set.caption = String(caption).slice(0, 500);
 
     await db.collection('assets').updateMany({ _id: { $in: objectIds } }, { $set });
     res.json({ success: true, updated: ids.length });

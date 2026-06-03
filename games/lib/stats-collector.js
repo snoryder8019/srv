@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
+const wallet = require('./wallet');
 
 const emitter = new EventEmitter();
 
@@ -72,14 +73,27 @@ const WINDROSE_LOG_ALT = path.join(__dirname, '..', 'windrose', 'R5', 'Saved', '
 // <game>/windrose_plus_data/. We re-resolve on every tail tick so a UTC
 // rollover is picked up automatically — no games service restart required.
 const WINDROSE_PLUS_DATA_DIR = path.join(__dirname, '..', 'windrose', 'windrose_plus_data');
+// WindrosePlus 1.0.16+ writes dated NDJSON to windrose_plus_data/logs/; older
+// builds wrote them directly into windrose_plus_data/. Scan both and return
+// whichever holds the newest YYYY-MM-DD.log so a version bump that moves the
+// path doesn't silently break the stats pipeline.
 function resolveWindrosePlusLog() {
-  try {
-    if (!fs.existsSync(WINDROSE_PLUS_DATA_DIR)) return null;
-    const files = fs.readdirSync(WINDROSE_PLUS_DATA_DIR)
-      .filter(f => /^\d{4}-\d{2}-\d{2}\.log$/.test(f))
-      .sort();
-    return files.length ? path.join(WINDROSE_PLUS_DATA_DIR, files[files.length - 1]) : null;
-  } catch { return null; }
+  const candidates = [
+    path.join(WINDROSE_PLUS_DATA_DIR, 'logs'),
+    WINDROSE_PLUS_DATA_DIR,
+  ];
+  let bestName = '';
+  let bestPath = null;
+  for (const dir of candidates) {
+    try {
+      if (!fs.existsSync(dir)) continue;
+      const files = fs.readdirSync(dir).filter(f => /^\d{4}-\d{2}-\d{2}\.log$/.test(f));
+      for (const f of files) {
+        if (f > bestName) { bestName = f; bestPath = path.join(dir, f); }
+      }
+    } catch {}
+  }
+  return bestPath;
 }
 
 // Map virtual log sources to their game for DB storage
@@ -786,6 +800,10 @@ async function upsertPlayerStat(game, player) {
       },
       { upsert: true }
     );
+    // Server-reward coins: a Steam-linked platform user earns coins for the time
+    // they spend on a dedicated server (best-effort; unlinked players earn nothing).
+    wallet.accrueServerCoins(db, { game, steamId: player.steamId, name: player.name, seconds: 30 })
+      .catch(() => {});
   } catch (e) { /* skip */ }
 }
 

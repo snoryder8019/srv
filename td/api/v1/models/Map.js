@@ -18,7 +18,7 @@ const mapSchema = new mongoose.Schema({
   authorName: { type: String },
 
   // Board geometry
-  radius: { type: Number, default: 6, min: 3, max: 20 },
+  radius: { type: Number, default: 6, min: 3, max: 28 },
 
   // Hex roles - everything else is buildable terrain
   spawnHexes: [hexCoordSchema],   // enemies enter here

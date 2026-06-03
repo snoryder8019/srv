@@ -69,20 +69,112 @@
       background: rgba(245,194,101,0.04);
     }
     .privacy strong { color: var(--yellow); }
+    /* unified wallet */
+    .bal-row { display: flex; gap: 12px; margin: 6px 0 4px; }
+    .bal { flex: 1; background: #0a0a0a; border: 1px solid var(--border); border-radius: 5px; padding: 16px 12px; text-align: center; }
+    .bal-n { font-size: 2rem; font-weight: bold; font-family: 'Courier New', monospace; color: var(--yellow); line-height: 1; display: inline-block; }
+    .bal-n.green { color: var(--green); }
+    .bal-l { font-size: 0.74rem; margin-top: 8px; letter-spacing: 0.04em; }
+    .bal-s { font-size: 0.56rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 3px; }
+    .bal-bump { animation: bump 0.6s ease; }
+    @keyframes bump { 0% { transform: scale(1); } 30% { transform: scale(1.2); } 100% { transform: scale(1); } }
+    .wallet-activity { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 0.72rem; }
+    .wa-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; color: var(--muted); }
+    .wa-row .amt.up { color: var(--green); } .wa-row .amt.down { color: var(--accent); }
+    .live-pill { font-size: 0.58rem; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; letter-spacing: 0.1em; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); display: inline-block; transition: background 0.3s; }
+    /* personal stats & records */
+    .stat-mini-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:5px; overflow:hidden; margin-top:6px; }
+    .stat-mini { background:#0a0a0a; padding:13px 8px; text-align:center; }
+    .stat-mini .n { font-family:'Courier New',monospace; font-size:1.15rem; font-weight:bold; color:var(--yellow); line-height:1; }
+    .stat-mini .n.green { color:var(--green); }
+    .stat-mini .n.accent { color:var(--accent); }
+    .stat-mini .l { font-size:0.55rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-top:6px; }
+    .stat-table { margin-top:10px; font-size:0.74rem; }
+    .stat-table .row { display:flex; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--border); }
+    .stat-table .row:last-child { border-bottom:none; }
+    .stat-table .g { color:var(--text); text-transform:capitalize; }
+    .stat-table .v { color:var(--muted); font-family:'Courier New',monospace; text-align:right; }
+    .records-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .record-chip { flex:1 1 28%; min-width:90px; background:#0a0a0a; border:1px solid var(--border); border-radius:5px; padding:11px 8px; text-align:center; }
+    .record-chip .rn { font-family:'Courier New',monospace; font-weight:bold; color:var(--yellow); font-size:0.95rem; }
+    .record-chip .rl { font-size:0.52rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-top:5px; line-height:1.3; }
   </style>
 </head>
 <body>
 <nav>
   <a href="/" class="brand">MADLADSLAB</a>
   <div class="right">
-    <a href="/">Servers</a>
-    <a href="/dashboard">Dashboard</a>
+    <a href="/servers">Servers</a>
+    <a href="/arcade/home">Arcade</a>
     <a href="/logout">Logout</a>
   </div>
 </nav>
 <div class="wrap">
   <h1>Profile</h1>
   <p class="lede">Your public identity on the portal. Real names and emails are never shown to other users.</p>
+
+  <div class="card" id="walletCard">
+    <div class="field-label" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Unified Wallet</span>
+      <span class="live-pill"><span class="live-dot" id="walletDot"></span>LIVE</span>
+    </div>
+    <div class="bal-row">
+      <div class="bal">
+        <div class="bal-n" id="balChips">…</div>
+        <div class="bal-l">🪙 Chips</div>
+        <div class="bal-s">arcade &amp; casino</div>
+      </div>
+      <div class="bal">
+        <div class="bal-n green" id="balCoins">…</div>
+        <div class="bal-l">🎖️ Coins</div>
+        <div class="bal-s">server rewards</div>
+      </div>
+    </div>
+    <div class="hint" id="walletHint">Chips are won at the tables &amp; earned in the arcade. Coins are earned by playing on the dedicated servers — link your Steam ID below to collect them.</div>
+    <div class="wallet-activity" id="walletActivity"></div>
+    <div class="wallet-records" id="walletRecords" style="display:none">
+      <div class="field-label" style="margin-top:16px">Casino Records</div>
+      <div class="records-row">
+        <div class="record-chip"><div class="rn" id="recBiggestBet">—</div><div class="rl" id="recBiggestBetLbl">Biggest bet won</div></div>
+        <div class="record-chip"><div class="rn" id="recTotalWon">—</div><div class="rl">Total won</div></div>
+        <div class="record-chip"><div class="rn" id="recTotalWagered">—</div><div class="rl">Total wagered</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="arcadeCard" style="display:none">
+    <div class="field-label">🎮 Arcade Record</div>
+    <div class="stat-mini-grid">
+      <div class="stat-mini"><div class="n green" id="arcWins">0</div><div class="l">Wins</div></div>
+      <div class="stat-mini"><div class="n" id="arcGames">0</div><div class="l">Games</div></div>
+      <div class="stat-mini"><div class="n" id="arcRate">0%</div><div class="l">Win rate</div></div>
+    </div>
+    <div class="stat-table" id="arcByGame"></div>
+  </div>
+
+  <div class="card" id="serverCard" style="display:none">
+    <div class="field-label">🕹️ Server Record</div>
+    <div class="stat-mini-grid">
+      <div class="stat-mini"><div class="n" id="srvPlaytime">0m</div><div class="l">Playtime</div></div>
+      <div class="stat-mini"><div class="n green" id="srvKills">0</div><div class="l">Kills</div></div>
+      <div class="stat-mini"><div class="n accent" id="srvDeaths">0</div><div class="l">Deaths</div></div>
+    </div>
+    <div class="stat-table" id="srvByGame"></div>
+    <div class="hint" style="margin-top:8px">Server stats track to your linked Steam ID below.</div>
+  </div>
+
+  <div class="card" id="castCard" style="display:none">
+    <div class="field-label">📡 Broadcasting</div>
+    <div class="stat-mini-grid">
+      <div class="stat-mini"><div class="n" id="castBroadcasts">0</div><div class="l">Broadcasts</div></div>
+      <div class="stat-mini"><div class="n" id="castAirtime">0m</div><div class="l">Airtime</div></div>
+      <div class="stat-mini"><div class="n" id="castPeak">0</div><div class="l">Peak viewers</div></div>
+      <div class="stat-mini"><div class="n green" id="castSessions">0</div><div class="l">Watched</div></div>
+      <div class="stat-mini"><div class="n" id="castWatched">0m</div><div class="l">Watch time</div></div>
+      <div class="stat-mini"><div class="n" id="castUnique">0</div><div class="l">Unique viewers</div></div>
+    </div>
+  </div>
 
   <div class="card">
     <div class="field-label">Username</div>
@@ -116,7 +208,119 @@
   </div>
 </div>
 
+<script src="/socket.io/socket.io.js"></script>
 <script>
+// ── Unified wallet: live balances (chips + server-reward coins) ──
+var REASON_LABEL = {
+  'arcade-play':'Arcade play','arcade-win':'Arcade win','casino-win':'Casino win',
+  'casino-payout':'Casino payout','wager':'Bet placed','server-play':'Server reward',
+  'server-reward':'Server reward','welcome-bonus':'Welcome bonus','grant':'Grant',
+  'credit':'Credit','redeem':'Redeemed'
+};
+function setBal(id, val, bump) {
+  var el = document.getElementById(id); if (!el) return;
+  el.textContent = Number(val || 0).toLocaleString();
+  if (bump) { el.classList.remove('bal-bump'); void el.offsetWidth; el.classList.add('bal-bump'); }
+}
+function renderActivity(list) {
+  var el = document.getElementById('walletActivity'); if (!el) return;
+  if (!list || !list.length) { el.innerHTML = '<div class="wa-row"><span>No activity yet — play a game to get started.</span></div>'; return; }
+  el.innerHTML = list.map(function (a) {
+    var up = a.delta >= 0, cur = a.currency === 'coins' ? 'coins' : 'chips';
+    var label = REASON_LABEL[a.reason] || a.reason;
+    return '<div class="wa-row"><span>' + label + (a.game ? ' · ' + a.game : '') + '</span>' +
+      '<span class="amt ' + (up ? 'up' : 'down') + '">' + (up ? '+' : '') + a.delta + ' ' + cur + '</span></div>';
+  }).join('');
+}
+async function loadWallet() {
+  try {
+    var r = await fetch('/api/wallet/me'); if (!r.ok) return;
+    var d = await r.json();
+    setBal('balChips', d.chips); setBal('balCoins', d.coins);
+    renderActivity(d.recent);
+    renderWalletRecords(d);
+  } catch (e) {}
+}
+try {
+  var ws = io('/wallet');
+  ws.on('connect', function () { document.getElementById('walletDot').style.background = 'var(--green)'; });
+  ws.on('disconnect', function () { document.getElementById('walletDot').style.background = 'var(--muted)'; });
+  ws.on('wallet:update', function (p) {
+    if (p.chips != null) setBal('balChips', p.chips, p.currency === 'chips');
+    if (p.coins != null) setBal('balCoins', p.coins, p.currency === 'coins');
+    loadWallet();   // refresh the recent-activity feed
+  });
+} catch (e) {}
+loadWallet();
+loadArcadeRecord();
+loadBroadcastRecord();
+
+function fmtNum(n){ return Number(n||0).toLocaleString(); }
+function escp(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+function fmtDur(sec){ sec=Number(sec||0); var h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60); return h>0?(h+'h '+m+'m'):(m+'m'); }
+function fmtMs(ms){ return fmtDur(Math.floor(Number(ms||0)/1000)); }
+
+function renderWalletRecords(d){
+  var box = document.getElementById('walletRecords'); if(!box) return;
+  var bb=d.biggestBetWon||0, tw=d.totalWon||0, twag=d.totalWagered||0;
+  if(!(bb||tw||twag)){ box.style.display='none'; return; }
+  box.style.display='';
+  document.getElementById('recBiggestBet').textContent = bb ? (fmtNum(bb)+' 🪙') : '—';
+  document.getElementById('recBiggestBetLbl').textContent = d.biggestBetGame ? ('Biggest bet won · '+d.biggestBetGame) : 'Biggest bet won';
+  document.getElementById('recTotalWon').textContent = fmtNum(tw)+' 🪙';
+  document.getElementById('recTotalWagered').textContent = fmtNum(twag)+' 🪙';
+}
+
+async function loadArcadeRecord(){
+  try{
+    var r = await fetch('/api/webgame/me'); if(!r.ok) return;
+    var d = await r.json(); if(!d || !d.ok) return;
+    var stats = d.stats||[]; if(!stats.length) return;
+    var wins = stats.reduce(function(a,s){return a+(s.wins||0)},0);
+    var runs = stats.reduce(function(a,s){return a+(s.runs||0)},0);
+    document.getElementById('arcWins').textContent = fmtNum(wins);
+    document.getElementById('arcGames').textContent = fmtNum(runs);
+    document.getElementById('arcRate').textContent = (runs?Math.round(wins/runs*100):0)+'%';
+    document.getElementById('arcByGame').innerHTML = stats.slice()
+      .sort(function(a,b){return (b.wins||0)-(a.wins||0)})
+      .map(function(s){ return '<div class="row"><span class="g">'+escp(s.game)+'</span><span class="v">'+(s.wins||0)+'W · '+(s.runs||0)+' games'+(s.bestScore?(' · best '+s.bestScore):'')+'</span></div>'; })
+      .join('');
+    document.getElementById('arcadeCard').style.display='';
+  }catch(e){}
+}
+
+async function loadBroadcastRecord(){
+  try{
+    var r = await fetch('/broadcasts/api/stats/me'); if(!r.ok) return;
+    var d = await r.json(); var s = d && d.stats; if(!s) return;
+    var h=s.host||{}, v=s.viewer||{};
+    if(!((h.broadcasts||0)||(v.sessions||0))) return;
+    document.getElementById('castBroadcasts').textContent = fmtNum(h.broadcasts||0);
+    document.getElementById('castAirtime').textContent = fmtMs(h.totalAirtimeMs);
+    document.getElementById('castPeak').textContent = fmtNum(h.peakViewersEver||0);
+    document.getElementById('castSessions').textContent = fmtNum(v.sessions||0);
+    document.getElementById('castWatched').textContent = fmtMs(v.totalWatchMs);
+    document.getElementById('castUnique').textContent = fmtNum(h.totalUniqueViewers||0);
+    document.getElementById('castCard').style.display='';
+  }catch(e){}
+}
+
+async function loadServerRecord(steamId){
+  if(!steamId) return;
+  try{
+    var r = await fetch('/stats/player/'+encodeURIComponent(steamId)); if(!r.ok) return;
+    var d = await r.json(); var rows=(d&&d.stats)||[]; if(!rows.length) return;
+    document.getElementById('srvPlaytime').textContent = fmtDur(rows.reduce(function(a,s){return a+(s.totalPlaytime||0)},0));
+    document.getElementById('srvKills').textContent = fmtNum(rows.reduce(function(a,s){return a+(s.kills||0)},0));
+    document.getElementById('srvDeaths').textContent = fmtNum(rows.reduce(function(a,s){return a+(s.deaths||0)},0));
+    document.getElementById('srvByGame').innerHTML = rows.slice()
+      .sort(function(a,b){return (b.totalPlaytime||0)-(a.totalPlaytime||0)})
+      .map(function(s){ return '<div class="row"><span class="g">'+escp(s.game)+'</span><span class="v">'+fmtDur(s.totalPlaytime)+' · '+(s.kills||0)+'K/'+(s.deaths||0)+'D · '+(s.sessions||0)+' sess</span></div>'; })
+      .join('');
+    document.getElementById('serverCard').style.display='';
+  }catch(e){}
+}
+
 async function load() {
   const r = await fetch('/profile/api/me');
   if (!r.ok) { window.location.href = '/login?next=/profile'; return; }
@@ -127,6 +331,7 @@ async function load() {
   document.getElementById('curSteamId').textContent = p.steamId || 'Not linked';
   document.getElementById('curSteamId').style.color = p.steamId ? 'var(--yellow)' : 'var(--green)';
   document.getElementById('newUsername').value = p.username || '';
+  loadServerRecord(p.steamId);
 }
 
 async function saveUsername() {

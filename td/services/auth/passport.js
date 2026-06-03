@@ -13,6 +13,19 @@ import config from '../../config/index.js';
 
 let configured = false;
 
+// Privacy: we must NEVER store or surface a user's real name. Google's
+// profile.displayName is the real name, so we ignore it entirely and seed a
+// neutral screen-name handle the user can change later. Email local-parts can
+// also contain a real name (scott.wallace@…), so we don't use those either —
+// we generate an anonymous handle.
+function safeHandle() {
+  const adj = ['Swift', 'Iron', 'Hex', 'Storm', 'Ember', 'Frost', 'Shadow', 'Bright', 'Stone', 'Vapor'];
+  const noun = ['Warden', 'Architect', 'Sentinel', 'Ranger', 'Tinker', 'Nomad', 'Glyph', 'Bastion', 'Drifter', 'Spark'];
+  const a = adj[Math.floor(Math.random() * adj.length)];
+  const n = noun[Math.floor(Math.random() * noun.length)];
+  return a + n + Math.floor(100 + Math.random() * 900);
+}
+
 export function configurePassport() {
   if (configured) return passport;
 
@@ -38,7 +51,7 @@ export function configurePassport() {
           googleId: profile.id,
           email,
           emailVerified: verified,
-          displayName: profile.displayName || email.split('@')[0],
+          displayName: safeHandle(),   // screen name only — never profile.displayName (real name)
           avatarUrl: profile.photos?.[0]?.value,
           lastLoginAt: new Date(),
           loginCount: 1,

@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arcade</title>
+<style>
+  :root { --bg:#0c1410; --panel:#11201a; --line:rgba(255,255,255,.08); --ink:#e9ecef; --muted:#9fb0a6; --green:#2fbf71; --gold:#e3c567; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); }
+  #app { display:flex; flex-direction:column; height:100%; }
+  header { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  header .title { font-size:13px; letter-spacing:.18em; color:var(--muted); font-weight:700; }
+  header .who { margin-left:auto; font-size:12px; color:var(--gold); }
+  .tabs { display:flex; border-bottom:1px solid var(--line); }
+  .tab { flex:1; text-align:center; padding:11px 6px; font-size:13px; font-weight:700; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; }
+  .tab.on { color:var(--ink); border-bottom-color:var(--green); }
+  .body { flex:1 1 auto; min-height:0; overflow:auto; }
+  .pane { display:none; height:100%; }
+  .pane.on { display:flex; flex-direction:column; }
+
+  /* chat */
+  #msgs { flex:1 1 auto; overflow:auto; padding:10px 12px; display:flex; flex-direction:column; gap:7px; }
+  .m { font-size:13px; line-height:1.35; }
+  .m .nm { font-weight:700; color:var(--gold); }
+  .m .sf { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-left:4px; }
+  .m .tx { color:#dfe7e1; }
+  .m.sys { color:var(--muted); font-style:italic; }
+  .composer { display:flex; gap:8px; padding:10px 12px; border-top:1px solid var(--line); }
+  .composer input { flex:1; background:#06120d; border:1px solid var(--line); color:var(--ink); border-radius:9px; padding:10px 11px; font-size:14px; }
+  .composer button { background:var(--green); color:#05230f; border:none; border-radius:9px; padding:10px 14px; font-weight:800; cursor:pointer; }
+  .composer button:disabled { opacity:.5; cursor:default; }
+  #chatNote { font-size:11px; color:var(--muted); padding:0 12px 8px; }
+
+  /* leaderboards */
+  .lbtabs { display:flex; gap:6px; flex-wrap:wrap; padding:10px 12px 4px; }
+  .lbtab { font-size:12px; padding:6px 10px; border-radius:999px; background:#0f2418; border:1px solid var(--line); color:var(--muted); cursor:pointer; }
+  .lbtab.on { background:var(--green); color:#05230f; border-color:transparent; font-weight:800; }
+  .lblist { padding:6px 12px 14px; }
+  .lbrow { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .lbrow .rk { width:22px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .lbrow .nm { flex:1; }
+  .lbrow .st { color:var(--gold); font-weight:700; font-variant-numeric:tabular-nums; }
+  .lbrow .sub { color:var(--muted); font-size:11px; }
+
+  /* games */
+  .games { padding:10px 12px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .gcard { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; text-align:center; }
+  .gcard img { width:100%; height:84px; object-fit:cover; display:block; background:#0a3a24; }
+  .gcard .gn { font-size:13px; font-weight:800; padding:8px 6px; }
+  .gcard.cur { outline:2px solid var(--gold); }
+  .backbar { padding:8px 12px 14px; }
+  .backbar button { width:100%; background:#1d3b2b; color:var(--ink); border:none; border-radius:10px; padding:11px; font-weight:800; cursor:pointer; }
+
+  .empty { color:var(--muted); font-size:13px; padding:18px 12px; text-align:center; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="title">ARCADE</span>
+    <span class="who" id="who">…</span>
+  </header>
+  <div class="tabs">
+    <div class="tab on" data-pane="chat">Chat</div>
+    <div class="tab" data-pane="boards">Leaderboards</div>
+    <div class="tab" data-pane="games">Games</div>
+  </div>
+  <div class="body">
+    <!-- CHAT -->
+    <div class="pane on" id="pane-chat">
+      <div id="msgs"></div>
+      <div id="chatNote"></div>
+      <div class="composer">
+        <input id="chatInput" maxlength="500" placeholder="Message the Arcade…" autocomplete="off" />
+        <button id="chatSend">Send</button>
+      </div>
+    </div>
+    <!-- LEADERBOARDS -->
+    <div class="pane" id="pane-boards">
+      <div class="lbtabs" id="lbtabs"></div>
+      <div class="lblist" id="lblist"><div class="empty">Loading…</div></div>
+    </div>
+    <!-- GAMES -->
+    <div class="pane" id="pane-games">
+      <div class="games" id="gamesGrid"></div>
+      <div class="backbar"><button id="backArcade">← Back to Arcade portal</button></div>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => { const d=document.createElement('div'); d.textContent = s==null?'':String(s); return d.innerHTML; };
+  const params = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+  const SURFACE = params.get('surface') || 'portal';
+  const CURGAME = params.get('game') || null;
+
+  // identity arrives either implicitly (session, portal) or via a ticket postMessage.
+  let modalTicket = null;
+  let identity = null;
+  let socket = null;
+
+  // ---- tabs ----
+  document.querySelectorAll('.tab').forEach((t) => {
+    t.onclick = () => {
+      document.querySelectorAll('.tab').forEach((x)=>x.classList.toggle('on', x===t));
+      const pane = t.dataset.pane;
+      document.querySelectorAll('.pane').forEach((p)=>p.classList.remove('on'));
+      $('pane-'+pane).classList.add('on');
+      if (pane==='boards') loadBoards();
+      if (pane==='games') loadGames();
+    };
+  });
+
+  // ---- chat ----
+  function addMsg(m){
+    const wrap = $('msgs');
+    const el = document.createElement('div');
+    if (m.sys){ el.className='m sys'; el.textContent = m.text; }
+    else {
+      el.className='m';
+      const sf = m.surface ? `<span class="sf">${esc(m.surface)}</span>` : '';
+      el.innerHTML = `<span class="nm">${esc(m.from)}</span>${sf} <span class="tx">${esc(m.text)}</span>`;
+    }
+    wrap.appendChild(el);
+    wrap.scrollTop = wrap.scrollHeight;
+  }
+  function send(){
+    const inp = $('chatInput'); const text = inp.value.trim();
+    if (!text || !socket || !socket.connected) return;
+    socket.emit('chat:send', { text });
+    inp.value = '';
+  }
+  $('chatSend').onclick = send;
+  $('chatInput').addEventListener('keydown', (e)=>{ if (e.key==='Enter') send(); });
+
+  function connect(){
+    const auth = { surface: SURFACE };
+    if (modalTicket) auth.ticket = modalTicket;
+    socket = io('/global', { transports:['websocket','polling'], withCredentials:true, auth });
+    socket.on('connect', ()=>{ $('chatNote').textContent=''; });
+    socket.on('connect_error', (e)=>{ $('chatNote').textContent = 'Chat unavailable — sign in on the Arcade portal.'; });
+    socket.on('chat:history', (msgs)=>{ $('msgs').innerHTML=''; (msgs||[]).forEach(addMsg); });
+    socket.on('chat:msg', addMsg);
+    socket.on('chat:error', (e)=>{ if (e && e.error==='slow down') $('chatNote').textContent='Slow down a moment…'; });
+    socket.on('roster', (r)=>{ const n=(r&&r.users&&r.users.length)||0; $('who').textContent = n+' online'; });
+  }
+
+  // ---- leaderboards ----
+  let boardGames = [];
+  async function loadBoards(){
+    if (!boardGames.length){
+      try { const c = await fetch('/modal/catalog').then(r=>r.json()); boardGames = (c.games||[]); } catch(e){}
+      const tabs = $('lbtabs'); tabs.innerHTML='';
+      const mk = (key,label)=>{ const d=document.createElement('div'); d.className='lbtab'+(key==='all'?' on':''); d.textContent=label; d.dataset.key=key; d.onclick=()=>{ tabs.querySelectorAll('.lbtab').forEach(x=>x.classList.toggle('on',x===d)); renderBoard(key); }; tabs.appendChild(d); };
+      mk('all','Overall');
+      boardGames.forEach(g=>mk(g.slug, g.name));
+    }
+    renderBoard('all');
+  }
+  async function renderBoard(key){
+    const list = $('lblist'); list.innerHTML = '<div class="empty">Loading…</div>';
+    try {
+      if (key==='all'){
+        const d = await fetch('/api/webgame/leaderboard?limit=25').then(r=>r.json());
+        const rows = (d.leaderboard||[]);
+        if (!rows.length){ list.innerHTML='<div class="empty">No games played yet.</div>'; return; }
+        list.innerHTML = rows.map((r,i)=>
+          `<div class="lbrow"><span class="rk">${i+1}</span><span class="nm">${esc(r.displayName)}</span>`+
+          `<span class="st">${r.wins}W</span><span class="sub"> · ${r.winRate}% · ${r.gameCount} games</span></div>`).join('');
+      } else {
+        const d = await fetch('/api/webgame/leaderboard/'+encodeURIComponent(key)+'?limit=25').then(r=>r.json());
+        const rows = (d.leaderboard||[]);
+        if (!rows.length){ list.innerHTML='<div class="empty">No scores yet for this game.</div>'; return; }
+        list.innerHTML = rows.map((r,i)=>
+          `<div class="lbrow"><span class="rk">${i+1}</span><span class="nm">${esc(r.displayName)}</span>`+
+          `<span class="st">${r.wins}W</span><span class="sub"> · ${r.runs} games</span></div>`).join('');
+      }
+    } catch(e){ list.innerHTML='<div class="empty">Could not load leaderboard.</div>'; }
+  }
+
+  // ---- games / nav ----
+  let gamesLoaded = false;
+  async function loadGames(){
+    if (gamesLoaded) return; gamesLoaded = true;
+    const grid = $('gamesGrid');
+    try {
+      const c = await fetch('/modal/catalog').then(r=>r.json());
+      const games = (c.games||[]).filter(g=>g.status!=='disabled');
+      grid.innerHTML = games.map(g=>{
+        const cur = (g.slug===CURGAME) ? ' cur' : '';
+        const img = g.image && g.image.startsWith('http') ? g.image : ('https://games.madladslab.com'+(g.image||''));
+        return `<div class="gcard${cur}" data-url="${esc(g.playUrl)}"><img src="${esc(img)}" alt=""><div class="gn">${esc(g.name)}</div></div>`;
+      }).join('');
+      grid.querySelectorAll('.gcard').forEach(card=>{
+        card.onclick = ()=> navTop('https://games.madladslab.com'+card.dataset.url);
+      });
+    } catch(e){ grid.innerHTML = '<div class="empty">Could not load games.</div>'; }
+  }
+  $('backArcade').onclick = ()=> navTop('https://games.madladslab.com/');
+
+  // navigate the TOP window (we're in an iframe on cross-origin surfaces)
+  function navTop(url){
+    try { if (window.top && window.top !== window) { window.parent.postMessage({ type:'arcade-modal:navigate', url }, '*'); return; } } catch(e){}
+    location.href = url;
+  }
+
+  // ---- identity handshake ----
+  // Portal embeds us same-origin (session works immediately). Cross-origin surfaces
+  // postMessage a modal ticket; wait briefly for it, else connect on the session.
+  let connected = false;
+  function go(){ if (connected) return; connected = true; connect(); }
+  window.addEventListener('message', (ev)=>{
+    if (!ev.data || ev.data.type !== 'arcade-modal:ticket') return;
+    modalTicket = ev.data.ticket || null;
+    go();
+  });
+  // ask the host for a ticket (no-op on the portal), then fall back to session-only.
+  try { if (window.parent && window.parent !== window) window.parent.postMessage({ type:'arcade-modal:ready' }, '*'); } catch(e){}
+  setTimeout(()=>{ go(); }, 600); // session path / fallback
+</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <%- include('partials/head') %>
+  <% if (currentView && ['quality-of-revenue','team-workflow','packages'].includes(currentView.slug)) { %>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <% } %>
+  <% if (currentView && ['nwc','ai-guardrails','marketing','marketplace'].includes(currentView.slug)) { %>
+    <script defer src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <% } %>
+  <% if (currentView && ['trend-forecast','clients'].includes(currentView.slug)) { %>
+    <script defer src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <% } %>
+</head>
+<body class="mll-page mll-page--pitch">
+  <%- include('partials/header') %>
+
+  <div class="mll-pitch">
+    <aside class="mll-side">
+      <div class="mll-side__client">
+        <div class="mll-side__industry"><%= pitch.industry %></div>
+        <h2><%= pitch.client %></h2>
+        <div class="mll-side__date"><%= pitch.date %></div>
+      </div>
+      <nav class="mll-side__nav" aria-label="Pitch views">
+        <a class="mll-side__link <%= !currentView ? 'is-active' : '' %>" href="/c/<%= pitch.slug %>/overview">Overview</a>
+        <% pitch.views.forEach((v) => { %>
+          <a class="mll-side__link <%= currentView && v.slug === currentView.slug ? 'is-active' : '' %>"
+             href="/c/<%= pitch.slug %>/<%= v.slug %>"><%= v.title %></a>
+        <% }) %>
+      </nav>
+      <%- include('partials/scope-summary', { pitch }) %>
+    </aside>
+
+    <main class="mll-view">
+      <% if (!currentView) { %>
+        <%- include('partials/overview', { pitch }) %>
+      <% } else { %>
+        <header class="mll-view__head">
+          <h1><%= currentView.title %></h1>
+          <% if (currentView.subtitle) { %><p class="mll-view__sub"><%= currentView.subtitle %></p><% } %>
+          <%- include('partials/controls', { view: currentView }) %>
+        </header>
+
+        <% if (currentView.slug === 'quality-of-revenue') { %>
+          <%- include('charts/qor', { view: currentView }) %>
+        <% } else if (currentView.slug === 'nwc') { %>
+          <%- include('charts/nwc', { view: currentView }) %>
+        <% } else if (currentView.slug === 'trend-forecast') { %>
+          <%- include('charts/trend', { view: currentView }) %>
+        <% } else if (currentView.slug === 'data-room') { %>
+          <%- include('charts/dataroom', { view: currentView }) %>
+        <% } else if (currentView.slug === 'team-workflow') { %>
+          <%- include('charts/workflow', { view: currentView }) %>
+        <% } else if (currentView.slug === 'ai-guardrails') { %>
+          <%- include('charts/ai-guardrails', { view: currentView }) %>
+        <% } else if (currentView.slug === 'engagement-auth') { %>
+          <%- include('charts/engagement-auth', { view: currentView }) %>
+        <% } else if (currentView.slug === 'meetings-portal') { %>
+          <%- include('charts/meetings-portal', { view: currentView }) %>
+        <% } else if (currentView.slug === 'packages') { %>
+          <%- include('charts/packages', { view: currentView, pitch }) %>
+        <% } else if (currentView.slug === 'marketing') { %>
+          <%- include('charts/marketing', { view: currentView, pitch }) %>
+        <% } else if (currentView.slug === 'clients') { %>
+          <%- include('charts/clients', { view: currentView, pitch }) %>
+        <% } else if (currentView.slug === 'marketplace') { %>
+          <%- include('charts/marketplace', { view: currentView, pitch }) %>
+        <% } %>
+
+        <%- include('partials/scope', { view: currentView }) %>
+      <% } %>
+    </main>
+  </div>
+
+  <%- include('partials/cart-drawer', { pitch }) %>
+  <%- include('partials/footer') %>
+
+  <script>window.__PITCH__ = <%- JSON.stringify({ slug: pitch.slug, client: pitch.client, defaultRate: pitch.defaultRate || 165 }) %>;</script>
+  <script defer src="/js/scope-cart.js"></script>
+  <% if (currentView && currentView.slug === 'quality-of-revenue') { %><script defer src="/js/view-qor.js"></script><% } %>
+  <% if (currentView && currentView.slug === 'nwc') { %><script defer src="/js/view-nwc.js"></script><% } %>
+  <% if (currentView && currentView.slug === 'trend-forecast') { %><script defer src="/js/view-trend.js"></script><% } %>
+  <% if (currentView && currentView.slug === 'team-workflow') { %>
+    <script defer src="/js/view-workflow.js"></script>
+    <script defer src="/js/view-workflow-timeline.js"></script>
+    <script defer src="/js/view-workflow-dashboard.js"></script>
+  <% } %>
+  <% if (currentView && currentView.slug === 'data-room') { %><script defer src="/js/view-dataroom.js"></script><% } %>
+  <% if (currentView && currentView.slug === 'meetings-portal') { %><script defer src="/js/view-meetings.js"></script><% } %>
+  <% if (currentView && currentView.slug === 'ai-guardrails') { %><script defer src="/js/view-ai-guardrails.js"></script><% } %>
+  <% if (currentView && currentView.slug === 'packages') { %><script defer src="/js/view-packages.js"></script><% } %>
+  <% if (currentView && currentView.slug === 'marketing') { %><script defer src="/js/view-marketing.js"></script><% } %>
+  <% if (currentView && currentView.slug === 'clients') { %><script defer src="/js/view-clients.js"></script><% } %>
+  <% if (currentView && currentView.slug === 'marketplace') { %><script defer src="/js/view-marketplace.js"></script><% } %>
+</body>
+</html>

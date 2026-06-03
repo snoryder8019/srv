@@ -287,15 +287,15 @@
         grid-template-rows: 1.4fr 1fr;
         grid-template-areas:
           "harmony   harmony  vitals   ollama"
-          "outbounds tenants  signups  activity";
+          "outbounds slidesht buckets  dbtunnel";
       }
       #harmonyTile   { grid-area: harmony; }
       #vitalsTile    { grid-area: vitals; }
       #outboundsTile { grid-area: outbounds; }
       #ollamaTile    { grid-area: ollama; }
-      #signupsTile   { grid-area: signups; }
-      #tenantsTile   { grid-area: tenants; }
-      #activityTile  { grid-area: activity; }
+      #slideshowTile { grid-area: slidesht; }
+      #bucketsTile   { grid-area: buckets; }
+      #dbtunnelTile  { grid-area: dbtunnel; }
       /* Services tile is hidden on the landing in compact mode; moved to Tools tab */
       #tab-overview #servicesTile { display:none; }
 
@@ -318,9 +318,26 @@
       #servicesTile .svc-mini { grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:4px; }
       #servicesTile .svc-mini .row { padding:4px 6px; font-size:10px; }
 
-      /* activity feed fills cell */
-      #activityTile .feed { max-height:none; }
+      /* slideshow tile inherits feed scrolling */
+      #slideshowTile .slide .feed { max-height:none; }
     }
+
+    /* Slideshow dots */
+    .slideDot { width:6px; height:6px; border-radius:50%; background:#262626; cursor:pointer; display:inline-block; transition:background .2s ease; }
+    .slideDot.active { background:#c9a848; box-shadow:0 0 4px #c9a848; }
+    .slideDot:hover { background:#525252; }
+    #slideshowTile .slide { animation:slideFade .35s ease; }
+    @keyframes slideFade { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+
+    /* Card slideshow swap — old content fades up & out, new content rises in from below.
+       Paint happens at ~50% (the invisible midpoint). Used by bucketsTile & dbtunnelTile. */
+    @keyframes tileFadeSwap {
+      0%   { opacity:1; transform:translateY(0); }
+      45%  { opacity:0; transform:translateY(-8px); }
+      55%  { opacity:0; transform:translateY(8px); }
+      100% { opacity:1; transform:translateY(0); }
+    }
+    .tile-swap-anim > .tile-body { animation: tileFadeSwap .55s cubic-bezier(.4,0,.2,1); }
 
     /* On 2200+ widen the grid spread slightly */
     @media (min-width:2200px) {
@@ -556,9 +573,31 @@
           <span class="lg-item"><span class="lg-dot" style="background:#c084fc;box-shadow:0 0 6px #c084fc;"></span>Game</span>
           <span class="lg-item"><span class="lg-dot" style="background:#f59e0b;box-shadow:0 0 6px #f59e0b;"></span>Media</span>
           <span class="lg-item"><span class="lg-dot" style="background:#c9a848;box-shadow:0 0 6px #c9a848;"></span>Tool</span>
+          <span class="lg-item"><span class="lg-dot" style="background:#22d3ee;box-shadow:0 0 6px #22d3ee;"></span>Infra</span>
           <span class="lg-item"><span class="lg-dot" style="background:#f87171;box-shadow:0 0 6px #f87171;"></span>Down</span>
         </div>
-        <script type="application/json" id="harmonyServicesJson"><%- JSON.stringify(services.map(s => ({ name:s.name, category:s.category, port:s.port, tmux:s.tmux, alive:s.alive===true }))) %></script>
+        <script type="application/json" id="harmonyServicesJson"><%- JSON.stringify(
+          // Drop services whose source dir is missing (moved to /srv/depricated) or explicitly flagged deprecated.
+          services.filter(s => s.hasDir !== false && s.category !== 'deprecated')
+                  .map(s => ({ name:s.name, category:s.category, port:s.port, tmux:s.tmux, alive:s.alive===true }))
+          .concat((infraServices || []).map(s => ({ name:s.name, category:'infra', port:null, tmux:null, alive:false })))
+        ) %></script>
+        <script type="application/json" id="harmonyTenantsJson"><%- JSON.stringify(
+          (tenants || []).map(t => ({
+            name: t.name || t.domain || 'tenant',
+            domain: t.domain || null,
+            status: t.status || 'preview',
+            lastSeenAt: t.meta?.lastSeenAt || null,
+            isPromo: !!t.meta?.isPromo,
+          }))
+        ) %></script>
+        <script type="application/json" id="harmonyUsersJson"><%- JSON.stringify(
+          (allSignupsForHarmony || []).map(u => ({
+            email: u.email || '',
+            createdAt: u.createdAt || null,
+            isReferred: !!u.refCode,
+          }))
+        ) %></script>
       </div>
 
       <!-- System Vitals — CPU/RAM/load + top processes + sparkline -->
@@ -656,35 +695,97 @@
             </div>
           </div>
           <div id="ollamaFlags" style="margin-top:8px;font-size:11px;"></div>
-        </div>
-      </div>
 
-      <!-- Recent Signups -->
-      <div class="tile" id="signupsTile">
-        <div class="tile-head">
-          <span class="tile-title">Recent Signups</span>
-          <a class="btn-sm" href="/superadmin/signups" style="padding:2px 8px;">All</a>
-        </div>
-        <div class="tile-body">
-        <% if (recentSignups.length) { %>
-          <div style="font-size:11px;">
-            <% for (const s of recentSignups.slice(0, 10)) { %>
-              <div style="padding:6px 0;border-top:1px solid #1a1a1a;display:flex;justify-content:space-between;gap:8px;">
-                <div style="min-width:0;overflow:hidden;">
-                  <div style="color:#e5e5e5;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;"><%= s.email %></div>
-                  <div style="color:#525252;font-size:10px;"><%= s.brandName || '—' %> · <%= s.subdomain || '—' %></div>
-                </div>
-                <div style="color:#525252;font-size:10px;white-space:nowrap;"><%= new Date(s.createdAt).toLocaleDateString() %></div>
-              </div>
-            <% } %>
+          <!-- Controls strip — service restarts, watchdog, key mint -->
+          <div id="ollamaControls" style="margin-top:10px;padding-top:8px;border-top:1px solid #1f1f22;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11px;">
+            <span style="color:#525252;letter-spacing:1.5px;text-transform:uppercase;font-size:9px;margin-right:4px;">Control</span>
+            <select id="ollamaSvcSelect" class="service-select" style="font-size:11px;padding:2px 6px;">
+              <option value="">Restart…</option>
+              <option value="OllamaCluster">OllamaCluster</option>
+              <option value="OllamaClusterTunnel">OllamaClusterTunnel</option>
+              <option value="OllamaSD">OllamaSD</option>
+              <option value="OllamaWatchdog">OllamaWatchdog</option>
+              <option value="OllamaClusterBenchmark">OllamaClusterBenchmark</option>
+              <option value="OllamaMCP">OllamaMCP</option>
+            </select>
+            <button class="btn-sm" onclick="ollamaRestartService()" style="padding:2px 8px;">↻ Restart</button>
+            <span style="color:#262626;">·</span>
+            <button class="btn-sm" id="ollamaWatchdogBtn" onclick="ollamaToggleWatchdog()" style="padding:2px 8px;">⏸ Pause watchdog</button>
+            <button class="btn-sm" onclick="ollamaRunBenchmark()" style="padding:2px 8px;">⚡ Benchmark</button>
+            <span style="color:#262626;">·</span>
+            <button class="btn-sm" onclick="ollamaOpenMint()" style="padding:2px 8px;color:#c9a848;border-color:#c9a848;">+ Mint key</button>
+            <span id="ollamaCtlStatus" style="margin-left:auto;color:#525252;"></span>
           </div>
-        <% } else { %>
-          <div class="empty">No recent signups</div>
-        <% } %>
         </div>
       </div>
 
-      <!-- Tenants -->
+      <!-- Mint key modal -->
+      <div id="ollamaMintModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;padding:20px;">
+        <div style="background:#0f0f10;border:1px solid #1f2a44;border-radius:8px;max-width:520px;width:100%;padding:20px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div style="font-size:13px;font-weight:600;color:#fff;letter-spacing:1px;">Mint API Key</div>
+            <button class="btn-sm" onclick="ollamaCloseMint()" style="padding:2px 8px;">✕</button>
+          </div>
+          <div id="ollamaMintForm">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+              <label style="display:flex;flex-direction:column;gap:4px;">
+                <span style="font-size:9px;letter-spacing:1.5px;color:#525252;text-transform:uppercase;">Label</span>
+                <input id="mkLabel" type="text" placeholder="panel-bot" style="background:#0a0a0a;border:1px solid #262626;color:#e5e5e5;padding:6px 8px;font-size:12px;border-radius:4px;">
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;">
+                <span style="font-size:9px;letter-spacing:1.5px;color:#525252;text-transform:uppercase;">Expires</span>
+                <input id="mkExpires" type="text" placeholder="30d / never / 2026-12-31" style="background:#0a0a0a;border:1px solid #262626;color:#e5e5e5;padding:6px 8px;font-size:12px;border-radius:4px;">
+              </label>
+            </div>
+            <div style="margin-bottom:10px;">
+              <div style="font-size:9px;letter-spacing:1.5px;color:#525252;text-transform:uppercase;margin-bottom:4px;">Scopes</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;">
+                <label><input type="checkbox" class="mkScope" value="llm" checked> llm</label>
+                <label><input type="checkbox" class="mkScope" value="sd"> sd</label>
+                <label><input type="checkbox" class="mkScope" value="analytics"> analytics</label>
+                <label><input type="checkbox" class="mkScope" value="bucket"> bucket</label>
+                <label><input type="checkbox" class="mkScope" value="database"> database</label>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+              <label style="display:flex;flex-direction:column;gap:4px;">
+                <span style="font-size:9px;letter-spacing:1.5px;color:#525252;text-transform:uppercase;">RPM (0=∞)</span>
+                <input id="mkRpm" type="number" value="0" min="0" style="background:#0a0a0a;border:1px solid #262626;color:#e5e5e5;padding:6px 8px;font-size:12px;border-radius:4px;">
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;">
+                <span style="font-size:9px;letter-spacing:1.5px;color:#525252;text-transform:uppercase;">RPD (0=∞)</span>
+                <input id="mkRpd" type="number" value="0" min="0" style="background:#0a0a0a;border:1px solid #262626;color:#e5e5e5;padding:6px 8px;font-size:12px;border-radius:4px;">
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;">
+                <span style="font-size:9px;letter-spacing:1.5px;color:#525252;text-transform:uppercase;">Concur (0=∞)</span>
+                <input id="mkConc" type="number" value="0" min="0" style="background:#0a0a0a;border:1px solid #262626;color:#e5e5e5;padding:6px 8px;font-size:12px;border-radius:4px;">
+              </label>
+            </div>
+            <label style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;">
+              <span style="font-size:9px;letter-spacing:1.5px;color:#525252;text-transform:uppercase;">Notes (optional)</span>
+              <input id="mkNotes" type="text" placeholder="issued from superadmin panel" style="background:#0a0a0a;border:1px solid #262626;color:#e5e5e5;padding:6px 8px;font-size:12px;border-radius:4px;">
+            </label>
+            <div id="ollamaMintError" style="color:#f87171;font-size:11px;margin-bottom:8px;display:none;"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+              <button class="btn" onclick="ollamaCloseMint()">Cancel</button>
+              <button class="btn btn-gold" onclick="ollamaSubmitMint()">Mint Key</button>
+            </div>
+          </div>
+          <div id="ollamaMintResult" style="display:none;">
+            <div style="color:#34d399;font-size:12px;margin-bottom:8px;">✓ Key created — copy the secret now. It is shown only once.</div>
+            <div style="font-size:9px;letter-spacing:1.5px;color:#525252;text-transform:uppercase;margin-bottom:4px;">Secret</div>
+            <div style="display:flex;gap:6px;margin-bottom:12px;">
+              <input id="mkSecretOut" type="text" readonly style="flex:1;background:#0a0a0a;border:1px solid #c9a848;color:#e5e5e5;padding:6px 8px;font-size:11px;border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;">
+              <button class="btn-sm" onclick="ollamaCopySecret()" style="padding:2px 10px;">Copy</button>
+            </div>
+            <div style="font-size:10px;color:#525252;line-height:1.5;" id="mkSecretMeta"></div>
+            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+              <button class="btn btn-gold" onclick="ollamaCloseMint()">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <%
         // Activity helper — returns { label, color, live }
         function tenantActivity(t) {
@@ -698,89 +799,172 @@
           if (dt < 30 * 24 * 60 * 60 * 1000) return { label: Math.floor(dt/86400000) + 'd ago', color: '#737373', live: false };
           return { label: 'idle', color: '#525252', live: false };
         }
-        // Truly-active count = tenants with activity within the last 24h
         const liveCount = tenants.filter(t => t?.meta?.lastSeenAt && (Date.now() - new Date(t.meta.lastSeenAt).getTime()) < 24*60*60*1000).length;
         const liveNowCount = tenants.filter(t => t?.meta?.lastSeenAt && (Date.now() - new Date(t.meta.lastSeenAt).getTime()) < 90*1000).length;
       %>
-      <div class="tile" id="tenantsTile">
+
+      <!-- Slideshow: Signups → Activity → Tenants (auto-rotate, click dots / arrows to step) -->
+      <div class="tile" id="slideshowTile">
         <div class="tile-head">
-          <span class="tile-title">Tenants · usage</span>
-          <span class="tile-meta"><%= stats.total %> total</span>
+          <span class="tile-title" id="slideTitle">Recent Signups</span>
+          <span class="tile-meta" style="display:flex;align-items:center;gap:6px;">
+            <button class="btn-sm" onclick="slidePrev()" style="padding:2px 6px;" title="Previous (←)">‹</button>
+            <span id="slideDots" style="display:inline-flex;gap:4px;">
+              <span class="slideDot" data-i="0" onclick="slideGo(0)"></span>
+              <span class="slideDot" data-i="1" onclick="slideGo(1)"></span>
+              <span class="slideDot" data-i="2" onclick="slideGo(2)"></span>
+            </span>
+            <button class="btn-sm" onclick="slideNext()" style="padding:2px 6px;" title="Next (→)">›</button>
+            <a class="btn-sm" id="slideMore" href="/superadmin/signups" style="padding:2px 8px;margin-left:4px;">All</a>
+          </span>
         </div>
-        <div class="tile-body">
-        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:6px;margin-bottom:8px;flex-shrink:0;">
-          <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:8px;text-align:center;" title="Hit a tenant URL in the last 90 seconds">
-            <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">Live</div>
-            <div style="font-size:18px;color:#34d399;font-weight:700;"><%= liveNowCount %></div>
-          </div>
-          <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:8px;text-align:center;" title="Activity in the last 24h">
-            <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">24h</div>
-            <div style="font-size:18px;color:#c9a848;font-weight:700;"><%= liveCount %></div>
-          </div>
-          <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:8px;text-align:center;" title="Status: active">
-            <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">Active</div>
-            <div style="font-size:18px;color:#a3a3a3;font-weight:700;"><%= stats.active %></div>
-          </div>
-          <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:8px;text-align:center;" title="Status: suspended">
-            <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">Susp</div>
-            <div style="font-size:18px;color:#f87171;font-weight:700;"><%= stats.suspended %></div>
-          </div>
-        </div>
-        <% if (tenants.length) { %>
-          <div style="font-size:11px;">
-            <% for (const t of tenants.slice(0, 12)) { %>
-              <% const act = tenantActivity(t); %>
-              <%
-                const tName = t.brand?.name || t.brandName || t.domain?.split('.')[0] || t.meta?.subdomain || 'unnamed';
-                const tSub  = t.meta?.subdomain || t.domain || '';
-                const tOwner = t.meta?.ownerEmail || t.brand?.ownerName || t.brand?.email || null;
-              %>
-              <div style="padding:5px 0;border-top:1px solid #1a1a1a;display:flex;justify-content:space-between;gap:8px;align-items:center;">
-                <div style="min-width:0;overflow:hidden;display:flex;align-items:center;gap:6px;">
-                  <% if (act.live) { %><span style="width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 4px #34d399;flex-shrink:0;"></span><% } %>
-                  <div style="min-width:0;overflow:hidden;">
-                    <div style="color:#e5e5e5;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;"><%= tName %></div>
-                    <div style="color:#525252;font-size:10px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">
-                      <%= tSub %><% if (tOwner) { %> · <span style="color:#737373;"><%= tOwner %></span><% } %><% if (t.meta?.hitsTotal) { %> · <%= t.meta.hitsTotal %> hits<% } %>
+        <div class="tile-body" style="position:relative;">
+          <div class="slide" data-i="0" style="display:block;">
+            <% if (recentSignups.length) { %>
+              <div style="font-size:11px;">
+                <% for (const s of recentSignups.slice(0, 10)) { %>
+                  <div style="padding:6px 0;border-top:1px solid #1a1a1a;display:flex;justify-content:space-between;gap:8px;">
+                    <div style="min-width:0;overflow:hidden;">
+                      <div style="color:#e5e5e5;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;"><%= s.email %></div>
+                      <div style="color:#525252;font-size:10px;"><%= s.brandName || '—' %> · <%= s.subdomain || '—' %></div>
                     </div>
+                    <div style="color:#525252;font-size:10px;white-space:nowrap;"><%= new Date(s.createdAt).toLocaleDateString() %></div>
                   </div>
-                </div>
-                <div style="text-align:right;white-space:nowrap;">
-                  <div style="font-size:10px;color:<%= act.color %>;letter-spacing:1px;text-transform:uppercase;"><%= act.label %></div>
-                  <div style="font-size:9px;color:<%= t.status === 'active' ? '#34d399' : t.status === 'suspended' ? '#f87171' : '#525252' %>;letter-spacing:1px;text-transform:uppercase;"><%= t.status || 'preview' %></div>
-                </div>
+                <% } %>
               </div>
+            <% } else { %>
+              <div class="empty">No recent signups</div>
             <% } %>
           </div>
-        <% } else { %>
-          <div class="empty">No tenants</div>
-        <% } %>
+
+          <div class="slide" data-i="1" style="display:none;">
+            <div class="feed" style="max-height:none;">
+              <% if (activityLogs.length) { %>
+                <% for (const log of activityLogs.slice(0, 14)) { %>
+                  <div class="item">
+                    <div class="when"><%= new Date(log.timestamp).toLocaleString() %></div>
+                    <div class="what">
+                      <span style="color:#e5e5e5;"><%= log.action %></span>
+                      <% if (log.tenantDomain) { %><span style="color:#c9a848;"> · <%= log.tenantDomain %></span><% } %>
+                      <% if (log.actor?.email) { %><span style="color:#525252;"> · <%= log.actor.email %></span><% } %>
+                    </div>
+                  </div>
+                <% } %>
+              <% } else { %>
+                <div class="empty">No activity yet</div>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="slide" data-i="2" style="display:none;">
+            <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:6px;margin-bottom:8px;flex-shrink:0;">
+              <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:6px;text-align:center;" title="Hit a tenant URL in the last 90 seconds">
+                <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">Live</div>
+                <div style="font-size:16px;color:#34d399;font-weight:700;"><%= liveNowCount %></div>
+              </div>
+              <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:6px;text-align:center;" title="Activity in the last 24h">
+                <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">24h</div>
+                <div style="font-size:16px;color:#c9a848;font-weight:700;"><%= liveCount %></div>
+              </div>
+              <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:6px;text-align:center;" title="Status: active">
+                <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">Active</div>
+                <div style="font-size:16px;color:#a3a3a3;font-weight:700;"><%= stats.active %></div>
+              </div>
+              <div style="background:#141414;border:1px solid #1e1e1e;border-radius:6px;padding:6px;text-align:center;" title="Status: suspended">
+                <div style="font-size:9px;color:#525252;letter-spacing:1px;text-transform:uppercase;">Susp</div>
+                <div style="font-size:16px;color:#f87171;font-weight:700;"><%= stats.suspended %></div>
+              </div>
+            </div>
+            <% if (tenants.length) { %>
+              <div style="font-size:11px;">
+                <% for (const t of tenants.slice(0, 10)) { %>
+                  <% const act = tenantActivity(t); %>
+                  <%
+                    const tName = t.brand?.name || t.brandName || t.domain?.split('.')[0] || t.meta?.subdomain || 'unnamed';
+                    const tSub  = t.meta?.subdomain || t.domain || '';
+                    const tOwner = t.meta?.ownerEmail || t.brand?.ownerName || t.brand?.email || null;
+                  %>
+                  <div style="padding:5px 0;border-top:1px solid #1a1a1a;display:flex;justify-content:space-between;gap:8px;align-items:center;">
+                    <div style="min-width:0;overflow:hidden;display:flex;align-items:center;gap:6px;">
+                      <% if (act.live) { %><span style="width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 4px #34d399;flex-shrink:0;"></span><% } %>
+                      <div style="min-width:0;overflow:hidden;">
+                        <div style="color:#e5e5e5;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;"><%= tName %></div>
+                        <div style="color:#525252;font-size:10px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">
+                          <%= tSub %><% if (tOwner) { %> · <span style="color:#737373;"><%= tOwner %></span><% } %>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="text-align:right;white-space:nowrap;">
+                      <div style="font-size:10px;color:<%= act.color %>;letter-spacing:1px;text-transform:uppercase;"><%= act.label %></div>
+                      <div style="font-size:9px;color:<%= t.status === 'active' ? '#34d399' : t.status === 'suspended' ? '#f87171' : '#525252' %>;letter-spacing:1px;text-transform:uppercase;"><%= t.status || 'preview' %></div>
+                    </div>
+                  </div>
+                <% } %>
+              </div>
+            <% } else { %>
+              <div class="empty">No tenants</div>
+            <% } %>
+          </div>
         </div>
       </div>
 
-      <!-- Activity feed -->
-      <div class="tile span-2" id="activityTile">
+      <!-- Bucket Storage — slideshow: Cloud (Linode) ⇄ GPU box (MinIO) -->
+      <div class="tile" id="bucketsTile" style="border-color:#0b3b4b;">
         <div class="tile-head">
-          <span class="tile-title">Activity</span>
-          <a class="btn-sm" href="/superadmin/activity" style="padding:2px 8px;">Full Log</a>
+          <span class="tile-title" style="display:flex;align-items:center;gap:8px;color:#22d3ee;">
+            <span class="svc-dot" id="bucketDot"></span> Bucket Storage
+            <span id="bucketSrcLabel" style="font-size:9px;letter-spacing:2px;color:#525252;text-transform:uppercase;">CLOUD</span>
+          </span>
+          <span class="tile-meta" style="display:flex;align-items:center;gap:6px;">
+            <span style="display:inline-flex;gap:4px;" id="bucketDots">
+              <span class="slideDot active" data-src="cloud" onclick="bucketSelectSrc('cloud')" title="Linode Object Storage"></span>
+              <span class="slideDot" data-src="gpu" onclick="bucketSelectSrc('gpu')" title="GPU box MinIO"></span>
+            </span>
+            <button class="btn-sm" onclick="refreshInfra(true)" style="padding:2px 8px;">↻</button>
+          </span>
         </div>
         <div class="tile-body">
-          <div class="feed" style="max-height:none;">
-            <% if (activityLogs.length) { %>
-              <% for (const log of activityLogs) { %>
-                <div class="item">
-                  <div class="when"><%= new Date(log.timestamp).toLocaleString() %></div>
-                  <div class="what">
-                    <span style="color:#e5e5e5;"><%= log.action %></span>
-                    <% if (log.tenantDomain) { %><span style="color:#c9a848;"> · <%= log.tenantDomain %></span><% } %>
-                    <% if (log.actor?.email) { %><span style="color:#525252;"> · <%= log.actor.email %></span><% } %>
-                  </div>
-                </div>
-              <% } %>
-            <% } else { %>
-              <div class="empty">No activity yet</div>
-            <% } %>
+          <div style="font-size:10px;letter-spacing:2px;color:#525252;text-transform:uppercase;margin-bottom:4px;">Endpoint</div>
+          <div id="bucketEndpoint" style="font-size:11px;color:#a3a3a3;word-break:break-all;">—</div>
+          <div class="stats" style="grid-template-columns:1fr 1fr;margin:10px 0 0;gap:6px;">
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label" id="bucketLabel1">Bucket</div><div class="stat-value" id="bucketName" style="font-size:14px;">—</div></div>
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label">Region</div><div class="stat-value" id="bucketRegion" style="font-size:14px;">—</div></div>
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label">Reachable</div><div class="stat-value" id="bucketOk" style="font-size:14px;">—</div></div>
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label">Ping</div><div class="stat-value" id="bucketLatency" style="font-size:14px;">—</div></div>
           </div>
+          <div style="margin-top:8px;font-size:10px;color:#525252;" id="bucketSampleLabel">Sample key:</div>
+          <div id="bucketSample" style="font-size:11px;color:#737373;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">—</div>
+          <div id="bucketError" style="margin-top:6px;font-size:11px;color:#f87171;"></div>
+        </div>
+      </div>
+
+      <!-- DB Tunnels — slideshow: Cloud (Linode Mongo) ⇄ GPU box (Mongo via cluster.js) -->
+      <div class="tile" id="dbtunnelTile" style="border-color:#1a3a1a;">
+        <div class="tile-head">
+          <span class="tile-title" style="display:flex;align-items:center;gap:8px;color:#34d399;">
+            <span class="svc-dot" id="dbDot"></span> DB Tunnels
+            <span id="dbSrcLabel" style="font-size:9px;letter-spacing:2px;color:#525252;text-transform:uppercase;">CLOUD</span>
+          </span>
+          <span class="tile-meta" style="display:flex;align-items:center;gap:6px;">
+            <span style="display:inline-flex;gap:4px;" id="dbDots">
+              <span class="slideDot active" data-src="cloud" onclick="dbSelectSrc('cloud')" title="Linode MongoDB (slab registry)"></span>
+              <span class="slideDot" data-src="gpu" onclick="dbSelectSrc('gpu')" title="GPU box MongoDB"></span>
+            </span>
+            <button class="btn-sm" onclick="refreshInfra(true)" style="padding:2px 8px;">↻</button>
+          </span>
+        </div>
+        <div class="tile-body">
+          <div class="stats" style="grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label">Status</div><div class="stat-value" id="dbStatus" style="font-size:14px;">—</div></div>
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label">Ping</div><div class="stat-value" id="dbLatency" style="font-size:14px;">—</div></div>
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label">Version</div><div class="stat-value" id="dbVersion" style="font-size:13px;">—</div></div>
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label">Uptime</div><div class="stat-value" id="dbUptime" style="font-size:13px;">—</div></div>
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label">Conns</div><div class="stat-value gold" id="dbConns" style="font-size:14px;">—</div></div>
+            <div class="stat" style="padding:6px 8px;"><div class="stat-label">DBs</div><div class="stat-value" id="dbCount" style="font-size:14px;">—</div></div>
+          </div>
+          <div style="font-size:10px;letter-spacing:2px;color:#525252;text-transform:uppercase;margin-bottom:4px;">Databases (top by size)</div>
+          <div id="dbList" style="font-size:11px;color:#a3a3a3;">Loading…</div>
+          <div id="dbError" style="margin-top:6px;font-size:11px;color:#f87171;"></div>
         </div>
       </div>
 
@@ -1797,8 +1981,8 @@
     if (!window.location.hash || window.location.hash === '#tab-overview') {
       try { loadOllamaAnalytics(); } catch(e) {}
     }
-    // Load Claude briefing if tools tab already active
-    if (!window.location.hash || window.location.hash === '#tab-tools') loadClaudeBriefing();
+    // Load Claude briefing if tools tab already active — wrapped because CLAUDE_BRIEFING const is declared later in the script (TDZ).
+    if (!window.location.hash || window.location.hash === '#tab-tools') { try { loadClaudeBriefing(); } catch(e) {} }
   })();
 
   async function runTool(tool) {
@@ -1901,11 +2085,39 @@
     const llmP  = document.getElementById('ollamaLlmPill');
     const sdP   = document.getElementById('ollamaSdPill');
     const snip  = document.getElementById('ollamaSnip');
-    const days  = parseInt(document.getElementById('ollamaWindow')?.value || '7', 10);
-    const since = new Date(Date.now() - days * 86400 * 1000).toISOString();
     const updatedAt = document.getElementById('ollamaUpdatedAt');
 
-    // Health
+    // Try consolidated overview first (single round-trip, includes everything)
+    let overview = null;
+    try {
+      const r = await fetch('/superadmin/api/ollama/overview');
+      const j = await r.json();
+      if (j?.ok && j.data && typeof j.data === 'object') overview = j.data;
+    } catch {}
+
+    if (overview) {
+      const gpus = Array.isArray(overview.gpus) ? overview.gpus : [];
+      const llmOk = gpus.some(g => g?.status === 'up');
+      const sdOk = overview.sd?.status === 'up';
+      if (dot)  dot.className = (llmOk || sdOk) ? 'svc-dot alive' : 'svc-dot dead';
+      if (llmP) { llmP.textContent = 'LLM ' + (llmOk ? '✓' : '✗') + ' · ' + gpus.filter(g => g?.status === 'up').length + '/' + gpus.length + ' gpu'; llmP.style.color = llmOk ? '#34d399' : '#f87171'; }
+      if (sdP)  { sdP.textContent  = 'SD '  + (sdOk  ? '✓' : '✗') + (overview.sd?.queueDepth != null ? ' · q=' + overview.sd.queueDepth : ''); sdP.style.color  = sdOk  ? '#34d399' : '#f87171'; }
+      const loadedNames = Array.from(new Set(gpus.flatMap(g => (g.loaded || []).map(m => m.name)).filter(Boolean)));
+      if (snip) snip.textContent = 'models: ' + (loadedNames.length ? loadedNames.slice(0, 4).join(' · ') : '—');
+
+      renderOllamaStatsOverview(overview);
+      renderOllamaKeysOverview(overview);
+      renderOllamaGpus(overview);
+      renderOllamaServicesAndModels(overview);
+      renderOllamaFlagsOverview(overview);
+      renderOllamaControls(overview);
+      if (updatedAt) updatedAt.textContent = 'updated ' + new Date().toLocaleTimeString();
+      return;
+    }
+
+    // Fallback: legacy endpoints (when /admin/overview is unreachable or older cluster)
+    const days  = parseInt(document.getElementById('ollamaWindow')?.value || '7', 10);
+    const since = new Date(Date.now() - days * 86400 * 1000).toISOString();
     try {
       const h = await (await fetch('/superadmin/api/ollama/health')).json();
       const llmOk = !!h?.llm?.ok, sdOk = !!h?.sd?.ok;
@@ -1921,7 +2133,6 @@
       if (snip) snip.textContent = 'unreachable';
     }
 
-    // Analytics + live rate + keys (in parallel)
     const [aRes, rRes, kRes] = await Promise.allSettled([
       fetch('/superadmin/api/ollama/analytics?since=' + encodeURIComponent(since)).then(r => r.json()),
       fetch('/superadmin/api/ollama/rate').then(r => r.json()),
@@ -1937,6 +2148,131 @@
     renderOllamaTopList('ollamaModelsTable', extractTop(a, 'models', 'model'));
     renderOllamaFlags(a, rate, ks);
     if (updatedAt) updatedAt.textContent = 'updated ' + new Date().toLocaleTimeString();
+  }
+
+  // ── New /admin/overview renderers ────────────────────────────────────────
+  function renderOllamaStatsOverview(o) {
+    const t = o?.totals || {};
+    const req = t.requests_24h ?? 0;
+    const err = t.errors_24h ?? 0;
+    const bytes = t.bytes_out_24h ?? 0;
+    const dur = t.avg_ms ?? null;
+    const keyCount = Array.isArray(o?.keys) ? o.keys.length : 0;
+    document.getElementById('ollamaStatReq').textContent = fmtNum(req);
+    document.getElementById('ollamaStatErr').textContent = fmtNum(err);
+    document.getElementById('ollamaStatErrRate').textContent = (req && err != null) ? pct(err, req) : '—';
+    document.getElementById('ollamaStatBytes').textContent = fmtBytes(bytes);
+    document.getElementById('ollamaStatDur').textContent = fmtMs(dur);
+    document.getElementById('ollamaStatKeys').textContent = fmtNum(keyCount);
+  }
+
+  function renderOllamaKeysOverview(o) {
+    const el = document.getElementById('ollamaKeysTable');
+    const keys = Array.isArray(o?.keys) ? o.keys.slice() : [];
+    if (!keys.length) { el.textContent = 'No keys.'; return; }
+    keys.sort((a, b) => (b.requests_24h || 0) - (a.requests_24h || 0));
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<tr style="color:#525252;text-align:left;"><th style="padding:4px 6px;">Key</th><th>Req</th><th>Err</th><th>RPM</th><th>RPD</th><th>In</th><th></th></tr>';
+    keys.slice(0, 12).forEach(k => {
+      const lim = k.limits || {};
+      const errRate = (k.requests_24h && k.errors_24h != null) ? (k.errors_24h / k.requests_24h) : 0;
+      const errColor = errRate > 0.10 ? '#f87171' : '#a3a3a3';
+      const rpdHot = (k.rpd != null && lim.rpd && k.rpd / lim.rpd >= 0.8);
+      const rpdColor = rpdHot ? '#f59e0b' : '#a3a3a3';
+      const nameStyle = k.enabled === false ? 'color:#737373;text-decoration:line-through;'
+                      : k.expired ? 'color:#f87171;'
+                      : 'color:#e5e5e5;';
+      const badge = k.enabled === false ? ' <span style="color:#f87171;font-size:9px;">REV</span>'
+                  : k.expired ? ' <span style="color:#f87171;font-size:9px;">EXP</span>'
+                  : '';
+      const scopes = Array.isArray(k.scopes) ? k.scopes.join(',') : '';
+      html += `<tr style="border-top:1px solid #1a1a1a;" title="${escapeHtml(k.prefix || '')} · ${escapeHtml(scopes)}">
+        <td style="padding:4px 6px;${nameStyle}">${escapeHtml(k.label || '—')}${badge}</td>
+        <td>${fmtNum(k.requests_24h)}</td>
+        <td style="color:${errColor};">${fmtNum(k.errors_24h)}</td>
+        <td>${k.rpm == null ? '—' : fmtNum(k.rpm)}${lim.rpm ? ' / ' + fmtNum(lim.rpm) : ''}</td>
+        <td style="color:${rpdColor};">${k.rpd == null ? '—' : fmtNum(k.rpd)}${lim.rpd ? ' / ' + fmtNum(lim.rpd) : ''}</td>
+        <td>${k.inflight == null ? '—' : fmtNum(k.inflight)}${lim.concurrent ? ' / ' + fmtNum(lim.concurrent) : ''}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          ${k.enabled === false
+            ? `<a href="#" onclick="ollamaKeyAction('${escapeHtml(k.label)}','enable');return false;" style="color:#34d399;font-size:10px;">enable</a>`
+            : `<a href="#" onclick="ollamaKeyAction('${escapeHtml(k.label)}','revoke');return false;" style="color:#f59e0b;font-size:10px;">revoke</a>`}
+          <span style="color:#262626;margin:0 4px;">·</span>
+          <a href="#" onclick="ollamaKeyAction('${escapeHtml(k.label)}','delete');return false;" style="color:#f87171;font-size:10px;">del</a>
+        </td>
+      </tr>`;
+    });
+    html += '</table>';
+    el.innerHTML = html;
+  }
+
+  function renderOllamaGpus(o) {
+    const el = document.getElementById('ollamaRoutesTable');
+    const gpus = Array.isArray(o?.gpus) ? o.gpus : [];
+    if (!gpus.length) { el.innerHTML = '<span style="color:#525252;">no gpus</span>'; return; }
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<tr style="color:#525252;text-align:left;"><th style="padding:3px 6px;">GPU</th><th>St</th><th>Active</th><th>Loaded</th></tr>';
+    gpus.forEach(g => {
+      const upColor = g.status === 'up' ? '#34d399' : '#f87171';
+      const loaded = (g.loaded || []).map(m => m.name).join(', ') || '—';
+      html += `<tr style="border-top:1px solid #1a1a1a;">
+        <td style="padding:3px 6px;color:#e5e5e5;">gpu${g.gpu ?? g.idx} <span style="color:#525252;">:${g.port ?? '—'}</span></td>
+        <td style="color:${upColor};">${escapeHtml(g.status || '—')}${g.cold ? ' ❄' : ''}</td>
+        <td>${fmtNum(g.activeRequests)}</td>
+        <td style="color:#a3a3a3;">${escapeHtml(loaded)}${g.pinned ? ' <span style="color:#c9a848;">📌' + escapeHtml(g.pinned) + '</span>' : ''}</td>
+      </tr>`;
+    });
+    html += '</table>';
+    el.innerHTML = html;
+  }
+
+  function renderOllamaServicesAndModels(o) {
+    const el = document.getElementById('ollamaModelsTable');
+    const svcs = o?.services?.tasks || [];
+    const models = o?.models?.onDisk || [];
+    let html = '';
+    if (svcs.length) {
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px;">';
+      html += '<tr style="color:#525252;text-align:left;"><th style="padding:3px 6px;">Service</th><th>State</th></tr>';
+      svcs.forEach(s => {
+        const running = s.state === 'running';
+        const color = running ? '#34d399' : (s.state === 'ready' ? '#a3a3a3' : '#f87171');
+        html += `<tr style="border-top:1px solid #1a1a1a;">
+          <td style="padding:3px 6px;color:#e5e5e5;">${escapeHtml(s.name || '—')}</td>
+          <td style="color:${color};">${escapeHtml(s.state || '—')}</td>
+        </tr>`;
+      });
+      html += '</table>';
+    }
+    if (models.length) {
+      html += `<div style="color:#525252;font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-top:4px;">On Disk · ${models.length}</div>`;
+      html += '<div style="font-size:10px;color:#a3a3a3;line-height:1.5;max-height:80px;overflow:auto;">';
+      models.slice(0, 12).forEach(m => {
+        html += `<div>${escapeHtml(m.name)} <span style="color:#525252;">${m.params || ''} ${m.quant || ''}</span></div>`;
+      });
+      html += '</div>';
+    }
+    el.innerHTML = html || '<span style="color:#525252;">—</span>';
+  }
+
+  function renderOllamaFlagsOverview(o) {
+    const el = document.getElementById('ollamaFlags');
+    const flags = [];
+    const tier = o?.tier || {};
+    if (tier.tier === 'DARK' || tier.tier === 'COLD') {
+      flags.push(`<span style="color:#60a5fa;">Sleeping (${escapeHtml(tier.tier)}) — wakes on first request</span>`);
+    }
+    if (tier.waking) flags.push(`<span style="color:#c9a848;">Waking · ETA ${tier.wakeEtaSec ?? '?'}s</span>`);
+    if (o?.services?.watchdogPaused) flags.push('<span style="color:#f59e0b;">⏸ watchdog paused — crashes won\'t auto-restart</span>');
+    (o?.keys || []).forEach(k => {
+      const er = k.requests_24h ? (k.errors_24h || 0) / k.requests_24h : 0;
+      if (er > 0.10 && (k.requests_24h || 0) >= 20) flags.push(`<span style="color:#f87171;">${escapeHtml(k.label)} error rate ${(er*100).toFixed(1)}%</span>`);
+      const lim = k.limits || {};
+      if (k.rpd != null && lim.rpd && k.rpd / lim.rpd >= 0.8) flags.push(`<span style="color:#f59e0b;">${escapeHtml(k.label)} at ${(k.rpd/lim.rpd*100).toFixed(0)}% of rpd quota</span>`);
+      if (k.inflight != null && lim.concurrent && k.inflight >= lim.concurrent) flags.push(`<span style="color:#f59e0b;">${escapeHtml(k.label)} pinned at concurrency limit</span>`);
+    });
+    el.innerHTML = flags.length ? '⚑ ' + flags.join(' · ') : '<span style="color:#525252;">no flags</span>';
   }
 
   // The cluster's /analytics shape isn't strictly fixed; try common keys.
@@ -2068,6 +2404,159 @@
   }
 
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ── Ollama Control Surface — service/watchdog/key actions ────────────────
+  function renderOllamaControls(o) {
+    const wdBtn = document.getElementById('ollamaWatchdogBtn');
+    if (!wdBtn) return;
+    const paused = !!o?.services?.watchdogPaused;
+    wdBtn.textContent = paused ? '▶ Resume watchdog' : '⏸ Pause watchdog';
+    wdBtn.style.color = paused ? '#34d399' : '';
+    wdBtn.style.borderColor = paused ? '#34d399' : '';
+    wdBtn.dataset.paused = paused ? '1' : '0';
+  }
+
+  function ollamaCtlMsg(msg, isErr) {
+    const el = document.getElementById('ollamaCtlStatus');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.style.color = isErr ? '#f87171' : '#34d399';
+    if (msg) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+  }
+
+  async function ollamaPost(url, body) {
+    try {
+      const r = await fetch(url, {
+        method: body && body.__method === 'DELETE' ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const j = await r.json().catch(() => ({}));
+      return { ok: r.ok && j.ok !== false, status: r.status, data: j };
+    } catch (e) {
+      return { ok: false, status: 0, error: e.message };
+    }
+  }
+
+  async function ollamaRestartService() {
+    const sel = document.getElementById('ollamaSvcSelect');
+    const name = sel?.value;
+    if (!name) { ollamaCtlMsg('pick a service', true); return; }
+    if (!confirm(`Restart ${name}?`)) return;
+    ollamaCtlMsg('restarting ' + name + '…');
+    const r = await ollamaPost(`/superadmin/api/ollama/services/${encodeURIComponent(name)}/restart`);
+    ollamaCtlMsg(r.ok ? `${name} restarted` : `restart failed (${r.status})`, !r.ok);
+    sel.value = '';
+    setTimeout(loadOllamaAnalytics, 1500);
+  }
+
+  async function ollamaToggleWatchdog() {
+    const btn = document.getElementById('ollamaWatchdogBtn');
+    const paused = btn?.dataset.paused === '1';
+    if (paused) {
+      ollamaCtlMsg('resuming watchdog…');
+      const r = await ollamaPost('/superadmin/api/ollama/watchdog/resume');
+      ollamaCtlMsg(r.ok ? 'watchdog resumed' : `resume failed (${r.status})`, !r.ok);
+    } else {
+      const reason = prompt('Pause reason (optional):', 'manual pause from superadmin');
+      if (reason === null) return;
+      ollamaCtlMsg('pausing watchdog…');
+      const r = await ollamaPost('/superadmin/api/ollama/watchdog/pause', { reason: reason || 'manual' });
+      ollamaCtlMsg(r.ok ? 'watchdog paused' : `pause failed (${r.status})`, !r.ok);
+    }
+    setTimeout(loadOllamaAnalytics, 800);
+  }
+
+  async function ollamaRunBenchmark() {
+    if (!confirm('Run benchmark now? This loads GPUs for a few seconds.')) return;
+    ollamaCtlMsg('starting benchmark…');
+    const r = await ollamaPost('/superadmin/api/ollama/benchmark/run');
+    ollamaCtlMsg(r.ok ? 'benchmark started' : `failed (${r.status})`, !r.ok);
+  }
+
+  async function ollamaKeyAction(label, action) {
+    if (!label) return;
+    if (action === 'delete' && !confirm(`Permanently delete key "${label}"?`)) return;
+    if (action === 'revoke' && !confirm(`Revoke (disable) key "${label}"?`)) return;
+    ollamaCtlMsg(`${action} ${label}…`);
+    let r;
+    if (action === 'delete') {
+      try {
+        const resp = await fetch(`/superadmin/api/ollama/keys/${encodeURIComponent(label)}`, { method: 'DELETE' });
+        const j = await resp.json().catch(() => ({}));
+        r = { ok: resp.ok && j.ok !== false, status: resp.status };
+      } catch (e) { r = { ok: false, status: 0 }; }
+    } else {
+      r = await ollamaPost(`/superadmin/api/ollama/keys/${encodeURIComponent(label)}/${action}`);
+    }
+    ollamaCtlMsg(r.ok ? `${label} ${action}d` : `${action} failed (${r.status})`, !r.ok);
+    setTimeout(loadOllamaAnalytics, 600);
+  }
+
+  function ollamaOpenMint() {
+    document.getElementById('ollamaMintModal').style.display = 'flex';
+    document.getElementById('ollamaMintForm').style.display = 'block';
+    document.getElementById('ollamaMintResult').style.display = 'none';
+    document.getElementById('ollamaMintError').style.display = 'none';
+    document.getElementById('mkLabel').value = '';
+    document.getElementById('mkExpires').value = '30d';
+    document.getElementById('mkRpm').value = '0';
+    document.getElementById('mkRpd').value = '0';
+    document.getElementById('mkConc').value = '0';
+    document.getElementById('mkNotes').value = '';
+    document.querySelectorAll('.mkScope').forEach(c => { c.checked = (c.value === 'llm'); });
+    setTimeout(() => document.getElementById('mkLabel').focus(), 50);
+  }
+  function ollamaCloseMint() { document.getElementById('ollamaMintModal').style.display = 'none'; }
+
+  async function ollamaSubmitMint() {
+    const errEl = document.getElementById('ollamaMintError');
+    errEl.style.display = 'none';
+    const label = document.getElementById('mkLabel').value.trim();
+    if (!/^[A-Za-z0-9._-]+$/.test(label)) {
+      errEl.textContent = 'Label must be alphanumeric (plus . _ -), no spaces.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const scopes = Array.from(document.querySelectorAll('.mkScope')).filter(c => c.checked).map(c => c.value);
+    if (!scopes.length) {
+      errEl.textContent = 'Pick at least one scope.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const payload = {
+      label,
+      scopes,
+      limits: {
+        rpm: parseInt(document.getElementById('mkRpm').value || '0', 10) || 0,
+        rpd: parseInt(document.getElementById('mkRpd').value || '0', 10) || 0,
+        concurrent: parseInt(document.getElementById('mkConc').value || '0', 10) || 0,
+      },
+      expires: document.getElementById('mkExpires').value.trim() || 'never',
+      notes: document.getElementById('mkNotes').value.trim() || undefined,
+    };
+    const r = await ollamaPost('/superadmin/api/ollama/keys/mint', payload);
+    if (!r.ok || !r.data?.data?.secret) {
+      errEl.textContent = 'Mint failed: ' + (r.data?.data?.error || r.data?.error || ('HTTP ' + r.status));
+      errEl.style.display = 'block';
+      return;
+    }
+    const minted = r.data.data;
+    document.getElementById('mkSecretOut').value = minted.secret;
+    const entry = minted.entry || {};
+    document.getElementById('mkSecretMeta').textContent =
+      `label: ${entry.label || label}  ·  prefix: ${entry.prefix || '—'}  ·  scopes: ${(entry.scopes || scopes).join(',')}  ·  expires: ${entry.expires_at || payload.expires}`;
+    document.getElementById('ollamaMintForm').style.display = 'none';
+    document.getElementById('ollamaMintResult').style.display = 'block';
+    setTimeout(loadOllamaAnalytics, 600);
+  }
+
+  function ollamaCopySecret() {
+    const el = document.getElementById('mkSecretOut');
+    el.select(); el.setSelectionRange(0, 99999);
+    try { navigator.clipboard.writeText(el.value); ollamaCtlMsg('secret copied'); }
+    catch { document.execCommand && document.execCommand('copy'); }
+  }
 
   // ── Deprecation Pipeline ──
   const STAGE_COLORS = { 'new': '#c9a848', 'cleansed': '#38bdf8', 'deconstructed': '#a78bfa', 'deletion-stage': '#f87171' };
@@ -2410,7 +2899,7 @@ import * as THREE from 'three';
 
 const CATEGORY_COLOR = {
   platform: 0x34d399, client: 0x60a5fa, game: 0xc084fc, media: 0xf59e0b, tool: 0xc9a848, deprecated: 0x737373,
-  unregistered: 0xffffff,
+  unregistered: 0xffffff, infra: 0x22d3ee,
 };
 const DOWN_COLOR = 0xf87171;
 
@@ -2425,8 +2914,10 @@ const camera = new THREE.PerspectiveCamera(60, wrap.clientWidth / wrap.clientHei
 camera.position.set(0, 8, 28);
 camera.lookAt(0, 0, 0);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+// Cap at 1.5 — on 4K ultrawides devicePixelRatio=2 forces a ~44% larger framebuffer for marginal visual gain
+// and starves the rest of the page of GPU/paint cycles, which is what makes the dashboard feel choppy.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(wrap.clientWidth, wrap.clientHeight);
 renderer.setClearColor(0x0a0a0a, 1);
 wrap.appendChild(renderer.domElement);
@@ -2455,7 +2946,7 @@ const categoryCounts = {}; // for spread within cluster
 
 // Predefined ring slots for known categories — keeps positions stable as new
 // categories arrive (e.g., 'unregistered'). Unknown categories get a free slot.
-const FIXED_CATEGORY_ORDER = ['platform', 'client', 'game', 'media', 'tool', 'deprecated', 'unregistered'];
+const FIXED_CATEGORY_ORDER = ['platform', 'client', 'game', 'media', 'tool', 'deprecated', 'unregistered', 'infra'];
 function ensureClusterCenter(cat) {
   if (clusterCenters[cat]) return clusterCenters[cat];
   const total = FIXED_CATEGORY_ORDER.length;
@@ -2525,6 +3016,90 @@ function addServiceNode(svc, animateIn = false) {
 // Initial population from EJS-injected list
 servicesData.forEach(svc => addServiceNode(svc, false));
 
+// ── Tenant ring (middle orbit) ─────────────────────────────────────────────
+const tenantsData = JSON.parse(document.getElementById('harmonyTenantsJson')?.textContent || '[]');
+const TENANT_RADIUS = 17;
+const TENANT_GROUP = new THREE.Group();
+scene.add(TENANT_GROUP);
+const tenantSphereGeom = new THREE.SphereGeometry(0.22, 16, 16);
+function tenantColor(t) {
+  if (t.status === 'suspended') return 0xf87171;
+  if (t.status === 'preview' || !t.status) return 0xfdba74;
+  if (t.isPromo) return 0xf5c400;
+  return 0x60a5fa; // active
+}
+function tenantActivity01(t) {
+  if (!t.lastSeenAt) return 0;
+  const dt = Date.now() - new Date(t.lastSeenAt).getTime();
+  if (dt < 90 * 1000) return 1;            // live now
+  if (dt < 24*60*60*1000) return 0.5;      // active today
+  if (dt < 30*24*60*60*1000) return 0.2;
+  return 0.05;
+}
+tenantsData.forEach((t, i) => {
+  const ang = (i / Math.max(tenantsData.length, 1)) * Math.PI * 2;
+  const c = tenantColor(t);
+  const act = tenantActivity01(t);
+  const mat = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.4 + act * 0.8, metalness: 0.3, roughness: 0.5 });
+  const sphere = new THREE.Mesh(tenantSphereGeom, mat);
+  sphere.position.set(Math.cos(ang) * TENANT_RADIUS, (Math.sin(i * 1.7) * 0.4), Math.sin(ang) * TENANT_RADIUS);
+  sphere.userData = { kind: 'tenant', name: t.name, domain: t.domain, status: t.status, lastSeenAt: t.lastSeenAt, baseAng: ang, baseY: sphere.position.y, activity: act };
+  TENANT_GROUP.add(sphere);
+});
+
+// Faint orbit-line for the tenant ring
+{
+  const seg = 128;
+  const pts = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * TENANT_RADIUS, 0, Math.sin(a) * TENANT_RADIUS));
+  }
+  const g = new THREE.BufferGeometry().setFromPoints(pts);
+  const ringLine = new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.12 }));
+  scene.add(ringLine);
+}
+
+// ── User ring (outer edge) — one tiny dot per signup ──────────────────────
+const usersData = JSON.parse(document.getElementById('harmonyUsersJson')?.textContent || '[]');
+const USER_RADIUS = 25;
+if (usersData.length) {
+  const positions = new Float32Array(usersData.length * 3);
+  const colors    = new Float32Array(usersData.length * 3);
+  const refColor = new THREE.Color(0xf5c400); // referred → gold
+  const stdColor = new THREE.Color(0x9ca3af); // standard → cool gray
+  usersData.forEach((u, i) => {
+    const ang = (i / usersData.length) * Math.PI * 2;
+    // Slight vertical jitter so the ring has a bit of depth on rotation; small enough to stay clearly an edge ring.
+    const y = ((i * 37) % 11 - 5) * 0.06;
+    positions[i*3]   = Math.cos(ang) * USER_RADIUS;
+    positions[i*3+1] = y;
+    positions[i*3+2] = Math.sin(ang) * USER_RADIUS;
+    const c = u.isReferred ? refColor : stdColor;
+    colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
+  });
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({ size: 0.18, vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false });
+  const usersPoints = new THREE.Points(geom, mat);
+  scene.add(usersPoints);
+  window.__harmonyUsers = usersPoints;
+}
+
+// Outer orbit-line (faint dashed-ish ring drawn as a line loop)
+{
+  const seg = 192;
+  const pts = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * USER_RADIUS, 0, Math.sin(a) * USER_RADIUS));
+  }
+  const g = new THREE.BufferGeometry().setFromPoints(pts);
+  const ringLine = new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: 0x525252, transparent: true, opacity: 0.10 }));
+  scene.add(ringLine);
+}
+
 // Pulse rings — pooled
 const pulseRings = [];
 function spawnPulse(serviceName, kind) {
@@ -2557,11 +3132,27 @@ const ro = new ResizeObserver(() => {
 });
 ro.observe(wrap);
 
-// Animate — `frozen` halts camera orbit while tooltip is open
+// Animate — `frozen` halts camera orbit while tooltip is open; `paused` halts render entirely
+// when the canvas is offscreen (different tab, or window hidden) so the rest of the dashboard
+// gets GPU/paint cycles back. Saves a substantial amount of work on 4K displays.
 const clock = new THREE.Clock();
 let frozen = false;
+let paused = false;
 let camT = 0; // accumulated time for camera orbit (decoupled from elapsedTime so freeze works)
+
+// Pause when the harmony tile is offscreen (user switched to another tab or panel)
+const visObs = new IntersectionObserver(entries => {
+  paused = !entries[0].isIntersecting;
+  if (!paused) clock.getDelta(); // reset delta so we don't jump on resume
+}, { threshold: 0 });
+visObs.observe(wrap);
+document.addEventListener('visibilitychange', () => {
+  paused = document.hidden;
+  if (!paused) clock.getDelta();
+});
+
 function loop() {
+  if (paused) { requestAnimationFrame(loop); return; }
   const dt = clock.getDelta();
   if (!frozen) camT += dt;
   // Slow orbit camera
@@ -2581,6 +3172,22 @@ function loop() {
     const target = n.alive ? 0.6 : 0.2;
     m.emissiveIntensity += (target - m.emissiveIntensity) * Math.min(1, dt * 3);
   });
+
+  // Tenant ring — slow counter-clockwise drift; pulse "live now" tenants gently
+  if (!frozen && TENANT_GROUP) {
+    TENANT_GROUP.rotation.y += dt * 0.04;
+    const t = camT;
+    TENANT_GROUP.children.forEach(s => {
+      const ud = s.userData || {};
+      if (ud.activity >= 0.9) {
+        s.material.emissiveIntensity = 0.9 + Math.sin(t * 2.4 + ud.baseAng * 5) * 0.4;
+      }
+    });
+  }
+  // User ring — even slower clockwise drift so the outer edge feels like a different orbit
+  if (!frozen && window.__harmonyUsers) {
+    window.__harmonyUsers.rotation.y -= dt * 0.015;
+  }
 
   // Pulses
   const now = performance.now();
@@ -2932,42 +3539,264 @@ window.serverHarmony = {
   setInterval(pollOutbounds, 4000);
 
   let prevAlive = {};
+  function safe(fn, label) { try { fn(); } catch (e) { console.warn('[dashboard]', label, e); } }
   async function pollPulse() {
+    let d;
     try {
       const r = await fetch('/superadmin/api/ops/pulse', { cache: 'no-store' });
       if (!r.ok) return;
-      const d = await r.json();
-      // Update top stats
-      const aliveCount = d.services.filter(s => s.alive).length;
-      document.getElementById('harmonyStatusServices').textContent = aliveCount + ' up';
-      document.getElementById('harmonyStatusConns').textContent = d.totalConns + ' conns';
-      const pulsing = d.services.filter(s => s.pulse).length;
-      document.getElementById('harmonyStatusPulse').textContent = pulsing + ' active';
+      d = await r.json();
+    } catch (e) { return; }
 
-      // Feed Workspace's live service map (alive/conns/unregistered/etc.)
+    // System Vitals + sparkline first — these are independent of harmony/3D so a bug
+    // elsewhere in this poll path cannot prevent them from rendering.
+    safe(() => renderVitals(d.sys), 'renderVitals');
+    safe(() => updateSpark(d.history), 'updateSpark');
+
+    // Harmony header strip
+    const aliveCount = (d.services || []).filter(s => s.alive).length;
+    safe(() => { document.getElementById('harmonyStatusServices').textContent = aliveCount + ' up'; }, 'harmonyServices');
+    safe(() => { document.getElementById('harmonyStatusConns').textContent = d.totalConns + ' conns'; }, 'harmonyConns');
+    safe(() => {
+      const pulsing = (d.services || []).filter(s => s.pulse).length;
+      document.getElementById('harmonyStatusPulse').textContent = pulsing + ' active';
+    }, 'harmonyPulse');
+    safe(() => { document.getElementById('vitalsActiveSvc').textContent = aliveCount; }, 'vitalsActiveSvc');
+
+    // Feed Workspace's live service map (alive/conns/unregistered/etc.)
+    safe(() => {
       if (typeof WS !== 'undefined') {
         WS.pulseMap = {};
-        d.services.forEach(s => { WS.pulseMap[s.name] = s; });
+        (d.services || []).forEach(s => { WS.pulseMap[s.name] = s; });
         if (document.body.classList.contains('workspace-active')) wsRender();
       }
-      // Drive Three.js
-      d.services.forEach(s => {
-        // Discover new tmux sessions / services that weren't in the initial render
+    }, 'workspaceMap');
+
+    // Drive Three.js — wrapped per-service so one bad node can't kill the others
+    (d.services || []).forEach(s => {
+      safe(() => {
         if (window.serverHarmony && !window.serverHarmony.hasNode(s.name)) {
           window.serverHarmony.addService(s);
         }
         if (prevAlive[s.name] !== s.alive && window.serverHarmony) window.serverHarmony.setAlive(s.name, s.alive);
         prevAlive[s.name] = s.alive;
         if (s.pulse && window.serverHarmony) window.serverHarmony.triggerPulse(s.name, s.pulseKind);
-      });
+      }, 'harmonyNode:' + s.name);
+    });
 
-      document.getElementById('vitalsActiveSvc').textContent = aliveCount;
-      renderVitals(d.sys);
-      updateSpark(d.history);
-    } catch (e) { /* network blip, try again next tick */ }
+    // Tile updates for Bucket Storage + DB Tunnels — pulse ships the Linode (cloud) infra
+    // for free. Feed it into the slideshow state (exposed on window) and repaint if cloud slide is active.
+    if (d.infra) safe(() => { if (window.infraIngestCloud) window.infraIngestCloud(d.infra); }, 'renderInfra');
   }
   pollPulse();
   setInterval(pollPulse, 2000);
+
+  // ── Slideshow (Signups → Activity → Tenants) ────────────────────────────────
+  const SLIDE_TITLES = ['Recent Signups', 'Activity', 'Tenants · usage'];
+  const SLIDE_LINKS  = ['/superadmin/signups', '/superadmin/activity', '/superadmin/tenants'];
+  let slideIdx = 0;
+  let slideTimer = null;
+  function renderSlide() {
+    document.querySelectorAll('#slideshowTile .slide').forEach(el => {
+      el.style.display = (parseInt(el.dataset.i, 10) === slideIdx) ? 'block' : 'none';
+    });
+    document.querySelectorAll('#slideshowTile .slideDot').forEach(el => {
+      el.classList.toggle('active', parseInt(el.dataset.i, 10) === slideIdx);
+    });
+    const title = document.getElementById('slideTitle');
+    if (title) title.textContent = SLIDE_TITLES[slideIdx] || '';
+    const more = document.getElementById('slideMore');
+    if (more) more.href = SLIDE_LINKS[slideIdx] || '#';
+  }
+  function slideGo(i) { slideIdx = ((i % 3) + 3) % 3; renderSlide(); resetSlideTimer(); }
+  function slideNext() { slideGo(slideIdx + 1); }
+  function slidePrev() { slideGo(slideIdx - 1); }
+  function resetSlideTimer() {
+    if (slideTimer) clearInterval(slideTimer);
+    slideTimer = setInterval(() => { slideIdx = (slideIdx + 1) % 3; renderSlide(); }, 8000);
+  }
+  window.slideGo = slideGo; window.slideNext = slideNext; window.slidePrev = slidePrev;
+  renderSlide(); resetSlideTimer();
+  document.addEventListener('keydown', (e) => {
+    if (!document.body.classList.contains('overview-active')) return;
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) return;
+    if (e.key === 'ArrowLeft')  slidePrev();
+    if (e.key === 'ArrowRight') slideNext();
+  });
+
+  // ── Bucket Storage + DB Tunnels render (data from /api/ops/pulse → infra) ──
+  function fmtMs(n) { if (n == null) return '—'; return n < 1000 ? n + 'ms' : (n/1000).toFixed(2) + 's'; }
+  function fmtUptimeShort(sec) {
+    if (sec == null) return '—';
+    const d = Math.floor(sec/86400), h = Math.floor((sec%86400)/3600), m = Math.floor((sec%3600)/60);
+    if (d) return `${d}d ${h}h`;
+    if (h) return `${h}h ${m}m`;
+    return `${m}m`;
+  }
+  function fmtBytesShort(n) {
+    if (n == null) return '—';
+    const u = ['B','KB','MB','GB','TB']; let i = 0; let v = Number(n);
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return v.toFixed(v >= 100 ? 0 : 1) + ' ' + u[i];
+  }
+  // Per-source caches so slide-switching is instant (no refetch)
+  const __infraState = {
+    bucket: { src: 'cloud', cloud: null, gpu: null },
+    db:     { src: 'cloud', cloud: null, gpu: null },
+  };
+
+  function paintBucket() {
+    const st = __infraState.bucket;
+    const b = st[st.src];
+    document.getElementById('bucketSrcLabel').textContent = st.src === 'gpu' ? 'GPU BOX · MinIO' : 'CLOUD · Linode';
+    document.querySelectorAll('#bucketDots .slideDot').forEach(d => d.classList.toggle('active', d.dataset.src === st.src));
+    document.getElementById('bucketLabel1').textContent = st.src === 'gpu' ? 'Buckets' : 'Bucket';
+    if (!b) {
+      document.getElementById('bucketDot').className = 'svc-dot unknown';
+      document.getElementById('bucketEndpoint').textContent = '—';
+      document.getElementById('bucketName').textContent = '—';
+      document.getElementById('bucketRegion').textContent = '—';
+      document.getElementById('bucketOk').textContent = '—';
+      document.getElementById('bucketLatency').textContent = '—';
+      document.getElementById('bucketSample').textContent = '—';
+      document.getElementById('bucketError').textContent = st.src === 'gpu' ? 'unreachable' : '';
+      return;
+    }
+    document.getElementById('bucketDot').className = 'svc-dot ' + (b.ok ? 'alive' : 'dead');
+    document.getElementById('bucketEndpoint').textContent = b.endpoint || '—';
+    document.getElementById('bucketName').textContent = (st.src === 'gpu' && b.bucketCount != null) ? (b.bucketCount + ' bucket' + (b.bucketCount === 1 ? '' : 's')) : (b.bucket || '—');
+    document.getElementById('bucketRegion').textContent = b.region || '—';
+    const okEl = document.getElementById('bucketOk');
+    okEl.textContent = b.ok ? 'OK' : 'DOWN';
+    okEl.className = 'stat-value ' + (b.ok ? 'green' : 'red');
+    okEl.style.fontSize = '14px';
+    document.getElementById('bucketLatency').textContent = fmtMs(b.latencyMs);
+    if (st.src === 'gpu') {
+      document.getElementById('bucketSampleLabel').textContent = 'Buckets:';
+      document.getElementById('bucketSample').textContent = (b.buckets && b.buckets.length) ? b.buckets.join(', ') : '(none)';
+    } else {
+      document.getElementById('bucketSampleLabel').textContent = 'Sample key:';
+      document.getElementById('bucketSample').textContent = b.sampleKey || '(empty bucket)';
+    }
+    document.getElementById('bucketError').textContent = b.error || (b.note && st.src === 'gpu' ? b.note : '');
+  }
+
+  function paintDb() {
+    const st = __infraState.db;
+    const m = st[st.src];
+    document.getElementById('dbSrcLabel').textContent = st.src === 'gpu' ? 'GPU BOX · Mongo' : 'CLOUD · Linode';
+    document.querySelectorAll('#dbDots .slideDot').forEach(d => d.classList.toggle('active', d.dataset.src === st.src));
+    if (!m) {
+      document.getElementById('dbDot').className = 'svc-dot unknown';
+      document.getElementById('dbStatus').textContent = '—';
+      document.getElementById('dbLatency').textContent = '—';
+      document.getElementById('dbVersion').textContent = '—';
+      document.getElementById('dbUptime').textContent = '—';
+      document.getElementById('dbConns').textContent = '—';
+      document.getElementById('dbCount').textContent = '—';
+      document.getElementById('dbList').innerHTML = '<div class="empty" style="padding:6px;">—</div>';
+      document.getElementById('dbError').textContent = st.src === 'gpu' ? 'unreachable' : '';
+      return;
+    }
+    document.getElementById('dbDot').className = 'svc-dot ' + (m.ok ? 'alive' : 'dead');
+    const sEl = document.getElementById('dbStatus');
+    sEl.textContent = m.ok ? 'OK' : 'DOWN';
+    sEl.className = 'stat-value ' + (m.ok ? 'green' : 'red');
+    sEl.style.fontSize = '14px';
+    document.getElementById('dbLatency').textContent = fmtMs(m.latencyMs);
+    document.getElementById('dbVersion').textContent = m.version || '—';
+    document.getElementById('dbUptime').textContent = fmtUptimeShort(m.uptimeSec);
+    const c = m.connections || {};
+    document.getElementById('dbConns').textContent = c.current != null ? c.current : '—';
+    document.getElementById('dbCount').textContent = m.dbCount != null ? m.dbCount : '—';
+    const dbs = (m.databases || []).slice().sort((a,b) => (b.sizeOnDisk || 0) - (a.sizeOnDisk || 0)).slice(0, 8);
+    document.getElementById('dbList').innerHTML = dbs.length ? dbs.map(d => `
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid #1a1a1a;">
+        <span style="color:#e5e5e5;">${escapeHtmlSafePage(d.name)}</span>
+        <span style="color:#737373;">${d.sizeOnDisk != null ? fmtBytesShort(d.sizeOnDisk) : '—'}</span>
+      </div>`).join('') : '<div class="empty" style="padding:6px;">—</div>';
+    document.getElementById('dbError').textContent = m.error || '';
+  }
+
+  function bucketSelectSrc(src) {
+    if (__infraState.bucket.src === src) return;
+    __infraState.bucket.src = src;
+    animatedSwap(document.getElementById('bucketsTile'), paintBucket);
+  }
+  function dbSelectSrc(src) {
+    if (__infraState.db.src === src) return;
+    __infraState.db.src = src;
+    animatedSwap(document.getElementById('dbtunnelTile'), paintDb);
+  }
+  window.bucketSelectSrc = bucketSelectSrc;
+  window.dbSelectSrc = dbSelectSrc;
+  // Expose so the pulse IIFE (separate scope) can feed cloud data on every 2s tick.
+  window.infraIngestCloud = function (infra) {
+    if (!infra) return;
+    if (infra.bucket) { __infraState.bucket.cloud = infra.bucket; if (__infraState.bucket.src === 'cloud') paintBucket(); }
+    if (infra.mongo)  { __infraState.db.cloud     = infra.mongo;  if (__infraState.db.src === 'cloud')     paintDb();     }
+  };
+
+  async function refreshInfra(force) {
+    // Cloud (Linode) — via existing /api/ops/infra
+    try {
+      const r = await fetch('/superadmin/api/ops/infra' + (force ? '?refresh=1' : ''));
+      const d = await r.json();
+      if (d) {
+        if (d.bucket) __infraState.bucket.cloud = d.bucket;
+        if (d.mongo)  __infraState.db.cloud     = d.mongo;
+      }
+    } catch (e) {}
+    // GPU box — via new proxies (best-effort; failures leave cache null → tile shows "unreachable" only when that slide is active)
+    try {
+      const r = await fetch('/superadmin/api/gpu/bucket');
+      const d = await r.json();
+      __infraState.bucket.gpu = (d && d.ok) ? d : { ok: false, error: (d && d.error) || 'unreachable' };
+    } catch (e) { __infraState.bucket.gpu = { ok: false, error: e.message }; }
+    try {
+      const r = await fetch('/superadmin/api/gpu/db');
+      const d = await r.json();
+      __infraState.db.gpu = (d && d.ok) ? d : { ok: false, error: (d && d.error) || 'unreachable' };
+    } catch (e) { __infraState.db.gpu = { ok: false, error: e.message }; }
+    paintBucket();
+    paintDb();
+  }
+  window.refreshInfra = refreshInfra;
+  refreshInfra(false);
+
+  // Animated swap helper — triggers the CSS keyframe on the whole tile, paints at the midpoint
+  // (when the body is invisible), then lets the animation finish lifting the new content in.
+  // Falls back to instant paint if prefers-reduced-motion is set.
+  const SWAP_DURATION = 550;   // matches .tile-swap-anim animation length
+  const SWAP_MIDPOINT = 270;   // paint just past the 45% opacity:0 mark
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function animatedSwap(tileEl, paintFn) {
+    if (reducedMotion || !tileEl) { paintFn(); return; }
+    // Restart the animation by removing & re-adding the class with a forced reflow.
+    tileEl.classList.remove('tile-swap-anim');
+    void tileEl.offsetWidth;
+    tileEl.classList.add('tile-swap-anim');
+    setTimeout(paintFn, SWAP_MIDPOINT);
+    setTimeout(() => tileEl.classList.remove('tile-swap-anim'), SWAP_DURATION + 50);
+  }
+
+  function rotateBucket() {
+    __infraState.bucket.src = __infraState.bucket.src === 'cloud' ? 'gpu' : 'cloud';
+    animatedSwap(document.getElementById('bucketsTile'), paintBucket);
+  }
+  function rotateDb() {
+    __infraState.db.src = __infraState.db.src === 'cloud' ? 'gpu' : 'cloud';
+    animatedSwap(document.getElementById('dbtunnelTile'), paintDb);
+  }
+
+  // Stagger the two cards' rotations by 4s so they don't flip in unison
+  // (each card on 8s; bucket fires at 0/8/16…, db fires at 4/12/20…)
+  setInterval(rotateBucket, 8000);
+  setTimeout(() => { rotateDb(); setInterval(rotateDb, 8000); }, 4000);
+
+  // Periodic re-fetch so the cached numbers don't go stale (cloud already auto-refreshes via pulse).
+  setInterval(() => refreshInfra(false), 30000);
 })();
 </script>
 <span class="badge-overseer">SUPERADMIN</span>

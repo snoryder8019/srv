@@ -185,6 +185,7 @@ async function main() {
       const portfolioDocs = PORTFOLIO_SEED.map((p) => ({
         ...p,
         description: '',
+        status: 'published',
         createdAt: now,
       }));
       await tenantDb.collection('portfolio').insertMany(portfolioDocs);

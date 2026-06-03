@@ -1,0 +1,229 @@
+/**
+ * hearts3d.js — Hearts on the shared 3D table.
+ *
+ * Thin game layer: it imports the shared core (table3d), the socket client
+ * (tableclient3d), the HUD chrome (hud3d), and card meshes (card3d), and supplies
+ * ONLY what's hearts-specific:
+ *   • the fanned 3D hand (mine), face-up, selectable
+ *   • the center trick area (each played card laid toward its player's seat)
+ *   • the passing phase (multi-select passCount cards, then submit one pass)
+ *   • the action controls + info copy + scoreboard read
+ *
+ * Data shape (hearts variant):
+ *   priv.hand: card codes ["QS","2C",…]   priv.legal: [{type:'play',card}|{type:'passCard',card}]
+ *   priv.phase: 'passing'|'playing'  priv.needToPass  priv.passCount  priv.yourTurn
+ *   view.trick: [{seat,card}]  view.handCounts[]  view.totals[]  view.passed[] view.heartsBroken
+ *   Lowest score wins.
+ */
+import { createTable3D } from './table3d.js';
+import { createTableClient } from './tableclient3d.js';
+import { createHUD } from './hud3d.js';
+import { buildCard, CARD_W, CARD_H, CARD_T } from './card3d.js';
+
+const T = createTable3D({ tableRadius: 34, feltColor: 0x14633f });
+const THREE = T.THREE;
+
+// ------------------------------------------------------------------ tabletop
+// Two groups: the local player's fanned hand (in front of camera-south seat) and
+// the center trick. Other players' cards are abstracted to their seat plates.
+const HAND = new THREE.Group(); T.scene.add(HAND);
+const TRICK = new THREE.Group(); T.scene.add(TRICK);
+
+let selPass = new Set();   // codes selected during the passing phase
+const handMeshes = [];     // { mesh, code } for raycast picking
+
+// --- my hand: a shallow fan arcing up toward the camera at the south seat ---
+function renderHand() {
+  for (const m of HAND.children.slice()) HAND.remove(m);
+  handMeshes.length = 0;
+  const priv = C.priv; if (!priv || !priv.hand) return;
+  const hand = priv.hand.slice();
+  const n = hand.length; if (!n) return;
+
+  const playable = new Set((priv.legal || []).filter((a) => a.type === 'play').map((a) => a.card));
+  const passable = priv.phase === 'passing' && priv.needToPass;
+
+  // The hand sits just inside the south rail, fanned along X, tilted up to face
+  // the camera. Cards overlap slightly; the middle rises (a held fan).
+  const span = Math.min(20, n * 2.0);              // total fan width in world X
+  const stepX = n > 1 ? span / (n - 1) : 0;
+  const z0 = T.TABLE_R - 7.5;                       // distance out toward south rail
+  const fanDeg = Math.min(26, n * 2.6);
+  const mid = (n - 1) / 2;
+
+  hand.forEach((code, i) => {
+    const mesh = buildCard(code);
+    const rel = i - mid;
+    const frac = mid === 0 ? 0 : rel / mid;          // -1..1
+    const x = rel * stepX;
+    const lift = (1 - Math.abs(frac)) * 0.8;         // middle rises
+    const yaw = -frac * (fanDeg * Math.PI / 180);    // fan rotation about Y
+    const sel = (passable && selPass.has(code));
+    const canPick = passable ? true : playable.has(code);
+    // lay the card flat-ish, tilted to face the camera, raised if selected/playable
+    mesh.position.set(x, 0.6 + lift + (sel ? 1.4 : 0), z0 - Math.abs(frac) * 0.8);
+    mesh.rotation.set(-Math.PI / 2 + 0.42, yaw, 0); // tilt up toward camera
+    mesh.userData = { code, canPick, kind: 'hand' };
+    if (!canPick && (passable || playable.size)) {
+      // dim non-pickable cards
+      mesh.traverse((o) => { if (o.material) { o.material = o.material.clone ? o.material.clone() : o.material; o.material.opacity = 0.55; o.material.transparent = true; } });
+    }
+    HAND.add(mesh);
+    handMeshes.push({ mesh, code });
+  });
+}
+
+// --- center trick: each played card laid toward the player's seat direction ---
+let _prevTrick = '';
+function renderTrick() {
+  const v = (C.state && C.state.view) || {};
+  const trick = v.trick || [];
+  const key = trick.map((p) => p.seat + p.card).join(',');
+  const grew = trick.length > (_prevTrick ? _prevTrick.split(',').filter(Boolean).length : 0);
+  _prevTrick = key;
+  for (const m of TRICK.children.slice()) TRICK.remove(m);
+  if (!trick.length) return;
+  const n = (C.state.seats || []).length || 4;
+  for (const p of trick) {
+    const mesh = buildCard(p.card);
+    const ang = T.seatAngleOf(seatRel(p.seat, n)); // world azimuth of that seat
+    // place the card a short way from center toward that seat, facing up
+    const r = 3.0;
+    const x = Math.cos(ang) * r, z = Math.sin(ang) * r;
+    mesh.position.set(x, 0.08, z);
+    mesh.rotation.set(-Math.PI / 2, -ang + Math.PI / 2, 0); // top points outward to its player
+    mesh.userData = { kind: 'trick' };
+    TRICK.add(mesh);
+    // newest card settles in
+    if (grew && p === trick[trick.length - 1]) T.settle(mesh, 0.08, mesh.rotation.y, { dropH: 3, dur: 280 });
+  }
+}
+// seat index relative to me (so my plays land in front of me, south)
+function seatRel(seat, n) { return seat; } // core already orients seats; trick uses absolute seat azimuth
+
+// ------------------------------------------------------------------ client + HUD
+const C = createTableClient({
+  onState(s) { onState(s); },
+  onPriv(p) { renderHand(); HUD.render(); },
+  onEvent(ev) { onEvent(ev); },
+  onOver(o) { HUD.showOver(o); },
+  onReconnect(on, msg, rejoin) { HUD.showReconnect(on, msg, rejoin); },
+  onError(msg) { HUD.setStatus('⚠ ' + msg); },
+});
+
+let lastSeatCount = 0, prevTurn = null, prevHandNo = null;
+function onState(s) {
+  const v = s.view || {};
+  const n = (s.seats || []).length;
+  if (n && n !== lastSeatCount) { T.buildSeats(n, C.mySeat); lastSeatCount = n; }
+  updateSeats(s, v);
+  renderTrick();
+  renderHand();
+  if (T.Sound && v.turn === C.mySeat && prevTurn !== C.mySeat && s.phase === 'playing') T.Sound.yourTurn();
+  if (T.Sound && s.handNo && s.handNo !== prevHandNo && s.phase !== 'lobby') T.Sound.deal();
+  prevTurn = v.turn; prevHandNo = s.handNo;
+  HUD.render();
+  HUD.renderVote(s.vote);
+  if (s.phase === 'lobby') { HUD.hideOver(); selPass.clear(); }
+}
+
+function updateSeats(s, v) {
+  for (let i = 0; i < (s.seats || []).length; i++) {
+    const seat = s.seats[i]; if (!seat) continue;
+    const cnt = (v.handCounts && v.handCounts[i] != null) ? v.handCounts[i] : '';
+    const total = (v.totals && v.totals[i] != null) ? v.totals[i] : 0;
+    const turn = v.turn === i && s.phase === 'playing';
+    const name = (seat.displayName || ('Seat ' + i)) + (seat.bot ? ' 🤖' : '');
+    let sub;
+    if (s.phase === 'lobby') sub = seat.ready ? 'ready' : (seat.platformId ? 'waiting' : 'empty');
+    else if (s.phase === 'passing') sub = (v.passed && v.passed[i]) ? 'passed ✓' : 'passing…';
+    else sub = `${cnt} cards · ${total} pts`;
+    T.updateSeat(i, { name, sub, turn, you: i === C.mySeat });
+  }
+}
+
+function onEvent(ev) {
+  if (ev.type === 'play' && T.Sound) T.Sound.play();
+  if (ev.type === 'trickWon' && T.Sound) T.Sound.trick();
+  if (ev.type === 'turn:timeout' && T.Sound) T.Sound.alert();
+  if ((ev.type === 'vote:open' || ev.type === 'vote:update')) HUD.renderVote(ev);
+  if (ev.type === 'vote:result') HUD.renderVote(null);
+}
+
+// ------------------------------------------------------------------ actions/info
+const HUD = createHUD({
+  client: C, Sound: T.Sound, title: 'HEARTS',
+  lowerWins: true, scoreLabel: 'Lowest score wins',
+  onResetCam: () => T.resetCamera(),
+  statusLine(v, c) {
+    if (c.priv && c.priv.phase === 'passing') {
+      return c.priv.needToPass ? `<b>PASS ${c.priv.passCount}</b> ${c.priv.passDir} · select ${c.priv.passCount} cards`
+                               : 'waiting for others to pass…';
+    }
+    const turnTxt = v.turn === c.mySeat ? '<b>YOUR TURN</b>' : `seat ${v.turn}`;
+    const hb = v.heartsBroken ? ' · ♥ broken' : '';
+    return `${turnTxt}${hb} · trick ${(v.trick || []).length}/4`;
+  },
+  renderActions(box, { state, priv, myTurn }) {
+    if (!priv) return;
+    if (priv.phase === 'passing' && priv.needToPass) {
+      const need = priv.passCount || 3;
+      const b = document.createElement('button');
+      b.className = 'act gold'; b.disabled = selPass.size !== need;
+      b.textContent = selPass.size === need ? `Pass ${need} ${priv.passDir} ▶` : `Select ${need} (${selPass.size}/${need})`;
+      b.onclick = () => { C.emitAction({ type: 'pass', cards: [...selPass] }); selPass.clear(); HUD.render(); renderHand(); };
+      box.appendChild(b);
+      return;
+    }
+    if (priv.phase === 'playing' && myTurn) {
+      const hint = document.createElement('div');
+      hint.style.cssText = 'color:#bfe0cd;font-size:13px;align-self:center';
+      hint.textContent = 'Tap a card to play';
+      box.appendChild(hint);
+    }
+  },
+  scoreFor(v, seat) {
+    return { score: (v.totals && v.totals[seat] != null) ? v.totals[seat] : 0,
+             sub: (v.handCounts && v.handCounts[seat] != null) ? v.handCounts[seat] + ' cards' : '' };
+  },
+  scoreFootText: (v) => `Lowest score wins · game ends at ${v.losingScore || 100}`,
+  infoHTML(v) {
+    return `
+      <div class="k"><span>Goal</span><b>Lowest score wins</b></div>
+      <div class="k"><span>Game ends at</span><b>${v.losingScore || 100} pts</b></div>
+      <ul>
+        <li>Each hand: pass ${v.passDir ? '' : '3 '}cards, then play tricks.</li>
+        <li>Follow the led suit if you can; highest card of the led suit wins the trick.</li>
+        <li>Each <b>♥</b> = 1 point, the <b>Q♠</b> = 13 — avoid taking them.</li>
+        <li>Take <b>all</b> the penalty cards = <b>shoot the moon</b>: everyone else +26.</li>
+        <li>Lowest total when someone hits the cap wins.</li>
+      </ul>`;
+  },
+});
+
+// ------------------------------------------------------------------ picking
+// Tap a card in hand: passing -> toggle selection; playing -> play it (priv-gated).
+T.renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (!handMeshes.length) return;
+  const hits = T.raycast(e.clientX, e.clientY, handMeshes.map((h) => h.mesh));
+  if (!hits.length) return;
+  // find which hand card was hit (walk up to the mesh we registered)
+  let obj = hits[0].object;
+  while (obj && obj.userData && obj.userData.kind !== 'hand' && obj.parent) obj = obj.parent;
+  const code = obj && obj.userData && obj.userData.code;
+  if (!code) return;
+  const priv = C.priv; if (!priv) return;
+
+  if (priv.phase === 'passing' && priv.needToPass) {
+    const need = priv.passCount || 3;
+    if (selPass.has(code)) selPass.delete(code);
+    else if (selPass.size < need) selPass.add(code);
+    renderHand(); HUD.render();
+    e.stopPropagation();
+    return;
+  }
+  if (priv.phase === 'playing' && C.myTurn()) {
+    const ok = (priv.legal || []).some((a) => a.type === 'play' && a.card === code);
+    if (ok) { C.emitPlayChecked({ type: 'play', card: code }); e.stopPropagation(); }
+  }
+}, true);

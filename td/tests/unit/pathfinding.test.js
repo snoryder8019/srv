@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { findPath, findDefaultPath } from '../../services/pathfinding.js';
+import { findPath, findDefaultPath } from '../../services/game/pathfinding.js';
 
 const baseMap = (overrides = {}) => ({
   radius: 6,

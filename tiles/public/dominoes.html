@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dominoes · tiles.madladslab</title>
+<style>
+  :root { --felt:#1d6b4a; --feltlo:#0c3a26; --ink:#e9ecef; --muted:#9fb0a6; --gold:#e3c567; --bone:#f7f5ee; --boneline:#cfcabb; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:#0a0d0b; color:var(--ink); }
+  #wrap { max-width:780px; margin:0 auto; padding:14px; }
+  h1 { font-size:14px; letter-spacing:.22em; color:var(--muted); font-weight:700; margin:0 0 10px; }
+  #status { font-size:12.5px; color:var(--muted); min-height:18px; }
+  #status b { color:var(--gold); }
+  canvas { width:100%; background:radial-gradient(circle at 50% 40%, var(--felt), var(--feltlo)); border-radius:16px; display:block; margin:10px 0; box-shadow:inset 0 0 60px rgba(0,0,0,.45); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  #controls { margin:8px 0; min-height:42px; }
+  #tray { margin-top:6px; gap:7px; }
+  .bone { position:relative; display:inline-flex; flex-direction:column; align-items:center; justify-content:space-between;
+          width:38px; height:70px; background:var(--bone); border:1px solid var(--boneline); border-radius:7px;
+          padding:5px 0; cursor:default; box-shadow:0 3px 8px rgba(0,0,0,.35); transition:transform .08s; }
+  .bone .half { width:100%; height:50%; display:flex; align-items:center; justify-content:center; }
+  .bone .div { position:absolute; top:50%; left:14%; right:14%; height:2px; background:var(--boneline); transform:translateY(-1px); }
+  .bone .pips { display:grid; grid-template-columns:repeat(3,5px); grid-template-rows:repeat(3,5px); gap:2px; }
+  .bone .pip { width:5px; height:5px; border-radius:50%; background:#15171a; }
+  .bone.playable { cursor:pointer; border-color:#2fbf71; }
+  .bone.playable:hover { transform:translateY(-5px); }
+  .bone.sel { border-color:var(--gold); transform:translateY(-9px); box-shadow:0 7px 18px rgba(0,0,0,.45); }
+  .bone.dim { opacity:.4; }
+  button.act { background:#2fbf71; color:#05230f; border:none; border-radius:9px; padding:10px 15px; font-weight:800; cursor:pointer; font-size:14px; }
+  button.act.ghost { background:#1d3b2b; color:var(--ink); }
+  button.act.gold { background:var(--gold); color:#241d05; }
+  button.act:disabled { opacity:.4; cursor:default; }
+  #log { font:11.5px ui-monospace,monospace; color:#7e9388; white-space:pre-wrap; max-height:110px; overflow:auto; background:#070a08; border-radius:9px; padding:8px; margin-top:10px; }
+
+  #over { position:fixed; inset:0; background:rgba(4,7,5,.82); display:none; align-items:center; justify-content:center; padding:18px; z-index:50; }
+  #over.show { display:flex; }
+  .overcard { width:100%; max-width:440px; background:#10231a; border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:24px; text-align:center; box-shadow:0 24px 70px rgba(0,0,0,.5); }
+  .overcard .result { font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  .overcard h2 { margin:6px 0 2px; font-size:34px; }
+  .overcard .score { font-size:16px; color:var(--gold); margin-bottom:14px; font-weight:800; }
+  .stand { text-align:left; background:#0a1812; border-radius:10px; padding:8px 12px; margin:10px 0 16px; }
+  .stand .r { display:flex; justify-content:space-between; font-size:13px; padding:3px 0; color:#cfe; }
+  .stand .r .w { color:#2fbf71; font-weight:700; } .stand .r .l { color:#9fb0a6; }
+  .overcard button { width:100%; border:none; border-radius:11px; padding:13px; font-size:15px; font-weight:800; cursor:pointer; margin-top:9px; }
+  .overcard .primary { background:#2fbf71; color:#05230f; } .overcard .danger { background:#3a1d1d; color:#f0c9c9; }
+
+  #fsbtn,#mutebtn { position:fixed; top:10px; z-index:70; width:40px; height:40px; border-radius:10px; background:rgba(17,35,26,.85); color:#cfe7d8; border:1px solid rgba(255,255,255,.14); font-size:18px; line-height:1; cursor:pointer; }
+  #fsbtn { right:10px; } #mutebtn { right:58px; font-size:17px; }
+  #reconnect { display:none; position:fixed; top:0; left:0; right:0; z-index:80; background:#3a2f12; color:#ffe9a8; text-align:center; padding:8px 12px; font-size:13px; }
+  #reconnect.show { display:block; }
+  #reconnect button { margin-left:10px; background:#e3c567; color:#241d05; border:none; border-radius:6px; padding:5px 12px; font-weight:800; cursor:pointer; }
+  #votePanel { display:none; position:fixed; left:50%; top:14px; transform:translateX(-50%); z-index:75; background:#1a1206; border:1px solid #e3c567; border-radius:12px; padding:14px 16px; width:min(92vw,360px); text-align:center; box-shadow:0 16px 50px rgba(0,0,0,.55); }
+  #votePanel.show { display:block; }
+  #votePanel .vt { color:#ffe9a8; font-size:14px; font-weight:700; margin-bottom:6px; }
+  #votePanel .vc { color:#9fb0a6; font-size:12px; margin-bottom:10px; }
+  #votePanel .vrow { display:flex; gap:10px; }
+  #votePanel button { flex:1; border:none; border-radius:10px; padding:12px; font-weight:800; font-size:14px; cursor:pointer; }
+  #votePanel .wait { background:#2fbf71; color:#05230f; } #votePanel .kick { background:#b5482f; color:#fff; }
+  body.fill { overflow:hidden; }
+  body.fill #wrap { position:fixed; inset:0; max-width:none; width:100vw; height:100dvh; margin:0; padding:6px 8px; background:#070a08; display:flex; flex-direction:column; z-index:60; }
+  body.fill h1, body.fill #log { display:none; }
+  body.fill #felt { flex:1 1 auto; min-height:0; width:100%; height:100%; object-fit:contain; }
+</style>
+</head>
+<body>
+<button id="fsbtn" title="Fill screen">⛶</button>
+<button id="mutebtn" title="Mute">🔊</button>
+<div id="votePanel"><div class="vt" id="voteTitle"></div><div class="vc" id="voteCount"></div><div class="vrow"><button class="wait" id="voteWait">Wait</button><button class="kick" id="voteKick">Kick → bot</button></div></div>
+<div id="reconnect">Reconnecting…</div>
+<div id="wrap">
+  <h1>DOMINOES · LIVE TABLE</h1>
+  <div id="status">connecting…</div>
+  <canvas id="felt" width="780" height="380"></canvas>
+  <div class="row" id="controls"></div>
+  <div class="row" id="tray"></div>
+  <div id="log"></div>
+  <div id="over"><div class="overcard">
+    <div class="result" id="overResult">Game over</div>
+    <h2 id="overTitle">Game Over</h2>
+    <div class="score" id="overScore"></div>
+    <div class="stand" id="overStand"></div>
+    <button class="primary" id="btnRematch">Rematch</button>
+    <button class="danger" id="btnExit">Exit to arcade</button>
+  </div></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/static/js/tiles-render.js"></script>
+<script>
+  const qs = new URLSearchParams(location.search);
+  const ticket = qs.get('ticket');
+  const $ = (id)=>document.getElementById(id);
+  const R = window.TilesRender || window.CardsRender;
+  function log(m){ $('log').textContent = (m+'\n'+$('log').textContent).slice(0,3000); }
+
+  let mySeat=null, state=null, priv=null, everConnected=false;
+  let selCode=null; // selected bone in the tray
+
+  const socket = io({ transports:['websocket','polling'], withCredentials:true });
+  socket.on('connect', ()=>{ showReconnect(false); everConnected=true; if (ticket) socket.emit('table:join',{ticket}); else log('no ?ticket= in URL'); });
+  socket.on('disconnect', ()=>{ showReconnect(true,'Reconnecting…'); });
+  socket.on('table:error', e=>{ log('⚠ '+e.message); if(/ticket|expired|no such table/i.test(e.message||'')) showReconnect(true,'Session expired —',true); });
+  socket.on('seat:hand', h=>{ mySeat=h.seat; priv=h; render(); });
+  socket.on('table:state', s=>{ state=s; try{ onState(s); }catch(e){} render(); });
+  socket.on('table:event', ev=>logEvent(ev));
+
+  const myTurn = ()=> !!(priv && priv.yourTurn);
+
+  function showReconnect(on,msg,rejoin){
+    const el=$('reconnect'); if(!el) return;
+    if(!on){ el.classList.remove('show'); return; }
+    el.textContent=msg||'Reconnecting…';
+    if(rejoin){ const b=document.createElement('button'); b.textContent='Rejoin'; b.onclick=()=>location.href='https://match.madladslab.com/resume'; el.appendChild(b); }
+    el.classList.add('show');
+  }
+
+  // ---------- status / controls / tray ----------
+  function setStatus(){
+    if(!state){ $('status').textContent=''; return; }
+    if(state.phase==='lobby'){ $('status').textContent='Lobby — ready up to start'; return; }
+    if(state.phase==='gameOver'){ $('status').textContent='Game over'; return; }
+    const v=state.view||{};
+    const totals=(v.totals||[]).join(' · ');
+    const turnTxt = v.turn===mySeat ? '<b>YOUR TURN</b>' : `seat ${v.turn}`;
+    const ends = (v.endL!=null) ? ` · ends [${v.endL}|${v.endR}]` : '';
+    $('status').innerHTML = `${turnTxt}${ends} · boneyard ${v.boneyard||0} · totals ${totals} · to ${v.target}`;
+  }
+  function render(){ if(!state) return; setStatus(); renderControls(); renderTray(); }
+
+  function renderControls(){
+    const box=$('controls'); box.innerHTML='';
+    if(!state) return;
+    if(state.phase==='lobby'){
+      const meReady=(state.seats[mySeat]||{}).ready;
+      const rb=document.createElement('button'); rb.className='act'; rb.textContent=meReady?'Ready ✓ (waiting…)':'Ready'; rb.disabled=!!meReady;
+      rb.onclick=()=>socket.emit('seat:ready',{ready:true}); box.appendChild(rb);
+      state.seats.forEach(s=>{ if(!s.occupied){ const b=document.createElement('button'); b.className='act ghost'; b.textContent=`+ Bot seat ${s.seat}`; b.onclick=()=>socket.emit('seat:addBot',{seat:s.seat}); box.appendChild(b); } });
+      return;
+    }
+    if(!priv || !myTurn()) return;
+    const legal = priv.legal||[];
+    const draw = legal.find(a=>a.type==='draw');
+    const pass = legal.find(a=>a.type==='pass');
+    const plays = legal.filter(a=>a.type==='play');
+    // if a bone is selected, show its end options
+    if (selCode){
+      const opts = plays.filter(p=>p.code===selCode);
+      opts.forEach(o=>{
+        const b=document.createElement('button'); b.className='act gold';
+        b.textContent = priv.mustOpen ? 'Play opener' : (o.end==='L' ? '◀ Play left' : 'Play right ▶');
+        b.onclick=()=>{ socket.emit('game:action',{action:o}); selCode=null; render(); };
+        box.appendChild(b);
+      });
+      const c=document.createElement('button'); c.className='act ghost'; c.textContent='Cancel'; c.onclick=()=>{ selCode=null; render(); }; box.appendChild(c);
+    }
+    if (draw){ const b=document.createElement('button'); b.className='act'; b.textContent='Draw a tile'; b.onclick=()=>socket.emit('game:action',{action:{type:'draw'}}); box.appendChild(b); }
+    if (pass){ const b=document.createElement('button'); b.className='act ghost'; b.textContent='Pass (blocked)'; b.onclick=()=>socket.emit('game:action',{action:{type:'pass'}}); box.appendChild(b); }
+  }
+
+  function boneEl(code,a,b){
+    const el=document.createElement('div'); el.className='bone';
+    el.appendChild(pipHalf(a)); const d=document.createElement('div'); d.className='div'; el.appendChild(d); el.appendChild(pipHalf(b));
+    return el;
+  }
+  // pip layouts for 0..6
+  const PIP_MAP={0:[],1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+  function pipHalf(n){
+    const h=document.createElement('div'); h.className='half';
+    const g=document.createElement('div'); g.className='pips';
+    for(let i=0;i<9;i++){ const cell=document.createElement('div'); if(PIP_MAP[n]&&PIP_MAP[n].includes(i)){ const p=document.createElement('div'); p.className='pip'; cell.appendChild(p);} cell.style.width='5px'; cell.style.height='5px'; g.appendChild(cell); }
+    h.appendChild(g); return h;
+  }
+
+  function renderTray(){
+    const box=$('tray'); box.innerHTML='';
+    const hand=(priv&&priv.hand)||[];
+    const legal=(priv&&priv.legal)||[];
+    const playableCodes = new Set(legal.filter(a=>a.type==='play').map(a=>a.code));
+    const canAct = myTurn();
+    hand.forEach(t=>{
+      const el=boneEl(t.code,t.a,t.b);
+      if(canAct && playableCodes.has(t.code)){ el.classList.add('playable'); if(selCode===t.code) el.classList.add('sel');
+        el.onclick=()=>{ const opts=legal.filter(a=>a.type==='play'&&a.code===t.code);
+          if(opts.length===1){ socket.emit('game:action',{action:opts[0]}); selCode=null; } else { selCode = (selCode===t.code?null:t.code); }
+          render(); };
+      } else if (canAct && playableCodes.size) { el.classList.add('dim'); }
+      box.appendChild(el);
+    });
+  }
+
+  // ---------- board render (2D camera: auto-fit + pinch/drag zoom) ----------
+  const CW=780, CH=380;
+  const relOf=(seat)=>(seat-(mySeat||0)+ (state?state.seats.length:4))%(state?state.seats.length:4);
+  function seatXY(rel,n){
+    const slots = { 0:[CW/2,CH-26], 1:[40,CH/2], 2:[CW/2,30], 3:[CW-40,CH/2] };
+    return slots[rel]||[CW/2,CH/2];
+  }
+
+  // canvas pip layouts (3x3 grid cells 0..8) for 0..6
+  const C_PIPS={0:[],1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+  function drawPips(ctx,x,y,sz,n){
+    const pad=sz*0.16, inner=sz-pad*2, step=inner/3, r=Math.max(1.8, sz*0.09);
+    ctx.fillStyle='#15171a';
+    for(const cell of (C_PIPS[n]||[])){
+      const col=cell%3, row=Math.floor(cell/3);
+      const cx=x+pad+step*(col+0.5), cy=y+pad+step*(row+0.5);
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    }
+  }
+  function drawBone(ctx,cx,cy,bw,bh,a,b,vertical){
+    ctx.save(); ctx.translate(cx,cy);
+    const x=-bw/2, y=-bh/2;
+    ctx.fillStyle='#f7f5ee'; ctx.strokeStyle='#cdc8b8'; ctx.lineWidth=1.5;
+    R.roundRect(ctx,x,y,bw,bh,Math.min(bw,bh)*0.16); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.30)'; R.roundRect(ctx,x+2,y+2,bw-4,bh*0.26,4); ctx.fill();
+    ctx.strokeStyle='#cdc8b8'; ctx.lineWidth=2; ctx.beginPath();
+    if(vertical){ ctx.moveTo(x+bw*0.12,0); ctx.lineTo(x+bw*0.88,0); }
+    else { ctx.moveTo(0,y+bh*0.12); ctx.lineTo(0,y+bh*0.88); }
+    ctx.stroke();
+    if(vertical){ const fs=bw; drawPips(ctx,x,-bh/2,fs,a); drawPips(ctx,x,bh/2-fs,fs,b); }
+    else { const fs=bh; drawPips(ctx,-bw/2,y,fs,a); drawPips(ctx,bw/2-fs,y,fs,b); }
+    ctx.restore();
+  }
+
+  // --- animated 2D camera -----------------------------------------------------
+  // Two layers: `target` is what input / auto-fit WANT; `view` is what's drawn.
+  // Every frame `view` eases toward `target` (and pan carries inertia), so the
+  // board glides, follows new plays, and flicks coast instead of snapping.
+  const cam = {
+    view:   { scale:1, x:CW/2, y:CH/2 },     // currently rendered
+    target: { scale:1, x:CW/2, y:CH/2 },     // where we're heading
+    user:false,            // has the player taken manual control of the camera?
+    drag:null, pinch:null,
+    vx:0, vy:0,            // pan velocity (px/frame) for inertia
+    lastT:0,
+  };
+  const BONE_W=66, GAP=7;
+  function chainLayout(line){
+    const dblW=Math.round(BONE_W*0.62);
+    let totalW=0; line.forEach((b,idx)=>{ totalW += (b.double?dblW:BONE_W) + (idx?GAP:0); });
+    const items=[]; let x=-totalW/2;
+    line.forEach((b)=>{
+      if(b.double){ const cw=dblW, ch=Math.round(dblW*1.7); items.push({b,cx:x+cw/2,cy:0,cw,ch,vertical:true}); x+=cw+GAP; }
+      else { const cw=BONE_W, ch=Math.round(cw*0.5); items.push({b,cx:x+cw/2,cy:0,cw,ch,vertical:false}); x+=cw+GAP; }
+    });
+    const maxH = line.some(b=>b.double) ? Math.round(dblW*1.7) : Math.round(BONE_W*0.5);
+    return { items, totalW, totalH:maxH, dblW };
+  }
+  // Auto-fit target: frame the whole chain, but bias toward the freshly-played end
+  // so growth visibly slides the camera rather than just shrinking everything.
+  function autoFitTarget(W,H,lay){
+    // fill the viewport: small horizontal margin, just enough vertical room for the
+    // open-end markers above/below. The chain should dominate the felt.
+    const padX=46, padY=54;
+    const sx=(W-padX*2)/Math.max(lay.totalW,1);
+    const sy=(H-padY*2)/Math.max(lay.totalH,1);
+    // honor BOTH axes but let a long line fill width; cap big so short chains look bold.
+    let sc=Math.max(0.30, Math.min(sx,sy,3.2));
+    return { scale:sc, x:W/2, y:H/2 };
+  }
+  const lerp=(a,b,t)=>a+(b-a)*t;
+
+  // advance the camera one frame toward target (called at the top of drawBoard)
+  function stepCamera(now){
+    const dt = cam.lastT ? Math.min(2.5,(now-cam.lastT)/16.67) : 1; // frames elapsed (~1 @60fps)
+    cam.lastT = now;
+    // inertia: if not dragging but we have velocity, keep gliding the target
+    if(!cam.drag && (Math.abs(cam.vx)>0.02 || Math.abs(cam.vy)>0.02)){
+      cam.user=true;
+      cam.target.x += cam.vx*dt; cam.target.y += cam.vy*dt;
+      cam.vx*=Math.pow(0.94,dt); cam.vy*=Math.pow(0.94,dt);
+    } else { cam.vx*=0.8; cam.vy*=0.8; }
+    // ease view -> target (springy but stable). zoom eases a touch faster than pan.
+    const ks = 1-Math.pow(0.78,dt);   // ~0.22/frame
+    const kp = 1-Math.pow(0.80,dt);
+    cam.view.scale = lerp(cam.view.scale, cam.target.scale, ks);
+    cam.view.x = lerp(cam.view.x, cam.target.x, kp);
+    cam.view.y = lerp(cam.view.y, cam.target.y, kp);
+  }
+
+  function drawBoard(ctx,W,H,now){
+    R.drawTable(ctx,W,H);
+    if(!state) return;
+    const v=state.view||{};
+    const line=v.line||[];
+    stepCamera(now);
+
+    if(line.length){
+      const lay=chainLayout(line);
+      // if the player hasn't grabbed the camera, keep the TARGET locked to auto-fit
+      if(!cam.user){ const f=autoFitTarget(W,H,lay); cam.target.scale=f.scale; cam.target.x=f.x; cam.target.y=f.y; }
+      // clamp target scale to sane range regardless of source
+      cam.target.scale=Math.max(0.3, Math.min(4, cam.target.scale));
+      const scale=cam.view.scale, ox=cam.view.x, oy=cam.view.y;
+      cam._eff={ scale, x:ox, y:oy };
+
+      ctx.save();
+      ctx.translate(ox,oy); ctx.scale(scale,scale);
+      ctx.strokeStyle='rgba(0,0,0,.18)'; ctx.lineWidth=2/scale;
+      ctx.beginPath(); ctx.moveTo(-lay.totalW/2-12,0); ctx.lineTo(lay.totalW/2+12,0); ctx.stroke();
+      for(const it of lay.items) drawBone(ctx,it.cx,it.cy,it.cw,it.ch,it.b.a,it.b.b,it.vertical);
+      ctx.fillStyle='#e3c567'; ctx.font='bold 26px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('\u25C0'+v.endL, -lay.totalW/2-30, 0);
+      ctx.fillText(v.endR+'\u25B6', lay.totalW/2+30, 0);
+      ctx.restore();
+
+      ctx.fillStyle='rgba(255,255,255,.4)'; ctx.font='10px system-ui'; ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+      ctx.fillText(cam.user?'pinch / scroll to zoom \u00B7 drag to pan \u00B7 double-tap to reset':'open ends', W/2, 16);
+    } else {
+      ctx.fillStyle='rgba(255,255,255,.5)'; ctx.font='14px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('waiting for the opening tile\u2026', W/2, H/2);
+      cam._eff=null;
+    }
+
+    // seat plates — fixed screen space (NOT affected by the camera)
+    const n=state.seats.length;
+    state.seats.forEach(s=>{
+      const [x,y]=seatXY(relOf(s.seat),n);
+      const isTurn=v.turn===s.seat && state.phase==='playing';
+      const pulse=isTurn?0.14*(0.5+0.5*Math.sin(now/240)):0;
+      ctx.fillStyle=isTurn?('rgba(47,191,113,'+(0.22+pulse).toFixed(3)+')'):'rgba(0,0,0,.42)';
+      R.roundRect(ctx,x-62,y-18,124,36,9); ctx.fill();
+      if(isTurn){ ctx.strokeStyle='#2fbf71'; ctx.lineWidth=2; ctx.stroke(); }
+      if(state.turn && state.turn.seat===s.seat && state.turn.remainingMs!=null && state.turn.totalMs){
+        const frac=Math.max(0,Math.min(1,state.turn.remainingMs/state.turn.totalMs));
+        const cx=x+56,cy=y,rr=11;
+        ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.strokeStyle='rgba(0,0,0,.4)'; ctx.lineWidth=3; ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx,cy,rr,-Math.PI/2,-Math.PI/2+Math.PI*2*frac);
+        ctx.strokeStyle=frac<0.25?'#e05a4d':(frac<0.5?'#e3c567':'#2fbf71'); ctx.lineWidth=3; ctx.stroke();
+        ctx.fillStyle='#cfe7d8'; ctx.font='9px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(Math.ceil(state.turn.remainingMs/1000),cx,cy);
+      }
+      ctx.fillStyle=s.seat===mySeat?'#e3c567':'#eef2ee'; ctx.font='bold 12px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      const tag=s.bot?' \uD83E\uDD16':''; const me=s.seat===mySeat?' (you)':'';
+      ctx.fillText((s.displayName||('Seat '+s.seat))+tag+me, x, y-4);
+      ctx.fillStyle='#9fb0a6'; ctx.font='10px system-ui';
+      const tiles=(v.handCounts&&v.handCounts[s.seat]!=null)?v.handCounts[s.seat]:'';
+      const total=(v.totals&&v.totals[s.seat]!=null)?v.totals[s.seat]:0;
+      ctx.fillText(tiles+' tiles \u00B7 '+total+' pts', x, y+9);
+    });
+  }
+
+  // --- camera input: drives cam.target (the loop animates cam.view) ---
+  (function(){
+    const cv=$('felt'); if(!cv) return;
+    function toCanvas(clientX,clientY){
+      const r=cv.getBoundingClientRect();
+      return { x:(clientX-r.left)*(CW/r.width), y:(clientY-r.top)*(CH/r.height) };
+    }
+    // first manual interaction: seed target from whatever is currently on screen
+    function grab(){ if(!cam.user){ const e=cam._eff; if(e){ cam.target.scale=e.scale; cam.target.x=e.x; cam.target.y=e.y; cam.view.scale=e.scale; cam.view.x=e.x; cam.view.y=e.y; } cam.user=true; } }
+    function zoomAt(px,py,factor){
+      grab();
+      const ns=Math.max(0.3, Math.min(4, cam.target.scale*factor));
+      // keep the point under the cursor anchored (in target space)
+      cam.target.x = px - (px-cam.target.x)*(ns/cam.target.scale);
+      cam.target.y = py - (py-cam.target.y)*(ns/cam.target.scale);
+      cam.target.scale=ns;
+    }
+    function reset(){ cam.user=false; cam.drag=null; cam.pinch=null; cam.vx=cam.vy=0; }
+
+    cv.addEventListener('wheel',(ev)=>{
+      ev.preventDefault();
+      const p=toCanvas(ev.clientX,ev.clientY);
+      zoomAt(p.x,p.y, ev.deltaY<0 ? 1.10 : 1/1.10);
+    }, { passive:false });
+
+    let lastTap=0;
+    cv.addEventListener('pointerdown',(ev)=>{
+      if(ev.pointerType==='touch' && cam.pinch) return;
+      const t=Date.now();
+      if(t-lastTap<300){ reset(); lastTap=0; return; }
+      lastTap=t;
+      grab();
+      const p=toCanvas(ev.clientX,ev.clientY);
+      cam.vx=cam.vy=0;
+      cam.drag={ px:p.x, py:p.y, startX:cam.target.x, startY:cam.target.y, lastX:p.x, lastY:p.y, id:ev.pointerId };
+      try{ cv.setPointerCapture(ev.pointerId); }catch(e){}
+    });
+    cv.addEventListener('pointermove',(ev)=>{
+      if(!cam.drag || cam.drag.id!==ev.pointerId) return;
+      const p=toCanvas(ev.clientX,ev.clientY);
+      const GAIN=2.1; // board moves faster than the finger — long chains scroll quickly
+      cam.target.x = cam.drag.startX + (p.x-cam.drag.px)*GAIN;
+      cam.target.y = cam.drag.startY + (p.y-cam.drag.py)*GAIN;
+      // track velocity for inertia (smoothed, same gain so flicks coast far)
+      cam.vx = 0.55*cam.vx + 0.45*(p.x-cam.drag.lastX)*GAIN;
+      cam.vy = 0.55*cam.vy + 0.45*(p.y-cam.drag.lastY)*GAIN;
+      cam.drag.lastX=p.x; cam.drag.lastY=p.y;
+    });
+    const endDrag=(ev)=>{ if(cam.drag && cam.drag.id===ev.pointerId){ cam.drag=null; } }; // velocity persists -> inertia
+    cv.addEventListener('pointerup',endDrag);
+    cv.addEventListener('pointercancel',endDrag);
+
+    cv.addEventListener('touchstart',(ev)=>{
+      if(ev.touches.length===2){
+        cam.drag=null; cam.vx=cam.vy=0;
+        const a=toCanvas(ev.touches[0].clientX,ev.touches[0].clientY);
+        const b=toCanvas(ev.touches[1].clientX,ev.touches[1].clientY);
+        cam.pinch={ d:Math.hypot(a.x-b.x,a.y-b.y) };
+      }
+    }, { passive:true });
+    cv.addEventListener('touchmove',(ev)=>{
+      if(ev.touches.length===2 && cam.pinch){
+        ev.preventDefault();
+        const a=toCanvas(ev.touches[0].clientX,ev.touches[0].clientY);
+        const b=toCanvas(ev.touches[1].clientX,ev.touches[1].clientY);
+        const d=Math.hypot(a.x-b.x,a.y-b.y);
+        const cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
+        if(cam.pinch.d>0) zoomAt(cx,cy, d/cam.pinch.d);
+        cam.pinch.d=d;
+      }
+    }, { passive:false });
+    cv.addEventListener('touchend',(ev)=>{ if(ev.touches.length<2) cam.pinch=null; });
+  })();
+
+  let prevLineLen=0, prevTurnSeat=null, prevHandNo=null;
+  function onState(s){
+    if(!s||!R) return; const S=R.Sound; const v=s.view||{};
+    if(s.handNo&&s.handNo!==prevHandNo&&s.phase!=='lobby'){ S&&S.deal(); }
+    const ll=(v.line||[]).length;
+    if(ll>prevLineLen){ S&&S.play(); }
+    if(S && v.turn===mySeat && prevTurnSeat!==mySeat && state.phase==='playing') S.yourTurn();
+    prevLineLen=ll; prevTurnSeat=v.turn; prevHandNo=s.handNo;
+    renderVote(s.vote);
+  }
+  if(R){ R.loadAssets(); R.loop(drawBoard); }
+
+  function logEvent(ev){
+    if(ev.type==='played') log(`seat ${ev.seat} played ${ev.code}${ev.end==='open'?' (open)':' on '+ev.end} → ends [${ev.endL}|${ev.endR}]`);
+    else if(ev.type==='drew') log(`seat ${ev.seat} drew (boneyard ${ev.remaining})`);
+    else if(ev.type==='passed'){ log(`seat ${ev.seat} passed`); R.Sound&&R.Sound.tick(); }
+    else if(ev.type==='handWon'){ log(`seat ${ev.seat} wins the hand +${ev.gained} (${ev.reason})`); R.Sound&&R.Sound.trick(); }
+    else if(ev.type==='handBlocked') log(`hand blocked — tie, no score`);
+    else if(ev.type==='turn:timeout'){ log(`⏱ ${ev.displayName||('seat '+ev.seat)} ran out of time`); R.Sound&&R.Sound.alert(); }
+    else if(ev.type==='turn:nudge'){ if(ev.seat===mySeat){ log('⏱ still your turn'); R.Sound&&R.Sound.tick(); } }
+    else if(ev.type==='vote:result'){ log(`vote: ${ev.outcome==='kick'?'KICK → bot':'wait granted'}`); }
+    else if(ev.type==='seat:kicked'){ log(`🤖 ${ev.displayName||('seat '+ev.seat)} replaced by a bot`); }
+    else if(ev.type==='gameWon'){ log(`GAME OVER — totals ${ev.totals.join(' / ')}`); }
+  }
+
+  // ---------- end-game ----------
+  socket.on('table:over', o=>showOver(o));
+  function showOver(o){
+    const st=(o.standings||[]);
+    const mine=st.find(x=>x.seat===mySeat); const iWon=mine&&mine.won;
+    $('overResult').textContent=`Game ${o.gamesPlayed} · final`;
+    $('overTitle').textContent= mySeat==null?'Game Over':(iWon?'You win! 🎉':'You lost');
+    const top=Math.max(...st.map(x=>x.score!=null?x.score:0));
+    $('overScore').textContent='Highest score wins · '+top+' pts';
+    $('overStand').innerHTML=st.slice().sort((a,b)=>(b.score||0)-(a.score||0)).map(s=>
+      `<div class="r"><span>${s.displayName||('Seat '+s.seat)}${s.bot?' 🤖':''}${s.seat===mySeat?' (you)':''}</span>`+
+      `<span class="${s.won?'w':'l'}">${s.score} pts${s.won?' · WIN':''}</span></div>`).join('');
+    $('over').classList.add('show');
+    if(R.Sound){ iWon?R.Sound.win():R.Sound.lose(); }
+  }
+  function hideOver(){ $('over').classList.remove('show'); }
+  $('btnRematch').onclick=()=>{ socket.emit('table:rematch'); hideOver(); };
+  $('btnExit').onclick=()=>location.href='https://games.madladslab.com/';
+  socket.on('table:state', s2=>{ if(s2&&s2.phase==='lobby') hideOver(); });
+
+  // ---------- fill / mute / vote (shared pattern) ----------
+  (function(){ const fsbtn=$('fsbtn'),wrapEl=$('wrap'),felt=$('felt'); if(!fsbtn) return;
+    async function enter(){ document.body.classList.add('fill'); fsbtn.textContent='✕'; try{ if(wrapEl.requestFullscreen) await wrapEl.requestFullscreen(); }catch(e){} try{ if(screen.orientation&&screen.orientation.lock) await screen.orientation.lock('landscape'); }catch(e){} }
+    function exit(){ document.body.classList.remove('fill'); fsbtn.textContent='⛶'; try{ if(document.fullscreenElement&&document.exitFullscreen) document.exitFullscreen(); }catch(e){} }
+    fsbtn.onclick=()=>document.body.classList.contains('fill')?exit():enter(); // canvas dbl-tap is reserved for board view-reset
+    document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement&&document.body.classList.contains('fill')) exit(); });
+  })();
+  (function(){ const mb=$('mutebtn'); if(!mb||!R||!R.Sound) return;
+    let muted=(function(){try{return localStorage.getItem('cards_muted')==='1';}catch(e){return false;}})();
+    R.Sound.setMuted(muted); const paint=()=>{ mb.textContent=muted?'🔇':'🔊'; }; paint();
+    mb.onclick=()=>{ muted=!muted; R.Sound.setMuted(muted); R.Sound.resume(); if(!muted)R.Sound.play(); paint(); try{localStorage.setItem('cards_muted',muted?'1':'0');}catch(e){} };
+    document.addEventListener('pointerdown',()=>R.Sound.resume(),{once:true});
+  })();
+  function renderVote(vote){
+    const panel=$('votePanel'); if(!panel) return;
+    if(!vote||vote.seat==null){ panel.classList.remove('show'); return; }
+    const name=(state&&state.seats[vote.seat]&&state.seats[vote.seat].displayName)||('Seat '+vote.seat);
+    const iAm=vote.seat===mySeat;
+    $('voteTitle').textContent=iAm?'You timed out — act now or be replaced':(name+' is out of time');
+    $('voteCount').textContent=iAm?'':('Wait '+(vote.waits||0)+' · Kick '+(vote.kicks||0)+' · of '+(vote.eligible||0));
+    $('voteWait').style.display=$('voteKick').style.display=iAm?'none':'';
+    panel.classList.add('show');
+  }
+  (function(){ const wb=$('voteWait'),kb=$('voteKick'); if(wb)wb.onclick=()=>socket.emit('table:vote',{choice:'wait'}); if(kb)kb.onclick=()=>socket.emit('table:vote',{choice:'kick'}); })();
+  socket.on('table:event',ev=>{ if(ev&&(ev.type==='vote:open'||ev.type==='vote:update')) renderVote(ev); if(ev&&ev.type==='vote:result'){ const p=$('votePanel'); if(p)p.classList.remove('show'); } });
+
+  if(!CanvasRenderingContext2D.prototype.roundRect){
+    CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){ this.beginPath(); this.moveTo(x+r,y); this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r); this.arcTo(x,y+h,x,y,r); this.arcTo(x,y,x+w,y,r); this.closePath(); return this; };
+  }
+</script>
+<script src="https://games.madladslab.com/modal/loader.js" defer data-surface="tiles" data-game="dominoes"></script>
+</body>
+</html>

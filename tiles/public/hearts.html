@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hearts · cards.madladslab</title>
+<style>
+  :root { --felt:#0f5132; --feltlo:#0a3a24; --ink:#e9ecef; --muted:#9fb0a6; --gold:#e3c567; --red:#d6453d; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:#0a0d0b; color:var(--ink); }
+  #wrap { max-width:760px; margin:0 auto; padding:14px; }
+  h1 { font-size:14px; letter-spacing:.22em; color:var(--muted); font-weight:700; margin:0 0 10px; }
+  #status { font-size:12.5px; color:var(--muted); min-height:18px; }
+  #status b { color:var(--gold); }
+  canvas { width:100%; background:radial-gradient(circle at 50% 38%, var(--felt), var(--feltlo)); border-radius:16px; display:block; margin:10px 0; box-shadow: inset 0 0 60px rgba(0,0,0,.45); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  #controls { margin:8px 0; min-height:42px; }
+  #hand { margin-top:6px; gap:6px; }
+  .chip { background:#f6f6f4; color:#15171a; border:2px solid transparent; border-radius:9px; padding:10px 12px;
+          font-size:17px; font-weight:800; cursor:default; min-width:44px; text-align:center; transition:transform .08s; }
+  .chip.red { color:var(--red); }
+  .chip.play { cursor:pointer; border-color:#2fbf71; }
+  .chip.play:hover { transform:translateY(-4px); }
+  .chip.sel { border-color:var(--gold); transform:translateY(-8px); box-shadow:0 6px 16px rgba(0,0,0,.4); }
+  .chip.dim { opacity:.4; }
+  button.act { background:#2fbf71; color:#05230f; border:none; border-radius:9px; padding:10px 15px; font-weight:800; cursor:pointer; font-size:14px; }
+  button.act.ghost { background:#1d3b2b; color:var(--ink); }
+  button.act:disabled { opacity:.4; cursor:default; }
+  #log { font:11.5px ui-monospace, monospace; color:#7e9388; white-space:pre-wrap; max-height:120px; overflow:auto; background:#070a08; border-radius:9px; padding:8px; margin-top:10px; }
+
+  #over { position:fixed; inset:0; background:rgba(4,7,5,.82); display:none; align-items:center; justify-content:center; padding:18px; z-index:50; }
+  #over.show { display:flex; }
+  .overcard { width:100%; max-width:440px; background:#10231a; border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:24px; text-align:center; box-shadow:0 24px 70px rgba(0,0,0,.5); }
+  .overcard .result { font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  .overcard h2 { margin:6px 0 2px; font-size:34px; }
+  .overcard .score { font-size:16px; color:var(--gold); margin-bottom:14px; font-weight:800; }
+  .stand { text-align:left; background:#0a1812; border-radius:10px; padding:8px 12px; margin:10px 0 16px; }
+  .stand .r { display:flex; justify-content:space-between; font-size:13px; padding:3px 0; color:#cfe; }
+  .stand .r .w { color:#2fbf71; font-weight:700; } .stand .r .l { color:#9fb0a6; }
+  .overcard button { width:100%; border:none; border-radius:11px; padding:13px; font-size:15px; font-weight:800; cursor:pointer; margin-top:9px; }
+  .overcard .primary { background:#2fbf71; color:#05230f; } .overcard .ghost { background:#1d3b2b; color:#e9ecef; } .overcard .danger { background:#3a1d1d; color:#f0c9c9; }
+
+  #fsbtn { position:fixed; top:10px; right:10px; z-index:70; width:40px; height:40px; border-radius:10px; background:rgba(17,35,26,.85); color:#cfe7d8; border:1px solid rgba(255,255,255,.14); font-size:18px; line-height:1; cursor:pointer; }
+  #fsbtn:active { transform:scale(.95); }
+  #rotateHint { display:none; }
+  body.fill { overflow:hidden; }
+  body.fill #wrap { position:fixed; inset:0; max-width:none; width:100vw; height:100dvh; margin:0; padding:6px 8px; background:#070a08; display:flex; flex-direction:column; z-index:60; }
+  body.fill h1, body.fill #log { display:none; }
+  body.fill #status { flex:0 0 auto; font-size:11px; margin:0 0 2px; }
+  body.fill #felt { flex:1 1 auto; min-height:0; width:100%; height:100%; object-fit:contain; margin:2px 0; border-radius:12px; }
+  body.fill #controls { flex:0 0 auto; min-height:0; margin:2px 0; justify-content:center; }
+  body.fill #hand { flex:0 0 auto; margin:2px 0; justify-content:center; }
+  body.fill.portrait #rotateHint { display:block; position:fixed; left:0; right:0; bottom:8px; text-align:center; color:#cfe7d8; font-size:12.5px; z-index:71; pointer-events:none; }
+  #reconnect { display:none; position:fixed; top:0; left:0; right:0; z-index:80; background:#3a2f12; color:#ffe9a8; text-align:center; padding:8px 12px; font-size:13px; box-shadow:0 2px 12px rgba(0,0,0,.4); }
+  #reconnect.show { display:block; }
+  #reconnect button { margin-left:10px; background:#e3c567; color:#241d05; border:none; border-radius:6px; padding:5px 12px; font-weight:800; cursor:pointer; }
+  #mutebtn { position:fixed; top:10px; right:58px; z-index:70; width:40px; height:40px; border-radius:10px; background:rgba(17,35,26,.85); color:#cfe7d8; border:1px solid rgba(255,255,255,.14); font-size:17px; line-height:1; cursor:pointer; }
+  #mutebtn:active { transform:scale(.95); }
+  #votePanel { display:none; position:fixed; left:50%; top:14px; transform:translateX(-50%); z-index:75; background:#1a1206; border:1px solid #e3c567; border-radius:12px; padding:14px 16px; width:min(92vw,360px); text-align:center; box-shadow:0 16px 50px rgba(0,0,0,.55); }
+  #votePanel.show { display:block; }
+  #votePanel .vt { color:#ffe9a8; font-size:14px; font-weight:700; margin-bottom:6px; }
+  #votePanel .vc { color:#9fb0a6; font-size:12px; margin-bottom:10px; }
+  #votePanel .vrow { display:flex; gap:10px; }
+  #votePanel button { flex:1; border:none; border-radius:10px; padding:12px; font-weight:800; font-size:14px; cursor:pointer; }
+  #votePanel .wait { background:#2fbf71; color:#05230f; }
+  #votePanel .kick { background:#b5482f; color:#fff; }
+</style>
+</head>
+<body>
+<button id="fsbtn" title="Fill screen" aria-label="Fill screen">⛶</button>
+<button id="mutebtn" title="Mute" aria-label="Mute">🔊</button>
+<div id="votePanel"><div class="vt" id="voteTitle"></div><div class="vc" id="voteCount"></div><div class="vrow"><button class="wait" id="voteWait">Wait</button><button class="kick" id="voteKick">Kick → bot</button></div></div>
+<div id="rotateHint">↻ Rotate your phone for the full table</div>
+<div id="reconnect">Reconnecting…</div>
+<div id="wrap">
+  <h1>HEARTS · LIVE TABLE</h1>
+  <div id="status">connecting…</div>
+  <canvas id="felt" width="760" height="360"></canvas>
+  <div class="row" id="controls"></div>
+  <div class="row" id="hand"></div>
+  <div id="log"></div>
+  <div id="over"><div class="overcard">
+    <div class="result" id="overResult">Game over</div>
+    <h2 id="overTitle">Game Over</h2>
+    <div class="score" id="overScore"></div>
+    <div class="stand" id="overStand"></div>
+    <button class="primary" id="btnRematch">Rematch</button>
+    <button class="danger" id="btnExit">Exit to arcade</button>
+  </div></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/static/js/cards-render.js"></script>
+<script>
+  const qs = new URLSearchParams(location.search);
+  const ticket = qs.get('ticket');
+  const $ = (id) => document.getElementById(id);
+  const SYM = { hearts:'♥', diamonds:'♦', clubs:'♣', spades:'♠', H:'♥', D:'♦', C:'♣', S:'♠' };
+  const isRed = (code) => code.endsWith('H') || code.endsWith('D');
+  const pretty = (code) => code.replace(/(10|[2-9JQKA])([HDCS])/, (_,r,s)=> r + SYM[s]);
+  function log(m){ $('log').textContent = (m + '\n' + $('log').textContent).slice(0, 3000); }
+
+  let mySeat = null, state = null, priv = null, acted = null, everConnected = false;
+  let passSel = [];   // selected cards during the passing phase
+
+  const socket = io({ transports:['websocket','polling'], withCredentials:true });
+
+  socket.on('connect', () => { showReconnect(false); setStatus(everConnected?'reconnected':'connected'); everConnected = true; if (ticket) socket.emit('table:join', { ticket }); else log('no ?ticket= in URL'); });
+  socket.on('disconnect', () => { setStatus('disconnected'); showReconnect(true, 'Reconnecting…'); });
+  socket.on('table:error', (e) => { log('⚠ ' + e.message); if (/ticket|expired|no such table/i.test(e.message||'')) showReconnect(true, 'Session expired —', true); });
+  socket.on('seat:hand', (h) => { mySeat = h.seat; priv = h; render(); });
+  socket.on('table:state', (s) => { state = s; if (mySeat==null && s.youSeat!=null) mySeat=s.youSeat; try { onState(s); } catch(e){} render(); });
+  socket.on('table:event', (ev) => logEvent(ev));
+
+  function decisionId(){
+    // Prefer the authoritative private view (seat:hand) so the lock can't desync
+    // from the public state (the two arrive as separate events).
+    if (priv && priv.phase){
+      return [priv.handNo, priv.phase, priv.tricksPlayed, priv.trickLen, priv.turn, priv.seat].join(':');
+    }
+    if (!state || !state.view) return null;
+    const v = state.view;
+    return [state.handNo, v.phase, v.tricksPlayed, (v.trick||[]).length, v.turn].join(':');
+  }
+  function myTurn(){ return !!(priv && priv.yourTurn); }
+
+  function emitAction(action){
+    const id = decisionId();
+    if (id === acted) return;
+    // Validate against the authoritative private view only — never the public state.
+    if (action && action.type === 'play' && action.card){
+      const legalNow = (priv && priv.legal || []).some(a => a.card === action.card);
+      const inHand = (priv && priv.hand || []).includes(action.card);
+      if (!legalNow || !inHand || !myTurn()) return; // stale — ignore
+    }
+    acted = id;
+    socket.emit('game:action', { action });
+    render();
+  }
+
+  // ---------------- reconnect UX ----------------
+  function showReconnect(on, msg, withRejoin){
+    const el = $('reconnect'); if (!el) return;
+    if (!on){ el.classList.remove('show'); return; }
+    el.textContent = msg || 'Reconnecting…';
+    if (withRejoin){ const b = document.createElement('button'); b.textContent='Rejoin'; b.onclick=()=>{ location.href='https://match.madladslab.com/resume'; }; el.appendChild(b); }
+    el.classList.add('show');
+  }
+
+  // ---------------- status / controls / hand ----------------
+  function setStatus(extra){
+    if (!state){ $('status').textContent = extra || ''; return; }
+    const v = state.view;
+    if (state.phase === 'lobby'){ $('status').textContent = 'Lobby — ready up to start'; return; }
+    if (state.phase === 'gameOver'){ $('status').innerHTML = 'Game over'; return; }
+    const totals = (v.totals||[]).join(' · ');
+    if (v.phase === 'passing'){
+      $('status').innerHTML = `Passing <b>${v.passDir}</b> — choose 3 cards · totals ${totals}`;
+      return;
+    }
+    const turnTxt = v.turn===mySeat ? '<b>YOUR TURN</b>' : `seat ${v.turn}`;
+    const hb = v.heartsBroken ? ' · ♥ broken' : '';
+    $('status').innerHTML = `Trick play · ${turnTxt}${hb} · totals ${totals}`;
+  }
+
+  function render(){ if (!state) return; setStatus(); renderControls(); renderHand(); }
+
+  function renderControls(){
+    const box = $('controls'); box.innerHTML='';
+    if (!state) return;
+    if (state.phase === 'lobby'){
+      const meReady = (state.seats[mySeat]||{}).ready;
+      const rb = document.createElement('button');
+      rb.className='act'; rb.textContent = meReady ? 'Ready ✓ (waiting…)' : 'Ready';
+      rb.disabled = !!meReady; rb.onclick = () => socket.emit('seat:ready', { ready:true });
+      box.appendChild(rb);
+      state.seats.forEach((s)=>{ if (!s.occupied){ const b=document.createElement('button'); b.className='act ghost'; b.textContent=`+ Bot in seat ${s.seat}`; b.onclick=()=>socket.emit('seat:addBot',{seat:s.seat}); box.appendChild(b); } });
+      return;
+    }
+    if (!priv) return;
+    const v = state.view;
+    // passing: a "Pass 3 →" button enabled once exactly 3 are selected
+    if (v && v.phase === 'passing' && priv.needToPass){
+      const need = priv.passCount || 3;
+      const pb = document.createElement('button');
+      pb.className = 'act'; pb.disabled = passSel.length !== need;
+      pb.textContent = passSel.length === need ? `Pass these ${need} →` : `Select ${need} to pass (${passSel.length}/${need})`;
+      pb.onclick = () => { socket.emit('game:action', { action:{ type:'pass', cards: passSel.slice() } }); passSel = []; render(); };
+      box.appendChild(pb);
+      const hint = document.createElement('span'); hint.style.cssText='color:var(--muted);font-size:12px';
+      hint.textContent = `Passing ${v.passDir}`; box.appendChild(hint);
+      return;
+    }
+    if (v && v.phase === 'passing' && !priv.needToPass){
+      const span = document.createElement('span'); span.style.cssText='color:var(--muted);font-size:13px';
+      span.textContent = 'Passed — waiting for others…'; box.appendChild(span);
+      return;
+    }
+  }
+
+  function renderHand(){
+    const box = $('hand'); box.innerHTML='';
+    const hand = (priv && priv.hand) || [];
+    const v = state && state.view;
+    const passing = v && v.phase === 'passing' && priv && priv.needToPass;
+    const locked = decisionId() === acted;
+    const legalByCard = {};
+    if (priv && !passing && myTurn() && !locked) (priv.legal||[]).forEach((a)=>{ if (a.card) legalByCard[a.card]=a; });
+    hand.forEach((code)=>{
+      const c = document.createElement('div');
+      let cls = 'chip' + (isRed(code)?' red':'');
+      if (passing){ if (passSel.includes(code)) cls += ' sel'; cls += ' play'; }
+      else { if (legalByCard[code]) cls += ' play'; else if (Object.keys(legalByCard).length) cls += ' dim'; }
+      c.className = cls; c.textContent = pretty(code);
+      if (passing){
+        c.onclick = () => {
+          const i = passSel.indexOf(code);
+          if (i>=0) passSel.splice(i,1);
+          else if (passSel.length < (priv.passCount||3)) passSel.push(code);
+          render();
+        };
+      } else if (legalByCard[code]) {
+        c.onclick = () => {
+          const live = (priv && priv.legal || []).find(a => a.card === code);
+          if (live) emitAction(live);
+        };
+      }
+      box.appendChild(c);
+    });
+  }
+
+  // ---------------- table render (cards-render.js) ----------------
+  const CW = 760, CH = 360;
+  const relOf = (seat) => (seat - (mySeat||0) + 4) % 4;
+  const SEATXY  = { 0:[CW/2,CH-40], 1:[60,CH/2], 2:[CW/2,42], 3:[CW-60,CH/2] };
+  const PILE = [CW/2, CH/2 - 4];
+  const PILEOFF = { 0:[0,46], 1:[-58,0], 2:[0,-46], 3:[58,0] };
+  const PILEROT = { 0:0.04, 1:-0.06, 2:0.03, 3:0.06 };
+  const HANDXY  = { 1:[96,CH/2], 2:[CW/2,84], 3:[CW-96,CH/2] };
+  const inFlight = {};
+  const FCW=CardsRender.cardW, FCH=CardsRender.cardH, BW=CardsRender.backW, BH=CardsRender.backH;
+
+  function oppHandCount(s, v){ return (v.handCounts && v.handCounts[s]!=null) ? v.handCounts[s] : 13; }
+  function pilePos(seat){ const rel = relOf(seat); const o = PILEOFF[rel]||[0,0]; return [PILE[0]+o[0], PILE[1]+o[1]]; }
+
+  function drawBoard(ctx, W, H, now){
+    CardsRender.drawTable(ctx, W, H);
+    if (!state) return;
+    const v = state.view || {};
+
+    // hearts-broken banner
+    if (state.phase==='playing' || v.phase==='playing'){
+      ctx.fillStyle='rgba(0,0,0,.4)'; CardsRender.roundRect(ctx,W/2-86,6,172,28,8); ctx.fill();
+      ctx.fillStyle = v.heartsBroken ? '#ff8d86' : '#cfe7d8';
+      ctx.font='bold 14px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(v.heartsBroken ? '♥ HEARTS BROKEN' : '♥ hearts not broken', W/2, 20);
+    } else if (v.phase==='passing'){
+      ctx.fillStyle='rgba(0,0,0,.4)'; CardsRender.roundRect(ctx,W/2-92,6,184,28,8); ctx.fill();
+      ctx.fillStyle='#e3c567'; ctx.font='bold 14px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('PASSING ' + (v.passDir||'').toUpperCase(), W/2, 20);
+    }
+
+    // opponent hands as stacks of backs (active seat scaled + lifted)
+    (state.seats||[]).forEach((s)=>{
+      if (!s.occupied || s.seat===mySeat) return;
+      const rel = relOf(s.seat); const c = HANDXY[rel]; if (!c) return;
+      const n = oppHandCount(s.seat, v); if (!n) return;
+      const activeDeck = (v.turn===s.seat && (v.phase==='playing'));
+      const scale = activeDeck ? 1.12 : 1.0, lift = activeDeck ? -6 : 0;
+      CardsRender.stackBacks(ctx, c[0]-(Math.min(n,13)*0.5*0.6), c[1]+lift, Math.min(n,13), { dx:0.5, dy:-0.7, jitter:0.05, scale });
+    });
+
+    // seat plates with per-player score
+    (state.seats||[]).forEach((s)=>{
+      const [x,y]=SEATXY[relOf(s.seat)];
+      const isTurn = v.turn===s.seat && v.phase==='playing';
+      const passedThisSeat = v.phase==='passing' && v.passed && v.passed[s.seat];
+      const pulse = isTurn ? 0.14*(0.5+0.5*Math.sin(now/240)) : 0;
+      ctx.fillStyle = isTurn ? ('rgba(47,191,113,'+(0.22+pulse).toFixed(3)+')') : 'rgba(0,0,0,.34)';
+      CardsRender.roundRect(ctx, x-66,y-20,132,40,10); ctx.fill();
+      if (isTurn){ ctx.strokeStyle='#2fbf71'; ctx.lineWidth=2.5; ctx.stroke(); }
+      // turn clock ring
+      if (state.turn && state.turn.seat===s.seat && state.turn.remainingMs!=null && state.turn.totalMs){
+        const frac = Math.max(0, Math.min(1, state.turn.remainingMs/state.turn.totalMs));
+        const cx=x+60, cy=y, rr=12;
+        ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.strokeStyle='rgba(0,0,0,.4)'; ctx.lineWidth=3; ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx,cy,rr,-Math.PI/2,-Math.PI/2+Math.PI*2*frac);
+        ctx.strokeStyle = frac<0.25?'#e05a4d':(frac<0.5?'#e3c567':'#2fbf71'); ctx.lineWidth=3; ctx.stroke();
+        ctx.fillStyle='#cfe7d8'; ctx.font='10px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(Math.ceil(state.turn.remainingMs/1000)+'', cx, cy);
+      }
+      ctx.fillStyle = s.seat===mySeat ? '#e3c567' : '#eef2ee';
+      ctx.font='bold 12.5px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      const tag=s.bot?' 🤖':''; const me=s.seat===mySeat?' (you)':'';
+      ctx.fillText((s.displayName||('Seat '+s.seat))+tag+me, x, y-5);
+      ctx.fillStyle='#9fb0a6'; ctx.font='10.5px system-ui';
+      const total = (v.totals && v.totals[s.seat]!=null) ? v.totals[s.seat] : 0;
+      const hp = (v.handPoints && v.handPoints[s.seat]) ? ' (+'+v.handPoints[s.seat]+')' : '';
+      const sub = v.phase==='passing' ? (passedThisSeat?'passed ✓':'choosing…') : (total+' pts'+hp);
+      ctx.fillText(sub, x, y+9);
+    });
+
+    // current trick — offset/rotated pile
+    (v.trick||[]).forEach((p)=>{
+      if (inFlight[p.seat+':'+p.card]) return;
+      const [x,y]=pilePos(p.seat);
+      CardsRender.cardFaceT(ctx, x, y, p.card, { rot: PILEROT[relOf(p.seat)]||0 });
+    });
+  }
+
+  // ---- animations from state diffs ----
+  let prevHandNo=null, prevTrick=[], prevTurnSeat=null, prevPhase=null;
+  function onState(s){
+    if (!s || !window.CardsRender) return;
+    const S = CardsRender.Sound;
+    const v = s.view || {};
+    if (s.handNo && s.handNo !== prevHandNo && s.phase !== 'lobby'){ animateDeal(s); }
+    const nt = v.trick || [];
+    if (nt.length > prevTrick.length){ nt.slice(prevTrick.length).forEach((p)=>animatePlay(s,p)); }
+    if (S && v.turn != null && v.turn === mySeat && prevTurnSeat !== mySeat && v.phase==='playing') S.yourTurn();
+    prevTurnSeat = v.turn; prevTrick = nt.slice(); prevHandNo = s.handNo; prevPhase = v.phase;
+    renderVote(s.vote, s.turn);
+  }
+  function animatePlay(s, p){
+    const from = SEATXY[relOf(p.seat)], to = pilePos(p.seat);
+    const key = p.seat+':'+p.card; inFlight[key]=true;
+    const settle = PILEROT[relOf(p.seat)]||0; const S = CardsRender.Sound;
+    CardsRender.fly({ from:[from[0],from[1]], to:[to[0],to[1]], dur:420, ease:'inout', arc:34, spin:0.9, scaleFrom:1.18, scaleTo:1.0,
+      draw:(ctx,x,y,e,m)=>CardsRender.cardFaceT(ctx,x,y,p.card,{rot:settle+(m?m.rot:0),scale:m?m.scale:1}),
+      onDone:()=>{ delete inFlight[key]; if (S) S.play(); } });
+  }
+  function animateDeal(s){
+    const from = SEATXY[relOf(s.dealer!=null?s.view?.dealer:0) || 0] || [CW/2,CH/2];
+    const S = CardsRender.Sound; let step=0;
+    // 13 each is a lot; deal 4 quick passes of backs around for flavor
+    [0,1,2,3].forEach(()=>{ [0,1,2,3].forEach((rel)=>{ const to=SEATXY[rel];
+      CardsRender.fly({ from:[from[0],from[1]], to:[to[0],to[1]], dur:320, delay:step*70, ease:'inout', arc:16, spin:0.5, scaleFrom:0.9, scaleTo:1.0,
+        draw:(ctx,x,y,e,m)=>CardsRender.cardBackT(ctx,x,y,{rot:m?m.rot:0,scale:m?m.scale:1}),
+        onDone:()=>{ if (S) S.deal(); } }); step++; }); });
+  }
+  if (window.CardsRender){ CardsRender.loadAssets(); CardsRender.loop(drawBoard); }
+
+  function logEvent(ev){
+    if (ev.type==='passed') log(`seat ${ev.seat} passed`);
+    else if (ev.type==='passComplete') log(`cards passed ${ev.dir}`);
+    else if (ev.type==='play:begin') log(`play begins — 2♣ leads`);
+    else if (ev.type==='trickWon'){ log(`seat ${ev.seat} takes the trick${ev.points?(' (+'+ev.points+')'):''}`); CardsRender.Sound && CardsRender.Sound.trick(); }
+    else if (ev.type==='handScored'){ log(`hand scored: ${ev.handPoints.join(' / ')}${ev.mooned?(' — 🌙 seat '+ev.shooter+' SHOT THE MOON!'):''}`); }
+    else if (ev.type==='turn:timeout'){ log(`⏱ ${ev.displayName||('seat '+ev.seat)} ran out of time`); CardsRender.Sound && CardsRender.Sound.alert(); }
+    else if (ev.type==='turn:nudge'){ if(ev.seat===mySeat){ log('⏱ still your turn'); CardsRender.Sound && CardsRender.Sound.tick(); } }
+    else if (ev.type==='vote:result'){ log(`vote: ${ev.outcome==='kick'?'KICK → bot takes over':'wait granted'}`); }
+    else if (ev.type==='seat:kicked'){ log(`🤖 ${ev.displayName||('seat '+ev.seat)} replaced by a bot`); }
+    else if (ev.type==='gameWon'){ log(`GAME OVER — totals ${ev.totals.join(' / ')}`); }
+  }
+
+  // ---------------- end-game ----------------
+  let overData = null;
+  socket.on('table:over', (o) => { overData = o; showOver(o); });
+  function showOver(o){
+    const st = (o.standings||[]);
+    const mine = st.find(x=>x.seat===mySeat);
+    const iWon = mine && mine.won;
+    $('overResult').textContent = `Game ${o.gamesPlayed} · final`;
+    $('overTitle').textContent = mySeat==null ? 'Game Over' : (iWon ? 'You win! 🎉' : 'You lost');
+    const lowest = Math.min(...st.map(x=>x.score!=null?x.score:0));
+    $('overScore').textContent = 'Lowest score wins · ' + lowest + ' pts';
+    $('overStand').innerHTML = st.slice().sort((a,b)=>(a.score||0)-(b.score||0)).map(s=>
+      `<div class="r"><span>${s.displayName||('Seat '+s.seat)}${s.bot?' 🤖':''}${s.seat===mySeat?' (you)':''}</span>`+
+      `<span class="${s.won?'w':'l'}">${s.score} pts${s.won?' · WIN':''}</span></div>`).join('');
+    $('over').classList.add('show');
+    if (CardsRender.Sound){ iWon ? CardsRender.Sound.win() : CardsRender.Sound.lose(); }
+  }
+  function hideOver(){ $('over').classList.remove('show'); }
+  $('btnRematch').onclick = () => { socket.emit('table:rematch'); hideOver(); };
+  $('btnExit').onclick = () => { window.location.href = 'https://games.madladslab.com/'; };
+  socket.on('table:state', (s2) => { if (s2 && s2.phase === 'lobby') hideOver(); });
+
+  // ---------------- landscape fill view ----------------
+  (function(){
+    const fsbtn=$('fsbtn'), wrapEl=$('wrap'), felt=$('felt'); if (!fsbtn) return;
+    const isPortrait=()=>window.matchMedia('(orientation: portrait)').matches;
+    function syncPortrait(){ document.body.classList.toggle('portrait', document.body.classList.contains('fill') && isPortrait()); }
+    async function enterFill(){ document.body.classList.add('fill'); fsbtn.textContent='✕'; try{ if(wrapEl.requestFullscreen) await wrapEl.requestFullscreen(); }catch(e){} try{ if(screen.orientation&&screen.orientation.lock) await screen.orientation.lock('landscape'); }catch(e){} syncPortrait(); }
+    function exitFill(){ document.body.classList.remove('fill','portrait'); fsbtn.textContent='⛶'; try{ if(screen.orientation&&screen.orientation.unlock) screen.orientation.unlock(); }catch(e){} try{ if(document.fullscreenElement&&document.exitFullscreen) document.exitFullscreen(); }catch(e){} }
+    function toggle(){ document.body.classList.contains('fill')?exitFill():enterFill(); }
+    fsbtn.onclick=toggle; if (felt) felt.addEventListener('dblclick',toggle);
+    document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement&&document.body.classList.contains('fill')) exitFill(); });
+    window.addEventListener('orientationchange',syncPortrait); window.addEventListener('resize',syncPortrait);
+  })();
+
+  // ---------------- mute ----------------
+  (function(){
+    const mb=$('mutebtn'); if(!mb||!window.CardsRender||!CardsRender.Sound) return;
+    let muted = (function(){ try{return localStorage.getItem('cards_muted')==='1';}catch(e){return false;} })();
+    CardsRender.Sound.setMuted(muted);
+    const paint=()=>{ mb.textContent = muted?'🔇':'🔊'; mb.title = muted?'Unmute':'Mute'; }; paint();
+    mb.onclick=()=>{ muted=!muted; CardsRender.Sound.setMuted(muted); CardsRender.Sound.resume(); if(!muted) CardsRender.Sound.play(); paint(); try{localStorage.setItem('cards_muted',muted?'1':'0');}catch(e){} };
+    document.addEventListener('pointerdown',()=>CardsRender.Sound.resume(),{once:true});
+  })();
+
+  // ---------------- timeout vote ----------------
+  function renderVote(vote, turn){
+    const panel=$('votePanel'); if(!panel) return;
+    if (!vote || vote.seat==null){ panel.classList.remove('show'); return; }
+    const underVote=vote.seat;
+    const name=(state&&state.seats[underVote]&&state.seats[underVote].displayName)||('Seat '+underVote);
+    const iAm = underVote===mySeat;
+    $('voteTitle').textContent = iAm ? 'You timed out — act now or be replaced' : (name+' is out of time');
+    $('voteCount').textContent = iAm ? '' : ('Wait '+(vote.waits||0)+' · Kick '+(vote.kicks||0)+' · of '+(vote.eligible||0));
+    $('voteWait').style.display = $('voteKick').style.display = iAm ? 'none' : '';
+    panel.classList.add('show');
+  }
+  (function(){ const wb=$('voteWait'),kb=$('voteKick'); if(wb)wb.onclick=()=>socket.emit('table:vote',{choice:'wait'}); if(kb)kb.onclick=()=>socket.emit('table:vote',{choice:'kick'}); })();
+  socket.on('table:event',(ev)=>{ if(ev&&(ev.type==='vote:open'||ev.type==='vote:update')) renderVote(ev, state&&state.turn); if(ev&&ev.type==='vote:result'){ const p=$('votePanel'); if(p)p.classList.remove('show'); } });
+
+  if (!CanvasRenderingContext2D.prototype.roundRect){
+    CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){ this.beginPath(); this.moveTo(x+r,y); this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r); this.arcTo(x,y+h,x,y,r); this.arcTo(x,y,x+w,y,r); this.closePath(); return this; };
+  }
+</script>
+<script src="https://games.madladslab.com/modal/loader.js" defer data-surface="cards" data-game="hearts"></script>
+</body>
+</html>

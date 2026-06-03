@@ -61,7 +61,24 @@ router.get('/events', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const includeNoise = req.query.includeNoise === '1' || req.query.includeHeartbeats === '1';
     const before = req.query.before || null;
-    const events = await stats.getRecentEvents(game, limit, { includeNoise, before });
+    let events = await stats.getRecentEvents(game, limit, { includeNoise, before });
+    // Merge arcade web-game results into the activity feed (game-server events
+    // come from the stats-collector; web games report via the leaderboard ingest).
+    try {
+      const SERVER_GAMES = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
+      const db = req.app.locals.db;
+      if (db && !before && (!game || !SERVER_GAMES.includes(game))) {
+        const q = { event: 'game-end' };
+        if (game) q.game = game;
+        const wg = await db.collection('webgame_scores').find(q).sort({ ts: -1 }).limit(25).toArray();
+        const mapped = wg.map((r) => ({
+          game: r.game, type: 'webgame_result', ts: r.ts,
+          name: r.displayName || 'Player', status: r.status,
+          score: r.score || 0, opponentScore: (r.meta && r.meta.opponentScore) || 0,
+        }));
+        events = events.concat(mapped).sort((a, b) => new Date(b.ts) - new Date(a.ts)).slice(0, limit);
+      }
+    } catch (mergeErr) { /* feed merge is best-effort */ }
     res.json({ events });
   } catch (e) {
     res.status(500).json({ error: 'Failed to load events' });

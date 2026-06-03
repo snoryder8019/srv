@@ -10,6 +10,7 @@ const sdtd = require('../lib/7dtd');
 const se = require('../lib/se');
 const palworld = require('../lib/palworld');
 const windrose = require('../lib/windrose');
+const wallet = require('../lib/wallet');
 
 function requireAuth(req, res, next) {
   if (req.isAuthenticated()) return next();
@@ -264,6 +265,110 @@ router.get('/share-qr', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: 'QR generation failed' });
   }
+});
+
+// --- Web games (arcade): public leaderboard + recent results + your record ---
+// Fed by the master-leaderboard ingest (/internal/webgame/score). Public reads
+// are spectator data like the other /stats surfaces; /me is the signed-in user.
+router.get('/webgame/leaderboard/:slug', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const rows = await db.collection('webgame_leaderboard')
+      .find({ game: req.params.slug })
+      .sort({ wins: -1, bestScore: -1, runs: -1 })
+      .limit(limit).toArray();
+    res.json({ ok: true, game: req.params.slug, leaderboard: rows.map((r) => ({
+      displayName: r.displayName || 'Player', wins: r.wins || 0, runs: r.runs || 0,
+      bestScore: r.bestScore || 0, lastPlayedAt: r.lastPlayedAt || null,
+    })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/webgame/recent/:slug', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const limit = Math.min(parseInt(req.query.limit) || 12, 50);
+    const rows = await db.collection('webgame_scores')
+      .find({ game: req.params.slug, event: 'game-end' })
+      .sort({ ts: -1 }).limit(limit).toArray();
+    res.json({ ok: true, game: req.params.slug, results: rows.map((r) => ({
+      displayName: r.displayName || 'Player', status: r.status,
+      score: r.score || 0, opponentScore: (r.meta && r.meta.opponentScore) || 0,
+      partner: (r.meta && r.meta.partner) || null, ts: r.ts,
+    })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/webgame/me', requireAuth, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const pid = String(req.user._id);
+    const stats = await db.collection('webgame_leaderboard').find({ platformId: pid }).toArray();
+    const recent = await db.collection('webgame_scores')
+      .find({ platformId: pid, event: 'game-end' }).sort({ ts: -1 }).limit(10).toArray();
+    res.json({ ok: true,
+      stats: stats.map((s) => ({ game: s.game, wins: s.wins || 0, runs: s.runs || 0, bestScore: s.bestScore || 0, lastPlayedAt: s.lastPlayedAt || null })),
+      recent: recent.map((r) => ({ game: r.game, status: r.status, score: r.score || 0, opponentScore: (r.meta && r.meta.opponentScore) || 0, ts: r.ts })),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Master cross-game leaderboard — aggregates webgame_leaderboard across all games
+// into per-player totals (wins / games / win-rate). Powers the modal Leaderboards tab.
+router.get('/webgame/leaderboard', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const rows = await db.collection('webgame_leaderboard').find({}).toArray();
+    const byPlayer = new Map();
+    for (const r of rows) {
+      const key = r.platformId || r.displayName;
+      if (!key) continue;
+      let e = byPlayer.get(key);
+      if (!e) { e = { displayName: r.displayName || 'Player', wins: 0, runs: 0, games: new Set(), lastPlayedAt: null }; byPlayer.set(key, e); }
+      e.wins += (r.wins || 0);
+      e.runs += (r.runs || 0);
+      if (r.game) e.games.add(r.game);
+      if (r.displayName) e.displayName = r.displayName;
+      if (r.lastPlayedAt && (!e.lastPlayedAt || r.lastPlayedAt > e.lastPlayedAt)) e.lastPlayedAt = r.lastPlayedAt;
+    }
+    const board = [...byPlayer.values()]
+      .map((e) => ({ displayName: e.displayName, wins: e.wins, runs: e.runs,
+        winRate: e.runs ? Math.round((e.wins / e.runs) * 100) : 0,
+        gameCount: e.games.size, lastPlayedAt: e.lastPlayedAt }))
+      .sort((a, b) => b.wins - a.wins || b.winRate - a.winRate || b.runs - a.runs)
+      .slice(0, limit);
+    res.json({ ok: true, leaderboard: board });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ───────────────────────── Chip wallet (public reads) ─────────────────────────
+// The player's own balance (used by the portal + arcade chip pill).
+router.get('/wallet/me', requireAuth, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const pid = String(req.user._id);
+    const name = require("../lib/username").displayFor(req.user); // privacy: generated handle only, never real name/email
+    const w = await wallet.getWallet(db, pid, name);
+    const recent = await wallet.recentActivity(db, pid, 10);
+    res.json({ ok: true, chips: w.chips, coins: w.coins || 0,
+      biggestBetWon: w.biggestBetWon || 0, biggestBetGame: w.biggestBetGame || null,
+      totalWagered: w.totalWagered || 0, totalWon: w.totalWon || 0,
+      serverCoinsEarned: w.serverCoinsEarned || 0, recent });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Chip leaderboards: kind=chips (richest) or kind=bet (largest single bet won).
+router.get('/wallet/leaderboard', async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const kind = req.query.kind === 'bet' ? 'bet' : 'chips';
+    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+    const leaderboard = await wallet.leaderboard(db, kind, limit);
+    res.json({ ok: true, kind, leaderboard });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

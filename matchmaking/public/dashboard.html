@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Arcade · Live Match Board</title>
+<style>
+  :root{
+    --bg:#0a1410; --panel:#11201a; --panel2:#0d1a15; --border:#1f3a2e;
+    --ink:#e9f3ec; --muted:#7e9388; --gold:#e3c567; --green:#46c98b;
+    --red:#d8654f; --blue:#5aa9e6; --chip:#16271f;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:radial-gradient(120% 90% at 50% -10%, #143025 0%, var(--bg) 60%);
+    color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    min-height:100vh;
+  }
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1840px;margin:0 auto;padding:20px 26px 60px}
+
+  /* header */
+  .top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .brand{font-size:22px;font-weight:800;letter-spacing:.14em}
+  .brand .b2{color:var(--gold)}
+  .pulse{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(70,201,139,.6);animation:p 2s infinite}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(70,201,139,.5)}70%{box-shadow:0 0 0 9px rgba(70,201,139,0)}100%{box-shadow:0 0 0 0 rgba(70,201,139,0)}}
+  .top .spacer{flex:1}
+  .health{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--muted);letter-spacing:.06em}
+  .dot{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border:1px solid var(--border);border-radius:999px;background:var(--panel2)}
+  .dot i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .dot.up i{background:var(--green)} .dot.down i{background:var(--red)}
+  .back{font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:7px 12px;background:var(--panel2)}
+  .back:hover{border-color:var(--gold);color:var(--gold)}
+  .updated{font-size:11px;color:var(--muted)}
+
+  /* stat strip */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px}
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .stat .n{font-size:30px;font-weight:800;line-height:1}
+  .stat .l{font-size:11px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-top:6px}
+  .stat.gold .n{color:var(--gold)} .stat.green .n{color:var(--green)} .stat.blue .n{color:var(--blue)}
+
+  /* game grid */
+  .games{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
+  .game{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+  .game-h{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#152a21,#0f1d17)}
+  .game-h .name{font-size:16px;font-weight:800;letter-spacing:.04em}
+  .badge{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:3px 7px;border-radius:6px;border:1px solid var(--border);color:var(--muted)}
+  .badge.casino{color:var(--gold);border-color:#5a4a1e;background:#221c0c}
+  .game-h .gcount{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;line-height:1.4}
+  .game-h .gcount b{color:var(--ink)}
+  .tables{padding:10px 12px;display:flex;flex-direction:column;gap:9px}
+
+  .table{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 11px}
+  .table-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .phase{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:5px;font-weight:700}
+  .phase.lobby{color:#0c1a13;background:var(--gold)}
+  .phase.playing{color:#06140d;background:var(--green)}
+  .phase.gameOver{color:#fff;background:#5a3030}
+  .tid{font-size:10.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .stake{margin-left:auto;font-size:11px;color:var(--gold)}
+  .seats{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+  .seat{font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);background:var(--chip);display:inline-flex;align-items:center;gap:5px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .seat.human{color:var(--ink);border-color:#2d5a44}
+  .seat.human .s{background:var(--green)}
+  .seat.human.off{color:var(--muted)} .seat.human.off .s{background:#7e6b33}
+  .seat.bot{color:var(--muted)} .seat.bot .s{background:#3a4d44}
+  .seat.open{color:var(--gold);border-style:dashed;border-color:#5a4a1e} .seat.open .s{background:var(--gold)}
+  .seat .s{width:6px;height:6px;border-radius:50%}
+  .cta{display:flex;gap:8px}
+  .btn{flex:1;text-align:center;font-size:12px;font-weight:700;letter-spacing:.04em;padding:8px;border-radius:8px;border:1px solid var(--border);background:#16291f;color:var(--ink)}
+  .btn:hover{border-color:var(--gold)}
+  .btn.go{background:var(--gold);color:#0c1a10;border-color:var(--gold)}
+  .btn.go:hover{filter:brightness(1.07)}
+
+  .empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:60px 20px;border:1px dashed var(--border);border-radius:14px}
+  .empty a{color:var(--gold);font-weight:700}
+  .conn{font-size:11px;color:var(--muted)}
+  .conn.bad{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="pulse" id="pulse"></span>
+    <span class="brand">ARCADE <span class="b2">LIVE BOARD</span></span>
+    <span class="conn" id="conn">connecting…</span>
+    <span class="spacer"></span>
+    <span class="health" id="health"></span>
+    <span class="updated" id="updated"></span>
+    <a class="back" id="backLink" href="#">← Arcade</a>
+  </div>
+
+  <div class="stats" id="stats"></div>
+  <div class="games" id="games"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function(){
+  var PORTAL = 'https://games.madladslab.com';
+  var MATCH  = '';
+  var elStats=document.getElementById('stats'), elGames=document.getElementById('games'),
+      elHealth=document.getElementById('health'), elUpdated=document.getElementById('updated'),
+      elConn=document.getElementById('conn'), elPulse=document.getElementById('pulse');
+
+  function esc(x){var d=document.createElement('div');d.textContent=x==null?'':String(x);return d.innerHTML;}
+
+  function statCard(n,l,cls){ return '<div class="stat '+cls+'"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'; }
+
+  function seatChip(s){
+    if(s.kind==='open') return '<span class="seat open"><span class="s"></span>open</span>';
+    if(s.kind==='bot')  return '<span class="seat bot"><span class="s"></span>bot</span>';
+    var off = s.connected ? '' : ' off';
+    return '<span class="seat human'+off+'"><span class="s"></span>'+esc(s.name||'Player')+'</span>';
+  }
+
+  function tableRow(t){
+    var seats=(t.seats||[]).map(seatChip).join('');
+    var stake = t.min ? '<span class="stake">min '+t.min+'</span>' : '';
+    var phase = esc(t.phase||'lobby');
+    // CTA: casino tables with an open seat → take that seat; otherwise play the game.
+    var cta;
+    if(t.casino && t.openSeats>0){
+      cta='<a class="btn go" href="'+MATCH+'/casino/'+esc(t.game)+'/join?min='+(t.min||5)+'">Take a seat</a>';
+    } else if(t.openSeats>0){
+      cta='<a class="btn go" href="'+PORTAL+'/arcade/'+esc(t.game)+'/play">Join a game</a>';
+    } else {
+      cta='<a class="btn" href="'+PORTAL+'/arcade/'+esc(t.game)+'/play">New table</a>';
+    }
+    return '<div class="table">'+
+      '<div class="table-h"><span class="phase '+phase+'">'+phase+'</span>'+
+      '<span class="tid">'+esc(t.tableId)+'</span>'+stake+'</div>'+
+      '<div class="seats">'+seats+'</div>'+
+      '<div class="cta">'+cta+'</div></div>';
+  }
+
+  function gamePanel(g, tables){
+    var rows = tables.map(tableRow).join('');
+    return '<div class="game">'+
+      '<div class="game-h"><span class="name">'+esc(g.name)+'</span>'+
+      (g.casino?'<span class="badge casino">Casino</span>':'<span class="badge">Table</span>')+
+      '<span class="gcount"><b>'+g.tables+'</b> tables · <b>'+g.humans+'</b> players<br><b>'+g.openSeats+'</b> open seats</span>'+
+      '</div><div class="tables">'+rows+'</div></div>';
+  }
+
+  function render(st){
+    if(!st||!st.at){ return; }
+    PORTAL = st.portalUrl||PORTAL; MATCH = st.matchUrl||MATCH;
+    document.getElementById('backLink').href = PORTAL+'/#arcade';
+
+    var T=st.totals||{};
+    elStats.innerHTML =
+      statCard(st.online||0,'Players Online','green')+
+      statCard(T.tables||0,'Live Tables','gold')+
+      statCard(T.openSeats||0,'Open Seats','blue')+
+      statCard(T.games||0,'Games Active','');
+
+    // platform health
+    var ph=st.platforms||{};
+    elHealth.innerHTML = Object.keys(ph).map(function(k){
+      return '<span class="dot '+(ph[k]==='up'?'up':'down')+'"><i></i>'+esc(k)+'</span>';
+    }).join('');
+
+    var d=new Date(st.at);
+    elUpdated.textContent = 'updated '+d.toLocaleTimeString();
+
+    // group tables by game, ordered by byGame
+    var byGame=st.byGame||[]; var tablesByGame={};
+    (st.tables||[]).forEach(function(t){ (tablesByGame[t.game]=tablesByGame[t.game]||[]).push(t); });
+
+    if(!byGame.length){
+      elGames.innerHTML='<div class="empty">No live tables right now.<br><br>'+
+        '<a href="'+PORTAL+'/#arcade">Open the arcade →</a> and be the first to sit down.</div>';
+      return;
+    }
+    elGames.innerHTML = byGame.map(function(g){
+      var ts=(tablesByGame[g.game]||[]).sort(function(a,b){
+        // open seats first, then most humans, then lobby before playing
+        return (b.openSeats - a.openSeats) || (b.humans - a.humans);
+      });
+      return gamePanel(g, ts);
+    }).join('');
+  }
+
+  // initial paint via REST, then live via socket
+  fetch('/dashboard/state').then(function(r){return r.json();}).then(render).catch(function(){});
+
+  try{
+    var socket = io();
+    socket.on('connect', function(){ elConn.textContent='live'; elConn.className='conn'; elPulse.style.background='var(--green)'; });
+    socket.on('disconnect', function(){ elConn.textContent='reconnecting…'; elConn.className='conn bad'; elPulse.style.background='var(--red)'; });
+    socket.on('dash:snapshot', render);
+    socket.on('dash:update', render);
+  }catch(e){ elConn.textContent='socket unavailable (polling)';
+    setInterval(function(){ fetch('/dashboard/state').then(function(r){return r.json();}).then(render).catch(function(){}); }, 4000);
+  }
+})();
+</script>
+</body>
+</html>

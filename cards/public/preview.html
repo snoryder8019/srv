@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cards Render Preview</title>
+<style>
+  body { margin:0; font-family:system-ui,sans-serif; background:#0a0d0b; color:#e9ecef; padding:14px; }
+  h1 { font-size:14px; letter-spacing:.2em; color:#9fb0a6; }
+  canvas { width:100%; max-width:760px; border-radius:16px; display:block; margin:10px 0; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0; }
+  button { background:#1d3b2b; color:#e9ecef; border:1px solid rgba(255,255,255,.12); border-radius:9px; padding:9px 13px; font-weight:700; cursor:pointer; }
+  button.on { background:#2fbf71; color:#05230f; }
+  .note { color:#7e9388; font-size:12.5px; }
+</style>
+</head>
+<body>
+  <h1>CARDS RENDER · PREVIEW</h1>
+  <div class="row" id="felts"></div>
+  <canvas id="felt" width="760" height="360"></canvas>
+  <div class="row">
+    <button id="dealBtn">Replay deal</button>
+    <button id="playBtn">Throw a card</button>
+  </div>
+  <p class="note">Bigger cards · offset+rotated trick pile · dealer stack scaled & lifted (seat “North”) · deal &amp; throw-in animations. Swap felts above to compare looks.</p>
+<script src="/static/js/cards-render.js"></script>
+<script>
+  const CW=760, CH=360, FCW=CardsRender.cardW, FCH=CardsRender.cardH;
+  const SEATXY={0:[CW/2,CH-40],1:[60,CH/2],2:[CW/2,42],3:[CW-60,CH/2]};
+  const PILE=[CW/2,CH/2-4];
+  const PILEOFF={0:[0,46],1:[-58,0],2:[0,-46],3:[58,0]};
+  const PILEROT={0:0.04,1:-0.06,2:0.03,3:0.06};
+  const HANDXY={1:[96,CH/2],2:[CW/2,84],3:[CW-96,CH/2]};
+  const trick=[{seat:0,card:'AS'},{seat:1,card:'10H'},{seat:2,card:'KD'}];
+  const inFlight={};
+  let dealer=2, active=2;
+
+  function pilePos(seat){ const o=PILEOFF[seat]||[0,0]; return [PILE[0]+o[0],PILE[1]+o[1]]; }
+
+  function draw(ctx,W,H,now){
+    CardsRender.drawTable(ctx,W,H);
+    // opponent stacks (seats 1,2,3) — North (2) is the active/dealer deck: scaled + lifted
+    [1,2,3].forEach(seat=>{
+      const c=HANDXY[seat]; const n=5; const activeDeck=(seat===active);
+      const scale=activeDeck?1.14:1.0, lift=activeDeck?-6:0;
+      CardsRender.stackBacks(ctx, c[0]-(n*0.5*0.6), c[1]+lift, n, {dx:0.8,dy:-1.0,jitter:0.05,scale});
+    });
+    // seat plates
+    [0,1,2,3].forEach(seat=>{
+      const [x,y]=SEATXY[seat]; const isDealer=seat===dealer, isTurn=seat===active;
+      const pulse=isTurn?0.14*(0.5+0.5*Math.sin(now/240)):0;
+      ctx.fillStyle=isTurn?('rgba(47,191,113,'+(0.22+pulse).toFixed(3)+')'):'rgba(0,0,0,.34)';
+      CardsRender.roundRect(ctx,x-66,y-19,132,38,10); ctx.fill();
+      if(isTurn){ctx.strokeStyle='#2fbf71';ctx.lineWidth=2.5;ctx.stroke();}
+      if(isDealer){ctx.strokeStyle='#e3c567';ctx.lineWidth=2;CardsRender.roundRect(ctx,x-66,y-19,132,38,10);ctx.stroke();}
+      ctx.fillStyle='#eef2ee';ctx.font='bold 13px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(['You','West','North','East'][seat], x, y-4);
+      ctx.fillStyle=isDealer?'#e3c567':'#9fb0a6';ctx.font='10.5px system-ui';
+      ctx.fillText((isDealer?'\u2666 DEALER \u2666  ':'')+'tricks 0', x, y+10);
+    });
+    // trick pile
+    trick.forEach(p=>{ if(inFlight[p.seat+':'+p.card])return; const [x,y]=pilePos(p.seat);
+      CardsRender.cardFaceT(ctx,x,y,p.card,{rot:PILEROT[p.seat]||0}); });
+  }
+
+  function throwCard(seat,card){
+    const from=SEATXY[seat], to=pilePos(seat), key=seat+':'+card; inFlight[key]=true;
+    const settle=PILEROT[seat]||0;
+    CardsRender.fly({from:[from[0],from[1]],to:[to[0],to[1]],dur:420,ease:'inout',arc:34,spin:0.9,scaleFrom:1.18,scaleTo:1.0,
+      draw:(ctx,x,y,e,m)=>CardsRender.cardFaceT(ctx,x,y,card,{rot:settle+(m?m.rot:0),scale:m?m.scale:1}),
+      onDone:()=>{ delete inFlight[key]; CardsRender.Sound&&CardsRender.Sound.play(); }});
+  }
+  function replayDeal(){
+    const from=SEATXY[dealer]; const order=[0,1,2,3].map(i=>(dealer+1+i)%4); let step=0;
+    [3,2].forEach(()=>{ order.forEach(rel=>{ const to=SEATXY[rel];
+      CardsRender.fly({from:[from[0],from[1]],to:[to[0],to[1]],dur:360,delay:step*130,ease:'inout',arc:18,spin:0.6,scaleFrom:0.9,scaleTo:1.0,
+        draw:(ctx,x,y,e,m)=>CardsRender.cardBackT(ctx,x,y,{rot:m?m.rot:0,scale:m?m.scale:1}),
+        onDone:()=>{ CardsRender.Sound&&CardsRender.Sound.deal(); }}); step++; }); });
+  }
+
+  const felts=[['Emerald (current)','/static/img/assets/felt.png'],['Sapphire','/static/img/assets/options/felt-sapphire.png'],['Crimson','/static/img/assets/options/felt-crimson.png'],['Charcoal','/static/img/assets/options/felt-charcoal.png']];
+  const fbox=document.getElementById('felts');
+  felts.forEach(([label,src],i)=>{ const b=document.createElement('button'); b.textContent=label; if(i===0)b.classList.add('on');
+    b.onclick=()=>{ document.querySelectorAll('#felts button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+      const img=new Image(); img.onload=()=>{ CardsRender.assets.felt=img; }; img.src=src; };
+    fbox.appendChild(b); });
+
+  document.getElementById('dealBtn').onclick=replayDeal;
+  let cyc=0; document.getElementById('playBtn').onclick=()=>{ const seat=[3,2,1,0][cyc%4]; cyc++; throwCard(seat, ['QC','9S','JH','AD'][cyc%4]); };
+
+  CardsRender.loadAssets().then(()=>{ CardsRender.loop(draw); setTimeout(replayDeal, 400); });
+</script>
+</body>
+</html>

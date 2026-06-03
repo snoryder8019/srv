@@ -7,10 +7,33 @@ import express from 'express';
 import { ObjectId } from 'mongodb';
 import { sendClientEmail } from '../../plugins/mailer.js';
 import { logActivity } from '../../plugins/activityLog.js';
+import { normalizeEmail } from '../../plugins/emailNormalize.js';
 
 const router = express.Router();
 
 const STATUSES = ['new', 'read', 'replied', 'converted', 'archived', 'spam'];
+const BULK_STATUS_ACTIONS = new Set(['new', 'read', 'replied', 'converted', 'archived', 'spam']);
+
+// Insert sender addresses into the per-tenant blocklist used by POST /contact.
+async function blocklistAdd(db, emails, addedBy) {
+  const now = new Date();
+  const ops = [];
+  for (const e of emails) {
+    const lower = (e || '').toLowerCase().trim();
+    if (!lower) continue;
+    const norm = normalizeEmail(lower);
+    ops.push({
+      updateOne: {
+        filter: { email: lower },
+        update: {
+          $setOnInsert: { email: lower, emailNormalized: norm, createdAt: now, addedBy: addedBy || '' },
+        },
+        upsert: true,
+      },
+    });
+  }
+  if (ops.length) await db.collection('spam_emails').bulkWrite(ops, { ordered: false });
+}
 
 // ── List ───────────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
@@ -90,11 +113,88 @@ router.post('/:id/status', express.json(), async (req, res) => {
   const { status } = req.body;
   if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
   try {
+    const _id = new ObjectId(req.params.id);
     await db.collection('inquiries').updateOne(
-      { _id: new ObjectId(req.params.id) },
+      { _id },
       { $set: { status, updatedAt: new Date() } }
     );
+    if (status === 'spam') {
+      const doc = await db.collection('inquiries').findOne({ _id }, { projection: { email: 1 } });
+      if (doc?.email) await blocklistAdd(db, [doc.email], req.adminUser?.email);
+    }
     res.json({ ok: true, status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Bulk actions (multi-select on list view) ───────────────────────────────
+// Body: { ids: string[], action: 'new'|'read'|'replied'|'converted'|'archived'|'spam'|'delete' }
+router.post('/bulk', express.json(), async (req, res) => {
+  const db = req.db;
+  const { ids, action } = req.body || {};
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'No items selected' });
+  if (action !== 'delete' && !BULK_STATUS_ACTIONS.has(action)) {
+    return res.status(400).json({ error: 'Invalid action' });
+  }
+
+  let objectIds;
+  try { objectIds = ids.map(id => new ObjectId(id)); }
+  catch { return res.status(400).json({ error: 'Bad id in selection' }); }
+
+  try {
+    if (action === 'delete') {
+      const r = await db.collection('inquiries').deleteMany({ _id: { $in: objectIds } });
+      return res.json({ ok: true, action, affected: r.deletedCount });
+    }
+
+    if (action === 'spam') {
+      const docs = await db.collection('inquiries')
+        .find({ _id: { $in: objectIds } }, { projection: { email: 1 } })
+        .toArray();
+      const emails = docs.map(d => d.email).filter(Boolean);
+      if (emails.length) await blocklistAdd(db, emails, req.adminUser?.email);
+    }
+
+    const r = await db.collection('inquiries').updateMany(
+      { _id: { $in: objectIds } },
+      { $set: { status: action, updatedAt: new Date() } }
+    );
+    res.json({ ok: true, action, affected: r.modifiedCount });
+  } catch (err) {
+    console.error('[inquiries] bulk error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Spam blocklist (per-tenant) ────────────────────────────────────────────
+router.get('/spam-list/data', async (req, res) => {
+  try {
+    const list = await req.db.collection('spam_emails')
+      .find({}).sort({ createdAt: -1 }).limit(500).toArray();
+    res.json({ ok: true, list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/spam-list/remove', express.json(), async (req, res) => {
+  const email = (req.body?.email || '').toLowerCase().trim();
+  if (!email) return res.status(400).json({ error: 'email required' });
+  try {
+    await req.db.collection('spam_emails').deleteOne({ email });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/spam-list/add', express.json(), async (req, res) => {
+  const email = (req.body?.email || '').toLowerCase().trim();
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'valid email required' });
+  try {
+    await blocklistAdd(req.db, [email], req.adminUser?.email);
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

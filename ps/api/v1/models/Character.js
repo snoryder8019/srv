@@ -294,35 +294,53 @@ export class Character {
     const asset = await Asset.findById(assetId);
     if (!asset) return { success: false, error: 'Asset not found' };
 
-    // Get asset position (from initialPosition or hubData)
-    let assetX, assetY;
-    if (asset.hubData && asset.hubData.location) {
+    // Resolve asset position — prefer 3D `coordinates`, fall back to legacy fields
+    let assetX, assetY, assetZ;
+    if (asset.coordinates && (asset.coordinates.x !== undefined)) {
+      assetX = asset.coordinates.x;
+      assetY = asset.coordinates.y;
+      assetZ = asset.coordinates.z ?? 0;
+    } else if (asset.hubData && asset.hubData.location) {
       assetX = asset.hubData.location.x;
       assetY = asset.hubData.location.y;
+      assetZ = asset.hubData.location.z ?? 0;
     } else if (asset.initialPosition) {
       assetX = asset.initialPosition.x;
       assetY = asset.initialPosition.y;
+      assetZ = asset.initialPosition.z ?? 0;
     } else {
       return { success: false, error: 'Asset has no position data' };
     }
 
-    // Update character location to asset position and dock
+    // Decide which parent-id field to set based on the asset being docked at.
+    // The map/UI consumes location.dockedGalaxyId for galaxy-level docking.
+    const setFields = {
+      'location.x': assetX,
+      'location.y': assetY,
+      'location.z': assetZ,
+      'location.vx': 0,
+      'location.vy': 0,
+      'location.vz': 0,
+      'location.assetId': assetId,
+      'location.assetType': asset.assetType,
+      'location.lastUpdated': new Date(),
+      'navigation.destination': null,
+      'navigation.isInTransit': false,
+      'navigation.eta': null,
+      updatedAt: new Date()
+    };
+
+    if (asset.assetType === 'galaxy') {
+      setFields['location.dockedGalaxyId'] = assetId;
+      setFields['location.dockedGalaxyName'] = asset.title;
+    } else if (asset.assetType === 'star') {
+      setFields['location.dockedStarId'] = assetId;
+      setFields['location.dockedStarName'] = asset.title;
+    }
+
     const result = await db.collection(collections.characters).updateOne(
       { _id: new ObjectId(characterId) },
-      {
-        $set: {
-          'location.x': assetX,
-          'location.y': assetY,
-          'location.vx': 0,
-          'location.vy': 0,
-          'location.assetId': assetId,
-          'location.lastUpdated': new Date(),
-          'navigation.destination': null,
-          'navigation.isInTransit': false,
-          'navigation.eta': null,
-          updatedAt: new Date()
-        }
-      }
+      { $set: setFields }
     );
 
     return {
@@ -332,7 +350,8 @@ export class Character {
         title: asset.title,
         assetType: asset.assetType,
         x: assetX,
-        y: assetY
+        y: assetY,
+        z: assetZ
       }
     };
   }

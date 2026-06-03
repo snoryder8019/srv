@@ -317,17 +317,18 @@ class GalacticMap3D {
 
     const color = colorMap[assetType] || colorMap.default;
 
-    // Size by asset type or stats (realistic solar system scale)
+    // Size by asset type or stats — chosen so the star (radius after 8x multiplier)
+    // does not engulf its orbiting planets. Typical planet orbit ~150-400u from star.
     let size = 1.5;
-    if (assetType === 'galaxy') size = 4;        // Largest
-    else if (assetType === 'star') size = 50;    // MASSIVE - sun is huge compared to everything
-    else if (assetType === 'planet') size = 2;   // Small - planets are tiny compared to star
-    else if (assetType === 'orbital') size = 0.8; // Very small - moons
-    else if (assetType === 'station') size = 0.8; // Very small - stations
-    else if (assetType === 'anomaly') size = 2.5; // Large (notable)
-    else if (assetType === 'zone') size = 3;      // Large area
-    else if (assetType === 'ship') size = 0.3;    // Minuscule compared to planets
-    else if (assetType === 'character') size = 1; // Smallest
+    if (assetType === 'galaxy') size = 4;
+    else if (assetType === 'star') size = 6;      // ~48u radius — fits inside any reasonable orbit
+    else if (assetType === 'planet') size = 4;    // ~32u radius — easy to click
+    else if (assetType === 'orbital') size = 1.5; // ~12u radius — moons
+    else if (assetType === 'station') size = 1.5;
+    else if (assetType === 'anomaly') size = 2.5;
+    else if (assetType === 'zone') size = 3;
+    else if (assetType === 'ship') size = 0.3;
+    else if (assetType === 'character') size = 1;
     else if (stats && stats.size) size = stats.size;
 
     // Create geometry based on asset type
@@ -606,6 +607,15 @@ class GalacticMap3D {
     // Auto-switch to planet lock mode when planet is selected
     this.setCameraLockMode('planet');
 
+    // If selecting a planet, show landable location modal (2D top-down entry point)
+    if (object.userData.type === 'planet') {
+      this.showLandableLocationModal(object.userData).catch(err => {
+        console.error('Error showing planet land modal:', err);
+      });
+    } else {
+      this.hideLandableLocationModal();
+    }
+
     // Emit event for UI to handle with proper coordinate structure
     const event = new CustomEvent('assetSelected', {
       detail: {
@@ -690,8 +700,186 @@ class GalacticMap3D {
       this.selectionLine = null;
     }
 
+    this.hideLandableLocationModal();
+
     const event = new CustomEvent('assetDeselected');
     window.dispatchEvent(event);
+  }
+
+  /**
+   * Show landable location modal for planets — opens the 2D top-down zone view
+   */
+  async showLandableLocationModal(assetData) {
+    let modal = document.getElementById('landable-location-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'landable-location-modal';
+      modal.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(0, 30, 20, 0.95);
+        border: 2px solid #00ff88;
+        border-radius: 10px;
+        padding: 20px;
+        color: #00ff88;
+        font-family: 'Courier New', monospace;
+        z-index: 1000;
+        min-width: 300px;
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        backdrop-filter: blur(10px);
+      `;
+      document.body.appendChild(modal);
+    }
+
+    // Look up surface zones for this planet AND check landing-gear inventory in parallel
+    let hasInterior = false;
+    let interiorZone = null;
+    let interiorInfo = '';
+    let hasLandingGear = false;
+    let characterId = null;
+
+    try {
+      const [zonesRes, charRes] = await Promise.all([
+        fetch(`/api/v1/hierarchy/descendants/${assetData.id}?maxDepth=1`, { credentials: 'same-origin' }),
+        fetch(`/api/v1/characters/current`, { credentials: 'same-origin' })
+      ]);
+
+      const zonesData = await zonesRes.json();
+      const zones = (zonesData.descendants || []).filter(d => d.assetType === 'zone');
+      hasInterior = zones.length > 0;
+      if (hasInterior) {
+        interiorZone = zones.find(z => z.zoneData) || zones[0];
+        interiorInfo = `<div style="font-size: 11px; color: #00ff88; margin-top: 5px;">Surface zones: ${zones.length}</div>`;
+      } else {
+        interiorInfo = `<div style="font-size: 11px; color: #ffaa00; margin-top: 5px;">No surface zones yet</div>`;
+      }
+
+      const charData = await charRes.json();
+      if (charData.success && charData.character) {
+        characterId = charData.character._id;
+        hasLandingGear = await this.characterHasLandingGear(characterId);
+      }
+    } catch (error) {
+      console.error('Error checking planet zones / landing gear:', error);
+    }
+
+    const gearLine = hasLandingGear
+      ? `<div style="font-size: 11px; color: #00ff88; margin-top: 3px;">🛬 Landing Gear: equipped</div>`
+      : `<div style="font-size: 11px; color: #ff6666; margin-top: 3px;">⚠️ No Landing Gear in inventory</div>`;
+
+    let actionBtnHtml;
+    if (!hasLandingGear) {
+      actionBtnHtml = `<button id="land-location-btn" style="
+        width:100%; padding:10px; margin-top:15px;
+        background:rgba(80,80,80,0.4); border:1px solid #888; border-radius:5px;
+        color:#bbb; font-weight:bold; font-size:14px; cursor:not-allowed; opacity:0.7;
+      " disabled>🚫 Landing Gear Required</button>`;
+    } else {
+      actionBtnHtml = `<button id="land-location-btn" style="
+        width:100%; padding:10px; margin-top:15px;
+        background:linear-gradient(45deg,#00ff88,#00aa55); border:none; border-radius:5px;
+        color:#001a10; font-weight:bold; font-size:14px; cursor:pointer;
+        box-shadow:0 0 10px rgba(0,255,136,0.3);
+      ">${hasInterior ? '🪂 Descend to Surface' : '🛠️ Build Surface Zone'}</button>`;
+    }
+
+    modal.innerHTML = `
+      <h3 style="margin: 0 0 10px 0; color: #00ff88; text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);">
+        🪐 ${assetData.title || 'Unknown Planet'}
+      </h3>
+      <div style="margin: 10px 0; font-size: 14px;">
+        <div>Type: Planet</div>
+        <div>Status: <span style="color: #00ff88;">Landable</span></div>
+        ${interiorInfo}
+        ${gearLine}
+      </div>
+      ${actionBtnHtml}
+      <button id="close-location-btn" style="
+        width: 100%; padding: 8px; margin-top: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid #00aa55; border-radius: 5px;
+        color: #00ff88; cursor: pointer; font-size: 12px;
+      ">Close</button>
+    `;
+
+    modal.style.display = 'block';
+    ['click', 'mousedown', 'mouseup'].forEach(evt => {
+      modal.addEventListener(evt, e => e.stopPropagation());
+    });
+
+    const landBtn = document.getElementById('land-location-btn');
+    if (landBtn && hasLandingGear) {
+      landBtn.onclick = () => {
+        if (interiorZone) {
+          window.location.href = `/universe/zone/${interiorZone._id}`;
+        } else {
+          window.location.href = `/universe/interior-map-builder?parentAssetId=${assetData.id}&parentAssetType=planet`;
+        }
+      };
+    }
+
+    document.getElementById('close-location-btn').onclick = () => {
+      this.hideLandableLocationModal();
+      this.deselectObject();
+    };
+  }
+
+  /**
+   * Returns true if the character has a Landing Gear item in backpack,
+   * equipped, ship cargo, or ship fittings.
+   */
+  async characterHasLandingGear(characterId) {
+    if (this._landingGearCache && this._landingGearCache.characterId === characterId) {
+      return this._landingGearCache.has;
+    }
+    try {
+      const [invRes, cargoRes, fittingsRes] = await Promise.all([
+        fetch(`/api/v1/characters/${characterId}/inventory`, { credentials: 'same-origin' }),
+        fetch(`/api/v1/characters/${characterId}/ship/cargo`, { credentials: 'same-origin' }),
+        fetch(`/api/v1/characters/${characterId}/ship/fittings`, { credentials: 'same-origin' })
+      ]);
+
+      const isGear = (it) => {
+        const d = it?.itemDetails || it;
+        if (!d) return false;
+        return d.subtype === 'landing_gear' || d.category === 'landing' || /landing gear/i.test(d.name || '');
+      };
+
+      let found = false;
+      if (invRes.ok) {
+        const inv = await invRes.json();
+        if ((inv.backpack?.items || []).some(isGear)) found = true;
+        if (!found && Object.values(inv.equipped || {}).some(isGear)) found = true;
+      }
+      if (!found && cargoRes.ok) {
+        const cargo = await cargoRes.json();
+        if ((cargo.cargo?.items || []).some(isGear)) found = true;
+      }
+      if (!found && fittingsRes.ok) {
+        const fittings = await fittingsRes.json();
+        for (const slotType of Object.keys(fittings)) {
+          if (Array.isArray(fittings[slotType]) && fittings[slotType].some(isGear)) {
+            found = true;
+            break;
+          }
+        }
+      }
+
+      this._landingGearCache = { characterId, has: found };
+      return found;
+    } catch (err) {
+      console.error('characterHasLandingGear lookup failed:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Hide landable location modal
+   */
+  hideLandableLocationModal() {
+    const modal = document.getElementById('landable-location-modal');
+    if (modal) modal.style.display = 'none';
   }
 
   /**
@@ -1084,9 +1272,36 @@ class GalacticMap3D {
       }
 
       console.log(`🚀 Ship spawned at far edge (${combatSystem.playerShip.position.x.toFixed(1)}, ${combatSystem.playerShip.position.y.toFixed(1)}, ${combatSystem.playerShip.position.z.toFixed(1)}) - ${edgeDistance.toFixed(0)} units from star`);
+
+      // Seed 2-3 passive pirates in the system, scattered around the star
+      this.spawnSystemEnemies(combatSystem, starPos);
     }
 
     console.log('✅ Combat system initialized - ship controls active');
+  }
+
+  /**
+   * Spawn 2-3 passive pirate ships at varied positions around the star.
+   * Pirates idle-drift until shot; then they pursue and fire back.
+   */
+  spawnSystemEnemies(combatSystem, starPos) {
+    const count = 2 + Math.floor(Math.random() * 2); // 2 or 3
+    for (let i = 0; i < count; i++) {
+      // Place between ~600 and ~1800 units from the star, scattered in a hemisphere
+      const radius = 600 + Math.random() * 1200;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = (Math.random() - 0.5) * 0.6; // mostly near orbital plane
+      const pos = new THREE.Vector3(
+        starPos.x + radius * Math.cos(theta) * Math.cos(phi),
+        starPos.y + radius * Math.sin(phi),
+        starPos.z + radius * Math.sin(theta) * Math.cos(phi)
+      );
+      const enemy = combatSystem.spawnEnemy(pos);
+      enemy.provoked = false;
+      enemy.lastFireAt = 0;
+      console.log(`👾 Pirate ${i + 1} spawned at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}, ${pos.z.toFixed(0)})`);
+    }
+    console.log(`✅ Spawned ${count} pirates in system`);
   }
 
   /**

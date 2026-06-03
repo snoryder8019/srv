@@ -1,0 +1,292 @@
+/**
+ * TileTableRuntime — a single live tiles table. Game-agnostic: owns seats,
+ * connections, phase, dealer rotation, scores, the turn clock + wait/kick vote,
+ * and end-game bookkeeping. All tile logic is delegated to the variant
+ * (lib/variants/*). Mirrors the cards TableRuntime so the socket transport,
+ * stats export, reconnect, and global modal all work identically — only the
+ * engine (tiles vs cards) differs.
+ *
+ * Phases: lobby -> playing -> gameOver. Hand boundaries happen inside `playing`.
+ *
+ * Seats: variant.meta.players (2..4). Scoring is per-seat by default (dominoes,
+ * mahjong are individual); a variant may still expose gameResult/standings/
+ * resetMatch seams (same contract as the cards platform's hearts).
+ */
+import { rngFromSeed } from '../engine/index.js';
+
+export const TIMING = {
+  turnMs: 30000,
+  voteMs: 20000,
+  botMinMs: 600,
+  botMaxMs: 1200,
+};
+
+export class TileTableRuntime {
+  constructor({ tableId, variant, config = {}, players = [] }) {
+    this.tableId = tableId;
+    this.variant = variant;
+    this.game = variant.id;
+    this.config = { ...variant.defaults, ...config };
+    this.seatCount = (variant.meta && variant.meta.seating && variant.meta.seating.seats)
+      || (variant.catalog && variant.catalog.players) || 4;
+    this.dealer = config.dealer ?? 0;
+    this.phase = 'lobby';
+    this.scores = new Array(this.seatCount).fill(0); // per-seat scores
+    this.handNo = 0;
+    this.hand = null; // variant-owned state for the current hand
+
+    this.startedAt = null;
+    this.endedAt = null;
+    this.winnerSeat = null;
+    this.finalTotals = null;
+    this.tally = { hands: 0 };
+    this.gamesPlayed = 0;
+
+    this.turnSeat = null;
+    this.turnDeadline = null;
+    this.vote = null;
+
+    this.seats = Array.from({ length: this.seatCount }, (_, i) => ({
+      seat: i, team: i, platformId: null, displayName: null,
+      bot: false, connected: false, ready: false,
+    }));
+    for (const p of players) this.seatPlayer(p.seat, p);
+  }
+
+  // --- helpers the variant uses ---
+  next(seat) { return (seat + 1) % this.seatCount; }
+  rotateDealer() { this.dealer = (this.dealer + 1) % this.seatCount; }
+
+  // --- seating ---
+  seatPlayer(seat, { platformId = null, displayName = 'Player', bot = false } = {}) {
+    const s = this.seats[seat];
+    if (!s) return false;
+    s.platformId = platformId ? String(platformId) : (bot ? `bot:${seat}` : null);
+    s.displayName = displayName || (bot ? `Bot ${seat + 1}` : 'Player');
+    s.bot = !!bot;
+    s.ready = !!bot;
+    return true;
+  }
+
+  seatByPlatformId(pid) { return this.seats.find((s) => s.platformId === String(pid)) || null; }
+  setConnected(seat, on) { if (this.seats[seat]) this.seats[seat].connected = on; }
+  setReady(seat, on) { if (this.seats[seat] && !this.seats[seat].bot) this.seats[seat].ready = !!on; }
+  emptySeats() { return this.seats.filter((s) => !s.platformId).map((s) => s.seat); }
+  allSeated() { return this.seats.every((s) => s.platformId); }
+  allReady() { return this.seats.every((s) => s.ready); }
+  humanCount() { return this.seats.filter((s) => s.platformId && !s.bot).length; }
+  seatPresent(seat) { const s = this.seats[seat]; return !!(s && s.platformId && !s.bot && s.connected); }
+
+  // --- lifecycle ---
+  maybeStart() {
+    if (this.phase === 'lobby' && this.allSeated() && this.allReady()) { this.start(); return true; }
+    return false;
+  }
+
+  start() {
+    if (this.phase !== 'lobby') return;
+    this.handNo = 1;
+    this.startedAt = Date.now();
+    this.endedAt = null;
+    this.winnerSeat = null;
+    this.finalTotals = null;
+    this.tally = { hands: 0 };
+    this.variant.startHand(this, rngFromSeed(`${this.tableId}:g${this.gamesPlayed}:h${this.handNo}`));
+    this.phase = 'playing';
+  }
+
+  submit(seat, action) {
+    if (this.phase !== 'playing') return { ok: false, error: 'table not in play' };
+    const r = this.variant.applyAction(this, seat, action);
+    if (!r.ok) return r;
+    const events = [...(r.events || [])];
+    for (const ev of events) if (ev.type === 'handWon') this.tally.hands += 1;
+
+    if (r.gameOver) {
+      this.phase = 'gameOver';
+      this.endedAt = Date.now();
+      this.clearTurnClock();
+      if (typeof this.variant.gameResult === 'function') {
+        const gr = this.variant.gameResult(this);
+        this.winnerSeat = gr.winnerSeat != null ? gr.winnerSeat : null;
+        this.finalTotals = gr.totals || null;
+        events.push({ type: 'gameOver', mode: gr.mode || 'individual', winnerSeat: this.winnerSeat, totals: this.finalTotals });
+      } else {
+        // default: highest per-seat score wins (variant can flip via gameResult)
+        let best = 0;
+        for (let i = 1; i < this.seatCount; i++) if (this.scores[i] > this.scores[best]) best = i;
+        this.winnerSeat = best;
+        this.finalTotals = this.scores.slice();
+        events.push({ type: 'gameOver', mode: 'individual', winnerSeat: best, totals: this.finalTotals });
+      }
+    } else if (r.handOver) {
+      this.rotateDealer();
+      this.handNo += 1;
+      this.variant.startHand(this, rngFromSeed(`${this.tableId}:g${this.gamesPlayed}:h${this.handNo}`));
+      events.push({ type: 'handStart', handNo: this.handNo, dealer: this.dealer });
+    }
+    return { ok: true, events, gameOver: this.phase === 'gameOver' };
+  }
+
+  runBots() {
+    const events = [];
+    let guard = 0;
+    while (this.phase === 'playing' && guard < 400) {
+      guard += 1;
+      const seat = this.variant.currentTurn(this);
+      if (seat == null || !this.seats[seat].bot) break;
+      const action = this.variant.botAction(this, seat);
+      if (!action) break;
+      const r = this.submit(seat, action);
+      if (!r.ok) break;
+      events.push(...r.events);
+      if (r.gameOver) break;
+    }
+    return events;
+  }
+
+  // --- turn clock ---
+  armTurnClock(now = Date.now()) {
+    if (this.phase !== 'playing') { this.clearTurnClock(); return false; }
+    // Casino (continuous) tables never time bets — players take as long as they like.
+    if (this.variant && this.variant.continuous) { this.clearTurnClock(); return false; }
+    // Solo-vs-bots: no clock. With only one human at the table there's nobody to
+    // wait on or vote, so the turn timer + kick vote are pointless — let the lone
+    // player take all the time they want. The clock only matters multi-human.
+    if (this.humanCount() < 2) { this.clearTurnClock(); return false; }
+    const seat = this.variant.currentTurn(this);
+    if (seat == null || this.seats[seat].bot) { this.clearTurnClock(); return false; }
+    if (this.turnSeat !== seat) { this.turnSeat = seat; this.turnDeadline = now + TIMING.turnMs; this.vote = null; }
+    return true;
+  }
+  clearTurnClock() { this.turnSeat = null; this.turnDeadline = null; }
+  turnRemainingMs(now = Date.now()) { return this.turnDeadline ? Math.max(0, this.turnDeadline - now) : null; }
+  turnExpired(now = Date.now()) { return this.turnSeat != null && this.turnDeadline != null && now >= this.turnDeadline && !this.vote; }
+
+  // --- wait / kick vote (identical semantics to the cards platform) ---
+  openVote(now = Date.now()) {
+    if (this.turnSeat == null || this.vote) return null;
+    this.vote = { seat: this.turnSeat, deadline: now + TIMING.voteMs, waits: new Set(), kicks: new Set() };
+    return this.vote;
+  }
+  castVote(platformId, choice) {
+    if (!this.vote) return null;
+    const voter = this.seatByPlatformId(platformId);
+    if (!voter || voter.seat === this.vote.seat || voter.bot) return this.voteTally();
+    this.vote.waits.delete(platformId); this.vote.kicks.delete(platformId);
+    if (choice === 'kick') this.vote.kicks.add(platformId); else this.vote.waits.add(platformId);
+    return this.voteTally();
+  }
+  voteEligible() {
+    if (!this.vote) return 0;
+    return this.seats.filter((s) => s.platformId && !s.bot && s.seat !== this.vote.seat).length;
+  }
+  voteTally() {
+    if (!this.vote) return null;
+    return { seat: this.vote.seat, waits: this.vote.waits.size, kicks: this.vote.kicks.size, eligible: this.voteEligible(), deadline: this.vote.deadline };
+  }
+  resolveVote(now = Date.now()) {
+    if (!this.vote) return null;
+    const eligible = this.voteEligible();
+    const kicks = this.vote.kicks.size, waits = this.vote.waits.size;
+    const majority = Math.floor(eligible / 2) + 1;
+    const present = this.seatPresent(this.vote.seat);
+    let outcome = null;
+    if (eligible === 0) outcome = present ? null : 'kick';
+    else if (kicks >= majority) outcome = 'kick';
+    else if (waits >= majority) outcome = 'wait';
+    else if (now >= this.vote.deadline) outcome = (kicks > waits && (!present || kicks > 0)) ? 'kick' : 'wait';
+    if (!outcome) {
+      if (eligible === 0 && present) { this.vote = null; this.turnDeadline = now + TIMING.turnMs; return 'wait'; }
+      return null;
+    }
+    const seat = this.vote.seat;
+    this.vote = null;
+    if (outcome === 'wait') this.turnDeadline = now + TIMING.turnMs;
+    else this.convertToBot(seat);
+    return outcome;
+  }
+  convertToBot(seat) {
+    const s = this.seats[seat];
+    if (!s) return;
+    s.bot = true; s.ready = true; s.connected = false;
+    s.displayName = (s.displayName || `Seat ${seat}`) + ' (bot)';
+    s.platformId = `bot:${seat}`;
+    if (this.turnSeat === seat) this.clearTurnClock();
+  }
+
+  // --- views ---
+  publicState() {
+    const now = Date.now();
+    return {
+      tableId: this.tableId, game: this.game, phase: this.phase, dealer: this.dealer,
+      scores: this.scores.slice(), handNo: this.handNo,
+      turn: { seat: this.turnSeat, remainingMs: this.turnRemainingMs(now), totalMs: TIMING.turnMs },
+      vote: this.voteTally(),
+      seats: this.seats.map((s) => ({
+        seat: s.seat, team: s.team, displayName: s.displayName,
+        bot: s.bot, connected: s.connected, ready: s.ready, occupied: !!s.platformId,
+        chips: s.chips != null ? s.chips : undefined,
+      })),
+      view: this.phase === 'lobby' ? null : this.variant.publicView(this),
+    };
+  }
+  privateState(seat) {
+    if (this.phase === 'lobby' || seat == null) return { seat, hand: [], legal: [] };
+    return this.variant.privateView(this, seat);
+  }
+  summary() {
+    return { tableId: this.tableId, game: this.game, phase: this.phase,
+      seated: this.seats.filter((s) => s.platformId).length, scores: this.scores.slice() };
+  }
+
+  standings() {
+    if (typeof this.variant.standings === 'function') return this.variant.standings(this);
+    const totals = this.finalTotals || this.scores;
+    const best = Math.max(...totals);
+    return this.seats.map((s) => ({
+      seat: s.seat, team: s.seat, displayName: s.displayName,
+      bot: s.bot, score: totals[s.seat], won: totals[s.seat] === best,
+    }));
+  }
+
+  rematch() {
+    if (this.phase !== 'gameOver' && this.phase !== 'lobby') return false;
+    this.gamesPlayed += 1;
+    this.scores = new Array(this.seatCount).fill(0);
+    this.handNo = 0; this.hand = null;
+    this.startedAt = null; this.endedAt = null;
+    this.winnerSeat = null; this.finalTotals = null;
+    this.tally = { hands: 0 };
+    if (typeof this.variant.resetMatch === 'function') this.variant.resetMatch(this);
+    this.clearTurnClock();
+    this.vote = null;
+    this.rotateDealer();
+    this.phase = 'lobby';
+    for (const s of this.seats) s.ready = !!s.bot;
+    return true;
+  }
+
+  reseat(perm) {
+    if (this.phase !== 'gameOver' && this.phase !== 'lobby') return null;
+    if (!Array.isArray(perm) || perm.length !== this.seatCount) return null;
+    const seen = new Set(perm);
+    if (seen.size !== this.seatCount || perm.some((x) => x < 0 || x >= this.seatCount)) return null;
+    const snapshot = this.seats.map((s) => ({ platformId: s.platformId, displayName: s.displayName, bot: s.bot, connected: s.connected }));
+    const map = {};
+    for (let i = 0; i < this.seatCount; i++) {
+      const src = snapshot[perm[i]];
+      const s = this.seats[i];
+      s.platformId = src.platformId; s.displayName = src.displayName; s.bot = src.bot; s.connected = src.connected;
+      s.ready = !!src.bot;
+      if (src.platformId) map[src.platformId] = i;
+    }
+    return map;
+  }
+
+  vacate(seat) {
+    const s = this.seats[seat];
+    if (!s) return;
+    s.platformId = null; s.displayName = null; s.bot = false; s.connected = false; s.ready = false;
+  }
+}

@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+  <link rel="stylesheet" href="/css/proposal.css" />
+</head>
+<body class="mll-page mll-page--app mll-dash-body">
+  <%- include('../partials/header') %>
+
+  <%
+    // ---- Deals (current + others) ----
+    const _deals = pitch.app.deals || [];
+    const _currentDeal = _deals.find((d) => d.isCurrent) || _deals[0] || { id: '', name: 'No deal selected', stage: '', value: 0, buyer: '', seller: '' };
+    const fmtMoney = (n) => '$' + (n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : (n / 1000).toFixed(0) + 'K');
+
+    // ---- Per-deal dataset generator ----
+    const _participants = pitch.app.participants || [];
+    const _baseNodes = pitch.app.workflow.nodes || [];
+
+    const STAGE_PROGRESS = {
+      'LOI signed': 0.17,
+      'Kickoff':     0.33,
+      'Diligence':   0.55,
+      'NWC + tax':   0.72,
+      'Verification':0.88,
+      'Delivery':    1.0,
+    };
+
+    function buildDealWorkflow(baseNodes, factor) {
+      const cloned = baseNodes.map((n) => ({ ...n, tasks: n.tasks.map((t) => ({ ...t, done: false })) }));
+      const totalTasks = cloned.reduce((s, n) => s + n.tasks.length, 0);
+      const target = Math.round(totalTasks * factor);
+      let marked = 0;
+      for (const node of cloned) {
+        for (const t of node.tasks) {
+          if (marked >= target) break;
+          t.done = true;
+          marked++;
+        }
+        if (marked >= target) break;
+      }
+      cloned.forEach((n) => {
+        const d = n.tasks.filter((t) => t.done).length;
+        if (n.tasks.length === 0) n.status = 'pending';
+        else if (d === n.tasks.length) n.status = 'done';
+        else if (d > 0) n.status = 'in-progress';
+        else n.status = 'pending';
+      });
+      return { nodes: cloned };
+    }
+
+    function buildDealWaterfall(headlineValue) {
+      const ratio = headlineValue / 24000000;
+      const r = (n) => Math.round(n * ratio);
+      return [
+        { label: 'Headline (LOI)',    value: r(24000000), delta: 0 },
+        { label: 'QoR normalization', value: r(22500000), delta: r(-1500000) },
+        { label: 'NWC peg',           value: r(22000000), delta: r(-500000) },
+        { label: 'Tax exposures',     value: r(21000000), delta: r(-1000000) },
+        { label: 'Final clearing',    value: r(21000000), delta: 0 },
+      ];
+    }
+
+    function buildDealPeople(workflow, participants) {
+      const counts = {};
+      workflow.nodes.forEach((n) => {
+        n.tasks.forEach((t) => {
+          if (!t.assignee) return;
+          if (!counts[t.assignee]) counts[t.assignee] = { total: 0, done: 0 };
+          counts[t.assignee].total++;
+          if (t.done) counts[t.assignee].done++;
+        });
+      });
+      return Object.entries(counts)
+        .map(([id, c]) => ({
+          id, total: c.total, done: c.done,
+          person: participants.find((p) => p.id === id) || null,
+        }))
+        .sort((a, b) => b.total - a.total);
+    }
+
+    // Per-deal email seeds — counterparty-specific senders + subjects
+    function buildDealEmails(deal, workflow) {
+      const sellerDomain = (deal.seller || 'counterparty').toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '') + '.com';
+      const buyerDomain  = (deal.buyer  || 'buyer').toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')      + '.com';
+      const firstNode = workflow.nodes[0] || { tasks: [] };
+      const nextOpenNode = workflow.nodes.find((n) => n.tasks.some((t) => !t.done)) || firstNode;
+      const firstOpenTask = (nextOpenNode.tasks || []).find((t) => !t.done) || (firstNode.tasks || [])[0] || { id: null };
+      return [
+        {
+          id: `e-${deal.id}-1`,
+          from: `cfo@${sellerDomain}`,
+          subject: `${deal.stage} — cohort cuts attached`,
+          snippet: `${deal.seller} CFO: attaching the cohort cuts requested for the ${deal.stage.toLowerCase()} review. Let me know if you need slices by geo.`,
+          receivedAt: '2026-05-28T13:22:00Z',
+          taskId: firstOpenTask.id,
+          tag: firstOpenTask.id ? 'matched' : 'unmatched',
+        },
+        {
+          id: `e-${deal.id}-2`,
+          from: `principal@${buyerDomain}`,
+          subject: `Re: ${deal.name} — diligence questions`,
+          snippet: `${deal.buyer}: three follow-ups on the ${nextOpenNode.name} package — top-5 customer concentration, lockup mechanics, and tax-step exposure.`,
+          receivedAt: '2026-05-28T11:09:00Z',
+          taskId: (workflow.nodes[2] || {}).tasks?.[0]?.id || null,
+          tag: 'matched',
+        },
+        {
+          id: `e-${deal.id}-3`,
+          from: `counsel@${sellerDomain}`,
+          subject: `${deal.seller} · MSA template review`,
+          snippet: `Counsel: redlines on the master services agreement for the data-room load. Please flag any deviation from the LOI terms.`,
+          receivedAt: '2026-05-27T17:46:00Z',
+          taskId: null,
+          tag: 'unmatched',
+        },
+        {
+          id: `e-${deal.id}-4`,
+          from: `lender@${buyerDomain.replace(/^[^.]+/, 'risk')}`,
+          subject: `Lender risk · ${deal.name}`,
+          snippet: `Risk officer: peg methodology preference confirmed. Need 12-month with seasonal adjustment, callout for Q4 AR pickup.`,
+          receivedAt: '2026-05-27T15:01:00Z',
+          taskId: (workflow.nodes.find((n) => /nwc/i.test(n.name)) || {}).tasks?.[0]?.id || null,
+          tag: 'matched',
+        },
+      ];
+    }
+
+    function buildDealKpis(workflow) {
+      const allTasks = workflow.nodes.flatMap((n) => n.tasks);
+      return {
+        open:    allTasks.filter((t) => !t.done).length,
+        blocked: workflow.nodes.filter((n) => n.status === 'blocked').length,
+        gates:   workflow.nodes.filter((n) => n.isGate && n.tasks.some((t) => !t.done)).length,
+        signoffs:allTasks.filter((t) => (t.controlRequired === 'C3' || t.controlRequired === 'C4') && !t.done).length,
+      };
+    }
+
+    const _dealData = {};
+    (pitch.app.deals || []).forEach((d) => {
+      const factor = STAGE_PROGRESS[d.stage] != null ? STAGE_PROGRESS[d.stage] : 0.5;
+      const workflow = buildDealWorkflow(_baseNodes, factor);
+      _dealData[d.id] = {
+        meta: d,
+        workflow,
+        value: buildDealWaterfall(d.value),
+        people: buildDealPeople(workflow, _participants),
+        risk: buildDealKpis(workflow),
+        emails: buildDealEmails(d, workflow),
+      };
+    });
+
+    const _cur = _dealData[_currentDeal.id] || {
+      meta: _currentDeal,
+      workflow: { nodes: _baseNodes },
+      value: buildDealWaterfall(_currentDeal.value || 24000000),
+      people: buildDealPeople({ nodes: _baseNodes }, _participants),
+      risk: buildDealKpis({ nodes: _baseNodes }),
+    };
+
+    const _nodes        = _cur.workflow.nodes;
+    const _peopleSorted = _cur.people;
+    const _peopleMax    = _peopleSorted.reduce((m, x) => Math.max(m, x.total), 1);
+    const _open         = _cur.risk.open;
+    const _blocked      = _cur.risk.blocked;
+    const _gates        = _cur.risk.gates;
+    const _signoffs     = _cur.risk.signoffs;
+    const _dealValue    = _cur.value;
+    const _vMax         = Math.max(..._dealValue.map((s) => s.value));
+    const fmtMM         = (n) => '$' + (n / 1000000).toFixed(1) + 'M';
+  %>
+
+  <main class="mll-dash-page">
+
+    <div class="mll-dash-top">
+      <div class="mll-dash-top__left">
+        <a class="mll-dash-top__crumb" href="/c/<%= pitch.slug %>/overview">← <%= pitch.client %></a>
+        <h1 class="mll-dash-top__title"><%= pitch.client %> · Deal cockpit</h1>
+      </div>
+      <div class="mll-dash-top__center">
+        <label class="mll-deal-pick" title="Switch between active Upland deals">
+          <span class="mll-deal-pick__lbl">Deal</span>
+          <select data-deal-select>
+            <% _deals.forEach((d) => { %>
+              <option value="<%= d.id %>" data-color="<%= d.color %>" data-buyer="<%= d.buyer %>" data-seller="<%= d.seller %>" data-stage="<%= d.stage %>" data-value="<%= d.value %>" <%= d.id === _currentDeal.id ? 'selected' : '' %>>
+                <%= d.name %> · <%= d.stage %> · <%= fmtMoney(d.value) %>
+              </option>
+            <% }) %>
+          </select>
+        </label>
+        <div class="mll-deal-pill" data-deal-pill style="border-left-color: <%= _currentDeal.color || '#4338CA' %>">
+          <span class="mll-deal-pill__buyer" data-deal-pill-buyer><%= _currentDeal.buyer %></span>
+          <span class="mll-deal-pill__arrow">↔</span>
+          <span class="mll-deal-pill__seller" data-deal-pill-seller><%= _currentDeal.seller %></span>
+          <span class="mll-deal-pill__value" data-deal-pill-value><%= fmtMoney(_currentDeal.value) %></span>
+        </div>
+      </div>
+      <div class="mll-dash-top__right">
+        <a class="mll-cta" href="/c/<%= pitch.slug %>/proposal/draft">See the proposal →</a>
+        <span class="mll-conn-pill" data-conn-pill>connecting…</span>
+      </div>
+    </div>
+
+    <section class="mll-dash" aria-label="Dashboard widgets">
+
+      <!-- About · demo feature inventory -->
+      <article class="mll-dash__cell mll-dash__cell--marketing">
+        <header class="mll-dash__head"><span class="mll-dash__tag">About this demo</span><h2><%= pitch.app.marketing.headline %></h2></header>
+        <p class="mll-dash__sub"><%= pitch.app.marketing.sub %></p>
+        <% if (pitch.app.marketing.cta) { %><p class="mll-dash__cta"><strong>Try it:</strong> <%= pitch.app.marketing.cta %></p><% } %>
+
+        <div class="mll-features">
+          <% (pitch.app.marketing.features || []).forEach((g) => { %>
+            <details class="mll-features__group" open>
+              <summary class="mll-features__head">
+                <span class="mll-features__head-row">
+                  <span class="mll-features__icon"><%= g.icon || '·' %></span>
+                  <span class="mll-features__cat"><%= g.category %></span>
+                  <span class="mll-features__count"><%= g.items.length %></span>
+                </span>
+              </summary>
+              <ul class="mll-features__list">
+                <% g.items.forEach((it) => { %><li><%= it %></li><% }) %>
+              </ul>
+            </details>
+          <% }) %>
+        </div>
+      </article>
+
+      <!-- Permissions + role switch -->
+      <article class="mll-dash__cell mll-dash__cell--perms">
+        <header class="mll-dash__head">
+          <span class="mll-dash__tag">Acting as · permissions</span>
+          <div class="mll-dash__role-pill" data-role-pill>Upland Superadmin</div>
+        </header>
+        <label class="mll-dash__field">
+          <select data-role-select>
+            <optgroup label="Internal">
+              <% pitch.app.roles.filter(r => r.group === 'Internal').forEach((r) => { %>
+                <option value="<%= r.id %>" data-color="<%= r.color %>" data-control="<%= r.defaultControl %>"><%= r.label %></option>
+              <% }) %>
+            </optgroup>
+            <optgroup label="Upland">
+              <% pitch.app.roles.filter(r => r.group === 'Upland').forEach((r) => { %>
+                <option value="<%= r.id %>" data-color="<%= r.color %>" data-control="<%= r.defaultControl %>"><%= r.label %></option>
+              <% }) %>
+            </optgroup>
+            <optgroup label="Clients">
+              <% pitch.app.roles.filter(r => r.group === 'Clients').forEach((r) => { %>
+                <option value="<%= r.id %>" data-color="<%= r.color %>" data-control="<%= r.defaultControl %>"><%= r.label %></option>
+              <% }) %>
+            </optgroup>
+          </select>
+        </label>
+
+        <div class="mll-perm-table mll-perm-table--compact" data-perm-table>
+          <div class="mll-perm-head">
+            <span class="mll-perm-head__label">Permission</span>
+            <% pitch.app.roles.forEach((r) => { %>
+              <span class="mll-perm-head__role" title="<%= r.label %>">
+                <%= r.id.charAt(0).toUpperCase() + r.id.slice(1, 3) %>
+              </span>
+            <% }) %>
+          </div>
+          <% pitch.app.permissions.forEach((p) => { %>
+            <div class="mll-perm-row" data-perm-id="<%= p.id %>">
+              <div class="mll-perm-row__label" title="<%= p.description %>">
+                <span class="mll-perm-row__label-main"><%= p.label %></span>
+              </div>
+              <% pitch.app.roles.forEach((r) => { %>
+                <label class="mll-perm-cell" title="<%= r.label %> · <%= p.label %>">
+                  <input type="checkbox"
+                    data-perm-toggle
+                    data-perm="<%= p.id %>"
+                    data-role="<%= r.id %>"
+                    <%= (p.granted || []).includes(r.id) ? 'checked' : '' %> />
+                  <span class="mll-perm-cell__box" aria-hidden="true"></span>
+                </label>
+              <% }) %>
+            </div>
+          <% }) %>
+        </div>
+
+        <form class="mll-assign mll-assign--compact" data-assign-form data-requires-perm="reassign_tasks">
+          <select data-assign-task aria-label="Task"></select>
+          <select data-assign-person aria-label="Person">
+            <% pitch.app.people.forEach((p) => { %>
+              <option value="<%= p.id %>"><%= p.name %></option>
+            <% }) %>
+          </select>
+          <button type="submit" class="mll-dash__btn">Reassign</button>
+        </form>
+      </article>
+
+      <!-- People · assignment breakdown -->
+      <article class="mll-dash__cell mll-dash__cell--people">
+        <header class="mll-dash__head"><span class="mll-dash__tag">People · assignments</span><h2>Workload by person</h2></header>
+        <ul class="mll-people-list">
+          <% _peopleSorted.forEach((p) => {
+               const name = p.person ? p.person.name : p.id;
+               const title = p.person ? p.person.title : '';
+               const sidev = p.person ? p.person.side : '';
+               const pctWidth = Math.max(6, Math.round(100 * p.total / _peopleMax));
+               const donePctWidth = pctWidth * (p.total ? p.done / p.total : 0);
+          %>
+            <li class="mll-people-row" data-side="<%= sidev || '' %>">
+              <div class="mll-people-row__hd">
+                <span class="mll-people-row__name"><%= name %></span>
+                <span class="mll-people-row__count"><%= p.done %>/<%= p.total %></span>
+              </div>
+              <div class="mll-people-row__title"><%= title %><% if (sidev) { %> · <%= sidev %>-side<% } %></div>
+              <div class="mll-people-row__bar">
+                <span class="mll-people-row__bar-total" style="width: <%= pctWidth %>%"></span>
+                <span class="mll-people-row__bar-done"  style="width: <%= donePctWidth %>%"></span>
+              </div>
+            </li>
+          <% }) %>
+        </ul>
+      </article>
+
+      <!-- Deal value waterfall (vertical bars) + Risk KPIs -->
+      <article class="mll-dash__cell mll-dash__cell--value">
+        <header class="mll-dash__head">
+          <span class="mll-dash__tag">Deal value · diligence haircut</span>
+          <strong class="mll-dash__head-num"><%= fmtMM(_dealValue[_dealValue.length - 1].value) %></strong>
+        </header>
+        <p class="mll-dash__sub">From the LOI headline through QoR / NWC / tax adjustments to final clearing.</p>
+        <div class="mll-waterfall">
+          <% _dealValue.forEach((s, i) => {
+               const h = Math.round(100 * s.value / _vMax);
+               const cls = s.delta < 0 ? 'is-down' : (s.delta > 0 ? 'is-up' : 'is-flat');
+          %>
+            <div class="mll-waterfall__col <%= cls %>" title="<%= s.label %>">
+              <div class="mll-waterfall__num"><%= fmtMM(s.value) %></div>
+              <div class="mll-waterfall__bar" style="--h: <%= h %>%"></div>
+              <div class="mll-waterfall__delta"><%= s.delta === 0 ? '—' : (s.delta < 0 ? '−' : '+') + '$' + Math.abs(s.delta / 1000000).toFixed(1) + 'M' %></div>
+              <div class="mll-waterfall__lbl"><%= s.label %></div>
+            </div>
+          <% }) %>
+        </div>
+        <div class="mll-kpi-row">
+          <div class="mll-kpi mll-kpi--accent">
+            <strong><%= _open %></strong><span>Open tasks</span>
+          </div>
+          <div class="mll-kpi mll-kpi--danger">
+            <strong><%= _blocked %></strong><span>Blocked nodes</span>
+          </div>
+          <div class="mll-kpi mll-kpi--warn">
+            <strong><%= _gates %></strong><span>Gates remaining</span>
+          </div>
+          <div class="mll-kpi mll-kpi--ok">
+            <strong><%= _signoffs %></strong><span>Pending sign-offs</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Excel upload · LLM summary -->
+      <article class="mll-dash__cell mll-dash__cell--xlsx">
+        <header class="mll-dash__head">
+          <span class="mll-dash__tag">Excel · LLM diligence summary</span>
+          <h2>Drop a workbook</h2>
+        </header>
+        <p class="mll-dash__sub mll-dash__sub--tight">XLSX/CSV parsed in-memory. <strong>Not saved.</strong> Summary returned by Ollama (<%= 'qwen2.5:7b' %>).</p>
+        <form class="mll-xlsx" data-xlsx-form>
+          <label class="mll-xlsx__drop" data-xlsx-drop>
+            <input type="file" accept=".xlsx,.xls,.csv" data-xlsx-input hidden />
+            <span class="mll-xlsx__drop-main" data-xlsx-name>Drop XLSX/CSV here or click</span>
+            <span class="mll-xlsx__drop-sub">Max 8MB · in-memory only</span>
+          </label>
+          <button type="submit" class="mll-dash__btn" data-xlsx-submit disabled>Summarize</button>
+        </form>
+        <div class="mll-xlsx__result" data-xlsx-result hidden></div>
+      </article>
+
+      <!-- Email collector -->
+      <article class="mll-dash__cell mll-dash__cell--emails" data-requires-perm="read_inbound_emails">
+        <header class="mll-dash__head">
+          <span class="mll-dash__tag">Email collector · <%= pitch.app.emails.watch %></span>
+          <h2>Inbound</h2>
+        </header>
+        <p class="mll-dash__sub mll-dash__sub--tight">
+          Watching <code><%= pitch.app.emails.domain %></code>. Matched subjects auto-tag. Completing a node simulates a fresh inbound <strong>"what's next"</strong> email here — demo only.
+        </p>
+        <ul class="mll-email-list" data-email-list>
+          <% (_cur.emails || pitch.app.emails.seed).forEach((e) => { %>
+            <li class="mll-email is-collapsed" data-email-id="<%= e.id %>" data-task-id="<%= e.taskId || '' %>" data-tag="<%= e.tag %>">
+              <button type="button" class="mll-email__toggle" data-email-toggle aria-expanded="false">
+                <span class="mll-email__from"><%= e.from %></span>
+                <span class="mll-email__subj"><%= e.subject %></span>
+                <span class="mll-email__when"><%= e.receivedAt.slice(11,16) %></span>
+                <span class="mll-email__chev" aria-hidden="true">▸</span>
+              </button>
+              <div class="mll-email__body">
+                <div class="mll-email__hd-actions">
+                  <button type="button" class="mll-email__cog" data-email-reset aria-label="Reset card" title="Reset card">⚙</button>
+                </div>
+                <div class="mll-email__snip"><%= e.snippet %></div>
+                <div class="mll-email__tag">
+                  <% if (e.taskId) { %>↪ auto-tagged → <code data-email-task><%= e.taskId %></code><% } else { %>(no task match)<% } %>
+                </div>
+                <div class="mll-email__actions">
+                  <button type="button" class="mll-email__act mll-email__act--reply" data-email-reply>↩ Reply</button>
+                  <button type="button" class="mll-email__act mll-email__act--del" data-email-delete>🗑 Delete</button>
+                </div>
+                <form class="mll-email__reply" data-email-reply-form hidden>
+                  <textarea data-email-reply-text placeholder="Type a reply (simulated — nothing sent)…" rows="2"></textarea>
+                  <div class="mll-email__reply-actions">
+                    <button type="submit" class="mll-email__act mll-email__act--send">Send (sim)</button>
+                    <button type="button" class="mll-email__act mll-email__act--cancel" data-email-reply-cancel>Cancel</button>
+                  </div>
+                </form>
+              </div>
+            </li>
+          <% }) %>
+        </ul>
+      </article>
+
+      <!-- Pipeline meter (compact band at bottom of the dash grid) -->
+      <article class="mll-dash__cell mll-dash__cell--meter">
+        <header class="mll-dash__head">
+          <span class="mll-dash__tag">Pipeline · LOI → Delivery</span>
+          <p class="mll-meter-scope" data-meter-scope></p>
+        </header>
+        <div class="mll-meter" data-meter>
+          <% pitch.app.workflow.nodes.forEach((n, i) => {
+               const pct = n.tasks.length ? Math.round(100 * n.tasks.filter(t=>t.done).length / n.tasks.length) : 0;
+               const nearComplete = pct >= 70 && pct < 100;
+          %>
+            <% if (i > 0) { %><span class="mll-meter__joint" aria-hidden="true"></span><% } %>
+            <button type="button" class="mll-meter__node <%= n.isGate ? 'is-gate' : '' %> <%= pct === 100 ? 'is-complete' : '' %> <%= nearComplete ? 'is-near' : '' %>"
+              data-node-id="<%= n.id %>"
+              data-status="<%= n.status %>"
+              data-pct="<%= pct %>"
+              style="--pct: <%= pct %>%">
+              <span class="mll-meter__idx"><%= String(i + 1).padStart(2, '0') %></span>
+              <span class="mll-meter__name"><%= n.name %><% if (n.isGate) { %> <em>GATE</em><% } %></span>
+              <span class="mll-meter__bar"><span class="mll-meter__fill"></span></span>
+              <span class="mll-meter__foot">
+                <span class="mll-meter__owner" title="Owner"><%= (pitch.app.participants.find(p=>p.id===n.owner)||{}).name || n.owner %></span>
+                <span class="mll-meter__deadline" title="Deadline"><%= (n.deadline||'').slice(0,10) %></span>
+                <span class="mll-meter__pct"><%= pct %>%</span>
+              </span>
+            </button>
+          <% }) %>
+        </div>
+        <div class="mll-meter-popover" data-meter-popover hidden role="dialog" aria-label="Node tasks">
+          <header class="mll-meter-popover__hd">
+            <strong data-pop-name></strong>
+            <span data-pop-deadline></span>
+          </header>
+          <div class="mll-meter-popover__owner" data-pop-owner></div>
+          <ul class="mll-meter-popover__tasks" data-pop-tasks></ul>
+        </div>
+      </article>
+
+    </section>
+
+  </main>
+
+  <aside class="mll-reviewer" data-reviewer data-requires-perm="trigger_reviewer_agent">
+    <header class="mll-reviewer__hd">
+      <span class="mll-reviewer__tag">Reviewer · LLM agent</span>
+      <strong>What should I do next?</strong>
+      <button type="button" class="mll-reviewer__toggle" data-reviewer-toggle aria-label="Collapse">_</button>
+    </header>
+    <div class="mll-reviewer__body" data-reviewer-body>
+      <div class="mll-reviewer__msgs" data-reviewer-msgs>
+        <div class="mll-reviewer__msg mll-reviewer__msg--agent">
+          Pre-empt: I'll review the workflow on every role switch or task change and post a take here.
+          You can also ask me a direct question below.
+        </div>
+      </div>
+      <form class="mll-reviewer__form" data-reviewer-form>
+        <input type="text" data-reviewer-input placeholder="Ask the reviewer (e.g. 'is the gate clear?')" />
+        <button type="submit" class="mll-dash__btn">Ask</button>
+      </form>
+    </div>
+  </aside>
+
+  <script>
+    window.__PITCH_APP__ = {
+      slug: <%- JSON.stringify(pitch.slug) %>,
+      deals: <%- JSON.stringify(pitch.app.deals || []) %>,
+      dealData: <%- JSON.stringify(_dealData) %>,
+      currentDealId: <%- JSON.stringify(_currentDeal.id) %>,
+      roles: <%- JSON.stringify(pitch.app.roles) %>,
+      controlTypes: <%- JSON.stringify(pitch.app.controlTypes) %>,
+      participants: <%- JSON.stringify(pitch.app.participants) %>,
+      people: <%- JSON.stringify(pitch.app.people) %>,
+      workflow: <%- JSON.stringify(pitch.app.workflow) %>,
+      permissions: <%- JSON.stringify(pitch.app.permissions) %>,
+    };
+  </script>
+  <script defer src="/socket.io/socket.io.js"></script>
+  <script defer src="/js/proposal-app.js"></script>
+</body>
+</html>

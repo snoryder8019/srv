@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/css/madlands.css" />
+  <link rel="stylesheet" href="/css/admin.css" />
+  <% if (kind === 'music') { %><script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script><% } %>
+</head>
+<body class="admin" data-kind="<%= kind %>">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◆</span>
+      <span class="brand-name">MADLANDS</span>
+      <span class="brand-sub">builder · <%= specName.toLowerCase() %></span>
+    </div>
+    <div class="hud">
+      <a class="chip btn" href="/admin">‹ builders</a>
+      <a class="chip btn" href="/admin/builds">builds</a>
+      <a class="chip btn" href="/">▸ map</a>
+    </div>
+  </header>
+
+  <main class="admin-wrap two-col">
+    <section class="form-col">
+      <h2><%= specName %></h2>
+      <p class="muted"><%= blurb %> · type what you want, run the agent, it fills the rest. Edit, then save.</p>
+
+      <form id="builder-form">
+        <% fields.forEach(function(f){ var pv = (prefill && prefill[f.key]) || ''; %>
+          <label class="<%= f.agent ? 'agent-field' : '' %>">
+            <%= f.label %><% if (f.agent) { %> <span class="badge">agent</span><% } %>
+            <% if (f.type === 'textarea') { %>
+              <textarea id="f-<%= f.key %>" rows="2" placeholder="<%= f.placeholder || '' %>"><%= pv %></textarea>
+            <% } else if (f.type === 'select') { %>
+              <select id="f-<%= f.key %>">
+                <% (f.options||[]).forEach(function(o){ var sel = (pv||f.value)===o; %><option value="<%= o %>" <%= sel?'selected':'' %>><%= o %></option><% }) %>
+              </select>
+            <% } else if (f.type === 'list') { %>
+              <input id="f-<%= f.key %>" value="<%= pv %>" placeholder="<%= f.placeholder || 'comma or newline separated' %>" />
+            <% } else if (f.type === 'colorlist') { %>
+              <input id="f-<%= f.key %>" value="<%= pv %>" placeholder="#hex, #hex, …" />
+              <span class="swatch" id="sw-<%= f.key %>"></span>
+            <% } else { %>
+              <input id="f-<%= f.key %>" value="<%= pv || f.value || '' %>" placeholder="<%= f.placeholder || '' %>" />
+            <% } %>
+          </label>
+        <% }) %>
+      </form>
+
+      <div class="btn-row">
+        <button id="run" class="run-btn">Run agent ▸ fill</button>
+        <% if (kind === 'music') { %><button id="preview" class="save-btn">▶ Preview</button><% } %>
+        <% if (kind === 'environment') { %><button id="genart" class="save-btn">Generate art (SD)</button><% } %>
+        <button id="save" class="save-btn" disabled>Save build</button>
+      </div>
+      <div id="status" class="status"></div>
+      <div id="guard" class="guard"></div>
+    </section>
+
+    <section class="out-col">
+      <h2>Raw artifact</h2>
+      <pre id="out" class="out">—</pre>
+      <% if (kind === 'environment') { %><div id="art" class="art-thumbs"></div><% } %>
+    </section>
+  </main>
+
+  <script id="fielddefs" type="application/json"><%- JSON.stringify(fields) %></script>
+  <script src="/js/admin/builder.js"></script>
+  <% if (kind === 'music') { %><script type="module" src="/js/admin/music-preview.js"></script><% } %>
+  <% if (kind === 'environment') { %><script type="module" src="/js/admin/env-art.js"></script><% } %>
+</body>
+</html>

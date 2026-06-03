@@ -12,16 +12,29 @@ const VALID_KINDS = new Set(['news', 'update', 'help', 'maintenance', 'event', '
 const VALID_TONES = new Set(['info', 'warning', 'success', 'critical']);
 
 let cache = [];
+let _mtime = 0;
 
 function _load() {
   try {
-    if (!fs.existsSync(FILE)) { cache = []; return; }
+    if (!fs.existsSync(FILE)) { cache = []; _mtime = 0; return; }
+    const st = fs.statSync(FILE);
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
     cache = Array.isArray(raw) ? raw : [];
+    _mtime = st.mtimeMs;
   } catch (e) {
     console.error('[announcements] load failed:', e.message);
     cache = [];
   }
+}
+
+// Reload from disk if the file changed since we last read it (lets out-of-process
+// writes — CLI posts, other workers — show up without a restart). Cheap stat.
+function _syncIfStale() {
+  try {
+    if (!fs.existsSync(FILE)) return;
+    const st = fs.statSync(FILE);
+    if (st.mtimeMs !== _mtime) _load();
+  } catch (e) { /* ignore */ }
 }
 
 function _save() {
@@ -32,6 +45,7 @@ function _save() {
 _load();
 
 function list({ activeOnly = false } = {}) {
+  _syncIfStale();
   const now = Date.now();
   let items = cache.slice();
   if (activeOnly) {

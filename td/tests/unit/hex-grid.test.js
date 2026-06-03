@@ -11,7 +11,7 @@ import {
   hexNeighbors,
   generateHexBoard,
   hexKey,
-} from '../../services/hex-grid.js';
+} from '../../services/game/hex-grid.js';
 
 test('axial→world→axial roundtrip', () => {
   for (const { q, r } of [{ q: 0, r: 0 }, { q: 3, r: -2 }, { q: -5, r: 5 }]) {

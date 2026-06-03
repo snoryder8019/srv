@@ -1,20 +1,74 @@
 <%- include('partials/header') %>
 
 <main class="td-landing">
-  <section class="hero">
+  <section class="hero has-art">
     <h1>⬡ Towers</h1>
     <p class="tag">A community-built hex tower defense.</p>
-    <p>Design GLTF towers. Sculpt hex maps. Vote on the best. Defend.</p>
+    <p>Design GLTF towers. Sculpt hex maps. Vote on the best. Defend the realm.</p>
     <div class="cta-row">
       <a href="/play" class="btn primary">Play</a>
-      <a href="/build/tower" class="btn">Build a Tower</a>
-      <a href="/build/map" class="btn">Build a Map</a>
+      <% if (currentUser && currentUser.roles && currentUser.roles.includes('admin')) { %>
+        <a href="/build/tower" class="btn">Build a Tower</a>
+        <a href="/build/map" class="btn">Build a Map</a>
+        <a href="/admin" class="btn">Admin</a>
+      <% } %>
+    </div>
+  </section>
+
+  <% if (typeof featured !== 'undefined' && featured && featured.length) { %>
+  <section class="featured">
+    <h2>⬡ Featured Towers</h2>
+    <div class="tower-strip">
+      <% featured.forEach(function(t){ %>
+        <div class="tower-card">
+          <div class="tc-cat"><%= t.category %></div>
+          <div class="tc-name"><%= t.name %></div>
+          <div class="tc-desc"><%= t.description || '' %></div>
+          <div class="tc-stats">
+            <span class="pill">DMG <%= t.stats.damage %></span>
+            <span class="pill">RNG <%= t.stats.range %></span>
+            <span class="pill">ROF <%= t.stats.fireRate %></span>
+            <span class="pill">$<%= t.stats.cost %></span>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="commander framed">
+    <div class="portrait" style="background-image:url('/assets/img/vesk-portrait.png')"></div>
+    <div class="blurb">
+      <h2>Vesk, the Hexwarden</h2>
+      <p>Your field commander reacts to every wave, breach, and victory - in real time, in character. Talk strategy before you deploy.</p>
+      <button class="btn small" data-open-tavern>Talk to the Commander</button>
     </div>
   </section>
 
   <section class="status-bar">
-    <span>API: <code>/api/v1/health</code></span>
+    <span>API: <code>/api/v1/health</code> · NPC: <code>/api/v1/npc/health</code></span>
   </section>
 </main>
+
+<!-- NPC tavern modal -->
+<div class="td-modal-overlay" id="tavern-overlay">
+  <div class="td-modal arcane">
+    <div class="td-modal-head">
+      <div class="avatar-sm" style="background-image:url('/assets/img/vesk-portrait.png')"></div>
+      <div class="who">
+        <div class="nm">Vesk, the Hexwarden</div>
+        <div class="role">Field Commander · live AI</div>
+      </div>
+      <button class="td-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="tavern-log"></div>
+    <div class="tavern-input">
+      <input type="text" placeholder="Ask the commander..." maxlength="500" autocomplete="off">
+      <button class="btn small primary tavern-send">Send</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/npc-tavern.js"></script>
 
 <%- include('partials/footer') %>

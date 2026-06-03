@@ -13,6 +13,7 @@ const placementSchema = new mongoose.Schema({
 
 const runSchema = new mongoose.Schema({
   mapId: { type: mongoose.Schema.Types.ObjectId, ref: 'Map', required: true },
+  levelId: { type: mongoose.Schema.Types.ObjectId, ref: 'Level', default: null },
   playerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   playerName: String,
 

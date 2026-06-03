@@ -29,6 +29,27 @@
     .inq-flash.ok { background:rgba(16,185,129,0.10); color:#059669; }
     .inq-flash.err { background:rgba(220,38,38,0.10); color:#b91c1c; }
     .inq-flash.info { background:rgba(59,130,246,0.10); color:#1e40af; }
+    .inq-bulkbar { display:none; align-items:center; gap:8px; padding:8px 12px; margin-bottom:10px;
+                   background:var(--surface); border:1px solid var(--border); border-radius:3px; font-size:0.78rem; }
+    .inq-bulkbar.on { display:flex; }
+    .inq-bulkbar .count { font-weight:600; color:var(--navy); margin-right:6px; }
+    .inq-bulkbar button { padding:5px 10px; border:1px solid var(--border); background:var(--ivory);
+                          font-size:0.72rem; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
+                          color:var(--slate); cursor:pointer; border-radius:2px; }
+    .inq-bulkbar button:hover { border-color:var(--gold); color:var(--navy); }
+    .inq-bulkbar button.danger:hover { border-color:#b91c1c; color:#b91c1c; }
+    .inq-bulkbar .spacer { flex:1; }
+    th.col-check, td.col-check { width:28px; text-align:center; }
+    .inq-block { margin-top:24px; padding:14px; background:var(--surface); border:1px solid var(--border); border-radius:3px; }
+    .inq-block h3 { margin:0 0 10px; font-size:0.85rem; letter-spacing:0.08em; text-transform:uppercase; color:var(--navy); }
+    .inq-block .row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--border); font-size:0.78rem; }
+    .inq-block .row:last-child { border-bottom:none; }
+    .inq-block .row .meta { color:var(--slate); font-size:0.7rem; }
+    .inq-block .row button { background:transparent; border:none; color:#b91c1c; font-size:0.7rem; cursor:pointer; padding:2px 6px; }
+    .inq-block .row button:hover { text-decoration:underline; }
+    .inq-block .add { display:flex; gap:6px; margin-top:10px; }
+    .inq-block .add input { flex:1; padding:6px 10px; border:1px solid var(--border); background:var(--ivory); font-size:0.78rem; border-radius:2px; }
+    tr.inq-unread { background:rgba(59,130,246,0.04); font-weight:500; }
   </style>
 
   <% if (flash.saved) { %><div class="inq-flash ok">Saved.</div><% } %>
@@ -59,10 +80,22 @@
     </div>
   <% } else { %>
 
+  <div id="inqBulkBar" class="inq-bulkbar">
+    <span class="count"><span id="inqSelCount">0</span> selected</span>
+    <button type="button" data-action="read">Mark Read</button>
+    <button type="button" data-action="replied">Mark Replied</button>
+    <button type="button" data-action="archived">Archive</button>
+    <button type="button" data-action="spam" class="danger">Spam &amp; Block</button>
+    <button type="button" data-action="delete" class="danger">Delete</button>
+    <span class="spacer"></span>
+    <button type="button" id="inqClearSel">Clear</button>
+  </div>
+
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
+          <th class="col-check"><input type="checkbox" id="inqSelAll" title="Select all"></th>
           <th>From</th>
           <th>Message</th>
           <th>Service</th>
@@ -72,17 +105,24 @@
       </thead>
       <tbody>
         <% for (const i of items) { %>
-        <tr onclick="window.location='/admin/inquiries/<%= i._id %>'" style="cursor:pointer;<%= (!i.status || i.status === 'new') ? 'background:rgba(59,130,246,0.04);font-weight:500;' : '' %>">
-          <td>
+        <tr data-id="<%= i._id %>" class="<%= (!i.status || i.status === 'new') ? 'inq-unread' : '' %>">
+          <td class="col-check" onclick="event.stopPropagation();">
+            <input type="checkbox" class="inq-row-check" value="<%= i._id %>">
+          </td>
+          <td class="inq-clickable" onclick="window.location='/admin/inquiries/<%= i._id %>'" style="cursor:pointer;">
             <div style="font-weight:500;color:var(--navy);"><%= i.name || i.email %></div>
             <div class="text-slate" style="font-size:0.74rem;"><%= i.email %><%= i.company ? ' · ' + i.company : '' %></div>
           </td>
-          <td>
+          <td class="inq-clickable" onclick="window.location='/admin/inquiries/<%= i._id %>'" style="cursor:pointer;">
             <div class="msg-preview"><%= (i.message || '').substring(0, 120) %></div>
           </td>
-          <td><span class="text-slate" style="font-size:0.78rem;"><%= i.service || '—' %></span></td>
-          <td><span class="inq-status <%= i.status || 'new' %>"><%= i.status || 'new' %></span></td>
-          <td>
+          <td class="inq-clickable" onclick="window.location='/admin/inquiries/<%= i._id %>'" style="cursor:pointer;">
+            <span class="text-slate" style="font-size:0.78rem;"><%= i.service || '—' %></span>
+          </td>
+          <td class="inq-clickable" onclick="window.location='/admin/inquiries/<%= i._id %>'" style="cursor:pointer;">
+            <span class="inq-status <%= i.status || 'new' %>"><%= i.status || 'new' %></span>
+          </td>
+          <td class="inq-clickable" onclick="window.location='/admin/inquiries/<%= i._id %>'" style="cursor:pointer;">
             <span class="text-slate" style="font-size:0.75rem;">
               <%= new Date(i.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) %>
               <%= new Date(i.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) %>
@@ -95,6 +135,138 @@
   </div>
 
   <% } %>
+
+  <% if (status === 'spam') { %>
+  <div class="inq-block" id="inqBlocklist">
+    <h3>Blocked Senders</h3>
+    <div class="text-slate" style="font-size:0.74rem;margin-bottom:8px;">
+      Incoming contact-form submissions from these addresses (and Gmail dot/+ variants) are silently dropped.
+    </div>
+    <div id="inqBlockRows" class="text-slate" style="font-size:0.78rem;">Loading…</div>
+    <div class="add">
+      <input type="email" id="inqBlockInput" placeholder="email@example.com">
+      <button type="button" id="inqBlockAdd" class="filter-btn">Add</button>
+    </div>
+  </div>
+  <% } %>
+</div>
+
+<script>
+(function() {
+  const bar = document.getElementById('inqBulkBar');
+  const countEl = document.getElementById('inqSelCount');
+  const selAll = document.getElementById('inqSelAll');
+  const rowChecks = () => Array.from(document.querySelectorAll('.inq-row-check'));
+  const selectedIds = () => rowChecks().filter(c => c.checked).map(c => c.value);
+
+  function refresh() {
+    const n = selectedIds().length;
+    countEl.textContent = n;
+    bar.classList.toggle('on', n > 0);
+    if (selAll) {
+      const all = rowChecks();
+      selAll.checked = all.length > 0 && all.every(c => c.checked);
+      selAll.indeterminate = n > 0 && !selAll.checked;
+    }
+  }
+
+  rowChecks().forEach(c => c.addEventListener('change', refresh));
+  if (selAll) selAll.addEventListener('change', () => {
+    rowChecks().forEach(c => { c.checked = selAll.checked; });
+    refresh();
+  });
+  const clearBtn = document.getElementById('inqClearSel');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    rowChecks().forEach(c => { c.checked = false; });
+    refresh();
+  });
+
+  bar.querySelectorAll('button[data-action]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.action;
+      const ids = selectedIds();
+      if (!ids.length) return;
+      const labels = {
+        read: 'Mark ' + ids.length + ' as read?',
+        replied: 'Mark ' + ids.length + ' as replied?',
+        archived: 'Archive ' + ids.length + ' inquir' + (ids.length === 1 ? 'y' : 'ies') + '?',
+        spam: 'Mark ' + ids.length + ' as spam AND block sender' + (ids.length === 1 ? '' : 's') + ' from contact form?',
+        delete: 'Permanently delete ' + ids.length + ' inquir' + (ids.length === 1 ? 'y' : 'ies') + '? This cannot be undone.',
+      };
+      if (action === 'delete' || action === 'spam') {
+        if (!confirm(labels[action])) return;
+      }
+      btn.disabled = true;
+      try {
+        const r = await fetch('/admin/inquiries/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, action }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || 'Bulk action failed');
+        location.reload();
+      } catch (e) {
+        alert(e.message);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  refresh();
+
+  // ── Blocked Senders panel (only present on Spam tab) ────────────────────
+  const blockRows = document.getElementById('inqBlockRows');
+  if (blockRows) {
+    async function loadBlocklist() {
+      blockRows.textContent = 'Loading…';
+      const r = await fetch('/admin/inquiries/spam-list/data');
+      const j = await r.json();
+      if (!j.ok) { blockRows.textContent = j.error || 'Failed to load'; return; }
+      if (!j.list.length) { blockRows.innerHTML = '<em>No blocked senders yet.</em>'; return; }
+      blockRows.innerHTML = j.list.map(b => {
+        const d = new Date(b.createdAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+        return '<div class="row">' +
+          '<div><strong>' + b.email + '</strong>' +
+            (b.emailNormalized && b.emailNormalized !== b.email ? ' <span class="meta">(normalized: ' + b.emailNormalized + ')</span>' : '') +
+            '<div class="meta">added ' + d + (b.addedBy ? ' by ' + b.addedBy : '') + '</div>' +
+          '</div>' +
+          '<button type="button" data-rm="' + b.email + '">remove</button>' +
+        '</div>';
+      }).join('');
+      blockRows.querySelectorAll('button[data-rm]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const email = btn.dataset.rm;
+          if (!confirm('Unblock ' + email + '?')) return;
+          const r = await fetch('/admin/inquiries/spam-list/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          });
+          const j = await r.json();
+          if (!r.ok) { alert(j.error || 'Remove failed'); return; }
+          loadBlocklist();
+        });
+      });
+    }
+    document.getElementById('inqBlockAdd').addEventListener('click', async () => {
+      const input = document.getElementById('inqBlockInput');
+      const email = input.value.trim();
+      if (!email) return;
+      const r = await fetch('/admin/inquiries/spam-list/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || 'Add failed'); return; }
+      input.value = '';
+      loadBlocklist();
+    });
+    loadBlocklist();
+  }
+})();
+</script>
 </div>
 </div></div>
 </body>

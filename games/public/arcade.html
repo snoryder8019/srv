@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MadLadsLab — Arcade</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0d0d; --surface: #141414; --card: #1a1a1a; --border: #2a2a2a;
+      --accent: #cd412b; --accent-glow: rgba(205,65,43,0.4);
+      --green: #4caf82; --yellow: #e6b800; --text: #e0e0e0; --muted: #666; --blue: #4a7c9e;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; min-height: 100vh; }
+    a { text-decoration: none; }
+
+    /* Nav (matches the Servers page) */
+    nav { background: #111; border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 52px; }
+    .nav-brand { color: var(--accent); font-size: 1rem; font-weight: bold; letter-spacing: 0.05em; text-decoration: none; cursor: pointer; transition: opacity 0.2s; }
+    .nav-brand:hover { opacity: 0.75; }
+    .nav-brand span { color: var(--muted); font-size: 0.75rem; margin-left: 8px; }
+    .nav-right { display: flex; align-items: center; gap: 12px; }
+    .chip-pill { display: none; align-items: center; gap: 6px; background: #1a1206; border: 1px solid #e3c567; border-radius: 20px; padding: 5px 12px; font-weight: 800; font-size: 0.72rem; color: #ffe9a8; }
+    .nav-home { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-size: 0.8rem; letter-spacing: 0.04em; border: 1px solid var(--border); padding: 8px 14px; border-radius: 4px; transition: all 0.2s; }
+    .nav-home:hover { border-color: var(--accent); color: var(--accent); }
+    @media (max-width: 600px) { .nav-home-label { display: none; } .nav-home { padding: 8px 11px; } }
+    .nav-menu-wrap { position: relative; }
+    .nav-menu-btn { background: transparent; border: 1px solid var(--border); padding: 10px 12px; border-radius: 5px; cursor: pointer; display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; width: 44px; height: 44px; }
+    .nav-menu-btn span { display: block; width: 22px; height: 2.5px; background: var(--muted); border-radius: 2px; transition: all 0.2s; }
+    .nav-menu-btn:hover span, .nav-menu-btn.open span { background: var(--accent); }
+    .nav-menu-btn.open { border-color: var(--accent); }
+    .nav-dropdown { display: none; position: absolute; right: 0; top: calc(100% + 8px); background: #111; border: 1px solid var(--border); border-radius: 6px; min-width: 220px; z-index: 200; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
+    .nav-dropdown.open { display: block; }
+    .nav-dd-item { display: flex; align-items: center; gap: 10px; padding: 11px 16px; font-size: 0.78rem; color: var(--muted); text-decoration: none; cursor: pointer; font-family: inherit; background: transparent; border: none; width: 100%; text-align: left; transition: all 0.15s; letter-spacing: 0.03em; }
+    .nav-dd-item:hover { background: #1a1a1a; color: var(--text); }
+    .nav-dd-admin { color: var(--yellow) !important; }
+    .nav-dd-admin:hover { background: #1a1500 !important; }
+    .nav-dd-logout:hover { background: #1a0a0a !important; color: var(--accent) !important; }
+    .nav-dd-divider { border-top: 1px solid var(--border); margin: 4px 0; }
+
+    main { max-width: 1280px; margin: 0 auto; padding: 28px 20px 60px; }
+    h2 { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 16px; }
+    .section { margin-bottom: 30px; }
+
+    /* Game cards grid */
+    .arcade-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+    .game-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; transition: border-color 0.25s, box-shadow 0.25s; }
+    .game-card:hover { border-color: var(--accent); box-shadow: 0 0 20px var(--accent-glow); }
+    .gc-banner { width: 100%; aspect-ratio: 460/215; background-size: cover; background-position: center; background-color: #000; filter: brightness(0.85); }
+    .gc-head { padding: 12px 14px 8px; }
+    .gc-name { font-size: 0.92rem; font-weight: bold; display: block; }
+    .gc-status { font-size: 0.6rem; color: var(--green); text-transform: uppercase; letter-spacing: 0.08em; }
+    .gc-tabs { display: flex; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: #111; }
+    .gc-tab { flex: 1; padding: 8px 0; text-align: center; font-size: 0.6rem; font-weight: bold; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); cursor: pointer; border: none; border-bottom: 2px solid transparent; background: transparent; font-family: inherit; transition: all 0.15s; }
+    .gc-tab:hover { color: var(--text); }
+    .gc-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .gc-panel { display: none; padding: 14px; flex: 1; }
+    .gc-panel.active { display: block; }
+    .gc-blurb { font-size: 0.74rem; color: var(--muted); line-height: 1.5; margin-bottom: 12px; }
+    .gc-best { font-size: 0.66rem; color: var(--yellow); margin-bottom: 12px; min-height: 0.9em; }
+    .gc-play { display: block; text-align: center; background: var(--green); color: #062417; font-weight: bold; font-size: 0.78rem; letter-spacing: 0.08em; padding: 11px; border-radius: 4px; transition: background 0.2s; }
+    .gc-play:hover { background: #5cc892; }
+    .lb-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 0.72rem; border-bottom: 1px solid rgba(42,42,42,0.5); }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-rank { width: 20px; color: var(--muted); flex-shrink: 0; }
+    .lb-rank.gold { color: var(--yellow); } .lb-rank.silver { color: #aaa; } .lb-rank.bronze { color: #cd7f32; }
+    .lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-stat { color: var(--green); font-size: 0.66rem; flex-shrink: 0; }
+    .lb-sub { color: var(--muted); font-size: 0.62rem; flex-shrink: 0; }
+    .muted { color: var(--muted); font-size: 0.72rem; font-style: italic; padding: 6px 0; }
+
+    /* Two-up stat cards */
+    .stat-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 720px) { .stat-two { grid-template-columns: 1fr; } }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; }
+    .panel-title { font-size: 0.62rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px; }
+    .mini-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 5px; overflow: hidden; margin-bottom: 10px; }
+    .mini { background: #0a0a0a; padding: 13px 8px; text-align: center; }
+    .mini .n { font-family: 'Courier New', monospace; font-size: 1.15rem; font-weight: bold; color: var(--yellow); line-height: 1; }
+    .mini .n.green { color: var(--green); }
+    .mini .l { font-size: 0.55rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; }
+    .chip-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 520px) { .chip-cols { grid-template-columns: 1fr; } }
+    .chip-col-label { font-size: 0.58rem; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 8px; }
+
+    /* Arcade chat panel with tabs */
+    .chat-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .chat-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border); }
+    .chat-title { font-size: 0.62rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.12em; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+    .chat-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+    .chat-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .chat-online { margin-left: auto; font-size: 0.6rem; color: var(--muted); }
+    .tabs { display: flex; border-bottom: 1px solid var(--border); background: #111; }
+    .tab { flex: 1; text-align: center; padding: 11px 6px; font-size: 0.7rem; font-weight: bold; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+    .tab.on { color: var(--text); border-bottom-color: var(--green); }
+    .pane { display: none; }
+    .pane.on { display: flex; flex-direction: column; }
+    #msgs { height: 300px; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 7px; }
+    .m { font-size: 0.78rem; line-height: 1.4; }
+    .m .nm { font-weight: bold; color: var(--yellow); }
+    .m .sf { font-size: 0.56rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-left: 4px; }
+    .m .tx { color: #dfe7e1; }
+    .m.sys { color: var(--muted); font-style: italic; }
+    .composer { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border); }
+    .composer input { flex: 1; background: #080808; border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 9px 11px; font-family: inherit; font-size: 0.82rem; }
+    .composer input:focus { border-color: var(--accent); outline: none; }
+    .composer button { background: var(--green); color: #062417; border: none; border-radius: 5px; padding: 9px 16px; font-weight: bold; font-family: inherit; cursor: pointer; }
+    .composer button:disabled { opacity: 0.4; cursor: default; }
+    #chatNote { font-size: 0.62rem; color: var(--muted); padding: 0 16px 8px; min-height: 0.8em; }
+    .lbtabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 16px 4px; }
+    .lbtab { font-size: 0.66rem; padding: 6px 10px; border-radius: 999px; background: #0f1512; border: 1px solid var(--border); color: var(--muted); cursor: pointer; }
+    .lbtab.on { background: var(--green); color: #062417; border-color: transparent; font-weight: bold; }
+    .lblist { padding: 6px 16px 16px; }
+    .cgames { padding: 14px 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); gap: 10px; }
+    .cgame { background: #111; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; text-align: center; transition: border-color 0.2s; }
+    .cgame:hover { border-color: var(--accent); }
+    .cgame img { width: 100%; height: 70px; object-fit: cover; display: block; background: #000; }
+    .cgame .cn { font-size: 0.72rem; font-weight: bold; padding: 7px 5px; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-brand" title="Back to home">MadLadsLab <span>// ARCADE</span> <span id="appVersion" style="color:var(--muted);font-size:0.6rem;opacity:0.6"></span></a>
+  <div class="nav-right">
+    <span class="chip-pill" id="chipPill">🪙 <span id="chipPillN">0</span></span>
+    <a href="/" class="nav-home" title="Home">🏠 <span class="nav-home-label">Home</span></a>
+    <div class="nav-menu-wrap">
+      <button class="nav-menu-btn" id="navMenuBtn" onclick="toggleNavMenu()" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-dropdown" id="navDropdown">
+        <a href="/" class="nav-dd-item">🏠 Home</a>
+        <a href="/servers" class="nav-dd-item">🕹️ Servers</a>
+        <a href="/profile" class="nav-dd-item">👤 Profile</a>
+        <div class="nav-dd-divider"></div>
+        <a href="/admin" class="nav-dd-item nav-dd-admin" id="adminLink" style="display:none">⚙️ Admin Panel</a>
+        <button class="nav-dd-item nav-dd-logout" onclick="document.getElementById('logoutForm').submit()">🚪 Logout</button>
+      </div>
+    </div>
+  </div>
+</nav>
+<form method="POST" action="/logout" id="logoutForm" style="display:none"></form>
+
+<main>
+  <!-- GAMES -->
+  <div class="section">
+    <h2>Arcade Games</h2>
+    <div class="arcade-grid" id="arcadeGrid"><div class="muted">Loading games…</div></div>
+  </div>
+
+  <!-- STATS -->
+  <div class="section">
+    <h2>Your Stats &amp; Records</h2>
+    <div class="stat-two">
+      <div class="panel" id="recordPanel">
+        <div class="panel-title">🎮 Your Arcade Record</div>
+        <div class="mini-grid">
+          <div class="mini"><div class="n green" id="recWins">0</div><div class="l">Wins</div></div>
+          <div class="mini"><div class="n" id="recGames">0</div><div class="l">Games</div></div>
+          <div class="mini"><div class="n" id="recRate">0%</div><div class="l">Win rate</div></div>
+        </div>
+        <div id="recByGame"><div class="muted">No games played yet — jump in above.</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">🪙 Chip Leaderboards</div>
+        <div class="chip-cols">
+          <div>
+            <div class="chip-col-label">MOST CHIPS</div>
+            <div id="chipRich"><div class="muted">…</div></div>
+          </div>
+          <div>
+            <div class="chip-col-label">BIGGEST BET WON</div>
+            <div id="chipBet"><div class="muted">…</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARCADE CHAT (tabs) -->
+  <div class="section">
+    <h2>Arcade Lounge</h2>
+    <div class="chat-wrap">
+      <div class="chat-head">
+        <div class="chat-title"><span class="chat-dot" id="chatDot"></span>ARCADE CHAT</div>
+        <span class="chat-online" id="chatOnline">— online</span>
+      </div>
+      <div class="tabs">
+        <div class="tab on" data-pane="chat">Chat</div>
+        <div class="tab" data-pane="boards">Leaderboards</div>
+        <div class="tab" data-pane="games">Games</div>
+      </div>
+      <div class="pane on" id="pane-chat">
+        <div id="msgs"></div>
+        <div id="chatNote"></div>
+        <div class="composer">
+          <input id="chatInput" maxlength="500" placeholder="Message the Arcade…" autocomplete="off">
+          <button id="chatSend">Send</button>
+        </div>
+      </div>
+      <div class="pane" id="pane-boards">
+        <div class="lbtabs" id="lbtabs"></div>
+        <div class="lblist" id="lblist"><div class="muted">Loading…</div></div>
+      </div>
+      <div class="pane" id="pane-games">
+        <div class="cgames" id="cgames"><div class="muted">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/static/js/socket.io.min.js"></script>
+<script>
+(function () {
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; };
+  var fmtNum = function (n) { return Number(n || 0).toLocaleString(); };
+  var rankClass = ['gold', 'silver', 'bronze'];
+
+  // ── Nav menu ──
+  window.toggleNavMenu = function () {
+    document.getElementById('navMenuBtn').classList.toggle('open');
+    document.getElementById('navDropdown').classList.toggle('open');
+  };
+  document.addEventListener('click', function (e) {
+    var wrap = document.querySelector('.nav-menu-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      document.getElementById('navMenuBtn').classList.remove('open');
+      document.getElementById('navDropdown').classList.remove('open');
+    }
+  });
+
+  // ── Auth (admin link + chip pill) ──
+  fetch('/broadcasts/api/me').then(function (r) { return r.json(); }).then(function (me) {
+    if (me && me.authed && (me.role === 'superadmin' || me.role === 'admin')) {
+      var al = document.getElementById('adminLink'); if (al) al.style.display = '';
+    }
+  }).catch(function () {});
+  function loadChipPill() {
+    fetch('/api/wallet/me', { credentials: 'include' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (d && d.ok) { document.getElementById('chipPillN').textContent = fmtNum(d.chips); document.getElementById('chipPill').style.display = 'inline-flex'; }
+    }).catch(function () {});
+  }
+  loadChipPill();
+  setInterval(loadChipPill, 30000);
+
+  fetch('/api/version').then(function (r) { return r.json(); }).then(function (d) { document.getElementById('appVersion').textContent = 'v' + d.version; }).catch(function () {});
+
+  // ── Your arcade record (also feeds per-card "best") ──
+  var myBest = {};
+  function lbRowHtml(i, name, statHtml, subHtml) {
+    return '<div class="lb-row"><span class="lb-rank ' + (rankClass[i] || '') + '">' + (i + 1) + '</span>' +
+      '<span class="lb-name">' + esc(name) + '</span>' +
+      (statHtml ? '<span class="lb-stat">' + statHtml + '</span>' : '') +
+      (subHtml ? '<span class="lb-sub">' + subHtml + '</span>' : '') + '</div>';
+  }
+  fetch('/api/webgame/me').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+    if (!d || !d.ok) return;
+    var stats = d.stats || [];
+    stats.forEach(function (s) { if (s.bestScore) myBest[s.game] = s.bestScore; });
+    // refill any cards already rendered
+    Object.keys(myBest).forEach(function (slug) {
+      var el = document.getElementById('best-' + slug);
+      if (el) el.textContent = 'Your best score: ' + myBest[slug];
+    });
+    var wins = stats.reduce(function (a, s) { return a + (s.wins || 0); }, 0);
+    var runs = stats.reduce(function (a, s) { return a + (s.runs || 0); }, 0);
+    document.getElementById('recWins').textContent = fmtNum(wins);
+    document.getElementById('recGames').textContent = fmtNum(runs);
+    document.getElementById('recRate').textContent = (runs ? Math.round(wins / runs * 100) : 0) + '%';
+    if (stats.length) {
+      document.getElementById('recByGame').innerHTML = stats.slice()
+        .sort(function (a, b) { return (b.wins || 0) - (a.wins || 0); })
+        .map(function (s) { return '<div class="lb-row"><span class="lb-name" style="text-transform:capitalize">' + esc(s.game) + '</span><span class="lb-stat">' + (s.wins || 0) + 'W</span><span class="lb-sub"> · ' + (s.runs || 0) + ' games' + (s.bestScore ? ' · best ' + s.bestScore : '') + '</span></div>'; })
+        .join('');
+    }
+  }).catch(function () {});
+
+  // ── Chip leaderboards ──
+  function chipRows(list, kind) {
+    if (!list || !list.length) return '<div class="muted">No chips yet — be the first!</div>';
+    return list.map(function (r, i) {
+      var right = kind === 'bet'
+        ? fmtNum(r.biggestBetWon || 0) + (r.biggestBetGame ? ' <span class="lb-sub">(' + esc(r.biggestBetGame) + ')</span>' : '')
+        : fmtNum(r.chips || 0) + ' 🪙';
+      return '<div class="lb-row"><span class="lb-rank ' + (rankClass[i] || '') + '">' + (r.rank || i + 1) + '</span><span class="lb-name">' + esc(r.displayName) + '</span><span class="lb-stat">' + right + '</span></div>';
+    }).join('');
+  }
+  function loadChipBoards() {
+    fetch('/api/wallet/leaderboard?kind=chips&limit=8').then(function (r) { return r.json(); }).then(function (d) {
+      document.getElementById('chipRich').innerHTML = chipRows(d.leaderboard, 'chips');
+    }).catch(function () {});
+    fetch('/api/wallet/leaderboard?kind=bet&limit=8').then(function (r) { return r.json(); }).then(function (d) {
+      document.getElementById('chipBet').innerHTML = chipRows(d.leaderboard, 'bet');
+    }).catch(function () {});
+  }
+  loadChipBoards();
+  setInterval(loadChipBoards, 30000);
+
+  // ── Game cards with Play / Leaderboard / Recent tabs ──
+  var IMG_OVERRIDE = { towers: '/static/img/towers.svg' };
+  function cardImg(g) { return IMG_OVERRIDE[g.slug] || g.image || ('/static/img/' + g.slug + '.svg'); }
+  function buildCard(g) {
+    var status = (g.status && g.status !== 'live') ? 'Play now · ' + String(g.status).toUpperCase() : 'Play now';
+    var best = myBest[g.slug] ? ('Your best score: ' + myBest[g.slug]) : '';
+    return '<div class="game-card" data-slug="' + esc(g.slug) + '">' +
+      '<div class="gc-banner" style="background-image:url(\'' + esc(cardImg(g)) + '\')"></div>' +
+      '<div class="gc-head"><span class="gc-name">' + esc((g.name || g.slug).toUpperCase()) + '</span><span class="gc-status">' + esc(status) + '</span></div>' +
+      '<div class="gc-tabs">' +
+        '<button class="gc-tab active" data-t="play">Play</button>' +
+        '<button class="gc-tab" data-t="board">Leaderboard</button>' +
+        '<button class="gc-tab" data-t="recent">Recent</button>' +
+      '</div>' +
+      '<div class="gc-panel active" data-p="play">' +
+        '<p class="gc-blurb">' + esc(g.blurb || '') + '</p>' +
+        '<div class="gc-best" id="best-' + esc(g.slug) + '">' + esc(best) + '</div>' +
+        '<a class="gc-play" href="' + esc(g.playUrl || ('/arcade/' + g.slug + '/play')) + '">▶ PLAY</a>' +
+      '</div>' +
+      '<div class="gc-panel" data-p="board"><div class="muted">Loading…</div></div>' +
+      '<div class="gc-panel" data-p="recent"><div class="muted">Loading…</div></div>' +
+    '</div>';
+  }
+  function loadCardBoard(card, slug) {
+    var panel = card.querySelector('.gc-panel[data-p="board"]');
+    if (panel.dataset.loaded) return; panel.dataset.loaded = '1';
+    fetch('/api/webgame/leaderboard/' + encodeURIComponent(slug) + '?limit=8').then(function (r) { return r.json(); }).then(function (d) {
+      var rows = (d && d.leaderboard) || [];
+      panel.innerHTML = rows.length
+        ? rows.map(function (r, i) { return lbRowHtml(i, r.displayName, (r.wins || 0) + 'W', ' · ' + (r.runs || 0) + ' games' + (r.bestScore ? ' · best ' + r.bestScore : '')); }).join('')
+        : '<div class="muted">No scores yet — be the first!</div>';
+    }).catch(function () { panel.innerHTML = '<div class="muted">Could not load leaderboard.</div>'; });
+  }
+  function loadCardRecent(card, slug) {
+    var panel = card.querySelector('.gc-panel[data-p="recent"]');
+    if (panel.dataset.loaded) return; panel.dataset.loaded = '1';
+    fetch('/api/webgame/recent/' + encodeURIComponent(slug) + '?limit=8').then(function (r) { return r.json(); }).then(function (d) {
+      var rows = (d && d.results) || [];
+      panel.innerHTML = rows.length
+        ? rows.map(function (r) { var won = r.status === 'won'; return '<div class="lb-row"><span class="lb-name">' + esc(r.displayName) + '</span><span class="lb-stat" style="color:' + (won ? 'var(--green)' : 'var(--muted)') + '">' + (won ? 'won' : 'lost') + ' ' + (r.score || 0) + '–' + (r.opponentScore || 0) + '</span></div>'; }).join('')
+        : '<div class="muted">No results yet.</div>';
+    }).catch(function () { panel.innerHTML = '<div class="muted">Could not load results.</div>'; });
+  }
+  function wireCard(card) {
+    var slug = card.dataset.slug;
+    card.querySelectorAll('.gc-tab').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        card.querySelectorAll('.gc-tab').forEach(function (t) { t.classList.toggle('active', t === tab); });
+        var t = tab.dataset.t;
+        card.querySelectorAll('.gc-panel').forEach(function (p) { p.classList.toggle('active', p.dataset.p === t); });
+        if (t === 'board') loadCardBoard(card, slug);
+        if (t === 'recent') loadCardRecent(card, slug);
+      });
+    });
+  }
+  fetch('/arcade').then(function (r) { return r.json(); }).then(function (res) {
+    var games = (res && res.games) || [];
+    var grid = document.getElementById('arcadeGrid');
+    if (!games.length) { grid.innerHTML = '<div class="muted">No games available.</div>'; return; }
+    grid.innerHTML = games.map(buildCard).join('');
+    grid.querySelectorAll('.game-card').forEach(wireCard);
+    // backfill any best-scores that arrived already
+    Object.keys(myBest).forEach(function (slug) { var el = document.getElementById('best-' + slug); if (el) el.textContent = 'Your best score: ' + myBest[slug]; });
+  }).catch(function () { document.getElementById('arcadeGrid').innerHTML = '<div class="muted">Could not load games.</div>'; });
+
+  // ── Chat panel tabs ──
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.onclick = function () {
+      document.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('on', x === t); });
+      var pane = t.dataset.pane;
+      document.querySelectorAll('.pane').forEach(function (p) { p.classList.remove('on'); });
+      document.getElementById('pane-' + pane).classList.add('on');
+      if (pane === 'boards') loadBoards();
+      if (pane === 'games') loadCatalogGames();
+    };
+  });
+
+  // ── Arcade-wide chat over the /global socket (session auth, same-origin) ──
+  var socket = null;
+  function addMsg(m) {
+    var wrap = document.getElementById('msgs');
+    var el = document.createElement('div');
+    if (m.sys) { el.className = 'm sys'; el.textContent = m.text; }
+    else {
+      el.className = 'm';
+      var sf = m.surface ? '<span class="sf">' + esc(m.surface) + '</span>' : '';
+      el.innerHTML = '<span class="nm">' + esc(m.from) + '</span>' + sf + ' <span class="tx">' + esc(m.text) + '</span>';
+    }
+    wrap.appendChild(el); wrap.scrollTop = wrap.scrollHeight;
+  }
+  function sendChat() {
+    var inp = document.getElementById('chatInput'); var text = inp.value.trim();
+    if (!text || !socket || !socket.connected) return;
+    socket.emit('chat:send', { text: text }); inp.value = '';
+  }
+  document.getElementById('chatSend').onclick = sendChat;
+  document.getElementById('chatInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendChat(); });
+  if (typeof io !== 'undefined') {
+    socket = io('/global', { transports: ['websocket', 'polling'], withCredentials: true, auth: { surface: 'arcade' } });
+    socket.on('connect', function () { document.getElementById('chatDot').classList.add('on'); document.getElementById('chatNote').textContent = ''; });
+    socket.on('connect_error', function () { document.getElementById('chatNote').textContent = 'Chat unavailable — please sign in.'; });
+    socket.on('disconnect', function () { document.getElementById('chatDot').classList.remove('on'); });
+    socket.on('chat:history', function (msgs) { document.getElementById('msgs').innerHTML = ''; (msgs || []).forEach(addMsg); });
+    socket.on('chat:msg', addMsg);
+    socket.on('chat:error', function (e) { if (e && e.error) document.getElementById('chatNote').textContent = e.error === 'slow down' ? 'Slow down a moment…' : e.error; });
+    socket.on('roster', function (r) { var n = (r && r.users && r.users.length) || 0; document.getElementById('chatOnline').textContent = n + ' online'; });
+  } else {
+    document.getElementById('chatNote').textContent = 'Chat unavailable.';
+  }
+
+  // ── Leaderboards tab (overall + per game) ──
+  var boardGames = [];
+  function loadBoards() {
+    if (boardGames.length) { return; }
+    fetch('/arcade').then(function (r) { return r.json(); }).then(function (c) {
+      boardGames = (c && c.games) || [];
+      var tabs = document.getElementById('lbtabs'); tabs.innerHTML = '';
+      function mk(key, label, on) {
+        var d = document.createElement('div'); d.className = 'lbtab' + (on ? ' on' : ''); d.textContent = label; d.dataset.key = key;
+        d.onclick = function () { tabs.querySelectorAll('.lbtab').forEach(function (x) { x.classList.toggle('on', x === d); }); renderBoard(key); };
+        tabs.appendChild(d);
+      }
+      mk('all', 'Overall', true);
+      boardGames.forEach(function (g) { mk(g.slug, g.name, false); });
+      renderBoard('all');
+    }).catch(function () { document.getElementById('lblist').innerHTML = '<div class="muted">Could not load leaderboards.</div>'; });
+  }
+  function renderBoard(key) {
+    var list = document.getElementById('lblist'); list.innerHTML = '<div class="muted">Loading…</div>';
+    var url = key === 'all' ? '/api/webgame/leaderboard?limit=25' : '/api/webgame/leaderboard/' + encodeURIComponent(key) + '?limit=25';
+    fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+      var rows = (d && d.leaderboard) || [];
+      if (!rows.length) { list.innerHTML = '<div class="muted">No games played yet.</div>'; return; }
+      list.innerHTML = rows.map(function (r, i) {
+        return key === 'all'
+          ? lbRowHtml(i, r.displayName, (r.wins || 0) + 'W', ' · ' + (r.winRate || 0) + '% · ' + (r.gameCount || 0) + ' games')
+          : lbRowHtml(i, r.displayName, (r.wins || 0) + 'W', ' · ' + (r.runs || 0) + ' games');
+      }).join('');
+    }).catch(function () { list.innerHTML = '<div class="muted">Could not load leaderboard.</div>'; });
+  }
+
+  // ── Games tab (catalog) ──
+  var catalogLoaded = false;
+  function loadCatalogGames() {
+    if (catalogLoaded) return; catalogLoaded = true;
+    var grid = document.getElementById('cgames');
+    fetch('/arcade').then(function (r) { return r.json(); }).then(function (c) {
+      var games = ((c && c.games) || []).filter(function (g) { return g.status !== 'disabled'; });
+      if (!games.length) { grid.innerHTML = '<div class="muted">No games available.</div>'; return; }
+      grid.innerHTML = games.map(function (g) {
+        return '<a class="cgame" href="' + esc(g.playUrl || ('/arcade/' + g.slug + '/play')) + '">' +
+          '<img src="' + esc(cardImg(g)) + '" alt="" onerror="this.src=\'/static/img/towers.jpg\'">' +
+          '<div class="cn">' + esc(g.name || g.slug) + '</div></a>';
+      }).join('');
+    }).catch(function () { grid.innerHTML = '<div class="muted">Could not load games.</div>'; });
+  }
+})();
+</script>
+</body>
+</html>

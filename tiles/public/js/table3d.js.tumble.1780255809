@@ -1,0 +1,382 @@
+/**
+ * table3d.js — the SHARED 3D tabletop core for every game on the tiles table.
+ *
+ * One place to own (and therefore upgrade once for all games):
+ *   • renderer + scene + fog
+ *   • CAMERA + controls  ← the upgradable camera logic lives HERE, not per-game
+ *   • lighting + shadow frustum
+ *   • felt table + rail + vignette
+ *   • seats around the table ("checked-in" billboarded plates)
+ *   • settle physics (drop/spring to a server-pinned transform) + a physics hook
+ *   • a WebAudio sound kit
+ *   • the render loop (drives controls, settles, and per-frame game hooks)
+ *
+ * A game module calls `createTable3D(opts)` and gets back an API to drive its own
+ * objects. The core knows NOTHING about bones/cards/dice — games own that. This
+ * keeps camera + physics improvements in a single file that every game inherits.
+ *
+ * Usage (per game):
+ *   import { createTable3D } from './table3d.js';
+ *   const T = createTable3D({ tableRadius: 34 });
+ *   T.scene.add(myStuff);
+ *   T.onFrame((now, dt) => { ... });          // per-frame game animation
+ *   T.settle(mesh, finalY, finalRotY);        // drop-and-settle a placed object
+ *   T.buildSeats(n, mySeat); T.updateSeat(i, {...});
+ *   T.raycast(clientX, clientY, targets);     // pointer picking against game meshes
+ *   T.Sound.play();  T.resetCamera();
+ *
+ * Camera spec (shared, hex/Towers feel — see CAMERA CONFIG below to tune once):
+ *   one-finger / left-drag = orbit · two-finger / right-drag = pan · wheel = zoom.
+ */
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+export function createTable3D(opts = {}) {
+  const TABLE_R = opts.tableRadius || 34;
+  const canvas = document.getElementById(opts.canvasId || 'scene');
+
+  // ---- renderer ----
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(opts.bg ?? 0x0a1a12);
+  scene.fog = new THREE.Fog(opts.bg ?? 0x0a1a12, 170, 320); // far so zoom-out never fogs the table
+
+  // ============================ CAMERA CONFIG ============================
+  // *** This block is the single source of truth for camera feel across ALL
+  // *** games. Tune here once; hearts, euchre, craps, roulette all inherit it.
+  const CAMERA = {
+    fov: 46,
+    start: opts.cameraStart || { x: 0, y: 58, z: 96 }, // outside the table frame, elevated
+    target: opts.cameraTarget || { x: 0, y: 1.0, z: 0 },
+    minDistance: 22, maxDistance: 200,
+    minPolar: 0.12, maxPolar: Math.PI * 0.49,          // never under the table
+    damping: 0.09, panSpeed: 1.1, zoomSpeed: 1.15, rotateSpeed: 0.9,
+  };
+  const camera = new THREE.PerspectiveCamera(CAMERA.fov, window.innerWidth / window.innerHeight, 0.1, 500);
+  camera.position.set(CAMERA.start.x, CAMERA.start.y, CAMERA.start.z);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = CAMERA.damping;
+  controls.target.set(CAMERA.target.x, CAMERA.target.y, CAMERA.target.z);
+  controls.minDistance = CAMERA.minDistance;
+  controls.maxDistance = CAMERA.maxDistance;
+  controls.minPolarAngle = CAMERA.minPolar;
+  controls.maxPolarAngle = CAMERA.maxPolar;
+  controls.enablePan = true;
+  controls.screenSpacePanning = false;
+  controls.panSpeed = CAMERA.panSpeed;
+  controls.zoomSpeed = CAMERA.zoomSpeed;
+  controls.rotateSpeed = CAMERA.rotateSpeed;
+  controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+  controls.update();
+  const HOME = { pos: camera.position.clone(), target: controls.target.clone() };
+  function resetCamera() { camera.position.copy(HOME.pos); controls.target.copy(HOME.target); controls.update(); }
+  // expose for live retuning + future upgrades (e.g. cinematic moves, follow-cam)
+  function setCamera(partial = {}) {
+    Object.assign(CAMERA, partial);
+    if (partial.minDistance != null) controls.minDistance = partial.minDistance;
+    if (partial.maxDistance != null) controls.maxDistance = partial.maxDistance;
+    if (partial.minPolar != null) controls.minPolarAngle = partial.minPolar;
+    if (partial.maxPolar != null) controls.maxPolarAngle = partial.maxPolar;
+    if (partial.damping != null) controls.dampingFactor = partial.damping;
+  }
+  // ======================================================================
+
+  // ---- lighting ----
+  scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+  scene.add(new THREE.HemisphereLight(0xdfeaff, 0x14241b, 0.55));
+  const key = new THREE.DirectionalLight(0xfff4e0, 1.15);
+  key.position.set(18, 40, 18);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.near = 1; key.shadow.camera.far = 200;
+  const SH = TABLE_R + 6;
+  key.shadow.camera.left = -SH; key.shadow.camera.right = SH;
+  key.shadow.camera.top = SH; key.shadow.camera.bottom = -SH;
+  key.shadow.bias = -0.0003; key.shadow.normalBias = 0.02;
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x88bbff, 0.4);
+  rim.position.set(-16, 16, -18);
+  scene.add(rim);
+
+  // ---- felt + rail + vignette ----
+  const feltColor = opts.feltColor ?? 0x176b46;
+  const felt = new THREE.Mesh(new THREE.CircleGeometry(TABLE_R, 64),
+    new THREE.MeshStandardMaterial({ color: feltColor, roughness: 0.92 }));
+  felt.rotation.x = -Math.PI / 2; felt.receiveShadow = true; scene.add(felt);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(TABLE_R * 0.62, TABLE_R, 64),
+    new THREE.MeshBasicMaterial({ color: 0x0c3a26, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; scene.add(ring);
+  const rail = new THREE.Mesh(new THREE.TorusGeometry(TABLE_R + 0.6, 1.1, 16, 80),
+    new THREE.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 0.6, metalness: 0.1 }));
+  rail.rotation.x = -Math.PI / 2; rail.position.y = 0.2; rail.castShadow = true; rail.receiveShadow = true; scene.add(rail);
+
+  // ---- seats ("checked-in" plates around the table) ----
+  const SEAT_GROUP = new THREE.Group(); scene.add(SEAT_GROUP);
+  const seatNodes = [];
+  function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+  function makeLabelSprite() {
+    const cvs = document.createElement('canvas'); cvs.width = 256; cvs.height = 96;
+    const tex = new THREE.CanvasTexture(cvs); tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    sp.scale.set(7.5, 2.8, 1); sp.userData = { cvs, tex }; return sp;
+  }
+  function drawLabel(sp, { name, sub, turn, you }) {
+    const { cvs, tex } = sp.userData; const c = cvs.getContext('2d');
+    c.clearRect(0, 0, cvs.width, cvs.height);
+    c.fillStyle = turn ? 'rgba(47,191,113,0.92)' : 'rgba(8,18,13,0.82)';
+    rr(c, 6, 6, cvs.width - 12, cvs.height - 12, 16); c.fill();
+    if (turn) { c.strokeStyle = '#bdf5d4'; c.lineWidth = 3; rr(c, 6, 6, cvs.width - 12, cvs.height - 12, 16); c.stroke(); }
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = you ? '#ffe9a8' : '#eef6ef'; c.font = 'bold 34px system-ui';
+    c.fillText(name || 'Seat', cvs.width / 2, 40);
+    c.fillStyle = turn ? '#06351c' : '#9fb0a6'; c.font = '24px system-ui';
+    c.fillText(sub || '', cvs.width / 2, 72);
+    tex.needsUpdate = true;
+  }
+  // seat azimuth: local player (mySeat) sits south (+Z, nearest camera home)
+  function seatAngle(seatIndex, mySeat, n) {
+    const rel = ((seatIndex - (mySeat || 0)) + n) % n;
+    return Math.PI / 2 + (rel / n) * Math.PI * 2;
+  }
+  function buildSeats(n, mySeat) {
+    for (const s of seatNodes) SEAT_GROUP.remove(s.group);
+    seatNodes.length = 0;
+    for (let i = 0; i < n; i++) {
+      const angle = seatAngle(i, mySeat, n);
+      const g = new THREE.Group();
+      const Rr = TABLE_R - 4.5;
+      const x = Math.cos(angle) * Rr, z = Math.sin(angle) * Rr;
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 0.12, 32),
+        new THREE.MeshStandardMaterial({ color: 0x0e2a1c, roughness: 0.8 }));
+      disc.position.set(x, 0.06, z); disc.receiveShadow = true; g.add(disc);
+      const sp = makeLabelSprite(); sp.position.set(x, 3.0, z); g.add(sp);
+      SEAT_GROUP.add(g);
+      seatNodes.push({ group: g, disc, sprite: sp, angle, seat: i, x, z });
+    }
+    return seatNodes;
+  }
+  function updateSeat(i, info) { const node = seatNodes[i]; if (node) drawLabel(node.sprite, info); }
+  function seatPosition(i) { const n = seatNodes[i]; return n ? new THREE.Vector3(n.x, 0, n.z) : null; }
+  function seatAngleOf(i) { const n = seatNodes[i]; return n ? n.angle : 0; }
+
+  // ---- settle physics (drop/spring to a SERVER-pinned transform) ----
+  // The server decides the final transform; we only animate the approach. This is
+  // the "simulate but pin to server result" pattern — extend per game (dice add a
+  // tumble, chips a scatter) but the contract stays: the rest pose is authoritative.
+  const SETTLING = [];
+  function settle(mesh, finalY, finalRotY, o = {}) {
+    const dropH = o.dropH ?? (6 + Math.random() * 2);
+    const wobble = o.wobble ?? (Math.random() - 0.5) * 0.5;
+    const tilt = (Math.random() - 0.5) * 0.18;
+    mesh.position.y = finalY + dropH;
+    mesh.rotation.y = finalRotY + wobble; mesh.rotation.x = tilt; mesh.rotation.z = (Math.random() - 0.5) * 0.12;
+    SETTLING.push({ mesh, toY: finalY, fromY: finalY + dropH, toRotY: finalRotY, fromRotY: finalRotY + wobble,
+      fromRotX: tilt, fromRotZ: mesh.rotation.z, t: 0, dur: o.dur ?? (360 + Math.random() * 120), landed: false,
+      onLand: o.onLand });
+  }
+  function settleEase(p) { if (p >= 1) return 1; const s = 1 - Math.pow(1 - p, 3); return s - Math.sin(p * Math.PI) * 0.06 * (1 - p); }
+  function stepSettles(dt) {
+    for (let i = SETTLING.length - 1; i >= 0; i--) {
+      const s = SETTLING[i]; s.t += dt; const p = Math.min(1, s.t / s.dur); const e = settleEase(p);
+      s.mesh.position.y = s.fromY + (s.toY - s.fromY) * e;
+      s.mesh.rotation.y = s.fromRotY + (s.toRotY - s.fromRotY) * e;
+      s.mesh.rotation.x = s.fromRotX * (1 - e); s.mesh.rotation.z = s.fromRotZ * (1 - e);
+      if (!s.landed && p > 0.82) { s.landed = true; Sound.click(); if (s.onLand) s.onLand(); }
+      if (p >= 1) { s.mesh.position.y = s.toY; s.mesh.rotation.set(0, s.toRotY, 0); SETTLING.splice(i, 1); }
+    }
+  }
+
+  // ---- card flight (the "frisbee throw" to the middle) ----
+  // Arc a mesh from its current transform to a target position+rotation along a
+  // parabola, spinning a bit on the way, then drop in. Like settle, the TARGET is
+  // authoritative (server-decided resting spot); only the flight is animated.
+  const FLIGHTS = [];
+  function flyTo(mesh, to, o = {}) {
+    const from = { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z };
+    const fromRot = { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z };
+    const dist = Math.hypot(to.x - from.x, to.z - from.z);
+    FLIGHTS.push({
+      mesh, from, to,
+      fromRot, toRot: { x: to.rx ?? 0, y: to.ry ?? 0, z: to.rz ?? 0 },
+      t: 0, dur: o.dur ?? (420 + dist * 6),     // farther throw = a bit longer
+      arc: o.arc ?? Math.min(10, 4 + dist * 0.18), // parabola peak height
+      spin: o.spin ?? (Math.PI * 2),            // total yaw spin during flight
+      landed: false, onLand: o.onLand,
+    });
+  }
+  function flyEase(p) { return 1 - Math.pow(1 - p, 2.2); } // ease-out toward the target
+  function stepFlights(dt) {
+    for (let i = FLIGHTS.length - 1; i >= 0; i--) {
+      const f = FLIGHTS[i]; f.t += dt; const p = Math.min(1, f.t / f.dur); const e = flyEase(p);
+      // horizontal interpolation (eased), plus a parabolic vertical arc on top
+      f.mesh.position.x = f.from.x + (f.to.x - f.from.x) * e;
+      f.mesh.position.z = f.from.z + (f.to.z - f.from.z) * e;
+      const baseY = f.from.y + (f.to.y - f.from.y) * e;
+      f.mesh.position.y = baseY + Math.sin(Math.PI * p) * f.arc;
+      // spin while flying, then resolve to the target rotation as it lands
+      const spinFade = 1 - e;
+      f.mesh.rotation.x = f.fromRot.x + (f.toRot.x - f.fromRot.x) * e;
+      f.mesh.rotation.z = f.fromRot.z + (f.toRot.z - f.fromRot.z) * e;
+      f.mesh.rotation.y = f.fromRot.y + (f.toRot.y - f.fromRot.y) * e + f.spin * spinFade * (1 - p);
+      if (!f.landed && p >= 1) {
+        f.landed = true;
+        f.mesh.position.set(f.to.x, f.to.y, f.to.z);
+        f.mesh.rotation.set(f.toRot.x, f.toRot.y, f.toRot.z);
+        Sound.play(); if (f.onLand) f.onLand();
+        FLIGHTS.splice(i, 1);
+      }
+    }
+  }
+
+  // ---- sound kit ----
+  const Sound = (function () {
+    let ctx = null, muted = false;
+    try { muted = localStorage.getItem('cards_muted') === '1'; } catch (e) {}
+    const ac = () => (ctx || (ctx = new (window.AudioContext || window.webkitAudioContext)()));
+    function beep(f, d, g = 0.05, type = 'sine') { if (muted) return; const a = ac(); const o = a.createOscillator(), gn = a.createGain(); o.type = type; o.frequency.value = f; gn.gain.value = g; o.connect(gn); gn.connect(a.destination); o.start(); gn.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + d); o.stop(a.currentTime + d); }
+    return {
+      play: () => beep(320, 0.08, 0.04, 'triangle'),
+      yourTurn: () => { beep(520, 0.1, 0.05); setTimeout(() => beep(680, 0.1, 0.05), 90); },
+      trick: () => beep(440, 0.16, 0.05, 'sawtooth'),
+      deal: () => beep(240, 0.06, 0.03, 'triangle'),
+      tick: () => beep(700, 0.04, 0.03),
+      click: () => { beep(150, 0.05, 0.06, 'square'); setTimeout(() => beep(90, 0.06, 0.05, 'square'), 18); },
+      alert: () => beep(200, 0.25, 0.06, 'square'),
+      win: () => { [523, 659, 784].forEach((f, i) => setTimeout(() => beep(f, 0.18, 0.06), i * 110)); },
+      lose: () => { [392, 311].forEach((f, i) => setTimeout(() => beep(f, 0.24, 0.06, 'sawtooth'), i * 150)); },
+      resume: () => { try { ac().resume(); } catch (e) {} },
+      isMuted: () => muted, setMuted: (m) => { muted = m; },
+    };
+  })();
+
+  // ---- pointer picking ----
+  const _raycaster = new THREE.Raycaster();
+  const _ptr = new THREE.Vector2();
+  function raycast(clientX, clientY, targets) {
+    const r = renderer.domElement.getBoundingClientRect();
+    _ptr.x = ((clientX - r.left) / r.width) * 2 - 1;
+    _ptr.y = -((clientY - r.top) / r.height) * 2 + 1;
+    _raycaster.setFromCamera(_ptr, camera);
+    return _raycaster.intersectObjects(targets, true);
+  }
+
+  // ---- compass (couples on-screen directions to the table) ----
+  // A small N/E/S/W rose, top-right, that rotates with the camera so we can refer
+  // to table directions consistently. North = world -Z; the local player sits South
+  // (+Z). It reads the camera azimuth each frame so "up" on the rose is where the
+  // camera is looking. Shared in the core so every game has the same reference.
+  let _compass = null, _compassNeedle = null;
+  function buildCompass() {
+    const el = document.createElement('div');
+    el.id = 'compass';
+    el.style.cssText = 'position:fixed;top:56px;right:12px;width:60px;height:60px;z-index:30;' +
+      'pointer-events:none;';
+    el.innerHTML =
+      '<svg viewBox="0 0 100 100" style="width:100%;height:100%;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">' +
+      '<circle cx="50" cy="50" r="46" fill="rgba(8,18,13,.66)" stroke="rgba(255,255,255,.18)" stroke-width="2"/>' +
+      '<g id="compassRose">' +
+      '<polygon points="50,8 44,50 56,50" fill="#e0524d"/>' +     // North arrow (red)
+      '<polygon points="50,92 44,50 56,50" fill="#cfd8d2"/>' +    // South
+      '<text x="50" y="26" text-anchor="middle" font-size="15" font-weight="800" fill="#ffd9d6" font-family="system-ui">N</text>' +
+      '<text x="50" y="84" text-anchor="middle" font-size="11" fill="#9fb0a6" font-family="system-ui">S</text>' +
+      '<text x="84" y="54" text-anchor="middle" font-size="11" fill="#9fb0a6" font-family="system-ui">E</text>' +
+      '<text x="16" y="54" text-anchor="middle" font-size="11" fill="#9fb0a6" font-family="system-ui">W</text>' +
+      '</g></svg>';
+    document.body.appendChild(el);
+    _compass = el; _compassNeedle = el.querySelector('#compassRose');
+  }
+  function updateCompass() {
+    if (!_compassNeedle) return;
+    // azimuth of the camera around the table center, in screen terms. atan2 of the
+    // camera's offset gives the bearing; rotate the rose so North stays world-fixed.
+    const dx = camera.position.x - controls.target.x;
+    const dz = camera.position.z - controls.target.z;
+    const az = Math.atan2(dx, dz);              // 0 when camera is due +Z (south)
+    _compassNeedle.setAttribute('transform', `rotate(${(az * 180 / Math.PI).toFixed(1)} 50 50)`);
+  }
+  if (new URLSearchParams(location.search).get('cam') === '1') buildCompass();
+
+  // ---- dev camera readout + SAVE button (?cam=1) ----
+  // Phone-friendly: position the camera by hand, read the big numbers, then tap
+  // SAVE ANGLE to POST pos/target/azimuth to the server (camlog.txt) so the values
+  // can be baked into cameraStart/cameraTarget. No dev tools needed.
+  let _camHud = null;
+  if (new URLSearchParams(location.search).get('cam') === '1') {
+    _camHud = document.createElement('div');
+    _camHud.id = 'camhud';
+    _camHud.style.cssText = 'position:fixed;left:10px;top:110px;z-index:40;background:rgba(8,18,13,.9);' +
+      'color:#bfe0cd;font:13px ui-monospace,monospace;padding:10px 12px;border-radius:10px;' +
+      'border:1px solid rgba(255,255,255,.18);white-space:pre;line-height:1.6;pointer-events:auto;' +
+      'box-shadow:0 6px 20px rgba(0,0,0,.5)';
+    const readout = document.createElement('div'); readout.id = 'camReadout';
+    const btn = document.createElement('button');
+    btn.textContent = '📍 SAVE ANGLE';
+    btn.style.cssText = 'margin-top:8px;width:100%;background:#2fbf71;color:#05230f;border:none;' +
+      'border-radius:8px;padding:11px;font:800 14px system-ui;cursor:pointer';
+    btn.addEventListener('click', () => {
+      const p = camera.position, t = controls.target;
+      const r = (n) => Math.round(n * 10) / 10;
+      const payload = {
+        game: (document.title || '').split(' ')[0],
+        start: { x: r(p.x), y: r(p.y), z: r(p.z) },
+        target: { x: r(t.x), y: r(t.y), z: r(t.z) },
+        dist: Math.round(p.distanceTo(t)),
+        az: Math.round(Math.atan2(p.x - t.x, p.z - t.z) * 180 / Math.PI),
+      };
+      fetch('/dev/cam', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(() => { btn.textContent = '✓ SAVED'; btn.style.background = '#e3c567'; setTimeout(() => { btn.textContent = '📍 SAVE ANGLE'; btn.style.background = '#2fbf71'; }, 1200); })
+        .catch(() => { btn.textContent = '✗ failed'; setTimeout(() => { btn.textContent = '📍 SAVE ANGLE'; }, 1200); });
+    });
+    _camHud.appendChild(readout); _camHud.appendChild(btn);
+    document.body.appendChild(_camHud);
+    _camHud._readout = readout;
+  }
+  function updateCamHud() {
+    if (!_camHud) return;
+    const ro = _camHud._readout; if (!ro) return;
+
+    if (!_camHud) return;
+    const p = camera.position, t = controls.target;
+    const r = (n) => Math.round(n * 10) / 10;
+    const dist = Math.round(p.distanceTo(t));
+    const az = Math.round(Math.atan2(p.x - t.x, p.z - t.z) * 180 / Math.PI);
+    ro.textContent = `📷 dist ${dist}  az ${az}°\nstart  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\ntarget ${r(t.x)}, ${r(t.y)}, ${r(t.z)}`;
+  }
+
+
+  // ---- resize + loop ----
+  function resize() { const w = window.innerWidth, h = window.innerHeight; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h, false); }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+  resize();
+
+  const _frameHooks = [];
+  function onFrame(fn) { _frameHooks.push(fn); }
+  let _last = performance.now();
+  function tick() {
+    const now = performance.now(); const dt = Math.min(50, now - _last); _last = now;
+    requestAnimationFrame(tick);
+    controls.update();
+    updateCompass();
+    updateCamHud();
+    stepSettles(dt);
+    stepFlights(dt);
+    for (const fn of _frameHooks) { try { fn(now, dt); } catch (e) {} }
+    renderer.render(scene, camera);
+  }
+  tick();
+
+  return {
+    THREE, scene, camera, controls, renderer, TABLE_R,
+    resetCamera, setCamera,
+    buildSeats, updateSeat, seatPosition, seatAngleOf, seatNodes,
+    settle, flyTo, onFrame, raycast, Sound,
+  };
+}

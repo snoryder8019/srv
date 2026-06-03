@@ -1,0 +1,783 @@
+/**
+ * Dominoes 3D client — three.js tabletop over the live tiles socket protocol.
+ *
+ * The SERVER is authoritative (same protocol as the 2D client): we render
+ * table:state / seat:hand payloads in 3D and drive actions off the authoritative
+ * private view. Only the BOARD is 3D; the player's controls live in a 2D HUD
+ * overlay (index.html). Camera control mirrors the hex/Towers feel (OrbitControls
+ * with damping) but opened up for free-angle board framing.
+ *
+ * Board data shape (from the spinner-aware engine):
+ *   view.line: [{ code,a,b,double,branch:'main'|'T'|'B',order,on }]
+ *   view.ends: [{ id:'L'|'R'|'T'|'B', pip, kind:'line'|'spin' }]
+ *   view.spinner: { code, pip, armsOpen } | null
+ */
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const qs = new URLSearchParams(location.search);
+const ticket = qs.get('ticket');
+const $ = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------- scene setup
+const canvas = $('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a1a12);
+// SD scene background (mll GPU tunnel): swap in a generated backdrop if one exists.
+// Silent fallback to the flat color above on any failure.
+let _sceneBgTex = null;
+function fitSceneBg() {
+  if (!_sceneBgTex || !_sceneBgTex.image) return;
+  const canvasAspect = window.innerWidth / window.innerHeight;
+  const imageAspect = _sceneBgTex.image.width / _sceneBgTex.image.height;
+  const a = imageAspect / canvasAspect;
+  _sceneBgTex.wrapS = _sceneBgTex.wrapT = THREE.ClampToEdgeWrapping;
+  if (a > 1) { _sceneBgTex.repeat.set(1 / a, 1); _sceneBgTex.offset.set((1 - 1 / a) / 2, 0); }
+  else { _sceneBgTex.repeat.set(1, a); _sceneBgTex.offset.set(0, (1 - a) / 2); }
+  _sceneBgTex.needsUpdate = true;
+}
+fetch('/scene/url/dominoes')
+  .then((r) => (r.ok ? r.json() : null))
+  .then((d) => {
+    if (!d || !d.url) return;
+    new THREE.TextureLoader().load(d.url, (tex) => { tex.colorSpace = THREE.SRGBColorSpace; _sceneBgTex = tex; scene.background = tex; fitSceneBg(); });
+  })
+  .catch(() => {});
+scene.fog = new THREE.Fog(0x0a1a12, 170, 320); // far back so zoom-out (max 130) never fogs the table
+
+const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(0, 58, 96);   // well outside the table frame, elevated
+
+// --- Camera (OrbitControls, hex/Towers feel) -------------------------------
+// ONE-finger / LEFT-drag  -> orbit (spin) the view
+// TWO-finger / RIGHT-drag -> pan camera + focal point
+// scroll / pinch          -> zoom toward the focal point
+// Stock OrbitControls: orbit + zoom pivot the `target`; pan slides the target.
+// We keep it stock (no custom re-pin) so damping never fights us — that was the
+// cause of the snap-back on release. Start the focal point at the table center.
+const TABLE_CENTER = new THREE.Vector3(0, 1.0, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.09;
+controls.target.copy(TABLE_CENTER);
+controls.minDistance = 22;
+controls.maxDistance = 200;
+controls.minPolarAngle = 0.12;
+controls.maxPolarAngle = Math.PI * 0.49;   // never under the table
+controls.enablePan = true;
+controls.screenSpacePanning = false;       // pan across the felt plane
+controls.panSpeed = 1.1;
+controls.zoomSpeed = 1.15;
+controls.rotateSpeed = 0.9;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+controls.update();
+
+const HOME = { pos: camera.position.clone(), target: controls.target.clone() };
+
+const TABLE_R = 34; // table radius (used by lighting shadow frustum + seats + felt)
+
+// ---- lighting ----
+// Ambient + hemisphere fill keep the felt and bones evenly lit at ANY zoom; the
+// key light adds shadow/shape. Shadow frustum is sized to the whole table so it
+// doesn't cut out when the camera pulls back.
+scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+const hemi = new THREE.HemisphereLight(0xdfeaff, 0x14241b, 0.55);
+scene.add(hemi);
+const key = new THREE.DirectionalLight(0xfff4e0, 1.15);
+key.position.set(18, 40, 18);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 1; key.shadow.camera.far = 200;
+const SH = TABLE_R + 6;                       // cover the entire felt + rail
+key.shadow.camera.left = -SH; key.shadow.camera.right = SH;
+key.shadow.camera.top = SH; key.shadow.camera.bottom = -SH;
+key.shadow.bias = -0.0003;
+key.shadow.normalBias = 0.02;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x88bbff, 0.4);
+rim.position.set(-16, 16, -18);
+scene.add(rim);
+
+// ---- felt table + wooden rail ----
+const felt = new THREE.Mesh(
+  new THREE.CircleGeometry(TABLE_R, 64),
+  new THREE.MeshStandardMaterial({ color: 0x176b46, roughness: 0.92, metalness: 0.0 })
+);
+felt.rotation.x = -Math.PI / 2;
+felt.receiveShadow = true;
+scene.add(felt);
+// subtle darker vignette ring
+const ring = new THREE.Mesh(
+  new THREE.RingGeometry(TABLE_R * 0.62, TABLE_R, 64),
+  new THREE.MeshBasicMaterial({ color: 0x0c3a26, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+);
+ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01;
+scene.add(ring);
+const rail = new THREE.Mesh(
+  new THREE.TorusGeometry(TABLE_R + 0.6, 1.1, 16, 80),
+  new THREE.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 0.6, metalness: 0.1 })
+);
+rail.rotation.x = -Math.PI / 2; rail.position.y = 0.2;
+rail.castShadow = true; rail.receiveShadow = true;
+scene.add(rail);
+
+// ---------------------------------------------------------------- bone meshes
+// World units: a standard bone is 2 (long) x 1 (wide) x 0.34 (thick), pips inset.
+const BONE_L = 3.0, BONE_W = 1.5, BONE_T = 0.5, PIP_R = 0.11;
+const BONE_MAT = new THREE.MeshStandardMaterial({ color: 0xf6f3ea, roughness: 0.42, metalness: 0.02 });
+const PIP_MAT = new THREE.MeshStandardMaterial({ color: 0x14171a, roughness: 0.5 });
+const DIV_MAT = new THREE.MeshStandardMaterial({ color: 0xcdc8b8, roughness: 0.6 });
+const pipGeo = new THREE.SphereGeometry(PIP_R, 12, 12);
+// pip layouts on a 3x3 grid (cells -1,0,1 in u,v) for counts 0..6
+const PIP_CELLS = {
+  0: [], 1: [[0, 0]], 2: [[-1, 1], [1, -1]], 3: [[-1, 1], [0, 0], [1, -1]],
+  4: [[-1, 1], [1, 1], [-1, -1], [1, -1]], 5: [[-1, 1], [1, 1], [0, 0], [-1, -1], [1, -1]],
+  6: [[-1, 1], [1, 1], [-1, 0], [1, 0], [-1, -1], [1, -1]],
+};
+
+// rounded-box geometry (cheap bevel via slightly inset box + edges)
+function roundedBox(w, h, d, r) {
+  // three has no built-in rounded box without addons; use a Box with a thin
+  // beveled top via scaling — good enough read at tabletop distance.
+  const g = new THREE.BoxGeometry(w, h, d, 1, 1, 1);
+  return g;
+}
+
+// build one bone as a Group; `a` face toward -X half, `b` toward +X half.
+function buildBone(a, b) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(roundedBox(BONE_L, BONE_T, BONE_W, 0.12), BONE_MAT);
+  body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+  // center divider line (thin dark strip across the short axis)
+  const div = new THREE.Mesh(new THREE.BoxGeometry(0.05, BONE_T + 0.01, BONE_W * 0.82), DIV_MAT);
+  g.add(div);
+  // pips: each half is a 1x1 region centered at x = ∓0.5
+  const halfCenter = BONE_L / 4; // 0.5
+  const cell = 0.38;             // spacing of the 3x3 grid (scaled to bigger bone)
+  const top = BONE_T / 2 + 0.001;
+  const addPips = (count, cx) => {
+    for (const [u, v] of (PIP_CELLS[count] || [])) {
+      const m = new THREE.Mesh(pipGeo, PIP_MAT);
+      m.position.set(cx + u * cell, top, v * cell);
+      m.scale.y = 0.5;
+      g.add(m);
+    }
+  };
+  addPips(a, -halfCenter);
+  addPips(b, +halfCenter);
+  g.userData = { a, b };
+  return g;
+}
+
+// ---------------------------------------------------------------- seat markers
+// players "checked in" at their location around the table. We anchor a billboarded
+// label sprite + a small disc at each seat azimuth. Seat 0 is the local player,
+// placed nearest the camera home (south); others spread clockwise.
+const SEAT_GROUP = new THREE.Group();
+scene.add(SEAT_GROUP);
+const seatNodes = []; // { group, disc, sprite, angle }
+
+function makeLabelSprite() {
+  const cvs = document.createElement('canvas'); cvs.width = 256; cvs.height = 96;
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  const sp = new THREE.Sprite(mat);
+  sp.scale.set(7.5, 2.8, 1);
+  sp.userData = { cvs, tex };
+  return sp;
+}
+function drawLabel(sp, { name, sub, turn, you }) {
+  const { cvs, tex } = sp.userData;
+  const c = cvs.getContext('2d');
+  c.clearRect(0, 0, cvs.width, cvs.height);
+  c.fillStyle = turn ? 'rgba(47,191,113,0.92)' : 'rgba(8,18,13,0.82)';
+  rr(c, 6, 6, cvs.width - 12, cvs.height - 12, 16); c.fill();
+  if (turn) { c.strokeStyle = '#bdf5d4'; c.lineWidth = 3; rr(c, 6, 6, cvs.width - 12, cvs.height - 12, 16); c.stroke(); }
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = you ? '#ffe9a8' : '#eef6ef'; c.font = 'bold 34px system-ui';
+  c.fillText(name || 'Seat', cvs.width / 2, 40);
+  c.fillStyle = turn ? '#06351c' : '#9fb0a6'; c.font = '24px system-ui';
+  c.fillStyle = turn ? '#06351c' : '#9fb0a6';
+  c.fillText(sub || '', cvs.width / 2, 72);
+  tex.needsUpdate = true;
+}
+function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+function buildSeats(n, mySeat) {
+  for (const s of seatNodes) SEAT_GROUP.remove(s.group);
+  seatNodes.length = 0;
+  for (let i = 0; i < n; i++) {
+    // rotate so the local player (mySeat) sits south (nearest camera home)
+    const rel = ((i - (mySeat || 0)) + n) % n;
+    const angle = Math.PI / 2 + (rel / n) * Math.PI * 2; // south = +Z
+    const g = new THREE.Group();
+    const R = TABLE_R - 4.5;
+    const x = Math.cos(angle) * R, z = Math.sin(angle) * R;
+    const disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.4, 2.4, 0.12, 32),
+      new THREE.MeshStandardMaterial({ color: 0x0e2a1c, roughness: 0.8 })
+    );
+    disc.position.set(x, 0.06, z); disc.receiveShadow = true; g.add(disc);
+    const sp = makeLabelSprite();
+    sp.position.set(x, 3.0, z);
+    g.add(sp);
+    SEAT_GROUP.add(g);
+    seatNodes.push({ group: g, disc, sprite: sp, angle, seat: i });
+  }
+}
+
+// ---------------------------------------------------------------- chain layout
+// We lay the main line along X (growing both directions from origin), and the
+// spinner arms along Z. Each placed piece is positioned by its branch + order.
+const CHAIN = new THREE.Group();
+scene.add(CHAIN);
+const GAPB = 0.22;                          // gap between adjacent bones
+const STEP = BONE_L + GAPB;                  // footprint of a normal bone along its line
+const DBL_STEP = BONE_W + GAPB;              // a double sits crosswise (shorter along the line)
+
+let boneCache = new Map(); // code -> mesh (so we can animate adds later)
+let _prevCodes = new Set(); // bone codes present before the current renderChain
+let _firstChainPaint = true; // don't drop the whole board on the very first paint
+
+// world position of each open end after layout, keyed by end id ('L'|'R'|'T'|'B').
+// Used to drop clickable 'play here' markers when a tile is selected.
+const END_POS = {};
+// group of yellow ring markers shown for the selected tile's legal end positions.
+const MARKERS = new THREE.Group();
+scene.add(MARKERS);
+const markerGeo = new THREE.TorusGeometry(0.9, 0.16, 12, 28);
+const markerMat = new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.92 });
+
+
+// Render the chain from view.line, orienting each bone so the MATCHING face
+// touches its neighbour (like numbers meet) and the OUTER face points outward.
+//
+// buildBone places the `a` half at local -X and the `b` half at local +X. To
+// orient a placed bone we decide which world direction its OUTER face must point
+// (away from the connection), then rotate so the outer half sits on that side.
+//
+// Main line runs along X (server line[] is already spatial L..R). Spinner arms
+// run along Z from the spinner bone. Doubles sit crosswise to their line.
+function renderChain(view) {
+  _prevCodes = new Set(boneCache.keys());   // which bones existed before this render
+  for (const m of CHAIN.children.slice()) CHAIN.remove(m);
+  boneCache.clear();
+  const all = view.line || [];
+  if (!all.length) return;
+
+  const mainSeq = all.filter((p) => p.branch === 'main'); // spatial L..R
+  const armT = all.filter((p) => p.branch === 'T').sort((a, b) => a.order - b.order);
+  const armB = all.filter((p) => p.branch === 'B').sort((a, b) => a.order - b.order);
+
+  const span = (p) => (p.double ? DBL_STEP : STEP);
+
+  // center the main line: place centers edge-to-edge using half-spans so a double's
+  // narrow footprint abuts its neighbour without overlap.
+  let totalW = 0; for (const p of mainSeq) totalW += span(p);
+  let cursor = -totalW / 2;        // left edge of current piece
+  let spinnerX = 0;
+  mainSeq.forEach((p) => {
+    const w = span(p);
+    const cx = cursor + w / 2;
+    // outward direction: piece played on L grew toward -X; on R toward +X; opener +X.
+    const dir = (p.on === 'L') ? -1 : +1;
+    placeBoneOriented(p, cx, 0, 'x', dir);
+    if (view.spinner && p.code === view.spinner.code) spinnerX = cx;
+    cursor += w;
+  });
+
+  layArm(armT, spinnerX, +1);
+  layArm(armB, spinnerX, -1);
+  _firstChainPaint = false;
+
+  // record world positions of the open ends so we can place 'play here' markers.
+  for (const k of Object.keys(END_POS)) delete END_POS[k];
+  const leftEdge = -totalW / 2, rightEdge = totalW / 2;
+  END_POS.L = new THREE.Vector3(leftEdge - STEP * 0.6, BONE_T + 0.1, 0);
+  END_POS.R = new THREE.Vector3(rightEdge + STEP * 0.6, BONE_T + 0.1, 0);
+  if (view.spinner && view.spinner.armsOpen) {
+    const tReach = (DBL_STEP / 2) + armT.reduce((a, p) => a + (p.double ? DBL_STEP : STEP), 0) + STEP * 0.6;
+    const bReach = (DBL_STEP / 2) + armB.reduce((a, p) => a + (p.double ? DBL_STEP : STEP), 0) + STEP * 0.6;
+    END_POS.T = new THREE.Vector3(spinnerX, BONE_T + 0.1, +tReach);
+    END_POS.B = new THREE.Vector3(spinnerX, BONE_T + 0.1, -bReach);
+  }
+}
+
+function layArm(arr, originX, dir) {
+  const span = (p) => (p.double ? DBL_STEP : STEP);
+  // start just clear of the spinner bone's crosswise footprint
+  let cursor = dir * (DBL_STEP / 2);
+  arr.forEach((p) => {
+    const w = span(p);
+    const cz = cursor + dir * (w / 2);
+    placeBoneOriented(p, originX, cz, 'z', dir);
+    cursor += dir * w;
+  });
+}
+
+// Orient so the OUTER face points along (axis,dir). buildBone: a@-localX, b@+localX.
+function placeBoneOriented(p, cx, cz, axis, dir) {
+  const bone = buildBone(p.a, p.b);
+  bone.position.set(cx, BONE_T / 2 + 0.02, cz);
+
+  if (p.double) {
+    // both faces equal — matching is moot. Sit crosswise to the line.
+    const ry0 = (axis === 'x') ? Math.PI / 2 : 0;
+    bone.rotation.y = ry0;
+    CHAIN.add(bone); boneCache.set(p.code, bone);
+    maybeSettle(bone, p.code, bone.position.y, ry0);
+    return;
+  }
+
+  // Which face is OUTER (points away from the connection)?
+  //   opener (outer null): keep a outward toward +dir arbitrarily.
+  //   else: p.outer is the new exposed pip; that face must point outward.
+  // The `b` face equals p.b; if p.outer === p.b it's the b-face that's outer.
+  let bIsOuter;
+  if (p.outer == null) bIsOuter = (dir > 0);          // opener: put b toward +dir
+  else bIsOuter = (p.outer === p.b);
+
+  // Base orientation:
+  //   axis x, ry=0   -> a at -X, b at +X
+  //   axis z, ry=90  -> a at +Z? compute: rotating +X(local) by +90° about Y maps to -Z.
+  // To avoid sign confusion we orient by: we want the OUTER half on the +dir side
+  // of the line. Determine where the b-half points for a candidate ry, flip if wrong.
+  let ry = (axis === 'x') ? 0 : Math.PI / 2;
+  // unit vector that local +X (the b-half side) points to after ry, on the line axis:
+  //   axis x: ry=0   -> bHalf at +X  => sign +1 ; ry=180 -> -1
+  //   axis z: ry=90  -> local+X rotates to -Z => sign -1 ; ry=270 -> +Z (+1)
+  let bSign = (axis === 'x') ? +1 : -1;
+  const wantBOn = bIsOuter ? (dir > 0 ? +1 : -1) : (dir > 0 ? -1 : +1); // side b should be on
+  if (bSign !== wantBOn) ry += Math.PI;
+
+  bone.rotation.y = ry;
+  CHAIN.add(bone);
+  boneCache.set(p.code, bone);
+  maybeSettle(bone, p.code, bone.position.y, ry);
+}
+
+// settle a bone only if it's newly placed this render (not on rebuilds/first paint)
+function maybeSettle(bone, code, finalY, finalRotY) {
+  if (_firstChainPaint) return;
+  if (_prevCodes.has(code)) return;   // already on the table — leave it
+  startSettle(bone, finalY, finalRotY);
+}
+
+// ---------------------------------------------------------------- settle physics
+// "Physics" here is a constrained drop-and-settle: the SERVER decides each bone's
+// final resting transform (placeBoneOriented). A newly placed bone spawns slightly
+// above + rotated, then a critically-damped spring eases it down to that pinned
+// transform with a tiny landing bounce + click. This gives the table real, weighty
+// motion without a physics engine, and can NEVER desync from the server because the
+// target is the authoritative position — we only animate the approach to it.
+const SETTLING = []; // active settles: { mesh, fromY, toY, fromRot, toRot, t, dur, landed }
+
+function startSettle(mesh, finalY, finalRotY) {
+  // spawn above + slightly over-rotated, then spring to the final transform
+  const dropH = 6 + Math.random() * 2;
+  const wobble = (Math.random() - 0.5) * 0.5;       // small yaw overshoot
+  const tilt = (Math.random() - 0.5) * 0.18;        // tiny pitch on the way down
+  mesh.position.y = finalY + dropH;
+  mesh.rotation.y = finalRotY + wobble;
+  mesh.rotation.x = tilt;
+  mesh.rotation.z = (Math.random() - 0.5) * 0.12;
+  SETTLING.push({
+    mesh, toY: finalY, fromY: finalY + dropH,
+    toRotY: finalRotY, fromRotY: finalRotY + wobble,
+    fromRotX: tilt, fromRotZ: mesh.rotation.z,
+    t: 0, dur: 360 + Math.random() * 120, landed: false,
+  });
+}
+
+// critically-damped-ish ease with a small bounce near the end
+function settleEase(p) {
+  if (p >= 1) return 1;
+  // overshoot then settle (a soft bounce)
+  const s = 1 - Math.pow(1 - p, 3);                 // ease-out cubic base
+  const bounce = Math.sin(p * Math.PI) * 0.06 * (1 - p); // tiny lift mid-fall
+  return s - bounce;
+}
+
+function stepSettles(dtMs) {
+  for (let i = SETTLING.length - 1; i >= 0; i--) {
+    const s = SETTLING[i];
+    s.t += dtMs;
+    const p = Math.min(1, s.t / s.dur);
+    const e = settleEase(p);
+    s.mesh.position.y = s.fromY + (s.toY - s.fromY) * e;
+    s.mesh.rotation.y = s.fromRotY + (s.toRotY - s.fromRotY) * e;
+    s.mesh.rotation.x = s.fromRotX * (1 - e);
+    s.mesh.rotation.z = s.fromRotZ * (1 - e);
+    if (!s.landed && p > 0.82) { s.landed = true; if (R.Sound) R.Sound.click(); }
+    if (p >= 1) {
+      s.mesh.position.y = s.toY; s.mesh.rotation.x = 0; s.mesh.rotation.z = 0; s.mesh.rotation.y = s.toRotY;
+      SETTLING.splice(i, 1);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- socket layer
+const R = { Sound: null };
+let mySeat = null, state = null, priv = null, acted = null, everConnected = false, selCode = null;
+const socket = io({ transports: ['websocket', 'polling'], withCredentials: true });
+
+socket.on('connect', () => { showReconnect(false); everConnected = true; if (ticket) socket.emit('table:join', { ticket }); else setStatus('no ?ticket= in URL'); });
+socket.on('disconnect', () => showReconnect(true, 'Reconnecting…'));
+socket.on('table:error', (e) => { setStatus('⚠ ' + e.message); if (/ticket|expired|no such table/i.test(e.message || '')) showReconnect(true, 'Session expired —', true); });
+socket.on('seat:hand', (h) => { mySeat = h.seat; priv = h; renderHUD(); });
+socket.on('table:state', (s) => { state = s; try { onState(s); } catch (e) {} renderHUD(); });
+socket.on('table:event', (ev) => onEvent(ev));
+socket.on('table:over', (o) => showOver(o));
+
+const myTurn = () => !!(priv && priv.yourTurn);
+
+let lastSeatCount = 0, lastLineLen = -1, prevTurn = null, prevHandNo = null;
+function onState(s) {
+  const v = s.view || {};
+  // (re)build seats if seat count changed or first paint
+  const n = (s.seats || []).length;
+  if (n && (n !== lastSeatCount)) { buildSeats(n, mySeat); lastSeatCount = n; }
+  // update seat labels (presence "check-in")
+  if (seatNodes.length) updateSeats(s, v);
+  // rebuild chain when the board changed
+  const ll = (v.line || []).length;
+  if (ll !== lastLineLen) { renderChain(v); lastLineLen = ll; if (R.Sound && ll > 0) R.Sound.play(); }
+  if (R.Sound && v.turn === mySeat && prevTurn !== mySeat && s.phase === 'playing') R.Sound.yourTurn();
+  if (R.Sound && s.handNo && s.handNo !== prevHandNo && s.phase !== 'lobby') R.Sound.deal();
+  prevTurn = v.turn; prevHandNo = s.handNo;
+  renderVote(s.vote);
+  if ($('scorePanel') && $('scorePanel').classList.contains('show')) renderScoreboard();
+}
+
+function updateSeats(s, v) {
+  for (const node of seatNodes) {
+    const seat = (s.seats || [])[node.seat];
+    if (!seat) continue;
+    const tiles = (v.handCounts && v.handCounts[node.seat] != null) ? v.handCounts[node.seat] : '';
+    const total = (v.totals && v.totals[node.seat] != null) ? v.totals[node.seat] : 0;
+    const turn = v.turn === node.seat && s.phase === 'playing';
+    const name = (seat.displayName || ('Seat ' + node.seat)) + (seat.bot ? ' 🤖' : '');
+    const sub = s.phase === 'lobby' ? (seat.ready ? 'ready' : (seat.occupied ? 'waiting' : 'empty'))
+                                    : (tiles + ' tiles · ' + total + ' pts');
+    drawLabel(node.sprite, { name, sub, turn, you: node.seat === mySeat });
+  }
+}
+
+// ---------------------------------------------------------------- 2D HUD
+function setStatus(txt) { const v = state && state.view; const el = $('status'); if (!el) return; el.innerHTML = txt != null ? txt : statusLine(); }
+function statusLine() {
+  if (!state) return '';
+  if (state.phase === 'lobby') return 'Lobby — ready up to start';
+  if (state.phase === 'gameOver') return 'Game over';
+  const v = state.view || {};
+  const turnTxt = v.turn === mySeat ? '<b>YOUR TURN</b>' : `seat ${v.turn}`;
+  const ends = (v.ends || []).map((e) => e.pip).join('/');
+  const spin = v.spinner ? ' · spinner ' + v.spinner.pip + (v.spinner.armsOpen ? ' (open)' : '') : '';
+  return `${turnTxt} · ends [${ends}]${spin} · boneyard ${v.boneyard || 0} · to ${v.target}`;
+}
+
+function renderHUD() { if (!state) return; setStatus(); renderControls(); renderTray(); updateMarkers(); }
+
+function renderControls() {
+  const box = $('controls'); box.innerHTML = '';
+  if (!state) return;
+  if (state.phase === 'lobby') {
+    const meReady = (state.seats[mySeat] || {}).ready;
+    const rb = document.createElement('button'); rb.className = 'act'; rb.textContent = meReady ? 'Ready ✓ (waiting…)' : 'Ready'; rb.disabled = !!meReady;
+    rb.onclick = () => socket.emit('seat:ready', { ready: true }); box.appendChild(rb);
+    state.seats.forEach((s) => { if (!s.occupied) { const b = document.createElement('button'); b.className = 'act ghost'; b.textContent = `+ Bot seat ${s.seat}`; b.onclick = () => socket.emit('seat:addBot', { seat: s.seat }); box.appendChild(b); } });
+    return;
+  }
+  if (!priv || !myTurn()) return;
+  const legal = priv.legal || [];
+  const plays = legal.filter((a) => a.type === 'play');
+  const draw = legal.find((a) => a.type === 'draw');
+  const pass = legal.find((a) => a.type === 'pass');
+  if (selCode) {
+    const opts = plays.filter((p) => p.code === selCode);
+    if (priv.mustOpen && opts.length) {
+      const b = document.createElement('button'); b.className = 'act gold'; b.textContent = 'Play opener';
+      b.onclick = () => { emitPlay(opts[0]); selCode = null; renderHUD(); }; box.appendChild(b);
+    } else if (opts.length >= 2) {
+      const hint = document.createElement('button'); hint.className = 'act gold'; hint.textContent = '◉ Tap a yellow spot on the table';
+      hint.onclick = () => {}; box.appendChild(hint);
+    }
+    const c = document.createElement('button'); c.className = 'act ghost'; c.textContent = 'Cancel'; c.onclick = () => { selCode = null; renderHUD(); }; box.appendChild(c);
+  }
+  if (draw) { const b = document.createElement('button'); b.className = 'act'; b.textContent = 'Draw a tile'; b.onclick = () => socket.emit('game:action', { action: { type: 'draw' } }); box.appendChild(b); }
+  if (pass) { const b = document.createElement('button'); b.className = 'act ghost'; b.textContent = 'Pass (blocked)'; b.onclick = () => socket.emit('game:action', { action: { type: 'pass' } }); box.appendChild(b); }
+}
+function endLabel(id) { return ({ L: 'left', R: 'right', T: 'top arm', B: 'bottom arm', open: 'open' })[id] || id; }
+
+function emitPlay(o) {
+  // authoritative-priv gating (same discipline as 2D client): the card must be in
+  // the current legal set + hand, and it must be our turn.
+  const legalNow = (priv && priv.legal || []).some((a) => a.type === 'play' && a.code === o.code && a.end === o.end);
+  const inHand = (priv && priv.hand || []).some((t) => t.code === o.code);
+  if (!legalNow || !inHand || !myTurn()) return;
+  socket.emit('game:action', { action: o });
+}
+
+// pip layout for DOM tray bones
+const PIP_MAP = { 0: [], 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+function pipHalf(n) {
+  const h = document.createElement('div'); h.className = 'half';
+  const g = document.createElement('div'); g.className = 'pips';
+  for (let i = 0; i < 9; i++) { const cell = document.createElement('div'); cell.style.width = '4px'; cell.style.height = '4px'; if (PIP_MAP[n] && PIP_MAP[n].includes(i)) { const p = document.createElement('div'); p.className = 'pip'; cell.appendChild(p); } g.appendChild(cell); }
+  h.appendChild(g); return h;
+}
+function boneEl(t) {
+  const el = document.createElement('div'); el.className = 'bone';
+  el.appendChild(pipHalf(t.a)); const d = document.createElement('div'); d.className = 'div'; el.appendChild(d); el.appendChild(pipHalf(t.b));
+  return el;
+}
+function renderTray() {
+  const box = $('tray'); box.innerHTML = '';
+  const arc = document.createElement('div'); arc.id = 'trayArc'; box.appendChild(arc);
+  const hand = (priv && priv.hand) || [];
+  const legal = (priv && priv.legal) || [];
+  const playable = new Set(legal.filter((a) => a.type === 'play').map((a) => a.code));
+  const canAct = myTurn();
+
+  const n = hand.length;
+  if (!n) return;
+  // Fan the hand on a shallow arc with slight overlap. Bones are ~34px wide; we
+  // step by ~26px so they overlap, fan ±~16° across the hand, and lift along the
+  // arc so the middle sits highest (like holding a fan of tiles).
+  const STEPX = Math.min(30, Math.max(18, 360 / Math.max(n, 1))); // tighter as hand grows
+  const spreadDeg = Math.min(20, n * 2.4);
+  const midpoint = (n - 1) / 2;
+  const arcLift = 16; // px the middle rises vs the ends
+  arc.style.width = (STEPX * (n - 1) + 40) + 'px';
+
+  hand.forEach((t, i) => {
+    const el = boneEl(t);
+    const rel = i - midpoint;
+    const frac = midpoint === 0 ? 0 : rel / midpoint;        // -1..1
+    const angle = frac * spreadDeg;                          // fan rotation
+    const lift = (1 - Math.abs(frac)) * arcLift;             // arc rise
+    const x = (STEPX * (n - 1)) / 2 + rel * STEPX;           // center the fan
+    const selLift = (selCode === t.code) ? 16 : 0;
+    el.style.left = x + 'px';
+    el.style.zIndex = String(100 + i);
+    el.style.transform = `rotate(${angle}deg) translateY(${-(lift + selLift)}px)`;
+
+    if (canAct && playable.has(t.code)) {
+      el.classList.add('playable'); if (selCode === t.code) el.classList.add('sel');
+      el.onmouseenter = () => { el.style.transform = `rotate(${angle}deg) translateY(${-(lift + selLift + 8)}px)`; el.style.zIndex = '999'; };
+      el.onmouseleave = () => { el.style.transform = `rotate(${angle}deg) translateY(${-(lift + selLift)}px)`; el.style.zIndex = String(100 + i); };
+      el.onclick = () => {
+        const opts = legal.filter((a) => a.type === 'play' && a.code === t.code);
+        if (opts.length === 1) { emitPlay(opts[0]); selCode = null; }
+        else { selCode = (selCode === t.code ? null : t.code); } // multi-end -> markers on table
+        renderHUD();
+      };
+    } else if (canAct && playable.size) { el.classList.add('dim'); }
+    arc.appendChild(el);
+  });
+}
+
+function onEvent(ev) {
+  if (ev.type === 'spinnerOpen') { /* could flash arms */ }
+  if (ev.type === 'handWon' && R.Sound) R.Sound.trick();
+  if (ev.type === 'turn:timeout' && R.Sound) R.Sound.alert();
+  if ((ev.type === 'vote:open' || ev.type === 'vote:update')) renderVote(ev);
+  if (ev.type === 'vote:result') { const p = $('votePanel'); if (p) p.classList.remove('show'); }
+}
+
+// ---------------------------------------------------------------- overlays
+function showReconnect(on, msg, rejoin) {
+  const el = $('reconnect'); if (!el) return;
+  if (!on) { el.classList.remove('show'); return; }
+  el.textContent = msg || 'Reconnecting…';
+  if (rejoin) { const b = document.createElement('button'); b.textContent = 'Rejoin'; b.onclick = () => location.href = 'https://match.madladslab.com/resume'; el.appendChild(b); }
+  el.classList.add('show');
+}
+function showOver(o) {
+  const st = (o.standings || []);
+  const mine = st.find((x) => x.seat === mySeat); const iWon = mine && mine.won;
+  $('overResult').textContent = `Game ${o.gamesPlayed} · final`;
+  $('overTitle').textContent = mySeat == null ? 'Game Over' : (iWon ? 'You win! 🎉' : 'You lost');
+  const top = Math.max(...st.map((x) => x.score != null ? x.score : 0));
+  $('overScore').textContent = 'Highest score wins · ' + top + ' pts';
+  $('overStand').innerHTML = st.slice().sort((a, b) => (b.score || 0) - (a.score || 0)).map((s) =>
+    `<div class="r"><span>${s.displayName || ('Seat ' + s.seat)}${s.bot ? ' 🤖' : ''}${s.seat === mySeat ? ' (you)' : ''}</span>` +
+    `<span class="${s.won ? 'w' : 'l'}">${s.score} pts${s.won ? ' · WIN' : ''}</span></div>`).join('');
+  $('over').classList.add('show');
+  if (R.Sound) { iWon ? R.Sound.win() : R.Sound.lose(); }
+}
+$('btnRematch').onclick = () => { socket.emit('table:rematch'); $('over').classList.remove('show'); };
+$('btnExit').onclick = () => location.href = 'https://games.madladslab.com/';
+socket.on('table:state', (s2) => { if (s2 && s2.phase === 'lobby') $('over').classList.remove('show'); });
+
+function renderVote(vote) {
+  const panel = $('votePanel'); if (!panel) return;
+  if (!vote || vote.seat == null) { panel.classList.remove('show'); return; }
+  const name = (state && state.seats[vote.seat] && state.seats[vote.seat].displayName) || ('Seat ' + vote.seat);
+  const iAm = vote.seat === mySeat;
+  $('voteTitle').textContent = iAm ? 'You timed out — act now or be replaced' : (name + ' is out of time');
+  $('voteCount').textContent = iAm ? '' : ('Wait ' + (vote.waits || 0) + ' · Kick ' + (vote.kicks || 0) + ' · of ' + (vote.eligible || 0));
+  $('voteWait').style.display = $('voteKick').style.display = iAm ? 'none' : '';
+  panel.classList.add('show');
+}
+$('voteWait').onclick = () => socket.emit('table:vote', { choice: 'wait' });
+$('voteKick').onclick = () => socket.emit('table:vote', { choice: 'kick' });
+
+// ---------------------------------------------------------------- camera + sound
+$('resetcam').onclick = () => { camera.position.copy(HOME.pos); controls.target.copy(HOME.target); controls.update(); };
+
+// minimal WebAudio sound kit (no files), mirrors the 2D kit's API surface
+R.Sound = (function () {
+  let ctx = null, muted = false;
+  try { muted = localStorage.getItem('cards_muted') === '1'; } catch (e) {}
+  const ac = () => (ctx || (ctx = new (window.AudioContext || window.webkitAudioContext)()));
+  function beep(f, d, g = 0.05, type = 'sine') { if (muted) return; const a = ac(); const o = a.createOscillator(), gn = a.createGain(); o.type = type; o.frequency.value = f; gn.gain.value = g; o.connect(gn); gn.connect(a.destination); o.start(); gn.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + d); o.stop(a.currentTime + d); }
+  return {
+    play: () => beep(320, 0.08, 0.04, 'triangle'),
+    yourTurn: () => { beep(520, 0.1, 0.05); setTimeout(() => beep(680, 0.1, 0.05), 90); },
+    trick: () => beep(440, 0.16, 0.05, 'sawtooth'),
+    deal: () => beep(240, 0.06, 0.03, 'triangle'),
+    tick: () => beep(700, 0.04, 0.03),
+    click: () => { beep(150, 0.05, 0.06, 'square'); setTimeout(() => beep(90, 0.06, 0.05, 'square'), 18); },
+    alert: () => beep(200, 0.25, 0.06, 'square'),
+    win: () => { [523, 659, 784].forEach((f, i) => setTimeout(() => beep(f, 0.18, 0.06), i * 110)); },
+    lose: () => { [392, 311].forEach((f, i) => setTimeout(() => beep(f, 0.24, 0.06, 'sawtooth'), i * 150)); },
+    resume: () => { try { ac().resume(); } catch (e) {} },
+    setMuted: (m) => { muted = m; },
+  };
+})();
+(function () {
+  const mb = $('mutebtn');
+  let muted = false; try { muted = localStorage.getItem('cards_muted') === '1'; } catch (e) {}
+  const paint = () => { mb.textContent = muted ? '🔇' : '🔊'; }; paint();
+  mb.onclick = () => { muted = !muted; R.Sound.setMuted(muted); R.Sound.resume(); if (!muted) R.Sound.play(); paint(); try { localStorage.setItem('cards_muted', muted ? '1' : '0'); } catch (e) {} };
+  document.addEventListener('pointerdown', () => R.Sound.resume(), { once: true });
+})();
+
+// ------------------------------------------------ scoreboard + game-info modals
+function openPanel(id) { const e = $(id); if (e) e.classList.add('show'); if (id === 'scorePanel') renderScoreboard(); if (id === 'infoPanel') renderInfo(); }
+function closePanel(id) { const e = $(id); if (e) e.classList.remove('show'); }
+$('scorebtn').onclick = () => openPanel('scorePanel');
+$('infobtn').onclick = () => openPanel('infoPanel');
+$('scoreClose').onclick = () => closePanel('scorePanel');
+$('infoClose').onclick = () => closePanel('infoPanel');
+[$('scorePanel'), $('infoPanel')].forEach((p) => p && p.addEventListener('click', (e) => { if (e.target === p) p.classList.remove('show'); }));
+
+function renderScoreboard() {
+  const body = $('scoreBody'); if (!body || !state) return;
+  const v = state.view || {};
+  const seats = state.seats || [];
+  const target = v.target || 100;
+  const rows = seats.map((s) => ({
+    seat: s.seat, name: s.displayName || ('Seat ' + s.seat), bot: s.bot,
+    tiles: (v.handCounts && v.handCounts[s.seat] != null) ? v.handCounts[s.seat] : '–',
+    pts: (v.totals && v.totals[s.seat] != null) ? v.totals[s.seat] : 0,
+    turn: v.turn === s.seat && state.phase === 'playing', me: s.seat === mySeat,
+  })).sort((a, b) => b.pts - a.pts);
+  body.innerHTML = rows.map((r) => {
+    const cls = ['row', r.me ? 'me' : '', r.turn ? 'turn' : ''].join(' ').trim();
+    const pct = Math.min(100, Math.round((r.pts / target) * 100));
+    return `<div class="${cls}">
+      <span class="nm">${escapeHtml(r.name)} ${r.bot ? '<span class="tag">bot</span>' : ''}${r.me ? '<span class="tag">you</span>' : ''}${r.turn ? '<span class="tag">· turn</span>' : ''}</span>
+      <span class="tiles">${r.tiles} tiles</span>
+      <span class="pts">${r.pts}</span>
+      <span class="bar"><i style="width:${pct}%"></i></span>
+    </div>`;
+  }).join('');
+  $('scoreFoot').textContent = `Highest score wins · playing to ${target} · boneyard ${v.boneyard || 0}`;
+}
+
+function renderInfo() {
+  const body = $('infoBody'); if (!body) return;
+  const v = (state && state.view) || {};
+  const spin = v.spinner ? (v.spinner.armsOpen ? 'open' : 'set, arms locked') : (v.spinnerRule === 'none' ? 'off' : 'awaiting first double');
+  const rule = v.spinnerRule || 'first';
+  const ruleText = { first: 'First double is a spinner', all: 'Every double is a spinner', none: 'No spinners' }[rule] || rule;
+  body.innerHTML = `
+    <div class="k"><span>Goal</span><b>Highest score wins</b></div>
+    <div class="k"><span>Play to</span><b>${v.target || 100} pts</b></div>
+    <div class="k"><span>Spinner rule</span><b>${ruleText}</b></div>
+    <div class="k"><span>Spinner now</span><b>${spin}</b></div>
+    <ul>
+      <li>Match a tile to an <b>open end</b> of the line.</li>
+      <li>Can't play? <b>Draw</b> from the boneyard, or <b>pass</b> when it's empty.</li>
+      <li>Empty your hand to <b>win the hand</b> and score opponents' remaining pips.</li>
+      <li>A <b>spinner</b> double branches the line — both its line ends must be played before its side arms open.</li>
+      <li>First to the target total wins the game.</li>
+    </ul>`;
+}
+
+function escapeHtml(x) { const d = document.createElement('div'); d.textContent = x == null ? '' : String(x); return d.innerHTML; }
+
+// ------------------------------------------------ table 'play here' markers
+// When a tile is selected with MORE THAN ONE legal end, drop a yellow ring at
+// each end position; clicking a ring plays the tile there. Single-end tiles play
+// immediately on tray selection (no marker needed).
+const _raycaster = new THREE.Raycaster();
+const _ptr = new THREE.Vector2();
+
+function clearMarkers() { for (const m of MARKERS.children.slice()) MARKERS.remove(m); }
+
+function updateMarkers() {
+  clearMarkers();
+  if (!selCode || !priv || !myTurn()) return;
+  const ends = (priv.legal || []).filter((a) => a.type === 'play' && a.code === selCode).map((a) => a.end);
+  if (ends.length < 2) return; // single end auto-plays; no markers
+  for (const id of ends) {
+    const pos = END_POS[id];
+    if (!pos) continue;
+    const ring = new THREE.Mesh(markerGeo, markerMat.clone());
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.copy(pos);
+    ring.userData = { end: id, code: selCode, t0: performance.now() };
+    MARKERS.add(ring);
+  }
+}
+
+// pulse the markers + raycast clicks
+function animateMarkers(now) {
+  for (const m of MARKERS.children) {
+    const k = 0.85 + 0.15 * Math.sin((now - (m.userData.t0 || 0)) / 220);
+    m.scale.setScalar(k);
+    m.material.opacity = 0.7 + 0.25 * (0.5 + 0.5 * Math.sin((now - (m.userData.t0 || 0)) / 220));
+  }
+}
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (!MARKERS.children.length) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  _ptr.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  _ptr.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  _raycaster.setFromCamera(_ptr, camera);
+  const hit = _raycaster.intersectObjects(MARKERS.children, false)[0];
+  if (hit) {
+    const { code, end } = hit.object.userData;
+    const opt = (priv.legal || []).find((a) => a.type === 'play' && a.code === code && a.end === end);
+    if (opt) { emitPlay(opt); selCode = null; clearMarkers(); renderHUD(); }
+    e.stopPropagation();
+  }
+}, true);
+
+// ---------------------------------------------------------------- resize + loop
+function resize() { const w = window.innerWidth, h = window.innerHeight; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h, false); fitSceneBg(); }
+window.addEventListener('resize', resize); window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+resize();
+
+let _lastTick = performance.now();
+function tick() {
+  const now = performance.now(); const dt = Math.min(50, now - _lastTick); _lastTick = now;
+  requestAnimationFrame(tick);
+  controls.update(); animateMarkers(now); stepSettles(dt);
+  renderer.render(scene, camera);
+}
+tick();

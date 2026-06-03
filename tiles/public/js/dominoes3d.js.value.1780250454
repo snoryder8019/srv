@@ -1,0 +1,535 @@
+/**
+ * Dominoes 3D client — three.js tabletop over the live tiles socket protocol.
+ *
+ * The SERVER is authoritative (same protocol as the 2D client): we render
+ * table:state / seat:hand payloads in 3D and drive actions off the authoritative
+ * private view. Only the BOARD is 3D; the player's controls live in a 2D HUD
+ * overlay (index.html). Camera control mirrors the hex/Towers feel (OrbitControls
+ * with damping) but opened up for free-angle board framing.
+ *
+ * Board data shape (from the spinner-aware engine):
+ *   view.line: [{ code,a,b,double,branch:'main'|'T'|'B',order,on }]
+ *   view.ends: [{ id:'L'|'R'|'T'|'B', pip, kind:'line'|'spin' }]
+ *   view.spinner: { code, pip, armsOpen } | null
+ */
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const qs = new URLSearchParams(location.search);
+const ticket = qs.get('ticket');
+const $ = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------- scene setup
+const canvas = $('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a1a12);
+scene.fog = new THREE.Fog(0x0a1a12, 170, 320); // far back so zoom-out (max 130) never fogs the table
+
+const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(0, 58, 96);   // well outside the table frame, elevated
+
+// --- Camera (OrbitControls, hex/Towers feel) -------------------------------
+// ONE-finger / LEFT-drag  -> orbit (spin) the view
+// TWO-finger / RIGHT-drag -> pan camera + focal point
+// scroll / pinch          -> zoom toward the focal point
+// Stock OrbitControls: orbit + zoom pivot the `target`; pan slides the target.
+// We keep it stock (no custom re-pin) so damping never fights us — that was the
+// cause of the snap-back on release. Start the focal point at the table center.
+const TABLE_CENTER = new THREE.Vector3(0, 1.0, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.09;
+controls.target.copy(TABLE_CENTER);
+controls.minDistance = 22;
+controls.maxDistance = 200;
+controls.minPolarAngle = 0.12;
+controls.maxPolarAngle = Math.PI * 0.49;   // never under the table
+controls.enablePan = true;
+controls.screenSpacePanning = false;       // pan across the felt plane
+controls.panSpeed = 1.1;
+controls.zoomSpeed = 1.15;
+controls.rotateSpeed = 0.9;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+controls.update();
+
+const HOME = { pos: camera.position.clone(), target: controls.target.clone() };
+
+const TABLE_R = 34; // table radius (used by lighting shadow frustum + seats + felt)
+
+// ---- lighting ----
+// Ambient + hemisphere fill keep the felt and bones evenly lit at ANY zoom; the
+// key light adds shadow/shape. Shadow frustum is sized to the whole table so it
+// doesn't cut out when the camera pulls back.
+scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+const hemi = new THREE.HemisphereLight(0xdfeaff, 0x14241b, 0.55);
+scene.add(hemi);
+const key = new THREE.DirectionalLight(0xfff4e0, 1.15);
+key.position.set(18, 40, 18);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 1; key.shadow.camera.far = 200;
+const SH = TABLE_R + 6;                       // cover the entire felt + rail
+key.shadow.camera.left = -SH; key.shadow.camera.right = SH;
+key.shadow.camera.top = SH; key.shadow.camera.bottom = -SH;
+key.shadow.bias = -0.0003;
+key.shadow.normalBias = 0.02;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x88bbff, 0.4);
+rim.position.set(-16, 16, -18);
+scene.add(rim);
+
+// ---- felt table + wooden rail ----
+const felt = new THREE.Mesh(
+  new THREE.CircleGeometry(TABLE_R, 64),
+  new THREE.MeshStandardMaterial({ color: 0x176b46, roughness: 0.92, metalness: 0.0 })
+);
+felt.rotation.x = -Math.PI / 2;
+felt.receiveShadow = true;
+scene.add(felt);
+// subtle darker vignette ring
+const ring = new THREE.Mesh(
+  new THREE.RingGeometry(TABLE_R * 0.62, TABLE_R, 64),
+  new THREE.MeshBasicMaterial({ color: 0x0c3a26, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+);
+ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01;
+scene.add(ring);
+const rail = new THREE.Mesh(
+  new THREE.TorusGeometry(TABLE_R + 0.6, 1.1, 16, 80),
+  new THREE.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 0.6, metalness: 0.1 })
+);
+rail.rotation.x = -Math.PI / 2; rail.position.y = 0.2;
+rail.castShadow = true; rail.receiveShadow = true;
+scene.add(rail);
+
+// ---------------------------------------------------------------- bone meshes
+// World units: a standard bone is 2 (long) x 1 (wide) x 0.34 (thick), pips inset.
+const BONE_L = 3.0, BONE_W = 1.5, BONE_T = 0.5, PIP_R = 0.11;
+const BONE_MAT = new THREE.MeshStandardMaterial({ color: 0xf6f3ea, roughness: 0.42, metalness: 0.02 });
+const PIP_MAT = new THREE.MeshStandardMaterial({ color: 0x14171a, roughness: 0.5 });
+const DIV_MAT = new THREE.MeshStandardMaterial({ color: 0xcdc8b8, roughness: 0.6 });
+const pipGeo = new THREE.SphereGeometry(PIP_R, 12, 12);
+// pip layouts on a 3x3 grid (cells -1,0,1 in u,v) for counts 0..6
+const PIP_CELLS = {
+  0: [], 1: [[0, 0]], 2: [[-1, 1], [1, -1]], 3: [[-1, 1], [0, 0], [1, -1]],
+  4: [[-1, 1], [1, 1], [-1, -1], [1, -1]], 5: [[-1, 1], [1, 1], [0, 0], [-1, -1], [1, -1]],
+  6: [[-1, 1], [1, 1], [-1, 0], [1, 0], [-1, -1], [1, -1]],
+};
+
+// rounded-box geometry (cheap bevel via slightly inset box + edges)
+function roundedBox(w, h, d, r) {
+  // three has no built-in rounded box without addons; use a Box with a thin
+  // beveled top via scaling — good enough read at tabletop distance.
+  const g = new THREE.BoxGeometry(w, h, d, 1, 1, 1);
+  return g;
+}
+
+// build one bone as a Group; `a` face toward -X half, `b` toward +X half.
+function buildBone(a, b) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(roundedBox(BONE_L, BONE_T, BONE_W, 0.12), BONE_MAT);
+  body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+  // center divider line (thin dark strip across the short axis)
+  const div = new THREE.Mesh(new THREE.BoxGeometry(0.05, BONE_T + 0.01, BONE_W * 0.82), DIV_MAT);
+  g.add(div);
+  // pips: each half is a 1x1 region centered at x = ∓0.5
+  const halfCenter = BONE_L / 4; // 0.5
+  const cell = 0.38;             // spacing of the 3x3 grid (scaled to bigger bone)
+  const top = BONE_T / 2 + 0.001;
+  const addPips = (count, cx) => {
+    for (const [u, v] of (PIP_CELLS[count] || [])) {
+      const m = new THREE.Mesh(pipGeo, PIP_MAT);
+      m.position.set(cx + u * cell, top, v * cell);
+      m.scale.y = 0.5;
+      g.add(m);
+    }
+  };
+  addPips(a, -halfCenter);
+  addPips(b, +halfCenter);
+  g.userData = { a, b };
+  return g;
+}
+
+// ---------------------------------------------------------------- seat markers
+// players "checked in" at their location around the table. We anchor a billboarded
+// label sprite + a small disc at each seat azimuth. Seat 0 is the local player,
+// placed nearest the camera home (south); others spread clockwise.
+const SEAT_GROUP = new THREE.Group();
+scene.add(SEAT_GROUP);
+const seatNodes = []; // { group, disc, sprite, angle }
+
+function makeLabelSprite() {
+  const cvs = document.createElement('canvas'); cvs.width = 256; cvs.height = 96;
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  const sp = new THREE.Sprite(mat);
+  sp.scale.set(7.5, 2.8, 1);
+  sp.userData = { cvs, tex };
+  return sp;
+}
+function drawLabel(sp, { name, sub, turn, you }) {
+  const { cvs, tex } = sp.userData;
+  const c = cvs.getContext('2d');
+  c.clearRect(0, 0, cvs.width, cvs.height);
+  c.fillStyle = turn ? 'rgba(47,191,113,0.92)' : 'rgba(8,18,13,0.82)';
+  rr(c, 6, 6, cvs.width - 12, cvs.height - 12, 16); c.fill();
+  if (turn) { c.strokeStyle = '#bdf5d4'; c.lineWidth = 3; rr(c, 6, 6, cvs.width - 12, cvs.height - 12, 16); c.stroke(); }
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = you ? '#ffe9a8' : '#eef6ef'; c.font = 'bold 34px system-ui';
+  c.fillText(name || 'Seat', cvs.width / 2, 40);
+  c.fillStyle = turn ? '#06351c' : '#9fb0a6'; c.font = '24px system-ui';
+  c.fillStyle = turn ? '#06351c' : '#9fb0a6';
+  c.fillText(sub || '', cvs.width / 2, 72);
+  tex.needsUpdate = true;
+}
+function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+function buildSeats(n, mySeat) {
+  for (const s of seatNodes) SEAT_GROUP.remove(s.group);
+  seatNodes.length = 0;
+  for (let i = 0; i < n; i++) {
+    // rotate so the local player (mySeat) sits south (nearest camera home)
+    const rel = ((i - (mySeat || 0)) + n) % n;
+    const angle = Math.PI / 2 + (rel / n) * Math.PI * 2; // south = +Z
+    const g = new THREE.Group();
+    const R = TABLE_R - 4.5;
+    const x = Math.cos(angle) * R, z = Math.sin(angle) * R;
+    const disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.4, 2.4, 0.12, 32),
+      new THREE.MeshStandardMaterial({ color: 0x0e2a1c, roughness: 0.8 })
+    );
+    disc.position.set(x, 0.06, z); disc.receiveShadow = true; g.add(disc);
+    const sp = makeLabelSprite();
+    sp.position.set(x, 3.0, z);
+    g.add(sp);
+    SEAT_GROUP.add(g);
+    seatNodes.push({ group: g, disc, sprite: sp, angle, seat: i });
+  }
+}
+
+// ---------------------------------------------------------------- chain layout
+// We lay the main line along X (growing both directions from origin), and the
+// spinner arms along Z. Each placed piece is positioned by its branch + order.
+const CHAIN = new THREE.Group();
+scene.add(CHAIN);
+const GAPB = 0.22;                          // gap between adjacent bones
+const STEP = BONE_L + GAPB;                  // footprint of a normal bone along its line
+const DBL_STEP = BONE_W + GAPB;              // a double sits crosswise (shorter along the line)
+
+let boneCache = new Map(); // code -> mesh (so we can animate adds later)
+
+
+// Render the chain from view.line, orienting each bone so the MATCHING face
+// touches its neighbour (like numbers meet) and the OUTER face points outward.
+//
+// buildBone places the `a` half at local -X and the `b` half at local +X. To
+// orient a placed bone we decide which world direction its OUTER face must point
+// (away from the connection), then rotate so the outer half sits on that side.
+//
+// Main line runs along X (server line[] is already spatial L..R). Spinner arms
+// run along Z from the spinner bone. Doubles sit crosswise to their line.
+function renderChain(view) {
+  for (const m of CHAIN.children.slice()) CHAIN.remove(m);
+  boneCache.clear();
+  const all = view.line || [];
+  if (!all.length) return;
+
+  const mainSeq = all.filter((p) => p.branch === 'main'); // spatial L..R
+  const armT = all.filter((p) => p.branch === 'T').sort((a, b) => a.order - b.order);
+  const armB = all.filter((p) => p.branch === 'B').sort((a, b) => a.order - b.order);
+
+  const span = (p) => (p.double ? DBL_STEP : STEP);
+
+  // center the main line: place centers edge-to-edge using half-spans so a double's
+  // narrow footprint abuts its neighbour without overlap.
+  let totalW = 0; for (const p of mainSeq) totalW += span(p);
+  let cursor = -totalW / 2;        // left edge of current piece
+  let spinnerX = 0;
+  mainSeq.forEach((p) => {
+    const w = span(p);
+    const cx = cursor + w / 2;
+    // outward direction: piece played on L grew toward -X; on R toward +X; opener +X.
+    const dir = (p.on === 'L') ? -1 : +1;
+    placeBoneOriented(p, cx, 0, 'x', dir);
+    if (view.spinner && p.code === view.spinner.code) spinnerX = cx;
+    cursor += w;
+  });
+
+  layArm(armT, spinnerX, +1);
+  layArm(armB, spinnerX, -1);
+}
+
+function layArm(arr, originX, dir) {
+  const span = (p) => (p.double ? DBL_STEP : STEP);
+  // start just clear of the spinner bone's crosswise footprint
+  let cursor = dir * (DBL_STEP / 2);
+  arr.forEach((p) => {
+    const w = span(p);
+    const cz = cursor + dir * (w / 2);
+    placeBoneOriented(p, originX, cz, 'z', dir);
+    cursor += dir * w;
+  });
+}
+
+// Orient so the OUTER face points along (axis,dir). buildBone: a@-localX, b@+localX.
+function placeBoneOriented(p, cx, cz, axis, dir) {
+  const bone = buildBone(p.a, p.b);
+  bone.position.set(cx, BONE_T / 2 + 0.02, cz);
+
+  if (p.double) {
+    // both faces equal — matching is moot. Sit crosswise to the line.
+    bone.rotation.y = (axis === 'x') ? Math.PI / 2 : 0;
+    CHAIN.add(bone); boneCache.set(p.code, bone); return;
+  }
+
+  // Which face is OUTER (points away from the connection)?
+  //   opener (outer null): keep a outward toward +dir arbitrarily.
+  //   else: p.outer is the new exposed pip; that face must point outward.
+  // The `b` face equals p.b; if p.outer === p.b it's the b-face that's outer.
+  let bIsOuter;
+  if (p.outer == null) bIsOuter = (dir > 0);          // opener: put b toward +dir
+  else bIsOuter = (p.outer === p.b);
+
+  // Base orientation:
+  //   axis x, ry=0   -> a at -X, b at +X
+  //   axis z, ry=90  -> a at +Z? compute: rotating +X(local) by +90° about Y maps to -Z.
+  // To avoid sign confusion we orient by: we want the OUTER half on the +dir side
+  // of the line. Determine where the b-half points for a candidate ry, flip if wrong.
+  let ry = (axis === 'x') ? 0 : Math.PI / 2;
+  // unit vector that local +X (the b-half side) points to after ry, on the line axis:
+  //   axis x: ry=0   -> bHalf at +X  => sign +1 ; ry=180 -> -1
+  //   axis z: ry=90  -> local+X rotates to -Z => sign -1 ; ry=270 -> +Z (+1)
+  let bSign = (axis === 'x') ? +1 : -1;
+  const wantBOn = bIsOuter ? (dir > 0 ? +1 : -1) : (dir > 0 ? -1 : +1); // side b should be on
+  if (bSign !== wantBOn) ry += Math.PI;
+
+  bone.rotation.y = ry;
+  CHAIN.add(bone);
+  boneCache.set(p.code, bone);
+}
+
+// ---------------------------------------------------------------- socket layer
+const R = { Sound: null };
+let mySeat = null, state = null, priv = null, acted = null, everConnected = false, selCode = null;
+const socket = io({ transports: ['websocket', 'polling'], withCredentials: true });
+
+socket.on('connect', () => { showReconnect(false); everConnected = true; if (ticket) socket.emit('table:join', { ticket }); else setStatus('no ?ticket= in URL'); });
+socket.on('disconnect', () => showReconnect(true, 'Reconnecting…'));
+socket.on('table:error', (e) => { setStatus('⚠ ' + e.message); if (/ticket|expired|no such table/i.test(e.message || '')) showReconnect(true, 'Session expired —', true); });
+socket.on('seat:hand', (h) => { mySeat = h.seat; priv = h; renderHUD(); });
+socket.on('table:state', (s) => { state = s; try { onState(s); } catch (e) {} renderHUD(); });
+socket.on('table:event', (ev) => onEvent(ev));
+socket.on('table:over', (o) => showOver(o));
+
+const myTurn = () => !!(priv && priv.yourTurn);
+
+let lastSeatCount = 0, lastLineLen = -1, prevTurn = null, prevHandNo = null;
+function onState(s) {
+  const v = s.view || {};
+  // (re)build seats if seat count changed or first paint
+  const n = (s.seats || []).length;
+  if (n && (n !== lastSeatCount)) { buildSeats(n, mySeat); lastSeatCount = n; }
+  // update seat labels (presence "check-in")
+  if (seatNodes.length) updateSeats(s, v);
+  // rebuild chain when the board changed
+  const ll = (v.line || []).length;
+  if (ll !== lastLineLen) { renderChain(v); lastLineLen = ll; if (R.Sound && ll > 0) R.Sound.play(); }
+  if (R.Sound && v.turn === mySeat && prevTurn !== mySeat && s.phase === 'playing') R.Sound.yourTurn();
+  if (R.Sound && s.handNo && s.handNo !== prevHandNo && s.phase !== 'lobby') R.Sound.deal();
+  prevTurn = v.turn; prevHandNo = s.handNo;
+  renderVote(s.vote);
+}
+
+function updateSeats(s, v) {
+  for (const node of seatNodes) {
+    const seat = (s.seats || [])[node.seat];
+    if (!seat) continue;
+    const tiles = (v.handCounts && v.handCounts[node.seat] != null) ? v.handCounts[node.seat] : '';
+    const total = (v.totals && v.totals[node.seat] != null) ? v.totals[node.seat] : 0;
+    const turn = v.turn === node.seat && s.phase === 'playing';
+    const name = (seat.displayName || ('Seat ' + node.seat)) + (seat.bot ? ' 🤖' : '');
+    const sub = s.phase === 'lobby' ? (seat.ready ? 'ready' : (seat.occupied ? 'waiting' : 'empty'))
+                                    : (tiles + ' tiles · ' + total + ' pts');
+    drawLabel(node.sprite, { name, sub, turn, you: node.seat === mySeat });
+  }
+}
+
+// ---------------------------------------------------------------- 2D HUD
+function setStatus(txt) { const v = state && state.view; const el = $('status'); if (!el) return; el.innerHTML = txt != null ? txt : statusLine(); }
+function statusLine() {
+  if (!state) return '';
+  if (state.phase === 'lobby') return 'Lobby — ready up to start';
+  if (state.phase === 'gameOver') return 'Game over';
+  const v = state.view || {};
+  const turnTxt = v.turn === mySeat ? '<b>YOUR TURN</b>' : `seat ${v.turn}`;
+  const ends = (v.ends || []).map((e) => e.pip).join('/');
+  const spin = v.spinner ? ' · spinner ' + v.spinner.pip + (v.spinner.armsOpen ? ' (open)' : '') : '';
+  return `${turnTxt} · ends [${ends}]${spin} · boneyard ${v.boneyard || 0} · to ${v.target}`;
+}
+
+function renderHUD() { if (!state) return; setStatus(); renderControls(); renderTray(); }
+
+function renderControls() {
+  const box = $('controls'); box.innerHTML = '';
+  if (!state) return;
+  if (state.phase === 'lobby') {
+    const meReady = (state.seats[mySeat] || {}).ready;
+    const rb = document.createElement('button'); rb.className = 'act'; rb.textContent = meReady ? 'Ready ✓ (waiting…)' : 'Ready'; rb.disabled = !!meReady;
+    rb.onclick = () => socket.emit('seat:ready', { ready: true }); box.appendChild(rb);
+    state.seats.forEach((s) => { if (!s.occupied) { const b = document.createElement('button'); b.className = 'act ghost'; b.textContent = `+ Bot seat ${s.seat}`; b.onclick = () => socket.emit('seat:addBot', { seat: s.seat }); box.appendChild(b); } });
+    return;
+  }
+  if (!priv || !myTurn()) return;
+  const legal = priv.legal || [];
+  const plays = legal.filter((a) => a.type === 'play');
+  const draw = legal.find((a) => a.type === 'draw');
+  const pass = legal.find((a) => a.type === 'pass');
+  if (selCode) {
+    const opts = plays.filter((p) => p.code === selCode);
+    opts.forEach((o) => {
+      const b = document.createElement('button'); b.className = 'act gold';
+      b.textContent = priv.mustOpen ? 'Play opener' : ('Play → ' + endLabel(o.end));
+      b.onclick = () => { emitPlay(o); selCode = null; renderHUD(); };
+      box.appendChild(b);
+    });
+    const c = document.createElement('button'); c.className = 'act ghost'; c.textContent = 'Cancel'; c.onclick = () => { selCode = null; renderHUD(); }; box.appendChild(c);
+  }
+  if (draw) { const b = document.createElement('button'); b.className = 'act'; b.textContent = 'Draw a tile'; b.onclick = () => socket.emit('game:action', { action: { type: 'draw' } }); box.appendChild(b); }
+  if (pass) { const b = document.createElement('button'); b.className = 'act ghost'; b.textContent = 'Pass (blocked)'; b.onclick = () => socket.emit('game:action', { action: { type: 'pass' } }); box.appendChild(b); }
+}
+function endLabel(id) { return ({ L: 'left', R: 'right', T: 'top arm', B: 'bottom arm', open: 'open' })[id] || id; }
+
+function emitPlay(o) {
+  // authoritative-priv gating (same discipline as 2D client): the card must be in
+  // the current legal set + hand, and it must be our turn.
+  const legalNow = (priv && priv.legal || []).some((a) => a.type === 'play' && a.code === o.code && a.end === o.end);
+  const inHand = (priv && priv.hand || []).some((t) => t.code === o.code);
+  if (!legalNow || !inHand || !myTurn()) return;
+  socket.emit('game:action', { action: o });
+}
+
+// pip layout for DOM tray bones
+const PIP_MAP = { 0: [], 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+function pipHalf(n) {
+  const h = document.createElement('div'); h.className = 'half';
+  const g = document.createElement('div'); g.className = 'pips';
+  for (let i = 0; i < 9; i++) { const cell = document.createElement('div'); cell.style.width = '4px'; cell.style.height = '4px'; if (PIP_MAP[n] && PIP_MAP[n].includes(i)) { const p = document.createElement('div'); p.className = 'pip'; cell.appendChild(p); } g.appendChild(cell); }
+  h.appendChild(g); return h;
+}
+function boneEl(t) {
+  const el = document.createElement('div'); el.className = 'bone';
+  el.appendChild(pipHalf(t.a)); const d = document.createElement('div'); d.className = 'div'; el.appendChild(d); el.appendChild(pipHalf(t.b));
+  return el;
+}
+function renderTray() {
+  const box = $('tray'); box.innerHTML = '';
+  const hand = (priv && priv.hand) || [];
+  const legal = (priv && priv.legal) || [];
+  const playable = new Set(legal.filter((a) => a.type === 'play').map((a) => a.code));
+  const canAct = myTurn();
+  hand.forEach((t) => {
+    const el = boneEl(t);
+    if (canAct && playable.has(t.code)) {
+      el.classList.add('playable'); if (selCode === t.code) el.classList.add('sel');
+      el.onclick = () => {
+        const opts = legal.filter((a) => a.type === 'play' && a.code === t.code);
+        if (opts.length === 1) { emitPlay(opts[0]); selCode = null; } else { selCode = (selCode === t.code ? null : t.code); }
+        renderHUD();
+      };
+    } else if (canAct && playable.size) { el.classList.add('dim'); }
+    box.appendChild(el);
+  });
+}
+
+function onEvent(ev) {
+  if (ev.type === 'spinnerOpen') { /* could flash arms */ }
+  if (ev.type === 'handWon' && R.Sound) R.Sound.trick();
+  if (ev.type === 'turn:timeout' && R.Sound) R.Sound.alert();
+  if ((ev.type === 'vote:open' || ev.type === 'vote:update')) renderVote(ev);
+  if (ev.type === 'vote:result') { const p = $('votePanel'); if (p) p.classList.remove('show'); }
+}
+
+// ---------------------------------------------------------------- overlays
+function showReconnect(on, msg, rejoin) {
+  const el = $('reconnect'); if (!el) return;
+  if (!on) { el.classList.remove('show'); return; }
+  el.textContent = msg || 'Reconnecting…';
+  if (rejoin) { const b = document.createElement('button'); b.textContent = 'Rejoin'; b.onclick = () => location.href = 'https://match.madladslab.com/resume'; el.appendChild(b); }
+  el.classList.add('show');
+}
+function showOver(o) {
+  const st = (o.standings || []);
+  const mine = st.find((x) => x.seat === mySeat); const iWon = mine && mine.won;
+  $('overResult').textContent = `Game ${o.gamesPlayed} · final`;
+  $('overTitle').textContent = mySeat == null ? 'Game Over' : (iWon ? 'You win! 🎉' : 'You lost');
+  const top = Math.max(...st.map((x) => x.score != null ? x.score : 0));
+  $('overScore').textContent = 'Highest score wins · ' + top + ' pts';
+  $('overStand').innerHTML = st.slice().sort((a, b) => (b.score || 0) - (a.score || 0)).map((s) =>
+    `<div class="r"><span>${s.displayName || ('Seat ' + s.seat)}${s.bot ? ' 🤖' : ''}${s.seat === mySeat ? ' (you)' : ''}</span>` +
+    `<span class="${s.won ? 'w' : 'l'}">${s.score} pts${s.won ? ' · WIN' : ''}</span></div>`).join('');
+  $('over').classList.add('show');
+  if (R.Sound) { iWon ? R.Sound.win() : R.Sound.lose(); }
+}
+$('btnRematch').onclick = () => { socket.emit('table:rematch'); $('over').classList.remove('show'); };
+$('btnExit').onclick = () => location.href = 'https://games.madladslab.com/';
+socket.on('table:state', (s2) => { if (s2 && s2.phase === 'lobby') $('over').classList.remove('show'); });
+
+function renderVote(vote) {
+  const panel = $('votePanel'); if (!panel) return;
+  if (!vote || vote.seat == null) { panel.classList.remove('show'); return; }
+  const name = (state && state.seats[vote.seat] && state.seats[vote.seat].displayName) || ('Seat ' + vote.seat);
+  const iAm = vote.seat === mySeat;
+  $('voteTitle').textContent = iAm ? 'You timed out — act now or be replaced' : (name + ' is out of time');
+  $('voteCount').textContent = iAm ? '' : ('Wait ' + (vote.waits || 0) + ' · Kick ' + (vote.kicks || 0) + ' · of ' + (vote.eligible || 0));
+  $('voteWait').style.display = $('voteKick').style.display = iAm ? 'none' : '';
+  panel.classList.add('show');
+}
+$('voteWait').onclick = () => socket.emit('table:vote', { choice: 'wait' });
+$('voteKick').onclick = () => socket.emit('table:vote', { choice: 'kick' });
+
+// ---------------------------------------------------------------- camera + sound
+$('resetcam').onclick = () => { camera.position.copy(HOME.pos); controls.target.copy(HOME.target); controls.update(); };
+
+// minimal WebAudio sound kit (no files), mirrors the 2D kit's API surface
+R.Sound = (function () {
+  let ctx = null, muted = false;
+  try { muted = localStorage.getItem('cards_muted') === '1'; } catch (e) {}
+  const ac = () => (ctx || (ctx = new (window.AudioContext || window.webkitAudioContext)()));
+  function beep(f, d, g = 0.05, type = 'sine') { if (muted) return; const a = ac(); const o = a.createOscillator(), gn = a.createGain(); o.type = type; o.frequency.value = f; gn.gain.value = g; o.connect(gn); gn.connect(a.destination); o.start(); gn.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + d); o.stop(a.currentTime + d); }
+  return {
+    play: () => beep(320, 0.08, 0.04, 'triangle'),
+    yourTurn: () => { beep(520, 0.1, 0.05); setTimeout(() => beep(680, 0.1, 0.05), 90); },
+    trick: () => beep(440, 0.16, 0.05, 'sawtooth'),
+    deal: () => beep(240, 0.06, 0.03, 'triangle'),
+    tick: () => beep(700, 0.04, 0.03),
+    alert: () => beep(200, 0.25, 0.06, 'square'),
+    win: () => { [523, 659, 784].forEach((f, i) => setTimeout(() => beep(f, 0.18, 0.06), i * 110)); },
+    lose: () => { [392, 311].forEach((f, i) => setTimeout(() => beep(f, 0.24, 0.06, 'sawtooth'), i * 150)); },
+    resume: () => { try { ac().resume(); } catch (e) {} },
+    setMuted: (m) => { muted = m; },
+  };
+})();
+(function () {
+  const mb = $('mutebtn');
+  let muted = false; try { muted = localStorage.getItem('cards_muted') === '1'; } catch (e) {}
+  const paint = () => { mb.textContent = muted ? '🔇' : '🔊'; }; paint();
+  mb.onclick = () => { muted = !muted; R.Sound.setMuted(muted); R.Sound.resume(); if (!muted) R.Sound.play(); paint(); try { localStorage.setItem('cards_muted', muted ? '1' : '0'); } catch (e) {} };
+  document.addEventListener('pointerdown', () => R.Sound.resume(), { once: true });
+})();
+
+// ---------------------------------------------------------------- resize + loop
+function resize() { const w = window.innerWidth, h = window.innerHeight; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h, false); }
+window.addEventListener('resize', resize); window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+resize();
+
+function tick() { requestAnimationFrame(tick); controls.update(); renderer.render(scene, camera); }
+tick();

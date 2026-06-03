@@ -1,0 +1,282 @@
+/**
+ * match.madladslab.com — matchmaking: the universal arcade-intake loader.
+ *
+ * Navigation: games (portal) -> matchmaking (here) -> game lobby (cards).
+ * Matchmaking owns ONLY intake + grouping. It authenticates the player via the
+ * platform bridge, reads the game loader's catalog to learn how to seat them,
+ * forms a group (bots on request; quick-match falls back to bots; private invite
+ * pulls a chosen online user in), mints signed table tickets, redirects into the
+ * game's lobby, and steps out. It never holds the lobby or runs gameplay.
+ *
+ *   GET /intake/:game?token=<jwt>     bridge lands here; establishes identity
+ *   GET /intake/:game/info            JSON: who am I + what is this game
+ *   GET /intake/:game/go?mode=...      form group -> mint ticket -> 302 to lobby
+ *   GET /intake/:game/online          online portal users to invite (screen names)
+ *   GET /intake/:game/invite?to=&name= private table -> push invite -> host to lobby
+ */
+import express from 'express';
+import http from 'http';
+import helmet from 'helmet';
+import cors from 'cors';
+import session from 'express-session';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+import config, { reportConfigStatus } from './config/index.js';
+import { verifyBridgeToken, mintTableTicket } from './lib/tickets.js';
+import jwt from 'jsonwebtoken';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = express();
+const server = http.createServer(app);
+
+app.set('trust proxy', 1);
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({ origin: config.allowedOrigins, credentials: true }));
+app.use(express.json());
+app.use('/static', express.static(path.join(__dirname, 'public')));
+
+app.use(session({
+  name: 'mm.sid',
+  secret: config.session.secret,
+  resave: false,
+  saveUninitialized: false,
+  cookie: { sameSite: 'lax', secure: config.env === 'production', maxAge: 8 * 60 * 60 * 1000 },
+}));
+
+// Arcade art lives on the platform (games); resolve relative image paths there.
+function absImage(image) {
+  if (!image) return null;
+  return image.startsWith('http') ? image : config.platform.url + image;
+}
+
+// Authenticated calls to the platform's internal API (online users / invites).
+async function gamesInternal(pathname, { method = 'GET', body = null } = {}) {
+  const r = await fetch(`${config.platform.url}/internal${pathname}`, {
+    method,
+    headers: { 'content-type': 'application/json', 'x-bridge-secret': config.platform.bridgeSecret },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(4500),
+  });
+  return r.json();
+}
+
+// Authenticated call to the cards platform's internal API (live-seat lookup).
+async function cardsInternal(pathname) {
+  const r = await fetch(`${config.cards.internal}${pathname}`, {
+    headers: { 'x-bridge-secret': config.platform.bridgeSecret },
+    signal: AbortSignal.timeout(4000),
+  });
+  return r.json();
+}
+
+// --- catalog lookup from the game loader (cards), cached briefly ---
+let catalogCache = { at: 0, games: [] };
+async function getCatalog() {
+  if (Date.now() - catalogCache.at < 30000 && catalogCache.games.length) return catalogCache.games;
+  const r = await fetch(`${config.cards.internal}/catalog`, { signal: AbortSignal.timeout(4000) });
+  const j = await r.json();
+  catalogCache = { at: Date.now(), games: j.games || [] };
+  return catalogCache.games;
+}
+async function findGame(id) {
+  try { return (await getCatalog()).find((g) => g.id === id) || null; }
+  catch (e) { return null; }
+}
+
+// --- routes ---
+// Mint a short-lived modal ticket for the global-modal iframe (screen name only).
+app.post('/modal-ticket', (req, res) => {
+  const u = req.session.user;
+  if (!u) return res.status(401).json({ error: 'not signed in' });
+  const ticket = jwt.sign(
+    { platformId: String(u.platformId), displayName: u.displayName, surface: (req.body && req.body.surface) || 'match', isAdmin: !!u.isAdmin },
+    config.platform.bridgeSecret, { expiresIn: '10m' }
+  );
+  res.json({ ok: true, ticket });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ ok: true, service: 'matchmaking', protocol: 'arcade-intake/v1', uptime: process.uptime() });
+});
+
+app.get('/intake/:game', async (req, res) => {
+  if (req.query.token) {
+    const p = verifyBridgeToken(req.query.token);
+    if (p && p.id) {
+      const perms = p.permissions || {};
+      req.session.user = {
+        platformId: String(p.id),
+        // displayName from the bridge is the public SCREEN NAME (never real name/email)
+        displayName: p.displayName || 'Player',
+        isAdmin: p.isAdmin === true || perms.games === 'admin' || perms.cards === 'admin',
+      };
+    }
+  }
+  if (!req.session.user) {
+    return res.redirect(`${config.platform.url}/arcade/${encodeURIComponent(req.params.game)}/play`);
+  }
+  const game = await findGame(req.params.game);
+  if (!game) return res.status(404).send('Unknown game');
+  res.sendFile(path.join(__dirname, 'public', 'intake.html'));
+});
+
+app.get('/intake/:game/info', async (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'not signed in' });
+  const game = await findGame(req.params.game);
+  if (!game) return res.status(404).json({ error: 'unknown game' });
+  // mark the player active so they're invitable while sitting in matchmaking
+  gamesInternal('/presence/heartbeat', { method: 'POST',
+    body: { platformId: req.session.user.platformId, name: req.session.user.displayName } }).catch(() => {});
+  res.json({
+    ok: true,
+    game: { id: game.id, name: game.name, blurb: game.blurb, players: game.players, image: absImage(game.image) },
+    user: { displayName: req.session.user.displayName },
+  });
+});
+
+// Lightweight heartbeat ping (intake page calls this on a timer to stay invitable).
+app.get('/intake/:game/heartbeat', async (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'not signed in' });
+  gamesInternal('/presence/heartbeat', { method: 'POST',
+    body: { platformId: req.session.user.platformId, name: req.session.user.displayName } }).catch(() => {});
+  res.json({ ok: true });
+});
+
+// Poll for an incoming invite (covers players in matchmaking with no portal socket).
+app.get('/intake/:game/poll-invite', async (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'not signed in' });
+  try {
+    const j = await gamesInternal(`/invites/pending?platformId=${encodeURIComponent(req.session.user.platformId)}&consume=1`);
+    res.json({ ok: true, invite: (j && j.invite) || null });
+  } catch (e) { res.json({ ok: true, invite: null }); }
+});
+
+// Online portal users available to invite (screen names only, minus self).
+app.get('/intake/:game/online', async (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'not signed in' });
+  try {
+    const j = await gamesInternal(`/online-users?exclude=${encodeURIComponent(req.session.user.platformId)}`);
+    res.json({ ok: true, users: j.users || [] });
+  } catch (e) {
+    res.json({ ok: true, users: [] });
+  }
+});
+
+// Quick group: player seat 0, the rest bots. (quick-match == bots until a pool.)
+app.get('/intake/:game/go', async (req, res) => {
+  if (!req.session.user) {
+    return res.redirect(`${config.platform.url}/arcade/${encodeURIComponent(req.params.game)}/play`);
+  }
+  const game = await findGame(req.params.game);
+  if (!game) return res.status(404).send('Unknown game');
+
+  const mode = req.query.mode === 'quick' ? 'quick' : 'bots';
+  const seats = game.players || 4;
+  const user = req.session.user;
+  const players = [];
+  for (let s = 1; s < seats; s++) players.push({ seat: s, bot: true, displayName: `Bot ${s + 1}` });
+
+  const tableId = `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  const ticket = mintTableTicket({
+    tableId, game: game.id, params: {}, seat: 0,
+    platformId: user.platformId, displayName: user.displayName, players, via: 'matchmaking', mode,
+  }, '8h');
+  res.redirect(`${config.cards.public}${game.lobbyPath || `/lobby/${game.id}`}?ticket=${encodeURIComponent(ticket)}`);
+});
+
+// Private invite: host seat 0, invitee seat 1, bots fill the rest. Push an
+// invite to the invitee's portal presence; send the host straight into the lobby.
+app.get('/intake/:game/invite', async (req, res) => {
+  if (!req.session.user) {
+    return res.redirect(`${config.platform.url}/arcade/${encodeURIComponent(req.params.game)}/play`);
+  }
+  const game = await findGame(req.params.game);
+  if (!game) return res.status(404).send('Unknown game');
+  const to = String(req.query.to || '');
+  const toName = String(req.query.name || 'Player').slice(0, 32);
+  if (!to) return res.status(400).send('invite target required');
+
+  const host = req.session.user;
+  const seats = game.players || 4;
+  const lobbyPath = game.lobbyPath || `/lobby/${game.id}`;
+  const tableId = `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+
+  const players = [];
+  for (let s = 2; s < seats; s++) players.push({ seat: s, bot: true, displayName: `Bot ${s + 1}` });
+  const base = { tableId, game: game.id, params: {}, players, via: 'matchmaking', mode: 'invite' };
+
+  const hostTicket = mintTableTicket({ ...base, seat: 0, platformId: host.platformId, displayName: host.displayName }, '8h');
+  const inviteeTicket = mintTableTicket({ ...base, seat: 1, platformId: to, displayName: toName }, '8h');
+  const joinUrl = `${config.cards.public}${lobbyPath}?ticket=${encodeURIComponent(inviteeTicket)}`;
+
+  try {
+    await gamesInternal('/invite', {
+      method: 'POST',
+      body: { toPlatformId: to, fromName: host.displayName, game: game.name, joinUrl, inviteId: tableId },
+    });
+  } catch (e) { /* best-effort: host still enters and can wait or add a bot */ }
+
+  res.redirect(`${config.cards.public}${lobbyPath}?ticket=${encodeURIComponent(hostTicket)}`);
+});
+
+// Shareable invite link/QR: create a table, seat the host, and return a join URL
+// the host can copy or show as a QR. The first friend to open it takes seat 1.
+// (Returns JSON; the intake page renders copy + QR. Host enters via the returned
+// hostUrl when ready, or immediately.)
+app.get('/intake/:game/share', async (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'not signed in' });
+  const game = await findGame(req.params.game);
+  if (!game) return res.status(404).json({ error: 'unknown game' });
+
+  const host = req.session.user;
+  const seats = game.players || 4;
+  const lobbyPath = game.lobbyPath || `/lobby/${game.id}`;
+  const tableId = `mm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+
+  const players = [];
+  for (let s = 2; s < seats; s++) players.push({ seat: s, bot: true, displayName: `Bot ${s + 1}` });
+  const base = { tableId, game: game.id, params: {}, players, via: 'matchmaking', mode: 'invite' };
+
+  const hostTicket = mintTableTicket({ ...base, seat: 0, platformId: host.platformId, displayName: host.displayName }, '8h');
+  // open seat-1 ticket — bound to a one-off guest id; whoever opens the link fills it
+  const guestId = `guest:${tableId}`;
+  const guestTicket = mintTableTicket({ ...base, seat: 1, platformId: guestId, displayName: 'Guest' }, '8h');
+
+  const joinUrl = `${config.cards.public}${lobbyPath}?ticket=${encodeURIComponent(guestTicket)}`;
+  const hostUrl = `${config.cards.public}${lobbyPath}?ticket=${encodeURIComponent(hostTicket)}`;
+  res.json({ ok: true, tableId, joinUrl, hostUrl, game: game.name });
+});
+
+// --- user game management: rejoin an in-progress table after a drop/reload ---
+// Cards holds the live tables, so it answers "what seat is this user in"; match
+// re-mints a fresh ticket into that exact seat. Survives match restarts.
+app.get('/active', async (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'not signed in' });
+  try {
+    const j = await cardsInternal(`/internal/seat?platformId=${encodeURIComponent(req.session.user.platformId)}`);
+    res.json({ ok: true, active: j.seat || null });
+  } catch (e) { res.json({ ok: true, active: null }); }
+});
+
+app.get('/resume', async (req, res) => {
+  if (!req.session.user) return res.redirect(`${config.platform.url}/`);
+  const user = req.session.user;
+  let seat = null;
+  try { seat = (await cardsInternal(`/internal/seat?platformId=${encodeURIComponent(user.platformId)}`)).seat; }
+  catch (e) { seat = null; }
+  if (!seat) return res.redirect(`${config.platform.url}/`);
+  const ticket = mintTableTicket({
+    tableId: seat.tableId, game: seat.game, params: {}, seat: seat.seat,
+    platformId: user.platformId, displayName: user.displayName, players: [], via: 'matchmaking', mode: 'resume',
+  }, '8h');
+  res.redirect(`${config.cards.public}/lobby/${encodeURIComponent(seat.game)}?ticket=${encodeURIComponent(ticket)}`);
+});
+
+app.get('/', (req, res) => res.redirect(`${config.platform.url}/`));
+
+server.listen(config.port, () => {
+  console.log(`[match] listening on :${config.port} (${config.publicUrl})`);
+  console.log(`[match] loader = ${config.cards.internal} -> hands off to ${config.cards.public}`);
+  for (const line of reportConfigStatus()) console.log('[match]', line);
+});

@@ -1,0 +1,50 @@
+<% const mp = (pitch && pitch.marketplace) || {}; const dp = mp.depositPolicy || {}; %>
+
+<section class="mll-chart-block">
+  <h2>Catalog</h2>
+  <p class="mll-chart-block__lead">
+    Three product types — stock (ship ready), configurable (priced per unit / linear ft), and quote (custom-fab).
+    Each SKU has a product page driven by the asset library.
+  </p>
+  <div class="mll-mp-grid">
+    <% (mp.skus || []).forEach((s) => { %>
+      <div class="mll-mp-card mll-mp-card--<%= s.type %>">
+        <div class="mll-mp-card__img" aria-hidden="true">
+          <span class="mll-mp-card__placeholder"><%= (s.name || '').slice(0, 1) %></span>
+        </div>
+        <div class="mll-mp-card__body">
+          <div class="mll-mp-card__name"><%= s.name %></div>
+          <div class="mll-mp-card__meta">
+            <span class="mll-pill mll-pill--<%= s.type === 'stock' ? 'ok' : (s.type === 'configurable' ? 'accent' : 'warn') %>"><%= s.type %></span>
+            <% (s.tags || []).forEach((t) => { %><span class="mll-tag"><%= t %></span><% }) %>
+          </div>
+          <div class="mll-mp-card__foot">
+            <div class="mll-mp-card__price">
+              <% if (s.price == null) { %>Quote
+              <% } else if (s.type === 'configurable') { %>$<%= s.price %><span class="mll-mp-card__per">/lf</span>
+              <% } else { %>$<%= s.price.toLocaleString() %><% } %>
+            </div>
+            <div class="mll-mp-card__lead"><%= s.leadTime %></div>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</section>
+
+<section class="mll-chart-block">
+  <h2>Order board · ECharts</h2>
+  <p class="mll-chart-block__lead">Stacked weekly view of orders by status — Open → In fab → Ready → Fulfilled. Same data the order admin kanban runs on.</p>
+  <div class="mll-chart" id="mpOrders" style="height:340px"></div>
+</section>
+
+<section class="mll-chart-block">
+  <h2>Deposit policy</h2>
+  <div class="mll-mp-policy">
+    <div class="mll-mp-policy__row"><span class="mll-mp-policy__type">Stock</span><span class="mll-mp-policy__val"><%= dp.stock || '—' %></span></div>
+    <div class="mll-mp-policy__row"><span class="mll-mp-policy__type">Configurable</span><span class="mll-mp-policy__val"><%= dp.configurable || '—' %></span></div>
+    <div class="mll-mp-policy__row"><span class="mll-mp-policy__type">Quote / custom-fab</span><span class="mll-mp-policy__val"><%= dp.quote || '—' %></span></div>
+  </div>
+</section>
+
+<script id="marketplaceData" type="application/json"><%- JSON.stringify(mp) %></script>

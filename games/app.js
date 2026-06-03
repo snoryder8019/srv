@@ -14,6 +14,9 @@ const broadcasts = require('./lib/broadcasts');
 const statsCollector = require('./lib/stats-collector');
 const gameChat = require('./lib/game-chat');
 const username = require('./lib/username');
+const presence = require('./lib/presence');
+const globalChat = require('./lib/global-chat');
+const jwtModal = require('jsonwebtoken');
 const sfu = require('./lib/sfu');
 const provisioner = require('./lib/linode-provisioner');
 const serverManager = require('./lib/server-manager');
@@ -27,10 +30,14 @@ const windroseMcp = require('./lib/windrose-mcp');
 const app = express();
 const server = http.createServer(app);
 const ALLOWED_ORIGINS = [
+  'https://cards.madladslab.com',
+  'https://match.madladslab.com',
   'https://games.madladslab.com',
   'https://madladslab.com',
   'https://www.madladslab.com',
   'https://bih.madladslab.com',
+  'https://towers.madladslab.com',
+  'https://madlands.madladslab.com',
 ];
 const io = new SocketIO(server, { cors: { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST'], credentials: true } });
 app.set('io', io);
@@ -50,6 +57,7 @@ client.connect().then(() => {
   app.locals.db = db;
   app.locals.serverManager = serverManager;
   statsCollector.init(db);
+  require('./lib/wallet').ensureIndexes(db).catch(e => console.error('[wallet] index init failed:', e.message));
   gameChat.init(db).catch(e => console.error('[chat] init failed:', e.message));
   broadcasts.init(db).catch(e => console.error('[broadcast] init failed:', e.message));
   username.backfillAll(db).catch(e => console.error('[username] backfill failed:', e.message));
@@ -161,6 +169,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const sessionMiddleware = session({
+  name: 'games.sid', // distinct from other *.madladslab.com services to avoid connect.sid collisions
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -201,6 +210,8 @@ app.use('/static', express.static(__dirname + '/public'));
 app.use('/', require('./routes/index'));
 app.use('/api', require('./routes/api'));
 app.use('/internal', require('./routes/internal'));
+app.use('/arcade', require('./routes/arcade'));
+app.use('/modal', require('./routes/modal'));
 app.use('/admin/modbuilder', require('./routes/modbuilder'));
 app.use('/mcp/windrose', require('./routes/windrose-mcp'));
 app.use('/windrose-map', require('./routes/windrose-map'));
@@ -333,6 +344,137 @@ gameChat.emitter.on('chat', (msg) => {
   };
   statsNs.to('game:' + msg.game).emit('stats:chat', safe);
   statsNs.to('game:all').emit('stats:chat', safe);
+});
+
+// --- Presence namespace (auth required) — powers private invites ---
+// Tracks signed-in portal users so matchmaking can invite "active users".
+// Public-facing value is the screen name only (username.displayFor).
+const presenceNs = io.of('/presence');
+presenceNs.use((socket, next) => {
+  const req = socket.request;
+  if (req.user) return next();
+  const sess = req.session;
+  if (sess && sess.passport && sess.passport.user) {
+    db.collection('users').findOne({ _id: new ObjectId(sess.passport.user) })
+      .then((user) => { if (!user) return next(new Error('auth_required')); req.user = user; next(); })
+      .catch(() => next(new Error('auth_required')));
+  } else {
+    next(new Error('auth_required'));
+  }
+});
+presenceNs.on('connection', (socket) => {
+  const user = socket.request.user;
+  const pid = user._id.toString();
+  presence.add(pid, username.displayFor(user), socket.id);
+  socket.on('disconnect', () => presence.remove(pid, socket.id));
+});
+app.set('presenceNs', presenceNs);
+
+// --- Wallet namespace (auth required) — live unified balance for the profile ---
+// Each signed-in user joins their own room; wallet mutations (casino bets/wins,
+// arcade earnings, server-reward coins) are pushed here in real time so the
+// profile's wallet card updates without polling. Screen-name-safe (balances only).
+const walletLib = require('./lib/wallet');
+const walletNs = io.of('/wallet');
+walletNs.use((socket, next) => {
+  const req = socket.request;
+  if (req.user) return next();
+  const sess = req.session;
+  if (sess && sess.passport && sess.passport.user) {
+    db.collection('users').findOne({ _id: new ObjectId(sess.passport.user) })
+      .then((user) => { if (!user) return next(new Error('auth_required')); req.user = user; next(); })
+      .catch(() => next(new Error('auth_required')));
+  } else {
+    next(new Error('auth_required'));
+  }
+});
+walletNs.on('connection', (socket) => {
+  socket.join('u:' + socket.request.user._id.toString());
+});
+// Forward every wallet change to the owning user's room.
+walletLib.emitter.on('wallet', (p) => {
+  try { walletNs.to('u:' + p.platformId).emit('wallet:update', p); } catch (e) { /* noop */ }
+});
+
+// --- global modal: Arcade-wide chat + roster (one room). See GLOBAL_MODAL_PROTOCOL.md ---
+// Auth: games session (portal, same-origin) OR a verified modal ticket passed in the
+// socket handshake auth (cross-origin surfaces). Identity is screen-name only.
+const GLOBAL_ROOM = 'arcade';
+const globalNs = io.of('/global');
+const globalRoster = new Map(); // platformId -> { name, surface, sockets:Set }
+
+globalNs.use((socket, next) => {
+  const req = socket.request;
+  // (a) session identity (portal)
+  const sess = req.session;
+  if (sess && sess.passport && sess.passport.user) {
+    return db.collection('users').findOne({ _id: new ObjectId(sess.passport.user) })
+      .then((user) => {
+        if (!user) return next(new Error('auth_required'));
+        socket.data.identity = { platformId: user._id.toString(), name: username.displayFor(user) || 'Player', isAdmin: !!user.isAdmin, surface: socket.handshake.auth && socket.handshake.auth.surface || 'portal' };
+        next();
+      })
+      .catch(() => next(new Error('auth_required')));
+  }
+  // (b) modal ticket (embedded cross-origin surfaces)
+  const ticket = socket.handshake.auth && socket.handshake.auth.ticket;
+  if (ticket) {
+    try {
+      const pld = jwtModal.verify(ticket, process.env.BRIDGE_SECRET);
+      if (!pld.platformId || !pld.displayName) throw new Error('incomplete');
+      socket.data.identity = { platformId: String(pld.platformId), name: pld.displayName, isAdmin: !!pld.isAdmin, surface: pld.surface || (socket.handshake.auth && socket.handshake.auth.surface) || null };
+      return next();
+    } catch (e) { return next(new Error('auth_required')); }
+  }
+  next(new Error('auth_required'));
+});
+
+function rosterList() {
+  return [...globalRoster.values()].filter((e) => e.sockets.size).map((e) => ({ name: e.name, surface: e.surface }));
+}
+
+globalNs.on('connection', (socket) => {
+  const id = socket.data.identity;
+  if (!id) return socket.disconnect(true);
+  socket.join(GLOBAL_ROOM);
+  let e = globalRoster.get(id.platformId);
+  if (!e) { e = { name: id.name, surface: id.surface, sockets: new Set() }; globalRoster.set(id.platformId, e); }
+  e.name = id.name; e.surface = id.surface; e.sockets.add(socket.id);
+
+  socket.emit('chat:history', globalChat.history());
+  globalNs.to(GLOBAL_ROOM).emit('roster', { users: rosterList() });
+
+  socket.on('chat:send', (payload = {}) => {
+    const r = globalChat.add({ platformId: id.platformId, from: id.name, surface: id.surface, text: payload && payload.text, admin: id.isAdmin });
+    if (!r.ok) { socket.emit('chat:error', { error: r.error }); return; }
+    globalNs.to(GLOBAL_ROOM).emit('chat:msg', r.msg);
+  });
+
+  // admin-only: clear chat history for everyone
+  socket.on('chat:clear', () => {
+    if (!id.isAdmin) return;
+    globalChat.clear();
+    globalNs.to(GLOBAL_ROOM).emit('chat:history', []);
+  });
+
+  socket.on('disconnect', () => {
+    const ent = globalRoster.get(id.platformId);
+    if (ent) { ent.sockets.delete(socket.id); if (!ent.sockets.size) globalRoster.delete(id.platformId); }
+    globalNs.to(GLOBAL_ROOM).emit('roster', { users: rosterList() });
+  });
+});
+app.set('globalNs', globalNs);
+
+// internal: inject a chat line into the Arcade-wide modal (bridge-authed). Used by
+// the tiles casino personas (Sam Sneed, Tad Dow, Dazz) so their banter shows in chat.
+app.post('/internal/chat/global', (req, res) => {
+  if (req.headers['x-bridge-secret'] !== process.env.BRIDGE_SECRET) return res.status(401).json({ error: 'unauthorized' });
+  const { platformId, from, surface, text } = req.body || {};
+  const r = globalChat.add({ platformId, from, surface: surface || 'casino', text, admin: false });
+  if (!r.ok) return res.status(429).json(r);
+  const ns = app.get('globalNs');
+  if (ns) ns.to(GLOBAL_ROOM).emit('chat:msg', r.msg);
+  res.json({ ok: true });
 });
 
 const broadcastNs = io.of('/broadcasts');

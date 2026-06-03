@@ -23,7 +23,9 @@ import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { getServices, getServicesByCategory, getService, PRODUCTS } from '../plugins/serviceRegistry.js';
+import { getServices, getServicesByCategory, getService, getInfraServices, PRODUCTS } from '../plugins/serviceRegistry.js';
+import { s3Client, BUCKET } from '../plugins/s3.js';
+import { ListObjectsV2Command, HeadBucketCommand } from '@aws-sdk/client-s3';
 import scottsGatewayRouter, { redeemTvPair, tvOrSuper, missionControlHandler, publicPairRequest, publicPairPoll } from './superadmin/scottsGateway.js';
 
 const router = express.Router();
@@ -171,9 +173,11 @@ router.use('/scottsGateway', scottsGatewayRouter);
 // ── Dashboard (unified panel — services, tenants, tools, agents, activity) ──
 router.get('/', async (req, res) => {
   const slab = getSlabDb();
-  const [tenants, recentSignups, activityLogs] = await Promise.all([
+  const [tenants, recentSignups, allSignupsForHarmony, activityLogs] = await Promise.all([
     slab.collection('tenants').find().sort({ 'meta.lastSeenAt': -1, createdAt: -1 }).toArray(),
     slab.collection('signups').find().sort({ createdAt: -1 }).limit(10).toArray(),
+    // Lightweight projection of every signup — used by the harmony outer ring (one dot per user).
+    slab.collection('signups').find({}, { projection: { email: 1, createdAt: 1, refCode: 1 } }).sort({ createdAt: -1 }).limit(500).toArray(),
     getActivityLogs({ limit: 30 }),
   ]);
 
@@ -182,6 +186,7 @@ router.get('/', async (req, res) => {
   const suspended = tenants.filter(t => t.status === 'suspended').length;
 
   const services = getServices();
+  const infraServices = getInfraServices();
   const servicesByCategory = getServicesByCategory();
   const aliveCount = services.filter(s => s.alive === true).length;
   const deadCount = services.filter(s => s.alive === false).length;
@@ -244,6 +249,7 @@ router.get('/', async (req, res) => {
   res.render('superadmin/dashboard', {
     user: req.superAdmin,
     services,
+    infraServices,
     servicesByCategory,
     totalServices: services.length,
     aliveCount,
@@ -255,6 +261,7 @@ router.get('/', async (req, res) => {
       mrr: tenants.filter(t => t.status === 'active' && !t.meta?.isPromo).length * 50,
     },
     recentSignups,
+    allSignupsForHarmony,
     tagDefs: TENANT_TAGS,
     activityLogs,
     selectedService: req.query.service || 'all',
@@ -697,17 +704,23 @@ function ollamaBase() {
     .replace(/\/$/, '');
 }
 
-async function ollamaFetch(pathname, { auth = true, timeoutMs = 6000 } = {}) {
+async function ollamaFetch(pathname, { auth = true, timeoutMs = 6000, method = 'GET', body } = {}) {
   const url = ollamaBase() + pathname;
   const headers = { 'Accept': 'application/json' };
   if (auth && config.OLLAMA_KEY) headers['Authorization'] = 'Bearer ' + config.OLLAMA_KEY;
+  const init = { method, headers, signal: undefined };
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    init.body = typeof body === 'string' ? body : JSON.stringify(body);
+  }
   const ctl = new AbortController();
+  init.signal = ctl.signal;
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { headers, signal: ctl.signal });
+    const r = await fetch(url, init);
     const text = await r.text();
-    let body; try { body = JSON.parse(text); } catch { body = text; }
-    return { ok: r.ok, status: r.status, body };
+    let respBody; try { respBody = JSON.parse(text); } catch { respBody = text; }
+    return { ok: r.ok, status: r.status, body: respBody };
   } catch (e) {
     return { ok: false, status: 0, body: null, error: e.message };
   } finally {
@@ -745,6 +758,267 @@ router.get('/api/ollama/analytics', async (req, res) => {
   const path = '/analytics' + (qs.toString() ? '?' + qs.toString() : '');
   const r = await ollamaFetch(path, { timeoutMs: 10000 });
   res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+// Consolidated cluster snapshot — services, gpus, sd, tier, keys (w/ analytics), totals
+// Generous timeout: cold cluster wake from DARK/COLD tier can take 10–20s on the first request.
+router.get('/api/ollama/overview', async (req, res) => {
+  const r = await ollamaFetch('/admin/overview', { timeoutMs: 12000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+// Temporary diagnostic — probes each admin endpoint with a short timeout to see what's reachable
+router.get('/api/ollama/_probe', async (req, res) => {
+  const paths = ['/health', '/status', '/admin/services', '/admin/gpus', '/admin/keys', '/admin/models', '/admin/overview', '/analytics/keys', '/analytics/rate'];
+  const out = {};
+  await Promise.all(paths.map(async p => {
+    const t0 = Date.now();
+    const r = await ollamaFetch(p, { timeoutMs: 6000, auth: !p.startsWith('/health') && !p.startsWith('/status') ? true : true });
+    out[p] = { status: r.status, ok: r.ok, ms: Date.now() - t0, err: r.error || null, sample: typeof r.body === 'string' ? r.body.slice(0, 120) : (r.body ? Object.keys(r.body).slice(0, 6) : null) };
+  }));
+  res.json(out);
+});
+
+// ── Cluster control surface (Bearer with `analytics` or `*` scope) ──
+// Whitelist matches handoff: OllamaCluster | OllamaClusterTunnel | OllamaSD | OllamaWatchdog | OllamaClusterBenchmark | OllamaMCP
+const OLLAMA_SERVICE_NAMES = new Set([
+  'OllamaCluster', 'OllamaClusterTunnel', 'OllamaSD',
+  'OllamaWatchdog', 'OllamaClusterBenchmark', 'OllamaMCP',
+  // future: 'OllamaBucket', 'OllamaMongo' once registered as scheduled tasks
+]);
+
+router.post('/api/ollama/services/:name/restart', async (req, res) => {
+  const name = String(req.params.name);
+  if (!OLLAMA_SERVICE_NAMES.has(name)) {
+    return res.status(400).json({ ok: false, error: 'unknown_service', name });
+  }
+  const r = await ollamaFetch(`/admin/services/${encodeURIComponent(name)}/restart`, { method: 'POST', timeoutMs: 15000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.post('/api/ollama/watchdog/pause', async (req, res) => {
+  const reason = (req.body && typeof req.body.reason === 'string') ? req.body.reason : 'paused from superadmin';
+  const r = await ollamaFetch('/admin/watchdog/pause', { method: 'POST', body: { reason }, timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.post('/api/ollama/watchdog/resume', async (req, res) => {
+  const r = await ollamaFetch('/admin/watchdog/resume', { method: 'POST', timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.post('/api/ollama/benchmark/run', async (req, res) => {
+  const r = await ollamaFetch('/admin/benchmark/run', { method: 'POST', timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+// Key management — mint returns a one-time secret; callers must surface it to the user immediately.
+router.post('/api/ollama/keys/mint', async (req, res) => {
+  const b = req.body || {};
+  if (!b.label || !/^[A-Za-z0-9._-]+$/.test(String(b.label))) {
+    return res.status(400).json({ ok: false, error: 'invalid_label' });
+  }
+  const payload = {
+    label:   String(b.label),
+    scopes:  Array.isArray(b.scopes) ? b.scopes : [],
+    limits:  b.limits && typeof b.limits === 'object' ? b.limits : {},
+    expires: b.expires ?? null,
+    notes:   typeof b.notes === 'string' ? b.notes : undefined,
+  };
+  const r = await ollamaFetch('/admin/keys/mint', { method: 'POST', body: payload, timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.post('/api/ollama/keys/:label/assign', async (req, res) => {
+  const label = encodeURIComponent(String(req.params.label));
+  const scopes = Array.isArray(req.body?.scopes) ? req.body.scopes : [];
+  const r = await ollamaFetch(`/admin/keys/${label}/assign`, { method: 'POST', body: { scopes }, timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.post('/api/ollama/keys/:label/expire', async (req, res) => {
+  const label = encodeURIComponent(String(req.params.label));
+  const when = req.body?.when ?? null;
+  const r = await ollamaFetch(`/admin/keys/${label}/expire`, { method: 'POST', body: { when }, timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.post('/api/ollama/keys/:label/revoke', async (req, res) => {
+  const label = encodeURIComponent(String(req.params.label));
+  const r = await ollamaFetch(`/admin/keys/${label}/revoke`, { method: 'POST', timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.post('/api/ollama/keys/:label/enable', async (req, res) => {
+  const label = encodeURIComponent(String(req.params.label));
+  const r = await ollamaFetch(`/admin/keys/${label}/enable`, { method: 'POST', timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.post('/api/ollama/keys/:label/limits', async (req, res) => {
+  const label = encodeURIComponent(String(req.params.label));
+  const b = req.body || {};
+  const body = {
+    rpm: Number.isFinite(+b.rpm) ? +b.rpm : 0,
+    rpd: Number.isFinite(+b.rpd) ? +b.rpd : 0,
+    concurrent: Number.isFinite(+b.concurrent) ? +b.concurrent : 0,
+  };
+  const r = await ollamaFetch(`/admin/keys/${label}/limits`, { method: 'POST', body, timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+router.delete('/api/ollama/keys/:label', async (req, res) => {
+  const label = encodeURIComponent(String(req.params.label));
+  const r = await ollamaFetch(`/admin/keys/${label}`, { method: 'DELETE', timeoutMs: 8000 });
+  res.status(r.ok ? 200 : 502).json({ ok: r.ok, status: r.status, error: r.error, data: r.body });
+});
+
+// ── GPU box bucket (MinIO) + database (Mongo) health — proxied via cluster.js scopes ──
+// snory-admin token has `*` scope so it satisfies both `bucket` and `database`.
+// Returns a normalized shape that mirrors `pingBucket()` / `pingMongo()` so the client
+// can render either source through the same UI slots.
+
+router.get('/api/gpu/bucket', async (req, res) => {
+  const t0 = Date.now();
+  // GET /s3/ on cluster.js returns the MinIO bucket list (LB strips the Bearer and re-signs with root creds)
+  const r = await ollamaFetch('/s3/', { timeoutMs: 8000 });
+  const latencyMs = Date.now() - t0;
+  if (!r.ok) {
+    return res.status(502).json({ ok: false, latencyMs, error: r.error || ('upstream ' + r.status), status: r.status });
+  }
+  // MinIO ListBuckets returns XML by default; cluster.js does NOT transform it. Try to extract bucket names.
+  const xml = typeof r.body === 'string' ? r.body : (r.body && typeof r.body === 'object' ? JSON.stringify(r.body) : '');
+  const names = Array.from(xml.matchAll(/<Name>([^<]+)<\/Name>/g)).map(m => m[1]).filter(n => n && n !== 'minio');
+  res.json({
+    ok: true,
+    latencyMs,
+    endpoint: 'gpu-box:9000 (MinIO)',
+    region: 'on-prem',
+    bucketCount: names.length,
+    buckets: names.slice(0, 12),
+    bucket: names[0] || '(none)',
+    sampleKey: null,
+    note: 'G:\\application_Data\\minio\\data (8TB HDD)',
+  });
+});
+
+router.get('/api/gpu/db', async (req, res) => {
+  const t0 = Date.now();
+  // GET /db on cluster.js returns the database list (Mongo root proxy)
+  const r = await ollamaFetch('/db', { timeoutMs: 8000 });
+  const latencyMs = Date.now() - t0;
+  if (!r.ok) {
+    return res.status(502).json({ ok: false, latencyMs, error: r.error || ('upstream ' + r.status), status: r.status });
+  }
+  // Response shape from cluster.js typically: { databases: [{name, sizeOnDisk}, ...] } OR a raw array
+  const body = r.body;
+  let databases = [];
+  if (Array.isArray(body)) databases = body;
+  else if (body && Array.isArray(body.databases)) databases = body.databases;
+  else if (body && Array.isArray(body.dbs)) databases = body.dbs;
+  // Normalize entries to { name, sizeOnDisk }
+  databases = databases.map(d => typeof d === 'string'
+    ? { name: d, sizeOnDisk: null }
+    : { name: d.name || d.db || '(unknown)', sizeOnDisk: d.sizeOnDisk ?? d.size ?? null }
+  );
+  const totalSize = databases.reduce((s, d) => s + (d.sizeOnDisk || 0), 0);
+  res.json({
+    ok: true,
+    latencyMs,
+    endpoint: 'gpu-box:27017 (MongoDB)',
+    version: body?.version || null,
+    uptimeSec: body?.uptimeSec || null,
+    connections: body?.connections || null,
+    dbCount: databases.length,
+    totalSizeBytes: totalSize || null,
+    databases: databases.slice(0, 16),
+    note: 'C:\\application_Data\\mongo\\data (SSD)',
+  });
+});
+
+// ── Infrastructure ping (ollama, sd, mongo, bucket) — cached so /api/ops/pulse can include
+// external nodes in the Harmony scene without paying ping costs every 2-second tick.
+const infraCache = { ts: 0, data: null, refreshing: false };
+const INFRA_TTL_MS = 8000;
+
+async function pingMongo() {
+  const t0 = Date.now();
+  try {
+    const slab = getSlabDb();
+    const ping = await slab.command({ ping: 1 });
+    let status = null, dbList = null;
+    try { status = await slab.admin().serverStatus(); } catch {}
+    try { dbList = await slab.admin().listDatabases(); } catch {}
+    const latencyMs = Date.now() - t0;
+    return {
+      ok: ping?.ok === 1,
+      latencyMs,
+      version: status?.version || null,
+      connections: status?.connections || null,
+      uptimeSec: status?.uptime || null,
+      memMB: status?.mem?.resident || null,
+      dbCount: dbList?.databases?.length || null,
+      totalSizeBytes: dbList?.totalSize || null,
+      databases: (dbList?.databases || []).slice(0, 16).map(d => ({ name: d.name, sizeOnDisk: d.sizeOnDisk })),
+    };
+  } catch (e) {
+    return { ok: false, latencyMs: Date.now() - t0, error: e.message };
+  }
+}
+
+async function pingBucket() {
+  const t0 = Date.now();
+  try {
+    // ListObjectsV2 with MaxKeys=1 gives reachability + a sample key (HeadBucket needs special permission)
+    const out = await s3Client.send(new ListObjectsV2Command({ Bucket: BUCKET, MaxKeys: 1 }));
+    const latencyMs = Date.now() - t0;
+    return {
+      ok: true,
+      latencyMs,
+      bucket: BUCKET,
+      endpoint: config.LINODE_ENDPOINT,
+      region: config.LINODE_REGION,
+      keyCountSample: out.KeyCount || 0,
+      sampleKey: out.Contents?.[0]?.Key || null,
+    };
+  } catch (e) {
+    return { ok: false, latencyMs: Date.now() - t0, error: e.message, bucket: BUCKET, endpoint: config.LINODE_ENDPOINT, region: config.LINODE_REGION };
+  }
+}
+
+async function pingOllamaAll() {
+  const t0 = Date.now();
+  const h = await ollamaHealth();
+  const latencyMs = Date.now() - t0;
+  return { latencyMs, ...h };
+}
+
+async function refreshInfra() {
+  if (infraCache.refreshing) return infraCache.data;
+  infraCache.refreshing = true;
+  try {
+    const [mongo, bucket, ollama] = await Promise.all([pingMongo(), pingBucket(), pingOllamaAll()]);
+    infraCache.data = { ts: Date.now(), mongo, bucket, ollama };
+    infraCache.ts = Date.now();
+    return infraCache.data;
+  } finally {
+    infraCache.refreshing = false;
+  }
+}
+
+async function getInfraCached() {
+  if (!infraCache.data || (Date.now() - infraCache.ts) > INFRA_TTL_MS) {
+    // Kick refresh but don't block — return stale if available; otherwise await first fetch
+    if (!infraCache.data) return await refreshInfra();
+    refreshInfra().catch(() => {});
+  }
+  return infraCache.data;
+}
+
+router.get('/api/ops/infra', async (req, res) => {
+  if (req.query.refresh === '1') infraCache.ts = 0;
+  const data = await getInfraCached();
+  res.json({ ok: true, ...data });
 });
 
 // ── Ops Pulse — per-service activity for the harmony visualizer ─────────────
@@ -822,7 +1096,9 @@ function sysSnapshot() {
 }
 
 router.get('/api/ops/pulse', (req, res) => {
-  const services = getServices();
+  // Exclude services whose source dir has been moved out of /srv (deprecated pipeline),
+  // and the explicit 'deprecated' category. Keeps stale red orbs out of the harmony scene.
+  const services = getServices().filter(s => s.hasDir !== false && s.category !== 'deprecated');
   const now = Date.now();
 
   // Pull session_activity + history_size for all tmux sessions in one call.
@@ -905,6 +1181,37 @@ router.get('/api/ops/pulse', (req, res) => {
 
   const sys = sysSnapshot();
 
+  // Infra (ollama, sd, mongo, bucket) — pulled from the cached infra ping (refreshed
+  // every ~8s). These ride along on the pulse stream so the Harmony 3D scene can
+  // light them up as alive/dead alongside the tmux services.
+  const infraData = infraCache.data || null;
+  const infraEnriched = getInfraServices().map(svc => {
+    let alive = null;
+    let latencyMs = null;
+    if (infraData) {
+      if (svc.kind === 'ollama-llm')   { alive = !!infraData.ollama?.llm?.ok; latencyMs = infraData.ollama?.latencyMs ?? null; }
+      else if (svc.kind === 'ollama-sd') { alive = !!infraData.ollama?.sd?.ok;  latencyMs = infraData.ollama?.latencyMs ?? null; }
+      else if (svc.kind === 'mongo')    { alive = !!infraData.mongo?.ok;       latencyMs = infraData.mongo?.latencyMs ?? null; }
+      else if (svc.kind === 'bucket')   { alive = !!infraData.bucket?.ok;      latencyMs = infraData.bucket?.latencyMs ?? null; }
+    }
+    return {
+      name: svc.name,
+      tmux: null,
+      port: null,
+      category: 'infra',
+      alive: alive === null ? false : alive,
+      unregistered: false,
+      conns: 0,
+      idleMs: null,
+      latencyMs,
+      pulse: alive === true,                    // a successful ping is a "pulse" for infra nodes
+      pulseKind: alive === true ? 'session' : (alive === false ? 'error' : null),
+      kind: svc.kind,
+    };
+  });
+  // Kick a refresh in the background if the cache is stale; first call awaits.
+  if (!infraCache.data || (Date.now() - infraCache.ts) > INFRA_TTL_MS) refreshInfra().catch(() => {});
+
   // Keep a 60-sample ring buffer for sparkline (~2 minutes at 2s poll).
   pulseCache.history.push({
     ts: now,
@@ -916,7 +1223,7 @@ router.get('/api/ops/pulse', (req, res) => {
   });
   if (pulseCache.history.length > 60) pulseCache.history.shift();
 
-  res.json({ ts: now, totalConns, totalErrorPulses, services: enriched, history: pulseCache.history, sys });
+  res.json({ ts: now, totalConns, totalErrorPulses, services: enriched.concat(infraEnriched), history: pulseCache.history, sys, infra: infraData });
 });
 
 // ── Tail a tmux pane on demand (for hover tooltip) ─────────────────────────

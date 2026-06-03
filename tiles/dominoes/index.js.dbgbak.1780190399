@@ -1,0 +1,297 @@
+/**
+ * Dominoes — Block/Draw Dominoes inside the tiles platform.
+ * (/srv/tiles is the scaffolding; this folder is the variant + its config.)
+ *
+ * Implements the tiles-platform variant contract. The engine (../engine) owns the
+ * tile set + boneyard shuffle/deal/draw; dominoes owns the rules: who opens, what
+ * matches an open end, drawing when stuck, passing when blocked, going out, and
+ * scoring opponents' pips toward a match target.
+ *
+ * Board model: a line with two open ends. We track `endL` and `endR` (the pip
+ * value exposed at each end) plus the ordered `line` of placed bones for render.
+ * A bone {a,b} (a>=b) plays on an end with pip P if a===P or b===P; the bone's
+ * OTHER face becomes the new exposed pip at that end. Doubles are placed crosswise
+ * (rendered rotated) but score/sequence identically.
+ *
+ * Cumulative match state (persists across hands of one game) lives on
+ * table._domMatch = { totals:number[seats], handNo }. Per-hand state is table.hand.
+ */
+import { buildDominoSet, shuffle, deal, draw, tileCode, rngFromSeed } from '../engine/index.js';
+import cfg from './config.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const catalog = JSON.parse(readFileSync(join(__dirname, 'meta.json'), 'utf8'));
+
+const pip = (t) => t.a + t.b;
+const handPips = (hand) => hand.reduce((s, t) => s + pip(t), 0);
+
+// Can bone t attach to exposed pip P? returns the OTHER face (new end) or null.
+function matchFace(t, P) {
+  if (t.a === P) return t.b;
+  if (t.b === P) return t.a;
+  return null;
+}
+
+const dominoes = {
+  id: 'dominoes',
+  name: 'Dominoes',
+  meta: cfg,
+  catalog,
+  defaults: { target: cfg.rules.target, drawGame: cfg.rules.drawGame },
+
+  _ensureMatch(table) {
+    if (!table._domMatch) table._domMatch = { totals: new Array(table.seatCount).fill(0), handNo: 0 };
+    return table._domMatch;
+  },
+
+  startHand(table, rng) {
+    const match = this._ensureMatch(table);
+    match.handNo += 1;
+    const seats = table.seatCount;
+    const bag = shuffle(buildDominoSet(cfg.set.max), rng);
+    const { hands, rest } = deal(bag, { players: seats, tilesPer: cfg.deal.tilesPer });
+
+    // Opener: highest double held; else the highest bone (by pips then high face).
+    let opener = 0, openBone = null, openIsDouble = false;
+    const rank = (t) => (t.double ? 1000 : 0) + t.pips * 10 + t.a;
+    for (let s = 0; s < seats; s++) {
+      for (const t of hands[s]) {
+        if (!openBone || rank(t) > rank(openBone)) { openBone = t; opener = s; openIsDouble = t.double; }
+      }
+    }
+
+    table.hand = {
+      phase: 'playing',
+      hands,
+      boneyard: rest,
+      line: [],            // ordered [{ code, a, b, double, end }] for render
+      endL: null, endR: null,
+      turn: opener,
+      starter: opener,
+      mustOpen: true,      // first play is forced to be openBone
+      openCode: openBone ? tileCode(openBone) : null,
+      passes: 0,           // consecutive passes -> blocked when === seats
+      tilesPlayed: 0,
+      match,
+      result: null,
+    };
+    return table.hand;
+  },
+
+  currentTurn(table) {
+    const h = table.hand;
+    return (h && h.phase === 'playing') ? h.turn : null;
+  },
+
+  // Legal plays for the seat on turn. Each entry: { type:'play', code, end:'L'|'R' }.
+  // Plus 'draw' (if drawGame and boneyard non-empty and no play) and 'pass'.
+  legalActions(table, seat) {
+    const h = table.hand;
+    if (!h || h.phase !== 'playing' || seat !== h.turn) return [];
+    const hand = h.hands[seat];
+
+    // forced opening move
+    if (h.mustOpen) {
+      return [{ type: 'play', code: h.openCode, end: 'L' }];
+    }
+
+    const plays = [];
+    for (const t of hand) {
+      if (matchFace(t, h.endL) != null) plays.push({ type: 'play', code: tileCode(t), end: 'L' });
+      if (h.endR !== h.endL && matchFace(t, h.endR) != null) plays.push({ type: 'play', code: tileCode(t), end: 'R' });
+    }
+    if (plays.length) return plays;
+
+    // no play: draw (if allowed + tiles left) else pass
+    if (cfg.rules.drawGame && h.boneyard.length) return [{ type: 'draw' }];
+    return [{ type: 'pass' }];
+  },
+
+  applyAction(table, seat, action) {
+    const h = table.hand;
+    if (!h || h.phase !== 'playing') return { ok: false, error: 'no hand in progress' };
+    if (seat !== h.turn) return { ok: false, error: 'not your turn' };
+    if (!action || !action.type) return { ok: false, error: 'no action' };
+    const hand = h.hands[seat];
+    const events = [];
+
+    if (action.type === 'draw') {
+      if (!cfg.rules.drawGame || !h.boneyard.length) return { ok: false, error: 'cannot draw' };
+      const { drawn, rest } = draw(h.boneyard, 1);
+      h.boneyard = rest;
+      hand.push(drawn[0]);
+      events.push({ type: 'drew', seat, remaining: h.boneyard.length });
+      // same player continues (must now play if able; legalActions recomputes)
+      return { ok: true, events, handOver: false, gameOver: false };
+    }
+
+    if (action.type === 'pass') {
+      // only legal when truly stuck
+      const canPlay = hand.some((t) => matchFace(t, h.endL) != null || matchFace(t, h.endR) != null);
+      if (h.mustOpen || canPlay || (cfg.rules.drawGame && h.boneyard.length)) {
+        return { ok: false, error: 'cannot pass — a move is available' };
+      }
+      h.passes += 1;
+      events.push({ type: 'passed', seat });
+      if (h.passes >= table.seatCount) {
+        return this._endHandBlocked(table, h, events);   // everyone passed -> blocked
+      }
+      h.turn = table.next(seat);
+      return { ok: true, events, handOver: false, gameOver: false };
+    }
+
+    if (action.type === 'play') {
+      const idx = hand.findIndex((t) => tileCode(t) === action.code);
+      if (idx < 0) return { ok: false, error: 'tile not in hand' };
+      const t = hand[idx];
+
+      if (h.mustOpen) {
+        if (action.code !== h.openCode) return { ok: false, error: 'must open with ' + h.openCode };
+        hand.splice(idx, 1);
+        h.line.push({ code: t.code, a: t.a, b: t.b, double: t.double, end: 'open' });
+        h.endL = t.b; h.endR = t.a;     // expose both faces (a>=b)
+        h.mustOpen = false;
+        h.tilesPlayed += 1;
+        h.passes = 0;
+        events.push({ type: 'played', seat, code: t.code, end: 'open', endL: h.endL, endR: h.endR });
+      } else {
+        const end = action.end === 'R' ? 'R' : 'L';
+        const exposed = end === 'L' ? h.endL : h.endR;
+        const other = matchFace(t, exposed);
+        if (other == null) return { ok: false, error: 'tile does not match that end' };
+        hand.splice(idx, 1);
+        if (end === 'L') { h.line.unshift({ code: t.code, a: t.a, b: t.b, double: t.double, end: 'L' }); h.endL = other; }
+        else { h.line.push({ code: t.code, a: t.a, b: t.b, double: t.double, end: 'R' }); h.endR = other; }
+        h.tilesPlayed += 1;
+        h.passes = 0;
+        events.push({ type: 'played', seat, code: t.code, end, endL: h.endL, endR: h.endR });
+      }
+
+      // going out — hand won
+      if (hand.length === 0) {
+        return this._endHandWon(table, h, seat, events);
+      }
+      h.turn = table.next(seat);
+      return { ok: true, events, handOver: false, gameOver: false };
+    }
+
+    return { ok: false, error: 'unknown action ' + action.type };
+  },
+
+  // A player emptied their hand: they score the sum of all opponents' pips.
+  _endHandWon(table, h, winnerSeat, events) {
+    const gained = h.hands.reduce((sum, hand, s) => sum + (s === winnerSeat ? 0 : handPips(hand)), 0);
+    h.match.totals[winnerSeat] += gained;
+    events.push({ type: 'handWon', seat: winnerSeat, gained, reason: 'out', totals: h.match.totals.slice() });
+    return this._afterHand(table, h, events);
+  },
+
+  // Blocked (all passed): lowest remaining pip total wins the difference. Ties ->
+  // no score for that hand (standard friendly ruling).
+  _endHandBlocked(table, h, events) {
+    const pipsBySeat = h.hands.map((hand) => handPips(hand));
+    const min = Math.min(...pipsBySeat);
+    const lowSeats = pipsBySeat.map((p, s) => (p === min ? s : -1)).filter((s) => s >= 0);
+    if (lowSeats.length === 1) {
+      const winnerSeat = lowSeats[0];
+      const gained = pipsBySeat.reduce((sum, p, s) => sum + (s === winnerSeat ? 0 : p), 0);
+      h.match.totals[winnerSeat] += gained;
+      events.push({ type: 'handWon', seat: winnerSeat, gained, reason: 'blocked', totals: h.match.totals.slice() });
+    } else {
+      events.push({ type: 'handBlocked', tie: lowSeats, totals: h.match.totals.slice() });
+    }
+    return this._afterHand(table, h, events);
+  },
+
+  _afterHand(table, h, events) {
+    const target = table.config.target || cfg.rules.target;
+    const totals = h.match.totals;
+    const top = Math.max(...totals);
+    if (top >= target) {
+      const winnerSeat = totals.indexOf(top);
+      table._domResult = { totals: totals.slice(), winnerSeat };
+      events.push({ type: 'gameWon', winnerSeat, totals: totals.slice() });
+      return { ok: true, events, handOver: false, gameOver: true };
+    }
+    return { ok: true, events, handOver: true, gameOver: false };
+  },
+
+  // --- individual-scoring seams (HIGHEST total wins) ---
+  gameResult(table) {
+    const r = table._domResult || { totals: (table._domMatch || { totals: table.scores }).totals, winnerSeat: 0 };
+    return { mode: 'individual', winnerSeat: r.winnerSeat, totals: r.totals };
+  },
+  standings(table) {
+    const r = table._domResult || { totals: (table._domMatch || { totals: table.scores }).totals };
+    const totals = r.totals;
+    const top = Math.max(...totals);
+    return table.seats.map((s) => ({
+      seat: s.seat, team: s.seat, displayName: s.displayName,
+      bot: s.bot, score: totals[s.seat], won: totals[s.seat] === top,
+    }));
+  },
+  resetMatch(table) { table._domMatch = { totals: new Array(table.seatCount).fill(0), handNo: 0 }; table._domResult = null; },
+
+  publicView(table) {
+    const h = table.hand;
+    if (!h) return { phase: 'lobby' };
+    return {
+      phase: h.phase,
+      dealer: table.dealer,
+      turn: h.turn,
+      starter: h.starter,
+      line: h.line.map((b) => ({ code: b.code, a: b.a, b: b.b, double: b.double })),
+      endL: h.endL, endR: h.endR,
+      boneyard: h.boneyard.length,
+      handCounts: h.hands.map((hh) => hh.length),
+      totals: h.match ? h.match.totals.slice() : new Array(table.seatCount).fill(0),
+      target: table.config.target || cfg.rules.target,
+      tilesPlayed: h.tilesPlayed,
+    };
+  },
+
+  privateView(table, seat) {
+    const h = table.hand;
+    if (!h) return { seat, hand: [], legal: [] };
+    const legal = this.legalActions(table, seat);
+    return {
+      seat,
+      hand: (h.hands[seat] || []).map((t) => ({ code: t.code, a: t.a, b: t.b, double: t.double })),
+      turn: h.turn,
+      yourTurn: h.phase === 'playing' && h.turn === seat,
+      legal,
+      endL: h.endL, endR: h.endR,
+      boneyard: h.boneyard.length,
+      mustOpen: h.mustOpen,
+      handNo: h.match ? h.match.handNo : 0,
+      tilesPlayed: h.tilesPlayed,
+    };
+  },
+
+  botAction(table, seat) {
+    const h = table.hand;
+    if (!h || h.phase !== 'playing' || seat !== h.turn) return null;
+    const legal = this.legalActions(table, seat);
+    if (!legal.length) return null;
+
+    const plays = legal.filter((a) => a.type === 'play');
+    if (plays.length) {
+      // heuristic: play the highest-pip bone we can (shed weight), prefer doubles.
+      const hand = h.hands[seat];
+      const byCode = Object.fromEntries(hand.map((t) => [t.code, t]));
+      plays.sort((x, y) => {
+        const tx = byCode[x.code], ty = byCode[y.code];
+        return (ty.double - tx.double) || (pip(ty) - pip(tx));
+      });
+      return plays[0];
+    }
+    // else draw or pass (whichever is legal)
+    return legal[0];
+  },
+};
+
+export default dominoes;
+export { matchFace, pip, handPips };

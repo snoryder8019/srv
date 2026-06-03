@@ -81,12 +81,18 @@ function buildSession() {
   }
   return session(opts);
 }
-app.use(buildSession());
+const sessionMiddleware = buildSession();
+app.use(sessionMiddleware);
 
 // ----- Passport -----------------------------------------------------------
 const passport = configurePassport();
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Share session + passport with Socket.IO so socket handlers know the authed user
+io.engine.use(sessionMiddleware);
+io.engine.use(passport.initialize());
+io.engine.use(passport.session());
 
 // Make user available to all views
 app.use(attachUserToLocals);

@@ -1,0 +1,59 @@
+<% const c = (pitch && pitch.clients) || {}; const f = c.featured || {}; %>
+
+<section class="mll-chart-block">
+  <h2>Featured customer · D3 timeline</h2>
+  <p class="mll-chart-block__lead">
+    <strong><%= f.name || '—' %></strong> · <%= f.type || '' %> · since <%= f.since || '' %> ·
+    lifetime $<%= (f.lifetime || 0).toLocaleString() %> · last contact <%= f.lastContact || '—' %>.
+  </p>
+  <p class="mll-chart-block__lead"><em>Every touchpoint with this customer — lead, quote, job, delivery, review, follow-up — on a single brushable D3 timeline. Hover any node for detail.</em></p>
+  <div class="mll-chart" id="clTimeline" style="min-height:280px"></div>
+  <div class="mll-cl-legend">
+    <span class="mll-cl-dot mll-cl-dot--lead"></span> Lead
+    <span class="mll-cl-dot mll-cl-dot--quote"></span> Quote
+    <span class="mll-cl-dot mll-cl-dot--job"></span> Job booked
+    <span class="mll-cl-dot mll-cl-dot--delivered"></span> Delivered
+    <span class="mll-cl-dot mll-cl-dot--review"></span> Review
+    <span class="mll-cl-dot mll-cl-dot--followup"></span> Follow-up
+    <span class="mll-cl-dot mll-cl-dot--campaign"></span> Campaign
+  </div>
+</section>
+
+<section class="mll-chart-block">
+  <h2>Customer roster</h2>
+  <p class="mll-chart-block__lead">Every active and recent customer — jobs done, lifetime value, last contact, status. Click any row to open in the admin.</p>
+  <table class="mll-cl-table">
+    <thead><tr><th>Customer</th><th>Type</th><th>Jobs</th><th>Lifetime</th><th>Last contact</th><th>Status</th></tr></thead>
+    <tbody>
+      <% (c.roster || []).forEach((r) => { %>
+        <tr>
+          <td><strong><%= r.name %></strong></td>
+          <td><%= r.type %></td>
+          <td><%= r.jobs %></td>
+          <td>$<%= (r.lifetime || 0).toLocaleString() %></td>
+          <td><%= r.lastContact %></td>
+          <td><span class="mll-pill mll-pill--<%= r.status === 'active' ? 'ok' : r.status === 'followup-due' ? 'warn' : 'accent' %>"><%= r.status.replace('-', ' ') %></span></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</section>
+
+<section class="mll-chart-block">
+  <h2>Follow-up queue</h2>
+  <p class="mll-chart-block__lead">Auto-generated reminders. Owner approves the send (or skip).</p>
+  <ul class="mll-cl-queue">
+    <% (c.followupQueue || []).forEach((q) => { %>
+      <li class="mll-cl-queue__item">
+        <div class="mll-cl-queue__head">
+          <strong><%= q.customer %></strong>
+          <span class="mll-pill mll-pill--accent"><%= q.type %></span>
+          <span class="mll-cl-queue__due">due <%= q.due %></span>
+        </div>
+        <p class="mll-cl-queue__task"><%= q.task %></p>
+      </li>
+    <% }) %>
+  </ul>
+</section>
+
+<script id="clientsData" type="application/json"><%- JSON.stringify(c) %></script>
