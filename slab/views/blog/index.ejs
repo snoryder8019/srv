@@ -8,7 +8,10 @@
     const _sp = parseInt(design.nav_logo_split) || 0;
     const _brandPre = _sp > 0 ? (brand?.name||'').slice(0,_sp) : '';
     const _brandPost = _sp > 0 ? (brand?.name||'').slice(_sp) : (brand?.name||'');
+    const _ct = (typeof ct !== 'undefined' && ct) ? ct : { type:'blog', base:'/blog', label:'Blog', title:'Insights & Resources', subtitle:'Articles, guides, and updates.' };
   %>
+  <link rel="alternate" type="application/rss+xml" title="<%= (brand?.name||'') + ' ' + _ct.label %> — RSS" href="<%= _ct.base %>/feed.rss">
+  <link rel="alternate" type="application/atom+xml" title="<%= (brand?.name||'') + ' ' + _ct.label %> — Atom" href="<%= _ct.base %>/feed.atom">
   <%- include('../partials/font-vars') %>
   <style>
     :root {
@@ -65,18 +68,59 @@
     .footer-links { list-style:none; display:flex; gap:24px; }
     .footer-links a { font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase; color:color-mix(in srgb, var(--on-primary-deep) 35%, transparent); text-decoration:none; transition:color 0.2s; }
     .footer-links a:hover { color:var(--accent-light); }
+    .hero-feeds { margin-top:20px; font-size:0.72rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--slate); display:flex; gap:10px; align-items:center; }
+    .hero-feeds a { color:var(--primary); text-decoration:none; font-weight:600; }
+    .hero-feeds a:hover { color:var(--accent); }
+    .sub-flash { max-width:800px; margin:24px auto 0; padding:14px 20px; border-radius:2px; font-size:0.88rem; font-weight:300; }
+    .sub-ok { background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--on-surface); border:1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+    .sub-err { background:rgba(185,28,28,0.08); color:#8B1C1C; border:1px solid rgba(185,28,28,0.3); }
+    .sub-box { padding:40px 52px 0; }
+    .sub-box-inner { max-width:800px; margin:0 auto; background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:36px 40px; text-align:center; }
+    .sub-box-inner h2 { font-family:var(--font-heading); font-size:1.6rem; font-weight:300; color:var(--on-surface); margin-bottom:8px; }
+    .sub-box-inner > p { font-size:0.9rem; font-weight:300; color:var(--slate); margin-bottom:20px; }
+    .sub-form { display:flex; gap:10px; max-width:480px; margin:0 auto; flex-wrap:wrap; }
+    .sub-form input[type=email] { flex:1; min-width:200px; padding:12px 16px; border:1px solid var(--border); border-radius:2px; font-family:var(--font-body); font-size:0.95rem; color:var(--on-surface); background:var(--surface); outline:none; }
+    .sub-form input[type=email]:focus { border-color:var(--primary); }
+    .sub-form button { padding:12px 28px; background:var(--primary); color:var(--on-primary); border:none; border-radius:2px; cursor:pointer; font-size:0.78rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; transition:background 0.2s; }
+    .sub-form button:hover { background:var(--primary-deep); }
+    .sub-feed-note { font-size:0.72rem; color:var(--slate); margin-top:16px; }
+    .sub-feed-note a { color:var(--primary); text-decoration:none; font-weight:600; }
   </style>
 </head>
 <body>
-<%- include("../partials/header", { activePage: 'blog' }) %>
+<%- include("../partials/header", { activePage: _ct.type }) %>
 
 <div class="blog-hero">
   <div class="blog-hero-inner">
-    <p class="eyebrow"><%= brand?.name || 'Blog' %> Blog</p>
-    <h1>Insights &amp; <em>Resources</em></h1>
-    <p>Marketing tips, social media strategies, and digital growth advice for local businesses.</p>
+    <p class="eyebrow"><%= (brand?.name ? brand.name + ' ' : '') + _ct.label %></p>
+    <h1><%- _ct.title %></h1>
+    <p><%= _ct.subtitle %></p>
+    <div class="hero-feeds">
+      <a href="<%= _ct.base %>/feed.rss" title="RSS feed">RSS</a>
+      <span aria-hidden="true">·</span>
+      <a href="<%= _ct.base %>/feed.atom" title="Atom feed">Atom</a>
+    </div>
   </div>
 </div>
+
+<% if (typeof subscribed !== 'undefined' && subscribed) { %>
+  <div class="sub-flash sub-ok">✓ Almost there — check your inbox to confirm your subscription.</div>
+<% } else if (typeof suberror !== 'undefined' && suberror) { %>
+  <div class="sub-flash sub-err">Sorry, something went wrong. Please check your email and try again.</div>
+<% } %>
+
+<section class="sub-box">
+  <div class="sub-box-inner">
+    <h2>Subscribe to <%= _ct.label %></h2>
+    <p>Get new <%= _ct.label.toLowerCase() %> updates by email. No spam — unsubscribe anytime.</p>
+    <form class="sub-form" method="POST" action="<%= _ct.base %>/subscribe">
+      <input type="text" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">
+      <input type="email" name="email" required placeholder="you@example.com" aria-label="Email address">
+      <button type="submit">Subscribe</button>
+    </form>
+    <p class="sub-feed-note">Prefer a reader? Subscribe via <a href="<%= _ct.base %>/feed.rss">RSS</a> or <a href="<%= _ct.base %>/feed.atom">Atom</a>.</p>
+  </div>
+</section>
 
 <% if (!posts || posts.length === 0) { %>
   <div class="no-posts">
@@ -97,11 +141,11 @@
             <% if (post.category) { %><span class="post-category"><%= post.category %></span><% } %>
             <span class="post-date"><%= new Date(post.publishedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></span>
           </div>
-          <a href="/blog/<%= post.slug %>" class="post-title"><%= post.title %></a>
+          <a href="<%= _ct.base %>/<%= post.slug %>" class="post-title"><%= post.title %></a>
           <% if (post.excerpt) { %>
             <p class="post-excerpt"><%= post.excerpt %></p>
           <% } %>
-          <a href="/blog/<%= post.slug %>" class="read-more">Read Article →</a>
+          <a href="<%= _ct.base %>/<%= post.slug %>" class="read-more">Read More →</a>
         </div>
       </div>
     <% }) %>

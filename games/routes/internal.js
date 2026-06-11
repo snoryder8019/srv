@@ -264,4 +264,30 @@ router.post('/wallet/award-coins', requireInternal, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Generic per-player game state KV (durable). Namespaced by game + key.
+// Stored in collection 'gamestate' keyed { game, platformId, key }. Reusable by
+// any web game that needs state to persist across sessions (e.g. reels Joker shoe).
+router.post('/gamestate/get', requireInternal, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { game, platformId, key } = req.body || {};
+    if (!game || !platformId || !key) return res.status(400).json({ error: 'game, platformId, key required' });
+    const doc = await db.collection('gamestate').findOne({ game: String(game), platformId: String(platformId), key: String(key) });
+    res.json({ ok: true, value: doc ? doc.value : null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.post('/gamestate/set', requireInternal, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { game, platformId, key, value } = req.body || {};
+    if (!game || !platformId || !key) return res.status(400).json({ error: 'game, platformId, key required' });
+    await db.collection('gamestate').updateOne(
+      { game: String(game), platformId: String(platformId), key: String(key) },
+      { $set: { value, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    res.json({ ok: true, value });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

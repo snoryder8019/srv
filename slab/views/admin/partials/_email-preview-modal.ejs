@@ -1,0 +1,132 @@
+<!--
+  Shared email preview modal.
+  Include once on any admin page that needs to preview a rendered email
+  (campaigns, invoices, client emails). Drives the real branded template
+  pipeline server-side, so the admin sees exactly what the recipient gets.
+
+  Usage from page JS:
+    openEmailPreview({
+      endpoint: '/admin/email-marketing/campaigns/preview',
+      payload:  { subject, preheader, body },   // POSTed as JSON
+      title:    'Campaign preview'              // optional header label
+    });
+-->
+<div id="emailPreviewModal" class="epm-overlay" style="display:none;" aria-hidden="true">
+  <div class="epm-dialog" role="dialog" aria-modal="true" aria-label="Email preview">
+    <div class="epm-head">
+      <div class="epm-head-left">
+        <div class="epm-title" id="epmTitle">Email preview</div>
+        <div class="epm-subject" id="epmSubject"></div>
+      </div>
+      <div class="epm-head-right">
+        <div class="epm-devices">
+          <button type="button" class="epm-device active" data-w="100%" onclick="epmSetWidth(this)">Desktop</button>
+          <button type="button" class="epm-device" data-w="400px" onclick="epmSetWidth(this)">Mobile</button>
+        </div>
+        <button type="button" class="epm-close" onclick="closeEmailPreview()" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="epm-stage">
+      <div id="epmStatus" class="epm-status">Loading preview…</div>
+      <div id="epmFrameWrap" class="epm-frame-wrap" style="display:none;">
+        <iframe id="emailPreviewModalFrame" title="Email preview" sandbox="allow-same-origin"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .epm-overlay { position:fixed; inset:0; background:rgba(15,27,48,0.62); z-index:600; align-items:center; justify-content:center; padding:24px; }
+  .epm-overlay.open { display:flex; }
+  .epm-dialog {
+    background:var(--surface); border-radius:8px; width:100%; max-width:860px;
+    max-height:92vh; display:flex; flex-direction:column; overflow:hidden;
+    box-shadow:0 18px 60px rgba(0,0,0,0.32);
+  }
+  .epm-head {
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:14px 18px; border-bottom:1px solid var(--border);
+    background:linear-gradient(135deg,var(--navy-deep,#0F1B30),var(--navy,#1C2B4A));
+  }
+  .epm-head-left { min-width:0; }
+  .epm-title { font-family:'Cormorant Garamond',serif; font-size:1.15rem; color:var(--on-navy-deep,#fff); line-height:1.1; }
+  .epm-subject { font-size:0.72rem; color:color-mix(in srgb,var(--on-navy-deep,#fff) 62%,transparent); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:360px; }
+  .epm-head-right { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  .epm-devices { display:flex; border:1px solid color-mix(in srgb,#fff 22%,transparent); border-radius:3px; overflow:hidden; }
+  .epm-device {
+    background:transparent; border:none; color:color-mix(in srgb,#fff 70%,transparent);
+    font-family:'Jost',sans-serif; font-size:0.66rem; letter-spacing:0.06em; text-transform:uppercase;
+    padding:5px 11px; cursor:pointer; transition:all 0.15s;
+  }
+  .epm-device.active { background:var(--gold,#C9A848); color:var(--navy-deep,#0F1B30); font-weight:600; }
+  .epm-close { background:none; border:none; color:color-mix(in srgb,#fff 70%,transparent); font-size:1.5rem; line-height:1; cursor:pointer; padding:0 2px; }
+  .epm-close:hover { color:#fff; }
+  .epm-stage { flex:1; overflow-y:auto; background:#e9e6df; padding:18px; min-height:240px; }
+  .epm-status { text-align:center; color:var(--slate); font-size:0.85rem; padding:48px 0; }
+  .epm-status.error { color:var(--danger,#8B1C1C); }
+  .epm-frame-wrap { margin:0 auto; width:100%; max-width:100%; transition:max-width 0.25s ease; background:#fff; box-shadow:0 4px 20px rgba(0,0,0,0.12); border-radius:4px; overflow:hidden; }
+  #emailPreviewModalFrame { width:100%; height:64vh; border:0; display:block; background:#fff; }
+</style>
+
+<script>
+(function(){
+  var modal  = document.getElementById('emailPreviewModal');
+  var frame  = document.getElementById('emailPreviewModalFrame');
+  var wrap   = document.getElementById('epmFrameWrap');
+  var status = document.getElementById('epmStatus');
+  var titleEl   = document.getElementById('epmTitle');
+  var subjectEl = document.getElementById('epmSubject');
+  if (!modal) return;
+
+  window.epmSetWidth = function(btn){
+    modal.querySelectorAll('.epm-device').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    wrap.style.maxWidth = btn.getAttribute('data-w');
+  };
+
+  window.closeEmailPreview = function(){
+    modal.classList.remove('open');
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    frame.srcdoc = '';
+  };
+
+  window.openEmailPreview = function(opts){
+    opts = opts || {};
+    titleEl.textContent = opts.title || 'Email preview';
+    subjectEl.textContent = '';
+    wrap.style.display = 'none';
+    status.style.display = 'block';
+    status.className = 'epm-status';
+    status.textContent = 'Loading preview…';
+    modal.style.display = 'flex';
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+
+    fetch(opts.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts.payload || {})
+    })
+      .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
+      .then(function(res){
+        if (res.ok && res.d && res.d.html) {
+          frame.srcdoc = res.d.html;
+          subjectEl.textContent = res.d.subject || '';
+          status.style.display = 'none';
+          wrap.style.display = 'block';
+        } else {
+          status.className = 'epm-status error';
+          status.textContent = (res.d && res.d.error) || 'Preview unavailable';
+        }
+      })
+      .catch(function(){
+        status.className = 'epm-status error';
+        status.textContent = 'Preview unavailable';
+      });
+  };
+
+  modal.addEventListener('click', function(e){ if (e.target === modal) closeEmailPreview(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && modal.classList.contains('open')) closeEmailPreview(); });
+})();
+</script>

@@ -73,11 +73,20 @@ app.use(logger('dev'));
 // Stripe webhooks need raw body — must be before express.json()
 app.use('/webhooks/stripe', express.raw({ type: 'application/json' }));
 app.use('/start/webhook', express.raw({ type: 'application/json' }));
+app.use('/webhooks/meta', express.raw({ type: 'application/json' }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+// Self-host the @imgly/background-removal ESM bundle (the asset generator's
+// in-browser background remover dynamically imports /vendor/imgly/index.mjs).
+// The model weights/wasm still load from imgly's official CDN (the lib default).
+app.use('/vendor/imgly', express.static(path.join(__dirname, 'node_modules/@imgly/background-removal/dist')));
+// onnxruntime-web — the imgly bundle dynamically imports the bare specifier
+// "onnxruntime-web"; an import map in the page (see assets/social.ejs) points
+// it here so the browser can resolve it without a bundler.
+app.use('/vendor/onnxruntime-web', express.static(path.join(__dirname, 'node_modules/onnxruntime-web/dist')));
 
 // ── Tenant resolution — sets req.tenant, req.db, res.locals.brand ───────────
 app.use(resolveTenant);

@@ -267,6 +267,17 @@
       <div class="card-title">Post Settings</div>
       <div class="form-grid cols-3">
         <div class="form-field">
+          <label>Content Type</label>
+          <% var _types = (typeof contentTypes !== 'undefined' && contentTypes) ? contentTypes : [{ key:'blog', label:'Blog Post' }];
+             var _curType = (post && post.contentType) ? post.contentType : (typeof defaultType !== 'undefined' ? defaultType : 'blog'); %>
+          <select name="contentType" id="field-contentType">
+            <% _types.forEach(function(t) { %>
+              <option value="<%= t.key %>" <%= _curType === t.key ? 'selected' : '' %>><%= (t.icon ? t.icon + ' ' : '') + t.label %></option>
+            <% }); %>
+          </select>
+          <span id="contentType-hint" style="font-size:0.65rem;color:var(--slate);"></span>
+        </div>
+        <div class="form-field">
           <label>Status</label>
           <select name="status">
             <option value="draft" <%= !post || post.status === 'draft' ? 'selected' : '' %>>Draft</option>
@@ -331,8 +342,15 @@
     <div class="form-actions" style="margin-top:24px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
       <button type="submit" class="btn btn-navy"><%= post && post._id ? 'Save Changes' : 'Create Post' %></button>
       <a href="/admin/blog" class="btn btn-ghost">Cancel</a>
-      <% if (post && post._id && post.status === 'published') { %>
-        <a href="/blog/<%= post.slug %>" target="_blank" class="btn btn-ghost" style="margin-left:auto;">View Live →</a>
+      <%
+        var _pcBase = null;
+        if (typeof contentTypes !== 'undefined' && contentTypes && post) {
+          var _pct = contentTypes.find(function(t){ return t.key === (post.contentType || 'blog'); });
+          _pcBase = _pct ? _pct.publicBase : '/blog';
+        }
+      %>
+      <% if (post && post._id && post.status === 'published' && _pcBase) { %>
+        <a href="<%= _pcBase %>/<%= post.slug %>" target="_blank" class="btn btn-ghost" style="margin-left:auto;">View Live →</a>
       <% } %>
     </div>
   </form>
@@ -873,6 +891,24 @@ async function sendAgent() {
   }
 }
 
+// ── CONTENT TYPE HINT ──
+(function() {
+  var sel = document.getElementById('field-contentType');
+  if (!sel) return;
+  var META = <%- JSON.stringify((typeof contentTypes !== 'undefined' && contentTypes) ? contentTypes.reduce(function(a,t){a[t.key]={desc:t.desc||'',publicBase:t.publicBase||null};return a;},{}) : {}) %>;
+  var hint = document.getElementById('contentType-hint');
+  function refresh() {
+    var m = META[sel.value] || {};
+    if (hint) {
+      hint.textContent = m.publicBase
+        ? (m.desc || '') + ' — public at ' + m.publicBase + '/<slug> (+ RSS/Atom).'
+        : (m.desc || '') + ' — embed-only: placed into pages by tag, no public page.';
+    }
+  }
+  sel.addEventListener('change', refresh);
+  refresh();
+})();
+
 // Pre-fill from dashboard master agent
 (function() {
   try {
@@ -885,7 +921,7 @@ async function sendAgent() {
   } catch { /* ignore */ }
 })();
 </script>
-<script src="/js/assetPicker.js"></script>
+<script src="/js/assetPicker.js?v=<%= Date.now() %>"></script>
 <script src="/js/agentHealth.js"></script>
 <script src="/js/tours/blog.js"></script>
 

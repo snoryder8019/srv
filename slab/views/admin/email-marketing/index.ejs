@@ -121,7 +121,7 @@
     <div class="card" style="text-align:center;padding:18px;">
       <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);margin-bottom:4px;">Contacts</div>
       <div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--navy);"><%= stats.totalContacts %></div>
-      <div style="font-size:0.7rem;color:var(--success);"><%= stats.subscribedContacts %> subscribed</div>
+      <div style="font-size:0.7rem;color:var(--success);"><%= stats.subscribedContacts %> subscribed<% if (stats.pendingContacts) { %> <span style="color:var(--warn);">&middot; <%= stats.pendingContacts %> pending</span><% } %></div>
     </div>
     <div class="card" style="text-align:center;padding:18px;">
       <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);margin-bottom:4px;">Campaigns</div>
@@ -138,9 +138,161 @@
     </div>
   </div>
 
+  <!-- ═══════════ VISUAL OVERVIEW ═══════════ -->
+  <%
+    const _sg = charts.signupSeries;
+    const _maxV = Math.max(1, ..._sg.map(p => p.count));
+    const _W = 600, _H = 110, _n = _sg.length;
+    const _step = _n > 1 ? _W / (_n - 1) : _W;
+    const _pts = _sg.map((p, i) => [i * _step, _H - (p.count / _maxV) * (_H - 12) - 6]);
+    const _line = _pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+    const _area = `${_line} L${_W},${_H} L0,${_H} Z`;
+
+    const _sc = charts.statusCounts;
+    const _stotal = Math.max(1, _sc.subscribed + _sc.pending + _sc.unsubscribed + _sc.bounced);
+    const _segs = [
+      { label: 'Subscribed', val: _sc.subscribed, color: '#15803D' },
+      { label: 'Pending', val: _sc.pending, color: '#C9A848' },
+      { label: 'Unsubscribed', val: _sc.unsubscribed, color: '#6B7380' },
+      { label: 'Bounced', val: _sc.bounced, color: '#8B1C1C' },
+    ];
+    const _C = 2 * Math.PI * 42; let _off = 0;
+
+    const _fc = funnelCounts;
+    const _ftotal = Math.max(1, _fc.lead + _fc.prospect + _fc.customer + _fc.churned);
+    const _funnelSegs = [
+      { label: 'Leads', val: _fc.lead, color: '#C9A848' },
+      { label: 'Prospects', val: _fc.prospect, color: '#2E4270' },
+      { label: 'Customers', val: _fc.customer, color: '#15803D' },
+      { label: 'Churned', val: _fc.churned, color: '#8B1C1C' },
+    ];
+    const _eng = charts.engagement;
+    const _maxSrc = Math.max(1, ...charts.sourceBreakdown.map(s => s.count));
+  %>
+  <style>
+    .em-charts { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-bottom:24px; }
+    .em-panel { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:16px 18px; }
+    .em-panel-title { font-size:0.62rem; text-transform:uppercase; letter-spacing:.12em; color:var(--slate); margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; }
+    .em-panel-title b { font-family:'Cormorant Garamond',serif; font-size:1.5rem; color:var(--navy); font-weight:400; letter-spacing:0; }
+    .em-grow { grid-column:span 2; }
+    @media (max-width:720px){ .em-grow { grid-column:span 1; } }
+    .em-legend { display:flex; flex-wrap:wrap; gap:8px 14px; margin-top:10px; }
+    .em-legend span { display:inline-flex; align-items:center; gap:5px; font-size:0.7rem; color:var(--slate); }
+    .em-dot { width:9px; height:9px; border-radius:2px; flex-shrink:0; }
+    .em-gauge-row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+    .em-gauge-label { font-size:0.72rem; color:var(--slate); width:74px; flex-shrink:0; }
+    .em-gauge-track { flex:1; height:8px; background:var(--border); border-radius:4px; overflow:hidden; }
+    .em-gauge-fill { height:100%; border-radius:4px; transition:width .6s cubic-bezier(.4,0,.2,1); }
+    .em-gauge-val { font-size:0.78rem; font-weight:600; color:var(--navy); width:38px; text-align:right; flex-shrink:0; }
+  </style>
+  <div class="em-charts">
+
+    <!-- List growth area chart -->
+    <div class="em-panel em-grow">
+      <div class="em-panel-title"><span>List Growth &middot; Last 30 Days</span><b>+<%= charts.signups30 %></b></div>
+      <svg viewBox="0 0 <%= _W %> <%= _H %>" preserveAspectRatio="none" style="width:100%;height:110px;display:block;">
+        <defs><linearGradient id="emGrowthGrad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#C9A848" stop-opacity="0.32"/><stop offset="100%" stop-color="#C9A848" stop-opacity="0"/>
+        </linearGradient></defs>
+        <% if (charts.signups30 > 0) { %>
+          <path d="<%= _area %>" fill="url(#emGrowthGrad)"/>
+          <path d="<%= _line %>" fill="none" stroke="#C9A848" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        <% } else { %>
+          <line x1="0" y1="<%= _H-6 %>" x2="<%= _W %>" y2="<%= _H-6 %>" stroke="var(--border)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+        <% } %>
+      </svg>
+      <div style="display:flex;justify-content:space-between;font-size:0.62rem;color:var(--slate);margin-top:4px;">
+        <span><%= new Date(_sg[0].date+'T00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) %></span>
+        <span><%= charts.signups30 === 0 ? 'No new signups yet — your footer form & capture forms feed this' : 'New contacts per day' %></span>
+        <span>Today</span>
+      </div>
+    </div>
+
+    <!-- Audience donut + funnel -->
+    <div class="em-panel">
+      <div class="em-panel-title"><span>Audience</span><b><%= stats.totalContacts %></b></div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <svg viewBox="0 0 110 110" style="width:104px;height:104px;flex-shrink:0;">
+          <circle cx="55" cy="55" r="42" fill="none" stroke="var(--border)" stroke-width="13"/>
+          <% _segs.forEach(function(s){ if(!s.val) return; const len = s.val/_stotal*_C; %>
+            <circle cx="55" cy="55" r="42" fill="none" stroke="<%= s.color %>" stroke-width="13"
+              stroke-dasharray="<%= len.toFixed(2) %> <%= (_C-len).toFixed(2) %>" stroke-dashoffset="<%= (-_off).toFixed(2) %>"
+              stroke-linecap="butt" transform="rotate(-90 55 55)"/>
+            <% _off += len; }) %>
+          <text x="55" y="52" text-anchor="middle" style="font-size:16px;font-weight:600;fill:var(--navy);font-family:Jost,sans-serif;"><%= _sc.subscribed %></text>
+          <text x="55" y="65" text-anchor="middle" style="font-size:6.5px;fill:var(--slate);letter-spacing:1.5px;font-family:Jost,sans-serif;">SUBSCRIBED</text>
+        </svg>
+        <div class="em-legend" style="flex-direction:column;gap:7px;margin-top:0;">
+          <% _segs.forEach(function(s){ %>
+          <span><span class="em-dot" style="background:<%= s.color %>;"></span><%= s.label %> <strong style="color:var(--navy);margin-left:2px;"><%= s.val %></strong></span>
+          <% }) %>
+        </div>
+      </div>
+      <!-- Funnel segmented bar -->
+      <div style="margin-top:14px;">
+        <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);margin-bottom:5px;">Funnel</div>
+        <div style="display:flex;height:14px;border-radius:3px;overflow:hidden;background:var(--border);">
+          <% _funnelSegs.forEach(function(s){ if(!s.val) return; %>
+          <div title="<%= s.label %>: <%= s.val %>" style="width:<%= (s.val/_ftotal*100).toFixed(1) %>%;background:<%= s.color %>;"></div>
+          <% }) %>
+        </div>
+        <div class="em-legend">
+          <% _funnelSegs.forEach(function(s){ %><span><span class="em-dot" style="background:<%= s.color %>;"></span><%= s.label %> <%= s.val %></span><% }) %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Campaign engagement -->
+    <div class="em-panel">
+      <div class="em-panel-title"><span>Campaign Engagement</span><b><%= stats.sentCampaigns %></b></div>
+      <div class="em-gauge-row">
+        <span class="em-gauge-label">Avg open</span>
+        <div class="em-gauge-track"><div class="em-gauge-fill" style="width:<%= _eng.avgOpenRate %>%;background:#15803D;"></div></div>
+        <span class="em-gauge-val"><%= _eng.avgOpenRate %>%</span>
+      </div>
+      <div class="em-gauge-row">
+        <span class="em-gauge-label">Avg click</span>
+        <div class="em-gauge-track"><div class="em-gauge-fill" style="width:<%= _eng.avgClickRate %>%;background:#C9A848;"></div></div>
+        <span class="em-gauge-val"><%= _eng.avgClickRate %>%</span>
+      </div>
+      <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:10px;">
+        <% if (_eng.campSeries.length) { %>
+          <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);margin-bottom:8px;">Recent sends — open rate</div>
+          <% _eng.campSeries.forEach(function(c){ %>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="font-size:0.68rem;color:var(--navy);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;"><%= c.subject %></span>
+            <div class="em-gauge-track" style="flex:1;"><div class="em-gauge-fill" style="width:<%= c.openRate %>%;background:linear-gradient(90deg,#2E4270,#15803D);"></div></div>
+            <span style="font-size:0.66rem;color:var(--slate);width:30px;text-align:right;"><%= c.openRate %>%</span>
+          </div>
+          <% }) %>
+        <% } else { %>
+          <div style="font-size:0.72rem;color:var(--slate);text-align:center;padding:8px 0;">No campaigns sent yet. Engagement appears here after your first send.</div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Sources -->
+    <div class="em-panel">
+      <div class="em-panel-title"><span>Where Contacts Come From</span></div>
+      <% if (charts.sourceBreakdown.length) { %>
+        <% charts.sourceBreakdown.forEach(function(s){ %>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="font-size:0.7rem;color:var(--navy);width:90px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<%= s.source %>"><%= s.source %></span>
+          <div class="em-gauge-track" style="flex:1;"><div class="em-gauge-fill" style="width:<%= (s.count/_maxSrc*100).toFixed(0) %>%;background:#2E4270;"></div></div>
+          <span style="font-size:0.7rem;color:var(--slate);width:30px;text-align:right;"><%= s.count %></span>
+        </div>
+        <% }) %>
+      <% } else { %>
+        <div style="font-size:0.72rem;color:var(--slate);text-align:center;padding:16px 0;">No contacts yet.</div>
+      <% } %>
+    </div>
+
+  </div>
+
   <!-- Tabs -->
   <div class="tabs" style="margin-bottom:20px;">
     <a href="?tab=contacts" class="tab-link <%= tab === 'contacts' ? 'active' : '' %>">Contacts (<%= contacts.length %>)</a>
+    <a href="?tab=forms" class="tab-link <%= tab === 'forms' ? 'active' : '' %>">Capture Forms (<%= forms.length %>)</a>
     <a href="?tab=campaigns" class="tab-link <%= tab === 'campaigns' ? 'active' : '' %>">Campaigns (<%= campaigns.length %>)</a>
   </div>
 
@@ -341,6 +493,7 @@
         </div>
         <div style="margin-top:16px;display:flex;gap:8px;">
           <button type="submit" class="btn btn-navy btn-sm">Save as Draft</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="previewCampaign()">Preview</button>
         </div>
       </form>
     </div>
@@ -424,6 +577,7 @@
             </td>
             <td style="white-space:nowrap;">
               <div style="display:flex;gap:4px;align-items:center;">
+                <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="openEmailPreview({ endpoint: '/admin/email-marketing/campaigns/<%= camp._id %>/preview', title: 'Campaign preview' })">Preview</button>
                 <% if (camp.status === 'draft') { %>
                 <form method="POST" action="/admin/email-marketing/campaigns/<%= camp._id %>/send" style="display:inline;" onsubmit="return confirm('Send this campaign to all matching contacts? This cannot be undone.')">
                   <button class="btn btn-gold btn-sm" style="font-size:0.68rem;">Send</button>
@@ -439,6 +593,175 @@
         </tbody>
       </table>
     </div>
+    <% } %>
+
+  <% } %>
+
+  <!-- ═══════════ CAPTURE FORMS TAB ═══════════ -->
+  <% if (tab === 'forms') { %>
+
+    <div class="card" style="margin-bottom:16px;padding:14px 18px;background:linear-gradient(135deg,rgba(201,168,72,0.06),transparent);">
+      <div style="font-size:0.82rem;color:var(--slate);line-height:1.55;">
+        Capture forms grow your list. A <strong>newsletter signup is already live in your site footer</strong> (toggle it in
+        <a href="/admin/design#footer" style="color:var(--navy);">Design</a>). Build extra forms below for landing pages, lead magnets, or to
+        <strong>embed on any external site</strong>. New emails confirm via double opt-in, then receive the form's welcome email automatically.
+      </div>
+    </div>
+
+    <!-- New form -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>New Capture Form</span>
+        <button type="button" class="agent-btn" id="formAgentBtn" style="font-size:0.66rem;padding:6px 12px;"><span style="font-size:0.9rem;">✦</span> Write with AI</button>
+      </div>
+      <form method="POST" action="/admin/email-marketing/forms">
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="form-field">
+            <label>Form Name * <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(internal)</span></label>
+            <input type="text" name="name" id="fName" required placeholder="e.g. Spring Lead Magnet">
+          </div>
+          <div class="form-field">
+            <label>Headline</label>
+            <input type="text" name="headline" id="fHeadline" placeholder="Join our newsletter">
+          </div>
+        </div>
+        <div class="form-field" style="margin-top:12px;">
+          <label>Sub-headline <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(value proposition)</span></label>
+          <input type="text" name="subhead" id="fSubhead" placeholder="Get updates and offers straight to your inbox.">
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-top:12px;">
+          <div class="form-field">
+            <label>Button Text</label>
+            <input type="text" name="buttonText" id="fButton" placeholder="Subscribe">
+          </div>
+          <div class="form-field">
+            <label>Funnel Stage</label>
+            <select name="funnel">
+              <option value="lead">Lead</option>
+              <option value="prospect">Prospect</option>
+              <option value="customer">Customer</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Confirmation</label>
+            <select name="optIn">
+              <option value="double">Double opt-in (recommended)</option>
+              <option value="single">Single opt-in</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Collect Name?</label>
+            <select name="collectName">
+              <option value="false">Email only</option>
+              <option value="true">Name + email</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-top:12px;">
+          <div class="form-field">
+            <label>Tags <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(comma sep)</span></label>
+            <input type="text" name="tags" placeholder="newsletter, lead-magnet">
+          </div>
+          <div class="form-field">
+            <label>Success Message</label>
+            <input type="text" name="successMessage" id="fSuccess" placeholder="Check your inbox to confirm!">
+          </div>
+        </div>
+        <div class="form-field" style="margin-top:12px;">
+          <label>Welcome Email <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(sent after they confirm — optional, HTML, use {name})</span></label>
+          <input type="text" name="welcomeSubject" id="fWelcomeSubject" placeholder="Welcome email subject (leave blank to skip)" style="margin-bottom:8px;">
+          <textarea name="welcomeBody" id="fWelcomeBody" rows="5" placeholder="Optional HTML welcome email body." style="font-family:'Jost',sans-serif;font-size:0.85rem;line-height:1.6;"></textarea>
+        </div>
+        <div style="margin-top:14px;"><button type="submit" class="btn btn-navy btn-sm">Create Form</button></div>
+      </form>
+    </div>
+
+    <!-- Forms list -->
+    <% if (!forms.length) { %>
+      <div class="empty"><div class="empty-icon">⬚</div><p>No custom forms yet. The footer signup is already capturing — build a form above for landing pages or external embeds.</p></div>
+    <% } else { %>
+      <% for (const f of forms) { %>
+      <% const hostedUrl = (tenantDomain || '') + '/t/f/' + f.token; %>
+      <% const embedSnippet = '<script async src="' + (tenantDomain || 'https://yourdomain.com') + '/t/f/' + f.token + '/embed.js"></scr' + 'ipt>'; %>
+      <div class="card" style="margin-bottom:14px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:240px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-family:'Cormorant Garamond',serif;font-size:1.2rem;color:var(--navy);"><%= f.name %></span>
+              <span style="font-size:0.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:2px;background:<%= f.enabled !== false ? 'rgba(21,128,61,0.1)' : 'rgba(107,115,128,0.12)' %>;color:<%= f.enabled !== false ? 'var(--success)' : 'var(--slate)' %>;"><%= f.enabled !== false ? 'Live' : 'Off' %></span>
+              <span style="font-size:0.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:2px;background:rgba(28,43,74,0.07);color:var(--navy);"><%= f.optIn === 'single' ? 'Single' : 'Double' %> opt-in</span>
+            </div>
+            <div style="font-size:0.8rem;color:var(--slate);margin-top:4px;">"<%= f.headline %>"<% if (f.subhead) { %> — <%= f.subhead %><% } %></div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--navy);"><%= f.signupCount || 0 %></div>
+            <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);">signups<% if (f.confirmedCount) { %> &middot; <%= f.confirmedCount %> confirmed<% } %></div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:0.75rem;align-items:center;">
+          <span style="color:var(--slate);">Funnel: <strong style="color:var(--navy);"><%= f.funnel %></strong></span>
+          <% if (f.tags?.length) { %><span style="color:var(--slate);">Tags: <%= f.tags.join(', ') %></span><% } %>
+          <span style="color:var(--slate);">Welcome email: <strong style="color:<%= f.welcomeBody ? 'var(--success)' : 'var(--slate)' %>;"><%= f.welcomeBody ? 'on' : 'none' %></strong></span>
+          <% const _conv = f.signupCount ? Math.round((f.confirmedCount || 0) / f.signupCount * 100) : 0; %>
+          <% if (f.signupCount) { %>
+          <span style="display:flex;align-items:center;gap:6px;color:var(--slate);">Confirm rate
+            <span style="display:inline-block;width:70px;height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><span style="display:block;height:100%;width:<%= _conv %>%;background:#15803D;border-radius:4px;"></span></span>
+            <strong style="color:var(--navy);"><%= _conv %>%</strong>
+          </span>
+          <% } %>
+        </div>
+
+        <!-- Share + embed -->
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);margin-bottom:6px;">Hosted form link</div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;">
+            <input type="text" readonly value="<%= hostedUrl %>" onclick="this.select()" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:2px;font-size:0.74rem;font-family:monospace;color:var(--navy);">
+            <a href="<%= hostedUrl %>" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.66rem;">Open</a>
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.66rem;" onclick="copyText(this, '<%= hostedUrl %>')">Copy</button>
+          </div>
+          <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--slate);margin-bottom:6px;">Embed on any website</div>
+          <div style="display:flex;gap:6px;">
+            <input type="text" readonly value='<%= embedSnippet %>' onclick="this.select()" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:2px;font-size:0.72rem;font-family:monospace;color:var(--slate);">
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.66rem;" onclick="copyText(this, this.previousElementSibling.value)">Copy</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;display:flex;gap:6px;">
+          <form method="POST" action="/admin/email-marketing/forms/<%= f._id %>/toggle" style="display:inline;">
+            <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;"><%= f.enabled !== false ? 'Pause' : 'Activate' %></button>
+          </form>
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="document.getElementById('editForm<%= f._id %>').style.display=document.getElementById('editForm<%= f._id %>').style.display==='none'?'block':'none'">Edit</button>
+          <form method="POST" action="/admin/email-marketing/forms/<%= f._id %>/delete" onsubmit="return confirm('Delete this form? Signups already captured are kept.')" style="display:inline;">
+            <button class="btn btn-danger btn-sm" style="font-size:0.68rem;">Delete</button>
+          </form>
+        </div>
+
+        <!-- Edit (hidden) -->
+        <div id="editForm<%= f._id %>" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">
+          <form method="POST" action="/admin/email-marketing/forms/<%= f._id %>/update">
+            <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+              <div class="form-field"><label>Name</label><input type="text" name="name" value="<%= f.name %>"></div>
+              <div class="form-field"><label>Headline</label><input type="text" name="headline" value="<%= f.headline %>"></div>
+            </div>
+            <div class="form-field" style="margin-top:10px;"><label>Sub-headline</label><input type="text" name="subhead" value="<%= f.subhead || '' %>"></div>
+            <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-top:10px;">
+              <div class="form-field"><label>Button</label><input type="text" name="buttonText" value="<%= f.buttonText || 'Subscribe' %>"></div>
+              <div class="form-field"><label>Funnel</label><select name="funnel"><option value="lead" <%= f.funnel==='lead'?'selected':'' %>>Lead</option><option value="prospect" <%= f.funnel==='prospect'?'selected':'' %>>Prospect</option><option value="customer" <%= f.funnel==='customer'?'selected':'' %>>Customer</option></select></div>
+              <div class="form-field"><label>Opt-in</label><select name="optIn"><option value="double" <%= f.optIn!=='single'?'selected':'' %>>Double</option><option value="single" <%= f.optIn==='single'?'selected':'' %>>Single</option></select></div>
+              <div class="form-field"><label>Collect Name</label><select name="collectName"><option value="false" <%= !f.collectName?'selected':'' %>>Email only</option><option value="true" <%= f.collectName?'selected':'' %>>Name + email</option></select></div>
+            </div>
+            <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-top:10px;">
+              <div class="form-field"><label>Tags</label><input type="text" name="tags" value="<%= (f.tags||[]).join(', ') %>"></div>
+              <div class="form-field"><label>Success Message</label><input type="text" name="successMessage" value="<%= f.successMessage || '' %>"></div>
+            </div>
+            <div class="form-field" style="margin-top:10px;"><label>Welcome Email Subject</label><input type="text" name="welcomeSubject" value="<%= f.welcomeSubject || '' %>"></div>
+            <div class="form-field" style="margin-top:10px;"><label>Welcome Email Body (HTML)</label><textarea name="welcomeBody" rows="5" style="font-family:'Jost',sans-serif;font-size:0.85rem;"><%= f.welcomeBody || '' %></textarea></div>
+            <div style="margin-top:12px;"><button type="submit" class="btn btn-navy btn-sm">Save Changes</button></div>
+          </form>
+        </div>
+      </div>
+      <% } %>
     <% } %>
 
   <% } %>
@@ -529,6 +852,48 @@ function insertExtImage() {
 document.getElementById('imgPickerModal')?.addEventListener('click', function(e) {
   if (e.target === this) closeImgPicker();
 });
+
+// Copy-to-clipboard helper (hosted link + embed snippet)
+function copyText(btn, text) {
+  const done = () => { const o = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = o, 1400); };
+  if (navigator.clipboard) { navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done)); }
+  else fallbackCopy(text, done);
+}
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta); if (cb) cb();
+}
+
+// Form copy AI generator — fills the New Form fields from a one-line brief.
+(function() {
+  const btn = document.getElementById('formAgentBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async function() {
+    const brief = prompt('What is this form for? (e.g. "free SEO checklist lead magnet" or "VIP early-access list")');
+    if (brief === null) return;
+    const orig = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = 'Writing…';
+    try {
+      const res = await fetch('/admin/email-marketing/forms/agent', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: brief || 'a general newsletter signup form' }),
+      });
+      const data = await res.json();
+      if (data.error) { alert('Agent error: ' + data.error); return; }
+      const fill = data.fill || {};
+      const map = { headline: 'fHeadline', subhead: 'fSubhead', buttonText: 'fButton', successMessage: 'fSuccess', welcomeSubject: 'fWelcomeSubject', welcomeBody: 'fWelcomeBody' };
+      for (const [k, id] of Object.entries(map)) {
+        if (fill[k]) { const el = document.getElementById(id); if (el) { el.value = fill[k]; el.classList.add('ai-filled'); } }
+      }
+      if (fill.headline && !document.getElementById('fName').value) document.getElementById('fName').value = brief.slice(0, 40) || fill.headline;
+    } catch (e) {
+      alert('Could not reach the writing assistant. Please try again.');
+    } finally {
+      btn.disabled = false; btn.innerHTML = orig;
+    }
+  });
+})();
 </script>
 
 </div></div>
@@ -737,6 +1102,26 @@ document.getElementById('imgPickerModal')?.addEventListener('click', function(e)
 })();
 </script>
 <% } %>
+
+<%- include('../partials/_email-preview-modal') %>
+<script>
+  // Live preview of the in-progress campaign composer.
+  function previewCampaign() {
+    var s = document.getElementById('campSubject');
+    var p = document.getElementById('campPreheader');
+    var b = document.getElementById('campBody');
+    openEmailPreview({
+      endpoint: '/admin/email-marketing/campaigns/preview',
+      title: 'Campaign preview',
+      payload: {
+        subject: s ? s.value : '',
+        preheader: p ? p.value : '',
+        body: b ? b.value : '',
+      },
+    });
+  }
+</script>
+
 <script src="/js/agentHealth.js"></script>
 <script src="/js/tours/email-marketing.js"></script>
 

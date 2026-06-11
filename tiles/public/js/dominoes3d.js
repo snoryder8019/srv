@@ -81,6 +81,79 @@ controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, R
 controls.update();
 
 const HOME = { pos: camera.position.clone(), target: controls.target.clone() };
+// ---- persisted opening camera (parity with the shared table3d core) ----
+// dominoes is a bespoke scene (predates table3d.js); it gets the same entry-load
+// + SAVE-ANGLE wiring inline. Fixed slug — this file is dominoes.
+const CAM_GAME = 'dominoes';
+fetch('/scene/camera/' + CAM_GAME, { credentials: 'include' })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((d) => {
+    const c = d && d.camera;
+    if (!c || !c.start || !c.target) return;
+    camera.position.set(c.start.x, c.start.y, c.start.z);
+    controls.target.set(c.target.x, c.target.y, c.target.z);
+    controls.update();
+    HOME.pos.copy(camera.position);
+    HOME.target.copy(controls.target);
+  })
+  .catch(() => {});
+
+// admin/?cam=1 debug cog: live readout + SAVE ANGLE (POST /dev/camera/dominoes)
+(function buildDomCamDebug() {
+  function mount() {
+    if (document.getElementById('dbgBtn')) return;
+    const rr = (n) => Math.round(n * 10) / 10;
+    const hud = document.createElement('div');
+    hud.style.cssText = 'position:fixed;left:10px;top:110px;z-index:40;background:rgba(8,18,13,.9);' +
+      'color:#bfe0cd;font:13px ui-monospace,monospace;padding:10px 12px;border-radius:10px;' +
+      'border:1px solid rgba(255,255,255,.18);white-space:pre;line-height:1.6;display:none;' +
+      'box-shadow:0 6px 20px rgba(0,0,0,.5)';
+    const readout = document.createElement('div'); hud.appendChild(readout);
+    const save = document.createElement('button');
+    save.textContent = '📍 SAVE ANGLE';
+    save.style.cssText = 'margin-top:8px;width:100%;background:#2fbf71;color:#05230f;border:none;' +
+      'border-radius:8px;padding:11px;font:800 14px system-ui;cursor:pointer';
+    save.onclick = () => {
+      const p = camera.position, t = controls.target;
+      const payload = { game: CAM_GAME, start: { x: rr(p.x), y: rr(p.y), z: rr(p.z) },
+        target: { x: rr(t.x), y: rr(t.y), z: rr(t.z) },
+        dist: Math.round(p.distanceTo(t)), az: Math.round(Math.atan2(p.x - t.x, p.z - t.z) * 180 / Math.PI) };
+      fetch('/dev/camera/' + CAM_GAME, { method: 'POST', credentials: 'include',
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(() => { save.textContent = '✓ SAVED'; save.style.background = '#e3c567';
+          setTimeout(() => { save.textContent = '📍 SAVE ANGLE'; save.style.background = '#2fbf71'; }, 1200); })
+        .catch(() => { save.textContent = '✗ failed'; setTimeout(() => { save.textContent = '📍 SAVE ANGLE'; }, 1200); });
+    };
+    hud.appendChild(save);
+    const hide = document.createElement('button');
+    hide.textContent = '✕ hide';
+    hide.style.cssText = 'margin-top:6px;width:100%;background:#3a1d1d;color:#f0c9c9;border:none;' +
+      'border-radius:8px;padding:8px;font:700 12px system-ui;cursor:pointer';
+    hide.onclick = () => { hud.style.display = 'none'; };
+    hud.appendChild(hide);
+    document.body.appendChild(hud);
+    const cog = document.createElement('button');
+    cog.id = 'dbgBtn'; cog.textContent = '🛠'; cog.title = 'Debug tools';
+    cog.style.cssText = 'position:fixed;left:10px;bottom:60px;z-index:140;width:38px;height:38px;' +
+      'border-radius:10px;background:rgba(17,35,26,.85);color:#cfe7d8;border:1px solid rgba(255,255,255,.18);' +
+      'font-size:16px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4)';
+    cog.onclick = () => { hud.style.display = (hud.style.display === 'none' ? 'block' : 'none'); };
+    document.body.appendChild(cog);
+    (function upd() {
+      requestAnimationFrame(upd);
+      if (hud.style.display === 'none') return;
+      const p = camera.position, t = controls.target;
+      readout.textContent = '📷 dist ' + Math.round(p.distanceTo(t)) +
+        '  az ' + Math.round(Math.atan2(p.x - t.x, p.z - t.z) * 180 / Math.PI) + '°\n' +
+        'start  ' + rr(p.x) + ', ' + rr(p.y) + ', ' + rr(p.z) + '\n' +
+        'target ' + rr(t.x) + ', ' + rr(t.y) + ', ' + rr(t.z);
+    })();
+  }
+  if (new URLSearchParams(location.search).get('cam') === '1') mount();
+  else fetch('/auth/me', { credentials: 'include' }).then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d && d.user && d.user.isAdmin === true) mount(); }).catch(() => {});
+})();
+
 
 const TABLE_R = 34; // table radius (used by lighting shadow frustum + seats + felt)
 

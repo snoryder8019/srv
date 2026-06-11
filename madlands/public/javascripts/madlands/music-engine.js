@@ -135,4 +135,25 @@ export function createPlayer(score) {
   };
 }
 
-export default { createPlayer, parseKey };
+// ---- brief library: varied songs, picked per-zone so places sound different ----
+const BRIEFS = [
+  { mood: 'doom',    kinds: ['dungeon','building'],            key: 'A',  mode: 'minor', tempo: 72,  groove: 'half-time doom', progression: ['Am','F','Dm','E'] },
+  { mood: 'eerie',   kinds: ['dungeon','building'],            key: 'D',  mode: 'minor', tempo: 84,  groove: 'sparse dirge',   progression: ['Dm','Bb','Gm','A'] },
+  { mood: 'drift',   kinds: ['space'],                         key: 'E',  mode: 'minor', tempo: 68,  groove: 'slow ambient',   progression: ['Em','C','Am','B'] },
+  { mood: 'cosmic',  kinds: ['space'],                         key: 'F#', mode: 'minor', tempo: 76,  groove: 'floating',       progression: ['F#m','D','E','C#m'] },
+  { mood: 'martial', kinds: ['ground'],                        key: 'C',  mode: 'minor', tempo: 104, groove: 'driving',        progression: ['Cm','Ab','Eb','G'] },
+  { mood: 'march',   kinds: ['ground'],                        key: 'G',  mode: 'minor', tempo: 112, groove: 'march',          progression: ['Gm','Eb','Bb','D'] },
+  { mood: 'hopeful', kinds: ['ground','space'],                key: 'D',  mode: 'major', tempo: 96,  groove: 'open',           progression: ['D','A','Bm','G'] },
+  { mood: 'tense',   kinds: ['dungeon','ground'],              key: 'B',  mode: 'minor', tempo: 100, groove: 'pulsing',        progression: ['Bm','G','D','F#'] },
+  { mood: 'mystic',  kinds: ['building','space'],              key: 'F',  mode: 'minor', tempo: 80,  groove: 'shimmer',        progression: ['Fm','Db','Ab','C'] },
+  { mood: 'wander',  kinds: ['dungeon','building','ground','space'], key: 'A', mode: 'major', tempo: 90, groove: 'lilt',      progression: ['A','E','F#m','D'] },
+];
+function hashSeed(s) { let h = 2166136261 >>> 0; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+export function briefForSeed(seed, kind) {
+  const pool = BRIEFS.filter((b) => !kind || b.kinds.includes(kind));
+  const list = pool.length ? pool : BRIEFS;
+  const b = list[hashSeed(seed) % list.length];
+  return { key: b.key, mode: b.mode, tempo: b.tempo, progression: b.progression.slice(), groove: b.groove, mood: b.mood };
+}
+
+export default { createPlayer, parseKey, briefForSeed };

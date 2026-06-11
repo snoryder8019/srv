@@ -154,6 +154,19 @@ export const CUSTOM_TEMPLATES = {
       { key: 'card4_image', label: 'Card 4 Image' },
     ],
   },
+  writer_feed: {
+    label: 'Writer Feed', icon: '✍',
+    desc: 'Pull Writer content (blog, newsletter, help, snippets) onto the page, filtered by tag',
+    fields: [
+      { key: 'heading',      label: 'Section Heading', type: 'text' },
+      { key: 'subtext',      label: 'Section Subtext',  type: 'textarea' },
+      { key: 'tag',          label: 'Filter by Tag',    type: 'text', placeholder: 'e.g. faq, announcements (blank = any)' },
+      { key: 'content_type', label: 'Content Type',     type: 'select', options: ['any', 'blog', 'newsletter', 'help', 'snippet'] },
+      { key: 'layout',       label: 'Layout',           type: 'select', options: ['cards', 'list', 'full'] },
+      { key: 'limit',        label: 'Max Items',        type: 'select', options: ['3', '6', '9', '1', '12'] },
+    ],
+    images: [],
+  },
   faq: {
     label: 'FAQ', icon: '?',
     desc: 'Frequently asked questions accordion',

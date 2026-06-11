@@ -7,7 +7,7 @@
  *   • outside bets (red/black/even/odd/low/high) + quick straight 7 / 0 as buttons
  *   • the last result shown in the action bar and on the wheel
  */
-import { createTable3D } from './table3d.js?v=1780540000000';
+import { createTable3D } from './table3d.js?v=1780587392337';
 import { createTableClient } from './tableclient3d.js?v=1780348653535';
 import { createHUD } from './hud3d.js?v=1780348653535';
 import { buildWheel, spinTo, colorOf } from './wheel3d.js?v=1780348653535';
@@ -15,7 +15,7 @@ import { buildRouletteFelt } from './felt3d.js?v=1780348653535';
 import { dropStack, seatColor } from './chip3d.js?v=1780348653535';
 import { showResult, renderHistory, makeDeltaTracker } from './casino-fx.js?v=1780480000000';
 import { createBetBar } from './betbar.js?v=1780480000000';
-import { createAudioBus } from './audiobus.js?v=1780540000000';
+import { createAudioBus } from 'https://games.madladslab.com/shared/js/audiobus.js';
 import { createDealerFx } from './dealerfx.js?v=1780413600000';
 import { createChipBurst } from './chipburst.js?v=1780520000000';
 

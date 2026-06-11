@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en" data-snap="<%= design.snap_enabled === 'true' ? 'true' : 'false' %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('partials/seo-head') %>
+  <%
+    const _BI_auto = (brand?.name || '').split(/\s+/).map(w => w[0]).join('').toUpperCase();
+    const _BI = (design.hero_name_large && design.hero_name_large.trim()) || _BI_auto;
+    const _sp = (brand?.name || '').indexOf(' ') > 0 ? (brand.name.indexOf(' ')) : 0;
+  %>
+  <%- include('partials/font-vars') %>
+  <%- include('partials/landing-styles') %>
+  <% if (visibility.about && (harmonyServices || []).length) { %>
+  <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }</script>
+  <% } %>
+</head>
+<%
+  const heroBgMediaUrl  = (design.hero_bg_media_url  || '').trim();
+  const heroBgMediaType = (design.hero_bg_media_type || '').trim();
+  const heroBgMediaPoster = (design.hero_bg_media_poster || '').trim();
+  const heroFullBg = !!heroBgMediaUrl && (heroBgMediaType === 'image' || heroBgMediaType === 'video');
+  const heroStyle = (design.hero_style || 'split');
+
+  /* Slideshow slides: copy keys slide{N}_image|heading|sub|eyebrow|link|cta */
+  const _slideIdx = new Set();
+  Object.keys(copy || {}).forEach(k => { const m = k.match(/^slide(\d+)_/); if (m) _slideIdx.add(parseInt(m[1], 10)); });
+  const heroSlides = [..._slideIdx].sort((a, b) => a - b).map(i => ({
+    image:   copy['slide' + i + '_image']   || '',
+    heading: copy['slide' + i + '_heading'] || '',
+    sub:     copy['slide' + i + '_sub']     || '',
+    eyebrow: copy['slide' + i + '_eyebrow'] || '',
+    link:    copy['slide' + i + '_link']    || '',
+    cta:     copy['slide' + i + '_cta']     || '',
+    tag:     copy['slide' + i + '_tag']     || '',
+    vpos:    copy['slide' + i + '_vpos']    || '',
+  })).filter(s => s.image || s.heading);
+  // Maps a vertical-position keyword → flex align-items value. Empty/'inherit'
+  // leaves the slide on the global --hero-vpos default.
+  const _heroVposMap = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
+%>
+<body data-layout="<%= design.landing_layout || 'classic' %>" data-gradient="<%= design.gradient_enabled || 'false' %>" data-card-hover-accent="<%= design.card_hover_accent || 'true' %>" data-hero-pattern="<%= design.hero_bg_pattern || 'none' %>" data-hero-full-bg="<%= heroFullBg ? heroBgMediaType : '' %>" data-hero-style="<%= heroStyle %>" data-portfolio-layout="<%= design.portfolio_layout || 'grid' %>" data-blog-layout="<%= design.blog_layout || 'grid' %>">
+
+<% if (visibility.header !== false) { %>
+<%- include('partials/header', { activePage: 'home' }) %>
+<% } %>
+
+<!-- HERO -->
+<% if (visibility.hero) { %>
+<% if (heroStyle === 'parallax') { %>
+  <%- include('partials/_marquee-parallax', { d: design, b: brand, copy: copy, pos: 'hero' }) %>
+<% } else if (heroStyle === 'slideshow' && heroSlides.length) { %>
+  <%
+    const _interval = parseInt(design.hero_slideshow_interval || '6', 10);
+    const _showDots = design.hero_slideshow_dots !== 'false';
+    const _showArrows = design.hero_slideshow_arrows !== 'false';
+    // Static overlay: one fixed headline (main hero copy) sits over every slide
+    // instead of per-slide titles — for image-only slideshows.
+    const _staticHero = design.hero_slideshow_static === 'true';
+  %>
+  <section class="hero hero--slideshow<%= _staticHero ? ' hero--slideshow-static' : '' %>" data-interval="<%= _interval %>" data-count="<%= heroSlides.length %>">
+    <div class="hero-slides">
+      <% heroSlides.forEach((s, i) => { %>
+        <% const _slideVpos = (!_staticHero && _heroVposMap[s.vpos]) ? ' style="align-items:' + _heroVposMap[s.vpos] + '"' : ''; %>
+        <% if (s.link && !_staticHero) { %>
+        <a class="hero-slide<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>" href="<%= s.link %>"<%- _slideVpos %>>
+        <% } else { %>
+        <div class="hero-slide<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>"<%- _slideVpos %>>
+        <% } %>
+          <% if (s.image) { %><div class="hero-slide-bg" style="background-image:url('<%= s.image %>');"></div><% } %>
+          <div class="hero-slide-overlay"></div>
+          <% if (!_staticHero) { %>
+          <div class="hero-slide-text">
+            <% if (s.tag) { %><span class="hero-slide-tag"><%= s.tag %></span><% } %>
+            <% if (s.eyebrow) { %><p class="hero-eyebrow"><%= s.eyebrow %></p><% } %>
+            <% if (s.heading) { %><h2 class="hero-heading"><%= s.heading %></h2><% } %>
+            <% if (s.sub) { %><p class="hero-sub"><%= s.sub %></p><% } %>
+            <% if (s.cta && s.link) { %><span class="btn-primary hero-slide-cta"><%= s.cta %></span><% } %>
+          </div>
+          <% } %>
+        <% if (s.link && !_staticHero) { %></a><% } else { %></div><% } %>
+      <% }) %>
+    </div>
+    <% if (_staticHero) { %>
+    <div class="hero-static-overlay">
+      <div class="hero-slide-text">
+        <% if (copy.hero_eyebrow) { %><p class="hero-eyebrow"><%= copy.hero_eyebrow %></p><% } %>
+        <% if (copy.hero_heading || copy.hero_heading_em) { %>
+          <h2 class="hero-heading"><%= copy.hero_heading || '' %><% if (copy.hero_heading_em) { %> <em><%= copy.hero_heading_em %></em><% } %></h2>
+        <% } %>
+        <% if (copy.hero_sub) { %><p class="hero-sub"><%= copy.hero_sub %></p><% } %>
+        <% if ((copy.hero_cta_primary && copy.hero_cta_primary_link) || (copy.hero_cta_secondary && copy.hero_cta_secondary_link)) { %>
+        <div class="hero-btns">
+          <% if (copy.hero_cta_primary && copy.hero_cta_primary_link) { %><a href="<%= copy.hero_cta_primary_link %>" class="btn-primary"><%= copy.hero_cta_primary %></a><% } %>
+          <% if (copy.hero_cta_secondary && copy.hero_cta_secondary_link) { %><a href="<%= copy.hero_cta_secondary_link %>" class="btn-ghost btn-ghost--on-dark"><%= copy.hero_cta_secondary %></a><% } %>
+        </div>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+    <% if (_showArrows && heroSlides.length > 1) { %>
+      <button type="button" class="hero-arrow hero-arrow--prev" aria-label="Previous slide">&#8249;</button>
+      <button type="button" class="hero-arrow hero-arrow--next" aria-label="Next slide">&#8250;</button>
+    <% } %>
+    <% if (_showDots && heroSlides.length > 1) { %>
+      <div class="hero-dots" role="tablist">
+        <% heroSlides.forEach((s, i) => { %>
+          <button type="button" class="hero-dot<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>" aria-label="Go to slide <%= i + 1 %>"></button>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+  <script>
+  (function(){
+    var root = document.querySelector('.hero--slideshow'); if (!root) return;
+    var slides = [].slice.call(root.querySelectorAll('.hero-slide'));
+    var dots = [].slice.call(root.querySelectorAll('.hero-dot'));
+    var count = slides.length; if (count < 2) return;
+    var idx = 0, timer = null;
+    var interval = parseInt(root.getAttribute('data-interval'), 10) || 0;
+    function show(n) {
+      idx = (n + count) % count;
+      slides.forEach(function(s, i){ s.classList.toggle('is-active', i === idx); });
+      dots.forEach(function(d, i){ d.classList.toggle('is-active', i === idx); });
+    }
+    function next(){ show(idx + 1); }
+    function prev(){ show(idx - 1); }
+    function start(){ if (interval > 0) timer = setInterval(next, interval * 1000); }
+    function stop(){ if (timer) { clearInterval(timer); timer = null; } }
+    dots.forEach(function(d){ d.addEventListener('click', function(){ stop(); show(parseInt(d.getAttribute('data-idx'),10)); start(); }); });
+    var pBtn = root.querySelector('.hero-arrow--prev'), nBtn = root.querySelector('.hero-arrow--next');
+    if (pBtn) pBtn.addEventListener('click', function(){ stop(); prev(); start(); });
+    if (nBtn) nBtn.addEventListener('click', function(){ stop(); next(); start(); });
+    root.addEventListener('mouseenter', stop); root.addEventListener('mouseleave', start);
+    start();
+  })();
+  </script>
+<% } else if (heroStyle === 'image_card') { %>
+  <%
+    const _cardBg   = (media.hero_image || heroBgMediaUrl || '');
+    const _cardType = heroBgMediaType === 'video' ? 'video' : 'image';
+  %>
+  <section class="hero hero--image-card" data-card-pos="<%= design.hero_card_position || 'left' %>">
+    <div class="hero-bg-media" aria-hidden="true">
+      <% if (_cardType === 'video' && heroBgMediaUrl) { %>
+        <video class="hero-bg-video" autoplay muted loop playsinline preload="metadata"<% if (heroBgMediaPoster) { %> poster="<%= heroBgMediaPoster %>"<% } %>>
+          <source src="<%= heroBgMediaUrl %>">
+        </video>
+      <% } else if (_cardBg) { %>
+        <div class="hero-bg-image" style="background-image:url('<%= _cardBg %>');"></div>
+      <% } %>
+      <div class="hero-bg-overlay"></div>
+    </div>
+    <div class="hero-card-wrap">
+      <div class="hero-card<%= design.hero_card_shadow === 'false' ? '' : ' hero-card--shadow' %>">
+        <div class="hero-text">
+          <% if (copy.hero_eyebrow) { %><p class="hero-eyebrow"><%= copy.hero_eyebrow %></p><% } %>
+          <h1 class="hero-heading"><%= copy.hero_heading %><% if (copy.hero_heading_em) { %> <em><%= copy.hero_heading_em %></em><% } %></h1>
+          <% if (copy.hero_sub) { %><p class="hero-sub"><%= copy.hero_sub %></p><% } %>
+          <div class="hero-btns">
+            <% if (copy.hero_cta_primary) { %><a href="<%= copy.hero_cta_primary_link || '#contact' %>" class="btn-primary"><%= copy.hero_cta_primary %></a><% } %>
+            <% if (copy.hero_cta_secondary) { %><a href="<%= copy.hero_cta_secondary_link || '#services' %>" class="btn-ghost"><%= copy.hero_cta_secondary %></a><% } %>
+          </div>
+        </div>
+      </div>
+      <% if (copy.hero_badge) { %>
+        <div class="hero-badge hero-badge--floating">
+          <div class="hero-badge-dot"></div>
+          <span class="hero-badge-text"><%= copy.hero_badge %></span>
+        </div>
+      <% } %>
+    </div>
+  </section>
+<% } else { %>
+<section class="hero<%= heroFullBg ? ' hero--full-bg' : '' %>">
+  <% if (heroFullBg) { %>
+    <div class="hero-bg-media" aria-hidden="true">
+      <% if (heroBgMediaType === 'video') { %>
+        <video class="hero-bg-video" autoplay muted loop playsinline preload="metadata"<% if (heroBgMediaPoster) { %> poster="<%= heroBgMediaPoster %>"<% } %>>
+          <source src="<%= heroBgMediaUrl %>">
+        </video>
+      <% } else { %>
+        <div class="hero-bg-image" style="background-image:url('<%= heroBgMediaUrl %>');"></div>
+      <% } %>
+      <div class="hero-bg-overlay"></div>
+    </div>
+  <% } %>
+  <div class="hero-left">
+    <div class="hero-text">
+      <% if (logos.logo_primary && (design.landing_layout === 'showcase' || design.landing_layout === 'industrial')) { %>
+        <img src="<%= logos.logo_primary %>" alt="<%= brand?.name || '' %>" style="max-width:min(280px,60vw);margin:0 auto 2rem;display:block;filter:brightness(1.1);">
+      <% } %>
+      <% if (copy.hero_eyebrow) { %><p class="hero-eyebrow"><%= copy.hero_eyebrow %></p><% } %>
+      <h1 class="hero-heading"><%= copy.hero_heading %><% if (copy.hero_heading_em) { %> <em><%= copy.hero_heading_em %></em><% } %></h1>
+      <% if (copy.hero_sub) { %><p class="hero-sub"><%= copy.hero_sub %></p><% } %>
+      <div class="hero-btns">
+        <% if (copy.hero_cta_primary) { %><a href="<%= copy.hero_cta_primary_link || '#contact' %>" class="btn-primary"><%= copy.hero_cta_primary %></a><% } %>
+        <% if (copy.hero_cta_secondary) { %><a href="<%= copy.hero_cta_secondary_link || '#services' %>" class="btn-ghost"><%= copy.hero_cta_secondary %></a><% } %>
+      </div>
+    </div>
+  </div>
+  <% if (!heroFullBg) { %>
+  <div class="hero-right"<% if (media.hero_image) { %> style="background-image:url('<%= media.hero_image %>');background-size:cover;background-position:center;"<% } %>>
+    <% if (!media.hero_image) { %><div class="hero-circle"></div><% } %>
+    <div class="hero-right-content" style="position:relative;z-index:1;">
+      <% if (!media.hero_image) { %><div class="hero-name-large"><%= _BI %></div><% } %>
+      <% if (copy.hero_badge) { %>
+      <div class="hero-badge">
+        <div class="hero-badge-dot"></div>
+        <span class="hero-badge-text"><%= copy.hero_badge %></span>
+      </div>
+      <% } %>
+    </div>
+  </div>
+  <% } else if (copy.hero_badge) { %>
+    <div class="hero-badge hero-badge--floating">
+      <div class="hero-badge-dot"></div>
+      <span class="hero-badge-text"><%= copy.hero_badge %></span>
+    </div>
+  <% } %>
+</section>
+<% } %>
+<% } %>
+
+<!-- MARQUEE / TICKER -->
+<% /* When the parallax band IS the hero, don't render it again below. */ %>
+<% if (visibility.hero && visibility.marquee !== false && heroStyle !== 'parallax') { %>
+  <% if ((design.ticker_treatment || 'bar') === 'parallax') { %>
+    <%- include('partials/_marquee-parallax', { d: design, b: brand, copy: copy, pos: 'below_hero' }) %>
+  <% } else { %>
+    <%- include('partials/_marquee-bar', { d: design, b: brand, pos: 'below_hero' }) %>
+  <% } %>
+<% } %>
+
+<!-- SERVICES -->
+<% if (visibility.services) { %>
+<section class="services" id="services">
+  <div class="section-header">
+    <div>
+      <p class="section-eyebrow"><%= copy.services_label %></p>
+      <h2 class="section-heading"><%= copy.services_heading %> <em><%= copy.services_heading_em %></em></h2>
+    </div>
+    <p class="section-sub"><%= copy.services_sub %></p>
+  </div>
+  <div class="services-grid">
+    <%
+      // Collect every service card defined in copy (service{N}_*), in numeric
+      // order — not just 1-3 — so cards added via the design repeater publish.
+      // service{N}_hidden === 'true' hides that card from the live page.
+      const _svcIdx = new Set();
+      Object.keys(copy).forEach(k => { const m = k.match(/^service(\d+)_/); if (m) _svcIdx.add(parseInt(m[1], 10)); });
+      let _services = [..._svcIdx].sort((a, b) => a - b)
+        .filter(n => copy['service' + n + '_hidden'] !== 'true')
+        .map(n => ({
+          title: copy['service' + n + '_title'],
+          desc:  copy['service' + n + '_desc'],
+          link:  copy['service' + n + '_link'],
+          image: copy['service' + n + '_image'],
+        }))
+        .filter(s => s.title || s.desc || s.image);
+      // Fallback to the first three default keys if nothing is defined yet.
+      if (_services.length === 0) {
+        _services = [1, 2, 3].map(n => ({
+          title: copy['service' + n + '_title'],
+          desc:  copy['service' + n + '_desc'],
+          link:  copy['service' + n + '_link'],
+          image: copy['service' + n + '_image'],
+        }));
+      }
+    %>
+    <% _services.forEach(({ title, desc, link, image }, i) => { %>
+      <% if (link) { %><a href="<%= link %>" class="service-card" style="text-decoration:none;color:inherit;"><% } else { %><div class="service-card"><% } %>
+        <% if (image) { %><img src="<%= image %>" alt="<%= title %>" style="max-width:min(320px,70vw);max-height:120px;object-fit:contain;margin-bottom:24px;"><% } %>
+        <div class="service-num"><%= String(i + 1).padStart(2, '0') %></div>
+        <h3 class="service-title"><%= title %></h3>
+        <p class="service-desc"><%= desc %></p>
+        <% if (link) { %><span class="service-link">Visit →</span></a><% } else { %></div><% } %>
+    <% }) %>
+  </div>
+</section>
+<% } %>
+
+<!-- PORTFOLIO -->
+<% if (visibility.portfolio && portfolio && portfolio.length) { %>
+<section id="portfolio" style="padding:100px 52px;background:var(--navy-deep);">
+  <div style="max-width:1100px;margin:0 auto;">
+    <div class="section-header">
+      <div>
+        <p class="section-eyebrow" style="color:var(--gold);">Our Work</p>
+        <h2 class="section-heading" style="color:var(--white);">Recent <em style="color:var(--gold-light);">Projects</em></h2>
+      </div>
+    </div>
+    <div class="pf-grid">
+      <% for (const item of portfolio) { %>
+      <% const _galleryCount = (item.gallery && item.gallery.length) || (item.imageUrl ? 1 : 0); %>
+      <div class="pf-card-clickable" tabindex="0" role="button" data-portfolio-id="<%= item._id %>"
+           aria-label="View <%= item.title %>"
+           style="background:var(--navy);position:relative;overflow:hidden;">
+        <% if (item.imageUrl) { %>
+          <div style="aspect-ratio:16/10;overflow:hidden;position:relative;">
+            <img src="<%= item.imageUrl %>" alt="<%= item.title %>" style="width:100%;height:100%;object-fit:cover;display:block;">
+            <% if (_galleryCount > 1) { %>
+              <span style="position:absolute;top:10px;right:10px;background:rgba(15,27,48,0.85);color:var(--gold-light);font-size:0.62rem;font-weight:600;letter-spacing:0.12em;padding:4px 9px;border-radius:2px;">◧ <%= _galleryCount %></span>
+            <% } %>
+          </div>
+        <% } %>
+        <div style="padding:28px 28px 32px;">
+          <% if (item.category) { %><p style="font-size:0.62rem;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;color:var(--gold);margin-bottom:8px;"><%= item.category %></p><% } %>
+          <h3 style="font-family:var(--font-heading),serif;font-size:1.5rem;font-weight:400;color:var(--white);margin-bottom:10px;"><%= item.title %></h3>
+          <% if (item.description) { %><p style="font-size:0.85rem;color:rgba(253,252,250,0.55);line-height:1.7;"><%= item.description.length > 120 ? item.description.slice(0,120).trim() + '…' : item.description %></p><% } %>
+          <% if (item.clientName) { %><p style="font-size:0.68rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(201,168,72,0.5);margin-top:16px;"><%= item.clientName %></p><% } %>
+        </div>
+      </div>
+      <% } %>
+    </div>
+  </div>
+</section>
+<%- include('partials/portfolio-modal', { portfolio: portfolio }) %>
+<% } %>
+
+<!-- ABOUT -->
+<% if (visibility.about) { %>
+<section class="advisor-section" id="about">
+  <div class="advisor-left">
+    <div class="advisor-text">
+      <p class="section-eyebrow"><%= copy.about_eyebrow %></p>
+      <blockquote class="advisor-quote"><%= copy.about_quote %></blockquote>
+      <p class="advisor-desc"><%= copy.about_desc %></p>
+      <div class="advisor-sig"><%= copy.about_sig %></div>
+    </div>
+  </div>
+  <div class="advisor-right">
+    <% if (copy.about_initial) { %><div class="advisor-initial"><%= copy.about_initial %></div><% } %>
+    <div class="advisor-right-inner">
+      <% if ((harmonyServices || []).length) {
+        const _hCatMeta = {
+          platform: { label: 'Platform', color: '#34d399' },
+          client:   { label: 'Client',   color: '#60a5fa' },
+          game:     { label: 'Game',     color: '#c084fc' },
+          media:    { label: 'Media',    color: '#f59e0b' },
+          tool:     { label: 'Tool',     color: '#c9a848' },
+          infra:    { label: 'Infra',    color: '#22d3ee' },
+        };
+        const _hCats = [...new Set((harmonyServices || []).map(s => s.category))].filter(c => _hCatMeta[c]);
+      %>
+      <div class="about-harmony">
+        <div class="ah-eyebrow">Server Harmony · our live stack</div>
+        <div id="aboutHarmonyWrap" class="ah-canvas"></div>
+        <div class="ah-legend">
+          <% _hCats.forEach(function(cat) { %>
+            <span class="ah-lg"><span class="ah-dot" style="background:<%= _hCatMeta[cat].color %>;box-shadow:0 0 6px <%= _hCatMeta[cat].color %>;"></span><%= _hCatMeta[cat].label %></span>
+          <% }); %>
+        </div>
+        <div class="ah-count"><%= (harmonyServices || []).length %> services &amp; microservices in orbit</div>
+        <div class="ah-hint">drag to rotate · scroll to zoom</div>
+        <script type="application/json" id="aboutHarmonyJson"><%- JSON.stringify(harmonyServices || []) %></script>
+      </div>
+      <% } %>
+      <div class="advisor-stats">
+        <%
+          const _statIdx = new Set();
+          Object.keys(copy).forEach(k => { const m = k.match(/^about_stat(\d+)_/); if (m) _statIdx.add(parseInt(m[1], 10)); });
+          const _stats = [..._statIdx].sort((a, b) => a - b).length ? [..._statIdx].sort((a, b) => a - b) : [1, 2, 3, 4];
+        %>
+        <% _stats.forEach(function(n) { %>
+          <% if (copy['about_stat'+n+'_num'] && copy['about_stat'+n+'_hidden'] !== 'true') { %>
+          <div class="stat-box">
+            <div class="stat-num"><%= copy['about_stat'+n+'_num'] %></div>
+            <div class="stat-label"><%= copy['about_stat'+n+'_label'] %></div>
+          </div>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  </div>
+</section>
+<% } %>
+
+<!-- PROCESS -->
+<% if (visibility.process) { %>
+<section class="process" id="process">
+  <div class="process-inner">
+    <div>
+      <p class="section-eyebrow"><%= copy.process_label %></p>
+      <h2 class="section-heading"><%= copy.process_heading %> <em><%= copy.process_heading_em %></em></h2>
+    </div>
+    <div class="process-list">
+      <%
+        const _procIdx = new Set();
+        Object.keys(copy).forEach(k => { const m = k.match(/^process(\d+)_/); if (m) _procIdx.add(parseInt(m[1], 10)); });
+        const _procArr = [..._procIdx].sort((a, b) => a - b).length ? [..._procIdx].sort((a, b) => a - b) : [1, 2, 3, 4];
+        const _steps = _procArr
+          .filter(n => copy['process'+n+'_hidden'] !== 'true' && copy['process'+n+'_title'])
+          .map(n => [copy['process'+n+'_title'], copy['process'+n+'_desc']]);
+      %>
+      <% _steps.forEach(function(step, i) { %>
+        <div class="process-item">
+          <div class="process-num"><%= String(i + 1).padStart(2, '0') %></div>
+          <div>
+            <div class="process-title"><%- step[0] %></div>
+            <div class="process-desc"><%- step[1] || '' %></div>
+          </div>
+          <div class="process-arrow">→</div>
+        </div>
+      <% }); %>
+    </div>
+  </div>
+</section>
+<% } %>
+
+<!-- REVIEWS -->
+<% if (visibility.reviews && reviews && reviews.reviews && reviews.reviews.length) { %>
+<section style="padding:100px 52px;background:var(--ivory);">
+  <div style="max-width:1100px;margin:0 auto;">
+    <div class="section-header">
+      <div>
+        <p class="section-eyebrow">Google Reviews</p>
+        <h2 class="section-heading">What our <em>clients say</em></h2>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:var(--font-heading);font-size:3.6rem;font-weight:300;color:var(--navy);line-height:1;"><%= reviews.rating.toFixed(1) %></div>
+        <div style="display:flex;gap:3px;justify-content:flex-end;margin:6px 0;">
+          <% for (let i=1;i<=5;i++) { %><span style="color:<%= i<=Math.round(reviews.rating)?'var(--gold)':'var(--border)' %>;">★</span><% } %>
+        </div>
+        <div style="font-size:0.72rem;color:var(--on-ivory-muted);"><%= reviews.user_ratings_total %> Reviews</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2px;background:var(--border);">
+      <% for (const r of reviews.reviews) { %>
+      <div style="background:var(--surface);padding:40px 36px;">
+        <div style="display:flex;gap:3px;margin-bottom:18px;"><% for (let i=1;i<=5;i++) { %><span style="color:<%= i<=r.rating?'var(--gold)':'var(--border)' %>;">★</span><% } %></div>
+        <p style="font-family:var(--font-heading);font-style:italic;color:var(--on-surface);line-height:1.7;margin-bottom:24px;">"<%= r.text.length > 220 ? r.text.slice(0,220).trim() + '…' : r.text %>"</p>
+        <div style="font-size:0.82rem;font-weight:600;color:var(--on-surface);"><%= r.author_name %></div>
+        <div style="font-size:0.7rem;color:var(--on-surface-muted);"><%= r.relative_time_description %></div>
+      </div>
+      <% } %>
+    </div>
+  </div>
+</section>
+<% } %>
+
+<!-- BLOG TEASER -->
+<% if (visibility.blog && latestPosts && latestPosts.length) { %>
+<section style="padding:100px 52px;background:var(--ivory);">
+  <div style="max-width:1100px;margin:0 auto;">
+    <div class="section-header">
+      <div>
+        <p class="section-eyebrow">From The Blog</p>
+        <h2 class="section-heading">Latest <em>Insights</em></h2>
+      </div>
+      <a href="/blog" style="font-size:0.78rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--navy);text-decoration:none;border-bottom:1px solid var(--gold);padding-bottom:2px;">View All</a>
+    </div>
+    <div class="blog-grid">
+      <% latestPosts.forEach(bp => { %>
+        <a href="/blog/<%= bp.slug %>" class="blog-card" style="display:block;background:var(--surface);border:1px solid var(--border);border-radius:2px;overflow:hidden;text-decoration:none;">
+          <% if (bp.featuredImageUrl) { %><img src="<%= bp.featuredImageUrl %>" alt="<%= bp.title %>" style="width:100%;height:180px;object-fit:cover;"><% } %>
+          <div style="padding:24px;">
+            <% if (bp.category) { %><div style="font-size:0.62rem;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:10px;"><%= bp.category %></div><% } %>
+            <div style="font-family:var(--font-heading);font-size:1.2rem;color:var(--on-surface);margin-bottom:10px;"><%= bp.title %></div>
+            <% if (bp.excerpt) { %><div style="font-size:0.85rem;color:var(--on-surface-muted);line-height:1.7;"><%= bp.excerpt.substring(0,120) %><%= bp.excerpt.length > 120 ? '…' : '' %></div><% } %>
+          </div>
+        </a>
+      <% }) %>
+    </div>
+  </div>
+</section>
+<% } %>
+
+<!-- CONTACT -->
+<% if (visibility.contact) { %>
+<section class="contact" id="contact">
+  <div class="contact-left">
+    <p class="section-eyebrow"><%= copy.contact_eyebrow || 'Get In Touch' %></p>
+    <h2 class="section-heading"><%= copy.contact_heading || "Let's Work" %><br><em><%= copy.contact_heading_em || 'Together' %></em></h2>
+    <p class="contact-sub"><%= copy.contact_sub %></p>
+    <div class="contact-detail">
+      <div class="contact-detail-item"><span class="detail-label"><%= copy.contact_location_label || 'Location' %></span><span class="detail-value"><%= copy.contact_location || brand?.location || '' %></span></div>
+      <div class="contact-detail-item"><span class="detail-label"><%= copy.contact_serving_label || 'Serving' %></span><span class="detail-value"><%= copy.contact_serving || brand?.serviceArea || '' %></span></div>
+      <% if (brand?.services?.length || copy.contact_services) { %>
+      <div class="contact-detail-item"><span class="detail-label"><%= copy.contact_services_label || 'Services' %></span><span class="detail-value"><%= copy.contact_services || (brand?.services || []).join(' · ') %></span></div>
+      <% } %>
+    </div>
+  </div>
+  <div class="contact-right">
+    <form class="contact-form" id="contact-form" method="POST" action="/contact">
+      <%
+        const _fnameHidden = copy.contact_fname_hidden === 'true';
+        const _lnameHidden = copy.contact_lname_hidden === 'true';
+        const _emailHidden = copy.contact_email_hidden === 'true';
+        const _companyHidden = copy.contact_company_hidden === 'true';
+        const _serviceHidden = copy.contact_service_hidden === 'true';
+        const _messageHidden = copy.contact_message_hidden === 'true';
+      %>
+      <% if (!_fnameHidden && !_lnameHidden) { %>
+      <div class="form-row">
+        <div class="form-field"><label><%= copy.contact_fname_label %></label><input type="text" name="firstName" placeholder="<%= copy.contact_fname_placeholder %>" required></div>
+        <div class="form-field"><label><%= copy.contact_lname_label %></label><input type="text" name="lastName" placeholder="<%= copy.contact_lname_placeholder %>" required></div>
+      </div>
+      <% } else if (!_fnameHidden) { %>
+      <div class="form-field"><label><%= copy.contact_fname_label %></label><input type="text" name="firstName" placeholder="<%= copy.contact_fname_placeholder %>" required></div>
+      <% } else if (!_lnameHidden) { %>
+      <div class="form-field"><label><%= copy.contact_lname_label %></label><input type="text" name="lastName" placeholder="<%= copy.contact_lname_placeholder %>" required></div>
+      <% } %>
+      <% if (!_emailHidden) { %>
+      <div class="form-field"><label><%= copy.contact_email_label %></label><input type="email" name="email" placeholder="<%= copy.contact_email_placeholder %>" required></div>
+      <% } %>
+      <% if (!_companyHidden) { %>
+      <div class="form-field showcase-hide"><label><%= copy.contact_company_label %></label><input type="text" name="company" placeholder="<%= copy.contact_company_placeholder %>"></div>
+      <% } %>
+      <% if (!_serviceHidden) { %>
+      <div class="form-field showcase-hide">
+        <label><%= copy.contact_service_label %></label>
+        <select name="service">
+          <option value=""><%= copy.contact_service_placeholder %></option>
+          <% if (brand?.services?.length) { %>
+            <% brand.services.forEach(function(svc) { %><option><%- svc %></option><% }); %>
+            <option><%= copy.contact_service_extra %></option>
+          <% } else { %>
+            <option><%= copy.contact_service_fallback %></option>
+          <% } %>
+        </select>
+      </div>
+      <% } %>
+      <%
+        // Custom contact fields — collect contact_field{N}_* groups
+        const _customIdx = new Set();
+        Object.keys(copy).forEach(k => { const m = k.match(/^contact_field(\d+)_/); if (m) _customIdx.add(parseInt(m[1], 10)); });
+        const _customFields = [..._customIdx].sort((a, b) => a - b).map(i => ({
+          idx: i,
+          label: copy['contact_field' + i + '_label'] || '',
+          name: (copy['contact_field' + i + '_name'] || '').trim() || ('field' + i),
+          placeholder: copy['contact_field' + i + '_placeholder'] || '',
+          type: copy['contact_field' + i + '_type'] || 'text',
+          options: copy['contact_field' + i + '_options'] || '',
+          required: copy['contact_field' + i + '_required'] === 'yes',
+        })).filter(f => f.label || f.placeholder);
+      %>
+      <% _customFields.forEach(function(f) { %>
+        <div class="form-field">
+          <% if (f.label) { %><label><%= f.label %></label><% } %>
+          <% if (f.type === 'textarea') { %>
+            <textarea name="<%= f.name %>" placeholder="<%= f.placeholder %>"<%= f.required ? ' required' : '' %>></textarea>
+          <% } else if (f.type === 'select') { %>
+            <select name="<%= f.name %>"<%= f.required ? ' required' : '' %>>
+              <% if (f.placeholder) { %><option value=""><%= f.placeholder %></option><% } %>
+              <% f.options.split('|').map(o => o.trim()).filter(Boolean).forEach(function(o) { %>
+                <option value="<%= o %>"><%= o %></option>
+              <% }) %>
+            </select>
+          <% } else { %>
+            <input type="<%= f.type %>" name="<%= f.name %>" placeholder="<%= f.placeholder %>"<%= f.required ? ' required' : '' %>>
+          <% } %>
+        </div>
+      <% }) %>
+      <% if (!_messageHidden) { %>
+      <div class="form-field"><label><%= copy.contact_message_label %></label><textarea name="message" placeholder="<%= copy.contact_message_placeholder %>"></textarea></div>
+      <% } %>
+      <button type="submit" class="btn-submit"><%= copy.contact_btn %></button>
+      <div id="form-msg"></div>
+    </form>
+  </div>
+</section>
+<% } %>
+
+<!-- CUSTOM SECTIONS -->
+<% if (customSections && customSections.length) { %>
+<%
+  function _csImg(sec, key) {
+    const imgs = sec.images || {}, f = sec.fields || {};
+    const v = imgs[key];
+    if (v) return typeof v === 'string' ? v : (v.url || '');
+    const fv = f[key];
+    return typeof fv === 'string' ? fv : '';
+  }
+%>
+<% customSections.forEach(function(sec) { %>
+  <% const f = sec.fields || {}; const imgs = sec.images || {}; %>
+  <% if (sec.type === 'text') { %>
+  <section class="cs-text"><div class="cs-wrap">
+    <% if (f.heading) { %><h2 class="cs-heading"><%- f.heading %></h2><% } %>
+    <% if (f.subheading) { %><p class="cs-eyebrow"><%- f.subheading %></p><% } %>
+    <% if (f.body) { %><div class="cs-body"><%- f.body %></div><% } %>
+  </div></section>
+  <% } else if (sec.type === 'split') { %>
+  <section class="cs-split"><div class="cs-wrap">
+    <div>
+      <% if (f.heading) { %><h2 class="cs-heading"><%- f.heading %></h2><% } %>
+      <% if (f.body) { %><div class="cs-body"><%- f.body %></div><% } %>
+      <% if (f.cta_text && f.cta_link) { %><a href="<%- f.cta_link %>" class="cs-btn"><%- f.cta_text %></a><% } %>
+    </div>
+    <div>
+      <% const _splitImg = _csImg(sec, 'main_image'); %>
+      <% if (_splitImg) { %><img src="<%- _splitImg %>" alt="" class="cs-split-img"><% } else { %><div class="cs-split-img-placeholder"></div><% } %>
+    </div>
+  </div></section>
+  <% } else if (sec.type === 'cta') { %>
+  <% const _ctaBg = _csImg(sec, 'bg_image'); %>
+  <section class="cs-cta<% if (_ctaBg) { %> cs-cta-bg<% } %>"<% if (_ctaBg) { %> style="background-image:url('<%- _ctaBg %>');background-size:cover;background-position:center"<% } %>>
+    <div class="cs-wrap">
+      <% if (f.heading) { %><h2 class="cs-heading"><%- f.heading %></h2><% } %>
+      <% if (f.subtext) { %><div class="cs-body"><%- f.subtext %></div><% } %>
+      <% if (f.btn_text && f.btn_link) { %><a href="<%- f.btn_link %>" class="cs-btn"><%- f.btn_text %></a><% } %>
+    </div>
+  </section>
+  <% } else if (sec.type === 'cards') { %>
+  <section class="cs-cards"><div class="cs-wrap">
+    <div class="cs-cards-intro">
+      <% if (f.heading) { %><h2 class="cs-heading"><%- f.heading %></h2><% } %>
+      <% if (f.subtext) { %><p class="cs-body"><%- f.subtext %></p><% } %>
+    </div>
+    <div class="cs-cards-grid">
+      <% [1,2,3,4].forEach(function(n) { %>
+        <% const _cardImg = _csImg(sec, 'card'+n+'_image'); %>
+        <% const _cardLinkRaw = f['card'+n+'_link']; const _cardLink = typeof _cardLinkRaw === 'string' ? _cardLinkRaw.trim() : ''; %>
+        <% if (f['card'+n+'_title'] || f['card'+n+'_body'] || _cardImg) { %>
+        <% const _tag = _cardLink ? 'a' : 'div'; %>
+        <% const _ext = _cardLink && /^https?:/.test(_cardLink); %>
+        <<%= _tag %> class="cs-card<%= _cardImg ? ' cs-card--has-image' : '' %><%= _cardLink ? ' cs-card--link' : '' %>"<% if (_cardLink) { %> href="<%= _cardLink %>"<% if (_ext) { %> target="_blank" rel="noopener"<% } %><% } %>>
+          <% if (_cardImg) { %>
+            <div class="cs-card-media" style="background-image:url('<%- _cardImg %>');"></div>
+          <% } %>
+          <div class="cs-card-content">
+            <div class="cs-card-num">0<%= n %></div>
+            <% if (f['card'+n+'_title']) { %><div class="cs-card-title"><%- f['card'+n+'_title'] %></div><% } %>
+            <% if (f['card'+n+'_body']) { %><div class="cs-card-body"><%- f['card'+n+'_body'] %></div><% } %>
+            <% if (_cardLink) { %><span class="cs-card-cta">View<% if (_ext) { %> ↗<% } else { %> →<% } %></span><% } %>
+          </div>
+        </<%= _tag %>>
+        <% } %>
+      <% }); %>
+    </div>
+  </div></section>
+  <% } else if (sec.type === 'faq') { %>
+  <section class="cs-faq"><div class="cs-wrap">
+    <% if (f.heading) { %><h2 class="cs-heading"><%- f.heading %></h2><% } %>
+    <div class="cs-faq-list">
+      <% [1,2,3,4,5].forEach(function(n) { %>
+        <% if (f['q'+n] && f['a'+n]) { %>
+        <div class="cs-faq-item">
+          <div class="cs-faq-q"><%- f['q'+n] %></div>
+          <div class="cs-faq-a"><%- f['a'+n] %></div>
+        </div>
+        <% } %>
+      <% }); %>
+    </div>
+  </div></section>
+  <% } else if (sec.type === 'writer_feed') { %>
+  <% var _items = sec.items || []; var _layout = f.layout || 'cards'; %>
+  <section class="cs-writer-feed cs-cards"><div class="cs-wrap">
+    <% if (f.heading || f.subtext) { %>
+    <div class="cs-cards-intro">
+      <% if (f.heading) { %><h2 class="cs-heading"><%- f.heading %></h2><% } %>
+      <% if (f.subtext) { %><p class="cs-body"><%- f.subtext %></p><% } %>
+    </div>
+    <% } %>
+    <% if (_items.length && _layout === 'full') { %>
+      <div class="cs-writer-full" style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:40px;">
+        <% _items.forEach(function(it) { %>
+        <article>
+          <% if (it.title) { %><h3 class="cs-heading" style="text-align:left;"><%= it.title %></h3><% } %>
+          <% if (it.content) { %><div class="cs-body"><%- it.content %></div><% } %>
+        </article>
+        <% }); %>
+      </div>
+    <% } else if (_items.length && _layout === 'list') { %>
+      <div class="cs-writer-list" style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px;">
+        <% _items.forEach(function(it) { var _pub = (!it.contentType || it.contentType === 'blog'); %>
+        <div class="cs-writer-li" style="border-bottom:1px solid var(--border, #e5e5e5);padding-bottom:14px;">
+          <% if (_pub) { %>
+            <a href="/blog/<%= it.slug %>" class="cs-card-title" style="display:block;"><%= it.title %></a>
+          <% } else { %>
+            <div class="cs-card-title"><%= it.title %></div>
+          <% } %>
+          <% if (it.excerpt) { %><p class="cs-card-body" style="margin-top:4px;"><%= it.excerpt %></p><% } %>
+        </div>
+        <% }); %>
+      </div>
+    <% } else if (_items.length) { %>
+      <div class="cs-cards-grid">
+        <% _items.forEach(function(it) { var _pub = (!it.contentType || it.contentType === 'blog'); var _tag = _pub ? 'a' : 'div'; %>
+        <<%= _tag %> class="cs-card<%= it.featuredImageUrl ? ' cs-card--has-image' : '' %><%= _pub ? ' cs-card--link' : '' %>"<% if (_pub) { %> href="/blog/<%= it.slug %>"<% } %>>
+          <% if (it.featuredImageUrl) { %><div class="cs-card-media" style="background-image:url('<%- it.featuredImageUrl %>');"></div><% } %>
+          <div class="cs-card-content">
+            <% if (it.category) { %><div class="cs-card-num"><%= it.category %></div><% } %>
+            <% if (it.title) { %><div class="cs-card-title"><%= it.title %></div><% } %>
+            <% if (it.excerpt) { %><div class="cs-card-body"><%= it.excerpt %></div><% } %>
+            <% if (_pub) { %><span class="cs-card-cta">Read →</span><% } %>
+          </div>
+        </<%= _tag %>>
+        <% }); %>
+      </div>
+    <% } %>
+  </div></section>
+  <% } %>
+<% }); %>
+<% } %>
+
+<!-- FOOTER (shared partial — driven by design.footer_* + copy.footer_* keys) -->
+<%- include('partials/footer') %>
+
+<script>
+  if (new URLSearchParams(window.location.search).get('contacted')) {
+    const msg = document.getElementById('form-msg');
+    if (msg) { msg.style.display = 'block'; msg.textContent = '✓ Message received! We\'ll be in touch soon.'; }
+  }
+  <% if (design.section_animation && design.section_animation !== 'none') { %>
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.service-card, .process-item, .stat-box').forEach(el => { el.classList.add('reveal'); observer.observe(el); });
+  <% } %>
+  document.querySelectorAll('.cs-faq-q').forEach(q => {
+    q.addEventListener('click', () => q.closest('.cs-faq-item').classList.toggle('open'));
+  });
+</script>
+
+<script>
+(function(){
+  if (window === window.top) return;
+  window.addEventListener('message', function(e) {
+    if (!e.data || e.data.type !== 'slab-live-preview') return;
+    var d = e.data;
+    if (d.cssVars) {
+      var s = document.getElementById('slab-live-vars');
+      if (!s) { s = document.createElement('style'); s.id = 'slab-live-vars'; document.head.appendChild(s); }
+      var css = ':root{';
+      var keys = Object.keys(d.cssVars);
+      for (var i = 0; i < keys.length; i++) css += keys[i] + ':' + d.cssVars[keys[i]] + ' !important;';
+      css += '}';
+      if (d.extraCss) css += d.extraCss;
+      s.textContent = css;
+    }
+    if (d.layout) document.body.setAttribute('data-layout', d.layout);
+    if (d.bodyAttrs) {
+      var aKeys = Object.keys(d.bodyAttrs);
+      for (var ai = 0; ai < aKeys.length; ai++) document.body.setAttribute('data-' + aKeys[ai], d.bodyAttrs[aKeys[ai]]);
+    }
+    if (d.copy) {
+      d.copy.forEach(function(c) {
+        var el = document.querySelector(c.sel); if (!el) return;
+        if (c.prop === 'textContent') el.textContent = c.val;
+        else if (c.prop === 'innerHTML') el.innerHTML = c.val;
+        else if (c.prop === 'href') el.setAttribute('href', c.val || '#');
+        else if (c.prop === 'placeholder') el.setAttribute('placeholder', c.val);
+      });
+    }
+    if (d.fonts && d.fonts.length) {
+      d.fonts.forEach(function(url) {
+        var id = 'slab-font-' + url.replace(/[^a-z0-9]/gi, '').substring(0, 40);
+        if (!document.getElementById(id)) {
+          var link = document.createElement('link');
+          link.id = id; link.rel = 'stylesheet'; link.href = url;
+          document.head.appendChild(link);
+        }
+      });
+    }
+    if (d.visibility) {
+      var vKeys = Object.keys(d.visibility);
+      for (var v = 0; v < vKeys.length; v++) {
+        var selectorStr = vKeys[v];
+        var show = d.visibility[selectorStr];
+        var parts = selectorStr.split(',');
+        for (var p = 0; p < parts.length; p++) {
+          var els = document.querySelectorAll(parts[p].trim());
+          for (var ee = 0; ee < els.length; ee++) els[ee].style.display = show ? '' : 'none';
+        }
+      }
+    }
+  });
+})();
+</script>
+<% if (visibility.about && (harmonyServices || []).length) { %>
+<style>
+  .about-harmony { position: relative; z-index: 3; margin-bottom: 28px; }
+  .ah-eyebrow { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: #c9a848; margin-bottom: 14px; }
+  .ah-canvas { width: 100%; height: 320px; position: relative; border-radius: 4px; overflow: hidden; cursor: grab; touch-action: none; }
+  .ah-canvas:active { cursor: grabbing; }
+  .ah-canvas canvas { display: block; }
+  .ah-hint { margin-top: 8px; font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(253,252,250,0.32); }
+  .ah-legend { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+  .ah-lg { display: inline-flex; align-items: center; gap: 5px; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(253,252,250,0.62); }
+  .ah-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .ah-count { margin-top: 10px; font-size: 0.68rem; letter-spacing: 0.06em; color: rgba(253,252,250,0.42); }
+  @media (max-width: 980px) { .ah-canvas { height: 260px; } }
+</style>
+<!-- ═══════ ABOUT · Server Harmony — non-interactive Three.js constellation ═══════ -->
+<script type="module">
+(function () {
+  'use strict';
+  const wrap = document.getElementById('aboutHarmonyWrap');
+  const dataEl = document.getElementById('aboutHarmonyJson');
+  if (!wrap || !dataEl) return;
+  let services = [];
+  try { services = JSON.parse(dataEl.textContent || '[]') || []; } catch { services = []; }
+  if (!services.length) return;
+
+  Promise.all([
+    import('three'),
+    import('three/addons/controls/OrbitControls.js'),
+  ]).then(([THREE, { OrbitControls }]) => {
+    const CATEGORY_COLOR = {
+      platform: 0x34d399, client: 0x60a5fa, game: 0xc084fc,
+      media: 0xf59e0b, tool: 0xc9a848, infra: 0x22d3ee,
+    };
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x0a0f1c, 0.020);
+
+    let w = wrap.clientWidth || 480, h = wrap.clientHeight || 320;
+    const camera = new THREE.PerspectiveCamera(60, w / h, 0.1, 200);
+    camera.position.set(0, 5, 16); // start zoomed in close
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setSize(w, h);
+    renderer.setClearColor(0x000000, 0); // transparent — lets the dark panel + giant initial show through
+    wrap.appendChild(renderer.domElement);
+
+    // Interactive camera — drag to rotate, scroll/pinch to zoom. Pan disabled so it
+    // can't be dragged off-center. Gentle auto-rotate that pauses while the user
+    // interacts and resumes after a few seconds idle.
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.enablePan = false;
+    controls.minDistance = 7;
+    controls.maxDistance = 40;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.7;
+    controls.target.set(0, 0, 0);
+    controls.update();
+
+    let resumeTimer = null;
+    controls.addEventListener('start', () => { controls.autoRotate = false; if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; } });
+    controls.addEventListener('end', () => { if (resumeTimer) clearTimeout(resumeTimer); resumeTimer = setTimeout(() => { controls.autoRotate = true; }, 3500); });
+
+    // Subtle starfield
+    {
+      const geom = new THREE.BufferGeometry();
+      const N = 280;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) { pos[i*3] = (Math.random()-0.5)*80; pos[i*3+1] = (Math.random()-0.5)*40; pos[i*3+2] = (Math.random()-0.5)*80; }
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      scene.add(new THREE.Points(geom, new THREE.PointsMaterial({ size: 0.08, color: 0x4a5568, transparent: true, opacity: 0.55 })));
+    }
+
+    scene.add(new THREE.AmbientLight(0x808080, 0.6));
+    const centerLight = new THREE.PointLight(0xc9a848, 1.2, 60);
+    centerLight.position.set(0, 2, 0);
+    scene.add(centerLight);
+
+    // Cluster categories on a ring; nodes orbit their cluster center.
+    const FIXED_CATEGORY_ORDER = ['platform', 'client', 'game', 'media', 'tool', 'infra'];
+    const presentCats = [...new Set(services.map(s => s.category))]
+      .sort((a, b) => FIXED_CATEGORY_ORDER.indexOf(a) - FIXED_CATEGORY_ORDER.indexOf(b));
+    const clusterCenters = {};
+    presentCats.forEach((cat, i) => {
+      const ang = (i / presentCats.length) * Math.PI * 2;
+      clusterCenters[cat] = { x: Math.cos(ang) * 11, y: 0, z: Math.sin(ang) * 11 };
+    });
+
+    const sphereGeom = new THREE.SphereGeometry(0.45, 20, 20);
+    const ringGeom = new THREE.RingGeometry(0.5, 0.55, 40);
+    ringGeom.rotateX(-Math.PI / 2);
+
+    const nodes = [];
+    const categoryCounts = {};
+    services.forEach((svc) => {
+      const cat = svc.category || 'tool';
+      const c = clusterCenters[cat] || { x: 0, y: 0, z: 0 };
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+      const idx = categoryCounts[cat];
+      const r = 1.6 + ((idx % 7) * 0.35);
+      const phi = idx * 2.4;
+      const px = c.x + Math.cos(phi) * r;
+      const pz = c.z + Math.sin(phi) * r;
+      const py = ((idx % 5) - 2) * 0.5;
+      const color = CATEGORY_COLOR[cat] || 0xa3a3a3;
+
+      const group = new THREE.Group();
+      group.position.set(px, py, pz);
+
+      const sphere = new THREE.Mesh(sphereGeom, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, metalness: 0.4, roughness: 0.4 }));
+      group.add(sphere);
+
+      const halo = new THREE.Mesh(ringGeom, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }));
+      group.add(halo);
+
+      const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(c.x - px, -py, c.z - pz)]);
+      const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.10 }));
+      group.add(line);
+
+      scene.add(group);
+      nodes.push({ group, sphere, halo, baseColor: color });
+    });
+
+    // Faint outer orbit ring for depth
+    {
+      const seg = 160, pts = [];
+      for (let i = 0; i <= seg; i++) { const a = (i / seg) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * 18, 0, Math.sin(a) * 18)); }
+      const g = new THREE.BufferGeometry().setFromPoints(pts);
+      scene.add(new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.10 })));
+    }
+
+    // Gentle ambient pulses — pooled, fired at random so the scene feels alive (no interaction).
+    const pulseRings = [];
+    function spawnPulse() {
+      if (!nodes.length) return;
+      const node = nodes[Math.floor(Math.random() * nodes.length)];
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.6, 40), new THREE.MeshBasicMaterial({ color: node.baseColor, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.copy(node.group.position);
+      scene.add(ring);
+      pulseRings.push({ mesh: ring, born: performance.now(), life: 1100, scaleMax: 5 });
+      node.sphere.material.emissiveIntensity = 1.6;
+    }
+
+    // Resize + pause-when-offscreen (perf on shared tenant pages)
+    new ResizeObserver(() => {
+      const nw = wrap.clientWidth, nh = wrap.clientHeight;
+      if (!nw || !nh) return;
+      camera.aspect = nw / nh; camera.updateProjectionMatrix();
+      renderer.setSize(nw, nh, true);
+    }).observe(wrap);
+
+    const clock = new THREE.Clock();
+    let paused = false, nextPulse = 0;
+    new IntersectionObserver((entries) => {
+      paused = !entries[0].isIntersecting;
+      if (!paused) clock.getDelta();
+    }, { threshold: 0 }).observe(wrap);
+    document.addEventListener('visibilitychange', () => { paused = document.hidden; if (!paused) clock.getDelta(); });
+
+    function loop() {
+      requestAnimationFrame(loop);
+      if (paused) return;
+      const dt = clock.getDelta();
+      controls.update(); // damping + auto-rotate
+
+      nodes.forEach((n) => {
+        n.group.rotation.y += dt * 0.3;
+        n.halo.rotation.z += dt * 0.4;
+        const m = n.sphere.material;
+        m.emissiveIntensity += (0.6 - m.emissiveIntensity) * Math.min(1, dt * 3);
+      });
+
+      if ((nextPulse -= dt) <= 0) { spawnPulse(); nextPulse = 0.8 + Math.random() * 1.4; }
+
+      const now = performance.now();
+      for (let i = pulseRings.length - 1; i >= 0; i--) {
+        const p = pulseRings[i];
+        const age = (now - p.born) / p.life;
+        if (age >= 1) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); pulseRings.splice(i, 1); continue; }
+        const s = 1 + age * p.scaleMax;
+        p.mesh.scale.set(s, s, s);
+        p.mesh.material.opacity = (1 - age) * 0.85;
+      }
+
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(loop);
+  }).catch((e) => { console.warn('[about-harmony] three.js failed to load:', e); });
+})();
+</script>
+<% } %>
+<%- include('partials/cookie-consent', { d: design, copy: copy }) %>
+</body>
+</html>

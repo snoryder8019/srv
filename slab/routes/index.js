@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
 import path from 'path';
@@ -7,10 +8,33 @@ import { fileURLToPath } from 'url';
 import { getDb } from '../plugins/mongo.js';
 import { getReviews } from '../plugins/reviews.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
+import { SERVICES, INFRA_SERVICES } from '../plugins/serviceRegistry.js';
+
+// Static projection of the platform stack for the "Server Harmony" orbit shown in
+// the homepage About section. Built once at import — no live status/fs/tmux probing
+// on a public page; this is a non-interactive showcase, not the superadmin monitor.
+const HARMONY_SERVICES = [
+  ...SERVICES
+    .filter(s => s.category !== 'deprecated')
+    .map(s => ({ name: s.name, category: s.category, description: s.description || '', domain: s.domain || null })),
+  ...INFRA_SERVICES
+    .map(s => ({ name: s.name, category: 'infra', description: s.description || '', domain: s.domain || null })),
+];
+
+// The Server Harmony orbit is a madladslab-only showcase — never expose the platform
+// stack on other tenants' sites. Returns [] for everyone else (view hides it on empty).
+function harmonyFor(req) {
+  const t = req.tenant || {};
+  const isMadladslab = t.db === 'slab_madladslab' || t.meta?.subdomain === 'madladslab';
+  return isMadladslab ? HARMONY_SERVICES : [];
+}
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { config } from '../config/config.js';
 import { notifyAdmin } from '../plugins/notify.js';
 import { normalizeEmail } from '../plugins/emailNormalize.js';
+import { checkGlobalSpam } from '../plugins/globalSpam.js';
+import { captureLead } from '../plugins/subscribe.js';
+import { buildRssFeed, buildAtomFeed } from '../plugins/feeds.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TENANT_VIEWS_ROOT = path.resolve(__dirname, '..', 'views', 'tenants');
@@ -60,6 +84,8 @@ const COPY_DEFAULTS = {
   hero_cta_primary_link: '#contact',
   hero_cta_secondary: 'Our Services',
   hero_cta_secondary_link: '#services',
+  hero_cta_tertiary: '',
+  hero_cta_tertiary_link: '',
   services_label: 'What We Do',
   services_heading: 'Our',
   services_heading_em: 'Services',
@@ -136,7 +162,7 @@ async function getDesign(db) {
 
 async function getBrandLogos(db) {
   const rows = await db.collection('brand_images').find({
-    slot: { $in: ['logo_primary', 'logo_white', 'logo_icon'] }
+    slot: { $in: ['logo_primary', 'logo_white', 'logo_icon', 'share_image', 'share_square'] }
   }).toArray();
   const logos = {};
   for (const r of rows) logos[r.slot] = r.url;
@@ -167,6 +193,34 @@ function buildVisibility(design) {
     admin_link: design.vis_admin_link !== 'false',
     qr:        design.vis_qr        === 'true',
   };
+}
+
+// Writer Feed custom sections pull content from the `blog` collection by tag /
+// content type. Mutates each writer_feed section in place, adding `sec.items`.
+async function attachWriterFeeds(db, customSections) {
+  const feeds = (customSections || []).filter(s => s && s.type === 'writer_feed');
+  if (!feeds.length) return;
+  await Promise.all(feeds.map(async (sec) => {
+    const f = sec.fields || {};
+    const tag = (f.tag || '').trim().toLowerCase();
+    const ctype = (f.content_type || 'any').trim();
+    const limit = Math.min(Math.max(parseInt(f.limit, 10) || 6, 1), 24);
+    const query = { status: 'published' };
+    if (tag) query.tags = tag;
+    if (ctype && ctype !== 'any') {
+      // Legacy blog docs have no contentType field — treat them as 'blog'.
+      query.contentType = ctype === 'blog' ? { $in: ['blog', null] } : ctype;
+    }
+    try {
+      sec.items = await db.collection('blog')
+        .find(query)
+        .sort({ publishedAt: -1, createdAt: -1 })
+        .limit(limit)
+        .toArray();
+    } catch {
+      sec.items = [];
+    }
+  }));
 }
 
 // ── Calculator config (consumed by <slab-calculator> web component) ──
@@ -296,7 +350,9 @@ router.get('/onboard/account-linked', async (req, res) => {
 router.get('/sitemap.xml', async (req, res) => {
   try {
     const db = req.db;
-    const [pages, posts] = await Promise.all([
+    // Pull every published Writer item once, then bucket into the public types
+    // (blog / newsletter / help). Snippets are embed-only — excluded.
+    const [pages, allContent] = await Promise.all([
       db.collection('pages').find({ status: 'published' }).toArray(),
       db.collection('blog').find({ status: 'published' }).sort({ publishedAt: -1 }).toArray(),
     ]);
@@ -304,12 +360,16 @@ router.get('/sitemap.xml', async (req, res) => {
     const fmt = d => d ? new Date(d).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
     let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
     xml += `  <url><loc>${domain}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n`;
-    xml += `  <url><loc>${domain}/blog</loc><changefreq>daily</changefreq><priority>0.8</priority></url>\n`;
     for (const pg of pages) {
       xml += `  <url><loc>${domain}/${pg.slug}</loc><lastmod>${fmt(pg.updatedAt)}</lastmod><changefreq>${pg.sitemapChangefreq || 'monthly'}</changefreq><priority>${pg.sitemapPriority ?? 0.5}</priority></url>\n`;
     }
-    for (const post of posts) {
-      xml += `  <url><loc>${domain}/blog/${post.slug}</loc><lastmod>${fmt(post.updatedAt || post.publishedAt)}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>\n`;
+    for (const ct of PUBLIC_CONTENT) {
+      const items = allContent.filter(c => (ct.type === 'blog' ? (!c.contentType || c.contentType === 'blog') : c.contentType === ct.type));
+      if (!items.length && ct.type !== 'blog') continue; // always list /blog; others only when they have content
+      xml += `  <url><loc>${domain}${ct.base}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>\n`;
+      for (const post of items) {
+        xml += `  <url><loc>${domain}${ct.base}/${post.slug}</loc><lastmod>${fmt(post.updatedAt || post.publishedAt)}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>\n`;
+      }
     }
     xml += `</urlset>`;
     res.setHeader('Content-Type', 'application/xml');
@@ -339,6 +399,11 @@ router.post('/contact', async (req, res) => {
     });
     if (blocked) return res.redirect('/?contacted=1#contact');
 
+    // Global (cross-tenant) spam filter — unlike the per-tenant blocklist above,
+    // a global match is NOT dropped: it's saved as status 'spam' so this tenant
+    // sees it in their Spam tab and deletes it themselves.
+    const globalFlag = await checkGlobalSpam({ email: emailLower, message, service }).catch(() => ({ hit: false }));
+
     // Collect any custom fields the tenant added via the admin contact form builder.
     // These come in alongside the stock keys but use tenant-chosen names; preserve them.
     const STOCK_KEYS = new Set(['name', 'firstName', 'lastName', 'email', 'company', 'service', 'message']);
@@ -358,7 +423,15 @@ router.post('/contact', async (req, res) => {
       tenantDomain: req.tenant?.domain || '',
       createdAt: new Date(),
     };
+    if (globalFlag.hit) {
+      inquiry.status = 'spam';
+      inquiry.spamFiltered = { scope: 'global', type: globalFlag.type, key: globalFlag.key, at: new Date() };
+    }
     await db.collection('inquiries').insertOne(inquiry);
+
+    // Globally-filtered submissions land in the Spam tab silently — don't ping
+    // the admin or forward to the tenant mailbox.
+    if (globalFlag.hit) return res.redirect('/?contacted=1#contact');
 
     // Notify admin + forward to tenant email if configured
     const brand = res.locals.brand || {};
@@ -372,14 +445,22 @@ router.post('/contact', async (req, res) => {
       const tenant = await import('../plugins/mongo.js').then(m => m.getSlabDb()).then(sdb => sdb.collection('tenants').findOne({ _id: req.tenant?._id }));
       const recipient = tenant?.meta?.contactEmail || tenant?.meta?.ownerEmail || tenant?.brand?.email;
       if (recipient) {
-        const tenantZohoUser = tenant?.secrets?.zohoUser || tenant?.public?.zohoUser;
-        const tenantZohoPass = tenant?.secrets?.zohoPass;
-        const useTenantMailer = tenantZohoUser && tenantZohoPass;
-        const fromUser = useTenantMailer ? tenantZohoUser : process.env.ZOHO_USER;
-        const fromPass = useTenantMailer ? tenantZohoPass : process.env.ZOHO_PASS;
-        if (fromUser && fromPass) {
-          const nodemailer = await import('nodemailer');
-          const t = nodemailer.default.createTransport({ host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN', auth: { user: fromUser, pass: fromPass } });
+        // Use req.tenant (decrypted secrets) for credentials/provider — supports
+        // password OR OAuth; the re-fetched `tenant` doc only supplies the
+        // plaintext recipient. Falls back to the platform mailbox.
+        const { resolveSmtp, getTenantTransporter } = await import('../plugins/mailer.js');
+        const smtp = resolveSmtp(req.tenant);
+        const useTenantMailer = smtp.authMode === 'oauth' ? !!smtp.user : !!(smtp.user && smtp.pass);
+        const fromUser = useTenantMailer ? smtp.user : process.env.ZOHO_USER;
+        const havePlatform = !!(process.env.ZOHO_USER && process.env.ZOHO_PASS);
+        if (useTenantMailer || havePlatform) {
+          let t;
+          if (useTenantMailer) {
+            t = await getTenantTransporter(req.tenant);
+          } else {
+            const nodemailer = await import('nodemailer');
+            t = nodemailer.default.createTransport({ host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN', auth: { user: process.env.ZOHO_USER, pass: process.env.ZOHO_PASS } });
+          }
           const fromLabel = useTenantMailer
             ? `"${brand.name || 'Your Site'}" <${fromUser}>`
             : `"${brand.name || req.tenant?.domain || 'sLab'} (via MadLadsLab)" <${fromUser}>`;
@@ -433,6 +514,116 @@ router.get('/privacy', async (req, res) => {
     if (doc?.value) return res.render('legal/custom', { brand, title: 'Privacy Policy', content: doc.value });
   }
   res.render('legal/privacy', { brand });
+});
+
+// ── Data Deletion ──────────────────────────────────────────────────────────
+// Meta (Facebook/Instagram) requires a Data Deletion Request callback URL.
+// It POSTs a `signed_request`; we verify it (with the tenant's FB app secret if
+// configured), record the request, and return { url, confirmation_code }.
+// The same path served as GET is the user-facing status + manual request page.
+
+function b64urlDecode(str) {
+  return Buffer.from(String(str).replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+}
+
+function parseSignedRequest(signedRequest, appSecret) {
+  const [encSig, encPayload] = String(signedRequest).split('.');
+  if (!encPayload) throw new Error('malformed signed_request');
+  const data = JSON.parse(b64urlDecode(encPayload).toString('utf8'));
+  if (appSecret) {
+    const expected = crypto.createHmac('sha256', appSecret).update(encPayload).digest();
+    const sig = b64urlDecode(encSig);
+    if (sig.length !== expected.length || !crypto.timingSafeEqual(sig, expected)) {
+      throw new Error('bad signature');
+    }
+    data._verified = true;
+  }
+  return data;
+}
+
+async function tenantFbAppSecret(db) {
+  try {
+    const acct = await db.collection('social_accounts').findOne({ platform: 'facebook' });
+    const blob = acct?.secrets?.appSecret;
+    if (!blob) return null;
+    const { decrypt } = await import('../plugins/crypto.js');
+    return decrypt(blob);
+  } catch { return null; }
+}
+
+function newDeletionCode() {
+  return crypto.randomBytes(9).toString('hex');
+}
+
+function publicBase(req) {
+  const host = req.tenant?.domain || req.hostname;
+  return `https://${host}`;
+}
+
+// Meta callback
+router.post('/data-deletion', async (req, res) => {
+  try {
+    const signed = req.body?.signed_request;
+    const code = newDeletionCode();
+    let userId = null, verified = false;
+
+    if (signed && req.db) {
+      const secret = await tenantFbAppSecret(req.db);
+      try {
+        const data = parseSignedRequest(signed, secret);
+        userId = data.user_id || null;
+        verified = !!data._verified;
+      } catch (e) {
+        // Still acknowledge so Meta gets a valid response; flag as unverified.
+        console.warn('[data-deletion] signed_request parse:', e.message);
+      }
+    }
+
+    if (req.db) {
+      await req.db.collection('deletion_requests').insertOne({
+        code, source: 'meta', platform: 'facebook',
+        externalUserId: userId, verified,
+        status: 'received', email: null,
+        createdAt: new Date(), completedAt: null, ip: req.ip,
+      });
+    }
+
+    res.json({ url: `${publicBase(req)}/data-deletion?code=${code}`, confirmation_code: code });
+  } catch (err) {
+    console.error('[data-deletion] callback error:', err);
+    res.status(200).json({ url: `${publicBase(req)}/data-deletion`, confirmation_code: 'error' });
+  }
+});
+
+// Status page + manual request form
+router.get('/data-deletion', async (req, res) => {
+  const brand = res.locals.brand || {};
+  const baseUrl = publicBase(req);
+  let request = null;
+  if (req.query.code && req.db) {
+    try { request = await req.db.collection('deletion_requests').findOne({ code: String(req.query.code) }); } catch { /* ignore */ }
+  }
+  res.render('legal/data-deletion', { brand, request, submitted: null, baseUrl });
+});
+
+// Manual (non-Meta) deletion request
+router.post('/data-deletion/request', async (req, res) => {
+  const brand = res.locals.brand || {};
+  const baseUrl = publicBase(req);
+  const email = (req.body?.email || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    return res.render('legal/data-deletion', { brand, request: null, submitted: null, baseUrl });
+  }
+  const code = newDeletionCode();
+  if (req.db) {
+    await req.db.collection('deletion_requests').insertOne({
+      code, source: 'manual', platform: null,
+      externalUserId: null, verified: false,
+      status: 'received', email,
+      createdAt: new Date(), completedAt: null, ip: req.ip,
+    });
+  }
+  res.render('legal/data-deletion', { brand, request: null, submitted: code, baseUrl });
 });
 
 // Home page
@@ -522,9 +713,12 @@ router.get('/', async (req, res) => {
       if (item.caption) mediaCaptions[item.key] = item.caption;
     }
 
+    // Hydrate any Writer Feed sections with their tagged content before render.
+    await attachWriterFeeds(db, customSections);
+
     // Latest 3 blog posts for home page blog section
     const latestPosts = design.vis_blog === 'true'
-      ? await db.collection('blog').find({ status: 'published' }).sort({ publishedAt: -1 }).limit(3).toArray()
+      ? await db.collection('blog').find({ status: 'published', contentType: { $in: ['blog', null] } }).sort({ publishedAt: -1 }).limit(3).toArray()
       : [];
 
     // Allow preview_layout query param to override without saving
@@ -553,6 +747,7 @@ router.get('/', async (req, res) => {
       latestPosts, customSections, logos, brandModels,
       centralAuthUrl,
       bookingEnabled: bookingEnabled || false,
+      harmonyServices: harmonyFor(req),
     });
   } catch (err) {
     console.error(err);
@@ -562,95 +757,188 @@ router.get('/', async (req, res) => {
       visibility: buildVisibility(DESIGN_DEFAULTS),
       latestPosts: [], customSections: [], logos: {}, brandModels: {},
       centralAuthUrl: config.DOMAIN + '/auth/login',
+      harmonyServices: harmonyFor(req),
     });
   }
 });
 
-// Blog listing
-router.get('/blog', async (req, res) => {
-  try {
-    const db = req.db;
-    const [posts, design, rawCopy, logos, brandModels] = await Promise.all([
-      db.collection('blog').find({ status: 'published' }).sort({ publishedAt: -1 }).toArray(),
-      getDesign(db),
-      db.collection('copy').find({}).toArray(),
-      getBrandLogos(db),
-      getBrandModels(db),
-    ]);
-    const copy = { ...COPY_DEFAULTS };
-    for (const item of rawCopy) copy[item.key] = item.value;
-    const brandName = req.tenant?.brand?.name || 'Home';
-    res.setSeo?.({
-      title: `Blog — ${brandName}`,
-      description: `Latest posts and insights from ${brandName}.`,
-      ogType: 'website',
-      jsonLd: [{
-        '@context': 'https://schema.org',
-        '@type': 'Blog',
-        name: `${brandName} Blog`,
-        url: `${req.protocol}://${req.hostname}/blog`,
-        blogPost: posts.slice(0, 20).map(p => ({
+// ── PUBLIC WRITER CONTENT (blog / newsletter / help) ────────────────────────
+// Each public content type gets a parallel set of routes: an archive listing, a
+// permalink page, RSS + Atom feeds, and a per-type email subscribe endpoint.
+// Snippets are intentionally excluded — they're embed-only (see Writer Feed
+// sections) and have no standalone page or feed.
+const PUBLIC_CONTENT = [
+  { type: 'blog',       base: '/blog',       label: 'Blog',        title: 'Insights & Resources', subtitle: 'Articles, guides, and updates.' },
+  { type: 'newsletter', base: '/newsletter', label: 'Newsletter',  title: 'Newsletter',           subtitle: 'Issues and announcements — subscribe to get them in your inbox.' },
+  { type: 'help',       base: '/help',       label: 'Help Center', title: 'Help & Guides',        subtitle: 'Answers, how-tos, and documentation.' },
+];
+// Legacy blog docs predate the contentType field — treat them as 'blog'.
+const ctFilter = (type) => (type === 'blog' ? { $in: ['blog', null] } : type);
+const absBase = (req, ct) => `${req.protocol}://${req.hostname}${ct.base}`;
+
+function contentArchiveHandler(ct) {
+  return async (req, res) => {
+    try {
+      const db = req.db;
+      const [posts, design, rawCopy, logos, brandModels] = await Promise.all([
+        db.collection('blog').find({ status: 'published', contentType: ctFilter(ct.type) }).sort({ publishedAt: -1 }).toArray(),
+        getDesign(db),
+        db.collection('copy').find({}).toArray(),
+        getBrandLogos(db),
+        getBrandModels(db),
+      ]);
+      const copy = { ...COPY_DEFAULTS };
+      for (const item of rawCopy) copy[item.key] = item.value;
+      const brandName = req.tenant?.brand?.name || 'Home';
+      const base = absBase(req, ct);
+      res.setSeo?.({
+        title: `${ct.label} — ${brandName}`,
+        description: ct.subtitle,
+        ogType: 'website',
+        jsonLd: [{
+          '@context': 'https://schema.org',
+          '@type': 'Blog',
+          name: `${brandName} ${ct.label}`,
+          url: base,
+          blogPost: posts.slice(0, 20).map(p => ({
+            '@type': 'BlogPosting',
+            headline: p.title,
+            url: `${base}/${p.slug}`,
+            datePublished: p.publishedAt || p.createdAt,
+            ...(p.excerpt ? { description: p.excerpt } : {}),
+          })),
+        }],
+      });
+      res.render('blog/index', {
+        posts, design, copy, logos, brandModels, ct,
+        subscribed: req.query.subscribed, suberror: req.query.suberror,
+        visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login',
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).send(`Error loading ${ct.label}`);
+    }
+  };
+}
+
+function contentPermalinkHandler(ct) {
+  return async (req, res, next) => {
+    try {
+      const db = req.db;
+      const [post, design, rawCopy, logos, brandModels] = await Promise.all([
+        db.collection('blog').findOne({ slug: req.params.slug, status: 'published', contentType: ctFilter(ct.type) }),
+        getDesign(db),
+        db.collection('copy').find({}).toArray(),
+        getBrandLogos(db),
+        getBrandModels(db),
+      ]);
+      // No matching item — fall through to the app-level 404 handler (no 404 view exists).
+      if (!post) return next();
+      const copy = { ...COPY_DEFAULTS };
+      for (const item of rawCopy) copy[item.key] = item.value;
+      const brandName = req.tenant?.brand?.name || '';
+      const postUrl = `${absBase(req, ct)}/${post.slug}`;
+      res.setSeo?.({
+        title: brandName ? `${post.title} — ${brandName}` : post.title,
+        description: post.excerpt || post.metaDescription || '',
+        canonical: postUrl,
+        ogType: 'article',
+        ogImage: post.coverImage || post.heroImage || post.ogImage || (logos && (logos.logo_primary || logos.logo_white)) || '',
+        jsonLd: [{
+          '@context': 'https://schema.org',
           '@type': 'BlogPosting',
-          headline: p.title,
-          url: `${req.protocol}://${req.hostname}/blog/${p.slug}`,
-          datePublished: p.publishedAt || p.createdAt,
-          ...(p.excerpt ? { description: p.excerpt } : {}),
-        })),
-      }],
-    });
-    res.render('blog/index', { posts, design, copy, logos, brandModels, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Error loading blog');
-  }
-});
+          headline: post.title,
+          url: postUrl,
+          ...(post.excerpt ? { description: post.excerpt } : {}),
+          ...(post.coverImage || post.heroImage ? { image: post.coverImage || post.heroImage } : {}),
+          datePublished: post.publishedAt || post.createdAt,
+          dateModified: post.updatedAt || post.publishedAt || post.createdAt,
+          ...(post.author ? { author: { '@type': 'Person', name: post.author } } : {}),
+          publisher: {
+            '@type': 'Organization',
+            name: brandName || 'Slab',
+            ...(logos && logos.logo_primary ? { logo: { '@type': 'ImageObject', url: logos.logo_primary } } : {}),
+          },
+          mainEntityOfPage: postUrl,
+        }],
+      });
+      res.render('blog/post', { post, design, copy, logos, brandModels, ct, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
+    } catch (err) {
+      console.error(err);
+      res.status(500).send('Error loading post');
+    }
+  };
+}
 
-// Blog post
-router.get('/blog/:slug', async (req, res) => {
-  try {
-    const db = req.db;
-    const [post, design, rawCopy, logos, brandModels] = await Promise.all([
-      db.collection('blog').findOne({ slug: req.params.slug, status: 'published' }),
-      getDesign(db),
-      db.collection('copy').find({}).toArray(),
-      getBrandLogos(db),
-      getBrandModels(db),
-    ]);
-    if (!post) return res.status(404).render('404', { message: 'Post not found', design });
-    const copy = { ...COPY_DEFAULTS };
-    for (const item of rawCopy) copy[item.key] = item.value;
-    const brandName = req.tenant?.brand?.name || '';
-    const postUrl = `${req.protocol}://${req.hostname}/blog/${post.slug}`;
-    res.setSeo?.({
-      title: brandName ? `${post.title} — ${brandName}` : post.title,
-      description: post.excerpt || post.metaDescription || '',
-      canonical: postUrl,
-      ogType: 'article',
-      ogImage: post.coverImage || post.heroImage || post.ogImage || (logos && (logos.logo_primary || logos.logo_white)) || '',
-      jsonLd: [{
-        '@context': 'https://schema.org',
-        '@type': 'BlogPosting',
-        headline: post.title,
-        url: postUrl,
-        ...(post.excerpt ? { description: post.excerpt } : {}),
-        ...(post.coverImage || post.heroImage ? { image: post.coverImage || post.heroImage } : {}),
-        datePublished: post.publishedAt || post.createdAt,
-        dateModified: post.updatedAt || post.publishedAt || post.createdAt,
-        ...(post.author ? { author: { '@type': 'Person', name: post.author } } : {}),
-        publisher: {
-          '@type': 'Organization',
-          name: brandName || 'Slab',
-          ...(logos && logos.logo_primary ? { logo: { '@type': 'ImageObject', url: logos.logo_primary } } : {}),
-        },
-        mainEntityOfPage: postUrl,
-      }],
-    });
-    res.render('blog/post', { post, design, copy, logos, brandModels, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Error loading post');
-  }
-});
+function contentFeedHandler(ct, fmt) {
+  return async (req, res) => {
+    try {
+      const db = req.db;
+      const posts = await db.collection('blog')
+        .find({ status: 'published', contentType: ctFilter(ct.type) })
+        .sort({ publishedAt: -1 })
+        .limit(50)
+        .toArray();
+      const brandName = req.tenant?.brand?.name || 'Home';
+      const siteUrl = absBase(req, ct);
+      const feedUrl = `${siteUrl}/feed.${fmt}`;
+      const items = posts.map(p => ({
+        title: p.title,
+        url: `${siteUrl}/${p.slug}`,
+        excerpt: p.excerpt || '',
+        content: p.content || '',
+        category: p.category || '',
+        publishedAt: p.publishedAt || p.createdAt,
+        updatedAt: p.updatedAt || p.publishedAt || p.createdAt,
+      }));
+      const opts = { title: `${brandName} ${ct.label}`, description: ct.subtitle, siteUrl, feedUrl, authorName: brandName, items };
+      const xml = fmt === 'atom' ? buildAtomFeed(opts) : buildRssFeed(opts);
+      res.type(fmt === 'atom' ? 'application/atom+xml' : 'application/rss+xml').send(xml);
+    } catch (err) {
+      console.error('[feed] error:', err);
+      res.status(500).send('Error generating feed');
+    }
+  };
+}
+
+function contentSubscribeHandler(ct) {
+  return async (req, res) => {
+    const wantsJson = (req.get('accept') || '').includes('application/json')
+      || req.xhr || req.get('x-requested-with') === 'XMLHttpRequest';
+    try {
+      // Honeypot — pretend success.
+      if ((req.body._hp || req.body.website || '').trim()) {
+        return wantsJson ? res.json({ ok: true, status: 'ignored', message: 'Thanks!' }) : res.redirect(`${ct.base}?subscribed=1`);
+      }
+      if (!req.db) {
+        const m = 'Subscription is not available here.';
+        return wantsJson ? res.json({ ok: false, status: 'error', message: m }) : res.redirect(`${ct.base}?suberror=1`);
+      }
+      const result = await captureLead({
+        db: req.db, tenant: req.tenant,
+        email: req.body.email, name: (req.body.name || '').trim(),
+        funnel: 'subscriber', tags: [ct.type], source: `${ct.type}-archive`, optIn: 'double',
+      });
+      const ok = result.status !== 'invalid';
+      if (wantsJson) return res.json({ ok, status: result.status, message: result.message });
+      return res.redirect(`${ct.base}?${ok ? 'subscribed' : 'suberror'}=1`);
+    } catch (err) {
+      console.error(`[subscribe:${ct.type}] error:`, err);
+      if (wantsJson) return res.status(500).json({ ok: false, message: 'Something went wrong. Please try again.' });
+      return res.redirect(`${ct.base}?suberror=1`);
+    }
+  };
+}
+
+// Register routes per type. Feed + subscribe routes are registered BEFORE the
+// `:slug` permalink so "feed.rss" / "subscribe" aren't swallowed as a slug.
+for (const ct of PUBLIC_CONTENT) {
+  router.get(ct.base, contentArchiveHandler(ct));
+  router.get(`${ct.base}/feed.rss`, contentFeedHandler(ct, 'rss'));
+  router.get(`${ct.base}/feed.atom`, contentFeedHandler(ct, 'atom'));
+  router.post(`${ct.base}/subscribe`, contentSubscribeHandler(ct));
+  router.get(`${ct.base}/:slug`, contentPermalinkHandler(ct));
+}
 
 // ── Digital Business Card ─────────────────────────────────────────────────
 router.get('/card/:slug', async (req, res, next) => {
@@ -724,6 +1012,38 @@ router.get('/card/:slug/manifest.json', async (req, res) => {
   }
 });
 
+// ── Newsletter signup (footer signup bar) ──────────────────────────────────
+// Double opt-in by default. Accepts both AJAX (returns JSON) and plain-form
+// (redirects) submissions. The footer bar posts via fetch and shows the message
+// inline; a no-JS fallback redirects home with a flash query.
+router.post('/api/newsletter', async (req, res) => {
+  const wantsJson = (req.get('accept') || '').includes('application/json')
+    || req.xhr || req.get('x-requested-with') === 'XMLHttpRequest';
+  try {
+    // Honeypot: real users never fill a hidden field. Pretend success.
+    if ((req.body._hp || req.body.website || '').trim()) {
+      return wantsJson ? res.json({ ok: true, status: 'ignored', message: 'Thanks!' })
+                       : res.redirect('/?subscribed=1#footer');
+    }
+    if (!req.db) {
+      const m = 'Newsletter signup is not available here.';
+      return wantsJson ? res.json({ ok: false, status: 'error', message: m }) : res.redirect('/?suberror=1#footer');
+    }
+    const result = await captureLead({
+      db: req.db, tenant: req.tenant,
+      email: req.body.email, name: (req.body.name || '').trim(),
+      funnel: 'lead', tags: ['newsletter'], source: 'site-footer', optIn: 'double',
+    });
+    const ok = result.status !== 'invalid';
+    if (wantsJson) return res.json({ ok, status: result.status, message: result.message });
+    return res.redirect(`/?${ok ? 'subscribed' : 'suberror'}=1#footer`);
+  } catch (err) {
+    console.error('[newsletter] signup error:', err);
+    if (wantsJson) return res.status(500).json({ ok: false, message: 'Something went wrong. Please try again.' });
+    return res.redirect('/?suberror=1#footer');
+  }
+});
+
 // ── Footer QR links API (for public views) ─────────────────────────────────
 router.get('/api/footer-qr', async (req, res) => {
   try {
@@ -794,7 +1114,7 @@ router.get('/:slug', async (req, res, next) => {
       // Blog posts do have draft/published, so keep the strict filter there.
       const query   = col === 'portfolio'
         ? { status: { $ne: 'draft' } }
-        : { status: 'published' };
+        : { status: 'published', contentType: { $in: ['blog', null] } };
       if (col === 'portfolio' && pg.dataGroup) query.group = pg.dataGroup;
       const [total, items] = await Promise.all([
         db.collection(col).countDocuments(query),

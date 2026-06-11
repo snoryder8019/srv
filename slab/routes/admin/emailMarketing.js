@@ -1,8 +1,9 @@
 import express from 'express';
+import crypto from 'crypto';
 import { ObjectId } from 'mongodb';
 import multer from 'multer';
 import { getDb } from '../../plugins/mongo.js';
-import { sendCampaignEmail } from '../../plugins/mailer.js';
+import { sendCampaignEmail, renderCampaignEmail } from '../../plugins/mailer.js';
 import { config } from '../../config/config.js';
 import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
@@ -10,12 +11,17 @@ import { loadBrandContext } from '../../plugins/brandContext.js';
 const router = express.Router();
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
+const FUNNELS = new Set(['lead', 'prospect', 'customer']);
+const FORM_STYLES = new Set(['inline', 'footer', 'popup', 'hosted']);
+function newFormToken() { return crypto.randomBytes(9).toString('base64url'); }
+function parseTags(raw) { return (raw || '').split(',').map(t => t.trim()).filter(Boolean); }
+
 // ── Dashboard ──
 router.get('/', async (req, res) => {
   const db = req.db;
   const tab = req.query.tab || 'contacts';
 
-  const [contacts, campaigns, clients, campaignEvents] = await Promise.all([
+  const [contacts, campaigns, clients, campaignEvents, forms] = await Promise.all([
     db.collection('contacts').find({}).sort({ createdAt: -1 }).toArray(),
     db.collection('campaigns').find({}).sort({ createdAt: -1 }).toArray(),
     db.collection('clients').find({}).project({ name: 1, email: 1, status: 1 }).toArray(),
@@ -23,6 +29,7 @@ router.get('/', async (req, res) => {
       { $group: { _id: { campaignId: '$campaignId', type: '$type' }, total: { $sum: 1 }, unique: { $addToSet: '$contactId' } } },
       { $project: { _id: 1, total: 1, unique: { $size: '$unique' } } },
     ]).toArray(),
+    db.collection('signup_forms').find({}).sort({ createdAt: -1 }).toArray(),
   ]);
 
   // Build analytics lookup map
@@ -36,6 +43,7 @@ router.get('/', async (req, res) => {
   // Stats
   const totalContacts = contacts.length;
   const subscribedContacts = contacts.filter(c => c.status === 'subscribed').length;
+  const pendingContacts = contacts.filter(c => c.status === 'pending').length;
   const totalCampaigns = campaigns.length;
   const sentCampaigns = campaigns.filter(c => c.status === 'sent').length;
 
@@ -43,15 +51,76 @@ router.get('/', async (req, res) => {
   const funnelCounts = { lead: 0, prospect: 0, customer: 0, churned: 0 };
   for (const c of contacts) funnelCounts[c.funnel || 'lead']++;
 
+  // ── Chart data ──────────────────────────────────────────────────────────
+  // Status breakdown (donut)
+  const statusCounts = { subscribed: 0, pending: 0, unsubscribed: 0, bounced: 0 };
+  for (const c of contacts) {
+    const s = c.status || 'subscribed';
+    if (statusCounts[s] !== undefined) statusCounts[s]++;
+  }
+
+  // List growth — daily new contacts over the last 30 days
+  const DAY = 86400000;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const startDay = new Date(today.getTime() - 29 * DAY);
+  const buckets = new Map();
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(startDay.getTime() + i * DAY);
+    buckets.set(d.toISOString().slice(0, 10), 0);
+  }
+  for (const c of contacts) {
+    if (!c.createdAt) continue;
+    const k = new Date(c.createdAt).toISOString().slice(0, 10);
+    if (buckets.has(k)) buckets.set(k, buckets.get(k) + 1);
+  }
+  const signupSeries = [...buckets.entries()].map(([date, count]) => ({ date, count }));
+  const signups30 = signupSeries.reduce((a, b) => a + b.count, 0);
+
+  // Source breakdown — where contacts came from (top sources)
+  const sourceMap = {};
+  for (const c of contacts) {
+    const s = c.source || 'manual';
+    sourceMap[s] = (sourceMap[s] || 0) + 1;
+  }
+  const sourceBreakdown = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]).slice(0, 6)
+    .map(([source, count]) => ({ source, count }));
+
+  // Campaign engagement — per-campaign open/click rates + overall averages
+  const sentList = campaigns.filter(c => c.status === 'sent');
+  let sumOpen = 0, sumClick = 0, sumSent = 0;
+  const campSeries = [];
+  for (const camp of sentList) {
+    const a = analyticsMap[camp._id.toString()] || {};
+    const opens = a.open?.unique || 0;
+    const clicks = a.click?.unique || 0;
+    const n = camp.sentCount || 0;
+    sumOpen += opens; sumClick += clicks; sumSent += n;
+    campSeries.push({
+      subject: camp.subject,
+      openRate: n ? Math.round(opens / n * 100) : 0,
+      clickRate: n ? Math.round(clicks / n * 100) : 0,
+      sent: n,
+    });
+  }
+  const engagement = {
+    avgOpenRate: sumSent ? Math.round(sumOpen / sumSent * 100) : 0,
+    avgClickRate: sumSent ? Math.round(sumClick / sumSent * 100) : 0,
+    totalSent: sumSent,
+    campSeries: campSeries.slice(0, 8),
+  };
+
   res.render('admin/email-marketing/index', {
     user: req.adminUser,
     tab,
     contacts,
     campaigns,
     clients,
+    forms,
     analyticsMap,
-    stats: { totalContacts, subscribedContacts, totalCampaigns, sentCampaigns },
+    tenantDomain: req.tenant?.domain ? `https://${req.tenant.domain}` : '',
+    stats: { totalContacts, subscribedContacts, pendingContacts, totalCampaigns, sentCampaigns },
     funnelCounts,
+    charts: { statusCounts, signupSeries, signups30, sourceBreakdown, engagement },
     qs: req.query,
   });
 });
@@ -194,6 +263,141 @@ router.post('/contacts/:id/delete', async (req, res) => {
   res.redirect('/admin/email-marketing?tab=contacts&success=Contact+removed');
 });
 
+// ═══════════════ SIGNUP FORMS (lead capture) ═══════════════
+
+// ── Create signup form ──
+router.post('/forms', async (req, res) => {
+  try {
+    const db = req.db;
+    const { name, headline, subhead, buttonText, successMessage, funnel, tags, style,
+            collectName, optIn, welcomeSubject, welcomeBody } = req.body;
+    if (!name) return res.redirect('/admin/email-marketing?tab=forms&error=Form+name+required');
+
+    await db.collection('signup_forms').insertOne({
+      name: name.trim(),
+      token: newFormToken(),
+      headline: headline?.trim() || 'Join our newsletter',
+      subhead: subhead?.trim() || '',
+      buttonText: buttonText?.trim() || 'Subscribe',
+      successMessage: successMessage?.trim() || '',
+      funnel: FUNNELS.has(funnel) ? funnel : 'lead',
+      tags: parseTags(tags).length ? parseTags(tags) : ['newsletter'],
+      source: `form:${(name || 'form').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32)}`,
+      style: FORM_STYLES.has(style) ? style : 'inline',
+      collectName: collectName === 'on' || collectName === 'true',
+      optIn: optIn === 'single' ? 'single' : 'double',
+      welcomeSubject: welcomeSubject?.trim() || '',
+      welcomeBody: welcomeBody?.trim() || '',
+      enabled: true,
+      signupCount: 0,
+      confirmedCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    res.redirect('/admin/email-marketing?tab=forms&success=Form+created');
+  } catch (err) {
+    console.error('Create form error:', err);
+    res.redirect('/admin/email-marketing?tab=forms&error=Failed+to+create+form');
+  }
+});
+
+// ── Update signup form ──
+router.post('/forms/:id/update', async (req, res) => {
+  try {
+    const db = req.db;
+    const b = req.body;
+    const set = { updatedAt: new Date() };
+    if (b.name !== undefined) set.name = b.name.trim();
+    if (b.headline !== undefined) set.headline = b.headline.trim();
+    if (b.subhead !== undefined) set.subhead = b.subhead.trim();
+    if (b.buttonText !== undefined) set.buttonText = b.buttonText.trim() || 'Subscribe';
+    if (b.successMessage !== undefined) set.successMessage = b.successMessage.trim();
+    if (b.funnel !== undefined && FUNNELS.has(b.funnel)) set.funnel = b.funnel;
+    if (b.tags !== undefined) set.tags = parseTags(b.tags).length ? parseTags(b.tags) : ['newsletter'];
+    if (b.style !== undefined && FORM_STYLES.has(b.style)) set.style = b.style;
+    if (b.optIn !== undefined) set.optIn = b.optIn === 'single' ? 'single' : 'double';
+    if (b.welcomeSubject !== undefined) set.welcomeSubject = b.welcomeSubject.trim();
+    if (b.welcomeBody !== undefined) set.welcomeBody = b.welcomeBody.trim();
+    set.collectName = b.collectName === 'on' || b.collectName === 'true';
+    if (b.enabled !== undefined) set.enabled = b.enabled === 'on' || b.enabled === 'true';
+
+    await db.collection('signup_forms').updateOne({ _id: new ObjectId(req.params.id) }, { $set: set });
+    res.redirect('/admin/email-marketing?tab=forms&success=Form+updated');
+  } catch (err) {
+    console.error('Update form error:', err);
+    res.redirect('/admin/email-marketing?tab=forms&error=Update+failed');
+  }
+});
+
+// ── Toggle enabled (quick switch) ──
+router.post('/forms/:id/toggle', async (req, res) => {
+  try {
+    const db = req.db;
+    const form = await db.collection('signup_forms').findOne({ _id: new ObjectId(req.params.id) });
+    if (form) {
+      await db.collection('signup_forms').updateOne(
+        { _id: form._id },
+        { $set: { enabled: !form.enabled, updatedAt: new Date() } }
+      );
+    }
+    res.redirect('/admin/email-marketing?tab=forms&success=Form+updated');
+  } catch (err) {
+    res.redirect('/admin/email-marketing?tab=forms&error=Toggle+failed');
+  }
+});
+
+// ── Delete signup form ──
+router.post('/forms/:id/delete', async (req, res) => {
+  const db = req.db;
+  await db.collection('signup_forms').deleteOne({ _id: new ObjectId(req.params.id) });
+  res.redirect('/admin/email-marketing?tab=forms&success=Form+deleted');
+});
+
+// ── Form copy AI generator ──
+// Writes headline, subhead, button, success message, and a welcome autoresponder
+// body from the brand context + the admin's brief. Returns { message, fill }.
+router.post('/forms/agent', async (req, res) => {
+  const { prompt } = req.body;
+  try {
+    const db = req.db;
+    const design = await db.collection('design').findOne({});
+    const agentName = design?.agent_name || 'the brand';
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
+
+    const systemPrompt = `You write high-converting email signup form copy for ${agentName}.
+
+${brandCtx}
+
+Your ONLY job is to output a JSON object. No prose, no markdown fences. Just raw JSON of exactly this shape:
+{
+  "message": "one short sentence describing the form you wrote",
+  "fill": {
+    "headline": "short punchy form headline (under 50 chars)",
+    "subhead": "one-line value proposition for subscribing (under 120 chars)",
+    "buttonText": "2-3 word button label",
+    "successMessage": "friendly confirmation shown after they submit (under 120 chars)",
+    "welcomeSubject": "subject line for the welcome email (under 60 chars)",
+    "welcomeBody": "full HTML welcome email body as a single escaped string"
+  }
+}
+
+Rules for welcomeBody:
+- Warm, on-brand welcome for a NEW subscriber. Use <h2>, <p>, <strong>, <a> tags.
+- Use {name} for personalization. Include one clear call-to-action button.
+- 120-250 words. Escape all double quotes as \\" and use \\n for newlines.
+- Match the brand voice above. Make people glad they signed up.
+
+The admin's brief: "${(prompt || 'a general newsletter signup form').slice(0, 400)}"`;
+
+    const raw = await callLLM([{ role: 'user', content: prompt || 'Write newsletter signup form copy.' }], systemPrompt);
+    const parsed = tryParseAgentResponse(raw);
+    res.json(parsed);
+  } catch (err) {
+    console.error('Form agent error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Create campaign ──
 router.post('/campaigns', async (req, res) => {
   try {
@@ -295,6 +499,48 @@ ${campaignCtx}${researchCtx}`;
   } catch (err) {
     console.error('Email marketing agent error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Live campaign preview (composer — unsaved draft) ──
+// Renders the real branded campaign template from the in-progress form fields
+// so the admin sees exactly what a subscriber receives before saving/sending.
+router.post('/campaigns/preview', express.json(), async (req, res) => {
+  try {
+    const { subject, preheader, body } = req.body;
+    const { html } = await renderCampaignEmail({
+      toEmail: req.adminUser?.email || 'subscriber@example.com',
+      toName: 'there',
+      subject: subject || '(no subject)',
+      preheader: preheader || '',
+      brandDomain: req.tenant?.domain ? `https://${req.tenant.domain}` : '',
+      body: body || '<p style="color:#888;">Your email body will appear here…</p>',
+      tenant: req.tenant,
+    });
+    res.json({ html, subject: subject || '(no subject)' });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Preview failed' });
+  }
+});
+
+// ── Saved campaign preview (draft/sent row) ──
+router.post('/campaigns/:id/preview', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const campaign = await db.collection('campaigns').findOne({ _id: new ObjectId(req.params.id) });
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    const { html } = await renderCampaignEmail({
+      toEmail: req.adminUser?.email || 'subscriber@example.com',
+      toName: 'there',
+      subject: campaign.subject || '(no subject)',
+      preheader: campaign.preheader || '',
+      brandDomain: req.tenant?.domain ? `https://${req.tenant.domain}` : '',
+      body: campaign.body || '',
+      tenant: req.tenant,
+    });
+    res.json({ html, subject: campaign.subject || '(no subject)' });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Preview failed' });
   }
 });
 

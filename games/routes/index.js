@@ -56,6 +56,7 @@ const TRUSTED_ORIGINS = [
   'https://bih.madladslab.com',
   'https://www.madladslab.com',
   'https://towers.madladslab.com',
+  'https://reels.madladslab.com',
   'https://madlands.madladslab.com',
 ];
 
@@ -154,7 +155,7 @@ router.get('/auth/bridge', (req, res) => {
     process.env.BRIDGE_SECRET,
     { expiresIn: '5m' }
   );
-  res.redirect(`${redirect}?token=${encodeURIComponent(token)}`);
+  res.redirect(redirect + (redirect.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token));
 });
 
 

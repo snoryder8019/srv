@@ -8,8 +8,30 @@ import { ObjectId } from 'mongodb';
 import { sendClientEmail } from '../../plugins/mailer.js';
 import { logActivity } from '../../plugins/activityLog.js';
 import { normalizeEmail } from '../../plugins/emailNormalize.js';
+import { reportSpam, listGlobalSpam, addGlobalSpam, removeGlobalSpam, GLOBAL_SPAM_THRESHOLD } from '../../plugins/globalSpam.js';
 
 const router = express.Router();
+
+// Cast a cross-tenant spam vote for the given inquiry docs. A superadmin's vote
+// promotes instantly; ordinary tenants accumulate toward the global threshold.
+// Fire-and-forget: never let a global-filter hiccup break the local spam action.
+async function reportGlobal(req, docs) {
+  const emails = docs.map(d => d.email).filter(Boolean);
+  const subjects = docs.map(d => [d.service, d.message].filter(Boolean).join(' ')).filter(Boolean);
+  if (!emails.length && !subjects.length) return;
+  try {
+    await reportSpam({
+      emails,
+      subjects,
+      tenantId: req.tenant?._id,
+      tenantDomain: req.tenant?.domain,
+      reportedBy: req.adminUser?.email,
+      isSuper: req.isSuperAdmin,
+    });
+  } catch (e) {
+    console.error('[inquiries] global spam report:', e.message);
+  }
+}
 
 const STATUSES = ['new', 'read', 'replied', 'converted', 'archived', 'spam'];
 const BULK_STATUS_ACTIONS = new Set(['new', 'read', 'replied', 'converted', 'archived', 'spam']);
@@ -70,6 +92,8 @@ router.get('/', async (req, res) => {
     tally,
     status,
     q,
+    isSuperAdmin: req.isSuperAdmin,
+    globalSpamThreshold: GLOBAL_SPAM_THRESHOLD,
     flash: { saved: req.query.saved, error: req.query.error, info: req.query.info },
   });
 });
@@ -119,8 +143,9 @@ router.post('/:id/status', express.json(), async (req, res) => {
       { $set: { status, updatedAt: new Date() } }
     );
     if (status === 'spam') {
-      const doc = await db.collection('inquiries').findOne({ _id }, { projection: { email: 1 } });
+      const doc = await db.collection('inquiries').findOne({ _id }, { projection: { email: 1, service: 1, message: 1 } });
       if (doc?.email) await blocklistAdd(db, [doc.email], req.adminUser?.email);
+      if (doc) await reportGlobal(req, [doc]);
     }
     res.json({ ok: true, status });
   } catch (err) {
@@ -150,10 +175,11 @@ router.post('/bulk', express.json(), async (req, res) => {
 
     if (action === 'spam') {
       const docs = await db.collection('inquiries')
-        .find({ _id: { $in: objectIds } }, { projection: { email: 1 } })
+        .find({ _id: { $in: objectIds } }, { projection: { email: 1, service: 1, message: 1 } })
         .toArray();
       const emails = docs.map(d => d.email).filter(Boolean);
       if (emails.length) await blocklistAdd(db, emails, req.adminUser?.email);
+      await reportGlobal(req, docs);
     }
 
     const r = await db.collection('inquiries').updateMany(
@@ -194,6 +220,45 @@ router.post('/spam-list/add', express.json(), async (req, res) => {
   if (!email || !email.includes('@')) return res.status(400).json({ error: 'valid email required' });
   try {
     await blocklistAdd(req.db, [email], req.adminUser?.email);
+    await reportGlobal(req, [{ email }]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Global spam filter (cross-tenant, superadmin-managed) ───────────────────
+router.get('/global-spam/data', async (req, res) => {
+  if (!req.isSuperAdmin) return res.status(403).json({ error: 'Superadmin only' });
+  try {
+    const list = await listGlobalSpam();
+    res.json({ ok: true, list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/global-spam/add', express.json(), async (req, res) => {
+  if (!req.isSuperAdmin) return res.status(403).json({ error: 'Superadmin only' });
+  const type = req.body?.type === 'subject' ? 'subject' : 'email';
+  const key = (req.body?.key || '').trim();
+  if (!key) return res.status(400).json({ error: 'key required' });
+  if (type === 'email' && !key.includes('@')) return res.status(400).json({ error: 'valid email required' });
+  try {
+    const cleanKey = await addGlobalSpam({ type, key, addedBy: req.adminUser?.email });
+    res.json({ ok: true, key: cleanKey });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/global-spam/remove', express.json(), async (req, res) => {
+  if (!req.isSuperAdmin) return res.status(403).json({ error: 'Superadmin only' });
+  const type = req.body?.type === 'subject' ? 'subject' : 'email';
+  const key = (req.body?.key || '').trim();
+  if (!key) return res.status(400).json({ error: 'key required' });
+  try {
+    await removeGlobalSpam(type, key);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

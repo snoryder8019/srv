@@ -278,6 +278,27 @@ router.get('/google/callback', async (req, res) => {
       return res.redirect(dest.toString());
     }
 
+    // ── Left Field (pitch) portal flow — one-time JWT to pitch.madladslab.com ──
+    // Pitch manages its own per-user JSON store; we just vouch for the identity.
+    if (authType === 'pitch') {
+      const pitchToken = jwt.sign(
+        {
+          email: profile.email,
+          displayName: profile.name || profile.given_name || profile.email,
+          firstName: profile.given_name || '',
+          lastName: profile.family_name || '',
+          googleId: profile.id,
+          isSuperadmin: isSuperAdminEmail(profile.email),
+          pitch: true,
+        },
+        config.JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+      const dest = new URL('https://pitch.madladslab.com/auth/sso');
+      dest.searchParams.set('token', pitchToken);
+      return res.redirect(dest.toString());
+    }
+
     // ── Delegate portal flow — match Google email to a sales_delegates record ──
     if (authType === 'delegate') {
       const slab = getSlabDb();
@@ -583,6 +604,11 @@ router.get('/graffititv', (req, res) => {
 // ── Games portal Google OAuth ─────────────────────────────────────────────────
 router.get('/games', (req, res) => {
   redirectToGoogle(req, res, { authType: 'games' });
+});
+
+// ── Left Field (pitch) portal Google OAuth ────────────────────────────────────
+router.get('/pitch', (req, res) => {
+  redirectToGoogle(req, res, { authType: 'pitch' });
 });
 
 // ── Central login page (slab.madladslab.com/auth/login) ─────────────────────

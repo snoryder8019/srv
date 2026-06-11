@@ -1,0 +1,229 @@
+<%- include('../partials/head', { title: 'Social Suggestions' }) %>
+<%- include('../partials/sidebar', { page: 'social-suggestions', user: user }) %>
+
+<style>
+  .ss-wrap { padding: 8px 4px 60px; }
+  .ss-top { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px; margin-bottom:18px; }
+  .ss-title { font-family:var(--font-heading); font-size:1.5rem; color:var(--on-surface); margin:0; }
+  .ss-sub { font-size:0.78rem; color:var(--slate); margin-top:3px; }
+  .ss-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .ss-btn { border:1px solid var(--border); background:var(--surface); color:var(--on-surface); padding:9px 14px; border-radius:6px; font-size:0.8rem; font-weight:500; cursor:pointer; transition:all .15s; }
+  .ss-btn:hover { border-color:var(--navy-mid); }
+  .ss-btn.primary { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .ss-btn.gold { background:var(--gold,#C9A848); color:#0F1B30; border-color:var(--gold,#C9A848); font-weight:600; }
+  .ss-btn.danger { color:var(--danger,#b91c1c); }
+  .ss-btn:disabled { opacity:.55; cursor:not-allowed; }
+  .ss-toggle { display:flex; align-items:center; gap:8px; font-size:0.78rem; color:var(--on-surface); background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:7px 12px; }
+  .ss-switch { position:relative; width:38px; height:21px; }
+  .ss-switch input { display:none; }
+  .ss-slide { position:absolute; inset:0; background:#cbd5e1; border-radius:21px; transition:.2s; }
+  .ss-slide::before { content:''; position:absolute; width:15px; height:15px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
+  .ss-switch input:checked + .ss-slide { background:#15803D; }
+  .ss-switch input:checked + .ss-slide::before { transform:translateX(17px); }
+  .ss-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+  .ss-card { border:1px solid var(--border); border-radius:8px; background:var(--surface); overflow:hidden; display:flex; flex-direction:column; }
+  .ss-img { width:100%; aspect-ratio:1/1; object-fit:cover; background:var(--ivory); display:block; }
+  .ss-body { padding:12px; display:flex; flex-direction:column; gap:9px; flex:1; }
+  .ss-badges { display:flex; gap:6px; flex-wrap:wrap; }
+  .ss-badge { font-size:0.6rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:2px 7px; border-radius:3px; background:rgba(28,43,74,.08); color:var(--navy); }
+  .ss-badge.dim { background:rgba(201,168,72,.18); color:#8a6d1e; }
+  .ss-cap { width:100%; border:1px solid var(--border); border-radius:5px; padding:8px; font-size:0.78rem; color:var(--on-surface); background:var(--ivory); resize:vertical; min-height:74px; font-family:inherit; }
+  .ss-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:auto; }
+  .ss-empty { text-align:center; padding:60px 20px; color:var(--slate); }
+  /* editor modal */
+  .ss-modal { position:fixed; inset:0; background:rgba(15,27,48,.6); z-index:1000; display:none; align-items:center; justify-content:center; padding:20px; }
+  .ss-modal.open { display:flex; }
+  .ss-modal-box { background:var(--surface); border-radius:10px; width:min(940px,100%); max-height:90vh; overflow:auto; padding:20px; display:grid; grid-template-columns:1fr 300px; gap:20px; }
+  .ss-modal-box h3 { grid-column:1/-1; margin:0 0 4px; font-family:var(--font-heading); color:var(--on-surface); }
+  .ss-canvas-wrap { display:flex; align-items:flex-start; justify-content:center; background:var(--ivory); border-radius:8px; padding:10px; }
+  #ssCanvas { max-width:100%; height:auto; border:1px solid var(--border); border-radius:4px; }
+  .ss-ctrls { display:flex; flex-direction:column; gap:12px; font-size:0.74rem; }
+  .ss-ctrl-grp { border:1px solid var(--border); border-radius:6px; padding:10px; }
+  .ss-ctrl-grp label { display:block; font-weight:600; color:var(--slate); margin-bottom:4px; font-size:0.66rem; text-transform:uppercase; letter-spacing:.04em; }
+  .ss-ctrl-grp input[type=text], .ss-ctrl-grp textarea { width:100%; border:1px solid var(--border); border-radius:4px; padding:6px; font-size:0.76rem; font-family:inherit; margin-bottom:6px; }
+  .ss-row { display:flex; gap:6px; }
+  .ss-row > * { flex:1; }
+  .ss-mini { font-size:0.6rem; color:var(--slate); }
+  .ss-modal-actions { grid-column:1/-1; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--border); padding-top:14px; }
+</style>
+
+<div class="ss-wrap">
+  <div class="ss-top">
+    <div>
+      <h1 class="ss-title">Social Suggestions</h1>
+      <div class="ss-sub">AI-drafted posts sized for each connected platform. Edit, then approve to post — nothing goes live until you say so.</div>
+    </div>
+    <div class="ss-toolbar">
+      <label class="ss-toggle" title="When on, the daily cron drops fresh suggestions here automatically">
+        <span class="ss-switch"><input type="checkbox" id="ssCron" <%= autoSocial && autoSocial.enabled ? 'checked' : '' %>><span class="ss-slide"></span></span>
+        Auto-cron
+      </label>
+      <input type="number" id="ssCount" value="<%= (autoSocial && autoSocial.count) || 5 %>" min="1" max="10" style="width:54px;padding:8px;border:1px solid var(--border);border-radius:6px;">
+      <button class="ss-btn gold" id="ssGenerate">✦ Generate fresh</button>
+    </div>
+  </div>
+
+  <div class="ss-grid" id="ssGrid">
+    <% if (!suggestions || !suggestions.length) { %>
+      <div class="ss-empty" style="grid-column:1/-1;">
+        No suggestions yet. Hit <strong>Generate fresh</strong> to draft a batch sized for your connected platforms.
+      </div>
+    <% } %>
+    <% (suggestions||[]).forEach(function(s){ %>
+      <div class="ss-card" data-id="<%= s._id %>">
+        <img class="ss-img" src="<%= (s.mediaUrls&&s.mediaUrls[0])||'' %>" alt="" loading="lazy">
+        <div class="ss-body">
+          <div class="ss-badges">
+            <span class="ss-badge"><%= (s.platforms&&s.platforms[0])||'social' %></span>
+            <span class="ss-badge dim"><%= s.dims || '' %></span>
+          </div>
+          <textarea class="ss-cap" data-id="<%= s._id %>"><%= s.body || '' %></textarea>
+          <div class="ss-actions">
+            <button class="ss-btn" onclick="ssEdit('<%= s._id %>')">✎ Layers</button>
+            <button class="ss-btn primary" onclick="ssApprove('<%= s._id %>', this)">Approve &amp; Post</button>
+            <button class="ss-btn danger" onclick="ssDismiss('<%= s._id %>', this)">Dismiss</button>
+          </div>
+        </div>
+      </div>
+    <% }); %>
+  </div>
+</div>
+
+<!-- Layer editor -->
+<div class="ss-modal" id="ssModal">
+  <div class="ss-modal-box">
+    <h3>Edit layers</h3>
+    <div class="ss-canvas-wrap"><canvas id="ssCanvas"></canvas></div>
+    <div class="ss-ctrls" id="ssCtrls"></div>
+    <div class="ss-modal-actions">
+      <button class="ss-btn" onclick="ssCloseModal()">Cancel</button>
+      <button class="ss-btn primary" id="ssSaveBtn" onclick="ssSave()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUGG = <%- JSON.stringify(suggestions || []) %>;
+const byId = {}; SUGG.forEach(s => byId[String(s._id)] = s);
+let EDIT = null; // { id, design }
+
+function ssRender(design) {
+  const c = document.getElementById('ssCanvas');
+  const SP = { 'ig-post':[1080,1080],'ig-story':[1080,1920],'fb-post':[1200,630],'fb-cover':[1640,624],'twitter':[1600,900],'pinterest':[1000,1500],'yt-thumb':[1280,720],'linkedin':[1200,627],'ig-portrait':[1080,1350] };
+  const [w,h] = SP[design.size] || SP['ig-post'];
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const draw = () => {
+    ctx.fillStyle = design.bgColor || '#0D0D14'; ctx.fillRect(0,0,w,h);
+    (design.layers||[]).forEach(L => {
+      ctx.save(); ctx.globalAlpha = L.opacity ?? 1;
+      if (L.type === 'rect' && L.fill) { ctx.fillStyle = L.fill; ctx.fillRect(L.x,L.y,L.w,L.h); }
+      else if (L.type === 'text' && L.text) {
+        const fs = L.fontSize||48, fam = L.fontFamily==='serif'?'serif':'sans-serif';
+        ctx.font = (L.bold?'bold ':'')+fs+'px '+fam; ctx.fillStyle = L.color||'#fff';
+        ctx.textAlign = L.align||'center'; ctx.textBaseline='top';
+        const maxW = L.w || w-40, words = String(L.text).split(' '); let line='', lines=[];
+        words.forEach(word => { const t = line?line+' '+word:word; if (ctx.measureText(t).width>maxW && line){lines.push(line);line=word;} else line=t; });
+        if (line) lines.push(line);
+        let dx = L.x||0; if (ctx.textAlign==='center') dx+=maxW/2; else if (ctx.textAlign==='right') dx+=maxW;
+        lines.forEach((ln,i)=>ctx.fillText(ln, dx, (L.y||0)+i*fs*1.3));
+      }
+      ctx.restore();
+    });
+  };
+  if (design.sdBgUrl) {
+    const img = new Image();
+    img.onload = () => { ctx.fillStyle=design.bgColor||'#0D0D14'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h); // bg then layers
+      (design.layers||[]).forEach(L => { ctx.save(); ctx.globalAlpha=L.opacity??1;
+        if (L.type==='rect'&&L.fill){ctx.fillStyle=L.fill;ctx.fillRect(L.x,L.y,L.w,L.h);}
+        else if (L.type==='text'&&L.text){const fs=L.fontSize||48,fam=L.fontFamily==='serif'?'serif':'sans-serif';ctx.font=(L.bold?'bold ':'')+fs+'px '+fam;ctx.fillStyle=L.color||'#fff';ctx.textAlign=L.align||'center';ctx.textBaseline='top';const maxW=L.w||w-40,words=String(L.text).split(' ');let line='',lines=[];words.forEach(word=>{const t=line?line+' '+word:word;if(ctx.measureText(t).width>maxW&&line){lines.push(line);line=word;}else line=t;});if(line)lines.push(line);let dx=L.x||0;if(ctx.textAlign==='center')dx+=maxW/2;else if(ctx.textAlign==='right')dx+=maxW;lines.forEach((ln,i)=>ctx.fillText(ln,dx,(L.y||0)+i*fs*1.3));}
+        ctx.restore(); });
+    };
+    img.onerror = draw; img.src = design.sdBgUrl;
+  } else draw();
+}
+
+function ssCtrls(design) {
+  const wrap = document.getElementById('ssCtrls'); wrap.innerHTML = '';
+  (design.layers||[]).forEach((L, i) => {
+    if (L.type !== 'text') return;
+    const g = document.createElement('div'); g.className = 'ss-ctrl-grp';
+    g.innerHTML = '<label>Text layer ' + (i+1) + '</label>' +
+      '<input type="text" value="'+(L.text||'').replace(/"/g,'&quot;')+'" oninput="ssUpd('+i+',\'text\',this.value)">' +
+      '<div class="ss-row"><input type="number" title="font size" value="'+(L.fontSize||48)+'" oninput="ssUpd('+i+',\'fontSize\',+this.value)">' +
+      '<input type="color" title="color" value="'+(L.color||'#ffffff')+'" oninput="ssUpd('+i+',\'color\',this.value)"></div>' +
+      '<div class="ss-row"><input type="number" title="x" value="'+(L.x||0)+'" oninput="ssUpd('+i+',\'x\',+this.value)">' +
+      '<input type="number" title="y" value="'+(L.y||0)+'" oninput="ssUpd('+i+',\'y\',+this.value)"></div>' +
+      '<div class="ss-mini">size · color · x · y</div>';
+    wrap.appendChild(g);
+  });
+}
+function ssUpd(i, key, val) { EDIT.design.layers[i][key] = val; ssRender(EDIT.design); }
+
+function ssEdit(id) {
+  const s = byId[id]; if (!s || !s.design) { alert('No editable design stored for this suggestion.'); return; }
+  EDIT = { id, design: JSON.parse(JSON.stringify(s.design)) };
+  ssRender(EDIT.design); ssCtrls(EDIT.design);
+  document.getElementById('ssModal').classList.add('open');
+}
+function ssCloseModal() { document.getElementById('ssModal').classList.remove('open'); EDIT = null; }
+
+async function ssSave() {
+  if (!EDIT) return;
+  const btn = document.getElementById('ssSaveBtn'); btn.disabled = true; btn.textContent = 'Rendering…';
+  const cap = document.querySelector('.ss-cap[data-id="'+EDIT.id+'"]');
+  try {
+    const r = await fetch('/admin/social/suggestions/'+EDIT.id, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ body: cap ? cap.value : undefined, design: EDIT.design }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      if (d.mediaUrl) { const img = document.querySelector('.ss-card[data-id="'+EDIT.id+'"] .ss-img'); if (img) img.src = d.mediaUrl + '?t=' + Date.now(); byId[EDIT.id].mediaUrls = [d.mediaUrl]; }
+      byId[EDIT.id].design = EDIT.design;
+      ssCloseModal();
+    } else alert(d.error || 'Save failed');
+  } catch(e){ alert('Save failed'); }
+  btn.disabled = false; btn.textContent = 'Save changes';
+}
+
+async function ssApprove(id, btn) {
+  btn.disabled = true; btn.textContent = 'Posting…';
+  const cap = document.querySelector('.ss-cap[data-id="'+id+'"]');
+  try {
+    if (cap) await fetch('/admin/social/suggestions/'+id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ body: cap.value }) });
+    const r = await fetch('/admin/social/suggestions/'+id+'/approve', { method:'POST' });
+    const d = await r.json();
+    if (d.ok) { const card = document.querySelector('.ss-card[data-id="'+id+'"]'); if (card){ card.style.opacity=.5; card.querySelector('.ss-actions').innerHTML = '<span style="color:var(--success);font-size:0.75rem;font-weight:600;">✓ Posted</span>'; } }
+    else { btn.disabled=false; btn.textContent='Approve & Post'; alert(d.error || 'Publish failed'); }
+  } catch(e){ btn.disabled=false; btn.textContent='Approve & Post'; alert('Publish failed'); }
+}
+
+async function ssDismiss(id, btn) {
+  if (!confirm('Dismiss this suggestion? Its draft + generated image will be removed.')) return;
+  btn.disabled = true;
+  try { const r = await fetch('/admin/social/suggestions/'+id+'/dismiss', { method:'POST' }); const d = await r.json();
+    if (d.ok) { const card = document.querySelector('.ss-card[data-id="'+id+'"]'); if (card) card.remove(); }
+    else { btn.disabled=false; alert(d.error||'Failed'); }
+  } catch(e){ btn.disabled=false; alert('Failed'); }
+}
+
+document.getElementById('ssGenerate').addEventListener('click', async function(){
+  const btn = this; const count = +document.getElementById('ssCount').value || 5;
+  btn.disabled = true; btn.textContent = 'Generating…';
+  try {
+    const r = await fetch('/admin/social/suggestions/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ count }) });
+    const d = await r.json();
+    if (d.ok) location.reload();
+    else { btn.disabled=false; btn.textContent='✦ Generate fresh'; alert(d.error || 'Generation failed'); }
+  } catch(e){ btn.disabled=false; btn.textContent='✦ Generate fresh'; alert('Generation failed'); }
+});
+
+document.getElementById('ssCron').addEventListener('change', async function(){
+  const enabled = this.checked; const count = +document.getElementById('ssCount').value || 5;
+  try { await fetch('/admin/social/auto-toggle', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ enabled, count }) }); }
+  catch(e){ this.checked = !enabled; alert('Could not update cron setting'); }
+});
+</script>
+</body>
+</html>

@@ -13,28 +13,33 @@ import path from 'path';
  * category: 'platform' | 'client' | 'game' | 'media' | 'tool' | 'deprecated'
  */
 const SERVICES = [
-  { name: 'slab',            dir: '/srv/slab',               port: 3602, domain: 'slab.madladslab.com',        tmux: 'slab',                     category: 'platform',  description: 'Multi-tenant SaaS platform' },
-  { name: 'madladslab',      dir: '/srv/madladslab',         port: 3000, domain: 'madladslab.com',              tmux: 'madladslab',               category: 'platform',  description: 'Core platform — accounts, OAuth, admin' },
-  { name: 'w2Marketing',     dir: '/srv/w2Marketing',        port: 3601, domain: 'w2marketing.biz',             tmux: 'w2marketing',              category: 'client',    description: 'W2 Marketing — digital agency SaaS' },
-  { name: 'bih',             dir: '/srv/bih',                port: 3055, domain: 'ballzinholez.com',            tmux: 'bih',                      category: 'game',      description: 'BallzInHolez — gaming hub + streaming' },
-  { name: 'ps',              dir: '/srv/ps',                 port: 3399, domain: 'ps.madladslab.com',           tmux: 'ps_session',               category: 'game',      description: 'Stringborn Universe — sci-fi MMO dashboard' },
-  { name: 'games',           dir: '/srv/games',              port: 3500, domain: 'games.madladslab.com',        tmux: 'games',                    category: 'game',      description: 'Game server portal (Rust, Valheim, etc.)' },
-  { name: 'game-state',      dir: '/srv/game-state-service', port: 3500, domain: 'svc.madladslab.com',          tmux: 'game-state-service_session', category: 'game',    description: 'Game state microservice' },
-  { name: 'discord-games',   dir: '/srv/games',              port: null, domain: null,                          tmux: 'discord-games',            category: 'game',      description: 'Discord bot for Games' },
-  { name: 'triple-twenty',   dir: '/srv/triple-twenty',      port: 3710, domain: 'tripletwenty.madladslab.com', tmux: 'triple-twenty_session',    category: 'game',      description: 'AI darts scoring with camera' },
-  { name: 'servers',         dir: '/srv/servers',            port: 3600, domain: 'servers.madladslab.com',      tmux: 'servers',                  category: 'tool',      description: 'Server monitoring dashboard' },
-  { name: 'acm',             dir: '/srv/acm',                port: 3004, domain: 'acmcreativeconcepts.com',     tmux: 'acm_session',              category: 'client',    description: 'ACM Creative Concepts — marketing site' },
-  { name: 'sna',             dir: '/srv/sna',                port: 3010, domain: 'somenewsarticle.com',         tmux: 'sna',                      category: 'media',     description: 'Some News Article — news aggregation' },
-  { name: 'twww',            dir: '/srv/twww',               port: 3008, domain: 'theworldwidewallet.com',      tmux: 'twww_session',             category: 'client',    description: 'The World Wide Wallet' },
-  { name: 'madThree',        dir: '/srv/madThree',           port: 3007, domain: 'three.madladslab.com',        tmux: 'madThree',                 category: 'tool',      description: 'MadThree — admin tool' },
-  { name: 'graffiti-tv',     dir: '/srv/graffiti-tv',        port: 3001, domain: 'graffititv.madladslab.com',   tmux: 'graffiti-tv',              category: 'media',     description: 'Graffiti TV — media streaming' },
-  { name: 'nocometalworkz',  dir: '/srv/nocometalworkz',     port: 3002, domain: 'nocometalworkz.com',          tmux: 'nocometalworkz',           category: 'media',     description: 'No Cometal Workz — music/media platform' },
-  { name: 'greealitytv',     dir: '/srv/greealitytv',        port: 3400, domain: 'greealitytv.com',             tmux: 'greealitytv',              category: 'media',     description: 'GreeAlity TV — local community TV' },
-  { name: 'candaceWallace',  dir: '/srv/candaceWallace',     port: null, domain: null,                          tmux: 'candaceWallace_session',   category: 'client',    description: 'Candace Wallace — marketing strategy (dev)' },
-  { name: 'opsTrain',        dir: '/srv/opsTrain',           port: 3603, domain: 'ops-train.madladslab.com',    tmux: 'opsTrain_session',         category: 'tool',      description: 'QR-driven ops training & task management' },
-  { name: 'piper-tts',       dir: '/srv/piper-tts',          port: null, domain: null,                          tmux: 'piper-tts_session',        category: 'tool',      description: 'OpenAI-compatible TTS wrapper' },
-  { name: 'mcp',             dir: '/srv/mcp',                port: null, domain: null,                          tmux: 'mcp_session',              category: 'tool',      description: 'MCP server for Claude Android' },
-  { name: 'mcp-streamable',  dir: '/srv/mcp',                port: null, domain: null,                          tmux: 'mcp-streamable',           category: 'tool',      description: 'Streamable MCP server variant' },
+  // ── Platform / core infra ──
+  { name: 'slab',            dir: '/srv/slab',               port: 3602, domain: 'slab.madladslab.com',        tmux: 'slab',                       category: 'platform',  description: 'Multi-tenant SaaS platform' },
+  { name: 'mllOauth',        dir: '/srv/mllOauth',           port: 3651, domain: 'mcp.madladslab.com',          tmux: 'mllOauth',                   category: 'platform',  description: 'mllOauth — OAuth 2.1 / JWT issuer for MCP' },
+
+  // ── Games ──
+  { name: 'games',           dir: '/srv/games',              port: 3500, domain: 'games.madladslab.com',        tmux: 'games',                      category: 'game',      description: 'Game server portal (Rust, Valheim, etc.)' },
+  { name: 'game-state',      dir: '/srv/game-state-service', port: 3502, domain: 'svc.madladslab.com',          tmux: 'game-state-service_session', category: 'game',      description: 'Game state microservice' },
+  { name: 'discord-games',   dir: '/srv/games',              port: null, domain: null,                          tmux: 'discord-games',              category: 'game',      description: 'Discord bot for Games' },
+  { name: 'tiles',           dir: '/srv/tiles',              port: 3625, domain: 'tiles.madladslab.com',        tmux: 'tiles_session',              category: 'game',      description: '3D arcade table games (supersedes cards)' },
+  { name: 'cards',           dir: '/srv/cards',              port: 3600, domain: 'cards.madladslab.com',        tmux: 'cards_session',              category: 'game',      description: 'Legacy card games portal' },
+  { name: 'matchmaking',     dir: '/srv/matchmaking',        port: 3610, domain: 'match.madladslab.com',        tmux: 'matchmaking_session',        category: 'game',      description: 'Match — cross-game live dashboard / matchmaking' },
+  { name: 'madlands',        dir: '/srv/madlands',           port: 3730, domain: 'madlands.madladslab.com',      tmux: 'madlands',                   category: 'game',      description: 'Madlands world' },
+  { name: 'ps',              dir: '/srv/ps',                 port: 3399, domain: 'ps.madladslab.com',           tmux: 'ps_session',                 category: 'game',      description: 'Stringborn Universe — sci-fi MMO dashboard' },
+  { name: 'triple-twenty',   dir: '/srv/triple-twenty',      port: 3710, domain: 'tripletwenty.madladslab.com', tmux: 'triple-twenty_session',      category: 'game',      description: 'AI darts scoring with camera' },
+
+  // ── Media ──
+  { name: 'graffiti-tv',     dir: '/srv/graffiti-tv',        port: 3001, domain: 'graffititv.madladslab.com',   tmux: 'graffiti-tv_session',        category: 'media',     description: 'Graffiti TV — media streaming' },
+  { name: 'greealitytv',     dir: '/srv/greealitytv',        port: 3400, domain: 'greealitytv.com',             tmux: 'greealitytv_session',        category: 'media',     description: 'GreeAlity TV — local community TV' },
+
+  // ── Tools ──
+  { name: 'mllPitches',      dir: '/srv/mllPitches',         port: 3608, domain: 'pitch.madladslab.com',        tmux: 'mllPitches_session',         category: 'tool',      description: 'Client pitch platform' },
+  { name: 'coDevs',          dir: '/srv/coDevs',             port: 3620, domain: 'preview.madladslab.com',       tmux: 'coDevs_session',             category: 'tool',      description: 'coDevs — preview / tenant build host' },
+  { name: 'servers',         dir: '/srv/servers',            port: 3600, domain: 'servers.madladslab.com',      tmux: 'servers',                    category: 'tool',      description: 'Server monitoring dashboard' },
+  { name: 'opsTrain',        dir: '/srv/opsTrain',           port: 3603, domain: 'ops-train.madladslab.com',    tmux: 'opsTrain_session',           category: 'tool',      description: 'QR-driven ops training & task management' },
+  { name: 'piper-tts',       dir: '/srv/piper-tts',          port: null, domain: null,                          tmux: 'piper-tts_session',          category: 'tool',      description: 'OpenAI-compatible TTS wrapper' },
+  { name: 'mcp',             dir: '/srv/mcp',                port: null, domain: null,                          tmux: 'mcp_session',                category: 'tool',      description: 'MCP server for Claude Android' },
+  { name: 'mcp-streamable',  dir: '/srv/mcp',                port: 3650, domain: 'mcp.madladslab.com',          tmux: 'mcp-streamable',             category: 'tool',      description: 'Streamable MCP server variant' },
 ];
 
 // External infrastructure — not tmux-based, pinged remotely. Live status comes from /api/ops/infra.

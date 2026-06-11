@@ -1,0 +1,568 @@
+<%- include('../partials/head', { title: 'Social Media' }) %>
+<%- include('../partials/sidebar', { page: 'social', user: user }) %>
+
+<style>
+  .sm-platform-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+  .sm-pill { display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid var(--border); border-radius:6px; cursor:pointer; transition:all 0.15s; background:var(--surface); user-select:none; }
+  .sm-pill:hover { border-color: var(--navy-mid); }
+  .sm-pill input { display:none; }
+  .sm-pill.disabled { opacity:0.5; cursor:not-allowed; }
+  .sm-pill .sm-ic { font-size:1.2rem; width:24px; text-align:center; flex-shrink:0; }
+  .sm-pill .sm-nm { font-size:0.82rem; font-weight:500; color:var(--on-surface); }
+  .sm-pill .sm-sub { font-size:0.62rem; color:var(--slate); }
+  .sm-pill.sel { border-color: var(--navy); background: rgba(28,43,74,0.05); box-shadow: inset 0 0 0 1px var(--navy); }
+  .sm-conn-card { border:1px solid var(--border); border-radius:6px; padding:16px; background:var(--surface); }
+  .sm-conn-head { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .sm-conn-head .sm-ic { font-size:1.5rem; }
+  .sm-conn-name { font-size:1rem; font-weight:600; color:var(--on-surface); }
+  .sm-status-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .sm-status-dot.ok { background:#15803D; } .sm-status-dot.off { background:#cbd5e1; }
+  .sm-setup { font-size:0.72rem; color:var(--slate); line-height:1.55; background:var(--ivory); border-radius:4px; padding:10px 12px; margin:10px 0; }
+  .sm-soon { font-size:0.6rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--badge-accent); background:rgba(201,168,72,0.15); padding:2px 7px; border-radius:3px; }
+  .sm-res { display:inline-flex; align-items:center; gap:4px; font-size:0.66rem; padding:2px 7px; border-radius:3px; margin:2px 3px 0 0; }
+  .sm-res.ok { background:rgba(21,128,61,0.12); color:var(--success); }
+  .sm-res.fail { background:rgba(185,28,28,0.1); color:var(--danger); }
+  .sm-counter { font-size:0.68rem; color:var(--slate); }
+  .sm-counter.over { color:var(--danger); font-weight:600; }
+  /* Asset picker */
+  .sm-modal { position:fixed; inset:0; background:rgba(15,27,48,0.55); z-index:1000; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .sm-modal-box { background:var(--surface); border-radius:8px; width:min(780px,100%); max-height:84vh; display:flex; flex-direction:column; padding:18px; }
+  .sm-modal-head { display:flex; align-items:center; justify-content:space-between; font-weight:600; color:var(--on-surface); font-family:var(--font-heading); font-size:1.05rem; }
+  .sm-asset-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px; overflow-y:auto; }
+  .sm-asset { border:2px solid var(--border); border-radius:6px; overflow:hidden; cursor:pointer; background:var(--ivory); transition:border-color 0.12s; }
+  .sm-asset:hover { border-color:var(--navy-mid); }
+  .sm-asset.sel { border-color:var(--navy); box-shadow:inset 0 0 0 2px var(--navy); }
+  .sm-asset img { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; }
+  .sm-asset .nm { font-size:0.6rem; color:var(--slate); padding:3px 5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sm-thumb { position:relative; width:64px; height:64px; border-radius:4px; overflow:hidden; border:1px solid var(--border); }
+  .sm-thumb img { width:100%; height:100%; object-fit:cover; }
+  .sm-thumb button { position:absolute; top:2px; right:2px; background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:50%; width:17px; height:17px; font-size:11px; line-height:1; cursor:pointer; padding:0; }
+  /* Engage */
+  .sm-eng-card { border:1px solid var(--border); border-radius:8px; padding:16px; background:var(--surface); }
+  .sm-eng-post { display:flex; gap:12px; padding:14px 0; border-top:1px solid var(--border); }
+  .sm-eng-post:first-child { border-top:none; }
+  .sm-eng-thumb { width:72px; height:72px; border-radius:6px; object-fit:cover; flex-shrink:0; border:1px solid var(--border); background:var(--ivory); }
+  .sm-eng-body { flex:1; min-width:0; }
+  .sm-eng-text { font-size:0.84rem; color:var(--on-surface); line-height:1.45; margin-bottom:6px; white-space:pre-wrap; word-break:break-word; }
+  .sm-eng-meta { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }
+  .sm-eng-metric { font-size:0.68rem; background:var(--ivory); border:1px solid var(--border); border-radius:12px; padding:2px 9px; color:var(--slate); }
+  .sm-eng-metric b { color:var(--on-surface); }
+  .sm-eng-date { font-size:0.66rem; color:var(--slate); }
+  .sm-eng-link { font-size:0.66rem; color:var(--gold); text-decoration:none; }
+  .sm-eng-comments { margin-top:8px; border-left:2px solid var(--border); padding-left:10px; }
+  .sm-eng-comment { font-size:0.76rem; margin-bottom:8px; }
+  .sm-eng-comment .who { font-weight:600; color:var(--on-surface); }
+  .sm-eng-comment .when { color:var(--slate); font-size:0.62rem; margin-left:5px; }
+  .sm-eng-replybar { display:flex; gap:6px; margin-top:4px; }
+  .sm-eng-replybar input { flex:1; font-size:0.74rem; padding:5px 8px; border:1px solid var(--border); border-radius:4px; }
+  .sm-eng-replybar button { font-size:0.66rem; white-space:nowrap; }
+  .sm-eng-empty { font-size:0.78rem; color:var(--slate); padding:10px 0; }
+  .sm-eng-err { font-size:0.78rem; color:var(--danger); padding:10px 12px; background:rgba(185,28,28,0.07); border-radius:4px; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">Social Media</div>
+  <div class="topbar-actions">
+    <a href="/admin/social/export?format=csv" class="btn btn-ghost btn-sm">Export CSV</a>
+    <a href="/admin/social/export?format=json" class="btn btn-ghost btn-sm">Export JSON</a>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- Stats -->
+  <div class="stat-grid" style="margin-bottom:24px;">
+    <div class="stat-card"><div class="stat-label">Connected</div><div class="stat-value"><%= stats.connected %></div></div>
+    <div class="stat-card"><div class="stat-label">Scheduled</div><div class="stat-value gold"><%= stats.scheduled %></div></div>
+    <div class="stat-card"><div class="stat-label">Published</div><div class="stat-value"><%= stats.published %></div></div>
+    <div class="stat-card"><div class="stat-label">Drafts</div><div class="stat-value"><%= stats.drafts %></div></div>
+  </div>
+
+  <div class="tabs">
+    <a href="?tab=compose" class="tab-link <%= tab === 'compose' ? 'active' : '' %>">Compose</a>
+    <a href="?tab=scheduled" class="tab-link <%= tab === 'scheduled' ? 'active' : '' %>">Posts & Schedule (<%= posts.length %>)</a>
+    <a href="?tab=engage" class="tab-link <%= tab === 'engage' ? 'active' : '' %>">Engage</a>
+    <a href="?tab=connections" class="tab-link <%= tab === 'connections' ? 'active' : '' %>">Connections (<%= stats.connected %>)</a>
+    <a href="?tab=compliance" class="tab-link <%= tab === 'compliance' ? 'active' : '' %>">Compliance<% if (stats.deletionPending) { %> (<%= stats.deletionPending %>)<% } %></a>
+    <a href="?tab=suggestions" class="tab-link <%= tab === 'suggestions' ? 'active' : '' %>">Suggestions<% if (typeof suggestions !== 'undefined' && suggestions.length) { %> (<%= suggestions.length %>)<% } %></a>
+    <a href="?tab=follows" class="tab-link <%= tab === 'follows' ? 'active' : '' %>">My Follows</a>
+    <a href="?tab=activity" class="tab-link <%= tab === 'activity' ? 'active' : '' %>">Activity<% if (typeof activity !== 'undefined' && activity.filter(a=>!a.handled).length) { %> (<%= activity.filter(a=>!a.handled).length %>)<% } %></a>
+    <a href="?tab=listening" class="tab-link <%= tab === 'listening' ? 'active' : '' %>">Listening<% if (typeof keywords !== 'undefined' && keywords.length) { %> (<%= keywords.length %>)<% } %></a>
+  </div>
+
+  <% if (qs.success) { %>
+  <div class="alert alert-success"><%= qs.success %></div>
+  <% } %>
+  <% if (qs.error) { %>
+  <div class="alert alert-error"><%= qs.error %></div>
+  <% } %>
+
+  <!-- ═══════════ COMPOSE ═══════════ -->
+  <% if (tab === 'compose') { %>
+    <% if (!connectedKeys.length) { %>
+    <div class="alert alert-error" style="background:rgba(201,168,72,0.08);border-color:rgba(201,168,72,0.3);color:var(--badge-accent);">
+      No platforms connected yet. Add your accounts under <a href="?tab=connections" style="color:inherit;text-decoration:underline;">Connections</a> first.
+    </div>
+    <% } %>
+    <form method="POST" action="/admin/social/posts" class="card">
+      <div class="card-title">Compose Post</div>
+
+      <div class="form-field" style="margin-bottom:16px;">
+        <label>Post Text</label>
+        <textarea name="body" id="smBody" placeholder="What's happening?" maxlength="5000" oninput="smCount()"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+          <span class="sm-counter" id="smCounter">0 chars</span>
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.66rem;" onclick="smAI()">✦ Write with AI</button>
+        </div>
+      </div>
+
+      <div class="form-field" style="margin-bottom:14px;">
+        <label>Link (optional)</label>
+        <input type="url" name="link" placeholder="https://...">
+      </div>
+
+      <div class="form-field" style="margin-bottom:18px;">
+        <label>Images <span style="text-transform:none;font-weight:400;color:var(--slate);">— required for Instagram / Pinterest</span></label>
+        <div style="display:flex;gap:8px;align-items:flex-start;">
+          <input type="text" name="media" id="smMedia" placeholder="paste image URL(s), comma separated" oninput="smRenderMedia()" style="flex:1;">
+          <button type="button" class="btn btn-ghost btn-sm" style="white-space:nowrap;" onclick="smOpenAssets()">📁 From Assets</button>
+          <a href="/admin/assets/social" target="_blank" class="btn btn-ghost btn-sm" style="white-space:nowrap;" title="Open the social graphic generator — saved images appear in 'From Assets'">✨ Generate</a>
+        </div>
+        <div id="smMediaPreview" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"></div>
+      </div>
+
+      <div class="form-field" style="margin-bottom:18px;">
+        <label>Post To</label>
+        <div class="sm-platform-grid" style="margin-top:6px;">
+          <% livePlatforms.forEach(p => { const acc = accountMap[p.key]; const ready = connectedKeys.includes(p.key); %>
+          <label class="sm-pill <%= ready ? '' : 'disabled' %>" data-key="<%= p.key %>" onclick="<%= ready ? 'smToggle(this)' : '' %>">
+            <input type="checkbox" name="platforms" value="<%= p.key %>" <%= ready ? '' : 'disabled' %>>
+            <span class="sm-ic"><%= p.icon %></span>
+            <span>
+              <span class="sm-nm"><%= p.name %></span><br>
+              <span class="sm-sub"><%= ready ? 'Connected' : 'Not connected' %></span>
+            </span>
+          </label>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-bottom:18px;">
+        <div class="form-field">
+          <label>Schedule For (optional)</label>
+          <input type="datetime-local" name="scheduledAt" id="smSchedAt">
+        </div>
+      </div>
+
+      <div class="form-actions" style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button type="submit" name="action" value="publish" class="btn btn-gold">Publish Now</button>
+        <button type="submit" name="action" value="schedule" class="btn btn-navy">Schedule</button>
+        <button type="submit" name="action" value="draft" class="btn btn-ghost">Save Draft</button>
+      </div>
+    </form>
+  <% } %>
+
+  <!-- ═══════════ SCHEDULED / POSTS ═══════════ -->
+  <% if (tab === 'scheduled') { %>
+    <% if (!posts.length) { %>
+    <div class="card empty"><div class="empty-icon">📣</div><p>No posts yet. Head to <a href="?tab=compose">Compose</a> to create one.</p></div>
+    <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Status</th><th>Platforms</th><th>When</th><th>Content</th><th>Results</th><th></th></tr></thead>
+        <tbody>
+        <% posts.forEach(p => {
+            const badge = { draft:'badge-draft', scheduled:'badge-prospect', published:'badge-active', failed:'badge-inactive', partial:'badge-featured', publishing:'badge-prospect' }[p.status] || 'badge-draft';
+            const when = p.status === 'scheduled' ? p.scheduledAt : (p.publishedAt || p.createdAt);
+        %>
+          <tr>
+            <td><span class="badge <%= badge %>"><%= p.status %></span></td>
+            <td><% (p.platforms||[]).forEach(k => { const d = platforms.find(x=>x.key===k); %><span title="<%= d?d.name:k %>" style="font-size:1.1rem;margin-right:3px;"><%= d?d.icon:k %></span><% }) %></td>
+            <td style="font-size:0.78rem;white-space:nowrap;"><%= when ? new Date(when).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—' %></td>
+            <td style="max-width:280px;"><div style="font-size:0.82rem;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;"><%= p.body || '(media only)' %></div><% if (p.link) { %><div style="font-size:0.68rem;color:var(--gold);">🔗 <%= p.link %></div><% } %></td>
+            <td style="max-width:200px;">
+              <% (p.results||[]).forEach(r => { const d = platforms.find(x=>x.key===r.platform); %>
+                <% if (r.ok) { %><span class="sm-res ok" title="<%= r.url||'' %>">✓ <%= d?d.name:r.platform %></span><% } else { %>
+                  <div class="sm-res fail" style="display:block;margin-bottom:4px;">✕ <%= d?d.name:r.platform %></div>
+                  <% if (r.error) { %><div style="font-size:0.66rem;color:#c0392b;line-height:1.3;word-break:break-word;white-space:normal;"><%= r.error %></div><% } %>
+                <% } %>
+              <% }) %>
+            </td>
+            <td style="white-space:nowrap;">
+              <% if (p.status !== 'published') { %>
+              <form method="POST" action="/admin/social/posts/<%= p._id %>/publish" style="display:inline;"><button class="btn btn-gold btn-sm" style="font-size:0.66rem;">Publish</button></form>
+              <% } %>
+              <form method="POST" action="/admin/social/posts/<%= p._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this post?')"><button class="btn btn-danger btn-sm" style="font-size:0.66rem;">Delete</button></form>
+            </td>
+          </tr>
+        <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  <% } %>
+
+  <!-- ═══════════ ENGAGE ═══════════ -->
+  <% if (tab === 'engage') {
+       const engageKeys = platforms.filter(p => engageCaps[p.key] && connectedKeys.includes(p.key)).map(p => p.key);
+  %>
+    <div class="sm-setup" style="margin-bottom:18px;">
+      <strong>Engage</strong> pulls your recent posts, their analytics, and comments from each connected account — and lets you reply where the platform's API allows it. Currently available for <strong>Instagram</strong> & <strong>Facebook</strong>; more platforms are read-only or unsupported by their APIs.
+    </div>
+    <% if (!engageKeys.length) { %>
+    <div class="card empty"><div class="empty-icon">💬</div><p>No engage-capable accounts connected. Connect <strong>Instagram</strong> or <strong>Facebook</strong> under <a href="?tab=connections">Connections</a>.</p></div>
+    <% } else { %>
+    <div style="display:grid;gap:18px;">
+    <% platforms.filter(p => engageCaps[p.key] && connectedKeys.includes(p.key)).forEach(p => { const acc = accountMap[p.key] || {}; const caps = engageCaps[p.key]; %>
+      <div class="sm-eng-card" data-platform="<%= p.key %>"
+           data-reply-comment="<%= caps.replyToComment ? 1 : 0 %>"
+           data-reply-post="<%= caps.replyToPost ? 1 : 0 %>">
+        <div class="sm-conn-head" style="margin-bottom:12px;">
+          <span class="sm-ic"><%= p.icon %></span>
+          <span class="sm-conn-name"><%= p.name %></span>
+          <% if (acc.profile && acc.profile.name) { %><span style="font-size:0.78rem;color:var(--slate);">@<%= acc.profile.name %></span><% } %>
+          <button type="button" class="btn btn-ghost btn-sm" style="margin-left:auto;font-size:0.66rem;" onclick="smEngLoad('<%= p.key %>')">↻ Refresh</button>
+        </div>
+        <div class="sm-eng-feed" id="smEngFeed-<%= p.key %>">
+          <div class="sm-eng-loading" style="font-size:0.8rem;color:var(--slate);padding:12px;">Loading recent posts…</div>
+        </div>
+      </div>
+    <% }) %>
+    </div>
+    <% } %>
+  <% } %>
+
+  <!-- ═══════════ CONNECTIONS ═══════════ -->
+  <% if (tab === 'connections') { %>
+    <div class="sm-setup" style="margin-bottom:18px;">
+      <strong>How it works:</strong> enter each platform's API credentials below. Secrets are encrypted (AES-256-GCM) before storage and never shown again — only a masked hint. See the per-platform setup notes for where to obtain each key.
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;">
+    <% platforms.forEach(p => { const acc = accountMap[p.key] || {}; const configured = acc.configured; %>
+      <div class="sm-conn-card">
+        <div class="sm-conn-head">
+          <span class="sm-ic"><%= p.icon %></span>
+          <span class="sm-conn-name"><%= p.name %></span>
+          <% if (p.comingSoon) { %><span class="sm-soon">Soon</span><% } %>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+            <span class="sm-status-dot <%= configured ? 'ok' : 'off' %>"></span>
+            <span style="font-size:0.68rem;color:var(--slate);"><%= configured ? 'Connected' : 'Not set' %></span>
+          </span>
+        </div>
+        <div class="sm-setup"><%= p.setup %></div>
+        <form method="POST" action="/admin/social/connections/<%= p.key %>">
+          <% p.fields.forEach(f => { const isSet = acc.secretsSet && acc.secretsSet[f.key]; const val = (!f.secret && acc.credentials) ? (acc.credentials[f.key]||'') : ''; %>
+          <div class="form-field" style="margin-bottom:10px;">
+            <label><%= f.label %></label>
+            <input type="<%= f.secret ? 'password' : 'text' %>" name="<%= f.key %>"
+                   value="<%= val %>"
+                   placeholder="<%= f.secret && isSet ? '•••••••• (saved — leave blank to keep)' : (f.placeholder||'') %>"
+                   <%= p.comingSoon ? 'disabled' : '' %> autocomplete="off">
+          </div>
+          <% }) %>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+            <button type="submit" class="btn btn-navy btn-sm" <%= p.comingSoon ? 'disabled' : '' %>>Save</button>
+            <% if (!p.comingSoon && configured) { %>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="smTest('<%= p.key %>', this)">Test</button>
+            <% } %>
+          </div>
+        </form>
+        <% if (p.key === 'googlebusiness' && !p.comingSoon) { %>
+          <a href="/admin/social/google/connect" class="btn btn-gold btn-sm" style="margin-top:8px;display:inline-block;">Connect with Google →</a>
+          <div style="font-size:0.62rem;color:var(--slate);margin-top:5px;line-height:1.5;">Save your Client ID &amp; Secret above first. In your Google OAuth client, register this redirect URI:<br><code><%= (typeof publicWebhookUrl!=='undefined' ? publicWebhookUrl.replace('/webhooks/meta','/admin/social/google/callback') : '/admin/social/google/callback') %></code></div>
+          <% if (typeof gconnected !== 'undefined' && gconnected) { %><div style="font-size:0.66rem;color:var(--success,#15803D);margin-top:5px;">✓ Connected via Google<% if (gidsManual) { %> — couldn't auto-read your Account/Location IDs (API access may still be pending); add them in the fields above.<% } %></div><% } %>
+        <% } %>
+        <% if (!p.comingSoon && configured) { %>
+        <form method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
+          <button class="btn btn-danger btn-sm" style="font-size:0.64rem;">Disconnect</button>
+          <span class="sm-test-result" id="smtest-<%= p.key %>" style="font-size:0.7rem;margin-left:8px;"></span>
+        </form>
+        <% } %>
+      </div>
+    <% }) %>
+    </div>
+  <% } %>
+
+  <!-- ═══════════ COMPLIANCE ═══════════ -->
+  <% if (tab === 'compliance') { %>
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-title">App Compliance URLs</div>
+      <p style="font-size:0.8rem;color:var(--slate);margin-bottom:14px;">Paste these into your Meta / social app settings. The Data Deletion Callback is what platforms call when a user removes your app.</p>
+      <% const _urls = [
+           { label: 'Privacy Policy', url: publicBaseUrl + '/privacy' },
+           { label: 'Terms of Service', url: publicBaseUrl + '/terms' },
+           { label: 'Data Deletion Callback', url: publicBaseUrl + '/data-deletion' },
+         ]; %>
+      <% _urls.forEach(u => { %>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+        <span style="font-size:0.72rem;color:var(--slate);min-width:160px;"><%= u.label %></span>
+        <code style="flex:1;min-width:220px;font-size:0.74rem;background:var(--ivory);padding:6px 10px;border-radius:3px;"><%= u.url %></code>
+        <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.66rem;" onclick="navigator.clipboard.writeText('<%= u.url %>');this.textContent='Copied';setTimeout(()=>this.textContent='Copy',1200);">Copy</button>
+        <a href="<%= u.url %>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="font-size:0.66rem;">Open</a>
+      </div>
+      <% }) %>
+    </div>
+
+    <div class="card-title" style="margin-bottom:10px;">Data Deletion Requests</div>
+    <% if (!deletionRequests.length) { %>
+    <div class="card empty"><div class="empty-icon">🗑</div><p>No deletion requests yet. Requests arrive here when a user removes your app or submits the public form.</p></div>
+    <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Status</th><th>Source</th><th>Identifier</th><th>Code</th><th>Received</th><th></th></tr></thead>
+        <tbody>
+        <% deletionRequests.forEach(d => {
+            const badge = d.status === 'completed' ? 'badge-active' : 'badge-prospect';
+        %>
+          <tr>
+            <td><span class="badge <%= badge %>"><%= d.status %></span></td>
+            <td style="font-size:0.8rem;"><%= d.source %><% if (d.platform) { %> · <%= d.platform %><% } %><% if (d.source === 'meta') { %><br><span style="font-size:0.62rem;color:<%= d.verified ? 'var(--success)' : 'var(--danger)' %>;"><%= d.verified ? '✓ verified' : 'unverified' %></span><% } %></td>
+            <td style="font-size:0.78rem;word-break:break-all;"><%= d.email || d.externalUserId || '—' %></td>
+            <td><code style="font-size:0.72rem;"><%= d.code %></code></td>
+            <td style="font-size:0.76rem;white-space:nowrap;"><%= new Date(d.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) %></td>
+            <td style="white-space:nowrap;">
+              <% if (d.status !== 'completed') { %>
+              <form method="POST" action="/admin/social/deletion/<%= d._id %>/complete" style="display:inline;" onsubmit="return confirm('Mark this deletion request as completed? Make sure the user\'s data has actually been removed.')"><button class="btn btn-gold btn-sm" style="font-size:0.66rem;">Mark done</button></form>
+              <% } else { %>
+              <span style="font-size:0.7rem;color:var(--success);">✓ <%= d.completedAt ? new Date(d.completedAt).toLocaleDateString() : '' %></span>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  <% } %>
+
+  <!-- ═══════════ SUGGESTIONS ═══════════ -->
+  <% if (tab === 'suggestions') { %>
+    <%- include('_suggestions') %>
+  <% } %>
+
+  <!-- ═══════════ MY FOLLOWS ═══════════ -->
+  <% if (tab === 'follows') { %>
+    <%- include('_follows') %>
+  <% } %>
+
+  <!-- ═══════════ ACTIVITY ═══════════ -->
+  <% if (tab === 'activity') { %>
+    <%- include('_activity') %>
+  <% } %>
+
+  <!-- ═══════════ LISTENING ═══════════ -->
+  <% if (tab === 'listening') { %>
+    <%- include('_listening') %>
+  <% } %>
+</div></div>
+
+<!-- Asset picker modal -->
+<div id="smAssetModal" class="sm-modal" style="display:none;">
+  <div class="sm-modal-box">
+    <div class="sm-modal-head">
+      <span>Select Images from Assets</span>
+      <button type="button" class="btn btn-navy btn-sm" onclick="smCloseAssets()">Done</button>
+    </div>
+    <input type="text" id="smAssetSearch" placeholder="Search assets…" oninput="smFilterAssets()" style="margin:10px 0;width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:4px;">
+    <div id="smAssetGrid" class="sm-asset-grid"></div>
+  </div>
+</div>
+
+<script>
+// ── Media / asset picker ──────────────────────────────────────────────────────
+function smMediaUrls() {
+  const el = document.getElementById('smMedia');
+  return el ? el.value.split(/[\n,]+/).map(s => s.trim()).filter(Boolean) : [];
+}
+function smSetMedia(urls) {
+  document.getElementById('smMedia').value = urls.join(', ');
+  smRenderMedia();
+}
+function smRenderMedia() {
+  const wrap = document.getElementById('smMediaPreview');
+  if (!wrap) return;
+  const urls = smMediaUrls();
+  wrap.innerHTML = '';
+  urls.forEach(u => {
+    const d = document.createElement('div'); d.className = 'sm-thumb';
+    d.innerHTML = `<img src="${u}" alt=""><button type="button" title="remove">×</button>`;
+    d.querySelector('button').onclick = () => smSetMedia(smMediaUrls().filter(x => x !== u));
+    wrap.appendChild(d);
+  });
+  document.querySelectorAll('.sm-asset').forEach(c => c.classList.toggle('sel', urls.includes(c.dataset.url)));
+}
+let _smAssets = [];
+async function smOpenAssets() {
+  document.getElementById('smAssetModal').style.display = 'flex';
+  const grid = document.getElementById('smAssetGrid');
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--slate);padding:20px;">Loading…</div>';
+  try {
+    const r = await fetch('/admin/assets/list?limit=200');
+    const d = await r.json();
+    _smAssets = (d.assets || []).filter(a => {
+      const u = a.publicUrl || a.url; if (!u) return false;
+      const t = (a.fileType || a.mimeType || '') + ' ' + u;
+      return /image|\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(t);
+    });
+    smRenderAssets(_smAssets);
+  } catch (e) {
+    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--danger);padding:20px;">Failed to load assets.</div>';
+  }
+}
+function smRenderAssets(list) {
+  const grid = document.getElementById('smAssetGrid');
+  const sel = smMediaUrls();
+  if (!list.length) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--slate);padding:20px;">No image assets found. Upload some in <a href="/admin/assets">Assets</a>.</div>'; return; }
+  grid.innerHTML = '';
+  list.forEach(a => {
+    const u = a.publicUrl || a.url;
+    const c = document.createElement('div');
+    c.className = 'sm-asset' + (sel.includes(u) ? ' sel' : '');
+    c.dataset.url = u;
+    c.innerHTML = `<img src="${u}" alt="" loading="lazy"><div class="nm">${a.title || a.originalName || ''}</div>`;
+    c.onclick = () => {
+      const cur = smMediaUrls();
+      smSetMedia(cur.includes(u) ? cur.filter(x => x !== u) : [...cur, u]);
+    };
+    grid.appendChild(c);
+  });
+}
+function smFilterAssets() {
+  const q = document.getElementById('smAssetSearch').value.toLowerCase();
+  smRenderAssets(_smAssets.filter(a => ((a.title || a.originalName || '') + '').toLowerCase().includes(q)));
+}
+function smCloseAssets() { document.getElementById('smAssetModal').style.display = 'none'; }
+document.getElementById('smAssetModal')?.addEventListener('click', function (e) { if (e.target === this) smCloseAssets(); });
+document.addEventListener('DOMContentLoaded', smRenderMedia);
+
+function smCount() {
+  const b = document.getElementById('smBody');
+  const c = document.getElementById('smCounter');
+  const n = b.value.length;
+  c.textContent = n + ' chars' + (n > 280 ? ' — over X limit (280)' : '');
+  c.classList.toggle('over', n > 280);
+}
+function smToggle(el) {
+  const cb = el.querySelector('input');
+  // checkbox toggles natively via label; sync the selected style next tick
+  setTimeout(() => el.classList.toggle('sel', cb.checked), 0);
+}
+async function smAI() {
+  const body = document.getElementById('smBody');
+  const platforms = [...document.querySelectorAll('input[name="platforms"]:checked')].map(c => c.value);
+  const prompt = window.prompt('What should this post be about?', body.value || '');
+  if (prompt === null) return;
+  body.value = '…writing…';
+  try {
+    const r = await fetch('/admin/social/agent', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, platforms }),
+    });
+    const d = await r.json();
+    if (d.fill) {
+      body.value = d.fill.body || '';
+      const linkIn = document.querySelector('input[name="link"]');
+      if (d.fill.link && linkIn && !linkIn.value) linkIn.value = d.fill.link;
+      smCount();
+    } else { body.value = ''; alert(d.error || 'AI could not write a post'); }
+  } catch (e) { body.value = ''; alert('AI request failed'); }
+}
+async function smTest(key, btn) {
+  const out = document.getElementById('smtest-' + key);
+  btn.disabled = true; btn.textContent = 'Testing…';
+  try {
+    const r = await fetch('/admin/social/connections/' + key + '/test', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const d = await r.json();
+    if (out) { out.textContent = d.ok ? '✓ ' + (d.note || 'OK') : '✕ ' + (d.error || 'Failed'); out.style.color = d.ok ? 'var(--success)' : 'var(--danger)'; }
+  } catch (e) { if (out) { out.textContent = '✕ Request failed'; out.style.color = 'var(--danger)'; } }
+  btn.disabled = false; btn.textContent = 'Test';
+}
+
+// ── Engage tab ───────────────────────────────────────────────────────────────
+function smEngEsc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+function smEngDate(s) { if (!s) return ''; const t = new Date(s); return isNaN(t) ? '' : t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+
+function smEngReplyBar(platform, targetId, kind) {
+  return '<div class="sm-eng-replybar">'
+    + '<input type="text" placeholder="Write a reply…" data-target="' + smEngEsc(targetId) + '" data-kind="' + kind + '">'
+    + '<button type="button" class="btn btn-navy btn-sm" onclick="smEngReply(this,\'' + platform + '\')">Reply</button>'
+    + '</div>';
+}
+
+function smEngRenderPost(platform, card, p) {
+  const canReplyComment = card.dataset.replyComment === '1';
+  const canReplyPost = card.dataset.replyPost === '1';
+  let html = '<div class="sm-eng-post">';
+  if (p.thumb) html += '<img class="sm-eng-thumb" src="' + smEngEsc(p.thumb) + '" alt="" loading="lazy">';
+  html += '<div class="sm-eng-body">';
+  if (p.text) html += '<div class="sm-eng-text">' + smEngEsc(p.text) + '</div>';
+  html += '<div class="sm-eng-meta">';
+  (p.metrics || []).forEach(m => { html += '<span class="sm-eng-metric"><b>' + smEngEsc(m.value) + '</b> ' + smEngEsc(m.label) + '</span>'; });
+  if (p.createdAt) html += '<span class="sm-eng-date">' + smEngDate(p.createdAt) + '</span>';
+  if (p.url) html += '<a class="sm-eng-link" href="' + smEngEsc(p.url) + '" target="_blank" rel="noopener">View ↗</a>';
+  html += '</div>';
+  if (canReplyPost) html += smEngReplyBar(platform, p.id, 'post');
+  const comments = p.comments || [];
+  if (comments.length) {
+    html += '<div class="sm-eng-comments">';
+    comments.forEach(c => {
+      html += '<div class="sm-eng-comment">'
+        + '<span class="who">' + smEngEsc(c.from) + '</span>'
+        + (c.createdAt ? '<span class="when">' + smEngDate(c.createdAt) + '</span>' : '')
+        + '<div>' + smEngEsc(c.text) + '</div>'
+        + (canReplyComment ? smEngReplyBar(platform, c.id, 'comment') : '')
+        + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+async function smEngLoad(platform) {
+  const card = document.querySelector('.sm-eng-card[data-platform="' + platform + '"]');
+  if (!card) return;
+  const feed = document.getElementById('smEngFeed-' + platform);
+  feed.innerHTML = '<div class="sm-eng-loading" style="font-size:0.8rem;color:var(--slate);padding:12px;">Loading recent posts…</div>';
+  try {
+    const r = await fetch('/admin/social/engage/' + platform + '?json=1');
+    const d = await r.json();
+    if (!d.ok) { feed.innerHTML = '<div class="sm-eng-err">✕ ' + smEngEsc(d.error || 'Could not load feed') + '</div>'; return; }
+    if (!d.posts || !d.posts.length) { feed.innerHTML = '<div class="sm-eng-empty">No recent posts found.</div>'; return; }
+    feed.innerHTML = d.posts.map(p => smEngRenderPost(platform, card, p)).join('');
+  } catch (e) {
+    feed.innerHTML = '<div class="sm-eng-err">✕ Request failed</div>';
+  }
+}
+
+async function smEngReply(btn, platform) {
+  const input = btn.previousElementSibling;
+  const text = (input.value || '').trim();
+  if (!text) { input.focus(); return; }
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await fetch('/admin/social/engage/' + platform + '/reply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetId: input.dataset.target, kind: input.dataset.kind, text }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const bar = btn.parentElement;
+      bar.innerHTML = '<span style="font-size:0.72rem;color:var(--success);">✓ Reply posted</span>';
+    } else {
+      btn.disabled = false; btn.textContent = 'Reply';
+      alert(d.error || 'Reply failed');
+    }
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Reply';
+    alert('Reply request failed');
+  }
+}
+
+// Auto-load every engage card when the tab is shown.
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.sm-eng-card[data-platform]').forEach(c => smEngLoad(c.dataset.platform));
+});
+</script>
+</body>
+</html>

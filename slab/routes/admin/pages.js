@@ -11,7 +11,7 @@ const router = express.Router();
 
 const ALLOWED_COLLECTIONS = ['blog', 'portfolio'];
 const ALLOWED_PAGE_TYPES  = ['content', 'data-list', 'landing'];
-const RESERVED_SLUGS      = ['blog', 'admin', 'auth', 'sitemap.xml'];
+const RESERVED_SLUGS      = ['blog', 'newsletter', 'help', 'admin', 'auth', 'sitemap.xml'];
 
 function toSlug(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');

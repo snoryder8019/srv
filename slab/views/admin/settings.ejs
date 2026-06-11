@@ -60,13 +60,50 @@
     width: 160px; height: 160px; border-radius: 50%;
     background: radial-gradient(circle, rgba(201,168,72,0.12) 0%, transparent 70%);
   }
+
+  /* Social media connections */
+  .social-list { display: flex; flex-direction: column; gap: 8px; }
+  .social-item { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .social-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; flex-wrap: wrap; }
+  .social-ic { font-size: 1.3rem; width: 26px; text-align: center; flex-shrink: 0; }
+  .social-name { font-size: 0.85rem; font-weight: 600; color: var(--on-surface); }
+  .social-name .soon { font-size: 0.6rem; color: var(--slate); font-weight: 500; }
+  .social-checks { display: flex; gap: 12px; margin-left: auto; }
+  .chk { display: inline-flex; align-items: center; gap: 4px; font-size: 0.66rem; color: #c9ced6; font-weight: 600; transition: color 0.2s; }
+  .chk.on { color: #16a34a; }
+  .btn-input { padding: 6px 13px; background: var(--navy); color: #fff; border: none; border-radius: 3px; font-family: 'Jost', sans-serif; font-size: 0.7rem; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .btn-input:hover { background: var(--navy-deep); }
+  .soon-label { font-size: 0.66rem; color: var(--slate); }
+  .social-form { padding: 14px 12px; border-top: 1px solid var(--border); background: var(--ivory); }
+  .social-setup { font-size: 0.7rem; color: var(--slate); line-height: 1.55; margin-bottom: 12px; }
+  .social-setup a { color: var(--gold); font-weight: 500; }
+  .social-actions { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+
+  /* Accordion groups — collapsible categories that hold the settings cards */
+  .acc-group { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 14px; overflow: hidden; background: var(--surface); }
+  .acc-head {
+    width: 100%; display: flex; align-items: center; gap: 10px; cursor: pointer;
+    padding: 15px 20px; background: var(--surface); border: none; text-align: left;
+    font-family: 'Jost', sans-serif; font-size: 0.92rem; font-weight: 600; color: var(--navy);
+    letter-spacing: 0.04em; transition: background 0.15s;
+  }
+  .acc-head:hover { background: var(--ivory); }
+  .acc-head .acc-ic { color: var(--gold); }
+  .acc-head .acc-sub { font-size: 0.68rem; font-weight: 400; color: var(--slate); letter-spacing: 0; text-transform: none; }
+  .acc-head .acc-chevron { margin-left: auto; transition: transform 0.2s; color: var(--slate); font-size: 0.7rem; }
+  .acc-group.open .acc-head .acc-chevron { transform: rotate(90deg); }
+  .acc-body { display: none; padding: 0 16px 8px; border-top: 1px solid var(--border); }
+  .acc-group.open .acc-body { display: block; }
+  /* Sections inside an accordion drop their outer chrome — the group supplies it */
+  .acc-body .settings-section { border: none; border-radius: 0; padding: 18px 4px; margin-bottom: 0; }
+  .acc-body .settings-section + .settings-section { border-top: 1px solid var(--border); }
 </style>
 
 <div class="settings-grid">
   <h1 style="font-size:1.2rem;font-weight:600;margin-bottom:16px;">Settings</h1>
 
   <% if (saved) { %><div class="saved-toast">Settings saved.</div><% } %>
-  <% if (error) { %><div class="error-toast">Failed to save settings.</div><% } %>
+  <% if (error) { %><div class="error-toast"><%= (typeof error === 'string' && error !== 'save') ? error : 'Failed to save settings.' %></div><% } %>
 
   <div class="status-bar status-<%= settings.status || 'preview' %>">
     <strong><%= settings.status === 'active' ? 'Live' : 'Preview Mode' %></strong>
@@ -207,6 +244,11 @@
 
   <form method="POST" action="/admin/settings">
 
+    <!-- ░░░ ACCORDION GROUP: BUSINESS ░░░ -->
+    <div class="acc-group open">
+      <button type="button" class="acc-head" onclick="toggleAcc(this)"><span class="acc-ic">&#9672;</span> Business <span class="acc-sub">profile &amp; domain</span><span class="acc-chevron">&#9656;</span></button>
+      <div class="acc-body">
+
     <!-- ═══════════ BUSINESS PROFILE ═══════════ -->
     <div class="settings-section">
       <h2>&#9672; Business Profile</h2>
@@ -327,6 +369,28 @@
       <% } %>
     </div>
 
+      </div><!-- /acc-body --></div><!-- /GROUP: BUSINESS -->
+
+    <!-- ░░░ ACCORDION GROUP: PAYMENTS ░░░ -->
+    <div class="acc-group">
+      <button type="button" class="acc-head" onclick="toggleAcc(this)"><span class="acc-ic">&#9672;</span> Payments <span class="acc-sub">Stripe &amp; PayPal</span><span class="acc-chevron">&#9656;</span></button>
+      <div class="acc-body">
+
+    <!-- ═══════════ PAYMENT METHOD SELECTOR ═══════════ -->
+    <div class="settings-section">
+      <h2>&#9672; Payment Methods</h2>
+      <p class="desc">Choose which payment option(s) customers see on your invoice payment page. Only configured providers will work.</p>
+      <div class="field-row">
+        <label>Offer on Invoices</label>
+        <select name="paymentProvider">
+          <option value="both"   <%= (settings.paymentProvider || 'both') === 'both'   ? 'selected' : '' %>>Both — let the customer choose</option>
+          <option value="stripe" <%= settings.paymentProvider === 'stripe' ? 'selected' : '' %>>Stripe only (Pay with Card)</option>
+          <option value="paypal" <%= settings.paymentProvider === 'paypal' ? 'selected' : '' %>>PayPal only</option>
+        </select>
+        <div class="field-hint">Controls the buttons shown at <code>/pay/&hellip;</code>. Set up your keys in the sections below.</div>
+      </div>
+    </div>
+
     <!-- ═══════════ STRIPE ═══════════ -->
     <div class="settings-section">
       <h2>
@@ -412,41 +476,144 @@
       </div>
     </div>
 
+      </div><!-- /acc-body --></div><!-- /GROUP: PAYMENTS -->
+
+    <!-- ░░░ ACCORDION GROUP: EMAIL ░░░ -->
+    <div class="acc-group">
+      <button type="button" class="acc-head" onclick="toggleAcc(this)"><span class="acc-ic">&#9672;</span> Email <span class="acc-sub">sending provider &amp; DNS</span><span class="acc-chevron">&#9656;</span></button>
+      <div class="acc-body">
+
     <!-- ═══════════ EMAIL (ZOHO) ═══════════ -->
     <div class="settings-section">
+      <% var ep = settings.emailProvider || 'zoho'; %>
       <h2>
-        &#9672; Email (Zoho SMTP)
-        <button type="button" class="guide-toggle" onclick="toggleGuide('zoho')">&#9432; Setup Guide</button>
+        &#9672; Email Sending
       </h2>
-      <p class="desc">Send invoices, campaigns, and client emails from your own domain. Requires a Zoho Mail account.</p>
+      <p class="desc">Send invoices, campaigns, and client emails from your own mailbox. Pick a provider, then enter the login below. Most providers need an <strong>app-specific password</strong> &mdash; not your normal login password.</p>
 
-      <div class="guide-panel" id="guide-zoho">
+      <div class="field-row">
+        <label>Email Provider</label>
+        <select name="emailProvider" id="emailProvider" onchange="onProviderChange()">
+          <option value="zoho"    <%= ep==='zoho'    ? 'selected' : '' %>>Zoho Mail</option>
+          <option value="gmail"   <%= ep==='gmail'   ? 'selected' : '' %>>Gmail / Google Workspace</option>
+          <option value="outlook" <%= ep==='outlook' ? 'selected' : '' %>>Outlook / Microsoft 365</option>
+          <option value="custom"  <%= ep==='custom'  ? 'selected' : '' %>>Custom SMTP</option>
+        </select>
+        <div class="field-hint" id="providerHint"></div>
+      </div>
+
+      <!-- Sign-in method — only Gmail/Outlook can use OAuth -->
+      <% var am = settings.emailAuthMode || 'password'; %>
+      <div class="field-row" id="authModeRow" style="display:none;">
+        <label>Sign-in Method</label>
+        <label style="display:flex;align-items:center;gap:8px;font-weight:400;text-transform:none;letter-spacing:0;margin-bottom:6px;cursor:pointer;">
+          <input type="radio" name="emailAuthMode" value="password" <%= am !== 'oauth' ? 'checked' : '' %> onchange="onAuthModeChange()" style="width:auto;"> App password (SMTP) <span style="color:var(--slate);font-size:0.7rem;">— simplest</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer;">
+          <input type="radio" name="emailAuthMode" value="oauth" <%= am === 'oauth' ? 'checked' : '' %> onchange="onAuthModeChange()" style="width:auto;"> OAuth sign-in <span style="color:var(--slate);font-size:0.7rem;">— required when SMTP passwords are disabled (M365 business / Workspace)</span>
+        </label>
+      </div>
+
+      <!-- Per-provider setup guides — JS shows only the active provider's -->
+      <div class="guide-panel prov-guide" id="provGuide-zoho">
         <ol>
-          <li>Go to <a href="https://www.zoho.com/mail/zohomail-pricing.html" target="_blank">Zoho Mail</a> and sign up for a plan (Mail Lite works — free plan does NOT include SMTP).</li>
-          <li>During setup, add your domain (e.g., <code><%= settings.domain %></code>) and verify ownership via a TXT record.</li>
-          <li>Create your email address (e.g., <code>hello@<%= settings.domain %></code>).</li>
-          <li>Enable SMTP access: go to <a href="https://accounts.zoho.com/home#security/security_pwd" target="_blank">Zoho Account &rarr; Security</a>.</li>
-          <li>Scroll to <strong>App Passwords</strong> and click <strong>Generate New Password</strong>.</li>
-          <li>Name it (e.g., "sLab Platform") and copy the generated password.</li>
-          <li>Paste your Zoho email address and the app password below.</li>
-          <li>Hit <strong>Test</strong> to verify the SMTP connection works.</li>
+          <li>Sign up for <a href="https://www.zoho.com/mail/zohomail-pricing.html" target="_blank">Zoho Mail</a> (Mail Lite works — the free plan does NOT include SMTP).</li>
+          <li>Add your domain (e.g. <code><%= settings.domain %></code>) and verify ownership via a TXT record.</li>
+          <li>Create your mailbox (e.g. <code>hello@<%= settings.domain %></code>).</li>
+          <li>Go to <a href="https://accounts.zoho.com/home#security/security_pwd" target="_blank">Zoho Account &rarr; Security &rarr; App Passwords</a> and generate a password.</li>
+          <li>Paste the email address + app password below and hit <strong>Test</strong>.</li>
         </ol>
-        <div class="guide-tip">Important: Regular Zoho passwords won't work for SMTP. You must use an App Password. After setup, configure the DNS records in the section below.</div>
+        <div class="guide-tip">Regular Zoho passwords won't work for SMTP — you must use an App Password.</div>
+      </div>
+      <div class="guide-panel prov-guide" id="provGuide-gmail">
+        <ol>
+          <li>Turn on <a href="https://myaccount.google.com/signinoptions/two-step-verification" target="_blank">2-Step Verification</a> for the Google account (required before app passwords exist).</li>
+          <li>Go to <a href="https://myaccount.google.com/apppasswords" target="_blank">Google Account &rarr; App passwords</a>, create one named "sLab", and copy the 16-character code.</li>
+          <li>Enter the Gmail/Workspace address + that app password below and hit <strong>Test</strong>.</li>
+        </ol>
+        <div class="guide-tip">Your normal Google password will be rejected — only an App Password works over SMTP.</div>
+      </div>
+      <div class="guide-panel prov-guide" id="provGuide-outlook">
+        <ol>
+          <li><strong>Personal Outlook.com / Hotmail:</strong> create an app password at <a href="https://account.microsoft.com/security" target="_blank">account.microsoft.com &rarr; Security &rarr; Advanced security options</a>, then enter it below.</li>
+          <li><strong>Microsoft 365 business:</strong> many tenants block SMTP basic-auth (AUTH). If the password is rejected, an admin must enable "Authenticated SMTP" for the mailbox, or use the <strong>Advanced &rarr; OAuth</strong> option below.</li>
+          <li>Enter the address + app password and hit <strong>Test</strong>.</li>
+        </ol>
+        <div class="guide-tip">Outlook uses STARTTLS on port 587 — handled automatically.</div>
+      </div>
+      <div class="guide-panel prov-guide" id="provGuide-custom">
+        <ol>
+          <li>Enter your provider's SMTP host and port below (465 = implicit TLS, 587 = STARTTLS).</li>
+          <li>Use the mailbox login or an app-specific password as the credentials.</li>
+          <li>Hit <strong>Test</strong> to verify the connection.</li>
+        </ol>
       </div>
 
-      <div class="field-row">
-        <label>Zoho Email Address</label>
-        <input type="email" name="zohoUser" value="<%= settings.zohoUser %>" placeholder="you@yourdomain.com">
-        <div class="field-hint">The "from" address for all outgoing emails (invoices, campaigns, notifications)</div>
-      </div>
-      <div class="field-row">
-        <label>Zoho App Password <% if (settings.zohoPass_set) { %><span class="field-set">&#9679; configured</span><% } %></label>
-        <div class="inline">
-          <input type="password" name="zohoPass" value="<%= settings.zohoPass %>" placeholder="App-specific password">
-          <button type="button" class="btn-test" onclick="testEmail()">Test</button>
+      <!-- Custom SMTP host/port — shown only for Custom provider -->
+      <div id="customSmtpFields" style="display:none;">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:0 14px;">
+          <div class="field-row">
+            <label>SMTP Host</label>
+            <input type="text" name="smtpHost" value="<%= settings.smtpHost || '' %>" placeholder="smtp.yourprovider.com">
+          </div>
+          <div class="field-row">
+            <label>Port</label>
+            <input type="text" name="smtpPort" value="<%= settings.smtpPort || '' %>" placeholder="465 or 587">
+          </div>
         </div>
-        <div class="test-result" id="emailResult"></div>
-        <div class="field-hint">App password from Zoho Account &rarr; Security &rarr; App Passwords. Not your login password.</div>
+        <div class="field-hint">Port 465 uses implicit TLS; 587 uses STARTTLS. We pick the right mode from the port.</div>
+      </div>
+
+      <!-- Password (SMTP) credentials — shown when sign-in method = App password -->
+      <div id="passwordAuthFields">
+        <div class="field-row">
+          <label>Email Address <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--slate);">(the "from" address)</span></label>
+          <input type="email" name="zohoUser" value="<%= settings.zohoUser %>" placeholder="you@yourdomain.com">
+          <div class="field-hint">All outgoing emails (invoices, campaigns, notifications) are sent from this address.</div>
+        </div>
+        <div class="field-row">
+          <label><span id="emailPassName">App Password</span> <% if (settings.zohoPass_set) { %><span class="field-set">&#9679; configured</span><% } %></label>
+          <div class="inline">
+            <input type="password" name="zohoPass" value="<%= settings.zohoPass %>" placeholder="App-specific password">
+            <button type="button" class="btn-test" onclick="testEmail()">Test</button>
+          </div>
+          <div class="test-result" id="emailResult"></div>
+          <div class="field-hint" id="emailPassHint">Use an app-specific password, not your normal login password.</div>
+        </div>
+      </div>
+
+      <!-- OAuth sign-in (Gmail/Outlook) — shown when sign-in method = OAuth -->
+      <div id="oauthConnectFields" style="display:none;">
+        <div class="guide-panel open" style="margin-top:4px;">
+          <p style="font-size:0.74rem;color:var(--on-surface);margin:0 0 10px;line-height:1.6;">
+            Register an OAuth app with your provider, paste its Client ID &amp; Secret, click <strong>Save Settings</strong>, then <strong>Connect &amp; Authorize</strong> to sign in. No password is stored — sLab keeps an encrypted refresh token and auto-renews access.
+          </p>
+
+          <div class="oauth-prov" id="oauthProv-gmail">
+            <div class="guide-tip" style="margin:0 0 8px;">Google: at <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Cloud Console &rarr; Credentials</a> create an OAuth 2.0 Client ID (type <strong>Web application</strong>), enable the Gmail API, and add the redirect URI below.</div>
+            <div class="field-row"><label>Google OAuth Client ID</label><input type="text" name="gmailOAuthClientId" value="<%= settings.gmailOAuthClientId || '' %>" placeholder="...apps.googleusercontent.com"></div>
+            <div class="field-row"><label>Google OAuth Client Secret <% if (settings.gmailOAuthSecret_set) { %><span class="field-set">&#9679; configured</span><% } %></label><input type="password" name="gmailOAuthSecret" value="<%= settings.gmailOAuthSecret || '' %>" placeholder="GOCSPX-..."></div>
+          </div>
+
+          <div class="oauth-prov" id="oauthProv-outlook">
+            <div class="guide-tip" style="margin:0 0 8px;">Microsoft: in <a href="https://entra.microsoft.com/" target="_blank">Entra ID &rarr; App registrations</a> register a <strong>Web</strong> app, add the delegated <code>SMTP.Send</code> + <code>offline_access</code> permissions, create a client secret, and add the redirect URI below.</div>
+            <div class="field-row"><label>Microsoft OAuth Client ID</label><input type="text" name="outlookOAuthClientId" value="<%= settings.outlookOAuthClientId || '' %>" placeholder="Application (client) ID"></div>
+            <div class="field-row"><label>Microsoft OAuth Client Secret <% if (settings.outlookOAuthSecret_set) { %><span class="field-set">&#9679; configured</span><% } %></label><input type="password" name="outlookOAuthSecret" value="<%= settings.outlookOAuthSecret || '' %>" placeholder="Client secret value"></div>
+          </div>
+
+          <div class="field-row">
+            <label>Authorized Redirect URI <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--slate);">(add this exact URL to your OAuth app)</span></label>
+            <input type="text" id="oauthRedirectUri" value="" readonly onclick="this.select()" style="font-family:monospace;font-size:0.72rem;background:var(--ivory);">
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;">
+            <a id="oauthConnectBtn" href="#" class="btn-test" style="text-decoration:none;display:inline-block;">Connect &amp; Authorize</a>
+            <button type="button" class="btn-test" style="background:var(--navy);" onclick="testEmail()">Test</button>
+            <span id="oauthStatus" style="font-size:0.74rem;"></span>
+            <button type="button" id="oauthDisconnectBtn" onclick="disconnectOAuth()" style="display:none;background:none;border:1px solid var(--border);color:var(--slate);border-radius:3px;font-size:0.7rem;padding:5px 11px;cursor:pointer;">Disconnect</button>
+          </div>
+          <div class="test-result" id="emailResult2"></div>
+        </div>
       </div>
 
       <div class="field-row" style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);">
@@ -456,7 +623,7 @@
           Where landing-page contact form submissions are emailed. Inquiries are always stored under
           <a href="/admin/inquiries">Inquiries</a> as well.
           <% if (!settings.zohoPass_set) { %>
-            <br><strong>Zoho not configured</strong> &mdash; emails will be sent via the MadLadsLab platform mailer (from a <code>madladslab.com</code> address). Connect Zoho above to send from your own domain.
+            <br><strong>Email not configured</strong> &mdash; emails will be sent via the MadLadsLab platform mailer (from a <code>madladslab.com</code> address). Connect an email provider above to send from your own domain.
           <% } %>
           <% if (!settings.contactEmail && settings.ownerEmail) { %>
             <br>Defaulting to owner email <code><%= settings.ownerEmail %></code> when blank.
@@ -635,6 +802,13 @@
       <% } %>
     </div>
 
+      </div><!-- /acc-body --></div><!-- /GROUP: EMAIL -->
+
+    <!-- ░░░ ACCORDION GROUP: INTEGRATIONS ░░░ -->
+    <div class="acc-group">
+      <button type="button" class="acc-head" onclick="toggleAcc(this)"><span class="acc-ic">&#9672;</span> Integrations <span class="acc-sub">Google reviews &amp; login</span><span class="acc-chevron">&#9656;</span></button>
+      <div class="acc-body">
+
     <!-- ═══════════ GOOGLE REVIEWS ═══════════ -->
     <div class="settings-section">
       <h2>
@@ -711,8 +885,164 @@
       </div>
     </div>
 
+      </div><!-- /acc-body --></div><!-- /GROUP: INTEGRATIONS -->
+
     <button type="submit" style="padding:12px 32px;background:var(--gold);color:var(--on-surface);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Settings</button>
   </form>
+
+  <!-- ═══════════ SOCIAL MEDIA CONNECTIONS ═══════════ -->
+  <% if (typeof socialPlatforms !== 'undefined') { %>
+  <div class="settings-section" id="socialSettings">
+    <h2>
+      &#9672; Social Media
+      <a href="/admin/social" class="guide-toggle" style="text-decoration:none;">Open Portal &rarr;</a>
+    </h2>
+    <p class="desc">
+      Connect accounts to publish &amp; schedule from the <a href="/admin/social">Social portal</a>. Keys are encrypted at rest.
+      <strong style="color:#16a34a;">First check</strong> = keys saved &middot;
+      <strong style="color:#16a34a;">second check</strong> = live connection verified.
+    </p>
+
+    <% if (typeof publicBaseUrl !== 'undefined') { %>
+    <div class="guide-panel open" style="margin-bottom:18px;">
+      <div style="font-size:0.72rem;font-weight:600;color:var(--navy);margin-bottom:8px;">App Compliance URLs — paste these into your Meta / social app settings</div>
+      <% const _urls = [
+           { label: 'Privacy Policy URL', url: publicBaseUrl + '/privacy' },
+           { label: 'Terms of Service URL', url: publicBaseUrl + '/terms' },
+           { label: 'Data Deletion Callback URL', url: publicBaseUrl + '/data-deletion' },
+         ]; %>
+      <% _urls.forEach(u => { %>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+        <span style="font-size:0.68rem;color:var(--slate);min-width:170px;"><%= u.label %></span>
+        <code style="flex:1;min-width:200px;font-size:0.72rem;"><%= u.url %></code>
+        <button type="button" class="btn-test" style="padding:5px 11px;font-size:0.66rem;" onclick="navigator.clipboard.writeText('<%= u.url %>');this.textContent='Copied';setTimeout(()=>this.textContent='Copy',1200);">Copy</button>
+        <a href="<%= u.url %>" target="_blank" rel="noopener" class="btn-test" style="padding:5px 11px;font-size:0.66rem;background:transparent;color:var(--navy);border:1px solid var(--border);text-decoration:none;">Open</a>
+      </div>
+      <% }) %>
+      <div class="guide-tip" style="margin-top:8px;">In your Meta app → <strong>App Settings → Basic</strong>: set the Privacy Policy &amp; Terms URLs. Under <strong>Data Deletion</strong>, choose "Data Deletion Request Callback URL" and paste the third URL. Meta will call it when a user removes your app. Add your <strong>App Secret</strong> to the Facebook connection below so we can verify those callbacks.</div>
+    </div>
+    <% } %>
+
+    <div class="social-list">
+    <% socialPlatforms.forEach(p => { const st = (typeof socialStatus !== 'undefined' && socialStatus[p.key]) || {}; %>
+      <div class="social-item" data-key="<%= p.key %>">
+        <div class="social-head">
+          <span class="social-ic"><%= p.icon %></span>
+          <span class="social-name"><%= p.name %><% if (p.comingSoon) { %> <span class="soon">(soon)</span><% } %></span>
+          <span class="social-checks">
+            <span class="chk chk-entered <%= st.configured ? 'on' : '' %>" title="API keys entered">&#10003; Entered</span>
+            <span class="chk chk-verified <%= st.verified ? 'on' : '' %>" title="Connection verified">&#10003; Verified</span>
+          </span>
+          <% if (!p.comingSoon) { %>
+          <button type="button" class="btn-input" onclick="toggleSocial('<%= p.key %>')"><%= st.configured ? 'Edit' : 'Input keys' %></button>
+          <% } else { %>
+          <span class="soon-label">Coming soon</span>
+          <% } %>
+        </div>
+        <% if (!p.comingSoon) { %>
+        <div class="social-form" id="social-form-<%= p.key %>" style="display:none;">
+          <div class="social-setup"><%= p.setup %><% if (p.portal) { %> <a href="<%= p.portal %>" target="_blank" rel="noopener">Open developer portal &rarr;</a><% } %></div>
+          <% p.fields.forEach(f => { const isSet = st.secretsSet && st.secretsSet[f.key]; const val = (!f.secret && st.credentials) ? (st.credentials[f.key] || '') : ''; %>
+          <div class="field-row">
+            <label><%= f.label %><% if (f.secret && isSet) { %> <span class="field-set">&#9679; saved</span><% } %></label>
+            <input type="<%= f.secret ? 'password' : 'text' %>" data-field="<%= f.key %>" value="<%= val %>"
+                   placeholder="<%= f.secret && isSet ? 'saved — leave blank to keep' : f.placeholder %>" autocomplete="off">
+          </div>
+          <% }) %>
+          <div class="social-actions">
+            <button type="button" class="btn-test" onclick="saveSocial('<%= p.key %>', this)">Save keys</button>
+            <button type="button" class="btn-test" style="background:var(--gold);color:var(--on-surface);" onclick="verifySocial('<%= p.key %>', this)">Verify connection</button>
+            <% if (['facebook','instagram','threads'].includes(p.key)) { %>
+            <button type="button" class="btn-test" style="background:transparent;color:var(--navy);border:1px solid var(--border);" onclick="upgradeSocial('<%= p.key %>', this)">🔄 Make permanent</button>
+            <% } %>
+            <span class="test-result" id="social-result-<%= p.key %>"></span>
+          </div>
+          <% if (['facebook','instagram','threads'].includes(p.key)) { %>
+          <div style="font-size:0.68rem;color:var(--slate);margin-top:6px;">
+            <% if (st.tokenType === 'PAGE' && !st.tokenExpiresAt) { %>
+              <span style="color:#16a34a;">✓ Token is permanent (never expires) — auto-managed.</span>
+            <% } else if (st.tokenExpiresAt) { %>
+              ↻ Auto-renews · expires <%= new Date(st.tokenExpiresAt).toLocaleDateString() %>
+            <% } else { %>
+              Add App ID + App Secret, then Save (or “Make permanent”) to enable auto-renew.
+            <% } %>
+          </div>
+          <% } %>
+        </div>
+        <% } %>
+      </div>
+    <% }) %>
+    </div>
+  </div>
+
+  <script>
+  function toggleSocial(key) {
+    const f = document.getElementById('social-form-' + key);
+    if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  }
+  function _socialPayload(key) {
+    const form = document.getElementById('social-form-' + key);
+    const payload = {};
+    form.querySelectorAll('input[data-field]').forEach(i => {
+      const v = i.value.trim();
+      if (v) payload[i.dataset.field] = v;   // omit blanks → existing secrets kept
+    });
+    return payload;
+  }
+  function _setCheck(key, which, on) {
+    const el = document.querySelector('.social-item[data-key="' + key + '"] .chk-' + which);
+    if (el) el.classList.toggle('on', !!on);
+  }
+  async function saveSocial(key, btn) {
+    const out = document.getElementById('social-result-' + key);
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+    out.textContent = ''; out.className = 'test-result';
+    try {
+      const r = await fetch('/admin/social/connections/' + key, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(_socialPayload(key)),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        _setCheck(key, 'entered', d.account && d.account.configured);
+        out.textContent = '✓ Keys saved' + (d.account && d.account.configured ? '' : ' (some fields still missing)');
+        out.className = 'test-result test-ok';
+      } else { out.textContent = '✕ ' + (d.error || 'Save failed'); out.className = 'test-result test-fail'; }
+    } catch (e) { out.textContent = '✕ Request failed'; out.className = 'test-result test-fail'; }
+    btn.disabled = false; btn.textContent = orig;
+  }
+  async function verifySocial(key, btn) {
+    const out = document.getElementById('social-result-' + key);
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Verifying…';
+    out.textContent = ''; out.className = 'test-result';
+    try {
+      const r = await fetch('/admin/social/connections/' + key + '/test', {
+        method: 'POST', headers: { 'Accept': 'application/json' },
+      });
+      const d = await r.json();
+      _setCheck(key, 'verified', d.ok);
+      out.textContent = (d.ok ? '✓ ' : '✕ ') + (d.note || d.error || (d.ok ? 'Verified' : 'Failed'));
+      out.className = 'test-result ' + (d.ok ? 'test-ok' : 'test-fail');
+    } catch (e) { out.textContent = '✕ Request failed'; out.className = 'test-result test-fail'; }
+    btn.disabled = false; btn.textContent = orig;
+  }
+  async function upgradeSocial(key, btn) {
+    const out = document.getElementById('social-result-' + key);
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Upgrading…';
+    out.textContent = ''; out.className = 'test-result';
+    try {
+      const r = await fetch('/admin/social/connections/' + key + '/upgrade', {
+        method: 'POST', headers: { 'Accept': 'application/json' },
+      });
+      const d = await r.json();
+      out.textContent = (d.ok ? '✓ ' : '✕ ') + (d.note || d.error || (d.ok ? 'Upgraded' : 'Failed'));
+      out.className = 'test-result ' + (d.ok ? 'test-ok' : 'test-fail');
+    } catch (e) { out.textContent = '✕ Request failed'; out.className = 'test-result test-fail'; }
+    btn.disabled = false; btn.textContent = orig;
+  }
+  </script>
+  <% } %>
 </div>
 
 </div><!-- close .main from sidebar -->
@@ -722,6 +1052,115 @@ function toggleGuide(id) {
   const panel = document.getElementById('guide-' + id);
   if (panel) panel.classList.toggle('open');
 }
+
+// ── Settings category accordions (independent toggles) ───────────────────────
+function toggleAcc(head) {
+  const g = head.closest('.acc-group');
+  if (g) g.classList.toggle('open');
+}
+
+// ── Email provider switching ─────────────────────────────────────────────────
+const EMAIL_PROVIDERS = {
+  zoho:    { host: 'smtppro.zoho.com',      port: 465, passName: 'Zoho App Password',
+             passHint: 'App password from Zoho Account → Security → App Passwords. Not your login password.' },
+  gmail:   { host: 'smtp.gmail.com',        port: 465, passName: 'Gmail App Password',
+             passHint: 'Requires 2-Step Verification ON, then an App Password from myaccount.google.com/apppasswords.' },
+  outlook: { host: 'smtp-mail.outlook.com', port: 587, passName: 'Outlook App Password',
+             passHint: 'Personal Outlook: app password from account.microsoft.com. M365 business may need Authenticated SMTP enabled or OAuth (Advanced).' },
+  custom:  { host: '',                      port: '',  passName: 'SMTP Password',
+             passHint: 'Password or app-specific password for your SMTP mailbox.' },
+};
+// OAuth state injected from the server
+const OAUTH_REDIRECT_BASE = "<%= settings.emailOAuthRedirectBase || '' %>";
+const OAUTH_STATUS = {
+  gmail:   { connected: <%= settings.gmailOAuthConnected ? 'true' : 'false' %>,   user: "<%= settings.gmailOAuthUser || '' %>" },
+  outlook: { connected: <%= settings.outlookOAuthConnected ? 'true' : 'false' %>, user: "<%= settings.outlookOAuthUser || '' %>" },
+};
+function emailProviderEl() { return document.getElementById('emailProvider'); }
+function currentAuthMode() {
+  const r = document.querySelector('input[name="emailAuthMode"]:checked');
+  return r ? r.value : 'password';
+}
+function onProviderChange() {
+  const sel = emailProviderEl();
+  if (!sel) return;
+  const p = sel.value;
+  const cfg = EMAIL_PROVIDERS[p] || EMAIL_PROVIDERS.zoho;
+  const oauthEligible = (p === 'gmail' || p === 'outlook');
+  // Hint under the dropdown
+  const hint = document.getElementById('providerHint');
+  if (hint) hint.innerHTML = p === 'custom'
+    ? 'Enter your SMTP host and port below.'
+    : ('Sends through <code>' + cfg.host + ':' + cfg.port + '</code>');
+  // Password field label + hint
+  const passName = document.getElementById('emailPassName');
+  if (passName) passName.textContent = cfg.passName;
+  const passHint = document.getElementById('emailPassHint');
+  if (passHint) passHint.textContent = cfg.passHint;
+  // Custom host/port fields
+  const custom = document.getElementById('customSmtpFields');
+  if (custom) custom.style.display = (p === 'custom') ? 'block' : 'none';
+  // Per-provider setup guide
+  document.querySelectorAll('.prov-guide').forEach(function(el) { el.classList.remove('open'); });
+  const guide = document.getElementById('provGuide-' + p);
+  if (guide) guide.classList.add('open');
+  // Auth-method selector only for OAuth-capable providers
+  const authRow = document.getElementById('authModeRow');
+  if (authRow) authRow.style.display = oauthEligible ? 'block' : 'none';
+  applyEmailAuthVisibility();
+}
+function onAuthModeChange() { applyEmailAuthVisibility(); }
+function applyEmailAuthVisibility() {
+  const p = emailProviderEl() ? emailProviderEl().value : 'zoho';
+  const oauthEligible = (p === 'gmail' || p === 'outlook');
+  const mode = oauthEligible ? currentAuthMode() : 'password';
+  const showOAuth = oauthEligible && mode === 'oauth';
+
+  const pwBlock = document.getElementById('passwordAuthFields');
+  if (pwBlock) pwBlock.style.display = showOAuth ? 'none' : 'block';
+  const oaBlock = document.getElementById('oauthConnectFields');
+  if (oaBlock) oaBlock.style.display = showOAuth ? 'block' : 'none';
+  if (!showOAuth) return;
+
+  // Show the active provider's OAuth fields
+  document.querySelectorAll('.oauth-prov').forEach(function(el) { el.style.display = 'none'; });
+  const prov = document.getElementById('oauthProv-' + p);
+  if (prov) prov.style.display = 'block';
+  // Redirect URI + connect link
+  const redir = OAUTH_REDIRECT_BASE ? (OAUTH_REDIRECT_BASE + '/' + p + '/callback') : '';
+  const redirEl = document.getElementById('oauthRedirectUri');
+  if (redirEl) redirEl.value = redir;
+  const connectBtn = document.getElementById('oauthConnectBtn');
+  if (connectBtn) connectBtn.setAttribute('href', '/admin/settings/email/oauth/' + p + '/connect');
+  // Connected status
+  const st = OAUTH_STATUS[p] || { connected: false, user: '' };
+  const statusEl = document.getElementById('oauthStatus');
+  const disconnectBtn = document.getElementById('oauthDisconnectBtn');
+  if (statusEl) {
+    if (st.connected) { statusEl.innerHTML = '<span style="color:#16a34a;font-weight:600;">&#9679; Connected' + (st.user ? ' as ' + st.user : '') + '</span>'; }
+    else { statusEl.innerHTML = '<span style="color:var(--slate);">Not connected yet</span>'; }
+  }
+  if (disconnectBtn) disconnectBtn.style.display = st.connected ? 'inline-block' : 'none';
+  if (connectBtn) connectBtn.textContent = st.connected ? 'Reconnect' : 'Connect & Authorize';
+}
+async function disconnectOAuth() {
+  const p = emailProviderEl() ? emailProviderEl().value : '';
+  if (!p) return;
+  if (!confirm('Disconnect this mailbox? Outgoing email will stop until you reconnect or switch to an app password.')) return;
+  try {
+    const r = await fetch('/admin/settings/email/oauth/' + p + '/disconnect', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) { OAUTH_STATUS[p] = { connected: false, user: '' }; applyEmailAuthVisibility(); }
+    else { alert(d.error || 'Disconnect failed'); }
+  } catch { alert('Network error'); }
+}
+function setEmailResult(text, cls) {
+  ['emailResult', 'emailResult2'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = text; el.className = 'test-result ' + (cls || ''); }
+  });
+}
+document.addEventListener('DOMContentLoaded', onProviderChange);
 
 async function testStripe() {
   const el = document.getElementById('stripeResult');
@@ -735,14 +1174,13 @@ async function testStripe() {
 }
 
 async function testEmail() {
-  const el = document.getElementById('emailResult');
-  el.textContent = 'Testing...'; el.className = 'test-result';
+  setEmailResult('Testing...', '');
   try {
     const r = await fetch('/admin/settings/test-email', { method: 'POST' });
     const d = await r.json();
-    if (d.ok) { el.textContent = 'SMTP connection verified'; el.className = 'test-result test-ok'; }
-    else { el.textContent = d.error; el.className = 'test-result test-fail'; }
-  } catch { el.textContent = 'Network error'; el.className = 'test-result test-fail'; }
+    if (d.ok) setEmailResult('Connection verified' + (d.provider ? ' (' + d.provider + ')' : ''), 'test-ok');
+    else setEmailResult(d.error, 'test-fail');
+  } catch { setEmailResult('Network error', 'test-fail'); }
 }
 
 async function checkDns() {

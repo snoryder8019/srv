@@ -20,6 +20,16 @@
   let pickerFolder = 'all';
   let pickerType = 'all';
   let searchTimeout = null;
+  let foldersLoaded = false;
+
+  // Short memory — remember the last folder/type the user filtered to so the
+  // picker reopens where they left off.
+  const MEM_FOLDER = 'assetPicker.folder';
+  const MEM_TYPE = 'assetPicker.type';
+  function rememberFolder(v) { try { localStorage.setItem(MEM_FOLDER, v); } catch {} }
+  function rememberType(v) { try { localStorage.setItem(MEM_TYPE, v); } catch {} }
+  function recallFolder() { try { return localStorage.getItem(MEM_FOLDER); } catch { return null; } }
+  function recallType() { try { return localStorage.getItem(MEM_TYPE); } catch { return null; } }
 
   /* ── BUILD MODAL ── */
   function buildModal() {
@@ -125,6 +135,7 @@
         flex:1;overflow-y:auto;padding:14px 16px;
         display:grid;
         grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+        grid-auto-rows:max-content;
         gap:10px;align-content:start;
         background:#F5F3EF;
       }
@@ -176,11 +187,39 @@
       });
     });
 
+    // Type tabs also remember the choice
+    modalEl.querySelectorAll('.apm-tab').forEach(tab => {
+      tab.addEventListener('click', () => rememberType(tab.dataset.type));
+    });
+
     // Folder
     document.getElementById('apmFolder').addEventListener('change', e => {
       pickerFolder = e.target.value;
+      rememberFolder(pickerFolder);
       loadPickerAssets(document.getElementById('apmSearch').value.trim());
     });
+  }
+
+  // Load custom folders from the API and append them to the folder <select>
+  // (the markup only ships the built-in folders). Runs once per page.
+  async function loadPickerFolders() {
+    if (foldersLoaded) return;
+    foldersLoaded = true;
+    const sel = document.getElementById('apmFolder');
+    if (!sel) return;
+    try {
+      const r = await fetch('/admin/assets/folders');
+      const data = await r.json();
+      const builtIn = new Set([...sel.querySelectorAll('option')].map(o => o.value));
+      (data.folders || []).forEach(f => {
+        if (builtIn.has(f.slug)) return;
+        const opt = document.createElement('option');
+        opt.value = f.slug;
+        opt.textContent = f.name;
+        opt.dataset.custom = '1';
+        sel.appendChild(opt);
+      });
+    } catch { /* non-fatal — built-in folders still work */ }
   }
 
   async function loadPickerAssets(search) {
@@ -207,7 +246,7 @@
 
         let thumb = '';
         if (asset.fileType === 'image') {
-          thumb = `<img src="${asset.publicUrl}" alt="${asset.altText || asset.title || ''}" loading="lazy">`;
+          thumb = `<img src="${asset.thumbUrl || asset.publicUrl}" alt="${asset.altText || asset.title || ''}" loading="lazy" decoding="async">`;
         } else if (asset.fileType === 'video') {
           thumb = `<video src="${asset.publicUrl}" muted preload="metadata" style="pointer-events:none;"></video>`;
         } else {
@@ -229,15 +268,28 @@
     }
   }
 
-  function openModal(opts) {
+  async function openModal(opts) {
+    opts = opts || {};
     buildModal();
     currentCallback = opts.onSelect || null;
-    pickerFolder = opts.folder || 'all';
-    pickerType = opts.type || 'all';
+
+    // Make sure custom folders are in the dropdown before we set its value.
+    await loadPickerFolders();
+
+    // Default to the last-used filter (short memory); otherwise show all/all so
+    // the user can browse everything and filter down. opts.folder/opts.type act
+    // only as a fallback when there's nothing remembered.
+    const sel = document.getElementById('apmFolder');
+    const remembered = recallFolder();
+    // Guard against a remembered folder whose option no longer exists.
+    const folderExists = (v) => !!sel.querySelector(`option[value="${v}"]`);
+    pickerFolder = (remembered && folderExists(remembered)) ? remembered : (opts.folder || 'all');
+    pickerType = recallType() || opts.type || 'all';
 
     // Reset UI
     document.getElementById('apmSearch').value = '';
-    document.getElementById('apmFolder').value = pickerFolder;
+    sel.value = folderExists(pickerFolder) ? pickerFolder : 'all';
+    pickerFolder = sel.value;
     modalEl.querySelectorAll('.apm-tab').forEach(t => {
       t.classList.toggle('active', t.dataset.type === pickerType);
     });

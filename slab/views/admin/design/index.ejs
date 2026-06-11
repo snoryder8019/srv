@@ -318,6 +318,16 @@
         </label>
       </div>
     </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Snap Strictness</label>
+        <select name="snap_strictness" id="field-snap_strictness">
+          <option value="proximity" <%= (design.snap_strictness || 'proximity') === 'proximity' ? 'selected' : '' %>>Proximity (gentle)</option>
+          <option value="mandatory" <%= design.snap_strictness === 'mandatory' ? 'selected' : '' %>>Mandatory (hard lock)</option>
+        </select>
+        <div class="ep-hint">Only applies when Scroll snap is on.</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -559,6 +569,64 @@
 </div>
 
 <%- include('_ticker-section') %>
+
+<%# ─── COOKIE CONSENT ─── %>
+<div class="editor-section" data-tab="design">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Cookie Consent <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-hint" style="margin-bottom:10px;">GDPR-style consent shown to visitors. Categories (Analytics, Marketing) gate any tags wrapped as <code>&lt;script type="text/plain" data-consent="analytics"&gt;</code>. Button text &amp; category descriptions are edited in the <strong>Copy</strong> editor &rsaquo; Cookie.</div>
+
+    <div class="ep-field">
+      <label style="font-size:0.75rem;text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" name="cookie_consent_enabled" id="field-cookie_consent_enabled" <%= design.cookie_consent_enabled === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);"> Enable cookie consent
+      </label>
+    </div>
+
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Style</label>
+        <select name="cookie_consent_style" id="field-cookie_consent_style">
+          <option value="modal"  <%= (design.cookie_consent_style || 'modal') === 'modal'  ? 'selected' : '' %>>Modal (centered dialog)</option>
+          <option value="banner" <%= design.cookie_consent_style === 'banner' ? 'selected' : '' %>>Banner (docked bar)</option>
+        </select>
+      </div>
+      <div class="ep-field">
+        <label>Position</label>
+        <select name="cookie_consent_position" id="field-cookie_consent_position">
+          <option value="bottom"      <%= (design.cookie_consent_position || 'bottom') === 'bottom'      ? 'selected' : '' %>>Bottom</option>
+          <option value="bottom-left" <%= design.cookie_consent_position === 'bottom-left' ? 'selected' : '' %>>Bottom-left</option>
+          <option value="center"      <%= design.cookie_consent_position === 'center'      ? 'selected' : '' %>>Center</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="ep-row-3">
+      <div class="ep-field">
+        <label>Background</label>
+        <div class="color-row">
+          <input type="color" value="<%= design.cookie_bg || design.color_white || '#ffffff' %>" onchange="this.nextElementSibling.value=this.value" oninput="this.nextElementSibling.value=this.value">
+          <input type="text" name="cookie_bg" value="<%= design.cookie_bg || '' %>" placeholder="(surface)">
+        </div>
+      </div>
+      <div class="ep-field">
+        <label>Text Color</label>
+        <div class="color-row">
+          <input type="color" value="<%= design.cookie_text_color || design.color_dark || '#0f1b30' %>" onchange="this.nextElementSibling.value=this.value" oninput="this.nextElementSibling.value=this.value">
+          <input type="text" name="cookie_text_color" value="<%= design.cookie_text_color || '' %>" placeholder="(on-surface)">
+        </div>
+      </div>
+      <div class="ep-field">
+        <label>Accent</label>
+        <div class="color-row">
+          <input type="color" value="<%= design.cookie_accent || design.color_accent || '#c9a848' %>" onchange="this.nextElementSibling.value=this.value" oninput="this.nextElementSibling.value=this.value">
+          <input type="text" name="cookie_accent" value="<%= design.cookie_accent || '' %>" placeholder="(accent)">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <%# ─── 4b. HEADER & FOOTER (consolidated) ─── %>
 <%# All header & footer settings live here: visibility, logo, CTA, nav colors, custom links. %>
@@ -1241,7 +1309,7 @@
     <div class="dp-repeater"
          data-prefix="slide"
          data-noun="Slide"
-         data-fields='[{"key":"image","label":"Background Image","type":"text","placeholder":"/uploads/..."},{"key":"tag","label":"Tag Chip","type":"text","placeholder":"e.g. FEATURED"},{"key":"eyebrow","label":"Eyebrow","type":"text"},{"key":"heading","label":"Heading","type":"text"},{"key":"sub","label":"Subtext","type":"textarea","rows":2},{"key":"link","label":"Link","type":"text","placeholder":"#services or /pricing"},{"key":"cta","label":"CTA Button Text","type":"text","placeholder":"Learn more"}]'>
+         data-fields='[{"key":"image","label":"Background Image","type":"text","placeholder":"/uploads/..."},{"key":"tag","label":"Tag Chip","type":"text","placeholder":"e.g. FEATURED"},{"key":"eyebrow","label":"Eyebrow","type":"text"},{"key":"heading","label":"Heading","type":"text"},{"key":"sub","label":"Subtext","type":"textarea","rows":2},{"key":"link","label":"Link","type":"text","placeholder":"#services or /pricing"},{"key":"cta","label":"CTA Button Text","type":"text","placeholder":"Learn more"},{"key":"vpos","label":"Text Position Override","type":"select","options":["inherit","top","middle","bottom"]}]'>
       <% _slideArr.forEach(function(i, iArr) { %>
       <div class="dp-rep-item" data-idx="<%= i %>">
         <div class="dp-rep-head">
@@ -1285,9 +1353,21 @@
             <% }); %>
           </div>
         </div>
-        <div class="ep-field">
-          <label>CTA Button Text <span style="font-weight:400;color:var(--on-surface-muted);">(only rendered if Link is set)</span></label>
-          <input type="text" name="slide<%= i %>_cta" value="<%= copy['slide' + i + '_cta'] || '' %>" placeholder="Learn more">
+        <div class="ep-row">
+          <div class="ep-field">
+            <label>CTA Button Text <span style="font-weight:400;color:var(--on-surface-muted);">(only rendered if Link is set)</span></label>
+            <input type="text" name="slide<%= i %>_cta" value="<%= copy['slide' + i + '_cta'] || '' %>" placeholder="Learn more">
+          </div>
+          <div class="ep-field">
+            <label>Text Position Override <span style="font-weight:400;color:var(--on-surface-muted);">(overrides global)</span></label>
+            <% const _sv = copy['slide' + i + '_vpos'] || 'inherit'; %>
+            <select name="slide<%= i %>_vpos">
+              <option value="inherit" <%= _sv === 'inherit' || _sv === '' ? 'selected' : '' %>>Inherit (global)</option>
+              <option value="top"     <%= _sv === 'top'    ? 'selected' : '' %>>Top</option>
+              <option value="middle"  <%= _sv === 'middle' ? 'selected' : '' %>>Middle</option>
+              <option value="bottom"  <%= _sv === 'bottom' ? 'selected' : '' %>>Bottom</option>
+            </select>
+          </div>
         </div>
       </div>
       <% }); %>
@@ -1330,7 +1410,7 @@
     <div class="dp-repeater"
          data-prefix="service"
          data-noun="Service"
-         data-fields='[{"key":"title","label":"Title","type":"text"},{"key":"desc","label":"Description","type":"textarea","rows":2},{"key":"link","label":"Link","type":"text","placeholder":"/services"},{"key":"image","label":"Image URL","type":"text","placeholder":"/images/..."}]'>
+         data-fields='[{"key":"title","label":"Title","type":"text"},{"key":"desc","label":"Description","type":"textarea","rows":2},{"key":"link","label":"Link","type":"text","placeholder":"/services"},{"key":"image","label":"Image URL","type":"text","placeholder":"/images/..."},{"key":"hidden","label":"Visibility","type":"checkbox","checkboxLabel":"Hide this card from the live page"}]'>
       <% _svcArr.forEach(function(i, iArr) { %>
       <div class="dp-rep-item" data-idx="<%= i %>">
         <div class="dp-rep-head">
@@ -1358,6 +1438,12 @@
             <label>Image URL</label>
             <input type="text" name="service<%= i %>_image" value="<%= copy['service' + i + '_image'] || '' %>" placeholder="/images/...">
           </div>
+        </div>
+        <div class="ep-field">
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;text-transform:none;letter-spacing:0;">
+            <input type="checkbox" name="service<%= i %>_hidden" value="true" <%= copy['service' + i + '_hidden'] === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);">
+            Hide this card from the live page
+          </label>
         </div>
       </div>
       <% }); %>
@@ -1403,7 +1489,7 @@
     <div class="dp-repeater" style="margin-top:8px;"
          data-prefix="about_stat"
          data-noun="Stat"
-         data-fields='[{"key":"num","label":"Number","type":"text","placeholder":"e.g. 150+"},{"key":"label","label":"Label","type":"text","placeholder":"e.g. Projects"}]'>
+         data-fields='[{"key":"num","label":"Number","type":"text","placeholder":"e.g. 150+"},{"key":"label","label":"Label","type":"text","placeholder":"e.g. Projects"},{"key":"hidden","label":"Visibility","type":"checkbox","checkboxLabel":"Hide this stat from the live page"}]'>
       <% _statArr.forEach(function(i, iArr) { %>
       <div class="dp-rep-item" data-idx="<%= i %>">
         <div class="dp-rep-head">
@@ -1423,6 +1509,12 @@
             <label>Label</label>
             <input type="text" name="about_stat<%= i %>_label" value="<%= copy['about_stat' + i + '_label'] || '' %>" placeholder="e.g. Projects">
           </div>
+        </div>
+        <div class="ep-field">
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;text-transform:none;letter-spacing:0;">
+            <input type="checkbox" name="about_stat<%= i %>_hidden" value="true" <%= copy['about_stat' + i + '_hidden'] === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);">
+            Hide this stat from the live page
+          </label>
         </div>
       </div>
       <% }); %>
@@ -1460,7 +1552,7 @@
     <div class="dp-repeater"
          data-prefix="process"
          data-noun="Step"
-         data-fields='[{"key":"title","label":"Title","type":"text"},{"key":"desc","label":"Description","type":"textarea","rows":2}]'>
+         data-fields='[{"key":"title","label":"Title","type":"text"},{"key":"desc","label":"Description","type":"textarea","rows":2},{"key":"hidden","label":"Visibility","type":"checkbox","checkboxLabel":"Hide this step from the live page"}]'>
       <% _procArr.forEach(function(i, iArr) { %>
       <div class="dp-rep-item" data-idx="<%= i %>">
         <div class="dp-rep-head">
@@ -1478,6 +1570,12 @@
         <div class="ep-field">
           <label>Description</label>
           <textarea name="process<%= i %>_desc" rows="2"><%= copy['process' + i + '_desc'] || '' %></textarea>
+        </div>
+        <div class="ep-field">
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;text-transform:none;letter-spacing:0;">
+            <input type="checkbox" name="process<%= i %>_hidden" value="true" <%= copy['process' + i + '_hidden'] === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);">
+            Hide this step from the live page
+          </label>
         </div>
       </div>
       <% }); %>
@@ -1521,8 +1619,15 @@
           <label><%= f.label %></label>
           <% if (f.type === 'textarea') { %>
             <textarea data-cs-field="<%= f.key %>" rows="<%= f.rows || 2 %>"><%= (sec.fields && sec.fields[f.key]) || '' %></textarea>
+          <% } else if (f.type === 'select') { %>
+            <% const _cur = (sec.fields && sec.fields[f.key] != null) ? String(sec.fields[f.key]) : ''; %>
+            <select data-cs-field="<%= f.key %>">
+              <% (f.options || []).forEach(function(o) { %>
+                <option value="<%= o %>" <%= _cur === String(o) ? 'selected' : '' %>><%= o %></option>
+              <% }); %>
+            </select>
           <% } else { %>
-            <input type="text" data-cs-field="<%= f.key %>" value="<%= (sec.fields && sec.fields[f.key]) ? String(sec.fields[f.key]).replace(/"/g, '&quot;') : '' %>">
+            <input type="text" data-cs-field="<%= f.key %>" value="<%= (sec.fields && sec.fields[f.key]) ? String(sec.fields[f.key]).replace(/"/g, '&quot;') : '' %>"<%= f.placeholder ? ' placeholder="' + f.placeholder + '"' : '' %>>
           <% } %>
         </div>
       <% }); %>
@@ -2063,6 +2168,82 @@
   </div>
 </div>
 
+<%# ─── COOKIE CONSENT (copy) ─── %>
+<div class="editor-section" data-tab="copy">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Cookie Consent <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-hint" style="margin-bottom:10px;">Text for the cookie consent UI. Enable it and set colors under <strong>Design</strong> &rsaquo; Cookie Consent.</div>
+    <div class="ep-field">
+      <label>Title</label>
+      <input type="text" name="cookie_title" value="<%= copy.cookie_title || '' %>" placeholder="We value your privacy">
+    </div>
+    <div class="ep-field">
+      <label>Intro Message</label>
+      <textarea name="cookie_message" rows="3"><%= copy.cookie_message || '' %></textarea>
+    </div>
+    <div class="ep-row-3">
+      <div class="ep-field">
+        <label>Accept All — Button</label>
+        <input type="text" name="cookie_accept_label" value="<%= copy.cookie_accept_label || '' %>" placeholder="Accept all">
+      </div>
+      <div class="ep-field">
+        <label>Reject — Button</label>
+        <input type="text" name="cookie_reject_label" value="<%= copy.cookie_reject_label || '' %>" placeholder="Reject non-essential">
+      </div>
+      <div class="ep-field">
+        <label>Save — Button</label>
+        <input type="text" name="cookie_save_label" value="<%= copy.cookie_save_label || '' %>" placeholder="Save preferences">
+      </div>
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Reopen / Settings Label</label>
+        <input type="text" name="cookie_settings_label" value="<%= copy.cookie_settings_label || '' %>" placeholder="Cookie settings">
+      </div>
+      <div class="ep-field">
+        <label>Privacy Link Text</label>
+        <input type="text" name="cookie_privacy_text" value="<%= copy.cookie_privacy_text || '' %>" placeholder="Privacy Policy">
+      </div>
+    </div>
+    <div class="ep-field">
+      <label>Privacy Link URL</label>
+      <input type="text" name="cookie_privacy_link" value="<%= copy.cookie_privacy_link || '' %>" placeholder="/privacy">
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Necessary — Title</label>
+        <input type="text" name="cookie_necessary_title" value="<%= copy.cookie_necessary_title || '' %>" placeholder="Strictly necessary">
+      </div>
+      <div class="ep-field">
+        <label>Necessary — Description</label>
+        <textarea name="cookie_necessary_desc" rows="2"><%= copy.cookie_necessary_desc || '' %></textarea>
+      </div>
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Analytics — Title</label>
+        <input type="text" name="cookie_analytics_title" value="<%= copy.cookie_analytics_title || '' %>" placeholder="Analytics">
+      </div>
+      <div class="ep-field">
+        <label>Analytics — Description</label>
+        <textarea name="cookie_analytics_desc" rows="2"><%= copy.cookie_analytics_desc || '' %></textarea>
+      </div>
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Marketing — Title</label>
+        <input type="text" name="cookie_marketing_title" value="<%= copy.cookie_marketing_title || '' %>" placeholder="Marketing">
+      </div>
+      <div class="ep-field">
+        <label>Marketing — Description</label>
+        <textarea name="cookie_marketing_desc" rows="2"><%= copy.cookie_marketing_desc || '' %></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
 <%# ─── 11. HERO & SECTION STYLING ─── %>
 <div class="editor-section" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
@@ -2077,8 +2258,9 @@
         <option value="split"       <%= (design.hero_style || 'split') === 'split'       ? 'selected' : '' %>>Split — Text-Typeface Heavy (current)</option>
         <option value="slideshow"   <%= design.hero_style === 'slideshow'                ? 'selected' : '' %>>Slideshow — Multi-slide with dots + linkable</option>
         <option value="image_card"  <%= design.hero_style === 'image_card'               ? 'selected' : '' %>>Image Card — Static image with shadow card overlay</option>
+        <option value="parallax"    <%= design.hero_style === 'parallax'                 ? 'selected' : '' %>>Parallax Band — Layered image + floating marquee + copy card</option>
       </select>
-      <div class="ep-hint" style="margin-top:6px;">Switch how the top of the landing page renders. Slideshow uses the "Hero Slides" panel below for content.</div>
+      <div class="ep-hint" style="margin-top:6px;">Switch how the top of the landing page renders. Slideshow uses the "Hero Slides" panel below for content. Parallax Band uses the <strong>Ticker / Marquee</strong> panel (background image, typeface size, band copy).</div>
     </div>
 
     <%# ── Slideshow-only controls ── %>
@@ -2101,8 +2283,11 @@
         <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
           <input type="checkbox" name="hero_slideshow_arrows" <%= design.hero_slideshow_arrows !== 'false' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);"> Show prev/next arrows
         </label>
+        <label style="font-size:0.75rem;display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" name="hero_slideshow_static" <%= design.hero_slideshow_static === 'true' ? 'checked' : '' %> style="width:14px;height:14px;accent-color:var(--navy);"> Static headline over all slides
+        </label>
       </div>
-      <div class="ep-hint" style="margin-top:8px;">Add slides in the <strong>Hero Slides</strong> copy panel (under the Copy tab). Each slide can have its own image, heading, tag, and link target.</div>
+      <div class="ep-hint" style="margin-top:8px;">Add slides in the <strong>Hero Slides</strong> copy panel (under the Copy tab). Each slide can have its own image, heading, tag, and link target.<br><strong>Static headline:</strong> ignore the per-slide titles and overlay one fixed headline — your main <strong>Hero</strong> copy (eyebrow, heading, subtext, CTAs) — across every slide, using the hero typography. Ideal for image-only slideshows.</div>
     </div>
 
     <%# ── Image-card only controls ── %>
@@ -2171,6 +2356,15 @@
         </select>
       </div>
       <div class="ep-field">
+        <label>Text Position (vertical)</label>
+        <select name="hero_vpos">
+          <option value="top"    <%= design.hero_vpos === 'top'    ? 'selected' : '' %>>Top</option>
+          <option value="middle" <%= (design.hero_vpos || 'middle') === 'middle' ? 'selected' : '' %>>Middle</option>
+          <option value="bottom" <%= design.hero_vpos === 'bottom' ? 'selected' : '' %>>Bottom</option>
+        </select>
+        <div class="ep-hint" style="margin-top:4px;">Where the overlaid hero text sits over the slideshow / background.</div>
+      </div>
+      <div class="ep-field">
         <label>Hero Height</label>
         <select name="hero_height">
           <option value="100vh" <%= design.hero_height === '100vh' ? 'selected' : '' %>>Full (100vh)</option>
@@ -2179,6 +2373,11 @@
           <option value="auto" <%= design.hero_height === 'auto' ? 'selected' : '' %>>Auto</option>
         </select>
       </div>
+    </div>
+    <div class="ep-field">
+      <label>Heading Font Size (rem — blank = responsive default)</label>
+      <input type="number" name="hero_heading_size" min="1.5" max="10" step="0.1" value="<%= design.hero_heading_size || '' %>" placeholder="auto">
+      <div class="ep-hint" style="margin-top:4px;">Sets the hero headline size for this tenant (split &amp; slideshow). Leave blank to keep the responsive default.</div>
     </div>
     <div class="ep-field">
       <label>Overlay Opacity (<%= design.hero_overlay_opacity || '55' %>%)</label>
@@ -2357,6 +2556,33 @@
   </div>
 </div>
 
+<div class="editor-section" data-tab="brand">
+  <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
+    Head, Favicon &amp; Tracking <span class="arrow">&#9654;</span>
+  </button>
+  <div class="editor-section-body">
+    <div class="ep-hint" style="margin-bottom:10px;">Favicon, Google Tag Manager, and custom &lt;head&gt; / end-of-&lt;body&gt; tags (analytics, pixels, verification). Applied across this tenant's public site.</div>
+    <label style="display:block;font-size:0.7rem;font-weight:600;margin:8px 0 3px;">Favicon Emoji</label>
+    <input type="text" name="favicon_emoji" value="<%= (design.favicon_emoji || '') %>" maxlength="4" placeholder="🚀" style="width:90px;text-align:center;font-size:1.1rem;">
+    <div class="ep-hint">Browser-tab icon when no Icon image is uploaded (Logos &amp; Brand Images below).</div>
+    <label style="display:block;font-size:0.7rem;font-weight:600;margin:12px 0 3px;">Google Tag Manager ID</label>
+    <input type="text" name="gtm_id" value="<%= (design.gtm_id || '') %>" placeholder="GTM-XXXXXXX">
+    <div class="ep-hint">Injects the GTM container site-wide (head script + body noscript).</div>
+    <label style="display:block;font-size:0.7rem;font-weight:600;margin:14px 0 3px;">Domain / Site Verification</label>
+    <div class="ep-hint" style="margin-bottom:6px;">Paste just the <em>content</em> token from each provider's HTML-tag method (we render the meta tag). Google Search Console can also verify via the GTM ID above — no token needed.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:6px;">
+      <div><label style="font-size:0.64rem;color:var(--slate);">Google (Search Console)</label><input type="text" name="verify_google" value="<%= (design.verify_google || '') %>" placeholder="google-site-verification token"></div>
+      <div><label style="font-size:0.64rem;color:var(--slate);">Bing (Webmaster)</label><input type="text" name="verify_bing" value="<%= (design.verify_bing || '') %>" placeholder="msvalidate.01 token"></div>
+      <div><label style="font-size:0.64rem;color:var(--slate);">Pinterest</label><input type="text" name="verify_pinterest" value="<%= (design.verify_pinterest || '') %>" placeholder="p:domain_verify token"></div>
+      <div><label style="font-size:0.64rem;color:var(--slate);">Facebook (Meta)</label><input type="text" name="verify_facebook" value="<%= (design.verify_facebook || '') %>" placeholder="facebook-domain-verification token"></div>
+    </div>
+    <label style="display:block;font-size:0.7rem;font-weight:600;margin:12px 0 3px;">Custom &lt;head&gt; HTML</label>
+    <textarea name="head_html" rows="4" style="width:100%;font-family:monospace;font-size:0.68rem;" placeholder="<!-- analytics / pixels / site-verification -->"><%= (design.head_html || '') %></textarea>
+    <label style="display:block;font-size:0.7rem;font-weight:600;margin:12px 0 3px;">Custom end-of-&lt;body&gt; HTML</label>
+    <textarea name="body_end_html" rows="3" style="width:100%;font-family:monospace;font-size:0.68rem;" placeholder="<!-- chat widgets / deferred scripts -->"><%= (design.body_end_html || '') %></textarea>
+  </div>
+</div>
+
 </form>
 
 <%# ─── Standalone forms for inline controls (HTML5 disallows nested <form>). ─── %>
@@ -2383,6 +2609,8 @@
         { slot: 'logo_white',   label: 'White Logo',    hint: 'For dark backgrounds (footer)' },
         { slot: 'logo_icon',    label: 'Icon / Favicon', hint: 'Browser tab + small contexts' },
         { slot: 'banner',       label: 'Banner',        hint: 'Hero / share image' },
+        { slot: 'share_image',  label: 'Share Image (1.91:1)', hint: 'Social link previews — 1200×630' },
+        { slot: 'share_square', label: 'Share Square (1:1)',   hint: 'Square previews — 1080×1080' },
       ];
     %>
     <div class="ep-hint" style="margin-bottom:10px;">Upload your logos and brand assets below. Each slot replaces the previous file when you upload a new one. Changes appear after a refresh.</div>
@@ -2971,7 +3199,9 @@ var cssVarTransform = {
   card_border_radius:   { vars: ['--card-radius'],        transform: function(v) { return v + 'px'; } },
   gradient_angle:       { vars: ['--gradient-angle'],     transform: function(v) { return v + 'deg'; } },
   hero_text_align:      { vars: ['--hero-text-align'],    transform: function(v) { return v; } },
+  hero_vpos:            { vars: ['--hero-vpos'],          transform: function(v) { return ({ top: 'flex-start', middle: 'center', bottom: 'flex-end' })[v] || 'center'; } },
   hero_height:          { vars: ['--hero-min-height'],    transform: function(v) { return v; } },
+  hero_heading_size:    { vars: ['--hero-heading-size'],  transform: function(v) { return v ? v + 'rem' : ''; } },
   // Wordmark / tagline typography
   nav_brand_size:       { vars: ['--nav-brand-size'],      transform: function(v) { return v + 'rem'; } },
   nav_brand_weight:     { vars: ['--nav-brand-weight'],    transform: function(v) { return v; } },
@@ -3417,7 +3647,10 @@ if (_layoutSelect) {
 
 // ── Server-rendered fields: section_animation & snap_enabled need iframe reload to take effect ──
 // (These drive EJS conditionals that inject JS/CSS blocks — cannot be patched via DOM/postMessage)
-var _reloadFields = ['section_animation', 'snap_enabled'];
+// NOTE: ticker_* fields are wired in _ticker-section.ejs (self-contained save + reload).
+var _reloadFields = ['section_animation', 'snap_enabled', 'snap_strictness', 'hero_style', 'hero_slideshow_static',
+  'cookie_consent_enabled', 'cookie_consent_style', 'cookie_consent_position',
+  'cookie_bg', 'cookie_text_color', 'cookie_accent'];
 _reloadFields.forEach(function(name) {
   var el = document.querySelector('[name="' + name + '"]');
   if (!el) return;
@@ -3676,7 +3909,7 @@ function saveTheme() {
 </script>
 <script src="/js/agentHealth.js"></script>
 <script src="/js/tours/design.js"></script>
-<script src="/js/assetPicker.js"></script>
+<script src="/js/assetPicker.js?v=<%= Date.now() %>"></script>
 <script>
 // ── Hero full-bg media picker (image or video from tenant assets) ──
 (function () {

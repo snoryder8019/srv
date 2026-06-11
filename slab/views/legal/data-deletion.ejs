@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Deletion — <%= (brand && brand.name) ? brand.name : 'sLab' %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#d4d4d4; min-height:100vh; padding:40px 24px; }
+    .wrap { max-width:720px; margin:0 auto; }
+    .logo { text-align:center; margin-bottom:32px; }
+    .logo a { font-size:24px; font-weight:600; color:#fff; text-decoration:none; }
+    .logo a span { color:#c9a848; }
+    h1 { font-size:28px; font-weight:700; color:#fff; margin-bottom:8px; }
+    .updated { font-size:12px; color:#737373; margin-bottom:32px; }
+    h2 { font-size:16px; font-weight:600; color:#fff; margin:28px 0 10px; }
+    p, li { font-size:14px; line-height:1.8; color:#a3a3a3; margin-bottom:12px; }
+    ul, ol { padding-left:20px; margin-bottom:12px; }
+    a { color:#c9a848; }
+    code { background:#1a1a1a; padding:2px 7px; border-radius:3px; font-size:13px; color:#e4e4e4; }
+    .card { background:#141414; border:1px solid #262626; border-radius:8px; padding:22px; margin:20px 0; }
+    .status-badge { display:inline-block; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; }
+    .status-received { background:rgba(201,168,72,0.15); color:#e8d08a; }
+    .status-processing { background:rgba(56,189,248,0.15); color:#7dd3fc; }
+    .status-completed { background:rgba(34,197,94,0.15); color:#86efac; }
+    label { display:block; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:#737373; margin-bottom:6px; }
+    input[type=email] { width:100%; padding:11px 13px; background:#0a0a0a; border:1px solid #333; border-radius:5px; color:#e4e4e4; font-size:14px; font-family:inherit; outline:none; }
+    input[type=email]:focus { border-color:#c9a848; }
+    button { margin-top:14px; padding:11px 24px; background:#c9a848; color:#0a0a0a; border:none; border-radius:5px; font-weight:600; font-size:14px; cursor:pointer; font-family:inherit; }
+    button:hover { background:#e8d08a; }
+    .ok { color:#86efac; } .muted { color:#737373; font-size:13px; }
+    .back { display:inline-block; margin-top:32px; font-size:13px; color:#737373; text-decoration:none; }
+    .back:hover { color:#c9a848; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo"><a href="/"><% if (brand && brand.name) { %><%= brand.name %><% } else { %><span>s</span>Lab<% } %></a></div>
+    <h1>Data Deletion</h1>
+    <p class="updated"><%= (brand && brand.name) ? brand.name : 'This site' %> &middot; Request the deletion of your personal data</p>
+
+    <% if (request) { %>
+      <!-- Status view (?code=) -->
+      <div class="card">
+        <h2 style="margin-top:0;">Request Status</h2>
+        <p>Confirmation code: <code><%= request.code %></code></p>
+        <p>Status:
+          <span class="status-badge status-<%= request.status %>"><%= request.status %></span>
+        </p>
+        <p class="muted">Submitted: <%= new Date(request.createdAt).toUTCString() %></p>
+        <% if (request.status === 'completed') { %>
+          <p class="ok">Your associated data has been deleted.</p>
+        <% } else { %>
+          <p>Your request has been received and is being processed. Personal data linked to your account will be removed, typically within 30 days. You can revisit this page with your confirmation code to check progress.</p>
+        <% } %>
+      </div>
+    <% } else { %>
+      <!-- Instructions + manual request form -->
+      <h2>How to delete your data</h2>
+      <p>If you connected to <%= (brand && brand.name) ? brand.name : 'this site' %> through a social platform (e.g. Facebook or Instagram) and want your data removed, you can request deletion two ways:</p>
+      <ol>
+        <li>Remove the app from your social account's settings — this triggers an automatic deletion request to us.</li>
+        <li>Or submit your email below and we'll delete any data associated with it.</li>
+      </ol>
+
+      <% if (submitted) { %>
+      <div class="card">
+        <p class="ok">✓ Your deletion request has been received.</p>
+        <p>Confirmation code: <code><%= submitted %></code></p>
+        <p class="muted">Save this code. You can check the status anytime at <code><%= baseUrl %>/data-deletion?code=<%= submitted %></code></p>
+      </div>
+      <% } else { %>
+      <div class="card">
+        <form method="POST" action="/data-deletion/request">
+          <label for="email">Your Email</label>
+          <input type="email" id="email" name="email" placeholder="you@example.com" required>
+          <button type="submit">Request Deletion</button>
+        </form>
+        <p class="muted" style="margin-top:14px;margin-bottom:0;">We'll delete personal data tied to this email and confirm by email if one is on file.</p>
+      </div>
+      <% } %>
+
+      <h2>What gets deleted</h2>
+      <p>Account/contact records, captured leads, social profile identifiers, and any content tied to your identity. Anonymized/aggregate analytics and records we are legally required to keep (e.g. invoices) may be retained as described in our <a href="/privacy">Privacy Policy</a>.</p>
+    <% } %>
+
+    <a href="/" class="back">&larr; Back to home</a>
+  </div>
+</body>
+</html>

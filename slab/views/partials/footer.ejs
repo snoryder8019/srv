@@ -1,3 +1,6 @@
+<% const _gtmB = (typeof design !== 'undefined' && design && design.gtm_id) || ''; const _bodyHtml = (typeof design !== 'undefined' && design && design.body_end_html) || ''; %>
+<% if (_gtmB) { %><noscript><iframe src="https://www.googletagmanager.com/ns.html?id=<%= _gtmB %>" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript><% } %>
+<%- _bodyHtml %>
 <%
   /* ── Shared tenant footer — single source of truth for all public pages ── */
   const _fD = typeof design     !== 'undefined' && design     ? design     : {};
@@ -22,7 +25,7 @@
     const _ftShowTagline  = _fD.footer_show_tagline    !== 'false';
     const _ftShowLogo     = _fD.footer_show_logo       === 'true';
     const _ftShowSocial   = _fD.footer_show_social     !== 'false';
-    const _ftShowNews     = _fD.footer_show_newsletter === 'true';
+    const _ftShowNews     = _fD.footer_show_newsletter !== 'false';
     const _ftShowQR       = _fD.footer_show_qr         !== 'false';
 
     /* Colors / typography — defaults intentionally produce a dark-footer/light-text
@@ -160,26 +163,29 @@
     <% }
 
     function renderNewsletter() {
-      if (!_ftShowNews) return; %>
+      if (!_ftShowNews) return;
+      const _nHead = _ftNewsHead || 'Stay in the loop';
+      const _nSub  = _ftNewsSub  || 'Subscribe for updates and offers — no spam, unsubscribe anytime.'; %>
       <div class="footer-newsletter">
-        <% if (_ftNewsHead) { %><div class="footer-col-heading"><%= _ftNewsHead %></div><% } %>
-        <% if (_ftNewsSub) { %><div style="opacity:0.75;font-size:0.85em;"><%= _ftNewsSub %></div><% } %>
-        <form method="POST" action="/api/newsletter" style="display:flex;gap:6px;">
-          <input type="email" name="email" placeholder="<%= _ftNewsPh %>" required style="flex:1;">
+        <div class="footer-col-heading"><%= _nHead %></div>
+        <div style="opacity:0.75;font-size:0.85em;"><%= _nSub %></div>
+        <form class="tnt-news-form" method="POST" action="/api/newsletter" style="display:flex;gap:6px;flex-wrap:wrap;" onsubmit="return tntNewsSubmit(event)">
+          <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;">
+          <input type="email" name="email" placeholder="<%= _ftNewsPh %>" required style="flex:1;min-width:160px;">
           <button type="submit"><%= _ftNewsBtn %></button>
         </form>
+        <div class="tnt-news-msg" style="font-size:0.8em;margin-top:6px;min-height:1.1em;"></div>
       </div>
     <% }
 
     function renderLegal() { %>
       <div><%- _crText %></div>
-      <% if (_ftLegal || _fC.terms_content || _fC.privacy_content) { %>
         <div class="footer-legal">
           <% if (_ftLegal) { %><%= _ftLegal %><% } %>
-          <% if (_fC.terms_content) { %> <a href="/terms" style="text-decoration:underline;">Terms</a><% } %>
-          <% if (_fC.privacy_content) { %> <a href="/privacy" style="text-decoration:underline;">Privacy</a><% } %>
+          <a href="/terms" style="text-decoration:underline;">Terms</a>
+          <a href="/privacy" style="text-decoration:underline;">Privacy</a>
+          <a href="/data-deletion" style="text-decoration:underline;">Data Deletion</a>
         </div>
-      <% } %>
       <% if (_ftShowQR) { %>
         <div id="footer-qr-codes" style="display:none;padding:16px 0 0;text-align:<%= _ftAlign %>;">
           <div id="footer-qr-list" style="display:flex;justify-content:<%= _ftAlign === 'left' ? 'flex-start' : _ftAlign === 'right' ? 'flex-end' : 'center' %>;gap:20px;flex-wrap:wrap;"></div>
@@ -235,11 +241,33 @@
   <% } else { /* simple */ %>
     <% if (_ftShowBrand || _ftShowTagline) { renderBrandBlock() } %>
     <% renderSocial() %>
+    <% if (_ftShowNews) { %><div style="margin:18px auto 0;"><% renderNewsletter() %></div><% } %>
     <% renderLegal() %>
   <% } %>
 
 </footer>
 <script>
+// Newsletter signup — AJAX submit with inline confirmation (double opt-in).
+function tntNewsSubmit(e) {
+  e.preventDefault();
+  var form = e.target;
+  var msg = form.parentNode.querySelector('.tnt-news-msg');
+  var btn = form.querySelector('button');
+  btn.disabled = true;
+  fetch('/api/newsletter', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+    body: new URLSearchParams(new FormData(form)),
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (msg) { msg.style.color = d.ok ? '#7bdca0' : '#f0a0a0'; msg.textContent = d.message || ''; }
+    if (d.ok && d.status !== 'exists' && d.status !== 'invalid') form.style.display = 'none';
+    btn.disabled = false;
+  }).catch(function() {
+    if (msg) { msg.style.color = '#f0a0a0'; msg.textContent = 'Something went wrong. Please try again.'; }
+    btn.disabled = false;
+  });
+  return false;
+}
 (function() {
   var container = document.getElementById('footer-qr-codes');
   var list = document.getElementById('footer-qr-list');

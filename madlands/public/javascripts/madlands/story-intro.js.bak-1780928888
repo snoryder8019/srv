@@ -1,0 +1,110 @@
+/**
+ * story-intro.js — first-run narrative for the Madlands explorer.
+ * A wayfinding-AI character (Orla) walks a new player through their first
+ * journey, travel basics (the vessel.js supply economy), the contest beacons
+ * (handoff to the Towers battle engine), and a first quest. Plays once
+ * (localStorage flag), replayable via the ❔ pill or window.MadlandsIntro.play().
+ * Self-contained: injects its own CSS, touches no game internals.
+ */
+(function () {
+  const FLAG = 'madlands.intro.v1';
+  const GUIDE = 'ORLA · wayfinding AI';
+
+  // first journey -> travel basics -> the contest -> first quest
+  const BEATS = [
+    { icon: '🛰️', text: "You're awake. Good. We drifted into the Madlands while you were under — a cosmos folded inside itself: clusters, systems, worlds, and the rooms buried in them. I'm Orla, your wayfinding intelligence. I'll keep us moving." },
+    { icon: '⛽', text: "Every jump costs us. Watch the gauges lower-left — fuel, rations, nitrogen. Out in the dark we burn all three flying the ship. Groundside we travel light: on foot we spend only rations, or board a vehicle to range farther on fuel." },
+    { icon: '✚', text: "Run a tank dry and we're stranded. Dock at a station and hit resupply to top off — and don't fret rations, the gardens regrow a little with every jump. The med bay eases the crew's draw while it holds." },
+    { icon: '✦', text: "Some places fly a beacon. Those are contested — something's dug in. Set foot on one and we drop straight into the fight, where the war engine takes over. Win, and the salvage comes home with us." },
+    { icon: '🎯', text: "Your first journey, then: pick a place and ▼ Descend into it — that's one jump's worth of supplies — and explore. Find a beacon and engage. Survive, and the Madlands open up. Ready when you are." },
+  ];
+  const QUEST = '✦ First journey — Descend into a place, find a beacon, engage.';
+
+  function css() {
+    if (document.getElementById('story-css')) return;
+    const s = document.createElement('style'); s.id = 'story-css';
+    s.textContent = `
+    .story-ov{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
+      background:rgba(6,5,14,.66);backdrop-filter:blur(3px);opacity:0;transition:opacity .25s ease}
+    .story-ov.on{opacity:1}
+    .story-card{max-width:520px;width:calc(100% - 36px);background:linear-gradient(180deg,#171128,#120d20);
+      border:1px solid #3a2150;border-radius:16px;padding:20px 22px 16px;color:#e9e4f7;
+      font:500 15px/1.5 system-ui,sans-serif;box-shadow:0 24px 70px rgba(0,0,0,.6);transform:translateY(8px);transition:transform .25s ease}
+    .story-ov.on .story-card{transform:none}
+    .story-hd{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+    .story-ic{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:24px;
+      background:radial-gradient(circle at 35% 30%,#3a2860,#1c1430);border:1px solid #4a2f72}
+    .story-who{font:700 12px/1.2 'JetBrains Mono',monospace;letter-spacing:.08em;color:#9ad0ff;text-transform:uppercase}
+    .story-tx{min-height:96px}
+    .story-ft{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+    .story-dots{display:flex;gap:6px}
+    .story-dots i{width:7px;height:7px;border-radius:50%;background:#3a2150;transition:background .2s}
+    .story-dots i.on{background:#9ad0ff}
+    .story-btns{display:flex;gap:8px}
+    .story-b{cursor:pointer;border:1px solid #5a4a82;background:#221a3a;color:#e7e3f5;padding:8px 16px;border-radius:999px;font:600 13px system-ui}
+    .story-b.skip{background:transparent;border-color:#332a4a;color:#9b90b6}
+    .story-b.go:hover{background:#2e2350}
+    .story-pill{position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;
+      background:rgba(12,10,22,.92);border:1px solid #3a2150;border-radius:999px;padding:7px 8px 7px 14px;color:#e7e3f5;
+      font:600 12px/1 system-ui;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+    .story-pill button{cursor:pointer;border:1px solid #5a4a82;background:#221a3a;color:#cfe6ff;width:24px;height:24px;border-radius:50%;font-size:13px}`;
+    document.head.appendChild(s);
+  }
+
+  let i = 0, ov = null;
+
+  function showQuestPill() {
+    if (document.querySelector('.story-pill')) return;
+    const p = document.createElement('div'); p.className = 'story-pill';
+    p.innerHTML = `<span>${QUEST}</span><button title="replay the intro">❔</button>`;
+    p.querySelector('button').onclick = () => play();
+    document.body.appendChild(p);
+  }
+
+  function renderBeat() {
+    const b = BEATS[i];
+    ov.querySelector('.story-ic').textContent = b.icon;
+    ov.querySelector('.story-tx').textContent = b.text;
+    ov.querySelectorAll('.story-dots i').forEach((d, k) => d.classList.toggle('on', k === i));
+    ov.querySelector('.story-b.go').textContent = i === BEATS.length - 1 ? 'Begin ▸' : 'Next ▸';
+  }
+
+  function close(done) {
+    if (!ov) return;
+    ov.classList.remove('on');
+    setTimeout(() => { ov && ov.remove(); ov = null; }, 250);
+    try { localStorage.setItem(FLAG, '1'); } catch (e) {}
+    if (done) showQuestPill();
+  }
+
+  function play() {
+    css(); i = 0;
+    if (ov) ov.remove();
+    ov = document.createElement('div'); ov.className = 'story-ov';
+    ov.innerHTML =
+      `<div class="story-card">
+         <div class="story-hd"><div class="story-ic"></div><div class="story-who">${GUIDE}</div></div>
+         <div class="story-tx"></div>
+         <div class="story-ft">
+           <div class="story-dots">${BEATS.map(() => '<i></i>').join('')}</div>
+           <div class="story-btns"><button class="story-b skip">Skip</button><button class="story-b go"></button></div>
+         </div>
+       </div>`;
+    document.body.appendChild(ov);
+    requestAnimationFrame(() => ov.classList.add('on'));
+    renderBeat();
+    ov.querySelector('.story-b.skip').onclick = () => close(true);
+    ov.querySelector('.story-b.go').onclick = () => { if (i < BEATS.length - 1) { i++; renderBeat(); } else { close(true); } };
+  }
+
+  function maybeAutoplay() {
+    let seen = null; try { seen = localStorage.getItem(FLAG); } catch (e) {}
+    if (seen) { showQuestPill(); return; }
+    setTimeout(play, 600); // let the scene settle first
+  }
+
+  window.MadlandsIntro = { play, reset() { try { localStorage.removeItem(FLAG); } catch (e) {} } };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', maybeAutoplay);
+  else maybeAutoplay();
+})();

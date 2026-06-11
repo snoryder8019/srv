@@ -80,15 +80,34 @@
     </div>
 
     <div class="card mt-24">
+      <div class="card-title">Project Link</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Link URL</label>
+          <input type="text" name="linkUrl" value="<%= item?.linkUrl || '' %>" placeholder="/services or https://example.com">
+          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Internal page (start with <code>/</code>, e.g. <code>/contact</code>) or a full web address. Shown as a button in the project modal.</span>
+        </div>
+        <div class="form-field">
+          <label>Link Label</label>
+          <input type="text" name="linkLabel" value="<%= item?.linkLabel || '' %>" placeholder="Visit Site">
+          <span style="font-size:0.72rem;color:var(--slate);margin-top:4px;display:block;">Button text. Defaults to “Visit Project” if left blank.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-24">
       <div class="card-title">Gallery (Slideshow + Modal)</div>
       <div style="font-size:0.78rem;color:var(--slate);margin-bottom:12px;">
         Add multiple images for the modal slideshow. Cards on the public site show the first image as the thumbnail; clicking the card opens a modal with a slideshow of every image plus the project info.
       </div>
       <input type="hidden" name="gallery" id="galleryJson" value='<%- JSON.stringify((item?.gallery)||[]) %>'>
       <div id="galleryList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px;"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button type="button" class="btn btn-navy btn-sm" id="galleryUploadBtn">⬆ Upload from Computer</button>
         <button type="button" class="btn btn-ghost btn-sm" id="galleryAddBtn">◈ Add Image from Assets</button>
         <button type="button" class="btn btn-ghost btn-sm" id="galleryAddUrlBtn">+ Add by URL</button>
+        <input type="file" id="galleryFileInput" accept="image/*" multiple style="display:none;">
+        <span id="galleryUploadStatus" style="font-size:0.74rem;color:var(--slate);"></span>
       </div>
     </div>
 
@@ -122,7 +141,7 @@
   </form>
 </div>
 
-<script src="/js/assetPicker.js"></script>
+<script src="/js/assetPicker.js?v=<%= Date.now() %>"></script>
 <script src="/js/tours/portfolio.js"></script>
 <script>
 (function() {
@@ -234,6 +253,40 @@
       save(); render();
     }
   });
+
+  const uploadBtn = document.getElementById('galleryUploadBtn');
+  const fileInput = document.getElementById('galleryFileInput');
+  const uploadStatus = document.getElementById('galleryUploadStatus');
+  if (uploadBtn && fileInput) {
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+      const files = Array.from(fileInput.files || []);
+      if (!files.length) return;
+      uploadBtn.disabled = true;
+      uploadStatus.textContent = `Uploading ${files.length} image${files.length > 1 ? 's' : ''}…`;
+      try {
+        const fd = new FormData();
+        files.forEach(f => fd.append('files', f));
+        fd.append('folder', 'portfolio');
+        const res = await fetch('/admin/assets/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          alert(data.error || 'Upload failed');
+        } else {
+          (data.assets || []).forEach(a => {
+            if (a.publicUrl) gallery.push({ url: a.publicUrl, caption: a.title || '' });
+          });
+          save(); render();
+        }
+      } catch (e) {
+        alert('Upload failed: ' + e.message);
+      } finally {
+        uploadBtn.disabled = false;
+        uploadStatus.textContent = '';
+        fileInput.value = '';
+      }
+    });
+  }
 
   render();
 })();

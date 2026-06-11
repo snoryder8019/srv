@@ -3,8 +3,11 @@ import { execSync } from 'child_process';
 import { getSlabDb } from '../../plugins/mongo.js';
 import { encrypt, decrypt } from '../../plugins/crypto.js';
 import { bustTenantCache } from '../../middleware/tenant.js';
+import jwt from 'jsonwebtoken';
 import { config } from '../../config/config.js';
 import { logActivity } from '../../plugins/activityLog.js';
+import { PLATFORM_LIST, maskAccount } from '../../plugins/socialPublish.js';
+import { buildAuthUrl, exchangeCode, isOAuthProvider, EMAIL_OAUTH_PROVIDERS } from '../../plugins/emailOAuth.js';
 
 const router = express.Router();
 
@@ -14,15 +17,25 @@ const SECRET_FIELDS = [
   'paypalSecret',
   'zohoPass',
   'googleOAuthSecret',
+  // Advanced: provider OAuth client secrets (stored for OAuth-based sending)
+  'gmailOAuthSecret', 'outlookOAuthSecret',
 ];
 
 // Fields stored in plain text (safe to expose to frontend)
 const PUBLIC_FIELDS = [
   'stripePublishable',
   'paypalClientId', 'paypalMode',
+  'paymentProvider',   // which method(s) to offer on invoices: 'both' | 'stripe' | 'paypal'
   'zohoUser',
+  'emailProvider',     // 'zoho' | 'gmail' | 'outlook' | 'custom' — selects SMTP host
+  'emailAuthMode',     // 'password' | 'oauth' (gmail/outlook only)
+  'smtpHost', 'smtpPort',  // only used when emailProvider === 'custom'
   'googlePlacesKey', 'googlePlaceId',
   'googleOAuthClientId',
+  // Advanced: provider OAuth client IDs
+  'gmailOAuthClientId', 'outlookOAuthClientId',
+  // Connected mailbox addresses (set by the OAuth callback, not the form)
+  'gmailOAuthUser', 'outlookOAuthUser',
   'customDomain',
 ];
 
@@ -61,6 +74,13 @@ router.get('/', async (req, res) => {
       settings[`${key}_set`] = false;
     }
   }
+
+  // OAuth-connected mailbox status (refresh token present = connected)
+  settings.gmailOAuthConnected   = !!tenant.secrets?.gmailOAuthRefreshToken;
+  settings.outlookOAuthConnected = !!tenant.secrets?.outlookOAuthRefreshToken;
+  settings.emailAuthMode = tenant.public?.emailAuthMode || 'password';
+  // The exact redirect URI the tenant must register in their OAuth app
+  settings.emailOAuthRedirectBase = `https://${tenant.meta?.customDomain || tenant.public?.customDomain || tenant.domain}/admin/settings/email/oauth`;
 
   // Meta
   settings.domain = tenant.domain;
@@ -136,11 +156,40 @@ router.get('/', async (req, res) => {
     platformVersion = pkg.default?.version || '1.0.0';
   } catch { /* ignore */ }
 
+  // ── Social media connections (stored in tenant DB `social_accounts`) ──
+  const socialPlatforms = PLATFORM_LIST.map(p => ({
+    key: p.key, name: p.name, icon: p.icon, color: p.color,
+    portal: p.portal || null, setup: p.setup || '', comingSoon: !!p.comingSoon,
+    fields: p.fields.map(f => ({ key: f.key, label: f.label, secret: !!f.secret, placeholder: f.placeholder || '' })),
+  }));
+  const socialStatus = {};
+  try {
+    const accounts = await req.db.collection('social_accounts').find({}).toArray();
+    for (const a of accounts) {
+      const m = maskAccount(a);
+      socialStatus[a.platform] = {
+        configured: m.configured,
+        verified: a.lastTestOk === true,
+        secretsSet: m.secretsSet,
+        credentials: m.credentials,
+        profile: a.profile || null,
+        tokenManaged: m.tokenManaged,
+        tokenType: m.tokenType,
+        tokenExpiresAt: m.tokenExpiresAt,
+      };
+    }
+  } catch { /* tenant db unavailable — show all unconfigured */ }
+
+  const publicBaseUrl = 'https://' + (tenant.meta?.customDomain || tenant.public?.customDomain || tenant.domain);
+
   res.render('admin/settings', {
     user: req.adminUser,
     page: 'settings',
     settings,
     brandProfile,
+    socialPlatforms,
+    socialStatus,
+    publicBaseUrl,
     saved: req.query.saved || null,
     error: req.query.error || null,
     whatsNew,
@@ -201,19 +250,22 @@ router.post('/', async (req, res) => {
     }
   }
 
+  // Tenant docs are keyed by the wildcard subdomain. When admin is accessed via
+  // a custom domain, tenant.domain is the *custom* domain, which is NOT the DB
+  // key — so always update by the canonical wildcard domain.
+  const canonicalDomain = tenant.wildcardDomain || tenant.domain;
+
   try {
-    await slab.collection('tenants').updateOne(
-      { domain: tenant.domain },
+    const result = await slab.collection('tenants').updateOne(
+      { domain: canonicalDomain },
       { $set: updates }
     );
-    bustTenantCache(tenant.domain);
-    // If there's a custom domain alias, update that too
-    if (tenant.meta?.customDomain) {
-      await slab.collection('tenants').updateOne(
-        { domain: tenant.meta.customDomain },
-        { $set: updates }
-      );
-      bustTenantCache(tenant.meta.customDomain);
+    if (result.matchedCount === 0) {
+      throw new Error(`No tenant document matched domain "${canonicalDomain}" — settings not saved`);
+    }
+    // Bust every hostname this tenant may be cached under
+    for (const d of [canonicalDomain, tenant.domain, tenant.customDomain, tenant.meta?.customDomain]) {
+      if (d) bustTenantCache(d);
     }
 
     // Build a readable list of what changed
@@ -266,21 +318,23 @@ router.post('/test-stripe', async (req, res) => {
 // ── Test email connection ───────────────────────────────────────────────────
 router.post('/test-email', async (req, res) => {
   try {
-    const zohoUser = req.tenant?.public?.zohoUser;
-    const zohoPass = req.tenant?.secrets?.zohoPass;
-    if (!zohoUser || !zohoPass) return res.json({ ok: false, error: 'Zoho credentials not configured' });
-    const nodemailer = (await import('nodemailer')).default;
-    const transporter = nodemailer.createTransport({
-      host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN',
-      auth: { user: zohoUser, pass: zohoPass },
-    });
+    const { resolveSmtp, getTenantTransporter } = await import('../../plugins/mailer.js');
+    const smtp = resolveSmtp(req.tenant);
+    if (smtp.authMode === 'oauth') {
+      if (!smtp.user) return res.json({ ok: false, error: 'OAuth mailbox not connected' });
+    } else {
+      if (!smtp.user || !smtp.pass) return res.json({ ok: false, error: 'Email credentials not configured' });
+      if (!smtp.host) return res.json({ ok: false, error: 'Custom SMTP host not set' });
+    }
+    // getTenantTransporter fetches a fresh OAuth access token when in OAuth mode.
+    const transporter = await getTenantTransporter(req.tenant);
     await transporter.verify();
     logActivity({
       category: 'settings', action: 'email_test',
       tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: 'success',
-      actor: { email: req.adminUser?.email, role: 'admin' }, ip: req.ip,
+      actor: { email: req.adminUser?.email, role: 'admin' }, details: { provider: smtp.provider }, ip: req.ip,
     });
-    res.json({ ok: true });
+    res.json({ ok: true, provider: smtp.provider });
   } catch (err) {
     logActivity({
       category: 'settings', action: 'email_test',
@@ -288,6 +342,106 @@ router.post('/test-email', async (req, res) => {
       actor: { email: req.adminUser?.email, role: 'admin' },
       error: err.message, ip: req.ip,
     });
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * EMAIL OAUTH — per-tenant "Connect mailbox" flow for Gmail / Outlook.
+ * The tenant registers its own OAuth client (id+secret saved above) and
+ * authorises its mailbox; we store the resulting refresh token encrypted and
+ * flip emailAuthMode to 'oauth'. Mirrors the JWT-state pattern in routes/auth.js.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+// Start consent → redirect to the provider
+router.get('/email/oauth/:provider/connect', (req, res) => {
+  const provider = req.params.provider;
+  if (!isOAuthProvider(provider)) return res.redirect('/admin/settings?error=' + encodeURIComponent('Unknown OAuth provider') + '#email');
+  const tenant = req.tenant;
+  const clientId = tenant?.public?.[`${provider}OAuthClientId`];
+  const clientSecret = tenant?.secrets?.[`${provider}OAuthSecret`];
+  if (!clientId || !clientSecret) {
+    return res.redirect('/admin/settings?error=' + encodeURIComponent('Save the ' + (EMAIL_OAUTH_PROVIDERS[provider]?.label || provider) + ' OAuth Client ID and Secret first') + '#email');
+  }
+  const redirectUri = `https://${req.hostname}/admin/settings/email/oauth/${provider}/callback`;
+  const state = jwt.sign(
+    { provider, domain: tenant.wildcardDomain || tenant.domain, redirectUri },
+    config.JWT_SECRET, { expiresIn: '10m' }
+  );
+  res.redirect(buildAuthUrl(provider, { clientId, redirectUri, state }));
+});
+
+// Provider callback → exchange code, store refresh token, enable OAuth
+router.get('/email/oauth/:provider/callback', async (req, res) => {
+  const provider = req.params.provider;
+  try {
+    if (!isOAuthProvider(provider)) throw new Error('Unknown provider');
+    const { code, state, error, error_description } = req.query;
+    if (error) throw new Error(error_description || error);
+    if (!code || !state) throw new Error('Missing authorization code');
+    let claims;
+    try { claims = jwt.verify(state, config.JWT_SECRET); }
+    catch { throw new Error('Consent link expired — please try connecting again.'); }
+    if (claims.provider !== provider) throw new Error('Provider mismatch');
+
+    const tenant = req.tenant;
+    const clientId = tenant?.public?.[`${provider}OAuthClientId`];
+    const clientSecret = tenant?.secrets?.[`${provider}OAuthSecret`];
+    if (!clientId || !clientSecret) throw new Error('OAuth client credentials missing');
+
+    const redirectUri = claims.redirectUri || `https://${req.hostname}/admin/settings/email/oauth/${provider}/callback`;
+    const { refreshToken, email } = await exchangeCode(provider, { clientId, clientSecret, code, redirectUri });
+
+    const canonicalDomain = tenant.wildcardDomain || tenant.domain;
+    const updates = {
+      [`secrets.${provider}OAuthRefreshToken`]: encrypt(refreshToken),
+      'public.emailProvider': provider,
+      'public.emailAuthMode': 'oauth',
+      updatedAt: new Date(),
+    };
+    if (email) updates[`public.${provider}OAuthUser`] = email;
+    await getSlabDb().collection('tenants').updateOne({ domain: canonicalDomain }, { $set: updates });
+    for (const d of [canonicalDomain, tenant.domain, tenant.customDomain, tenant.meta?.customDomain]) if (d) bustTenantCache(d);
+
+    logActivity({
+      category: 'settings', action: 'email_oauth_connected',
+      tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      details: { provider, mailbox: email || null }, ip: req.ip,
+    });
+    res.redirect('/admin/settings?saved=1#email');
+  } catch (err) {
+    logActivity({
+      category: 'settings', action: 'email_oauth_connected',
+      tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: 'failed',
+      actor: { email: req.adminUser?.email, role: 'admin' }, error: err.message, ip: req.ip,
+    });
+    res.redirect('/admin/settings?error=' + encodeURIComponent('OAuth connect failed: ' + err.message) + '#email');
+  }
+});
+
+// Disconnect a connected mailbox
+router.post('/email/oauth/:provider/disconnect', async (req, res) => {
+  const provider = req.params.provider;
+  if (!isOAuthProvider(provider)) return res.json({ ok: false, error: 'Unknown provider' });
+  try {
+    const tenant = req.tenant;
+    const canonicalDomain = tenant.wildcardDomain || tenant.domain;
+    await getSlabDb().collection('tenants').updateOne(
+      { domain: canonicalDomain },
+      {
+        $unset: { [`secrets.${provider}OAuthRefreshToken`]: '', [`public.${provider}OAuthUser`]: '' },
+        $set: { 'public.emailAuthMode': 'password', updatedAt: new Date() },
+      }
+    );
+    for (const d of [canonicalDomain, tenant.domain, tenant.customDomain, tenant.meta?.customDomain]) if (d) bustTenantCache(d);
+    logActivity({
+      category: 'settings', action: 'email_oauth_disconnected',
+      tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' }, details: { provider }, ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
     res.json({ ok: false, error: err.message });
   }
 });

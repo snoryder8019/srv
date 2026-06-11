@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/css/madlands.css" />
+  <style>
+    /* siege spoils prompt (return-from-instance): salvage / buyback / recover */
+    .siege-spoils { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%);
+      z-index: 50; max-width: min(92vw, 460px); }
+    .siege-spoils .ss-card { background: rgba(12,10,22,0.96); border: 1px solid #3a2150;
+      border-radius: 12px; padding: 14px 16px; color: #e7e3f5; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      font-size: 14px; }
+    .siege-spoils .ss-sub { color: #b9b2d6; font-size: 12px; margin-top: 6px; }
+    .siege-spoils .ss-sub code, .siege-spoils code { color: #ffd24a; }
+    .siege-spoils .ss-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .siege-spoils .chip.btn { cursor: pointer; border: 1px solid #5a4a82; background: #221a3a;
+      color: #e7e3f5; padding: 7px 12px; border-radius: 999px; }
+    .siege-spoils .chip.btn:hover { background: #2e2350; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◆</span>
+      <span class="brand-name">MADLANDS</span>
+      <span class="brand-sub">viking · space · funk · metal · pop</span>
+    </div>
+    <div class="hud">
+      <span class="chip">scale: <b id="hud-depth">space</b></span>
+      <span class="chip">hex: <b id="hud-sel">—</b></span>
+      <span class="chip">tool: <b id="hud-tool">select</b></span>
+      <span class="chip who">@<b id="hud-who">…</b></span>
+      <a class="chip btn" id="act-admin" href="/admin" style="display:none">builder ▸</a>
+      <% if (!currentUser) { %><a class="chip btn" href="/auth/platform">sign in</a><% } else { %><a class="chip btn" href="/auth/logout">sign out</a><% } %>
+    </div>
+  </header>
+
+  <nav class="rail">
+    <button data-tool="select" class="active" title="Select">⬚</button>
+    <button data-tool="spawn"  title="Spawn portal">◉</button>
+    <button data-tool="path"   title="Path">⋯</button>
+    <button data-tool="block"  title="Block">▦</button>
+    <div class="rail-sep"></div>
+    <button id="act-descend" title="Descend a scale (space ▸ body ▸ zone ▸ interior)">▼</button>
+    <button id="act-ascend"  title="Ascend a scale">▲</button>
+    <div class="rail-sep"></div>
+    <button id="act-play"   title="Explore this place (walk, collect)">▶</button>
+    <button id="act-siege"  title="Siege — attack inward (place on the outer ring)">⚔</button>
+    <button id="act-defend" title="Defend — middle-out defense of this place">⛨</button>
+  </nav>
+
+  <main id="stage" data-radius="<%= boardRadius %>"></main>
+
+  <!-- play overlay -->
+  <div id="play-hud" class="play-hud" style="display:none">
+    <span>relics <b id="ph-score">0</b></span>
+    <span>level <b id="ph-lives">—</b></span>
+    <span id="ph-obj" class="ph-obj"></span>
+  </div>
+  <div id="play-banner" class="play-banner" style="display:none"></div>
+
+  <!-- siege return: salvage / buyback / recover prompt -->
+  <div id="siege-spoils" class="siege-spoils" style="display:none"></div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- launch intro flow (reusable) loads before the map module -->
+  <script type="module" src="/js/madlands/siege-intro.js"></script>
+  <script type="module" src="/js/madlands/story-intro.js"></script>
+  <script type="module" src="/js/madlands/app.js"></script>
+</body>
+</html>

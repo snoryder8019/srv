@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-snap="<%= design.snap_enabled === 'true' ? 'true' : 'false' %>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,6 +11,9 @@
   %>
   <%- include('partials/font-vars') %>
   <%- include('partials/landing-styles') %>
+  <% if (visibility.about && (harmonyServices || []).length) { %>
+  <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }</script>
+  <% } %>
 </head>
 <%
   const heroBgMediaUrl  = (design.hero_bg_media_url  || '').trim();
@@ -30,7 +33,11 @@
     link:    copy['slide' + i + '_link']    || '',
     cta:     copy['slide' + i + '_cta']     || '',
     tag:     copy['slide' + i + '_tag']     || '',
+    vpos:    copy['slide' + i + '_vpos']    || '',
   })).filter(s => s.image || s.heading);
+  // Maps a vertical-position keyword → flex align-items value. Empty/'inherit'
+  // leaves the slide on the global --hero-vpos default.
+  const _heroVposMap = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
 %>
 <body data-layout="<%= design.landing_layout || 'classic' %>" data-gradient="<%= design.gradient_enabled || 'false' %>" data-card-hover-accent="<%= design.card_hover_accent || 'true' %>" data-hero-pattern="<%= design.hero_bg_pattern || 'none' %>" data-hero-full-bg="<%= heroFullBg ? heroBgMediaType : '' %>" data-hero-style="<%= heroStyle %>" data-portfolio-layout="<%= design.portfolio_layout || 'grid' %>" data-blog-layout="<%= design.blog_layout || 'grid' %>">
 
@@ -40,22 +47,29 @@
 
 <!-- HERO -->
 <% if (visibility.hero) { %>
-<% if (heroStyle === 'slideshow' && heroSlides.length) { %>
+<% if (heroStyle === 'parallax') { %>
+  <%- include('partials/_marquee-parallax', { d: design, b: brand, copy: copy, pos: 'hero' }) %>
+<% } else if (heroStyle === 'slideshow' && heroSlides.length) { %>
   <%
     const _interval = parseInt(design.hero_slideshow_interval || '6', 10);
     const _showDots = design.hero_slideshow_dots !== 'false';
     const _showArrows = design.hero_slideshow_arrows !== 'false';
+    // Static overlay: one fixed headline (main hero copy) sits over every slide
+    // instead of per-slide titles — for image-only slideshows.
+    const _staticHero = design.hero_slideshow_static === 'true';
   %>
-  <section class="hero hero--slideshow" data-interval="<%= _interval %>" data-count="<%= heroSlides.length %>">
+  <section class="hero hero--slideshow<%= _staticHero ? ' hero--slideshow-static' : '' %>" data-interval="<%= _interval %>" data-count="<%= heroSlides.length %>">
     <div class="hero-slides">
       <% heroSlides.forEach((s, i) => { %>
-        <% if (s.link) { %>
-        <a class="hero-slide<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>" href="<%= s.link %>">
+        <% const _slideVpos = (!_staticHero && _heroVposMap[s.vpos]) ? ' style="align-items:' + _heroVposMap[s.vpos] + '"' : ''; %>
+        <% if (s.link && !_staticHero) { %>
+        <a class="hero-slide<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>" href="<%= s.link %>"<%- _slideVpos %>>
         <% } else { %>
-        <div class="hero-slide<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>">
+        <div class="hero-slide<%= i === 0 ? ' is-active' : '' %>" data-idx="<%= i %>"<%- _slideVpos %>>
         <% } %>
           <% if (s.image) { %><div class="hero-slide-bg" style="background-image:url('<%= s.image %>');"></div><% } %>
           <div class="hero-slide-overlay"></div>
+          <% if (!_staticHero) { %>
           <div class="hero-slide-text">
             <% if (s.tag) { %><span class="hero-slide-tag"><%= s.tag %></span><% } %>
             <% if (s.eyebrow) { %><p class="hero-eyebrow"><%= s.eyebrow %></p><% } %>
@@ -63,9 +77,28 @@
             <% if (s.sub) { %><p class="hero-sub"><%= s.sub %></p><% } %>
             <% if (s.cta && s.link) { %><span class="btn-primary hero-slide-cta"><%= s.cta %></span><% } %>
           </div>
-        <% if (s.link) { %></a><% } else { %></div><% } %>
+          <% } %>
+        <% if (s.link && !_staticHero) { %></a><% } else { %></div><% } %>
       <% }) %>
     </div>
+    <% if (_staticHero) { %>
+    <div class="hero-static-overlay">
+      <div class="hero-slide-text">
+        <% if (copy.hero_eyebrow) { %><p class="hero-eyebrow"><%= copy.hero_eyebrow %></p><% } %>
+        <% if (copy.hero_heading || copy.hero_heading_em) { %>
+          <h2 class="hero-heading"><%= copy.hero_heading || '' %><% if (copy.hero_heading_em) { %> <em><%= copy.hero_heading_em %></em><% } %></h2>
+        <% } %>
+        <% if (copy.hero_sub) { %><p class="hero-sub"><%= copy.hero_sub %></p><% } %>
+        <% if ((copy.hero_cta_primary && copy.hero_cta_primary_link) || (copy.hero_cta_secondary && copy.hero_cta_secondary_link) || (copy.hero_cta_tertiary && copy.hero_cta_tertiary_link)) { %>
+        <div class="hero-btns">
+          <% if (copy.hero_cta_primary && copy.hero_cta_primary_link) { %><a href="<%= copy.hero_cta_primary_link %>" class="btn-primary"><%= copy.hero_cta_primary %></a><% } %>
+          <% if (copy.hero_cta_secondary && copy.hero_cta_secondary_link) { %><a href="<%= copy.hero_cta_secondary_link %>" class="btn-ghost btn-ghost--on-dark"><%= copy.hero_cta_secondary %></a><% } %>
+          <% if (copy.hero_cta_tertiary && copy.hero_cta_tertiary_link) { %><a href="<%= copy.hero_cta_tertiary_link %>" class="btn-ghost btn-ghost--on-dark"><%= copy.hero_cta_tertiary %></a><% } %>
+        </div>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
     <% if (_showArrows && heroSlides.length > 1) { %>
       <button type="button" class="hero-arrow hero-arrow--prev" aria-label="Previous slide">&#8249;</button>
       <button type="button" class="hero-arrow hero-arrow--next" aria-label="Next slide">&#8250;</button>
@@ -128,6 +161,7 @@
           <div class="hero-btns">
             <% if (copy.hero_cta_primary) { %><a href="<%= copy.hero_cta_primary_link || '#contact' %>" class="btn-primary"><%= copy.hero_cta_primary %></a><% } %>
             <% if (copy.hero_cta_secondary) { %><a href="<%= copy.hero_cta_secondary_link || '#services' %>" class="btn-ghost"><%= copy.hero_cta_secondary %></a><% } %>
+            <% if (copy.hero_cta_tertiary) { %><a href="<%= copy.hero_cta_tertiary_link || '/stack' %>" class="btn-ghost"><%= copy.hero_cta_tertiary %></a><% } %>
           </div>
         </div>
       </div>
@@ -164,6 +198,7 @@
       <div class="hero-btns">
         <% if (copy.hero_cta_primary) { %><a href="<%= copy.hero_cta_primary_link || '#contact' %>" class="btn-primary"><%= copy.hero_cta_primary %></a><% } %>
         <% if (copy.hero_cta_secondary) { %><a href="<%= copy.hero_cta_secondary_link || '#services' %>" class="btn-ghost"><%= copy.hero_cta_secondary %></a><% } %>
+        <% if (copy.hero_cta_tertiary) { %><a href="<%= copy.hero_cta_tertiary_link || '/stack' %>" class="btn-ghost"><%= copy.hero_cta_tertiary %></a><% } %>
       </div>
     </div>
   </div>
@@ -191,37 +226,13 @@
 <% } %>
 
 <!-- MARQUEE / TICKER -->
-<% if (visibility.hero && visibility.marquee !== false) { %>
-<%
-  let _marqueeItems = [];
-  const _customTicker = (design.ticker_items || '').trim();
-  if (_customTicker) {
-    _marqueeItems = _customTicker.split('|').map(s => s.trim()).filter(Boolean);
-  } else {
-    if (brand?.services && brand.services.length) {
-      brand.services.forEach(s => _marqueeItems.push(s));
-    } else {
-      _marqueeItems.push('Our Services');
-    }
-    if (brand?.location) _marqueeItems.push(brand.location);
-    if (brand?.tagline) _marqueeItems.push(brand.tagline);
-    if (_marqueeItems.length < 4) {
-      ['Quality Service', 'Trusted Partner', 'Get Started Today', 'Contact Us'].forEach(f => { if (_marqueeItems.length < 6) _marqueeItems.push(f); });
-    }
-  }
-  while (_marqueeItems.length > 0 && _marqueeItems.length < 4) _marqueeItems = _marqueeItems.concat(_marqueeItems);
-%>
-<% if (_marqueeItems.length) { %>
-<div class="marquee-bar" data-direction="<%= design.ticker_direction || 'left' %>" aria-hidden="true">
-  <div class="marquee-track">
-    <% for (let _r = 0; _r < 2; _r++) { %>
-      <% _marqueeItems.forEach(function(item) { %>
-        <span class="marquee-item"><%- item %><span class="marquee-dot"></span></span>
-      <% }); %>
-    <% } %>
-  </div>
-</div>
-<% } %>
+<% /* When the parallax band IS the hero, don't render it again below. */ %>
+<% if (visibility.hero && visibility.marquee !== false && heroStyle !== 'parallax') { %>
+  <% if ((design.ticker_treatment || 'bar') === 'parallax') { %>
+    <%- include('partials/_marquee-parallax', { d: design, b: brand, copy: copy, pos: 'below_hero' }) %>
+  <% } else { %>
+    <%- include('partials/_marquee-bar', { d: design, b: brand, pos: 'below_hero' }) %>
+  <% } %>
 <% } %>
 
 <!-- SERVICES -->
@@ -235,12 +246,35 @@
     <p class="section-sub"><%= copy.services_sub %></p>
   </div>
   <div class="services-grid">
-    <% [[1, copy.service1_title, copy.service1_desc, copy.service1_link, copy.service1_image],
-        [2, copy.service2_title, copy.service2_desc, copy.service2_link, copy.service2_image],
-        [3, copy.service3_title, copy.service3_desc, copy.service3_link, copy.service3_image]].forEach(([n, title, desc, link, image]) => { %>
+    <%
+      // Collect every service card defined in copy (service{N}_*), in numeric
+      // order — not just 1-3 — so cards added via the design repeater publish.
+      // service{N}_hidden === 'true' hides that card from the live page.
+      const _svcIdx = new Set();
+      Object.keys(copy).forEach(k => { const m = k.match(/^service(\d+)_/); if (m) _svcIdx.add(parseInt(m[1], 10)); });
+      let _services = [..._svcIdx].sort((a, b) => a - b)
+        .filter(n => copy['service' + n + '_hidden'] !== 'true')
+        .map(n => ({
+          title: copy['service' + n + '_title'],
+          desc:  copy['service' + n + '_desc'],
+          link:  copy['service' + n + '_link'],
+          image: copy['service' + n + '_image'],
+        }))
+        .filter(s => s.title || s.desc || s.image);
+      // Fallback to the first three default keys if nothing is defined yet.
+      if (_services.length === 0) {
+        _services = [1, 2, 3].map(n => ({
+          title: copy['service' + n + '_title'],
+          desc:  copy['service' + n + '_desc'],
+          link:  copy['service' + n + '_link'],
+          image: copy['service' + n + '_image'],
+        }));
+      }
+    %>
+    <% _services.forEach(({ title, desc, link, image }, i) => { %>
       <% if (link) { %><a href="<%= link %>" class="service-card" style="text-decoration:none;color:inherit;"><% } else { %><div class="service-card"><% } %>
         <% if (image) { %><img src="<%= image %>" alt="<%= title %>" style="max-width:min(320px,70vw);max-height:120px;object-fit:contain;margin-bottom:24px;"><% } %>
-        <div class="service-num">0<%= n %></div>
+        <div class="service-num"><%= String(i + 1).padStart(2, '0') %></div>
         <h3 class="service-title"><%= title %></h3>
         <p class="service-desc"><%= desc %></p>
         <% if (link) { %><span class="service-link">Visit →</span></a><% } else { %></div><% } %>
@@ -301,9 +335,38 @@
   <div class="advisor-right">
     <% if (copy.about_initial) { %><div class="advisor-initial"><%= copy.about_initial %></div><% } %>
     <div class="advisor-right-inner">
+      <% if ((harmonyServices || []).length) {
+        const _hCatMeta = {
+          platform: { label: 'Platform', color: '#34d399' },
+          client:   { label: 'Client',   color: '#60a5fa' },
+          game:     { label: 'Game',     color: '#c084fc' },
+          media:    { label: 'Media',    color: '#f59e0b' },
+          tool:     { label: 'Tool',     color: '#c9a848' },
+          infra:    { label: 'Infra',    color: '#22d3ee' },
+        };
+        const _hCats = [...new Set((harmonyServices || []).map(s => s.category))].filter(c => _hCatMeta[c]);
+      %>
+      <div class="about-harmony">
+        <div class="ah-eyebrow">Server Harmony · our live stack</div>
+        <div id="aboutHarmonyWrap" class="ah-canvas"></div>
+        <div class="ah-legend">
+          <% _hCats.forEach(function(cat) { %>
+            <span class="ah-lg"><span class="ah-dot" style="background:<%= _hCatMeta[cat].color %>;box-shadow:0 0 6px <%= _hCatMeta[cat].color %>;"></span><%= _hCatMeta[cat].label %></span>
+          <% }); %>
+        </div>
+        <div class="ah-count"><%= (harmonyServices || []).length %> services &amp; microservices in orbit</div>
+        <div class="ah-hint">drag to rotate · scroll to zoom</div>
+        <script type="application/json" id="aboutHarmonyJson"><%- JSON.stringify(harmonyServices || []) %></script>
+      </div>
+      <% } %>
       <div class="advisor-stats">
-        <% [1,2,3,4].forEach(function(n) { %>
-          <% if (copy['about_stat'+n+'_num']) { %>
+        <%
+          const _statIdx = new Set();
+          Object.keys(copy).forEach(k => { const m = k.match(/^about_stat(\d+)_/); if (m) _statIdx.add(parseInt(m[1], 10)); });
+          const _stats = [..._statIdx].sort((a, b) => a - b).length ? [..._statIdx].sort((a, b) => a - b) : [1, 2, 3, 4];
+        %>
+        <% _stats.forEach(function(n) { %>
+          <% if (copy['about_stat'+n+'_num'] && copy['about_stat'+n+'_hidden'] !== 'true') { %>
           <div class="stat-box">
             <div class="stat-num"><%= copy['about_stat'+n+'_num'] %></div>
             <div class="stat-label"><%= copy['about_stat'+n+'_label'] %></div>
@@ -325,8 +388,15 @@
       <h2 class="section-heading"><%= copy.process_heading %> <em><%= copy.process_heading_em %></em></h2>
     </div>
     <div class="process-list">
-      <% [[copy.process1_title, copy.process1_desc], [copy.process2_title, copy.process2_desc], [copy.process3_title, copy.process3_desc], [copy.process4_title, copy.process4_desc]].forEach(function(step, i) { %>
-        <% if (step[0]) { %>
+      <%
+        const _procIdx = new Set();
+        Object.keys(copy).forEach(k => { const m = k.match(/^process(\d+)_/); if (m) _procIdx.add(parseInt(m[1], 10)); });
+        const _procArr = [..._procIdx].sort((a, b) => a - b).length ? [..._procIdx].sort((a, b) => a - b) : [1, 2, 3, 4];
+        const _steps = _procArr
+          .filter(n => copy['process'+n+'_hidden'] !== 'true' && copy['process'+n+'_title'])
+          .map(n => [copy['process'+n+'_title'], copy['process'+n+'_desc']]);
+      %>
+      <% _steps.forEach(function(step, i) { %>
         <div class="process-item">
           <div class="process-num"><%= String(i + 1).padStart(2, '0') %></div>
           <div>
@@ -335,7 +405,6 @@
           </div>
           <div class="process-arrow">→</div>
         </div>
-        <% } %>
       <% }); %>
     </div>
   </div>
@@ -578,6 +647,53 @@
       <% }); %>
     </div>
   </div></section>
+  <% } else if (sec.type === 'writer_feed') { %>
+  <% var _items = sec.items || []; var _layout = f.layout || 'cards'; %>
+  <section class="cs-writer-feed cs-cards"><div class="cs-wrap">
+    <% if (f.heading || f.subtext) { %>
+    <div class="cs-cards-intro">
+      <% if (f.heading) { %><h2 class="cs-heading"><%- f.heading %></h2><% } %>
+      <% if (f.subtext) { %><p class="cs-body"><%- f.subtext %></p><% } %>
+    </div>
+    <% } %>
+    <% if (_items.length && _layout === 'full') { %>
+      <div class="cs-writer-full" style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:40px;">
+        <% _items.forEach(function(it) { %>
+        <article>
+          <% if (it.title) { %><h3 class="cs-heading" style="text-align:left;"><%= it.title %></h3><% } %>
+          <% if (it.content) { %><div class="cs-body"><%- it.content %></div><% } %>
+        </article>
+        <% }); %>
+      </div>
+    <% } else if (_items.length && _layout === 'list') { %>
+      <div class="cs-writer-list" style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px;">
+        <% _items.forEach(function(it) { var _pub = (!it.contentType || it.contentType === 'blog'); %>
+        <div class="cs-writer-li" style="border-bottom:1px solid var(--border, #e5e5e5);padding-bottom:14px;">
+          <% if (_pub) { %>
+            <a href="/blog/<%= it.slug %>" class="cs-card-title" style="display:block;"><%= it.title %></a>
+          <% } else { %>
+            <div class="cs-card-title"><%= it.title %></div>
+          <% } %>
+          <% if (it.excerpt) { %><p class="cs-card-body" style="margin-top:4px;"><%= it.excerpt %></p><% } %>
+        </div>
+        <% }); %>
+      </div>
+    <% } else if (_items.length) { %>
+      <div class="cs-cards-grid">
+        <% _items.forEach(function(it) { var _pub = (!it.contentType || it.contentType === 'blog'); var _tag = _pub ? 'a' : 'div'; %>
+        <<%= _tag %> class="cs-card<%= it.featuredImageUrl ? ' cs-card--has-image' : '' %><%= _pub ? ' cs-card--link' : '' %>"<% if (_pub) { %> href="/blog/<%= it.slug %>"<% } %>>
+          <% if (it.featuredImageUrl) { %><div class="cs-card-media" style="background-image:url('<%- it.featuredImageUrl %>');"></div><% } %>
+          <div class="cs-card-content">
+            <% if (it.category) { %><div class="cs-card-num"><%= it.category %></div><% } %>
+            <% if (it.title) { %><div class="cs-card-title"><%= it.title %></div><% } %>
+            <% if (it.excerpt) { %><div class="cs-card-body"><%= it.excerpt %></div><% } %>
+            <% if (_pub) { %><span class="cs-card-cta">Read →</span><% } %>
+          </div>
+        </<%= _tag %>>
+        <% }); %>
+      </div>
+    <% } %>
+  </div></section>
   <% } %>
 <% }); %>
 <% } %>
@@ -656,5 +772,200 @@
   });
 })();
 </script>
+<% if (visibility.about && (harmonyServices || []).length) { %>
+<style>
+  .about-harmony { position: relative; z-index: 3; margin-bottom: 28px; }
+  .ah-eyebrow { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: #c9a848; margin-bottom: 14px; }
+  .ah-canvas { width: 100%; height: 320px; position: relative; border-radius: 4px; overflow: hidden; cursor: grab; touch-action: none; }
+  .ah-canvas:active { cursor: grabbing; }
+  .ah-canvas canvas { display: block; }
+  .ah-hint { margin-top: 8px; font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(253,252,250,0.32); }
+  .ah-legend { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+  .ah-lg { display: inline-flex; align-items: center; gap: 5px; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(253,252,250,0.62); }
+  .ah-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .ah-count { margin-top: 10px; font-size: 0.68rem; letter-spacing: 0.06em; color: rgba(253,252,250,0.42); }
+  @media (max-width: 980px) { .ah-canvas { height: 260px; } }
+</style>
+<!-- ═══════ ABOUT · Server Harmony — non-interactive Three.js constellation ═══════ -->
+<script type="module">
+(function () {
+  'use strict';
+  const wrap = document.getElementById('aboutHarmonyWrap');
+  const dataEl = document.getElementById('aboutHarmonyJson');
+  if (!wrap || !dataEl) return;
+  let services = [];
+  try { services = JSON.parse(dataEl.textContent || '[]') || []; } catch { services = []; }
+  if (!services.length) return;
+
+  Promise.all([
+    import('three'),
+    import('three/addons/controls/OrbitControls.js'),
+  ]).then(([THREE, { OrbitControls }]) => {
+    const CATEGORY_COLOR = {
+      platform: 0x34d399, client: 0x60a5fa, game: 0xc084fc,
+      media: 0xf59e0b, tool: 0xc9a848, infra: 0x22d3ee,
+    };
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x0a0f1c, 0.020);
+
+    let w = wrap.clientWidth || 480, h = wrap.clientHeight || 320;
+    const camera = new THREE.PerspectiveCamera(60, w / h, 0.1, 200);
+    camera.position.set(0, 5, 16); // start zoomed in close
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setSize(w, h);
+    renderer.setClearColor(0x000000, 0); // transparent — lets the dark panel + giant initial show through
+    wrap.appendChild(renderer.domElement);
+
+    // Interactive camera — drag to rotate, scroll/pinch to zoom. Pan disabled so it
+    // can't be dragged off-center. Gentle auto-rotate that pauses while the user
+    // interacts and resumes after a few seconds idle.
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.enablePan = false;
+    controls.minDistance = 7;
+    controls.maxDistance = 40;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.7;
+    controls.target.set(0, 0, 0);
+    controls.update();
+
+    let resumeTimer = null;
+    controls.addEventListener('start', () => { controls.autoRotate = false; if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; } });
+    controls.addEventListener('end', () => { if (resumeTimer) clearTimeout(resumeTimer); resumeTimer = setTimeout(() => { controls.autoRotate = true; }, 3500); });
+
+    // Subtle starfield
+    {
+      const geom = new THREE.BufferGeometry();
+      const N = 280;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) { pos[i*3] = (Math.random()-0.5)*80; pos[i*3+1] = (Math.random()-0.5)*40; pos[i*3+2] = (Math.random()-0.5)*80; }
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      scene.add(new THREE.Points(geom, new THREE.PointsMaterial({ size: 0.08, color: 0x4a5568, transparent: true, opacity: 0.55 })));
+    }
+
+    scene.add(new THREE.AmbientLight(0x808080, 0.6));
+    const centerLight = new THREE.PointLight(0xc9a848, 1.2, 60);
+    centerLight.position.set(0, 2, 0);
+    scene.add(centerLight);
+
+    // Cluster categories on a ring; nodes orbit their cluster center.
+    const FIXED_CATEGORY_ORDER = ['platform', 'client', 'game', 'media', 'tool', 'infra'];
+    const presentCats = [...new Set(services.map(s => s.category))]
+      .sort((a, b) => FIXED_CATEGORY_ORDER.indexOf(a) - FIXED_CATEGORY_ORDER.indexOf(b));
+    const clusterCenters = {};
+    presentCats.forEach((cat, i) => {
+      const ang = (i / presentCats.length) * Math.PI * 2;
+      clusterCenters[cat] = { x: Math.cos(ang) * 11, y: 0, z: Math.sin(ang) * 11 };
+    });
+
+    const sphereGeom = new THREE.SphereGeometry(0.45, 20, 20);
+    const ringGeom = new THREE.RingGeometry(0.5, 0.55, 40);
+    ringGeom.rotateX(-Math.PI / 2);
+
+    const nodes = [];
+    const categoryCounts = {};
+    services.forEach((svc) => {
+      const cat = svc.category || 'tool';
+      const c = clusterCenters[cat] || { x: 0, y: 0, z: 0 };
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+      const idx = categoryCounts[cat];
+      const r = 1.6 + ((idx % 7) * 0.35);
+      const phi = idx * 2.4;
+      const px = c.x + Math.cos(phi) * r;
+      const pz = c.z + Math.sin(phi) * r;
+      const py = ((idx % 5) - 2) * 0.5;
+      const color = CATEGORY_COLOR[cat] || 0xa3a3a3;
+
+      const group = new THREE.Group();
+      group.position.set(px, py, pz);
+
+      const sphere = new THREE.Mesh(sphereGeom, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, metalness: 0.4, roughness: 0.4 }));
+      group.add(sphere);
+
+      const halo = new THREE.Mesh(ringGeom, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }));
+      group.add(halo);
+
+      const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(c.x - px, -py, c.z - pz)]);
+      const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.10 }));
+      group.add(line);
+
+      scene.add(group);
+      nodes.push({ group, sphere, halo, baseColor: color });
+    });
+
+    // Faint outer orbit ring for depth
+    {
+      const seg = 160, pts = [];
+      for (let i = 0; i <= seg; i++) { const a = (i / seg) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * 18, 0, Math.sin(a) * 18)); }
+      const g = new THREE.BufferGeometry().setFromPoints(pts);
+      scene.add(new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.10 })));
+    }
+
+    // Gentle ambient pulses — pooled, fired at random so the scene feels alive (no interaction).
+    const pulseRings = [];
+    function spawnPulse() {
+      if (!nodes.length) return;
+      const node = nodes[Math.floor(Math.random() * nodes.length)];
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.6, 40), new THREE.MeshBasicMaterial({ color: node.baseColor, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.copy(node.group.position);
+      scene.add(ring);
+      pulseRings.push({ mesh: ring, born: performance.now(), life: 1100, scaleMax: 5 });
+      node.sphere.material.emissiveIntensity = 1.6;
+    }
+
+    // Resize + pause-when-offscreen (perf on shared tenant pages)
+    new ResizeObserver(() => {
+      const nw = wrap.clientWidth, nh = wrap.clientHeight;
+      if (!nw || !nh) return;
+      camera.aspect = nw / nh; camera.updateProjectionMatrix();
+      renderer.setSize(nw, nh, true);
+    }).observe(wrap);
+
+    const clock = new THREE.Clock();
+    let paused = false, nextPulse = 0;
+    new IntersectionObserver((entries) => {
+      paused = !entries[0].isIntersecting;
+      if (!paused) clock.getDelta();
+    }, { threshold: 0 }).observe(wrap);
+    document.addEventListener('visibilitychange', () => { paused = document.hidden; if (!paused) clock.getDelta(); });
+
+    function loop() {
+      requestAnimationFrame(loop);
+      if (paused) return;
+      const dt = clock.getDelta();
+      controls.update(); // damping + auto-rotate
+
+      nodes.forEach((n) => {
+        n.group.rotation.y += dt * 0.3;
+        n.halo.rotation.z += dt * 0.4;
+        const m = n.sphere.material;
+        m.emissiveIntensity += (0.6 - m.emissiveIntensity) * Math.min(1, dt * 3);
+      });
+
+      if ((nextPulse -= dt) <= 0) { spawnPulse(); nextPulse = 0.8 + Math.random() * 1.4; }
+
+      const now = performance.now();
+      for (let i = pulseRings.length - 1; i >= 0; i--) {
+        const p = pulseRings[i];
+        const age = (now - p.born) / p.life;
+        if (age >= 1) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); pulseRings.splice(i, 1); continue; }
+        const s = 1 + age * p.scaleMax;
+        p.mesh.scale.set(s, s, s);
+        p.mesh.material.opacity = (1 - age) * 0.85;
+      }
+
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(loop);
+  }).catch((e) => { console.warn('[about-harmony] three.js failed to load:', e); });
+})();
+</script>
+<% } %>
+<%- include('partials/cookie-consent', { d: design, copy: copy }) %>
 </body>
 </html>

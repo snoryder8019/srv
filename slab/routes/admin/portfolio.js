@@ -23,6 +23,17 @@ function s3KeyFromUrl(url) {
   return url.startsWith(prefix) ? url.slice(prefix.length) : '';
 }
 
+// Normalize a link: keep internal paths (/foo) as-is, accept full URLs,
+// and prepend https:// to bare domains (example.com). Returns '' if empty/invalid.
+function normalizeLink(raw) {
+  const v = (raw || '').trim();
+  if (!v) return '';
+  if (v.startsWith('/')) return v;                       // internal path
+  if (/^(https?:|mailto:|tel:)/i.test(v)) return v;      // explicit scheme
+  if (/^[\w.-]+\.[a-z]{2,}(\/|$|\?|#)/i.test(v)) return `https://${v}`; // bare domain
+  return v;
+}
+
 function parseGallery(raw) {
   if (!raw) return [];
   let arr = [];
@@ -56,7 +67,7 @@ router.get('/new', (req, res) => {
 router.post('/', portfolioUpload.single('image'), async (req, res) => {
   try {
     const db = req.db;
-    const { title, category, description, clientName, projectDate, featured, showDate, tags, order, group } = req.body;
+    const { title, category, description, clientName, projectDate, featured, showDate, tags, order, group, linkLabel } = req.body;
 
     let imageUrl = req.body.imageUrlManual || '';
     let bucketKey = '';
@@ -84,6 +95,8 @@ router.post('/', portfolioUpload.single('image'), async (req, res) => {
       group: group?.trim() || '',
       tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
       order: parseInt(order) || 0,
+      linkUrl: normalizeLink(req.body.linkUrl),
+      linkLabel: linkLabel?.trim() || '',
       imageUrl,
       bucketKey,
       gallery,
@@ -110,7 +123,7 @@ router.get('/:id/edit', async (req, res) => {
 router.post('/:id', portfolioUpload.single('image'), async (req, res) => {
   try {
     const db = req.db;
-    const { title, category, description, clientName, projectDate, featured, showDate, tags, order, group } = req.body;
+    const { title, category, description, clientName, projectDate, featured, showDate, tags, order, group, linkLabel } = req.body;
     const existing = await db.collection('portfolio').findOne({ _id: new ObjectId(req.params.id) });
     if (!existing) return res.redirect('/admin/portfolio');
 
@@ -161,6 +174,8 @@ router.post('/:id', portfolioUpload.single('image'), async (req, res) => {
         group: group?.trim() || '',
         tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
         order: parseInt(order) || 0,
+        linkUrl: normalizeLink(req.body.linkUrl),
+        linkLabel: linkLabel?.trim() || '',
         imageUrl,
         bucketKey,
         gallery,

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-snap="<%= (typeof design !== 'undefined' && design && design.snap_enabled === 'true') ? 'true' : 'false' %>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -44,18 +44,22 @@
 
     const featLabel   = c.services_label   || '';
     const featHeading = c.services_heading || '';
-    const features = [1,2,3,4,5,6].map(n => ({
+    const _svcNums = [...new Set(Object.keys(c).map(k => (k.match(/^service(\d+)_/) || [])[1]).filter(Boolean).map(Number))].sort((a, b) => a - b);
+    const features = (_svcNums.length ? _svcNums : [1,2,3,4,5,6]).map(n => ({
       title: c['service'+n+'_title'] || '',
       desc:  c['service'+n+'_desc']  || c['service'+n+'_description'] || '',
       link:  c['service'+n+'_link']  || '',
-    })).filter(f => f.title);
+      hidden: c['service'+n+'_hidden'] === 'true',
+    })).filter(f => f.title && !f.hidden);
 
     const stepsLabel   = c.process_label      || '';
     const stepsHeading = c.process_heading    || '';
-    const steps = [1,2,3,4].map(n => ({
+    const _procNums = [...new Set(Object.keys(c).map(k => (k.match(/^process(\d+)_/) || [])[1]).filter(Boolean).map(Number))].sort((a, b) => a - b);
+    const steps = (_procNums.length ? _procNums : [1,2,3,4]).map(n => ({
       title: c['process'+n+'_title'] || '',
       desc:  c['process'+n+'_desc']  || c['process'+n+'_description'] || '',
-    })).filter(s => s.title);
+      hidden: c['process'+n+'_hidden'] === 'true',
+    })).filter(s => s.title && !s.hidden);
 
     const priceAmount  = c.startup_price_amount  || '';
     const priceUnit    = c.startup_price_unit    || '';
@@ -552,6 +556,41 @@
         </details>
         <% } }) %>
       </div>
+    <% } else if (sec.type === 'writer_feed') { %>
+      <% const _items = sec.items || []; const _layout = sec.fields?.layout || 'cards'; %>
+      <% if (sec.fields?.subtext) { %><p style="font-size:14px;color:var(--subtle);text-align:center;margin-bottom:32px;"><%= sec.fields.subtext %></p><% } %>
+      <% if (_items.length && _layout === 'full') { %>
+        <div style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:40px;">
+          <% _items.forEach(it => { %>
+          <article>
+            <% if (it.title) { %><h3 style="font-size:18px;font-weight:600;color:#fff;margin-bottom:12px;"><%= it.title %></h3><% } %>
+            <% if (it.content) { %><div style="font-size:14px;color:var(--light);line-height:1.8;"><%- it.content %></div><% } %>
+          </article>
+          <% }) %>
+        </div>
+      <% } else if (_items.length && _layout === 'list') { %>
+        <div style="max-width:720px;margin:0 auto;">
+          <% _items.forEach(it => { const _pub = (!it.contentType || it.contentType === 'blog'); %>
+          <div style="border-bottom:1px solid var(--border);padding:16px 0;">
+            <% if (_pub) { %><a href="/blog/<%= it.slug %>" style="font-size:15px;font-weight:600;color:#fff;text-decoration:none;"><%= it.title %></a><% } else { %><div style="font-size:15px;font-weight:600;color:#fff;"><%= it.title %></div><% } %>
+            <% if (it.excerpt) { %><p style="font-size:13px;color:var(--subtle);line-height:1.7;margin-top:6px;"><%= it.excerpt %></p><% } %>
+          </div>
+          <% }) %>
+        </div>
+      <% } else if (_items.length) { %>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;">
+          <% _items.forEach(it => { const _pub = (!it.contentType || it.contentType === 'blog'); %>
+          <% if (_pub) { %><a href="/blog/<%= it.slug %>" style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;text-decoration:none;display:block;"><% } else { %><div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:block;"><% } %>
+            <% if (it.featuredImageUrl) { %><img src="<%= it.featuredImageUrl %>" alt="<%= it.title %>" style="width:100%;height:180px;object-fit:cover;display:block;"><% } %>
+            <div style="padding:24px;">
+              <% if (it.category) { %><div style="font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;"><%= it.category %></div><% } %>
+              <% if (it.title) { %><h3 style="font-size:16px;font-weight:600;color:#fff;margin-bottom:8px;line-height:1.4;"><%= it.title %></h3><% } %>
+              <% if (it.excerpt) { %><p style="font-size:13px;color:var(--subtle);line-height:1.6;"><%= it.excerpt.substring(0,120) %><%= it.excerpt.length > 120 ? '…' : '' %></p><% } %>
+            </div>
+          <% if (_pub) { %></a><% } else { %></div><% } %>
+          <% }) %>
+        </div>
+      <% } %>
     <% } %>
   </div>
 </section>
@@ -752,5 +791,6 @@
   });
 })();
 </script>
+<%- include('partials/cookie-consent', { d: d, copy: c }) %>
 </body>
 </html>

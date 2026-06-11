@@ -4,7 +4,9 @@ import { listPitches } from '../lib/pitchLoader.js';
 const router = express.Router();
 
 router.get('/', (req, res) => {
-  res.render('home', { title: 'Left Field · Pitches', pitches: listPitches() });
+  if (req.mllUser) return res.redirect('/dashboard');
+  const pitches = listPitches().filter((p) => p.source === 'seed');
+  res.render('home', { title: 'Pitches that don’t sound like pitches', pitches });
 });
 
 router.get('/healthz', (req, res) => res.json({ ok: true, ts: Date.now() }));

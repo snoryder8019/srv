@@ -311,6 +311,52 @@
     if (cnt) cnt.textContent = bulkSelected.size;
   }
 
+  // ── Thumbnail backfill ──
+  // Show the button only when some images still lack thumbnails, then loop the
+  // batch endpoint until none remain.
+  const thumbBtn = document.getElementById('thumbBackfillBtn');
+  async function refreshThumbStatus() {
+    if (!thumbBtn) return;
+    try {
+      const r = await fetch('/admin/assets/thumbnails/status');
+      const { remaining = 0 } = await r.json();
+      if (remaining > 0) {
+        thumbBtn.style.display = '';
+        thumbBtn.textContent = `⚡ Thumbnails (${remaining})`;
+      } else {
+        thumbBtn.style.display = 'none';
+      }
+    } catch { /* non-fatal */ }
+  }
+  if (thumbBtn) {
+    thumbBtn.addEventListener('click', async () => {
+      if (thumbBtn.disabled) return;
+      thumbBtn.disabled = true;
+      try {
+        let remaining = Infinity;
+        while (remaining > 0) {
+          const r = await fetch('/admin/assets/thumbnails/backfill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: 20 }),
+          });
+          if (!r.ok) throw new Error('Backfill request failed');
+          const data = await r.json();
+          remaining = data.remaining;
+          thumbBtn.textContent = remaining > 0 ? `⚡ Generating… (${remaining} left)` : '⚡ Done';
+        }
+        loadAssets(); // re-render with fresh thumbnails
+      } catch (e) {
+        thumbBtn.textContent = '⚡ Thumbnails (retry)';
+        console.warn('Thumbnail backfill error:', e.message);
+      } finally {
+        thumbBtn.disabled = false;
+        refreshThumbStatus();
+      }
+    });
+    refreshThumbStatus();
+  }
+
   /* ── BULK META PANEL ── */
   function renderBulkMeta() {
     if (!bulkMode) return;
@@ -366,8 +412,9 @@
       </div>
       <div class="meta-field">
         <label class="meta-label">Assign Folders</label>
-        <div class="meta-info" style="margin-bottom:6px;font-size:0.65rem;">Checked folders replace the current folder set on save. Leave all unchecked to keep folders as-is.</div>
+        <div class="meta-info" style="margin-bottom:6px;font-size:0.65rem;">Checked folders are <strong>added</strong> to each selected asset — existing folder tags are kept. Leave all unchecked to keep folders as-is.</div>
         <div class="meta-folder-grid">${folderChecks}</div>
+        <label class="meta-folder-check" style="margin-top:6px;"><input type="checkbox" id="bulkReplaceFolders"> Replace existing folders instead of adding</label>
       </div>
       <div class="meta-field">
         <label class="meta-label">Attach to Client</label>
@@ -436,6 +483,7 @@
   async function performBulkSave() {
     if (!bulkSelected.size) return;
     const folders = [...document.querySelectorAll('input[name="bulkFolders"]:checked')].map(cb => cb.value);
+    const replaceFolders = document.getElementById('bulkReplaceFolders')?.checked;
     const clientSel = document.getElementById('bulkClient');
     const clientVal = clientSel ? clientSel.value : '__keep__';
     const altVal = document.getElementById('bulkAlt')?.value?.trim() || '';
@@ -444,7 +492,12 @@
       return alert('Pick folders, a client, alt text, or a caption to apply.');
     }
     const body = { ids: [...bulkSelected] };
-    if (folders.length) body.folders = folders;
+    // Default: add checked folders to each asset (keep existing tags).
+    // Replace mode wipes & sets exactly the checked folders.
+    if (folders.length) {
+      if (replaceFolders) body.folders = folders;
+      else body.addFolders = folders;
+    }
     if (clientVal !== '__keep__') body.clientId = clientVal || null;
     if (altVal) body.altText = altVal;
     if (captionVal) body.caption = captionVal;
@@ -587,8 +640,9 @@
     let thumbHtml = '';
     const isSvg = asset.mimeType === 'image/svg+xml' || /\.svg$/i.test(asset.originalName || '');
     if (asset.fileType === 'image') {
-      // Don't fill src — IntersectionObserver swaps data-src→src on near-viewport
-      thumbHtml = `<img data-src="${asset.publicUrl}" alt="${escHtml(asset.title)}" loading="lazy" decoding="async">`;
+      // Don't fill src — IntersectionObserver swaps data-src→src on near-viewport.
+      // Prefer the lightweight thumbnail; fall back to the original if not yet generated.
+      thumbHtml = `<img data-src="${asset.thumbUrl || asset.publicUrl}" alt="${escHtml(asset.title)}" loading="lazy" decoding="async">`;
     } else if (asset.fileType === 'video') {
       // Static placeholder. Full video plays in the meta-panel preview.
       thumbHtml = `<div class="asset-icon" style="background:var(--ivory);">▶</div>`;

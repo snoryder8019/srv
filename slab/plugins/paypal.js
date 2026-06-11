@@ -1,7 +1,7 @@
 // Cache tokens per client ID
 const tokenCache = new Map();
 
-function getBaseUrl(tenant) {
+export function getBaseUrl(tenant) {
   const mode = tenant?.public?.paypalMode || 'sandbox';
   return mode === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
 }

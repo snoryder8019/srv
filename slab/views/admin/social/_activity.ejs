@@ -1,0 +1,113 @@
+<style>
+  .act-card { border:1px solid var(--border); border-radius:6px; padding:12px 14px; margin-bottom:10px; background:var(--surface); }
+  .act-card.handled { opacity:0.55; }
+  .act-top { display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
+  .act-badge { font-size:0.58rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:2px 7px; border-radius:10px; }
+  .act-comment { background:#e7f0fb; color:#1c4f8a; }
+  .act-mention { background:#f3e9fb; color:#6b3aa0; }
+  .act-message { background:#e9f7ee; color:#1f7a44; }
+  .act-lead { background:#fdf0e3; color:#a05a16; }
+  .act-plat { font-size:0.6rem; color:var(--slate); text-transform:uppercase; letter-spacing:0.06em; }
+  .act-who { font-weight:600; color:var(--on-surface); }
+  .act-when { font-size:0.6rem; color:var(--slate); margin-left:auto; }
+  .act-text { font-size:0.84rem; color:var(--on-surface); line-height:1.45; margin:4px 0 8px; white-space:pre-wrap; }
+  .act-reply { display:flex; gap:6px; align-items:flex-end; }
+  .act-reply textarea { flex:1; min-height:38px; padding:6px 8px; border:1.5px solid var(--border); border-radius:4px; font-family:'Jost',sans-serif; font-size:0.8rem; resize:vertical; }
+  .act-actions { display:flex; gap:6px; margin-top:6px; }
+  .act-setup { border:1px dashed var(--border); border-radius:6px; padding:10px 14px; margin-bottom:14px; background:var(--ivory); font-size:0.78rem; }
+  .act-setup code { background:rgba(28,43,74,0.07); padding:1px 5px; border-radius:3px; font-size:0.74rem; }
+  .act-msg { font-size:0.7rem; margin-left:8px; }
+</style>
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+  <h2 style="margin:0;font-family:'Cormorant Garamond',serif;font-size:1.5rem;">Activity</h2>
+  <span style="font-size:0.74rem;color:var(--slate);">Comments, mentions, messages &amp; leads — reply inline.</span>
+  <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="actRefreshReddit(this)">↻ Refresh Reddit</button>
+</div>
+
+<details class="act-setup">
+  <summary style="cursor:pointer;font-weight:600;">Connect Meta &amp; Reddit activity (one-time setup)</summary>
+  <div style="margin-top:8px;line-height:1.6;">
+    In your Meta app → Webhooks, add this callback URL and verify token, then subscribe your Page to the
+    <em>feed</em>, <em>mentions</em>, <em>messages</em> and <em>leadgen</em> fields:
+    <div style="margin:6px 0;">Callback URL: <code><%= typeof publicWebhookUrl !== 'undefined' ? publicWebhookUrl : '/webhooks/meta' %></code></div>
+    <div style="margin:6px 0;">Verify token: <code><%= typeof metaVerifyToken !== 'undefined' ? metaVerifyToken : 'slab-meta-verify' %></code></div>
+    <div style="font-size:0.72rem;color:var(--slate);">Note: comment/message/leadgen permissions require Meta app review before they deliver in production. Reddit replies pull in via Refresh. LinkedIn engagement (reading/replying to others) is gated behind LinkedIn's partner Community Management API and isn't available — posting still works.</div>
+  </div>
+</details>
+
+<% if (!activity || !activity.length) { %>
+  <div style="text-align:center;padding:40px 20px;color:var(--slate);">
+    <div style="font-size:1.6rem;margin-bottom:6px;">📭</div>
+    Nothing yet. Incoming comments, mentions, DMs and leads will land here once your webhooks are subscribed.
+  </div>
+<% } else { %>
+  <% activity.forEach(a => { %>
+    <div class="act-card <%= a.handled ? 'handled' : '' %>" id="act-<%= a._id %>">
+      <div class="act-top">
+        <span class="act-badge act-<%= a.type %>"><%= a.type %></span>
+        <span class="act-plat"><%= a.platform %></span>
+        <% if (a.fromName) { %><span class="act-who"><%= a.fromName %></span><% } %>
+        <% if (a.title && a.type === 'lead') { %><span class="act-who"><%= a.title %></span><% } %>
+        <span class="act-when"><%= new Date(a.occurredAt || a.createdAt).toLocaleString() %></span>
+      </div>
+      <div class="act-text"><%= a.text || '(no text)' %></div>
+      <% if (a.type !== 'lead') { %>
+        <div class="act-reply">
+          <textarea id="rt-<%= a._id %>" placeholder="Write a reply…"></textarea>
+          <button class="btn btn-navy btn-sm" onclick="actReply('<%= a._id %>', this)">Send</button>
+        </div>
+      <% } %>
+      <div class="act-actions">
+        <button class="btn btn-ghost btn-sm" onclick="actDone('<%= a._id %>', <%= a.handled ? 'true' : 'false' %>, this)"><%= a.handled ? 'Reopen' : 'Mark done' %></button>
+        <span class="act-msg" id="am-<%= a._id %>"></span>
+      </div>
+    </div>
+  <% }) %>
+<% } %>
+
+<script>
+async function actReply(id, btn) {
+  const ta = document.getElementById('rt-' + id);
+  const msg = document.getElementById('am-' + id);
+  const text = (ta.value || '').trim();
+  if (!text) { ta.focus(); return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const r = await fetch('/admin/social/activity/' + id + '/reply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      msg.style.color = 'var(--navy)'; msg.textContent = '✓ Replied';
+      document.getElementById('act-' + id).classList.add('handled');
+      ta.value = '';
+    } else { msg.style.color = '#c0392b'; msg.textContent = d.error || 'Failed'; }
+  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = e.message; }
+  btn.disabled = false; btn.textContent = 'Send';
+}
+async function actDone(id, isHandled, btn) {
+  const msg = document.getElementById('am-' + id);
+  try {
+    const r = await fetch('/admin/social/activity/' + id + '/done', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ undo: isHandled }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const card = document.getElementById('act-' + id);
+      card.classList.toggle('handled');
+      btn.textContent = card.classList.contains('handled') ? 'Reopen' : 'Mark done';
+      btn.setAttribute('onclick', "actDone('" + id + "', " + card.classList.contains('handled') + ", this)");
+    } else { msg.textContent = d.error || 'Failed'; }
+  } catch (e) { msg.textContent = e.message; }
+}
+async function actRefreshReddit(btn) {
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Refreshing…';
+  try {
+    const r = await fetch('/admin/social/activity/refresh-reddit', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) location.reload();
+    else { btn.textContent = d.error || 'No Reddit'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500); }
+  } catch (e) { btn.textContent = 'Error'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500); }
+}
+</script>

@@ -17,6 +17,7 @@ import { notifyAdmin } from '../plugins/notify.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { getSlabDb } from '../plugins/mongo.js';
+import { resolveSmtp, getTenantTransporter } from '../plugins/mailer.js';
 
 const router = express.Router();
 
@@ -351,12 +352,23 @@ router.post('/', async (req, res) => {
 
     // Email confirmation to visitor
     const tenantRecord = await getSlabDb().collection('tenants').findOne({ _id: req.tenant?._id });
-    const zohoUser = tenantRecord?.secrets?.zohoUser || tenantRecord?.public?.zohoUser || process.env.ZOHO_USER;
-    const zohoPass = tenantRecord?.secrets?.zohoPass || process.env.ZOHO_PASS;
+    // req.tenant carries decrypted secrets (middleware). Use the tenant's
+    // configured provider (password OR OAuth); fall back to the platform mailbox
+    // env creds when the tenant hasn't connected email at all.
+    const smtp = resolveSmtp(req.tenant);
+    const tenantConfigured = smtp.authMode === 'oauth' ? !!smtp.user : !!(smtp.user && smtp.pass);
     const ownerEmail = tenantRecord?.meta?.ownerEmail;
 
-    if (zohoUser && zohoPass) {
-      const t = nodemailer.createTransport({ host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN', auth: { user: zohoUser, pass: zohoPass } });
+    let t = null, zohoUser = null;
+    if (tenantConfigured) {
+      t = await getTenantTransporter(req.tenant);
+      zohoUser = smtp.user;
+    } else if (process.env.ZOHO_USER && process.env.ZOHO_PASS) {
+      zohoUser = process.env.ZOHO_USER;
+      t = nodemailer.createTransport({ host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN', auth: { user: zohoUser, pass: process.env.ZOHO_PASS } });
+    }
+
+    if (t) {
 
       // To visitor
       await t.sendMail({

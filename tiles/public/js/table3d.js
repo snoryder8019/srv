@@ -36,6 +36,13 @@ export function createTable3D(opts = {}) {
   const TABLE_R = opts.tableRadius || 34;
   const canvas = document.getElementById(opts.canvasId || 'scene');
 
+  // Stable game slug for the persisted opening camera (save + load use this same
+  // key). URL path (/lobby/<game>) is authoritative; fall back to opts/title.
+  const GAME = (opts.game
+    || (location.pathname.match(/\/lobby\/([^/?#]+)/) || [])[1]
+    || (document.title || '').split(' ')[0]
+    || 'default').toLowerCase();
+
   // ---- renderer ----
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -121,6 +128,23 @@ export function createTable3D(opts = {}) {
     if (partial.damping != null) controls.dampingFactor = partial.damping;
   }
   // ======================================================================
+
+  // ---- load this game's persisted opening framing (admin-saved via the cog) ----
+  // Snap to the saved start/target on entry so every player opens on the locked-in
+  // angle. Updates HOME too, so the reset-camera button returns here. Silent
+  // fallback to the default/opts framing when nothing is saved for this game.
+  fetch('/scene/camera/' + encodeURIComponent(GAME), { credentials: 'include' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      const c = d && d.camera;
+      if (!c || !c.start || !c.target) return;
+      camera.position.set(c.start.x, c.start.y, c.start.z);
+      controls.target.set(c.target.x, c.target.y, c.target.z);
+      controls.update();
+      HOME.pos.copy(camera.position);
+      HOME.target.copy(controls.target);
+    })
+    .catch(() => {});
 
   // ---- lighting ----
   scene.add(new THREE.AmbientLight(0xffffff, 0.72));
@@ -648,13 +672,13 @@ export function createTable3D(opts = {}) {
       const p = camera.position, t = controls.target;
       const r = (n) => Math.round(n * 10) / 10;
       const payload = {
-        game: (document.title || '').split(' ')[0],
+        game: GAME,
         start: { x: r(p.x), y: r(p.y), z: r(p.z) },
         target: { x: r(t.x), y: r(t.y), z: r(t.z) },
         dist: Math.round(p.distanceTo(t)),
         az: Math.round(Math.atan2(p.x - t.x, p.z - t.z) * 180 / Math.PI),
       };
-      fetch('/dev/cam', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      fetch('/dev/camera/' + encodeURIComponent(GAME), { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
         .then(() => { btn.textContent = '✓ SAVED'; btn.style.background = '#e3c567'; setTimeout(() => { btn.textContent = '📍 SAVE ANGLE'; btn.style.background = '#2fbf71'; }, 1200); })
         .catch(() => { btn.textContent = '✗ failed'; setTimeout(() => { btn.textContent = '📍 SAVE ANGLE'; }, 1200); });
     });

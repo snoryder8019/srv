@@ -24,6 +24,7 @@ import meetingsRouter from './admin/meetings.js';
 import calculatorsRouter from './admin/calculators.js';
 import bookkeepingRouter from './admin/bookkeeping.js';
 import emailMarketingRouter from './admin/emailMarketing.js';
+import socialRouter from './admin/social.js';
 import inquiriesRouter from './admin/inquiries.js';
 import usersRouter from './admin/users.js';
 import tutorialsRouter from './admin/tutorials.js';
@@ -264,15 +265,23 @@ router.post('/recover', authLimiter, async (req, res) => {
     const resetToken = createLoginToken(user, req.tenant?.db, '1h');
     const domain = req.hostname;
 
-    // Send recovery email
-    const zohoUser = req.tenant?.public?.zohoUser || process.env.ZOHO_USER;
-    const zohoPass = req.tenant?.secrets?.zohoPass || process.env.ZOHO_PASS;
-    if (zohoUser && zohoPass) {
+    // Send recovery email — tenant's provider (password OR OAuth), else platform env.
+    const { resolveSmtp, getTenantTransporter } = await import('../plugins/mailer.js');
+    const smtp = resolveSmtp(req.tenant);
+    const tenantConfigured = smtp.authMode === 'oauth' ? !!smtp.user : !!(smtp.user && smtp.pass);
+    let transporter = null, zohoUser = null;
+    if (tenantConfigured) {
+      transporter = await getTenantTransporter(req.tenant);
+      zohoUser = smtp.user;
+    } else if (process.env.ZOHO_USER && process.env.ZOHO_PASS) {
       const nodemailer = (await import('nodemailer')).default;
-      const transporter = nodemailer.createTransport({
+      zohoUser = process.env.ZOHO_USER;
+      transporter = nodemailer.createTransport({
         host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN',
-        auth: { user: zohoUser, pass: zohoPass },
+        auth: { user: zohoUser, pass: process.env.ZOHO_PASS },
       });
+    }
+    if (transporter) {
       const resetUrl = `https://${domain}/admin/login?token=${resetToken}`;
       const brandName = req.tenant?.brand?.name || 'Admin';
       await transporter.sendMail({
@@ -576,6 +585,7 @@ router.use('/meetings', meetingsRouter);
 router.use('/calculators', calculatorsRouter);
 router.use('/bookkeeping', bookkeepingRouter);
 router.use('/email-marketing', emailMarketingRouter);
+router.use('/social', socialRouter);
 router.use('/inquiries', inquiriesRouter);
 router.use('/users', usersRouter);
 router.use('/tutorials', tutorialsRouter);

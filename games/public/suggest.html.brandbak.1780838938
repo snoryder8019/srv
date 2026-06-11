@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MadLadsLab — Suggestions</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0d0d; --surface: #141414; --card: #1a1a1a; --border: #2a2a2a;
+      --accent: #cd412b; --green: #4caf82; --yellow: #e6b800; --text: #e0e0e0; --muted: #666;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; min-height: 100vh; }
+    nav {
+      background: #111; border-bottom: 1px solid var(--border);
+      padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 52px;
+    }
+    .nav-brand { color: var(--accent); font-size: 1rem; font-weight: bold; letter-spacing: 0.05em; text-decoration: none; }
+    .nav-brand:hover { text-decoration: underline; }
+    .nav-brand span { color: var(--muted); font-size: 0.7rem; margin-left: 8px; }
+
+    .form-wrap { max-width: 520px; margin: 0 auto; padding: 40px 20px; }
+    .form-title { color: var(--accent); font-size: 1.2rem; margin-bottom: 6px; letter-spacing: 0.05em; }
+    .form-sub { color: var(--muted); font-size: 0.72rem; margin-bottom: 28px; }
+
+    .field { margin-bottom: 18px; }
+    .field label {
+      display: block; font-size: 0.65rem; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
+    }
+    .field input, .field select, .field textarea {
+      width: 100%; background: var(--card); border: 1px solid var(--border);
+      color: var(--text); font-family: inherit; font-size: 0.82rem;
+      padding: 10px 14px; border-radius: 4px; outline: none;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+    .field textarea { resize: vertical; min-height: 120px; }
+    .field select { appearance: none; cursor: pointer; }
+    .field .hint { font-size: 0.6rem; color: var(--muted); margin-top: 4px; }
+
+    .btn-submit {
+      background: var(--accent); border: none; color: #fff; font-family: inherit;
+      font-size: 0.82rem; font-weight: bold; padding: 12px 28px; border-radius: 4px;
+      cursor: pointer; letter-spacing: 0.05em; transition: all 0.2s; width: 100%;
+    }
+    .btn-submit:hover { background: #d9543f; box-shadow: 0 0 16px rgba(205,65,43,0.3); }
+    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .success {
+      display: none; text-align: center; padding: 40px 20px;
+    }
+    .success-icon { font-size: 3rem; margin-bottom: 16px; }
+    .success-title { color: var(--green); font-size: 1rem; margin-bottom: 8px; }
+    .success-text { color: var(--muted); font-size: 0.78rem; }
+    .success-link {
+      display: inline-block; margin-top: 20px; color: var(--accent);
+      font-size: 0.75rem; text-decoration: none; border: 1px solid var(--accent);
+      padding: 8px 16px; border-radius: 4px;
+    }
+    .success-link:hover { background: rgba(205,65,43,0.1); }
+
+    .error-msg {
+      display: none; background: rgba(205,65,43,0.1); border: 1px solid var(--accent);
+      color: var(--accent); font-size: 0.75rem; padding: 10px 14px; border-radius: 4px;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-brand">MADLADSLAB <span>// GAMES</span></a>
+</nav>
+
+<div class="form-wrap">
+  <!-- FORM -->
+  <div id="formView">
+    <div class="form-title">DROP A SUGGESTION</div>
+    <div class="form-sub">Got a game request, feature idea, or feedback? We're listening.</div>
+
+    <div id="errorMsg" class="error-msg"></div>
+
+    <form id="suggestForm" onsubmit="return submitSuggestion(event)">
+      <div class="field">
+        <label>Your Name <span style="color:var(--muted)">(optional)</span></label>
+        <input type="text" id="fieldName" placeholder="Gamertag or real name" maxlength="100">
+      </div>
+
+      <div class="field">
+        <label>Email <span style="color:var(--muted)">(optional — for follow-up)</span></label>
+        <input type="email" id="fieldEmail" placeholder="you@example.com" maxlength="200">
+      </div>
+
+      <div class="field">
+        <label>Category</label>
+        <select id="fieldCategory">
+          <option value="game-request">New Game Request</option>
+          <option value="feature">Feature Idea</option>
+          <option value="bug">Bug Report</option>
+          <option value="server">Server Issue</option>
+          <option value="feedback" selected>General Feedback</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Message</label>
+        <textarea id="fieldMessage" placeholder="What's on your mind?" maxlength="2000" required></textarea>
+        <div class="hint" id="charCount">0 / 2000</div>
+      </div>
+
+      <button type="submit" class="btn-submit" id="btnSubmit">SEND SUGGESTION</button>
+    </form>
+  </div>
+
+  <!-- SUCCESS -->
+  <div id="successView" class="success">
+    <div class="success-icon">&#9989;</div>
+    <div class="success-title">SUGGESTION SENT</div>
+    <div class="success-text">Thanks for the feedback. We read every one.</div>
+    <a href="/" class="success-link">BACK TO GAMES</a>
+  </div>
+</div>
+
+<script>
+document.getElementById('fieldMessage').addEventListener('input', function() {
+  document.getElementById('charCount').textContent = this.value.length + ' / 2000';
+});
+
+async function submitSuggestion(e) {
+  e.preventDefault();
+  var btn = document.getElementById('btnSubmit');
+  var errEl = document.getElementById('errorMsg');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'SENDING...';
+
+  try {
+    var res = await fetch('/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('fieldName').value,
+        email: document.getElementById('fieldEmail').value,
+        category: document.getElementById('fieldCategory').value,
+        message: document.getElementById('fieldMessage').value,
+      }),
+    });
+    var data = await res.json();
+
+    if (!res.ok || data.error) {
+      errEl.textContent = data.error || 'Something went wrong';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'SEND SUGGESTION';
+      return false;
+    }
+
+    document.getElementById('formView').style.display = 'none';
+    document.getElementById('successView').style.display = 'block';
+  } catch (err) {
+    errEl.textContent = 'Network error — check your connection';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'SEND SUGGESTION';
+  }
+  return false;
+}
+</script>
+</body>
+</html>

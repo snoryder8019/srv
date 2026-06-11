@@ -1,0 +1,131 @@
+<%# ─── Layered parallax marquee band ───────────────────────────────────────
+   A tall section with three stacked, parallax-scrolling layers:
+     z1  .mqx-bg     → background image (slowest)
+     z2  .mqx-marquee→ big stylish marquee typeface floating over the image
+     z3  .mqx-copy   → headline / text / CTA card on top (fastest)
+   Caller provides: d (design), b (brand), copy, pos (class hook).
+   Reuses partials/_marquee-bar for the z2 layer (so shape straight|diagonal|arc
+   still applies) by overriding the ticker CSS vars on the layer wrapper. %>
+<%
+  const _img     = (d.ticker_parallax_image || d.hero_bg_media_url || '').trim();
+  const _height  = (d.ticker_parallax_height || '70vh').toString().trim();
+  const _overlay = Math.min(100, Math.max(0, parseInt(d.ticker_parallax_overlay || '45', 10))) / 100;
+  const _bandFont = (d.ticker_band_font_size || '5').toString().trim();   // rem
+  const _h   = (copy && copy.ticker_band_heading) || '';
+  const _txt = (copy && copy.ticker_band_text)    || '';
+  const _cta = (copy && copy.ticker_band_cta)     || '';
+  const _ctaLink = (copy && copy.ticker_band_cta_link) || '#contact';
+  const _tcolor = (d.ticker_text_color || '').trim();
+%>
+<%
+  // ── Emit band CSS + parallax controller once across all includes ──
+  if (!locals.__marqueeParallaxCSS) {
+    locals.__marqueeParallaxCSS = true;
+%>
+<style id="marquee-parallax-styles">
+  .mqx { position: relative; width: 100%; overflow: hidden; display: flex; align-items: center;
+         isolation: isolate; background: var(--primary-deep, #0f1b30); }
+  .mqx--hero { min-height: 100vh; min-height: 100svh; }
+  .mqx-layer { position: absolute; inset: 0; will-change: transform; }
+  .mqx-bg { z-index: 1; background-size: cover; background-position: center;
+            top: -16%; bottom: -16%; height: auto; }
+  .mqx-overlay { z-index: 2; background: #000; }
+  .mqx-marquee { z-index: 2; display: flex; flex-direction: column; justify-content: center;
+                 pointer-events: none;
+                 /* float the reused marquee bar over the image */
+                 --ticker-bg: transparent; }
+  .mqx-marquee .marquee-bar { background: transparent !important; }
+  .mqx-marquee .marquee-item,
+  .mqx-marquee .marquee-arc text {
+    font-family: var(--font-heading, serif) !important;
+    font-weight: 800 !important;
+    font-size: var(--mqx-font, 5rem) !important;
+    line-height: 0.9;
+    opacity: 0.92;
+  }
+  .mqx-marquee .marquee-arc text { font-size: var(--mqx-font, 5rem); }
+  .mqx-marquee .marquee-dot { transform: scale(2.2); }
+  .mqx-copy { position: relative; z-index: 3; width: 100%; max-width: 1100px;
+              margin: 0 auto; padding: 0 52px; will-change: transform; }
+  .mqx-card { max-width: 560px; background: color-mix(in srgb, var(--surface, #fff) 92%, transparent);
+              backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+              border: 1px solid var(--border, rgba(255,255,255,0.15));
+              border-radius: 4px; padding: 36px 40px; box-shadow: 0 24px 60px rgba(0,0,0,0.35); }
+  .mqx-eyebrow { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase;
+                 color: var(--accent, #c9a848); margin-bottom: 12px; }
+  .mqx-heading { font-family: var(--font-heading, serif); font-weight: 300; line-height: 1.08;
+                 font-size: clamp(1.8rem, 4vw, 3rem); color: var(--on-surface, #0f1b30); margin-bottom: 14px; }
+  .mqx-text { font-size: 1rem; font-weight: 300; line-height: 1.8; color: var(--on-surface-muted, #555); }
+  .mqx-cta { display: inline-block; margin-top: 24px; padding: 14px 32px; background: var(--accent, #c9a848);
+             color: var(--primary-deep, #0f1b30); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em;
+             text-transform: uppercase; text-decoration: none; transition: filter 0.2s; }
+  .mqx-cta:hover { filter: brightness(1.08); }
+  @media (max-width: 768px) {
+    .mqx-copy { padding: 0 20px; }
+    .mqx-card { padding: 26px 22px; }
+    .mqx-marquee .marquee-item, .mqx-marquee .marquee-arc text { font-size: clamp(2.4rem, 14vw, 5rem) !important; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mqx-layer { transform: none !important; }
+  }
+</style>
+<script>
+(function () {
+  if (window.__mqxParallaxInit) return; window.__mqxParallaxInit = true;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function bind() {
+    var bands = Array.prototype.slice.call(document.querySelectorAll('.mqx'));
+    if (!bands.length) return;
+    var ticking = false;
+    function update() {
+      ticking = false;
+      var vh = window.innerHeight || document.documentElement.clientHeight;
+      for (var i = 0; i < bands.length; i++) {
+        var band = bands[i];
+        var rect = band.getBoundingClientRect();
+        if (rect.bottom < -vh || rect.top > vh * 2) continue; // offscreen
+        // delta: 0 when the band is centered in the viewport, grows as it scrolls away.
+        // data-parallax is a PIXEL budget per layer — a positive value lags (moves
+        // with the scroll, appears slower/fixed); a negative value scrolls off faster.
+        var delta = (vh - rect.top) / (vh + rect.height) - 0.5;
+        var layers = band.querySelectorAll('[data-parallax]');
+        for (var j = 0; j < layers.length; j++) {
+          var budget = parseFloat(layers[j].getAttribute('data-parallax')) || 0;
+          layers[j].style.transform = 'translate3d(0,' + (delta * budget).toFixed(1) + 'px,0)';
+        }
+      }
+    }
+    function onScroll() { if (!ticking) { ticking = true; window.requestAnimationFrame(update); } }
+    if (!reduce) {
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll, { passive: true });
+    }
+    update();
+  }
+  if (document.readyState !== 'loading') bind();
+  else document.addEventListener('DOMContentLoaded', bind);
+})();
+</script>
+<% } %>
+<section class="mqx mqx--<%= pos %>"<% if (pos !== 'hero') { %> style="min-height:<%= _height %>;"<% } %> aria-label="<%= _h || 'Featured' %>">
+  <% if (_img) { %>
+  <div class="mqx-layer mqx-bg" data-parallax="150" style="background-image:url('<%= _img %>');"></div>
+  <% } %>
+  <div class="mqx-layer mqx-overlay" data-parallax="150" style="opacity:<%= _overlay %>;"></div>
+
+  <div class="mqx-layer mqx-marquee" data-parallax="60"
+       style="--mqx-font:<%= _bandFont %>rem;<%= _tcolor ? '--ticker-text:' + _tcolor + ';' : '--ticker-text:var(--white,#fff);' %>">
+    <%- include('_marquee-bar', { d: d, b: b, pos: 'parallax' }) %>
+  </div>
+
+  <% if (_h || _txt || _cta) { %>
+  <div class="mqx-copy" data-parallax="-90">
+    <div class="mqx-card">
+      <% if (b && b.tagline) { %><div class="mqx-eyebrow"><%= b.tagline %></div><% } %>
+      <% if (_h)   { %><h2 class="mqx-heading"><%- _h %></h2><% } %>
+      <% if (_txt) { %><p class="mqx-text"><%- _txt %></p><% } %>
+      <% if (_cta) { %><a class="mqx-cta" href="<%= _ctaLink %>"><%- _cta %></a><% } %>
+    </div>
+  </div>
+  <% } %>
+</section>

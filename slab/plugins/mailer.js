@@ -4,22 +4,109 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { getTenantDb } from './mongo.js';
 import { contrastRatio, mixHex, readableTextColor, enrichDesignContrast } from './colorContrast.js';
+import { sanitizeEmailHtml } from './emailHtml.js';
+import { getEmailAccessToken, isOAuthProvider } from './emailOAuth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const transporterCache = new Map();
 
-function getTransporter(zohoUser, zohoPass) {
-  if (transporterCache.has(zohoUser)) return transporterCache.get(zohoUser);
+/* ──────────────────────────────────────────────────────────────────
+ * SMTP PROVIDERS — host/port presets per provider. Credentials are the
+ * generic SMTP user/pass, still stored under the legacy `zohoUser`/`zohoPass`
+ * keys so existing tenants keep working. `emailProvider` selects the host.
+ *   - zoho/gmail use implicit TLS on 465
+ *   - outlook uses STARTTLS on 587 (Microsoft rejects implicit-TLS 465)
+ *   - custom reads host/port from tenant.public.smtpHost / smtpPort
+ * Gmail & Outlook personal accounts require an App Password (2FA on); many
+ * Microsoft 365 *business* tenants disable SMTP basic-auth and need OAuth —
+ * surfaced as an Advanced option in settings.
+ * ────────────────────────────────────────────────────────────────── */
+const SMTP_PRESETS = {
+  zoho:    { host: 'smtppro.zoho.com',      port: 465, secure: true },
+  gmail:   { host: 'smtp.gmail.com',        port: 465, secure: true },
+  outlook: { host: 'smtp-mail.outlook.com', port: 587, secure: false, requireTLS: true },
+};
+
+/**
+ * Resolve a tenant's outgoing SMTP config from its provider + credentials.
+ *
+ * `authMode` is 'oauth' only when the provider supports it (gmail/outlook), the
+ * tenant selected it, AND a refresh token + client credentials are present —
+ * otherwise it degrades to 'password' so a half-finished OAuth setup never
+ * silently breaks sending. Returns user/pass/oauth fields possibly null when
+ * unconfigured (callers decide whether to throw).
+ */
+export function resolveSmtp(tenant) {
+  const provider = tenant?.public?.emailProvider || 'zoho';
+  const pub = tenant?.public || {};
+  const sec = tenant?.secrets || {};
+
+  let host, port, secure, requireTLS = false;
+  if (provider === 'custom') {
+    host = pub.smtpHost || '';
+    port = Number(pub.smtpPort) || 587;
+    secure = port === 465;
+    requireTLS = !secure;
+  } else {
+    const preset = SMTP_PRESETS[provider] || SMTP_PRESETS.zoho;
+    ({ host, port, secure } = preset);
+    requireTLS = !!preset.requireTLS;
+  }
+
+  // OAuth material (per provider). Only gmail/outlook can do OAuth SMTP.
+  const oauth = isOAuthProvider(provider) ? {
+    provider,
+    clientId:     pub[`${provider}OAuthClientId`] || null,
+    clientSecret: sec[`${provider}OAuthSecret`] || null,
+    refreshToken: sec[`${provider}OAuthRefreshToken`] || null,
+    user:         pub[`${provider}OAuthUser`] || null,
+  } : null;
+
+  const wantsOAuth = pub.emailAuthMode === 'oauth';
+  const canOAuth = !!(oauth && oauth.clientId && oauth.clientSecret && oauth.refreshToken);
+  const authMode = (wantsOAuth && canOAuth) ? 'oauth' : 'password';
+
+  const user = authMode === 'oauth'
+    ? (oauth.user || sec.zohoUser || pub.zohoUser || null)
+    : (sec.zohoUser || pub.zohoUser || null);
+  const pass = sec.zohoPass || null;
+
+  return { provider, authMode, user, pass, host, port, secure, requireTLS, oauth };
+}
+
+function getTransporter(smtp) {
+  if (smtp.authMode === 'oauth') {
+    // Access token already fetched in tenantSmtp(); build a fresh XOAUTH2
+    // transport each time (tokens expire, so we don't pool these).
+    return nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      requireTLS: smtp.requireTLS || undefined,
+      auth: { type: 'OAuth2', user: smtp.user, accessToken: smtp.accessToken },
+    });
+  }
+  // Password mode — key on the full connection identity so a rotated password
+  // or a switched provider transparently builds a fresh transporter instead of
+  // reusing a stale one (which the server rejects with 535).
+  const cacheKey = `${smtp.host}:${smtp.port}|${smtp.user}|${smtp.pass}`;
+  if (transporterCache.has(cacheKey)) return transporterCache.get(cacheKey);
   const t = nodemailer.createTransport({
-    host: 'smtppro.zoho.com',
-    port: 465,
-    secure: true,
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    requireTLS: smtp.requireTLS || undefined,
     authMethod: 'LOGIN',
-    auth: { user: zohoUser, pass: zohoPass },
+    auth: { user: smtp.user, pass: smtp.pass },
   });
-  transporterCache.set(zohoUser, t);
+  transporterCache.set(cacheKey, t);
   return t;
+}
+
+/** Build a transporter for a tenant; throws when unconfigured. */
+export async function getTenantTransporter(tenant) {
+  return getTransporter(await tenantSmtp(tenant));
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -145,6 +232,24 @@ export async function loadTenantTheme(tenant) {
   }
 }
 
+/**
+ * Load the tenant's brand logo URLs from the `brand_images` collection.
+ * Returns a map keyed by slot (logo_white, logo_primary, logo_icon). The email
+ * header sits on the dark primary surface, so callers should prefer logo_white.
+ */
+export async function loadTenantBrandImages(tenant) {
+  if (!tenant?.db) return {};
+  try {
+    const rows = await getTenantDb(tenant.db).collection('brand_images')
+      .find({ slot: { $in: ['logo_white', 'logo_primary', 'logo_icon'] } }).toArray();
+    const out = {};
+    for (const r of rows) if (r.slot && r.url) out[r.slot] = r.url;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /* ──────────────────────────────────────────────────────────────────
  * TEMPLATE — read, interpolate {tokens}, return rendered HTML
  * ────────────────────────────────────────────────────────────────── */
@@ -165,13 +270,45 @@ function interpolate(tmpl, tokens) {
   return out;
 }
 
-function brandTokens(tenant, theme) {
+/**
+ * Build the email header lockup. When the tenant has uploaded a logo we render
+ * it as an image (white logo preferred — it sits on the dark primary header);
+ * otherwise we fall back to the brand name set in the heading font. The
+ * `{headerLogoHtml}` token is interpolated into every template's header.
+ */
+function logoImgHtml(brandName, logos = {}) {
+  const alt = String(brandName).replace(/"/g, '&quot;');
+  // A white/transparent logo is made for the dark header band — drop it straight on.
+  if (logos?.logo_white) {
+    return `<img src="${logos.logo_white}" alt="${alt}" style="display:inline-block;max-height:50px;max-width:240px;width:auto;height:auto;border:0;">`;
+  }
+  // Otherwise the logo is likely dark/coloured (logo_primary/icon). On the dark
+  // header it would vanish, so we seat it on a light chip that keeps it readable
+  // regardless of the logo's own colours.
+  const url = logos?.logo_primary || logos?.logo_icon || '';
+  if (!url) return '';
+  return `<span style="display:inline-block;background:#FFFFFF;border-radius:8px;padding:9px 14px;line-height:0;">`
+    + `<img src="${url}" alt="${alt}" style="display:inline-block;max-height:42px;max-width:200px;width:auto;height:auto;border:0;">`
+    + `</span>`;
+}
+
+function headerLogoHtml(brandName, theme, logos = {}) {
+  const img = logoImgHtml(brandName, logos);
+  if (img) return img;
+  return `<div style="font-family:'${theme.font_heading}',Georgia,serif;font-size:24px;color:${theme.on_primary};font-weight:500;letter-spacing:0.6px;line-height:1.1;">${brandName}</div>`;
+}
+
+function brandTokens(tenant, theme, logos = {}) {
+  const brandName = tenant?.brand?.name || 'Our Team';
   return {
     ...theme,
-    brandName:     tenant?.brand?.name || 'Our Team',
+    brandName,
     brandLocation: tenant?.brand?.location || '',
     supportEmail:  tenant?.public?.zohoUser || tenant?.public?.email || tenant?.brand?.email || '',
     year:          new Date().getFullYear(),
+    logoUrl:       logos?.logo_white || logos?.logo_primary || '',
+    headerLogoHtml: headerLogoHtml(brandName, theme, logos),
+    logoImgHtml:    logoImgHtml(brandName, logos),
   };
 }
 
@@ -179,8 +316,9 @@ function brandTokens(tenant, theme) {
  * RENDER — return {subject, html} per template type
  * ────────────────────────────────────────────────────────────────── */
 
-export async function renderInvoiceEmail({ invoice, clientDoc, paymentUrl, tenant, theme }) {
+export async function renderInvoiceEmail({ invoice, clientDoc, paymentUrl, tenant, theme, logos }) {
   theme = theme || await loadTenantTheme(tenant);
+  logos = logos || await loadTenantBrandImages(tenant);
   const tmpl = await loadTemplate('invoice.html');
 
   let lineItemsHtml = '';
@@ -223,7 +361,7 @@ export async function renderInvoiceEmail({ invoice, clientDoc, paymentUrl, tenan
   const clientGreeting = contactName || company || 'there';
 
   const tokens = {
-    ...brandTokens(tenant, theme),
+    ...brandTokens(tenant, theme, logos),
     clientGreeting,
     clientName:    contactName || company || 'Client',
     billToHtml,
@@ -244,15 +382,16 @@ export async function renderInvoiceEmail({ invoice, clientDoc, paymentUrl, tenan
   };
 }
 
-export async function renderCampaignEmail({ toEmail, toName, subject, preheader, body, brandDomain, tenant, theme }) {
+export async function renderCampaignEmail({ toEmail, toName, subject, preheader, body, brandDomain, tenant, theme, logos }) {
   theme = theme || await loadTenantTheme(tenant);
+  logos = logos || await loadTenantBrandImages(tenant);
   const tmpl = await loadTemplate('campaign.html');
   const personalizedBody = (body || '')
     .replace(/\{name\}/gi, toName || 'there')
     .replace(/\{email\}/gi, toEmail || '');
   const domain = brandDomain || (tenant?.domain ? `https://${tenant.domain}` : '');
   const tokens = {
-    ...brandTokens(tenant, theme),
+    ...brandTokens(tenant, theme, logos),
     preheader:      preheader || '',
     body:           personalizedBody,
     unsubscribeUrl: `${domain}/t/unsubscribe?email=${encodeURIComponent(toEmail || '')}`,
@@ -260,12 +399,13 @@ export async function renderCampaignEmail({ toEmail, toName, subject, preheader,
   return { html: interpolate(tmpl, tokens), subject };
 }
 
-export async function renderWelcomeEmail({ user, dashboardUrl, tagline, tenant, theme }) {
+export async function renderWelcomeEmail({ user, dashboardUrl, tagline, tenant, theme, logos }) {
   theme = theme || await loadTenantTheme(tenant);
+  logos = logos || await loadTenantBrandImages(tenant);
   const tmpl = await loadTemplate('welcome.html');
   const firstName = (user?.name || user?.firstName || user?.email || 'there').split(' ')[0].split('@')[0];
   const tokens = {
-    ...brandTokens(tenant, theme),
+    ...brandTokens(tenant, theme, logos),
     firstName,
     tagline: tagline || `We're glad to have you. Here's everything you need to make the most of your new account.`,
     dashboardUrl: dashboardUrl || (tenant?.domain ? `https://${tenant.domain}/admin` : '#'),
@@ -276,8 +416,9 @@ export async function renderWelcomeEmail({ user, dashboardUrl, tagline, tenant, 
   };
 }
 
-export async function renderPaymentReceiptEmail({ payment, clientDoc, tenant, theme, viewUrl }) {
+export async function renderPaymentReceiptEmail({ payment, clientDoc, tenant, theme, viewUrl, logos }) {
   theme = theme || await loadTenantTheme(tenant);
+  logos = logos || await loadTenantBrandImages(tenant);
   const tmpl = await loadTemplate('payment-receipt.html');
   const paidDate = payment.paidOn ? new Date(payment.paidOn) : new Date();
   const paidOn = paidDate.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -285,7 +426,7 @@ export async function renderPaymentReceiptEmail({ payment, clientDoc, tenant, th
   const company = clientDoc?.company || clientDoc?.businessName || '';
   const clientGreeting = contactName || company || 'there';
   const tokens = {
-    ...brandTokens(tenant, theme),
+    ...brandTokens(tenant, theme, logos),
     clientGreeting,
     receiptNumber: payment.receiptNumber || `RCT-${Date.now().toString(36).toUpperCase()}`,
     invoiceNumber: payment.invoiceNumber || '—',
@@ -301,12 +442,13 @@ export async function renderPaymentReceiptEmail({ payment, clientDoc, tenant, th
   };
 }
 
-export async function renderBookingConfirmationEmail({ booking, tenant, theme }) {
+export async function renderBookingConfirmationEmail({ booking, tenant, theme, logos }) {
   theme = theme || await loadTenantTheme(tenant);
+  logos = logos || await loadTenantBrandImages(tenant);
   const tmpl = await loadTemplate('booking-confirmation.html');
   const start = booking.start ? new Date(booking.start) : new Date();
   const tokens = {
-    ...brandTokens(tenant, theme),
+    ...brandTokens(tenant, theme, logos),
     appointmentTitle: booking.title || 'Your appointment',
     providerName:    booking.providerName || tenant?.brand?.name || 'our team',
     monthShort:      start.toLocaleString('en-US', { month: 'short' }).toUpperCase(),
@@ -326,11 +468,12 @@ export async function renderBookingConfirmationEmail({ booking, tenant, theme })
   };
 }
 
-export async function renderPasswordResetEmail({ userEmail, resetUrl, expiresIn, tenant, theme }) {
+export async function renderPasswordResetEmail({ userEmail, resetUrl, expiresIn, tenant, theme, logos }) {
   theme = theme || await loadTenantTheme(tenant);
+  logos = logos || await loadTenantBrandImages(tenant);
   const tmpl = await loadTemplate('password-reset.html');
   const tokens = {
-    ...brandTokens(tenant, theme),
+    ...brandTokens(tenant, theme, logos),
     userEmail,
     resetUrl,
     expiresIn: expiresIn || '30 minutes',
@@ -345,20 +488,27 @@ export async function renderPasswordResetEmail({ userEmail, resetUrl, expiresIn,
  * SEND — production endpoints that wire render + transporter
  * ────────────────────────────────────────────────────────────────── */
 
-function tenantCreds(tenant) {
-  const zohoUser = tenant?.secrets?.zohoUser || tenant?.public?.zohoUser;
-  const zohoPass = tenant?.secrets?.zohoPass;
-  if (!zohoUser || !zohoPass) {
-    throw new Error('Email not configured. Go to Settings and add your Zoho email credentials before sending.');
+async function tenantSmtp(tenant) {
+  const cfg = resolveSmtp(tenant);
+  if (cfg.authMode === 'oauth') {
+    if (!cfg.user) {
+      throw new Error('Email OAuth not connected. Go to Settings → Email and connect your mailbox.');
+    }
+    // Exchange the stored refresh token for a fresh (cached) access token.
+    cfg.accessToken = await getEmailAccessToken(cfg.oauth);
+    return cfg;
   }
-  return { zohoUser, zohoPass };
+  if (!cfg.user || !cfg.pass) {
+    throw new Error('Email not configured. Go to Settings and add your email provider credentials before sending.');
+  }
+  return cfg;
 }
 
 export async function sendInvoiceEmail(invoice, clientDoc, paymentUrl, tenant) {
-  const { zohoUser, zohoPass } = tenantCreds(tenant);
+  const smtp = await tenantSmtp(tenant);
   const { html, subject } = await renderInvoiceEmail({ invoice, clientDoc, paymentUrl, tenant });
-  await getTransporter(zohoUser, zohoPass).sendMail({
-    from: `"${tenant?.brand?.name || 'Our Team'}" <${zohoUser}>`,
+  await getTransporter(smtp).sendMail({
+    from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
     to: clientDoc.email,
     subject,
     html,
@@ -366,7 +516,7 @@ export async function sendInvoiceEmail(invoice, clientDoc, paymentUrl, tenant) {
 }
 
 export async function sendCampaignEmail(toEmail, toName, subject, preheader, body, campaignId = null, contactId = null, tenant = null) {
-  const { zohoUser, zohoPass } = tenantCreds(tenant);
+  const smtp = await tenantSmtp(tenant);
   const domain = tenant?.domain ? `https://${tenant.domain}` : '';
   let { html } = await renderCampaignEmail({ toEmail, toName, subject, preheader, body, brandDomain: domain, tenant });
 
@@ -384,53 +534,101 @@ export async function sendCampaignEmail(toEmail, toName, subject, preheader, bod
     html = html.replace('</body>', `${pixel}</body>`);
   }
 
-  await getTransporter(zohoUser, zohoPass).sendMail({
-    from: `"${tenant?.brand?.name || 'Our Team'}" <${zohoUser}>`,
+  await getTransporter(smtp).sendMail({
+    from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
     to: toEmail,
     subject,
     html,
   });
 }
 
-function formatEmailBody(body) {
+/**
+ * Double opt-in confirmation email. Throws (via tenantSmtp) when the tenant has
+ * no mailbox configured — the caller uses that to degrade to single opt-in.
+ */
+export async function sendConfirmEmail({ to, confirmUrl, tenant }) {
+  const smtp = await tenantSmtp(tenant);
+  const theme = await loadTenantTheme(tenant);
+  const brandName = tenant?.brand?.name || 'Our Newsletter';
+  const body = `
+    <h2 style="margin:0 0 12px;">Confirm your subscription</h2>
+    <p style="margin:0 0 18px;">Thanks for signing up to hear from ${brandName}. Tap the button below to confirm your email address and start receiving updates.</p>
+    <p style="margin:0 0 22px;"><a href="${confirmUrl}" style="display:inline-block;padding:13px 30px;background:${theme.button_bg};color:${theme.button_text};text-decoration:none;font-weight:600;border-radius:4px;">Confirm subscription</a></p>
+    <p style="margin:0;font-size:13px;color:${theme.c_text_muted};">If you didn't request this, you can safely ignore this email — no subscription will be created.</p>`;
+  const { html } = await renderCampaignEmail({
+    toEmail: to, toName: '', subject: `Confirm your subscription to ${brandName}`,
+    preheader: 'One quick click to confirm your email', body, tenant, theme,
+  });
+  await getTransporter(smtp).sendMail({
+    from: `"${brandName}" <${smtp.user}>`,
+    to,
+    subject: `Confirm your subscription to ${brandName}`,
+    html,
+  });
+}
+
+/** Welcome / autoresponder email fired after a signup is confirmed. */
+export async function sendFormWelcomeEmail({ to, name, subject, body, tenant }) {
+  const smtp = await tenantSmtp(tenant);
+  const { html } = await renderCampaignEmail({
+    toEmail: to, toName: name, subject: subject || 'Welcome',
+    preheader: '', body: body || '', tenant,
+  });
+  await getTransporter(smtp).sendMail({
+    from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
+    to,
+    subject: subject || `Welcome to ${tenant?.brand?.name || 'our newsletter'}`,
+    html,
+  });
+}
+
+export function formatEmailBody(body, opts = {}) {
   if (!body) return '';
-  const hasBlockHtml = /<(p|div|br|table|ul|ol|h[1-6]|blockquote)[\s>/]/i.test(body);
-  if (hasBlockHtml) return body;
+  // Rich-text / pasted HTML → run it through the email-safe sanitizer so the
+  // markup that reaches the recipient renders consistently across clients.
+  const hasHtml = /<(p|div|br|table|ul|ol|h[1-6]|blockquote|strong|em|a|img|span)[\s>/]/i.test(body);
+  if (hasHtml) return sanitizeEmailHtml(body, opts);
+  // Plain text → paragraph-wrap (already safe).
   const paragraphs = body.replace(/\r\n/g, '\n').split(/\n{2,}/);
   return paragraphs
     .map(p => `<p style="margin:0 0 14px;">${p.trim().replace(/\n/g, '<br>')}</p>`)
     .join('');
 }
 
-export async function sendClientEmail(to, cc, subject, body, threadHeaders = null, tenant = null) {
-  const { zohoUser, zohoPass } = tenantCreds(tenant);
+export async function sendClientEmail(to, cc, subject, body, threadHeaders = null, tenant = null, attachments = null) {
+  const smtp = await tenantSmtp(tenant);
+  const theme = await loadTenantTheme(tenant);
   const { html } = await renderCampaignEmail({
     toEmail: to,
-    body: formatEmailBody(body),
+    body: formatEmailBody(body, { accent: theme.c_accent }),
     preheader: '',
     brandDomain: '',
     tenant,
+    theme,
   });
 
   const mailOpts = {
-    from: `"${tenant?.brand?.name || 'Our Team'}" <${zohoUser}>`,
+    from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
     to,
     subject,
     html,
-    replyTo: zohoUser,
+    replyTo: smtp.user,
   };
   if (cc?.length) mailOpts.cc = cc.join(', ');
   if (threadHeaders?.inReplyTo) mailOpts.inReplyTo = threadHeaders.inReplyTo;
   if (threadHeaders?.references) mailOpts.references = threadHeaders.references;
+  // attachments: [{ filename, href|path, contentType }] — nodemailer fetches
+  // href URLs (our S3 objects) itself, so we never buffer them in this process.
+  if (attachments?.length) mailOpts.attachments = attachments;
 
-  return getTransporter(zohoUser, zohoPass).sendMail(mailOpts);
+  return getTransporter(smtp).sendMail(mailOpts);
 }
 
 export async function sendWelcomeEmail({ to, user, dashboardUrl, tagline, tenant }) {
-  const { zohoUser, zohoPass } = tenantCreds(tenant);
+  const smtp = await tenantSmtp(tenant);
   const { html, subject } = await renderWelcomeEmail({ user, dashboardUrl, tagline, tenant });
-  await getTransporter(zohoUser, zohoPass).sendMail({
-    from: `"${tenant?.brand?.name || 'Our Team'}" <${zohoUser}>`,
+  await getTransporter(smtp).sendMail({
+    from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
     to,
     subject,
     html,
@@ -438,10 +636,10 @@ export async function sendWelcomeEmail({ to, user, dashboardUrl, tagline, tenant
 }
 
 export async function sendPaymentReceiptEmail({ payment, clientDoc, viewUrl, tenant }) {
-  const { zohoUser, zohoPass } = tenantCreds(tenant);
+  const smtp = await tenantSmtp(tenant);
   const { html, subject } = await renderPaymentReceiptEmail({ payment, clientDoc, viewUrl, tenant });
-  await getTransporter(zohoUser, zohoPass).sendMail({
-    from: `"${tenant?.brand?.name || 'Our Team'}" <${zohoUser}>`,
+  await getTransporter(smtp).sendMail({
+    from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
     to: clientDoc.email,
     subject,
     html,
@@ -449,10 +647,10 @@ export async function sendPaymentReceiptEmail({ payment, clientDoc, viewUrl, ten
 }
 
 export async function sendBookingConfirmationEmail({ booking, to, tenant }) {
-  const { zohoUser, zohoPass } = tenantCreds(tenant);
+  const smtp = await tenantSmtp(tenant);
   const { html, subject } = await renderBookingConfirmationEmail({ booking, tenant });
-  await getTransporter(zohoUser, zohoPass).sendMail({
-    from: `"${tenant?.brand?.name || 'Our Team'}" <${zohoUser}>`,
+  await getTransporter(smtp).sendMail({
+    from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
     to,
     subject,
     html,
@@ -460,10 +658,10 @@ export async function sendBookingConfirmationEmail({ booking, to, tenant }) {
 }
 
 export async function sendPasswordResetEmail({ to, resetUrl, expiresIn, tenant }) {
-  const { zohoUser, zohoPass } = tenantCreds(tenant);
+  const smtp = await tenantSmtp(tenant);
   const { html, subject } = await renderPasswordResetEmail({ userEmail: to, resetUrl, expiresIn, tenant });
-  await getTransporter(zohoUser, zohoPass).sendMail({
-    from: `"${tenant?.brand?.name || 'Our Team'}" <${zohoUser}>`,
+  await getTransporter(smtp).sendMail({
+    from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
     to,
     subject,
     html,

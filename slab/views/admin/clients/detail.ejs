@@ -282,6 +282,7 @@
             <td class="text-slate" style="font-size:0.78rem;"><%= inv.emailSentAt ? new Date(inv.emailSentAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) : '—' %></td>
             <td style="white-space:nowrap;">
               <div style="display:flex;gap:4px;align-items:center;">
+                <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.72rem;" title="Preview invoice email" onclick="openEmailPreview({ endpoint: '/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/preview', title: 'Invoice preview' })">Preview</button>
                 <% if (inv.status !== 'paid' && inv.status !== 'void') { %>
                 <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/send" style="display:inline;" onsubmit="return confirm('Send invoice email to <%= c.email || 'client' %>?')">
                   <button class="btn btn-ghost btn-sm" style="font-size:0.72rem;" title="Send via email">Email</button>
@@ -393,7 +394,7 @@
       <% } %>
     </div>
 
-    <script src="/js/assetPicker.js"></script>
+    <script src="/js/assetPicker.js?v=<%= Date.now() %>"></script>
     <script>
     // "From Library" — open asset picker to attach existing asset
     document.getElementById('pickAssetBtn')?.addEventListener('click', () => {
@@ -693,7 +694,26 @@
 
   <!-- EMAILS TAB -->
   <% if (tab === 'emails') { %>
+    <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
     <style>
+      /* ── EMAIL RICH EDITOR ── */
+      .preview-toggle{font-size:0.68rem;padding:4px 10px;border:1px solid var(--border);background:var(--surface);color:var(--slate);cursor:pointer;border-radius:2px;font-family:'Jost',sans-serif;font-weight:500;transition:all 0.15s;}
+      .preview-toggle.active{background:var(--navy);color:var(--on-navy);border-color:var(--navy);}
+      #emailQuill{background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 3px 3px;min-height:300px;font-family:var(--font-body);font-size:0.92rem;line-height:1.7;color:var(--on-surface);}
+      #emailQuill .ql-editor{min-height:280px;padding:16px 18px;}
+      #emailQuill .ql-editor p{margin-bottom:10px;}
+      #emailQuill .ql-editor h3{font-family:var(--font-body);font-size:1.1rem;font-weight:600;margin:14px 0 6px;}
+      #emailQuill .ql-editor blockquote{border-left:3px solid var(--gold);padding-left:14px;color:var(--slate);font-style:italic;margin:12px 0;}
+      #emailQuill .ql-editor a{color:var(--gold);}
+      #emailQuill .ql-editor ul,#emailQuill .ql-editor ol{padding-left:22px;margin-bottom:10px;}
+      .ql-toolbar.ql-snow{border:1px solid var(--border);border-radius:3px 3px 0 0;background:var(--surface);}
+      /* ── EMAIL AGENT CHAT ── */
+      .eap-msg{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;}
+      .eap-msg.user{align-items:flex-end;}
+      .eap-bubble{max-width:90%;padding:9px 13px;border-radius:4px;font-size:0.82rem;line-height:1.5;}
+      .eap-msg.user .eap-bubble{background:var(--navy);color:var(--on-navy);border-radius:4px 4px 1px 4px;}
+      .eap-msg.assistant .eap-bubble{background:var(--ivory);color:var(--on-surface);border:1px solid var(--border);border-radius:4px 4px 4px 1px;}
+      .eap-fill{font-size:0.66rem;color:var(--success,#15803D);font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-top:2px;}
       .thread{border:1px solid var(--border);border-radius:3px;margin-bottom:12px;overflow:hidden;}
       .thread-head{padding:12px 16px;background:var(--ivory);cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;transition:background .12s;}
       .thread-head:hover{background:var(--border);}
@@ -729,7 +749,7 @@
         <div class="card-title" style="margin:0;border:none;padding-bottom:0;">Compose Email</div>
         <span class="chevron" style="font-size:1.2rem;color:var(--slate);font-weight:300;">+</span>
       </div>
-      <form method="POST" action="/admin/clients/<%= c._id %>/emails/send" id="composeForm" style="display:none;margin-top:16px;">
+      <form method="POST" action="/admin/clients/<%= c._id %>/emails/send" id="composeForm" enctype="multipart/form-data" style="display:none;margin-top:16px;">
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
           <div class="form-field">
             <label>To</label>
@@ -740,21 +760,55 @@
             <input type="text" name="cc" placeholder="other@example.com, <%= brand?.email || '' %>">
           </div>
         </div>
+        <!-- Quick-start presets -->
+        <div class="form-field" style="margin-top:12px;">
+          <label>Presets <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(fills subject &amp; body — edit before sending)</span></label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="applyEmailPreset('update')">Project update</button>
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="applyEmailPreset('checkin')">Check-in</button>
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="applyEmailPreset('thanks')">Thank you</button>
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="applyEmailPreset('meeting')">Schedule a call</button>
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="applyEmailPreset('deliverable')">Deliverable ready</button>
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;color:var(--slate);" onclick="applyEmailPreset('blank')">Clear</button>
+          </div>
+        </div>
         <div class="form-field" style="margin-top:12px;">
           <label>Subject *</label>
-          <input type="text" name="subject" required placeholder="e.g. Quick update on your project">
+          <input type="text" name="subject" id="clientSubject" required placeholder="e.g. Quick update on your project">
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
+          <div class="form-field" style="flex:1 1 320px;min-width:280px;margin:0;">
+            <label style="display:flex;align-items:center;gap:8px;">
+              Body *
+              <button type="button" class="btn btn-ghost btn-sm" id="emailAgentBtn" style="font-size:0.68rem;margin-left:auto;color:var(--navy);">✦ AI Draft</button>
+              <button type="button" class="preview-toggle" id="emailHtmlToggle" style="font-size:0.68rem;">HTML</button>
+            </label>
+            <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;" id="emailExtraTools">
+              <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="openClientImgPicker()">Brand Image</button>
+            </div>
+            <!-- Hidden source: synced from Quill (or raw HTML mode); submitted + previewed -->
+            <textarea name="body" id="clientBody" style="display:none;"></textarea>
+            <div id="emailQuill"></div>
+            <textarea id="emailHtmlEditor" rows="14" placeholder="Raw email-safe HTML…"
+              style="display:none;font-family:monospace;font-size:0.82rem;line-height:1.6;width:100%;padding:12px;border:1px solid var(--border);border-radius:0 0 3px 3px;background:var(--ivory);color:var(--on-surface);resize:vertical;outline:none;min-height:300px;box-sizing:border-box;"></textarea>
+          </div>
+          <div style="flex:1 1 340px;min-width:300px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <label style="margin:0;">Live preview</label>
+              <span id="previewStatus" style="font-size:0.65rem;color:var(--slate);"></span>
+            </div>
+            <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;background:#fff;">
+              <iframe id="emailPreviewFrame" title="Email preview" sandbox="allow-same-origin" style="width:100%;height:520px;border:0;display:block;background:#fff;"></iframe>
+            </div>
+            <div style="font-size:0.65rem;color:var(--slate);margin-top:5px;">Your logo &amp; brand colors come from <a href="/admin/design#brand-images" style="color:var(--navy);">Design</a>.</div>
+          </div>
         </div>
         <div class="form-field" style="margin-top:12px;">
-          <label>Body *</label>
-          <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="openClientImgPicker()">Image</button>
-            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="insertAt(clientBody, '&lt;strong&gt;&lt;/strong&gt;')">Bold</button>
-            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="insertAt(clientBody, '&lt;a href=&quot;<%= brand?.domain ? 'https://' + (typeof tenant !== 'undefined' ? tenant.domain : '' ) : '#' %>&quot;&gt;link&lt;/a&gt;')">Link</button>
-          </div>
-          <textarea name="body" id="clientBody" rows="6" required placeholder="Hi <%= c.name?.split(' ')[0] || '' %>,"></textarea>
+          <label>Attachments <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(optional — uploaded &amp; saved to the Files tab)</span></label>
+          <input type="file" name="attachments" id="emailAttachments" multiple style="font-size:0.8rem;color:var(--on-surface);">
         </div>
         <div style="margin-top:12px;">
-          <button type="submit" class="btn btn-navy btn-sm" onclick="return confirm('Send to <%= c.email || 'client' %>?')">Send</button>
+          <button type="submit" class="btn btn-navy btn-sm" id="emailSendBtn" onclick="return confirm('Send to <%= c.email || 'client' %>?')">Send</button>
         </div>
       </form>
     </div>
@@ -882,7 +936,7 @@
         <div id="clientImgGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;"></div>
         <div style="margin-top:12px;display:flex;gap:6px;">
           <input type="url" id="clientExtUrl" placeholder="Or paste image URL" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:2px;font-size:0.82rem;">
-          <button type="button" class="btn btn-navy btn-sm" style="font-size:0.68rem;" onclick="const u=document.getElementById('clientExtUrl').value.trim();if(u){insertAt(clientBody,'<img src=&quot;'+u+'&quot; style=&quot;max-width:100%;height:auto;&quot;>');document.getElementById('clientImgModal').style.display='none';}">Insert</button>
+          <button type="button" class="btn btn-navy btn-sm" style="font-size:0.68rem;" onclick="const u=document.getElementById('clientExtUrl').value.trim();if(u){insertEmailImage(u,'');document.getElementById('clientImgModal').style.display='none';}">Insert</button>
         </div>
       </div>
     </div>
@@ -908,16 +962,257 @@
           const d = document.createElement('div');
           d.style.cssText = 'border:1px solid var(--border);border-radius:2px;overflow:hidden;cursor:pointer;';
           d.innerHTML = '<div style="aspect-ratio:1;background:var(--ivory);display:flex;align-items:center;justify-content:center;overflow:hidden;"><img src="'+img.url+'" style="max-width:100%;max-height:100%;object-fit:cover;"></div><div style="padding:4px 6px;font-size:0.6rem;color:var(--slate);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+( img.label||img.slot)+'</div>';
-          d.onclick = () => { insertAt(clientBody, '<img src="'+img.url+'" alt="'+(img.label||'')+'" style="max-width:100%;height:auto;display:block;margin:12px 0;">'); document.getElementById('clientImgModal').style.display='none'; };
+          d.onclick = () => { insertEmailImage(img.url, img.label||''); document.getElementById('clientImgModal').style.display='none'; };
           grid.appendChild(d);
         }
       }).catch(() => { grid.innerHTML = '<div style="color:var(--danger);font-size:0.8rem;grid-column:1/-1;text-align:center;">Failed to load</div>'; });
     }
     document.getElementById('clientImgModal')?.addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
+
+    /* ── Quill rich editor + HTML toggle + presets + live preview + AI agent ── */
+    var emailQuill = null, emailHtmlMode = false;
+    var subjectEl = document.getElementById('clientSubject');
+
+    // schedulePreview is defined by the preview IIFE below and assigned here.
+    var schedulePreview = function(){};
+
+    function syncFromEditor(){
+      if (emailHtmlMode) { clientBody.value = document.getElementById('emailHtmlEditor').value; return; }
+      if (emailQuill) {
+        var html = emailQuill.root.innerHTML;
+        if (html === '<p><br></p>') html = '';
+        clientBody.value = html;
+      }
+    }
+
+    // Set the full body (HTML) into both editors + hidden field.
+    function setEmailBodyHtml(html){
+      clientBody.value = html || '';
+      document.getElementById('emailHtmlEditor').value = html || '';
+      if (emailQuill) emailQuill.root.innerHTML = html || '';
+      schedulePreview();
+    }
+    // Plain text → simple email-safe paragraphs.
+    function setEmailBodyText(text){
+      var html = (text || '').split(/\n{2,}/).map(function(p){
+        return '<p>' + p.trim().replace(/\n/g, '<br>') + '</p>';
+      }).join('');
+      setEmailBodyHtml(html);
+    }
+    // Insert HTML at the cursor (rich mode) or at the textarea caret (HTML mode).
+    function insertEmailHtml(html){
+      if (emailHtmlMode) { insertAt(document.getElementById('emailHtmlEditor'), html); syncFromEditor(); schedulePreview(); return; }
+      if (emailQuill) {
+        var range = emailQuill.getSelection(true);
+        emailQuill.clipboard.dangerouslyPasteHTML(range ? range.index : emailQuill.getLength(), html);
+        syncFromEditor(); schedulePreview();
+      }
+    }
+    function insertEmailImage(url, label){
+      insertEmailHtml('<img src="' + url + '" alt="' + (label || '') + '" style="max-width:100%;height:auto;display:block;margin:12px 0;">');
+    }
+    function insertEmailImageFromInput(){
+      var u = document.getElementById('clientExtUrl').value.trim();
+      if (u) insertEmailImage(u, '');
+    }
+
+    // Load Quill from CDN, then initialize the constrained, email-safe toolbar.
+    (function(){
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js';
+      s.onload = function(){
+        emailQuill = new Quill('#emailQuill', {
+          theme: 'snow',
+          placeholder: <%- JSON.stringify('Hi ' + (c.name ? c.name.split(' ')[0] : '') + ',') %>,
+          modules: { toolbar: [
+            [{ header: [3, false] }],
+            ['bold', 'italic', 'underline'],
+            [{ list: 'ordered' }, { list: 'bullet' }],
+            ['blockquote', 'link'],
+            ['clean']
+          ] }
+        });
+        if (clientBody.value) emailQuill.root.innerHTML = clientBody.value;
+        emailQuill.on('text-change', function(){ syncFromEditor(); schedulePreview(); });
+      };
+      document.head.appendChild(s);
+    })();
+
+    // HTML ↔ rich toggle
+    document.getElementById('emailHtmlToggle').addEventListener('click', function(){
+      emailHtmlMode = !emailHtmlMode;
+      this.classList.toggle('active', emailHtmlMode);
+      var htmlEditor = document.getElementById('emailHtmlEditor');
+      var toolbar = document.querySelector('#emailQuill').previousElementSibling; // .ql-toolbar
+      if (emailHtmlMode) {
+        syncFromEditor();
+        htmlEditor.value = clientBody.value;
+        document.getElementById('emailQuill').style.display = 'none';
+        if (toolbar && toolbar.classList.contains('ql-toolbar')) toolbar.style.display = 'none';
+        htmlEditor.style.display = 'block';
+      } else {
+        clientBody.value = htmlEditor.value;
+        if (emailQuill) emailQuill.root.innerHTML = htmlEditor.value;
+        htmlEditor.style.display = 'none';
+        document.getElementById('emailQuill').style.display = '';
+        if (toolbar && toolbar.classList.contains('ql-toolbar')) toolbar.style.display = '';
+      }
+    });
+    document.getElementById('emailHtmlEditor').addEventListener('input', function(){
+      clientBody.value = this.value; schedulePreview();
+    });
+
+    // Final sync on submit so the freshest editor content is posted.
+    document.getElementById('composeForm').addEventListener('submit', function(e){
+      syncFromEditor();
+      if (!clientBody.value.trim()) { e.preventDefault(); alert('Email body is required.'); }
+    });
+
+    /* ── Presets + live preview ── */
+    (function(){
+      var frame = document.getElementById('emailPreviewFrame');
+      var status = document.getElementById('previewStatus');
+      if (!clientBody || !frame) return;
+
+      var FIRST = <%- JSON.stringify(c.name ? c.name.split(' ')[0] : 'there') %>;
+      var BRAND = <%- JSON.stringify(brand && brand.name ? brand.name : 'us') %>;
+
+      var PRESETS = {
+        blank:       { subject: '', body: '' },
+        update:      { subject: 'Project update',
+          body: 'Hi ' + FIRST + ',\n\nQuick update on where things stand:\n\n• \n• \n\nLet me know if you have any questions — happy to hop on a call if that\'s easier.' },
+        checkin:     { subject: 'Checking in',
+          body: 'Hi ' + FIRST + ',\n\nJust checking in to see how everything\'s going on your end. Is there anything you need from us right now, or anything we can help move forward?\n\nLooking forward to hearing from you.' },
+        thanks:      { subject: 'Thank you',
+          body: 'Hi ' + FIRST + ',\n\nThank you so much for your trust in ' + BRAND + ' — we genuinely appreciate working with you.\n\nIf there\'s ever anything we can do better, just say the word.' },
+        meeting:     { subject: 'Let\'s find a time to talk',
+          body: 'Hi ' + FIRST + ',\n\nI\'d love to grab some time to talk through the next steps. Do any of these work for you?\n\n• \n• \n\nIf none of those fit, send a couple windows that suit you and I\'ll make it work.' },
+        deliverable: { subject: 'Your deliverable is ready',
+          body: 'Hi ' + FIRST + ',\n\nGood news — the latest deliverable is ready for your review. Take a look when you get a chance and let me know your thoughts.\n\nHappy to walk through any of it together if helpful.' }
+      };
+
+      window.applyEmailPreset = function(key){
+        var p = PRESETS[key]; if (!p) return;
+        if (subjectEl) subjectEl.value = p.subject;
+        setEmailBodyText(p.body);
+      };
+
+      var timer = null;
+      schedulePreview = function(){ clearTimeout(timer); timer = setTimeout(renderPreview, 450); };
+
+      function renderPreview(){
+        if (status) status.textContent = 'Updating…';
+        fetch('/admin/clients/<%= c._id %>/email-preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subject: subjectEl ? subjectEl.value : '', body: clientBody.value })
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.html) { frame.srcdoc = d.html; if (status) status.textContent = ''; }
+          else if (status) status.textContent = d.error || 'Preview unavailable';
+        })
+        .catch(function(){ if (status) status.textContent = 'Preview unavailable'; });
+      }
+
+      if (subjectEl) subjectEl.addEventListener('input', schedulePreview);
+      renderPreview();
+    })();
+
+    /* ── Email AI agent (chat) ── */
+    (function(){
+      var panel = document.getElementById('emailAgentPanel');
+      var msgsEl = document.getElementById('eapMsgs');
+      var input = document.getElementById('eapInput');
+      var sendBtn = document.getElementById('eapSend');
+      var btn = document.getElementById('emailAgentBtn');
+      if (!panel || !btn) return;
+
+      var history = [];
+
+      btn.addEventListener('click', function(){ panel.style.right = '0'; input.focus(); });
+      document.getElementById('eapClose').addEventListener('click', function(){ panel.style.right = '-440px'; });
+
+      function append(role, text, extra){
+        var el = document.createElement('div');
+        el.className = 'eap-msg ' + role;
+        el.innerHTML = '<div class="eap-bubble">' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>' + (extra || '');
+        msgsEl.appendChild(el);
+        msgsEl.scrollTop = msgsEl.scrollHeight;
+      }
+      function typing(on){
+        var ex = document.getElementById('eapTyping');
+        if (on && !ex){ var d=document.createElement('div'); d.id='eapTyping'; d.className='eap-msg assistant'; d.innerHTML='<div class="eap-bubble" style="opacity:.6;">Drafting…</div>'; msgsEl.appendChild(d); msgsEl.scrollTop=msgsEl.scrollHeight; }
+        else if (!on && ex) ex.remove();
+      }
+
+      window.setEmailAgentPrompt = function(t){ input.value = t; input.focus(); };
+
+      async function send(){
+        var text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        sendBtn.disabled = true;
+        history.push({ role: 'user', content: text });
+        append('user', text);
+        typing(true);
+        try {
+          var res = await fetch('/admin/clients/<%= c._id %>/email-agent', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: history, currentDraft: { subject: subjectEl ? subjectEl.value : '', body: clientBody.value } })
+          });
+          var data = await res.json();
+          typing(false);
+          if (data.error) { append('assistant', 'Error: ' + data.error); }
+          else {
+            var filled = [];
+            if (data.fill && data.fill.subject && subjectEl) { subjectEl.value = data.fill.subject; filled.push('subject'); }
+            if (data.fill && data.fill.body) { setEmailBodyHtml(data.fill.body); filled.push('body'); }
+            history.push({ role: 'assistant', content: data.message || '' });
+            var notice = filled.length ? '<div class="eap-fill">✓ ' + filled.join(' + ') + ' updated</div>' : '';
+            append('assistant', data.message || 'Done.', notice);
+          }
+        } catch(e){ typing(false); append('assistant', 'Connection error. Please try again.'); }
+        finally { sendBtn.disabled = false; input.focus(); }
+      }
+      sendBtn.addEventListener('click', send);
+      input.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+    })();
     </script>
+
+    <!-- Email AI Agent panel -->
+    <div id="emailAgentPanel" style="position:fixed;top:0;right:-440px;width:min(440px,100vw);height:100vh;background:var(--surface);box-shadow:-4px 0 24px color-mix(in srgb, var(--navy-deep) 12%, transparent);z-index:420;transition:right 0.25s ease;display:flex;flex-direction:column;">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,var(--navy-deep),var(--navy));">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--on-navy-deep,#F5F3EF);">✦ Email Assistant</div>
+        <button id="eapClose" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:color-mix(in srgb,var(--on-navy-deep,#fff) 60%,transparent);line-height:1;">&times;</button>
+      </div>
+      <div style="padding:7px 22px;font-size:0.68rem;color:var(--slate);background:color-mix(in srgb,var(--gold) 7%,transparent);border-bottom:1px solid var(--border);">
+        Drafts from onboarding · invoices · meetings · account status — fills Subject &amp; Body.
+      </div>
+      <div id="eapMsgs" style="flex:1;overflow-y:auto;padding:16px 22px;">
+        <div class="eap-msg assistant"><div class="eap-bubble">
+          Hi! Tell me what to write to <strong><%= c.name?.split(' ')[0] || 'your client' %></strong> and I'll draft it using their history.<br><br>
+          Try a quick prompt below, or type your own.
+        </div></div>
+      </div>
+      <div style="padding:12px 22px;border-top:1px solid var(--border);">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+          <button type="button" class="ai-suggest-btn" style="font-size:0.66rem;" onclick="setEmailAgentPrompt('Write a warm check-in on how the project is going')">Check-in</button>
+          <button type="button" class="ai-suggest-btn" style="font-size:0.66rem;" onclick="setEmailAgentPrompt('Write a friendly reminder about any outstanding invoice')">Invoice reminder</button>
+          <button type="button" class="ai-suggest-btn" style="font-size:0.66rem;" onclick="setEmailAgentPrompt('Write a follow-up recapping our last meeting and next steps')">Meeting follow-up</button>
+          <button type="button" class="ai-suggest-btn" style="font-size:0.66rem;" onclick="setEmailAgentPrompt('Write a welcome / onboarding next-steps email based on their goals')">Onboarding</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <textarea id="eapInput" rows="2" placeholder="e.g. Nudge them about the overdue invoice, keep it friendly…" style="flex:1;padding:9px 11px;border:1px solid var(--border);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;resize:none;background:var(--surface);color:var(--on-surface);"></textarea>
+          <button id="eapSend" class="btn btn-navy btn-sm" style="flex-shrink:0;">↑</button>
+        </div>
+      </div>
+    </div>
   <% } %>
 
 </div>
+
+<%- include('../partials/_email-preview-modal') %>
 
 <!-- Agent Panel (slide-out) -->
 <div id="agentPanel" style="position:fixed;top:0;right:-420px;width:min(420px,100vw);height:100vh;background:var(--surface);box-shadow:-4px 0 24px color-mix(in srgb, var(--navy-deep) 12%, transparent);z-index:400;transition:right 0.25s ease;display:flex;flex-direction:column;">

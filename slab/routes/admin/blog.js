@@ -16,6 +16,23 @@ import { s3Client, BUCKET, bucketUrl } from '../../plugins/s3.js';
 
 const router = express.Router();
 
+// ── WRITER CONTENT TYPES ─────────────────────────────────────────────────────
+// The "blog" module is really a general content writer. Every document in the
+// `blog` collection carries a `contentType`; legacy docs (no field) are treated
+// as 'blog'. `publicAtBlog` marks types served under /blog/:slug.
+// `publicBase` is the public archive path for a type (null = embed-only, no page).
+// Items live at `${publicBase}/${slug}` with RSS/Atom at `${publicBase}/feed.*`.
+export const CONTENT_TYPES = [
+  { key: 'blog',       label: 'Blog Post',    icon: '✍',  desc: 'Published article with RSS/Atom feed', publicBase: '/blog' },
+  { key: 'newsletter', label: 'Newsletter',   icon: '✉',  desc: 'Issue published to the newsletter archive + feed', publicBase: '/newsletter' },
+  { key: 'help',       label: 'Help Article', icon: '?',  desc: 'Help-center article with its own page + feed', publicBase: '/help' },
+  { key: 'snippet',    label: 'Snippet',      icon: '◧',  desc: 'Reusable block — embed into pages by tag', publicBase: null },
+];
+const CONTENT_TYPE_KEYS = CONTENT_TYPES.map(t => t.key);
+function normalizeContentType(v) {
+  return CONTENT_TYPE_KEYS.includes(v) ? v : 'blog';
+}
+
 function toSlug(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
@@ -85,9 +102,19 @@ async function generateFeaturedImage({ seed, brandContext, tenant, db, userEmail
 router.get('/', async (req, res) => {
   try {
     const db = req.db;
-    const posts = await db.collection('blog').find({}).sort({ createdAt: -1 }).toArray();
+    const all = await db.collection('blog').find({}).sort({ createdAt: -1 }).toArray();
+    // Normalize legacy docs (missing contentType) to 'blog' for display/filtering.
+    all.forEach(p => { p.contentType = normalizeContentType(p.contentType); });
+
+    const counts = { all: all.length };
+    for (const t of CONTENT_TYPES) counts[t.key] = all.filter(p => p.contentType === t.key).length;
+
+    const activeType = CONTENT_TYPE_KEYS.includes(req.query.type) ? req.query.type : 'all';
+    const posts = activeType === 'all' ? all : all.filter(p => p.contentType === activeType);
+
     res.render('admin/blog/index', {
-      user: req.adminUser, page: 'blog', title: 'Blog Posts', posts,
+      user: req.adminUser, page: 'blog', title: 'Writer', posts,
+      contentTypes: CONTENT_TYPES, activeType, counts,
       msg: req.query.msg, err: req.query.err,
     });
   } catch (err) {
@@ -104,7 +131,8 @@ router.get('/new', async (req, res) => {
   const existingCategories = [...new Set(allPosts.map(p => p.category).filter(Boolean))].sort();
   res.render('admin/blog/form', {
     user: req.adminUser, page: 'blog', title: 'New Post', post: null, error: null,
-    existingTags, existingCategories,
+    existingTags, existingCategories, contentTypes: CONTENT_TYPES,
+    defaultType: normalizeContentType(req.query.type),
   });
 });
 
@@ -112,12 +140,13 @@ router.get('/new', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const db = req.db;
-    const { title, slug, excerpt, content, category, tags, status, featuredImageUrl } = req.body;
+    const { title, slug, excerpt, content, category, tags, status, featuredImageUrl, contentType } = req.body;
     const finalSlug = slug ? toSlug(slug) : toSlug(title);
     const existing = await db.collection('blog').findOne({ slug: finalSlug });
     if (existing) {
       return res.render('admin/blog/form', {
         user: req.adminUser, page: 'blog', title: 'New Post', post: req.body,
+        contentTypes: CONTENT_TYPES, defaultType: normalizeContentType(contentType),
         error: 'A post with that slug already exists. Choose a different title or slug.',
       });
     }
@@ -125,6 +154,7 @@ router.post('/', async (req, res) => {
     await db.collection('blog').insertOne({
       title,
       slug: finalSlug,
+      contentType: normalizeContentType(contentType),
       excerpt: excerpt || '',
       content: content || '',
       category: category || '',
@@ -140,6 +170,7 @@ router.post('/', async (req, res) => {
     console.error(err);
     res.render('admin/blog/form', {
       user: req.adminUser, page: 'blog', title: 'New Post', post: req.body,
+      contentTypes: CONTENT_TYPES, defaultType: normalizeContentType(req.body?.contentType),
       error: 'Failed to create post.',
     });
   }
@@ -156,9 +187,11 @@ router.get('/:id/edit', async (req, res) => {
     if (!post) return res.redirect('/admin/blog');
     const existingTags = [...new Set(allPosts.flatMap(p => Array.isArray(p.tags) ? p.tags : []))].sort();
     const existingCategories = [...new Set(allPosts.map(p => p.category).filter(Boolean))].sort();
+    post.contentType = normalizeContentType(post.contentType);
     res.render('admin/blog/form', {
       user: req.adminUser, page: 'blog', title: 'Edit Post', post, error: null,
-      existingTags, existingCategories,
+      existingTags, existingCategories, contentTypes: CONTENT_TYPES,
+      defaultType: post.contentType,
     });
   } catch (err) {
     console.error(err);
@@ -255,7 +288,7 @@ ${postCtx}${researchCtx}`;
 router.post('/:id', async (req, res) => {
   try {
     const db = req.db;
-    const { title, slug, excerpt, content, category, tags, status, featuredImageUrl } = req.body;
+    const { title, slug, excerpt, content, category, tags, status, featuredImageUrl, contentType } = req.body;
     const finalSlug = slug ? toSlug(slug) : toSlug(title);
     const existing = await db.collection('blog').findOne({
       slug: finalSlug,
@@ -265,6 +298,7 @@ router.post('/:id', async (req, res) => {
       return res.render('admin/blog/form', {
         user: req.adminUser, page: 'blog', title: 'Edit Post',
         post: { ...req.body, _id: req.params.id },
+        contentTypes: CONTENT_TYPES, defaultType: normalizeContentType(contentType),
         error: 'That slug is already used by another post.',
       });
     }
@@ -276,6 +310,7 @@ router.post('/:id', async (req, res) => {
         $set: {
           title,
           slug: finalSlug,
+          contentType: normalizeContentType(contentType),
           excerpt: excerpt || '',
           content: content || '',
           category: category || '',

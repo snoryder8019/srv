@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+  <link rel="stylesheet" href="/css/editor.css" />
+</head>
+<body class="mll-page mll-page--editor">
+  <%- include('../partials/header') %>
+
+  <main class="ed-wrap">
+    <header class="ed-head">
+      <a class="ed-back" href="/dashboard">← Dashboard</a>
+      <h1>New pitch</h1>
+      <p class="ed-sub">Pick the view modules you want, fill in the basics, and we'll seed each one with editable placeholder data so it renders immediately.</p>
+      <% if (!atLimit) { %>
+        <p class="ed-quota">You've used <strong><%= used %></strong> of <strong><%= max %></strong> pitches.</p>
+      <% } %>
+    </header>
+
+    <% if (atLimit) { %>
+      <section class="ed-limit">
+        <h2>Pitch limit reached</h2>
+        <p>You're at the maximum of <%= max %> pitches. Delete or archive one to make room for a new build.</p>
+        <a class="ed-btn ed-btn--primary" href="/dashboard">Back to dashboard</a>
+      </section>
+    <% } else { %>
+      <% if (error) { %><div class="ed-error"><%= error %></div><% } %>
+
+      <form class="ed-form" method="post" action="/editor/new">
+        <section class="ed-card">
+          <h2>The basics</h2>
+          <div class="ed-grid2">
+            <label class="ed-field">
+              <span>Client name <em>*</em></span>
+              <input type="text" name="client" required value="<%= form.client || '' %>" placeholder="Acme Industrial" />
+            </label>
+            <label class="ed-field">
+              <span>Industry</span>
+              <input type="text" name="industry" value="<%= form.industry || '' %>" placeholder="Manufacturing · Web + marketing" />
+            </label>
+          </div>
+          <label class="ed-field">
+            <span>Summary</span>
+            <textarea name="summary" rows="3" placeholder="One or two sentences on what this pitch delivers."><%= form.summary || '' %></textarea>
+          </label>
+          <label class="ed-field ed-field--narrow">
+            <span>Default rate ($/hr)</span>
+            <input type="number" name="defaultRate" min="1" step="1"
+              value="<%= form.defaultRate || (mllUser.settings && mllUser.settings.defaultRate) || 75 %>" />
+          </label>
+        </section>
+
+        <section class="ed-card">
+          <h2>Pick your view modules</h2>
+          <p class="ed-card__hint">Each module drops in a working chart or content view pre-filled with placeholder data. You'll edit the content on the next screen.</p>
+          <div class="ed-catalog">
+            <% catalog.forEach((t) => {
+                 const checked = (form.views || []).includes(t.slug); %>
+              <label class="ed-tpl <%= checked ? 'is-checked' : '' %>">
+                <input type="checkbox" name="views" value="<%= t.slug %>" <%= checked ? 'checked' : '' %> />
+                <span class="ed-tpl__kind ed-tpl__kind--<%= t.kind %>"><%= t.kind %></span>
+                <span class="ed-tpl__title"><%= t.title %></span>
+                <span class="ed-tpl__desc"><%= t.description %></span>
+              </label>
+            <% }) %>
+          </div>
+        </section>
+
+        <div class="ed-actions">
+          <a class="ed-btn" href="/dashboard">Cancel</a>
+          <button class="ed-btn ed-btn--primary" type="submit">Create pitch →</button>
+        </div>
+      </form>
+    <% } %>
+  </main>
+
+  <%- include('../partials/footer') %>
+</body>
+</html>

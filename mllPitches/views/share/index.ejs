@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+  <link rel="stylesheet" href="/css/share.css" />
+</head>
+<body class="mll-page">
+  <%- include('../partials/header') %>
+  <main class="mll-share">
+    <header class="mll-share__head">
+      <a class="mll-share__back" href="/dashboard">← Dashboard</a>
+      <h1>Share &ldquo;<%= pitch.client || pitch.slug %>&rdquo;</h1>
+      <p class="mll-share__sub">Generate a public, time-limited link your client can open from any device.</p>
+    </header>
+
+    <section class="mll-share__notice">
+      <p>
+        <strong>Heads up:</strong> share links are <strong>public</strong> and expire after
+        <strong>48 hours</strong>. Anyone with the link (or QR code) can view this pitch —
+        share ample/demo data only. For private pitches with NDAs or live meetings,
+        <button type="button" class="mll-share__inline-btn" data-contact-open>contact MadLadsLab</button>.
+      </p>
+    </section>
+
+    <% if (active) { %>
+      <section class="mll-share__card mll-share__card--active">
+        <div class="mll-share__status">
+          <span class="mll-share__dot" aria-hidden="true">●</span>
+          <span>Active share link</span>
+          <span class="mll-share__expiry" data-expires="<%= share.expiresAt %>">
+            expires <%= new Date(share.expiresAt).toLocaleString() %>
+          </span>
+        </div>
+
+        <div class="mll-share__grid">
+          <div class="mll-share__linkcol">
+            <label class="mll-share__label" for="shareUrl">Shareable link</label>
+            <div class="mll-share__urlrow">
+              <input id="shareUrl" class="mll-share__url" type="text" readonly value="<%= url %>" />
+              <button type="button" class="mll-cta mll-share__copy" data-copy="<%= url %>">Copy link</button>
+            </div>
+            <p class="mll-share__countdown" data-countdown="<%= share.expiresAt %>">Calculating time remaining…</p>
+
+            <div class="mll-share__btns">
+              <form method="POST" action="/share/<%= pitch.slug %>/create">
+                <button type="submit" class="mll-share__btn mll-share__btn--regen">Regenerate</button>
+              </form>
+              <form method="POST" action="/share/<%= pitch.slug %>/revoke">
+                <button type="submit" class="mll-share__btn mll-share__btn--revoke">Revoke</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="mll-share__qrcol">
+            <% if (qr) { %>
+              <img class="mll-share__qr" src="<%= qr %>" alt="QR code for the share link" />
+              <span class="mll-share__qrhint">Scan to open on a phone</span>
+            <% } %>
+          </div>
+        </div>
+      </section>
+    <% } else { %>
+      <section class="mll-share__card mll-share__card--inactive">
+        <p class="mll-share__empty">No active share link. Generate one to let your client view this pitch for 48 hours.</p>
+        <form method="POST" action="/share/<%= pitch.slug %>/create">
+          <button type="submit" class="mll-cta mll-share__generate">Generate 48-hour share link</button>
+        </form>
+      </section>
+    <% } %>
+  </main>
+  <%- include('../partials/footer') %>
+
+  <script>
+    // Copy-to-clipboard
+    document.querySelectorAll('[data-copy]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const text = btn.getAttribute('data-copy');
+        try {
+          await navigator.clipboard.writeText(text);
+          const orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = orig; }, 1500);
+        } catch {
+          const input = document.getElementById('shareUrl');
+          if (input) { input.select(); document.execCommand('copy'); }
+        }
+      });
+    });
+
+    // Live countdown
+    const cd = document.querySelector('[data-countdown]');
+    if (cd) {
+      const target = new Date(cd.getAttribute('data-countdown')).getTime();
+      const tick = () => {
+        const ms = target - Date.now();
+        if (ms <= 0) { cd.textContent = 'This link has expired — regenerate to keep sharing.'; return; }
+        const h = Math.floor(ms / 3600000);
+        const m = Math.floor((ms % 3600000) / 60000);
+        cd.textContent = `Expires in ${h}h ${m}m`;
+        setTimeout(tick, 30000);
+      };
+      tick();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+  <link rel="stylesheet" href="/css/dashboard.css" />
+</head>
+<body class="mll-page lf-dash">
+  <%- include('../partials/header') %>
+
+  <main class="lf-shell lf-shell--narrow">
+    <nav class="lf-breadcrumb"><a href="/dashboard">← Dashboard</a></nav>
+
+    <section class="lf-dashhead lf-dashhead--stack">
+      <div class="lf-dashhead__text">
+        <h1>Settings</h1>
+        <p class="lf-dashhead__sub">
+          Your account details and the branding applied to new pitches.
+        </p>
+      </div>
+    </section>
+
+    <% if (saved) { %>
+      <div class="lf-flash lf-flash--ok" role="status">Settings saved.</div>
+    <% } %>
+    <% if (error === 'rate') { %>
+      <div class="lf-flash lf-flash--err" role="alert">Default rate must be a number of 0 or more.</div>
+    <% } %>
+
+    <form class="lf-form" method="post" action="/dashboard/settings" novalidate>
+      <fieldset class="lf-fieldset">
+        <legend>Account</legend>
+
+        <div class="lf-field">
+          <label for="displayName">Display name</label>
+          <input id="displayName" name="displayName" type="text"
+                 value="<%= mllUser.displayName || '' %>" placeholder="Your name" />
+        </div>
+
+        <div class="lf-field">
+          <label for="email">Email</label>
+          <input id="email" type="email" value="<%= mllUser.email || '' %>" disabled />
+          <small class="lf-hint">Managed by your MadLadsLab sign-in.</small>
+        </div>
+      </fieldset>
+
+      <fieldset class="lf-fieldset">
+        <legend>Branding &amp; pitch defaults</legend>
+
+        <div class="lf-field">
+          <label for="company">Company</label>
+          <input id="company" name="company" type="text"
+                 value="<%= mllUser.settings.company || '' %>" placeholder="Your studio or agency" />
+        </div>
+
+        <div class="lf-field">
+          <label for="tagline">Tagline</label>
+          <input id="tagline" name="tagline" type="text"
+                 value="<%= mllUser.settings.tagline || '' %>" placeholder="One line that sells you" />
+        </div>
+
+        <div class="lf-field">
+          <label for="defaultRate">Default rate (per hour, USD)</label>
+          <input id="defaultRate" name="defaultRate" type="number" min="0" step="1" inputmode="decimal"
+                 value="<%= mllUser.settings.defaultRate %>" required />
+          <small class="lf-hint">Used to seed scope estimates on new pitches.</small>
+        </div>
+
+        <div class="lf-field">
+          <label for="contactEmail">Contact email (shown to clients)</label>
+          <input id="contactEmail" name="contactEmail" type="email"
+                 value="<%= mllUser.settings.contactEmail || '' %>" placeholder="you@studio.com" />
+        </div>
+
+        <div class="lf-field">
+          <label for="logoUrl">Logo URL</label>
+          <input id="logoUrl" name="logoUrl" type="url"
+                 value="<%= mllUser.settings.logoUrl || '' %>" placeholder="https://…/logo.png" />
+        </div>
+
+        <div class="lf-field lf-field--colors">
+          <div class="lf-color">
+            <label for="brandColor">Brand color</label>
+            <div class="lf-color__row">
+              <input id="brandColor" name="brandColor" type="color"
+                     value="<%= mllUser.settings.brandColor || '#0c1020' %>" />
+              <code><%= mllUser.settings.brandColor || '#0c1020' %></code>
+            </div>
+          </div>
+          <div class="lf-color">
+            <label for="accent">Accent</label>
+            <div class="lf-color__row">
+              <input id="accent" name="accent" type="color"
+                     value="<%= mllUser.settings.accent || '#5b8cff' %>" />
+              <code><%= mllUser.settings.accent || '#5b8cff' %></code>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="lf-form__actions">
+        <a class="lf-btn lf-btn--ghost" href="/dashboard">Cancel</a>
+        <button type="submit" class="lf-btn lf-btn--primary">Save settings</button>
+      </div>
+    </form>
+  </main>
+
+  <%- include('../partials/footer') %>
+
+  <script>
+    // Live-sync the hex label next to each color swatch.
+    document.querySelectorAll('.lf-color input[type="color"]').forEach((inp) => {
+      const code = inp.parentElement.querySelector('code');
+      inp.addEventListener('input', () => { if (code) code.textContent = inp.value; });
+    });
+  </script>
+</body>
+</html>

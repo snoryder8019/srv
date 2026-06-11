@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+  <link rel="stylesheet" href="/css/editor.css" />
+</head>
+<body class="mll-page mll-page--editor">
+  <%- include('../partials/header') %>
+
+  <main class="ed-wrap">
+    <header class="ed-head">
+      <a class="ed-back" href="/dashboard">← Dashboard</a>
+      <h1>Edit pitch</h1>
+      <p class="ed-sub"><%= pitch.client %><% if (pitch.industry) { %> · <%= pitch.industry %><% } %></p>
+      <div class="ed-headlinks">
+        <a class="ed-btn" href="/c/<%= pitch.slug %>" target="_blank" rel="noopener">Preview →</a>
+        <span class="ed-status-chip ed-status-chip--<%= pitch.status %>"><%= pitch.status === 'published' ? 'Published' : 'Draft' %></span>
+      </div>
+    </header>
+
+    <% if (saved) { %><div class="ed-saved" role="status">Saved. <a href="/c/<%= pitch.slug %>" target="_blank" rel="noopener">View it →</a></div><% } %>
+
+    <form class="ed-form" method="post" action="/editor/<%= pitch.slug %>"
+          data-rate="<%= pitch.defaultRate || 75 %>">
+
+      <section class="ed-card">
+        <h2>The basics</h2>
+        <div class="ed-grid2">
+          <label class="ed-field">
+            <span>Client name</span>
+            <input type="text" name="client" value="<%= pitch.client || '' %>" required />
+          </label>
+          <label class="ed-field">
+            <span>Industry</span>
+            <input type="text" name="industry" value="<%= pitch.industry || '' %>" />
+          </label>
+        </div>
+        <label class="ed-field">
+          <span>Summary</span>
+          <textarea name="summary" rows="3"><%= pitch.summary || '' %></textarea>
+        </label>
+        <div class="ed-grid2">
+          <label class="ed-field">
+            <span>Date</span>
+            <input type="date" name="date" value="<%= pitch.date || '' %>" />
+          </label>
+          <label class="ed-field">
+            <span>Default rate ($/hr)</span>
+            <input type="number" name="defaultRate" id="ed-rate" min="1" step="1" value="<%= pitch.defaultRate || 75 %>" />
+          </label>
+        </div>
+        <fieldset class="ed-status">
+          <legend>Status</legend>
+          <label><input type="radio" name="status" value="draft" <%= pitch.status !== 'published' ? 'checked' : '' %> /> Draft</label>
+          <label><input type="radio" name="status" value="published" <%= pitch.status === 'published' ? 'checked' : '' %> /> Published</label>
+        </fieldset>
+      </section>
+
+      <section class="ed-card">
+        <h2>View modules</h2>
+        <p class="ed-card__hint">Toggle a module on to add a fresh, pre-filled view. Toggle off to remove it from the pitch.</p>
+        <div class="ed-catalog">
+          <% catalog.forEach((t) => { %>
+            <label class="ed-tpl <%= t.active ? 'is-checked' : '' %>">
+              <input type="checkbox" name="views" value="<%= t.slug %>" <%= t.active ? 'checked' : '' %> />
+              <span class="ed-tpl__kind ed-tpl__kind--<%= t.kind %>"><%= t.kind %></span>
+              <span class="ed-tpl__title"><%= t.title %><% if (t.active) { %> <small class="ed-tpl__on">on</small><% } %></span>
+              <span class="ed-tpl__desc"><%= t.description %></span>
+            </label>
+          <% }) %>
+        </div>
+        <p class="ed-note">Heads up: each module ships with seeded chart/content data. To fine-tune that seed data beyond pricing, edit the pitch JSON directly — the editor manages which modules are included, plus the à-la-carte scope and packages below.</p>
+      </section>
+
+      <section class="ed-card">
+        <div class="ed-card__head">
+          <h2>À-la-carte scope</h2>
+          <button type="button" class="ed-btn ed-btn--ghost" data-add-row="ala">+ Add item</button>
+        </div>
+        <p class="ed-card__hint">One-time builds the client can check off. Cost auto-computes as hours × rate; firm price shows the agency comparison.</p>
+        <div class="ed-rows" data-rows="ala">
+          <% (pitch.alaCarte || []).forEach((item, i) => { %>
+            <div class="ed-row" data-row>
+              <input type="hidden" name="ala_id" value="<%= item.id || '' %>" />
+              <label class="ed-field ed-field--grow">
+                <span>Title</span>
+                <input type="text" name="ala_title" value="<%= item.title || '' %>" placeholder="Brand kit refresh" />
+              </label>
+              <label class="ed-field ed-field--grow">
+                <span>Description</span>
+                <input type="text" name="ala_desc" value="<%= item.description || '' %>" />
+              </label>
+              <label class="ed-field ed-field--num">
+                <span>Hours</span>
+                <input type="number" class="ed-hours" name="ala_hours" min="0" step="1" value="<%= item.hours || 0 %>" />
+              </label>
+              <div class="ed-cost">
+                <span>MLL cost</span>
+                <strong class="ed-cost__val">$<%= (item.cost || 0).toLocaleString() %></strong>
+              </div>
+              <button type="button" class="ed-row__del" data-del-row aria-label="Remove">✕</button>
+            </div>
+          <% }) %>
+        </div>
+        <template data-tpl="ala">
+          <div class="ed-row" data-row>
+            <input type="hidden" name="ala_id" value="" />
+            <label class="ed-field ed-field--grow">
+              <span>Title</span>
+              <input type="text" name="ala_title" placeholder="New scope item" />
+            </label>
+            <label class="ed-field ed-field--grow">
+              <span>Description</span>
+              <input type="text" name="ala_desc" />
+            </label>
+            <label class="ed-field ed-field--num">
+              <span>Hours</span>
+              <input type="number" class="ed-hours" name="ala_hours" min="0" step="1" value="0" />
+            </label>
+            <div class="ed-cost">
+              <span>MLL cost</span>
+              <strong class="ed-cost__val">$0</strong>
+            </div>
+            <button type="button" class="ed-row__del" data-del-row aria-label="Remove">✕</button>
+          </div>
+        </template>
+      </section>
+
+      <section class="ed-card">
+        <div class="ed-card__head">
+          <h2>Package tiers</h2>
+          <button type="button" class="ed-btn ed-btn--ghost" data-add-row="pkg">+ Add tier</button>
+        </div>
+        <p class="ed-card__hint">Monthly retainer options. Firm-comparison price auto-computes at 3× your monthly.</p>
+        <div class="ed-rows" data-rows="pkg">
+          <% (pitch.packages || []).forEach((p) => { %>
+            <div class="ed-row ed-row--pkg" data-row>
+              <input type="hidden" name="pkg_id" value="<%= p.id || '' %>" />
+              <label class="ed-field"><span>Name</span><input type="text" name="pkg_name" value="<%= p.name || '' %>" placeholder="Forge" /></label>
+              <label class="ed-field ed-field--grow"><span>Tagline</span><input type="text" name="pkg_tagline" value="<%= p.tagline || '' %>" /></label>
+              <label class="ed-field ed-field--num"><span>Monthly $</span><input type="number" name="pkg_monthly" min="0" step="1" value="<%= p.monthly || 0 %>" /></label>
+              <label class="ed-field ed-field--num"><span>Hrs/mo</span><input type="number" name="pkg_hours" min="0" step="1" value="<%= p.hoursPerMonth || 0 %>" /></label>
+              <label class="ed-field ed-field--num"><span>Accent</span>
+                <select name="pkg_color">
+                  <% ['ok','accent','warn'].forEach((c) => { %><option value="<%= c %>" <%= p.color === c ? 'selected' : '' %>><%= c %></option><% }) %>
+                </select>
+              </label>
+              <button type="button" class="ed-row__del" data-del-row aria-label="Remove">✕</button>
+            </div>
+          <% }) %>
+        </div>
+        <template data-tpl="pkg">
+          <div class="ed-row ed-row--pkg" data-row>
+            <input type="hidden" name="pkg_id" value="" />
+            <label class="ed-field"><span>Name</span><input type="text" name="pkg_name" placeholder="New tier" /></label>
+            <label class="ed-field ed-field--grow"><span>Tagline</span><input type="text" name="pkg_tagline" /></label>
+            <label class="ed-field ed-field--num"><span>Monthly $</span><input type="number" name="pkg_monthly" min="0" step="1" value="0" /></label>
+            <label class="ed-field ed-field--num"><span>Hrs/mo</span><input type="number" name="pkg_hours" min="0" step="1" value="0" /></label>
+            <label class="ed-field ed-field--num"><span>Accent</span>
+              <select name="pkg_color"><option value="ok">ok</option><option value="accent" selected>accent</option><option value="warn">warn</option></select>
+            </label>
+            <button type="button" class="ed-row__del" data-del-row aria-label="Remove">✕</button>
+          </div>
+        </template>
+      </section>
+
+      <div class="ed-actions ed-actions--sticky">
+        <a class="ed-btn" href="/c/<%= pitch.slug %>" target="_blank" rel="noopener">Preview</a>
+        <button class="ed-btn ed-btn--primary" type="submit">Save changes</button>
+      </div>
+    </form>
+  </main>
+
+  <%- include('../partials/footer') %>
+  <script defer src="/js/editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+<style>
+  .fl-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+  .fl-hint { font-size:0.78rem; color:var(--slate); max-width:640px; }
+  .fl-src { font-size:0.66rem; color:var(--slate); }
+  .fl-note { background:rgba(201,168,72,0.08); border:1px solid rgba(201,168,72,0.3); color:var(--badge-accent); border-radius:6px; padding:12px 14px; font-size:0.78rem; margin-bottom:14px; }
+  .fl-feed { display:flex; flex-direction:column; gap:12px; max-width:720px; }
+  .fl-item { border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:14px; }
+  .fl-top { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .fl-av { width:38px; height:38px; border-radius:50%; object-fit:cover; background:var(--ivory); flex-shrink:0; }
+  .fl-who { display:flex; flex-direction:column; min-width:0; }
+  .fl-nm { font-weight:600; font-size:0.84rem; color:var(--on-surface); }
+  .fl-hl { font-size:0.7rem; color:var(--slate); }
+  .fl-pill { margin-left:auto; font-size:0.58rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:3px; background:rgba(28,43,74,.08); color:var(--navy); }
+  .fl-txt { font-size:0.84rem; color:var(--on-surface); line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+  .fl-media { margin-top:8px; max-width:240px; border-radius:6px; border:1px solid var(--border); }
+  .fl-meta { display:flex; gap:14px; margin-top:9px; font-size:0.68rem; color:var(--slate); }
+  .fl-acts { display:flex; gap:8px; margin-top:10px; align-items:center; flex-wrap:wrap; }
+  .fl-b { border:1px solid var(--border); background:var(--surface); color:var(--on-surface); padding:6px 11px; border-radius:6px; font-size:0.72rem; cursor:pointer; }
+  .fl-b:hover { border-color:var(--navy-mid); } .fl-b.primary { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .fl-reply { display:none; margin-top:9px; gap:6px; }
+  .fl-reply.open { display:flex; }
+  .fl-reply input { flex:1; border:1px solid var(--border); border-radius:5px; padding:7px; font-size:0.78rem; }
+  .fl-time { font-size:0.66rem; color:var(--slate); margin-left:auto; }
+</style>
+
+<div class="fl-head">
+  <div class="fl-hint">A consolidated feed of recent posts from accounts you follow — reply or like inline to keep outreach in one place. Works with <strong>Mastodon</strong> &amp; <strong>Bluesky</strong> (their APIs expose a following timeline).</div>
+  <button class="fl-b" onclick="flRefresh(this)">↻ Refresh</button>
+</div>
+
+<% const F = (typeof follows !== 'undefined' && follows) ? follows : { items:[], sources:[], unsupported:[], errors:[] }; %>
+<% if (F.unsupported && F.unsupported.length) { %>
+  <div class="fl-note">No follows feed for <%= F.unsupported.join(', ') %> — Meta &amp; X don't expose a following timeline via their APIs. Connect Mastodon or Bluesky under <a href="?tab=connections" style="color:inherit;text-decoration:underline;">Connections</a> to use this tab.</div>
+<% } %>
+<% if (F.errors && F.errors.length) { %>
+  <div class="fl-note" style="background:rgba(185,28,28,0.08);border-color:rgba(185,28,28,0.3);color:var(--danger);"><% F.errors.forEach(e=>{ %><%= e.platform %>: <%= e.error %><br><% }) %></div>
+<% } %>
+<% if (F.sources && F.sources.length) { %><div class="fl-src" style="margin-bottom:10px;">Pulled <%= F.items.length %> posts from: <%= F.sources.map(s=>s.platform+' ('+s.count+')').join(', ') %></div><% } %>
+
+<div class="fl-feed" id="flFeed">
+  <% if (!F.items || !F.items.length) { %>
+    <div class="card empty"><div class="empty-icon">👥</div><p>No posts in your follows feed yet.</p></div>
+  <% } %>
+</div>
+
+<script>
+const FOLLOWS = <%- JSON.stringify((typeof follows !== 'undefined' && follows && follows.items) ? follows.items : []) %>;
+function flEsc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+function flTime(t){ if(!t)return''; const d=new Date(t); const m=Math.floor((Date.now()-d)/60000); if(m<1)return'now'; if(m<60)return m+'m'; if(m<1440)return Math.floor(m/60)+'h'; return d.toLocaleDateString(); }
+function flRender(){
+  const feed=document.getElementById('flFeed');
+  if(!FOLLOWS.length) return;
+  feed.innerHTML = FOLLOWS.map((p,i)=>{
+    const metrics=(p.metrics||[]).map(m=>'<span>'+m.value+' '+flEsc(m.label)+'</span>').join('');
+    const media=(p.media&&p.media[0])?'<img class="fl-media" src="'+flEsc(p.media[0])+'" alt="">':'';
+    const link=p.url?'<a class="fl-b" href="'+flEsc(p.url)+'" target="_blank" rel="noopener">Open</a>':'';
+    return '<div class="fl-item" data-i="'+i+'">'+
+      '<div class="fl-top">'+(p.author&&p.author.avatar?'<img class="fl-av" src="'+flEsc(p.author.avatar)+'">':'<div class="fl-av"></div>')+
+      '<div class="fl-who"><span class="fl-nm">'+flEsc(p.author&&p.author.name||'')+'</span><span class="fl-hl">'+flEsc(p.author&&p.author.handle||'')+'</span></div>'+
+      '<span class="fl-pill">'+flEsc(p.platform)+'</span></div>'+
+      '<div class="fl-txt">'+flEsc(p.text)+'</div>'+media+
+      '<div class="fl-meta">'+metrics+'<span class="fl-time">'+flTime(p.createdAt)+'</span></div>'+
+      '<div class="fl-acts"><button class="fl-b" onclick="flLike('+i+',this)">♥ Like</button>'+
+      '<button class="fl-b primary" onclick="flToggle('+i+')">↩ Reply</button>'+'<button class="fl-b" onclick="flAi('+i+',this)">✨ AI reply</button>'+link+'</div>'+
+      '<div class="fl-reply" id="flR'+i+'"><input type="text" placeholder="Write a reply…" id="flI'+i+'"><button class="fl-b primary" onclick="flSend('+i+',this)">Send</button></div>'+
+    '</div>';
+  }).join('');
+}
+function flToggle(i){ document.getElementById('flR'+i).classList.toggle('open'); }
+async function flAction(i, action, text){ const p=FOLLOWS[i]; const r=await fetch('/admin/social/follows/'+p.platform+'/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,replyRef:p.replyRef,text})}); return r.json(); }
+async function flLike(i,btn){ btn.disabled=true; const d=await flAction(i,'like'); if(d.ok){btn.textContent='♥ Liked';btn.style.color='var(--danger)';} else {btn.disabled=false;alert(d.error||'Failed');} }
+async function flSend(i,btn){ const inp=document.getElementById('flI'+i); const t=inp.value.trim(); if(!t)return; btn.disabled=true; btn.textContent='…'; const d=await flAction(i,'reply',t);
+  if(d.ok){ document.getElementById('flR'+i).innerHTML='<span style="color:var(--success);font-size:0.74rem;">✓ Reply sent</span>'; } else { btn.disabled=false; btn.textContent='Send'; alert(d.error||'Reply failed'); } }
+function flRefresh(btn){ btn.disabled=true; btn.textContent='…'; location.href='?tab=follows'; }
+async function flAi(i,btn){ const p=FOLLOWS[i]; if(!confirm)return; btn.disabled=true; btn.textContent='✨ drafting…';
+  try{ const r=await fetch('/admin/social/follows/'+p.platform+'/ai-reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({replyRef:p.replyRef,postText:p.text,author:(p.author&&p.author.name)||''})}); const d=await r.json();
+    if(d.ok){ document.getElementById('flR'+i).classList.add('open'); document.getElementById('flR'+i).innerHTML='<span style="color:var(--success);font-size:0.74rem;">✓ AI reply sent: '+flEsc(d.text)+'</span>'; btn.textContent='✓ sent'; }
+    else { btn.disabled=false; btn.textContent='✨ AI reply'; alert(d.error||'AI reply failed'); } }
+  catch(e){ btn.disabled=false; btn.textContent='✨ AI reply'; alert('AI reply failed'); } }
+flRender();
+</script>

@@ -25,6 +25,7 @@ const worldBackup = require('./lib/world-backup');
 const serverCam = require('./lib/server-cam');
 const newsletter = require('./lib/newsletter');
 const assets = require('./lib/assets');
+const models3d = require('./lib/models3d');
 const windroseMcp = require('./lib/windrose-mcp');
 
 const app = express();
@@ -37,6 +38,8 @@ const ALLOWED_ORIGINS = [
   'https://www.madladslab.com',
   'https://bih.madladslab.com',
   'https://towers.madladslab.com',
+  'https://reels.madladslab.com',
+  'https://tiles.madladslab.com',
   'https://madlands.madladslab.com',
 ];
 const io = new SocketIO(server, { cors: { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST'], credentials: true } });
@@ -68,6 +71,7 @@ client.connect().then(() => {
   serverCam.init();
   newsletter.init(db).catch(e => console.error('[newsletter] init failed:', e.message));
   assets.init(db).catch(e => console.error('[assets] init failed:', e.message));
+  models3d.init(db).catch(e => console.error('[models3d] init failed:', e.message));
   windroseMcp.init(db);
   sfu.init().catch(e => console.error('[sfu] Init failed:', e.message));
   // Check for inactive provisioned servers every 10 minutes
@@ -203,6 +207,20 @@ app.get('/gateway', gatewayRoute({
   },
 }));
 
+// Shared arcade toolkit (canonical copy at /srv/_shared) — served cross-origin to
+// every first-party game so there is ONE source of truth (audiobus, casino-ui,
+// cards-render, ...). ES module imports require explicit CORS.
+app.use('/shared', (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate');
+  next();
+}, express.static('/srv/_shared', { extensions: [] }));
+
 // Static assets
 app.use('/static', express.static(__dirname + '/public'));
 
@@ -215,6 +233,7 @@ app.use('/modal', require('./routes/modal'));
 app.use('/admin/modbuilder', require('./routes/modbuilder'));
 app.use('/mcp/windrose', require('./routes/windrose-mcp'));
 app.use('/windrose-map', require('./routes/windrose-map'));
+app.use('/blender', require('./routes/blender'));
 app.use('/admin', require('./routes/admin'));
 app.use('/broadcasts', require('./routes/broadcasts'));
 app.use('/stats', require('./routes/stats'));

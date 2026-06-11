@@ -1,0 +1,695 @@
+/**
+ * Madlands client — cosmological map + IN-LEVEL play, drill down/up + cinematic,
+ * with a TRAVERSAL ECONOMY (vessel.js): moving between tiles costs fuel/food/
+ * nitrogen via your conveyance (ship in space; on foot or a vehicle on a planet).
+ *
+ * SCALE LADDER (scales.js): galactic cluster ▸ galaxy ▸ star system ▸ planet ▸
+ * sector ▸ battle zone ▸ interior. Tiles carry the tier's categorical 3D objects
+ * (cosmos.js) — galaxies, stars (black holes hidden until a future release),
+ * planets/stations/blockades, sectors, ships, rooms. Built hexes carry a CONTEST
+ * BEACON (seize/defend icon). A PLAYER VESSEL MARKER sits at the active location
+ * (board center) and reflects your conveyance — ship in space, rover/figure planetside.
+ *
+ * DRILL: select + ▼ Descend (cinematic dive, costs a traverse); ▲ Ascend (free
+ * pullback). ▶ Explore walks a continuous grid (edge = lateral crossing, costs a
+ * traverse). ⚔ Siege / ⛨ Defend hand off to the engine after a launch INTRO.
+ * 3D objects are procedural with GLTF hooks — drop /assets/models/cosmos/<type>.glb.
+ * See /srv/SIEGE_KIT_PROTOCOL.md.
+ */
+import * as THREE from 'three';
+import { createScene } from '/js/three/scene.js';
+import { buildHexBoard, setTileRole, pickHex } from '/js/three/hex-board.js';
+import { hexKey, axialToWorld, HEX, HEX_DIRECTIONS } from '/js/three/hex-grid.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { createPlayer, briefForSeed } from '/js/madlands/music-engine.js';
+import { SCALES as SCALE, INTERIOR_KINDS, kindForScale, objectsAt, siegeKindForScale } from '/js/madlands/scales.js';
+import { makeObject } from '/js/madlands/cosmos.js';
+import * as Vessel from '/js/madlands/vessel.js';
+
+const LEVEL_RADIUS = 12;   // the big explorable grid inside a zone
+const N_NECKLACE = 16;
+const N_MONSTER = 6;
+const N_AMBIENT = 16;      // ambient categorical objects scattered per tier
+
+// Objective copy mirrors the kit's defaultObjective(mode) for the launch intro.
+const SIEGE_OBJECTIVE = {
+  siege: 'Breach the core — push inward and seize the center.',
+  defend: 'Hold the core — survive the assault from the edges.',
+  explore: 'Recover the relics scattered through the zone.',
+};
+
+// Per-kind SD scene art (gen-scene-assets.mjs). sky -> background; tile -> terrain.
+const KIND_SCENE = {
+  space:    { sky: '/assets/img/scene/space-sky.png',    tile: '/assets/img/scene/space-tile.png' },
+  dungeon:  { sky: '/assets/img/scene/dungeon-sky.png',  tile: '/assets/img/scene/dungeon-tile.png' },
+  building: { sky: '/assets/img/scene/building-sky.png', tile: '/assets/img/scene/building-tile.png' },
+  ground:   { sky: '/assets/img/scene/ground-sky.png',   tile: '/assets/img/scene/ground-tile.png' },
+};
+function currentKind() { return kindForScale(state.scale, state.interiorKind); }
+
+const host = document.getElementById('stage');
+const state = { tool: 'select', selected: null, scale: 0, interiorKind: 'dungeon', stack: [], path: '' };
+let markers = new Set();
+let music = null, groundMesh = null, currentPlan = null;
+
+const { scene, camera, renderer, controls, animate } = createScene(host, { bg: SCALE[0].bg, sky: false, ground: false });
+let board = buildHexBoard(scene, { radius: SCALE[0].radius });
+const objectsGroup = new THREE.Group(); scene.add(objectsGroup);
+const npcGroup = new THREE.Group(); scene.add(npcGroup);
+const decor = [];
+let placedObjects = [];
+
+const els = { depth: document.getElementById('hud-depth'), sel: document.getElementById('hud-sel'), tool: document.getElementById('hud-tool'), who: document.getElementById('hud-who') };
+const tierLabel = () => { const t = SCALE[state.scale]; return t.key === 'interior' ? `interior · ${state.interiorKind}` : t.label; };
+function refreshHud() { if (els.depth) els.depth.textContent = state.path ? `${tierLabel()} · /${state.path}` : tierLabel(); if (els.sel) els.sel.textContent = state.selected || '—'; if (els.tool) els.tool.textContent = state.tool; }
+refreshHud();
+
+document.querySelectorAll('[data-tool]').forEach((btn) => btn.addEventListener('click', () => {
+  state.tool = btn.dataset.tool;
+  document.querySelectorAll('[data-tool]').forEach((b) => b.classList.toggle('active', b === btn));
+  refreshHud();
+}));
+
+function markBuilds() {
+  for (const [key, mesh] of board.tiles) if (markers.has(key) && mesh.userData.role === 'default') setTileRole(mesh, 'base');
+  refreshBeacons();
+  populateScaleObjects();
+  placePlayerMarker();
+}
+function loadMarkers(path) { fetch('/api/world?path=' + encodeURIComponent(path)).then((r) => r.json()).then((j) => { markers = new Set((j.hexes || []).map((h) => h.hexKey)); markBuilds(); }).catch(() => {}); }
+
+// ---- scene rendering (worldscape + landmarks) -----------------------------
+const texLoader = new THREE.TextureLoader();
+const gltfLoader = new GLTFLoader();
+const _glbCache = new Map();
+function loadGlb(url) { if (!_glbCache.has(url)) _glbCache.set(url, new Promise((res, rej) => { gltfLoader.load(url, (g) => res(g.scene), undefined, rej); })); return _glbCache.get(url); }
+function attachModel(anchor, url, height, baseY) {
+  loadGlb(url).then((proto) => {
+    if (!anchor) return;
+    const obj = proto.clone(true);
+    const bx = new THREE.Box3().setFromObject(obj); const sz = new THREE.Vector3(); bx.getSize(sz);
+    const hb = sz.y || 1; const sc = (height || 1) / hb; obj.scale.setScalar(sc);
+    const ctr = new THREE.Vector3(); bx.getCenter(ctr);
+    obj.position.set(-ctr.x * sc, (baseY != null ? baseY : 0) - bx.min.y * sc, -ctr.z * sc);
+    anchor.add(obj);
+    if (anchor.material) { anchor.material.transparent = true; anchor.material.opacity = 0; anchor.material.depthWrite = false; }
+  }).catch(() => {});
+}
+const srgb = (t) => { if ('colorSpace' in t && THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace; return t; };
+
+const _texCache = new Map();
+function loadTex(url, cb) {
+  if (_texCache.has(url)) { cb(_texCache.get(url)); return; }
+  texLoader.load(url, (t) => { srgb(t); _texCache.set(url, t); cb(t); }, undefined, () => {});
+}
+
+let authoredSky = false;
+function applyKindBackdrop(kind) {
+  if (authoredSky) return;
+  const sc = KIND_SCENE[kind]; if (!sc) return;
+  loadTex(sc.sky, (t) => { if (!authoredSky) scene.background = t; });
+}
+function textureLevelGrid(grid, kind) {
+  const sc = KIND_SCENE[kind]; if (!sc || !grid) return;
+  loadTex(sc.tile, (t) => { for (const [, m] of grid.tiles) { m.material.map = t; m.material.opacity = 0.92; m.material.needsUpdate = true; } });
+}
+
+// ---- categorical 3D objects per tier (cosmos.js) --------------------------
+let cosmosObjs = [];
+function clearCosmos() { for (const o of cosmosObjs) o.removeFromParent(); cosmosObjs = []; }
+function placeCosmos(q, r, type, s) {
+  const { x, z } = axialToWorld(q, r);
+  const o = makeObject(type, { scale: s });
+  o.position.set(x, HEX.SIZE * 0.95, z);
+  o.userData.y0 = HEX.SIZE * 0.95; o.userData.phase = Math.random() * 6;
+  scene.add(o); cosmosObjs.push(o);
+}
+function populateScaleObjects() {
+  clearCosmos();
+  if (level.on) return;
+  const types = objectsAt(state.scale);
+  if (!types.length) return;
+  // interactive: built/contestable hexes carry the tier's object (deterministic pick)
+  for (const key of markers) {
+    const [q, r] = String(key).split(',').map(Number);
+    if (Number.isNaN(q) || Number.isNaN(r)) continue;
+    placeCosmos(q, r, types[Math.abs(q * 7 + r * 13) % types.length], HEX.SIZE * 0.78);
+  }
+  // ambient flavour so the tier reads as populated even before it's built out
+  const all = [...board.tiles.keys()];
+  const taken = new Set(markers);
+  for (let i = 0; i < N_AMBIENT && all.length; i++) {
+    const k = all[Math.floor(Math.random() * all.length)];
+    if (taken.has(k)) continue; taken.add(k);
+    const [q, r] = k.split(',').map(Number);
+    placeCosmos(q, r, types[Math.floor(Math.random() * types.length)], HEX.SIZE * 0.55);
+  }
+}
+
+// ---- player vessel marker: a 3D "you are here" at the active location ------
+// Sits at board center (the place you currently occupy) and reflects conveyance:
+// ship in space, rover or figure planetside. Cleared inside levels (the avatar
+// stands in there), restored on exit, and rebuilt live when conveyance changes.
+let playerMarker = null, lastConveyance = null;
+function clearPlayerMarker() { if (playerMarker) { playerMarker.removeFromParent(); playerMarker = null; } }
+function makePlayerMarker(mode) {
+  const g = new THREE.Group();
+  const col = mode === 'foot' ? 0xffd24a : (mode === 'vehicle' ? 0xffb24a : 0x6cf0ff);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x0e1322, emissive: col, emissiveIntensity: 1.1, metalness: 0.5, roughness: 0.35 });
+  const body = new THREE.Group();
+  if (mode === 'foot') {
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.5, 10), mat); torso.position.y = 0.45;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), mat); head.position.y = 0.8;
+    body.add(torso, head);
+  } else if (mode === 'vehicle') {
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.22, 0.42), mat); chassis.position.y = 0.32;
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.4), mat); cab.position.set(0.1, 0.5, 0);
+    body.add(chassis, cab);
+    const wmat = new THREE.MeshStandardMaterial({ color: 0x222229, metalness: 0.6, roughness: 0.5 });
+    for (const sx of [-0.26, 0.26]) for (const sz of [-0.2, 0.2]) { const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.07, 12), wmat); wh.rotation.x = Math.PI / 2; wh.position.set(sx, 0.18, sz); body.add(wh); }
+  } else { // ship
+    const hull = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.9, 10), mat); hull.rotation.x = -Math.PI / 2; hull.position.y = 0.55;
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.05, 0.22), mat); fin.position.set(0, 0.5, -0.2);
+    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), new THREE.MeshStandardMaterial({ color: 0x9ef0ff, emissive: 0x2aa0c0, emissiveIntensity: 1.2 })); cockpit.position.set(0, 0.6, 0.18);
+    body.add(hull, fin, cockpit);
+  }
+  g.add(body);
+  // "you are here" ground ring + faint vertical beam
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.66, 28), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.04; g.add(ring);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.4, 8), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = 1.4; g.add(beam);
+  g.scale.setScalar(HEX.SIZE * 0.9);
+  g.userData.update = (t) => { body.rotation.y = t * 0.6; ring.scale.setScalar(1 + 0.12 * Math.sin(t * 3)); body.position.y = 0.04 + Math.sin(t * 1.5) * 0.05; };
+  return g;
+}
+function placePlayerMarker() {
+  clearPlayerMarker();
+  if (level.on) return;
+  const mode = Vessel.conveyance();
+  lastConveyance = mode;
+  playerMarker = makePlayerMarker(mode);
+  playerMarker.position.set(0, HEX.SIZE * 0.15, 0);   // board center = active location
+  scene.add(playerMarker);
+}
+
+// ---- contest beacons: the seize/defend ICON floating over a contestable hex --
+const beaconTex = texLoader.load('/assets/img/icons/siege.png', (t) => srgb(t), undefined, () => {});
+let beacons = [];
+function clearBeacons() { for (const b of beacons) b.removeFromParent(); beacons = []; }
+function refreshBeacons() {
+  clearBeacons();
+  if (typeof level !== 'undefined' && level.on) return;
+  for (const key of markers) {
+    const [q, r] = String(key).split(',').map(Number);
+    if (Number.isNaN(q) || Number.isNaN(r)) continue;
+    const { x, z } = axialToWorld(q, r);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: beaconTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.95 }));
+    spr.scale.setScalar(HEX.SIZE * 0.9);
+    const y0 = HEX.SIZE * 1.9;
+    spr.position.set(x, y0, z);
+    spr.userData = { phase: Math.random() * 6, y0 };
+    scene.add(spr); beacons.push(spr);
+  }
+}
+
+// ---- cinematic tier transition (a quick dive/fade) ------------------------
+function cinematic(done) {
+  let ov = document.getElementById('ml-fade');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'ml-fade'; ov.style.cssText = 'position:fixed;inset:0;background:#05050d;opacity:0;transition:opacity .26s ease;z-index:120;pointer-events:none'; document.body.appendChild(ov); }
+  ov.style.opacity = '1';
+  setTimeout(() => {
+    try { done && done(); } catch (e) { console.error('[madlands] cinematic', e); }
+    requestAnimationFrame(() => { ov.style.opacity = '0'; });
+  }, 260);
+}
+
+function clearGround() { if (groundMesh) { groundMesh.removeFromParent(); groundMesh = null; } }
+function clearGroup(g) { while (g.children.length) g.remove(g.children[0]); }
+function clearScene() { clearGround(); clearGroup(objectsGroup); clearGroup(npcGroup); decor.length = 0; placedObjects = []; authoredSky = false; if (music) { music.stop(); music = null; } }
+
+function applyEnvironment(env) {
+  if (!env) return;
+  if (env.skyUrl) {
+    authoredSky = true;
+    texLoader.load(env.skyUrl, (t) => { srgb(t); scene.background = t; }, undefined, () => { authoredSky = false; applyKindBackdrop(currentKind()); });
+  }
+  if (env.groundUrl) texLoader.load(env.groundUrl, (t) => {
+    srgb(t); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(12, 12);
+    clearGround();
+    groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(360, 360), new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }));
+    groundMesh.rotation.x = -Math.PI / 2; groundMesh.position.y = -0.05; scene.add(groundMesh);
+  }, undefined, () => {});
+  if (Array.isArray(env.palette) && env.palette[0] && scene.background?.isColor && !env.skyUrl) { try { scene.background.set(env.palette[0]); } catch {} }
+}
+function playMusic(m, seed) {
+  if (music) { try { music.stop(); } catch (e) {} music = null; }
+  const sd = seed || state.path || (currentKind() + ':' + state.scale);
+  const fam = siegeKindForScale(state.scale, state.interiorKind);
+  const authored = m && Array.isArray(m.progression) && m.progression.length >= 2;
+  const b = authored
+    ? { key: m.key, tempoBpm: m.tempoBpm, progression: m.progression, groove: m.groove }
+    : (() => { const x = briefForSeed(sd, fam); return { key: x.key, tempoBpm: x.tempo, progression: x.progression, groove: x.groove, mood: x.mood }; })();
+  music = createPlayer(b);
+  music.play().catch(() => {});
+  if (!authored && b.mood) flash('♪ ' + b.mood);
+}
+function applyTiles(tiles) { (tiles || []).forEach((t) => { const m = board.tiles.get(hexKey(t.q, t.r)); if (m) setTileRole(m, t.role || 'base'); }); }
+function geomFor(cat) {
+  switch ((cat || 'prop').toLowerCase()) {
+    case 'structure': return new THREE.BoxGeometry(1.4, 2.6, 1.4);
+    case 'vehicle': return new THREE.BoxGeometry(2.6, 0.9, 1.2);
+    case 'item': return new THREE.IcosahedronGeometry(0.6, 0);
+    case 'hazard': return new THREE.ConeGeometry(0.7, 1.6, 6);
+    case 'creature': return new THREE.SphereGeometry(0.7, 14, 10);
+    default: return new THREE.BoxGeometry(1, 1, 1);
+  }
+}
+const CAT_COLOR = { prop: 0x9a7b4f, structure: 0x7d6c90, vehicle: 0xa3caff, item: 0xffd24a, hazard: 0xff2d9b, creature: 0x7cffb2 };
+function pickColor(o, palette) { if (Array.isArray(palette) && palette.length) { try { return new THREE.Color(palette[2] || palette[palette.length - 1]); } catch {} } return new THREE.Color(CAT_COLOR[(o.category || 'prop').toLowerCase()] || 0xc9a24a); }
+function placeObjects(objs, palette) {
+  (objs || []).forEach((o, i) => {
+    const { x, z } = axialToWorld(o.q || 0, o.r || 0);
+    const s = Math.max(0.3, Math.min(4, parseFloat(o.scale) || 1));
+    const geo = geomFor(o.category); geo.computeBoundingBox();
+    const h = geo.boundingBox.max.y - geo.boundingBox.min.y;
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: pickColor(o, palette), metalness: 0.45, roughness: 0.5, emissive: 0x120318 }));
+    mesh.scale.setScalar(s);
+    const baseY = (h * s) / 2 + 0.05; mesh.position.set(x, baseY, z);
+    objectsGroup.add(mesh);
+    { const cat = (o.category || 'prop').toLowerCase(); if (['creature','structure','vehicle','item','hazard'].includes(cat)) attachModel(mesh, '/assets/models/madlands/' + cat + '.glb', h, -h / 2); }
+    placedObjects.push({ q: o.q || 0, r: o.r || 0, mesh, collected: false });
+    decor.push({ mesh, baseY, phase: i * 0.7, spin: (o.movable === 'yes' || o.movable === true) ? 0.012 : 0.003 });
+  });
+}
+function placeNpcs(npcs) {
+  (npcs || []).forEach((n, i) => {
+    const { x, z } = axialToWorld(n.q || 0, n.r || 0);
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x6cf0ff, emissive: 0x06303a, metalness: 0.3, roughness: 0.4 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.46, 1.3, 10), mat); body.position.y = 0.65;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 12), mat); head.position.y = 1.45;
+    g.add(body); g.add(head); g.position.set(x, 0, z);
+    npcGroup.add(g); decor.push({ mesh: g, baseY: 0, phase: i * 1.1, spin: 0 });
+  });
+}
+function applyScene(path) {
+  clearScene();
+  applyKindBackdrop(currentKind());
+  fetch('/api/scene?path=' + encodeURIComponent(path)).then((r) => r.json()).then((p) => {
+    if (!p.ok) { applyKindBackdrop(currentKind()); return; }
+    currentPlan = p;
+    applyEnvironment(p.environment); playMusic(p.music); applyTiles(p.tiles);
+    placeObjects(p.objects, p.environment && p.environment.palette); placeNpcs(p.npcs);
+    if (!p.environment || !p.environment.skyUrl) applyKindBackdrop(currentKind());
+    const c = p.counts || {}; const parts = [];
+    if (p.environment) parts.push('worldscape'); if (p.music) parts.push('♪');
+    if (c.objects) parts.push(c.objects + ' landmark'); if (c.npcs) parts.push(c.npcs + ' npc');
+    flash('/' + path + (parts.length ? ' · ' + parts.join(' · ') : ' · empty — build it') + ' · ▶ explore · ⚔ siege · ⛨ defend');
+  }).catch(() => applyKindBackdrop(currentKind()));
+}
+
+// ---- pointer --------------------------------------------------------------
+const raycaster = new THREE.Raycaster();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+function pointerToGround(e) {
+  const rect = host.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const p = new THREE.Vector3();
+  return raycaster.ray.intersectPlane(groundPlane, p) ? p : null;
+}
+let hovered = null;
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (level.on) return;
+  const hit = pickHex(e, host, camera, board.tiles);
+  if (hovered && hovered !== hit && hovered.userData.role === 'hover') setTileRole(hovered, 'default');
+  if (hit && hit.userData.role === 'default') { setTileRole(hit, 'hover'); hovered = hit; }
+});
+renderer.domElement.addEventListener('click', (e) => {
+  if (level.on) { const p = pointerToGround(e); if (p) level.target.set(p.x, 0, p.z); return; }
+  const hit = pickHex(e, host, camera, board.tiles);
+  if (!hit) return;
+  state.selected = hexKey(hit.userData.q, hit.userData.r);
+  if (state.tool === 'select' && markers.has(state.selected)) { setTileRole(hit, 'selected'); refreshHud(); engageHex(state.selected); return; }
+  if (state.tool === 'spawn') setTileRole(hit, 'spawn');
+  else if (state.tool === 'block') setTileRole(hit, 'blocked');
+  else if (state.tool === 'path') setTileRole(hit, 'path');
+  else setTileRole(hit, 'selected');
+  refreshHud();
+});
+
+applyKindBackdrop(currentKind());
+Vessel.setScale(SCALE[state.scale].key);
+loadMarkers('');
+
+// ---- map navigation (drill down / up, cinematic, traverse cost) -----------
+function rebuildBoard(r, bg) { board.group.removeFromParent(); if (bg != null && scene.background?.isColor) scene.background.setHex(bg); board = buildHexBoard(scene, { radius: r }); markBuilds(); applyKindBackdrop(currentKind()); }
+function descend() {
+  if (level.on) exitLevel(true);
+  if (state.scale === SCALE.length - 1) { const i = INTERIOR_KINDS.indexOf(state.interiorKind); state.interiorKind = INTERIOR_KINDS[(i + 1) % INTERIOR_KINDS.length]; refreshHud(); applyKindBackdrop(currentKind()); populateScaleObjects(); placePlayerMarker(); flash('interior → ' + state.interiorKind); return; }
+  if (!state.selected) { flash('pick a ' + SCALE[state.scale].label + ' node to descend into ' + SCALE[state.scale + 1].label); return; }
+  // traverse cost (current conveyance) — block if we can't afford the jump
+  const tr = Vessel.tryTraverse(SCALE[state.scale].key);
+  if (!tr.ok) { flash(tr.reason); return; }
+  const into = state.selected;
+  const newPath = state.path ? state.path + '/' + into : into;
+  cinematic(() => {
+    state.stack.push({ scale: state.scale, path: state.path, radius: SCALE[state.scale].radius });
+    state.scale += 1; state.path = newPath; state.selected = null; markers = new Set();
+    controls.dollyIn?.(1.4);
+    const t = SCALE[state.scale]; rebuildBoard(t.radius, t.bg); refreshHud();
+    Vessel.setScale(SCALE[state.scale].key);
+    applyScene(newPath); loadMarkers(newPath);
+  });
+}
+function ascend() {
+  if (level.on) exitLevel(true);
+  if (!state.stack.length) { flash('already at the galactic cluster (top scale)'); return; }
+  cinematic(() => {
+    clearScene();
+    const frame = state.stack.pop();
+    state.scale = frame.scale; state.path = frame.path; state.selected = null; markers = new Set();
+    controls.dollyOut?.(1.4);
+    const t = SCALE[state.scale]; rebuildBoard(frame.radius, t.bg); refreshHud();
+    Vessel.setScale(SCALE[state.scale].key);   // pullback is free
+    if (state.path) applyScene(state.path); else applyKindBackdrop(currentKind());
+    loadMarkers(state.path);
+  });
+}
+document.getElementById('act-descend')?.addEventListener('click', descend);
+document.getElementById('act-ascend')?.addEventListener('click', ascend);
+
+// ---- launch intro (shared by siege / defend / explore) --------------------
+function placeName() {
+  return (currentPlan && currentPlan.environment && currentPlan.environment.name)
+    || (state.path ? '/' + state.path : (state.selected ? 'hex ' + state.selected : SCALE[state.scale].label));
+}
+function withIntro(mode, onDone) {
+  const opts = { mode, place: placeName(), objective: SIEGE_OBJECTIVE[mode] || '',
+    iconUrl: '/assets/img/icons/' + mode + '.png', onDone };
+  if (window.SiegeIntro) window.SiegeIntro.play(opts); else onDone();
+}
+
+// ---- IN-LEVEL: big explorable hex grid ------------------------------------
+const level = { on: false, crossing: false, avatar: null, target: new THREE.Vector3(), collected: 0, zones: 0, t0: 0, savedCam: null, grid: null, items: [], monsters: [], monLoop: null };
+const phEls = { hud: document.getElementById('play-hud'), score: document.getElementById('ph-score'), lives: document.getElementById('ph-lives'), obj: document.getElementById('ph-obj'), banner: document.getElementById('play-banner') };
+const SPEED = 11;
+let lastT = performance.now();
+const keys = {};
+window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+const phUpdate = () => { if (phEls.score) phEls.score.textContent = level.collected; if (phEls.lives) phEls.lives.textContent = '♥ ' + (level.hp != null ? level.hp : '—'); if (phEls.obj) phEls.obj.textContent = SIEGE_OBJECTIVE.explore; };
+
+function tintGrid(grid, palette) {
+  const cols = (Array.isArray(palette) && palette.length ? palette : ['#2a3b52', '#3a4a66']).map((c) => { try { return new THREE.Color(c); } catch { return new THREE.Color(0x2a3b52); } });
+  for (const [, m] of grid.tiles) { const c = cols[Math.floor(Math.random() * cols.length)].clone(); c.offsetHSL(0, 0, (Math.random() - 0.5) * 0.08); m.material.color.copy(c); m.material.opacity = 0.5; }
+}
+function tileCoords(grid) { return [...grid.tiles.keys()].map((k) => k.split(',').map(Number)).filter(([q, r]) => q || r); }
+function scatterNecklaces() {
+  const coords = tileCoords(level.grid); level.items = [];
+  for (let i = 0; i < N_NECKLACE; i++) {
+    const [q, r] = coords[Math.floor(Math.random() * coords.length)];
+    const { x, z } = axialToWorld(q, r);
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.12, 8, 16), new THREE.MeshStandardMaterial({ color: 0xffd24a, emissive: 0x6a4d00, metalness: 0.8, roughness: 0.25 }));
+    m.position.set(x, 0.7, z); m.rotation.x = Math.PI / 2; scene.add(m);
+    level.items.push({ mesh: m, collected: false, phase: Math.random() * 6 });
+  }
+}
+function scatterMonsters() {
+  const coords = tileCoords(level.grid); level.monsters = [];
+  for (let i = 0; i < N_MONSTER; i++) {
+    const [q, r] = coords[Math.floor(Math.random() * coords.length)];
+    const { x, z } = axialToWorld(q, r);
+    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.6), new THREE.MeshStandardMaterial({ color: 0xff2d9b, emissive: 0x44001f, metalness: 0.5, roughness: 0.5 }));
+    m.position.set(x, 0.7, z); m.userData = { q, r, tx: x, tz: z, hp: 3, lastHit: 0 }; scene.add(m);
+    attachModel(m, '/assets/models/madlands/creature.glb', 1.3, -0.6);
+    level.monsters.push(m);
+  }
+}
+function roamMonsters() {
+  if (!level.on || !level.grid) return;
+  for (const m of level.monsters) {
+    const opts = HEX_DIRECTIONS.map((d) => [m.userData.q + d.q, m.userData.r + d.r]).filter(([q, r]) => level.grid.tiles.has(hexKey(q, r)));
+    if (!opts.length) continue;
+    const [q, r] = opts[Math.floor(Math.random() * opts.length)];
+    const { x, z } = axialToWorld(q, r);
+    m.userData.q = q; m.userData.r = r; m.userData.tx = x; m.userData.tz = z;
+  }
+}
+function clearGridContents() {
+  level.items.forEach((it) => it.mesh.removeFromParent()); level.items = [];
+  level.monsters.forEach((m) => m.removeFromParent()); level.monsters = [];
+  if (level.grid) { level.grid.group.removeFromParent(); level.grid = null; }
+}
+function buildGridContents(palette) {
+  level.grid = buildHexBoard(scene, { radius: LEVEL_RADIUS });
+  tintGrid(level.grid, palette);
+  textureLevelGrid(level.grid, currentKind());
+  scatterNecklaces(); scatterMonsters();
+}
+
+function enterLevel() {
+  if (level.on) { exitLevel(); return; }
+  if (!state.path) { flash('descend into a zone first — levels live below the map'); return; }
+  level.on = true; level.crossing = false; level.encountering = false; level.collected = 0; level.zones = 1; level.t0 = performance.now();
+  level.hp = level.hpMax = 100; level.died = false; level.lastAtk = 0;
+  level.savedCam = { pos: camera.position.clone(), tgt: controls.target.clone() };
+  controls.enabled = false;
+  board.group.visible = false;
+  clearBeacons(); clearCosmos(); clearPlayerMarker();
+  buildGridContents(currentPlan && currentPlan.environment && currentPlan.environment.palette);
+  level.monLoop = setInterval(roamMonsters, 700);
+  const av = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 8), new THREE.MeshStandardMaterial({ color: 0xffd24a, emissive: 0x3a2a00, metalness: 0.6, roughness: 0.3 }));
+  av.position.set(0, 0.9, 0); scene.add(av); level.avatar = av; level.target.set(0, 0, 0);
+  document.getElementById('act-play').textContent = '■';
+  if (phEls.hud) phEls.hud.style.display = '';
+  if (phEls.banner) phEls.banner.style.display = 'none';
+  phUpdate();
+  flash('in the zone — walk off any edge to cross into the next zone. ■ to exit');
+}
+function exitLevel(silent) {
+  if (!level.on) return;
+  level.on = false; level.crossing = false;
+  clearInterval(level.monLoop); level.monLoop = null;
+  if (level.avatar) { level.avatar.removeFromParent(); level.avatar = null; }
+  clearGridContents();
+  board.group.visible = true;
+  controls.enabled = true;
+  refreshBeacons(); populateScaleObjects(); placePlayerMarker();
+  if (level.savedCam) { camera.position.copy(level.savedCam.pos); controls.target.copy(level.savedCam.tgt); }
+  document.getElementById('act-play').textContent = '▶';
+  const score = level.collected * 100 + level.zones * 25;
+  const durationMs = Math.round(performance.now() - level.t0);
+  if (!silent && phEls.banner) { phEls.banner.style.display = ''; phEls.banner.className = 'play-banner ' + (level.died ? 'loss' : 'win'); phEls.banner.textContent = `back to map · ${level.collected} collected · ${level.zones} zones · score ${score}`; }
+  if (phEls.hud) phEls.hud.style.display = 'none';
+  try { window.MadlandsDamageFx && window.MadlandsDamageFx.clear(); } catch (e) {}
+  if (!silent) fetch('/api/play/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score, status: 'explored', durationMs, meta: { collected: level.collected, zones: level.zones, level: state.path } }) })
+    .then((r) => r.json()).then((j) => flash(j.reported ? 'session logged to platform' : 'session not logged (' + (j.reason || 'guest') + ')')).catch(() => {});
+}
+// ---- inline combat: encounters resolve here in-world (Towers retired) ----
+function railTracer(from, to) {
+  const dir = new THREE.Vector3(to.x - from.x, 0, to.z - from.z); const len = dir.length() || 0.01; dir.normalize();
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, len, 6), new THREE.MeshBasicMaterial({ color: 0x9ad0ff, transparent: true, opacity: 0.9, depthWrite: false }));
+  beam.position.set((from.x + to.x) / 2, 0.9, (from.z + to.z) / 2);
+  beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  scene.add(beam); setTimeout(() => beam.removeFromParent(), 110);
+}
+function hurtPlayer(n) {
+  if (!level.on || level.died) return;
+  level.hp = Math.max(0, (level.hp || 0) - n);
+  phUpdate(); flash('hit! ♥ ' + level.hp);
+  try { window.MadlandsDamageFx && window.MadlandsDamageFx.set(level.hp / (level.hpMax || 100), Vessel.conveyance()); } catch (e) {}
+  if (level.hp <= 0) playerDown();
+}
+function attackNearest() {
+  const av = level.avatar; if (!av || level.died) return;
+  const now = performance.now();
+  if (now - (level.lastAtk || 0) < 350) return;
+  let best = null, bd = Infinity;
+  for (const m of level.monsters) { const dx = m.position.x - av.position.x, dz = m.position.z - av.position.z; const d = dx * dx + dz * dz; if (d < bd) { bd = d; best = m; } }
+  if (best && bd < 4.0) {
+    level.lastAtk = now;
+    railTracer(av.position, best.position);
+    best.userData.hp = (best.userData.hp != null ? best.userData.hp : 3) - 1;
+    best.position.x += (best.position.x - av.position.x) * 0.18; best.position.z += (best.position.z - av.position.z) * 0.18;
+    if (best.userData.hp <= 0) { best.removeFromParent(); level.monsters = level.monsters.filter((x) => x !== best); level.collected += 1; phUpdate(); flash('slain! (' + level.monsters.length + ' left)'); }
+    else flash('strike');
+  }
+}
+function playerDown() {
+  if (level.died) return; level.died = true;
+  flash('you fell — the run ends');
+  exitLevel(false);
+}
+
+// ---- map engage: a hostile (beacon) hex drills you down toward the fight in-world ----
+function engageHex(key) {
+  if (level.on) return;
+  flash('contested site — drilling in');
+  descend();
+}
+
+document.getElementById('act-play')?.addEventListener('click', () => {
+  if (level.on) { enterLevel(); return; }
+  if (!state.path) { flash('descend into a zone first — levels live below the map'); return; }
+  withIntro('explore', enterLevel);
+});
+
+function neighborInDir(px, pz) {
+  let best = HEX_DIRECTIONS[0], bd = -Infinity;
+  for (const d of HEX_DIRECTIONS) { const w = axialToWorld(d.q, d.r); const len = Math.hypot(w.x, w.z) || 1; const dot = (px * w.x + pz * w.z) / len; if (dot > bd) { bd = dot; best = d; } }
+  return best;
+}
+function crossEdge(d) {
+  // lateral traverse costs (foot/vehicle) — if we can't afford it, bounce inward
+  const tr = Vessel.tryTraverse(SCALE[state.scale].key);
+  if (!tr.ok) {
+    flash(tr.reason);
+    const av = level.avatar; if (av) { av.position.multiplyScalar(0.8); level.target.copy(av.position); }
+    level.crossing = false; return;
+  }
+  level.crossing = true;
+  const segs = state.path.split('/');
+  const [q, r] = segs[segs.length - 1].split(',').map(Number);
+  const nq = q + d.q, nr = r + d.r;
+  segs[segs.length - 1] = nq + ',' + nr;
+  state.path = segs.join('/'); state.selected = nq + ',' + nr; level.zones += 1;
+  refreshHud(); phUpdate();
+  const w = axialToWorld(d.q, d.r); const len = Math.hypot(w.x, w.z) || 1;
+  const lim = (LEVEL_RADIUS - 1.5) * HEX.SIZE * Math.sqrt(3);
+  level.avatar.position.set((-w.x / len) * lim, 0.9, (-w.z / len) * lim);
+  level.target.set(level.avatar.position.x, 0, level.avatar.position.z);
+  camera.position.set(level.avatar.position.x, 10, level.avatar.position.z + 14);
+  clearScene(); clearGridContents();
+  fetch('/api/scene?path=' + encodeURIComponent(state.path)).then((r) => r.json()).then((p) => {
+    currentPlan = p && p.ok ? p : { environment: null };
+    applyEnvironment(currentPlan.environment); playMusic(currentPlan.music);
+    placeObjects(currentPlan.objects, currentPlan.environment && currentPlan.environment.palette); placeNpcs(currentPlan.npcs);
+    buildGridContents(currentPlan.environment && currentPlan.environment.palette);
+    flash('crossed into zone ' + state.selected + (currentPlan.environment ? ' · ' + (currentPlan.environment.name || 'worldscape') : ' · wild (unbuilt)'));
+    level.crossing = false;
+  }).catch(() => { buildGridContents(null); level.crossing = false; });
+}
+
+function levelTick(dt) {
+  const av = level.avatar; if (!av || level.crossing) return;
+  const kx = (keys['d'] || keys['arrowright'] ? 1 : 0) - (keys['a'] || keys['arrowleft'] ? 1 : 0);
+  const kz = (keys['s'] || keys['arrowdown'] ? 1 : 0) - (keys['w'] || keys['arrowup'] ? 1 : 0);
+  if (kx || kz) level.target.set(av.position.x + kx * 4, 0, av.position.z + kz * 4);
+  const dir = new THREE.Vector3(level.target.x - av.position.x, 0, level.target.z - av.position.z);
+  const dist = dir.length();
+  if (dist > 0.05) { dir.normalize(); const step = Math.min(dist, SPEED * dt); av.position.x += dir.x * step; av.position.z += dir.z * step; av.rotation.y = Math.atan2(dir.x, dir.z); }
+  const lim = (LEVEL_RADIUS - 0.5) * HEX.SIZE * Math.sqrt(3);
+  if (Math.hypot(av.position.x, av.position.z) > lim) { crossEdge(neighborInDir(av.position.x, av.position.z)); return; }
+  for (const it of level.items) if (!it.collected) { const dx = it.mesh.position.x - av.position.x, dz = it.mesh.position.z - av.position.z; if (dx * dx + dz * dz < 2.0) { it.collected = true; it.mesh.removeFromParent(); level.collected += 1; phUpdate(); flash('necklace! (' + level.collected + ')'); } else { it.mesh.rotation.z += 0.05; it.mesh.position.y = 0.7 + Math.sin(performance.now() / 500 + it.phase) * 0.12; } }
+  for (const o of placedObjects) if (!o.collected) { const dx = o.mesh.position.x - av.position.x, dz = o.mesh.position.z - av.position.z; if (dx * dx + dz * dz < 2.4) { o.collected = true; o.mesh.removeFromParent(); level.collected += 1; phUpdate(); flash('relic! (' + level.collected + ')'); } }
+  const _now = performance.now();
+  for (const m of level.monsters) {
+    const ax = av.position.x - m.position.x, az = av.position.z - m.position.z; const pd = Math.hypot(ax, az) || 1;
+    if (pd < 6) { const sp = 3.2 * dt; m.position.x += (ax / pd) * sp; m.position.z += (az / pd) * sp; }
+    else { m.position.x += (m.userData.tx - m.position.x) * 0.08; m.position.z += (m.userData.tz - m.position.z) * 0.08; }
+    m.rotation.y += 0.03;
+    if (pd < 1.3 && _now - (m.userData.lastHit || 0) > 800) { m.userData.lastHit = _now; hurtPlayer(8); }
+  }
+  attackNearest();
+  const want = new THREE.Vector3(av.position.x, 10, av.position.z + 14);
+  camera.position.lerp(want, 0.1);
+  camera.lookAt(av.position.x, 1, av.position.z);
+}
+
+function flash(msg) { const t = document.getElementById('toast'); if (!t) return; t.textContent = msg; t.classList.add('show'); clearTimeout(flash._t); flash._t = setTimeout(() => t.classList.remove('show'), 1600); }
+
+fetch('/whoami').then((r) => r.json()).then(({ user }) => {
+  if (els.who) els.who.textContent = user ? user.displayName + (user.canAdmin ? ' · admin' : '') : 'guest';
+  const adminBtn = document.getElementById('act-admin'); if (adminBtn) adminBtn.style.display = user?.canAdmin ? '' : 'none';
+}).catch(() => {});
+
+animate(() => {
+  const now = performance.now(); const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  const t = now / 1000;
+  for (const a of decor) { a.mesh.rotation.y += a.spin; a.mesh.position.y = a.baseY + Math.sin(t * 1.4 + a.phase) * (a.spin > 0.008 ? 0.2 : 0.06); }
+  for (const o of cosmosObjs) { if (o.userData.update) o.userData.update(t); }
+  for (const b of beacons) { b.position.y = b.userData.y0 + Math.sin(t * 1.6 + b.userData.phase) * 0.18; }
+  if (!level.on) {
+    const m = Vessel.conveyance();
+    if (m !== lastConveyance) placePlayerMarker();   // rebuild on board/disembark
+    if (playerMarker && playerMarker.userData.update) playerMarker.userData.update(t);
+  }
+  if (level.on) levelTick(dt);
+});
+
+// ===================== siege-kit: world actions (appended) =====================
+(function () {
+  function ctx() {
+    const tier = SCALE[state.scale] ? SCALE[state.scale].key : 'interior';
+    const kind = siegeKindForScale(state.scale, state.interiorKind);
+    const biome = (currentPlan && currentPlan.environment && currentPlan.environment.name) || kind;
+    const path = state.path || state.selected || '';
+    return { path, tier, kind, biome };
+  }
+  function launch(mode) {
+    const c = ctx();
+    if (!c.path) { flash('pick or descend into a place first — battles happen at a location'); return; }
+    withIntro(mode, () => { if (level.on) return; if (state.selected) descend(); else enterLevel(); });
+  }
+  const sB = document.getElementById('act-siege');
+  const dB = document.getElementById('act-defend');
+  if (sB) sB.addEventListener('click', () => launch('siege'));
+  if (dB) dB.addEventListener('click', () => launch('defend'));
+
+  const spoils = document.getElementById('siege-spoils');
+  function showSpoils(html) { if (spoils) { spoils.innerHTML = html; spoils.style.display = ''; } }
+  function hideSpoils() { if (spoils) { spoils.style.display = 'none'; spoils.innerHTML = ''; } }
+
+  const params = new URLSearchParams(location.search);
+  const sg = params.get('siege');
+  if (sg === 'won') flash('victory — your gear is staged here');
+  else if (sg === 'abandoned') flash('you withdrew — gear staged here');
+  else if (sg === 'nopath') flash('pick a place to fight first');
+  else if (sg === 'error') flash('could not open the instance');
+  else if (sg === 'lost') {
+    const bb = parseInt(params.get('buyback') || '0', 10);
+    const loc = params.get('path') || '';
+    showSpoils(
+      '<div class="ss-card"><strong>You fell.</strong> Half your loadout salvaged to your ship.' +
+      '<div class="ss-sub">The rest dropped at <code>' + loc + '</code> — buy it back, or journey there to reclaim it free.</div>' +
+      '<div class="ss-row">' +
+        (bb ? '<button id="ss-buy" class="chip btn">Buy back · ' + bb + ' coins</button>' : '') +
+        '<button id="ss-late" class="chip btn">Leave it</button>' +
+      '</div></div>'
+    );
+    const late = document.getElementById('ss-late');
+    if (late) late.addEventListener('click', hideSpoils);
+    const buy = document.getElementById('ss-buy');
+    if (buy) buy.addEventListener('click', async () => {
+      try {
+        const r = await fetch('/siege/buyback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ location: loc }) }).then((x) => x.json());
+        if (r.ok) { flash('bought back' + (r.chips != null ? ' · ' + r.chips + ' coins left' : '')); hideSpoils(); }
+        else flash('buyback failed: ' + (r.error || '?'));
+      } catch (e) { flash('buyback error'); }
+    });
+  }
+
+  let lastLoc = null;
+  async function checkCacheHere() {
+    if (!state.path || state.path === lastLoc) return;
+    lastLoc = state.path;
+    try {
+      const st = await fetch('/siege/state').then((r) => r.json());
+      if (!st.ok) return;
+      const here = (st.caches || []).find((c) => c.location === state.path);
+      if (here) {
+        showSpoils('<div class="ss-card"><strong>Your cache is here.</strong><div class="ss-sub">Loot you dropped when you fell.</div><div class="ss-row"><button id="ss-rec" class="chip btn">Recover loadout</button><button id="ss-skip" class="chip btn">Later</button></div></div>');
+        const skip = document.getElementById('ss-skip');
+        if (skip) skip.addEventListener('click', hideSpoils);
+        const rec = document.getElementById('ss-rec');
+        if (rec) rec.addEventListener('click', async () => {
+          const r = await fetch('/siege/recover', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ location: state.path }) }).then((x) => x.json()).catch(() => ({ ok: false }));
+          if (r.ok) { flash('recovered your cache'); hideSpoils(); } else flash('nothing to recover');
+        });
+      }
+    } catch (e) { /* offline-safe */ }
+  }
+  const depthEl = document.getElementById('hud-depth');
+  if (depthEl) new MutationObserver(checkCacheHere).observe(depthEl, { childList: true, characterData: true, subtree: true });
+})();

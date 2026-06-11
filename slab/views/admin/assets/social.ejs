@@ -1,6 +1,17 @@
 <%- include('../partials/head', { title: 'Social Media Generator' }) %>
 <%- include('../partials/sidebar', { page: 'assets', user: user }) %>
 
+<!-- Resolve the bare "onnxruntime-web" specifier the @imgly/background-removal
+     bundle dynamically imports (used by the layer "remove background" tool). -->
+<script type="importmap">
+{
+  "imports": {
+    "onnxruntime-web": "/vendor/onnxruntime-web/ort.bundle.min.mjs",
+    "onnxruntime-web/webgpu": "/vendor/onnxruntime-web/ort.webgpu.bundle.min.mjs"
+  }
+}
+</script>
+
 <style>
   /* ── LAYOUT ── */
   .sg-layout { display: grid; grid-template-columns: 320px 1fr 340px; gap: 0; height: calc(100vh - 64px); overflow: hidden; }
@@ -123,10 +134,20 @@
   }
   .layer-btn:hover { background: var(--border); color: var(--on-surface); }
   .layer-btn.vis-off { opacity: 0.35; }
+  .layer-item.primary { border-color: var(--gold); }
+  .layer-group-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(0,0,0,0.15); }
 
   /* ── LAYER PROPS (bottom of right panel) ── */
   .lp-section { padding: 10px 14px; border-top: 1px solid var(--border); }
   .lp-title { font-size: 0.58rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--slate); margin-bottom: 8px; }
+
+  /* Desktop: pin Properties to the bottom of the right panel and give its
+     fields their own scroll so the tooling (rotation, font, color rows) never
+     gets cut off the bottom. The layer list keeps filling the space above. */
+  @media (min-width: 821px) {
+    .sg-panel-right #layerProps { flex: 0 0 auto; }
+    .sg-panel-right #propsContent { max-height: 46vh; overflow-y: auto; }
+  }
 
   /* ── PRESETS LIST ── */
   .preset-item {
@@ -334,6 +355,10 @@
             <button class="tool-btn" id="addLineBtn">+ Line</button>
           </div>
           <div style="font-size:0.65rem;color:var(--slate);">Drag & drop images/videos onto the canvas, or use the buttons above.</div>
+          <label style="font-size:0.65rem;display:flex;align-items:center;gap:5px;cursor:pointer;margin-top:6px;color:var(--on-surface);">
+            <input type="checkbox" id="autoAlphaImport" checked style="accent-color:var(--gold);">
+            Auto-knockout solid background on import (alpha)
+          </label>
           <input type="file" id="localFileInput" accept="image/*,video/*" multiple style="display:none;">
         </div>
       </div>
@@ -510,6 +535,10 @@
             </select>
           </div>
           <input type="hidden" id="clientSelect" value="">
+          <label style="font-size:0.65rem;display:flex;align-items:center;gap:5px;cursor:pointer;margin-top:6px;color:var(--on-surface);">
+            <input type="checkbox" id="exportAlpha" style="accent-color:var(--gold);">
+            Transparent background (alpha PNG)
+          </label>
           <div class="tool-bar" style="margin-top:6px;">
             <button class="tool-btn" id="downloadPngBtn" style="background:var(--navy);color:#fff;border-color:var(--navy);">Download PNG</button>
             <button class="tool-btn" id="saveLibBtn" style="background:var(--gold);color:var(--on-surface);border-color:var(--gold);">Save to Library</button>
@@ -535,6 +564,8 @@
     <div class="sg-panel-head">
       <span>Layers</span>
       <span style="display:flex;gap:4px;align-items:center;">
+        <button class="tool-btn" id="groupBtn" style="padding:2px 5px;font-size:0.6rem;" title="Group selected (Ctrl/Cmd+G)">&#8862; Group</button>
+        <button class="tool-btn" id="ungroupBtn" style="padding:2px 5px;font-size:0.6rem;" title="Ungroup (Ctrl/Cmd+Shift+G)">&#8863;</button>
         <button class="tool-btn" id="layerUpBtn" style="padding:2px 5px;font-size:0.6rem;" title="Move up">&#9650;</button>
         <button class="tool-btn" id="layerDownBtn" style="padding:2px 5px;font-size:0.6rem;" title="Move down">&#9660;</button>
         <button class="sg-panel-close" data-close="right" title="Close">&times;</button>
@@ -551,7 +582,7 @@
 
 </div>
 
-<script src="/js/assetPicker.js"></script>
+<script src="/js/assetPicker.js?v=<%= Date.now() %>"></script>
 <script>
 (function(){
 'use strict';
@@ -634,8 +665,10 @@ window.addEventListener('resize', () => {
 //  STATE
 // ═══════════════════════════════════════════
 let layers = [];
-let selId = null;
+let selId = null;       // primary selection (drives the props panel)
+let multiSel = new Set(); // full selection set — group/multi ops act on this
 let nextId = 1;
+let nextGroup = 1;      // group-id counter for layer grouping
 let canvasW = 1080, canvasH = 1080, sizeName = 'ig-post';
 let bgColor = '#F5F3EF';
 let bgTransparent = false;
@@ -646,6 +679,11 @@ let currentPresetId = null; // id of loaded preset for "update"
 // interaction
 let drag = null;   // { id, startX, startY, origX, origY }
 let resize = null; // { id, startX, startY, origW, origH, origX, origY }
+// Crop mode for image layers. `rect` is the live crop box in canvas (display)
+// coords within the layer's local/un-rotated space; `cropDrag` tracks the handle
+// being dragged. Entering crop suspends normal drag/resize for that layer.
+let cropMode = null;  // { id, rect:{x,y,w,h} }
+let cropDrag = null;  // { handle, startX, startY, orig:{x,y,w,h} }
 
 const canvas = document.getElementById('sgCanvas');
 const ctx = canvas.getContext('2d');
@@ -823,14 +861,14 @@ async function generateSdBackground(prompt, negPrompt, _ctx) {
       layers = layers.filter(l => !l._aiBg);
       const layer = { type:'image', x:0, y:0, w:canvasW, h:canvasH, src:data.url, img, name:'AI Background', _aiBg:true, id:nextId++, visible:true, opacity:1 };
       layers.unshift(layer);
-      selId = layer.id;
+      setSelection(layer.id);
       renderLayerList();
       render();
       status.textContent = 'Background added as layer!';
       setTimeout(() => { status.textContent = ''; }, 3000);
     };
     img.onerror = () => { status.textContent = 'Failed to load generated image.'; };
-    img.src = data.url;
+    img.src = corsSrc(data.url);
   } catch (err) {
     status.textContent = '⚠ ' + err.message;
   } finally {
@@ -1129,17 +1167,162 @@ function addLayer(layer) {
   layer.visible = true;
   layer.opacity = layer.opacity ?? 1;
   layers.push(layer);
-  selId = layer.id;
+  setSelection(layer.id);
   renderLayerList();
   render();
   return layer;
 }
 function selLayer() { return layers.find(l => l.id === selId); }
+
+// ── Selection helpers ──────────────────────────────────────
+// multiSel is the source of truth for group/multi-layer ops; selId is the
+// "primary" member that drives the properties panel.
+function setSelection(id) {           // replace selection (group-aware)
+  const l = layers.find(x => x.id === id);
+  if (!l) { multiSel = new Set(); selId = null; return; }
+  multiSel = new Set(l.group ? layers.filter(x => x.group === l.group).map(x => x.id) : [id]);
+  selId = id;
+}
+function toggleSelection(id) {         // additive (ctrl/shift) toggle
+  const l = layers.find(x => x.id === id);
+  if (!l) return;
+  // toggling a grouped layer toggles the whole group together
+  const ids = l.group ? layers.filter(x => x.group === l.group).map(x => x.id) : [id];
+  const adding = !multiSel.has(id);
+  ids.forEach(i => adding ? multiSel.add(i) : multiSel.delete(i));
+  selId = adding ? id : (multiSel.size ? [...multiSel][multiSel.size - 1] : null);
+}
+function clearSelection() { multiSel = new Set(); selId = null; }
+function selectionLayers() { return [...multiSel].map(i => layers.find(l => l.id === i)).filter(Boolean); }
+
+function groupSelected() {
+  const ls = selectionLayers();
+  if (ls.length < 2) return;
+  const g = nextGroup++;
+  ls.forEach(l => l.group = g);
+  renderLayerList(); renderProps();
+}
+function ungroupSelected() {
+  selectionLayers().forEach(l => delete l.group);
+  renderLayerList(); renderProps();
+}
+function groupColor(g) { return `hsl(${(g * 67) % 360} 70% 55%)`; }
+
 function removeLayer(id) {
+  if (cropMode && cropMode.id === id) { cropMode = null; cropDrag = null; }
   layers = layers.filter(l => l.id !== id);
-  if (selId === id) selId = null;
+  multiSel.delete(id);
+  if (selId === id) selId = multiSel.size ? [...multiSel][multiSel.size - 1] : null;
   renderLayerList();
   render();
+}
+function removeSelection() {           // delete every selected layer at once
+  if (!multiSel.size) return;
+  const ids = [...multiSel];
+  if (cropMode && ids.includes(cropMode.id)) { cropMode = null; cropDrag = null; }
+  layers = layers.filter(l => !multiSel.has(l.id));
+  clearSelection();
+  renderLayerList(); renderProps(); render();
+}
+
+// Clone the whole selection at once, preserving relative positions; if the
+// selected layers share a group, the clones get their own new shared group
+// (this is the "group clone").
+function cloneSelection() {
+  const src = selectionLayers();
+  if (!src.length) return;
+  if (src.length === 1 && !src[0].group) return cloneLayer(src[0].id);
+  const groupMap = new Map();
+  const copies = src.map(s => {
+    const c = { ...s, id: nextId++, x: (s.x || 0) + 24, y: (s.y || 0) + 24, name: (s.name || s.type) + ' copy' };
+    if (s.crop) c.crop = { ...s.crop };
+    if (s.group != null) {
+      if (!groupMap.has(s.group)) groupMap.set(s.group, nextGroup++);
+      c.group = groupMap.get(s.group);
+    }
+    return c;
+  });
+  const maxIdx = Math.max(...src.map(s => layers.indexOf(s)));
+  layers.splice(maxIdx + 1, 0, ...copies);
+  multiSel = new Set(copies.map(c => c.id));
+  selId = copies[copies.length - 1].id;
+  renderLayerList(); renderProps(); render();
+  return copies;
+}
+
+function cloneLayer(id) {
+  const src = layers.find(l => l.id === id);
+  if (!src) return;
+  // A grouped layer clones its entire group rather than just itself.
+  if (src.group != null) { setSelection(id); return cloneSelection(); }
+  // Shallow copy; img/vid element refs are shared (a single <img>/<video> can be
+  // drawn into the canvas many times, so the clone renders without reloading).
+  const copy = {
+    ...src,
+    id: nextId++,
+    x: (src.x || 0) + 24,
+    y: (src.y || 0) + 24,
+    name: (src.name || src.type) + ' copy',
+  };
+  if (src.crop) copy.crop = { ...src.crop };
+  const idx = layers.findIndex(l => l.id === id);
+  layers.splice(idx + 1, 0, copy); // sit directly above the original in the stack
+  setSelection(copy.id);
+  renderLayerList(); renderProps(); render();
+  return copy;
+}
+
+// ── Background removal (in-browser, @imgly/background-removal) ──
+// Lazy-loaded ESM bundle is self-hosted at /vendor/imgly; the model weights
+// stream from imgly's CDN on first use and are then browser-cached.
+let _bgRemover = null;
+async function getBgRemover() {
+  if (!_bgRemover) _bgRemover = import('/vendor/imgly/index.mjs');
+  return _bgRemover;
+}
+async function removeLayerBg(id, btn) {
+  const l = layers.find(x => x.id === id);
+  if (!l || l.type !== 'image' || !l.img) return;
+  if (btn && btn.disabled) return;
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; btn.title = 'Removing background…'; }
+  try {
+    // Rasterize the already-loaded (CORS-clean) image at natural size so we
+    // never re-fetch a remote URL that might block cross-origin.
+    const off = document.createElement('canvas');
+    off.width = l.img.naturalWidth || l.img.width;
+    off.height = l.img.naturalHeight || l.img.height;
+    off.getContext('2d').drawImage(l.img, 0, 0);
+    const srcBlob = await new Promise(res => off.toBlob(res, 'image/png'));
+    if (!srcBlob) throw new Error('Could not read image pixels (image may be cross-origin protected).');
+
+    const { removeBackground } = await getBgRemover();
+    const outBlob = await removeBackground(srcBlob, {
+      model: 'medium',  // isnet_fp16 — markedly more accurate than 'small' (quint8)
+      output: { format: 'image/png' },
+      progress: (key, cur, total) => {
+        if (btn && /fetch|download/i.test(key) && total) {
+          btn.title = `Loading model… ${Math.round((cur/total)*100)}%`;
+        }
+      },
+    });
+
+    const url = URL.createObjectURL(outBlob);
+    const cleaned = new Image();
+    await new Promise((res, rej) => { cleaned.onload = res; cleaned.onerror = rej; cleaned.src = url; });
+    // Revoke a previously-generated object URL so we don't leak blobs.
+    if (l._bgUrl) URL.revokeObjectURL(l._bgUrl);
+    l.img = cleaned;
+    l.src = url;
+    l._bgUrl = url;
+    if (!/no bg$/i.test(l.name || '')) l.name = (l.name || 'Image') + ' (no bg)';
+    renderLayerList(); render();
+  } catch (err) {
+    console.error('Background removal failed:', err);
+    alert('Background removal failed: ' + (err && err.message ? err.message : err));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig || '✂'; btn.title = 'Remove background'; }
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -1175,6 +1358,17 @@ document.getElementById('addLineBtn').addEventListener('click', () => {
   addLayer({ type:'line', x: canvasW*0.1, y: canvasH*0.5, w: canvasW*0.8, h: 0, stroke: activeColor, strokeWidth:4, dash:0 });
 });
 
+// Append a stable cache-buster to remote URLs loaded onto the canvas. A
+// crossOrigin (CORS) request must not reuse a cached *non*-CORS copy of the
+// same URL (e.g. the asset-picker thumbnail) — Chromium serves the opaque
+// cached response and the load fails ("Could not load image"). A distinct URL
+// forces a fresh CORS fetch; same token per page → fetched/cached once.
+const _CORS_TOKEN = String(Date.now());
+function corsSrc(src) {
+  if (!/^https?:/i.test(src || '')) return src;   // blob:/data: are same-origin
+  return src + (src.includes('?') ? '&' : '?') + '_cors=' + _CORS_TOKEN;
+}
+
 function addImageLayer(src, name) {
   const img = new Image();
   // crossOrigin only for remote URLs; blob:/data: are same-origin and setting
@@ -1184,15 +1378,19 @@ function addImageLayer(src, name) {
     const scale = Math.min(canvasW / img.naturalWidth, canvasH / img.naturalHeight, 1);
     const w = img.naturalWidth * scale;
     const h = img.naturalHeight * scale;
-    addLayer({ type:'image', x:(canvasW-w)/2, y:(canvasH-h)/2, w, h, src, img, name: name||'Image', lockAspect: true });
+    const layer = addLayer({ type:'image', x:(canvasW-w)/2, y:(canvasH-h)/2, w, h, src, img, name: name||'Image', lockAspect: true });
+    // Add as alpha where applicable: auto-knockout a solid background on import.
+    if (document.getElementById('autoAlphaImport')?.checked && hasSolidBackground(img)) {
+      removeLayerBgColor(layer.id, undefined, { silent: true });
+    }
   };
-  img.onerror = () => alert('Could not load image');
-  img.src = src;
+  img.onerror = () => alert('Could not load image — if it is a remote URL, the host may block cross-origin loading.');
+  img.src = corsSrc(src);
 }
 function addVideoLayer(src, name) {
   const vid = document.createElement('video');
   if (/^https?:/i.test(src)) vid.crossOrigin = 'anonymous';
-  vid.src = src; vid.muted = true; vid.loop = true; vid.playsInline = true;
+  vid.src = corsSrc(src); vid.muted = true; vid.loop = true; vid.playsInline = true;
   vid.addEventListener('loadedmetadata', () => {
     const scale = Math.min(canvasW/vid.videoWidth, canvasH/vid.videoHeight, 1);
     const w = vid.videoWidth*scale, h = vid.videoHeight*scale;
@@ -1222,6 +1420,32 @@ canvasArea.addEventListener('drop', e => {
 });
 
 // ═══════════════════════════════════════════
+//  ROTATION HELPERS
+// ═══════════════════════════════════════════
+function layerCenter(l) {
+  return { cx: (l.x || 0) + (l.w || 0) / 2, cy: (l.y || 0) + (l.h || 0) / 2 };
+}
+// Rotate the drawing context around the layer's centre (no-op when rotation 0)
+function applyLayerRotation(ctx, l) {
+  const rot = l.rotation || 0;
+  if (!rot) return;
+  const { cx, cy } = layerCenter(l);
+  ctx.translate(cx, cy);
+  ctx.rotate(rot * Math.PI / 180);
+  ctx.translate(-cx, -cy);
+}
+// Map a canvas-space point into the layer's un-rotated local space, so hit
+// testing and resize math can stay axis-aligned even on rotated layers.
+function toLayerLocal(l, px, py) {
+  const rot = l.rotation || 0;
+  if (!rot) return { x: px, y: py };
+  const { cx, cy } = layerCenter(l);
+  const a = -rot * Math.PI / 180;
+  const dx = px - cx, dy = py - cy;
+  return { x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a) };
+}
+
+// ═══════════════════════════════════════════
 //  RENDER
 // ═══════════════════════════════════════════
 function render() {
@@ -1236,9 +1460,11 @@ function render() {
     if (!l.visible) return;
     ctx.save();
     ctx.globalAlpha = l.opacity;
+    applyLayerRotation(ctx, l);
 
     if (l.type === 'image' && l.img) {
-      ctx.drawImage(l.img, l.x, l.y, l.w, l.h);
+      if (l.crop) ctx.drawImage(l.img, l.crop.sx, l.crop.sy, l.crop.sw, l.crop.sh, l.x, l.y, l.w, l.h);
+      else ctx.drawImage(l.img, l.x, l.y, l.w, l.h);
     } else if (l.type === 'video' && l.vid) {
       try { ctx.drawImage(l.vid, l.x, l.y, l.w, l.h); } catch(e){}
     } else if (l.type === 'rect') {
@@ -1276,12 +1502,19 @@ function render() {
     ctx.restore();
   });
 
-  // selection outline
-  if (selId) {
-    const l = selLayer();
-    if (l && l.visible) {
+  // crop overlay — takes over the canvas chrome while cropping
+  if (cropMode) {
+    const l = layers.find(x => x.id === cropMode.id);
+    if (l) { drawCropOverlay(l, cropMode.rect); return; }
+  }
+
+  // selection outlines — one per selected layer; primary is brighter
+  if (multiSel.size) {
+    selectionLayers().forEach(l => {
+      if (!l.visible) return;
       ctx.save();
-      ctx.strokeStyle = '#C9A848';
+      applyLayerRotation(ctx, l);
+      ctx.strokeStyle = (l.id === selId) ? '#C9A848' : 'rgba(201,168,72,0.6)';
       ctx.lineWidth = Math.max(2, canvasW * 0.002);
       ctx.setLineDash([8, 4]);
       if (l.type === 'line') {
@@ -1290,15 +1523,204 @@ function render() {
         ctx.strokeRect(l.x-2, l.y-2, l.w+4, l.h+4);
       }
       ctx.setLineDash([]);
-      // resize handle (bottom-right)
-      const hs = Math.max(10, canvasW*0.012);
-      ctx.fillStyle = '#C9A848';
-      ctx.fillRect(l.x+l.w-hs/2, l.y+(l.h||0)-hs/2, hs, hs);
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
-      ctx.strokeRect(l.x+l.w-hs/2, l.y+(l.h||0)-hs/2, hs, hs);
       ctx.restore();
+    });
+    // resize handle only when a single layer is selected (ambiguous for groups)
+    if (multiSel.size === 1) {
+      const l = selLayer();
+      if (l && l.visible) {
+        ctx.save();
+        applyLayerRotation(ctx, l);
+        const hs = Math.max(10, canvasW*0.012);
+        ctx.fillStyle = '#C9A848';
+        ctx.fillRect(l.x+l.w-hs/2, l.y+(l.h||0)-hs/2, hs, hs);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+        ctx.strokeRect(l.x+l.w-hs/2, l.y+(l.h||0)-hs/2, hs, hs);
+        ctx.restore();
+      }
     }
   }
+}
+
+// ═══════════════════════════════════════════
+//  CROP
+// ═══════════════════════════════════════════
+function cropHandleSize() { return Math.max(8, canvasW * 0.011); }
+function cropHandlePoints(r) {
+  return {
+    nw:{x:r.x,        y:r.y},        n:{x:r.x+r.w/2, y:r.y},        ne:{x:r.x+r.w, y:r.y},
+    w: {x:r.x,        y:r.y+r.h/2},                                 e: {x:r.x+r.w, y:r.y+r.h/2},
+    sw:{x:r.x,        y:r.y+r.h},    s:{x:r.x+r.w/2, y:r.y+r.h},    se:{x:r.x+r.w, y:r.y+r.h},
+  };
+}
+const CROP_CURSORS = { nw:'nwse-resize', se:'nwse-resize', ne:'nesw-resize', sw:'nesw-resize', n:'ns-resize', s:'ns-resize', e:'ew-resize', w:'ew-resize', move:'move' };
+
+function drawCropOverlay(l, r) {
+  ctx.save();
+  applyLayerRotation(ctx, l);
+  // Dim everything in the layer box that falls outside the crop rect.
+  ctx.beginPath();
+  ctx.rect(l.x, l.y, l.w, l.h);
+  ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.fillStyle = 'rgba(15,27,48,0.55)';
+  ctx.fill('evenodd');
+  // Crop border
+  ctx.strokeStyle = '#C9A848';
+  ctx.lineWidth = Math.max(2, canvasW * 0.002);
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  ctx.setLineDash([]);
+  // Rule-of-thirds guides
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i <= 2; i++) {
+    ctx.moveTo(r.x + r.w*i/3, r.y); ctx.lineTo(r.x + r.w*i/3, r.y + r.h);
+    ctx.moveTo(r.x, r.y + r.h*i/3); ctx.lineTo(r.x + r.w, r.y + r.h*i/3);
+  }
+  ctx.stroke();
+  // Handles
+  const hs = cropHandleSize();
+  const pts = cropHandlePoints(r);
+  ctx.fillStyle = '#C9A848';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  Object.values(pts).forEach(p => {
+    ctx.fillRect(p.x - hs/2, p.y - hs/2, hs, hs);
+    ctx.strokeRect(p.x - hs/2, p.y - hs/2, hs, hs);
+  });
+  ctx.restore();
+}
+
+function cropHandleAt(l, r, mx, my) {
+  const p = toLayerLocal(l, mx, my);          // crop math stays axis-aligned
+  const hs = cropHandleSize();
+  const pts = cropHandlePoints(r);
+  for (const [k, pt] of Object.entries(pts)) {
+    if (Math.abs(p.x - pt.x) <= hs && Math.abs(p.y - pt.y) <= hs) return k;
+  }
+  if (p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h) return 'move';
+  return null;
+}
+
+function enterCropMode(id) {
+  const l = layers.find(x => x.id === id);
+  if (!l || l.type !== 'image' || !l.img) return;
+  selId = id; multiSel = new Set([id]);
+  cropMode = { id, rect: { x: l.x, y: l.y, w: l.w, h: l.h } };
+  cropDrag = null;
+  renderLayerList(); renderProps(); render();
+}
+
+function cancelCrop() {
+  if (!cropMode) return;
+  cropMode = null; cropDrag = null;
+  canvas.style.cursor = 'default';
+  renderProps(); render();
+}
+
+function applyCrop() {
+  if (!cropMode) return;
+  const l = layers.find(x => x.id === cropMode.id);
+  const r = cropMode.rect;
+  if (l && r.w > 4 && r.h > 4) {
+    // Source rect currently mapped onto the layer box (full image if uncropped).
+    const cur = l.crop || { sx: 0, sy: 0, sw: l.img.naturalWidth, sh: l.img.naturalHeight };
+    const fx = (r.x - l.x) / l.w, fy = (r.y - l.y) / l.h;
+    const fw = r.w / l.w,         fh = r.h / l.h;
+    l.crop = {
+      sx: cur.sx + fx * cur.sw, sy: cur.sy + fy * cur.sh,
+      sw: fw * cur.sw,          sh: fh * cur.sh,
+    };
+    l.x = r.x; l.y = r.y; l.w = r.w; l.h = r.h;
+  }
+  cancelCrop();
+  renderLayerList();
+}
+
+function resetCrop(id) {
+  const l = layers.find(x => x.id === id);
+  if (!l || !l.crop) return;
+  // Restore the box to the full image at its current scale, keeping top-left.
+  const scaleX = l.w / l.crop.sw, scaleY = l.h / l.crop.sh;
+  l.x = l.x - l.crop.sx * scaleX;
+  l.y = l.y - l.crop.sy * scaleY;
+  l.w = l.img.naturalWidth * scaleX;
+  l.h = l.img.naturalHeight * scaleY;
+  delete l.crop;
+  renderLayerList(); renderProps(); render();
+}
+
+// Decide whether an image is a subject on a single flat background — i.e. a
+// colour-key knockout is "applicable". True only when the border ring is one
+// near-uniform colour, the image isn't already transparent, and the centre
+// differs from the border (so a subject actually exists).
+function hasSolidBackground(img) {
+  try {
+    const W = 80, H = Math.max(1, Math.round(W * img.naturalHeight / img.naturalWidth));
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0, W, H);
+    const d = cx.getImageData(0, 0, W, H).data;
+    const n = W * H;
+    let transparent = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] < 250) transparent++;
+    if (transparent > n * 0.02) return false;   // already has alpha → leave it
+    const at = (x, y) => { const i = (y*W + x)*4; return [d[i], d[i+1], d[i+2]]; };
+    const ring = [];
+    for (let x = 0; x < W; x++) { ring.push(at(x, 0)); ring.push(at(x, H-1)); }
+    for (let y = 0; y < H; y++) { ring.push(at(0, y)); ring.push(at(W-1, y)); }
+    let mr=0, mg=0, mb=0;
+    ring.forEach(p => { mr += p[0]; mg += p[1]; mb += p[2]; });
+    mr/=ring.length; mg/=ring.length; mb/=ring.length;
+    let maxd = 0;
+    ring.forEach(p => { maxd = Math.max(maxd, Math.hypot(p[0]-mr, p[1]-mg, p[2]-mb)); });
+    if (maxd > 28) return false;                 // border isn't one flat colour
+    const ctr = at(W >> 1, H >> 1);
+    return Math.hypot(ctr[0]-mr, ctr[1]-mg, ctr[2]-mb) > 30;  // subject present
+  } catch (e) { return false; }
+}
+
+// ── Color-key background removal (for solid-colour backdrops) ──
+// The @imgly AI model segments a salient subject; it can't target a flat colour.
+// This samples the image corners and knocks out pixels near that colour, which
+// is what you want for logos/graphics on a single background colour.
+function removeLayerBgColor(id, tolerance, opts = {}) {
+  const l = layers.find(x => x.id === id);
+  if (!l || l.type !== 'image' || !l.img) return;
+  const tol = tolerance ?? 48;
+  const w = l.img.naturalWidth, h = l.img.naturalHeight;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  octx.drawImage(l.img, 0, 0);
+  let data;
+  try { data = octx.getImageData(0, 0, w, h); }
+  catch (e) { if (!opts.silent) alert('Cannot read pixels — image is cross-origin protected.'); return; }
+  const px = data.data;
+  // Key colour = average of the four corner pixels.
+  const corners = [0, (w-1)*4, (h-1)*w*4, ((h-1)*w + (w-1))*4];
+  let kr=0, kg=0, kb=0;
+  corners.forEach(c => { kr+=px[c]; kg+=px[c+1]; kb+=px[c+2]; });
+  kr/=4; kg/=4; kb/=4;
+  const hard = tol, soft = tol * 2;   // inside hard → transparent, hard..soft → feathered
+  for (let i = 0; i < px.length; i += 4) {
+    const d = Math.sqrt((px[i]-kr)**2 + (px[i+1]-kg)**2 + (px[i+2]-kb)**2);
+    if (d <= hard) px[i+3] = 0;
+    else if (d < soft) px[i+3] = Math.round(px[i+3] * (d - hard) / (soft - hard));
+  }
+  octx.putImageData(data, 0, 0);
+  off.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const cleaned = new Image();
+    cleaned.onload = () => {
+      if (l._bgUrl) URL.revokeObjectURL(l._bgUrl);
+      l.img = cleaned; l.src = url; l._bgUrl = url;
+      if (!/no bg$/i.test(l.name || '')) l.name = (l.name || 'Image') + ' (no bg)';
+      renderLayerList(); render();
+    };
+    cleaned.src = url;
+  }, 'image/png');
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -1339,13 +1761,14 @@ function hitTest(mx, my) {
   for (let i = layers.length - 1; i >= 0; i--) {
     const l = layers[i];
     if (!l.visible) continue;
+    const p = toLayerLocal(l, mx, my); // un-rotate so the test stays axis-aligned
     if (l.type === 'line') {
       // thin rect around line
       const x1=l.x, y1=l.y, x2=l.x+l.w, y2=l.y+(l.h||0);
-      const d = distToLine(mx, my, x1, y1, x2, y2);
+      const d = distToLine(p.x, p.y, x1, y1, x2, y2);
       if (d < 15) return l;
     } else {
-      if (mx >= l.x && mx <= l.x+l.w && my >= l.y && my <= l.y+l.h) return l;
+      if (p.x >= l.x && p.x <= l.x+l.w && p.y >= l.y && p.y <= l.y+l.h) return l;
     }
   }
   return null;
@@ -1360,17 +1783,26 @@ function distToLine(px,py,x1,y1,x2,y2) {
 function isOnResizeHandle(l, mx, my) {
   const hs = Math.max(14, canvasW*0.015);
   const hx = l.x + l.w, hy = l.y + (l.h||0);
-  return Math.abs(mx-hx) < hs && Math.abs(my-hy) < hs;
+  const p = toLayerLocal(l, mx, my); // handle is drawn in the layer's rotated space
+  return Math.abs(p.x-hx) < hs && Math.abs(p.y-hy) < hs;
 }
 
 canvas.addEventListener('mousedown', e => {
   const {x,y} = canvasCoords(e);
+  // Crop mode swallows all canvas interaction for the layer being cropped.
+  if (cropMode) {
+    const cl = layers.find(l => l.id === cropMode.id);
+    const handle = cl ? cropHandleAt(cl, cropMode.rect, x, y) : null;
+    if (handle) cropDrag = { handle, startX: x, startY: y, orig: { ...cropMode.rect } };
+    return;
+  }
   // check resize handle first
   const sl = selLayer();
   if (sl && isOnResizeHandle(sl, x, y)) {
     const oh = sl.h || 0;
+    const start = toLayerLocal(sl, x, y); // work in the layer's local space
     resize = {
-      id: sl.id, startX: x, startY: y,
+      id: sl.id, startX: start.x, startY: start.y,
       origW: sl.w, origH: oh, origX: sl.x, origY: sl.y,
       ratio: oh ? (sl.w / oh) : 1,
     };
@@ -1378,22 +1810,54 @@ canvas.addEventListener('mousedown', e => {
   }
   const hit = hitTest(x, y);
   if (hit) {
-    selId = hit.id;
-    drag = { id: hit.id, startX: x, startY: y, origX: hit.x, origY: hit.y };
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    if (additive) toggleSelection(hit.id);
+    else if (!multiSel.has(hit.id)) setSelection(hit.id); // clicking inside an existing selection keeps it (drag the group)
+    else selId = hit.id;
+    // Drag every selected layer together.
+    drag = { startX: x, startY: y, items: selectionLayers().map(l => ({ id: l.id, ox: l.x, oy: l.y })) };
     renderLayerList(); renderProps(); render();
   } else {
-    selId = null;
+    clearSelection();
     renderLayerList(); renderProps(); render();
   }
 });
 canvas.addEventListener('mousemove', e => {
   const {x,y} = canvasCoords(e);
+  if (cropMode) {
+    const l = layers.find(ly => ly.id === cropMode.id);
+    if (!l) return;
+    if (cropDrag) {
+      const p = toLayerLocal(l, x, y);
+      const o = cropDrag.orig, H = cropDrag.handle;
+      const bx0 = l.x, by0 = l.y, bx1 = l.x + l.w, by1 = l.y + l.h;
+      if (H === 'move') {
+        const s = toLayerLocal(l, cropDrag.startX, cropDrag.startY);
+        let nx = Math.max(bx0, Math.min(o.x + (p.x - s.x), bx1 - o.w));
+        let ny = Math.max(by0, Math.min(o.y + (p.y - s.y), by1 - o.h));
+        cropMode.rect = { x: nx, y: ny, w: o.w, h: o.h };
+      } else {
+        let left = o.x, top = o.y, right = o.x + o.w, bottom = o.y + o.h;
+        if (H.includes('w')) left   = Math.max(bx0, Math.min(p.x, right - 20));
+        if (H.includes('e')) right  = Math.min(bx1, Math.max(p.x, left + 20));
+        if (H.includes('n')) top    = Math.max(by0, Math.min(p.y, bottom - 20));
+        if (H.includes('s')) bottom = Math.min(by1, Math.max(p.y, top + 20));
+        cropMode.rect = { x: left, y: top, w: right - left, h: bottom - top };
+      }
+      render();
+    } else {
+      const handle = cropHandleAt(l, cropMode.rect, x, y);
+      canvas.style.cursor = handle ? CROP_CURSORS[handle] : 'default';
+    }
+    return;
+  }
   if (resize) {
     const l = layers.find(l=>l.id===resize.id);
     if (!l) return;
+    const p = toLayerLocal(l, x, y); // un-rotate the pointer for correct deltas
     const lockRatio = e.shiftKey || l.lockAspect;
-    const newW = Math.max(20, resize.origW + (x - resize.startX));
-    const newH = Math.max(10, resize.origH + (y - resize.startY));
+    const newW = Math.max(20, resize.origW + (p.x - resize.startX));
+    const newH = Math.max(10, resize.origH + (p.y - resize.startY));
     if (lockRatio && resize.ratio) {
       // pick the dominant axis (whichever moved more, proportionally)
       const dw = Math.abs(newW - resize.origW) / Math.max(1, resize.origW);
@@ -1407,10 +1871,11 @@ canvas.addEventListener('mousemove', e => {
     return;
   }
   if (drag) {
-    const l = layers.find(l=>l.id===drag.id);
-    if (!l) return;
-    l.x = drag.origX + (x - drag.startX);
-    l.y = drag.origY + (y - drag.startY);
+    const dx = x - drag.startX, dy = y - drag.startY;
+    drag.items.forEach(it => {
+      const l = layers.find(ly => ly.id === it.id);
+      if (l) { l.x = it.ox + dx; l.y = it.oy + dy; }
+    });
     render();
     return;
   }
@@ -1420,13 +1885,23 @@ canvas.addEventListener('mousemove', e => {
   else if (hitTest(x, y)) { canvas.style.cursor = 'move'; }
   else { canvas.style.cursor = 'default'; }
 });
-canvas.addEventListener('mouseup', () => { drag = null; resize = null; renderProps(); });
-canvas.addEventListener('mouseleave', () => { drag = null; resize = null; });
+canvas.addEventListener('mouseup', () => { drag = null; resize = null; cropDrag = null; if (!cropMode) renderProps(); });
+canvas.addEventListener('mouseleave', () => { drag = null; resize = null; cropDrag = null; });
 
 // Keyboard
 document.addEventListener('keydown', e => {
+  if (cropMode) {
+    if (e.key === 'Enter') { e.preventDefault(); applyCrop(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelCrop(); }
+    return;
+  }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-  if ((e.key === 'Delete' || e.key === 'Backspace') && selId) { removeLayer(selId); renderProps(); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && multiSel.size) { removeSelection(); }
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D') && multiSel.size) { e.preventDefault(); cloneSelection(); }
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) {
+    e.preventDefault();
+    if (e.shiftKey) ungroupSelected(); else groupSelected();
+  }
 });
 
 // ═══════════════════════════════════════════
@@ -1440,23 +1915,37 @@ function renderLayerList() {
     const l = layers[i];
     const icons = {image:'🖼',video:'▷',text:'T',rect:'▬',circle:'●',line:'╱'};
     const div = document.createElement('div');
-    div.className = 'layer-item' + (l.id===selId?' active':'');
+    div.className = 'layer-item' + (multiSel.has(l.id)?' active':'') + (l.id===selId?' primary':'');
+    const groupDot = l.group != null
+      ? `<span class="layer-group-dot" title="Group ${l.group}" style="background:${groupColor(l.group)};"></span>` : '';
     div.innerHTML = `
+      ${groupDot}
       <span class="layer-icon">${icons[l.type]||'?'}</span>
       <span class="layer-name">${esc(l.name||l.type+(l.text?' "'+l.text.slice(0,12)+'"':''))}</span>
       <span class="layer-actions">
         <button class="layer-btn ${l.visible?'':'vis-off'}" data-vis="${l.id}" title="Toggle visibility">${l.visible?'◉':'◎'}</button>
+        <button class="layer-btn" data-clone="${l.id}" title="${l.group!=null?'Clone group':'Clone layer'}">⧉</button>
+        ${l.type==='image' ? `<button class="layer-btn" data-bg="${l.id}" title="Remove background">✂</button>` : ''}
         <button class="layer-btn" data-del="${l.id}" title="Delete">✕</button>
       </span>`;
     div.addEventListener('click', e => {
-      if (e.target.dataset.vis || e.target.dataset.del) return;
-      selId = l.id; renderLayerList(); renderProps(); render();
+      if (e.target.dataset.vis || e.target.dataset.clone || e.target.dataset.bg || e.target.dataset.del) return;
+      if (cropMode && cropMode.id !== l.id) { cropMode = null; cropDrag = null; }
+      if (e.shiftKey || e.metaKey || e.ctrlKey) toggleSelection(l.id);
+      else setSelection(l.id);
+      renderLayerList(); renderProps(); render();
     });
     div.querySelector('[data-vis]').addEventListener('click', () => { l.visible = !l.visible; renderLayerList(); render(); });
+    div.querySelector('[data-clone]').addEventListener('click', () => cloneLayer(l.id));
+    div.querySelector('[data-bg]')?.addEventListener('click', e => removeLayerBg(l.id, e.currentTarget));
     div.querySelector('[data-del]').addEventListener('click', () => { removeLayer(l.id); renderProps(); });
     wrap.appendChild(div);
   }
 }
+
+// Group / ungroup
+document.getElementById('groupBtn').addEventListener('click', groupSelected);
+document.getElementById('ungroupBtn').addEventListener('click', ungroupSelected);
 
 // Layer up/down
 document.getElementById('layerUpBtn').addEventListener('click', () => {
@@ -1489,7 +1978,11 @@ function renderProps() {
     <div class="sg-row"><span class="sg-lbl">W</span><input type="number" class="sg-input" data-prop="w" value="${Math.round(l.w)}" style="width:60px">
     <span class="sg-lbl">H</span><input type="number" class="sg-input" data-prop="h" value="${Math.round(l.h||0)}" style="width:60px"></div>
     ${lockable ? `<div class="sg-row"><label style="font-size:0.65rem;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" data-prop="lockAspect" ${l.lockAspect?'checked':''}> Lock ratio <span style="opacity:0.6;">(or hold Shift)</span></label></div>` : ''}
-    <div class="sg-row"><span class="sg-lbl">Opacity</span><input type="range" data-prop="opacity" min="0" max="1" step="0.05" value="${l.opacity}" style="flex:1"></div>`;
+    <div class="sg-row"><span class="sg-lbl">Opacity</span><input type="range" data-prop="opacity" min="0" max="1" step="0.05" value="${l.opacity}" style="flex:1"></div>
+    <div class="sg-row"><span class="sg-lbl">Rotate</span>
+      <input type="range" data-prop="rotation" min="-180" max="180" step="1" value="${l.rotation||0}" style="flex:1">
+      <input type="number" class="sg-input" data-prop="rotation" value="${Math.round(l.rotation||0)}" style="width:54px" title="Degrees">
+      <button type="button" class="tool-btn" data-rot-reset style="padding:3px 6px;font-size:0.6rem;" title="Reset rotation">0&deg;</button></div>`;
 
   if (l.type === 'text') {
     html += `
@@ -1527,6 +2020,22 @@ function renderProps() {
       <span class="sg-lbl">Dash</span><input type="number" class="sg-input" data-prop="dash" value="${l.dash||0}" style="width:40px"></div>`;
   }
 
+  if (l.type === 'image') {
+    if (cropMode && cropMode.id === l.id) {
+      html += `
+        <div class="sg-row" style="gap:6px;">
+          <button type="button" class="tool-btn" id="cropApplyBtn" style="flex:1;background:var(--navy);color:#fff;border-color:var(--navy);">✓ Apply crop</button>
+          <button type="button" class="tool-btn" id="cropCancelBtn" style="flex:1;">Cancel</button></div>
+        <div class="sg-row" style="font-size:0.58rem;opacity:0.6;">Drag the handles · Enter applies · Esc cancels</div>`;
+    } else {
+      html += `
+        <div class="sg-row" style="gap:6px;flex-wrap:wrap;">
+          <button type="button" class="tool-btn" id="cropBtn" title="Trim the image edges">⛶ Crop</button>
+          ${l.crop ? `<button type="button" class="tool-btn" id="cropResetBtn" title="Restore the full image">Reset crop</button>` : ''}
+          <button type="button" class="tool-btn" id="bgColorBtn" title="Knock out a solid background colour (sampled from the image corners)">Remove BG color</button></div>`;
+    }
+  }
+
   wrap.innerHTML = html;
 
   // Bind prop inputs
@@ -1535,14 +2044,34 @@ function renderProps() {
     const ev = liveTypes.includes(el.type) || el.tagName === 'TEXTAREA' ? 'input' : 'change';
     el.addEventListener(ev, () => {
       const prop = el.dataset.prop;
-      const numProps = ['x','y','w','h','fontSize','strokeWidth','radius','dash','opacity'];
+      const numProps = ['x','y','w','h','fontSize','strokeWidth','radius','dash','opacity','rotation'];
       const boolProps = ['bold','italic','lockAspect'];
       if (boolProps.includes(prop)) l[prop] = el.checked;
       else if (numProps.includes(prop)) l[prop] = parseFloat(el.value) || 0;
       else l[prop] = el.value;
+      // Keep sibling controls bound to the same prop in sync (e.g. the rotation
+      // slider + number field) without a full re-render of the props panel.
+      wrap.querySelectorAll(`[data-prop="${prop}"]`).forEach(other => {
+        if (other !== el && other.value !== String(l[prop])) other.value = l[prop];
+      });
       render();
     });
   });
+
+  // Reset-rotation button
+  const rotReset = wrap.querySelector('[data-rot-reset]');
+  if (rotReset) rotReset.addEventListener('click', () => {
+    l.rotation = 0;
+    wrap.querySelectorAll('[data-prop="rotation"]').forEach(el => { el.value = 0; });
+    render();
+  });
+
+  // Image crop / colour-key buttons
+  wrap.querySelector('#cropBtn')?.addEventListener('click', () => enterCropMode(l.id));
+  wrap.querySelector('#cropResetBtn')?.addEventListener('click', () => resetCrop(l.id));
+  wrap.querySelector('#bgColorBtn')?.addEventListener('click', () => removeLayerBgColor(l.id));
+  wrap.querySelector('#cropApplyBtn')?.addEventListener('click', applyCrop);
+  wrap.querySelector('#cropCancelBtn')?.addEventListener('click', cancelCrop);
 }
 
 // ═══════════════════════════════════════════
@@ -1558,8 +2087,10 @@ function serializeLayers() {
 
 function deserializeLayers(arr) {
   layers = [];
-  selId = null;
+  clearSelection();
   nextId = 1;
+  // Keep group ids from colliding with any created later this session.
+  nextGroup = arr.reduce((m, d) => Math.max(m, (d.group ?? 0) + 1), 1);
   let loadCount = 0;
   const total = arr.length;
   arr.forEach(data => {
@@ -1569,10 +2100,10 @@ function deserializeLayers(arr) {
       img.crossOrigin = 'anonymous';
       img.onload = () => { l.img = img; if(++loadCount >= total) render(); };
       img.onerror = () => { if(++loadCount >= total) render(); };
-      img.src = l.src;
+      img.src = corsSrc(l.src);
     } else if (l.type === 'video' && l.src) {
       const vid = document.createElement('video');
-      vid.crossOrigin = 'anonymous'; vid.src = l.src; vid.muted = true; vid.loop = true; vid.playsInline = true;
+      vid.crossOrigin = 'anonymous'; vid.src = corsSrc(l.src); vid.muted = true; vid.loop = true; vid.playsInline = true;
       vid.addEventListener('loadedmetadata', () => { l.vid = vid; vid.play().catch(()=>{}); if(++loadCount>=total) render(); });
       vid.addEventListener('error', () => { if(++loadCount>=total) render(); });
     } else {
@@ -1676,29 +2207,41 @@ function loadPreset(p) {
 // ═══════════════════════════════════════════
 //  EXPORT
 // ═══════════════════════════════════════════
+// Render the canvas for capture: hide all selection chrome, and — when the
+// "Transparent background" box is ticked — force an alpha background regardless
+// of the current bg colour. Returns a restore() that puts everything back.
+function beginExportRender() {
+  const prevSel = selId, prevMulti = multiSel, prevTrans = bgTransparent;
+  selId = null; multiSel = new Set();
+  if (document.getElementById('exportAlpha')?.checked) bgTransparent = true;
+  render();
+  return () => { selId = prevSel; multiSel = prevMulti; bgTransparent = prevTrans; render(); };
+}
+
 document.getElementById('downloadPngBtn').addEventListener('click', () => {
-  // render at full res without selection outline
-  const prevSel = selId; selId = null; render();
+  const restore = beginExportRender();
   const link = document.createElement('a');
   const title = document.getElementById('exportTitle').value.trim() || 'social-asset';
-  link.download = `${title}-${sizeName}.png`;
+  const alpha = document.getElementById('exportAlpha')?.checked;
+  link.download = `${title}-${sizeName}${alpha ? '-alpha' : ''}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
-  selId = prevSel; render();
+  restore();
 });
 
 document.getElementById('saveLibBtn').addEventListener('click', async () => {
   const status = document.getElementById('exportStatus');
   status.textContent = 'Uploading...';
-  const prevSel = selId; selId = null; render();
+  const restore = beginExportRender();
+  const alpha = document.getElementById('exportAlpha')?.checked;
   try {
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-    selId = prevSel; render();
+    restore();
     const title = document.getElementById('exportTitle').value.trim() || 'social-asset';
     const folder = document.getElementById('exportFolder').value;
     const clientId = document.getElementById('clientSelect').value;
     const fd = new FormData();
-    fd.append('image', blob, `${title}-${sizeName}.png`);
+    fd.append('image', blob, `${title}-${sizeName}${alpha ? '-alpha' : ''}.png`);
     fd.append('folder', folder);
     fd.append('title', title);
     fd.append('preset', sizeName);
@@ -1707,7 +2250,7 @@ document.getElementById('saveLibBtn').addEventListener('click', async () => {
     const data = await r.json();
     status.textContent = data.success ? '✓ Saved to library!' : ('Error: '+(data.error||'Failed'));
     setTimeout(() => { status.textContent = ''; }, 3000);
-  } catch(err) { selId = prevSel; render(); status.textContent = 'Error: '+err.message; }
+  } catch(err) { restore(); status.textContent = 'Error: '+err.message; }
 });
 
 // ═══════════════════════════════════════════
@@ -1740,7 +2283,7 @@ window.loadAgentDesign = function(design) {
 
   // Clear existing layers and load new ones
   layers = [];
-  selId = null;
+  clearSelection();
   nextId = 1;
 
   // Build full layer list: SD background (if any) at bottom, then agent layers on top
@@ -1760,7 +2303,7 @@ window.loadAgentDesign = function(design) {
       im.crossOrigin = 'anonymous';
       im.onload = () => { l.img = im; if (++loadPending >= totalImages) render(); };
       im.onerror = () => { if (++loadPending >= totalImages) render(); };
-      im.src = l.src;
+      im.src = corsSrc(l.src);
     }
     layers.push(l);
   });
@@ -2031,6 +2574,23 @@ renderLayerList();
   });
 
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+})();
+</script>
+<script>
+/* suggestion-loader: open a Suggestions-tab item in the full generator */
+(function(){
+  const sid = new URLSearchParams(location.search).get("suggestion");
+  if (!sid) return;
+  function go(tries){
+    if (typeof window.loadAgentDesign !== "function") { if (tries>0) return setTimeout(()=>go(tries-1),150); return; }
+    fetch("/admin/social/suggestions/"+sid+"/design").then(r=>r.json()).then(d=>{
+      if (d && d.ok && d.design) {
+        window.loadAgentDesign(d.design);
+        const t = document.getElementById("exportTitle"); if (t && d.body) t.value = String(d.body).replace(/[#\n].*$/s,"").slice(0,40).trim();
+      }
+    }).catch(()=>{});
+  }
+  document.addEventListener("DOMContentLoaded", ()=>go(20));
 })();
 </script>
 <script src="/js/agentHealth.js"></script>

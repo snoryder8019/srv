@@ -8,7 +8,7 @@
  * persists levels in localStorage. Resumes the audio context on first gesture.
  */
 
-import { panel } from './casino-ui.js?v=1780413000000';
+import { panel } from 'https://games.madladslab.com/shared/js/casino-ui.js';
 
 const LS_KEY = 'casino_mix_v1';
 const CHANNELS = [
@@ -17,12 +17,17 @@ const CHANNELS = [
   { id: 'chatter', label: 'Crowd',   def: 0.40 },
   { id: 'voice',   label: 'Dealer',  def: 1.0 },
   { id: 'fx',      label: 'Effects', def: 0.7 },
+  { id: 'win',     label: 'Wins',    def: 1.0 },
 ];
 
 export function createAudioBus(opts = {}) {
   const ttsBase = opts.ttsBase || '/tts';
   const voiceName = opts.voice || 'ryan';
   const onMuteChange = opts.onMuteChange || (() => {});
+  // which channels this game surfaces in the mixer (master always shown). default: all.
+  const shownChannels = Array.isArray(opts.channels) && opts.channels.length
+    ? CHANNELS.filter((c) => c.id === 'master' || opts.channels.includes(c.id))
+    : CHANNELS;
 
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch (e) {}
@@ -51,6 +56,10 @@ export function createAudioBus(opts = {}) {
   }
   function save() { try { localStorage.setItem(LS_KEY, JSON.stringify({ ...vol, muted })); } catch (e) {} }
   function resume() { try { ac().resume(); } catch (e) {} }
+  // expose the audio graph so games can synthesize their own effects ONTO the
+  // shared channels (and inherit the shared mixer/mute). channel defaults to fx.
+  function context() { return ac(); }
+  function channelNode(ch) { ac(); return gains[ch] || gains.fx || gains.master; }
 
   // --- dealer voice (Piper via tiles proxy); latest call wins ---
   let _voiceEl = null;
@@ -119,6 +128,11 @@ export function createAudioBus(opts = {}) {
     tryFile('/static/audio/music.mp3').then((ok) => { if (!_bedsOn) return; if (ok) playLoop('music', '/static/audio/music.mp3'); else swingBed(); });
     tryFile('/static/audio/crowd.mp3').then((ok) => { if (!_bedsOn) return; if (ok) playLoop('chatter', '/static/audio/crowd.mp3'); else chatterBed(); });
   }
+  function stopBeds() {
+    _bedsOn = false;
+    stopLoop('music'); stopLoop('chatter');
+    stopChatterBed();
+  }
   // generative "supper-club" swing bed (no asset): walking upright bass + brushed
   // swing ride + sparse muted-brass stabs. Kept sparse + low so it sits under play.
   function swingBed() {
@@ -165,20 +179,82 @@ export function createAudioBus(opts = {}) {
       bar++; setTimeout(loopBar, beat * 4 * 1000);
     })();
   }
+  // Synthesized crowd murmur. Real rooms aren't one band of surf — they're many
+  // overlapping voice-band sources, a low room rumble, and intermittent babble
+  // swells with the odd transient. We layer all three so it reads as 'people',
+  // not 'ocean'. Everything is procedural (no asset, no license).
   function chatterBed() {
     const a = ac(), out = gains.chatter;
+    _chatter = { nodes: [], timers: [], on: true };
+
+    // shared 4s noise buffer (filtered differently per layer)
     const len = Math.floor(a.sampleRate * 4);
     const buf = a.createBuffer(1, len, a.sampleRate);
     const d = buf.getChannelData(0);
-    let last = 0;
-    for (let i = 0; i < len; i++) { last = (last + (Math.random() * 2 - 1) * 0.5) * 0.96; d[i] = last; }  // brown-ish noise
-    const src = a.createBufferSource(); src.buffer = buf; src.loop = true;
-    const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 620; bp.Q.value = 0.7;
-    const g = a.createGain(); g.gain.value = 0.5;
-    const lfo = a.createOscillator(), lg = a.createGain();   // slow murmur wobble
-    lfo.frequency.value = 0.3; lg.gain.value = 0.25;
-    lfo.connect(lg); lg.connect(g.gain); lfo.start();
-    src.connect(bp); bp.connect(g); g.connect(out); src.start();
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;     // white source
+
+    const bed = a.createGain(); bed.gain.value = 0.0; bed.connect(out);
+    // ease the bed in so it doesn't pop on start
+    bed.gain.setValueAtTime(0.0001, a.currentTime);
+    bed.gain.exponentialRampToValueAtTime(0.6, a.currentTime + 1.2);
+
+    // three voice-band layers centered around speech formants, each with its
+    // own slow wobble and slight detune so they beat against each other
+    const bands = [
+      { f: 380, q: 4.5, g: 0.5, lfo: 0.13, depth: 0.30 },
+      { f: 720, q: 5.5, g: 0.42, lfo: 0.19, depth: 0.28 },
+      { f: 1150, q: 7.0, g: 0.30, lfo: 0.27, depth: 0.26 },
+    ];
+    bands.forEach((b) => {
+      const src = a.createBufferSource(); src.buffer = buf; src.loop = true;
+      src.playbackRate.value = 0.92 + Math.random() * 0.16;        // detune the loop
+      const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = b.f; bp.Q.value = b.q;
+      const g = a.createGain(); g.gain.value = b.g;
+      const lfo = a.createOscillator(), lg = a.createGain();
+      lfo.frequency.value = b.lfo + Math.random() * 0.05; lg.gain.value = b.depth;
+      lfo.connect(lg); lg.connect(g.gain); lfo.start();
+      src.connect(bp); bp.connect(g); g.connect(bed); src.start();
+      _chatter.nodes.push(src, lfo);
+    });
+
+    // low room rumble (HVAC + bodies) — quiet brown noise, lowpassed
+    (function rumble() {
+      const rb = a.createBuffer(1, len, a.sampleRate), rd = rb.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < len; i++) { last = (last + (Math.random() * 2 - 1) * 0.5) * 0.96; rd[i] = last * 3.0; }
+      const src = a.createBufferSource(); src.buffer = rb; src.loop = true;
+      const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180;
+      const g = a.createGain(); g.gain.value = 0.18;
+      src.connect(lp); lp.connect(g); g.connect(bed); src.start();
+      _chatter.nodes.push(src);
+    })();
+
+    // babble swells: every few seconds a band briefly rises (a table gets louder)
+    function swell() {
+      if (!_chatter.on) return;
+      const bp = a.createBiquadFilter(); bp.type = 'bandpass';
+      bp.frequency.value = 500 + Math.random() * 1400; bp.Q.value = 6;
+      const src = a.createBufferSource(); src.buffer = buf; src.loop = true;
+      src.playbackRate.value = 0.9 + Math.random() * 0.2;
+      const g = a.createGain(); const t = a.currentTime;
+      const peak = 0.10 + Math.random() * 0.14;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.4 + Math.random() * 0.5);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4 + Math.random() * 1.2);
+      src.connect(bp); bp.connect(g); g.connect(bed); src.start(t); src.stop(t + 3.2);
+      _chatter.timers.push(setTimeout(swell, 1800 + Math.random() * 3200));
+    }
+    _chatter.timers.push(setTimeout(swell, 1200 + Math.random() * 1500));
+    _chatter.bed = bed;
+  }
+  let _chatter = null;
+  function stopChatterBed() {
+    if (!_chatter) return;
+    _chatter.on = false;
+    _chatter.timers.forEach(clearTimeout);
+    try { _chatter.bed.gain.exponentialRampToValueAtTime(0.0001, ac().currentTime + 0.4); } catch (e) {}
+    _chatter.nodes.forEach((n) => { try { n.stop(ac().currentTime + 0.6); } catch (e) {} });
+    _chatter = null;
   }
 
   // --- mixer popover mounted on a button (the volume icon) ---
@@ -207,7 +283,7 @@ export function createAudioBus(opts = {}) {
     muteBtn.onclick = () => { muted = !muted; applyVol(); save(); paintMute(); paintBtn(btn); onMuteChange(muted); };
     paintMute();
     head.appendChild(title); head.appendChild(muteBtn); p.appendChild(head);
-    for (const c of CHANNELS) {
+    for (const c of shownChannels) {
       const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:8px;margin:6px 0';
       const lbl = document.createElement('span'); lbl.textContent = c.label;
       lbl.style.cssText = 'color:#9fb0a6;font-size:12px;width:54px';
@@ -222,7 +298,8 @@ export function createAudioBus(opts = {}) {
   document.addEventListener('pointerdown', resume, { once: true });
 
   return {
-    speak, applause, playLoop, stopLoop, startBeds, buildMixer, resume,
+    speak, applause, playLoop, stopLoop, startBeds, stopBeds, buildMixer, resume,
+    context, channelNode,
     setMuted: (m) => { muted = m; applyVol(); save(); }, isMuted: () => muted,
     setVolume: (ch, v) => { if (vol[ch] != null) { vol[ch] = v; applyVol(); save(); } },
   };

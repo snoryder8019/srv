@@ -148,6 +148,26 @@
       <button type="button" id="inqBlockAdd" class="filter-btn">Add</button>
     </div>
   </div>
+
+  <% if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) { %>
+  <div class="inq-block" id="inqGlobalSpam" style="border-color:var(--gold);">
+    <h3>Global Spam Filter <span class="text-slate" style="font-size:0.62rem;font-weight:500;letter-spacing:0.04em;">· superadmin · all tenants</span></h3>
+    <div class="text-slate" style="font-size:0.74rem;margin-bottom:8px;">
+      Entries here apply to <strong>every</strong> tenant. Matching submissions are filed straight into each tenant's
+      Spam tab (not dropped) — tenants delete their own. A sender or message is auto-promoted here once
+      <strong><%= typeof globalSpamThreshold !== 'undefined' ? globalSpamThreshold : 3 %></strong> different tenants flag it; anything you flag is added instantly.
+    </div>
+    <div id="inqGlobalRows" class="text-slate" style="font-size:0.78rem;">Loading…</div>
+    <div class="add">
+      <select id="inqGlobalType" style="padding:6px 8px;border:1px solid var(--border);background:var(--ivory);font-size:0.78rem;border-radius:2px;">
+        <option value="email">Email</option>
+        <option value="subject">Subject / text</option>
+      </select>
+      <input type="text" id="inqGlobalInput" placeholder="email@example.com or spam phrase">
+      <button type="button" id="inqGlobalAdd" class="filter-btn">Add global</button>
+    </div>
+  </div>
+  <% } %>
   <% } %>
 </div>
 
@@ -264,6 +284,58 @@
       loadBlocklist();
     });
     loadBlocklist();
+  }
+
+  // ── Global Spam Filter panel (superadmin only) ──────────────────────────
+  const globalRows = document.getElementById('inqGlobalRows');
+  if (globalRows) {
+    async function loadGlobal() {
+      globalRows.textContent = 'Loading…';
+      const r = await fetch('/admin/inquiries/global-spam/data');
+      const j = await r.json();
+      if (!j.ok) { globalRows.textContent = j.error || 'Failed to load'; return; }
+      if (!j.list.length) { globalRows.innerHTML = '<em>No global entries yet.</em>'; return; }
+      globalRows.innerHTML = j.list.map(g => {
+        const d = new Date(g.updatedAt || g.createdAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+        const src = g.source === 'superadmin' ? 'added by superadmin' : (g.reportCount || 0) + ' tenants flagged';
+        const label = g.type === 'subject' ? '“' + g.key + '”' : g.key;
+        return '<div class="row">' +
+          '<div><strong>' + label + '</strong> <span class="meta">[' + g.type + ']</span>' +
+            '<div class="meta">' + src + ' · ' + d + '</div>' +
+          '</div>' +
+          '<button type="button" data-gtype="' + g.type + '" data-gkey="' + encodeURIComponent(g.key) + '">remove</button>' +
+        '</div>';
+      }).join('');
+      globalRows.querySelectorAll('button[data-gkey]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const type = btn.dataset.gtype;
+          const key = decodeURIComponent(btn.dataset.gkey);
+          if (!confirm('Remove this global filter entry for ALL tenants?')) return;
+          const r = await fetch('/admin/inquiries/global-spam/remove', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, key }),
+          });
+          const j = await r.json();
+          if (!r.ok) { alert(j.error || 'Remove failed'); return; }
+          loadGlobal();
+        });
+      });
+    }
+    document.getElementById('inqGlobalAdd').addEventListener('click', async () => {
+      const type = document.getElementById('inqGlobalType').value;
+      const input = document.getElementById('inqGlobalInput');
+      const key = input.value.trim();
+      if (!key) return;
+      const r = await fetch('/admin/inquiries/global-spam/add', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, key }),
+      });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || 'Add failed'); return; }
+      input.value = '';
+      loadGlobal();
+    });
+    loadGlobal();
   }
 })();
 </script>

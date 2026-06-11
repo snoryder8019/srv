@@ -8,6 +8,8 @@
 import express from 'express';
 import { runTool } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import { buildSocialInsights } from '../../plugins/socialInsights.js';
+import { buildPaymentInsights } from '../../plugins/paymentInsights.js';
 
 const router = express.Router();
 
@@ -118,6 +120,33 @@ router.get('/metrics', async (req, res) => {
     res.json(metrics);
   } catch (err) {
     console.error('[analytics] metrics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/analytics/social — LIVE social insights from connected accounts only.
+// Lazy-loaded by the page (external API calls — kept off the initial render).
+router.get('/social', async (req, res) => {
+  try {
+    const range = ['day', 'week', 'month'].includes(req.query.range) ? req.query.range : 'month';
+    const days = RANGE_DAYS[range] || 30;
+    const insights = await buildSocialInsights(req.db, { days });
+    res.json(insights);
+  } catch (err) {
+    console.error('[analytics] social error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/analytics/payments — LIVE Stripe + PayPal bookkeeping analytics.
+router.get('/payments', async (req, res) => {
+  try {
+    const range = ['day', 'week', 'month'].includes(req.query.range) ? req.query.range : 'month';
+    const days = RANGE_DAYS[range] || 30;
+    const insights = await buildPaymentInsights(req.tenant, { days });
+    res.json(insights);
+  } catch (err) {
+    console.error('[analytics] payments error:', err);
     res.status(500).json({ error: err.message });
   }
 });

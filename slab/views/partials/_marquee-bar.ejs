@@ -1,5 +1,6 @@
 <%# ─── Reusable marquee/ticker partial ───
    Caller provides: d (design), b (brand), pos (position keyword for class hook).
+   Supports d.ticker_shape: 'straight' (default) | 'diagonal' | 'arc'.
    Renders nothing if items resolve to empty. Caller is responsible for the
    visibility check (vis_marquee) before including. %>
 <%
@@ -16,15 +17,115 @@
     }
   }
   while (_items.length > 0 && _items.length < 4) _items = _items.concat(_items);
+
+  const _shape = (d.ticker_shape || 'straight').toString().trim();
+  const _dir = (d.ticker_direction || 'left');
 %>
 <% if (_items.length) { %>
-<div class="marquee-bar marquee-bar--<%= pos %>" data-direction="<%= d.ticker_direction || 'left' %>" aria-hidden="true">
-  <div class="marquee-track">
-    <% for (let _r = 0; _r < 2; _r++) { %>
-      <% _items.forEach(function(item) { %>
-        <span class="marquee-item"><%- item %><span class="marquee-dot"></span></span>
-      <% }); %>
-    <% } %>
+<%
+  // ── Emit the new shape CSS exactly once across all includes ──
+  if ((_shape === 'diagonal' || _shape === 'arc') && !locals.__marqueeShapeCSS) {
+    locals.__marqueeShapeCSS = true;
+%>
+<style id="marquee-shape-styles">
+  /* ── Diagonal marquee ── */
+  .marquee-clip {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+  }
+  .marquee-clip .marquee-rotate {
+    transform: rotate(var(--ticker-angle, -4deg));
+    transform-origin: center center;
+  }
+  .marquee-clip .marquee-bar {
+    width: 120%;
+    margin-left: -10%;
+  }
+  /* ── Arc marquee ── */
+  .marquee-arc {
+    width: 100%;
+    display: block;
+    overflow: visible;
+  }
+  .marquee-arc svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    overflow: visible;
+  }
+  .marquee-arc text {
+    fill: var(--ticker-text, currentColor);
+    font-size: var(--ticker-font-size, 1rem);
+    letter-spacing: var(--ticker-letter-spacing, normal);
+    text-transform: var(--ticker-text-transform, none);
+    font-family: inherit;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .marquee-arc svg animate { display: none; }
+    .marquee-clip .marquee-track { animation: none !important; }
+  }
+</style>
+<% } %>
+<% if (_shape === 'diagonal') { %>
+  <div class="marquee-clip marquee-clip--<%= pos %>" aria-hidden="true">
+    <div class="marquee-rotate" style="--ticker-angle: <%= (d.ticker_angle || -4) %>deg;">
+      <div class="marquee-bar marquee-bar--<%= pos %>" data-direction="<%= _dir %>">
+        <div class="marquee-track">
+          <% for (let _r = 0; _r < 2; _r++) { %>
+            <% _items.forEach(function(item) { %>
+              <span class="marquee-item"><%- item %><span class="marquee-dot"></span></span>
+            <% }); %>
+          <% } %>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
+<% } else if (_shape === 'arc') { %>
+<%
+  const _arcH = parseFloat(d.ticker_arc_height) || 40;
+  const _vbW = 1000;
+  const _vbH = Math.max(60, Math.abs(_arcH) + 40);
+  const _midY = _vbH - 10;
+  const _ctrlY = _midY - _arcH * 2; // quadratic control point for sag/rise
+  const _pathId = 'marquee-arc-path-' + pos + '-' + Math.random().toString(36).slice(2, 8);
+  const _d = 'M 0,' + _midY + ' Q ' + (_vbW / 2) + ',' + _ctrlY + ' ' + _vbW + ',' + _midY;
+  // Build the travelling string; over-fill to keep the path covered.
+  let _txt = '';
+  for (let _r = 0; _r < 4; _r++) {
+    _items.forEach(function(item){ _txt += item + '   •   '; });
+  }
+  const _speed = parseFloat(d.ticker_speed) || 20;
+  // direction: 'left' travels offsets downward (toward 0), 'right' upward.
+  const _from = _dir === 'right' ? '-50%' : '50%';
+  const _to   = _dir === 'right' ? '50%'  : '-50%';
+%>
+  <div class="marquee-arc marquee-arc--<%= pos %>" aria-hidden="true">
+    <svg viewBox="0 0 <%= _vbW %> <%= _vbH %>" preserveAspectRatio="xMidYMid meet" role="presentation">
+      <defs>
+        <path id="<%= _pathId %>" d="<%= _d %>" fill="none"></path>
+      </defs>
+      <text>
+        <textPath href="#<%= _pathId %>" xlink:href="#<%= _pathId %>" startOffset="<%= _from %>">
+          <%- _txt %>
+          <animate attributeName="startOffset"
+                   from="<%= _from %>" to="<%= _to %>"
+                   dur="<%= _speed %>s"
+                   repeatCount="indefinite"></animate>
+        </textPath>
+      </text>
+    </svg>
+  </div>
+<% } else { %>
+  <%# ── straight (default): unchanged markup/classes ── %>
+  <div class="marquee-bar marquee-bar--<%= pos %>" data-direction="<%= _dir %>" aria-hidden="true">
+    <div class="marquee-track">
+      <% for (let _r = 0; _r < 2; _r++) { %>
+        <% _items.forEach(function(item) { %>
+          <span class="marquee-item"><%- item %><span class="marquee-dot"></span></span>
+        <% }); %>
+      <% } %>
+    </div>
+  </div>
+<% } %>
 <% } %>

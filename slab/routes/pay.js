@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '../plugins/mongo.js';
 import { createCheckoutSession } from '../plugins/stripe.js';
 import { createOrder, captureOrder } from '../plugins/paypal.js';
+import { recordPaymentAndReceipt } from '../plugins/paymentReceipts.js';
 import { config } from '../config/config.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
@@ -51,12 +52,14 @@ router.get('/:token', async (req, res) => {
   try {
     const { invoice, clientDoc, error } = await findPayableInvoice(req, req.params.token);
     if (error === 'not_found') return res.status(404).render('pay-error', { message: 'Invoice not found or link has expired.' });
+    // Tenant-wide preference: which payment method(s) to offer. 'both' (default), 'stripe', or 'paypal'.
+    const pref = req.tenant?.public?.paymentProvider || 'both';
     res.render('pay', {
       inv: invoice,
       cl: clientDoc,
       paid: error === 'already_paid',
-      stripeKey: req.tenant?.public?.stripePublishable || null,
-      paypalId: req.tenant?.public?.paypalClientId || null,
+      stripeKey: pref === 'paypal' ? null : (req.tenant?.public?.stripePublishable || null),
+      paypalId: pref === 'stripe' ? null : (req.tenant?.public?.paypalClientId || null),
       domain: req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN,
     });
   } catch (err) {
@@ -70,6 +73,9 @@ router.post('/:token/stripe', async (req, res) => {
   try {
     const { invoice, clientDoc, error } = await findPayableInvoice(req, req.params.token);
     if (error) return res.status(400).render('pay-error', { message: 'This invoice cannot be paid.' });
+    if ((req.tenant?.public?.paymentProvider || 'both') === 'paypal') {
+      return res.status(400).render('pay-error', { message: 'Card payments are not enabled for this invoice.' });
+    }
     const domain = req.tenant?.domain ? `https://${req.tenant.domain}` : config.DOMAIN;
     const session = await createCheckoutSession(
       invoice,
@@ -90,6 +96,9 @@ router.post('/:token/paypal', async (req, res) => {
   try {
     const { invoice, clientDoc, error } = await findPayableInvoice(req, req.params.token);
     if (error) return res.status(400).render('pay-error', { message: 'This invoice cannot be paid.' });
+    if ((req.tenant?.public?.paymentProvider || 'both') === 'stripe') {
+      return res.status(400).render('pay-error', { message: 'PayPal is not enabled for this invoice.' });
+    }
     const domain = req.tenant?.domain ? `https://${req.tenant.domain}` : config.DOMAIN;
     const order = await createOrder(
       invoice,
@@ -122,17 +131,10 @@ router.get('/:token/success', async (req, res) => {
       try {
         const capture = await captureOrder(req.query.token, req.tenant);
         const captureId = capture.purchase_units?.[0]?.payments?.captures?.[0]?.id || req.query.token;
-        // Record payment (idempotent)
-        const alreadyRecorded = invoice.payments?.some(p => p.transactionId === captureId);
-        if (!alreadyRecorded) {
-          await db.collection('invoices').updateOne(
-            { _id: invoice._id },
-            {
-              $set: { status: 'paid', updatedAt: new Date() },
-              $push: { payments: { provider: 'paypal', transactionId: captureId, amount: invoice.amount, paidAt: new Date() } },
-            }
-          );
-        }
+        // Record payment + email receipt (idempotent — webhook may also fire)
+        await recordPaymentAndReceipt(db, invoice, {
+          provider: 'paypal', transactionId: captureId, amount: invoice.amount, paidAt: new Date(),
+        }, req.tenant);
       } catch (captureErr) {
         console.error('PayPal capture error:', captureErr);
       }
@@ -146,16 +148,10 @@ router.get('/:token/success', async (req, res) => {
         if (stripe) {
           const session = await stripe.checkout.sessions.retrieve(req.query.session_id);
           if (session.payment_status === 'paid') {
-            const alreadyRecorded = invoice.payments?.some(p => p.transactionId === session.id);
-            if (!alreadyRecorded) {
-              await db.collection('invoices').updateOne(
-                { _id: invoice._id },
-                {
-                  $set: { status: 'paid', updatedAt: new Date() },
-                  $push: { payments: { provider: 'stripe', transactionId: session.id, amount: invoice.amount, paidAt: new Date() } },
-                }
-              );
-            }
+            // Record payment + email receipt (idempotent — webhook may also fire)
+            await recordPaymentAndReceipt(db, invoice, {
+              provider: 'stripe', transactionId: session.id, amount: invoice.amount, paidAt: new Date(),
+            }, req.tenant);
           }
         }
       } catch (stripeErr) {
@@ -166,6 +162,41 @@ router.get('/:token/success', async (req, res) => {
     res.render('pay-success', { inv: invoice, cl: clientDoc });
   } catch (err) {
     console.error('Success page error:', err);
+    res.status(500).render('pay-error', { message: 'Something went wrong.' });
+  }
+});
+
+// ── Payee-facing printable receipt ──
+// Available only once the invoice is paid. Linked from the paid-invoice page and
+// the success page so the client can print or save a PDF of their receipt.
+router.get('/:token/receipt', async (req, res) => {
+  try {
+    const db = req.db;
+    const invoice = await db.collection('invoices').findOne({ paymentToken: req.params.token });
+    if (!invoice) return res.status(404).render('pay-error', { message: 'Receipt not found.' });
+    if (invoice.status !== 'paid') {
+      return res.status(400).render('pay-error', { message: 'No receipt yet — this invoice has not been paid.' });
+    }
+    const clientDoc = await db.collection('clients').findOne({ _id: new ObjectId(invoice.clientId) });
+    const payment = (invoice.payments || [])[invoice.payments.length - 1] || null;
+    const paidDate = payment?.paidAt ? new Date(payment.paidAt) : (invoice.updatedAt ? new Date(invoice.updatedAt) : new Date());
+    const txnId = payment?.transactionId || null;
+    // Stable, human receipt number derived from the invoice + transaction tail.
+    const tail = txnId ? txnId.slice(-6).toUpperCase() : invoice._id.toString().slice(-6).toUpperCase();
+    const methodLabel = payment?.provider === 'paypal' ? 'PayPal'
+      : payment?.provider === 'stripe' ? 'Credit / Debit Card'
+      : (payment?.method || 'Card');
+    res.render('receipt', {
+      inv: invoice,
+      cl: clientDoc,
+      receiptNumber: `RCT-${invoice.invoiceNumber || tail}`,
+      amountPaid: Number(payment?.amount ?? invoice.amount),
+      paidOn: paidDate.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
+      methodLabel,
+      transactionId: txnId,
+    });
+  } catch (err) {
+    console.error('Receipt page error:', err);
     res.status(500).render('pay-error', { message: 'Something went wrong.' });
   }
 });

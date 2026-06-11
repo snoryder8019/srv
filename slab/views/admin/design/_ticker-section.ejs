@@ -1,5 +1,5 @@
 <%# ─── TICKER / MARQUEE ─── %>
-<div class="editor-section" data-tab="design">
+<div class="editor-section" data-tab="design" id="tickerSection">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Ticker / Marquee <span class="arrow">&#9654;</span>
   </button>
@@ -8,6 +8,113 @@
     <div class="ep-hint" style="margin-bottom:10px;padding:8px 12px;background:rgba(28,43,74,0.04);border-left:3px solid var(--navy-mid);border-radius:2px;font-size:0.7rem;line-height:1.5;">
       <strong>Scope:</strong> these settings drive the global ticker shown by the Standard Layout. When a Slab Template is activated, its own ticker block(s) take over and these settings are bypassed.
     </div>
+
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Shape / Vector</label>
+        <% const _tshape = design.ticker_shape || 'straight'; %>
+        <select name="ticker_shape" id="field-ticker_shape">
+          <option value="straight" <%= _tshape === 'straight' ? 'selected' : '' %>>Straight (flat scroll)</option>
+          <option value="diagonal" <%= _tshape === 'diagonal' ? 'selected' : '' %>>Diagonal (angled vector)</option>
+          <option value="arc"      <%= _tshape === 'arc'      ? 'selected' : '' %>>Arc (curved path)</option>
+        </select>
+        <div class="ep-hint">Diagonal tilts the bar; Arc bends the text along a curved SVG path (barbershop-sign style).</div>
+      </div>
+    </div>
+
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Diagonal Angle (<span class="t-val"><%= design.ticker_angle || '-4' %></span>&deg;)</label>
+        <input type="range" name="ticker_angle" min="-20" max="20" step="1" value="<%= design.ticker_angle || '-4' %>" style="width:100%;" oninput="this.closest('.ep-field').querySelector('.t-val').textContent=this.value">
+        <div class="ep-hint">Used when Shape = Diagonal.</div>
+      </div>
+      <div class="ep-field">
+        <label>Arc Curve (<span class="t-val"><%= design.ticker_arc_height || '40' %></span>px)</label>
+        <input type="range" name="ticker_arc_height" min="0" max="120" step="2" value="<%= design.ticker_arc_height || '40' %>" style="width:100%;" oninput="this.closest('.ep-field').querySelector('.t-val').textContent=this.value">
+        <div class="ep-hint">Curve rise/sag. Used when Shape = Arc.</div>
+      </div>
+    </div>
+
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Treatment</label>
+        <% const _ttreat = design.ticker_treatment || 'bar'; %>
+        <select name="ticker_treatment" id="field-ticker_treatment">
+          <option value="bar"      <%= _ttreat === 'bar'      ? 'selected' : '' %>>Flat bar (default)</option>
+          <option value="parallax" <%= _ttreat === 'parallax' ? 'selected' : '' %>>Parallax band (layered)</option>
+        </select>
+        <div class="ep-hint">Parallax band = background image, big floating marquee typeface, and a copy card — all scrolling at different speeds.</div>
+      </div>
+    </div>
+
+    <%# ── Parallax band settings (image z1 / typeface z2 / copy z3) ── %>
+    <div id="parallaxBand" style="border:1px solid var(--border);border-radius:2px;padding:10px 12px;margin-bottom:12px;background:var(--surface);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+        <label style="font-size:0.7rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--on-surface);margin:0;">Parallax Band — Background</label>
+        <div style="display:flex;gap:6px;">
+          <button type="button" id="mqxPickImage" style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:5px 10px;border:1px solid var(--border);border-radius:2px;background:var(--ivory);color:var(--navy);cursor:pointer;font-family:var(--font-body);">Pick Image</button>
+          <button type="button" id="mqxClearImage" style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:5px 10px;border:1px solid var(--border);border-radius:2px;background:var(--ivory);color:#8B1C1C;cursor:pointer;font-family:var(--font-body);<%= design.ticker_parallax_image ? '' : 'display:none;' %>">Clear</button>
+        </div>
+      </div>
+      <input type="hidden" name="ticker_parallax_image" id="field-ticker_parallax_image" value="<%= design.ticker_parallax_image || '' %>">
+      <div id="mqxPreview" style="<%= design.ticker_parallax_image ? '' : 'display:none;' %>border:1px solid var(--border);border-radius:2px;overflow:hidden;background:#000;aspect-ratio:16/9;">
+        <% if (design.ticker_parallax_image) { %><img src="<%= design.ticker_parallax_image %>" alt="Parallax background" style="width:100%;height:100%;object-fit:cover;"><% } %>
+      </div>
+      <div class="ep-hint" style="margin-top:8px;">Empty = falls back to the Hero full background image.</div>
+    </div>
+
+    <div class="ep-row-3">
+      <div class="ep-field">
+        <label>Band Height</label>
+        <input type="text" name="ticker_parallax_height" value="<%= design.ticker_parallax_height || '70vh' %>" placeholder="70vh">
+      </div>
+      <div class="ep-field">
+        <label>Overlay (<span class="t-val"><%= design.ticker_parallax_overlay || '45' %></span>%)</label>
+        <input type="range" name="ticker_parallax_overlay" min="0" max="90" value="<%= design.ticker_parallax_overlay || '45' %>" style="width:100%;" oninput="this.closest('.ep-field').querySelector('.t-val').textContent=this.value">
+      </div>
+      <div class="ep-field">
+        <label>Typeface Size (<span class="t-val"><%= design.ticker_band_font_size || '5' %></span>rem)</label>
+        <input type="range" name="ticker_band_font_size" min="2" max="12" step="0.5" value="<%= design.ticker_band_font_size || '5' %>" style="width:100%;" oninput="this.closest('.ep-field').querySelector('.t-val').textContent=this.value">
+      </div>
+    </div>
+
+    <div class="ep-field">
+      <label>Band Copy — Heading</label>
+      <input type="text" name="ticker_band_heading" value="<%= (typeof copy !== 'undefined' && copy.ticker_band_heading) || '' %>" placeholder="Built to last.">
+    </div>
+    <div class="ep-row">
+      <div class="ep-field">
+        <label>Band Copy — Text</label>
+        <textarea name="ticker_band_text" rows="2"><%= (typeof copy !== 'undefined' && copy.ticker_band_text) || '' %></textarea>
+      </div>
+      <div class="ep-field">
+        <label>Band CTA</label>
+        <input type="text" name="ticker_band_cta" value="<%= (typeof copy !== 'undefined' && copy.ticker_band_cta) || '' %>" placeholder="Get a quote">
+        <label style="margin-top:8px;">CTA Link</label>
+        <input type="text" name="ticker_band_cta_link" value="<%= (typeof copy !== 'undefined' && copy.ticker_band_cta_link) || '' %>" placeholder="#contact">
+      </div>
+    </div>
+
+    <script>
+    (function () {
+      var f = document.getElementById('field-ticker_parallax_image');
+      var prev = document.getElementById('mqxPreview');
+      var pick = document.getElementById('mqxPickImage');
+      var clr = document.getElementById('mqxClearImage');
+      if (!f || !pick) return;
+      function render() {
+        if (f.value) { prev.style.display = ''; prev.innerHTML = '<img src="' + f.value + '" alt="" style="width:100%;height:100%;object-fit:cover;">'; clr.style.display = ''; }
+        else { prev.style.display = 'none'; prev.innerHTML = ''; clr.style.display = 'none'; }
+      }
+      function save() { return fetch('/admin/design/key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'ticker_parallax_image', value: f.value }) }); }
+      pick.addEventListener('click', function () {
+        if (typeof window.openAssetPicker !== 'function') { alert('Asset picker not loaded'); return; }
+        window.openAssetPicker({ type: 'image', onSelect: function (a) { f.value = a.publicUrl || ''; render(); save().then(function () { var fr = document.getElementById('previewFrame'); if (fr) fr.src = '/?t=' + Date.now(); }); } });
+      });
+      clr.addEventListener('click', function () { f.value = ''; render(); save().then(function () { var fr = document.getElementById('previewFrame'); if (fr) fr.src = '/?t=' + Date.now(); }); });
+      render();
+    })();
+    </script>
 
     <div class="ep-field">
       <label>Ticker Items (pipe-separated)</label>
@@ -47,8 +154,8 @@
         </select>
       </div>
       <div class="ep-field">
-        <label>Speed (<%= design.ticker_speed || '22' %>s per loop)</label>
-        <input type="range" name="ticker_speed" min="6" max="80" value="<%= design.ticker_speed || '22' %>" style="width:100%;">
+        <label>Speed (<span class="t-val"><%= design.ticker_speed || '22' %></span>s per loop)</label>
+        <input type="range" name="ticker_speed" min="6" max="80" value="<%= design.ticker_speed || '22' %>" style="width:100%;" oninput="this.closest('.ep-field').querySelector('.t-val').textContent=this.value">
         <div class="ep-hint">Lower = faster</div>
       </div>
     </div>
@@ -80,23 +187,23 @@
 
     <div class="ep-row-3">
       <div class="ep-field">
-        <label>Font Size (<%= design.ticker_font_size || '0.72' %>rem)</label>
-        <input type="range" name="ticker_font_size" min="0.5" max="1.6" step="0.02" value="<%= design.ticker_font_size || '0.72' %>" style="width:100%;">
+        <label>Font Size (<span class="t-val"><%= design.ticker_font_size || '0.72' %></span>rem)</label>
+        <input type="range" name="ticker_font_size" min="0.5" max="1.6" step="0.02" value="<%= design.ticker_font_size || '0.72' %>" style="width:100%;" oninput="this.closest('.ep-field').querySelector('.t-val').textContent=this.value">
       </div>
       <div class="ep-field">
-        <label>Padding (<%= design.ticker_padding || '14' %>px)</label>
-        <input type="range" name="ticker_padding" min="4" max="40" value="<%= design.ticker_padding || '14' %>" style="width:100%;">
+        <label>Padding (<span class="t-val"><%= design.ticker_padding || '14' %></span>px)</label>
+        <input type="range" name="ticker_padding" min="4" max="40" value="<%= design.ticker_padding || '14' %>" style="width:100%;" oninput="this.closest('.ep-field').querySelector('.t-val').textContent=this.value">
       </div>
       <div class="ep-field">
-        <label>Item Gap (<%= design.ticker_item_gap || '32' %>px)</label>
-        <input type="range" name="ticker_item_gap" min="8" max="80" value="<%= design.ticker_item_gap || '32' %>" style="width:100%;">
+        <label>Item Gap (<span class="t-val"><%= design.ticker_item_gap || '32' %></span>px)</label>
+        <input type="range" name="ticker_item_gap" min="8" max="80" value="<%= design.ticker_item_gap || '32' %>" style="width:100%;" oninput="this.closest('.ep-field').querySelector('.t-val').textContent=this.value">
       </div>
     </div>
 
     <div class="ep-row">
       <div class="ep-field">
-        <label>Letter Spacing (<%= design.ticker_letter_spacing || '0.2' %>em)</label>
-        <input type="range" name="ticker_letter_spacing" min="0" max="0.5" step="0.02" value="<%= design.ticker_letter_spacing || '0.2' %>" style="width:100%;">
+        <label>Letter Spacing (<span class="t-val"><%= design.ticker_letter_spacing || '0.2' %></span>em)</label>
+        <input type="range" name="ticker_letter_spacing" min="0" max="0.5" step="0.02" value="<%= design.ticker_letter_spacing || '0.2' %>" style="width:100%;" oninput="this.closest('.ep-field').querySelector('.t-val').textContent=this.value">
       </div>
       <div class="ep-field">
         <label style="margin-bottom:10px;">&nbsp;</label>
@@ -106,4 +213,50 @@
       </div>
     </div>
   </div>
+
+  <%# ── Ticker live-save: persist each adjustment via /key and refresh the preview ── %>
+  <%# These tokens render server-side into <style> blocks (--ticker-*), so the cssVarMap %>
+  <%# DOM-patch path can't reach them — a save + iframe reload is what makes them take effect. %>
+  <script>
+  (function () {
+    var sec = document.getElementById('tickerSection');
+    if (!sec) return;
+    // Band heading/text/cta live in the COPY collection (saved on "Save All"), not design —
+    // /admin/design/key rejects them, so exclude from the per-key save path.
+    var COPY_FIELDS = { ticker_band_heading: 1, ticker_band_text: 1, ticker_band_cta: 1, ticker_band_cta_link: 1 };
+    var timer;
+    // Look the frame up at call time — this script runs inline before the
+    // #previewFrame iframe is parsed further down the page.
+    function reload() {
+      var frame = document.getElementById('previewFrame');
+      if (frame) frame.src = '/?t=' + Date.now();
+    }
+    function persist(el) {
+      var key = el.name;
+      if (!key || COPY_FIELDS[key]) return;
+      var value = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value;
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        fetch('/admin/design/key', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: key, value: value })
+        }).then(reload);
+      }, 250);
+    }
+    // Every named ticker control saves + reloads on change.
+    sec.querySelectorAll('[name^="ticker_"]').forEach(function (el) {
+      // The hidden parallax-image input is driven by its own picker script.
+      if (el.id === 'field-ticker_parallax_image') return;
+      el.addEventListener('change', function () { persist(el); });
+    });
+    // Color pickers mirror their hex into the named text input but don't dispatch its
+    // change event, so wire the picker directly to persist the sibling text field.
+    sec.querySelectorAll('input[type="color"]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        var txt = c.nextElementSibling;
+        if (txt && txt.name) persist(txt);
+      });
+    });
+  })();
+  </script>
 </div>

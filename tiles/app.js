@@ -73,6 +73,38 @@ app.post('/dev/cam', (req, res) => {
   res.json({ ok: true });
 });
 
+// --- per-game opening camera (persisted; applied at table entry) ---
+// The 3D debug cog's SAVE ANGLE posts here; createTable3D() reads it on entry and
+// snaps to the saved framing so every player opens on the locked-in angle. One
+// JSON file keyed by lowercase game slug, mirroring the scene-backgrounds pattern.
+const CAM_FILE = path.join(__dirname, 'config', 'cameras.json');
+function readCameras() {
+  try { return JSON.parse(readFileSync(CAM_FILE, 'utf8')); } catch (e) { return {}; }
+}
+
+// Public read: the 3D table fetches this at entry. Returns null camera if unset.
+app.get('/scene/camera/:game', (req, res) => {
+  const cams = readCameras();
+  const cam = cams[String(req.params.game).toLowerCase()] || null;
+  res.json({ ok: true, game: String(req.params.game).toLowerCase(), camera: cam });
+});
+
+// Admin/loopback save (same gate as /dev/table): upsert this game's opening framing.
+app.post('/dev/camera/:game', (req, res) => {
+  if (!devAllowed(req)) return res.status(403).json({ error: 'forbidden' });
+  const { start, target } = req.body || {};
+  if (!start || !target) return res.status(400).json({ error: 'start and target required' });
+  const key = String(req.params.game).toLowerCase();
+  const cams = readCameras();
+  cams[key] = { start, target, at: new Date().toISOString() };
+  try {
+    writeFileSync(CAM_FILE, JSON.stringify(cams, null, 2));
+    appendFileSync(path.join(__dirname, 'camlog.txt'),
+      JSON.stringify({ at: cams[key].at, game: key, start, target }) + '\n');
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+  res.json({ ok: true, game: key, camera: cams[key] });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     ok: true, service: 'tiles-platform',

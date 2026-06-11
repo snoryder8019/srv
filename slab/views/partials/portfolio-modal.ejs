@@ -21,6 +21,7 @@
       </div>
       <p class="pf-desc" id="pfDesc"></p>
       <div class="pf-tags" id="pfTags"></div>
+      <a class="pf-link" id="pfLink" href="#" target="_blank" rel="noopener" style="display:none;"></a>
       <div class="pf-caption" id="pfCaption"></div>
     </div>
   </div>
@@ -73,6 +74,18 @@
 .pf-desc { font-size:0.9rem;color:rgba(253,252,250,0.78);line-height:1.7;margin-bottom:16px;white-space:pre-wrap; }
 .pf-tags { display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px; }
 .pf-tag { font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(201,168,72,0.85);border:1px solid rgba(201,168,72,0.3);padding:3px 9px;border-radius:2px; }
+.pf-link {
+  display:inline-flex;align-items:center;gap:7px;align-self:flex-start;
+  margin-bottom:14px;padding:9px 18px;
+  background:#C9A848;color:#0F1B30;text-decoration:none;
+  font-size:0.74rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;
+  border-radius:2px;transition:background 0.15s, transform 0.15s;
+}
+.pf-link:hover { background:#d8ba5e;transform:translateY(-1px); }
+.pf-link::after { content:'↗';font-size:0.85rem; }
+.pf-link.is-internal::after { content:'→'; }
+.pf-desc a { color:#C9A848;text-decoration:underline;text-underline-offset:2px; }
+.pf-desc a:hover { color:#d8ba5e; }
 .pf-caption { font-size:0.78rem;color:rgba(253,252,250,0.6);font-style:italic;border-top:1px solid rgba(253,252,250,0.08);padding-top:12px;min-height:1em; }
 .pf-card-clickable { cursor:pointer;transition:transform 0.18s ease, box-shadow 0.18s ease; }
 .pf-card-clickable:hover { transform:translateY(-2px); }
@@ -90,6 +103,8 @@
     clientName: p.clientName || '',
     projectDate: (p.showDate && p.projectDate) ? p.projectDate : null,
     tags: p.tags || [],
+    linkUrl: p.linkUrl || '',
+    linkLabel: p.linkLabel || '',
     gallery: (p.gallery && p.gallery.length) ? p.gallery : (p.imageUrl ? [{url: p.imageUrl, caption: ''}] : []),
   }))) %>;
 
@@ -107,6 +122,22 @@
   function fmtDate(d) {
     if (!d) return '';
     try { return new Date(d).toLocaleDateString('en-US', {month:'long', year:'numeric'}); } catch { return ''; }
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Escape description, then turn URLs and internal /paths into clickable links.
+  function linkifyDesc(text) {
+    let html = esc(text || '');
+    // Full URLs
+    html = html.replace(/\b(https?:\/\/[^\s<]+[^\s<.,;:!?)])/g,
+      '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    // Internal paths like /services (not part of a URL already linked)
+    html = html.replace(/(^|[\s(])(\/[A-Za-z0-9][A-Za-z0-9\-/_]*)/g,
+      '$1<a href="$2">$2</a>');
+    return html;
   }
 
   function renderSlide() {
@@ -133,7 +164,20 @@
     document.getElementById('pfModalTitle').textContent = item.title || '';
     document.getElementById('pfClient').textContent = item.clientName || '';
     document.getElementById('pfDate').textContent = fmtDate(item.projectDate);
-    document.getElementById('pfDesc').textContent = item.description || '';
+    document.getElementById('pfDesc').innerHTML = linkifyDesc(item.description || '');
+
+    const linkEl = document.getElementById('pfLink');
+    if (item.linkUrl) {
+      const internal = item.linkUrl.charAt(0) === '/';
+      linkEl.href = item.linkUrl;
+      linkEl.textContent = item.linkLabel || 'Visit Project';
+      linkEl.classList.toggle('is-internal', internal);
+      if (internal) { linkEl.removeAttribute('target'); linkEl.removeAttribute('rel'); }
+      else { linkEl.target = '_blank'; linkEl.rel = 'noopener'; }
+      linkEl.style.display = 'inline-flex';
+    } else {
+      linkEl.style.display = 'none';
+    }
 
     const tagsEl = document.getElementById('pfTags');
     tagsEl.innerHTML = '';

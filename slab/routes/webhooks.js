@@ -2,7 +2,9 @@ import express from 'express';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../plugins/mongo.js';
 import { getStripe } from '../plugins/stripe.js';
+import { recordPaymentAndReceipt } from '../plugins/paymentReceipts.js';
 import { config } from '../config/config.js';
+import { META_VERIFY_TOKEN, verifyMetaSignature, handleMetaEvent } from '../plugins/socialActivity.js';
 
 const router = express.Router();
 
@@ -31,25 +33,14 @@ router.post('/stripe', async (req, res) => {
         const db = req.db;
         const invoice = await db.collection('invoices').findOne({ _id: new ObjectId(invoiceId) });
         if (invoice) {
-          const alreadyRecorded = invoice.payments?.some(p => p.transactionId === session.id);
-          if (!alreadyRecorded) {
-            await db.collection('invoices').updateOne(
-              { _id: invoice._id },
-              {
-                $set: { status: 'paid', updatedAt: new Date() },
-                $push: {
-                  payments: {
-                    provider: 'stripe',
-                    transactionId: session.id,
-                    amount: (session.amount_total || 0) / 100,
-                    paidAt: new Date(),
-                    raw: { paymentIntent: session.payment_intent, customerEmail: session.customer_email },
-                  },
-                },
-              }
-            );
-            console.log(`[Stripe] Invoice ${invoice.invoiceNumber} marked paid via webhook`);
-          }
+          const recorded = await recordPaymentAndReceipt(db, invoice, {
+            provider: 'stripe',
+            transactionId: session.id,
+            amount: (session.amount_total || 0) / 100,
+            paidAt: new Date(),
+            raw: { paymentIntent: session.payment_intent, customerEmail: session.customer_email },
+          }, req.tenant);
+          if (recorded) console.log(`[Stripe] Invoice ${invoice.invoiceNumber} marked paid + receipt sent via webhook`);
         }
       } catch (dbErr) {
         console.error('Stripe webhook DB error:', dbErr);
@@ -77,24 +68,13 @@ router.post('/paypal', async (req, res) => {
         const invoice = await db.collection('invoices').findOne({ _id: new ObjectId(customId) });
         if (invoice) {
           const txnId = resource.id || event.id;
-          const alreadyRecorded = invoice.payments?.some(p => p.transactionId === txnId);
-          if (!alreadyRecorded) {
-            await db.collection('invoices').updateOne(
-              { _id: invoice._id },
-              {
-                $set: { status: 'paid', updatedAt: new Date() },
-                $push: {
-                  payments: {
-                    provider: 'paypal',
-                    transactionId: txnId,
-                    amount: parseFloat(resource.amount?.value || invoice.amount),
-                    paidAt: new Date(),
-                  },
-                },
-              }
-            );
-            console.log(`[PayPal] Invoice ${invoice.invoiceNumber} marked paid via webhook`);
-          }
+          const recorded = await recordPaymentAndReceipt(db, invoice, {
+            provider: 'paypal',
+            transactionId: txnId,
+            amount: parseFloat(resource.amount?.value || invoice.amount),
+            paidAt: new Date(),
+          }, req.tenant);
+          if (recorded) console.log(`[PayPal] Invoice ${invoice.invoiceNumber} marked paid + receipt sent via webhook`);
         }
       }
     } catch (err) {
@@ -103,6 +83,29 @@ router.post('/paypal', async (req, res) => {
   }
 
   res.status(200).send('OK');
+});
+
+
+// ── Meta (Facebook/Instagram) Webhooks — comments, mentions, messages, leadgen ──
+// GET verifies the subscription; POST receives events (raw body for signature).
+router.get('/meta', (req, res) => {
+  if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === META_VERIFY_TOKEN) {
+    return res.status(200).send(req.query['hub.challenge']);
+  }
+  return res.sendStatus(403);
+});
+
+router.post('/meta', async (req, res) => {
+  try {
+    const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+    if (!verifyMetaSignature(raw, req.headers['x-hub-signature-256'])) return res.sendStatus(403);
+        res.sendStatus(200); // ack fast, then process
+    const body = JSON.parse(raw.toString('utf8') || '{}');
+    handleMetaEvent(body).catch(e => console.error('[meta webhook] process:', e.message));
+  } catch (e) {
+    console.error('[meta webhook]', e.message);
+    try { res.sendStatus(200); } catch {}
+  }
 });
 
 export default router;

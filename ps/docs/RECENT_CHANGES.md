@@ -1,6 +1,23 @@
 # Recent Changes Summary
 
-Generated: 2026-06-03T07:30:00.022Z
+Generated: 2026-06-11T07:30:00.019Z
+
+---
+
+## Commit: HUGE ARCAGE AND GAMES UPDATE +v0.55.0 on  games.madladslab.com
+
+- **Hash:** `5496e1d`
+- **Author:** Scott
+- **Date:** 6/3/2026
+- **Changes:** 877 files, +105775/-1687 lines
+
+### Modified Areas:
+
+**Frontend:** 54 files
+**Backend:** 105 files
+**Views:** 55 files
+**Scripts:** 120 files
+**Documentation:** 21 files
 
 ---
 
@@ -53,22 +70,6 @@ Generated: 2026-06-03T07:30:00.022Z
 
 **Backend:** 2 files
 **Documentation:** 1 files
-
----
-
-## Commit: revised landings for opsT and grafTV, slab updates to tickets and /book design +0.0.2 slab
-
-- **Hash:** `18f03f3`
-- **Author:** Scott
-- **Date:** 5/20/2026
-- **Changes:** 64 files, +29152/-1103 lines
-
-### Modified Areas:
-
-**Backend:** 9 files
-**Views:** 32 files
-**Scripts:** 2 files
-**Documentation:** 3 files
 
 ---
 

@@ -4,7 +4,7 @@ import nodemailer from 'nodemailer';
 import { ObjectId } from 'mongodb';
 import { getDb, getSlabDb } from '../../plugins/mongo.js';
 import { config } from '../../config/config.js';
-import { sendClientEmail } from '../../plugins/mailer.js';
+import { sendClientEmail, resolveSmtp, getTenantTransporter } from '../../plugins/mailer.js';
 import { s3Client, BUCKET } from '../../plugins/s3.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 
@@ -405,14 +405,12 @@ router.post('/booking/:id/status', express.json(), async (req, res) => {
 
       // ── Send invite email with .ics attachment ─────────────────────────
       try {
-        const tenantRecord = req.tenant?._id
-          ? await getSlabDb().collection('tenants').findOne({ _id: req.tenant._id })
-          : null;
-        const zohoUser = tenantRecord?.secrets?.zohoUser || tenantRecord?.public?.zohoUser;
-        const zohoPass = tenantRecord?.secrets?.zohoPass;
+        const smtp = resolveSmtp(req.tenant);
+        const zohoUser = smtp.user;
+        const configured = smtp.authMode === 'oauth' ? !!smtp.user : !!(smtp.user && smtp.pass);
 
-        if (!zohoUser || !zohoPass) {
-          inviteError = 'Email not configured — add Zoho credentials in Settings before confirming bookings.';
+        if (!configured) {
+          inviteError = 'Email not configured — add your email provider credentials in Settings before confirming bookings.';
         } else {
           const meetingUrl = `${domain}/meeting/${meetingDoc.token}`;
           const dateStr = startAt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -432,11 +430,7 @@ router.post('/booking/:id/status', express.json(), async (req, res) => {
             attendeeEmail: booking.email,
           });
 
-          const transporter = nodemailer.createTransport({
-            host: 'smtppro.zoho.com', port: 465, secure: true,
-            authMethod: 'LOGIN',
-            auth: { user: zohoUser, pass: zohoPass },
-          });
+          const transporter = await getTenantTransporter(req.tenant);
 
           const html = `
 <!DOCTYPE html>

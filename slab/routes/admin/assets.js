@@ -10,6 +10,7 @@ import { callLLM, webSearch, tryParseAgentResponse, runTool, generateSdImage, re
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { wouldExceedQuota, getQuotaLabel } from '../../plugins/storage.js';
 import { PACKS, getPack, fileUrl, listingUrl } from '../../data/asset-packs.js';
+import { generateThumbnail, deriveThumbKey } from '../../plugins/thumbnails.js';
 
 const router = express.Router();
 
@@ -40,6 +41,51 @@ async function uploadToLinode(buffer, folder, originalName, mimeType, s3Prefix) 
   }), { abortSignal: AbortSignal.timeout(60000) });
 
   return { key, url: bucketUrl(key), filename };
+}
+
+// Generate a thumbnail from an image buffer and upload it next to the original.
+// Returns { thumbKey, thumbUrl } or null (non-raster, generation/upload failure).
+async function uploadThumbnail(imageBuffer, bucketKey) {
+  const thumb = await generateThumbnail(imageBuffer);
+  if (!thumb) return null;
+  const thumbKey = deriveThumbKey(bucketKey);
+  await s3Client.send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: thumbKey,
+    Body: thumb.buffer,
+    ContentType: thumb.contentType,
+    ACL: 'public-read',
+  }), { abortSignal: AbortSignal.timeout(60000) });
+  return { thumbKey, thumbUrl: bucketUrl(thumbKey) };
+}
+
+// Best-effort: generate+upload a thumbnail, swallowing errors so a thumb
+// failure never blocks an upload. Returns { thumbUrl, thumbKey } | {}.
+async function tryThumb(imageBuffer, bucketKey) {
+  try {
+    const t = await uploadThumbnail(imageBuffer, bucketKey);
+    if (t) return t;
+  } catch (e) {
+    console.warn('Thumbnail generation failed for', bucketKey, '-', e.message);
+  }
+  return {};
+}
+
+// Delete an asset's thumbnail from S3 if present (best-effort).
+async function deleteThumb(asset) {
+  const key = asset?.thumbKey;
+  if (!key || !config.LINODE_KEY) return;
+  try {
+    await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+  } catch (e) {
+    console.warn('S3 thumb delete warning:', e.message);
+  }
+}
+
+async function streamToBuffer(stream) {
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return Buffer.concat(chunks);
 }
 
 // GET /admin/assets
@@ -270,6 +316,15 @@ async function renderLayersToPng(design) {
   for (const layer of layers) {
     ctx.save();
     ctx.globalAlpha = layer.opacity ?? 1;
+
+    // Rotation — rotate around the layer's centre (matches the client editor)
+    if (layer.rotation) {
+      const cx = (layer.x || 0) + (layer.w || 0) / 2;
+      const cy = (layer.y || 0) + (layer.h || 0) / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate(layer.rotation * Math.PI / 180);
+      ctx.translate(-cx, -cy);
+    }
 
     if (layer.type === 'rect') {
       const r = layer.radius || 0;
@@ -786,6 +841,7 @@ router.delete('/folders/:id', async (req, res) => {
           console.warn('S3 folder-delete warning:', s3Err.message);
         }
       }
+      await deleteThumb(asset);
     }
     // Delete solo assets from DB
     const soloIds = allSoloAssets.map(a => a._id);
@@ -941,6 +997,64 @@ router.get('/list', async (req, res) => {
   }
 });
 
+// Query matching image assets that still need a thumbnail (and haven't permanently failed).
+const NEEDS_THUMB = {
+  fileType: 'image',
+  bucketKey: { $exists: true, $ne: null },
+  thumbSkipped: { $ne: true },
+  $or: [{ thumbUrl: { $exists: false } }, { thumbUrl: null }],
+};
+
+// GET /admin/assets/thumbnails/status — how many images still need thumbnails
+router.get('/thumbnails/status', async (req, res) => {
+  try {
+    const db = req.db;
+    const [remaining, totalImages] = await Promise.all([
+      db.collection('assets').countDocuments(NEEDS_THUMB),
+      db.collection('assets').countDocuments({ fileType: 'image' }),
+    ]);
+    res.json({ remaining, totalImages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/assets/thumbnails/backfill — generate thumbnails for a batch of
+// existing images. Client calls repeatedly until `remaining` reaches 0.
+router.post('/thumbnails/backfill', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    if (!config.LINODE_KEY) return res.status(500).json({ error: 'S3 storage not configured' });
+    const batch = Math.min(Math.max(Number(req.body?.limit) || 20, 1), 50);
+
+    const assets = await db.collection('assets').find(NEEDS_THUMB).limit(batch).toArray();
+    let processed = 0, skipped = 0;
+    for (const a of assets) {
+      try {
+        const obj = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET, Key: a.bucketKey }));
+        const buf = await streamToBuffer(obj.Body);
+        const t = await uploadThumbnail(buf, a.bucketKey);
+        if (t) {
+          await db.collection('assets').updateOne({ _id: a._id }, { $set: { thumbUrl: t.thumbUrl, thumbKey: t.thumbKey } });
+          processed++;
+        } else {
+          // Can't rasterise (e.g. odd format) — mark so we don't retry forever; grid falls back to original.
+          await db.collection('assets').updateOne({ _id: a._id }, { $set: { thumbSkipped: true } });
+          skipped++;
+        }
+      } catch (e) {
+        console.warn('Backfill thumb failed for', String(a._id), '-', e.message);
+        await db.collection('assets').updateOne({ _id: a._id }, { $set: { thumbSkipped: true } });
+        skipped++;
+      }
+    }
+    const remaining = await db.collection('assets').countDocuments(NEEDS_THUMB);
+    res.json({ success: true, processed, skipped, remaining });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /admin/assets/:id/download — stream the asset with attachment headers
 router.get('/:id/download', async (req, res) => {
   try {
@@ -989,6 +1103,7 @@ router.post('/upload', assetMem.array('files', 20), async (req, res) => {
     for (const file of req.files) {
       const fileType = file.mimetype.startsWith('video/') ? 'video' : 'image';
       const { key, url, filename } = await uploadToLinode(file.buffer, folder, file.originalname, file.mimetype, req.tenant?.s3Prefix);
+      const { thumbUrl = null, thumbKey = null } = fileType === 'image' ? await tryThumb(file.buffer, key) : {};
       const doc = {
         filename,
         originalName: file.originalname,
@@ -997,6 +1112,8 @@ router.post('/upload', assetMem.array('files', 20), async (req, res) => {
         clientId,
         publicUrl: url,
         bucketKey: key,
+        thumbUrl,
+        thumbKey,
         fileType,
         mimeType: file.mimetype,
         size: file.size,
@@ -1139,6 +1256,7 @@ router.post('/bulk-delete', async (req, res) => {
           console.warn('S3 bulk delete warning:', s3Err.message);
         }
       }
+      await deleteThumb(asset);
     }
 
     await db.collection('assets').deleteMany({ _id: { $in: objectIds } });
@@ -1150,15 +1268,53 @@ router.post('/bulk-delete', async (req, res) => {
 });
 
 // POST /admin/assets/bulk-move — move multiple assets to a folder/client
+// Folder assignment supports two modes:
+//   addFolders: []  → ADD these folders to each asset, preserving its existing
+//                     folder tags (per-image folders are NOT clobbered)
+//   folders: []     → REPLACE each asset's folder set with exactly these
+//   folder: 'slug'  → legacy single-folder replace
 router.post('/bulk-move', async (req, res) => {
   try {
     const db = req.db;
-    const { ids, folder, folders, clientId } = req.body;
+    const { ids, folder, folders, addFolders, clientId } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'No IDs provided' });
 
     const { altText, caption } = req.body;
     const objectIds = ids.map(id => new ObjectId(id));
-    const $set = { updatedAt: new Date() };
+    const filter = { _id: { $in: objectIds } };
+
+    // Shared field updates (client/alt/caption) applied in every mode
+    const common = { updatedAt: new Date() };
+    if (clientId !== undefined) common.clientId = clientId || null;
+    if (altText !== undefined) common.altText = String(altText).slice(0, 250);
+    if (caption !== undefined) common.caption = String(caption).slice(0, 500);
+
+    // Additive mode — union new folders with each doc's existing folders so we
+    // never strip tags an individual image already carries. Uses an aggregation
+    // pipeline update so the union is computed per-document.
+    const adds = Array.isArray(addFolders) ? addFolders.map(f => String(f).trim()).filter(Boolean) : [];
+    if (adds.length) {
+      await db.collection('assets').updateMany(filter, [
+        {
+          $set: {
+            ...common,
+            folders: {
+              $setUnion: [
+                { $ifNull: ['$folders', []] },
+                // fold the legacy single `folder` string in too, if present
+                { $cond: [{ $eq: [{ $type: '$folder' }, 'string'] }, ['$folder'], []] },
+                adds,
+              ],
+            },
+          },
+        },
+        { $set: { folder: { $ifNull: ['$folder', { $arrayElemAt: ['$folders', 0] }] } } },
+      ]);
+      return res.json({ success: true, updated: ids.length });
+    }
+
+    // Replace mode
+    const $set = { ...common };
     if (folders && Array.isArray(folders) && folders.length) {
       $set.folders = folders;
       $set.folder = folders[0];
@@ -1166,11 +1322,8 @@ router.post('/bulk-move', async (req, res) => {
       $set.folder = folder;
       $set.folders = [folder];
     }
-    if (clientId !== undefined) $set.clientId = clientId || null;
-    if (altText !== undefined) $set.altText = String(altText).slice(0, 250);
-    if (caption !== undefined) $set.caption = String(caption).slice(0, 500);
 
-    await db.collection('assets').updateMany({ _id: { $in: objectIds } }, { $set });
+    await db.collection('assets').updateMany(filter, { $set });
     res.json({ success: true, updated: ids.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1191,6 +1344,7 @@ router.delete('/:id', async (req, res) => {
         console.warn('S3 delete warning:', s3Err.message);
       }
     }
+    await deleteThumb(asset);
 
     await db.collection('assets').deleteOne({ _id: new ObjectId(req.params.id) });
     res.json({ success: true });
@@ -1230,6 +1384,61 @@ router.delete('/:id/share', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+
+// ── ASSET METADATA FOR AGENT SUPPORT ─────────────────────────────────────────
+// Build searchable internal metadata (title, description, tags) from what we
+// already know about an asset — its title, filename, folder, and any SD prompt /
+// caption / seed captured at generation. No vision model is available, so for
+// plain uploads this infers from the title; for generated assets it is rich.
+async function describeAssetDoc(asset) {
+  const ctx = [
+    asset.title && `Title: ${asset.title}`,
+    asset.originalName && `File: ${asset.originalName}`,
+    asset.folder && `Folder: ${asset.folder}`,
+    (asset.tags || []).length && `Tags: ${(asset.tags || []).join(', ')}`,
+    asset.generatedFrom?.prompt && `Image prompt: ${asset.generatedFrom.prompt}`,
+    asset.generatedFrom?.seed && `Seed: ${asset.generatedFrom.seed}`,
+    asset.generatedFrom?.caption && `Caption: ${asset.generatedFrom.caption}`,
+    asset.description && `Existing note: ${asset.description}`,
+  ].filter(Boolean).join('\n');
+  const sys = 'You write concise internal metadata for a design asset library so an AI agent can find the right image later. From the context, output ONLY minified JSON: {"title": "<=6 word label","description":"1-2 sentence description of what the image likely shows and its mood/palette","tags":["lowercase","keywords","mood","palette","subject"]}. No prose, no code fences.';
+  const raw = await callLLM([{ role: 'user', content: ctx || 'No context; generic design asset.' }], sys, 30000);
+  let meta = {};
+  try { meta = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch { meta = {}; }
+  const tags = Array.from(new Set([...(asset.tags || []), ...((meta.tags || []).map(t => String(t).toLowerCase()))])).slice(0, 20);
+  return {
+    metaTitle: (meta.title || asset.title || '').toString().slice(0, 80),
+    description: (meta.description || asset.description || '').toString().slice(0, 400),
+    tags,
+  };
+}
+
+// Describe a single asset
+router.post('/:id/describe', express.json(), async (req, res) => {
+  try {
+    const asset = await req.db.collection('assets').findOne({ _id: new ObjectId(req.params.id) });
+    if (!asset) return res.status(404).json({ success: false, error: 'Not found' });
+    const meta = await describeAssetDoc(asset);
+    await req.db.collection('assets').updateOne({ _id: asset._id }, { $set: { ...meta, aiDescribed: true, describedAt: new Date() } });
+    res.json({ success: true, ...meta });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Backfill metadata for a folder (default: auto) — skips already-described
+router.post('/metadata/backfill', express.json(), async (req, res) => {
+  try {
+    const folder = (req.body?.folder || 'auto').toString();
+    const limit = Math.max(1, Math.min(40, parseInt(req.body?.limit, 10) || 20));
+    const assets = await req.db.collection('assets')
+      .find({ folder, fileType: 'image', aiDescribed: { $ne: true } }).limit(limit).toArray();
+    let done = 0;
+    for (const a of assets) {
+      try { const meta = await describeAssetDoc(a); await req.db.collection('assets').updateOne({ _id: a._id }, { $set: { ...meta, aiDescribed: true, describedAt: new Date() } }); done++; } catch {}
+    }
+    res.json({ success: true, scanned: assets.length, described: done });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 export default router;

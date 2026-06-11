@@ -6,7 +6,7 @@
  * sit beside each box. Boxes play left\u2192right; the owner hits/stands/doubles/
  * splits, then the dealer plays once and every box settles to its owner.
  */
-import { createTable3D } from './table3d.js?v=1780540000000';
+import { createTable3D } from './table3d.js?v=1780587392337';
 import { createTableClient } from './tableclient3d.js?v=1780348653535';
 import { createHUD } from './hud3d.js?v=1780348653535';
 import { buildCard, CARD_W, CARD_H, CARD_T } from './card3d.js?v=1780348653535';
@@ -14,7 +14,7 @@ import { dropStack, seatColor } from './chip3d.js?v=1780348653535';
 import { showResult, renderHistory, makeDeltaTracker } from './casino-fx.js?v=1780570000000';
 import { createBetBar } from './betbar.js?v=1780510000000';
 import { createChipBurst } from './chipburst.js?v=1780520000000';
-import { createAudioBus } from './audiobus.js?v=1780540000000';
+import { createAudioBus } from 'https://games.madladslab.com/shared/js/audiobus.js';
 import { createDealerFx } from './dealerfx.js?v=1780413600000';
 
 const T = createTable3D({

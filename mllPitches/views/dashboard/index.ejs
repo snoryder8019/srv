@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+  <link rel="stylesheet" href="/css/dashboard.css" />
+</head>
+<body class="mll-page lf-dash">
+  <%- include('../partials/header') %>
+
+  <main class="lf-shell">
+    <section class="lf-dashhead">
+      <div class="lf-dashhead__text">
+        <h1>Your pitches</h1>
+        <p class="lf-dashhead__sub">
+          Working pitch apps you can edit, preview, and share with clients.
+        </p>
+      </div>
+      <div class="lf-dashhead__meta">
+        <div class="lf-counter" title="Pitches used vs. your cap">
+          <span class="lf-counter__num"><%= count %></span>
+          <span class="lf-counter__sep">/</span>
+          <span class="lf-counter__cap"><%= isSuper ? 'unlimited' : max %></span>
+          <span class="lf-counter__lbl">pitches</span>
+        </div>
+        <a class="lf-btn lf-btn--ghost" href="/dashboard/settings">Settings</a>
+        <% if (atCap) { %>
+          <span class="lf-newwrap" data-tip="You've reached your <%= max %>-pitch limit — delete one to add another">
+            <span class="lf-btn lf-btn--primary is-disabled" aria-disabled="true">+ New pitch</span>
+          </span>
+        <% } else { %>
+          <a class="lf-btn lf-btn--primary" href="/editor/new">+ New pitch</a>
+        <% } %>
+      </div>
+    </section>
+
+    <% if (!pitches.length) { %>
+      <section class="lf-empty">
+        <div class="lf-empty__art" aria-hidden="true">◣◤</div>
+        <h2>No pitches yet</h2>
+        <p>Spin up your first pitch — a real, working web app you can hand to a client.</p>
+        <a class="lf-btn lf-btn--primary" href="/editor/new">+ Create your first pitch</a>
+      </section>
+    <% } else { %>
+      <section class="lf-grid">
+        <% pitches.forEach((p) => { %>
+          <article class="lf-card">
+            <header class="lf-card__head">
+              <h2 class="lf-card__client"><%= p.client || p.slug %></h2>
+              <span class="lf-badge lf-badge--<%= p.status === 'published' ? 'pub' : 'draft' %>">
+                <%= p.status === 'published' ? 'Published' : 'Draft' %>
+              </span>
+            </header>
+
+            <div class="lf-card__meta">
+              <% if (p.industry) { %><span class="lf-tag"><%= p.industry %></span><% } %>
+              <% if (p.date) { %><span class="lf-card__date"><%= p.date %></span><% } %>
+            </div>
+
+            <p class="lf-card__summary"><%= p.summary || 'No summary yet.' %></p>
+
+            <% if (p.share && p.share.token) { %>
+              <p class="lf-card__share">🔗 Active share link</p>
+            <% } %>
+
+            <footer class="lf-card__actions">
+              <a class="lf-btn lf-btn--sm" href="/editor/<%= p.slug %>">Edit</a>
+              <a class="lf-btn lf-btn--sm lf-btn--ghost" href="/c/<%= p.slug %>" target="_blank" rel="noopener">View</a>
+              <a class="lf-btn lf-btn--sm lf-btn--ghost" href="/share/<%= p.slug %>">Share</a>
+              <form class="lf-card__del" method="post" action="/dashboard/pitch/<%= p.slug %>/delete"
+                    onsubmit="return confirm('Delete &quot;<%= (p.client || p.slug).replace(/"/g, '') %>&quot;? This cannot be undone.');">
+                <button type="submit" class="lf-btn lf-btn--sm lf-btn--danger" aria-label="Delete pitch">Delete</button>
+              </form>
+            </footer>
+          </article>
+        <% }) %>
+      </section>
+    <% } %>
+  </main>
+
+  <%- include('../partials/footer') %>
+</body>
+</html>

@@ -31,6 +31,16 @@ export const DESIGN_DEFAULTS = {
   color_border:        '',              // borders / dividers (auto-computed if empty)
   color_success:       '#15803D',       // success state
   color_danger:        '#8B1C1C',       // error / danger state
+  // ── Head / favicon / tracking / share (global defaults, per-tenant configurable) ──
+  favicon_emoji:       '',
+  gtm_id:              '',
+  head_html:           '',
+  body_end_html:       '',
+  // ── Site / domain ownership verification tokens ──
+  verify_google:       '',
+  verify_bing:         '',
+  verify_pinterest:    '',
+  verify_facebook:     '',
   // ── Homepage source ──
   // 'auto'     → tenant custom EJS if present, else active template, else landing_layout
   // 'layout'   → force standard landing_layout (ignore custom EJS + active template)
@@ -103,22 +113,29 @@ export const DESIGN_DEFAULTS = {
   hero_style:           'split',
   hero_overlay_opacity: '55',          // 0-100, darkness of overlay on hero bg image
   hero_overlay_color:   '',            // hex — defaults to color_primary_deep if empty
-  hero_text_align:      'left',        // left, center, right
+  hero_text_align:      'left',        // left, center, right (horizontal)
+  hero_vpos:            'middle',      // top, middle, bottom — vertical position of overlaid hero text
   hero_height:          '100vh',       // 100vh, 80vh, 60vh, auto
+  hero_heading_size:    '',            // rem override for hero heading (empty = responsive default)
   // ── Slideshow hero ──
   hero_slideshow_interval: '6',        // seconds between auto-advance (0 = manual only)
   hero_slideshow_dots:     'true',     // show dot indicators
   hero_slideshow_arrows:   'true',     // show prev/next arrows
   hero_slideshow_dot_color:'',         // empty → color_accent
+  // When true, one static headline (the main hero copy + CTAs) is overlaid
+  // across the whole slideshow instead of per-slide titles — for tenants who
+  // want image-only slides under a single fixed headline.
+  hero_slideshow_static:   'false',
   // ── Image-card hero (static image + shadow card) ──
   hero_card_position:   'left',        // left, center, right
   hero_card_bg:         '',            // empty → semi-opaque surface
   hero_card_text_color: '',            // empty → on_surface
   hero_card_blur:       '8',           // 0-24 px backdrop blur
   hero_card_shadow:     'true',        // drop shadow on card
-  section_animation:    'fade',        // none, fade, slide
+  section_animation:    'fade',        // none, fade, slide, zoom, flip, stagger, blur
   // ── Scroll-snap layout ──
   snap_enabled:         'false',       // full-page snap scrolling (ACM-style)
+  snap_strictness:      'proximity',   // proximity (gentle) | mandatory (hard lock)
   // ── Industrial/service styling ──
   hero_bg_pattern:      'none',        // none, grid, diagonal, dots — subtle overlay pattern
   // ── Hero full-bleed background override (image or video from tenant assets) ──
@@ -156,6 +173,23 @@ export const DESIGN_DEFAULTS = {
   ticker_uppercase:     'true',        // text-transform: uppercase
   ticker_letter_spacing:'0.2',         // em
   ticker_item_gap:      '32',          // px — gap between items
+  // ── Ticker shape / vector ──
+  ticker_shape:         'straight',    // straight | diagonal | arc (curved SVG path)
+  ticker_angle:         '-4',          // deg — diagonal tilt (only when shape=diagonal)
+  ticker_arc_height:    '40',          // px — curve rise/sag (only when shape=arc)
+  // ── Ticker treatment: flat bar vs layered parallax band ──
+  ticker_treatment:       'bar',       // bar | parallax (z1 image / z2 floating marquee / z3 copy)
+  ticker_parallax_image:  '',          // z1 background image URL (empty → hero bg media)
+  ticker_parallax_height: '70vh',      // band height (vh/px)
+  ticker_parallax_overlay:'45',        // 0-100 dark overlay over the image
+  ticker_band_font_size:  '5',         // rem — big floating marquee typeface size
+  // ── Cookie consent (GDPR-style, category preferences) ──
+  cookie_consent_enabled:  'false',    // show consent UI to visitors
+  cookie_consent_style:    'modal',    // modal | banner
+  cookie_consent_position: 'bottom',   // bottom | bottom-left | center
+  cookie_bg:               '',         // empty → var(--surface)
+  cookie_text_color:       '',         // empty → var(--on-surface)
+  cookie_accent:           '',         // empty → var(--accent)
   // Placement on the Standard Layout. Templates use their own ticker block(s) for placement.
   // 'above_hero'      → above hero, sticky-pinned under nav (legacy)
   // 'below_hero'      → below hero, inline
@@ -194,7 +228,7 @@ export const DESIGN_DEFAULTS = {
   footer_show_tagline:  'true',        // render tagline under brand
   footer_show_logo:     'false',       // render uploaded logo image
   footer_show_social:   'true',        // render social link row
-  footer_show_newsletter:'false',      // render newsletter signup
+  footer_show_newsletter:'true',       // render newsletter signup (auto-wired list capture)
   footer_show_qr:       'true',        // render the QR codes block
   // ── Footer typography ──
   footer_heading_size:  '0.72',        // rem — column headings
@@ -232,10 +266,11 @@ export const THEME_KEYS = [
   'color_success', 'color_danger',
   'font_heading', 'font_body',
   'portfolio_layout', 'blog_layout', 'nav_logo_display', 'nav_logo_split', 'landing_layout',
-  'hero_style', 'hero_overlay_opacity', 'hero_text_align', 'hero_height',
+  'hero_style', 'hero_overlay_opacity', 'hero_text_align', 'hero_vpos', 'hero_height', 'hero_heading_size',
   'hero_slideshow_interval', 'hero_slideshow_dots', 'hero_slideshow_arrows', 'hero_slideshow_dot_color',
+  'hero_slideshow_static',
   'hero_card_position', 'hero_card_bg', 'hero_card_text_color', 'hero_card_blur', 'hero_card_shadow',
-  'snap_enabled', 'gradient_enabled', 'gradient_angle',
+  'snap_enabled', 'snap_strictness', 'gradient_enabled', 'gradient_angle',
   'hero_bg_pattern', 'card_hover_accent', 'card_border_radius',
   'hero_bg_media_url', 'hero_bg_media_type', 'hero_bg_media_poster',
   'section_animation',
@@ -243,7 +278,12 @@ export const THEME_KEYS = [
   'ticker_speed', 'ticker_direction', 'ticker_bg', 'ticker_text_color',
   'ticker_dot_color', 'ticker_font_size', 'ticker_padding',
   'ticker_uppercase', 'ticker_letter_spacing', 'ticker_item_gap',
-  'ticker_position',
+  'ticker_position', 'ticker_shape', 'ticker_angle', 'ticker_arc_height',
+  'ticker_treatment', 'ticker_parallax_image', 'ticker_parallax_height',
+  'ticker_parallax_overlay', 'ticker_band_font_size',
+  // cookie consent style tokens (copy/text lives in copy collection)
+  'cookie_consent_enabled', 'cookie_consent_style', 'cookie_consent_position',
+  'cookie_bg', 'cookie_text_color', 'cookie_accent',
   // header + footer structural / style tokens (not URLs/social handles)
   'header_layout', 'header_padding_y', 'header_padding_x',
   'header_sticky', 'header_blur', 'header_shadow',
@@ -311,6 +351,14 @@ export const COPY_SECTIONS = {
     // CTA / social label
     'footer_social_heading',
   ],
+  cookie: ['cookie_title', 'cookie_message',
+           'cookie_accept_label', 'cookie_reject_label', 'cookie_save_label',
+           'cookie_settings_label',
+           'cookie_necessary_title', 'cookie_necessary_desc',
+           'cookie_analytics_title', 'cookie_analytics_desc',
+           'cookie_marketing_title', 'cookie_marketing_desc',
+           'cookie_privacy_text', 'cookie_privacy_link'],
+  marquee: ['ticker_band_heading', 'ticker_band_text', 'ticker_band_cta', 'ticker_band_cta_link'],
 };
 
 router.get('/', async (req, res) => {
@@ -359,15 +407,17 @@ router.post('/', async (req, res) => {
     const designOps = Object.keys(DESIGN_DEFAULTS).map(key => {
       const isBool = key.startsWith('vis_') || key.startsWith('model_')
         || key === 'snap_enabled' || key === 'gradient_enabled'
+        || key === 'cookie_consent_enabled'
         || key === 'card_hover_accent' || key === 'ticker_uppercase'
         || key === 'header_sticky' || key === 'header_blur' || key === 'header_shadow'
         || key === 'footer_show_brand' || key === 'footer_show_tagline'
         || key === 'footer_show_logo' || key === 'footer_show_social'
         || key === 'footer_show_newsletter' || key === 'footer_show_qr'
         || key === 'hero_slideshow_dots' || key === 'hero_slideshow_arrows'
+        || key === 'hero_slideshow_static'
         || key === 'hero_card_shadow';
       const value = isBool
-        ? (req.body[key] === 'on' ? 'true' : 'false')
+        ? ((req.body[key] === 'on' || req.body[key] === 'true') ? 'true' : 'false')
         : (req.body[key] !== undefined && req.body[key] !== '' ? req.body[key] : DESIGN_DEFAULTS[key]);
       return db.collection('design').updateOne(
         { key },
@@ -384,25 +434,39 @@ router.post('/', async (req, res) => {
       'contact_company_hidden', 'contact_service_hidden', 'contact_message_hidden'];
     const allCopyKeys = Object.values(COPY_SECTIONS).flat();
     const REPEATER_PATTERNS = [
-      /^service\d+_(title|desc|link|image)$/,
-      /^process\d+_(title|desc)$/,
-      /^about_stat\d+_(num|label)$/,
+      /^service\d+_(title|desc|link|image|hidden)$/,
+      /^process\d+_(title|desc|hidden)$/,
+      /^about_stat\d+_(num|label|hidden)$/,
       /^pricing_tier\d+_(amount|unit|label|equiv|cta_link|featured)$/,
       /^contact_field\d+_(name|label|placeholder|type|required|options)$/,
-      /^slide\d+_(image|heading|sub|eyebrow|link|cta|tag)$/,
+      /^slide\d+_(image|heading|sub|eyebrow|link|cta|tag|vpos)$/,
     ];
     const isRepeaterKey = (k) => REPEATER_PATTERNS.some(rx => rx.test(k));
-    const repeaterCheckboxes = (k) => /^pricing_tier\d+_featured$/.test(k)
-      || /^contact_field\d+_required$/.test(k);
 
     const dynamicKeys = Object.keys(req.body).filter(isRepeaterKey);
+
+    // Per-card visibility checkboxes (service{N}_hidden, process{N}_hidden,
+    // about_stat{N}_hidden) submit nothing when unchecked, so derive the active
+    // card set from any present field for that index and force-write the flag.
+    const VIS_TOGGLE_PREFIXES = ['service', 'process', 'about_stat'];
+    const isHiddenToggle = (k) => /_hidden$/.test(k) && isRepeaterKey(k);
+    const visToggleKeys = new Set();
+    for (const k of Object.keys(req.body)) {
+      for (const p of VIS_TOGGLE_PREFIXES) {
+        const m = k.match(new RegExp('^' + p + '(\\d+)_'));
+        if (m) { visToggleKeys.add(p + m[1] + '_hidden'); break; }
+      }
+    }
+
     const writeKeys = new Set([
       ...allCopyKeys.filter(k => req.body[k] !== undefined || COPY_CHECKBOXES.includes(k)),
       ...dynamicKeys,
+      ...visToggleKeys,
     ]);
     const copyOps = [...writeKeys].map(key => {
-      const isCheckbox = COPY_CHECKBOXES.includes(key) || repeaterCheckboxes(key);
-      const value = isCheckbox ? (req.body[key] || '') : (req.body[key] || '');
+      const value = isHiddenToggle(key)
+        ? (req.body[key] ? 'true' : '')
+        : (req.body[key] || '');
       return db.collection('copy').updateOne(
         { key },
         { $set: { key, value, updatedAt: now } },
@@ -783,6 +847,27 @@ TICKER / MARQUEE FIELDS:
 - ticker_bg: Ticker background color (hex). Empty = primary color.
 - ticker_text_color: Ticker text color (hex). Empty = accent-light.
 - ticker_dot_color: Separator dot color (hex). Empty = accent.
+- ticker_shape: "straight" (flat scroll), "diagonal" (angled vector bar), or "arc" (text curved along an SVG path, barbershop-sign style)
+- ticker_angle: Tilt in degrees for diagonal shape (e.g. -4)
+- ticker_arc_height: Curve rise/sag in px for arc shape (e.g. 40)
+- ticker_treatment: "bar" (flat ticker) or "parallax" (tall layered band — background image z1, big floating marquee typeface z2, copy card z3, all parallax-scrolling)
+- ticker_parallax_image: Background image URL for the parallax band (empty = falls back to hero background media)
+- ticker_parallax_height: Band height, e.g. "70vh" or "560px"
+- ticker_parallax_overlay: 0-100 dark overlay strength over the band image
+- ticker_band_font_size: Size in rem of the big floating marquee typeface (e.g. 5)
+- ticker_band_heading / ticker_band_text / ticker_band_cta / ticker_band_cta_link: Copy for the z3 card (edited in Copy)
+
+MOTION / SCROLL FIELDS:
+- section_animation: "none", "fade", "slide", "zoom", "flip", "stagger", or "blur" — how sections animate in on scroll
+- snap_enabled: "true"/"false" — full-page scroll-snap between sections
+- snap_strictness: "proximity" (gentle) or "mandatory" (hard lock to each section)
+
+COOKIE CONSENT FIELDS:
+- cookie_consent_enabled: "true"/"false" — show GDPR-style cookie consent to visitors (gates analytics/marketing tags)
+- cookie_consent_style: "modal" (centered dialog) or "banner" (docked bar)
+- cookie_consent_position: "bottom", "bottom-left", or "center"
+- cookie_bg / cookie_text_color / cookie_accent: Optional color overrides (empty = theme surface/text/accent)
+- Cookie text (title, message, button labels, category descriptions) is edited in the Copy editor under the "cookie" section.
 
 COPY FIELDS (text content shown on the landing page):
 - hero_eyebrow: Small text above the headline (e.g. "Welcome to...")

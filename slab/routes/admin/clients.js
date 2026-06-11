@@ -3,12 +3,43 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '../../plugins/mongo.js';
 import { clientFileUpload } from '../../middleware/upload.js';
 import { generateInvoiceNumber, generatePaymentToken, calculateTotal, getNextGenerateDate } from '../../plugins/invoiceHelpers.js';
-import { sendInvoiceEmail, sendClientEmail } from '../../plugins/mailer.js';
+import { sendInvoiceEmail, sendClientEmail, renderCampaignEmail, renderInvoiceEmail, formatEmailBody } from '../../plugins/mailer.js';
 import { config } from '../../config/config.js';
 import { normalizeSubject } from '../../plugins/imapPoller.js';
-import { runTool } from '../../plugins/agentMcp.js';
+import { runTool, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import crypto from 'crypto';
+
+// Build nodemailer attachment objects from an uploaded-file array, and (when the
+// files landed in S3) persist a record of each to the client's Files tab so the
+// admin keeps an audit trail of what was sent. Falls back to in-memory content
+// when S3 isn't configured.
+async function processEmailAttachments(req, clientId) {
+  const files = req.files || [];
+  const attachments = [];
+  const records = [];
+  for (const f of files) {
+    if (f.location) {
+      attachments.push({ filename: f.originalname, href: f.location, contentType: f.mimetype });
+      records.push({ name: f.originalname, url: f.location, bucketKey: f.key, size: f.size, type: f.mimetype });
+      await req.db.collection('files').insertOne({
+        clientId,
+        name: f.originalname,
+        label: f.originalname,
+        url: f.location,
+        bucketKey: f.key,
+        size: f.size,
+        type: f.mimetype,
+        source: 'email-attachment',
+        uploadedAt: new Date(),
+      });
+    } else if (f.buffer) {
+      attachments.push({ filename: f.originalname, content: f.buffer, contentType: f.mimetype });
+      records.push({ name: f.originalname, size: f.size, type: f.mimetype });
+    }
+  }
+  return { attachments, records };
+}
 
 const router = express.Router();
 
@@ -361,6 +392,22 @@ router.post('/:id/invoices', async (req, res) => {
   }
 });
 
+// Invoice preview — renders the real branded invoice email (logo + theme + line
+// items + Pay button) so the admin sees exactly what the client gets before send.
+router.post('/:id/invoices/:invoiceId/preview', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const invoice = await db.collection('invoices').findOne({ _id: new ObjectId(req.params.invoiceId) });
+    const clientDoc = await db.collection('clients').findOne({ _id: new ObjectId(req.params.id) });
+    if (!invoice || !clientDoc) return res.status(404).json({ error: 'Invoice not found' });
+    const paymentUrl = `${req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN}/pay/${invoice.paymentToken}`;
+    const { html, subject } = await renderInvoiceEmail({ invoice, clientDoc, paymentUrl, tenant: req.tenant });
+    res.json({ html, subject });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Preview failed' });
+  }
+});
+
 // Send invoice email
 router.post('/:id/invoices/:invoiceId/send', async (req, res) => {
   try {
@@ -399,7 +446,143 @@ router.post('/:id/invoices/:invoiceId/status', async (req, res) => {
 });
 
 // ── EMAILS ──
-router.post('/:id/emails/send', async (req, res) => {
+// Live preview — renders the real branded campaign template (logo + tenant theme)
+// so the admin sees exactly what the recipient gets before sending.
+router.post('/:id/email-preview', express.json(), async (req, res) => {
+  try {
+    const client = await req.db.collection('clients').findOne({ _id: new ObjectId(req.params.id) });
+    const subject = (req.body.subject || '').toString();
+    const body = (req.body.body || '').toString();
+    const { html } = await renderCampaignEmail({
+      toEmail: client?.email || 'client@example.com',
+      toName: client?.name?.split(' ')[0] || 'there',
+      subject,
+      preheader: '',
+      brandDomain: '',
+      body: formatEmailBody(body),
+      tenant: req.tenant,
+    });
+    res.json({ html, subject });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Preview failed' });
+  }
+});
+
+// ── EMAIL AGENT — drafts a client email from onboarding, invoicing, meeting,
+// and account-status context. Chat-style (multi-turn). Returns { message, fill:
+// { subject, body } } where body is email-safe HTML.
+router.post('/:id/email-agent', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const client = await db.collection('clients').findOne({ _id: new ObjectId(req.params.id) });
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    const { messages, currentDraft } = req.body;
+    if (!Array.isArray(messages) || !messages.length) {
+      return res.status(400).json({ error: 'messages required' });
+    }
+
+    const cid = client._id.toString();
+    const [invoices, meetings, recentEmails] = await Promise.all([
+      db.collection('invoices').find({ clientId: cid }).sort({ createdAt: -1 }).limit(20).toArray(),
+      db.collection('meetings').find({ 'tags.clients': client._id }).sort({ createdAt: -1 }).limit(10).toArray(),
+      db.collection('client_emails').find({ clientId: cid }).sort({ sentAt: -1 }).limit(6).toArray(),
+    ]);
+
+    // ── Crunch the context into a compact brief for the LLM ──
+    const fmtMoney = n => `$${Number(n || 0).toFixed(2)}`;
+    const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+    let invoiceCtx = 'No invoices on file.';
+    if (invoices.length) {
+      const paid = invoices.filter(i => i.status === 'paid');
+      const outstanding = invoices.filter(i => i.status !== 'paid' && i.status !== 'draft');
+      const overdue = outstanding.filter(i => i.dueDate && new Date(i.dueDate) < new Date());
+      const outstandingTotal = outstanding.reduce((s, i) => s + Number(i.amount || 0), 0);
+      const lines = invoices.slice(0, 6).map(i =>
+        `  - ${i.invoiceNumber || 'INV'} "${i.title || ''}" ${fmtMoney(i.amount)} · ${i.status}${i.dueDate ? ' · due ' + fmtDate(i.dueDate) : ''}`);
+      invoiceCtx = `${invoices.length} invoice(s); ${paid.length} paid, ${outstanding.length} outstanding (${fmtMoney(outstandingTotal)}), ${overdue.length} overdue.\n${lines.join('\n')}`;
+    }
+
+    let meetingCtx = 'No meetings on record.';
+    if (meetings.length) {
+      meetingCtx = meetings.slice(0, 6).map(m => {
+        const noteCount = Array.isArray(m.notes) ? m.notes.length : 0;
+        const summary = m.summary || (Array.isArray(m.notes) && m.notes.length ? String(m.notes[m.notes.length - 1]?.text || m.notes[m.notes.length - 1] || '').slice(0, 160) : '');
+        return `  - "${m.title || 'Meeting'}" ${fmtDate(m.createdAt)}${noteCount ? ` · ${noteCount} note(s)` : ''}${summary ? `\n    ${summary}` : ''}`;
+      }).join('\n');
+    }
+
+    let emailCtx = 'No prior emails.';
+    if (recentEmails.length) {
+      emailCtx = recentEmails.map(e =>
+        `  - [${e.direction === 'inbound' ? 'from client' : 'sent'}] "${e.subject}" ${fmtDate(e.sentAt)}`).join('\n');
+    }
+
+    const ob = client.onboarding?.data || {};
+    const obComplete = client.onboarding?.complete ? 'complete' : `in progress (step ${client.onboarding?.step || 0})`;
+    const onboardingCtx = `Status: ${obComplete}.` + (Object.keys(ob).length
+      ? ` Business: ${ob.businessType || '—'}; Goals: ${ob.goals || '—'}; Budget: ${ob.budget || '—'}; Timeline: ${ob.timeline || '—'}.`
+      : ' No onboarding answers captured.');
+
+    const rpt = client.agentReport;
+    const researchCtx = rpt
+      ? `Summary: ${rpt.summary || '—'}\n  Opportunities: ${(Array.isArray(rpt.opportunities) ? rpt.opportunities : []).join('; ') || '—'}`
+      : 'No research report generated.';
+
+    const draftCtx = currentDraft?.subject || currentDraft?.body
+      ? `\n\n--- CURRENT DRAFT (refine this if the user asks for edits) ---\nSubject: ${currentDraft.subject || ''}\nBody:\n${(currentDraft.body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1200)}\n--- END DRAFT ---`
+      : '';
+
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
+    const firstName = client.name?.split(' ')[0] || 'there';
+
+    const systemPrompt = `You are an email-writing assistant for a business, drafting an email to a client.
+
+${brandCtx}
+
+--- CLIENT: ${client.name}${client.company ? ` (${client.company})` : ''} ---
+Account status: ${client.status || 'unknown'}${Array.isArray(client.tags) && client.tags.length ? ` · tags: ${client.tags.join(', ')}` : ''}
+Onboarding — ${onboardingCtx}
+Invoicing — ${invoiceCtx}
+Past meetings — ${meetingCtx}
+Recent emails — ${emailCtx}
+Research — ${researchCtx}
+--- END CLIENT CONTEXT ---${draftCtx}
+
+Your output MUST follow this exact two-part shape — a one-line JSON object first, then the email body inside <BODY>…</BODY> sentinel tags. Nothing else before, between (a single newline only), or after.
+
+EXAMPLE OUTPUT (follow this structure exactly):
+{"message":"Drafted a friendly check-in that references their outstanding invoice.","fill":{"subject":"Quick check-in on your project"}}
+<BODY>
+<p>Hi ${firstName},</p>
+<p>I wanted to check in and see how everything's going on your end.</p>
+<ul>
+  <li>One concrete point grounded in the context above</li>
+  <li>A clear, low-pressure next step</li>
+</ul>
+<p>Just reply here and I'll take it from there.</p>
+</BODY>
+
+RULES:
+- The JSON object is ONE LINE and contains ONLY "message" and "fill":{"subject"}. NEVER put the body in the JSON — it goes in the <BODY> block.
+- Use plain double quotes in the JSON. No smart quotes.
+- The <BODY> block is raw, email-safe HTML: use ONLY <p>, <strong>, <em>, <ul>, <ol>, <li>, <a href="…">, <h3>, <blockquote>. No <html>, <head>, <style>, <table>, classes, or inline color styles.
+- Open with "Hi ${firstName},". Keep it concise (≈80-180 words), warm, specific, and grounded in the client context above — reference real onboarding goals, invoice status, or meeting outcomes when relevant. Do not invent facts.
+- Close with a soft call-to-action and sign as the ${req.tenant?.brand?.name || 'team'} (the signature is added automatically — do not add your own sign-off block).`;
+
+    const raw = await callLLM(messages, systemPrompt);
+    const parsed = tryParseAgentResponse(raw);
+    parsed.fill = parsed.fill || {};
+    // The parser maps the <BODY> sentinel to fill.body; subject comes from JSON.
+    res.json({ message: parsed.message, fill: { subject: parsed.fill.subject, body: parsed.fill.body } });
+  } catch (err) {
+    console.error('[Clients] Email agent error:', err);
+    res.status(500).json({ error: err.message || 'Email draft failed' });
+  }
+});
+
+router.post('/:id/emails/send', clientFileUpload.array('attachments', 10), async (req, res) => {
   try {
     const db = req.db;
     const client = await db.collection('clients').findOne({ _id: new ObjectId(req.params.id) });
@@ -410,9 +593,12 @@ router.post('/:id/emails/send', async (req, res) => {
     if (!toAddr) return res.redirect(`/admin/clients/${req.params.id}?tab=emails&error=No+email+address`);
     if (!subject || !body) return res.redirect(`/admin/clients/${req.params.id}?tab=emails&error=Subject+and+body+required`);
 
+    // Process attachments (uploads to S3 + records in Files tab)
+    const { attachments, records } = await processEmailAttachments(req, req.params.id);
+
     // Send the email
     const ccList = cc ? cc.split(',').map(e => e.trim()).filter(Boolean) : [];
-    const info = await sendClientEmail(toAddr, ccList, subject, body, null, req.tenant);
+    const info = await sendClientEmail(toAddr, ccList, subject, body, null, req.tenant, attachments);
 
     // Store in history — this outbound becomes the thread root
     const baseSubj = normalizeSubject(subject);
@@ -425,6 +611,7 @@ router.post('/:id/emails/send', async (req, res) => {
       subject,
       baseSubject: baseSubj,
       body,
+      attachments: records,
       messageId: info?.messageId || null,
       source: 'direct',
       sentBy: req.adminUser?.displayName || 'admin',
@@ -445,7 +632,7 @@ router.post('/:id/emails/send', async (req, res) => {
 });
 
 // ── Inline reply to thread ──
-router.post('/:id/emails/reply', async (req, res) => {
+router.post('/:id/emails/reply', clientFileUpload.array('attachments', 10), async (req, res) => {
   try {
     const db = req.db;
     const client = await db.collection('clients').findOne({ _id: new ObjectId(req.params.id) });
@@ -454,6 +641,9 @@ router.post('/:id/emails/reply', async (req, res) => {
     const { to, subject, body, threadId } = req.body;
     const toAddr = to || client.email;
     if (!toAddr || !body) return res.redirect(`/admin/clients/${req.params.id}?tab=emails&error=Body+required`);
+
+    // Process attachments (uploads to S3 + records in Files tab)
+    const { attachments, records } = await processEmailAttachments(req, req.params.id);
 
     const replySubject = subject || 'Re: (no subject)';
 
@@ -478,7 +668,7 @@ router.post('/:id/emails/reply', async (req, res) => {
       }
     }
 
-    const info = await sendClientEmail(toAddr, [], replySubject, body, threadHeaders, req.tenant);
+    const info = await sendClientEmail(toAddr, [], replySubject, body, threadHeaders, req.tenant, attachments);
 
     await db.collection('client_emails').insertOne({
       clientId: client._id.toString(),
@@ -489,6 +679,7 @@ router.post('/:id/emails/reply', async (req, res) => {
       subject: replySubject,
       baseSubject: normalizeSubject(replySubject),
       body,
+      attachments: records,
       messageId: info?.messageId || null,
       threadId: threadId ? new ObjectId(threadId) : null,
       source: 'direct',

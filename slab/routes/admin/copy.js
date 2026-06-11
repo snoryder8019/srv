@@ -47,6 +47,13 @@ const SECTIONS = {
            'contact_service_label', 'contact_service_placeholder',
            'contact_message_label', 'contact_message_placeholder',
            'contact_service_fallback', 'contact_service_extra'],
+  cookie: ['cookie_title', 'cookie_message',
+           'cookie_accept_label', 'cookie_reject_label', 'cookie_save_label',
+           'cookie_settings_label',
+           'cookie_necessary_title', 'cookie_necessary_desc',
+           'cookie_analytics_title', 'cookie_analytics_desc',
+           'cookie_marketing_title', 'cookie_marketing_desc',
+           'cookie_privacy_text', 'cookie_privacy_link'],
 };
 
 const COPY_DEFAULTS = {
@@ -125,6 +132,21 @@ const COPY_DEFAULTS = {
   contact_location: '',
   contact_serving: '',
   contact_services: '',
+  // Cookie consent
+  cookie_title: 'We value your privacy',
+  cookie_message: 'We use cookies to enhance your browsing experience, serve personalized content, and analyze our traffic. Choose which cookies you allow.',
+  cookie_accept_label: 'Accept all',
+  cookie_reject_label: 'Reject non-essential',
+  cookie_save_label: 'Save preferences',
+  cookie_settings_label: 'Cookie settings',
+  cookie_necessary_title: 'Strictly necessary',
+  cookie_necessary_desc: 'Required for the site to function. These cookies cannot be switched off.',
+  cookie_analytics_title: 'Analytics',
+  cookie_analytics_desc: 'Help us understand how visitors interact with the site so we can improve it.',
+  cookie_marketing_title: 'Marketing',
+  cookie_marketing_desc: 'Used to deliver relevant ads and measure the performance of campaigns.',
+  cookie_privacy_text: 'Privacy Policy',
+  cookie_privacy_link: '/privacy',
 };
 
 router.get('/', (req, res) => res.redirect('/admin/design'));

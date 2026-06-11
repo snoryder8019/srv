@@ -1,5 +1,6 @@
 <%- include('../partials/head', { title: 'Analytics' }) %>
 <%- include('../partials/sidebar', { page: 'analytics', user }) %>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <div class="topbar">
   <div class="topbar-title">Analytics</div>
@@ -37,6 +38,20 @@
   .aa-bullets li { margin: 2px 0; }
   .aa-kpi { display: inline-block; font-size: 0.8rem; padding: 4px 12px; background: rgba(201,168,72,0.12); color: var(--gold); border: 1px solid var(--gold); border-radius: 4px; font-weight: 600; }
   .aa-loading { font-size: 0.8rem; color: var(--slate); font-style: italic; }
+
+  /* Charts */
+  .ch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .ch-card { background: var(--ivory); border-radius: 6px; padding: 14px 16px; }
+  .ch-card.wide { grid-column: 1 / -1; }
+  .ch-card h3 { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); margin: 0 0 10px; }
+  .ch-canvas-wrap { position: relative; height: 240px; }
+  .ch-canvas-wrap.tall { height: 280px; }
+  .an-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .an-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem; padding: 5px 11px; border-radius: 20px; background: var(--ivory); color: var(--on-surface); }
+  .an-chip .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .an-note { font-size: 0.72rem; color: var(--slate); font-style: italic; margin-top: 8px; }
+  .an-note.err { color: #B91C1C; font-style: normal; }
+  .an-spin { color: var(--slate); font-size: 0.82rem; font-style: italic; padding: 16px 0; }
 </style>
 
 <div class="content">
@@ -60,6 +75,18 @@
     </div>
     <div id="aa-out" class="aa-report"></div>
   </div>
+
+  <!-- Social Insights (live, connected accounts only) -->
+  <section class="an-section" id="socialInsights">
+    <h2>Social Insights — Live <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--slate);">· connected accounts only</span></h2>
+    <div id="si-body"><div class="an-spin">✦ Pulling live insights from connected accounts…</div></div>
+  </section>
+
+  <!-- Live Payments (Stripe + PayPal) -->
+  <section class="an-section" id="payInsights">
+    <h2>Bookkeeping — Live Payments <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--slate);">· Stripe &amp; PayPal</span></h2>
+    <div id="pi-body"><div class="an-spin">✦ Pulling live transactions from Stripe &amp; PayPal…</div></div>
+  </section>
 
   <!-- Content -->
   <section class="an-section">
@@ -210,6 +237,184 @@ async function aaRun() {
 }
 
 document.getElementById('aa-q').addEventListener('keydown', e => { if (e.key === 'Enter') aaRun(); });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live charts: Social Insights + Bookkeeping (lazy-loaded after page render)
+// ─────────────────────────────────────────────────────────────────────────────
+const AN_RANGE = '<%= range %>';
+const GOLD = '#C9A848', NAVY = '#1C2B4A', GREEN = '#15803D', RED = '#B91C1C';
+const fmtMoney = n => '$' + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const fmtNum = n => Number(n || 0).toLocaleString();
+const shortDate = s => String(s).slice(5).replace('-', '/');
+
+function statCell(label, value, gold) {
+  return '<div class="an-stat"><span class="an-stat-label">' + escapeHtml(label) +
+    '</span><span class="an-stat-value' + (gold ? ' gold' : '') + '">' + value + '</span></div>';
+}
+function mkCanvas(id, title, wide, tall) {
+  return '<div class="ch-card' + (wide ? ' wide' : '') + '"><h3>' + escapeHtml(title) +
+    '</h3><div class="ch-canvas-wrap' + (tall ? ' tall' : '') + '"><canvas id="' + id + '"></canvas></div></div>';
+}
+const baseOpts = (extra = {}) => Object.assign({
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+}, extra);
+
+// ── Social ──────────────────────────────────────────────────────────────────
+async function loadSocial() {
+  const body = document.getElementById('si-body');
+  let data;
+  try {
+    const r = await fetch('/admin/analytics/social?range=' + AN_RANGE);
+    data = await r.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    body.innerHTML = '<div class="an-note err">Could not load social insights: ' + escapeHtml(e.message) + '</div>';
+    return;
+  }
+
+  const keys = Object.keys(data.platforms || {});
+  if (!keys.length) {
+    body.innerHTML = '<div class="an-note">No analytics-capable accounts connected. Connect Facebook, Instagram, Threads, or LinkedIn under ' +
+      '<a href="/admin/social?tab=connections">Social Media → Connections</a>.</div>';
+    return;
+  }
+
+  // Follower chips + totals
+  let chips = '<div class="an-chips">';
+  keys.forEach(k => {
+    const p = data.platforms[k];
+    chips += '<span class="an-chip"><span class="dot" style="background:' + p.color + '"></span>' +
+      p.icon + ' ' + escapeHtml(p.name) + ' · <strong>' + fmtNum(p.followers) + '</strong> followers</span>';
+  });
+  chips += '</div>';
+
+  const t = data.totals || {};
+  let stats = '<div class="an-grid" style="margin-bottom:16px;">' +
+    statCell('Total Followers', fmtNum(t.followers), true) +
+    statCell('Reach', fmtNum(t.reach)) +
+    statCell('Impressions', fmtNum(t.impressions)) +
+    statCell('Engagements', fmtNum(t.engagements)) +
+    '</div>';
+
+  // Decide which platforms have a time series for the trend line
+  const seriesMetric = { facebook: 'impressions', instagram: 'reach', threads: 'views' };
+  const lineKeys = keys.filter(k => data.platforms[k].series && data.platforms[k].series[seriesMetric[k]]);
+
+  let charts = '<div class="ch-grid">';
+  charts += mkCanvas('siFollowers', 'Followers by Platform', false, false);
+  charts += mkCanvas('siEngage', 'Engagement by Platform', false, false);
+  if (lineKeys.length) charts += mkCanvas('siTrend', 'Reach / Impressions Over Time', true, true);
+  charts += '</div>';
+
+  // Per-platform notes
+  let notes = '';
+  keys.forEach(k => {
+    const p = data.platforms[k];
+    if (p.error) notes += '<div class="an-note err">' + p.icon + ' ' + escapeHtml(p.name) + ': ' + escapeHtml(p.error) + '</div>';
+    else if (p.note) notes += '<div class="an-note">' + p.icon + ' ' + escapeHtml(p.name) + ': ' + escapeHtml(p.note) + '</div>';
+  });
+
+  body.innerHTML = chips + stats + charts + notes;
+
+  // Followers doughnut
+  new Chart(document.getElementById('siFollowers'), {
+    type: 'doughnut',
+    data: { labels: keys.map(k => data.platforms[k].name),
+      datasets: [{ data: keys.map(k => data.platforms[k].followers), backgroundColor: keys.map(k => data.platforms[k].color) }] },
+    options: baseOpts(),
+  });
+
+  // Engagement bar (engagements || likes || clicks)
+  new Chart(document.getElementById('siEngage'), {
+    type: 'bar',
+    data: { labels: keys.map(k => data.platforms[k].name),
+      datasets: [{ label: 'Engagements',
+        data: keys.map(k => { const m = data.platforms[k].metrics || {}; return m.engagements || m.likes || m.clicks || 0; }),
+        backgroundColor: keys.map(k => data.platforms[k].color) }] },
+    options: baseOpts({ plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }),
+  });
+
+  // Trend line
+  if (lineKeys.length) {
+    const labels = (data.axis || []).map(shortDate);
+    new Chart(document.getElementById('siTrend'), {
+      type: 'line',
+      data: { labels, datasets: lineKeys.map(k => {
+        const p = data.platforms[k]; const s = p.series[seriesMetric[k]] || [];
+        return { label: p.name + ' (' + seriesMetric[k] + ')', data: s.map(x => x.value),
+          borderColor: p.color, backgroundColor: p.color + '22', tension: 0.3, fill: true, pointRadius: 0 };
+      }) },
+      options: baseOpts({ interaction: { mode: 'index', intersect: false }, scales: { y: { beginAtZero: true } } }),
+    });
+  }
+}
+
+// ── Payments ────────────────────────────────────────────────────────────────
+async function loadPayments() {
+  const body = document.getElementById('pi-body');
+  let data;
+  try {
+    const r = await fetch('/admin/analytics/payments?range=' + AN_RANGE);
+    data = await r.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    body.innerHTML = '<div class="an-note err">Could not load payment insights: ' + escapeHtml(e.message) + '</div>';
+    return;
+  }
+
+  const sc = data.stripe || {}, pp = data.paypal || {};
+  if (!sc.configured && !pp.configured) {
+    body.innerHTML = '<div class="an-note">Connect Stripe or PayPal in <a href="/admin/settings">Settings</a> to see live payment analytics.</div>';
+    return;
+  }
+
+  const t = data.totals || {};
+  let stats = '<div class="an-grid" style="margin-bottom:16px;">' +
+    statCell('Gross Revenue', fmtMoney(t.gross), true) +
+    statCell('Transactions', fmtNum(t.count)) +
+    statCell('Refunded', fmtMoney(t.refunded)) +
+    (sc.configured ? statCell('Stripe Gross', fmtMoney(sc.gross)) : '') +
+    (pp.configured ? statCell('PayPal Gross', fmtMoney(pp.gross)) : '') +
+    '</div>';
+
+  let charts = '<div class="ch-grid">';
+  charts += mkCanvas('piDaily', 'Daily Revenue (Stripe vs PayPal)', true, false);
+  if ((data.providerSplit || []).length) charts += mkCanvas('piSplit', 'Revenue by Provider', false, false);
+  charts += '</div>';
+
+  let notes = '';
+  if (sc.error) notes += '<div class="an-note err">Stripe: ' + escapeHtml(sc.error) + '</div>';
+  if (pp.error) notes += '<div class="an-note err">PayPal: ' + escapeHtml(pp.error) + '</div>';
+
+  body.innerHTML = stats + charts + notes;
+
+  const labels = (data.axis || []).map(shortDate);
+  new Chart(document.getElementById('piDaily'), {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label: 'Stripe', data: data.daily.map(d => d.stripe), backgroundColor: '#635BFF', stack: 'rev' },
+      { label: 'PayPal', data: data.daily.map(d => d.paypal), backgroundColor: '#003087', stack: 'rev' },
+    ] },
+    options: baseOpts({
+      interaction: { mode: 'index', intersect: false },
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: v => '$' + v } } },
+      plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmtMoney(c.parsed.y) } } },
+    }),
+  });
+
+  if ((data.providerSplit || []).length) {
+    new Chart(document.getElementById('piSplit'), {
+      type: 'doughnut',
+      data: { labels: data.providerSplit.map(p => p.provider),
+        datasets: [{ data: data.providerSplit.map(p => p.amount), backgroundColor: ['#635BFF', '#003087'] }] },
+      options: baseOpts({ plugins: { tooltip: { callbacks: { label: c => c.label + ': ' + fmtMoney(c.parsed) } } } }),
+    });
+  }
+}
+
+if (typeof Chart !== 'undefined') { loadSocial(); loadPayments(); }
+else { document.getElementById('si-body').innerHTML = '<div class="an-note err">Charts failed to load.</div>'; }
 </script>
 
 </div><!-- .main -->

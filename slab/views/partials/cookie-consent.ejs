@@ -1,0 +1,378 @@
+<%
+// cookie-consent.ejs — GDPR-style cookie consent with category preferences that gate analytics.
+// Included as: include('partials/cookie-consent', { d, copy })
+//   d    = design tokens (string values, may be missing keys)
+//   copy = copy/text strings (may be missing keys)
+//   brand is optional and not required here.
+// Renders nothing unless d.cookie_consent_enabled === 'true'.
+
+// --- Safe locals --------------------------------------------------------
+var d    = (typeof d    !== 'undefined' && d)    ? d    : {};
+var copy = (typeof copy !== 'undefined' && copy) ? copy : {};
+
+if (d.cookie_consent_enabled === 'true') {
+
+// --- Design tokens (empty -> theme CSS var fallback) --------------------
+var cc_bg     = (d.cookie_bg          && String(d.cookie_bg).trim())          ? d.cookie_bg          : 'var(--surface)';
+var cc_text   = (d.cookie_text_color  && String(d.cookie_text_color).trim())  ? d.cookie_text_color  : 'var(--on-surface)';
+var cc_accent = (d.cookie_accent      && String(d.cookie_accent).trim())      ? d.cookie_accent      : 'var(--accent)';
+
+var cc_style    = (d.cookie_consent_style === 'banner') ? 'banner' : 'modal';
+var cc_position = ['bottom','bottom-left','center'].indexOf(d.cookie_consent_position) !== -1 ? d.cookie_consent_position : 'bottom';
+
+// --- Copy (inline English defaults) -------------------------------------
+var t_title        = copy.cookie_title           || 'We value your privacy';
+var t_message      = copy.cookie_message          || 'We use cookies to enhance your browsing experience, serve personalised content, and analyse our traffic. Choose which categories you allow.';
+var t_accept       = copy.cookie_accept_label     || 'Accept all';
+var t_reject       = copy.cookie_reject_label     || 'Reject non-essential';
+var t_save         = copy.cookie_save_label       || 'Save preferences';
+var t_settings     = copy.cookie_settings_label   || 'Cookie settings';
+var t_nec_title    = copy.cookie_necessary_title  || 'Strictly necessary';
+var t_nec_desc     = copy.cookie_necessary_desc   || 'Required for the site to function (security, session, load balancing). Always active.';
+var t_an_title     = copy.cookie_analytics_title  || 'Analytics';
+var t_an_desc      = copy.cookie_analytics_desc   || 'Help us understand how visitors interact with the site so we can improve it. No identifying data.';
+var t_mk_title     = copy.cookie_marketing_title  || 'Marketing';
+var t_mk_desc      = copy.cookie_marketing_desc   || 'Used to deliver relevant ads and measure the effectiveness of our campaigns.';
+var t_privacy_text = copy.cookie_privacy_text     || 'Privacy Policy';
+var t_privacy_link = copy.cookie_privacy_link     || '/privacy';
+%>
+<style>
+  /* ---- Cookie consent (scoped under #slabCC*) ---- */
+  #slabCCRoot{
+    --cc-bg: <%= cc_bg %>;
+    --cc-text: <%= cc_text %>;
+    --cc-accent: <%= cc_accent %>;
+    color: var(--cc-text);
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  #slabCCRoot[hidden]{ display: none !important; }
+
+  /* Backdrop (modal only) */
+  #slabCCBackdrop{
+    position: fixed; inset: 0; z-index: 10000;
+    background: rgba(0,0,0,0.55);
+    opacity: 0; transition: opacity .22s ease;
+  }
+  #slabCCRoot.cc-open #slabCCBackdrop{ opacity: 1; }
+  #slabCCRoot.cc-banner #slabCCBackdrop{ display: none; }
+
+  /* Surface */
+  #slabCCSurface{
+    position: fixed; z-index: 10001;
+    background: var(--cc-bg, #fff); color: var(--cc-text, #111);
+    border: 1px solid var(--border, rgba(127,127,127,.25));
+    box-shadow: 0 12px 40px rgba(0,0,0,.35);
+    box-sizing: border-box;
+    max-height: 92vh; overflow: auto;
+    transform: translateY(12px); opacity: 0;
+    transition: transform .24s ease, opacity .24s ease;
+  }
+  #slabCCRoot.cc-open #slabCCSurface{ transform: none; opacity: 1; }
+
+  /* Modal layouts */
+  #slabCCRoot.cc-modal.cc-pos-center #slabCCSurface,
+  #slabCCRoot.cc-modal.cc-pos-bottom #slabCCSurface,
+  #slabCCRoot.cc-modal.cc-pos-bottom-left #slabCCSurface{
+    width: min(560px, calc(100vw - 32px));
+    border-radius: 14px; padding: 22px 22px 18px;
+  }
+  #slabCCRoot.cc-modal.cc-pos-center #slabCCSurface{
+    top: 50%; left: 50%; transform: translate(-50%, -50%) scale(.98); opacity: 0;
+  }
+  #slabCCRoot.cc-modal.cc-pos-center.cc-open #slabCCSurface{ transform: translate(-50%, -50%); opacity: 1; }
+  #slabCCRoot.cc-modal.cc-pos-bottom #slabCCSurface{ left: 50%; bottom: 20px; transform: translateX(-50%) translateY(12px); }
+  #slabCCRoot.cc-modal.cc-pos-bottom.cc-open #slabCCSurface{ transform: translateX(-50%); }
+  #slabCCRoot.cc-modal.cc-pos-bottom-left #slabCCSurface{ left: 20px; bottom: 20px; }
+
+  /* Banner layout (docked bar) */
+  #slabCCRoot.cc-banner #slabCCSurface{
+    left: 0; right: 0; bottom: 0; width: 100%;
+    border-left: 0; border-right: 0; border-bottom: 0;
+    border-radius: 14px 14px 0 0; padding: 18px 20px;
+  }
+
+  #slabCCSurface h2{ margin: 0 0 6px; font-size: 18px; font-weight: 700; color: var(--cc-text); }
+  #slabCCSurface p.cc-msg{ margin: 0 0 14px; }
+  #slabCCSurface a.cc-link{ color: var(--cc-accent); text-decoration: underline; }
+
+  .cc-actions{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .cc-btn{
+    font: inherit; cursor: pointer; border-radius: 8px;
+    padding: 9px 16px; border: 1px solid var(--border, rgba(127,127,127,.35));
+    background: transparent; color: var(--cc-text);
+  }
+  .cc-btn:focus-visible{ outline: 2px solid var(--cc-accent); outline-offset: 2px; }
+  .cc-btn-primary{ background: var(--cc-accent); border-color: var(--cc-accent); color: #fff; font-weight: 600; }
+  .cc-btn-link{ background: none; border: none; padding: 9px 6px; text-decoration: underline; color: var(--cc-text); }
+  .cc-spacer{ flex: 1 1 auto; }
+
+  /* Category preferences */
+  #slabCCPrefs{ margin: 6px 0 16px; }
+  #slabCCPrefs[hidden]{ display: none; }
+  .cc-cat{
+    display: flex; gap: 12px; padding: 12px 0;
+    border-top: 1px solid var(--border, rgba(127,127,127,.2));
+  }
+  .cc-cat:first-child{ border-top: 0; }
+  .cc-cat .cc-cat-body{ flex: 1 1 auto; }
+  .cc-cat strong{ display: block; font-size: 14px; }
+  .cc-cat small{ display: block; opacity: .82; margin-top: 2px; }
+
+  /* Switch */
+  .cc-switch{ position: relative; flex: 0 0 auto; width: 44px; height: 24px; }
+  .cc-switch input{
+    position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer;
+  }
+  .cc-switch input:disabled{ cursor: not-allowed; }
+  .cc-switch .cc-track{
+    position: absolute; inset: 0; border-radius: 999px;
+    background: rgba(127,127,127,.4); transition: background .18s ease; pointer-events: none;
+  }
+  .cc-switch .cc-track::after{
+    content: ""; position: absolute; top: 3px; left: 3px;
+    width: 18px; height: 18px; border-radius: 50%; background: #fff;
+    transition: transform .18s ease;
+  }
+  .cc-switch input:checked + .cc-track{ background: var(--cc-accent); }
+  .cc-switch input:checked + .cc-track::after{ transform: translateX(20px); }
+  .cc-switch input:focus-visible + .cc-track{ outline: 2px solid var(--cc-accent); outline-offset: 2px; }
+
+  /* Persistent reopen button */
+  #slabCCReopen{
+    position: fixed; z-index: 9999; bottom: 14px; left: 14px;
+    background: var(--cc-bg, #fff); color: var(--cc-text, #111);
+    border: 1px solid var(--border, rgba(127,127,127,.3));
+    border-radius: 999px; padding: 7px 13px; font: inherit; font-size: 12px;
+    cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.18); opacity: .9;
+  }
+  #slabCCReopen:hover{ opacity: 1; }
+  #slabCCReopen[hidden]{ display: none; }
+
+  @media (max-width: 480px){
+    .cc-actions{ gap: 6px; }
+    .cc-btn{ flex: 1 1 auto; text-align: center; }
+    .cc-spacer{ display: none; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    #slabCCBackdrop, #slabCCSurface{ transition: none !important; }
+    .cc-switch .cc-track, .cc-switch .cc-track::after{ transition: none !important; }
+  }
+</style>
+
+<div id="slabCCRoot"
+     class="cc-<%= cc_style %> cc-pos-<%= cc_position %>"
+     data-cc-style="<%= cc_style %>" data-cc-position="<%= cc_position %>"
+     hidden>
+  <div id="slabCCBackdrop" tabindex="-1"></div>
+  <div id="slabCCSurface"
+       role="dialog" aria-modal="<%= cc_style === 'modal' ? 'true' : 'false' %>"
+       aria-labelledby="slabCCTitle" aria-describedby="slabCCMsg" tabindex="-1">
+    <h2 id="slabCCTitle"><%= t_title %></h2>
+    <p class="cc-msg" id="slabCCMsg">
+      <%= t_message %>
+      <a class="cc-link" href="<%= t_privacy_link %>"><%= t_privacy_text %></a>
+    </p>
+
+    <div id="slabCCPrefs" hidden>
+      <div class="cc-cat">
+        <div class="cc-cat-body">
+          <strong><%= t_nec_title %></strong>
+          <small><%= t_nec_desc %></small>
+        </div>
+        <label class="cc-switch" title="<%= t_nec_title %>">
+          <input type="checkbox" checked disabled aria-label="<%= t_nec_title %>">
+          <span class="cc-track" aria-hidden="true"></span>
+        </label>
+      </div>
+      <div class="cc-cat">
+        <div class="cc-cat-body">
+          <strong><%= t_an_title %></strong>
+          <small><%= t_an_desc %></small>
+        </div>
+        <label class="cc-switch" title="<%= t_an_title %>">
+          <input type="checkbox" id="slabCCAnalytics" aria-label="<%= t_an_title %>">
+          <span class="cc-track" aria-hidden="true"></span>
+        </label>
+      </div>
+      <div class="cc-cat">
+        <div class="cc-cat-body">
+          <strong><%= t_mk_title %></strong>
+          <small><%= t_mk_desc %></small>
+        </div>
+        <label class="cc-switch" title="<%= t_mk_title %>">
+          <input type="checkbox" id="slabCCMarketing" aria-label="<%= t_mk_title %>">
+          <span class="cc-track" aria-hidden="true"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="cc-actions">
+      <button type="button" class="cc-btn cc-btn-link" id="slabCCToggle" aria-expanded="false" aria-controls="slabCCPrefs">
+        <%= t_settings %>
+      </button>
+      <span class="cc-spacer"></span>
+      <button type="button" class="cc-btn" id="slabCCReject"><%= t_reject %></button>
+      <button type="button" class="cc-btn" id="slabCCSave" hidden><%= t_save %></button>
+      <button type="button" class="cc-btn cc-btn-primary" id="slabCCAccept"><%= t_accept %></button>
+    </div>
+  </div>
+</div>
+
+<button type="button" id="slabCCReopen" hidden aria-label="<%= t_settings %>"><%= t_settings %></button>
+
+<script>
+/*
+ * Slab cookie consent — gating pattern
+ * -----------------------------------------------------------------------
+ * To gate an analytics / marketing tag, register it as an INERT script:
+ *
+ *   <script type="text/plain" data-consent="analytics">
+ *     // your GA / analytics init here
+ *   <\/script>
+ *   <script type="text/plain" data-consent="marketing" src="https://ads.example/tag.js"><\/script>
+ *
+ * It stays inert until the matching consent category is granted, at which
+ * point this code swaps it for a live <script> (executing it). You may also
+ * listen for: document.addEventListener('slab:consent', e => { ... e.detail ... })
+ * and read window.slabConsent, document.documentElement.dataset.consentAnalytics.
+ */
+(function(){
+  'use strict';
+  var STORE_KEY = 'slab_cookie_consent';
+  var EVENT     = 'slab:consent';
+
+  var root     = document.getElementById('slabCCRoot');
+  if (!root) return;
+  var surface  = document.getElementById('slabCCSurface');
+  var backdrop = document.getElementById('slabCCBackdrop');
+  var prefs    = document.getElementById('slabCCPrefs');
+  var reopen   = document.getElementById('slabCCReopen');
+  var toggleBtn= document.getElementById('slabCCToggle');
+  var saveBtn  = document.getElementById('slabCCSave');
+  var anEl     = document.getElementById('slabCCAnalytics');
+  var mkEl     = document.getElementById('slabCCMarketing');
+  var isModal  = root.getAttribute('data-cc-style') === 'modal';
+  var lastFocus = null;
+
+  function read(){
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || typeof o !== 'object') return null;
+      return { necessary: true, analytics: !!o.analytics, marketing: !!o.marketing, ts: o.ts || Date.now() };
+    } catch (e) { return null; }
+  }
+
+  function activateTags(consent){
+    var nodes = document.querySelectorAll('script[type="text/plain"][data-consent]');
+    for (var i = 0; i < nodes.length; i++){
+      var node = nodes[i];
+      var cat = node.getAttribute('data-consent');
+      if (!consent[cat]) continue;
+      if (node.dataset.ccActivated === '1') continue;
+      var s = document.createElement('script');
+      for (var a = 0; a < node.attributes.length; a++){
+        var at = node.attributes[a];
+        if (at.name === 'type' || at.name === 'data-consent') continue;
+        s.setAttribute(at.name, at.value);
+      }
+      s.type = 'text/javascript';
+      if (!node.src) s.text = node.textContent;
+      node.dataset.ccActivated = '1';
+      node.parentNode.insertBefore(s, node.nextSibling);
+    }
+  }
+
+  function apply(consent){
+    window.slabConsent = consent;
+    var de = document.documentElement;
+    de.dataset.consentAnalytics = consent.analytics ? 'true' : 'false';
+    de.dataset.consentMarketing = consent.marketing ? 'true' : 'false';
+    activateTags(consent);
+    try { document.dispatchEvent(new CustomEvent(EVENT, { detail: consent })); } catch (e) {}
+  }
+
+  function save(consent){
+    consent.necessary = true;
+    consent.ts = Date.now();
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(consent)); } catch (e) {}
+    apply(consent);
+    hide();
+    if (reopen) reopen.hidden = false;
+  }
+
+  function syncToggles(){
+    var c = read();
+    if (anEl) anEl.checked = c ? c.analytics : false;
+    if (mkEl) mkEl.checked = c ? c.marketing : false;
+  }
+
+  function showPrefs(on){
+    prefs.hidden = !on;
+    toggleBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    saveBtn.hidden = !on;
+  }
+
+  function show(){
+    syncToggles();
+    showPrefs(false);
+    lastFocus = document.activeElement;
+    root.hidden = false;
+    if (reopen) reopen.hidden = true;
+    requestAnimationFrame(function(){
+      root.classList.add('cc-open');
+      try { surface.focus(); } catch (e) {}
+    });
+  }
+
+  function hide(){
+    root.classList.remove('cc-open');
+    root.hidden = true;
+    if (read() && reopen) reopen.hidden = false;
+    if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) {} }
+  }
+
+  // Buttons ---------------------------------------------------------------
+  document.getElementById('slabCCAccept').addEventListener('click', function(){
+    save({ necessary: true, analytics: true, marketing: true });
+  });
+  document.getElementById('slabCCReject').addEventListener('click', function(){
+    save({ necessary: true, analytics: false, marketing: false });
+  });
+  saveBtn.addEventListener('click', function(){
+    save({ necessary: true, analytics: anEl ? anEl.checked : false, marketing: mkEl ? mkEl.checked : false });
+  });
+  toggleBtn.addEventListener('click', function(){
+    showPrefs(prefs.hidden);
+  });
+  if (reopen) reopen.addEventListener('click', function(){ show(); showPrefs(true); });
+
+  // ESC closes to a minimal saved state ONLY if a choice already exists.
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape' || root.hidden) return;
+    if (read()) hide();
+  });
+  if (isModal) backdrop.addEventListener('click', function(){ if (read()) hide(); });
+
+  // Public API ------------------------------------------------------------
+  window.slabCookieConsent = {
+    open: function(){ show(); showPrefs(true); },
+    close: hide,
+    get: read
+  };
+
+  // Init ------------------------------------------------------------------
+  var stored = read();
+  if (stored){
+    apply(stored);
+    if (reopen) reopen.hidden = false;
+  } else {
+    window.slabConsent = null;
+    show();
+  }
+})();
+</script>
+<% } %>
