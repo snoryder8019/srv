@@ -35,6 +35,7 @@
 .qr-type-badge.business-card { background: var(--accent); color: var(--on-surface); }
 .qr-type-badge.custom { background: var(--primary-mid); color: var(--surface); }
 .qr-type-badge.page { background: var(--border); color: var(--on-surface); }
+.qr-type-badge.link { background: var(--primary); color: var(--surface); }
 
 .qr-link-card h3 { font-family: var(--font-heading), serif; font-size: 1.05rem; margin-bottom: 4px; }
 .qr-link-card .qr-url { font-size: 0.75rem; color: var(--on-ivory-muted); word-break: break-all; margin-bottom: 12px; }
@@ -121,20 +122,30 @@
       <h2>Create QR Link</h2>
       <form method="POST" action="/admin/qr-codes">
         <div class="qr-form-row">
-          <div class="qr-form-group">
-            <label>Type</label>
-            <select name="type" id="qrType" onchange="toggleUrlField()">
-              <option value="business-card">Business Card</option>
-              <option value="custom">Custom URL</option>
-              <option value="page">Page Link</option>
+          <div class="qr-form-group" style="flex:1.4;">
+            <label>Destination</label>
+            <select name="destination" id="qrDest" onchange="onDestChange()">
+              <% if (destinations && destinations.length) { %>
+                <% destinations.forEach(function(g) { %>
+                  <optgroup label="<%= g.group %>">
+                    <% g.items.forEach(function(it) { %>
+                      <option value="<%= it.url %>" data-label="<%= it.label %>"><%= it.label %></option>
+                    <% }); %>
+                  </optgroup>
+                <% }); %>
+              <% } %>
+              <optgroup label="Other">
+                <option value="custom">Custom URL…</option>
+                <option value="business-card">Digital Business Card</option>
+              </optgroup>
             </select>
           </div>
           <div class="qr-form-group">
             <label>Label</label>
-            <input type="text" name="label" placeholder="e.g. Main Business Card" required>
+            <input type="text" name="label" id="qrLabel" placeholder="e.g. Spring Promo" required>
           </div>
-          <div class="qr-form-group" id="slugGroup">
-            <label>Slug</label>
+          <div class="qr-form-group" id="slugGroup" style="display:none;">
+            <label>Card Slug</label>
             <input type="text" name="slug" placeholder="e.g. main" pattern="[a-z0-9\-]+" title="Lowercase letters, numbers, hyphens only">
           </div>
           <div class="qr-form-group" id="urlGroup" style="display:none;">
@@ -146,6 +157,9 @@
             <button type="submit" class="btn btn-primary" style="white-space:nowrap;">Create QR</button>
           </div>
         </div>
+        <p style="font-size:0.72rem;color:var(--on-ivory-muted);margin:10px 2px 0;">
+          Pick any of your pages, blog posts, portfolio, or forms — the QR points straight there. Choose “Custom URL” to link anywhere else.
+        </p>
       </form>
     </div>
 
@@ -162,7 +176,7 @@
       <div class="qr-links-grid">
         <% links.forEach(function(link) { %>
           <div class="qr-link-card">
-            <span class="qr-type-badge <%= link.type %>"><%= link.type === 'business-card' ? 'Business Card' : link.type === 'page' ? 'Page' : 'Custom' %></span>
+            <span class="qr-type-badge <%= link.type %>"><%= link.type === 'business-card' ? 'Business Card' : link.type === 'page' ? 'Page' : link.type === 'link' ? 'Link' : 'Custom' %></span>
             <% if (link.showInFooter) { %><span class="footer-badge on">In Footer</span><% } %>
             <h3><%- link.label %></h3>
             <div class="qr-url"><%= link.url %></div>
@@ -204,11 +218,26 @@
 </main>
 
 <script>
-function toggleUrlField() {
-  var type = document.getElementById('qrType').value;
-  document.getElementById('urlGroup').style.display = type === 'custom' ? '' : 'none';
-  document.getElementById('slugGroup').style.display = type !== 'custom' ? '' : 'none';
+function onDestChange() {
+  var sel = document.getElementById('qrDest');
+  var val = sel.value;
+  var opt = sel.options[sel.selectedIndex];
+  document.getElementById('urlGroup').style.display = val === 'custom' ? '' : 'none';
+  document.getElementById('slugGroup').style.display = val === 'business-card' ? '' : 'none';
+
+  // Auto-fill the label from the chosen destination if the user hasn't typed one.
+  var labelEl = document.getElementById('qrLabel');
+  if (!labelEl.value.trim() || labelEl.dataset.auto === '1') {
+    var dl = opt.getAttribute('data-label');
+    if (dl) { labelEl.value = dl; labelEl.dataset.auto = '1'; }
+  }
 }
+// Once the admin edits the label themselves, stop auto-filling it.
+document.addEventListener('DOMContentLoaded', function() {
+  var labelEl = document.getElementById('qrLabel');
+  labelEl.addEventListener('input', function() { labelEl.dataset.auto = '0'; });
+  onDestChange();
+});
 
 function copyToClipboard(text, btn) {
   navigator.clipboard.writeText(text).then(function() {

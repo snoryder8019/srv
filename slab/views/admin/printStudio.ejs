@@ -1,0 +1,460 @@
+<%- include('partials/head', { title: 'Print Studio' }) %>
+<%- include('partials/sidebar', { page: 'print-studio', user: user }) %>
+
+<style>
+.ps { max-width: 1340px; margin: 0 auto; }
+.ps h1 { font-family: var(--font-heading), serif; font-size: 1.6rem; font-weight: 600; margin-bottom: 6px; }
+.ps .subtitle { color: var(--on-ivory-muted); font-size: 0.85rem; margin-bottom: 18px; }
+.ps-rail { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 16px; }
+.ps-chip { flex: 0 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; cursor: pointer; min-width: 150px; transition: border-color .15s; }
+.ps-chip:hover, .ps-chip.active { border-color: var(--accent); }
+.ps-chip .nm { font-size: 0.82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.ps-chip .ft { font-size: 0.68rem; color: var(--on-ivory-muted); }
+.ps-chip.new { display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--accent); border-style: dashed; min-width: 56px; }
+
+.ps-grid { display: grid; grid-template-columns: 380px minmax(0,1fr); gap: 22px; align-items: start; }
+@media (max-width: 1100px) { .ps-grid { grid-template-columns: 1fr; } }
+.ps-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+.ps-card h2 { font-family: var(--font-heading), serif; font-size: 1rem; margin-bottom: 10px; }
+.ps-card h2 .hint { font-family: var(--font-body); font-size: 0.68rem; font-weight: 400; color: var(--on-ivory-muted); }
+
+.fg { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.fg label { font-size: 0.7rem; font-weight: 600; color: var(--on-ivory-muted); text-transform: uppercase; letter-spacing: .04em; }
+.fg input[type=text], .fg textarea, .fg select { padding: 8px 11px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.84rem; font-family: var(--font-body), sans-serif; background: var(--surface); color: var(--on-surface); width: 100%; }
+.fg textarea { resize: vertical; min-height: 52px; } .fg-row { display: flex; gap: 10px; } .fg-row > .fg { flex: 1; }
+.fg input[type=color] { width: 46px; height: 34px; padding: 2px; border: 1px solid var(--border); border-radius: 6px; }
+.inline { display: flex; align-items: center; gap: 8px; }
+.fg input:focus, .fg textarea:focus, .fg select:focus { outline: none; border-color: var(--accent); }
+
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px,1fr)); gap: 7px; }
+.theme-opt { border: 1px solid var(--border); border-radius: 7px; padding: 7px 5px; text-align: center; cursor: pointer; font-size: 0.72rem; transition: border-color .15s, background .15s; }
+.theme-opt:hover { border-color: var(--accent); } .theme-opt.active { border-color: var(--accent); background: rgba(201,168,72,0.08); font-weight: 600; }
+
+.fmt-group { font-size: 0.66rem; text-transform: uppercase; letter-spacing: .05em; color: var(--on-ivory-muted); margin: 10px 0 4px; }
+.fmt-list { display: flex; flex-direction: column; gap: 3px; }
+.fmt-list label { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; cursor: pointer; }
+.fmt-list input { width: auto; }
+
+/* Stage */
+.stage-card { position: sticky; top: 14px; }
+.stage-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.stage-head .ttl { font-family: var(--font-heading), serif; font-size: 1.05rem; }
+.stage-box { background: repeating-conic-gradient(#e9e9e9 0% 25%, #f6f6f6 0% 50%) 0/22px 22px; border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: center; min-height: 420px; overflow: auto; }
+.stage-inner { position: relative; }
+.stage-inner iframe { border: 0; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,0.22); display: block; }
+.stage-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; align-items: center; }
+.stage-actions .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.dim { font-size: 0.72rem; color: var(--on-ivory-muted); }
+
+/* Board */
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 12px; }
+.tile { border: 1px solid var(--border); border-radius: 8px; padding: 8px; cursor: pointer; background: var(--surface); transition: border-color .15s; }
+.tile:hover, .tile.active { border-color: var(--accent); }
+.tile .thumb { background: repeating-conic-gradient(#ececec 0% 25%, #f7f7f7 0% 50%) 0/14px 14px; border-radius: 5px; display: flex; align-items: center; justify-content: center; overflow: hidden; min-height: 96px; }
+.tile .thumb iframe { border: 0; pointer-events: none; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.14); }
+.tile .tl { font-size: 0.7rem; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; justify-content: space-between; gap: 6px; }
+.tile .tl .cust { color: var(--accent); font-weight: 700; }
+
+.agent-box { background: rgba(201,168,72,0.06); border: 1px solid rgba(201,168,72,0.3); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+.agent-row { display: flex; gap: 8px; } .agent-row input { flex: 1; }
+.agent-msg { font-size: 0.75rem; color: var(--on-ivory-muted); margin-top: 6px; min-height: 1em; }
+.spin { display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: psspin .7s linear infinite; vertical-align: -2px; }
+@keyframes psspin { to { transform: rotate(360deg); } }
+.ps-toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 10001; background: #14532d; color: #86efac; padding: 12px 24px; border-radius: 8px; font-size: 0.85rem; font-weight: 500; }
+.hidden { display: none !important; }
+.btn.disabled, .btn[disabled] { opacity: .45; pointer-events: none; }
+.ps-modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 10002; display: flex; align-items: center; justify-content: center; }
+.ps-modal-box { background: var(--surface); border-radius: 12px; width: min(720px,92vw); max-height: 82vh; display: flex; flex-direction: column; padding: 16px; box-shadow: 0 16px 48px rgba(0,0,0,.3); }
+.ps-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.ps-modal-head button { border: 0; background: transparent; font-size: 1.2rem; cursor: pointer; color: var(--on-ivory-muted); }
+.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px,1fr)); gap: 8px; overflow: auto; margin-top: 10px; }
+.asset-cell { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; cursor: pointer; aspect-ratio: 1; background: #f3f3f3; }
+.asset-cell:hover { border-color: var(--accent); }
+.asset-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+</style>
+
+<main class="admin-main">
+<div class="ps">
+  <% if (saved) { %><div class="ps-toast" id="psToast">Saved!</div><% } %>
+  <h1>Print Studio</h1>
+  <p class="subtitle">One campaign → every print asset. Pick a theme, let the agent write the copy, bake in a QR, drag each element where you want it per format, then download the whole pack as a ZIP — or gang-print any piece for cutting.</p>
+
+  <div class="ps-rail">
+    <div class="ps-chip new" onclick="PS.newMaterial()" title="New campaign">+</div>
+    <% materials.forEach(function(m){ %>
+      <div class="ps-chip" id="chip-<%= m._id %>" data-id="<%= m._id %>" onclick="PS.select('<%= m._id %>')">
+        <div class="nm"><%= m.name || 'Untitled' %></div>
+        <div class="ft"><%= Object.keys(m.enabled||{}).length || 0 %> formats</div>
+      </div>
+    <% }); %>
+  </div>
+
+  <form id="psForm" method="POST" action="/admin/print-studio">
+    <input type="hidden" name="showLogo" id="f_showLogo" value="1">
+    <input type="hidden" name="bgImageUrl" id="f_bgImageUrl" value="">
+    <input type="hidden" name="theme" id="f_theme" value="<%= defaultTheme %>">
+    <input type="hidden" name="enabledJson" id="f_enabledJson" value="">
+    <input type="hidden" name="layoutsJson" id="f_layoutsJson" value="">
+
+    <div class="ps-grid">
+      <!-- ── Form column ── -->
+      <div>
+        <div class="ps-card">
+          <div class="fg"><label>Campaign name</label><input type="text" name="name" id="f_name" placeholder="e.g. Summer Promo"></div>
+          <div class="fg"><label>Theme (whole campaign)</label>
+            <div class="theme-grid" id="themeGrid">
+              <% Object.entries(themes).forEach(function([k,t]){ %>
+                <div class="theme-opt <%= k===defaultTheme?'active':'' %>" data-theme="<%= k %>" onclick="PS.setTheme('<%= k %>')"><%= t.label %></div>
+              <% }); %>
+            </div>
+          </div>
+        </div>
+
+        <div class="ps-card">
+          <h2>Copy <span class="hint">— shared across all formats</span></h2>
+          <div class="agent-box">
+            <div class="agent-row">
+              <input type="text" id="agentInput" placeholder="What to promote… e.g. 'weekend 20% off sale'">
+              <button type="button" class="btn btn-primary btn-sm" id="agentBtn" onclick="PS.runAgent()">Fill with AI</button>
+            </div>
+            <div class="agent-msg" id="agentMsg"></div>
+          </div>
+          <div class="fg"><label>Headline</label><input type="text" name="headline" id="f_headline" oninput="PS.queue()"></div>
+          <div class="fg"><label>Subhead</label><input type="text" name="subhead" id="f_subhead" oninput="PS.queue()"></div>
+          <div class="fg"><label>Body</label><textarea name="body" id="f_body" oninput="PS.queue()"></textarea></div>
+          <div class="fg-row">
+            <div class="fg"><label>Offer / Badge</label><input type="text" name="offer" id="f_offer" oninput="PS.queue()"></div>
+            <div class="fg"><label>Call to Action</label><input type="text" name="cta" id="f_cta" oninput="PS.queue()"></div>
+          </div>
+          <div class="fg"><label>Tagline</label><input type="text" name="tagline" id="f_tagline" oninput="PS.queue()"></div>
+        </div>
+
+        <div class="ps-card">
+          <h2>Brand assets</h2>
+          <div class="fg">
+            <label class="inline"><input type="checkbox" id="f_showLogoChk" checked onchange="PS.onLogoToggle()" style="width:auto"> Show logo</label>
+            <select id="f_logoSlot" name="logoSlot" onchange="PS.queue()">
+              <option value="logo_primary">Primary logo</option><option value="logo_icon">Icon / mark</option>
+            </select>
+          </div>
+          <div class="fg"><label>QR code link</label>
+            <select name="qrLinkId" id="f_qrLinkId" onchange="PS.queue()">
+              <option value="">— none —</option>
+              <% qrLinks.forEach(function(l){ %><option value="<%= l._id %>"><%= l.label %> — <%= l.url %></option><% }); %>
+            </select>
+            <% if (!qrLinks.length) { %><div class="dim">No QR links yet — make one under <a href="/admin/qr-codes">QR Codes</a>.</div><% } %>
+          </div>
+          <div class="fg"><label>QR caption</label><input type="text" name="qrCaption" id="f_qrCaption" placeholder="Scan to connect" oninput="PS.queue()"></div>
+        </div>
+
+        <div class="ps-card">
+          <h2>Background</h2>
+          <div class="fg"><label>Source</label>
+            <select name="bgType" id="f_bgType" onchange="PS.onBgType()">
+              <option value="theme">Theme default</option><option value="color">Solid color</option>
+              <option value="gradient">Gradient</option><option value="image">Brand image</option><option value="ai">AI texture</option>
+            </select>
+          </div>
+          <div class="fg-row bg-when bg-color bg-gradient hidden">
+            <div class="fg"><label>Color</label><input type="color" name="bgColor" id="f_bgColor" value="<%= brandColors.primary %>" oninput="PS.queue()"></div>
+            <div class="fg bg-when bg-gradient hidden"><label>Color 2</label><input type="color" name="bgColor2" id="f_bgColor2" value="<%= brandColors.accent %>" oninput="PS.queue()"></div>
+          </div>
+          <div class="fg bg-when bg-image hidden"><label>Brand image</label>
+            <select id="f_bgImageSelect" onchange="PS.onBgImageSelect()">
+              <option value="">— choose —</option>
+              <% brandImages.forEach(function(im){ %><option value="<%= im.url %>"><%= im.slot %><%= im.label?(' — '+im.label):'' %></option><% }); %>
+            </select>
+          </div>
+          <div class="bg-when bg-ai hidden">
+            <div class="fg"><label>AI texture <span style="text-transform:none;font-weight:400">(background only)</span></label>
+              <div class="agent-row"><input type="text" id="aiBgSeed" placeholder="e.g. soft marble, paper grain">
+                <button type="button" class="btn btn-outline btn-sm" id="aiBgBtn" onclick="PS.genBg()">Generate</button></div>
+              <div class="agent-msg" id="aiBgMsg"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ps-card">
+          <h2>Formats in this pack <span class="hint">— toggle each</span></h2>
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button type="button" class="btn btn-outline btn-sm" onclick="PS.allFormats(true)">All</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="PS.allFormats(false)">None</button>
+          </div>
+          <div id="fmtToggles"></div>
+        </div>
+
+        <div class="ps-card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="submit" class="btn btn-primary" id="saveBtn">Save campaign</button>
+          <a class="btn btn-outline disabled" id="zipBtn" download>Download ZIP (all)</a>
+          <button type="button" class="btn btn-outline" id="dupBtn" onclick="PS.duplicate()" disabled>Duplicate</button>
+          <button type="button" class="btn btn-danger" id="delBtn" onclick="PS.del()" disabled>Delete</button>
+        </div>
+      </div>
+
+      <!-- ── Stage + board column ── -->
+      <div>
+        <div class="ps-card stage-card">
+          <div class="stage-head">
+            <span class="ttl" id="stageTtl">—</span>
+            <button type="button" class="btn btn-outline btn-sm" onclick="PS.openAssets()" title="Place an image asset">+ Image</button>
+            <span class="dim" id="stageHint" style="margin-left:auto">Select an element to drag, resize, restyle (font · color · opacity · layer)</span>
+          </div>
+          <div class="stage-box" id="stageBox"><div class="stage-inner" id="stageInner"><iframe id="stageFrame" scrolling="no"></iframe></div></div>
+          <div class="dim" id="stageDim" style="text-align:center;margin-top:8px"></div>
+          <div class="stage-actions">
+            <a class="btn btn-primary btn-sm disabled" id="actPdf" download>PDF</a>
+            <a class="btn btn-outline btn-sm disabled" id="actPng" download>PNG</a>
+            <span class="sep"></span>
+            <a class="btn btn-outline btn-sm disabled" id="actGangL" download>Gang ▸ Letter</a>
+            <a class="btn btn-outline btn-sm disabled" id="actGangT" download>Gang ▸ Tabloid</a>
+            <span class="sep"></span>
+            <button type="button" class="btn btn-outline btn-sm" onclick="PS.resetLayout()">Reset layout</button>
+            <span class="dim" id="saveHint" style="margin-left:auto">Save to enable downloads</span>
+          </div>
+        </div>
+
+        <div class="ps-card">
+          <h2>All assets in this pack</h2>
+          <div class="board" id="board"></div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- Asset picker -->
+  <div id="assetModal" class="ps-modal hidden">
+    <div class="ps-modal-box">
+      <div class="ps-modal-head"><strong>Add an image asset</strong><button type="button" onclick="PS.closeAssets()">✕</button></div>
+      <input type="text" id="assetSearch" placeholder="Search assets…" oninput="PS.loadAssetsDebounced()" style="padding:8px 11px;border:1px solid var(--border);border-radius:6px;font-size:.84rem;background:var(--surface);color:var(--on-surface)">
+      <div id="assetGrid" class="asset-grid"></div>
+    </div>
+  </div>
+</div>
+</main>
+
+<script>
+const FORMATS = <%- JSON.stringify(Object.fromEntries(Object.entries(formats).map(([k,f])=>[k,{wIn:f.wIn,hIn:f.hIn,bleedIn:f.bleedIn,label:f.label,group:f.group,output:f.output,shape:f.shape}]))) %>;
+const FMT_KEYS = <%- JSON.stringify(allFormatKeys) %>;
+const MATERIALS = <%- JSON.stringify(Object.fromEntries(materials.map(m=>[String(m._id),{
+  name:m.name||'',theme:m.theme||defaultTheme,fields:m.fields||{},showLogo:m.showLogo!==false,logoSlot:m.logoSlot||'logo_primary',
+  qrLinkId:m.qrLinkId||'',qrCaption:m.qrCaption||'',bgType:m.bgType||'theme',bgColor:m.bgColor||'',bgColor2:m.bgColor2||'',bgImageUrl:m.bgImageUrl||'',
+  enabled:m.enabled||{},layouts:m.layouts||{}
+}]))) %>;
+
+const PS = {
+  id:null, activeFormat:null, enabled:{}, layouts:{}, _t:null, _bt:null, _at:null,
+  _q:[], _qBusy:false,
+  el(id){ return document.getElementById(id); },
+
+  // ── Image assets placed as draggable objects ──
+  openAssets(){ if(!this.activeFormat){ alert('Pick a format first.'); return; } this.el('assetModal').classList.remove('hidden'); this.loadAssets(); },
+  closeAssets(){ this.el('assetModal').classList.add('hidden'); },
+  loadAssetsDebounced(){ clearTimeout(this._at); this._at=setTimeout(()=>this.loadAssets(),300); },
+  async loadAssets(){
+    const grid=this.el('assetGrid'); grid.innerHTML='<div class="dim" style="grid-column:1/-1">Loading…</div>';
+    try{ const q=this.el('assetSearch').value.trim();
+      const r=await fetch('/admin/print-studio/assets'+(q?('?q='+encodeURIComponent(q)):'')); const j=await r.json();
+      if(!j.assets||!j.assets.length){ grid.innerHTML='<div class="dim" style="grid-column:1/-1">No image assets found. Upload some under <a href="/admin/assets">Assets</a>.</div>'; return; }
+      grid.innerHTML=''; j.assets.forEach(a=>{ const d=document.createElement('div'); d.className='asset-cell'; d.title=a.title||'';
+        const im=document.createElement('img'); im.src=a.thumb||a.url; im.loading='lazy'; d.appendChild(im);
+        d.onclick=()=>{ this.addAsset(a.url); this.closeAssets(); }; grid.appendChild(d); });
+    }catch(e){ grid.innerHTML='<div class="dim" style="grid-column:1/-1">Error loading assets.</div>'; }
+  },
+  addAsset(url){
+    const fmt=this.activeFormat; if(!fmt) return; const f=FORMATS[fmt];
+    if(!this.layouts[fmt]) this.layouts[fmt]={custom:true,regions:{},objects:[]};
+    if(!this.layouts[fmt].objects) this.layouts[fmt].objects=[];
+    const id='o'+Date.now().toString(36)+Math.floor(Math.random()*46656).toString(36);
+    const w=+(Math.min(f.wIn,f.hIn)*0.4).toFixed(2);
+    this.layouts[fmt].objects.push({id,url,x:+((f.wIn-w)/2).toFixed(2),y:+((f.hIn-w)/2).toFixed(2),w,opacity:1});
+    this.layouts[fmt].custom=true; this.refreshStage(); this.refreshOneTile(fmt);
+  },
+
+  // Throttled iframe loader — staggers preview requests so the board never
+  // bursts past Apache mod_evasive's per-URL flood threshold (25 / 2s).
+  enqueue(fn, kind, priority){ const it={fn,kind}; priority?this._q.unshift(it):this._q.push(it); this.drain(); },
+  dropKind(kind){ this._q=this._q.filter(i=>i.kind!==kind); },
+  drain(){ if(this._qBusy)return; this._qBusy=true; const step=()=>{ const it=this._q.shift(); if(!it){this._qBusy=false;return;} try{it.fn();}catch(e){} setTimeout(step,170); }; step(); },
+  loadFrame(frame,inner,fmt,query,maxW,maxH,kind,priority){
+    this.enqueue(()=>{ frame.src='/admin/print-studio/preview?'+query; this.scaleFrame(frame,inner,fmt,maxW,maxH); }, kind, priority);
+  },
+
+  content(){
+    const f=this.el('psForm'), d={};
+    ['name','theme','headline','subhead','body','offer','cta','tagline','logoSlot','qrLinkId','qrCaption','bgType','bgColor','bgColor2'].forEach(n=>{ const e=f.querySelector('[name="'+n+'"]'); if(e)d[n]=e.value; });
+    d.showLogo=this.el('f_showLogoChk').checked?'1':'0'; d.bgImageUrl=this.el('f_bgImageUrl').value;
+    return d;
+  },
+  query(fmt,edit){
+    const d=this.content(); d.format=fmt; if(edit)d.edit='1';
+    if(this.layouts[fmt]) d.layoutsJson=JSON.stringify({[fmt]:this.layouts[fmt]});
+    return new URLSearchParams(d).toString();
+  },
+
+  scaleFrame(frame,inner,fmt,maxW,maxH){
+    const f=FORMATS[fmt]; const wpx=(f.wIn+f.bleedIn*2)*96, hpx=(f.hIn+f.bleedIn*2)*96;
+    const s=Math.min(maxW/wpx, maxH/hpx, 1.4);
+    frame.style.width=wpx+'px'; frame.style.height=hpx+'px'; frame.style.transform='scale('+s+')'; frame.style.transformOrigin='top left';
+    inner.style.width=(wpx*s)+'px'; inner.style.height=(hpx*s)+'px';
+  },
+
+  refreshStage(){
+    if(!this.activeFormat) return;
+    const fmt=this.activeFormat, f=FORMATS[fmt];
+    this.el('stageTtl').textContent=f.label;
+    const box=this.el('stageBox');
+    this.dropKind('stage');
+    this.loadFrame(this.el('stageFrame'), this.el('stageInner'), fmt, this.query(fmt,true), box.clientWidth-34, 560, 'stage', true);
+    this.el('stageDim').textContent=f.wIn+'×'+f.hIn+' in (+'+f.bleedIn+'″ bleed) · '+(this.layouts[fmt]?'custom layout':'auto layout');
+    // per-format download links — only work on a SAVED campaign (server needs the id)
+    const acts=['actPdf','actPng','actGangL','actGangT'];
+    if(this.id){
+      const base='/admin/print-studio/'+this.id;
+      this.el('actPdf').href=base+'/export.pdf?format='+fmt;
+      this.el('actPng').href=base+'/export.png?format='+fmt;
+      this.el('actGangL').href=base+'/gang.pdf?format='+fmt+'&page=letter';
+      this.el('actGangT').href=base+'/gang.pdf?format='+fmt+'&page=tabloid';
+      acts.forEach(a=>this.el(a).classList.remove('disabled'));
+      this.el('actPdf').classList.toggle('hidden', !f.output.includes('pdf'));
+      this.el('actPng').classList.toggle('hidden', !f.output.includes('png'));
+      this.el('saveHint').classList.add('hidden');
+    } else {
+      acts.forEach(a=>{ const el=this.el(a); el.removeAttribute('href'); el.classList.add('disabled'); el.classList.remove('hidden'); });
+      this.el('saveHint').classList.remove('hidden');
+    }
+  },
+
+  refreshBoard(){
+    const board=this.el('board'); board.innerHTML=''; this.dropKind('tile');
+    FMT_KEYS.filter(k=>this.enabled[k]).forEach(fmt=>{
+      const f=FORMATS[fmt];
+      const tile=document.createElement('div'); tile.className='tile'+(fmt===this.activeFormat?' active':''); tile.dataset.fmt=fmt;
+      tile.onclick=()=>this.setActive(fmt);
+      const thumb=document.createElement('div'); thumb.className='thumb';
+      const inner=document.createElement('div'); inner.style.position='relative';
+      const fr=document.createElement('iframe'); fr.scrolling='no';
+      inner.appendChild(fr); thumb.appendChild(inner);
+      const tl=document.createElement('div'); tl.className='tl';
+      tl.innerHTML='<span>'+f.label+'</span>'+(this.layouts[fmt]?'<span class="cust">●</span>':'');
+      tile.appendChild(thumb); tile.appendChild(tl); board.appendChild(tile);
+      this.loadFrame(fr, inner, fmt, this.query(fmt,false), 150, 150, 'tile', false);
+    });
+  },
+
+  refreshOneTile(fmt){
+    const tile=document.querySelector('.tile[data-fmt="'+fmt+'"]'); if(!tile) return;
+    const fr=tile.querySelector('iframe'), inner=fr.parentElement;
+    this.loadFrame(fr, inner, fmt, this.query(fmt,false), 150, 150, 'tile', false);
+    const cust=tile.querySelector('.tl .cust');
+    if(this.layouts[fmt] && !cust){ tile.querySelector('.tl').insertAdjacentHTML('beforeend','<span class="cust">●</span>'); }
+    if(!this.layouts[fmt] && cust){ cust.remove(); }
+  },
+
+  setActive(fmt){
+    this.activeFormat=fmt;
+    document.querySelectorAll('.tile').forEach(t=>t.classList.toggle('active', t.dataset.fmt===fmt));
+    this.refreshStage();
+  },
+
+  queue(){ clearTimeout(this._t); this._t=setTimeout(()=>this.refreshStage(),350);
+           clearTimeout(this._bt); this._bt=setTimeout(()=>this.refreshBoard(),900); },
+
+  setTheme(k){ this.el('f_theme').value=k; document.querySelectorAll('.theme-opt').forEach(o=>o.classList.toggle('active',o.dataset.theme===k)); this.queue(); },
+  onLogoToggle(){ this.el('f_showLogo').value=this.el('f_showLogoChk').checked?'1':'0'; this.queue(); },
+  onBgImageSelect(){ this.el('f_bgImageUrl').value=this.el('f_bgImageSelect').value; this.queue(); },
+  onBgType(){ const t=this.el('f_bgType').value;
+    document.querySelectorAll('.bg-when').forEach(el=>{ const s=(t==='color'&&el.classList.contains('bg-color'))||(t==='gradient'&&(el.classList.contains('bg-gradient')||el.classList.contains('bg-color')))||(t==='image'&&el.classList.contains('bg-image'))||(t==='ai'&&el.classList.contains('bg-ai')); el.classList.toggle('hidden',!s); });
+    this.queue(); },
+
+  buildToggles(){
+    const groups={}; FMT_KEYS.forEach(k=>{ const g=FORMATS[k].group; (groups[g]=groups[g]||[]).push(k); });
+    let html=''; Object.entries(groups).forEach(([g,keys])=>{ html+='<div class="fmt-group">'+g+'</div><div class="fmt-list">';
+      keys.forEach(k=>{ html+='<label><input type="checkbox" data-fmt="'+k+'" onchange="PS.onToggle(this)"> '+FORMATS[k].label+'</label>'; });
+      html+='</div>'; });
+    this.el('fmtToggles').innerHTML=html; this.syncToggleChecks();
+  },
+  syncToggleChecks(){ document.querySelectorAll('#fmtToggles input').forEach(c=>{ c.checked=!!this.enabled[c.dataset.fmt]; }); },
+  onToggle(c){ const k=c.dataset.fmt; if(c.checked)this.enabled[k]=true; else delete this.enabled[k];
+    if(!this.enabled[this.activeFormat]) this.activeFormat=FMT_KEYS.find(k=>this.enabled[k])||null;
+    this.refreshBoard(); this.refreshStage(); },
+  allFormats(on){ this.enabled={}; if(on)FMT_KEYS.forEach(k=>this.enabled[k]=true); this.syncToggleChecks();
+    if(!this.enabled[this.activeFormat]) this.activeFormat=FMT_KEYS.find(k=>this.enabled[k])||null;
+    this.refreshBoard(); this.refreshStage(); },
+
+  resetLayout(){ if(!this.activeFormat) return; delete this.layouts[this.activeFormat]; this.refreshStage(); this.refreshOneTile(this.activeFormat); },
+
+  onMessage(e){ const d=e.data||{}; if(d.type!=='ps-layout'||!this.activeFormat) return;
+    this.layouts[this.activeFormat]={custom:true,regions:d.regions,objects:d.objects||[]}; this.refreshOneTile(this.activeFormat);
+    this.el('stageDim').textContent=(()=>{const f=FORMATS[this.activeFormat];return f.wIn+'×'+f.hIn+' in (+'+f.bleedIn+'″ bleed) · custom layout';})(); },
+
+  async runAgent(){
+    const btn=this.el('agentBtn'),msg=this.el('agentMsg'),content=this.el('agentInput').value.trim();
+    if(!content){ msg.textContent='Tell the agent what to promote first.'; return; }
+    btn.disabled=true; msg.innerHTML='<span class="spin"></span> Writing copy…';
+    const cur={}; ['headline','subhead','body','offer','cta','tagline'].forEach(k=>{ const v=this.el('f_'+k).value; if(v)cur[k]=v; });
+    try{ const r=await fetch('/admin/print-studio/agent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content}],format:this.activeFormat||'flyer-letter',currentFields:cur})});
+      const j=await r.json(); if(j.error)throw new Error(j.error);
+      if(j.fill)Object.entries(j.fill).forEach(([k,v])=>{ const e=this.el('f_'+k); if(e)e.value=v; });
+      msg.textContent=j.message||'Done.'; this.refreshStage(); this.refreshBoard();
+    }catch(e){ msg.textContent='Error: '+e.message; } finally{ btn.disabled=false; }
+  },
+  async genBg(){
+    const btn=this.el('aiBgBtn'),msg=this.el('aiBgMsg');
+    btn.disabled=true; msg.innerHTML='<span class="spin"></span> Generating texture… (15–45s)';
+    try{ const r=await fetch('/admin/print-studio/bg/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seed:this.el('aiBgSeed').value})});
+      const j=await r.json(); if(j.error)throw new Error(j.error);
+      this.el('f_bgImageUrl').value=j.url; this.el('f_bgType').value='ai'; this.onBgType(); msg.textContent='Applied.'; this.refreshStage(); this.refreshBoard();
+    }catch(e){ msg.textContent='Error: '+e.message; } finally{ btn.disabled=false; }
+  },
+
+  sync(){ this.el('f_enabledJson').value=JSON.stringify(this.enabled); this.el('f_layoutsJson').value=JSON.stringify(this.layouts); },
+
+  select(id){
+    const m=MATERIALS[id]; if(!m)return; this.id=id;
+    this.el('psForm').action='/admin/print-studio/'+id+'/update';
+    document.querySelectorAll('.ps-chip').forEach(c=>c.classList.toggle('active',c.id==='chip-'+id));
+    this.el('f_name').value=m.name; this.setTheme(m.theme);
+    ['headline','subhead','body','offer','cta','tagline'].forEach(k=>{ this.el('f_'+k).value=m.fields[k]||''; });
+    this.el('f_showLogoChk').checked=m.showLogo; this.onLogoToggle(); this.el('f_logoSlot').value=m.logoSlot;
+    this.el('f_qrLinkId').value=m.qrLinkId; this.el('f_qrCaption').value=m.qrCaption;
+    this.el('f_bgType').value=m.bgType; if(m.bgColor)this.el('f_bgColor').value=m.bgColor; if(m.bgColor2)this.el('f_bgColor2').value=m.bgColor2;
+    this.el('f_bgImageUrl').value=m.bgImageUrl||''; this.onBgType();
+    this.enabled=Object.assign({},m.enabled); if(!Object.keys(this.enabled).length)FMT_KEYS.forEach(k=>this.enabled[k]=true);
+    this.layouts=JSON.parse(JSON.stringify(m.layouts||{})); this.syncToggleChecks();
+    this.activeFormat=FMT_KEYS.find(k=>this.enabled[k])||'business-card';
+    this.el('dupBtn').disabled=false; this.el('delBtn').disabled=false;
+    this.el('saveHint').classList.add('hidden');
+    this.el('zipBtn').href='/admin/print-studio/'+id+'/export.zip'; this.el('zipBtn').classList.remove('disabled');
+    this.refreshBoard(); this.refreshStage(); window.scrollTo({top:0,behavior:'smooth'});
+  },
+  newMaterial(){
+    this.id=null; this.el('psForm').reset(); this.el('psForm').action='/admin/print-studio';
+    document.querySelectorAll('.ps-chip').forEach(c=>c.classList.remove('active'));
+    this.el('f_bgImageUrl').value=''; this.setTheme('<%= defaultTheme %>'); this.el('f_showLogoChk').checked=true; this.onLogoToggle();
+    this.enabled={}; FMT_KEYS.forEach(k=>this.enabled[k]=true); this.layouts={}; this.syncToggleChecks();
+    this.activeFormat='business-card'; this.el('dupBtn').disabled=true; this.el('delBtn').disabled=true;
+    this.el('saveHint').classList.remove('hidden');
+    this.el('zipBtn').removeAttribute('href'); this.el('zipBtn').classList.add('disabled');
+    this.onBgType(); this.refreshBoard(); this.refreshStage();
+  },
+  duplicate(){ if(this.id)this._post('/admin/print-studio/'+this.id+'/duplicate'); },
+  del(){ if(this.id&&confirm('Delete this campaign?'))this._post('/admin/print-studio/'+this.id+'/delete'); },
+  _post(a){ const f=document.createElement('form'); f.method='POST'; f.action=a; document.body.appendChild(f); f.submit(); },
+};
+
+window.addEventListener('message', e=>PS.onMessage(e));
+window.addEventListener('resize', ()=>{ PS.refreshStage(); PS.refreshBoard(); });
+PS.el('psForm').addEventListener('submit', ()=>PS.sync());
+PS.buildToggles(); PS.onBgType();
+(function(){
+  // Land on a NEW campaign (Save → creates). Only select an existing campaign
+  // when the URL points at one (post-save redirect), so a stray Save never
+  // overwrites the latest. Click a campaign in the rail to edit/download it.
+  const h=location.hash.match(/^#m-([a-f0-9]+)/i);
+  if(h&&MATERIALS[h[1]]){ PS.select(h[1]); return; }
+  PS.newMaterial();
+})();
+setTimeout(()=>{ const t=PS.el('psToast'); if(t)t.style.display='none'; }, 3000);
+</script>
+</body>
+</html>

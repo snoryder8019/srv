@@ -76,6 +76,62 @@ export async function callLLM(messages, systemPrompt, timeoutMs = 90000) {
   return data.choices?.[0]?.message?.content || '';
 }
 
+// ── Vision (multimodal) LLM ───────────────────────────────────────────────────
+// Ollama exposes small vision models on the same OpenAI-compatible endpoint.
+// minicpm-v gives the cleanest captions; moondream (1B) is the lightweight
+// fallback when the bigger model OOMs. llava:7b is intentionally NOT used — it
+// crashes the runner on this host's memory budget.
+export const VISION_MODEL = config.OLLAMA_VISION_MODEL || 'minicpm-v:latest';
+const VISION_FALLBACK = 'moondream:latest';
+
+// imageInput may be a Buffer, a data: URL, or an http(s) URL (fetched + inlined).
+// Instructions go in the user text (small vision models handle system prompts
+// inconsistently). Tries the primary model, then the fallback, before throwing.
+export async function callVisionLLM(imageInput, prompt, timeoutMs = 120000) {
+  let dataUrl;
+  if (Buffer.isBuffer(imageInput)) {
+    dataUrl = `data:image/png;base64,${imageInput.toString('base64')}`;
+  } else if (typeof imageInput === 'string' && imageInput.startsWith('data:')) {
+    dataUrl = imageInput;
+  } else if (typeof imageInput === 'string') {
+    const r = await fetch(imageInput, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(`image fetch ${r.status}`);
+    const ct = r.headers.get('content-type') || 'image/png';
+    const buf = Buffer.from(await r.arrayBuffer());
+    dataUrl = `data:${ct};base64,${buf.toString('base64')}`;
+  } else {
+    throw new Error('callVisionLLM: unsupported image input');
+  }
+
+  const messages = [{
+    role: 'user',
+    content: [
+      { type: 'text', text: prompt },
+      { type: 'image_url', image_url: { url: dataUrl } },
+    ],
+  }];
+
+  let lastErr;
+  for (const model of [VISION_MODEL, VISION_FALLBACK]) {
+    try {
+      const res = await fetch(OLLAMA_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OLLAMA_KEY}` },
+        body: JSON.stringify({ model, messages, stream: false }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) { lastErr = new Error(`vision ${model}: ${(await res.text()).slice(0, 160)}`); continue; }
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content?.trim();
+      if (content) return content;
+      lastErr = new Error(`vision ${model}: empty response`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('vision call failed');
+}
+
 // ── Stable Diffusion image generation (matches madladslab pattern) ────────────
 
 const SD_SIZE_MAP = {

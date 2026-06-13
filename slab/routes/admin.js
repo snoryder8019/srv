@@ -41,8 +41,10 @@ import scannerRouter from './admin/scanner.js';
 import templatesRouter from './admin/templates.js';
 import templateStoreRouter from './admin/templateStore.js';
 import qrcodesRouter from './admin/qrcodes.js';
+import printStudioRouter from './admin/printStudio.js';
 import notesRouter from './admin/notes.js';
 import analyticsRouter, { buildMetrics } from './admin/analytics.js';
+import shareRouter from './admin/share.js';
 
 const router = express.Router();
 
@@ -602,7 +604,9 @@ router.use('/scanner', scannerRouter);
 router.use('/templates', templatesRouter);
 router.use('/template-store', templateStoreRouter);
 router.use('/qr-codes', qrcodesRouter);
+router.use('/print-studio', printStudioRouter);
 router.use('/notes', notesRouter);
 router.use('/analytics', analyticsRouter);
+router.use('/share', shareRouter);
 
 export default router;

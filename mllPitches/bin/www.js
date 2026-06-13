@@ -1,7 +1,7 @@
 import http from 'http';
 import app from '../app.js';
 import { attachSockets } from '../lib/socket.js';
-import { startUplandMailListener } from '../lib/zoho-imap.js';
+import { startPitchMailListener } from '../lib/zoho-imap.js';
 
 const PORT = parseInt(process.env.PORT || '3608', 10);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -14,6 +14,6 @@ server.listen(PORT, HOST, () => {
   console.log(`[mllPitches] listening on http://${HOST}:${PORT}`);
 });
 
-startUplandMailListener(io).catch((err) => {
-  console.warn('[mllPitches] upland mail listener disabled:', err?.message || err);
+startPitchMailListener(io).catch((err) => {
+  console.warn('[mllPitches] pitch mail listener disabled:', err?.message || err);
 });

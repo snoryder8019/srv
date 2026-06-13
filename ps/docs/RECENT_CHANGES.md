@@ -1,6 +1,23 @@
 # Recent Changes Summary
 
-Generated: 2026-06-11T07:30:00.019Z
+Generated: 2026-06-13T07:30:00.025Z
+
+---
+
+## Commit: blender mcp init, design update GAMES, and landing paged PITCH, SOCIAL rollout sLab +v0.3.1 on srv
+
+- **Hash:** `452a48d`
+- **Author:** Scott
+- **Date:** 6/11/2026
+- **Changes:** 240 files, +43817/-1175 lines
+
+### Modified Areas:
+
+**Frontend:** 14 files
+**Backend:** 32 files
+**Views:** 60 files
+**Scripts:** 5 files
+**Documentation:** 10 files
 
 ---
 
@@ -56,20 +73,6 @@ Generated: 2026-06-11T07:30:00.019Z
 
 **Backend:** 12 files
 **Documentation:** 9 files
-
----
-
-## Commit: wine proton port ffor Games. Discordd  bot for Games
-
-- **Hash:** `5ab1e07`
-- **Author:** Scott
-- **Date:** 5/22/2026
-- **Changes:** 25 files, +753/-250814 lines
-
-### Modified Areas:
-
-**Backend:** 2 files
-**Documentation:** 1 files
 
 ---
 

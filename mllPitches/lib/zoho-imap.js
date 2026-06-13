@@ -2,8 +2,11 @@ import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { pushEmailToPitch } from './socket.js';
 
-const SLUG = 'upland';
-const TARGET_DOMAIN = '@upland-ts.com';
+// Which pitch the inbound mail feeds, and which sender domain to watch.
+// Configurable via env so the listener isn't tied to any one client; defaults
+// to the seeded Meridian example (no real inbox is watched without these set).
+const SLUG = process.env.PITCH_MAIL_SLUG || 'meridian';
+const TARGET_DOMAIN = process.env.PITCH_MAIL_DOMAIN || '@meridian.example';
 
 const TASK_KEYWORDS = [
   { rx: /\b(loi|engagement letter)\b/i, taskId: 't-loi-1' },
@@ -64,11 +67,11 @@ async function pollOnce(io, client) {
   }
 }
 
-export async function startUplandMailListener(io) {
+export async function startPitchMailListener(io) {
   const user = process.env.ZOHO_USER;
   const pass = process.env.ZOHO_PASS;
   if (!user || !pass) {
-    console.warn('[upland-mail] ZOHO_USER / ZOHO_PASS not set — listener idle');
+    console.warn('[pitch-mail] ZOHO_USER / ZOHO_PASS not set — listener idle');
     return;
   }
 
@@ -83,23 +86,23 @@ export async function startUplandMailListener(io) {
   try {
     await client.connect();
   } catch (err) {
-    console.warn('[upland-mail] could not connect to Zoho IMAP:', err.message);
+    console.warn('[pitch-mail] could not connect to Zoho IMAP:', err.message);
     return;
   }
 
-  console.log('[upland-mail] Zoho IMAP connected, watching for', TARGET_DOMAIN);
+  console.log('[pitch-mail] Zoho IMAP connected, watching for', TARGET_DOMAIN);
   try {
     await pollOnce(io, client);
   } catch (err) {
-    console.warn('[upland-mail] initial poll failed:', err.message);
+    console.warn('[pitch-mail] initial poll failed:', err.message);
   }
 
   const interval = setInterval(() => {
-    pollOnce(io, client).catch((e) => console.warn('[upland-mail] poll error:', e.message));
+    pollOnce(io, client).catch((e) => console.warn('[pitch-mail] poll error:', e.message));
   }, 60_000);
 
   client.on('close', () => {
     clearInterval(interval);
-    console.warn('[upland-mail] IMAP connection closed');
+    console.warn('[pitch-mail] IMAP connection closed');
   });
 }

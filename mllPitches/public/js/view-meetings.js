@@ -131,7 +131,7 @@
           <input type="text" placeholder="add tag…" data-mtg-tag-input />
         </div>
         <div class="mll-mtg__notes">
-          <span class="mll-mtg__share-lbl">Private notes (Upland team only)</span>
+          <span class="mll-mtg__share-lbl">Private notes (Meridian team only)</span>
           <textarea rows="4" placeholder="Type a note — autosaved locally for this demo…" data-mtg-notes></textarea>
         </div>
       </div>
@@ -178,7 +178,7 @@
 
     const notes = detailEl.querySelector('[data-mtg-notes]');
     if (notes) {
-      const key = `mllPitch:upland:mtg:notes:${m.id}`;
+      const key = `mllPitch:meridian:mtg:notes:${m.id}`;
       notes.value = localStorage.getItem(key) || '';
       notes.addEventListener('input', () => localStorage.setItem(key, notes.value));
     }

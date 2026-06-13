@@ -1,0 +1,84 @@
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  .material{
+    position:relative; overflow:hidden;
+    width:<%= wTotalIn %>in; height:<%= hTotalIn %>in;
+    font-size:<%= rootPx %>px;
+    font-family:<%= fonts.body %>;
+    color:var(--ink); background:var(--bg);
+    --bg:<%= pal.bg %>; --ink:<%= pal.ink %>; --accent:<%= pal.accent %>;
+    --sub:<%= pal.sub %>; --panel:<%= pal.panel %>; --line:<%= pal.line %>;
+    --f-head:<%= fonts.heading %>; --f-body:<%= fonts.body %>;
+  }
+  <% if (fmt.shape === 'round') { %>.material{border-radius:50%}<% } %>
+  .bg-layer{position:absolute;inset:0;z-index:0}
+  <% if (bg.type === 'color') { %>
+    .bg-layer{background:<%= bg.color || pal.bg %>}
+  <% } else if (bg.type === 'gradient') { %>
+    .bg-layer{background:linear-gradient(135deg,<%= bg.color || pal.bg %>,<%= bg.color2 || pal.panel %>)}
+  <% } else if (bg.type === 'image' || bg.type === 'ai') { %>
+    .bg-layer{background:url('<%= bg.imageUrl %>') center/cover no-repeat,<%= pal.bg %>}
+  <% } %>
+  .scrim{position:absolute;inset:0;z-index:1;pointer-events:none<% if (scrim) { %>;
+    background:linear-gradient(0deg,rgba(0,0,0,0.55),rgba(0,0,0,0.18) 55%,rgba(0,0,0,0.42))<% } %>}
+  .deco{position:absolute;inset:0;z-index:2;pointer-events:none}
+
+  /* ── flow (auto) layout ── */
+  .safe{position:absolute;inset:<%= safeIn %>in;z-index:3;display:flex;flex-direction:column;gap:0.45em}
+  <% if (fmt.shape === 'round') { %>.safe{inset:<%= (safeIn + (Math.min(wTotalIn,hTotalIn)*0.08)) %>in;text-align:center;align-items:center;justify-content:center}<% } %>
+  .m-top{display:flex;align-items:center;justify-content:space-between;gap:0.5em}
+  .m-mid{flex:1;display:flex;flex-direction:column;justify-content:center;gap:0.4em;min-height:0}
+  .m-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:0.6em}
+
+  /* ── custom (absolute) layout ── */
+  .layer{position:absolute;inset:0;z-index:3}
+  /* Size comes from WIDTH, never transform:scale — so editor controls keep a
+     constant size. Images fill their box (aspect locked); text reflows in it. */
+  .m-abs{position:absolute;width:max-content;max-width:<%= wTotalIn %>in}
+  .layer .m-offer,.layer .m-cta{align-self:auto}
+  .layer .m-logo{width:100%;height:auto;max-width:none}
+  .layer .m-qr{width:100%}
+  .layer .m-qr img{width:100%;height:auto}
+  .m-obj img{width:100%;height:auto;display:block}
+
+  /* ── region skins (shared by both layouts) ── */
+  .m-logo{height:1.7em;width:auto;max-width:60%;object-fit:contain}
+  .m-logo.text{font-family:var(--f-head);font-weight:700;font-size:1.3em;color:var(--ink);line-height:1}
+  .m-headline{font-family:var(--f-head);font-size:2.6em;color:var(--ink)}
+  .m-subhead{font-size:1.05em;line-height:1.2}
+  .m-body{font-size:0.78em;line-height:1.4;color:var(--ink);opacity:0.92;max-width:46ch}
+  .m-offer{font-size:1.15em;align-self:flex-start}
+  .m-cta{font-family:var(--f-body);font-size:0.85em;font-weight:600;align-self:flex-start}
+  .m-contact{font-size:0.62em;line-height:1.55;color:var(--ink)}
+  .m-contact .nm{font-family:var(--f-head);font-size:1.5em;display:block;margin-bottom:0.15em}
+  .m-contact .row{display:block;opacity:0.92}
+  .m-qr{display:flex;flex-direction:column;align-items:center;gap:0.25em;flex:0 0 auto}
+  .m-qr img{width:<%= qr ? qr.sizeIn : 0.8 %>in;height:<%= qr ? qr.sizeIn : 0.8 %>in;background:#fff;padding:0.06in;border-radius:0.05in;display:block}
+  .m-qr .cap{font-size:0.5em;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink);opacity:0.85;max-width:<%= qr ? qr.sizeIn + 0.4 : 1 %>in;text-align:center;line-height:1.2}
+  <% if (fmtKey === 'button-1') { %>
+    .safe .m-mid,.safe .m-bottom{display:none}
+    .safe{gap:0.12em}
+    .m-logo{height:auto;max-height:45%;max-width:70%}
+    .m-qr img{width:<%= qr ? qr.sizeIn : 0.5 %>in;height:<%= qr ? qr.sizeIn : 0.5 %>in}
+    .m-qr .cap{display:none}
+  <% } %>
+  <%- themeCss %>
+
+  <% if (edit) { %>
+  /* ── drag / resize / controls editor chrome (edit mode only) ── */
+  .m-abs{cursor:grab}
+  .m-abs::after{content:'';position:absolute;inset:-2px;outline:1px dashed rgba(0,0,0,0);pointer-events:none}
+  .m-abs:hover::after{outline:1px dashed var(--accent)}
+  .m-abs.sel::after{outline:1.5px solid var(--accent)}
+  .m-abs.dragging{cursor:grabbing}
+  .m-handle{position:absolute;right:-7px;bottom:-7px;width:14px;height:14px;background:#fff;border:2px solid var(--accent);border-radius:3px;cursor:nwse-resize;z-index:6}
+  .m-tools{position:absolute;left:0;bottom:calc(100% + 6px);display:none;align-items:center;gap:4px;background:#fff;border:1px solid var(--accent);border-radius:6px;padding:3px 5px;z-index:7;box-shadow:0 2px 8px rgba(0,0,0,.22);white-space:nowrap;font-family:system-ui,Arial,sans-serif}
+  .m-abs.sel .m-tools{display:flex}
+  .m-tools button{border:0;background:#ececec;border-radius:3px;min-width:20px;height:19px;font-size:12px;line-height:1;cursor:pointer;color:#222;padding:0 4px}
+  .m-tools button:hover{background:var(--accent);color:#fff}
+  .m-tools input[type=range]{width:58px;margin:0}
+  .m-tools select{height:19px;font-size:11px;border:1px solid #ccc;border-radius:3px;max-width:84px;background:#fff;color:#222}
+  .m-tools input[type=color]{width:22px;height:19px;padding:0;border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer}
+  .m-abs.is-hidden{opacity:0.25 !important}
+  <% } %>
+</style>

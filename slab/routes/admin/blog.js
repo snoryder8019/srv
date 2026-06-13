@@ -140,7 +140,7 @@ router.get('/new', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const db = req.db;
-    const { title, slug, excerpt, content, category, tags, status, featuredImageUrl, contentType } = req.body;
+    const { title, slug, excerpt, content, category, tags, status, featuredImageUrl, contentType, slidesFolder, slidesStyle } = req.body;
     const finalSlug = slug ? toSlug(slug) : toSlug(title);
     const existing = await db.collection('blog').findOne({ slug: finalSlug });
     if (existing) {
@@ -160,6 +160,8 @@ router.post('/', async (req, res) => {
       category: category || '',
       tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
       featuredImageUrl: featuredImageUrl || '',
+      slidesFolder: slidesFolder || '',
+      slidesStyle: slidesStyle === 'grid' ? 'grid' : 'carousel',
       status: status || 'draft',
       publishedAt: status === 'published' ? now : null,
       createdAt: now,
@@ -288,7 +290,7 @@ ${postCtx}${researchCtx}`;
 router.post('/:id', async (req, res) => {
   try {
     const db = req.db;
-    const { title, slug, excerpt, content, category, tags, status, featuredImageUrl, contentType } = req.body;
+    const { title, slug, excerpt, content, category, tags, status, featuredImageUrl, contentType, slidesFolder, slidesStyle } = req.body;
     const finalSlug = slug ? toSlug(slug) : toSlug(title);
     const existing = await db.collection('blog').findOne({
       slug: finalSlug,
@@ -316,6 +318,8 @@ router.post('/:id', async (req, res) => {
           category: category || '',
           tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
           featuredImageUrl: featuredImageUrl || '',
+          slidesFolder: slidesFolder || '',
+          slidesStyle: slidesStyle === 'grid' ? 'grid' : 'carousel',
           status: status || 'draft',
           publishedAt: status === 'published' && !current?.publishedAt ? now : current?.publishedAt || null,
           updatedAt: now,

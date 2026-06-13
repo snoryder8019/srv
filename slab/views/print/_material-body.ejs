@@ -1,0 +1,134 @@
+<%
+// Shared body fragment. Expects ctx: fmtKey, fmt, themeKey, decoHtml, allow,
+// data, contact, logoUrl, showLogo, qr, REGION_KEYS, and layout flags:
+//   edit (bool), custom (bool), regions (map key→{x,y,w,scale,hidden})
+const has = (k) => allow.has(k);
+const v = (k) => (data && data[k] != null ? String(data[k]) : '');
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function present(key) {
+  switch (key) {
+    case 'logo': return has('logo') && showLogo && (logoUrl || contact.name);
+    case 'headline': return has('headline') && v('headline');
+    case 'subhead': return has('subhead') && v('subhead');
+    case 'body': return has('body') && v('body');
+    case 'offer': return has('offer') && v('offer');
+    case 'cta': return has('cta') && v('cta');
+    case 'contact': return has('contact') && (contact.name || contact.phone || contact.email || contact.website || contact.location || (has('tagline') && v('tagline')));
+    case 'qr': return has('qr') && qr;
+    default: return false;
+  }
+}
+function reg(key) {
+  switch (key) {
+    case 'logo': return logoUrl ? `<img src="${logoUrl}" alt="" class="m-logo">`
+      : (contact.name ? `<span class="m-logo text">${esc(contact.name)}</span>` : '');
+    case 'headline': return `<div class="m-headline">${esc(v('headline'))}</div>`;
+    case 'subhead': return `<div class="m-subhead">${esc(v('subhead'))}</div>`;
+    case 'body': return `<div class="m-body">${esc(v('body')).replace(/\n/g, '<br>')}</div>`;
+    case 'offer': return `<div class="m-offer">${esc(v('offer'))}</div>`;
+    case 'cta': return `<div class="m-cta">${esc(v('cta'))}</div>`;
+    case 'contact': {
+      let h = '<div class="m-contact">';
+      if (contact.name) h += `<span class="nm">${esc(contact.name)}</span>`;
+      if (has('tagline') && v('tagline')) h += `<span class="row" style="font-style:italic;opacity:0.8">${esc(v('tagline'))}</span>`;
+      if (contact.phone) h += `<span class="row">${esc(contact.phone)}</span>`;
+      if (contact.email) h += `<span class="row">${esc(contact.email)}</span>`;
+      if (contact.website) h += `<span class="row">${esc(contact.website)}</span>`;
+      if (contact.location) h += `<span class="row">${esc(contact.location)}</span>`;
+      return h + '</div>';
+    }
+    case 'qr': return qr ? `<div class="m-qr"><img src="${qr.dataUrl}" alt="QR">${qr.caption ? `<span class="cap">${esc(qr.caption)}</span>` : ''}</div>` : '';
+    default: return '';
+  }
+}
+const useAbs = (edit || custom);
+%>
+<div class="material" data-fmt="<%= fmtKey %>" data-theme="<%= themeKey %>">
+  <div class="bg-layer"></div>
+  <div class="scrim"></div>
+  <div class="deco"><%- decoHtml %></div>
+
+  <% if (useAbs) { %>
+    <div class="layer">
+      <% REGION_KEYS.forEach(function (key) {
+           if (!present(key)) return;
+           const r = (regions && regions[key]) || null;
+           if (!edit && r && r.hidden) return;
+           const isImg = (key === 'logo' || key === 'qr');
+           const x = r ? r.x : 0, y = r ? r.y : 0;
+           const w = (r && r.w) ? r.w : '';
+           const fs = (r && r.fs) ? r.fs : 1;
+           const op = (r && r.opacity != null) ? r.opacity : 1;
+           const z = (r && r.z != null) ? r.z : '';
+           const align = (r && r.align) ? r.align : '';
+           const font = (r && r.font) ? r.font : '';
+           const color = (r && r.color) ? r.color : '';
+           const hidden = !!(edit && r && r.hidden);
+           let st = `left:${x}in;top:${y}in;`;
+           if (w !== '') st += `width:${w}in;`;
+           if (fs != 1) st += `font-size:${fs}em;`;
+           if (align) st += `text-align:${align};`;
+           if (font) st += `--f-head:${font};--f-body:${font};`;
+           if (color) st += `--ink:${color};color:${color};`;
+           if (!hidden && op != 1) st += `opacity:${op};`;
+           if (z !== '') st += `z-index:${z};`; %>
+        <div class="m-abs m-abs-<%= key %><%= hidden ? ' is-hidden' : '' %>" data-region="<%= key %>"
+             data-kind="<%= isImg ? 'img' : 'text' %>"
+             data-x="<%= x %>" data-y="<%= y %>" data-w="<%= w %>" data-fs="<%= fs %>" data-op="<%= op %>" data-z="<%= z %>" data-align="<%= align %>" data-font="<%= font %>" data-color="<%= color %>"
+             style="<%= st %>">
+          <%- reg(key) %>
+          <% if (edit) { %>
+            <div class="m-tools">
+              <button data-act="back" title="send back">⬓</button>
+              <button data-act="front" title="bring forward">⬔</button>
+              <input type="range" min="15" max="100" value="<%= Math.round(op*100) %>" data-act="op" title="opacity">
+              <% if (!isImg) { %>
+                <button data-act="fsdn" title="smaller text">A−</button><button data-act="fsup" title="larger text">A+</button>
+                <button data-act="align" title="text align"><%= (align || 'left').charAt(0).toUpperCase() %></button>
+                <select data-act="font" title="font"><option value="">Theme</option><% (pickerFonts||[]).forEach(function(pf){ %><option value="<%= pf.css %>" <%= font===pf.css?'selected':'' %>><%= pf.label %></option><% }); %></select>
+                <input type="color" data-act="color" value="<%= color || '#222222' %>" title="text color">
+              <% } %>
+              <button data-act="hide" title="hide / show">×</button>
+            </div>
+            <span class="m-handle" title="<%= isImg ? 'drag to scale' : 'drag to resize text box' %>"></span>
+          <% } %>
+        </div>
+      <% }); %>
+
+      <% (objects || []).forEach(function (o) {
+           const ox = o.x || 0, oy = o.y || 0, ow = (o.w != null && o.w !== '') ? o.w : 1.5;
+           const oop = (o.opacity != null) ? o.opacity : 1, oz = (o.z != null) ? o.z : '';
+           let ost = `left:${ox}in;top:${oy}in;width:${ow}in;`;
+           if (oop != 1) ost += `opacity:${oop};`;
+           if (oz !== '') ost += `z-index:${oz};`; %>
+        <div class="m-abs m-obj" data-obj-id="<%= o.id %>" data-obj-url="<%= o.url %>"
+             data-x="<%= ox %>" data-y="<%= oy %>" data-w="<%= ow %>" data-op="<%= oop %>" data-z="<%= oz %>"
+             style="<%= ost %>">
+          <img src="<%= o.url %>" alt="">
+          <% if (edit) { %>
+            <div class="m-tools">
+              <button data-act="back" title="send back">⬓</button>
+              <button data-act="front" title="bring forward">⬔</button>
+              <input type="range" min="15" max="100" value="<%= Math.round(oop*100) %>" data-act="op" title="opacity">
+              <button data-act="del" title="remove">🗑</button>
+            </div>
+            <span class="m-handle" title="drag to scale"></span>
+          <% } %>
+        </div>
+      <% }); %>
+    </div>
+  <% } else { %>
+    <div class="safe">
+      <% if (present('logo')) { %><div class="m-top"><%- reg('logo') %></div><% } %>
+      <div class="m-mid">
+        <% ['headline','subhead'].forEach(k=>{ if(present(k)){ %><%- reg(k) %><% } }); %>
+        <% if (themeKey==='classic'||themeKey==='old-english'||themeKey==='greyscale'||themeKey==='bw') { if(present('headline')||present('subhead')){ %><div class="m-rule m-bar"></div><% } } %>
+        <% ['body','offer','cta'].forEach(k=>{ if(present(k)){ %><%- reg(k) %><% } }); %>
+      </div>
+      <div class="m-bottom">
+        <% if (present('contact')) { %><%- reg('contact') %><% } else { %><span></span><% } %>
+        <% if (present('qr')) { %><%- reg('qr') %><% } %>
+      </div>
+    </div>
+  <% } %>
+</div>

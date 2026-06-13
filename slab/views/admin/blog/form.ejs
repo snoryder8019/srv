@@ -336,6 +336,22 @@
             </div>
           </div>
         </div>
+
+        <div class="form-field span-2">
+          <label>Slides — wire to an asset folder</label>
+          <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+            <select name="slidesFolder" id="field-slidesFolder" style="flex:1;min-width:180px;">
+              <option value="">— No slides —</option>
+            </select>
+            <select name="slidesStyle" id="field-slidesStyle" style="width:130px;">
+              <% var _ss = (post && post.slidesStyle) ? post.slidesStyle : 'carousel'; %>
+              <option value="carousel" <%= _ss === 'carousel' ? 'selected' : '' %>>Carousel</option>
+              <option value="grid" <%= _ss === 'grid' ? 'selected' : '' %>>Grid</option>
+            </select>
+          </div>
+          <span style="font-size:0.65rem;color:var(--slate);">Every image in the chosen folder renders as a gallery on the post — just drop images in that folder. <a href="/admin/assets" target="_blank">Manage Assets ↗</a></span>
+          <div id="slidesPreview" style="display:none;margin-top:10px;gap:6px;flex-wrap:wrap;"></div>
+        </div>
       </div>
     </div>
 
@@ -576,14 +592,33 @@ var quillReady = false;
       theme: 'snow',
       placeholder: 'Start writing your post...',
       modules: {
-        toolbar: [
-          [{ header: [2, 3, false] }],
-          ['bold', 'italic', 'underline', 'strike'],
-          ['blockquote'],
-          [{ list: 'ordered' }, { list: 'bullet' }],
-          ['link', 'image'],
-          ['clean']
-        ]
+        toolbar: {
+          container: [
+            [{ header: [2, 3, false] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            ['blockquote'],
+            [{ list: 'ordered' }, { list: 'bullet' }],
+            ['link', 'image'],
+            ['clean']
+          ],
+          handlers: {
+            // Insert support images from the asset library instead of pasting a
+            // URL / embedding base64. Keeps body images on Linode S3 + reusable.
+            image: function() {
+              var range = quill.getSelection(true);
+              if (typeof window.openAssetPicker !== 'function') return;
+              window.openAssetPicker({
+                folder: 'blog', type: 'image',
+                onSelect: function(asset) {
+                  if (!asset || !asset.publicUrl) return;
+                  var at = (range && range.index != null) ? range.index : quill.getLength();
+                  quill.insertEmbed(at, 'image', asset.publicUrl, 'user');
+                  quill.setSelection(at + 1, 0);
+                }
+              });
+            }
+          }
+        }
       }
     });
 
@@ -919,6 +954,59 @@ async function sendAgent() {
     sessionStorage.removeItem('slab_agent_fill');
     Object.entries(data.fill).forEach(([k, v]) => { if (v) fillField(k, v); });
   } catch { /* ignore */ }
+})();
+</script>
+<script>
+// ── SLIDES FOLDER ── populate dropdown (built-in + custom) and live-preview images
+(function() {
+  var sel = document.getElementById('field-slidesFolder');
+  var preview = document.getElementById('slidesPreview');
+  if (!sel) return;
+  var saved = <%- JSON.stringify(post && post.slidesFolder ? post.slidesFolder : '') %>;
+  var BUILT_IN = [
+    ['general','General'], ['sections','Sections'], ['portfolio','Portfolio'],
+    ['blog','Blog'], ['pages','Pages'], ['clients','Clients'],
+  ];
+  function addOpt(value, label) {
+    var o = document.createElement('option');
+    o.value = value; o.textContent = label;
+    if (value === saved) o.selected = true;
+    sel.appendChild(o);
+  }
+  BUILT_IN.forEach(function(f){ addOpt(f[0], f[1]); });
+
+  fetch('/admin/assets/folders').then(function(r){ return r.json(); }).then(function(data){
+    var have = {};
+    [].forEach.call(sel.options, function(o){ have[o.value] = true; });
+    (data.folders || []).forEach(function(f){ if (!have[f.slug]) addOpt(f.slug, f.name); });
+    if (saved) sel.value = saved;
+    refreshPreview();
+  }).catch(refreshPreview);
+
+  function refreshPreview() {
+    var folder = sel.value;
+    if (!folder) { preview.style.display = 'none'; preview.innerHTML = ''; return; }
+    preview.style.display = 'flex';
+    preview.innerHTML = '<span style="font-size:0.7rem;color:var(--slate);">Loading…</span>';
+    fetch('/admin/assets/list?type=image&limit=12&folder=' + encodeURIComponent(folder))
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        var imgs = data.assets || [];
+        if (!imgs.length) {
+          preview.innerHTML = '<span style="font-size:0.7rem;color:var(--danger,#B91C1C);">No images in this folder yet — upload some in Assets.</span>';
+          return;
+        }
+        preview.innerHTML = '<span style="font-size:0.7rem;color:var(--slate);width:100%;">' + (data.total || imgs.length) + ' image' + ((data.total||imgs.length) > 1 ? 's' : '') + ' will appear as a gallery:</span>';
+        imgs.slice(0, 12).forEach(function(a){
+          var img = document.createElement('img');
+          img.src = a.thumbUrl || a.publicUrl;
+          img.style.cssText = 'width:46px;height:46px;object-fit:cover;border-radius:2px;border:1px solid var(--border);';
+          preview.appendChild(img);
+        });
+      })
+      .catch(function(){ preview.innerHTML = '<span style="font-size:0.7rem;color:var(--slate);">Preview unavailable.</span>'; });
+  }
+  sel.addEventListener('change', refreshPreview);
 })();
 </script>
 <script src="/js/assetPicker.js?v=<%= Date.now() %>"></script>

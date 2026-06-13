@@ -48,6 +48,8 @@
     .post-meta { display:flex; gap:16px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
     .post-category { font-size:0.65rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); padding:4px 12px; border-radius:2px; }
     .post-date { font-size:0.75rem; color:var(--slate); font-weight:300; }
+    .post-share-btn { font-size:0.7rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--primary); background:color-mix(in srgb, var(--primary) 8%, transparent); border:1px solid color-mix(in srgb, var(--primary) 28%, transparent); padding:5px 14px; border-radius:2px; cursor:pointer; transition:all 0.18s; }
+    .post-share-btn:hover { background:var(--primary); color:var(--white); }
     .post-title { font-family:var(--font-heading); font-size:clamp(2rem,4.5vw,3.6rem); font-weight:300; line-height:1.1; color:var(--on-surface); margin-bottom:20px; }
     .post-excerpt-lead { font-size:1.1rem; font-weight:300; color:var(--slate); line-height:1.8; margin-bottom:32px; border-left:3px solid var(--accent); padding-left:20px; }
     .post-tags { display:flex; gap:8px; flex-wrap:wrap; }
@@ -66,6 +68,25 @@
     .post-content a:hover { color:var(--accent); }
     .post-content img { max-width:100%; border-radius:2px; margin:24px 0; }
     .post-content blockquote { border-left:3px solid var(--accent); padding:16px 24px; margin:32px 0; background:var(--bg); font-style:italic; color:var(--slate); }
+    /* ── SLIDES ── */
+    .post-slides { max-width:800px; margin:48px auto 0; padding:0 52px; }
+    .slides-label { font-size:0.65rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--slate); margin-bottom:14px; }
+    .slides-carousel { position:relative; border-radius:3px; overflow:hidden; background:var(--bg); border:1px solid var(--border); }
+    .slides-track { display:flex; transition:transform 0.45s cubic-bezier(0.4,0,0.2,1); }
+    .slides-slide { min-width:100%; position:relative; }
+    .slides-slide img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; }
+    .slides-cap { padding:12px 18px; font-size:0.85rem; font-weight:300; color:var(--slate); line-height:1.6; }
+    .slides-nav { position:absolute; top:50%; transform:translateY(-50%); width:42px; height:42px; border-radius:50%; border:none; background:color-mix(in srgb, var(--primary) 80%, transparent); color:var(--white); font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.18s; z-index:2; }
+    .slides-nav:hover { background:var(--primary); }
+    .slides-prev { left:14px; } .slides-next { right:14px; }
+    .slides-dots { display:flex; gap:8px; justify-content:center; margin-top:14px; }
+    .slides-dot { width:8px; height:8px; border-radius:50%; border:none; background:var(--border); cursor:pointer; padding:0; transition:background 0.18s; }
+    .slides-dot.active { background:var(--accent); }
+    .slides-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
+    .slides-grid figure { margin:0; border-radius:3px; overflow:hidden; border:1px solid var(--border); background:var(--bg); }
+    .slides-grid img { width:100%; aspect-ratio:1; object-fit:cover; display:block; }
+    .slides-grid figcaption { padding:8px 10px; font-size:0.72rem; color:var(--slate); }
+    @media (max-width:640px){ .post-slides { padding:0 24px; } }
     .post-footer { margin-top:60px; padding-top:32px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
     footer { background:var(--primary-deep); padding:48px 52px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:24px; }
     .footer-brand { font-family:var(--font-heading); font-size:1.3rem; font-weight:300; color:color-mix(in srgb, var(--on-primary-deep) 60%, transparent); }
@@ -83,6 +104,11 @@
     <div class="post-meta">
       <% if (post.category) { %><span class="post-category"><%= post.category %></span><% } %>
       <span class="post-date"><%= new Date(post.publishedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></span>
+      <% var _shareUrl = (typeof shareUrl !== 'undefined' && shareUrl) ? shareUrl : ''; %>
+      <% if (_shareUrl) { %>
+        <button type="button" class="post-share-btn"
+          onclick="openShareModal({ url: <%= JSON.stringify(_shareUrl) %>, title: <%= JSON.stringify(post.title) %>, text: <%= JSON.stringify(post.excerpt || '') %>, image: <%= JSON.stringify(post.featuredImageUrl || '') %> })">⤴ Share</button>
+      <% } %>
     </div>
     <h1 class="post-title"><%= post.title %></h1>
     <% if (post.excerpt) { %><p class="post-excerpt-lead"><%= post.excerpt %></p><% } %>
@@ -100,6 +126,67 @@
 
 <div class="post-content-wrap reveal">
   <div class="post-content"><%- post.content %></div>
+
+  <% var _slides = (typeof slides !== 'undefined' && slides) ? slides : []; %>
+  <% if (_slides.length) { %>
+    <% if ((post.slidesStyle || 'carousel') === 'grid') { %>
+      <div class="post-slides reveal" style="padding-left:0;padding-right:0;">
+        <div class="slides-label">Gallery</div>
+        <div class="slides-grid">
+          <% _slides.forEach(function(s){ %>
+            <figure>
+              <img src="<%= s.thumb || s.url %>" alt="<%= s.alt %>" loading="lazy" decoding="async">
+              <% if (s.caption) { %><figcaption><%= s.caption %></figcaption><% } %>
+            </figure>
+          <% }); %>
+        </div>
+      </div>
+    <% } else { %>
+      <div class="post-slides reveal" id="postSlides" style="padding-left:0;padding-right:0;">
+        <div class="slides-label">Gallery</div>
+        <div class="slides-carousel">
+          <div class="slides-track" id="slidesTrack">
+            <% _slides.forEach(function(s){ %>
+              <div class="slides-slide">
+                <img src="<%= s.url %>" alt="<%= s.alt %>" loading="lazy" decoding="async">
+                <% if (s.caption) { %><div class="slides-cap"><%= s.caption %></div><% } %>
+              </div>
+            <% }); %>
+          </div>
+          <% if (_slides.length > 1) { %>
+            <button type="button" class="slides-nav slides-prev" aria-label="Previous">‹</button>
+            <button type="button" class="slides-nav slides-next" aria-label="Next">›</button>
+          <% } %>
+        </div>
+        <% if (_slides.length > 1) { %>
+          <div class="slides-dots" id="slidesDots">
+            <% _slides.forEach(function(s, i){ %>
+              <button type="button" class="slides-dot <%= i === 0 ? 'active' : '' %>" data-idx="<%= i %>" aria-label="Slide <%= i+1 %>"></button>
+            <% }); %>
+          </div>
+        <% } %>
+      </div>
+      <script>
+      (function(){
+        var track = document.getElementById('slidesTrack');
+        if (!track) return;
+        var slides = track.children, total = slides.length, idx = 0;
+        var dots = document.querySelectorAll('#slidesDots .slides-dot');
+        function go(n){
+          idx = (n + total) % total;
+          track.style.transform = 'translateX(-' + (idx * 100) + '%)';
+          dots.forEach(function(d, i){ d.classList.toggle('active', i === idx); });
+        }
+        var prev = document.querySelector('#postSlides .slides-prev');
+        var next = document.querySelector('#postSlides .slides-next');
+        if (prev) prev.addEventListener('click', function(){ go(idx - 1); });
+        if (next) next.addEventListener('click', function(){ go(idx + 1); });
+        dots.forEach(function(d){ d.addEventListener('click', function(){ go(parseInt(this.dataset.idx, 10)); }); });
+      })();
+      </script>
+    <% } %>
+  <% } %>
+
   <div class="post-footer">
     <a href="<%= _ct.base %>" class="back-link">← All <%= _ct.label %></a>
     <a href="/#contact" style="font-size:0.82rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--white);background:var(--primary);padding:12px 28px;border-radius:2px;text-decoration:none;">Work With Us</a>
@@ -118,6 +205,7 @@
   <div style="margin-top:16px;text-align:center;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.12);text-decoration:none;font-size:0.6rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.3)'" onmouseout="this.style.color='rgba(253,252,250,0.12)'">Admin</a></div>
   <% } %>
 </footer>
+<%- include('../partials/_share-modal') %>
 <script>
 (function() {
   var els = document.querySelectorAll('.reveal');

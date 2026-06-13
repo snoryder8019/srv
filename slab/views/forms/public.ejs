@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title><%= form.name %><%= brand?.name ? ' — ' + brand.name : '' %></title>
+  <style>
+    :root {
+      --primary: <%= design.color_primary || '#1C2B4A' %>;
+      --accent: <%= design.color_accent || design.color_primary || '#1C2B4A' %>;
+      --surface: <%= design.color_white || '#ffffff' %>;
+      --border: #e3e3e3;
+      --muted: #6b7280;
+      --danger: #c0392b;
+      --font-body: <%= design.font_body || 'system-ui, sans-serif' %>;
+      --font-heading: <%= design.font_heading || 'Georgia, serif' %>;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f4f5; font-family: var(--font-body); color: #1f2933; line-height: 1.5; }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 32px 18px 64px; }
+    .form-header { text-align: center; margin-bottom: 24px; }
+    .form-header img { max-height: 56px; margin-bottom: 14px; }
+    .form-header h1 { font-family: var(--font-heading); color: var(--primary); font-size: 1.5rem; margin: 0 0 6px; }
+    .form-header p { color: var(--muted); font-size: 0.9rem; margin: 0; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+    .field { grid-column: span 2; display: flex; flex-direction: column; gap: 5px; }
+    .field.half { grid-column: span 1; }
+    .field label { font-size: 0.82rem; font-weight: 600; color: #374151; }
+    .field .help { font-size: 0.72rem; color: var(--muted); }
+    .heading { grid-column: span 2; margin-top: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+    .heading strong { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+    input, textarea, select {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px;
+      font-size: 0.9rem; font-family: inherit; background: #fff;
+    }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+    textarea { min-height: 90px; resize: vertical; }
+    .opt-row { display: flex; align-items: center; gap: 7px; font-size: 0.88rem; font-weight: 400; }
+    .opt-row input { width: auto; }
+    .btn {
+      grid-column: span 2; margin-top: 8px; padding: 12px 20px; border: none; border-radius: 8px;
+      background: var(--primary); color: #fff; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    }
+    .btn:disabled { opacity: 0.6; cursor: default; }
+    .done { text-align: center; padding: 40px 20px; }
+    .done h2 { font-family: var(--font-heading); color: var(--primary); }
+    @media (max-width: 520px) { .field.half { grid-column: span 2; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="form-header">
+      <% if (logo) { %><img src="<%= logo %>" alt="<%= brand?.name || '' %>"><% } %>
+      <h1><%= form.name %></h1>
+      <% if (form.description) { %><p><%= form.description %></p><% } %>
+    </div>
+
+    <div class="card" id="cardWrap">
+      <form id="publicForm" class="grid">
+        <% (form.fields || []).forEach(function(f) { %>
+          <% if (f.type === 'heading') { %>
+            <div class="heading"><strong><%= f.label %></strong></div>
+          <% } else { %>
+            <div class="field <%= f.width === 'half' ? 'half' : '' %>"
+                 data-key="<%= f.key %>"
+                 <% if (f.conditional?.fieldKey) { %>data-cond-field="<%= f.conditional.fieldKey %>" data-cond-op="<%= f.conditional.operator %>" data-cond-val="<%= f.conditional.value %>"<% } %>>
+              <label><%= f.label %><% if (f.required) { %> <span style="color:var(--danger);">*</span><% } %></label>
+              <% if (f.helpText) { %><div class="help"><%= f.helpText %></div><% } %>
+              <% if (f.type === 'textarea') { %>
+                <textarea name="<%= f.key %>" placeholder="<%= f.placeholder || '' %>" <%= f.required ? 'required' : '' %>></textarea>
+              <% } else if (f.type === 'select') { %>
+                <select name="<%= f.key %>" <%= f.required ? 'required' : '' %>>
+                  <option value="">Select...</option>
+                  <% (f.options || []).forEach(function(o) { %><option value="<%= o.value %>"><%= o.label %></option><% }) %>
+                </select>
+              <% } else if (f.type === 'radio') { %>
+                <% (f.options || []).forEach(function(o) { %>
+                  <label class="opt-row"><input type="radio" name="<%= f.key %>" value="<%= o.value %>"> <%= o.label %></label>
+                <% }) %>
+              <% } else if (f.type === 'checkbox') { %>
+                <% (f.options || []).forEach(function(o) { %>
+                  <label class="opt-row"><input type="checkbox" name="<%= f.key %>" value="<%= o.value %>"> <%= o.label %></label>
+                <% }) %>
+              <% } else { %>
+                <input type="<%= f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : f.type === 'url' ? 'url' : f.type === 'date' ? 'date' : f.type === 'color' ? 'color' : 'text' %>"
+                       name="<%= f.key %>" placeholder="<%= f.placeholder || '' %>" <%= f.required ? 'required' : '' %>>
+              <% } %>
+            </div>
+          <% } %>
+        <% }) %>
+        <button type="submit" class="btn" id="btnSubmit">Submit</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    var form = document.getElementById('publicForm');
+    function evalConds() {
+      form.querySelectorAll('[data-cond-field]').forEach(function(el) {
+        var inp = form.querySelector('[name="' + el.dataset.condField + '"]');
+        var actual = inp ? inp.value : '';
+        var op = el.dataset.condOp, val = el.dataset.condVal, show = false;
+        if (op === 'eq') show = actual === val;
+        else if (op === 'neq') show = actual !== val;
+        else if (op === 'contains') show = actual.toLowerCase().indexOf(val.toLowerCase()) >= 0;
+        el.style.display = show ? '' : 'none';
+      });
+    }
+    form.addEventListener('input', evalConds);
+    form.addEventListener('change', evalConds);
+    evalConds();
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var data = {};
+      new FormData(form).forEach(function(v, k) {
+        if (data[k]) { if (!Array.isArray(data[k])) data[k] = [data[k]]; data[k].push(v); }
+        else { data[k] = v; }
+      });
+      var btn = document.getElementById('btnSubmit');
+      btn.disabled = true; btn.textContent = 'Submitting...';
+      fetch(location.pathname.replace(/\/$/, '') + '/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: data, respondentName: data.name || data.fullName || '', respondentEmail: data.email || '' }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.ok) {
+          document.getElementById('cardWrap').innerHTML =
+            '<div class="done"><h2>Thank you!</h2><p>Your response has been received.</p></div>';
+        } else { btn.disabled = false; btn.textContent = 'Submit'; alert(res.error || 'Submit failed'); }
+      })
+      .catch(function() { btn.disabled = false; btn.textContent = 'Submit'; alert('Submit failed'); });
+    });
+  })();
+  </script>
+</body>
+</html>

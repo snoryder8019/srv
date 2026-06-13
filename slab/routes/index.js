@@ -7,6 +7,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { getDb } from '../plugins/mongo.js';
 import { getReviews } from '../plugins/reviews.js';
+import { shareTargetPath, shareUrlFor, mintShareToken } from '../plugins/shareLink.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { SERVICES, INFRA_SERVICES } from '../plugins/serviceRegistry.js';
 
@@ -256,6 +257,47 @@ router.get('/assets/share/:token', async (req, res) => {
     res.redirect(asset.publicUrl);
   } catch (err) {
     res.status(500).send('Error loading asset.');
+  }
+});
+
+// ── Universal content share links ─────────────────────────────────────────
+// `/s/:token` is the one short link the Share modal hands out for any content
+// type. Tokens live in the tenant db, so resolution is automatically scoped to
+// the tenant whose Host resolved this request. We 302 to the canonical public
+// permalink — that page already emits full OG/Twitter meta, and social
+// crawlers follow the redirect, so previews render correctly.
+router.get('/s/:token', async (req, res, next) => {
+  try {
+    if (!req.db) return next();
+    const link = await req.db.collection('share_links').findOne({ token: req.params.token });
+    const target = shareTargetPath(link);
+    if (!link || !target) return res.status(404).send('This share link is no longer available.');
+    req.db.collection('share_links').updateOne(
+      { _id: link._id },
+      { $inc: { clicks: 1 }, $set: { lastClickAt: new Date() } },
+    ).catch(() => {});
+    res.redirect(302, target);
+  } catch (err) {
+    console.error('[share] redirect error:', err);
+    res.status(500).send('Error resolving link.');
+  }
+});
+
+// QR for a share link — encodes the `/s/:token` URL (so scans count as clicks).
+router.get('/s/:token/qr', async (req, res, next) => {
+  try {
+    if (!req.db) return next();
+    const link = await req.db.collection('share_links').findOne({ token: req.params.token });
+    if (!link) return res.status(404).send('Not found');
+    const png = await QRCode.toBuffer(shareUrlFor(req, link.token), {
+      width: 600, margin: 2, errorCorrectionLevel: 'M',
+      color: { dark: '#0F1B30', light: '#FFFFFF' },
+    });
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(png);
+  } catch (err) {
+    res.status(500).send('Error generating QR.');
   }
 });
 
@@ -843,14 +885,14 @@ function contentPermalinkHandler(ct) {
         description: post.excerpt || post.metaDescription || '',
         canonical: postUrl,
         ogType: 'article',
-        ogImage: post.coverImage || post.heroImage || post.ogImage || (logos && (logos.logo_primary || logos.logo_white)) || '',
+        ogImage: post.ogImage || post.coverImage || post.heroImage || post.featuredImageUrl || (logos && (logos.logo_primary || logos.logo_white)) || '',
         jsonLd: [{
           '@context': 'https://schema.org',
           '@type': 'BlogPosting',
           headline: post.title,
           url: postUrl,
           ...(post.excerpt ? { description: post.excerpt } : {}),
-          ...(post.coverImage || post.heroImage ? { image: post.coverImage || post.heroImage } : {}),
+          ...((post.coverImage || post.heroImage || post.featuredImageUrl) ? { image: post.coverImage || post.heroImage || post.featuredImageUrl } : {}),
           datePublished: post.publishedAt || post.createdAt,
           dateModified: post.updatedAt || post.publishedAt || post.createdAt,
           ...(post.author ? { author: { '@type': 'Person', name: post.author } } : {}),
@@ -862,7 +904,31 @@ function contentPermalinkHandler(ct) {
           mainEntityOfPage: postUrl,
         }],
       });
-      res.render('blog/post', { post, design, copy, logos, brandModels, ct, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
+      // Mint (or reuse) the short share link so the public Share button has a
+      // stable, trackable URL. Best-effort — a share button is a bonus, never a
+      // reason to fail the page.
+      let shareUrl = postUrl;
+      try {
+        const link = await mintShareToken(db, {
+          collection: 'blog', docId: post._id, slug: post.slug,
+          contentType: ct.type, title: post.title,
+          image: post.coverImage || post.heroImage || post.featuredImageUrl || post.ogImage || '',
+        });
+        if (link?.token) shareUrl = shareUrlFor(req, link.token);
+      } catch (e) { console.warn('[share] mint failed (non-fatal):', e.message); }
+      // Slides — a post can be wired to an asset folder; its images render as a
+      // carousel/grid on the page. Best-effort: a slide-fetch failure never
+      // blocks the post.
+      let slides = [];
+      if (post.slidesFolder) {
+        try {
+          const docs = await db.collection('assets')
+            .find({ fileType: 'image', $or: [{ folders: post.slidesFolder }, { folder: post.slidesFolder }] })
+            .sort({ uploadedAt: 1 }).toArray();
+          slides = docs.map(a => ({ url: a.publicUrl, thumb: a.thumbUrl || a.publicUrl, alt: a.altText || a.title || '', caption: a.caption || '' }));
+        } catch (e) { console.warn('[blog] slides fetch failed (non-fatal):', e.message); }
+      }
+      res.render('blog/post', { post, design, copy, logos, brandModels, ct, shareUrl, slides, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
     } catch (err) {
       console.error(err);
       res.status(500).send('Error loading post');

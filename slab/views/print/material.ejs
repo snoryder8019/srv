@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="<%= fontsHref %>" rel="stylesheet">
+<%- include('_material-style') %>
+<style>
+  html,body{background:#d8d8d8}
+  <% if (edit) { %>html,body{background:transparent;-webkit-user-select:none;user-select:none}<% } %>
+</style>
+</head>
+<body>
+<%- include('_material-body') %>
+
+<% if (edit) { %>
+<script>
+(function () {
+  const PXIN = 96;
+  const els = Array.from(document.querySelectorAll('.m-abs'));
+  let sel = null;
+
+  // Render an element's state (dataset) into inline styles. Size is width-only
+  // (no transform:scale) so the controls never scale with the object.
+  function apply(el) {
+    el.style.left = (+el.dataset.x).toFixed(3) + 'in';
+    el.style.top  = (+el.dataset.y).toFixed(3) + 'in';
+    el.style.width = el.dataset.w !== '' ? (+el.dataset.w).toFixed(3) + 'in' : '';
+    el.style.fontSize = (parseFloat(el.dataset.fs) || 1) + 'em';
+    el.style.textAlign = el.dataset.align || '';
+    if (el.dataset.font) { el.style.setProperty('--f-head', el.dataset.font); el.style.setProperty('--f-body', el.dataset.font); }
+    else { el.style.removeProperty('--f-head'); el.style.removeProperty('--f-body'); }
+    if (el.dataset.color) { el.style.setProperty('--ink', el.dataset.color); el.style.color = el.dataset.color; }
+    else { el.style.removeProperty('--ink'); el.style.color = ''; }
+    const hidden = el.classList.contains('is-hidden');
+    el.style.opacity = hidden ? 0.25 : (parseFloat(el.dataset.op) || 1);
+    el.style.zIndex = el.dataset.z !== '' ? el.dataset.z : '';
+  }
+  function snapshot() {
+    const regions = {}, objects = [];
+    els.forEach((el) => {
+      if (!el.isConnected) return; // deleted object
+      const w = el.dataset.w !== '' ? +(+el.dataset.w).toFixed(3) : undefined;
+      const op = parseFloat(el.dataset.op) || 1;
+      const z = el.dataset.z !== '' ? parseInt(el.dataset.z, 10) : undefined;
+      const base = {
+        x: +(+el.dataset.x).toFixed(3), y: +(+el.dataset.y).toFixed(3), w,
+        opacity: op !== 1 ? +op.toFixed(2) : undefined,
+        z: (z && z !== 0) ? z : undefined,
+      };
+      if (el.dataset.objId !== undefined) { objects.push({ id: el.dataset.objId, url: el.dataset.objUrl, ...base }); return; }
+      const fs = parseFloat(el.dataset.fs) || 1;
+      regions[el.dataset.region] = {
+        ...base,
+        fs: fs !== 1 ? +fs.toFixed(2) : undefined,
+        align: (el.dataset.align && el.dataset.align !== 'left') ? el.dataset.align : undefined,
+        font: el.dataset.font || undefined,
+        color: el.dataset.color || undefined,
+        hidden: el.classList.contains('is-hidden') || undefined,
+      };
+    });
+    return { regions, objects };
+  }
+  const post = (t) => parent.postMessage({ type: t || 'ps-layout', ...snapshot() }, '*');
+  function select(el) { if (sel) sel.classList.remove('sel'); sel = el; if (el) el.classList.add('sel'); }
+
+  els.forEach((el) => {
+    const handle = el.querySelector('.m-handle');
+    const tools = el.querySelector('.m-tools');
+
+    // ── move ──
+    el.addEventListener('pointerdown', (e) => {
+      if (handle && e.target === handle) return;
+      if (tools && tools.contains(e.target)) return;
+      e.preventDefault(); select(el); el.classList.add('dragging');
+      const sx = e.clientX, sy = e.clientY, ox = +el.dataset.x, oy = +el.dataset.y;
+      const mv = (ev) => { el.dataset.x = (ox + (ev.clientX - sx) / PXIN).toFixed(3); el.dataset.y = (oy + (ev.clientY - sy) / PXIN).toFixed(3); apply(el); };
+      const up = () => { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); el.classList.remove('dragging'); post(); };
+      document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+    });
+
+    // ── resize (images scale aspect-locked; text reflows to fill) ──
+    if (handle) handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation(); select(el);
+      const sx = e.clientX;
+      const startW = el.dataset.w !== '' ? +el.dataset.w : (el.getBoundingClientRect().width / PXIN);
+      const mv = (ev) => { el.dataset.w = Math.max(0.2, startW + (ev.clientX - sx) / PXIN).toFixed(3); apply(el); };
+      const up = () => { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); post(); };
+      document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+    });
+
+    // ── per-object controls: opacity / layer / font / hide ──
+    if (tools) {
+      tools.addEventListener('pointerdown', (e) => e.stopPropagation());
+      tools.addEventListener('click', (e) => {
+        const act = e.target.getAttribute && e.target.getAttribute('data-act');
+        if (!act || act === 'op' || act === 'font' || act === 'color') return;
+        e.stopPropagation();
+        if (act === 'del') { el.remove(); post(); return; }
+        if (act === 'hide') el.classList.toggle('is-hidden');
+        else if (act === 'front') el.dataset.z = ((parseInt(el.dataset.z, 10) || 0) + 1);
+        else if (act === 'back') el.dataset.z = ((parseInt(el.dataset.z, 10) || 0) - 1);
+        else if (act === 'fsup') el.dataset.fs = Math.min((parseFloat(el.dataset.fs) || 1) + 0.1, 6).toFixed(2);
+        else if (act === 'fsdn') el.dataset.fs = Math.max((parseFloat(el.dataset.fs) || 1) - 0.1, 0.3).toFixed(2);
+        else if (act === 'align') {
+          const order = ['left', 'center', 'right'];
+          const next = order[(order.indexOf(el.dataset.align || 'left') + 1) % 3];
+          el.dataset.align = next;
+          if (e.target.tagName === 'BUTTON') e.target.textContent = next.charAt(0).toUpperCase();
+        }
+        apply(el); post();
+      });
+      const range = tools.querySelector('input[data-act="op"]');
+      if (range) {
+        range.addEventListener('input', (e) => { e.stopPropagation(); el.dataset.op = (range.value / 100).toFixed(2); apply(el); });
+        range.addEventListener('change', () => post());
+      }
+      const fontSel = tools.querySelector('select[data-act="font"]');
+      if (fontSel) fontSel.addEventListener('change', (e) => { e.stopPropagation(); el.dataset.font = fontSel.value; apply(el); post(); });
+      const colorIn = tools.querySelector('input[data-act="color"]');
+      if (colorIn) {
+        colorIn.addEventListener('input', (e) => { e.stopPropagation(); el.dataset.color = colorIn.value; apply(el); });
+        colorIn.addEventListener('change', () => post());
+      }
+    }
+
+    apply(el);
+  });
+
+  // click empty space to deselect
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.m-abs')) select(null); });
+
+  // Seed the parent with the starting layout. Marked as a seed so merely opening
+  // a format does NOT flag it custom — only an actual edit (ps-layout) does.
+  post('ps-seed');
+})();
+</script>
+<% } %>
+</body>
+</html>

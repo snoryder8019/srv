@@ -408,7 +408,11 @@
       <div class="bulk-meta-header">
         <div class="bulk-meta-count">${bulkSelected.size} selected</div>
         <div class="bulk-meta-strip">${stripHtml}</div>
-        <button class="btn btn-ghost btn-sm" id="bulkClearBtn" style="font-size:0.65rem;margin-top:8px;">Clear selection</button>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+          <button class="btn btn-navy btn-sm" id="bulkAiDescribeBtn" style="font-size:0.65rem;" title="An AI looks at each selected image and fills its Alt Text + Caption">✨ AI Describe + Alt</button>
+          <button class="btn btn-ghost btn-sm" id="bulkClearBtn" style="font-size:0.65rem;">Clear selection</button>
+        </div>
+        <div id="bulkAiProgress" style="display:none;font-size:0.65rem;color:var(--slate);margin-top:6px;"></div>
       </div>
       <div class="meta-field">
         <label class="meta-label">Assign Folders</label>
@@ -436,6 +440,8 @@
       document.querySelectorAll('.bulk-check.checked').forEach(c => c.classList.remove('checked'));
       renderBulkMeta();
     });
+
+    document.getElementById('bulkAiDescribeBtn')?.addEventListener('click', runBulkAiDescribe);
 
     metaFooter.style.display = '';
     // Open the meta drawer on mobile so the user sees the editor
@@ -478,6 +484,50 @@
         setTimeout(() => a.remove(), 1000);
       }, i * 250);
     });
+  }
+
+  // Have a vision AI look at each selected image and fill its Alt Text + Caption.
+  // Runs one at a time on purpose: the vision model is memory-heavy (concurrent
+  // calls OOM the runner) and spacing the requests keeps Apache's flood filter calm.
+  let bulkAiRunning = false;
+  async function runBulkAiDescribe() {
+    if (bulkAiRunning || !bulkSelected.size) return;
+    const btn = document.getElementById('bulkAiDescribeBtn');
+    const prog = document.getElementById('bulkAiProgress');
+    const ids = [...bulkSelected];
+    bulkAiRunning = true;
+    if (btn) btn.disabled = true;
+    if (prog) prog.style.display = '';
+
+    let done = 0, skipped = 0, failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      if (prog) prog.textContent = `Looking at image ${i + 1} of ${ids.length}…`;
+      try {
+        const r = await fetch(`/admin/assets/${ids[i]}/vision-describe`, { method: 'POST' });
+        const data = await r.json().catch(() => ({}));
+        if (data.success) {
+          done++;
+          // Keep the in-memory copy fresh so the meta drawer shows new text immediately
+          const a = allAssetsCache.find(x => x._id === ids[i]);
+          if (a) { a.altText = data.altText; a.caption = data.caption; a.description = data.description; a.tags = data.tags; }
+        } else if (data.skipped) {
+          skipped++;
+        } else {
+          failed++;
+        }
+      } catch { failed++; }
+    }
+
+    if (prog) {
+      const parts = [`✓ ${done} described`];
+      if (skipped) parts.push(`${skipped} skipped`);
+      if (failed) parts.push(`${failed} failed`);
+      prog.textContent = parts.join(' · ');
+    }
+    if (btn) btn.disabled = false;
+    bulkAiRunning = false;
+    // If a single asset is open in the drawer, refresh its fields
+    if (selectedAsset && bulkSelected.has(selectedAsset._id)) renderMeta(selectedAsset);
   }
 
   async function performBulkSave() {
@@ -760,7 +810,10 @@
         <input type="text" class="meta-input" id="metaTitle" value="${escHtml(asset.title || '')}">
       </div>
       <div class="meta-field">
-        <label class="meta-label">Alt Text <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--slate);">(SEO / accessibility — describe the image)</span></label>
+        <label class="meta-label" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>Alt Text <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--slate);">(SEO / accessibility — describe the image)</span></span>
+          ${asset.fileType === 'image' ? '<button type="button" class="btn btn-ghost btn-sm" id="metaAiDescribeBtn" style="font-size:0.6rem;padding:2px 8px;" title="Let an AI view this image and fill the alt text + caption">✨ AI</button>' : ''}
+        </label>
         <input type="text" class="meta-input" id="metaAlt" maxlength="250" value="${escHtml(asset.altText || '')}" placeholder="e.g. Sleek black coffee machine on marble counter">
       </div>
       <div class="meta-field">
@@ -781,6 +834,40 @@
       </div>`;
 
     document.getElementById('assetUrlDisplay').addEventListener('click', () => copyToClipboard(asset.publicUrl, 'URL copied'));
+
+    // AI describe — vision model fills Alt Text + Caption for this single image
+    const aiBtn = document.getElementById('metaAiDescribeBtn');
+    if (aiBtn) {
+      aiBtn.addEventListener('click', async () => {
+        if (aiBtn.disabled) return;
+        aiBtn.disabled = true;
+        aiBtn.textContent = '✨ Looking…';
+        try {
+          const r = await fetch(`/admin/assets/${asset._id}/vision-describe`, { method: 'POST' });
+          const data = await r.json().catch(() => ({}));
+          if (data.success) {
+            asset.altText = data.altText;
+            asset.caption = data.caption;
+            asset.description = data.description;
+            asset.tags = data.tags;
+            const altInput = document.getElementById('metaAlt');
+            const capInput = document.getElementById('metaCaption');
+            const tagInput = document.getElementById('metaTags');
+            if (altInput) altInput.value = data.altText || '';
+            if (capInput) capInput.value = data.caption || '';
+            if (tagInput) tagInput.value = (data.tags || []).join(', ');
+            aiBtn.textContent = '✨ Done — review & Save';
+          } else {
+            aiBtn.textContent = data.error ? `✨ ${data.error}` : '✨ Failed';
+          }
+        } catch (err) {
+          aiBtn.textContent = '✨ Error';
+          console.warn('vision-describe error:', err.message);
+        } finally {
+          setTimeout(() => { aiBtn.textContent = '✨ AI'; aiBtn.disabled = false; }, 2500);
+        }
+      });
+    }
 
     // Share button
     const shareBtn = document.getElementById('shareAssetBtn');

@@ -6,7 +6,7 @@ import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sd
 import { getDb } from '../../plugins/mongo.js';
 import { s3Client, BUCKET, bucketUrl } from '../../plugins/s3.js';
 import { config } from '../../config/config.js';
-import { callLLM, webSearch, tryParseAgentResponse, runTool, generateSdImage, recordTrainingCandidate, buildBrandedSdPrompt } from '../../plugins/agentMcp.js';
+import { callLLM, callVisionLLM, webSearch, tryParseAgentResponse, runTool, generateSdImage, recordTrainingCandidate, buildBrandedSdPrompt } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { wouldExceedQuota, getQuotaLabel } from '../../plugins/storage.js';
 import { PACKS, getPack, fileUrl, listingUrl } from '../../data/asset-packs.js';
@@ -1439,6 +1439,79 @@ router.post('/metadata/backfill', express.json(), async (req, res) => {
     }
     res.json({ success: true, scanned: assets.length, described: done });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ── VISION DESCRIBE (an AI that actually *looks* at the image) ────────────────
+// Two steps: (1) a vision model produces a factual description of the pixels,
+// (2) the text model formats that into accessibility-ready altText + caption +
+// tags. Two small models beat asking one tiny vision model for strict JSON.
+async function visionDescribeAsset(asset, imageBuffer) {
+  const hint = [
+    asset.title && `It may be titled "${asset.title}".`,
+    asset.folder && `It is used in the "${asset.folder}" area.`,
+  ].filter(Boolean).join(' ');
+  const visionPrompt = `Describe this image factually in 2-3 sentences for website accessibility text. State the main subject, the setting/background, the dominant colors, and transcribe any visible text exactly. Do not guess beyond what is visible. ${hint}`.trim();
+
+  const visionDesc = await callVisionLLM(imageBuffer, visionPrompt, 120000);
+
+  const sys = 'You convert a raw image description into website image metadata. Output ONLY minified JSON, no prose, no code fences: {"altText":"concise factual alt text under 120 chars, no \\"image of\\"/\\"photo of\\" prefix","caption":"one polished sentence suitable to display under the image","tags":["lowercase","keyword","subject","color"]}';
+  let parsed = {};
+  try {
+    const raw = await callLLM([{ role: 'user', content: `Image description:\n${visionDesc}` }], sys, 30000);
+    parsed = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]);
+  } catch { parsed = {}; }
+
+  const altText = String(parsed.altText || visionDesc)
+    .replace(/^(an?\s+)?(image|photo|picture|illustration|graphic)\s+(of|showing|depicting)\s+/i, '')
+    .trim().slice(0, 250);
+  const caption = String(parsed.caption || '').trim().slice(0, 500);
+  const tags = Array.from(new Set([
+    ...(asset.tags || []),
+    ...((parsed.tags || []).map(t => String(t).toLowerCase().trim()).filter(Boolean)),
+  ])).slice(0, 20);
+
+  return { altText, caption, description: String(visionDesc).slice(0, 400), tags };
+}
+
+// Pull the raster bytes for an asset, preferring the (smaller, faster) thumbnail.
+async function loadAssetImageBuffer(asset) {
+  const key = asset.thumbKey || asset.bucketKey;
+  if (key && config.LINODE_KEY) {
+    const obj = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+    return streamToBuffer(obj.Body);
+  }
+  const url = asset.thumbUrl || asset.publicUrl;
+  if (url) {
+    const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(`image fetch ${r.status}`);
+    return Buffer.from(await r.arrayBuffer());
+  }
+  throw new Error('no image source');
+}
+
+// POST /admin/assets/:id/vision-describe — fill altText + caption from a vision model
+router.post('/:id/vision-describe', express.json(), async (req, res) => {
+  try {
+    if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ success: false, error: 'Invalid id' });
+    const asset = await req.db.collection('assets').findOne({ _id: new ObjectId(req.params.id) });
+    if (!asset) return res.status(404).json({ success: false, error: 'Not found' });
+    if (asset.fileType !== 'image') return res.status(400).json({ success: false, error: 'Only images can be described', skipped: true });
+    // Vision models need raster pixels — SVGs without a generated thumbnail can't be read.
+    if (asset.mimeType === 'image/svg+xml' && !asset.thumbKey && !asset.thumbUrl) {
+      return res.status(400).json({ success: false, error: 'Vector image has no raster preview to view', skipped: true });
+    }
+
+    const imageBuffer = await loadAssetImageBuffer(asset);
+    const meta = await visionDescribeAsset(asset, imageBuffer);
+    await req.db.collection('assets').updateOne(
+      { _id: asset._id },
+      { $set: { ...meta, aiDescribed: true, aiVision: true, describedAt: new Date() } }
+    );
+    res.json({ success: true, ...meta });
+  } catch (e) {
+    console.error('[vision-describe] error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 export default router;

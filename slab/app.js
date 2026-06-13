@@ -25,6 +25,7 @@ import onboardingRouter from './routes/onboarding.js';
 import superadminRouter from './routes/superadmin.js';
 import delegatesRouter from './routes/delegates.js';
 import ticketApiRouter from './routes/ticketApi.js';
+import formsRouter from './routes/forms.js';
 // REMOVED: Huginn unwired
 // import huginnWebhookRouter from './routes/huginn-webhook.js';
 // import huginnMcpRouter from './routes/huginn-mcp.js';
@@ -157,6 +158,7 @@ app.use('/meeting', meetingsRouter);
 app.use('/book', bookingRouter);
 app.use('/pay', payRouter);
 app.use('/webhooks', webhooksRouter);
+app.use('/forms', formsRouter);
 app.use('/', indexRouter);
 app.use('/auth', authRouter);
 app.use('/admin', adminRouter);

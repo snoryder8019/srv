@@ -11,7 +11,7 @@ function roomKey(slug) {
 function getRoomState(slug) {
   if (!liveRooms.has(slug)) {
     liveRooms.set(slug, {
-      role: 'upland-superadmin',
+      role: 'meridian-superadmin',
       workflow: null,
       lastActivity: new Date().toISOString(),
       emails: [],

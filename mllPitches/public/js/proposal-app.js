@@ -705,7 +705,7 @@
   async function askReviewer(question, { isAuto } = {}, extra) {
     if (reviewInflight) return;
     reviewInflight = true;
-    const role = roleSelect?.value || 'upland-superadmin';
+    const role = roleSelect?.value || 'meridian-superadmin';
     const payload = {
       question,
       role,
