@@ -12,7 +12,7 @@ const path = require('path');
 const SESSION = 'palworld';
 const GS_USER = 'gs-palworld';
 const START_SCRIPT = path.join(__dirname, '..', 'start-palworld.sh');
-const PALWORLD_DIR = '/srv/games/palworld';
+const PALWORLD_DIR = '/srv/games/dedicatedServers/palworld';
 const LOG_FILE = path.join(PALWORLD_DIR, 'logs', 'server.log');
 
 // --- Auto-shutdown ---

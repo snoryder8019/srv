@@ -5,7 +5,7 @@
 # Quick commands to manage services and monitor
 #######################################################
 
-SERVICES=("madladslab" "acm" "ps")
+SERVICES=("madladslab" "acm")
 MONITOR_LOG="/srv/monitor-services.log"
 
 # Colors
@@ -143,7 +143,7 @@ show_help() {
     echo "Examples:"
     echo "  $0 status"
     echo "  $0 start madladslab"
-    echo "  $0 restart ps"
+    echo "  $0 restart madladslab"
     echo "  $0 logs madladslab"
     echo "  $0 start-all"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

@@ -16,11 +16,10 @@ SERVICES=(
   "graffiti-tv:3001:/srv/graffiti-tv:node ./bin/www"
   "greealitytv:3400:/srv/greealitytv:node app.js"
   "madladslab:3000:/srv/madladslab:node ./bin/www"
-  "ps:3399:/srv/ps:node ./bin/www"
   "opsTrain:3603:/srv/opsTrain:node bin/www"
   "nocometalworkz:3002:/srv/nocometalworkz:node ./bin/www"
   "mcp-streamable:3650:/srv/mcp:node mcp-http.js"
-  "madlands:3730:/srv/madlands:node app.js"
+  "madlands:3730:/srv/games/arcade/madlands:node app.js"
 )
 
 echo ""

@@ -119,12 +119,12 @@ check_game() {
 
 log "=== Game server update check starting ==="
 
-check_game "Rust"     "258550"  "/srv/games/rust"     "rust"     "/srv/games/start-rust.sh"
-check_game "Valheim"  "896660"  "/srv/games/valheim"  "valheim"  "/srv/games/start-valheim.sh"
-check_game "L4D2"     "222860"  "/srv/games/l4d2"     "l4d2"     "/srv/games/start-l4d2.sh"
-check_game "7DTD"     "294420"  "/srv/games/7dtd"     "7dtd"     "/srv/games/start-7dtd.sh"
-check_game "SE"       "298740"  "/srv/games/se"       "se"       "/srv/games/start-se.sh"
-check_game "Palworld" "2394010" "/srv/games/palworld" "palworld" "/srv/games/start-palworld.sh"
-check_game "Windrose" "4129620" "/srv/games/windrose" "windrose" "/srv/games/start-windrose.sh" "gs-windrose" "windows"
+check_game "Rust"     "258550"  "/srv/games/dedicatedServers/rust"     "rust"     "/srv/games/start-rust.sh"
+check_game "Valheim"  "896660"  "/srv/games/dedicatedServers/valheim"  "valheim"  "/srv/games/start-valheim.sh"
+check_game "L4D2"     "222860"  "/srv/games/dedicatedServers/l4d2"     "l4d2"     "/srv/games/start-l4d2.sh"
+check_game "7DTD"     "294420"  "/srv/games/dedicatedServers/7dtd"     "7dtd"     "/srv/games/start-7dtd.sh"
+check_game "SE"       "298740"  "/srv/games/dedicatedServers/se"       "se"       "/srv/games/start-se.sh"
+check_game "Palworld" "2394010" "/srv/games/dedicatedServers/palworld" "palworld" "/srv/games/start-palworld.sh"
+check_game "Windrose" "4129620" "/srv/games/dedicatedServers/windrose" "windrose" "/srv/games/start-windrose.sh" "gs-windrose" "windows"
 
 log "=== Update check complete ==="

@@ -1,5 +1,5 @@
 // One-shot backfill of WindrosePlus NDJSON logs into the games stats DB.
-// Walks every YYYY-MM-DD.log in /srv/games/windrose/windrose_plus_data, dedups
+// Walks every YYYY-MM-DD.log in /srv/games/dedicatedServers/windrose/windrose_plus_data, dedups
 // on (sid + ts_unix + ev) so re-runs are safe, inserts player_join/leave/etc
 // game_events, and rebuilds windrose totalPlaytime/sessions in player_stats by
 // pairing each player_leave with the immediately-preceding player_join for
@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { MongoClient } = require('mongodb');
 
-const DATA_DIR = '/srv/games/windrose/windrose_plus_data';
+const DATA_DIR = '/srv/games/dedicatedServers/windrose/windrose_plus_data';
 
 const args = process.argv.slice(2);
 const dry = args.includes('--dry');

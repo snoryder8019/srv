@@ -2,7 +2,7 @@
 # Left 4 Dead 2 Dedicated Server Startup Script
 # Runs inside tmux session "l4d2" as gs-l4d2 user
 
-L4D2_DIR="/srv/games/l4d2"
+L4D2_DIR="/srv/games/dedicatedServers/l4d2"
 SESSION="l4d2"
 GS_USER="gs-l4d2"
 

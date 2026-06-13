@@ -2,7 +2,7 @@
 # Rust Dedicated Server Startup Script
 # Runs inside tmux session "rust"
 
-RUST_DIR="/srv/games/rust"
+RUST_DIR="/srv/games/dedicatedServers/rust"
 SESSION="rust"
 
 # Server config — edit these
@@ -41,7 +41,7 @@ sudo -u $GS_USER tmux send-keys -t $SESSION "export HOME=$RUST_DIR && export TER
   +rcon.web 1 \
   +query_port $QUERY_PORT \
   +app.port 28082 \
-  2>&1 | tee -a /srv/games/rust/logs/server.log" Enter
+  2>&1 | tee -a /srv/games/dedicatedServers/rust/logs/server.log" Enter
 
 echo "Rust server started in tmux session '$SESSION'"
 echo "Attach with: tmux attach -t $SESSION"

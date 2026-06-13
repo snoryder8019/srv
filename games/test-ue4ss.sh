@@ -6,7 +6,7 @@
 
 set -u
 
-WINDROSE_DIR="/srv/games/windrose"
+WINDROSE_DIR="/srv/games/dedicatedServers/windrose"
 GS_USER="gs-windrose"
 SESSION="windrose"
 WIN64_DIR="$WINDROSE_DIR/R5/Binaries/Win64"

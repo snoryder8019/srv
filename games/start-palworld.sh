@@ -2,7 +2,7 @@
 # Palworld Dedicated Server Startup Script
 # Runs inside tmux session "palworld" as gs-palworld user
 
-PALWORLD_DIR="/srv/games/palworld"
+PALWORLD_DIR="/srv/games/dedicatedServers/palworld"
 SESSION="palworld"
 GS_USER="gs-palworld"
 

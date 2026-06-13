@@ -1,6 +1,6 @@
 // 3D model store — volumetric (L3/L4) assets for the shared model scope.
 //
-// Files live under /srv/_shared/assets/models/<category>/<file>.glb and are
+// Files live under /srv/games/_shared/assets/models/<category>/<file>.glb and are
 // served read-only to every first-party app via the existing /shared mount:
 //   /shared/assets/models/<category>/<file>.glb
 // Metadata (prompt, tags, source, dims) lives in Mongo collection `models3d`,
@@ -22,7 +22,7 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { ObjectId } = require('mongodb');
 
-const MODELS_ROOT = '/srv/_shared/assets/models';
+const MODELS_ROOT = '/srv/games/_shared/assets/models';
 const URL_BASE = '/shared/assets/models';
 const CATEGORIES = ['ships', 'mechs', 'props', 'npcs', '_generated'];
 const MODEL_EXT = new Set(['.glb', '.gltf']);

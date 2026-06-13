@@ -2,7 +2,7 @@
  * Wallet client — talks to the games.madladslab.com platform chip wallet (the
  * single global currency = "coins") over the internal bridge channel. Server-only.
  * Best-effort: a network failure surfaces as { ok:false } so callers refuse the
- * purchase rather than hand out free goods. Mirrors /srv/td/services/platform/wallet.js.
+ * purchase rather than hand out free goods. Mirrors /srv/games/arcade/td/services/platform/wallet.js.
  */
 import config from '../../config/index.js';
 

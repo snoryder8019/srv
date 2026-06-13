@@ -3,7 +3,7 @@
 # App ID: 294420 (anonymous login)
 
 STEAMCMD="/srv/games/steamcmd/steamcmd.sh"
-SDTD_DIR="/srv/games/7dtd"
+SDTD_DIR="/srv/games/dedicatedServers/7dtd"
 SDTD_APP_ID="294420"
 
 echo "=== Installing 7 Days to Die Dedicated Server ==="

@@ -1,5 +1,5 @@
 // Admin Blender tool — tree browser + GLB viewer + CRUD-from-prompt over the
-// shared model scope (/srv/_shared/assets/models). All management is gated to
+// shared model scope (/srv/games/_shared/assets/models). All management is gated to
 // admins; the GLB files themselves are served by the public /shared mount (by
 // design — games load them at runtime per BLENDER_SD_PROTOCOL.md).
 const express = require('express');

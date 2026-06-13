@@ -2,7 +2,7 @@
 # Valheim Dedicated Server Startup Script
 # Runs inside tmux session "valheim" as gs-valheim user
 
-VALHEIM_DIR="/srv/games/valheim"
+VALHEIM_DIR="/srv/games/dedicatedServers/valheim"
 SESSION="valheim"
 GS_USER="gs-valheim"
 

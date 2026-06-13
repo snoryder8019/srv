@@ -1,12 +1,12 @@
 #!/bin/bash
 # Windrose Dedicated Server Installer
-# Installs Windrose DS into /srv/games/windrose/
+# Installs Windrose DS into /srv/games/dedicatedServers/windrose/
 # NOTE: Windrose is a Windows-only binary. We force SteamCMD to fetch
 # the Windows build and run it under Wine (same pattern as Space Engineers).
 # App ID 4129620 supports anonymous login — no game purchase required.
 
 STEAMCMD="/srv/games/steamcmd/steamcmd.sh"
-WINDROSE_DIR="/srv/games/windrose"
+WINDROSE_DIR="/srv/games/dedicatedServers/windrose"
 WINDROSE_APP_ID="4129620"
 
 echo "=== Installing Windrose Dedicated Server (Windows build via SteamCMD) ==="

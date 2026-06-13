@@ -2,7 +2,7 @@
 
 // Windrose MCP server — gives mod authors a scoped MCP endpoint to inspect
 // runtime state and write Lua mods + UI overlay files. Hard-jailed to a
-// whitelist of paths under /srv/games/windrose and /srv/games/public/windrose-build.
+// whitelist of paths under /srv/games/dedicatedServers/windrose and /srv/games/public/windrose-build.
 //
 // Transport is implemented inline in routes/windrose-mcp.js — this module
 // supplies the token store, path-jail, and tool/resource handlers.
@@ -14,17 +14,17 @@ const crypto = require('crypto');
 const { ObjectId } = require('mongodb');
 
 const GAMES_ROOT       = '/srv/games';
-const WINDROSE_ROOT    = '/srv/games/windrose';
-const MODS_ROOT        = '/srv/games/windrose/R5/Binaries/Win64/ue4ss/Mods';
-const UE4SS_LOG        = '/srv/games/windrose/R5/Binaries/Win64/ue4ss/UE4SS.log';
-const R5_LOG           = '/srv/games/windrose/R5/Saved/Logs/R5.log';
-const SERVER_LOG       = '/srv/games/windrose/logs/server.log';
-const PLUS_DATA_DIR    = '/srv/games/windrose/windrose_plus_data';
-const PLUS_CONFIG      = '/srv/games/windrose/windrose_plus.json';
+const WINDROSE_ROOT    = '/srv/games/dedicatedServers/windrose';
+const MODS_ROOT        = '/srv/games/dedicatedServers/windrose/R5/Binaries/Win64/ue4ss/Mods';
+const UE4SS_LOG        = '/srv/games/dedicatedServers/windrose/R5/Binaries/Win64/ue4ss/UE4SS.log';
+const R5_LOG           = '/srv/games/dedicatedServers/windrose/R5/Saved/Logs/R5.log';
+const SERVER_LOG       = '/srv/games/dedicatedServers/windrose/logs/server.log';
+const PLUS_DATA_DIR    = '/srv/games/dedicatedServers/windrose/windrose_plus_data';
+const PLUS_CONFIG      = '/srv/games/dedicatedServers/windrose/windrose_plus.json';
 const MODS_TXT         = path.join(MODS_ROOT, 'mods.txt');
 const UI_EXT_DIR       = '/srv/games/public/windrose-build';
 const MAP_EXT_DIR      = '/srv/games/public/windrose-map';
-const DOCS_DIR         = '/srv/games/windrose/docs';
+const DOCS_DIR         = '/srv/games/dedicatedServers/windrose/docs';
 
 // Paths the MCP can READ from. A request path is allowed if its resolved form
 // starts with one of these prefixes.
@@ -289,7 +289,7 @@ const TOOLS = [
   },
   {
     name: 'read_plus_config',
-    description: 'Read /srv/games/windrose/windrose_plus.json.',
+    description: 'Read /srv/games/dedicatedServers/windrose/windrose_plus.json.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -706,7 +706,7 @@ async function dispatch(message, ctx) {
             '(public/windrose-build/), windrose_plus.json, and mods.txt.',
             '',
             'BEFORE anything else, call:',
-            '  fs_read({ path: "/srv/games/windrose/MCP_HANDOFF.md" })',
+            '  fs_read({ path: "/srv/games/dedicatedServers/windrose/MCP_HANDOFF.md" })',
             'That file is the source of truth for what you can do, the engine',
             'caveats (UE4SS hook reliability, no SteamID, which events do/don\'t',
             'fire), the UI-overlay convention, and a first-connect checklist.',

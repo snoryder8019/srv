@@ -19,13 +19,11 @@ const SERVICES = [
 
   // ── Games ──
   { name: 'games',           dir: '/srv/games',              port: 3500, domain: 'games.madladslab.com',        tmux: 'games',                      category: 'game',      description: 'Game server portal (Rust, Valheim, etc.)' },
-  { name: 'game-state',      dir: '/srv/game-state-service', port: 3502, domain: 'svc.madladslab.com',          tmux: 'game-state-service_session', category: 'game',      description: 'Game state microservice' },
   { name: 'discord-games',   dir: '/srv/games',              port: null, domain: null,                          tmux: 'discord-games',              category: 'game',      description: 'Discord bot for Games' },
-  { name: 'tiles',           dir: '/srv/tiles',              port: 3625, domain: 'tiles.madladslab.com',        tmux: 'tiles_session',              category: 'game',      description: '3D arcade table games (supersedes cards)' },
-  { name: 'cards',           dir: '/srv/cards',              port: 3600, domain: 'cards.madladslab.com',        tmux: 'cards_session',              category: 'game',      description: 'Legacy card games portal' },
-  { name: 'matchmaking',     dir: '/srv/matchmaking',        port: 3610, domain: 'match.madladslab.com',        tmux: 'matchmaking_session',        category: 'game',      description: 'Match — cross-game live dashboard / matchmaking' },
-  { name: 'madlands',        dir: '/srv/madlands',           port: 3730, domain: 'madlands.madladslab.com',      tmux: 'madlands',                   category: 'game',      description: 'Madlands world' },
-  { name: 'ps',              dir: '/srv/ps',                 port: 3399, domain: 'ps.madladslab.com',           tmux: 'ps_session',                 category: 'game',      description: 'Stringborn Universe — sci-fi MMO dashboard' },
+  { name: 'tiles',           dir: '/srv/games/arcade/tiles',              port: 3625, domain: 'tiles.madladslab.com',        tmux: 'tiles_session',              category: 'game',      description: '3D arcade table games (supersedes cards)' },
+  { name: 'cards',           dir: '/srv/games/arcade/cards',              port: 3600, domain: 'cards.madladslab.com',        tmux: 'cards_session',              category: 'game',      description: 'Legacy card games portal' },
+  { name: 'matchmaking',     dir: '/srv/games/matchmaking',  port: 3610, domain: 'match.madladslab.com',        tmux: 'matchmaking_session',        category: 'game',      description: 'Match — cross-game live dashboard / matchmaking' },
+  { name: 'madlands',        dir: '/srv/games/arcade/madlands', port: 3730, domain: 'madlands.madladslab.com',      tmux: 'madlands',                   category: 'game',      description: 'Madlands world' },
   { name: 'triple-twenty',   dir: '/srv/triple-twenty',      port: 3710, domain: 'tripletwenty.madladslab.com', tmux: 'triple-twenty_session',      category: 'game',      description: 'AI darts scoring with camera' },
 
   // ── Media ──

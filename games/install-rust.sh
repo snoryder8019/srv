@@ -1,9 +1,9 @@
 #!/bin/bash
 # Rust Dedicated Server Installer
-# Installs Rust server + Oxide (uMod) mod framework into /srv/games/rust/
+# Installs Rust server + Oxide (uMod) mod framework into /srv/games/dedicatedServers/rust/
 
 STEAMCMD="/srv/games/steamcmd/steamcmd.sh"
-RUST_DIR="/srv/games/rust"
+RUST_DIR="/srv/games/dedicatedServers/rust"
 RUST_APP_ID="258550"
 
 echo "=== Installing Rust Dedicated Server ==="

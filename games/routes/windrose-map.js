@@ -11,7 +11,7 @@ const path = require('path');
 
 const router = express.Router();
 
-const PLUS_DATA_DIR = '/srv/games/windrose/windrose_plus_data';
+const PLUS_DATA_DIR = '/srv/games/dedicatedServers/windrose/windrose_plus_data';
 const SERVER_STATUS = path.join(PLUS_DATA_DIR, 'server_status.json');
 const LIVEMAP       = path.join(PLUS_DATA_DIR, 'livemap_data.json');
 const POIS          = path.join(PLUS_DATA_DIR, 'pois.json');

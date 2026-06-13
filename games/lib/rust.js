@@ -159,10 +159,10 @@ function parseStatus(raw, running) {
 
 const fs = require('fs');
 
-const CARBON_PLUGINS_DIR = '/srv/games/rust/carbon/plugins';
-const CARBON_DISABLED_DIR = '/srv/games/rust/carbon/plugins/disabled';
-const CARBON_DATA_DIR = '/srv/games/rust/carbon/data';
-const CARBON_CONFIGS_DIR = '/srv/games/rust/carbon/configs';
+const CARBON_PLUGINS_DIR = '/srv/games/dedicatedServers/rust/carbon/plugins';
+const CARBON_DISABLED_DIR = '/srv/games/dedicatedServers/rust/carbon/plugins/disabled';
+const CARBON_DATA_DIR = '/srv/games/dedicatedServers/rust/carbon/data';
+const CARBON_CONFIGS_DIR = '/srv/games/dedicatedServers/rust/carbon/configs';
 
 function getPluginFramework() {
   return 'carbon';

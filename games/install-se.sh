@@ -1,9 +1,9 @@
 #!/bin/bash
 # Space Engineers 1 Dedicated Server Installer
-# Installs SE DS into /srv/games/se/
+# Installs SE DS into /srv/games/dedicatedServers/se/
 
 STEAMCMD="/srv/games/steamcmd/steamcmd.sh"
-SE_DIR="/srv/games/se"
+SE_DIR="/srv/games/dedicatedServers/se"
 SE_APP_ID="298740"
 
 echo "=== Installing Space Engineers Dedicated Server ==="

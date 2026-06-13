@@ -10,14 +10,14 @@ const path = require('path');
 
 const LOG_PATHS = {
   rust: [
-    '/srv/games/rust/server/madlads/Log.EAC.txt',
-    '/srv/games/rust/RustDedicated_Data/output_log.txt',
+    '/srv/games/dedicatedServers/rust/server/madlads/Log.EAC.txt',
+    '/srv/games/dedicatedServers/rust/RustDedicated_Data/output_log.txt',
   ],
-  valheim: ['/srv/games/valheim/logs/server.log'],
-  l4d2: ['/srv/games/l4d2/logs/console.log'],
-  '7dtd': ['/srv/games/7dtd/logs/output_log.txt'],
-  se: ['/srv/games/se/logs/server.log'],
-  palworld: ['/srv/games/palworld/logs/server.log'],
+  valheim: ['/srv/games/dedicatedServers/valheim/logs/server.log'],
+  l4d2: ['/srv/games/dedicatedServers/l4d2/logs/console.log'],
+  '7dtd': ['/srv/games/dedicatedServers/7dtd/logs/output_log.txt'],
+  se: ['/srv/games/dedicatedServers/se/logs/server.log'],
+  palworld: ['/srv/games/dedicatedServers/palworld/logs/server.log'],
 };
 
 // Active streamers: { streamId: { timer, game, position } }

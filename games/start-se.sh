@@ -2,7 +2,7 @@
 # Space Engineers 1 Dedicated Server Startup Script
 # Runs inside tmux session "se" as gs-se user via Wine
 
-SE_DIR="/srv/games/se"
+SE_DIR="/srv/games/dedicatedServers/se"
 SESSION="se"
 GS_USER="gs-se"
 

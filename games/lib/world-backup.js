@@ -108,13 +108,13 @@ const SAVE_PATHS = {
 
 // Local server save paths (on this box)
 const LOCAL_PATHS = {
-  rust: '/srv/games/rust/server/madlads',
-  valheim: '/srv/games/valheim/worlds',
-  l4d2: '/srv/games/l4d2/left4dead2/cfg',
-  '7dtd': '/srv/games/7dtd/UserDataFolder/Saves',
-  se: '/srv/games/se/Instance/Saves',
-  palworld: '/srv/games/palworld/Pal/Saved/SaveGames',
-  windrose: '/srv/games/windrose/R5/Saved/SaveProfiles',
+  rust: '/srv/games/dedicatedServers/rust/server/madlads',
+  valheim: '/srv/games/dedicatedServers/valheim/worlds',
+  l4d2: '/srv/games/dedicatedServers/l4d2/left4dead2/cfg',
+  '7dtd': '/srv/games/dedicatedServers/7dtd/UserDataFolder/Saves',
+  se: '/srv/games/dedicatedServers/se/Instance/Saves',
+  palworld: '/srv/games/dedicatedServers/palworld/Pal/Saved/SaveGames',
+  windrose: '/srv/games/dedicatedServers/windrose/R5/Saved/SaveProfiles',
 };
 
 let db = null;

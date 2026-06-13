@@ -1,9 +1,9 @@
 #!/bin/bash
 # Valheim Dedicated Server Installer
-# Installs Valheim server into /srv/games/valheim/
+# Installs Valheim server into /srv/games/dedicatedServers/valheim/
 
 STEAMCMD="/srv/games/steamcmd/steamcmd.sh"
-VALHEIM_DIR="/srv/games/valheim"
+VALHEIM_DIR="/srv/games/dedicatedServers/valheim"
 VALHEIM_APP_ID="896660"
 
 echo "=== Installing Valheim Dedicated Server ==="

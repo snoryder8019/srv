@@ -172,7 +172,7 @@ router.post('/api/:id/install', requireSubscriber, async (req, res) => {
           // Give Carbon a moment to compile
           await new Promise(r => setTimeout(r, 3000));
           // Check if config was generated
-          const configPath = '/srv/games/rust/carbon/configs/' + pluginName + '.json';
+          const configPath = '/srv/games/dedicatedServers/rust/carbon/configs/' + pluginName + '.json';
           const hasConfig = fs.existsSync(configPath);
           res.json({
             ok: true,
@@ -187,15 +187,15 @@ router.post('/api/:id/install', requireSubscriber, async (req, res) => {
         // RCON failed — server might be offline, plugin still installed
       }
     } else if (game === 'valheim') {
-      const dir = '/srv/games/valheim/BepInEx/plugins';
+      const dir = '/srv/games/dedicatedServers/valheim/BepInEx/plugins';
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, plugin.filename), plugin.fileData.buffer || plugin.fileData);
     } else if (game === 'l4d2') {
-      const dir = '/srv/games/l4d2/addons/sourcemod/plugins';
+      const dir = '/srv/games/dedicatedServers/l4d2/addons/sourcemod/plugins';
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, plugin.filename), plugin.fileData.buffer || plugin.fileData);
     } else if (game === '7dtd') {
-      const dir = path.join('/srv/games/7dtd/Mods', plugin.filename.replace(/\.[^.]+$/, ''));
+      const dir = path.join('/srv/games/dedicatedServers/7dtd/Mods', plugin.filename.replace(/\.[^.]+$/, ''));
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, plugin.filename), plugin.fileData.buffer || plugin.fileData);
     }
@@ -225,13 +225,13 @@ router.post('/api/:id/uninstall', requireSuperAdmin, async (req, res) => {
       const rust = GAME_LIBS.rust();
       rust.removePlugin(plugin.filename);
     } else if (game === 'valheim') {
-      const fp = path.join('/srv/games/valheim/BepInEx/plugins', plugin.filename);
-      const dp = path.join('/srv/games/valheim/BepInEx/plugins/disabled', plugin.filename);
+      const fp = path.join('/srv/games/dedicatedServers/valheim/BepInEx/plugins', plugin.filename);
+      const dp = path.join('/srv/games/dedicatedServers/valheim/BepInEx/plugins/disabled', plugin.filename);
       if (fs.existsSync(fp)) fs.unlinkSync(fp);
       if (fs.existsSync(dp)) fs.unlinkSync(dp);
     } else if (game === 'l4d2') {
-      const fp = path.join('/srv/games/l4d2/addons/sourcemod/plugins', plugin.filename);
-      const dp = path.join('/srv/games/l4d2/addons/sourcemod/plugins/disabled', plugin.filename);
+      const fp = path.join('/srv/games/dedicatedServers/l4d2/addons/sourcemod/plugins', plugin.filename);
+      const dp = path.join('/srv/games/dedicatedServers/l4d2/addons/sourcemod/plugins/disabled', plugin.filename);
       if (fs.existsSync(fp)) fs.unlinkSync(fp);
       if (fs.existsSync(dp)) fs.unlinkSync(dp);
     }
@@ -268,8 +268,8 @@ router.post('/api/reload/:game/:pluginName', requireSuperAdmin, async (req, res)
       // Wait for Carbon to recompile
       await new Promise(r => setTimeout(r, 3000));
 
-      const configPath = '/srv/games/rust/carbon/configs/' + pluginName + '.json';
-      const dataPath = '/srv/games/rust/carbon/data/' + pluginName;
+      const configPath = '/srv/games/dedicatedServers/rust/carbon/configs/' + pluginName + '.json';
+      const dataPath = '/srv/games/dedicatedServers/rust/carbon/data/' + pluginName;
       const hasConfig = fs.existsSync(configPath);
       const hasData = fs.existsSync(dataPath);
 
@@ -304,10 +304,10 @@ router.get('/api/carbon/status', requireSuperAdmin, async (req, res) => {
 // ── Plugin config management ──
 
 const CONFIG_PATHS = {
-  rust: '/srv/games/rust/carbon/configs',
-  valheim: '/srv/games/valheim/BepInEx/config',
-  l4d2: '/srv/games/l4d2/addons/sourcemod/configs',
-  '7dtd': '/srv/games/7dtd/Mods',
+  rust: '/srv/games/dedicatedServers/rust/carbon/configs',
+  valheim: '/srv/games/dedicatedServers/valheim/BepInEx/config',
+  l4d2: '/srv/games/dedicatedServers/l4d2/addons/sourcemod/configs',
+  '7dtd': '/srv/games/dedicatedServers/7dtd/Mods',
 };
 
 const CONFIG_EXTENSIONS = ['.json', '.cfg', '.yaml', '.yml', '.xml', '.ini', '.txt', '.conf'];

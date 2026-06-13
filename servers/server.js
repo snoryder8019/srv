@@ -32,8 +32,6 @@ const SERVICES = [
   { id: 'madladslab', name: 'MadLabs Lab', dir: '/srv/madladslab', port: 3000, session: 'madladslab_session' },
   { id: 'acm', name: 'ACM', dir: '/srv/acm', port: 3002, session: 'acm_session' },
   { id: 'sfg', name: 'SFG', dir: '/srv/sfg', port: 3003, session: 'sfg_session' },
-  { id: 'ps', name: 'Project Stringborne', dir: '/srv/ps', port: 3399, session: 'ps_session' },
-  { id: 'game-state', name: 'Game State Service', dir: '/srv/game-state-service', port: 3500, session: 'game_state_session' },
   { id: 'sna', name: 'SNA', dir: '/srv/sna', port: 3004, session: 'sna_session' },
   { id: 'twww', name: 'TWWW', dir: '/srv/twww', port: 3005, session: 'twww_session' },
   { id: 'madThree', name: 'MadThree', dir: '/srv/madThree', port: 3001, session: 'madThree_session' },

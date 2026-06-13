@@ -6,7 +6,7 @@
 #######################################################
 
 # Configuration
-SERVICES=("madladslab" "acm" "ps")
+SERVICES=("madladslab" "acm")
 CHECK_INTERVAL=60  # Check every 60 seconds
 DOWN_THRESHOLD=180 # Restart if down for 180 seconds (3 minutes)
 LOG_FILE="/srv/monitor-services.log"

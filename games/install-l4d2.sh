@@ -3,7 +3,7 @@
 # App ID: 222860 (anonymous login)
 
 STEAMCMD="/srv/games/steamcmd/steamcmd.sh"
-L4D2_DIR="/srv/games/l4d2"
+L4D2_DIR="/srv/games/dedicatedServers/l4d2"
 L4D2_APP_ID="222860"
 
 echo "=== Installing Left 4 Dead 2 Dedicated Server ==="

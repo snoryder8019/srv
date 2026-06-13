@@ -25,10 +25,10 @@ const path = require('path');
 
 const CONFIGS = {
   rust: {
-    file: '/srv/games/rust/server/madlads/cfg/serverauto.cfg',
+    file: '/srv/games/dedicatedServers/rust/server/madlads/cfg/serverauto.cfg',
     format: 'rust-cvar',
     // Wipe what counts as a fresh Rust map: per-identity save dir + map.
-    wipe: ['/srv/games/rust/server/madlads/'],
+    wipe: ['/srv/games/dedicatedServers/rust/server/madlads/'],
     wipeKeep: ['cfg', 'oxide', 'carbon'],
     fields: [
       { key: 'server.hostname',    label: 'Server Name',       type: 'text',   default: 'MadLadsLab Rust' },
@@ -43,7 +43,7 @@ const CONFIGS = {
   valheim: {
     file: '/srv/games/start-valheim.sh',
     format: 'shell-var',
-    wipe: ['/srv/games/valheim/worlds/'],
+    wipe: ['/srv/games/dedicatedServers/valheim/worlds/'],
     fields: [
       { key: 'SERVER_NAME',     label: 'Server Name',  type: 'text', default: 'MadLadsLab Valheim' },
       { key: 'SERVER_PASSWORD', label: 'Password',     type: 'text', default: 'changeme_valheim_pass', help: 'Required by Valheim — min 5 chars' },
@@ -52,9 +52,9 @@ const CONFIGS = {
   },
 
   '7dtd': {
-    file: '/srv/games/7dtd/serverconfig.xml',
+    file: '/srv/games/dedicatedServers/7dtd/serverconfig.xml',
     format: 'xml-property',
-    wipe: ['/srv/games/7dtd/UserDataFolder/Saves/'],
+    wipe: ['/srv/games/dedicatedServers/7dtd/UserDataFolder/Saves/'],
     fields: [
       { key: 'ServerName',           label: 'Server Name',  type: 'text',   default: 'MadLadsLab 7DTD' },
       { key: 'ServerDescription',    label: 'Description',  type: 'text',   default: 'A 7 Days to Die server' },
@@ -67,10 +67,10 @@ const CONFIGS = {
   },
 
   se: {
-    file: '/srv/games/se/Instance/SpaceEngineers-Dedicated.cfg',
+    file: '/srv/games/dedicatedServers/se/Instance/SpaceEngineers-Dedicated.cfg',
     format: 'xml-element',
     elementParent: 'SessionSettings',
-    wipe: ['/srv/games/se/Instance/Saves/'],
+    wipe: ['/srv/games/dedicatedServers/se/Instance/Saves/'],
     fields: [
       { key: 'GameMode',          label: 'Game Mode',    type: 'select', default: 'Survival', options: ['Survival', 'Creative'] },
       { key: 'MaxPlayers',        label: 'Max Players',  type: 'number', default: 4, min: 2, max: 16 },
@@ -82,11 +82,11 @@ const CONFIGS = {
   },
 
   palworld: {
-    file: '/srv/games/palworld/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini',
+    file: '/srv/games/dedicatedServers/palworld/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini',
     format: 'ini-section',
     iniSection: '[/Script/Pal.PalGameWorldSettings]',
     iniKey: 'OptionSettings',
-    wipe: ['/srv/games/palworld/Pal/Saved/SaveGames/'],
+    wipe: ['/srv/games/dedicatedServers/palworld/Pal/Saved/SaveGames/'],
     fields: [
       { key: 'ServerName',          label: 'Server Name',     type: 'text',   default: 'MadLadsLab Palworld' },
       { key: 'ServerDescription',   label: 'Description',     type: 'text',   default: '' },
@@ -101,9 +101,9 @@ const CONFIGS = {
   },
 
   windrose: {
-    file: '/srv/games/windrose/R5/ServerDescription.json',
+    file: '/srv/games/dedicatedServers/windrose/R5/ServerDescription.json',
     format: 'json-path',
-    wipe: ['/srv/games/windrose/R5/Saved/SaveProfiles/'],
+    wipe: ['/srv/games/dedicatedServers/windrose/R5/Saved/SaveProfiles/'],
     fields: [
       { key: 'ServerDescription_Persistent.ServerName',          label: 'Server Name',  type: 'text',   default: '' },
       { key: 'ServerDescription_Persistent.MaxPlayerCount',      label: 'Max Players',  type: 'number', default: 8, min: 2, max: 16 },

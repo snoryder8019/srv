@@ -207,7 +207,7 @@ app.get('/gateway', gatewayRoute({
   },
 }));
 
-// Shared arcade toolkit (canonical copy at /srv/_shared) — served cross-origin to
+// Shared arcade toolkit (canonical copy at /srv/games/_shared) — served cross-origin to
 // every first-party game so there is ONE source of truth (audiobus, casino-ui,
 // cards-render, ...). ES module imports require explicit CORS.
 app.use('/shared', (req, res, next) => {
@@ -219,7 +219,7 @@ app.use('/shared', (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate');
   next();
-}, express.static('/srv/_shared', { extensions: [] }));
+}, express.static('/srv/games/_shared', { extensions: [] }));
 
 // Static assets
 app.use('/static', express.static(__dirname + '/public'));

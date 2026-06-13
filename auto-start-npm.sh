@@ -112,6 +112,36 @@ else
     echo "✗ FAILED to start 'mllOauth'" >> "$LOG_FILE"
 fi
 
+# ── Special case: games sub-services relocated under /srv/games ────
+# cards/matchmaking/reels moved out of /srv/<name> into the games tree, so the
+# key-derived loop (which assumes /srv/<key>) can no longer find them. Start each
+# explicitly from its new path. Session names keep the loop's "<name>_session"
+# convention so the slab Overseer panel (serviceRegistry.js) still detects them.
+#   name : new dir : start command
+GAMES_SUBSERVICES=(
+    "cards:/srv/games/arcade/cards:npm start"
+    "matchmaking:/srv/games/matchmaking:npm start"
+    "reels:/srv/games/arcade/reels:npm start"
+)
+for entry in "${GAMES_SUBSERVICES[@]}"; do
+    IFS=':' read -r name dir cmd <<< "$entry"
+    session_name="${name}_session"
+    if tmux has-session -t "$session_name" 2>/dev/null; then
+        tmux kill-session -t "$session_name" 2>&1 >> "$LOG_FILE"
+        sleep 1
+    fi
+    if [ -d "$dir" ] && [ -f "$dir/package.json" ]; then
+        tmux new-session -d -s "$session_name" -c "$dir" "$cmd" 2>&1
+        if tmux has-session -t "$session_name" 2>/dev/null; then
+            echo "✓ Started tmux session '$session_name' ($cmd in $dir)" >> "$LOG_FILE"
+        else
+            echo "✗ FAILED to start '$session_name'" >> "$LOG_FILE"
+        fi
+    else
+        echo "✗ Skipping $name: $dir missing or no package.json" >> "$LOG_FILE"
+    fi
+done
+
 echo "========================================" >> "$LOG_FILE"
 echo "Auto-start script completed at $(date)" >> "$LOG_FILE"
 echo "========================================" >> "$LOG_FILE"

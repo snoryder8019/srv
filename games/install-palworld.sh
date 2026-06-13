@@ -1,9 +1,9 @@
 #!/bin/bash
 # Palworld Dedicated Server Installer
-# Installs Palworld DS into /srv/games/palworld/
+# Installs Palworld DS into /srv/games/dedicatedServers/palworld/
 
 STEAMCMD="/srv/games/steamcmd/steamcmd.sh"
-PALWORLD_DIR="/srv/games/palworld"
+PALWORLD_DIR="/srv/games/dedicatedServers/palworld"
 PALWORLD_APP_ID="2394010"
 
 echo "=== Installing Palworld Dedicated Server ==="

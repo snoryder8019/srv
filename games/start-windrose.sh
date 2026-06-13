@@ -7,7 +7,7 @@
 # the initial replication burst when a player connected.
 # Wine fallback: see start-windrose.sh.wine-backup
 
-WINDROSE_DIR="/srv/games/windrose"
+WINDROSE_DIR="/srv/games/dedicatedServers/windrose"
 SESSION="windrose"
 GS_USER="gs-windrose"
 

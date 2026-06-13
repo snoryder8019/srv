@@ -2,7 +2,7 @@
 # 7 Days to Die Dedicated Server Startup Script
 # Runs inside tmux session "7dtd" as gs-7dtd user
 
-SDTD_DIR="/srv/games/7dtd"
+SDTD_DIR="/srv/games/dedicatedServers/7dtd"
 SESSION="7dtd"
 GS_USER="gs-7dtd"
 
