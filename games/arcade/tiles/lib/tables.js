@@ -52,6 +52,8 @@ export function listLiveTables() {
       min: (t.config && t.config.betSize) || null,
       gamesPlayed: t.gamesPlayed || 0,
       handNo: t.handNo || 0,
+      scores: Array.isArray(t.scores) ? t.scores.slice() : [],
+      topScore: Array.isArray(t.scores) && t.scores.length ? Math.max(...t.scores) : null,
       casino: CASINO.has(t.game),
     });
   }
@@ -117,6 +119,39 @@ export function findSeatByPlatformId(pid) {
     if (!best || (best.phase === 'gameOver' && cand.phase !== 'gameOver')) best = cand;
   }
   return best;
+}
+
+// ALL live seats a human holds (a player can sit at several tables/games at once).
+// Powers the match board's "my active games" section. In-progress tables first.
+export function findSeatsByPlatformId(pid) {
+  pid = String(pid);
+  const out = [];
+  for (const t of tables.values()) {
+    const s = t.seats.find((x) => x.platformId === pid && !x.bot);
+    if (!s) continue;
+    out.push({
+      tableId: t.tableId, game: t.game, seat: s.seat, phase: t.phase,
+      displayName: s.displayName,
+      humans: t.seats.filter((x) => x.platformId && !x.bot).length,
+      seatCount: t.seatCount || t.seats.length,
+    });
+  }
+  // in-progress before finished, so resume surfaces a live game first
+  out.sort((a, b) => (a.phase === 'gameOver' ? 1 : 0) - (b.phase === 'gameOver' ? 1 : 0));
+  return out;
+}
+
+// Resolve a seat a walk-up human can take at a SPECIFIC live table: prefer a
+// truly-empty seat, else displace a bot. Never take another human's seat, never
+// a finished table. Powers "tap any table → sit down (over a bot)".
+export function findOpenSeatAtTable(tableId) {
+  const t = tables.get(tableId);
+  if (!t || t.phase === 'gameOver') return null;
+  const empty = t.seats.find((s) => !s.platformId);
+  if (empty) return { seat: empty.seat, game: t.game, displaced: false };
+  const bot = t.seats.find((s) => s.bot);
+  if (bot) return { seat: bot.seat, game: t.game, displaced: true };
+  return null;   // full of humans
 }
 
 let seq = 0;

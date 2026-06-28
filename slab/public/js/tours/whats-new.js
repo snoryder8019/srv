@@ -22,12 +22,14 @@
         description: 'Create branded social media graphics without leaving the platform. Canvas-based editor with layer support, size presets for every platform, and AI-powered background generation. Find it under Assets > Social Generator.'
       }
     },
+    /* Video Trimmer — disabled for this release
     {
       popover: {
         title: 'Video Trimmer',
         description: 'Clip and trim video files right in your browser. Set trim points visually, preview the selection, and upload the result directly to your asset library. Find it under Assets > Video Trimmer.'
       }
     },
+    */
     {
       popover: {
         title: 'Interactive Tutorials',

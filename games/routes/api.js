@@ -294,7 +294,7 @@ router.get('/webgame/recent/:slug', async (req, res) => {
       .sort({ ts: -1 }).limit(limit).toArray();
     res.json({ ok: true, game: req.params.slug, results: rows.map((r) => ({
       displayName: r.displayName || 'Player', status: r.status,
-      score: r.score || 0, opponentScore: (r.meta && r.meta.opponentScore) || 0,
+      score: r.score || 0, opponentScore: (r.meta && r.meta.opponentScore != null) ? r.meta.opponentScore : null,
       partner: (r.meta && r.meta.partner) || null, ts: r.ts,
     })) });
   } catch (e) { res.status(500).json({ error: e.message }); }

@@ -151,7 +151,7 @@ and a public portal view derived from `webgame_leaderboard`.
 
 ## 9. v2 amendments (2026-05-30) — Arcade build
 
-These extend v1; v1 mechanics are unchanged. See `/srv/ARCHITECTURE.md` for the full map.
+These extend v1; v1 mechanics are unchanged. See `/srv/games/ARCHITECTURE.md` for the full map.
 
 ### 9.1 Screen-name privacy (supersedes the displayName note in §3)
 `/auth/bridge` now signs `displayName = username.displayFor(u)` — the **public screen

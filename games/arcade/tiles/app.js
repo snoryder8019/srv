@@ -23,11 +23,14 @@ import config, { reportConfigStatus } from './config/index.js';
 import * as engine from './engine/index.js';
 import authRouter from './routes/auth.js';
 import { attachTableSockets } from './services/socket.js';
-import { createTable, listTables, nextTableId, findSeatByPlatformId, listCasinoTables, placeAtCasinoTable, listLiveTables } from './lib/tables.js';
+import { createTable, listTables, nextTableId, findSeatByPlatformId, findSeatsByPlatformId, findOpenSeatAtTable, listCasinoTables, placeAtCasinoTable, listLiveTables } from './lib/tables.js';
 import { listVariants, getVariant } from './lib/variants/index.js';
 import { mintTicket, verifyTicket } from './lib/tickets.js';
 import { aiHealth } from './services/ai/client.js';
 import { listScenes, sceneUrlFor, generateScene } from './services/art/scene-backgrounds.js';
+import { getRecentWin } from './services/wallet-sync.js';
+import * as book from './lib/book.js';
+import wallet from './lib/wallet.js';
 import jwt from 'jsonwebtoken';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -92,11 +95,11 @@ app.get('/scene/camera/:game', (req, res) => {
 // Admin/loopback save (same gate as /dev/table): upsert this game's opening framing.
 app.post('/dev/camera/:game', (req, res) => {
   if (!devAllowed(req)) return res.status(403).json({ error: 'forbidden' });
-  const { start, target } = req.body || {};
+  const { start, target, fov } = req.body || {};
   if (!start || !target) return res.status(400).json({ error: 'start and target required' });
   const key = String(req.params.game).toLowerCase();
   const cams = readCameras();
-  cams[key] = { start, target, at: new Date().toISOString() };
+  cams[key] = { start, target, ...(fov ? { fov: Number(fov) } : {}), at: new Date().toISOString() };
   try {
     writeFileSync(CAM_FILE, JSON.stringify(cams, null, 2));
     appendFileSync(path.join(__dirname, 'camlog.txt'),
@@ -170,6 +173,16 @@ app.get('/scene/url/:slug', (req, res) => {
 //   /lobby/dominoes?ticket=<jwt>
 // Dominoes defaults to the three.js (3D) client; ?r=2d serves the canvas fallback.
 app.get('/lobby/:game', (req, res) => {
+  // Establish an HTTP cookie-session identity from the table ticket so same-origin
+  // endpoints (the parlor sports book + keno betting) know who the player is.
+  // Matchmaking entry sets the SOCKET identity but not the cookie session — without
+  // this, /book/* sees no session and bets fail with "sign in to bet".
+  if (!req.session.user && req.query.ticket) {
+    try {
+      const t = verifyTicket(req.query.ticket);
+      if (t && t.platformId) req.session.user = { platformId: String(t.platformId), displayName: t.displayName || 'Player', isAdmin: false };
+    } catch (e) { /* bad ticket — stay anonymous */ }
+  }
   // dominoes defaults to the 3D client (?r=2d for the canvas fallback). Card games
   // ported from the cards platform use their 2D client during the migration until
   // card rendering lands on the 3D table.
@@ -298,6 +311,67 @@ app.get('/internal/seat', (req, res) => {
   res.json({ ok: true, seat: findSeatByPlatformId(pid) });
 });
 
+// --- internal: ALL live seats a platform user holds (match board "my games") ---
+app.get('/internal/seats', (req, res) => {
+  if (req.headers['x-bridge-secret'] !== config.platform.bridgeSecret) return res.status(401).json({ error: 'unauthorized' });
+  const pid = req.query.platformId;
+  if (!pid) return res.status(400).json({ error: 'platformId required' });
+  res.json({ ok: true, seats: findSeatsByPlatformId(pid) });
+});
+
+// --- internal: resolve a seat a walk-up can take at a specific live table ---
+// (open seat, else a bot seat to displace). Powers "tap any table → sit down".
+app.get('/internal/table/:id/seat', (req, res) => {
+  if (req.headers['x-bridge-secret'] !== config.platform.bridgeSecret) return res.status(401).json({ error: 'unauthorized' });
+  res.json({ ok: true, seat: findOpenSeatAtTable(req.params.id) });
+});
+
+// ── Parlor BOOK: real sports scores + keno, wagered from the wallet ──
+app.get('/book/sports', async (req, res) => {
+  try { res.json({ ok: true, games: await book.getScores() }); }
+  catch (e) { res.json({ ok: true, games: [] }); }
+});
+app.get('/book/keno', (req, res) => res.json({ ok: true, ...book.kenoState() }));
+app.get('/book/mybets', async (req, res) => {
+  const u = req.session.user;
+  if (!u) return res.json({ ok: true, signedIn: false, sports: [], keno: { open: [], result: null } });
+  let chips = null;
+  try { const w = await wallet.getChips(u.platformId, u.displayName); chips = w && w.chips; } catch (e) {}
+  res.json({ ok: true, signedIn: true, chips, sports: book.mySportsBets(u.platformId), keno: book.myKeno(u.platformId) });
+});
+app.post('/book/sports/bet', async (req, res) => {
+  const u = req.session.user;
+  if (!u) return res.status(401).json({ ok: false, error: 'sign in to bet' });
+  res.json(await book.placeSportsBet(u.platformId, u.displayName, req.body || {}));
+});
+app.post('/book/keno/bet', async (req, res) => {
+  const u = req.session.user;
+  if (!u) return res.status(401).json({ ok: false, error: 'sign in to bet' });
+  res.json(await book.placeKenoBet(u.platformId, u.displayName, req.body || {}));
+});
+
+// --- public: other open tables, for the 3D room's background "satellite" tables ---
+// Privacy-safe + trimmed: just enough to render a distant table you can tap to go
+// play. Excludes ?exclude=<tableId> (your own table). No seats/names leaked.
+app.get('/scene/tables', (req, res) => {
+  const exclude = req.query.exclude || null;
+  const tables = listLiveTables()
+    // only advertise LIVE tables — at least one connected human, not finished.
+    // abandoned / all-bot / gameOver tables linger up to the reap grace; don't
+    // surface them as satellites "no one is associated with".
+    .filter((t) => t.tableId !== exclude && t.connectedHumans > 0 && t.phase !== 'gameOver')
+    .map((t) => ({
+      tableId: t.tableId, game: t.game, phase: t.phase,
+      seatCount: t.seatCount, humans: t.humans,
+      names: (t.humanNames || []).slice(0, 4),     // privacy-safe screen names only
+      lastWin: getRecentWin(t.tableId),            // { name, amount, ts } | null — drives from-afar win pops
+      // progress for the back-wall scoreboard
+      handNo: t.handNo, gamesPlayed: t.gamesPlayed, scores: t.scores,
+      topScore: t.topScore, casino: t.casino,
+    }));
+  res.json({ ok: true, tables });
+});
+
 // --- all live tables, for the cross-game match dashboard (bridge-authed) ---
 app.get('/internal/tables', (req, res) => {
   if (req.headers['x-bridge-secret'] !== config.platform.bridgeSecret) return res.status(401).json({ error: 'unauthorized' });
@@ -343,6 +417,7 @@ const io = new SocketServer(server, {
 io.engine.use(sessionMiddleware);
 app.set('io', io);
 attachTableSockets(io);
+book.startBook(io);
 
 server.listen(config.port, () => {
   console.log(`[tiles] listening on :${config.port} (${config.publicUrl})`);

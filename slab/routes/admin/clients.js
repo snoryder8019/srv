@@ -10,6 +10,38 @@ import { runTool, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import crypto from 'crypto';
 
+// Propagate a client's edited name/email onto its linked email-marketing contact
+// (created via "Import clients"). Without this, contacts go stale the moment a
+// client's email changes and campaigns ship to the old address. We never change
+// an email to one another contact already holds — that would duplicate the
+// subscriber — so on collision we sync the name only and leave the email.
+async function syncClientToContact(db, clientId, name, email) {
+  try {
+    const contact = await db.collection('contacts').findOne({ clientId: String(clientId) });
+    if (!contact) return;
+
+    const set = { updatedAt: new Date() };
+    if (name && name !== contact.name) set.name = name;
+
+    const newEmail = email?.toLowerCase().trim();
+    if (newEmail && newEmail.includes('@') && newEmail !== contact.email) {
+      const clash = await db.collection('contacts').findOne({ email: newEmail, _id: { $ne: contact._id } });
+      if (clash) {
+        console.warn(`[clients] Skipped contact email sync for client ${clientId}: ${newEmail} already belongs to another contact`);
+      } else {
+        set.email = newEmail;
+      }
+    }
+
+    if (set.email || set.name) {
+      await db.collection('contacts').updateOne({ _id: contact._id }, { $set: set });
+      console.log(`[clients] Synced client ${clientId} → contact ${contact._id} (${Object.keys(set).filter(k => k !== 'updatedAt').join(', ') || 'no change'})`);
+    }
+  } catch (err) {
+    console.error('[clients] syncClientToContact error:', err.message);
+  }
+}
+
 // Build nodemailer attachment objects from an uploaded-file array, and (when the
 // files landed in S3) persist a record of each to the client's Files tab so the
 // admin keeps an audit trail of what was sent. Falls back to in-memory content
@@ -286,6 +318,12 @@ router.post('/:id', async (req, res) => {
       { _id: new ObjectId(req.params.id) },
       { $set: { name: name?.trim(), email: email?.trim(), phone: phone?.trim(), company: company?.trim(), website: website?.trim(), address: address?.trim(), status, notes: notes?.trim(), updatedAt: new Date() } }
     );
+
+    // Keep the linked email-marketing contact in sync (email/name are the identity
+    // fields that drift when a client is edited). Skip an email change that would
+    // collide with a different contact, so we never create a duplicate subscriber.
+    await syncClientToContact(db, req.params.id, name?.trim(), email?.trim());
+
     res.redirect(`/admin/clients/${req.params.id}`);
   } catch (err) {
     const db = req.db;

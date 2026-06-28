@@ -14,8 +14,13 @@
 import { unpackCredentials, metaError } from './socialPublish.js';
 
 const G = 'https://graph.facebook.com/v21.0';
-const FETCH_LIMIT = 12;       // recent posts pulled per account
-const COMMENT_LIMIT = 15;     // comments pulled per post
+const FETCH_LIMIT = 6;        // recent posts pulled per account (kept small so the tab loads fast)
+const COMMENT_LIMIT = 12;     // comments pulled per post
+
+const stripHtml = (s) => String(s || '')
+  .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '')
+  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+  .replace(/\n{3,}/g, '\n\n').trim();
 
 // caps describe exactly what the UI may offer for a platform:
 //   analytics      — posts carry metric numbers
@@ -114,6 +119,70 @@ const ENGAGE = {
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.id) throw metaError(j, r.status, 'reply');
       return { id: j.id };
+    },
+  },
+
+  // ── Mastodon ─────────────────────────────────────────────────────────────────
+  // Your own recent toots + engagement counts. Read-only (analytics) — one API
+  // call per refresh; per-toot comment threads aren't pulled so the tab stays fast.
+  mastodon: {
+    caps: { analytics: true, comments: false, replyToComment: false, replyToPost: false },
+    async fetch({ creds }) {
+      const base = (creds.instanceUrl || '').replace(/\/+$/, '');
+      const who = await fetch(`${base}/api/v1/accounts/verify_credentials`, { headers: { Authorization: `Bearer ${creds.accessToken}` }, signal: AbortSignal.timeout(15000) });
+      const me = await who.json().catch(() => ({}));
+      if (!who.ok || !me.id) throw new Error(me.error || `Mastodon auth HTTP ${who.status}`);
+      const r = await fetch(`${base}/api/v1/accounts/${me.id}/statuses?limit=${FETCH_LIMIT}&exclude_replies=true&exclude_reblogs=true`, { headers: { Authorization: `Bearer ${creds.accessToken}` }, signal: AbortSignal.timeout(20000) });
+      const j = await r.json().catch(() => ([]));
+      if (!r.ok) throw new Error((j && j.error) || `Mastodon HTTP ${r.status}`);
+      const posts = (Array.isArray(j) ? j : []).map(s => ({
+        id: s.id,
+        text: stripHtml(s.content),
+        url: s.url || s.uri || null,
+        createdAt: s.created_at || null,
+        thumb: (s.media_attachments || []).map(m => m.preview_url || m.url).filter(Boolean)[0] || null,
+        metrics: [
+          { label: 'Replies', value: s.replies_count ?? 0 },
+          { label: 'Boosts', value: s.reblogs_count ?? 0 },
+          { label: 'Favs', value: s.favourites_count ?? 0 },
+        ],
+        comments: [],
+      }));
+      return { posts };
+    },
+  },
+
+  // ── Bluesky ──────────────────────────────────────────────────────────────────
+  // Your own author feed + counts (one session + one feed call). Read-only.
+  bluesky: {
+    caps: { analytics: true, comments: false, replyToComment: false, replyToPost: false },
+    async fetch({ creds }) {
+      const svc = (creds.service || 'https://bsky.social').replace(/\/+$/, '');
+      const sr = await fetch(`${svc}/xrpc/com.atproto.server.createSession`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: creds.identifier, password: creds.appPassword }), signal: AbortSignal.timeout(15000) });
+      const sj = await sr.json().catch(() => ({}));
+      if (!sr.ok || !sj.accessJwt) throw new Error(sj.message || `Bluesky auth HTTP ${sr.status}`);
+      const r = await fetch(`${svc}/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(sj.did)}&limit=${FETCH_LIMIT}&filter=posts_no_replies`, { headers: { Authorization: `Bearer ${sj.accessJwt}` }, signal: AbortSignal.timeout(20000) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || `Bluesky HTTP ${r.status}`);
+      const posts = (j.feed || []).map(it => {
+        const p = it.post || {};
+        const rkey = (p.uri || '').split('/').pop();
+        const handle = p.author?.handle;
+        return {
+          id: p.uri,
+          text: p.record?.text || '',
+          url: (handle && rkey) ? `https://bsky.app/profile/${handle}/post/${rkey}` : null,
+          createdAt: p.record?.createdAt || p.indexedAt || null,
+          thumb: p.embed?.images?.[0]?.thumb || null,
+          metrics: [
+            { label: 'Replies', value: p.replyCount ?? 0 },
+            { label: 'Reposts', value: p.repostCount ?? 0 },
+            { label: 'Likes', value: p.likeCount ?? 0 },
+          ],
+          comments: [],
+        };
+      });
+      return { posts };
     },
   },
 };

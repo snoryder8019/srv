@@ -15,6 +15,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mountCamDebug } from './camDebug.js?v=1781441125092';
+import { createEnvironment } from './environment3d.js?v=1781441125092';
+import { mountRoomShell } from './roomShell.js?v=1781441125092';
 
 const qs = new URLSearchParams(location.search);
 const ticket = qs.get('ticket');
@@ -32,26 +35,21 @@ scene.background = new THREE.Color(0x0a1a12);
 // SD scene background (mll GPU tunnel): swap in a generated backdrop if one exists.
 // Silent fallback to the flat color above on any failure.
 let _sceneBgTex = null;
-function fitSceneBg() {
-  if (!_sceneBgTex || !_sceneBgTex.image) return;
-  const canvasAspect = window.innerWidth / window.innerHeight;
-  const imageAspect = _sceneBgTex.image.width / _sceneBgTex.image.height;
-  const a = imageAspect / canvasAspect;
-  _sceneBgTex.wrapS = _sceneBgTex.wrapT = THREE.ClampToEdgeWrapping;
-  if (a > 1) { _sceneBgTex.repeat.set(1 / a, 1); _sceneBgTex.offset.set((1 - 1 / a) / 2, 0); }
-  else { _sceneBgTex.repeat.set(1, a); _sceneBgTex.offset.set(0, (1 - a) / 2); }
-  _sceneBgTex.needsUpdate = true;
+let _env = null;   // world-anchored room (dome + satellites); built once camera exists
+function fitSceneBg() { /* dome uses UV mapping — nothing to aspect-fit */ }
+function applyDomBg(url) {
+  if (!url) return;
+  if (_env) { _env.setDome(url); return; }   // route to the world dome (parallax)
+  // pre-env fallback: flat backdrop until the dome is built below
+  new THREE.TextureLoader().load(url, (tex) => { tex.colorSpace = THREE.SRGBColorSpace; _sceneBgTex = tex; scene.background = tex; });
 }
 fetch('/scene/url/dominoes')
   .then((r) => (r.ok ? r.json() : null))
-  .then((d) => {
-    if (!d || !d.url) return;
-    new THREE.TextureLoader().load(d.url, (tex) => { tex.colorSpace = THREE.SRGBColorSpace; _sceneBgTex = tex; scene.background = tex; fitSceneBg(); });
-  })
+  .then((d) => { if (d && d.url) applyDomBg(d.url); })
   .catch(() => {});
-scene.fog = new THREE.Fog(0x0a1a12, 170, 320); // far back so zoom-out (max 130) never fogs the table
+scene.fog = new THREE.Fog(0x0a1a12, 600, 1400); // far beyond max zoom so the felt never fogs (esp. mobile)
 
-const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 500);
+const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 2200);
 camera.position.set(0, 58, 96);   // well outside the table frame, elevated
 
 // --- Camera (OrbitControls, hex/Towers feel) -------------------------------
@@ -67,10 +65,10 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.09;
 controls.target.copy(TABLE_CENTER);
-controls.minDistance = 22;
-controls.maxDistance = 200;
-controls.minPolarAngle = 0.12;
-controls.maxPolarAngle = Math.PI * 0.49;   // never under the table
+controls.minDistance = 14;
+controls.maxDistance = 420;   // expanded to match the shared core
+controls.minPolarAngle = Math.PI * 0.17;   // never near-overhead (scene would upend)
+controls.maxPolarAngle = Math.PI * 0.46;   // never past horizontal (would see under/outside)
 controls.enablePan = true;
 controls.screenSpacePanning = false;       // pan across the felt plane
 controls.panSpeed = 1.1;
@@ -92,67 +90,36 @@ fetch('/scene/camera/' + CAM_GAME, { credentials: 'include' })
     if (!c || !c.start || !c.target) return;
     camera.position.set(c.start.x, c.start.y, c.start.z);
     controls.target.set(c.target.x, c.target.y, c.target.z);
+    if (c.fov) { camera.fov = c.fov; camera.updateProjectionMatrix(); }
     controls.update();
     HOME.pos.copy(camera.position);
     HOME.target.copy(controls.target);
   })
   .catch(() => {});
 
-// admin/?cam=1 debug cog: live readout + SAVE ANGLE (POST /dev/camera/dominoes)
-(function buildDomCamDebug() {
-  function mount() {
-    if (document.getElementById('dbgBtn')) return;
-    const rr = (n) => Math.round(n * 10) / 10;
-    const hud = document.createElement('div');
-    hud.style.cssText = 'position:fixed;left:10px;top:110px;z-index:40;background:rgba(8,18,13,.9);' +
-      'color:#bfe0cd;font:13px ui-monospace,monospace;padding:10px 12px;border-radius:10px;' +
-      'border:1px solid rgba(255,255,255,.18);white-space:pre;line-height:1.6;display:none;' +
-      'box-shadow:0 6px 20px rgba(0,0,0,.5)';
-    const readout = document.createElement('div'); hud.appendChild(readout);
-    const save = document.createElement('button');
-    save.textContent = '📍 SAVE ANGLE';
-    save.style.cssText = 'margin-top:8px;width:100%;background:#2fbf71;color:#05230f;border:none;' +
-      'border-radius:8px;padding:11px;font:800 14px system-ui;cursor:pointer';
-    save.onclick = () => {
-      const p = camera.position, t = controls.target;
-      const payload = { game: CAM_GAME, start: { x: rr(p.x), y: rr(p.y), z: rr(p.z) },
-        target: { x: rr(t.x), y: rr(t.y), z: rr(t.z) },
-        dist: Math.round(p.distanceTo(t)), az: Math.round(Math.atan2(p.x - t.x, p.z - t.z) * 180 / Math.PI) };
-      fetch('/dev/camera/' + CAM_GAME, { method: 'POST', credentials: 'include',
-        headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-        .then(() => { save.textContent = '✓ SAVED'; save.style.background = '#e3c567';
-          setTimeout(() => { save.textContent = '📍 SAVE ANGLE'; save.style.background = '#2fbf71'; }, 1200); })
-        .catch(() => { save.textContent = '✗ failed'; setTimeout(() => { save.textContent = '📍 SAVE ANGLE'; }, 1200); });
-    };
-    hud.appendChild(save);
-    const hide = document.createElement('button');
-    hide.textContent = '✕ hide';
-    hide.style.cssText = 'margin-top:6px;width:100%;background:#3a1d1d;color:#f0c9c9;border:none;' +
-      'border-radius:8px;padding:8px;font:700 12px system-ui;cursor:pointer';
-    hide.onclick = () => { hud.style.display = 'none'; };
-    hud.appendChild(hide);
-    document.body.appendChild(hud);
-    const cog = document.createElement('button');
-    cog.id = 'dbgBtn'; cog.textContent = '🛠'; cog.title = 'Debug tools';
-    cog.style.cssText = 'position:fixed;left:10px;bottom:60px;z-index:140;width:38px;height:38px;' +
-      'border-radius:10px;background:rgba(17,35,26,.85);color:#cfe7d8;border:1px solid rgba(255,255,255,.18);' +
-      'font-size:16px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4)';
-    cog.onclick = () => { hud.style.display = (hud.style.display === 'none' ? 'block' : 'none'); };
-    document.body.appendChild(cog);
-    (function upd() {
-      requestAnimationFrame(upd);
-      if (hud.style.display === 'none') return;
-      const p = camera.position, t = controls.target;
-      readout.textContent = '📷 dist ' + Math.round(p.distanceTo(t)) +
-        '  az ' + Math.round(Math.atan2(p.x - t.x, p.z - t.z) * 180 / Math.PI) + '°\n' +
-        'start  ' + rr(p.x) + ', ' + rr(p.y) + ', ' + rr(p.z) + '\n' +
-        'target ' + rr(t.x) + ', ' + rr(t.y) + ', ' + rr(t.z);
-    })();
-  }
-  if (new URLSearchParams(location.search).get('cam') === '1') mount();
-  else fetch('/auth/me', { credentials: 'include' }).then((r) => (r.ok ? r.json() : null))
-    .then((d) => { if (d && d.user && d.user.isAdmin === true) mount(); }).catch(() => {});
-})();
+// ---- world-anchored room (dome + satellites), parity with the shared core ----
+// Built here because dominoes is bespoke. Routes its backdrop onto the dome and
+// drops a satellite ring of other live tables (tap to go play one).
+_env = createEnvironment({ scene, THREE, camera, renderer, tableRadius: 34 });
+if (_env) {
+  if (_sceneBgTex && _sceneBgTex.image) { _env.setDome(_sceneBgTex.image.src); scene.background = new THREE.Color(0x0a1a12); }
+  else fetch('/scene/url/' + CAM_GAME).then((r) => (r.ok ? r.json() : null)).then((d) => { if (d && d.url) _env.setDome(d.url); }).catch(() => {});
+  _env.loadSatellites({ game: CAM_GAME });
+}
+try { mountRoomShell({}); } catch (e) { /* non-fatal */ }
+
+// Camera debugger / opening-view tool — shared module (same tool as every other
+// table). dominoes is bespoke, so we hand it our own camera/controls/scene-bg.
+function mountDomDebugger() {
+  mountCamDebug({
+    camera, controls, THREE,
+    setBackgroundImage: applyDomBg,
+    resetCamera: () => { camera.position.copy(HOME.pos); controls.target.copy(HOME.target); controls.update(); },
+  }, { game: CAM_GAME });
+}
+if (new URLSearchParams(location.search).get('cam') === '1') mountDomDebugger();
+else fetch('/auth/me', { credentials: 'include' }).then((r) => (r.ok ? r.json() : null))
+  .then((d) => { if (d && d.user && d.user.isAdmin === true) mountDomDebugger(); }).catch(() => {});
 
 
 const TABLE_R = 34; // table radius (used by lighting shadow frustum + seats + felt)
@@ -201,6 +168,15 @@ const rail = new THREE.Mesh(
 rail.rotation.x = -Math.PI / 2; rail.position.y = 0.2;
 rail.castShadow = true; rail.receiveShadow = true;
 scene.add(rail);
+// WIDE, SHORT table body to the shared parlor's floor so the table stands on the
+// ground instead of looking sunk or like a tall narrow podium.
+const FLOOR_Y = (_env && _env.FLOOR_Y != null) ? _env.FLOOR_Y : -8;
+const drum = new THREE.Mesh(new THREE.CylinderGeometry(TABLE_R * 0.94, TABLE_R * 0.82, -FLOOR_Y, 48),
+  new THREE.MeshStandardMaterial({ color: 0x3a1c0e, roughness: 0.72, metalness: 0.08 }));
+drum.position.y = FLOOR_Y / 2; drum.castShadow = true; scene.add(drum);
+const tped = new THREE.Mesh(new THREE.CylinderGeometry(TABLE_R * 0.8, TABLE_R * 0.88, 1.2, 48),
+  new THREE.MeshStandardMaterial({ color: 0x2a1408, roughness: 0.85 }));
+tped.position.y = FLOOR_Y + 0.6; tped.receiveShadow = true; scene.add(tped);
 
 // ---------------------------------------------------------------- bone meshes
 // World units: a standard bone is 2 (long) x 1 (wide) x 0.34 (thick), pips inset.
@@ -582,9 +558,9 @@ function renderControls() {
   if (!state) return;
   if (state.phase === 'lobby') {
     const meReady = (state.seats[mySeat] || {}).ready;
-    const rb = document.createElement('button'); rb.className = 'act'; rb.textContent = meReady ? 'Ready ✓ (waiting…)' : 'Ready'; rb.disabled = !!meReady;
+    // empty seats auto-fill with bots once everyone present has readied
+    const rb = document.createElement('button'); rb.className = 'act'; rb.textContent = meReady ? 'Ready ✓ (filling…)' : 'Ready'; rb.disabled = !!meReady;
     rb.onclick = () => socket.emit('seat:ready', { ready: true }); box.appendChild(rb);
-    state.seats.forEach((s) => { if (!s.occupied) { const b = document.createElement('button'); b.className = 'act ghost'; b.textContent = `+ Bot seat ${s.seat}`; b.onclick = () => socket.emit('seat:addBot', { seat: s.seat }); box.appendChild(b); } });
     return;
   }
   if (!priv || !myTurn()) return;
@@ -901,7 +877,7 @@ let _lastTick = performance.now();
 function tick() {
   const now = performance.now(); const dt = Math.min(50, now - _lastTick); _lastTick = now;
   requestAnimationFrame(tick);
-  controls.update(); animateMarkers(now); stepSettles(dt);
+  controls.update(); if (_env) _env.update(); animateMarkers(now); stepSettles(dt);
   renderer.render(scene, camera);
 }
 tick();

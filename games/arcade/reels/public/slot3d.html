@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Reels 3D · madladslab</title>
+<style>
+  :root{ --gold:#e3c567; --green:#46c98b; --ink:#eafff2; --muted:#8fd6ad; --bg:#070d12; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);touch-action:none}
+  #scene{position:fixed;inset:0;display:block}
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
+  #hud button{pointer-events:auto}
+
+  /* top bar */
+  #topbar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;padding:8px 12px;
+    background:linear-gradient(180deg,rgba(4,10,8,.82),rgba(4,10,8,0));font-size:13px;flex-wrap:wrap}
+  #topbar .name{font-weight:800;letter-spacing:.04em;color:var(--gold)}
+  #topbar .spacer{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:rgba(8,18,13,.85);border:1px solid rgba(120,200,160,.28);
+    border-radius:999px;padding:5px 11px;font-weight:700}
+  .iconbtn{border:none;border-radius:9px;background:rgba(8,18,13,.85);color:var(--ink);font-size:16px;padding:6px 9px;cursor:pointer;min-width:38px;min-height:34px}
+  .back{color:var(--muted);text-decoration:none;border:1px solid rgba(120,200,160,.28);border-radius:8px;padding:6px 10px;font-size:12px;pointer-events:auto}
+
+  /* bottom control deck */
+  #deck{position:fixed;left:0;right:0;bottom:0;padding:10px 12px 14px;display:flex;flex-direction:column;gap:8px;
+    background:linear-gradient(0deg,rgba(4,10,8,.92),rgba(4,10,8,0))}
+  .readouts{display:flex;gap:8px;justify-content:center}
+  .ro{background:rgba(8,18,13,.85);border:1px solid rgba(120,200,160,.22);border-radius:10px;padding:6px 14px;text-align:center;min-width:88px}
+  .ro .l{font-size:9px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+  .ro .v{font-size:20px;font-weight:800}
+  .ro .v.win{color:var(--gold)}
+  .rows{display:flex;flex-direction:column;gap:6px;max-width:680px;margin:0 auto;width:100%}
+  .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center}
+  .row .lbl{font-size:10px;letter-spacing:.1em;color:var(--muted);width:54px;text-transform:uppercase}
+  .chip{border:1px solid rgba(120,200,160,.3);background:rgba(8,18,13,.7);color:var(--ink);border-radius:8px;
+    padding:6px 11px;font-weight:700;font-size:13px;cursor:pointer;min-width:42px;min-height:34px}
+  .chip.on{background:var(--gold);color:#0c1a10;border-color:var(--gold)}
+  .spinrow{display:flex;gap:10px;justify-content:center;align-items:center;margin-top:2px}
+  #spinBtn{border:none;border-radius:14px;background:linear-gradient(180deg,#ff5a3c,#cd2f1a);color:#fff;font-weight:900;
+    letter-spacing:.06em;font-size:20px;padding:13px 44px;cursor:pointer;box-shadow:0 6px 0 #8e2516;min-height:54px}
+  #spinBtn:active{transform:translateY(3px);box-shadow:0 3px 0 #8e2516}
+  #spinBtn:disabled{opacity:.5;cursor:default;box-shadow:0 6px 0 #8e2516}
+  #spinBtn.free{background:linear-gradient(180deg,#46e0c0,#1f9c7a);box-shadow:0 6px 0 #14604a;color:#04231a}
+
+  /* overlays */
+  #banner{position:fixed;left:50%;top:30%;transform:translate(-50%,-50%) scale(.6);z-index:30;opacity:0;
+    text-align:center;font-weight:900;color:var(--gold);text-shadow:0 0 24px rgba(227,197,103,.8);transition:opacity .25s,transform .25s;pointer-events:none}
+  #banner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  #banner .big{font-size:54px} #banner .sub{font-size:22px;color:#fff}
+  #bonus{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(3,8,6,.86);padding:20px}
+  #bonus .card{background:#0e1c16;border:1px solid var(--gold);border-radius:16px;padding:22px;max-width:460px;width:100%;text-align:center}
+  #bonus h2{margin:.2em 0;color:var(--gold)}
+  #bonus .picks{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+  #bonus .pick{width:84px;height:104px;border-radius:12px;border:1px solid var(--gold);background:#16271f;color:var(--gold);
+    font-size:34px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  #loading{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--muted);font-size:15px}
+  #toast{position:fixed;left:50%;bottom:160px;transform:translateX(-50%);z-index:35;background:#1a1206;border:1px solid var(--gold);
+    color:#ffe9a8;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;opacity:0;transition:opacity .25s;pointer-events:none}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="hud">
+  <div id="topbar">
+    <span class="name" id="mName">Reels</span>
+    <a class="back" href="https://games.madladslab.com/#arcade">← Arcade</a>
+    <span class="spacer"></span>
+    <span class="pill">🪙 <b id="chips">—</b></span>
+    <button class="iconbtn" id="classicBtn" title="Classic 2D view">🎰</button>
+    <button class="iconbtn" id="resetcam" title="Reset view">⟲</button>
+  </div>
+
+  <div id="deck">
+    <div class="readouts">
+      <div class="ro"><div class="l">Bet</div><div class="v" id="roBet">0</div></div>
+      <div class="ro"><div class="l">Win</div><div class="v win" id="roWin">0</div></div>
+      <div class="ro"><div class="l">Session</div><div class="v" id="roSess">±0</div></div>
+    </div>
+    <div class="rows">
+      <div class="row"><span class="lbl">Denom</span><span id="denomRow"></span></div>
+      <div class="row"><span class="lbl">Lines</span><span id="linesRow"></span></div>
+      <div class="row"><span class="lbl">Bet ×</span><span id="betRow"></span></div>
+      <div class="spinrow"><button id="spinBtn">SPIN</button></div>
+    </div>
+  </div>
+
+  <div id="banner"><div class="big" id="bannerBig">WIN</div><div class="sub" id="bannerSub"></div></div>
+  <div id="toast"></div>
+  <div id="bonus"><div class="card">
+    <h2 id="bonusTitle">Bonus</h2><div id="bonusMsg"></div>
+    <div class="picks" id="bonusPicks"></div>
+    <div id="bonusResult" style="margin-top:14px;font-size:18px;font-weight:800;color:var(--gold)"></div>
+    <button class="iconbtn" id="bonusClose" style="margin-top:16px;display:none">Collect</button>
+  </div></div>
+</div>
+<div id="loading">Loading machine…</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="/slot3d.js?v=1781441125157"></script>
+</body>
+</html>

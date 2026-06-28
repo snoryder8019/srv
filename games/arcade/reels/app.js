@@ -37,7 +37,8 @@ const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
+// index:false so `/` falls through to our route (3D scene), not the 2D index.html
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ── In-memory play state (free spins, pending pick bonus, session tallies),
 // keyed by platformId. Wallet/chips are platform-authoritative; losing this on
@@ -310,7 +311,9 @@ app.post('/api/bonus/pick', requireSession, async (req, res) => {
   });
 });
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// 3D slot is the front door (what the parlor satellite jumps into); 2D stays at /classic
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'slot3d.html')));
+app.get('/classic', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => {
   console.log('================================');

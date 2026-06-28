@@ -39,6 +39,7 @@ export const config = {
   allowedOrigins: [
     'https://games.madladslab.com',
     'https://tiles.madladslab.com',
+    'https://reels.madladslab.com',   // reels reads the live tables/board cross-origin
     'https://match.madladslab.com',
     'https://madladslab.com',
     'https://www.madladslab.com',

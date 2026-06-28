@@ -226,20 +226,17 @@ ${brandCtx}
 
 Your output MUST follow this exact two-part shape — JSON metadata first, then the HTML content inside <CONTENT>…</CONTENT> sentinel tags. Nothing else: no prose before, between (other than a single newline), or after.
 
-EXAMPLE OUTPUT (follow this structure exactly):
-{"message":"Wrote a post on social media tips","fill":{"title":"Five Social Media Tips for Local Restaurants","excerpt":"Practical, low-effort tactics restaurants can use this week to grow online.","category":"Marketing Tips","tags":"social media, restaurants, small business"}}
+EXAMPLE STRUCTURE (shows the SHAPE only — replace every bracketed placeholder with content written specifically for the business and audience described above. Do NOT reuse this example's topic, wording, or industry):
+{"message":"Wrote a post on [the requested topic]","fill":{"title":"[compelling headline about the topic, in the brand's voice]","excerpt":"[one-sentence summary tailored to this business and its audience]","category":"[relevant category]","tags":"[3-5 comma-separated tags relevant to the topic and business]"}}
 <CONTENT>
-<h2>Why social media matters</h2>
-<p>For a local restaurant, social media is the fastest way to reach hungry neighbors. With a few habits, you can <strong>turn followers into repeat customers</strong>.</p>
-<h2>Five tips you can use today</h2>
+<h2>[Opening heading relevant to the topic]</h2>
+<p>[Opening paragraph grounded in THIS business's services, audience, and voice — use <strong>emphasis</strong> where it helps.]</p>
+<h2>[Second heading]</h2>
 <ul>
-  <li>Post a photo of the daily special every morning</li>
-  <li>Reply to every comment within 24 hours</li>
-  <li>Run a weekly "behind the scenes" reel</li>
-  <li>Tag local suppliers to expand your reach</li>
-  <li>Share customer photos with permission</li>
+  <li>[Specific, useful point tied to the business]</li>
+  <li>[Another relevant point]</li>
 </ul>
-<p>Start with one tip this week — momentum beats perfection.</p>
+<p>[Closing paragraph with a natural call to action for this business.]</p>
 </CONTENT>
 
 RULES:

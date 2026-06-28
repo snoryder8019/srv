@@ -13,7 +13,7 @@
  *   ... BAR.getStake() ...        // current wager amount
  *   BAR.setVisible(canBetNow);    // show only while the local seat can bet
  */
-import { CHIP_COLORS } from './chip3d.js?v=1780407600000';
+import { CHIP_COLORS } from './chip3d.js?v=1781441125092';
 
 const hex = (n) => '#' + (n >>> 0).toString(16).padStart(6, '0');
 

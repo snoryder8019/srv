@@ -15,7 +15,7 @@
  *   view.trick: [{seat,card}]  view.handCounts[]  view.totals[]  view.passed[] view.heartsBroken
  *   Lowest score wins.
  */
-import { createTable3D } from './table3d.js?v=1780587392337';
+import { createTable3D } from './table3d.js?v=1781441125092';
 import { createTableClient } from './tableclient3d.js';
 import { createHUD } from './hud3d.js';
 import { buildCard, CARD_W, CARD_H, CARD_T, applyLegalHighlight, setFollowViolation } from './card3d.js';

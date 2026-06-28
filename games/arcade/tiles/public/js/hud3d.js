@@ -134,9 +134,10 @@ export function createHUD(cfg) {
     const state = client.state; if (!state) return;
     if (state.phase === 'lobby') {
       const meReady = (state.seats[client.mySeat] || {}).ready;
-      const rb = document.createElement('button'); rb.className = 'act'; rb.textContent = meReady ? 'Ready ✓ (waiting…)' : 'Ready'; rb.disabled = !!meReady;
+      // Ready = "I'm good to go" — empty seats now auto-fill with bots once every
+      // human present has readied (the old manual "+ Bot seat" buttons are gone).
+      const rb = document.createElement('button'); rb.className = 'act'; rb.textContent = meReady ? 'Ready ✓ (filling…)' : 'Ready'; rb.disabled = !!meReady;
       rb.onclick = () => client.ready(); box.appendChild(rb);
-      state.seats.forEach((s) => { if (!s.occupied && !s.platformId) { const b = document.createElement('button'); b.className = 'act ghost'; b.textContent = `+ Bot seat ${s.seat}`; b.onclick = () => client.addBot(s.seat); box.appendChild(b); } });
       return;
     }
     if (cfg.renderActions) cfg.renderActions(box, { state, priv: client.priv, myTurn: client.myTurn(), $ });

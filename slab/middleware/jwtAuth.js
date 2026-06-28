@@ -12,6 +12,26 @@ function isPlatformDomain(host) {
   return host === 'madladslab.com' || host?.endsWith('.madladslab.com');
 }
 
+// A fetch()/XHR call expects JSON, not an HTML login page. Detect those so an
+// expired session returns a clean 401 the front-end can read, instead of a 302
+// to /admin/login whose HTML body makes `res.json()` throw a cryptic
+// "Unexpected token '<'" error. Top-level navigations (Sec-Fetch-Dest: document)
+// still get the redirect.
+function wantsJson(req) {
+  const dest = req.get('Sec-Fetch-Dest');
+  if (dest) return dest !== 'document' && dest !== 'iframe' && dest !== 'frame';
+  if (req.xhr) return true;
+  return (req.get('Accept') || '').includes('application/json');
+}
+
+// Respond to an auth failure: 401 JSON for AJAX, redirect for real navigations.
+function authFail(req, res, redirectTo) {
+  if (wantsJson(req)) {
+    return res.status(401).json({ ok: false, authRequired: true, error: 'Your session expired — please refresh and sign in again.' });
+  }
+  return res.redirect(redirectTo);
+}
+
 // ── Admin JWT ─────────────────────────────────────────────────────────────────
 
 export async function requireAdmin(req, res, next) {
@@ -51,7 +71,7 @@ export async function requireAdmin(req, res, next) {
   const token = req.cookies?.slab_token;
   if (!token) {
 
-    return res.redirect('/admin/login');
+    return authFail(req, res, '/admin/login');
   }
   try {
     const decoded = jwt.verify(token, config.JWT_SECRET);
@@ -59,7 +79,7 @@ export async function requireAdmin(req, res, next) {
     if (!decoded.isAdmin) {
 
       res.clearCookie('slab_token');
-      return res.redirect('/admin/login?error=unauthorized');
+      return authFail(req, res, '/admin/login?error=unauthorized');
     }
     // Tenant isolation — JWT must match this tenant's database
     // Superadmins can cross tenants — re-issue a scoped token instead of blocking
@@ -84,7 +104,7 @@ export async function requireAdmin(req, res, next) {
         decoded.tenantDb = req.tenant.db;
       } else {
         res.clearCookie('slab_token');
-        return res.redirect('/admin/login?error=unauthorized');
+        return authFail(req, res, '/admin/login?error=unauthorized');
       }
     }
     req.adminUser = decoded;
@@ -92,7 +112,7 @@ export async function requireAdmin(req, res, next) {
   } catch (err) {
 
     res.clearCookie('slab_token');
-    res.redirect('/admin/login');
+    authFail(req, res, '/admin/login');
   }
 }
 

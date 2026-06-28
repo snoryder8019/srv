@@ -11,7 +11,7 @@ const TUTORIAL_PAGES = [
   'clients', 'client-detail', 'assets', 'meetings', 'meeting-detail',
   'bookkeeping', 'email-marketing', 'campaign-detail', 'users',
   'master-agent', 'tickets', 'ticket-detail', 'settings', 'profile',
-  'social-generator', 'video-trimmer', 'whats-new',
+  'social-generator', /* 'video-trimmer' — disabled for this release */ 'whats-new',
 ];
 
 // Default tutorials object for users who don't have one yet

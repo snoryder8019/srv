@@ -449,10 +449,10 @@
   <!-- ═══════════ CAMPAIGNS TAB ═══════════ -->
   <% if (tab === 'campaigns') { %>
 
-    <!-- New campaign form -->
+    <!-- New / edit campaign form -->
     <div class="card" style="margin-bottom:20px;">
-      <div class="card-title">New Campaign</div>
-      <form method="POST" action="/admin/email-marketing/campaigns">
+      <div class="card-title" id="campFormTitle">New Campaign</div>
+      <form method="POST" action="/admin/email-marketing/campaigns" id="campForm">
         <div class="form-grid">
           <div class="form-field">
             <label>Subject Line *</label>
@@ -492,8 +492,9 @@
           <textarea name="body" id="campBody" rows="12" required placeholder="Write your email content here. HTML tags are supported.&#10;&#10;Use the toolbar above to insert images from your brand library." style="font-family:'Jost',sans-serif;font-size:0.85rem;line-height:1.6;"></textarea>
         </div>
         <div style="margin-top:16px;display:flex;gap:8px;">
-          <button type="submit" class="btn btn-navy btn-sm">Save as Draft</button>
+          <button type="submit" class="btn btn-navy btn-sm" id="campSubmitBtn">Save as Draft</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="previewCampaign()">Preview</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="campCancelEdit" style="display:none;" onclick="cancelCampaignEdit()">Cancel Edit</button>
         </div>
       </form>
     </div>
@@ -539,6 +540,16 @@
                 const csc = campStatusColors[camp.status] || 'var(--slate)';
               %>
               <span style="display:inline-block;padding:2px 8px;border-radius:2px;font-size:0.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:color-mix(in srgb, <%= csc %> 10%, transparent);color:<%= csc %>;"><%= camp.status %></span>
+              <%
+                const _campAgeDays = camp.createdAt ? Math.floor((Date.now() - new Date(camp.createdAt).getTime()) / 86400000) : 0;
+                const _campStale = camp.status === 'draft' && _campAgeDays > 30;
+                const _campNoReach = camp.status === 'sent' && !camp.sentCount;
+              %>
+              <% if (_campStale) { %>
+                <span title="Draft sitting unsent for <%= _campAgeDays %> days — review or remove" style="display:inline-block;margin-left:4px;padding:2px 7px;border-radius:2px;font-size:0.6rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(185,28,28,0.12);color:#B91C1C;">Stale</span>
+              <% } else if (_campNoReach) { %>
+                <span title="Sent but reached nobody" style="display:inline-block;margin-left:4px;padding:2px 7px;border-radius:2px;font-size:0.6rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(197,165,90,0.18);color:#92660F;">No reach</span>
+              <% } %>
             </td>
             <td style="font-size:0.82rem;">
               <% if (camp.status === 'sent') { %>
@@ -578,7 +589,12 @@
             <td style="white-space:nowrap;">
               <div style="display:flex;gap:4px;align-items:center;">
                 <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="openEmailPreview({ endpoint: '/admin/email-marketing/campaigns/<%= camp._id %>/preview', title: 'Campaign preview' })">Preview</button>
+                <form method="POST" action="/admin/email-marketing/campaigns/<%= camp._id %>/test" style="display:inline;" onsubmit="return prepTestSend(this)">
+                  <input type="hidden" name="testEmail" value="<%= user && user.email ? user.email : '' %>">
+                  <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;" title="Send a test copy to your inbox only">Test</button>
+                </form>
                 <% if (camp.status === 'draft') { %>
+                <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" data-camp="<%= JSON.stringify({ id: camp._id.toString(), subject: camp.subject || '', preheader: camp.preheader || '', body: camp.body || '', targetFunnel: camp.targetFunnel || 'all', targetTags: (camp.targetTags || []).join(', '), isFollowUp: !!(camp.targetContactIds && camp.targetContactIds.length) }) %>" onclick="editCampaign(this)">Edit</button>
                 <form method="POST" action="/admin/email-marketing/campaigns/<%= camp._id %>/send" style="display:inline;" onsubmit="return confirm('Send this campaign to all matching contacts? This cannot be undone.')">
                   <button class="btn btn-gold btn-sm" style="font-size:0.68rem;">Send</button>
                 </form>
@@ -1105,6 +1121,56 @@ function fallbackCopy(text, cb) {
 
 <%- include('../partials/_email-preview-modal') %>
 <script>
+  // Confirm / adjust the test recipient before sending a proof copy.
+  function prepTestSend(form) {
+    var input = form.querySelector('input[name="testEmail"]');
+    var addr = prompt('Send a TEST copy to (no tracking, not counted as a real send):', input.value || '');
+    if (addr === null) return false;
+    addr = addr.trim();
+    if (!addr || addr.indexOf('@') === -1) { alert('Please enter a valid email address.'); return false; }
+    input.value = addr;
+    return true;
+  }
+
+  // Load a draft campaign into the composer for editing.
+  function editCampaign(btn) {
+    var c;
+    try { c = JSON.parse(btn.getAttribute('data-camp')); } catch (e) { return; }
+    var form = document.getElementById('campForm');
+    form.action = '/admin/email-marketing/campaigns/' + c.id + '/update';
+    document.getElementById('campFormTitle').textContent = 'Edit Campaign';
+    document.getElementById('campSubmitBtn').textContent = 'Save Changes';
+    document.getElementById('campCancelEdit').style.display = '';
+    document.getElementById('campSubject').value = c.subject;
+    document.getElementById('campPreheader').value = c.preheader;
+    document.getElementById('campBody').value = c.body;
+    var tf = document.getElementById('campTargetFunnel');
+    var tt = document.querySelector('#campForm input[name="targetTags"]');
+    // Follow-up campaigns keep their segment targeting — lock the targeting controls.
+    if (c.isFollowUp) {
+      if (tf) { tf.value = 'all'; tf.disabled = true; }
+      if (tt) { tt.value = c.targetTags; tt.disabled = true; }
+    } else {
+      if (tf) { tf.disabled = false; tf.value = c.targetFunnel; }
+      if (tt) { tt.disabled = false; tt.value = c.targetTags; }
+    }
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('campSubject').focus();
+  }
+
+  function cancelCampaignEdit() {
+    var form = document.getElementById('campForm');
+    form.action = '/admin/email-marketing/campaigns';
+    form.reset();
+    document.getElementById('campFormTitle').textContent = 'New Campaign';
+    document.getElementById('campSubmitBtn').textContent = 'Save as Draft';
+    document.getElementById('campCancelEdit').style.display = 'none';
+    var tf = document.getElementById('campTargetFunnel');
+    var tt = document.querySelector('#campForm input[name="targetTags"]');
+    if (tf) tf.disabled = false;
+    if (tt) tt.disabled = false;
+  }
+
   // Live preview of the in-progress campaign composer.
   function previewCampaign() {
     var s = document.getElementById('campSubject');

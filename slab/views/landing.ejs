@@ -99,6 +99,13 @@
     const showLogoImg  = logoImg && (navDisplay === 'image' || navDisplay === 'both');
     const showLogoText = (navDisplay === 'text' || navDisplay === 'both' || !logoImg);
 
+    /* Logo image sizing + text/logo composition */
+    const navLogoSize     = d.nav_logo_size      || '48';
+    const navLogoLayout    = d.nav_logo_layout    || 'stack';
+    const navLogoOverlapX  = d.nav_logo_overlap_x || '0';
+    const navLogoOverlapY  = d.nav_logo_overlap_y || '0';
+    const navLogoLayoutCls = (showLogoImg && showLogoText) ? ('logo-' + navLogoLayout) : '';
+
     /* Logo color split — split position (0 = off, 1 = first char, 2 = first two, etc.) */
     const splitAt = parseInt(d.nav_logo_split) || 0;
     const logoPre  = splitAt > 0 ? siteName.slice(0, splitAt) : '';
@@ -144,6 +151,9 @@
     :root {
       --accent: <%= accent %>;
       --accent-hover: <%= accentHover %>;
+      --nav-logo-size: <%= navLogoSize %>px;
+      --nav-logo-overlap-x: <%= navLogoOverlapX %>px;
+      --nav-logo-overlap-y: <%= navLogoOverlapY %>px;
       --bg: <%= bgDark %>;
       --card: <%= cardBg %>;
       --border: <%= d.color_border || '#262626' %>;
@@ -191,7 +201,16 @@
     .nav.scrolled { border-color:rgba(255,255,255,0.08); box-shadow:0 2px 20px rgba(0,0,0,0.4); }
     .nav-logo { font-size:28px; font-weight:600; color:#fff; display:flex; align-items:center; letter-spacing:-0.5px; }
     .nav-logo span { color:var(--accent); }
-    .nav-logo-img { height:36px; width:auto; object-fit:contain; margin-right:10px; }
+    .nav-logo-img { height:var(--nav-logo-size, 48px); width:auto; object-fit:contain; margin-right:10px; flex-shrink:0; }
+    /* Logo + text composition (display = both) */
+    .nav-logo.logo-stack { flex-direction:column; align-items:flex-start; gap:6px; }
+    .nav-logo.logo-stack .nav-logo-img { margin-right:0; }
+    .nav-logo.logo-inline-reverse { flex-direction:row-reverse; }
+    .nav-logo.logo-inline-reverse .nav-logo-img { margin-right:0; margin-left:10px; }
+    .nav-logo.logo-overlap { display:grid; place-items:center; justify-items:center; }
+    .nav-logo.logo-overlap > * { grid-area:1 / 1; }
+    .nav-logo.logo-overlap .nav-logo-img { margin:0; z-index:1; }
+    .nav-logo.logo-overlap .nav-logo-text { z-index:2; text-align:center; transform:translate(var(--nav-logo-overlap-x,0px), var(--nav-logo-overlap-y,0px)); }
     .nav-links { display:flex; gap:28px; align-items:center; }
     .nav-links a { font-size:13px; color:var(--subtle); transition:color 0.2s; } .nav-links a:hover { color:#fff; }
     .nav-cta { background:var(--accent); color:#0F1B30; padding:8px 20px; border-radius:6px; font-weight:600; font-size:13px; }
@@ -307,11 +326,11 @@
 
 <% if (_vis.header !== false) { %>
 <nav class="nav">
-  <div class="nav-logo">
+  <div class="nav-logo <%= navLogoLayoutCls %>">
     <% if (d.model_logo_enabled === 'true') { %>
-      <div class="gltf-viewer" <%= (typeof brandModels !== 'undefined' && brandModels.model_logo) ? 'data-model-url="' + brandModels.model_logo + '"' : '' %> data-brand-name="<%= siteName %>" data-mode="logo" data-bg-color="transparent" data-accent-color="<%= accent %>" data-primary-color="<%= d.color_primary || '' %>" style="width:40px;height:40px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>
+      <div class="gltf-viewer" <%= (typeof brandModels !== 'undefined' && brandModels.model_logo) ? 'data-model-url="' + brandModels.model_logo + '"' : '' %> data-brand-name="<%= siteName %>" data-mode="logo" data-bg-color="transparent" data-accent-color="<%= accent %>" data-primary-color="<%= d.color_primary || '' %>" style="width:var(--nav-logo-size,40px);height:var(--nav-logo-size,40px);display:inline-block;vertical-align:middle;margin-right:8px;"></div>
     <% } else if (showLogoImg) { %><img src="<%= logoImg %>" alt="<%= siteName %>" class="nav-logo-img"><% } %>
-    <% if (showLogoText) { %><% if (logoPre) { %><span><%= logoPre %></span><% } %><%= logoPost %><% } %>
+    <% if (showLogoText) { %><span class="nav-logo-text"><% if (logoPre) { %><span><%= logoPre %></span><% } %><%= logoPost %></span><% } %>
   </div>
   <div class="nav-links">
     <% if (_vis.services !== false && features.length) { %><a href="#features">Services</a><% } %>

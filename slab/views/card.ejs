@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title><%= brand?.name || 'Business Card' %></title>
   <meta name="description" content="<%= brand?.tagline || brand?.name || '' %>">
-  <meta name="theme-color" content="<%= design.color_primary || '#1C2B4A' %>">
+  <meta name="theme-color" content="<%= scheme.primary %>">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="<%= brand?.name || 'Card' %>">
@@ -34,13 +34,15 @@
   <link href="https://fonts.googleapis.com/css2?family=<%= fontsParam %>&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary: <%= design.color_primary || '#1C2B4A' %>;
-      --primary-deep: <%= design.color_primary_deep || '#0F1B30' %>;
-      --accent: <%= design.color_accent || '#C9A848' %>;
-      --accent-light: <%= design.color_accent_light || '#E8D08A' %>;
-      --bg: <%= design.color_bg || '#F5F3EF' %>;
-      --white: <%= design.color_white || '#FDFCFA' %>;
-      --dark: <%= design.color_dark || '#0F1B30' %>;
+      --primary: <%= scheme.primary %>;
+      --primary-deep: <%= scheme.primaryDeep %>;
+      --accent: <%= scheme.accent %>;
+      --accent-light: <%= scheme.accentLight %>;
+      --bg: <%= scheme.bg %>;
+      --white: <%= scheme.white %>;
+      --dark: <%= scheme.dark %>;
+      --surface: <%= scheme.white %>;
+      --on-surface: <%= scheme.dark %>;
       --font-heading: '<%= _hFont %>', serif;
       --font-body: '<%= _bFont %>', sans-serif;
     }
@@ -198,9 +200,57 @@
       cursor: pointer; z-index: 100; transition: background 0.2s;
     }
     .share-fab:hover { background: rgba(255,255,255,0.25); }
+
+    /* ─────────── Template variants ─────────── */
+    /* MODERN — gradient header, bolder, rounder */
+    body[data-tpl="modern"] .card { border-radius: 26px; }
+    body[data-tpl="modern"] .card-header { background: linear-gradient(135deg, var(--primary), var(--accent)); padding-top: 40px; }
+    body[data-tpl="modern"] .card-logo, body[data-tpl="modern"] .card-logo-placeholder { width: 84px; height: 84px; border-radius: 22px; border-width: 0; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+    body[data-tpl="modern"] .card-name { font-size: 1.7rem; }
+    body[data-tpl="modern"] .card-btn-primary { background: linear-gradient(135deg, var(--primary), var(--accent)); }
+
+    /* MINIMAL — white, understated, no color band */
+    body[data-tpl="minimal"] { background: var(--bg); }
+    body[data-tpl="minimal"] .card { box-shadow: 0 8px 30px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04); }
+    body[data-tpl="minimal"] .card-header { background: var(--white); padding: 32px 24px 18px; }
+    body[data-tpl="minimal"] .card-header::after { display: none; }
+    body[data-tpl="minimal"] .card-logo, body[data-tpl="minimal"] .card-logo-placeholder { width: 60px; height: 60px; border-width: 2px; }
+    body[data-tpl="minimal"] .card-name { color: var(--on-surface); font-size: 1.35rem; }
+    body[data-tpl="minimal"] .card-tagline { color: var(--primary); }
+    body[data-tpl="minimal"] .card-detail { background: transparent; border: 1px solid var(--bg); }
+
+    /* COVER — tall gradient cover, larger avatar */
+    body[data-tpl="cover"] .card-header { background: linear-gradient(160deg, var(--primary-deep), var(--primary) 60%, var(--accent)); padding: 56px 24px 44px; }
+    body[data-tpl="cover"] .card-logo, body[data-tpl="cover"] .card-logo-placeholder { width: 92px; height: 92px; border-width: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    body[data-tpl="cover"] .card-name { font-size: 1.8rem; }
+    body[data-tpl="cover"] .card-header::after { width: 40px; height: 40px; bottom: -20px; }
+
+    /* DARK — dark surface, glowing accent */
+    body[data-tpl="dark"] { background: #050608; }
+    body[data-tpl="dark"] .card { background: #14161c; box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06); }
+    body[data-tpl="dark"] .card-header { background: linear-gradient(135deg, var(--primary-deep), var(--primary)); }
+    body[data-tpl="dark"] .card-header::after { background: #14161c; }
+    body[data-tpl="dark"] .card-logo { box-shadow: 0 0 0 3px var(--accent), 0 0 24px var(--accent); }
+    body[data-tpl="dark"] .card-name { color: #fff; }
+    body[data-tpl="dark"] .card-detail { background: rgba(255,255,255,0.05); color: #e7e7ea; }
+    body[data-tpl="dark"] .card-detail:hover { background: rgba(255,255,255,0.1); }
+    body[data-tpl="dark"] .card-btn-outline { color: var(--accent-light); border-color: var(--accent); }
+    body[data-tpl="dark"] .card-footer { color: #fff; }
+
+    /* MONO — flat, typographic, outline-only */
+    body[data-tpl="mono"] .card-header { background: var(--white); border-bottom: 2px solid var(--on-surface); padding-bottom: 24px; }
+    body[data-tpl="mono"] .card-header::after { display: none; }
+    body[data-tpl="mono"] .card-logo, body[data-tpl="mono"] .card-logo-placeholder { border-radius: 0; border-width: 2px; filter: grayscale(1); }
+    body[data-tpl="mono"] .card-logo-placeholder { background: var(--on-surface); color: var(--white); }
+    body[data-tpl="mono"] .card-name { color: var(--on-surface); text-transform: uppercase; letter-spacing: 0.1em; font-size: 1.25rem; }
+    body[data-tpl="mono"] .card-tagline { color: var(--on-surface); opacity: 0.6; }
+    body[data-tpl="mono"] .card-detail { background: transparent; border: 1px solid var(--on-surface); border-radius: 0; }
+    body[data-tpl="mono"] .card-social { background: var(--on-surface); border-radius: 0; }
+    body[data-tpl="mono"] .card-btn-primary { background: var(--on-surface); border-radius: 0; }
+    body[data-tpl="mono"] .card-btn-outline { border-radius: 0; }
   </style>
 </head>
-<body>
+<body data-tpl="<%= template %>">
 
   <!-- Share FAB -->
   <button class="share-fab" id="shareBtn" aria-label="Share" style="display:none;">

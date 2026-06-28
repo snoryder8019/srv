@@ -19,7 +19,7 @@
  *   table:over    <final standings>    // end-game screen payload
  *   table:error   { message }
  */
-import { createTable, getTable , dropTable } from '../lib/tables.js';
+import { createTable, getTable , dropTable, listLiveTables } from '../lib/tables.js';
 import { verifyTicket } from '../lib/tickets.js';
 import { reportGameResult } from '../lib/stats.js';
 import * as walletSync from './wallet-sync.js';
@@ -57,6 +57,9 @@ async function broadcast(io, table, events = []) {
     const v = (table.publicState && table.publicState().view) || {};
     if (v.phase === 'bets') { try { await walletSync.seedAll(table); } catch (e) {} }
     try { await walletSync.syncAfterEvents(table, events); } catch (e) {}
+    // Parlor-wide: announce notable wins so every connected room can pop a
+    // big-win animation on that table from across the floor.
+    try { for (const win of walletSync.drainPendingWins()) io.emit('parlor:win', win); } catch (e) {}
   }
   table.armTurnClock();
   io.to(r).emit('table:state', table.publicState());
@@ -104,15 +107,17 @@ async function runBotsPaced(io, table) {
   }
 }
 
-function botFillContinuous(table) {
-  // Continuous casino tables start with whoever's here; empty seats become bots
-  // once at least one human has readied. Humans can still grab seats until start.
-  if (!table.variant || !table.variant.continuous) return;
+function autoFillOnReady(table) {
+  // Empty seats fill with bots once everyone who's HERE has readied — so a solo
+  // player (or a partial group) can start vs bots without the old manual "+ Bot
+  // seat" buttons. Box games (craps/roulette boxes) opt out and keep seats open.
+  if (!table.variant || table.phase !== 'lobby') return;
   const _seating = table.variant.meta && table.variant.meta.seating;
-  if (_seating && _seating.fillWithBots === false) return;   // box games: empty seats stay open
-  if (table.phase !== 'lobby') return;
-  const readyHumans = table.seats.filter((s) => s.platformId && !s.bot && s.ready).length;
-  if (readyHumans < 1) return;
+  if (_seating && _seating.fillWithBots === false) return;
+  const humans = table.seats.filter((s) => s.platformId && !s.bot);
+  const readyHumans = humans.filter((s) => s.ready);
+  if (readyHumans.length < 1) return;             // nobody ready → don't fill yet
+  if (readyHumans.length < humans.length) return; // a present human isn't ready → wait for them
   for (const s of table.seats) {
     if (!s.platformId) { table.seatPlayer(s.seat, { bot: true }); }
   }
@@ -120,7 +125,7 @@ function botFillContinuous(table) {
 
 async function advance(io, table) {
   let events = [];
-  botFillContinuous(table);
+  autoFillOnReady(table);
   if (table.maybeStart()) events.push({ type: 'gameStart', handNo: table.handNo, dealer: table.dealer });
   await broadcast(io, table, events);
   await runBotsPaced(io, table);
@@ -218,10 +223,91 @@ async function applyVoteOutcome(io, table, seat, outcome) {
   if (outcome === 'kick') await runBotsPaced(io, table); // bot takes over immediately
 }
 
+// --- live parlor feed: push the floor's open tables to every client so the 3D
+// room's satellites stay LIVE instead of stale-polling. Emits only when the
+// trimmed list actually changes (occupancy/phase/win), so it's cheap. ---
+let _parlorLast = '';
+function startParlorFeed(io) {
+  const tickFeed = () => {
+    let tables;
+    try {
+      // NOTE: no lastWin here — big wins animate instantly via the separate
+      // parlor:win event; folding them in would rebuild satellites on every win.
+      tables = listLiveTables()
+        // only push LIVE tables (a connected human present, not finished) so the
+        // 3D scene never shows a stale satellite no one is associated with.
+        .filter((t) => t.connectedHumans > 0 && t.phase !== 'gameOver')
+        .map((t) => ({
+          tableId: t.tableId, game: t.game, phase: t.phase,
+          seatCount: t.seatCount, humans: t.humans,
+          names: (t.humanNames || []).slice(0, 4),
+          // progress for the back-wall scoreboard
+          handNo: t.handNo, gamesPlayed: t.gamesPlayed, scores: t.scores,
+          topScore: t.topScore, casino: t.casino,
+        }));
+    } catch (e) { return; }
+    const sig = JSON.stringify(tables);
+    if (sig === _parlorLast) return;     // nothing changed → no broadcast
+    _parlorLast = sig;
+    io.emit('parlor:tables', { tables });
+  };
+  setInterval(tickFeed, 3000);
+}
+
 export function attachTableSockets(io) {
   startPersonas({ io, advance });   // Sam, Tad & Dazz roam the live casino tables
+  startParlorFeed(io);              // live satellite feed to every connected room
   io.on('connection', (socket) => {
     socket.data.user = socket.request.session?.user || null;
+
+    // --- ROOM AWARENESS (additive, read-only) -------------------------------
+    // The persistent room shell opens its own lightweight socket and registers
+    // the <=3 table tickets the player currently holds. We verify each ticket and
+    // join its table room, so this socket receives the SAME public table:state
+    // broadcasts the game clients get — the shell computes whose-turn from
+    // turn.seat. We also send an immediate snapshot. This NEVER seats the player,
+    // sets socket.data.tableId, or touches the per-table handlers: pure awareness.
+    socket.on('room:hello', ({ tickets = [] } = {}) => {
+      const subs = [];
+      for (const tk of (Array.isArray(tickets) ? tickets : []).slice(0, 3)) {
+        const t = verifyTicket(tk);
+        if (!t || !t.tableId) continue;
+        socket.join(room(t.tableId));
+        subs.push({ tableId: t.tableId, game: t.game, seat: t.seat });
+      }
+      socket.data.roomSubs = subs;
+      const slots = subs.map((s) => {
+        const tb = getTable(s.tableId);
+        const ps = tb ? tb.publicState() : null;
+        return {
+          tableId: s.tableId, game: s.game, seat: s.seat,
+          phase: ps ? ps.phase : 'gone',
+          yourTurn: !!(ps && ps.phase === 'playing' && ps.turn && ps.turn.seat === s.seat),
+          seated: ps ? ps.seats.filter((x) => x.occupied).length : 0,
+          seatCount: ps ? ps.seats.length : 0,
+        };
+      });
+      socket.emit('room:slots', { slots });
+    });
+
+    // Leave a game from the room shell (the awareness socket isn't seated, so we
+    // authorize via the ticket and vacate that player's seat at that table).
+    socket.on('room:leave', ({ ticket } = {}) => {
+      const t = verifyTicket(ticket);
+      if (!t || !t.tableId) return;
+      const tb = getTable(t.tableId);
+      if (tb && t.platformId != null) {
+        const s = tb.seatByPlatformId(t.platformId);
+        if (s) {
+          tb.vacate(s.seat);
+          io.to(room(t.tableId)).emit('table:event', { type: 'left', seat: s.seat });
+          io.to(room(t.tableId)).emit('table:state', tb.publicState());
+        }
+      }
+      socket.leave(room(t.tableId));
+      if (Array.isArray(socket.data.roomSubs)) socket.data.roomSubs = socket.data.roomSubs.filter((x) => x.tableId !== t.tableId);
+      socket.emit('room:left', { tableId: t.tableId });
+    });
 
     socket.on('table:join', async (payload = {}) => {
       try {

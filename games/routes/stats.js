@@ -68,13 +68,18 @@ router.get('/events', async (req, res) => {
       const SERVER_GAMES = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
       const db = req.app.locals.db;
       if (db && !before && (!game || !SERVER_GAMES.includes(game))) {
-        const q = { event: 'game-end' };
+        // Only surface wins in the public activity feed — a chip "session win".
+        // Losses/abandoned runs stay out so the feed isn't cluttered; big wins
+        // stand out via the chip amount itself.
+        const q = { event: 'game-end', status: 'won' };
         if (game) q.game = game;
         const wg = await db.collection('webgame_scores').find(q).sort({ ts: -1 }).limit(25).toArray();
         const mapped = wg.map((r) => ({
           game: r.game, type: 'webgame_result', ts: r.ts,
           name: r.displayName || 'Player', status: r.status,
-          score: r.score || 0, opponentScore: (r.meta && r.meta.opponentScore) || 0,
+          // null opponent for solo/casino games so the UI shows the chip total
+          // alone (e.g. "won 5,540") instead of an odd "5540-0".
+          score: r.score || 0, opponentScore: (r.meta && r.meta.opponentScore != null) ? r.meta.opponentScore : null,
         }));
         events = events.concat(mapped).sort((a, b) => new Date(b.ts) - new Date(a.ts)).slice(0, limit);
       }

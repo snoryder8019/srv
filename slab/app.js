@@ -74,7 +74,8 @@ app.use(logger('dev'));
 // Stripe webhooks need raw body — must be before express.json()
 app.use('/webhooks/stripe', express.raw({ type: 'application/json' }));
 app.use('/start/webhook', express.raw({ type: 'application/json' }));
-app.use('/webhooks/meta', express.raw({ type: 'application/json' }));
+// DISABLED FOR RELEASE: Social Activity Meta webhook ingestion
+// app.use('/webhooks/meta', express.raw({ type: 'application/json' }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

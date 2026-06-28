@@ -8,18 +8,18 @@
  *   • each seat's bankroll + current bet shown on its plate
  *   • bet buttons during betting; a big ROLL button for the shooter
  */
-import { createTable3D } from './table3d.js?v=1780587392337';
-import { createTableClient } from './tableclient3d.js?v=1780348653535';
-import { createHUD } from './hud3d.js?v=1780348653535';
-import { rollDice, DIE } from './dice3d.js?v=1780348653535';
-import { buildCrapsFelt, CRAPS_LAYOUT } from './felt3d.js?v=1780348653535';
-import { dropStack, seatColor } from './chip3d.js?v=1780348653535';
-import { showResult, renderHistory, makeDeltaTracker } from './casino-fx.js?v=1780490000000';
-import { createBetBar } from './betbar.js?v=1780480000000';
+import { createTable3D } from './table3d.js?v=1781441125092';
+import { createTableClient } from './tableclient3d.js?v=1781441125092';
+import { createHUD } from './hud3d.js?v=1781441125092';
+import { rollDice, DIE } from './dice3d.js?v=1781441125092';
+import { buildCrapsFelt, CRAPS_LAYOUT } from './felt3d.js?v=1781441125092';
+import { dropStack, seatColor } from './chip3d.js?v=1781441125092';
+import { showResult, renderHistory, makeDeltaTracker } from './casino-fx.js?v=1781441125092';
+import { createBetBar } from './betbar.js?v=1781441125092';
 import { createAudioBus } from 'https://games.madladslab.com/shared/js/audiobus.js';
-import { createDealerFx } from './dealerfx.js?v=1780413600000';
+import { createDealerFx } from './dealerfx.js?v=1781441125092';
 import { panel } from 'https://games.madladslab.com/shared/js/casino-ui.js';
-import { createChipBurst } from './chipburst.js?v=1780520000000';
+import { createChipBurst } from './chipburst.js?v=1781441125092';
 
 const T = createTable3D({
   tableRadius: 34, feltColor: 0x0e5c3a,

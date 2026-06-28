@@ -11,6 +11,8 @@
  *   DEALER.onBet(betEvent);     // counts bets, chimes every Nth
  *   DEALER.bigWin('Winner!');   // applause + spoken call
  */
+import { fireConfetti } from './confetti3d.js?v=1781441125092';
+
 export function createDealerFx(opts = {}) {
   const audio = opts.audio || null;
   const callFor = opts.callFor || (() => null);
@@ -61,6 +63,7 @@ export function createDealerFx(opts = {}) {
   function bigWin(text) {
     if (audio) { try { audio.applause(); } catch (e) {} }
     if (text) showCall(text);
+    try { fireConfetti({ count: 180 }); } catch (e) {}
   }
 
   return { showCall, onBet, onRoll, bigWin };

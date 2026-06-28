@@ -9,7 +9,7 @@ sync, stats/activity export, end-game flow) and delegates all *game rules + rend
 **variant** living in a subfolder. Towers becomes the first variant — `/srv/hex/td` —
 "configured into" hex exactly like euchre was configured into cards.
 
-Read `/srv/ARCHITECTURE.md` for the cross-cutting protocols (SSO bridge, table ticket,
+Read `/srv/games/ARCHITECTURE.md` for the cross-cutting protocols (SSO bridge, table ticket,
 stats/activity, presence/invite). This doc covers only what's hex-specific.
 
 ---

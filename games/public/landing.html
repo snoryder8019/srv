@@ -782,12 +782,23 @@
         if (el2) { el2.textContent = 'OFFLINE'; el2.className = 'game-card-status'; }
       }
     }
-    // Ops telemetry strip in the hero — aggregate of everything above.
+    // Arcade/parlor players (live tile/card tables) — the dedicated-server loop
+    // above misses these entirely, which is why the ticker used to read 0 while
+    // people were at tables. Sum live humans across open arcade tables.
+    var arcadePlayers = 0;
+    try {
+      var ar = await fetch('https://tiles.madladslab.com/scene/tables');
+      var aj = await ar.json();
+      if (aj && aj.tables) arcadePlayers = aj.tables.reduce(function (n, t) { return n + (t.humans || 0); }, 0);
+    } catch (e) {}
+    totalPlayers += arcadePlayers;
+    // Ops telemetry strip in the hero — aggregate of servers + arcade.
     try {
       var tick = document.getElementById('opsTicker');
       if (tick) {
-        tick.innerHTML = onlineServers
-          ? '<b>' + onlineServers + '</b> SERVER' + (onlineServers > 1 ? 'S' : '') + ' ONLINE · <b>' + totalPlayers + '</b> PLAYER' + (totalPlayers === 1 ? '' : 'S') + ' IN-GAME RIGHT NOW'
+        var anyLive = onlineServers || arcadePlayers;
+        tick.innerHTML = anyLive
+          ? '<b>' + onlineServers + '</b> SERVER' + (onlineServers === 1 ? '' : 'S') + ' ONLINE · <b>' + totalPlayers + '</b> PLAYER' + (totalPlayers === 1 ? '' : 'S') + ' IN-GAME RIGHT NOW'
           : 'SERVERS ON STANDBY · ARCADE ALWAYS OPEN';
       }
     } catch (e) {}
@@ -930,8 +941,10 @@
     webgame_result: '\u{1F0CF}',
   };
   var ACTIVITY_HIDDEN = { heartbeat:1, hook_fired:1, mod_boot:1, mod_status:1, config_load:1, config_load_fail:1 };
-  var GAME_CSS_FEED = { rust:'rust', valheim:'valheim', l4d2:'l4d2', '7dtd':'sdtd', se:'se', palworld:'palworld', windrose:'windrose', euchre:'arcade', hearts:'arcade', dominoes:'arcade', cards:'arcade', tiles:'arcade' };
-  var GAME_LABELS_FEED = { rust:'RUST', valheim:'VALHEIM', l4d2:'L4D2', '7dtd':'7DTD', se:'SE', palworld:'PAL', windrose:'WIND', euchre:'EUCHRE', hearts:'HEARTS', dominoes:'DOMINOES', cards:'CARDS' };
+  var GAME_CSS_FEED = { rust:'rust', valheim:'valheim', l4d2:'l4d2', '7dtd':'sdtd', se:'se', palworld:'palworld', windrose:'windrose', euchre:'arcade', hearts:'arcade', dominoes:'arcade', cards:'arcade', tiles:'arcade', reels:'arcade', madlands:'arcade', td:'arcade' };
+  var GAME_LABELS_FEED = { rust:'RUST', valheim:'VALHEIM', l4d2:'L4D2', '7dtd':'7DTD', se:'SE', palworld:'PAL', windrose:'WIND', euchre:'EUCHRE', hearts:'HEARTS', dominoes:'DOMINOES', cards:'CARDS', tiles:'TILES', reels:'REELS', madlands:'MADLANDS', td:'TD' };
+  // Format a number with thousands separators for chip/score displays.
+  function fmtNum(n){ var v = Number(n); return isFinite(v) ? v.toLocaleString() : (n==null?'':String(n)); }
   // Trim the BP_/_C wrapper so combat events read cleanly in the public feed.
   function prettyClass(c) {
     if (!c) return '';
@@ -960,7 +973,7 @@
       case 'server_ready': text = 'Server ready'; break;
       case 'webgame_result':
         text = '<span class="name">'+esc(ev.name||'Player')+'</span> '+(ev.status==='won'?'won':'finished')
-             + (ev.score!=null ? ' '+ev.score+'\u2013'+(ev.opponentScore||0) : '');
+             + (ev.score!=null ? (ev.opponentScore!=null ? ' '+fmtNum(ev.score)+'\u2013'+fmtNum(ev.opponentScore) : ' '+fmtNum(ev.score)) : '');
         break;
       default:             text = esc(ev.type || '');
     }
@@ -1085,7 +1098,7 @@
       var rcR = await fetch('/api/webgame/recent/'+g+'?limit=6').then(function(r){return r.json();});
       var rc = document.getElementById('arcStatsRecent');
       if (rc) rc.innerHTML = (rcR.results && rcR.results.length)
-        ? rcR.results.map(function(r){ return '<div style="padding:3px 0">'+esc(r.displayName)+' <span style="color:'+(r.status==='won'?'#46c98b':'#8e99a8')+'">'+(r.status==='won'?'won':'lost')+' '+r.score+'\u2013'+r.opponentScore+'</span></div>'; }).join('')
+        ? rcR.results.map(function(r){ return '<div style="padding:3px 0">'+esc(r.displayName)+' <span style="color:'+(r.status==='won'?'#46c98b':'#8e99a8')+'">'+(r.status==='won'?'won':'lost')+' '+((r.opponentScore!=null)?(fmtNum(r.score)+'\u2013'+fmtNum(r.opponentScore)):fmtNum(r.score))+'</span></div>'; }).join('')
         : '<div style="color:#8e99a8">No results yet</div>';
     } catch (e) {}
     try {

@@ -126,6 +126,7 @@ async function lookupTenant(domain) {
     wildcardDomain: doc.domain,
     customDomain,
     db: doc.db,
+    dbHost: doc.dbHost || 'atlas',   // which cluster this tenant's DB lives on
     status: doc.status || 'active',
     isPreview: doc.status === 'preview',
     brand,
@@ -143,7 +144,7 @@ async function lookupTenant(domain) {
 
 function applyTenant(req, res, tenant) {
   req.tenant = tenant;
-  req.db = getTenantDb(tenant.db);
+  req.db = getTenantDb(tenant.db, tenant.dbHost);
   res.locals.brand = tenant.brand;
   res.locals.tenant = {
     domain: tenant.domain,

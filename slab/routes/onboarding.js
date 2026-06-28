@@ -315,7 +315,7 @@ router.post('/google-signup', async (req, res) => {
     });
 
     // Store design + tagline
-    const tenantDb = getTenantDb(result.dbName);
+    const tenantDb = getTenantDb(result.dbName, result.dbHost);
     const validDesigns = ['classic', 'bold', 'minimal', 'magazine', 'dark', 'startup', 'studio', 'luxe'];
     const designOps = [];
     if (design && validDesigns.includes(design)) {
@@ -507,7 +507,7 @@ router.post('/signup', async (req, res) => {
     }
 
     // Store chosen design layout + tagline
-    const tenantDb = getTenantDb(result.dbName);
+    const tenantDb = getTenantDb(result.dbName, result.dbHost);
     const validDesigns = ['classic', 'bold', 'minimal', 'magazine', 'dark', 'startup', 'studio', 'luxe'];
     const designOps = [];
     if (design && validDesigns.includes(design)) {

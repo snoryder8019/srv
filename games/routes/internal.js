@@ -104,11 +104,15 @@ router.post('/webgame/score', requireInternal, async (req, res) => {
     // Chip economy: every recorded arcade result earns chips (participation + win bonus).
     try { await wallet.awardArcadeResult(db, { platformId, displayName, status, game }); } catch (we) { /* best-effort */ }
     if (event === 'game-end') {
+      // opponentScore: a real number for versus games (so "6-4" reads right even
+      // when the opponent scored 0), but null for solo/casino games so the UI
+      // shows the chip total alone instead of an odd "5540-0".
+      const oppScore = (meta && meta.opponentScore != null) ? Number(meta.opponentScore) : null;
+      const act = { game, type: 'webgame_result', ts: now, name: displayName || 'Player',
+        status, score: Number(score) || 0, opponentScore: oppScore };
       try {
         const io = req.app.get('io');
         if (io) {
-          const act = { game, type: 'webgame_result', ts: now, name: displayName || 'Player',
-            status, score: Number(score) || 0, opponentScore: (meta && meta.opponentScore) || 0 };
           io.of('/stats').to('game:' + game).emit('stats:event', act);
           io.of('/stats').to('game:all').emit('stats:event', act);
         }

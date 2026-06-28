@@ -38,6 +38,7 @@ const UI_SUPPRESSED_EVENT_TYPES = new Set([
   'tick.beat',
   'poiscan.gate',
   'module.load.fail',
+  'raid_end',  // valheim MadLadsEventLogger event_ended loop — no player/payload, floods feed (was 46/50)
 ]);
 
 // Log file positions (for tailing)
@@ -49,15 +50,15 @@ const activeLogPaths = {};
 
 // ── Config ──
 const LOG_PATHS = {
-  rust:    path.join(__dirname, '..', 'rust', 'logs', 'server.log'),
-  valheim: path.join(__dirname, '..', 'valheim', 'logs', 'server.log'),
-  valheim_events: path.join(__dirname, '..', 'valheim', 'logs', 'events.log'),
-  l4d2:    path.join(__dirname, '..', 'l4d2', 'logs', 'console.log'),
-  '7dtd':  path.join(__dirname, '..', '7dtd', 'logs', 'output_log.txt'),
-  se:      path.join(__dirname, '..', 'se', 'logs', 'server.log'),
-  palworld: path.join(__dirname, '..', 'palworld', 'logs', 'server.log'),
-  windrose: path.join(__dirname, '..', 'windrose', 'logs', 'server.log'),
-  windrose_events: path.join(__dirname, '..', 'windrose', 'WindrosePlus', 'logs', 'activity.log'),
+  rust:    path.join(__dirname, '..', 'dedicatedServers', 'rust', 'logs', 'server.log'),
+  valheim: path.join(__dirname, '..', 'dedicatedServers', 'valheim', 'logs', 'server.log'),
+  valheim_events: path.join(__dirname, '..', 'dedicatedServers', 'valheim', 'logs', 'events.log'),
+  l4d2:    path.join(__dirname, '..', 'dedicatedServers', 'l4d2', 'logs', 'console.log'),
+  '7dtd':  path.join(__dirname, '..', 'dedicatedServers', '7dtd', 'logs', 'output_log.txt'),
+  se:      path.join(__dirname, '..', 'dedicatedServers', 'se', 'logs', 'server.log'),
+  palworld: path.join(__dirname, '..', 'dedicatedServers', 'palworld', 'logs', 'server.log'),
+  windrose: path.join(__dirname, '..', 'dedicatedServers', 'windrose', 'logs', 'server.log'),
+  windrose_events: path.join(__dirname, '..', 'dedicatedServers', 'windrose', 'WindrosePlus', 'logs', 'activity.log'),
   // madlads_stats: intentionally NOT tailed. The MadLadsStats discovery mod is
   // disabled in mods.txt and its K2_DestroyActor hook fires never represented
   // player kills — they fire on any actor destruction (scene cleanup, despawn,
@@ -67,12 +68,12 @@ const LOG_PATHS = {
 };
 
 // Fallback log paths
-const RUST_LOG_ALT = path.join(__dirname, '..', 'rust', 'RustDedicated_Data', 'output_log.txt');
-const WINDROSE_LOG_ALT = path.join(__dirname, '..', 'windrose', 'R5', 'Saved', 'Logs', 'R5.log');
+const RUST_LOG_ALT = path.join(__dirname, '..', 'dedicatedServers', 'rust', 'RustDedicated_Data', 'output_log.txt');
+const WINDROSE_LOG_ALT = path.join(__dirname, '..', 'dedicatedServers', 'windrose', 'R5', 'Saved', 'Logs', 'R5.log');
 // WindrosePlus writes one NDJSON file per UTC day named YYYY-MM-DD.log inside
 // <game>/windrose_plus_data/. We re-resolve on every tail tick so a UTC
 // rollover is picked up automatically — no games service restart required.
-const WINDROSE_PLUS_DATA_DIR = path.join(__dirname, '..', 'windrose', 'windrose_plus_data');
+const WINDROSE_PLUS_DATA_DIR = path.join(__dirname, '..', 'dedicatedServers', 'windrose', 'windrose_plus_data');
 // WindrosePlus 1.0.16+ writes dated NDJSON to windrose_plus_data/logs/; older
 // builds wrote them directly into windrose_plus_data/. Scan both and return
 // whichever holds the newest YYYY-MM-DD.log so a version bump that moves the
@@ -942,7 +943,7 @@ async function getNotableEvents(game, limit = 20) {
   // Windrose's combat lacks player attribution, so we'd never see it under the
   // standard kill/death set — include its K2_DestroyActor-derived event types
   // so the RECENT EVENTS panel has something to show on the windrose card.
-  const notableTypes = ['death', 'boss_kill', 'kill', 'raid_start', 'raid_end',
+  const notableTypes = ['death', 'boss_kill', 'kill', 'raid_start',
                         'npc_kill', 'mob_kill', 'ship_sunk', 'item_drop'];
   return db.collection('game_events')
     .find({ game, type: { $in: notableTypes } })

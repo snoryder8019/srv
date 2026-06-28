@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding Funnel · MadLadsLab Games</title>
+<style>
+  :root { --red:#cd412b; --bg:#0a0a0a; --panel:#151515; --line:#222; --dim:#888; --ok:#4caf82; --warn:#e6b800; --bad:#cd412b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:#e8e8e8; font-family:'Courier New',Consolas,monospace; }
+  header { border-bottom:1px solid var(--red); padding:16px 24px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  header a.brand { color:var(--red); text-decoration:none; font-weight:bold; letter-spacing:.1em; }
+  header .tag { color:var(--dim); font-size:.75rem; letter-spacing:.08em; }
+  header .spacer { flex:1; }
+  header a.back { color:var(--dim); text-decoration:none; font-size:.8rem; }
+  .wrap { max-width:1200px; margin:0 auto; padding:24px; }
+  .stats { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 18px; min-width:130px; }
+  .stat .n { font-size:1.6rem; font-weight:bold; }
+  .stat .l { font-size:.7rem; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; }
+  .stat.bad .n { color:var(--bad); }
+  h2 { font-size:.95rem; letter-spacing:.06em; color:var(--red); margin:24px 0 10px; text-transform:uppercase; }
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  th,td { text-align:left; padding:9px 12px; font-size:.82rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; }
+  tr:last-child td { border-bottom:none; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.66rem; letter-spacing:.04em; text-transform:uppercase; }
+  .pill.sent,.pill.welcomed { background:rgba(76,175,130,.15); color:var(--ok); }
+  .pill.failed,.pill.welcome_failed { background:rgba(205,65,43,.18); color:var(--bad); }
+  .pill.skipped { background:rgba(230,184,0,.15); color:var(--warn); }
+  .pill.signed_up,.pill.unknown,.pill.none { background:#222; color:var(--dim); }
+  .err { color:var(--bad); font-size:.72rem; }
+  .muted { color:var(--dim); }
+  button { background:transparent; border:1px solid var(--red); color:var(--red); padding:4px 10px; border-radius:6px; cursor:pointer; font-family:inherit; font-size:.72rem; }
+  button:hover { background:var(--red); color:#000; }
+  button:disabled { opacity:.4; cursor:default; }
+  .refresh { margin-left:auto; }
+  details summary { cursor:pointer; color:var(--dim); font-size:.72rem; }
+  details .hist { margin-top:6px; }
+  .hist div { font-size:.72rem; padding:2px 0; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/">MADLADSLAB</a><span class="tag">GAMES · ONBOARDING</span>
+  <div class="spacer"></div>
+  <a class="back" href="/admin">← admin</a>
+</header>
+<div class="wrap">
+  <div class="stats" id="stats"></div>
+
+  <h2>Delivery problems <span class="muted" id="probCount"></span></h2>
+  <table id="probTable"><thead><tr><th>When</th><th>To</th><th>Type</th><th>Status</th><th>Reason</th></tr></thead><tbody></tbody></table>
+
+  <h2>Signups <button class="refresh" onclick="load()">↻ refresh</button></h2>
+  <table id="userTable">
+    <thead><tr><th>Joined</th><th>User</th><th>Provider</th><th>Stage</th><th>Welcome</th><th>History</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+const fmt = (d) => d ? new Date(d).toLocaleString() : '—';
+const fmtShort = (d) => d ? new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + new Date(d).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}) : '—';
+const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pill = (v) => v ? `<span class="pill ${esc(v)}">${esc(v)}</span>` : '<span class="pill none">none</span>';
+
+async function load() {
+  const r = await fetch('/admin/api/onboarding?limit=150', { credentials:'same-origin' });
+  if (!r.ok) { document.getElementById('stats').innerHTML = '<div class="err">Failed to load ('+r.status+')</div>'; return; }
+  const d = await r.json();
+  const rows = d.rows || [];
+  const failed = rows.filter(x => x.welcomeStatus === 'failed').length;
+  const welcomed = rows.filter(x => x.welcomeStatus === 'sent').length;
+  const nowelcome = rows.filter(x => !x.welcomeStatus).length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="n">${rows.length}</div><div class="l">Signups shown</div></div>
+    <div class="stat"><div class="n" style="color:var(--ok)">${welcomed}</div><div class="l">Welcomed</div></div>
+    <div class="stat ${failed?'bad':''}"><div class="n">${failed}</div><div class="l">Welcome failed</div></div>
+    <div class="stat"><div class="n" style="color:var(--warn)">${nowelcome}</div><div class="l">No welcome yet</div></div>
+    <div class="stat ${(d.problems||[]).length?'bad':''}"><div class="n">${(d.problems||[]).length}</div><div class="l">Delivery problems</div></div>`;
+
+  const pb = document.querySelector('#probTable tbody');
+  document.getElementById('probCount').textContent = (d.problems||[]).length ? '('+d.problems.length+')' : '(none 🎉)';
+  pb.innerHTML = (d.problems||[]).map(p => `<tr>
+    <td class="muted">${fmtShort(p.at)}</td><td>${esc(p.to)}</td><td>${esc(p.type)}</td>
+    <td>${pill(p.status)}</td><td class="err">${esc(p.error||'')}</td></tr>`).join('')
+    || '<tr><td colspan="5" class="muted">No failed or skipped deliveries recorded.</td></tr>';
+
+  const tb = document.querySelector('#userTable tbody');
+  tb.innerHTML = rows.map(u => {
+    const hist = (u.comms||[]).map(c =>
+      `<div>${pill(c.status)} <span class="muted">${esc(c.type)}</span> · ${fmtShort(c.at)}${c.error?` <span class="err">${esc(c.error)}</span>`:''}</div>`).join('');
+    return `<tr>
+      <td class="muted">${fmtShort(u.createdAt)}</td>
+      <td><strong>${esc(u.name||u.username||u.email)}</strong><br><span class="muted">${esc(u.email)}</span>${u.username?` <span class="muted">· ${esc(u.username)}</span>`:''}</td>
+      <td class="muted">${esc(u.provider||'')}<br><span class="muted">${esc(u.source||'')}</span></td>
+      <td>${pill(u.stage)}</td>
+      <td>${pill(u.welcomeStatus||'')}${u.welcomeError?`<br><span class="err">${esc(u.welcomeError)}</span>`:''}</td>
+      <td>${u.commsCount?`<details><summary>${u.commsCount} event(s)</summary><div class="hist">${hist}</div></details>`:'<span class="muted">—</span>'}</td>
+      <td><button onclick="resend('${u._id}', this)">resend welcome</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="muted">No signups.</td></tr>';
+}
+
+async function resend(id, btn) {
+  btn.disabled = true; btn.textContent = 'sending…';
+  try {
+    const r = await fetch('/admin/api/onboarding/resend/'+id, { method:'POST', credentials:'same-origin' });
+    const d = await r.json();
+    btn.textContent = d.ok ? 'sent ✓' : 'failed';
+    if (!d.ok) { btn.title = d.error || ''; btn.disabled = false; }
+    setTimeout(load, 800);
+  } catch (e) { btn.textContent = 'error'; btn.disabled = false; }
+}
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

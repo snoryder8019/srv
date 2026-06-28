@@ -1,7 +1,7 @@
 # Blender × SD Asset Protocol — v1 (draft)
 
 **Status:** draft · **Started:** 2026-06-03 · **Companion to:**
-`/srv/SIEGE_KIT_PROTOCOL.md` (instances/skins), `/srv/games/WEBGAMES_PROTOCOL.md`
+`/srv/games/SIEGE_KIT_PROTOCOL.md` (instances/skins), `/srv/games/WEBGAMES_PROTOCOL.md`
 (identity/wallet). **Applies to:** every Three.js surface in the lab — today
 **towers** (`/srv/td`) and **madlands** (`/srv/madlands`); the SD generators are
 shared across `tiles`, `cards`, etc.

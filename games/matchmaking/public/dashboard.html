@@ -74,6 +74,17 @@
   .btn.go{background:var(--gold);color:#0c1a10;border-color:var(--gold)}
   .btn.go:hover{filter:brightness(1.07)}
 
+  /* my active games strip */
+  .mine{margin-bottom:22px}
+  .mine-h{font-size:11px;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:9px;font-weight:800}
+  .mine-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+  .mine-card{background:linear-gradient(180deg,#1a2c12,#0f1d17);border:1px solid #5a4a1e;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:9px}
+  .mine-card .mg{display:flex;align-items:center;gap:8px}
+  .mine-card .mg .name{font-size:15px;font-weight:800}
+  .mine-card .mg .plat{margin-left:auto;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:2px 6px}
+  .mine-card .meta{font-size:11px;color:var(--muted)}
+  .mine-card .btn.go{background:var(--gold);color:#0c1a10;border-color:var(--gold)}
+
   .empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:60px 20px;border:1px dashed var(--border);border-radius:14px}
   .empty a{color:var(--gold);font-weight:700}
   .conn{font-size:11px;color:var(--muted)}
@@ -93,6 +104,7 @@
   </div>
 
   <div class="stats" id="stats"></div>
+  <div class="mine" id="mine" style="display:none"></div>
   <div class="games" id="games"></div>
 </div>
 
@@ -103,9 +115,28 @@
   var MATCH  = '';
   var elStats=document.getElementById('stats'), elGames=document.getElementById('games'),
       elHealth=document.getElementById('health'), elUpdated=document.getElementById('updated'),
-      elConn=document.getElementById('conn'), elPulse=document.getElementById('pulse');
+      elConn=document.getElementById('conn'), elPulse=document.getElementById('pulse'),
+      elMine=document.getElementById('mine');
 
   function esc(x){var d=document.createElement('div');d.textContent=x==null?'':String(x);return d.innerHTML;}
+  function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
+
+  // --- my active games strip (signed-in only) -------------------------------
+  function renderMine(d){
+    if(!d||!d.signedIn||!d.mine||!d.mine.length){ elMine.style.display='none'; elMine.innerHTML=''; return; }
+    var cards=d.mine.map(function(m){
+      var ph=esc(m.phase||'lobby');
+      var occ=(m.humans||1)+(m.seatCount?(' / '+m.seatCount+' seats'):' here');
+      return '<div class="mine-card">'+
+        '<div class="mg"><span class="name">'+esc(cap(m.game))+'</span>'+
+        '<span class="plat">'+esc(m.platform||'')+'</span></div>'+
+        '<div class="meta"><span class="phase '+ph+'">'+ph+'</span> &nbsp;'+esc(occ)+'</div>'+
+        '<a class="btn go" href="'+esc(m.resumeUrl)+'">▶ Resume</a></div>';
+    }).join('');
+    elMine.innerHTML='<div class="mine-h">My Active Games ('+d.mine.length+')</div><div class="mine-grid">'+cards+'</div>';
+    elMine.style.display='';
+  }
+  function refreshMine(){ fetch('/dashboard/mine',{credentials:'include'}).then(function(r){return r.json();}).then(renderMine).catch(function(){}); }
 
   function statCard(n,l,cls){ return '<div class="stat '+cls+'"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'; }
 
@@ -186,16 +217,19 @@
 
   // initial paint via REST, then live via socket
   fetch('/dashboard/state').then(function(r){return r.json();}).then(render).catch(function(){});
+  refreshMine();
 
   try{
     var socket = io();
     socket.on('connect', function(){ elConn.textContent='live'; elConn.className='conn'; elPulse.style.background='var(--green)'; });
     socket.on('disconnect', function(){ elConn.textContent='reconnecting…'; elConn.className='conn bad'; elPulse.style.background='var(--red)'; });
-    socket.on('dash:snapshot', render);
-    socket.on('dash:update', render);
+    socket.on('dash:snapshot', function(s){ render(s); refreshMine(); });
+    socket.on('dash:update', function(s){ render(s); refreshMine(); });
   }catch(e){ elConn.textContent='socket unavailable (polling)';
-    setInterval(function(){ fetch('/dashboard/state').then(function(r){return r.json();}).then(render).catch(function(){}); }, 4000);
+    setInterval(function(){ fetch('/dashboard/state').then(function(r){return r.json();}).then(render).catch(function(){}); refreshMine(); }, 4000);
   }
+  // keep "my games" fresh even when the global board is quiet
+  setInterval(refreshMine, 12000);
 })();
 </script>
 </body>

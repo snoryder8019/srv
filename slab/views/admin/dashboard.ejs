@@ -74,7 +74,34 @@
 }
 .ma-msg { display: flex; }
 .ma-msg-user  { justify-content: flex-end; }
-.ma-msg-agent { justify-content: flex-start; }
+.ma-msg-agent { justify-content: flex-start; flex-wrap: wrap; align-items: center; }
+
+/* Response feedback (thumbs + comment) */
+.ma-fb { display: flex; align-items: center; gap: 4px; flex-basis: 100%; margin-top: 4px; padding-left: 2px; }
+.ma-fb-btn {
+  background: none; border: none; cursor: pointer; font-size: 0.85rem;
+  line-height: 1; padding: 2px 4px; border-radius: 3px; opacity: 0.4;
+  transition: opacity .15s, transform .1s, background .15s;
+}
+.ma-fb-btn:hover:not(:disabled) { opacity: 1; transform: scale(1.15); background: rgba(0,0,0,0.04); }
+.ma-fb-btn.selected { opacity: 1; }
+.ma-fb-btn:disabled { cursor: default; }
+.ma-fb-thanks {
+  font-size: 0.68rem; color: var(--slate); margin-left: 6px;
+  opacity: 0; transition: opacity .2s;
+}
+.ma-fb-thanks.show { opacity: 1; }
+.ma-fb-comment { display: flex; gap: 6px; flex-basis: 100%; margin-top: 6px; padding-left: 2px; }
+.ma-fb-input {
+  flex: 1; min-width: 0; padding: 6px 10px; font-size: 0.8rem; font-family: inherit;
+  border: 1px solid var(--border); border-radius: 4px; color: var(--on-surface);
+}
+.ma-fb-input:focus { outline: none; border-color: var(--navy); }
+.ma-fb-submit {
+  flex-shrink: 0; padding: 6px 12px; font-size: 0.72rem; font-family: inherit;
+  border: none; border-radius: 4px; background: var(--navy); color: #fff; cursor: pointer;
+}
+.ma-fb-submit:hover { background: var(--gold); color: var(--navy); }
 .ma-bubble {
   max-width: 82%;
   padding: 10px 14px;
@@ -153,22 +180,30 @@
 .ma-chip-enter { opacity: 0; transform: translateY(6px) scale(0.92); }
 .ma-chip-visible { opacity: 1; transform: translateY(0) scale(1); }
 
-/* Input row */
+/* Input row — input is its own full-width block stacked above the controls */
 .ma-input-row {
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: flex-end;
 }
-.ma-input-row input {
-  flex: 1;
-  min-width: 0;
+.ma-input-row #ma-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 0.9rem;
   font-family: inherit;
 }
-.ma-input-row input:focus { outline: none; border-color: var(--navy); }
+.ma-input-row #ma-input:focus { outline: none; border-color: var(--navy); }
+.ma-input-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.ma-input-controls #ma-send { margin-left: auto; }  /* push Send to the far right of the controls row */
 
 /* Result card */
 #ma-result {
@@ -369,11 +404,11 @@
   /* Input row:
      Row 1: [voice select ──────] [mic]
      Row 2: [input ──────────────] [send] */
-  .ma-input-row { flex-wrap: wrap; gap: 6px; }
-  #ma-voice-select { order: 1; flex: 1 1 0; min-width: 0; font-size: 0.73rem; padding: 7px 8px; }
-  .ma-mic-btn { order: 2; flex-shrink: 0; padding: 8px 11px; font-size: 0.95rem; }
-  .ma-input-row input { order: 3; flex: 1 1 0; min-width: 0; font-size: 0.85rem; padding: 9px 12px; }
-  .ma-input-row .btn { order: 4; flex-shrink: 0; padding: 9px 14px; font-size: 0.72rem; }
+  .ma-input-row { gap: 6px; }
+  .ma-input-row #ma-input { font-size: 0.85rem; padding: 9px 12px; }
+  #ma-voice-select { flex: 1 1 0; min-width: 0; font-size: 0.73rem; padding: 7px 8px; }
+  .ma-mic-btn { flex-shrink: 0; padding: 8px 11px; font-size: 0.95rem; }
+  .ma-input-controls .btn { flex-shrink: 0; padding: 9px 14px; font-size: 0.72rem; }
 
   /* Result card */
   #ma-result { margin-top: 12px; }
@@ -565,6 +600,113 @@
   </div>
   <% } %>
 
+  <!-- MASTER AGENT -->
+  <div class="card agent-card">
+    <div class="agent-header">
+      <div>
+        <div class="agent-name-row">
+          <span style="color:var(--gold);font-size:1.05rem;">✦</span>
+          <span class="card-title" style="margin:0;padding:0;border:none;" id="agent-display-name"><%= agentName %></span>
+          <span class="ai-badge">AI</span>
+        </div>
+        <p style="font-size:0.8rem;color:var(--slate);margin-top:4px;">I coordinate your blog, copy, sections, pages, design, and assets agents. Give me a goal and I'll plan the workflow.</p>
+      </div>
+      <a href="/admin/design" class="btn btn-ghost btn-sm" style="white-space:nowrap;">Configure ↗</a>
+    </div>
+
+    <!-- Chat thread -->
+    <div id="ma-messages">
+      <div class="ma-msg ma-msg-agent">
+        <div class="ma-bubble" id="ma-greeting">
+          <span class="ma-briefing-loading" style="color:var(--slate);font-style:italic;">Pulling today's briefing…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="ma-input-row">
+      <input id="ma-input" type="text" placeholder="Ask <%= agentName %>…" autocomplete="off">
+      <div class="ma-input-controls">
+        <select id="ma-voice-select" title="TTS voice" onchange="maSetVoice(this.value)">
+          <option value="lessac">Lessac (F)</option>
+          <option value="ryan">Ryan (M)</option>
+          <option value="slt">SLT (F)</option>
+        </select>
+        <button class="ma-mic-btn" id="ma-mic-btn" title="Speak" onclick="maToggleMic()">🎤</button>
+        <button class="btn btn-navy" id="ma-send" onclick="maSend()">Send</button>
+        <span id="ai-status"></span>
+      </div>
+    </div>
+
+    <!-- Workflow Checklist -->
+    <div id="ma-workflow" style="display:none;">
+      <div class="wf-header">
+        <div class="wf-title-row">
+          <span class="wf-icon">✦</span>
+          <span id="wf-title" class="wf-title">Workflow</span>
+          <span id="wf-progress" class="wf-progress"></span>
+        </div>
+        <div class="wf-actions">
+          <button class="btn btn-gold btn-sm" id="wf-run-btn" onclick="wfRunAll()">Run All</button>
+          <button class="btn btn-ghost btn-sm" onclick="wfClear()">Clear</button>
+        </div>
+      </div>
+      <div id="wf-tasks" class="wf-tasks"></div>
+    </div>
+
+    <!-- Result card -->
+    <div id="ma-result">
+      <div class="ma-result-header">
+        <div class="ma-result-meta">
+          <span id="ma-result-dept"></span>
+          <span id="ma-result-msg"></span>
+        </div>
+        <div class="ma-result-actions">
+          <button id="ma-execute-btn" class="btn btn-gold btn-sm" onclick="maExecute()">Apply Now</button>
+          <button id="ma-editor-btn" class="btn btn-ghost btn-sm" onclick="maOpenEditor()">Open in Editor</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ma-result').style.display='none'">✕</button>
+        </div>
+      </div>
+      <div id="ma-result-fields"></div>
+    </div>
+  </div>
+
+  <!-- ACCOUNT + QUICK ACTIONS -->
+  <div class="dash-two-col">
+    <div class="card">
+      <div class="card-title">Account</div>
+      <table>
+        <tbody>
+          <tr>
+            <td class="text-slate" style="width:110px;font-size:0.68rem;letter-spacing:.1em;text-transform:uppercase;">Name</td>
+            <td><%= user.displayName %></td>
+          </tr>
+          <tr>
+            <td class="text-slate" style="font-size:0.68rem;letter-spacing:.1em;text-transform:uppercase;">Email</td>
+            <td style="font-size:0.85rem;word-break:break-all;"><%= user.email %></td>
+          </tr>
+          <tr>
+            <td class="text-slate" style="font-size:0.68rem;letter-spacing:.1em;text-transform:uppercase;">Role</td>
+            <td><span class="badge badge-active">Admin</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Quick Actions</div>
+      <div class="quick-actions-grid" style="display:flex;flex-direction:column;gap:10px;">
+        <a href="/admin/blog/new" class="btn btn-navy">+ New Blog Post</a>
+        <a href="/admin/pages/new" class="btn btn-navy">+ New Page</a>
+        <a href="/admin/portfolio/new" class="btn btn-ghost">+ Portfolio Item</a>
+        <a href="/admin/copy" class="btn btn-ghost">Edit Site Copy</a>
+        <a href="/admin/design#tab=brand" class="btn btn-ghost">Upload Logo &amp; Brand Images</a>
+        <a href="/admin/design" class="btn btn-ghost">Design &amp; Settings</a>
+        <a href="/" target="_blank" class="btn btn-ghost">View Live Site ↗</a>
+      </div>
+    </div>
+  </div>
+
+
   <!-- RECENT ACTIVITY — unified feed across invoices/clients/inquiries/tickets/meetings/campaigns -->
   <% if (typeof activity !== 'undefined' && activity && activity.length) { %>
   <div class="card" style="margin-top:18px;padding:14px 18px;">
@@ -636,116 +778,12 @@
     <div id="digest-agents" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;"></div>
   </div>
 
-  <!-- MASTER AGENT -->
-  <div class="card agent-card">
-    <div class="agent-header">
-      <div>
-        <div class="agent-name-row">
-          <span style="color:var(--gold);font-size:1.05rem;">✦</span>
-          <span class="card-title" style="margin:0;padding:0;border:none;" id="agent-display-name"><%= agentName %></span>
-          <span class="ai-badge">AI</span>
-        </div>
-        <p style="font-size:0.8rem;color:var(--slate);margin-top:4px;">I coordinate your blog, copy, sections, pages, design, and assets agents. Give me a goal and I'll plan the workflow.</p>
-      </div>
-      <a href="/admin/design" class="btn btn-ghost btn-sm" style="white-space:nowrap;">Configure ↗</a>
-    </div>
-
-    <!-- Chat thread -->
-    <div id="ma-messages">
-      <div class="ma-msg ma-msg-agent">
-        <div class="ma-bubble" id="ma-greeting">
-          <span class="ma-briefing-loading" style="color:var(--slate);font-style:italic;">Pulling today's briefing…</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Input -->
-    <div class="ma-input-row">
-      <select id="ma-voice-select" title="TTS voice" onchange="maSetVoice(this.value)">
-        <option value="lessac">Lessac (F)</option>
-        <option value="ryan">Ryan (M)</option>
-        <option value="slt">SLT (F)</option>
-      </select>
-      <button class="ma-mic-btn" id="ma-mic-btn" title="Speak" onclick="maToggleMic()">🎤</button>
-      <input id="ma-input" type="text" placeholder="Ask <%= agentName %>…" autocomplete="off">
-      <button class="btn btn-navy" id="ma-send" onclick="maSend()">Send</button>
-      <span id="ai-status"></span>
-    </div>
-
-    <!-- Workflow Checklist -->
-    <div id="ma-workflow" style="display:none;">
-      <div class="wf-header">
-        <div class="wf-title-row">
-          <span class="wf-icon">✦</span>
-          <span id="wf-title" class="wf-title">Workflow</span>
-          <span id="wf-progress" class="wf-progress"></span>
-        </div>
-        <div class="wf-actions">
-          <button class="btn btn-gold btn-sm" id="wf-run-btn" onclick="wfRunAll()">Run All</button>
-          <button class="btn btn-ghost btn-sm" onclick="wfClear()">Clear</button>
-        </div>
-      </div>
-      <div id="wf-tasks" class="wf-tasks"></div>
-    </div>
-
-    <!-- Result card -->
-    <div id="ma-result">
-      <div class="ma-result-header">
-        <div class="ma-result-meta">
-          <span id="ma-result-dept"></span>
-          <span id="ma-result-msg"></span>
-        </div>
-        <div class="ma-result-actions">
-          <button id="ma-execute-btn" class="btn btn-gold btn-sm" onclick="maExecute()">Apply Now</button>
-          <button id="ma-editor-btn" class="btn btn-ghost btn-sm" onclick="maOpenEditor()">Open in Editor</button>
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ma-result').style.display='none'">✕</button>
-        </div>
-      </div>
-      <div id="ma-result-fields"></div>
-    </div>
-  </div>
-
-  <!-- ACCOUNT + QUICK ACTIONS -->
-  <div class="dash-two-col">
-    <div class="card">
-      <div class="card-title">Account</div>
-      <table>
-        <tbody>
-          <tr>
-            <td class="text-slate" style="width:110px;font-size:0.68rem;letter-spacing:.1em;text-transform:uppercase;">Name</td>
-            <td><%= user.displayName %></td>
-          </tr>
-          <tr>
-            <td class="text-slate" style="font-size:0.68rem;letter-spacing:.1em;text-transform:uppercase;">Email</td>
-            <td style="font-size:0.85rem;word-break:break-all;"><%= user.email %></td>
-          </tr>
-          <tr>
-            <td class="text-slate" style="font-size:0.68rem;letter-spacing:.1em;text-transform:uppercase;">Role</td>
-            <td><span class="badge badge-active">Admin</span></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="card">
-      <div class="card-title">Quick Actions</div>
-      <div class="quick-actions-grid" style="display:flex;flex-direction:column;gap:10px;">
-        <a href="/admin/blog/new" class="btn btn-navy">+ New Blog Post</a>
-        <a href="/admin/pages/new" class="btn btn-navy">+ New Page</a>
-        <a href="/admin/portfolio/new" class="btn btn-ghost">+ Portfolio Item</a>
-        <a href="/admin/copy" class="btn btn-ghost">Edit Site Copy</a>
-        <a href="/admin/design#tab=brand" class="btn btn-ghost">Upload Logo &amp; Brand Images</a>
-        <a href="/admin/design" class="btn btn-ghost">Design &amp; Settings</a>
-        <a href="/" target="_blank" class="btn btn-ghost">View Live Site ↗</a>
-      </div>
-    </div>
-  </div>
-
 </div>
 </div></div>
 
 <script>
 const AGENT_NAME = '<%= agentName.replace(/\\/g,"\\\\").replace(/'/g,"\\'") %>';
-const DEPT_COLORS = { blog: '#2E4270', copy: '#1C2B4A', section: '#5B3E2B', page: '#2E5B3E', design: '#6B3FA0', asset: '#C9A848', email: '#D4563A', invoice: '#2B7A5B', outreach: '#4A6FA5', research: '#3A7B8C', onboarding: '#8C5A3A', navigate: '#555' };
+const DEPT_COLORS = { blog: '#2E4270', copy: '#1C2B4A', section: '#5B3E2B', page: '#2E5B3E', design: '#6B3FA0', asset: '#C9A848', social: '#3B5998', print: '#B5651D', email: '#D4563A', invoice: '#2B7A5B', outreach: '#4A6FA5', research: '#3A7B8C', onboarding: '#8C5A3A', navigate: '#555' };
 
 // ── Cross-agent digest ──────────────────────────────────────────────────────
 async function loadDigest(range = 'day') {
@@ -993,7 +1031,10 @@ function maStopMic() {
 }
 
 // ── Chat helpers ─────────────────────────────────────────────────────────────
-function maAddMsg(role, html, isHtml) {
+// opts.feedback → render 👍/👎 rating controls on this agent reply.
+// opts.department → tagged on the stored feedback record.
+function maAddMsg(role, html, isHtml, opts) {
+  opts = opts || {};
   const box = document.getElementById('ma-messages');
   const row = document.createElement('div');
   row.className = `ma-msg ma-msg-${role}`;
@@ -1009,10 +1050,89 @@ function maAddMsg(role, html, isHtml) {
     speakBtn.textContent = '🔊';
     speakBtn.onclick = () => maSpeakBtn(speakBtn);
     row.appendChild(speakBtn);
+    if (opts.feedback) maAttachFeedback(row, bub, opts.department || null);
   }
   box.appendChild(row);
   box.scrollTop = box.scrollHeight;
   return bub;
+}
+
+// ── Response feedback (👍 / 👎 + comment on down) ──────────────────────────────
+function _maLastPrompt() {
+  for (let i = maHistory.length - 1; i >= 0; i--) {
+    if (maHistory[i].role === 'user') return maHistory[i].content;
+  }
+  return null;
+}
+
+async function _maSendFeedback(payload) {
+  try {
+    await fetch('/admin/master-agent/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) { console.warn('[feedback] send failed:', e); }
+}
+
+function maAttachFeedback(row, bub, department) {
+  const responseText = bub.innerText || bub.textContent || '';
+  const wrap = document.createElement('div');
+  wrap.className = 'ma-fb';
+
+  const up = document.createElement('button');
+  up.className = 'ma-fb-btn'; up.title = 'Good response'; up.textContent = '👍';
+  const down = document.createElement('button');
+  down.className = 'ma-fb-btn'; down.title = 'Needs work'; down.textContent = '👎';
+
+  const thanks = document.createElement('span');
+  thanks.className = 'ma-fb-thanks';
+  thanks.textContent = 'Thanks for the feedback';
+
+  // Comment box shown when 👎 is clicked
+  const commentWrap = document.createElement('div');
+  commentWrap.className = 'ma-fb-comment';
+  commentWrap.style.display = 'none';
+  commentWrap.innerHTML =
+    '<input type="text" class="ma-fb-input" placeholder="What went wrong? (optional)" autocomplete="off">' +
+    '<button class="ma-fb-submit">Send</button>';
+
+  function lock(selected) {
+    up.disabled = down.disabled = true;
+    up.classList.toggle('selected', selected === 'up');
+    down.classList.toggle('selected', selected === 'down');
+  }
+
+  up.onclick = () => {
+    lock('up');
+    thanks.classList.add('show');
+    _maSendFeedback({ rating: 'up', message: responseText, prompt: _maLastPrompt(), department });
+  };
+
+  down.onclick = () => {
+    lock('down');
+    commentWrap.style.display = 'flex';
+    const input = commentWrap.querySelector('.ma-fb-input');
+    input.focus();
+  };
+
+  const finishDown = () => {
+    const input = commentWrap.querySelector('.ma-fb-input');
+    const comment = input.value.trim();
+    commentWrap.style.display = 'none';
+    thanks.classList.add('show');
+    _maSendFeedback({ rating: 'down', comment, message: responseText, prompt: _maLastPrompt(), department });
+  };
+  commentWrap.querySelector('.ma-fb-submit').onclick = finishDown;
+  commentWrap.querySelector('.ma-fb-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); finishDown(); }
+  });
+
+  wrap.appendChild(up);
+  wrap.appendChild(down);
+  wrap.appendChild(thanks);
+  row.appendChild(wrap);
+  row.appendChild(commentWrap);
 }
 
 function maSetLoading(on) {
@@ -1123,7 +1243,7 @@ async function wfRunTask(id) {
       task.status = 'done';
       task.result = data;
       maHistory.push({ role: 'assistant', content: `✓ ${task.label}: ${data.message}` });
-      maAddMsg('agent', `✓ <strong>${task.label}</strong> — ${data.message}`, true);
+      maAddMsg('agent', `✓ <strong>${task.label}</strong> — ${data.message}`, true, { feedback: true, department: task.department });
 
       // Single-task workflow: auto-show result card
       if (wf.tasks.length === 1) {
@@ -1133,7 +1253,7 @@ async function wfRunTask(id) {
 
       // Update suggestion chips with latest
       if (data.suggestions?.length) {
-        _renderChips(data.suggestions);
+        if (typeof _renderChips === 'function') _renderChips(data.suggestions);
       }
     }
   } catch (e) {
@@ -1227,7 +1347,8 @@ async function maSend() {
   const text = input.value.trim();
   if (!text || wf.running) return;
   input.value = '';
-  document.getElementById('ma-quick-wrap').style.display = 'none';
+  const _maQuickWrap = document.getElementById('ma-quick-wrap');
+  if (_maQuickWrap) _maQuickWrap.style.display = 'none';
   document.getElementById('ma-result').style.display = 'none';
 
   maHistory.push({ role: 'user', content: text });
@@ -1344,7 +1465,7 @@ async function maSend() {
       };
       wfRender();
 
-      const agentBub = maAddMsg('agent', data.message + ' <span style="font-size:0.75rem;color:var(--slate);">See workflow below ↓</span>', true);
+      const agentBub = maAddMsg('agent', data.message + ' <span style="font-size:0.75rem;color:var(--slate);">See workflow below ↓</span>', true, { feedback: true, department: data.department });
       maShowResult(data);
       const speakBtn = agentBub.closest('.ma-msg')?.querySelector('.ma-speak-btn');
       maSpeak(data.message, speakBtn, true);
@@ -1386,8 +1507,17 @@ function maShowResult(data) {
   entries.forEach(([k, v]) => {
     const row = document.createElement('div');
     row.className = 'ma-field-row';
-    const preview = String(v).replace(/<[^>]+>/g, ' ').trim().slice(0, 160);
-    row.innerHTML = `<span class="ma-field-key">${k.replace(/_/g,' ')}</span><span class="ma-field-val">${preview}${String(v).length > 160 ? '…' : ''}</span>`;
+    let preview, overflow = '';
+    if (Array.isArray(v)) {
+      preview = v.length + ' field' + (v.length === 1 ? '' : 's');
+    } else if (v && typeof v === 'object') {
+      preview = Object.keys(v).join(', ');
+    } else {
+      const str = String(v).replace(/<[^>]+>/g, ' ').trim();
+      preview = str.slice(0, 160);
+      overflow = str.length > 160 ? '…' : '';
+    }
+    row.innerHTML = `<span class="ma-field-key">${k.replace(/_/g,' ')}</span><span class="ma-field-val">${preview}${overflow}</span>`;
     fieldsEl.appendChild(row);
   });
 

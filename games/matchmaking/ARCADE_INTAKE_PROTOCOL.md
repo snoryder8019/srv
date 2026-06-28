@@ -60,7 +60,7 @@ tmux session; one crashing only stops that title, never the portal.
 
 ## Amendments (2026-05-30) — endpoints, ticket, multi-platform, invites
 
-See `/srv/ARCHITECTURE.md` for cross-cutting protocols.
+See `/srv/games/ARCHITECTURE.md` for cross-cutting protocols.
 
 ### Endpoints (live)
 - `GET /intake/:game?token=<bridge jwt>` — bridge lands here; establishes the session

@@ -5,7 +5,7 @@
 
 import { execSync } from 'child_process';
 import { writeFileSync, existsSync } from 'fs';
-import { getSlabDb, getTenantDb } from './mongo.js';
+import { getSlabDb, getTenantDb, tenantClusterReady, registerTenantHost } from './mongo.js';
 import { encrypt } from './crypto.js';
 import { config } from '../config/config.js';
 
@@ -74,10 +74,21 @@ export async function provisionTenant({
   const dbName = `slab_${slug}`;
   const now = new Date();
 
+  // Pick the physical cluster for this tenant's DB. New tenants go to the
+  // self-hosted GPU cluster to escape the Atlas shared-tier 500-collection cap.
+  // If 'gpu' is configured but its tunnel is down right now, fall back to atlas
+  // so signups never hard-fail (the tenant simply lands on the shared cluster).
+  let dbHost = config.NEW_TENANT_DB_HOST === 'gpu' ? 'gpu' : 'atlas';
+  if (dbHost === 'gpu' && !tenantClusterReady()) {
+    console.warn(`[provision] gpu cluster unavailable — provisioning ${dbName} on atlas instead`);
+    dbHost = 'atlas';
+  }
+
   // 1. Create tenant document (starts as preview — goes active on payment)
   const tenantDoc = {
     domain,
     db: dbName,
+    dbHost,              // 'gpu' (self-hosted) | 'atlas' (shared cluster)
     status: 'preview',   // preview | active | suspended | cancelled
     platform: platform || 'slab', // slab | games | opstrain | madladslab
     brand: {
@@ -113,10 +124,11 @@ export async function provisionTenant({
   };
 
   await slab.collection('tenants').insertOne(tenantDoc);
-  console.log(`[provision] Tenant doc created: ${domain}`);
+  registerTenantHost(dbName, dbHost); // route this tenant's DB immediately
+  console.log(`[provision] Tenant doc created: ${domain} (db host: ${dbHost})`);
 
-  // 2. Seed tenant database
-  const tenantDb = getTenantDb(dbName);
+  // 2. Seed tenant database (on its assigned cluster)
+  const tenantDb = getTenantDb(dbName, dbHost);
   for (const [colName, seedDocs] of Object.entries(SEED_COLLECTIONS)) {
     await tenantDb.createCollection(colName).catch(() => {});
     if (seedDocs.length) {
@@ -147,7 +159,7 @@ export async function provisionTenant({
     generateApacheConf(customDomain);
   }
 
-  return { domain, dbName, slug };
+  return { domain, dbName, dbHost, slug };
 }
 
 // ── Linode DNS ──────────────────────────────────────────────────────────────

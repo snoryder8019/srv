@@ -8,6 +8,7 @@ import { s3Client, BUCKET, bucketUrl } from '../../plugins/s3.js';
 import { config } from '../../config/config.js';
 import { callLLM, callVisionLLM, webSearch, tryParseAgentResponse, runTool, generateSdImage, recordTrainingCandidate, buildBrandedSdPrompt } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import { buildAssetReferenceIndex, annotateAssets } from '../../plugins/usageMap.js';
 import { wouldExceedQuota, getQuotaLabel } from '../../plugins/storage.js';
 import { PACKS, getPack, fileUrl, listingUrl } from '../../data/asset-packs.js';
 import { generateThumbnail, deriveThumbKey } from '../../plugins/thumbnails.js';
@@ -98,10 +99,10 @@ router.get('/social', (req, res) => {
   res.render('admin/assets/social', { user: req.adminUser, page: 'assets' });
 });
 
-// GET /admin/assets/trim
-router.get('/trim', (req, res) => {
-  res.render('admin/assets/trim', { user: req.adminUser, page: 'assets' });
-});
+// GET /admin/assets/trim — Video Trimmer disabled for this release
+// router.get('/trim', (req, res) => {
+//   res.render('admin/assets/trim', { user: req.adminUser, page: 'assets' });
+// });
 
 // ── ASSET PACKS (free CC0/MIT icon & illustration libraries) ─────────────────
 // In-memory cache of jsDelivr pack listings. Pack indexes are sizable
@@ -114,9 +115,17 @@ async function fetchPackIndex(pack) {
   const cached = _packIndexCache.get(pack.id);
   if (cached && (Date.now() - cached.fetchedAt) < PACK_CACHE_TTL_MS) return cached.items;
 
-  const r = await fetch(listingUrl(pack), { signal: AbortSignal.timeout(15000) });
+  let r = await fetch(listingUrl(pack), { signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw new Error(`jsDelivr returned ${r.status}`);
-  const data = await r.json();
+  let data = await r.json();
+  // jsDelivr's listing API rejects "latest" (returns package metadata with a
+  // `tags` map instead of a `files` array). When that happens, resolve to the
+  // concrete latest version and re-fetch the file listing.
+  if (!Array.isArray(data.files) && data.tags?.latest) {
+    r = await fetch(listingUrl(pack, data.tags.latest), { signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error(`jsDelivr returned ${r.status}`);
+    data = await r.json();
+  }
   const files = Array.isArray(data.files) ? data.files : [];
   // Filter to this pack's path prefix + extension; strip prefix to get bare name
   const items = files
@@ -952,9 +961,79 @@ router.put('/social/presets/:id', express.json({ limit: '5mb' }), async (req, re
 router.delete('/social/presets/:id', async (req, res) => {
   try {
     const db = req.db;
-    await db.collection('social_presets').deleteOne({ _id: new ObjectId(req.params.id) });
+    const id = req.params.id;
+    await db.collection('social_presets').deleteOne({ _id: new ObjectId(id) });
+    // Also remove the linked library snapshot asset (image + thumb), if any.
+    const linked = await db.collection('assets').findOne({ editorPresetId: id });
+    if (linked) {
+      if (linked.bucketKey && config.LINODE_KEY) {
+        try { await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: linked.bucketKey })); }
+        catch (e) { console.warn('S3 preset-asset delete warning:', e.message); }
+      }
+      await deleteThumb(linked);
+      await db.collection('assets').deleteOne({ _id: linked._id });
+    }
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/assets/social/presets/:id/snapshot — upsert a library asset that
+// mirrors the latest rendered state of a saved generator. One asset per preset
+// (keyed by `editorPresetId`); re-saving replaces its image so the grid card
+// always shows the current design and links back into the editor for "Edit".
+router.post('/social/presets/:id/snapshot', assetMem.single('image'), async (req, res) => {
+  try {
+    const db = req.db;
+    const presetId = req.params.id;
+    if (!ObjectId.isValid(presetId)) return res.status(400).json({ error: 'Invalid id' });
+    if (!req.file) return res.status(400).json({ error: 'No image provided' });
+    if (!config.LINODE_KEY || !config.LINODE_SECRET) {
+      return res.status(500).json({ error: 'S3 storage not configured' });
+    }
+    const preset = await db.collection('social_presets').findOne({ _id: new ObjectId(presetId) });
+    if (!preset) return res.status(404).json({ error: 'Preset not found' });
+
+    if (req.tenant && await wouldExceedQuota(db, req.tenant, req.file.size || 0)) {
+      return res.status(413).json({ error: `Storage limit reached (${getQuotaLabel(req.tenant)}). Delete files or upgrade.`, code: 'STORAGE_QUOTA_EXCEEDED' });
+    }
+
+    const folder = preset.folder || 'clients';
+    const title = preset.name || 'Saved Generator';
+    const name = `${title.replace(/\s+/g, '-')}-design.png`;
+    const { key, url, filename } = await uploadToLinode(req.file.buffer, folder, name, 'image/png', req.tenant?.s3Prefix);
+    const { thumbUrl = null, thumbKey = null } = await tryThumb(req.file.buffer, key);
+
+    const existing = await db.collection('assets').findOne({ editorPresetId: presetId });
+    if (existing) {
+      // Swap in the fresh render; best-effort delete of the superseded files.
+      if (existing.bucketKey && existing.bucketKey !== key && config.LINODE_KEY) {
+        try { await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: existing.bucketKey })); }
+        catch (e) { console.warn('S3 snapshot replace warning:', e.message); }
+      }
+      await deleteThumb(existing);
+      await db.collection('assets').updateOne({ _id: existing._id }, { $set: {
+        filename, originalName: name, folders: [folder], folder,
+        clientId: preset.clientId || null, publicUrl: url, bucketKey: key,
+        thumbUrl, thumbKey, size: req.file.size, title, updatedAt: new Date(),
+      }});
+      return res.json({ success: true, assetId: existing._id });
+    }
+
+    const doc = {
+      filename, originalName: name, folders: [folder], folder,
+      clientId: preset.clientId || null, publicUrl: url, bucketKey: key,
+      thumbUrl, thumbKey, fileType: 'image', mimeType: 'image/png', size: req.file.size,
+      title, tags: ['generator', 'editable'],
+      editorPresetId: presetId,
+      source: { type: 'generator', presetId },
+      uploadedAt: new Date(),
+    };
+    const r = await db.collection('assets').insertOne(doc);
+    res.json({ success: true, assetId: r.insertedId });
+  } catch (err) {
+    console.error('[preset snapshot] error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -987,11 +1066,12 @@ router.get('/list', async (req, res) => {
     else if (sortParam === 'size') sortObj = { size: -1 };
     else if (sortParam === 'oldest') sortObj = { uploadedAt: 1 };
 
-    const [assets, total] = await Promise.all([
+    const [assets, total, refIdx] = await Promise.all([
       db.collection('assets').find(query).sort(sortObj).skip(Number(skip)).limit(Number(limit)).toArray(),
       db.collection('assets').countDocuments(query),
+      buildAssetReferenceIndex(db),
     ]);
-    res.json({ assets, total });
+    res.json({ assets: annotateAssets(assets, refIdx), total });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1132,42 +1212,43 @@ router.post('/upload', assetMem.array('files', 20), async (req, res) => {
 });
 
 // POST /admin/assets/trim-upload — upload a pre-trimmed video from client-side MediaRecorder
-router.post('/trim-upload', assetMem.single('video'), async (req, res) => {
-  try {
-    const db = req.db;
-    const { folder = 'general', filename: customName, startTime, endTime } = req.body;
-    if (!req.file) return res.status(400).json({ error: 'No file provided' });
-    if (!config.LINODE_KEY || !config.LINODE_SECRET) {
-      return res.status(500).json({ error: 'S3 storage not configured' });
-    }
-    if (req.tenant && await wouldExceedQuota(db, req.tenant, req.file.size || 0)) {
-      return res.status(413).json({ error: `Storage limit reached (${getQuotaLabel(req.tenant)}). Delete files or upgrade.`, code: 'STORAGE_QUOTA_EXCEEDED' });
-    }
-
-    const name = customName || req.file.originalname;
-    const { key, url, filename } = await uploadToLinode(req.file.buffer, folder, name, req.file.mimetype, req.tenant?.s3Prefix);
-    const doc = {
-      filename,
-      originalName: name,
-      folders: [folder],
-      folder,
-      publicUrl: url,
-      bucketKey: key,
-      fileType: 'video',
-      mimeType: req.file.mimetype,
-      size: req.file.size,
-      title: name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '),
-      tags: ['trimmed'],
-      trimmedFrom: { startTime: parseFloat(startTime) || 0, endTime: parseFloat(endTime) || 0 },
-      uploadedAt: new Date(),
-    };
-    const r = await db.collection('assets').insertOne(doc);
-    res.json({ success: true, asset: { ...doc, _id: r.insertedId } });
-  } catch (err) {
-    console.error('Trim upload error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+// Video Trimmer disabled for this release
+// router.post('/trim-upload', assetMem.single('video'), async (req, res) => {
+//   try {
+//     const db = req.db;
+//     const { folder = 'general', filename: customName, startTime, endTime } = req.body;
+//     if (!req.file) return res.status(400).json({ error: 'No file provided' });
+//     if (!config.LINODE_KEY || !config.LINODE_SECRET) {
+//       return res.status(500).json({ error: 'S3 storage not configured' });
+//     }
+//     if (req.tenant && await wouldExceedQuota(db, req.tenant, req.file.size || 0)) {
+//       return res.status(413).json({ error: `Storage limit reached (${getQuotaLabel(req.tenant)}). Delete files or upgrade.`, code: 'STORAGE_QUOTA_EXCEEDED' });
+//     }
+//
+//     const name = customName || req.file.originalname;
+//     const { key, url, filename } = await uploadToLinode(req.file.buffer, folder, name, req.file.mimetype, req.tenant?.s3Prefix);
+//     const doc = {
+//       filename,
+//       originalName: name,
+//       folders: [folder],
+//       folder,
+//       publicUrl: url,
+//       bucketKey: key,
+//       fileType: 'video',
+//       mimeType: req.file.mimetype,
+//       size: req.file.size,
+//       title: name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '),
+//       tags: ['trimmed'],
+//       trimmedFrom: { startTime: parseFloat(startTime) || 0, endTime: parseFloat(endTime) || 0 },
+//       uploadedAt: new Date(),
+//     };
+//     const r = await db.collection('assets').insertOne(doc);
+//     res.json({ success: true, asset: { ...doc, _id: r.insertedId } });
+//   } catch (err) {
+//     console.error('Trim upload error:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 
 // PUT /admin/assets/:id — update metadata
 router.put('/:id', async (req, res) => {

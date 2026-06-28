@@ -54,6 +54,25 @@ export async function fetchUrl(url) {
   }
 }
 
+// deepseek-r1 wraps its answer after a <think>…</think> reasoning block and
+// occasionally slips into Chinese. These helpers clean completions.
+export function stripThink(s) {
+  return String(s || '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')   // paired reasoning block
+    .replace(/^[\s\S]*?<\/think>/i, '')          // stray closing tag (open stripped upstream)
+    .replace(/<think>[\s\S]*$/i, '')             // unclosed opening tag → drop to end
+    .trim();
+}
+// CJK = Chinese/Japanese/Korean + fullwidth punctuation. Used to catch the model
+// leaving English.
+const CJK_RE = /[　-〿぀-ヿ㐀-䶿一-鿿가-힯豈-﫿＀-￯]/;
+export function hasCJK(s) { return CJK_RE.test(String(s || '')); }
+export function stripCJK(s) {
+  return String(s || '')
+    .replace(new RegExp(CJK_RE.source + '+', 'g'), '')
+    .replace(/\s{2,}/g, ' ').replace(/\s+([,.!?;:])/g, '$1').trim();
+}
+
 export async function callLLM(messages, systemPrompt, timeoutMs = 90000) {
   const res = await fetch(OLLAMA_URL, {
     method: 'POST',
@@ -73,7 +92,8 @@ export async function callLLM(messages, systemPrompt, timeoutMs = 90000) {
     throw new Error('LLM request failed: ' + errText.slice(0, 200));
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  // Always strip the model's <think> reasoning block — no caller wants it.
+  return stripThink(data.choices?.[0]?.message?.content || '');
 }
 
 // ── Vision (multimodal) LLM ───────────────────────────────────────────────────
@@ -185,9 +205,45 @@ export async function generateSdImage(prompt, negativePrompt, sizePreset) {
 // tenant's full brand context and produces a Stable Diffusion prompt flavored
 // by palette, voice, and industry. Falls back to raw seed on LLM failure.
 export async function buildBrandedSdPrompt(seed, brandContext, opts = {}) {
-  const baseNeg = 'text, words, letters, numbers, watermark, blurry, low quality, deformed, ugly';
   const seedClean = (seed || '').trim();
   const sizePreset = opts.sizePreset || 'ig-post';
+
+  // Quality/safety negatives we ALWAYS enforce regardless of seed.
+  const safetyNeg = 'text, words, letters, numbers, watermark, signature, logo, blurry, low quality, deformed, ugly, jpeg artifacts';
+  // Extra abstraction guards — ONLY when there's no seed. With no user input SD
+  // v1.5 loves turning vague "cozy / studio / modern" into furnished rooms, so
+  // we bar furniture/interiors/people to keep a clean abstract backdrop. When
+  // the user DID type a seed we must NOT bar their subject — that was the bug
+  // that made every prompt collapse into a generic gradient.
+  const abstractNeg = ', furniture, bed, couch, sofa, chair, table, lamp, pillow, cushion, rug, '
+    + 'room, interior, bedroom, living room, indoor scene, house, building, '
+    + 'people, person, human, face, hands, body, product, object, photograph';
+  const baseNeg = seedClean ? safetyNeg : (safetyNeg + abstractNeg);
+
+  // No seed → force a pure abstract backdrop. Seed present → honour the subject
+  // as a tasteful, background-friendly scene (room for text), not a gradient.
+  const ABSTRACT_PREFIX = seedClean
+    ? 'professional marketing background'
+    : 'abstract non-representational background, texture and gradient only, no objects, no furniture, no people';
+
+  // Merge in safety negatives, but NEVER let the user's own seed words (or whole
+  // phrase) leak into the negative — that would tell SD to avoid what they asked for.
+  const seedWords = new Set(seedClean.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2));
+  const seedLower = seedClean.toLowerCase();
+  const mergeNeg = (n) => {
+    const extra = String(n || '').split(',').map(s => s.trim()).filter(Boolean);
+    const have = new Set(baseNeg.split(',').map(s => s.trim().toLowerCase()));
+    const merged = baseNeg + extra
+      .filter(e => !have.has(e.toLowerCase()))
+      .filter(e => {
+        const el = e.toLowerCase();
+        if (seedLower && el === seedLower) return false;
+        for (const w of seedWords) { if (el.includes(w)) return false; }
+        return true;
+      })
+      .map(e => ', ' + e).join('');
+    return merged;
+  };
 
   const seedLine = seedClean
     ? `User seed phrase: "${seedClean}"`
@@ -199,22 +255,26 @@ Output ONLY raw JSON, no prose, no fences:
 {"fill": {"prompt": "...", "negative": "..."}}
 
 Rules:
-- Describe textures, atmosphere, mood, palette — NEVER text, letters, logos, or brand names.
+- The image is a BACKDROP behind marketing copy: keep the composition open and uncluttered with calm focal areas, but you MAY depict scenery, atmosphere, landscapes, skies, abstract forms and textures.
+- If a USER SEED is given, HONOR IT: the seed's subject/scene MUST be the central idea of the prompt. Render it as a tasteful, slightly soft background interpretation (depth of field, room for overlaid text) — never erase it into a plain gradient, and never render it as a busy foreground product shot.
+- If NO seed is given, produce a purely abstract non-representational backdrop: texture, gradient, light and mood only — no objects, people, or rooms.
 - Pull palette HEX values from the brand context above into the prompt as named hues (e.g. "navy and gold palette", "warm ivory tones").
 - Match the brand voice (luxurious / playful / industrial / minimalist / etc.) in atmosphere words.
-- If a seed is given, BLEND it with the brand mood; do not discard either.
+- The "negative" field is ONLY for quality defects (blur, watermark, text, lowres) and unwanted faces. NEVER put the user's seed, its subject, or its synonyms in the negative.
 - Size preset: ${sizePreset} — pick imagery that crops well at that aspect.
-- Keep "prompt" under 50 words.
-- "negative" must include: ${baseNeg}. Add any anti-content that conflicts with the brand.`;
+- Keep "prompt" under 60 words and start it with: "${ABSTRACT_PREFIX}".
+- "negative" must include at least: ${safetyNeg}.`;
 
   try {
     const raw = await callLLM([{ role: 'user', content: seedLine }], sys, 30000);
     const parsed = tryParseAgentResponse(raw);
     const out = parsed?.fill || {};
     if (typeof out.prompt === 'string' && out.prompt.trim()) {
+      let prompt = out.prompt.trim();
+      if (!new RegExp('^' + ABSTRACT_PREFIX.split(',')[0], 'i').test(prompt)) prompt = ABSTRACT_PREFIX + ', ' + prompt;
       return {
-        prompt: out.prompt.trim(),
-        negative: (out.negative || '').trim() || baseNeg,
+        prompt,
+        negative: mergeNeg(out.negative),
         source: 'enriched',
       };
     }
@@ -223,7 +283,9 @@ Rules:
   }
 
   return {
-    prompt: seedClean || 'elegant abstract textured background, professional brand mood',
+    prompt: seedClean
+      ? `${ABSTRACT_PREFIX}, ${seedClean}, soft depth of field, room for text, on-brand palette`
+      : `${ABSTRACT_PREFIX}, elegant flowing texture, professional brand mood`,
     negative: baseNeg,
     source: seedClean ? 'raw' : 'fallback',
   };
@@ -548,6 +610,31 @@ export const MCP_TOOLS = [
         formDesc:  { type: 'string', description: 'Current form description, if any' },
       },
       required: ['prompt'],
+    },
+  },
+  {
+    name: 'write_social_post',
+    description: 'Draft an on-brand social media post (body under 280 chars, optional link, hashtags) for one or more platforms. Returns a draft for review — never publishes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task:      { type: 'string', description: 'What the post should say or promote' },
+        platforms: { type: 'string', description: 'Comma-separated target platforms (facebook, instagram, threads, x, linkedin) — optional' },
+        context:   { type: 'string', description: 'Extra context or research notes' },
+      },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'write_print_copy',
+    description: 'Draft print-marketing copy (headline, subhead, body, offer, CTA, tagline) for a print campaign — cards, flyers, posters, stickers. Returns a draft material for review.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task:    { type: 'string', description: 'What the print piece is for — promotion, event, announcement' },
+        context: { type: 'string', description: 'Extra context or research notes' },
+      },
+      required: ['task'],
     },
   },
 ];
@@ -951,6 +1038,65 @@ HTML body rules:
   return tryParseAgentResponse(raw);
 }
 
+async function handleWriteSocialPost({ task, platforms, context, brandContext }) {
+  const searchResults = await webSearch(task.slice(0, 200));
+  const researchCtx = searchResults && !searchResults.startsWith('Search')
+    ? `\n\n--- WEB RESEARCH ---\n${searchResults}\n--- END RESEARCH ---` : '';
+  const contextNote = context ? `\n\nAdditional context: ${context}` : '';
+  const brand = brandContext ? `\n${brandContext}\n` : '';
+  const targets = platforms ? `\n\nTarget platform(s): ${platforms}.` : '';
+
+  const systemPrompt = `You write engaging social media posts for the business.
+${brand}
+Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
+{
+  "message": "one short sentence describing the post you wrote",
+  "fill": {
+    "body": "the post text — punchy, on-brand, with relevant emoji and 2-4 hashtags",
+    "link": "a URL to include, or empty string",
+    "platforms": "comma-separated platform keys this fits best (facebook, instagram, threads, x, linkedin)"
+  }
+}
+
+Rules:
+- Keep "body" under 280 characters so it fits every platform (including X).
+- Match the brand voice above. No markdown. Escape double quotes as \\".${targets}${contextNote}${researchCtx}`;
+
+  const raw = await callLLM([{ role: 'user', content: task }], systemPrompt);
+  return tryParseAgentResponse(raw);
+}
+
+async function handleWritePrintCopy({ task, context, brandContext }) {
+  const searchResults = await webSearch(task.slice(0, 200));
+  const researchCtx = searchResults && !searchResults.startsWith('Search')
+    ? `\n\n--- WEB RESEARCH ---\n${searchResults}\n--- END RESEARCH ---` : '';
+  const contextNote = context ? `\n\nAdditional context: ${context}` : '';
+  const brand = brandContext ? `\n${brandContext}\n` : '';
+
+  const systemPrompt = `You are a print-marketing copywriter for the business, writing copy used across a whole print campaign (cards, flyers, posters, stickers).
+${brand}
+Write concise, punchy, print-ready copy. Headlines short; body tight. Match the brand voice.
+
+Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
+{
+  "message": "one sentence describing the campaign copy",
+  "fill": {
+    "name": "short internal name for this print campaign",
+    "headline": "big punchy primary line (a few words)",
+    "subhead": "short supporting line",
+    "body": "one or two short sentences",
+    "offer": "deal/promo badge e.g. \\"20% OFF\\", or empty string",
+    "cta": "short call-to-action e.g. \\"Book Now\\"",
+    "tagline": "brief brand tagline"
+  }
+}
+
+Only include fields relevant to the task.${contextNote}${researchCtx}`;
+
+  const raw = await callLLM([{ role: 'user', content: `Write print campaign copy for: ${task}` }], systemPrompt);
+  return tryParseAgentResponse(raw);
+}
+
 // ── Client Research Agent ────────────────────────────────────────────────────
 export async function handleResearchClient({ clientName, company, website, notes, email, prompt, brandContext }) {
   // Step 1: Web search for the business
@@ -1099,6 +1245,8 @@ const TOOL_HANDLERS = {
   write_campaign:           handleWriteCampaign,
   draft_invoice:            handleDraftInvoice,
   draft_client_email:       handleDraftClientEmail,
+  write_social_post:        handleWriteSocialPost,
+  write_print_copy:         handleWritePrintCopy,
   research_client:          handleResearchClient,
   suggest_onboarding_fields: handleSuggestOnboardingFields,
   analyze_metrics:          handleAnalyzeMetrics,

@@ -43,7 +43,12 @@ const GAME_LIBS = {
   windrose: () => require('./windrose'),
 };
 
-const MAX_LOCAL        = 2;
+// Overflow-default: 0 local slots — every dedicated-server start provisions an
+// on-demand Linode (auto-killed after 1hr idle). The VPS is being taken out of
+// the game-hosting path; local hosting returns when the edge network serves games.
+const MAX_LOCAL        = 0;
+// Free-tier spin-up allowance (premium/admin are uncapped) — keeps cost bounded.
+const FREE_CONCURRENT_LIMIT = 1;
 const INACTIVITY_MS    = 60 * 60 * 1000;  // 1 hour
 const POLL_INTERVAL_MS = 2 * 60 * 1000;   // poll every 2 min for inactivity
 const STATUS_PUSH_MS   = 10 * 1000;       // push status to clients every 10s
@@ -160,23 +165,32 @@ async function requestStart(game, userInfo) {
   const running = countRunning();
 
   if (running >= MAX_LOCAL) {
-    // Free users wait for a local slot rather than burning a Linode.
+    // Overflow model: every start provisions an on-demand Linode. Premium/admin
+    // are uncapped; free users get a small concurrent allowance so spin-up cost
+    // stays bounded (each Linode self-destructs after 1hr idle anyway).
     if (!premium) {
-      const queued = await _enqueueRequest(game, userId, userName);
-      _emit('server:queued', { game, userId, position: queued.position });
-      return {
-        ok: true,
-        status: 'queued',
-        message: 'Both servers are currently in use. Your request is queued — we will notify you when your server is ready.',
-        queueId: queued.queueId,
-        position: queued.position,
-        premiumPriceUsd: 5.99,
-        premiumPitch: 'Upgrade to MadLadsLab Premium for $5.99/mo — instant access to any dedicated server, no queue.',
-      };
+      const active = db ? await db.collection('provisioned_servers').countDocuments({
+        $or: [{ userId }, { requestedBy: userId }],
+        status: { $in: ['provisioning', 'provisioned', 'running'] },
+      }) : 0;
+      if (active >= FREE_CONCURRENT_LIMIT) {
+        _emit('server:limit', { game, userId, active, limit: FREE_CONCURRENT_LIMIT });
+        return {
+          ok: false,
+          status: 'limit',
+          message: `Free tier allows ${FREE_CONCURRENT_LIMIT} active server at a time — yours is still running. Stop it first, or upgrade for unlimited concurrent servers.`,
+          activeCount: active,
+          limit: FREE_CONCURRENT_LIMIT,
+          premiumPriceUsd: 5.99,
+          premiumPitch: 'Upgrade to MadLadsLab Premium for $5.99/mo — unlimited concurrent dedicated servers, instant spin-up.',
+        };
+      }
+      console.log('[server-manager] Free-tier overflow (' + active + '/' + FREE_CONCURRENT_LIMIT + ' active) — provisioning Linode for', game, '(' + (userName || userId) + ')');
+    } else {
+      console.log('[server-manager] Overflow — provisioning Linode for', game, '(premium/admin)');
     }
 
-    // Premium / admin path — provision a Linode.
-    console.log('[server-manager] Local slots full (' + running + '/' + MAX_LOCAL + ') — provisioning Linode for', game, '(premium)');
+    // Provision an on-demand Linode (premium/admin, or free within allowance).
     try {
       const server = await provisioner.provisionServer(game, userId);
       // Persist the requested save (+ its wrapper) on the linode record. The

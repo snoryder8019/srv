@@ -2,7 +2,7 @@
 
 Shared, dependency-free logic for **siege/attack instances** — the fights a world
 (madlands) opens and an engine (towers) runs. Full contract:
-**`/srv/SIEGE_KIT_PROTOCOL.md`**.
+**`/srv/games/SIEGE_KIT_PROTOCOL.md`**.
 
 ## Modules
 - `descriptor.js` — build/validate the InstanceDescriptor; launch + return URLs (browser-safe)

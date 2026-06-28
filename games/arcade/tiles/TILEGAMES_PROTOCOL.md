@@ -6,7 +6,7 @@ The **tiles** platform is to tile games what **cards** is to card games: a share
 owning everything generic (identity handoff, seating, table lifecycle, turn clock + wait/kick
 vote, end-game, stats/activity export, reconnect, global modal) and delegating game rules to a
 **variant** in a subfolder. Engine differs from cards (tile sets/walls vs a 52-card deck);
-every cross-cutting protocol is shared. See /srv/ARCHITECTURE.md.
+every cross-cutting protocol is shared. See /srv/games/ARCHITECTURE.md.
 
 ## Layout (mirror of cards)
 ```

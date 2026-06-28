@@ -45,6 +45,7 @@ import printStudioRouter from './admin/printStudio.js';
 import notesRouter from './admin/notes.js';
 import analyticsRouter, { buildMetrics } from './admin/analytics.js';
 import shareRouter from './admin/share.js';
+import pipesRouter from './admin/pipes.js';
 
 const router = express.Router();
 
@@ -608,5 +609,6 @@ router.use('/print-studio', printStudioRouter);
 router.use('/notes', notesRouter);
 router.use('/analytics', analyticsRouter);
 router.use('/share', shareRouter);
+router.use('/pipes', pipesRouter);
 
 export default router;

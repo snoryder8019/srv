@@ -62,10 +62,29 @@ router.get('/api/games/users', requireAuth, requireAdmin, async (req, res) => {
   try {
     const db = req.app.locals.db;
     const users = await db.collection('users')
-      .find({}, { projection: { password: 0 } })
+      .find({}, { projection: { password: 0, email: 0 } })
       .sort({ createdAt: -1 })
       .limit(200)
       .toArray();
+
+    // Enrich with play history from webgame_leaderboard (keyed by platformId = user _id string)
+    const ids = users.map(u => String(u._id));
+    const lbRows = await db.collection('webgame_leaderboard')
+      .find({ platformId: { $in: ids } })
+      .toArray();
+    const playByUser = {};
+    for (const r of lbRows) {
+      const k = r.platformId;
+      const p = playByUser[k] || (playByUser[k] = { games: [], totalRuns: 0, lastPlayedAt: null });
+      p.games.push({ game: r.game, runs: r.runs || 0, wins: r.wins || 0, bestScore: r.bestScore || 0, lastPlayedAt: r.lastPlayedAt || null });
+      p.totalRuns += (r.runs || 0);
+      if (r.lastPlayedAt && (!p.lastPlayedAt || new Date(r.lastPlayedAt) > new Date(p.lastPlayedAt))) p.lastPlayedAt = r.lastPlayedAt;
+    }
+    for (const u of users) {
+      const p = playByUser[String(u._id)];
+      u.play = p ? { games: p.games.sort((a, b) => new Date(b.lastPlayedAt || 0) - new Date(a.lastPlayedAt || 0)), totalRuns: p.totalRuns, lastPlayedAt: p.lastPlayedAt } : { games: [], totalRuns: 0, lastPlayedAt: null };
+    }
+
     res.json(users);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -469,6 +488,78 @@ router.get('/api/newsletter/smtp-check', requireSuperAdmin, async (req, res) => 
     await mailer.verify();
     res.json({ ok: true, host: 'smtp.zoho.com', user: process.env.ZOHO_USER });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Onboarding funnel dashboard ───────────────────────────────────────────
+// Games-native onboarding view: who signed up, where they are in the funnel,
+// and whether their welcome/alert emails actually sent. Reads the stamped
+// user.funnel for fast listing and the shared comms ledger (slab.comms_log)
+// for the full per-user delivery history.
+router.get('/onboarding', requireAuth, requireAdmin, (req, res) => {
+  res.sendFile('onboarding-admin.html', { root: __dirname + '/../public' });
+});
+
+router.get('/api/onboarding', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { recentComms } = require('/srv/slab/plugins/comms-log.cjs');
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 300);
+    const users = await db.collection('users')
+      .find({}, { projection: { password: 0, images: 0 } })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+    const comms = await recentComms({ app: 'games', limit: 300 });
+    // index comms by lowercased email for quick per-user join
+    const byEmail = {};
+    for (const c of comms) {
+      const k = (c.to || '').toLowerCase();
+      (byEmail[k] = byEmail[k] || []).push(c);
+    }
+    const rows = users.map(u => {
+      const f = u.funnel || {};
+      const welcome = f.welcome || null;
+      const userComms = byEmail[(u.email || '').toLowerCase()] || [];
+      return {
+        _id: u._id,
+        email: u.email || '',
+        name: u.firstName || u.displayName || '',
+        username: u.username || '',
+        provider: u.provider || '',
+        createdAt: u.createdAt || null,
+        stage: f.stage || 'unknown',
+        source: f.source || '',
+        welcomeStatus: welcome ? welcome.status : null,
+        welcomeAt: welcome ? welcome.at : null,
+        welcomeError: welcome ? welcome.error : null,
+        commsCount: userComms.length,
+        comms: userComms.slice(0, 12).map(c => ({
+          type: c.type, status: c.status, error: c.error, at: c.createdAt, subject: c.subject,
+        })),
+      };
+    });
+    // surface recent failures/skips prominently
+    const problems = comms
+      .filter(c => c.status === 'failed' || c.status === 'skipped')
+      .slice(0, 50)
+      .map(c => ({ to: c.to, type: c.type, status: c.status, error: c.error, at: c.createdAt }));
+    res.json({ ok: true, count: rows.length, rows, problems });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/api/onboarding/resend/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const user = await db.collection('users').findOne({ _id: new ObjectId(req.params.id) });
+    if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
+    const onboarding = require('../lib/onboarding');
+    const result = await onboarding.resendWelcome(db, user);
+    res.json(result.ok ? { ok: true } : { ok: false, error: result.error });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 module.exports = router;

@@ -24,6 +24,11 @@ export function createAudioBus(opts = {}) {
   const ttsBase = opts.ttsBase || '/tts';
   const voiceName = opts.voice || 'ryan';
   const onMuteChange = opts.onMuteChange || (() => {});
+  // Called whenever the effective effects level changes (mute / Master / Effects
+  // slider). Games that synth their own SFX on a SEPARATE audio graph (e.g. the
+  // table3d Sound bus) wire this to their own setVolume so the mixer actually
+  // attenuates them instead of only honouring mute. Level = muted ? 0 : master*fx.
+  const onFxLevel = opts.onFxLevel || (() => {});
   // which channels this game surfaces in the mixer (master always shown). default: all.
   const shownChannels = Array.isArray(opts.channels) && opts.channels.length
     ? CHANNELS.filter((c) => c.id === 'master' || opts.channels.includes(c.id))
@@ -50,9 +55,13 @@ export function createAudioBus(opts = {}) {
     return ctx;
   }
   function applyVol() {
-    if (!ctx) return;
-    gains.master.gain.value = muted ? 0 : vol.master;
-    for (const c of CHANNELS) if (c.id !== 'master' && gains[c.id]) gains[c.id].gain.value = vol[c.id];
+    if (ctx) {
+      gains.master.gain.value = muted ? 0 : vol.master;
+      for (const c of CHANNELS) if (c.id !== 'master' && gains[c.id]) gains[c.id].gain.value = vol[c.id];
+    }
+    // always notify — table SFX live on a separate graph and need the level even
+    // before this bus's own AudioContext has been created.
+    try { onFxLevel(muted ? 0 : vol.master * vol.fx); } catch (e) {}
   }
   function save() { try { localStorage.setItem(LS_KEY, JSON.stringify({ ...vol, muted })); } catch (e) {} }
   function resume() { try { ac().resume(); } catch (e) {} }

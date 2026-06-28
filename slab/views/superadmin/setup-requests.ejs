@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup Requests — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; gap:16px; }
+    .logo { font-size:20px; font-weight:600; color:#fff; text-decoration:none; } .logo span { color:#c9a848; }
+    .breadcrumb { font-size:13px; color:#525252; } .breadcrumb a { color:#737373; text-decoration:none; } .breadcrumb a:hover { color:#c9a848; }
+    .container { max-width:1100px; margin:0 auto; padding:24px; }
+    h2 { font-size:16px; font-weight:500; margin-bottom:6px; }
+    .sub { font-size:13px; color:#737373; margin-bottom:18px; }
+    .stats { display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:12px 18px; min-width:110px; }
+    .stat .n { font-size:22px; font-weight:600; color:#fff; }
+    .stat .l { font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#737373; margin-top:2px; }
+    .filters { margin-bottom:16px; display:flex; gap:8px; flex-wrap:wrap; }
+    .chip { padding:6px 14px; font-size:12px; border-radius:20px; background:transparent; border:1px solid #333; color:#a3a3a3; text-decoration:none; }
+    .chip:hover { border-color:#c9a848; color:#c9a848; }
+    .chip.active { background:#c9a848; border-color:#c9a848; color:#0a0a0a; font-weight:500; }
+    .card { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px 18px; margin-bottom:12px; }
+    .card.s-new { border-left:3px solid #22c55e; }
+    .card.s-working { border-left:3px solid #c9a848; }
+    .card.s-done { border-left:3px solid #525252; opacity:0.72; }
+    .row1 { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+    .brand { font-size:15px; font-weight:600; color:#fff; }
+    .domain { font-size:12px; color:#737373; }
+    .badge { font-size:10px; text-transform:uppercase; letter-spacing:0.8px; padding:2px 8px; border-radius:10px; font-weight:600; }
+    .b-new { background:rgba(34,197,94,0.15); color:#22c55e; }
+    .b-working { background:rgba(201,168,72,0.15); color:#c9a848; }
+    .b-done { background:rgba(115,115,115,0.18); color:#a3a3a3; }
+    .meta { font-size:12px; color:#a3a3a3; margin:4px 0; }
+    .meta a { color:#c9a848; text-decoration:none; }
+    .accts { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+    .acct { font-size:11px; background:#1f1f1f; border:1px solid #2c2c2c; border-radius:4px; padding:3px 9px; color:#d4d4d4; }
+    .msg { font-size:13px; color:#d4d4d4; line-height:1.55; background:#0f0f0f; border:1px solid #1f1f1f; border-radius:5px; padding:10px 12px; margin:8px 0; white-space:pre-wrap; }
+    .when { font-size:11px; color:#525252; }
+    .actions { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+    .btn { padding:6px 14px; font-size:11px; border-radius:4px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; }
+    .btn:hover { border-color:#c9a848; color:#c9a848; }
+    .btn.on { background:#c9a848; border-color:#c9a848; color:#0a0a0a; font-weight:600; }
+    .empty { text-align:center; padding:48px; color:#525252; font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/superadmin" class="logo"><span>S</span>lab</a>
+    <div class="breadcrumb"><a href="/superadmin">Dashboard</a> / Setup Requests</div>
+  </div>
+  <div class="container">
+    <h2>&#9889; Account Wire-Up Requests</h2>
+    <div class="sub">Submissions from the "Welcome to sLab" banner on tenant <strong>/admin/settings</strong>. Each one also emails Scott.</div>
+
+    <div class="stats">
+      <div class="stat"><div class="n"><%= stats.open %></div><div class="l">New</div></div>
+      <div class="stat"><div class="n"><%= stats.working %></div><div class="l">Working</div></div>
+      <div class="stat"><div class="n"><%= stats.done %></div><div class="l">Done</div></div>
+      <div class="stat"><div class="n"><%= stats.total %></div><div class="l">Total</div></div>
+    </div>
+
+    <div class="filters">
+      <a class="chip <%= !filters.status ? 'active' : '' %>" href="/superadmin/setup-requests">All</a>
+      <a class="chip <%= filters.status === 'new' ? 'active' : '' %>" href="/superadmin/setup-requests?status=new">New</a>
+      <a class="chip <%= filters.status === 'working' ? 'active' : '' %>" href="/superadmin/setup-requests?status=working">Working</a>
+      <a class="chip <%= filters.status === 'done' ? 'active' : '' %>" href="/superadmin/setup-requests?status=done">Done</a>
+    </div>
+
+    <% if (!requests.length) { %>
+      <div class="empty">No setup requests<%= filters.status ? ' with status "' + filters.status + '"' : '' %> yet.</div>
+    <% } %>
+
+    <% for (const r of requests) { %>
+      <div class="card s-<%= r.status %>" data-id="<%= r._id %>">
+        <div class="row1">
+          <span class="brand"><%= r.brandName || r.domain || 'Unknown tenant' %></span>
+          <span class="domain"><%= r.domain || '' %></span>
+          <% const bcls = r.status === 'new' ? 'b-new' : (r.status === 'working' ? 'b-working' : 'b-done'); %>
+          <span class="badge <%= bcls %>" data-badge><%= r.status %></span>
+        </div>
+        <div class="meta">
+          <% if (r.requesterEmail) { %><a href="mailto:<%= r.requesterEmail %>"><%= r.requesterEmail %></a><% } %>
+          <% if (r.requesterName) { %> &middot; <%= r.requesterName %><% } %>
+        </div>
+        <% if (r.accounts && r.accounts.length) { %>
+          <div class="accts">
+            <% for (const a of r.accounts) { %><span class="acct"><%= a %></span><% } %>
+          </div>
+        <% } %>
+        <% if (r.message) { %><div class="msg"><%= r.message %></div><% } %>
+        <div class="when">
+          <%= r.createdAt ? new Date(r.createdAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '' %>
+          <% if (r.ip) { %> &middot; <%= r.ip %><% } %>
+        </div>
+        <div class="actions">
+          <% for (const s of ['new', 'working', 'done']) { %>
+            <button class="btn <%= r.status === s ? 'on' : '' %>" onclick="setStatus('<%= r._id %>', '<%= s %>', this)"><%= s.charAt(0).toUpperCase() + s.slice(1) %></button>
+          <% } %>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <script>
+  async function setStatus(id, status, btn) {
+    try {
+      const r = await fetch('/superadmin/setup-requests/' + id + '/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const j = await r.json();
+      if (!j.ok) { alert(j.error || 'Failed'); return; }
+      const card = btn.closest('.card');
+      card.className = 'card s-' + status;
+      card.querySelectorAll('.actions .btn').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      const badge = card.querySelector('[data-badge]');
+      badge.textContent = status;
+      badge.className = 'badge ' + (status === 'new' ? 'b-new' : (status === 'working' ? 'b-working' : 'b-done'));
+    } catch (e) {
+      alert('Network error');
+    }
+  }
+  </script>
+</body>
+</html>

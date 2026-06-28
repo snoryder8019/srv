@@ -4,6 +4,10 @@
  * Everyone at the table bets the SAME dealt hand. Each seat may stack any of:
  *   PLAYER  1:1      · BANKER  0.95:1 (5% commission) · TIE  8:1 (P/B push on a tie)
  *   P PAIR / B PAIR  11:1  (first two cards of that side are a pair)
+ *   EITHER PAIR  5:1       (either side's first two cards are a pair)
+ *   PERFECT PAIR 25:1      (either side's first two cards match rank AND suit)
+ *   P BONUS / B BONUS      (dragon-bonus: that side wins by a big margin, or natural)
+ *   BIG 0.54:1 / SMALL 1.5:1  (total cards dealt: 4 = small, 5–6 = big)
  *   DEALER  — a toke bet placed FOR the dealer on Banker (funds the dealer pool)
  *   TIP     — a flat gift straight to the dealer pool
  *
@@ -23,22 +27,41 @@ const catalog = JSON.parse(readFileSync(join(__dirname, 'meta.json'), 'utf8'));
 const SUITS = ['H', 'D', 'C', 'S'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const TENS = new Set(['10', 'J', 'Q', 'K']);
-const R = Object.assign({ bankerCommission: 0.05, tiePays: 8, pairPays: 11, decks: 6, penetration: 0.2 }, cfg.rules || {});
+const R = Object.assign({
+  bankerCommission: 0.05, tiePays: 8, pairPays: 11,
+  eitherPairPays: 5, perfectPairPays: 25, bigPays: 0.54, smallPays: 1.5,
+  decks: 6, penetration: 0.2,
+}, cfg.rules || {});
 const DECKS = R.decks;
-const SPOTS = ['player', 'banker', 'tie', 'ppair', 'bpair', 'dealer', 'tip'];
-const RETURNS = new Set(['player', 'banker', 'tie', 'ppair', 'bpair']);   // spots that can pay the bettor
+// dragon-bonus paytable: win-by-margin → odds (non-natural). natural win pays 1:1, natural tie pushes.
+const DRAGON = { 9: 30, 8: 10, 7: 6, 6: 4, 5: 2, 4: 1 };
+const SPOTS = ['player', 'banker', 'tie', 'ppair', 'bpair', 'epair', 'perfpair', 'pbonus', 'bbonus', 'big', 'small', 'dealer', 'tip'];
+const RETURNS = new Set(['player', 'banker', 'tie', 'ppair', 'bpair', 'epair', 'perfpair', 'pbonus', 'bbonus', 'big', 'small']);   // spots that can pay the bettor
 
 function rankOf(c) { return c.slice(0, -1); }
 function cardVal(c) { const r = rankOf(c); if (r === 'A') return 1; if (TENS.has(r)) return 0; return parseInt(r, 10); }
 function total(cards) { return cards.reduce((a, c) => a + cardVal(c), 0) % 10; }
 function isPair(cards) { return cards.length >= 2 && rankOf(cards[0]) === rankOf(cards[1]); }
+function isPerfectPair(cards) { return cards.length >= 2 && cards[0] === cards[1]; }   // identical rank AND suit
+// dragon bonus for one side: returns a payout multiplier (profit per unit), 0 = push, -1 = lose.
+function dragonBonus(side, h) {
+  const won = h.outcome === side;
+  const my = side === 'player' ? h.pt : h.bt;
+  const opp = side === 'player' ? h.bt : h.pt;
+  const myNat = total((side === 'player' ? h.player : h.banker).slice(0, 2)) >= 8;
+  const oppNat = total((side === 'player' ? h.banker : h.player).slice(0, 2)) >= 8;
+  if (myNat && oppNat && h.outcome === 'tie') return 0;     // natural tie → push
+  if (myNat && won) return 1;                               // natural win → 1:1
+  if (won && !myNat && !oppNat) return DRAGON[my - opp] || -1;  // non-natural win by margin
+  return -1;
+}
 function buildShoe(decks, rng) {
   const d = [];
   for (let k = 0; k < decks; k++) for (const s of SUITS) for (const r of RANKS) d.push(r + s);
   for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const t = d[i]; d[i] = d[j]; d[j] = t; }
   return d;
 }
-function mkBets() { return { player: 0, banker: 0, tie: 0, ppair: 0, bpair: 0, dealer: 0, tip: 0 }; }
+function mkBets() { const o = {}; for (const k of SPOTS) o[k] = 0; return o; }
 
 const baccarat = {
   id: 'baccarat',
@@ -189,6 +212,10 @@ const baccarat = {
 
     const m = h.match, before = m.bankrolls.slice();
     const pPair = isPair(h.player), bPair = isPair(h.banker);
+    const eitherPair = pPair || bPair;
+    const perfectPair = isPerfectPair(h.player) || isPerfectPair(h.banker);
+    const cardCount = h.player.length + h.banker.length;   // 4, 5, or 6
+    const isSmall = cardCount === 4, isBig = cardCount >= 5;
     const comm = R.bankerCommission;
     const breakdown = [];
     let handTip = 0, handDealerWin = 0;
@@ -201,6 +228,12 @@ const baccarat = {
       if (b.tie) add('tie', h.outcome === 'tie' ? b.tie * R.tiePays : -b.tie, h.outcome);
       if (b.ppair) add('ppair', pPair ? b.ppair * R.pairPays : -b.ppair, pPair ? 'pair' : 'no');
       if (b.bpair) add('bpair', bPair ? b.bpair * R.pairPays : -b.bpair, bPair ? 'pair' : 'no');
+      if (b.epair) add('epair', eitherPair ? b.epair * R.eitherPairPays : -b.epair, eitherPair ? 'pair' : 'no');
+      if (b.perfpair) add('perfpair', perfectPair ? b.perfpair * R.perfectPairPays : -b.perfpair, perfectPair ? 'perfect' : 'no');
+      if (b.pbonus) { const r = dragonBonus('player', h); add('pbonus', r < 0 ? -b.pbonus : Math.floor(b.pbonus * r), r < 0 ? 'no' : (r === 0 ? 'push' : 'x' + r)); }
+      if (b.bbonus) { const r = dragonBonus('banker', h); add('bbonus', r < 0 ? -b.bbonus : Math.floor(b.bbonus * r), r < 0 ? 'no' : (r === 0 ? 'push' : 'x' + r)); }
+      if (b.big) add('big', isBig ? Math.floor(b.big * R.bigPays) : -b.big, isBig ? `${cardCount} cards` : 'no');
+      if (b.small) add('small', isSmall ? Math.floor(b.small * R.smallPays) : -b.small, isSmall ? '4 cards' : 'no');
       // dealer toke bet on Banker: player always funds it (gift); the dealer pool
       // collects stake+winnings on a Banker win; a tie returns it to the player.
       if (b.dealer) {
@@ -219,6 +252,7 @@ const baccarat = {
     events.push({
       type: 'settle', outcome: h.outcome, playerTotal: h.pt, bankerTotal: h.bt,
       playerCards: h.player.slice(), bankerCards: h.banker.slice(), pPair, bPair,
+      perfectPair, cardCount, big: isBig, small: isSmall,
       breakdown, deltas, bankrolls: m.bankrolls.slice(),
       dealerTip: handTip, dealerWin: handDealerWin, dealerPool: m.dealerPool, recap,
     });
@@ -236,7 +270,7 @@ const baccarat = {
   },
 
   _pool(h) {
-    const p = { player: 0, banker: 0, tie: 0, ppair: 0, bpair: 0, dealer: 0, tip: 0 };
+    const p = {}; for (const k of SPOTS) p[k] = 0;
     for (const b of h.bets) for (const k of SPOTS) p[k] += (b[k] || 0);
     return p;
   },
@@ -275,7 +309,10 @@ const baccarat = {
       const amount = Math.min(h.match.bankrolls[seat], table.config.betSize);
       // simple flavor: mostly Banker/Player, occasional tie or a dealer tip
       const r = (h._rng ? h._rng() : Math.random());
-      const spot = r < 0.45 ? 'banker' : (r < 0.85 ? 'player' : (r < 0.93 ? 'tie' : 'dealer'));
+      // mostly Banker/Player, with a sprinkle of side action for table colour
+      const spot = r < 0.38 ? 'banker' : r < 0.70 ? 'player' : r < 0.78 ? 'tie'
+        : r < 0.83 ? 'ppair' : r < 0.87 ? 'bpair' : r < 0.90 ? 'epair' : r < 0.92 ? 'perfpair'
+        : r < 0.95 ? 'big' : r < 0.97 ? 'small' : r < 0.99 ? 'dealer' : 'tip';
       if (amount > 0) return { type: 'bet', spot, amount };
     }
     return { type: 'done' };

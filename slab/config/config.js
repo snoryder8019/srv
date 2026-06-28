@@ -12,6 +12,13 @@ export const config = {
   DB_URL: process.env.DB_URL,
   SLAB_DB: process.env.SLAB_DB || 'slab',
 
+  // Self-hosted tenant Mongo (GPU box, via SSH reverse tunnel on VPS loopback).
+  // When set, new tenants provision here instead of the Atlas shared cluster.
+  TENANT_DB_URL: process.env.TENANT_DB_URL || '',
+  // Host new tenants land on: 'gpu' (self-hosted) | 'atlas' (shared cluster).
+  // Falls back to atlas if no TENANT_DB_URL is configured.
+  NEW_TENANT_DB_HOST: process.env.NEW_TENANT_DB_HOST || (process.env.TENANT_DB_URL ? 'gpu' : 'atlas'),
+
   // Session & JWT — shared across all tenants (cookies are domain-scoped)
   JWT_SECRET: process.env.JWT_SECRET || 'dev_secret_change_me',
   SESHSEC: process.env.SESHSEC || 'dev_session_secret',
@@ -22,6 +29,12 @@ export const config = {
   LINODE_BUCKET: process.env.LINODE_BUCKET || 'madladslab',
   LINODE_KEY: process.env.LINODE_ACCESS,
   LINODE_SECRET: process.env.LINODE_SECRET,
+  // Object-storage cutover (Linode → self-hosted MinIO/CDN). All inert until set:
+  // - S3_FORCE_PATH_STYLE=true   → required for MinIO
+  // - CDN_BASE=https://cdn.madladslab.com → public URL host for stored objects
+  // When unset, behaviour is exactly the legacy Linode path.
+  S3_FORCE_PATH_STYLE: String(process.env.S3_FORCE_PATH_STYLE || '').toLowerCase() === 'true',
+  CDN_BASE: process.env.CDN_BASE || '',
 
   // Ollama LLM — shared AI infra
   OLLAMA_URL: process.env.OLLAMA_URL || 'https://ollama.madladslab.com/v1/chat/completions',

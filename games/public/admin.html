@@ -303,11 +303,11 @@
     <!-- Games Users -->
     <div class="panel" id="panel-gusers">
       <h2>Users</h2>
-      <div class="search-bar"><input type="text" id="guser-search" placeholder="Search email or name..." oninput="filterTable('guser-tbody', this.value)"></div>
+      <div class="search-bar"><input type="text" id="guser-search" placeholder="Search name or screen name..." oninput="filterTable('guser-tbody', this.value)"></div>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Subscription</th><th>Status</th><th>Action</th></tr></thead>
-          <tbody id="guser-tbody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+          <thead><tr><th>Name</th><th>Screen Name</th><th>Joined</th><th>Played</th><th>Role</th><th>Subscription</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody id="guser-tbody"><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1075,11 +1075,13 @@ function renderUserRow(u) {
   if (gamePerm) statusTags += '<span class="tag">' + esc(gamePerm) + '</span>';
   if (!statusTags) statusTags = '<span class="tag tag-free">—</span>';
 
-  const searchStr = ((u.displayName||u.email||'') + ' ' + (u.email||'')).toLowerCase();
+  // Screen name = generated public handle (lib/username.js displayFor). Never the real name/email.
+  var screenName = u.username || (u._id ? ('user_' + String(u._id).slice(-8)) : 'anon');
+  const searchStr = ((u.displayName||'') + ' ' + screenName + ' ' + (u.firstName||'')).toLowerCase();
 
   var userJson = JSON.stringify({
     id: u._id || u.id,
-    email: u.email,
+    screenName: screenName,
     name: u.displayName || u.firstName || '',
     isAdmin: !!u.isAdmin,
     isBroadcaster: !!u.isBroadcaster,
@@ -1094,9 +1096,33 @@ function renderUserRow(u) {
     suspendedUntil: u.suspendedUntil || '',
   });
 
+  // Joined date (signup)
+  var joinedCell = '<span style="color:var(--muted)">—</span>';
+  if (u.createdAt) {
+    var jd = new Date(u.createdAt);
+    if (!isNaN(jd)) joinedCell = '<span title="' + escAttr(jd.toLocaleString()) + '">' + esc(jd.toLocaleDateString()) + '</span>';
+  }
+
+  // Played: per-game tags with run counts; tooltip shows last-played per game
+  var play = u.play || { games: [], totalRuns: 0, lastPlayedAt: null };
+  var playedCell;
+  if (play.games && play.games.length) {
+    var tags = play.games.map(function(g) {
+      var lp = g.lastPlayedAt ? new Date(g.lastPlayedAt).toLocaleString() : 'unknown';
+      return '<span class="tag" title="' + escAttr(g.game + ' — ' + (g.runs || 0) + ' runs, ' + (g.wins || 0) + ' wins, best ' + (g.bestScore || 0) + '\nlast: ' + lp) + '">' +
+        esc(g.game) + ' <b>' + (g.runs || 0) + '</b></span>';
+    }).join(' ');
+    var lastStr = play.lastPlayedAt ? new Date(play.lastPlayedAt).toLocaleDateString() : '';
+    playedCell = tags + (lastStr ? '<div style="color:var(--muted);font-size:0.65rem;margin-top:2px;">last ' + esc(lastStr) + '</div>' : '');
+  } else {
+    playedCell = '<span style="color:var(--muted)">never played</span>';
+  }
+
   return '<tr data-search="' + escAttr(searchStr) + '" data-user="' + escAttr(userJson) + '">' +
     '<td>' + esc(u.displayName || u.firstName || '—') + '</td>' +
-    '<td style="color:var(--muted)">' + esc(u.email || '') + '</td>' +
+    '<td style="color:var(--muted)">' + esc(screenName) + '</td>' +
+    '<td style="white-space:nowrap;">' + joinedCell + '</td>' +
+    '<td>' + playedCell + '</td>' +
     '<td>' + roleTags + '</td>' +
     '<td>' + subTag + '</td>' +
     '<td>' + statusTags + '</td>' +
@@ -1110,7 +1136,7 @@ async function loadGUsers() {
     const r = await fetch('/admin/api/games/users');
     guserData = await r.json();
     tbody.innerHTML = guserData.map(u => renderUserRow(u)).join('');
-  } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="color:#cd412b">Error loading users</td></tr>'; }
+  } catch (e) { tbody.innerHTML = '<tr><td colspan="8" style="color:#cd412b">Error loading users</td></tr>'; }
 }
 
 // --- Modal ---
@@ -1123,7 +1149,7 @@ function openModalFromRow(btn) {
 
   document.getElementById('modal-uid').value = u.id;
   document.getElementById('modal-title').textContent = 'Edit User';
-  document.getElementById('modal-user-info').textContent = u.name + ' — ' + u.email;
+  document.getElementById('modal-user-info').textContent = u.name + ' — ' + (u.screenName || '');
   document.getElementById('modal-sub').value = u.subscription || 'free';
   document.getElementById('modal-expiry').value = u.subscriptionExpiry ? u.subscriptionExpiry.split('T')[0] : '';
   document.getElementById('modal-game-perm').value = u.gamePerm || '';

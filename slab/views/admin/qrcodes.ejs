@@ -83,6 +83,19 @@
   .qr-form-row { flex-direction: column; }
   .qr-links-grid { grid-template-columns: 1fr; }
 }
+
+/* Card design modal */
+.qr-modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 10002; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.qr-modal-box { background: var(--surface); border-radius: 12px; width: min(820px,96vw); max-height: 88vh; overflow: auto; padding: 18px; box-shadow: 0 16px 48px rgba(0,0,0,.3); }
+.qr-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.qr-modal-head strong { font-family: var(--font-heading), serif; font-size: 1.05rem; }
+.qr-modal-head button { border: 0; background: transparent; font-size: 1.2rem; cursor: pointer; color: var(--on-ivory-muted); }
+.cd-grid { display: grid; grid-template-columns: 220px 1fr; gap: 18px; align-items: start; }
+.cd-controls { display: flex; flex-direction: column; gap: 12px; }
+.cd-preview { background: repeating-conic-gradient(#e9e9e9 0% 25%, #f6f6f6 0% 50%) 0/22px 22px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; }
+.cd-preview iframe { border: 0; width: 100%; height: 560px; background: transparent; }
+.hidden { display: none !important; }
+@media (max-width: 640px) { .cd-grid { grid-template-columns: 1fr; } .cd-preview iframe { height: 460px; } }
 </style>
 
 <main class="admin-main">
@@ -192,9 +205,11 @@
 
             <div class="qr-actions">
               <a href="/admin/qr-codes/<%= link._id %>/qr.png" download="<%= link.slug %>-qr.png" class="btn btn-sm">Download PNG</a>
+              <button class="btn btn-sm btn-outline" onclick="openStyle('<%= link._id %>')">Style</button>
 
               <% if (link.type === 'business-card') { %>
                 <a href="/card/<%= link.slug %>" target="_blank" class="btn btn-sm btn-outline">Preview Card</a>
+                <button class="btn btn-sm btn-outline" onclick="openDesign('<%= link._id %>','<%= link.slug %>','<%= (link.card && link.card.template) || '' %>','<%= (link.card && link.card.scheme) || '' %>')">Design</button>
               <% } %>
 
               <form method="POST" action="/admin/qr-codes/<%= link._id %>/footer">
@@ -215,9 +230,130 @@
     <% } %>
 
   </div>
+
+  <!-- ═══ Card Design modal ═══ -->
+  <div id="cardDesignModal" class="qr-modal hidden">
+    <div class="qr-modal-box">
+      <div class="qr-modal-head"><strong>Card Design</strong><button type="button" onclick="closeDesign()" aria-label="Close">✕</button></div>
+      <form id="cardDesignForm" method="POST">
+        <div class="cd-grid">
+          <div class="cd-controls">
+            <div class="qr-form-group">
+              <label>Template</label>
+              <select name="template" id="cdTemplate" onchange="cdPreview()">
+                <% Object.entries(cardTemplates).forEach(function([k,t]){ %><option value="<%= k %>"><%= t.label %></option><% }); %>
+              </select>
+            </div>
+            <div class="qr-form-group">
+              <label>Color scheme</label>
+              <select name="scheme" id="cdScheme" onchange="cdPreview()">
+                <% Object.entries(cardSchemes).forEach(function([k,s]){ %><option value="<%= k %>"><%= s.label %></option><% }); %>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Save design</button>
+            <a id="cdOpen" href="#" target="_blank" class="btn btn-sm btn-outline">Open full card ↗</a>
+            <p style="font-size:0.72rem;color:var(--on-ivory-muted);margin-top:4px;">Live preview updates as you pick. “Brand colors” uses your design palette.</p>
+          </div>
+          <div class="cd-preview"><iframe id="cdFrame" title="Card preview"></iframe></div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══ QR Style modal ═══ -->
+  <div id="qrStyleModal" class="qr-modal hidden">
+    <div class="qr-modal-box">
+      <div class="qr-modal-head"><strong>QR Style</strong><button type="button" onclick="closeStyle()" aria-label="Close">✕</button></div>
+      <form id="qrStyleForm" method="POST">
+        <div class="cd-grid">
+          <div class="cd-controls">
+            <div class="qr-form-group"><label>Modules</label>
+              <select name="module" id="qsModule" onchange="qsPreview()"><option value="square">Square</option><option value="dots">Dots</option><option value="rounded">Rounded</option></select>
+            </div>
+            <div class="qr-form-group"><label>Fill</label>
+              <select name="fill" id="qsFill" onchange="qsPreview()"><option value="solid">Solid color</option><option value="gradient">Gradient</option></select>
+            </div>
+            <div class="qr-form-row" style="gap:8px">
+              <div class="qr-form-group" style="min-width:0"><label>Color</label><input type="color" name="color1" id="qsColor1" oninput="qsPreview()"></div>
+              <div class="qr-form-group" id="qsColor2Wrap" style="min-width:0"><label>End color</label><input type="color" name="color2" id="qsColor2" oninput="qsPreview()"></div>
+              <div class="qr-form-group" id="qsGradWrap" style="min-width:0"><label>Gradient</label><select name="gradientType" id="qsGrad" onchange="qsPreview()"><option value="linear">Linear</option><option value="radial">Radial</option></select></div>
+            </div>
+            <label class="inline" style="font-size:0.84rem"><input type="checkbox" name="logo" id="qsLogo" value="1" onchange="qsPreview()" style="width:auto"> Center logo</label>
+            <hr style="border:0;border-top:1px solid var(--border);margin:4px 0">
+            <label class="inline" style="font-size:0.84rem"><input type="checkbox" name="phantom" id="qsPhantom" value="1" onchange="qsPreview()" style="width:auto"> Phantom — melt into an image</label>
+            <div id="qsPhantomWrap" style="display:none;flex-direction:column;gap:8px">
+              <div class="qr-form-group"><label>Background image</label>
+                <select name="bgImageUrl" id="qsBg" onchange="qsPreview()"><option value="">— choose —</option><% (brandImages||[]).forEach(function(im){ %><option value="<%= im.url %>"><%= im.slot %><%= im.label?(' — '+im.label):'' %></option><% }); %></select>
+              </div>
+              <div class="qr-form-group"><label>Visibility</label><input type="range" name="contrast" id="qsContrast" min="0.35" max="0.85" step="0.05" value="0.6" oninput="qsPreview()"></div>
+            </div>
+            <input type="hidden" name="bg" value="transparent"><input type="hidden" name="bgColor" value="#ffffff">
+            <button type="submit" class="btn btn-primary" style="margin-top:6px">Save style</button>
+            <p style="font-size:0.72rem;color:var(--on-ivory-muted)">Phantom stays scannable but subtle. This style is also inherited by Print Studio (which may re-tint colors to match each material).</p>
+          </div>
+          <div class="cd-preview" style="align-items:center;justify-content:center;padding:18px"><img id="qsImg" alt="QR preview" style="width:100%;max-width:300px;border-radius:8px"></div>
+        </div>
+      </form>
+    </div>
+  </div>
 </main>
 
 <script>
+var cdSlug = '';
+function openDesign(id, slug, tpl, scheme) {
+  document.getElementById('cardDesignForm').action = '/admin/qr-codes/' + id + '/card';
+  cdSlug = slug;
+  document.getElementById('cdTemplate').value = tpl || '<%= defaultCardTemplate %>';
+  document.getElementById('cdScheme').value = scheme || '<%= defaultCardScheme %>';
+  document.getElementById('cardDesignModal').classList.remove('hidden');
+  cdPreview();
+}
+function closeDesign() { document.getElementById('cardDesignModal').classList.add('hidden'); }
+function cdPreview() {
+  var t = document.getElementById('cdTemplate').value, s = document.getElementById('cdScheme').value;
+  var u = '/card/' + cdSlug + '?tpl=' + t + '&scheme=' + s;
+  document.getElementById('cdFrame').src = u;
+  document.getElementById('cdOpen').href = u;
+}
+document.getElementById('cardDesignModal').addEventListener('click', function(e){ if (e.target === this) closeDesign(); });
+
+// ── QR style editor ──
+var QR_STYLES = <%- JSON.stringify(Object.fromEntries((links||[]).map(function(l){ return [String(l._id), l.style||{}]; }))) %>;
+var qsId = '';
+var QS_DEFAULT_C1 = '<%= designColors && designColors.color_primary || "#1C2B4A" %>';
+var QS_DEFAULT_C2 = '<%= designColors && designColors.color_accent || "#C9A848" %>';
+function qsEl(id){ return document.getElementById(id); }
+function openStyle(id){
+  qsId = id; var s = QR_STYLES[id] || {};
+  qsEl('qrStyleForm').action = '/admin/qr-codes/' + id + '/style';
+  qsEl('qsModule').value = s.module || 'square';
+  qsEl('qsFill').value = s.fill || 'solid';
+  qsEl('qsColor1').value = s.color1 || QS_DEFAULT_C1;
+  qsEl('qsColor2').value = s.color2 || QS_DEFAULT_C2;
+  qsEl('qsGrad').value = s.gradientType || 'linear';
+  qsEl('qsLogo').checked = !!s.logo;
+  qsEl('qsPhantom').checked = !!s.phantom;
+  qsEl('qsBg').value = s.bgImageUrl || '';
+  qsEl('qsContrast').value = s.contrast || 0.6;
+  qsEl('qrStyleModal').classList.remove('hidden');
+  qsPreview();
+}
+function closeStyle(){ qsEl('qrStyleModal').classList.add('hidden'); }
+function qsPreview(){
+  var grad = qsEl('qsFill').value === 'gradient';
+  qsEl('qsColor2Wrap').style.display = grad ? '' : 'none';
+  qsEl('qsGradWrap').style.display = grad ? '' : 'none';
+  qsEl('qsPhantomWrap').style.display = qsEl('qsPhantom').checked ? 'flex' : 'none';
+  var p = new URLSearchParams({
+    module: qsEl('qsModule').value, fill: qsEl('qsFill').value,
+    color1: qsEl('qsColor1').value, color2: qsEl('qsColor2').value, gradientType: qsEl('qsGrad').value,
+    logo: qsEl('qsLogo').checked ? '1' : '0', phantom: qsEl('qsPhantom').checked ? '1' : '0',
+    bgImageUrl: qsEl('qsBg').value, contrast: qsEl('qsContrast').value, bg: 'transparent', _: Date.now(),
+  });
+  qsEl('qsImg').src = '/admin/qr-codes/' + qsId + '/qr.png?' + p.toString();
+}
+qsEl('qrStyleModal').addEventListener('click', function(e){ if (e.target === this) closeStyle(); });
+
 function onDestChange() {
   var sel = document.getElementById('qrDest');
   var val = sel.value;

@@ -14,7 +14,7 @@
  *   view.handCounts[]  view.wall  view.lastDiscards[]  view.points[]  view.turn
  * Each declared win = points; first to winScore wins.
  */
-import { createTable3D } from './table3d.js?v=1780587392337';
+import { createTable3D } from './table3d.js?v=1781441125092';
 import { createTableClient } from './tableclient3d.js';
 import { createHUD } from './hud3d.js';
 import { buildTile, setTileLod, TILE_W, TILE_H, TILE_T } from './tile3d.js';

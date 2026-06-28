@@ -74,6 +74,16 @@ export const DESIGN_DEFAULTS = {
   nav_logo_split:      '0',
   nav_logo_split_end:  '0',            // char end for accent range (0 = use split as single point)
   nav_logo_accent_color: '',           // custom accent color for logo text (empty = use color_accent)
+  // ── Logo image sizing + text/logo composition ──
+  nav_logo_size:       '48',           // px — height of the nav logo image (oversize up to ~180)
+  // How the logo image and brand text sit together when display = 'both':
+  //   stack          → logo above text (default)
+  //   inline         → logo left, text right
+  //   inline-reverse → text left, logo right
+  //   overlap        → text laid over the logo (use overlap_x/y to nudge)
+  nav_logo_layout:     'stack',
+  nav_logo_overlap_x:  '0',            // px — horizontal nudge of text over logo (overlap mode)
+  nav_logo_overlap_y:  '0',            // px — vertical nudge of text over logo (overlap mode)
   // ── Brand wordmark typography ──
   nav_brand_size:        '1.4',        // rem
   nav_brand_weight:      '400',        // 300/400/500/600/700/800
@@ -265,7 +275,8 @@ export const THEME_KEYS = [
   'color_dark', 'color_white', 'color_muted', 'color_border',
   'color_success', 'color_danger',
   'font_heading', 'font_body',
-  'portfolio_layout', 'blog_layout', 'nav_logo_display', 'nav_logo_split', 'landing_layout',
+  'portfolio_layout', 'blog_layout', 'nav_logo_display', 'nav_logo_split',
+  'nav_logo_size', 'nav_logo_layout', 'nav_logo_overlap_x', 'nav_logo_overlap_y', 'landing_layout',
   'hero_style', 'hero_overlay_opacity', 'hero_text_align', 'hero_vpos', 'hero_height', 'hero_heading_size',
   'hero_slideshow_interval', 'hero_slideshow_dots', 'hero_slideshow_arrows', 'hero_slideshow_dot_color',
   'hero_slideshow_static',

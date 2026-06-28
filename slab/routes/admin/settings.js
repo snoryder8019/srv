@@ -8,6 +8,7 @@ import { config } from '../../config/config.js';
 import { logActivity } from '../../plugins/activityLog.js';
 import { PLATFORM_LIST, maskAccount } from '../../plugins/socialPublish.js';
 import { buildAuthUrl, exchangeCode, isOAuthProvider, EMAIL_OAUTH_PROVIDERS } from '../../plugins/emailOAuth.js';
+import { notifyAdmin } from '../../plugins/notify.js';
 
 const router = express.Router();
 
@@ -115,39 +116,12 @@ router.get('/', async (req, res) => {
     social_tiktok:    brand.socialLinks?.tiktok || '',
   };
 
-  // Load What's New from git commits on main
+  // What's New / Changelog — DISABLED for this release (2026-06-27).
+  // View section is hidden via `if (false)` guard; the git-log + pinned-notes
+  // build below is skipped to avoid spawning git on every settings load.
+  // Re-enable by restoring the original block (see git history).
   let whatsNew = [];
-  try {
-    const gitLog = execSync(
-      'git log main --pretty=format:"%H|%h|%s|%ai|%an" -30 -- slab/',
-      { encoding: 'utf8', timeout: 5000, cwd: '/srv' }
-    ).trim();
-    if (gitLog) {
-      const lines = gitLog.split('\n');
-      for (const line of lines) {
-        const [hash, short, message, dateStr, author] = line.split('|');
-        if (!message) continue;
-        const d = new Date(dateStr);
-        whatsNew.push({
-          hash, short, message,
-          date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-          author,
-          // Detect version tags in commit message
-          version: message.match(/v\s*[\d.]+/i)?.[0]?.trim() || null,
-          env: config.NODE_ENV,
-        });
-      }
-    }
-  } catch { /* ignore */ }
-
-  // Also load pinned notes from DB (superadmin annotations on specific versions)
   let pinnedNotes = {};
-  try {
-    const slab = getSlabDb();
-    const notes = await slab.collection('changelog').find({}).toArray();
-    for (const n of notes) pinnedNotes[n.commitHash || n.version || ''] = n.notes;
-  } catch { /* ignore */ }
 
   // Read package.json version
   let platformVersion = '1.0.0';
@@ -682,6 +656,64 @@ router.post('/changelog', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Account wire-up request (welcome banner form) ────────────────────────────
+// Tenant admin asks for help connecting integrations. Saved to the superadmin
+// action list (slab.setup_requests) and emailed to Scott via notifyAdmin.
+// Replaces the old paid "Done-For-You" CTA.
+router.post('/setup-request', async (req, res) => {
+  const tenant = req.tenant;
+  if (!tenant) return res.status(400).json({ error: 'No tenant context' });
+
+  const accounts = Array.isArray(req.body.accounts)
+    ? req.body.accounts.filter(a => typeof a === 'string').map(a => a.slice(0, 60)).slice(0, 20)
+    : [];
+  const message = (req.body.message || '').toString().trim().slice(0, 2000);
+
+  const domain         = tenant.domain;
+  const brandName      = tenant.brand?.name || '';
+  const requesterEmail = req.adminUser?.email || tenant.public?.email || tenant.meta?.ownerEmail || '';
+  const requesterName  = req.adminUser?.displayName || brandName || '';
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
+
+  try {
+    const slab = getSlabDb();
+    await slab.collection('setup_requests').insertOne({
+      tenantId: tenant._id || null,
+      tenantDb: tenant.db || req.adminUser?.tenantDb || null,
+      domain,
+      brandName,
+      requesterEmail,
+      requesterName,
+      accounts,
+      message,
+      status: 'new',            // new → working → done
+      createdAt: new Date(),
+      ip,
+    });
+  } catch (err) {
+    console.error('[setup-request] DB write failed:', err.message);
+    return res.status(500).json({ error: 'Could not save your request — please try again.' });
+  }
+
+  // Email Scott + write the platform_events feed (best-effort, non-blocking).
+  notifyAdmin({
+    type: 'contact',
+    app: 'slab',
+    email: requesterEmail,
+    name: requesterName || domain,
+    data: {
+      request: 'Account wire-up help',
+      brandName,
+      domain,
+      accounts: accounts.length ? accounts.join(', ') : '(none specified)',
+      message: message || '(no message)',
+    },
+    ip,
+  }).catch(e => console.error('[setup-request] notify failed:', e.message));
+
+  res.json({ ok: true });
 });
 
 export default router;

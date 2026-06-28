@@ -20,6 +20,9 @@
   --muted: <%= design.color_muted || design._on_bg_muted || '#6B7380' %>;
   --accent-2: <%= design.color_accent_2 || design.color_accent %>;
   --card-radius: <%= design.card_border_radius || '2' %>px;
+  --nav-logo-size: <%= design.nav_logo_size || '40' %>px;
+  --nav-logo-overlap-x: <%= design.nav_logo_overlap_x || '0' %>px;
+  --nav-logo-overlap-y: <%= design.nav_logo_overlap_y || '0' %>px;
   --font-heading: '<%= design.font_heading %>', serif;
   --font-body: '<%= design.font_body %>', sans-serif;
   --on-navy: <%= design._on_primary || '#FDFCFA' %>;
@@ -48,8 +51,18 @@ body { font-family:var(--font-body);color:var(--on-surface);background:var(--sur
 a { color:var(--gold); }
 
 /* ── Nav ── */
-.tl-nav { position:fixed;top:0;left:0;right:0;z-index:100;background:var(--navy-deep);padding:0 32px;height:60px;display:flex;align-items:center;justify-content:space-between; }
-.tl-nav-brand { font-family:var(--font-heading);font-size:1.2rem;font-weight:600;color:var(--on-navy-deep);text-decoration:none; }
+.tl-nav { position:fixed;top:0;left:0;right:0;z-index:100;background:var(--navy-deep);padding:10px 32px;min-height:60px;display:flex;align-items:center;justify-content:space-between; }
+.tl-nav-brand { font-family:var(--font-heading);font-size:1.2rem;font-weight:600;color:var(--on-navy-deep);text-decoration:none;display:flex;align-items:center;line-height:1; }
+.tl-nav-brand img { height:var(--nav-logo-size, 40px);width:auto;object-fit:contain;flex-shrink:0; }
+.tl-nav-brand .tl-brand-text { display:flex;flex-direction:column;line-height:1; }
+/* Logo + text composition (display = both) */
+.tl-nav-brand.logo-stack { flex-direction:column;align-items:flex-start;gap:6px; }
+.tl-nav-brand.logo-inline { flex-direction:row;align-items:center;gap:12px; }
+.tl-nav-brand.logo-inline-reverse { flex-direction:row-reverse;align-items:center;gap:12px; }
+.tl-nav-brand.logo-overlap { display:grid;place-items:center;justify-items:center; }
+.tl-nav-brand.logo-overlap > * { grid-area:1 / 1; }
+.tl-nav-brand.logo-overlap img { z-index:1; }
+.tl-nav-brand.logo-overlap .tl-brand-text { z-index:2;text-align:center;transform:translate(var(--nav-logo-overlap-x,0px), var(--nav-logo-overlap-y,0px)); }
 .tl-nav-links { display:flex;gap:24px; }
 .tl-nav-links a { color:rgba(253,252,250,0.6);text-decoration:none;font-size:0.82rem;font-weight:500;transition:color 0.2s; }
 .tl-nav-links a:hover { color:var(--gold-light); }
@@ -160,11 +173,19 @@ a { color:var(--gold); }
 <!-- Nav -->
 <% if (_vis.header !== false) { %>
 <nav class="tl-nav" style="<%= design.nav_bg ? 'background:' + design.nav_bg + ';' : '' %>">
-  <a href="/" class="tl-nav-brand" style="<%= _navBrandColor ? 'color:' + _navBrandColor + ';' : '' %>">
-    <% if (logos && logos.logo_white) { %>
-      <img src="<%= logos.logo_white %>" alt="<%= brand?.name || '' %>" style="height:32px;">
-    <% } else { %>
-      <%= brand?.name || 'Home' %>
+  <%
+    const _tlLogoImg  = (logos && (logos.logo_white || logos.logo_primary)) || '';
+    const _tlDisplay  = design.nav_logo_display || 'text';
+    const _tlShowImg  = !!(_tlLogoImg && (_tlDisplay === 'image' || _tlDisplay === 'both'));
+    const _tlShowText = _tlDisplay !== 'image' || !_tlLogoImg;
+    const _tlLayoutCls = (_tlShowImg && _tlShowText) ? ('logo-' + (design.nav_logo_layout || 'stack')) : '';
+  %>
+  <a href="/" class="tl-nav-brand <%= _tlLayoutCls %>" style="<%= _navBrandColor ? 'color:' + _navBrandColor + ';' : '' %>">
+    <% if (_tlShowImg) { %>
+      <img src="<%= _tlLogoImg %>" alt="<%= brand?.name || '' %>">
+    <% } %>
+    <% if (_tlShowText) { %>
+      <span class="tl-brand-text"><%= brand?.name || 'Home' %></span>
     <% } %>
   </a>
   <div class="tl-nav-links">

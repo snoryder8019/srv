@@ -704,14 +704,30 @@
     const clientBadge = asset.clientId ? '<span class="asset-client-dot" title="Linked to client">●</span>' : '';
     const checkHtml = bulkMode ? `<div class="bulk-check ${bulkSelected.has(asset._id) ? 'checked' : ''}">✓</div>` : '';
 
+    // Usage flag — "Unused" marks a cleanup candidate (nothing links to it, past
+    // the new-upload grace window); "In use" lists where it's referenced.
+    let usageHtml = '';
+    if (asset.cleanup) {
+      usageHtml = `<span class="asset-usage-badge unused" title="Not linked anywhere yet — safe to review for cleanup">Unused</span>`;
+    } else if (asset.inUse) {
+      const where = (asset.usedBy || []).join(', ');
+      usageHtml = `<span class="asset-usage-badge inuse" title="In use${where ? ': ' + escHtml(where) : ''}">In use</span>`;
+    }
+
+    // Saved-generator snapshot → deep-link back into the editor for re-editing.
+    const editHtml = asset.editorPresetId
+      ? `<a class="asset-edit-badge" href="/admin/assets/social?preset=${asset.editorPresetId}" title="Edit this design in the Asset Generator">✎ Edit</a>`
+      : '';
+
     card.innerHTML = `
-      ${checkHtml}
+      ${checkHtml}${usageHtml}${editHtml}
       <div class="asset-thumb${isSvg ? ' is-svg' : ''}">${thumbHtml}</div>
       <div class="asset-name">
         <span class="asset-type-badge ${badge}">${asset.fileType}</span>${clientBadge}${escHtml(asset.title || asset.originalName)}
       </div>`;
 
     card.addEventListener('click', (e) => {
+      if (e.target.closest('.asset-edit-badge')) return; // let the link navigate
       if (bulkMode) {
         e.stopPropagation();
         if (bulkSelected.has(asset._id)) {

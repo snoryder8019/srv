@@ -21,6 +21,7 @@ import { loadBrandContext } from '../../plugins/brandContext.js';
 import { callLLM, webSearch, tryParseAgentResponse, generateSdImage } from '../../plugins/agentMcp.js';
 import { relativeLuminance } from '../../plugins/colorContrast.js';
 import { htmlToPdf, htmlToPng, htmlToBatch } from '../../plugins/headless.js';
+import { renderStyledQRDataUrl } from '../../plugins/qrStyle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VIEWS = path.resolve(__dirname, '..', '..', 'views', 'print');
@@ -108,8 +109,23 @@ async function buildContext(req, material, formatKey, opts = {}) {
     try {
       const link = await db.collection('qr_links').findOne({ _id: new ObjectId(material.qrLinkId) });
       if (link) {
+        // Inherit the QR link's style (module shape / fill / logo / phantom) but
+        // RE-TINT colors to the material palette for cohesion. Renders on the
+        // template's white QR card (transparent bg = quiet zone).
+        const ls = link.style || {};
         const dark = relativeLuminance(pal.ink) > 0.4 ? '#111111' : pal.ink;
-        const dataUrl = await QRCode.toDataURL(link.url, { width: 600, margin: 1, color: { dark, light: '#ffffff' } });
+        const style = {
+          module: ls.module || 'square',
+          fill: ls.fill === 'gradient' ? 'gradient' : 'solid',
+          gradientType: ls.gradientType || 'linear',
+          color1: dark, color2: pal.accent,
+          logo: !!ls.logo, bg: 'transparent',
+        };
+        let logoUrl;
+        if (style.logo) { const lr = await db.collection('brand_images').findOne({ slot: 'logo_primary' }); logoUrl = lr?.url; }
+        const dataUrl = await renderStyledQRDataUrl(link.url, style, {
+          size: 600, transparent: true, logoUrl, alpha: ls.phantom ? 0.78 : 1,
+        });
         const minSide = Math.min(fmt.wIn, fmt.hIn);
         qr = { dataUrl, caption: material.qrCaption || 'Scan to connect', sizeIn: Math.max(0.55, Math.min(minSide * 0.22, 2.2)) };
       }

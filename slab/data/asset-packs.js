@@ -78,7 +78,9 @@ export function fileUrl(pack, name) {
   return `https://cdn.jsdelivr.net/npm/${pack.pkg}${ver}/${pack.pathPrefix}${name}${pack.extension}`;
 }
 
-export function listingUrl(pack) {
-  const ver = pinnedVer(pack);
+export function listingUrl(pack, versionOverride) {
+  // versionOverride lets the caller pin a resolved version (e.g. when the pack
+  // is configured as "latest", which jsDelivr's listing API won't accept).
+  const ver = versionOverride ? '@' + versionOverride : pinnedVer(pack);
   return `https://data.jsdelivr.com/v1/packages/npm/${pack.pkg}${ver}?structure=flat`;
 }

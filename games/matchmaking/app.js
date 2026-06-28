@@ -109,6 +109,26 @@ async function findActiveSeat(platformId) {
   return best;
 }
 
+// ALL live seats a player holds across EVERY platform (match board "my games").
+// Uses each platform's plural /internal/seats; falls back to the singular /seat
+// for any platform that hasn't shipped the plural endpoint yet (e.g. cards).
+async function findAllActiveSeats(platformId) {
+  const out = [];
+  for (const key of Object.keys(config.platforms)) {
+    try {
+      const j = await platformInternal(key, `/internal/seats?platformId=${encodeURIComponent(platformId)}`);
+      if (j && Array.isArray(j.seats)) { for (const s of j.seats) out.push({ ...s, platform: key }); continue; }
+    } catch (e) { /* try the singular fallback below */ }
+    try {
+      const j = await platformInternal(key, `/internal/seat?platformId=${encodeURIComponent(platformId)}`);
+      if (j && j.seat) out.push({ ...j.seat, platform: key });
+    } catch (e) { /* platform down — skip */ }
+  }
+  // in-progress first, then by game name
+  out.sort((a, b) => ((a.phase === 'gameOver' ? 1 : 0) - (b.phase === 'gameOver' ? 1 : 0)) || String(a.game).localeCompare(String(b.game)));
+  return out;
+}
+
 // --- catalog lookup across ALL game platforms, cached briefly ---
 // Each game is tagged with its platform key so handoff routes to the right host.
 let catalogCache = { at: 0, games: [] };
@@ -366,6 +386,32 @@ app.get('/resume', async (req, res) => {
   res.redirect(`${plat.public}/lobby/${encodeURIComponent(seat.game)}?ticket=${encodeURIComponent(ticket)}`);
 });
 
+// --- walk up to a SPECIFIC live table and sit down (over a bot if needed) -------
+// The 3D scene's satellites/scoreboard link here: tap a table → take an open seat
+// or displace a bot at THAT exact table, then drop into its lobby on a ticket.
+// Falls back to launching the game fresh if the table is full of humans or gone.
+app.get('/sit', async (req, res) => {
+  if (!req.session.user) return res.redirect(`${config.platform.url}/`);
+  const user = req.session.user;
+  const platform = req.query.platform || 'tiles';
+  const tableId = req.query.tableId;
+  const game = req.query.game || '';
+  const plat = config.platforms[platform];
+  const launch = () => res.redirect(`${config.platform.url}/arcade/${encodeURIComponent(game)}/play`);
+  if (!plat || !tableId) return launch();
+  let info = null;
+  try {
+    const j = await platformInternal(platform, `/internal/table/${encodeURIComponent(tableId)}/seat`);
+    info = j && j.seat;
+  } catch (e) { /* platform down → launch fresh */ }
+  if (!info) return launch();   // full of humans, finished, or gone
+  const ticket = mintTableTicket({
+    tableId, game: info.game || game, params: {}, seat: info.seat,
+    platformId: user.platformId, displayName: user.displayName, players: [], via: 'matchmaking', mode: 'sit',
+  }, '8h');
+  res.redirect(`${plat.public}/lobby/${encodeURIComponent(info.game || game)}?ticket=${encodeURIComponent(ticket)}`);
+});
+
 // --- CASINO: list open tables across minimums, and join/fill one ---------------
 // JSON listing for the casino lobby UI: for each minimum tier, the open tables
 // (with occupancy) plus how many seats are free. Players pick a tier/table.
@@ -431,6 +477,31 @@ app.get('/dashboard', (req, res) => {
 });
 // REST snapshot — initial paint + no-socket fallback (screen-name-safe).
 app.get('/dashboard/state', (req, res) => res.json(getState()));
+
+// Personalized: the signed-in viewer's OWN active games across every platform,
+// each with a one-tap resume link (re-mints a ticket into that exact seat). The
+// global board (above) already lists every joinable table; this is the "mine"
+// strip the board renders at the top. Returns { signedIn:false } for guests.
+app.get('/dashboard/mine', async (req, res) => {
+  if (!req.session.user) return res.json({ ok: true, signedIn: false, mine: [] });
+  const user = req.session.user;
+  try {
+    const seats = await findAllActiveSeats(user.platformId);
+    const mine = seats.map((s) => {
+      const plat = config.platforms[s.platform] || config.platforms.tiles || config.platforms.cards;
+      const ticket = mintTableTicket({
+        tableId: s.tableId, game: s.game, params: {}, seat: s.seat,
+        platformId: user.platformId, displayName: user.displayName, players: [], via: 'matchmaking', mode: 'resume',
+      }, '8h');
+      return {
+        tableId: s.tableId, game: s.game, platform: s.platform, seat: s.seat,
+        phase: s.phase, humans: s.humans || 1, seatCount: s.seatCount || null,
+        resumeUrl: `${plat.public}/lobby/${encodeURIComponent(s.game)}?ticket=${encodeURIComponent(ticket)}`,
+      };
+    });
+    res.json({ ok: true, signedIn: true, mine });
+  } catch (e) { res.json({ ok: true, signedIn: true, mine: [] }); }
+});
 
 app.get('/', (req, res) => res.redirect(`${config.platform.url}/`));
 

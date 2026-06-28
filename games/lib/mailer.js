@@ -106,9 +106,31 @@ async function sendIssue({ to, token, subject, bodyText, kind = 'news', thumbnai
   });
 }
 
+// Account welcome — sent once when a new player account is created (distinct
+// from the newsletter welcome above, which is opt-in and carries an unsubscribe
+// token). No List-Unsubscribe: this is a transactional account email.
+async function sendAccountWelcome({ to, name }) {
+  const subject = 'Welcome to MadLadsLab Games';
+  const who = name ? esc(name) : 'player';
+  const bodyHtml = `
+    <h2 style="color:#cd412b;font-size:1.1rem;letter-spacing:0.06em;margin:0 0 12px;">YOU'RE IN, ${who.toUpperCase()}</h2>
+    <p style="font-size:0.95rem;line-height:1.6;color:#e8e8e8;">
+      Your account is live. Jump into the arcade, claim dedicated server slots,
+      track stats, and earn coins across every game.
+    </p>
+    <p style="font-size:0.9rem;line-height:1.6;color:#aaa;">
+      Start here: <a href="${BASE_URL}/dashboard" style="color:#cd412b;">your dashboard</a>
+      &nbsp;·&nbsp; <a href="${BASE_URL}" style="color:#cd412b;">games.madladslab.com</a>
+    </p>`;
+  const html = _shell({ title: subject, bodyHtml });
+  const text = `Your MadLadsLab Games account is live.\n\n` +
+    `Dashboard: ${BASE_URL}/dashboard\nGames: ${BASE_URL}\n`;
+  return getTransporter().sendMail({ from: FROM(), to, subject, html, text });
+}
+
 // Verify SMTP creds without sending. Useful for the admin health check.
 async function verify() {
   return getTransporter().verify();
 }
 
-module.exports = { sendWelcome, sendIssue, verify, getTransporter };
+module.exports = { sendWelcome, sendIssue, sendAccountWelcome, verify, getTransporter };

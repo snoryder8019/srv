@@ -5,9 +5,10 @@
 // Posts live in `social_posts` and are published now or by the scheduler cron.
 // ─────────────────────────────────────────────────────────────────────────────
 import express from 'express';
+import multer from 'multer';
 import { ObjectId } from 'mongodb';
 import { config } from '../../config/config.js';
-import { callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
+import { callLLM, tryParseAgentResponse, hasCJK, stripCJK } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { logActivity } from '../../plugins/activityLog.js';
 import {
@@ -20,9 +21,15 @@ import { fetchEngagement, postReply, allEngageCaps, engageCaps } from '../../plu
 import { decrypt } from '../../plugins/crypto.js';
 import { getSlabDb } from '../../plugins/mongo.js';
 import { generateForTenant, generateSpotlight, publishWithRetry, renderLayersToPng, uploadPng } from '../../plugins/autoSocial.js';
+import { uploadBuffer } from '../../plugins/s3.js';
+import { getVoice, saveVoice, synthesizeProfile, recordCorrection, buildVoiceBlock, VOICE_QUESTIONS } from '../../plugins/socialVoice.js';
+import { enqueueJob, getJob, listJobs } from '../../plugins/socialJobs.js';
+import { recordDesignFeedback, listDesignFeedback, removeDesignFeedback, getDesignPrefs, describePrefs } from '../../plugins/socialDesign.js';
+import { suggestSlots } from '../../plugins/socialSchedule.js';
 import { fetchAllFollows, followsAction } from '../../plugins/socialFollows.js';
-import { fetchAndStoreReddit, replyToActivity, sendConversionEvent, META_VERIFY_TOKEN } from '../../plugins/socialActivity.js';
-import { listKeywords, addKeyword, removeKeyword, runListeners, getDigest, addDigestItem, removeDigestItem, trendSummary } from '../../plugins/socialListen.js';
+// ── DISABLED FOR RELEASE: Activity inbox + Listening features ────────────────
+// import { fetchAndStoreReddit, replyToActivity, sendConversionEvent, META_VERIFY_TOKEN } from '../../plugins/socialActivity.js';
+// import { listKeywords, addKeyword, removeKeyword, runListeners, getDigest, addDigestItem, removeDigestItem, trendSummary } from '../../plugins/socialListen.js';
 
 const AUTO_TOKEN_PLATFORMS = new Set(['facebook', 'instagram', 'threads']);
 
@@ -48,6 +55,19 @@ async function tryAutoUpgrade(db, platform) {
 
 const router = express.Router();
 
+// Memory-storage upload for generator save-back — multipart bypasses the global
+// 100kb express.json() cap that would 413 a base64 PNG.
+const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+// Composer media upload — accepts images and video. Video files are large, so
+// this gets a roomier cap than the generator save-back path.
+const MEDIA_MIME_RE = /^(image\/(png|jpe?g|gif|webp)|video\/(mp4|quicktime|webm))$/i;
+const mediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, MEDIA_MIME_RE.test(file.mimetype)),
+});
+
 const POST_STATUSES = new Set(['draft', 'scheduled', 'published', 'failed', 'partial']);
 
 function wantsJson(req) {
@@ -62,6 +82,36 @@ function parseMedia(raw) {
   return (raw || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean).slice(0, 4);
 }
 
+// Publish a post in the BACKGROUND and finalize its status. Video publishes
+// (FB upload + IG/Threads async processing) can run for minutes — far past
+// Apache's proxy timeout — so the route fires this without awaiting and returns
+// immediately. The post sits at status 'publishing' until this resolves it to
+// published / partial / failed. Never throws (it owns the request lifecycle).
+async function publishPostBackground(db, postId, post, accountMap, meta = {}) {
+  try {
+    const results = await publishPost(post, accountMap);
+    const okCount = results.filter(r => r.ok).length;
+    const finalStatus = okCount === 0 ? 'failed' : okCount === results.length ? 'published' : 'partial';
+    await db.collection('social_posts').updateOne(
+      { _id: postId },
+      { $set: { status: finalStatus, results, publishedAt: new Date(), updatedAt: new Date() } },
+    );
+    logActivity({
+      category: 'social', action: 'post_published',
+      tenantDomain: meta.tenantDomain, tenantId: meta.tenantId,
+      status: finalStatus === 'failed' ? 'failed' : 'success',
+      actor: { email: meta.actorEmail, role: 'admin' },
+      details: { platforms: post.platforms, ok: okCount, total: results.length }, ip: meta.ip,
+    });
+  } catch (err) {
+    console.error('[social] background publish error:', err);
+    await db.collection('social_posts').updateOne(
+      { _id: postId },
+      { $set: { status: 'failed', updatedAt: new Date() }, $push: { results: { ok: false, error: err.message, at: new Date() } } },
+    ).catch(() => {});
+  }
+}
+
 // Build a { platformKey: accountDoc } map from the tenant's connected accounts.
 async function loadAccountMap(db) {
   const accounts = await db.collection('social_accounts').find({}).toArray();
@@ -73,12 +123,30 @@ async function loadAccountMap(db) {
 // ── Portal dashboard ─────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   const db = req.db;
-  const tab = ['compose', 'scheduled', 'engage', 'connections', 'compliance', 'suggestions', 'follows', 'activity', 'listening'].includes(req.query.tab) ? req.query.tab : 'compose';
+  // Tab consolidation: Compliance folds into Connections; Follows folds into
+  // Engage; scheduled posts get their own Calendar tab. Old ?tab=compliance /
+  // ?tab=follows links redirect to their new home.
+  const tabAlias = { compliance: 'connections', follows: 'engage' };
+  const rawTab = tabAlias[req.query.tab] || req.query.tab;
+  // Activity + Listening tabs disabled for release — dropped from the valid set.
+  const tab = ['compose', 'calendar', 'scheduled', 'engage', 'connections', 'agents'].includes(rawTab) ? rawTab : 'compose';
 
-  const [accountsRaw, posts, deletionRequests] = await Promise.all([
+  // Posts & Schedule has an Active vs Archived view. Archiving is a soft-delete:
+  // posts are flagged { archived: true }, hidden from the default list, and kept
+  // for the record until explicitly hard-deleted from the archived view.
+  const postsView = req.query.view === 'archived' ? 'archived' : 'active';
+  const realPost = { $or: [ { suggestion: { $ne: true } }, { status: { $nin: ['draft'] } } ] };
+
+  const [accountsRaw, posts, deletionRequests, archivedCount, archivedPosts] = await Promise.all([
     db.collection('social_accounts').find({}).toArray(),
-    db.collection('social_posts').find({ $or: [ { suggestion: { $ne: true } }, { status: { $nin: ['draft'] } } ] }).sort({ scheduledAt: -1, createdAt: -1 }).limit(200).toArray(),
+    // `posts` is always the ACTIVE (non-archived) list — drives stats + the default table.
+    db.collection('social_posts').find({ ...realPost, archived: { $ne: true } }).sort({ scheduledAt: -1, createdAt: -1 }).limit(200).toArray(),
     db.collection('deletion_requests').find({}).sort({ createdAt: -1 }).limit(200).toArray().catch(() => []),
+    db.collection('social_posts').countDocuments({ ...realPost, archived: true }).catch(() => 0),
+    // Archived list loaded only when its view is open.
+    postsView === 'archived'
+      ? db.collection('social_posts').find({ ...realPost, archived: true }).sort({ archivedAt: -1 }).limit(200).toArray()
+      : Promise.resolve([]),
   ]);
 
   const accountMap = {};
@@ -103,21 +171,60 @@ router.get('/', async (req, res) => {
   let activity = [];
   let keywords = [];
   let digest = [];
-  let metaVerifyToken = META_VERIFY_TOKEN;
-  if (tab === 'suggestions') {
-    suggestions = await db.collection('social_posts').find({ auto: true, suggestion: true, status: 'draft' }).sort({ createdAt: -1 }).limit(60).toArray();
-  }
-  if (tab === 'listening') {
-    keywords = await listKeywords(db);
-    digest = await getDigest(db, { days: 21, limit: 120 });
-  }
-  if (tab === 'activity') {
-    try { await fetchAndStoreReddit(db); } catch {}
-    activity = await db.collection('social_activity').find({}).sort({ handled: 1, createdAt: -1 }).limit(80).toArray();
-  }
-  if (tab === 'follows') {
+  let metaVerifyToken = '';
+  // ── DISABLED FOR RELEASE: Activity inbox + Listening tabs ──────────────────
+  // if (tab === 'listening') {
+  //   keywords = await listKeywords(db);
+  //   digest = await getDigest(db, { days: 21, limit: 120 });
+  // }
+  // if (tab === 'activity') {
+  //   try { await fetchAndStoreReddit(db); } catch {}
+  //   activity = await db.collection('social_activity').find({}).sort({ handled: 1, createdAt: -1 }).limit(80).toArray();
+  // }
+  // Engage now consumes the Follows feed too, so load it on the Engage tab.
+  if (tab === 'engage') {
     try { follows = await fetchAllFollows(accountsRaw.filter(a => a.enabled !== false)); }
     catch (e) { follows = { items: [], sources: [], unsupported: [], errors: [{ platform: 'feed', error: e.message }] }; }
+  }
+
+  // Calendar tab: month grid of scheduled posts. ?month=YYYY-MM navigates.
+  let calendar = null;
+  if (tab === 'calendar') {
+    const now = new Date();
+    const mp = /^(\d{4})-(\d{2})$/.exec(req.query.month || '');
+    const y = mp ? +mp[1] : now.getFullYear();
+    const m = mp ? (+mp[2] - 1) : now.getMonth();
+    const start = new Date(y, m, 1), end = new Date(y, m + 1, 1);
+    const sched = await db.collection('social_posts')
+      .find({ status: 'scheduled', archived: { $ne: true }, scheduledAt: { $gte: start, $lt: end } })
+      .sort({ scheduledAt: 1 }).toArray();
+    const byDay = {};
+    for (const p of sched) { const d = new Date(p.scheduledAt).getDate(); (byDay[d] = byDay[d] || []).push(p); }
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < start.getDay(); i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, posts: byDay[d] || [] });
+    while (cells.length % 7) cells.push(null);
+    const weeks = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+    const fmtM = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    calendar = {
+      label: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      prev: fmtM(new Date(y, m - 1, 1)), next: fmtM(new Date(y, m + 1, 1)),
+      todayDay: (y === now.getFullYear() && m === now.getMonth()) ? now.getDate() : null,
+      weeks, count: sched.length,
+    };
+  }
+  let voice = null, voiceQuestions = VOICE_QUESTIONS, jobs = [];
+  let designPrefs = null, designSummary = '', designFeedback = [];
+  if (tab === 'agents') {
+    voice = await getVoice(db).catch(() => null);
+    jobs = await listJobs(db, 12).catch(() => []);
+    // The review queue replaces the old Suggestions tab: all pending AI drafts.
+    suggestions = await db.collection('social_posts').find({ suggestion: true, status: 'draft' }).sort({ createdAt: -1 }).limit(80).toArray();
+    designPrefs = await getDesignPrefs(db).catch(() => null);
+    designSummary = describePrefs(designPrefs);
+    designFeedback = await listDesignFeedback(db, 40).catch(() => []);
   }
 
   res.render('admin/social/index', {
@@ -129,6 +236,10 @@ router.get('/', async (req, res) => {
     accountMap,
     connectedKeys,
     posts,
+    postsView,
+    archivedPosts,
+    archivedCount,
+    calendar,
     deletionRequests,
     stats,
     publicBaseUrl,
@@ -144,6 +255,12 @@ router.get('/', async (req, res) => {
     digest,
     gconnected: req.query.gconnected === '1',
     gidsManual: req.query.gids === 'manual',
+    voice,
+    voiceQuestions,
+    jobs,
+    designPrefs,
+    designSummary,
+    designFeedback,
   });
 });
 
@@ -380,24 +497,16 @@ router.post('/posts', async (req, res) => {
 
     if (action === 'publish') {
       const accountMap = await loadAccountMap(db);
-      const results = await publishPost(doc, accountMap);
-      const okCount = results.filter(r => r.ok).length;
-      const finalStatus = okCount === 0 ? 'failed' : okCount === results.length ? 'published' : 'partial';
-      await db.collection('social_posts').updateOne(
-        { _id: ins.insertedId },
-        { $set: { status: finalStatus, results, publishedAt: new Date(), updatedAt: new Date() } },
-      );
-      logActivity({
-        category: 'social', action: 'post_published',
+      // Fire-and-forget: publishing (esp. video) can outlast the proxy timeout.
+      publishPostBackground(db, ins.insertedId, doc, accountMap, {
         tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id,
-        status: finalStatus === 'failed' ? 'failed' : 'success',
-        actor: { email: req.adminUser?.email, role: 'admin' },
-        details: { platforms, ok: okCount, total: results.length }, ip: req.ip,
+        actorEmail: req.adminUser?.email, ip: req.ip,
       });
-      const msg = finalStatus === 'published' ? `Published to ${okCount} platform(s)`
-        : finalStatus === 'partial' ? `Published to ${okCount} of ${results.length} (some failed)`
-        : 'Publishing failed — check the post for details';
-      return res.redirect(`/admin/social?tab=scheduled&${finalStatus === 'failed' ? 'error' : 'success'}=${encodeURIComponent(msg)}`);
+      const hasVideo = mediaUrls.some(u => /\.(mp4|mov|m4v|webm|avi|mkv)(\?|#|$)/i.test(u));
+      const msg = hasVideo
+        ? 'Publishing… video can take a minute or two to process. Refresh to see status.'
+        : 'Publishing… refresh in a moment to see the result.';
+      return res.redirect(`/admin/social?tab=scheduled&success=${encodeURIComponent(msg)}`);
     }
 
     const where = status === 'scheduled' ? 'scheduled' : 'compose';
@@ -405,6 +514,24 @@ router.post('/posts', async (req, res) => {
   } catch (err) {
     console.error('[social] create post error:', err);
     res.redirect('/admin/social?tab=compose&error=' + encodeURIComponent(err.message || 'Failed'));
+  }
+});
+
+// ── Upload composer media (image or video) → S3, returns a public URL ─────────
+router.post('/upload', mediaUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, error: 'No file (must be an image or mp4/mov/webm video under 200MB)' });
+    const isVideo = /^video\//i.test(req.file.mimetype);
+    const up = await uploadBuffer(req.file.buffer, {
+      prefix: req.tenant?.s3Prefix,
+      folder: 'social',
+      name: req.file.originalname,
+      contentType: req.file.mimetype,
+    });
+    res.json({ ok: true, url: up.url, type: isVideo ? 'video' : 'image' });
+  } catch (err) {
+    console.error('[social] media upload error:', err);
+    res.status(500).json({ ok: false, error: err.message || 'Upload failed' });
   }
 });
 
@@ -416,27 +543,54 @@ router.post('/posts/:id/publish', async (req, res) => {
     if (!post) return res.redirect('/admin/social?tab=scheduled&error=Post+not+found');
 
     const accountMap = await loadAccountMap(db);
-    const results = await publishPost(post, accountMap);
-    const okCount = results.filter(r => r.ok).length;
-    const finalStatus = okCount === 0 ? 'failed' : okCount === results.length ? 'published' : 'partial';
-
     await db.collection('social_posts').updateOne(
       { _id: post._id },
-      { $set: { status: finalStatus, results, publishedAt: new Date(), updatedAt: new Date() } },
+      { $set: { status: 'publishing', updatedAt: new Date() } },
     );
-    const msg = finalStatus === 'failed' ? 'Publishing failed' : `Published to ${okCount} platform(s)`;
-    res.redirect(`/admin/social?tab=scheduled&${finalStatus === 'failed' ? 'error' : 'success'}=${encodeURIComponent(msg)}`);
+    // Fire-and-forget so video publishes don't outlast the proxy timeout.
+    publishPostBackground(db, post._id, post, accountMap, {
+      tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id,
+      actorEmail: req.adminUser?.email, ip: req.ip,
+    });
+    const hasVideo = (post.mediaUrls || []).some(u => /\.(mp4|mov|m4v|webm|avi|mkv)(\?|#|$)/i.test(u));
+    const msg = hasVideo
+      ? 'Publishing… video can take a minute or two to process. Refresh to see status.'
+      : 'Publishing… refresh in a moment to see the result.';
+    res.redirect(`/admin/social?tab=scheduled&success=${encodeURIComponent(msg)}`);
   } catch (err) {
     console.error('[social] publish post error:', err);
     res.redirect('/admin/social?tab=scheduled&error=' + encodeURIComponent(err.message || 'Failed'));
   }
 });
 
-// ── Delete a post ─────────────────────────────────────────────────────────────
+// ── Archive a post (soft-delete) ──────────────────────────────────────────────
+// The "Delete" button archives rather than destroys: the post is flagged and
+// hidden from the default list but kept for the record. Hard delete lives behind
+// the archived view (/posts/:id/destroy).
 router.post('/posts/:id/delete', async (req, res) => {
   const db = req.db;
+  await db.collection('social_posts').updateOne(
+    { _id: new ObjectId(req.params.id) },
+    { $set: { archived: true, archivedAt: new Date(), updatedAt: new Date() } },
+  );
+  res.redirect('/admin/social?tab=scheduled&success=Post+archived');
+});
+
+// ── Restore an archived post ──────────────────────────────────────────────────
+router.post('/posts/:id/unarchive', async (req, res) => {
+  const db = req.db;
+  await db.collection('social_posts').updateOne(
+    { _id: new ObjectId(req.params.id) },
+    { $set: { archived: false, updatedAt: new Date() }, $unset: { archivedAt: '' } },
+  );
+  res.redirect('/admin/social?tab=scheduled&view=archived&success=Post+restored');
+});
+
+// ── Permanently delete a post (only from the archived view) ───────────────────
+router.post('/posts/:id/destroy', async (req, res) => {
+  const db = req.db;
   await db.collection('social_posts').deleteOne({ _id: new ObjectId(req.params.id) });
-  res.redirect('/admin/social?tab=scheduled&success=Post+deleted');
+  res.redirect('/admin/social?tab=scheduled&view=archived&success=Post+permanently+deleted');
 });
 
 // ── Export posts (CSV or JSON) ────────────────────────────────────────────────
@@ -495,7 +649,8 @@ router.post('/suggestions/generate', express.json(), async (req, res) => {
     const platforms = Array.isArray(req.body?.platforms) && req.body.platforms.length ? req.body.platforms : null;
     const direction = (req.body?.direction || '').toString().slice(0, 300);
     let trends = '';
-    if (req.body?.useTrends) { try { trends = await trendSummary(req.db, { days: 10, limit: 20 }); } catch {} }
+    // DISABLED FOR RELEASE: Listening trends — trendSummary() unavailable.
+    // if (req.body?.useTrends) { try { trends = await trendSummary(req.db, { days: 10, limit: 20 }); } catch {} }
     const out = await generateForTenant(req.tenant, req.db, { count, mode: 'suggest', platforms, direction, trends, createdBy: req.adminUser?.email || 'admin' });
     res.json({ ok: true, ...out });
   } catch (e) {
@@ -512,20 +667,23 @@ router.put('/suggestions/:id', express.json({ limit: '2mb' }), async (req, res) 
     if (!post) return res.json({ ok: false, error: 'Not found' });
     const { body, design } = req.body || {};
     const $set = { updatedAt: new Date() };
-    if (body !== undefined) $set.body = String(body).slice(0, 2000);
+    if (body !== undefined) {
+      const newBody = String(body).slice(0, 2000);
+      // "Generate then you correct" — an admin edit teaches the voice profile.
+      if (newBody.trim() && newBody.trim() !== String(post.body || '').trim()) {
+        recordCorrection(db, { before: post.body || '', after: newBody, source: 'suggestion-edit' }).catch(() => {});
+      }
+      $set.body = newBody;
+    }
     let newUrl = null;
     if (design) {
       $set.design = design;
-      // Re-composite server-side (fetches the SD bg by url — no browser CORS issues)
+      // Re-composite server-side (fetches the SD bg by url — no browser CORS issues).
+      // Batch composites live in S3 + the post only — never the Assets library.
       const png = await renderLayersToPng(design);
       const up = await uploadPng(png, req.tenant?.s3Prefix, 'edit-' + Date.now());
       newUrl = up.url;
       $set.mediaUrls = [up.url];
-      const assetId = post.assetIds?.[0];
-      if (assetId) {
-        await db.collection('assets').updateOne({ _id: assetId },
-          { $set: { publicUrl: up.url, bucketKey: up.key, size: png.length, 'generatedFrom.design': design, updatedAt: new Date() } });
-      }
     }
     await db.collection('social_posts').updateOne({ _id: post._id }, { $set });
     res.json({ ok: true, mediaUrl: newUrl });
@@ -549,6 +707,93 @@ router.post('/suggestions/:id/approve', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// Schedule → move a review-queue draft onto the Calendar (the scheduler cron
+// publishes it at its time). Leaves the review queue (suggestion: false).
+router.post('/suggestions/:id/schedule', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const post = await db.collection('social_posts').findOne({ _id: new ObjectId(req.params.id) });
+    if (!post) return res.json({ ok: false, error: 'Not found' });
+    const when = req.body?.scheduledAt ? new Date(req.body.scheduledAt) : null;
+    if (!when || isNaN(when) || when.getTime() < Date.now() - 60000) return res.json({ ok: false, error: 'Pick a future date & time' });
+    const $set = { status: 'scheduled', scheduledAt: when, suggestion: false, updatedAt: new Date() };
+    if (typeof req.body?.body === 'string' && req.body.body.trim()) $set.body = req.body.body.slice(0, 2000);
+    await db.collection('social_posts').updateOne({ _id: post._id }, { $set });
+    res.json({ ok: true, scheduledAt: when });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Design Memory: 👍/👎 on a generated layout → learned typography/size taste ─
+// (the visual counterpart to the Voice Profile; feeds buildLayersSmart).
+router.post('/design/feedback', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const post = await db.collection('social_posts').findOne({ _id: new ObjectId(req.body?.postId) });
+    if (!post) return res.json({ ok: false, error: 'Post not found' });
+    const verdict = req.body?.verdict;
+    const sig = await recordDesignFeedback(db, { post, verdict, note: req.body?.note });
+    // Curate the SD background pool: 👍 marks this post's background safe to reuse,
+    // 👎 blacklists it so the batch generator stops pulling it.
+    const bgUrl = post?.design?.sdBgUrl;
+    if (bgUrl) {
+      await db.collection('social_backgrounds').updateOne(
+        { publicUrl: bgUrl }, { $set: { safe: verdict === 'up', safeUpdatedAt: new Date() } },
+      ).catch(() => {});
+    }
+    const prefs = await getDesignPrefs(db);
+    res.json({ ok: true, signature: sig, summary: describePrefs(prefs) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Review the memory (aggregated prefs + recent thumbed entries) — for pruning.
+router.get('/design/memory', async (req, res) => {
+  try {
+    const db = req.db;
+    const [prefs, feedback] = await Promise.all([getDesignPrefs(db), listDesignFeedback(db, 60)]);
+    res.json({ ok: true, prefs, summary: describePrefs(prefs), feedback });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+// Remove a bad memorized layout entry.
+router.post('/design/memory/:id/delete', async (req, res) => {
+  try { await removeDesignFeedback(req.db, req.params.id); res.json({ ok: true }); }
+  catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+// Agent auto-slot → pick the next open, well-spaced calendar slot for ONE draft.
+router.post('/suggestions/:id/auto-slot', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const post = await db.collection('social_posts').findOne({ _id: new ObjectId(req.params.id) });
+    if (!post) return res.json({ ok: false, error: 'Not found' });
+    const [slot] = await suggestSlots(db, 1);
+    if (!slot) return res.json({ ok: false, error: 'No open slot found' });
+    const $set = { status: 'scheduled', scheduledAt: slot, suggestion: false, updatedAt: new Date() };
+    if (typeof req.body?.body === 'string' && req.body.body.trim()) $set.body = req.body.body.slice(0, 2000);
+    await db.collection('social_posts').updateOne({ _id: post._id }, { $set });
+    res.json({ ok: true, scheduledAt: slot });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Agent auto-slot the WHOLE batch → spread every pending draft across the calendar.
+router.post('/suggestions/auto-slot-all', express.json(), async (req, res) => {
+  try {
+    const db = req.db;
+    const drafts = await db.collection('social_posts')
+      .find({ suggestion: true, status: 'draft' }).sort({ createdAt: 1 }).limit(60).toArray();
+    if (!drafts.length) return res.json({ ok: true, scheduled: 0, items: [] });
+    const slots = await suggestSlots(db, drafts.length);
+    const items = [];
+    for (let i = 0; i < drafts.length && i < slots.length; i++) {
+      await db.collection('social_posts').updateOne(
+        { _id: drafts[i]._id },
+        { $set: { status: 'scheduled', scheduledAt: slots[i], suggestion: false, updatedAt: new Date() } });
+      items.push({ id: String(drafts[i]._id), scheduledAt: slots[i] });
+    }
+    res.json({ ok: true, scheduled: items.length, items });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // Dismiss → remove the suggestion (and its generated asset docs, best-effort)
 router.post('/suggestions/:id/dismiss', async (req, res) => {
   try {
@@ -566,11 +811,99 @@ router.post('/auto-toggle', express.json(), async (req, res) => {
     const enabled = !!req.body?.enabled;
     const autoPublish = !!req.body?.autoPublish;
     const count = Math.max(1, Math.min(10, parseInt(req.body?.count, 10) || 5));
+    const cadence = ['off', 'daily', '3x_week', 'weekly'].includes(req.body?.cadence) ? req.body.cadence : 'off';
+    const channels = Array.isArray(req.body?.channels) ? req.body.channels.map(String).filter(p => PLATFORMS[p] && !PLATFORMS[p].comingSoon) : [];
+    const standingPrompt = (req.body?.standingPrompt || '').toString().slice(0, 600);
+    const useTrends = req.body?.useTrends !== false;
+    const critic = req.body?.critic !== false;
     const slab = getSlabDb();
     await slab.collection('tenants').updateOne({ _id: req.tenant._id },
-      { $set: { 'autoSocial.enabled': enabled, 'autoSocial.autoPublish': autoPublish, 'autoSocial.count': count, 'autoSocial.updatedAt': new Date() } });
-    res.json({ ok: true, enabled, autoPublish, count });
+      { $set: {
+        'autoSocial.enabled': enabled, 'autoSocial.autoPublish': autoPublish, 'autoSocial.count': count,
+        'autoSocial.cadence': cadence, 'autoSocial.channels': channels, 'autoSocial.standingPrompt': standingPrompt,
+        'autoSocial.useTrends': useTrends, 'autoSocial.critic': critic, 'autoSocial.updatedAt': new Date(),
+      } });
+    res.json({ ok: true, enabled, autoPublish, count, cadence, channels, standingPrompt, useTrends, critic });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Voice Profile (Brand DNA) ─────────────────────────────────────────────────
+// Synthesize a structured voice profile from the guided-Q&A answers (preview —
+// does not save; the admin reviews/edits then POSTs /voice to persist).
+router.post('/voice/synthesize', express.json(), async (req, res) => {
+  try {
+    const answers = req.body?.answers || {};
+    const brandCtx = await loadBrandContext(req.tenant, req.db);
+    const out = await synthesizeProfile(answers, brandCtx);
+    res.json({ ok: true, ...out });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Save the voice profile (structured fields + editable voiceBlock). Seeds the
+// few-shot example pairs on first save; preserves accumulated corrections after.
+router.post('/voice', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    const db = req.db;
+    const b = req.body || {};
+    const patch = {
+      persona: (b.persona || '').toString().slice(0, 400),
+      audience: (b.audience || '').toString().slice(0, 400),
+      tone: Array.isArray(b.tone) ? b.tone : (b.tone || '').toString().split(/[\n,;]+/).map(s => s.trim()).filter(Boolean),
+      signaturePhrases: Array.isArray(b.signaturePhrases) ? b.signaturePhrases : (b.signaturePhrases || '').toString().split(/[\n,;]+/).map(s => s.trim()).filter(Boolean),
+      avoid: Array.isArray(b.avoid) ? b.avoid : (b.avoid || '').toString().split(/[\n,;]+/).map(s => s.trim()).filter(Boolean),
+      emojiPolicy: (b.emojiPolicy || '').toString().slice(0, 200),
+      hashtagPolicy: (b.hashtagPolicy || '').toString().slice(0, 200),
+      lengthPref: (b.lengthPref || '').toString().slice(0, 200),
+      interview: (b.interview && typeof b.interview === 'object') ? b.interview : undefined,
+    };
+    if (patch.interview === undefined) delete patch.interview;
+    // Editable block: use what the admin sent, else rebuild from fields.
+    patch.voiceBlock = (b.voiceBlock || '').toString().trim() || buildVoiceBlock(patch);
+
+    const existing = await getVoice(db);
+    // Seed example pairs only when none exist yet (don't clobber learned corrections).
+    if ((!existing || !Array.isArray(existing.fewShot) || !existing.fewShot.length) && Array.isArray(b.seedFewShot) && b.seedFewShot.length) {
+      patch.fewShot = b.seedFewShot.slice(-15).map(p => ({ before: String(p.before || '').slice(0, 400), after: String(p.after || '').slice(0, 400), source: 'synthesis', at: new Date() }));
+    }
+    const saved = await saveVoice(db, patch);
+    res.json({ ok: true, voice: saved });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Agent Studio: async batch jobs (prompt → background generation → review) ──
+router.post('/agent-studio/run', express.json(), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const jobId = await enqueueJob(req.db, req.tenant, {
+      type: 'studio',
+      direction: b.direction || '',
+      count: b.count,
+      platforms: Array.isArray(b.platforms) ? b.platforms : [],
+      useTrends: !!b.useTrends,
+      critic: b.critic !== false,
+      style: b.style,                                   // 'solid' | 'photo' | 'auto'
+      mode: 'suggest',                                  // review-first: never auto-posts
+      createdBy: req.adminUser?.email || 'admin',
+    });
+    res.json({ ok: true, jobId });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+router.get('/agent-studio/jobs', async (req, res) => {
+  try { res.json({ ok: true, jobs: await listJobs(req.db, 15) }); }
+  catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+router.get('/agent-studio/jobs/:id', async (req, res) => {
+  try {
+    const job = await getJob(req.db, req.params.id);
+    if (!job) return res.json({ ok: false, error: 'Not found' });
+    let posts = [];
+    if (job.status === 'done' && Array.isArray(job.postIds) && job.postIds.length) {
+      posts = await req.db.collection('social_posts').find({ _id: { $in: job.postIds } }).toArray();
+    }
+    res.json({ ok: true, job, posts });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
 });
 
 
@@ -599,12 +932,20 @@ router.post('/follows/:platform/ai-reply', express.json(), async (req, res) => {
     const brandCtx = await loadBrandContext(req.tenant, req.db);
     const sys = `You write a short, warm, on-brand reply to someone else's social post to build a genuine connection.
 ${brandCtx}
-Rules: 1-2 sentences, specific to their post, friendly, NOT salesy, no hashtags, no links, under 240 characters. Output ONLY the reply text.`;
-    const raw = await callLLM([{ role: 'user', content: `Their post${author ? ' (by ' + author + ')' : ''}: "${String(postText || '').slice(0, 500)}"
+Rules: 1-2 sentences, specific to their post, friendly, NOT salesy, no hashtags, no links, under 240 characters. Write in ENGLISH ONLY. Output ONLY the reply text.`;
+    const userMsg = `Their post${author ? ' (by ' + author + ')' : ''}: "${String(postText || '').slice(0, 500)}"
 
-Write the reply.` }], sys, 30000);
-    const draft = String(raw || '').trim().replace(/^["']|["']$/g, '').slice(0, 280);
-    if (!draft) return res.json({ ok: false, error: 'Could not draft a reply' });
+Write the reply.`;
+    const once = async (extra) => {
+      const raw = await callLLM([{ role: 'user', content: userMsg }], sys + (extra || ''), 30000);
+      return String(raw || '').trim().replace(/^["']|["']$/g, '').slice(0, 280);
+    };
+    let draft = await once('');
+    // deepseek-r1 sometimes answers in Chinese — retry forcing English, then
+    // strip any residual non-Latin characters as a last resort.
+    if (hasCJK(draft)) draft = await once('\nThe reply MUST be entirely in English — no Chinese, Japanese, or other non-Latin characters.');
+    if (hasCJK(draft)) draft = stripCJK(draft);
+    if (!draft || draft.trim().length < 2) return res.json({ ok: false, error: 'Could not draft a clean English reply — try again.' });
     const r = await followsAction(platform, account, { action: 'reply', replyRef, text: draft });
     res.json({ ok: r.ok, text: draft, url: r.url || null, error: r.error || null });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -620,7 +961,36 @@ router.get('/suggestions/:id/design', async (req, res) => {
   } catch (e) { res.json({ ok: false, error: e.message }); }
 });
 
+// Save an Asset-Generator edit back onto the draft post. Writes the edited image
+// to S3 and updates the post's mediaUrls (and optional design/body) — it does NOT
+// create an Assets-library entry, so generator edits stay out of the user's library.
+router.post('/suggestions/:id/image', imageUpload.single('image'), async (req, res) => {
+  try {
+    const db = req.db;
+    const post = await db.collection('social_posts').findOne({ _id: new ObjectId(req.params.id) });
+    if (!post) return res.json({ ok: false, error: 'Not found' });
+    const $set = { updatedAt: new Date() };
+    if (req.file?.buffer?.length) {
+      const up = await uploadPng(req.file.buffer, req.tenant?.s3Prefix, 'gen-edit-' + Date.now());
+      $set.mediaUrls = [up.url];
+    }
+    let design = req.body?.design;
+    if (typeof design === 'string') { try { design = JSON.parse(design); } catch { design = null; } }
+    if (design && typeof design === 'object') $set.design = design;
+    const body = req.body?.body;
+    if (body !== undefined) {
+      const nb = String(body).slice(0, 2000);
+      if (nb.trim() && nb.trim() !== String(post.body || '').trim()) recordCorrection(db, { before: post.body || '', after: nb, source: 'generator-edit' }).catch(() => {});
+      $set.body = nb;
+    }
+    if (!$set.mediaUrls && !$set.design && $set.body === undefined) return res.json({ ok: false, error: 'Nothing to save' });
+    await db.collection('social_posts').updateOne({ _id: post._id }, { $set });
+    res.json({ ok: true, mediaUrl: $set.mediaUrls ? $set.mediaUrls[0] : null });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
+});
 
+
+/* ── DISABLED FOR RELEASE: Activity inbox (reply, mark done, refresh reddit, conversions) ──
 // ── Activity inbox: reply, mark done, refresh reddit, send conversion ─────────
 router.post('/activity/:id/reply', express.json(), async (req, res) => {
   try {
@@ -659,9 +1029,11 @@ router.post('/conversions/send', express.json(), async (req, res) => {
     res.json(r);
   } catch (e) { res.json({ ok: false, error: e.message }); }
 });
+──────────────────────────────────────────────────────────────────────────── */
 
 
 
+/* ── DISABLED FOR RELEASE: Listening (keyword listeners + trend digest) ────────
 // ── Listening: keyword listeners + trend digest ───────────────────────────────
 router.post('/listen/keywords', express.json(), async (req, res) => {
   try {
@@ -697,6 +1069,7 @@ router.post('/digest/:id/delete', async (req, res) => {
   try { await removeDigestItem(req.db, req.params.id); res.json({ ok: true }); }
   catch (e) { res.json({ ok: false, error: e.message }); }
 });
+──────────────────────────────────────────────────────────────────────────── */
 
 
 // Quote / spotlight composer — owner, mission, or customer quote → suggestion(s).

@@ -149,26 +149,214 @@
 /* hide accordion sections not matching the active tab */
 .editor-section[data-tab]:not(.dp-show) { display:none; }
 
-/* ── Mobile gate ── */
+/* ── Mobile: no gate — real responsive layout ── */
 .mobile-gate { display: none; }
+
+/* ════════════════════════════════════════════════════════
+   RESPONSIVE — tablet / phone (≤820px)
+   Strategy: unfix the editor, stack editor-panel above
+   editor-preview, make preview collapsible via a toggle.
+   ════════════════════════════════════════════════════════ */
 @media (max-width: 820px) {
-  .editor-layout { display: none !important; }
-  .mobile-gate {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    min-height: 80vh; padding: 40px 24px; text-align: center; color: var(--slate);
+  /* Unfix the editor shell so it becomes normal flow */
+  .editor-layout {
+    position: static !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 100dvh;
   }
-  .mobile-gate .icon { font-size: 2.4rem; margin-bottom: 16px; }
-  .mobile-gate h2 { font-size: 1.1rem; font-weight: 600; color: var(--on-surface); margin: 0 0 8px; }
-  .mobile-gate p { font-size: 0.82rem; line-height: 1.5; max-width: 320px; margin: 0 0 20px; }
+
+  /* Left panel: full-width, natural height */
+  .editor-panel {
+    width: 100% !important;
+    flex-shrink: unset !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    overflow-y: visible !important;
+    /* stick the top header + tab strip when scrolling the panel */
+  }
+
+  /* Right (preview) panel: full-width below, collapsible */
+  .editor-preview {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: none !important;
+    /* height is controlled by .dp-preview-open toggle */
+    height: 0;
+    overflow: hidden;
+    transition: height 0.3s ease;
+  }
+  .editor-preview.dp-preview-open {
+    height: 480px;
+  }
+  .editor-preview iframe {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Preview toggle bar — visible on mobile only */
+  .dp-preview-toggle {
+    display: flex !important;
+  }
+
+  /* Preview bar: wrap buttons, smaller text */
+  .preview-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+  }
+  .preview-bar .btn {
+    font-size: 0.6rem;
+    padding: 5px 8px;
+  }
+  .preview-bar span[style*="auto"] {
+    display: none; /* hide "Live Preview" label to save space */
+  }
+
+  /* Tab nav: horizontal scroll (already scrollable, just ensure shrink) */
+  .dp-tabs { overflow-x: auto; }
+  .dp-tab { min-width: 52px; padding: 10px 8px; font-size: 0.58rem; }
+  .dp-tab .ico { margin-right: 3px; font-size: 0.72rem; }
+
+  /* Two-column ep-rows collapse to single column */
+  .ep-row   { grid-template-columns: 1fr !important; }
+  .ep-row-3 { grid-template-columns: 1fr 1fr !important; }
+
+  /* Color row: keep swatch + text side by side, but allow text to shrink */
+  .color-row input[type=text] { min-width: 0; font-size: 0.72rem; }
+
+  /* Swatch preview — smaller swatches, allow wrap */
+  .swatch-row { gap: 4px; }
+  .swatch     { width: 32px; height: 22px; }
+
+  /* Visibility grid — 2 col already, stays; on 520 goes 1 col */
+  .vis-grid-compact { grid-template-columns: 1fr 1fr; }
+  .vis-item { font-size: 0.7rem; padding: 7px 8px; min-height: 40px; }
+
+  /* Brand image grid — 2 col, smaller thumbnails */
+  .brand-img-grid { grid-template-columns: 1fr 1fr; }
+  .brand-img-slot img { height: 50px; }
+
+  /* Section body padding — reduce for mobile */
+  .editor-section-body { padding: 0 14px 16px; }
+  .editor-section-toggle { padding: 12px 14px; font-size: 0.68rem; }
+
+  /* HF sub-tabs: allow wrap */
+  .hf-tabs { flex-wrap: wrap !important; }
+  .hf-tab  { padding: 8px 10px !important; font-size: 0.7rem !important; }
+
+  /* Repeater items: tighter */
+  .dp-rep-item { padding: 8px; }
+
+  /* Agent panel: full-width slide-in from right, cap at viewport */
+  #agentPanel {
+    width: 100% !important;
+    right: -100% !important;
+    max-width: 420px;
+  }
+  #agentPanel.open { right: 0 !important; }
+
+  /* Agent toggle: keep visible in preview bar even when preview is hidden */
+  .agent-btn { font-size: 0.6rem; padding: 4px 8px; }
+
+  /* Modal-like overlays spawned in this panel: full-width, capped height */
+  /* (covers asset picker modals if they render inside the panel) */
+}
+
+/* ════════════════════════════════════════════════════════
+   RESPONSIVE — phone (≤520px)
+   ════════════════════════════════════════════════════════ */
+@media (max-width: 520px) {
+  .editor-layout { min-height: 100dvh; }
+
+  /* Single-column everything at 520 */
+  .ep-row   { grid-template-columns: 1fr !important; }
+  .ep-row-3 { grid-template-columns: 1fr !important; }
+
+  /* Visibility grid — 1 col at 520 */
+  .vis-grid-compact { grid-template-columns: 1fr !important; }
+
+  /* Footer col pieces grid — 1 col */
+  .ep-row[style*="repeat(3"] { grid-template-columns: 1fr 1fr !important; }
+
+  /* Brand image grid — 1 col at 520 */
+  .brand-img-grid { grid-template-columns: 1fr !important; }
+
+  /* Tab strip: even smaller, allow 2-line labels avoided by nowrap */
+  .dp-tab { padding: 9px 7px; font-size: 0.56rem; letter-spacing: 0.06em; }
+
+  /* Section toggle: tighter */
+  .editor-section-toggle { padding: 11px 12px; font-size: 0.65rem; }
+  .editor-section-body   { padding: 0 12px 14px; }
+
+  /* Color row: swatch slightly smaller */
+  .color-row input[type=color] { width: 32px; height: 28px; }
+
+  /* Preview: taller on 520 since we need full-width */
+  .editor-preview.dp-preview-open { height: 360px; }
+
+  /* Agent panel: full viewport width */
+  #agentPanel { max-width: 100% !important; }
+
+  /* Swatch preview: smaller on 520 */
+  .swatch-row { gap: 3px; }
+  .swatch     { width: 28px; height: 20px; }
+
+  /* HF sub-tabs: wrap text earlier */
+  .hf-tab { padding: 7px 8px !important; font-size: 0.65rem !important; }
+
+  /* ep-field inputs/textareas: ensure comfortable tap targets */
+  .ep-field input[type=text],
+  .ep-field input[type=number],
+  .ep-field textarea,
+  .ep-field select { font-size: 0.82rem; padding: 9px 10px; min-height: 40px; }
+
+  /* Save All button: always visible and tappable */
+  .editor-panel > form > div:first-child button[type=submit] {
+    padding: 8px 16px !important;
+    font-size: 0.65rem !important;
+  }
+}
+
+/* ── Preview toggle bar (hidden on desktop, shown by JS on mobile) ── */
+.dp-preview-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+#dpPreviewBtn {
+  flex: 1;
+  max-width: 200px;
+  padding: 9px 12px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--ivory);
+  color: var(--navy);
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: background 0.15s;
+  min-height: 42px;
+}
+#dpPreviewBtn:hover { background: color-mix(in srgb, var(--navy) 6%, white); }
+#dpPreviewBtn.active {
+  background: var(--navy);
+  color: var(--gold-light);
+  border-color: var(--navy);
 }
 </style>
-
-<div class="mobile-gate">
-  <div class="icon">&#128421;</div>
-  <h2>Desktop Only</h2>
-  <p>The Design Editor requires a larger screen with the side-by-side preview. Please switch to a desktop or tablet in landscape mode.</p>
-  <a href="/admin" class="btn btn-navy" style="font-size:0.75rem;padding:8px 20px;">&larr; Back to Admin</a>
-</div>
 
 <div class="editor-layout">
 
@@ -719,6 +907,40 @@
           </select>
         </div>
       </div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Logo Image Size (px) <span class="ep-hint" style="display:inline;font-style:italic;"><%= d.nav_logo_size || '48' %></span></label>
+          <input type="range" name="nav_logo_size" min="24" max="180" step="2" value="<%= d.nav_logo_size || '48' %>" oninput="this.previousElementSibling.querySelector('span').textContent=this.value" onchange="previewReload()">
+          <div class="ep-hint">Height of the uploaded logo. Push it past the bar height to oversize it.</div>
+        </div>
+        <div class="ep-field">
+          <label>Logo + Text Layout</label>
+          <select name="nav_logo_layout" onchange="previewReload()">
+            <option value="stack"          <%= (d.nav_logo_layout || 'stack') === 'stack'          ? 'selected' : '' %>>Stacked &mdash; logo above text</option>
+            <option value="inline"         <%= d.nav_logo_layout === 'inline'         ? 'selected' : '' %>>Inline &mdash; logo left of text</option>
+            <option value="inline-reverse" <%= d.nav_logo_layout === 'inline-reverse' ? 'selected' : '' %>>Inline &mdash; logo right of text</option>
+            <option value="overlap"        <%= d.nav_logo_layout === 'overlap'        ? 'selected' : '' %>>Overlap &mdash; text over logo</option>
+          </select>
+          <div class="ep-hint">Applies when Logo Display is <strong>Both</strong>.</div>
+        </div>
+      </div>
+      <div class="ep-row" id="nav-logo-overlap-row" style="<%= d.nav_logo_layout === 'overlap' ? '' : 'display:none;' %>">
+        <div class="ep-field">
+          <label>Overlap Nudge X (px) <span class="ep-hint" style="display:inline;font-style:italic;"><%= d.nav_logo_overlap_x || '0' %></span></label>
+          <input type="range" name="nav_logo_overlap_x" min="-80" max="80" step="1" value="<%= d.nav_logo_overlap_x || '0' %>" oninput="this.previousElementSibling.querySelector('span').textContent=this.value" onchange="previewReload()">
+        </div>
+        <div class="ep-field">
+          <label>Overlap Nudge Y (px) <span class="ep-hint" style="display:inline;font-style:italic;"><%= d.nav_logo_overlap_y || '0' %></span></label>
+          <input type="range" name="nav_logo_overlap_y" min="-60" max="60" step="1" value="<%= d.nav_logo_overlap_y || '0' %>" oninput="this.previousElementSibling.querySelector('span').textContent=this.value" onchange="previewReload()">
+        </div>
+      </div>
+      <script>
+        (function(){
+          var sel = document.querySelector('select[name="nav_logo_layout"]');
+          var row = document.getElementById('nav-logo-overlap-row');
+          if (sel && row) sel.addEventListener('change', function(){ row.style.display = this.value === 'overlap' ? '' : 'none'; });
+        })();
+      </script>
 
       <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">BRAND TEXT STYLE</div>
       <div class="ep-row-3">
@@ -2608,6 +2830,9 @@
         { slot: 'logo_primary', label: 'Primary Logo',  hint: 'Header & default logo' },
         { slot: 'logo_white',   label: 'White Logo',    hint: 'For dark backgrounds (footer)' },
         { slot: 'logo_icon',    label: 'Icon / Favicon', hint: 'Browser tab + small contexts' },
+        { slot: 'logo_social',        label: 'Social Logo',       hint: 'Used by social auto-gen on light/solid posts' },
+        { slot: 'logo_social_white',  label: 'Social Logo (white)', hint: 'Used by social auto-gen on dark/solid posts' },
+        { slot: 'logo_badge',         label: 'Social Badge / Mark', hint: 'Compact graphical mark for auto-gen overlays' },
         { slot: 'banner',       label: 'Banner',        hint: 'Hero / share image' },
         { slot: 'share_image',  label: 'Share Image (1.91:1)', hint: 'Social link previews — 1200×630' },
         { slot: 'share_square', label: 'Share Square (1:1)',   hint: 'Square previews — 1080×1080' },
@@ -2622,7 +2847,7 @@
         <div style="border:1px solid var(--border);border-radius:3px;padding:10px;display:flex;flex-direction:column;gap:6px;">
           <div style="font-size:0.7rem;font-weight:700;color:var(--on-surface);letter-spacing:0.04em;"><%= ls.label %></div>
           <div style="font-size:0.6rem;color:var(--slate);"><%= ls.hint %></div>
-          <div style="height:70px;border:1px dashed var(--border);background:<%= ls.slot === 'logo_white' ? 'var(--navy-deep)' : 'var(--ivory)' %>;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+          <div style="height:70px;border:1px dashed var(--border);background:<%= (ls.slot === 'logo_white' || ls.slot === 'logo_social_white') ? 'var(--navy-deep)' : 'var(--ivory)' %>;display:flex;align-items:center;justify-content:center;overflow:hidden;">
             <% if (existing) { %>
               <img src="<%= existing.url %>" alt="<%= ls.label %>" style="max-height:60px;max-width:90%;object-fit:contain;">
             <% } else { %>
@@ -2732,10 +2957,20 @@
   </div>
 </div>
 
+<%# Mobile-only: sticky preview toggle bar at bottom of editor panel %>
+<div class="dp-preview-toggle" id="dpPreviewToggle">
+  <button type="button" id="dpPreviewBtn" onclick="dpTogglePreview()">
+    &#9654; Show Preview
+  </button>
+  <button type="button" class="agent-btn" id="agentToggleMobile" style="flex:none;max-width:none;">
+    <span style="font-size:0.85rem;">&#9830;</span> Agent
+  </button>
+</div>
+
 </div><!-- /.editor-panel -->
 
 <%# ═══════════ RIGHT PANEL — PREVIEW ═══════════ %>
-<div class="editor-preview">
+<div class="editor-preview" id="editorPreview">
   <div class="preview-bar">
     <button type="button" class="btn btn-ghost" onclick="setViewport('desktop')" id="vpDesktop" style="border-color:var(--navy);">Desktop</button>
     <button type="button" class="btn btn-ghost" onclick="setViewport('tablet')" id="vpTablet">Tablet</button>
@@ -3079,6 +3314,31 @@ function setViewport(mode) {
   });
 }
 
+// ── Mobile preview toggle ──
+// On mobile (≤820px) the preview pane is hidden by default.
+// dpTogglePreview() shows/hides it and scrolls it into view.
+var _dpPreviewOpen = false;
+function dpTogglePreview() {
+  var pane = document.getElementById('editorPreview');
+  var btn  = document.getElementById('dpPreviewBtn');
+  if (!pane) return;
+  _dpPreviewOpen = !_dpPreviewOpen;
+  pane.classList.toggle('dp-preview-open', _dpPreviewOpen);
+  if (btn) {
+    btn.textContent = _dpPreviewOpen ? '▼ Hide Preview' : '▶ Show Preview';
+    btn.classList.toggle('active', _dpPreviewOpen);
+  }
+  if (_dpPreviewOpen) {
+    // Lazy-load the iframe on first open so it doesn't block form load
+    var frame = document.getElementById('previewFrame');
+    if (frame && frame.src === '' || (frame && frame.getAttribute('src') === 'about:blank')) {
+      frame.src = '/';
+    }
+    // Scroll the preview pane into view
+    setTimeout(function() { pane.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+  }
+}
+
 // ── Reload preview after save ──
 <% if (saved) { %>
 (function() {
@@ -3215,6 +3475,10 @@ var cssVarTransform = {
   nav_tagline_spacing:  { vars: ['--nav-tagline-spacing'],   transform: function(v) { return v + 'em'; } },
   nav_tagline_transform:{ vars: ['--nav-tagline-transform'], transform: function(v) { return v; } },
   nav_tagline_italic:   { vars: ['--nav-tagline-style'],     transform: function(v) { return v === 'true' ? 'italic' : 'normal'; } },
+  // Logo image sizing + overlap composition
+  nav_logo_size:        { vars: ['--nav-logo-size'],         transform: function(v) { return (parseInt(v,10)||48) + 'px'; } },
+  nav_logo_overlap_x:   { vars: ['--nav-logo-overlap-x'],    transform: function(v) { return (parseInt(v,10)||0) + 'px'; } },
+  nav_logo_overlap_y:   { vars: ['--nav-logo-overlap-y'],    transform: function(v) { return (parseInt(v,10)||0) + 'px'; } },
   // Plain color overrides (text fields) — also push as CSS vars
   nav_brand_color:      { vars: ['--nav-brand-color'],     transform: function(v) { return v || 'currentColor'; } },
   nav_tagline_color:    { vars: ['--nav-tagline-color'],   transform: function(v) { return v || 'currentColor'; } },
@@ -3762,6 +4026,9 @@ function saveTheme() {
   function openPanel()  { panel.classList.add('open'); overlay.classList.add('active'); input.focus(); }
   function closePanel() { panel.classList.remove('open'); overlay.classList.remove('active'); }
   if (toggle)  toggle.addEventListener('click', openPanel);
+  // Mobile duplicate agent toggle (in preview-toggle bar)
+  var toggleMobile = document.getElementById('agentToggleMobile');
+  if (toggleMobile) toggleMobile.addEventListener('click', openPanel);
   if (closeBtn) closeBtn.addEventListener('click', closePanel);
   if (overlay) overlay.addEventListener('click', closePanel);
 

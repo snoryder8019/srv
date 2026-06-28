@@ -18,7 +18,7 @@
  *   view.upcard view.trump view.maker view.trick[] view.trickWins[] view.teamPoints[] view.dealer view.turn
  * Partners are seats (0,2) vs (1,3); first team to 10 wins.
  */
-import { createTable3D } from './table3d.js?v=1780587392337';
+import { createTable3D } from './table3d.js?v=1781441125092';
 import { createTableClient } from './tableclient3d.js';
 import { createHUD } from './hud3d.js';
 import { buildCard, applyLegalHighlight, CARD_W, CARD_H, CARD_T } from './card3d.js';

@@ -9,6 +9,7 @@ import { getDb } from '../plugins/mongo.js';
 import { getReviews } from '../plugins/reviews.js';
 import { shareTargetPath, shareUrlFor, mintShareToken } from '../plugins/shareLink.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
+import { CARD_TEMPLATES, CARD_SCHEMES, resolveScheme, normalizeCard } from '../plugins/cardConfig.js';
 import { SERVICES, INFRA_SERVICES } from '../plugins/serviceRegistry.js';
 
 // Static projection of the platform stack for the "Server Harmony" orbit shown in
@@ -36,6 +37,7 @@ import { normalizeEmail } from '../plugins/emailNormalize.js';
 import { checkGlobalSpam } from '../plugins/globalSpam.js';
 import { captureLead } from '../plugins/subscribe.js';
 import { buildRssFeed, buildAtomFeed } from '../plugins/feeds.js';
+import { applyPipes } from '../plugins/pipes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TENANT_VIEWS_ROOT = path.resolve(__dirname, '..', 'views', 'tenants');
@@ -694,6 +696,7 @@ router.get('/', async (req, res) => {
       ]);
       const copy = { ...COPY_DEFAULTS };
       for (const item of rawCopy) copy[item.key] = item.value;
+      await applyPipes({ db, tenant: req.tenant, design, copy });
       return res.render(`tenants/${sub}/home`, {
         design, logos, brandModels, copy,
         brand: res.locals.brand || {},
@@ -722,6 +725,7 @@ router.get('/', async (req, res) => {
             const overrides = activeTemplate.contentOverrides?.[b.id] || {};
             return { ...b, fields: { ...b.fields, ...overrides } };
           });
+          await applyPipes({ db, tenant: req.tenant, design, copy, nodes: [blocks] });
           return res.render('template-live', {
             design, blocks, tpl, logos, brandModels, copy, navLinks,
             brand: res.locals.brand || {},
@@ -757,6 +761,10 @@ router.get('/', async (req, res) => {
 
     // Hydrate any Writer Feed sections with their tagged content before render.
     await attachWriterFeeds(db, customSections);
+
+    // Resolve {{ }} content pipes across copy + custom sections (form embeds,
+    // brand/design vars, etc). Mutates copy values + section strings in place.
+    await applyPipes({ db, tenant: req.tenant, design, copy, nodes: [customSections] });
 
     // Latest 3 blog posts for home page blog section
     const latestPosts = design.vis_blog === 'true'
@@ -1026,15 +1034,22 @@ router.get('/card/:slug', async (req, res, next) => {
     const domain = req.hostname;
     const websiteUrl = `https://${domain}`;
 
-    // Generate QR code pointing to the tenant's website
+    // Resolve the card's chosen template + color scheme (saved on the link),
+    // with ?tpl=/?scheme= query overrides so the admin can live-preview.
+    const saved = normalizeCard(link.card || {});
+    const template = CARD_TEMPLATES[req.query.tpl] ? req.query.tpl : saved.template;
+    const schemeKey = CARD_SCHEMES[req.query.scheme] ? req.query.scheme : saved.scheme;
+    const scheme = resolveScheme(schemeKey, design);
+
+    // Generate QR code in the card's primary color
     const qrDataUrl = await QRCode.toDataURL(websiteUrl, {
       width: 300, margin: 2,
-      color: { dark: design.color_primary || '#1C2B4A', light: '#ffffff' },
+      color: { dark: scheme.primary, light: '#ffffff' },
     });
 
     res.render('card', {
       brand, design, logo, qrDataUrl, websiteUrl,
-      slug: req.params.slug,
+      slug: req.params.slug, template, scheme,
     });
   } catch (err) {
     console.error('[Card] render error:', err);

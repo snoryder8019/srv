@@ -8,6 +8,7 @@ import { config } from '../../config/config.js';
 import { callLLM, webSearch, runTool, handleMcpRequest } from '../../plugins/agentMcp.js';
 import { generateInvoiceNumber, generatePaymentToken, calculateTotal } from '../../plugins/invoiceHelpers.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import { buildAssetReferenceIndex, annotateAssets, buildActivityMap } from '../../plugins/usageMap.js';
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ Analyze the user's request and determine which department should handle it.
 
 Output ONLY raw JSON — no prose, no fences:
 {
-  "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "email" | "invoice" | "outreach" | "research" | "onboarding" | "navigate",
+  "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "email" | "social" | "print" | "invoice" | "outreach" | "research" | "onboarding" | "navigate",
   "task": "concise task description for the specialist",
   "section_type": "text" | "split" | "cta" | "cards" | "faq",
   "page_type": "content" | "landing" | "data-list",
@@ -33,7 +34,9 @@ Department guide:
 - section: CREATING a new website section (text block, split, CTA banner, cards, FAQ)
 - page: CREATING a standalone website page (content, landing, data-list)
 - design: CHANGING site colors, fonts, layouts, section visibility, theme/branding
-- asset: CREATING social media graphics/images, design work
+- asset: CREATING a social-platform GRAPHIC/IMAGE (Instagram post image, Facebook cover, story graphic) — the rendered picture itself, NOT print pieces
+- social: DRAFTING a social media POST (text/caption) for Facebook, Instagram, Threads, X, LinkedIn — what to actually say in the post
+- print: A PRINT PIECE — flyer, poster, business card, sticker, brochure, menu, letterhead, postcard. Use this for anything printed, EVEN when the user says "design" (e.g. "design a flyer"). Drafts headline, body, offer, CTA.
 - email: DRAFTING email marketing campaigns, newsletters, promotional blasts
 - invoice: CREATING an invoice, billing a client, generating line items
 - outreach: DRAFTING a direct email to a specific person/client — follow-ups, updates, proposals, check-ins. Use this when user says "email [name]", "send [name] a message", "write to [client]"
@@ -44,6 +47,10 @@ Department guide:
 Key parsing rules:
 - "email John" or "message the client" → outreach (draft an email TO someone)
 - "email campaign" or "newsletter" → email (marketing blast to subscribers)
+- "post on instagram", "write a tweet", "social post", "caption for facebook" → social (the words/caption of a social post)
+- "instagram image", "facebook cover", "story graphic", "social graphic", "make an image for instagram" → asset (a social-platform picture, not the words)
+- "flyer", "poster", "business card", "sticker", "brochure", "menu", "letterhead", "postcard", "print copy" → print
+- "design a flyer/poster/card/sticker" → print (a print piece — route to print even though the verb is "design"); only route to design/asset when there is NO print format named
 - "research [company]" / "look up [client]" / "what do you know about [business]" → research
 - "build an intake form" / "suggest onboarding fields" / "client intake" → onboarding
 - "go to email" or "open email marketing" → navigate
@@ -58,6 +65,8 @@ const DEPT_ACTIONS = {
   page:       { label: 'Open Page Editor',     url: '/admin/pages/new',        color: '#2E5B3E' },
   design:     { label: 'Go to Design',         url: '/admin/design',           color: '#6B3FA0' },
   asset:      { label: 'Open Asset Center',    url: '/admin/assets',           color: '#C9A848' },
+  social:     { label: 'Open Social',          url: '/admin/social',           color: '#3B5998' },
+  print:      { label: 'Open Print Studio',    url: '/admin/print-studio',     color: '#B5651D' },
   email:      { label: 'Open Email Marketing', url: '/admin/email-marketing',  color: '#D4563A' },
   invoice:    { label: 'Open Bookkeeping',     url: '/admin/bookkeeping',      color: '#2B7A5B' },
   outreach:   { label: 'Open Clients',         url: '/admin/clients',          color: '#4A6FA5' },
@@ -77,17 +86,21 @@ const NAV_MAP = {
   meetings: '/admin/meetings', 'new meeting': '/admin/meetings',
   bookkeeping: '/admin/bookkeeping', invoices: '/admin/bookkeeping',
   'email marketing': '/admin/email-marketing', campaigns: '/admin/email-marketing',
+  social: '/admin/social', 'social media': '/admin/social', posts: '/admin/social',
+  'print studio': '/admin/print-studio', 'print-studio': '/admin/print-studio', print: '/admin/print-studio',
+  flyers: '/admin/print-studio', 'business cards': '/admin/print-studio',
   portfolio: '/admin/portfolio', 'new portfolio': '/admin/portfolio/new',
   sections: '/admin/sections',
   users: '/admin/users',
   profile: '/admin/profile',
+  analytics: '/admin/analytics', reports: '/admin/analytics',
   onboarding: '/admin/onboarding', 'intake form': '/admin/onboarding', forms: '/admin/onboarding',
   notes: '/admin/notes', shorts: '/admin/notes', rants: '/admin/notes',
   inquiries: '/admin/inquiries', leads: '/admin/inquiries',
   tickets: '/admin/tickets', support: '/admin/tickets',
-  tutorials: '/admin/tutorials',
+  tutorials: '/admin/tutorials', docs: '/admin/docs', 'brand builder': '/admin/brand-builder',
   templates: '/admin/templates', 'template store': '/admin/template-store',
-  qrcodes: '/admin/qrcodes', qr: '/admin/qrcodes',
+  'qr codes': '/admin/qr-codes', qrcodes: '/admin/qr-codes', qr: '/admin/qr-codes',
   scanner: '/admin/scanner',
   calculators: '/admin/calculators',
   super: '/admin/super', 'super admin': '/admin/super',
@@ -103,7 +116,7 @@ Output ONLY raw JSON — no prose, no fences:
   "title": "short title (3-6 words)",
   "tasks": [
     {
-      "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "email" | "invoice" | "outreach" | "research" | "onboarding",
+      "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "social" | "print" | "email" | "invoice" | "outreach" | "research" | "onboarding",
       "task": "specific instruction for the specialist agent",
       "label": "2-5 word human label",
       "section_type": "text" | "split" | "cta" | "cards" | "faq",
@@ -125,7 +138,9 @@ Department capabilities:
 - section: create new website section (text block, split layout, CTA banner, feature cards, FAQ)
 - page: create standalone page (content article, visual landing page, data list)
 - design: change colors, fonts, layouts, toggle section visibility
-- asset: create social media graphics and images
+- asset: create a social-platform graphic/image (the rendered picture itself), NOT print pieces
+- social: draft the text/caption of a social media post (Facebook, Instagram, Threads, X, LinkedIn)
+- print: a print piece — flyer, poster, business card, sticker, brochure, menu, postcard (route here even if the user says "design")
 - email: draft email marketing campaigns, newsletters, promotional emails
 - invoice: create invoices with line items for client billing
 - outreach: draft direct emails to clients — updates, follow-ups, proposals
@@ -172,6 +187,16 @@ function getSuggestions(department, task, fill, brand = {}) {
       `Create an Instagram story promoting ${svc}`,
       `Design a Facebook cover with ${biz} brand colors`,
       `Draft a blog post about visual branding`,
+    ],
+    social: [
+      `Design a matching social graphic for this post`,
+      `Write a follow-up post about ${svc}`,
+      `Go to social to schedule it`,
+    ],
+    print: [
+      `Design a flyer to match this campaign`,
+      `Create a QR code linking to this offer`,
+      `Go to print studio to lay it out`,
     ],
     email: [
       `Create a follow-up for subscribers who didn't open`,
@@ -411,6 +436,12 @@ router.post('/run-task', async (req, res) => {
     } else if (department === 'asset') {
       toolName = 'generate_social_image';
       toolArgs = { prompt: task, context, brandContext: brandCtx };
+    } else if (department === 'social') {
+      toolName = 'write_social_post';
+      toolArgs = { task, platforms: req.body.platforms, context, brandContext: brandCtx };
+    } else if (department === 'print') {
+      toolName = 'write_print_copy';
+      toolArgs = { task, context, brandContext: brandCtx };
     } else if (department === 'email') {
       toolName = 'write_campaign';
       toolArgs = { task, context, brandContext: brandCtx };
@@ -502,6 +533,12 @@ router.post('/', async (req, res) => {
     } else if (route.department === 'asset') {
       toolName = 'generate_social_image';
       toolArgs = { prompt: route.task, context, brandContext: brandCtx };
+    } else if (route.department === 'social') {
+      toolName = 'write_social_post';
+      toolArgs = { task: route.task, platforms: req.body.platforms, context, brandContext: brandCtx };
+    } else if (route.department === 'print') {
+      toolName = 'write_print_copy';
+      toolArgs = { task: route.task, context, brandContext: brandCtx };
     } else if (route.department === 'email') {
       toolName = 'write_campaign';
       toolArgs = { task: route.task, context, brandContext: brandCtx };
@@ -790,10 +827,80 @@ router.post('/execute', async (req, res) => {
       summary = `Created draft invoice ${invoiceNumber}: "${title}" — $${amount.toFixed(2)}.`;
       editUrl = '/admin/bookkeeping';
 
+    } else if (department === 'social') {
+      // Stage a social post as an editable DRAFT — never auto-publish.
+      const body = (fill.body || '').trim();
+      if (!body) return res.json({ ok: false, message: 'Social post needs body text.' });
+
+      const VALID_PLATFORMS = ['facebook', 'instagram', 'threads', 'x', 'linkedin'];
+      const platforms = String(fill.platforms || '')
+        .split(',').map(p => p.trim().toLowerCase()).filter(p => VALID_PLATFORMS.includes(p));
+
+      await db.collection('social_posts').insertOne({
+        body,
+        link: (fill.link || '').trim(),
+        mediaUrls: [],
+        platforms,
+        status: 'draft',
+        scheduledAt: null,
+        publishedAt: null,
+        results: [],
+        createdBy: req.adminUser?.email || null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      summary = `Staged a social post draft${platforms.length ? ` for ${platforms.join(', ')}` : ''} — review and send from Social.`;
+      editUrl = '/admin/social?tab=compose';
+
+    } else if (department === 'print') {
+      // Stage a print material as an editable DRAFT in Print Studio.
+      const COPY_KEYS = ['headline', 'subhead', 'body', 'offer', 'cta', 'tagline'];
+      const fields = {};
+      for (const k of COPY_KEYS) if (fill[k] != null && String(fill[k]).trim()) fields[k] = String(fill[k]).trim();
+      if (!fields.headline && !fields.body) return res.json({ ok: false, message: 'Print copy needs at least a headline or body.' });
+
+      const result = await db.collection('print_materials').insertOne({
+        name: fill.name || fields.headline || 'AI draft campaign',
+        theme: '',                 // renderer falls back to the default theme
+        fields,
+        showLogo: true,
+        logoSlot: 'logo_primary',
+        qrLinkId: '', qrCaption: '',
+        bgType: 'theme', bgColor: '', bgColor2: '', bgImageUrl: '',
+        enabled: {}, layouts: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+      summary = `Staged a print campaign draft: "${fill.name || fields.headline || 'AI draft campaign'}" — lay it out in Print Studio.`;
+      editUrl = `/admin/print-studio?saved=1#m-${result.insertedId}`;
+
     } else if (department === 'outreach') {
       // Outreach emails need a client — save content for the user to send manually
       summary = `Drafted client email: "${fill.subject || 'Email'}". Go to a client page to send it.`;
       editUrl = '/admin/clients';
+
+    } else if (department === 'onboarding') {
+      // Stage an onboarding / intake form as a DRAFT the user can refine in the builder.
+      const formName = (fill.name && String(fill.name).trim()) || label || 'New onboarding form';
+      const fields = Array.isArray(fill.fields) ? fill.fields : [];
+      if (!fields.length) return res.json({ ok: false, message: 'No form fields to save.' });
+
+      let slug = toSlug(formName);
+      const existing = await db.collection('onboarding_forms').findOne({ slug });
+      if (existing) slug = slug + '-' + Date.now().toString(36);
+
+      const result = await db.collection('onboarding_forms').insertOne({
+        name: formName,
+        slug,
+        description: (fill.description || '').trim(),
+        status: 'draft',
+        fields,
+        assignTo: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      summary = `Created draft onboarding form "${formName}" with ${fields.length} field${fields.length > 1 ? 's' : ''}.`;
+      editUrl = `/admin/onboarding/${result.insertedId}`;
 
     } else {
       return res.status(400).json({ error: 'Unknown department: ' + department });
@@ -832,6 +939,8 @@ router.get('/digest', async (req, res) => {
       onboardingFormsNew, onboardingResponses,
       scanLatest,
       emailOpens, emailClicks, emailBounces, emailUnsubs,
+      socialNew, socialPublished, socialScheduledUpcoming,
+      printNew, qrNew, calculatorsNew,
     ] = await Promise.all([
       cd('blog',           { createdAt: { $gte: since } }),
       cd('pages',          { createdAt: { $gte: since } }),
@@ -858,6 +967,12 @@ router.get('/digest', async (req, res) => {
       cd('campaign_events', { type: 'click',  ts: { $gte: since } }),
       cd('campaign_events', { type: 'bounce', ts: { $gte: since } }),
       cd('campaign_events', { type: 'unsubscribe', ts: { $gte: since } }),
+      cd('social_posts',    { createdAt: { $gte: since } }),
+      cd('social_posts',    { status: 'published', publishedAt: { $gte: since } }),
+      cd('social_posts',    { status: 'scheduled', scheduledAt: { $gte: new Date() } }),
+      cd('print_materials', { createdAt: { $gte: since } }),
+      cd('qr_links',        { createdAt: { $gte: since } }),
+      cd('calculators',     { createdAt: { $gte: since } }),
     ]);
 
     const scanCounts = scanLatest?.[0]?.summary?.counts || {};
@@ -872,6 +987,10 @@ router.get('/digest', async (req, res) => {
       { key: 'design',     label: 'Design',      count: designEdits,url: '/admin/design' },
       { key: 'assets',     label: 'Assets',      count: assetsNew,  url: '/admin/assets' },
       { key: 'email',      label: 'Email Campaigns', count: campaignsNew, url: '/admin/email-marketing' },
+      { key: 'social',     label: 'Social Posts', count: socialNew,  url: '/admin/social' },
+      { key: 'print',      label: 'Print Studio', count: printNew,   url: '/admin/print-studio' },
+      { key: 'qr',         label: 'QR Codes',     count: qrNew,      url: '/admin/qr-codes' },
+      { key: 'calculators',label: 'Calculators',  count: calculatorsNew, url: '/admin/calculators' },
       { key: 'invoices',   label: 'Invoices',    count: invoicesNew, url: '/admin/bookkeeping' },
       { key: 'clients',    label: 'Clients',     count: clientsNew, url: '/admin/clients' },
       { key: 'contacts',   label: 'Contacts',    count: contactsNew,url: '/admin/email-marketing' },
@@ -888,6 +1007,7 @@ router.get('/digest', async (req, res) => {
     if (scanCritHigh > 0)     alerts.push({ level: 'danger', label: `${scanCritHigh} critical/high scan issue${scanCritHigh > 1 ? 's' : ''}`, url: '/admin/scanner' });
     if (emailBounces > 0)     alerts.push({ level: 'warn',   label: `${emailBounces} email bounce${emailBounces > 1 ? 's' : ''}`, url: '/admin/email-marketing' });
     if (emailUnsubs > 5)      alerts.push({ level: 'warn',   label: `${emailUnsubs} unsubscribes this ${range}`, url: '/admin/email-marketing' });
+    if (socialScheduledUpcoming > 0) alerts.push({ level: 'info', label: `${socialScheduledUpcoming} social post${socialScheduledUpcoming > 1 ? 's' : ''} scheduled to go out`, url: '/admin/social?tab=scheduled' });
 
     res.json({
       range,
@@ -898,11 +1018,53 @@ router.get('/digest', async (req, res) => {
         campaignsSent, emailOpens, emailClicks, emailBounces, emailUnsubs,
         ticketsNew, ticketsOpen,
         onboardingResponses,
+        socialPublished, socialScheduledUpcoming,
       },
       alerts,
     });
   } catch (err) {
     console.error('[master-agent/digest] error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Connection / cleanup map — GET /admin/master-agent/usage ─────────────────
+// Cross-module "what's in active use vs. ready for cleanup" report. Powers the
+// asset/draft/campaign cleanup flags and lets the dashboard agent advise on
+// what is safe to remove. Scans every collection that links an asset, so it is
+// heavier than /digest — call it on demand, not on every page load.
+router.get('/usage', async (req, res) => {
+  try {
+    const db = req.db;
+    const graceDays = Math.max(0, parseInt(req.query.graceDays, 10) || 7);
+    const staleDays = Math.max(1, parseInt(req.query.staleDays, 10) || 30);
+
+    const [refIdx, allAssets, activity] = await Promise.all([
+      buildAssetReferenceIndex(db),
+      db.collection('assets').find({}).project({ publicUrl: 1, bucketKey: 1, title: 1, originalName: 1, folder: 1, fileType: 1, size: 1, uploadedAt: 1 }).toArray(),
+      buildActivityMap(db, { staleDays }),
+    ]);
+
+    const annotated = annotateAssets(allAssets, refIdx, { graceDays });
+    const cleanupAssets = annotated.filter(a => a.cleanup);
+    const reclaimableBytes = cleanupAssets.reduce((s, a) => s + (Number(a.size) || 0), 0);
+
+    res.json({
+      assets: {
+        total: allAssets.length,
+        inUse: annotated.filter(a => a.inUse).length,
+        unused: cleanupAssets.length,
+        reclaimableBytes,
+        graceDays,
+        candidates: cleanupAssets
+          .sort((a, b) => (Number(b.size) || 0) - (Number(a.size) || 0))
+          .slice(0, 25)
+          .map(a => ({ id: String(a._id), title: a.title || a.originalName, folder: a.folder, fileType: a.fileType, size: a.size || 0, uploadedAt: a.uploadedAt })),
+      },
+      activity,
+    });
+  } catch (err) {
+    console.error('[master-agent/usage] error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -916,52 +1078,103 @@ router.get('/briefing', async (req, res) => {
   try {
     const db = req.db;
     const c = (name) => db.collection(name);
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);   // last 24h
-    const weekSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const now = Date.now();
+
+    // "Since last login" anchor — the admin JWT is minted at login (8h cookie),
+    // so its `iat` claim is effectively the last-login time and stays stable for
+    // the whole session. A brand-new session (just logged in) has nothing to
+    // recap yet, so we widen to the last 24h and label it "today".
+    const iatMs = req.adminUser?.iat ? req.adminUser.iat * 1000 : 0;
+    const freshLogin = !iatMs || (now - iatMs) < 30 * 60 * 1000;
+    const activitySince = freshLogin ? new Date(now - 24 * 60 * 60 * 1000) : new Date(iatMs);
+    const weekSince = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const windowLabel = freshLogin ? 'in the last day' : 'since you were last here';
     const safe = (p) => p.catch(() => 0);
     const safeArr = (p) => p.catch(() => []);
+    const cd = (name, q) => safe(c(name).countDocuments(q));
+    const sinceQ = { $gte: activitySince };
 
     const [
-      inquiriesNew,
+      // ── Needs attention now (current state, not time-bound) ──
       pendingBookings,
       bookingsNeedConfirm,
-      invoicesPaidToday, invoicesPaidWeek,
       invoicesOverdueDocs,
       ticketsOpen,
+      socialScheduledUpcoming,
+      // ── What happened since last login (every agent's output) ──
+      inquiriesNew,
+      invoicesPaidSince, invoicesPaidWeek,
+      clientsNew, contactsNew, meetingsNew,
+      blogNew, pagesNew, sectionsNew, copyEdits, designEdits, assetsNew,
+      socialPublished, printNew, campaignsSent,
     ] = await Promise.all([
-      safe(c('inquiries').countDocuments({ createdAt: { $gte: since } })),
       safeArr(c('bookings').find({ status: 'pending' }).sort({ createdAt: -1 }).limit(10)
         .project({ name: 1, email: 1, startAt: 1, createdAt: 1, status: 1 }).toArray()),
-      safe(c('bookings').countDocuments({ status: 'pending' })),
-      safe(c('invoices').countDocuments({ status: 'paid', updatedAt: { $gte: since } })),
-      safe(c('invoices').countDocuments({ status: 'paid', updatedAt: { $gte: weekSince } })),
+      cd('bookings', { status: 'pending' }),
       safeArr(c('invoices').find({ status: 'overdue' }).sort({ dueDate: 1 }).limit(10)
         .project({ amount: 1, clientName: 1, number: 1, dueDate: 1 }).toArray()),
-      safe(c('tickets').countDocuments({ status: { $in: ['open', 'in-progress', 'escalated'] } })),
+      cd('tickets', { status: { $in: ['open', 'in-progress', 'escalated'] } }),
+      cd('social_posts', { status: 'scheduled', scheduledAt: { $gte: new Date(now) } }),
+      cd('inquiries', { createdAt: sinceQ }),
+      cd('invoices', { status: 'paid', updatedAt: sinceQ }),
+      cd('invoices', { status: 'paid', updatedAt: { $gte: weekSince } }),
+      cd('clients', { createdAt: sinceQ }),
+      cd('contacts', { createdAt: sinceQ }),
+      cd('meetings', { createdAt: sinceQ }),
+      cd('blog', { createdAt: sinceQ }),
+      cd('pages', { createdAt: sinceQ }),
+      cd('custom_sections', { createdAt: sinceQ }),
+      cd('copy', { updatedAt: sinceQ }),
+      cd('design', { updatedAt: sinceQ }),
+      cd('assets', { uploadedAt: sinceQ }),
+      cd('social_posts', { status: 'published', publishedAt: sinceQ }),
+      cd('print_materials', { createdAt: sinceQ }),
+      cd('campaigns', { sentAt: sinceQ }),
     ]);
 
     const overdueCount = invoicesOverdueDocs.length;
     const overdueAmount = invoicesOverdueDocs.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+    const contentCreated = blogNew + pagesNew + sectionsNew;
+    const siteEdits = copyEdits + designEdits;
+    const audienceNew = clientsNew + contactsNew;
 
-    // Build structured facts the LLM will paraphrase. Keep this short — we
-    // want the model to summarize, not memorize, and we want the response to
-    // come back fast on every dashboard load.
+    // Build structured facts the LLM will paraphrase. Two buckets: what needs
+    // the owner's attention right now, and a recap of everything the agents +
+    // the business produced since the last login.
     const firstName = (req.adminUser?.displayName || req.adminUser?.email || '').split(/[\s@]/)[0] || '';
     const brandName = req.tenant?.brand?.name || '';
     const facts = {
       tenant: brandName,
       user: firstName,
-      inquiriesLast24h: inquiriesNew,
-      bookingsPendingConfirm: bookingsNeedConfirm,
-      bookingsPreview: pendingBookings.slice(0, 3).map(b => ({
-        name: b.name,
-        when: b.startAt ? new Date(b.startAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null,
-      })),
-      invoicesPaidToday,
-      invoicesPaidWeek,
-      invoicesOverdueCount: overdueCount,
-      invoicesOverdueAmount: overdueAmount,
-      ticketsOpen,
+      window: windowLabel,
+      needsAttention: {
+        overdueInvoices: overdueCount,
+        overdueAmount,
+        bookingsPendingConfirm: bookingsNeedConfirm,
+        bookingsPreview: pendingBookings.slice(0, 3).map(b => ({
+          name: b.name,
+          when: b.startAt ? new Date(b.startAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null,
+        })),
+        openTickets: ticketsOpen,
+        socialPostsScheduled: socialScheduledUpcoming,
+      },
+      sinceLastLogin: {
+        newInquiries: inquiriesNew,
+        invoicesPaid: invoicesPaidSince,
+        invoicesPaidThisWeek: invoicesPaidWeek,
+        newClients: clientsNew,
+        newContacts: contactsNew,
+        newMeetings: meetingsNew,
+        blogPostsCreated: blogNew,
+        pagesCreated: pagesNew,
+        sectionsCreated: sectionsNew,
+        copyFieldsEdited: copyEdits,
+        designChanges: designEdits,
+        assetsAdded: assetsNew,
+        socialPostsPublished: socialPublished,
+        printMaterialsCreated: printNew,
+        emailCampaignsSent: campaignsSent,
+      },
     };
 
     // Build deterministic bullets + suggested action chips from the facts.
@@ -969,28 +1182,46 @@ router.get('/briefing', async (req, res) => {
     // list and one-click links to wherever the work actually lives.
     const bullets = [];
     const actions = [];
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
+
+    // ── Needs-attention bullets (loudest first) ──
     if (overdueCount) {
-      bullets.push(`${overdueCount} overdue invoice${overdueCount > 1 ? 's' : ''}${overdueAmount ? ` — $${overdueAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} outstanding` : ''}`);
+      bullets.push(`${plural(overdueCount, 'overdue invoice')}${overdueAmount ? ` — $${overdueAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} outstanding` : ''}`);
       actions.push({ label: 'Chase overdue invoices', href: '/admin/bookkeeping', icon: '💰' });
     }
     if (bookingsNeedConfirm) {
       const previewName = pendingBookings[0]?.name;
-      bullets.push(`${bookingsNeedConfirm} booking${bookingsNeedConfirm > 1 ? 's' : ''} waiting for confirmation${previewName ? ` (${previewName} first up)` : ''}`);
+      bullets.push(`${plural(bookingsNeedConfirm, 'booking')} waiting for confirmation${previewName ? ` (${previewName} first up)` : ''}`);
       actions.push({ label: 'Confirm bookings', href: '/admin/meetings', icon: '📅' });
     }
     if (inquiriesNew) {
-      bullets.push(`${inquiriesNew} new inquir${inquiriesNew > 1 ? 'ies' : 'y'} in the last 24h`);
+      bullets.push(`${plural(inquiriesNew, 'new inquiry', 'new inquiries')} ${windowLabel}`);
       actions.push({ label: 'Reply to inquiries', href: '/admin/inquiries', icon: '✉' });
     }
-    if (invoicesPaidToday) {
-      bullets.push(`${invoicesPaidToday} invoice${invoicesPaidToday > 1 ? 's' : ''} paid today — nice`);
-    } else if (invoicesPaidWeek) {
-      bullets.push(`${invoicesPaidWeek} invoice${invoicesPaidWeek > 1 ? 's' : ''} paid this week`);
-    }
     if (ticketsOpen) {
-      bullets.push(`${ticketsOpen} open support ticket${ticketsOpen > 1 ? 's' : ''}`);
+      bullets.push(`${plural(ticketsOpen, 'open support ticket')}`);
       actions.push({ label: 'Review tickets', href: '/admin/tickets', icon: '🎫' });
     }
+    if (socialScheduledUpcoming) {
+      bullets.push(`${plural(socialScheduledUpcoming, 'social post')} scheduled to go out`);
+    }
+
+    // ── "Since last login" recap bullets (what the agents + business did) ──
+    if (invoicesPaidSince) bullets.push(`${plural(invoicesPaidSince, 'invoice')} paid ${windowLabel} — nice`);
+    else if (invoicesPaidWeek) bullets.push(`${plural(invoicesPaidWeek, 'invoice')} paid this week`);
+    if (contentCreated) {
+      const segs = [];
+      if (blogNew) segs.push(plural(blogNew, 'blog post'));
+      if (pagesNew) segs.push(plural(pagesNew, 'page'));
+      if (sectionsNew) segs.push(plural(sectionsNew, 'section'));
+      bullets.push(`Content agents added ${segs.join(', ')}`);
+    }
+    if (socialPublished) bullets.push(`${plural(socialPublished, 'social post')} published`);
+    if (printNew) bullets.push(`${plural(printNew, 'print campaign')} drafted`);
+    if (campaignsSent) bullets.push(`${plural(campaignsSent, 'email campaign')} sent`);
+    if (assetsNew) bullets.push(`${plural(assetsNew, 'asset')} added`);
+    if (siteEdits) bullets.push(`${plural(siteEdits, 'site copy/design edit')} applied`);
+    if (audienceNew) bullets.push(`${plural(audienceNew, 'new contact/client', 'new contacts/clients')}`);
 
     // Always offer at least a few generative shortcuts so the agent stays
     // useful on quiet days. `prompt` chips drop text into the chat input.
@@ -1006,34 +1237,33 @@ router.get('/briefing', async (req, res) => {
     }
 
     // Empty-state path: skip the LLM entirely. Save tokens + latency when
-    // there's nothing to summarize.
-    const nothingToSay =
-      !inquiriesNew && !bookingsNeedConfirm && !invoicesPaidToday && !overdueCount && !ticketsOpen;
-    if (nothingToSay) {
+    // nothing happened and nothing needs attention.
+    const attentionTotal = overdueCount + bookingsNeedConfirm + ticketsOpen;
+    const activityTotal = inquiriesNew + invoicesPaidSince + contentCreated + siteEdits +
+      assetsNew + socialPublished + printNew + campaignsSent + audienceNew + meetingsNew;
+    if (!attentionTotal && !activityTotal) {
       const greeting = firstName ? `Good to see you, ${firstName}.` : 'Welcome back.';
       return res.json({
-        briefing: `${greeting} No new inquiries, bookings, or overdue invoices — quiet morning. Tell me what to work on.`,
-        bullets: ['No new inquiries', 'No pending bookings', 'No overdue invoices'],
+        briefing: `${greeting} Nothing new ${windowLabel} and nothing needs attention — clear runway. Tell me what to work on and I'll coordinate the agents.`,
+        bullets: ['No new inquiries or bookings', 'No overdue invoices or open tickets', 'No new agent activity'],
         actions,
         facts,
       });
     }
 
-    const systemPrompt = `You are the admin dashboard concierge for a small business owner.
-Write a 2–3 sentence personal welcome briefing based on the JSON facts below.
+    const systemPrompt = `You are the admin dashboard concierge for a small business owner. You coordinate a team of AI agents (blog, copy, sections, pages, design, assets, social, print, email, invoices, clients) and report back on their work.
+
+Write a 3–4 sentence personal welcome briefing from the JSON facts below.
 
 Tone: warm, direct, peer-to-peer. Address the user by first name if provided.
-Cover ONLY what the facts say is non-zero — never invent numbers, never pad with generic encouragement, never list every metric.
+Cover ONLY what the facts say is non-zero — never invent numbers, never pad, never list every metric.
 
-Priority order (mention the loudest signal first):
-1. Overdue invoices — name the count + dollar total if present.
-2. Pending booking requests waiting for confirmation.
-3. New inquiries in the last 24h.
-4. Invoices paid (today, then this week).
-5. Open support tickets.
+Structure the briefing in two beats:
+1. RECAP — what happened ${windowLabel} (the "sinceLastLogin" facts): content the agents created, social posts published, campaigns sent, invoices paid, new clients/contacts/meetings. Group it naturally; don't recite every field.
+2. ATTENTION — what needs the owner now (the "needsAttention" facts), loudest first: overdue invoices (name count + dollar total), bookings awaiting confirmation, new inquiries, open tickets, scheduled social posts.
 
-If pendingBookings has names, you may name one (e.g. "Sarah's booking is waiting") — but don't list more than one.
-End with a short forward-looking nudge (e.g. "Want to start with the overdue chase?" or "I can draft the confirmation reply.").
+If both buckets are empty for a beat, skip that beat. If bookingsPreview has a name you may name one (e.g. "Sarah's booking is waiting") — never more than one.
+End with a short forward-looking nudge (e.g. "Want to start with the overdue chase?" or "I can have the blog agent draft a follow-up.").
 
 Output ONLY the briefing text — no JSON, no preamble, no "Here is your briefing", no quotes.`;
 
@@ -1051,15 +1281,24 @@ Output ONLY the briefing text — no JSON, no preamble, no "Here is your briefin
 
     // Deterministic fallback if the LLM is slow / unavailable.
     if (!briefing) {
-      const parts = [];
-      if (overdueCount) parts.push(`${overdueCount} overdue invoice${overdueCount > 1 ? 's' : ''}${overdueAmount ? ` ($${overdueAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : ''} need chasing`);
-      if (bookingsNeedConfirm) parts.push(`${bookingsNeedConfirm} booking${bookingsNeedConfirm > 1 ? 's' : ''} waiting for your confirmation`);
-      if (inquiriesNew) parts.push(`${inquiriesNew} new inquir${inquiriesNew > 1 ? 'ies' : 'y'}`);
-      if (invoicesPaidToday) parts.push(`${invoicesPaidToday} invoice${invoicesPaidToday > 1 ? 's' : ''} paid today`);
-      else if (invoicesPaidWeek) parts.push(`${invoicesPaidWeek} invoice${invoicesPaidWeek > 1 ? 's' : ''} paid this week`);
-      if (ticketsOpen) parts.push(`${ticketsOpen} open support ticket${ticketsOpen > 1 ? 's' : ''}`);
+      const recap = [];
+      if (contentCreated) recap.push(`${plural(contentCreated, 'new content piece')} created`);
+      if (socialPublished) recap.push(`${plural(socialPublished, 'social post')} published`);
+      if (campaignsSent) recap.push(`${plural(campaignsSent, 'campaign')} sent`);
+      if (invoicesPaidSince) recap.push(`${plural(invoicesPaidSince, 'invoice')} paid`);
+      if (audienceNew) recap.push(`${plural(audienceNew, 'new contact')}`);
+
+      const attention = [];
+      if (overdueCount) attention.push(`${plural(overdueCount, 'overdue invoice')}${overdueAmount ? ` ($${overdueAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : ''} to chase`);
+      if (bookingsNeedConfirm) attention.push(`${plural(bookingsNeedConfirm, 'booking')} to confirm`);
+      if (inquiriesNew) attention.push(`${plural(inquiriesNew, 'new inquiry', 'new inquiries')}`);
+      if (ticketsOpen) attention.push(`${plural(ticketsOpen, 'open ticket')}`);
+
       const greeting = firstName ? `Hi ${firstName} — ` : '';
-      briefing = `${greeting}${parts.join(', ')}. Where do you want to start?`;
+      const brandStr = brandName ? ` at ${brandName}` : '';
+      const recapStr = recap.length ? `${windowLabel === 'in the last day' ? 'Today' : 'Since you were last here'}${brandStr}: ${recap.join(', ')}. ` : '';
+      const attnStr = attention.length ? `Needs you: ${attention.join(', ')}. ` : '';
+      briefing = `${greeting}${recapStr}${attnStr}Where do you want to start?`;
     }
 
     res.json({ briefing, bullets, actions, facts });
@@ -1077,6 +1316,30 @@ router.post('/mcp', async (req, res) => {
     res.json(response);
   } catch (err) {
     res.json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32603, message: err.message } });
+  }
+});
+
+// ── Response feedback — POST /admin/master-agent/feedback ────────────────────
+// Thumbs up/down on an agent reply. A down vote may carry a comment. Stored in
+// `agent_feedback` (tenant db) for later review of where the agent fell short.
+router.post('/feedback', async (req, res) => {
+  const { rating, comment, message, prompt, department } = req.body || {};
+  if (rating !== 'up' && rating !== 'down') {
+    return res.status(400).json({ error: 'rating must be "up" or "down"' });
+  }
+  try {
+    await req.db.collection('agent_feedback').insertOne({
+      rating,
+      comment: comment ? String(comment).slice(0, 2000) : null,
+      message: message ? String(message).slice(0, 4000) : null,
+      prompt: prompt ? String(prompt).slice(0, 2000) : null,
+      department: department || null,
+      userEmail: req.adminUser?.email || null,
+      createdAt: new Date(),
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

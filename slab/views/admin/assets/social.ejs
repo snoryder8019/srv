@@ -18,7 +18,10 @@
   .sg-panel { background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
   .sg-panel-left { border-right: 1px solid var(--border); }
   .sg-panel-right { border-left: 1px solid var(--border); }
-  .sg-panel-scroll { flex: 1; overflow-y: auto; padding: 14px; }
+  /* min-height: 0 lets this flex child shrink below its content height so the
+     pinned Properties box below it stays visible (without it, a long layer list
+     pushes Properties past the panel's overflow:hidden edge — cut off & dead). */
+  .sg-panel-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
   .sg-panel-head {
     padding: 10px 14px; border-bottom: 1px solid var(--border);
     font-size: 0.58rem; font-weight: 700; letter-spacing: 0.22em;
@@ -272,13 +275,79 @@
     .sg-canvas-wrap { max-width: calc(100vw - 16px); }
     .sz-grid { grid-template-columns: 1fr 1fr; }
   }
+
+  /* ── ADDITIONAL MOBILE PATCHES ── */
+  @media (max-width: 820px) {
+    /* Canvas action buttons (Download PNG / Save to Library) below the canvas must wrap */
+    .sg-canvas-actions {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      width: 100%;
+      max-width: calc(100vw - 20px);
+      box-sizing: border-box;
+    }
+    .sg-canvas-actions .tool-btn { width: 100%; text-align: center; padding: 10px 8px; font-size: 0.74rem; }
+
+    /* Right panel header: layer-action buttons must wrap on narrow sheets */
+    .sg-panel-right .sg-panel-head { flex-wrap: wrap; gap: 6px; padding-top: 22px; }
+    .sg-panel-right .sg-panel-head > span:last-child { flex-wrap: wrap; gap: 4px; }
+
+    /* Palette row: let swatches wrap naturally, ensure no overflow */
+    .pal-row { flex-wrap: wrap; }
+
+    /* sg-row (label+input combos) in panels: don't let them bleed past panel width */
+    .sg-panel-scroll .sg-row { flex-wrap: wrap; }
+    .sg-panel-scroll .sg-row .sg-input[style*="width:70px"] { width: 60px !important; }
+    .sg-panel-scroll .sg-row .sg-input[style*="width:80px"] { width: 70px !important; }
+
+    /* Tool-bar inside panels: always wrap, 40px min tap targets */
+    .sg-panel-scroll .tool-bar { flex-wrap: wrap; }
+    .sg-panel-scroll .tool-btn { min-height: 40px; }
+
+    /* AI Background section: Suggest button stays accessible beside textarea */
+    #secAiBg > div:first-child { flex-wrap: wrap; }
+    #secAiBg > div:first-child .sg-textarea { flex: none; width: 100%; }
+    #secAiBg > div:first-child .tool-btn { width: 100%; text-align: center; }
+
+    /* Export section: full-width action buttons */
+    #secExport .tool-bar { flex-direction: column; }
+    #secExport .tool-bar .tool-btn { width: 100%; text-align: center; padding: 10px 8px; }
+
+    /* Canvas info label: never let it overflow horizontally */
+    .sg-canvas-info { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Topbar actions: shrink further on mobile to avoid wrapping behind sidebar hamburger */
+    .topbar-actions { gap: 4px; }
+    .topbar-actions .btn { font-size: 0.6rem; padding: 4px 5px; }
+  }
+
+  @media (max-width: 520px) {
+    /* On the smallest phones canvas actions are already column-stacked above;
+       add a little extra breathing room at the bottom above the dock */
+    .sg-canvas-area { padding: 8px 8px 76px; }
+
+    /* Layer properties panel on phone: ensure all prop rows wrap */
+    .lp-section .sg-row { flex-wrap: wrap; }
+
+    /* Size preset grid: 2-col already set above, but ensure buttons are easily tappable */
+    .sz-btn { min-height: 44px; font-size: 0.6rem; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+    /* Palette active color row: wrap so the Fill/Strk/Txt buttons don't disappear */
+    #secPal .sg-row:last-child { flex-wrap: wrap; gap: 4px; }
+    #secPal .sg-row:last-child .tool-btn { flex: 1; text-align: center; padding: 8px 4px; }
+
+    /* Quick-prompts chip row in AI BG section: always wrap */
+    #sdQuickWrap { flex-wrap: wrap; }
+  }
 </style>
 
 <div class="topbar">
   <div class="topbar-title">Asset Generator</div>
   <div class="topbar-actions">
     <a href="/admin/assets" class="btn btn-ghost btn-sm">&larr; Assets</a>
-    <a href="/admin/assets/trim" class="btn btn-ghost btn-sm">Video Trimmer</a>
+    <%# Video Trimmer — disabled for this release %>
+    <%# <a href="/admin/assets/trim" class="btn btn-ghost btn-sm">Video Trimmer</a> %>
     <button class="btn btn-gold btn-sm" id="agentToggleBtn">Asset Agent</button>
   </div>
 </div>
@@ -293,6 +362,9 @@
   </button>
   <button class="sg-bd-btn primary" data-side="left" data-section="secAdd" title="Add a layer">
     <span class="ico">+</span><span>Layer</span>
+  </button>
+  <button class="sg-bd-btn" data-side="left" data-section="secGradBg" title="Gradient background">
+    <span class="ico">&#9684;</span><span>Gradient</span>
   </button>
   <button class="sg-bd-btn" data-side="left" data-section="secAiBg" title="AI background">
     <span class="ico">&#10024;</span><span>AI&nbsp;BG</span>
@@ -377,6 +449,64 @@
               <input type="checkbox" id="bgTransparent" style="accent-color:var(--gold);">
               Transparent <span style="font-size:0.6rem;opacity:0.7;">(for layered PNGs)</span>
             </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- GRADIENT BACKGROUND -->
+      <style>
+        .gr-types { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:7px; }
+        .gr-type-btn { flex:1 1 auto; font-size:0.62rem; padding:6px 4px; border:1px solid var(--border); background:var(--surface); color:var(--slate); border-radius:4px; cursor:pointer; text-align:center; min-width:46px; transition:all 0.12s; }
+        .gr-type-btn:hover { border-color:var(--navy-mid); }
+        .gr-type-btn.active { background:var(--navy); color:#fff; border-color:var(--navy); }
+        .gr-preview { width:100%; height:84px; border-radius:6px; border:1px solid var(--border); margin-bottom:8px; display:block; }
+        .gr-stop { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+        .gr-stop input[type=color] { width:30px; height:26px; border:1px solid var(--border); cursor:pointer; padding:0; background:none; flex-shrink:0; }
+        .gr-stop .gr-hex { flex:1; min-width:0; }
+        .gr-stop .gr-del { background:none; border:none; color:var(--slate); cursor:pointer; font-size:0.85rem; padding:2px 6px; flex-shrink:0; }
+        .gr-stop .gr-del:hover { color:var(--danger); }
+        .gr-presets { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px; }
+        .gr-preset-btn { font-size:0.6rem; padding:4px 9px; border:1px solid var(--border); background:var(--ivory); color:var(--on-surface); border-radius:11px; cursor:pointer; transition:all 0.12s; }
+        .gr-preset-btn:hover { border-color:var(--gold); background:rgba(201,168,72,0.08); }
+        .gr-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+        .gr-slider { flex:1; accent-color:var(--gold); min-width:0; }
+        .gr-sublbl { font-size:0.55rem; color:var(--slate); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin:7px 0 4px; }
+      </style>
+      <div class="sg-sec">
+        <div class="sg-sec-head" data-toggle="secGradBg">Gradient Background <span>▸</span></div>
+        <div class="sg-sec-body collapsed" id="secGradBg">
+          <canvas class="gr-preview" id="grPreview" width="320" height="84"></canvas>
+          <div class="gr-types" id="grTypes">
+            <button type="button" class="gr-type-btn active" data-kind="linear">Linear</button>
+            <button type="button" class="gr-type-btn" data-kind="radial">Radial</button>
+            <button type="button" class="gr-type-btn" data-kind="conic">Conic</button>
+            <button type="button" class="gr-type-btn" data-kind="mesh">Mesh</button>
+          </div>
+          <div class="gr-row" id="grAngleRow">
+            <span class="sg-lbl" style="min-width:42px;">Angle</span>
+            <input type="range" class="gr-slider" id="grAngle" min="0" max="360" value="135">
+            <span id="grAngleVal" style="font-size:0.62rem;color:var(--slate);width:36px;text-align:right;">135°</span>
+          </div>
+          <div class="gr-sublbl">Colors <span style="text-transform:none;letter-spacing:0;font-weight:400;opacity:0.7;">— tap a swatch to change</span></div>
+          <div id="grStops"></div>
+          <div class="gr-row" style="margin-top:2px;">
+            <button type="button" class="tool-btn" id="grAddStop" style="font-size:0.6rem;">+ Add color</button>
+            <button type="button" class="tool-btn" id="grBrandBtn" style="font-size:0.6rem;">&#10227; Brand colors</button>
+          </div>
+          <div class="gr-sublbl">Brand presets</div>
+          <div class="gr-presets" id="grPresets"></div>
+          <div class="gr-row">
+            <span class="sg-lbl" style="min-width:42px;">Grain</span>
+            <input type="range" class="gr-slider" id="grGrain" min="0" max="100" value="0">
+            <span id="grGrainVal" style="font-size:0.62rem;color:var(--slate);width:36px;text-align:right;">0%</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-bottom:7px;font-size:0.7rem;color:var(--slate);cursor:pointer;">
+            <input type="checkbox" id="grVignette" style="accent-color:var(--gold);width:13px;height:13px;cursor:pointer;">
+            Vignette <span style="font-size:0.6rem;opacity:0.7;">(soft edge shading)</span>
+          </label>
+          <div class="tool-bar">
+            <button class="tool-btn" id="grApplyBtn" style="background:var(--gold);color:var(--on-surface);border-color:var(--gold);flex:1;">Apply as Background</button>
+            <button class="tool-btn" id="grClearBtn" title="Remove gradient">Clear</button>
           </div>
         </div>
       </div>
@@ -543,6 +673,10 @@
             <button class="tool-btn" id="downloadPngBtn" style="background:var(--navy);color:#fff;border-color:var(--navy);">Download PNG</button>
             <button class="tool-btn" id="saveLibBtn" style="background:var(--gold);color:var(--on-surface);border-color:var(--gold);">Save to Library</button>
           </div>
+          <!-- Shown only when editing a review-queue draft (?suggestion=<id>): writes the edited image straight back to the post, NOT the Assets library. -->
+          <div class="tool-bar" id="saveToPostBar" style="margin-top:6px;display:none;">
+            <button class="tool-btn" id="saveToPostBtn" style="background:#15803D;color:#fff;border-color:#15803D;width:100%;">💾 Save to post &amp; return</button>
+          </div>
           <div id="exportStatus" style="font-size:0.68rem;color:var(--slate);margin-top:4px;"></div>
         </div>
       </div>
@@ -564,6 +698,7 @@
     <div class="sg-panel-head">
       <span>Layers</span>
       <span style="display:flex;gap:4px;align-items:center;">
+        <button class="tool-btn" id="patternBtn" style="padding:2px 5px;font-size:0.6rem;" title="Make a repeating pattern from the selected layers">&#9638; Pattern</button>
         <button class="tool-btn" id="groupBtn" style="padding:2px 5px;font-size:0.6rem;" title="Group selected (Ctrl/Cmd+G)">&#8862; Group</button>
         <button class="tool-btn" id="ungroupBtn" style="padding:2px 5px;font-size:0.6rem;" title="Ungroup (Ctrl/Cmd+Shift+G)">&#8863;</button>
         <button class="tool-btn" id="layerUpBtn" style="padding:2px 5px;font-size:0.6rem;" title="Move up">&#9650;</button>
@@ -732,6 +867,17 @@ async function initBuildFor() {
 }
 initBuildFor();
 loadPresetList();
+
+// Deep link from the asset library "Edit" badge: /admin/assets/social?preset=<id>
+(async () => {
+  const pid = new URLSearchParams(location.search).get('preset');
+  if (!pid) return;
+  try {
+    const r = await fetch(`/admin/assets/social/presets/${pid}`);
+    const data = await r.json();
+    if (data.preset) loadPreset(data.preset);
+  } catch (e) { console.warn('Could not load preset from link:', e); }
+})();
 
 // ═══════════════════════════════════════════
 //  ACCORDION
@@ -1000,6 +1146,156 @@ window.sdCyclePrompts = function() {
 sdCyclePrompts();
 
 // ═══════════════════════════════════════════
+//  GRADIENT BACKGROUND  (native layer · brand-tied · editable)
+// ═══════════════════════════════════════════
+const grState = { kind:'linear', angle:135, stops:['#1C2B4A','#C9A848'], grain:0, vignette:false, userTouched:false };
+const GR_PRESETS = ['Sheen','Glow','Spotlight','Mesh','Dusk','Conic'];
+
+function hexToRgb(h){ h=String(h||'').replace('#',''); if(h.length===3) h=h.split('').map(x=>x+x).join(''); const n=parseInt(h||'0',16)||0; return [(n>>16)&255,(n>>8)&255,n&255]; }
+function lighten(hex, amt){ const [r,g,b]=hexToRgb(hex); const f=c=>Math.round(c+(255-c)*(amt/100)); return '#'+[f(r),f(g),f(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+
+function grBrandStops(n){
+  const pal = (currentPalette && currentPalette.length) ? currentPalette : ['#1C2B4A','#C9A848','#F5F3EF'];
+  return Array.from({length:n}, (_,i) => pal[i % pal.length]);
+}
+function grSeedFromBrand(){ if (grState.userTouched) return; grState.stops = grBrandStops(2); grRenderStops(); grBuildPreview(); }
+function grStopColors(){ const s = grState.stops.filter(Boolean); return s.length >= 2 ? s : [...s, s[0] || '#1C2B4A']; }
+function grMeshPts(n){ const pts=[[0.2,0.25],[0.82,0.2],[0.78,0.8],[0.22,0.78],[0.5,0.5],[0.9,0.6],[0.1,0.45]]; return Array.from({length:n}, (_,i)=>pts[i%pts.length]); }
+
+function grRenderStops(){
+  const wrap = document.getElementById('grStops'); if (!wrap) return;
+  wrap.innerHTML = '';
+  grState.stops.forEach((c, i) => {
+    const row = document.createElement('div'); row.className = 'gr-stop';
+    row.innerHTML = `<input type="color" value="${c}"><input type="text" class="sg-input gr-hex" value="${c}">`
+      + (grState.stops.length > 2 ? `<button type="button" class="gr-del" title="Remove">&#10005;</button>` : `<span style="width:24px;flex-shrink:0;"></span>`);
+    const inputs = row.querySelectorAll('input'); const col = inputs[0], hex = inputs[1];
+    col.addEventListener('input', e => { grState.stops[i]=e.target.value; hex.value=e.target.value; grState.userTouched=true; grBuildPreview(); });
+    hex.addEventListener('change', e => { let v=e.target.value.trim(); if(!/^#/.test(v)) v='#'+v; if(/^#[0-9a-fA-F]{6}$/.test(v)){ grState.stops[i]=v; col.value=v; grState.userTouched=true; grBuildPreview(); } });
+    const del = row.querySelector('.gr-del');
+    if (del) del.addEventListener('click', () => { grState.stops.splice(i,1); grState.userTouched=true; grRenderStops(); grBuildPreview(); });
+    wrap.appendChild(row);
+  });
+}
+function grRenderPresets(){
+  const wrap = document.getElementById('grPresets'); if (!wrap) return; wrap.innerHTML = '';
+  GR_PRESETS.forEach(n => { const b=document.createElement('button'); b.type='button'; b.className='gr-preset-btn'; b.textContent=n; b.addEventListener('click',()=>grApplyPreset(n)); wrap.appendChild(b); });
+}
+function grSyncControls(){
+  document.querySelectorAll('#grTypes .gr-type-btn').forEach(b=>b.classList.toggle('active', b.dataset.kind===grState.kind));
+  const ar=document.getElementById('grAngleRow'); if(ar) ar.style.display = (grState.kind==='linear'||grState.kind==='conic') ? 'flex' : 'none';
+  const a=document.getElementById('grAngle'); if(a) a.value=grState.angle;
+  const av=document.getElementById('grAngleVal'); if(av) av.textContent=grState.angle+'°';
+  const g=document.getElementById('grGrain'); if(g) g.value=grState.grain;
+  const gv=document.getElementById('grGrainVal'); if(gv) gv.textContent=grState.grain+'%';
+  const v=document.getElementById('grVignette'); if(v) v.checked=grState.vignette;
+}
+function grApplyPreset(name){
+  const pal = (currentPalette && currentPalette.length) ? currentPalette : ['#1C2B4A','#C9A848','#F5F3EF'];
+  const P = pal[0], A = pal[1] || lighten(pal[0],45), C = pal[2] || A;
+  grState.userTouched = true;
+  if (name==='Sheen')      { grState.kind='linear'; grState.angle=135; grState.stops=[P,A];                 grState.grain=10; grState.vignette=false; }
+  else if (name==='Glow')  { grState.kind='radial'; grState.stops=[A,P];                                    grState.grain=6;  grState.vignette=true;  }
+  else if (name==='Spotlight'){ grState.kind='radial'; grState.stops=[lighten(A,35),P];                     grState.grain=0;  grState.vignette=true;  }
+  else if (name==='Mesh')  { grState.kind='mesh';   grState.stops=[P,A,C];                                  grState.grain=14; grState.vignette=false; }
+  else if (name==='Dusk')  { grState.kind='linear'; grState.angle=160; grState.stops=[P,A,lighten(C,18)];   grState.grain=18; grState.vignette=false; }
+  else if (name==='Conic') { grState.kind='conic';  grState.angle=90;  grState.stops=[P,A,P];               grState.grain=6;  grState.vignette=false; }
+  grSyncControls(); grRenderStops(); grBuildPreview();
+}
+
+function grBuildLinear(c2d, angle, colors, x, y, w, h){
+  const cx=x+w/2, cy=y+h/2, rad=angle*Math.PI/180, dx=Math.cos(rad), dy=Math.sin(rad);
+  const ext=Math.abs(dx*w/2)+Math.abs(dy*h/2);
+  const g=c2d.createLinearGradient(cx-dx*ext, cy-dy*ext, cx+dx*ext, cy+dy*ext);
+  colors.forEach((c,i)=>g.addColorStop(colors.length>1?i/(colors.length-1):0, c)); return g;
+}
+function grBuildRadial(c2d, colors, x, y, w, h){
+  const cx=x+w/2, cy=y+h/2;
+  const g=c2d.createRadialGradient(cx, cy, Math.min(w,h)*0.04, cx, cy, Math.max(w,h)*0.72);
+  colors.forEach((c,i)=>g.addColorStop(colors.length>1?i/(colors.length-1):0, c)); return g;
+}
+
+let _grNoiseTile = null;
+function grNoiseTile(){
+  if (_grNoiseTile) return _grNoiseTile;
+  const s=128, c=document.createElement('canvas'); c.width=c.height=s;
+  const x=c.getContext('2d'), img=x.createImageData(s,s), d=img.data;
+  for (let i=0;i<d.length;i+=4){ const v=Math.random()*255|0; d[i]=d[i+1]=d[i+2]=v; d[i+3]=255; }
+  x.putImageData(img,0,0); _grNoiseTile=c; return c;
+}
+
+// Draws a gradient layer (also used for the live preview swatch with a temp layer).
+function drawGradientLayer(c2d, l){
+  const g = l.gradient || {}; const x=l.x||0, y=l.y||0, w=l.w, h=l.h;
+  const colors = (g.stops && g.stops.length>=2) ? g.stops : ['#1C2B4A','#C9A848'];
+  c2d.save();
+  c2d.beginPath(); c2d.rect(x,y,w,h); c2d.clip();
+  if (g.kind === 'mesh') {
+    c2d.fillStyle = colors[0]; c2d.fillRect(x,y,w,h);
+    const pts = g.meshPts || grMeshPts(colors.length);
+    c2d.globalCompositeOperation = 'lighten';
+    colors.forEach((col,i)=>{
+      const p = pts[i % pts.length], gx = x+p[0]*w, gy = y+p[1]*h, r = Math.max(w,h)*0.62;
+      const rg = c2d.createRadialGradient(gx,gy,0,gx,gy,r), [rr,gg,bb]=hexToRgb(col);
+      rg.addColorStop(0, `rgba(${rr},${gg},${bb},0.92)`); rg.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
+      c2d.fillStyle = rg; c2d.fillRect(x,y,w,h);
+    });
+    c2d.globalCompositeOperation = 'source-over';
+  } else if (g.kind === 'conic' && c2d.createConicGradient) {
+    const cg = c2d.createConicGradient(((g.angle??135)-90)*Math.PI/180, x+w/2, y+h/2);
+    colors.forEach((c,i)=>cg.addColorStop(colors.length>1?i/(colors.length-1):0, c));
+    c2d.fillStyle = cg; c2d.fillRect(x,y,w,h);
+  } else if (g.kind === 'radial') {
+    c2d.fillStyle = grBuildRadial(c2d, colors, x,y,w,h); c2d.fillRect(x,y,w,h);
+  } else {
+    c2d.fillStyle = grBuildLinear(c2d, g.angle??135, colors, x,y,w,h); c2d.fillRect(x,y,w,h);
+  }
+  if (g.grain) {
+    c2d.globalAlpha = Math.min(0.55, (g.grain/100)*0.55);
+    c2d.globalCompositeOperation = 'overlay';
+    c2d.fillStyle = c2d.createPattern(grNoiseTile(), 'repeat'); c2d.fillRect(x,y,w,h);
+    c2d.globalAlpha = 1; c2d.globalCompositeOperation = 'source-over';
+  }
+  if (g.vignette) {
+    const cx=x+w/2, cy=y+h/2;
+    const vg = c2d.createRadialGradient(cx,cy,Math.min(w,h)*0.34,cx,cy,Math.max(w,h)*0.74);
+    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.4)');
+    c2d.fillStyle = vg; c2d.fillRect(x,y,w,h);
+  }
+  c2d.restore();
+}
+
+function grSnapshot(){
+  const colors = grStopColors();
+  return { kind:grState.kind, angle:grState.angle, stops:colors, grain:grState.grain, vignette:grState.vignette,
+           meshPts: grState.kind==='mesh' ? grMeshPts(colors.length) : null };
+}
+function grBuildPreview(){
+  const cv = document.getElementById('grPreview'); if (!cv) return;
+  const c2d = cv.getContext('2d'); c2d.clearRect(0,0,cv.width,cv.height);
+  drawGradientLayer(c2d, { x:0, y:0, w:cv.width, h:cv.height, opacity:1, gradient: grSnapshot() });
+}
+function grApply(){
+  layers = layers.filter(l => !l._gradBg);
+  const layer = { type:'gradient', x:0, y:0, w:canvasW, h:canvasH, gradient: grSnapshot(), name:'Gradient BG', _gradBg:true, id:nextId++, visible:true, opacity:1 };
+  layers.unshift(layer);
+  setSelection(layer.id); renderLayerList(); render();
+}
+
+document.querySelectorAll('#grTypes .gr-type-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{ grState.kind=b.dataset.kind; grState.userTouched=true; grSyncControls(); grBuildPreview(); });
+});
+document.getElementById('grAngle')?.addEventListener('input', e=>{ grState.angle=+e.target.value; document.getElementById('grAngleVal').textContent=grState.angle+'°'; grBuildPreview(); });
+document.getElementById('grGrain')?.addEventListener('input', e=>{ grState.grain=+e.target.value; document.getElementById('grGrainVal').textContent=grState.grain+'%'; grBuildPreview(); });
+document.getElementById('grVignette')?.addEventListener('change', e=>{ grState.vignette=e.target.checked; grBuildPreview(); });
+document.getElementById('grAddStop')?.addEventListener('click', ()=>{ const pal=(currentPalette&&currentPalette.length)?currentPalette:['#888888']; grState.stops.push(pal[grState.stops.length % pal.length] || '#888888'); grState.userTouched=true; grRenderStops(); grBuildPreview(); });
+document.getElementById('grBrandBtn')?.addEventListener('click', ()=>{ grState.stops=grBrandStops(Math.max(2, grState.stops.length)); grState.userTouched=true; grRenderStops(); grBuildPreview(); });
+document.getElementById('grApplyBtn')?.addEventListener('click', grApply);
+document.getElementById('grClearBtn')?.addEventListener('click', ()=>{ layers=layers.filter(l=>!l._gradBg); clearSelection(); renderLayerList(); render(); });
+
+grRenderStops(); grRenderPresets(); grSyncControls(); grBuildPreview();
+
+// ═══════════════════════════════════════════
 //  BRAND KIT LOADER
 // ═══════════════════════════════════════════
 async function loadBrandKit(type, id) {
@@ -1016,6 +1312,7 @@ async function loadBrandKit(type, id) {
     // Set brand palette
     PALETTES.brand = data.colors?.length ? [...data.colors] : ['#1C2B4A','#C9A848','#F5F3EF'];
     currentPalette = [...PALETTES.brand];
+    if (typeof grSeedFromBrand === 'function') grSeedFromBrand();
 
     // Set font dropdowns
     if (data.fonts?.heading) document.getElementById('brandFontHeading').value = data.fonts.heading;
@@ -1467,6 +1764,8 @@ function render() {
       else ctx.drawImage(l.img, l.x, l.y, l.w, l.h);
     } else if (l.type === 'video' && l.vid) {
       try { ctx.drawImage(l.vid, l.x, l.y, l.w, l.h); } catch(e){}
+    } else if (l.type === 'gradient') {
+      drawGradientLayer(ctx, l);
     } else if (l.type === 'rect') {
       if (l.fill) { ctx.fillStyle = l.fill; if (l.radius) { roundRect(ctx, l.x, l.y, l.w, l.h, l.radius); ctx.fill(); } else ctx.fillRect(l.x, l.y, l.w, l.h); }
       if (l.stroke && l.strokeWidth) { ctx.strokeStyle = l.stroke; ctx.lineWidth = l.strokeWidth; if (l.radius) { roundRect(ctx, l.x, l.y, l.w, l.h, l.radius); ctx.stroke(); } else ctx.strokeRect(l.x, l.y, l.w, l.h); }
@@ -1723,6 +2022,92 @@ function removeLayerBgColor(id, tolerance, opts = {}) {
   }, 'image/png');
 }
 
+// ── Recolor / brand-tint (meld a graphic toward a brand colour) ──
+// Luminance-preserving HSL colorize: keeps the graphic's shading/tonal range
+// but swaps hue+saturation to the brand colour, blended by `strength` (0..1).
+// Non-destructive — the untouched image is parked on `l._origImg` so the tint
+// can be re-adjusted or reset. Alpha is preserved (works on knockouts too).
+function _hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return [0, 0, 0];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function _rgbToHsl(r, g, b) {
+  r/=255; g/=255; b/=255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  let h = 0, s = 0; const l = (max+min)/2;
+  const d = max - min;
+  if (d) {
+    s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+    if (max === r) h = (g-b)/d + (g < b ? 6 : 0);
+    else if (max === g) h = (b-r)/d + 2;
+    else h = (r-g)/d + 4;
+    h /= 6;
+  }
+  return [h, s, l];
+}
+function _hslToRgb(h, s, l) {
+  if (s === 0) { const v = Math.round(l*255); return [v, v, v]; }
+  const q = l < 0.5 ? l*(1+s) : l+s-l*s;
+  const p = 2*l - q;
+  const hue = (t) => {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q-p)*6*t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q-p)*(2/3 - t)*6;
+    return p;
+  };
+  return [Math.round(hue(h+1/3)*255), Math.round(hue(h)*255), Math.round(hue(h-1/3)*255)];
+}
+function recolorLayer(id, hex, strength = 1) {
+  const l = layers.find(x => x.id === id);
+  if (!l || l.type !== 'image' || !l.img) return;
+  // Capture the pristine source the first time so re-tints don't compound.
+  if (!l._origImg) { l._origImg = l.img; l._origSrc = l.src; }
+  const base = l._origImg;
+  const w = base.naturalWidth || base.width, h = base.naturalHeight || base.height;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  octx.drawImage(base, 0, 0);
+  let data;
+  try { data = octx.getImageData(0, 0, w, h); }
+  catch (e) { alert('Cannot read pixels — image is cross-origin protected.'); return; }
+  const px = data.data;
+  const [tr, tg, tb] = _hexToRgb(hex);
+  const [th, ts] = _rgbToHsl(tr, tg, tb);
+  const k = Math.max(0, Math.min(1, strength));
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i+3] === 0) continue;                 // skip fully transparent pixels
+    const lum = (0.299*px[i] + 0.587*px[i+1] + 0.114*px[i+2]) / 255;
+    const [cr, cg, cb] = _hslToRgb(th, ts, lum); // brand hue/sat, image's own value
+    px[i]   = Math.round(px[i]   * (1-k) + cr * k);
+    px[i+1] = Math.round(px[i+1] * (1-k) + cg * k);
+    px[i+2] = Math.round(px[i+2] * (1-k) + cb * k);
+  }
+  octx.putImageData(data, 0, 0);
+  off.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const tinted = new Image();
+    tinted.onload = () => {
+      if (l._recolorUrl) URL.revokeObjectURL(l._recolorUrl);
+      l.img = tinted; l.src = url; l._recolorUrl = url;
+      l.recolor = { color: hex, strength: k };
+      renderLayerList(); renderProps(); render();
+    };
+    tinted.src = url;
+  }, 'image/png');
+}
+function resetRecolor(id) {
+  const l = layers.find(x => x.id === id);
+  if (!l || !l._origImg) return;
+  if (l._recolorUrl) { URL.revokeObjectURL(l._recolorUrl); l._recolorUrl = null; }
+  l.img = l._origImg; l.src = l._origSrc;
+  delete l._origImg; delete l._origSrc; delete l.recolor;
+  renderLayerList(); renderProps(); render();
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x+r, y);
@@ -1946,6 +2331,57 @@ function renderLayerList() {
 // Group / ungroup
 document.getElementById('groupBtn').addEventListener('click', groupSelected);
 document.getElementById('ungroupBtn').addEventListener('click', ungroupSelected);
+document.getElementById('patternBtn').addEventListener('click', patternFromSelection);
+
+// Build a seamless repeating pattern from the currently-selected layers and drop
+// it in as a single image layer behind the rest of the artwork. The selection's
+// bounding box becomes the tile, which is then repeated across the whole canvas.
+function patternFromSelection() {
+  const sel = selectionLayers();
+  if (!sel.length) { alert('Select one or more layers first to build a pattern.'); return; }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  sel.forEach(l => {
+    const lw = l.w || 0, lh = l.h || 0;
+    minX = Math.min(minX, l.x); minY = Math.min(minY, l.y);
+    maxX = Math.max(maxX, l.x + lw); maxY = Math.max(maxY, l.y + lh);
+  });
+  const tw = Math.max(1, Math.round(maxX - minX)), th = Math.max(1, Math.round(maxY - minY));
+
+  // Render ONLY the selected layers onto a transparent surface, sans selection
+  // chrome, then crop the bounding box out as the tile.
+  const prevVis = layers.map(l => l.visible);
+  const prevSel = selId, prevMulti = multiSel, prevTrans = bgTransparent;
+  const selSet = new Set(sel.map(l => l.id));
+  layers.forEach(l => { l.visible = selSet.has(l.id); });
+  selId = null; multiSel = new Set(); bgTransparent = true;
+  render();
+  const tile = document.createElement('canvas');
+  tile.width = tw; tile.height = th;
+  tile.getContext('2d').drawImage(canvas, minX, minY, tw, th, 0, 0, tw, th);
+  // Restore the editor exactly as it was.
+  layers.forEach((l, i) => { l.visible = prevVis[i]; });
+  selId = prevSel; multiSel = prevMulti; bgTransparent = prevTrans;
+  render();
+
+  // Tile across the full canvas → one raster image layer placed at the back.
+  const pc = document.createElement('canvas');
+  pc.width = canvasW; pc.height = canvasH;
+  const pctx = pc.getContext('2d');
+  pctx.fillStyle = pctx.createPattern(tile, 'repeat');
+  pctx.fillRect(0, 0, canvasW, canvasH);
+  pc.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const layer = { type:'image', x:0, y:0, w:canvasW, h:canvasH, src:url, img,
+        name:'Pattern', _patternUrl:url, id:nextId++, visible:true, opacity:1 };
+      layers.unshift(layer);          // behind the existing artwork
+      setSelection(layer.id);
+      renderLayerList(); render();
+    };
+    img.src = url;
+  }, 'image/png');
+}
 
 // Layer up/down
 document.getElementById('layerUpBtn').addEventListener('click', () => {
@@ -2033,6 +2469,17 @@ function renderProps() {
           <button type="button" class="tool-btn" id="cropBtn" title="Trim the image edges">⛶ Crop</button>
           ${l.crop ? `<button type="button" class="tool-btn" id="cropResetBtn" title="Restore the full image">Reset crop</button>` : ''}
           <button type="button" class="tool-btn" id="bgColorBtn" title="Knock out a solid background colour (sampled from the image corners)">Remove BG color</button></div>`;
+      const rc = l.recolor || {};
+      const rcColor = rc.color || activeColor || '#1C2B4A';
+      const rcStrength = rc.strength ?? 1;
+      html += `
+        <div class="sg-row" style="gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">
+          <span class="sg-lbl">Recolor</span>
+          <input type="color" id="recolorClr" value="${rcColor}" style="width:32px;height:24px;border:1px solid var(--border);cursor:pointer;" title="Brand colour to meld into">
+          <input type="range" id="recolorStrength" min="0" max="1" step="0.05" value="${rcStrength}" style="flex:1;min-width:80px;" title="Tint strength">
+          <button type="button" class="tool-btn" id="recolorApplyBtn" title="Meld this graphic toward the chosen brand colour (keeps its shading)">Apply</button>
+          ${l.recolor ? `<button type="button" class="tool-btn" id="recolorResetBtn" title="Restore original colours">&#8634;</button>` : ''}
+        </div>`;
     }
   }
 
@@ -2070,6 +2517,10 @@ function renderProps() {
   wrap.querySelector('#cropBtn')?.addEventListener('click', () => enterCropMode(l.id));
   wrap.querySelector('#cropResetBtn')?.addEventListener('click', () => resetCrop(l.id));
   wrap.querySelector('#bgColorBtn')?.addEventListener('click', () => removeLayerBgColor(l.id));
+  wrap.querySelector('#recolorApplyBtn')?.addEventListener('click', () => {
+    recolorLayer(l.id, wrap.querySelector('#recolorClr').value, parseFloat(wrap.querySelector('#recolorStrength').value));
+  });
+  wrap.querySelector('#recolorResetBtn')?.addEventListener('click', () => resetRecolor(l.id));
   wrap.querySelector('#cropApplyBtn')?.addEventListener('click', applyCrop);
   wrap.querySelector('#cropCancelBtn')?.addEventListener('click', cancelCrop);
 }
@@ -2080,7 +2531,7 @@ function renderProps() {
 function serializeLayers() {
   return layers.map(l => {
     const s = { ...l };
-    delete s.img; delete s.vid; // can't serialize DOM elements
+    delete s.img; delete s.vid; delete s._origImg; // can't serialize DOM elements
     return s;
   });
 }
@@ -2137,9 +2588,26 @@ document.getElementById('savePresetBtn').addEventListener('click', async () => {
       if (data.preset) currentPresetId = data.preset._id;
       loadPresetList();
       document.getElementById('presetName').value = name;
+      // Mirror the current design into the asset library as an editable snapshot
+      // so it shows in /admin/assets with an "Edit" badge + latest-state thumb.
+      uploadPresetSnapshot(currentPresetId);
     }
   } catch(err) { alert('Error saving preset: '+err.message); }
 });
+
+// Render the current canvas and push it to the preset's library snapshot asset.
+async function uploadPresetSnapshot(presetId) {
+  if (!presetId) return;
+  try {
+    const restore = beginExportRender();
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    restore();
+    if (!blob) return;
+    const fd = new FormData();
+    fd.append('image', blob, 'design.png');
+    await fetch(`/admin/assets/social/presets/${presetId}/snapshot`, { method: 'POST', body: fd });
+  } catch (e) { console.warn('Preset snapshot failed:', e); }
+}
 
 async function loadPresetList() {
   try {
@@ -2211,12 +2679,18 @@ function loadPreset(p) {
 // "Transparent background" box is ticked — force an alpha background regardless
 // of the current bg colour. Returns a restore() that puts everything back.
 function beginExportRender() {
-  const prevSel = selId, prevMulti = multiSel, prevTrans = bgTransparent;
-  selId = null; multiSel = new Set();
+  const prevSel = selId, prevMulti = multiSel, prevTrans = bgTransparent, prevCrop = cropMode;
+  // Strip ALL edit chrome so it never bakes into the flattened PNG: the gold
+  // dashed selection outline + resize handle (selId/multiSel) and the crop overlay.
+  selId = null; multiSel = new Set(); cropMode = null;
   if (document.getElementById('exportAlpha')?.checked) bgTransparent = true;
   render();
-  return () => { selId = prevSel; multiSel = prevMulti; bgTransparent = prevTrans; render(); };
+  return () => { selId = prevSel; multiSel = prevMulti; bgTransparent = prevTrans; cropMode = prevCrop; render(); };
 }
+// Exposed on window because the suggestion "Save to post & return" handler runs in
+// a separate <script> scope — without this its `typeof beginExportRender` check was
+// false, so it skipped chrome-stripping and baked the dashed box into the image.
+window.beginExportRender = beginExportRender;
 
 document.getElementById('downloadPngBtn').addEventListener('click', () => {
   const restore = beginExportRender();
@@ -2577,7 +3051,8 @@ renderLayerList();
 })();
 </script>
 <script>
-/* suggestion-loader: open a Suggestions-tab item in the full generator */
+/* suggestion-loader: open a review-queue draft in the full generator, edit with
+   the real design tools, then save the edited image straight back to the post. */
 (function(){
   const sid = new URLSearchParams(location.search).get("suggestion");
   if (!sid) return;
@@ -2589,6 +3064,32 @@ renderLayerList();
         const t = document.getElementById("exportTitle"); if (t && d.body) t.value = String(d.body).replace(/[#\n].*$/s,"").slice(0,40).trim();
       }
     }).catch(()=>{});
+    // Reveal the "Save to post" button and wire it to write back to the draft.
+    const bar = document.getElementById("saveToPostBar"); if (bar) bar.style.display = "";
+    const btn = document.getElementById("saveToPostBtn");
+    if (btn && !btn.dataset.wired) {
+      btn.dataset.wired = "1";
+      btn.addEventListener("click", async () => {
+        const status = document.getElementById("exportStatus");
+        status.textContent = "Saving to post…";
+        let restore = null;
+        try {
+          // Flatten the canvas like the export buttons do, capture PNG as a blob,
+          // and POST as multipart (bypasses the JSON body-size cap).
+          if (typeof beginExportRender === "function") restore = beginExportRender();
+          const cv = document.getElementById("sgCanvas");
+          const blob = await new Promise(res => cv.toBlob(res, "image/png"));
+          if (restore) { restore(); restore = null; }
+          const fd = new FormData();
+          fd.append("image", blob, "edit.png");
+          const r = await fetch("/admin/social/suggestions/"+sid+"/image", { method: "POST", body: fd });
+          const j = await r.json();
+          if (!j.ok) throw new Error(j.error || "Save failed");
+          status.textContent = "✓ Saved — returning…";
+          setTimeout(() => { location.href = "/admin/social?tab=agents"; }, 700);
+        } catch (e) { if (restore) restore(); status.textContent = "⚠ " + e.message; }
+      });
+    }
   }
   document.addEventListener("DOMContentLoaded", ()=>go(20));
 })();

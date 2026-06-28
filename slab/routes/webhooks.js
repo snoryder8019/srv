@@ -4,7 +4,8 @@ import { getDb } from '../plugins/mongo.js';
 import { getStripe } from '../plugins/stripe.js';
 import { recordPaymentAndReceipt } from '../plugins/paymentReceipts.js';
 import { config } from '../config/config.js';
-import { META_VERIFY_TOKEN, verifyMetaSignature, handleMetaEvent } from '../plugins/socialActivity.js';
+// ── DISABLED FOR RELEASE: Social Activity (Meta webhook ingestion) ───────────
+// import { META_VERIFY_TOKEN, verifyMetaSignature, handleMetaEvent } from '../plugins/socialActivity.js';
 
 const router = express.Router();
 
@@ -86,6 +87,7 @@ router.post('/paypal', async (req, res) => {
 });
 
 
+/* ── DISABLED FOR RELEASE: Meta (Facebook/Instagram) Activity Webhooks ─────────
 // ── Meta (Facebook/Instagram) Webhooks — comments, mentions, messages, leadgen ──
 // GET verifies the subscription; POST receives events (raw body for signature).
 router.get('/meta', (req, res) => {
@@ -107,5 +109,6 @@ router.post('/meta', async (req, res) => {
     try { res.sendStatus(200); } catch {}
   }
 });
+──────────────────────────────────────────────────────────────────────────── */
 
 export default router;

@@ -41,6 +41,16 @@
   const _navTaglineSpacing    = design.nav_tagline_spacing    || '0.28';
   const _navTaglineTransform  = design.nav_tagline_transform  || 'uppercase';
   const _navTaglineStyle      = design.nav_tagline_italic    === 'true' ? 'italic' : 'normal';
+  /* ── Logo image sizing + text/logo composition ── */
+  const _navLogoSize     = design.nav_logo_size      || '48';
+  const _navLogoLayout    = design.nav_logo_layout    || 'stack';
+  const _navLogoOverlapX  = design.nav_logo_overlap_x || '0';
+  const _navLogoOverlapY  = design.nav_logo_overlap_y || '0';
+  /* Layout class only matters when both a logo image and text are shown */
+  const _showLogoImg = !!(typeof logos !== 'undefined' && logos && logos.logo_primary
+    && (design.nav_logo_display === 'image' || design.nav_logo_display === 'both'));
+  const _showWordmark = design.nav_logo_display !== 'image' || !logos || !logos.logo_primary;
+  const _navLogoLayoutClass = (_showLogoImg && _showWordmark) ? ('logo-' + _navLogoLayout) : '';
   /* ── Header structural layout ── */
   const _hdrLayout    = design.header_layout    || 'standard';
   const _hdrPadY      = design.header_padding_y || '20';
@@ -68,6 +78,15 @@
   #main-nav .nav-links { justify-self:end; }
   <% } %>
   #main-nav .nav-wordmark { display:flex;flex-direction:column;line-height:1;text-decoration:none; }
+  #main-nav .nav-wordmark-text { display:flex;flex-direction:column;line-height:1; }
+  /* ── Logo + text composition (display = both) ── */
+  #main-nav .nav-wordmark.logo-stack { flex-direction:column;align-items:flex-start;gap:6px; }
+  #main-nav .nav-wordmark.logo-inline { flex-direction:row;align-items:center;gap:14px; }
+  #main-nav .nav-wordmark.logo-inline-reverse { flex-direction:row-reverse;align-items:center;gap:14px;justify-content:flex-end; }
+  #main-nav .nav-wordmark.logo-overlap { display:grid;place-items:center;justify-items:center; }
+  #main-nav .nav-wordmark.logo-overlap > * { grid-area:1 / 1; }
+  #main-nav .nav-wordmark.logo-overlap .nav-logo { z-index:1; }
+  #main-nav .nav-wordmark.logo-overlap .nav-wordmark-text { z-index:2;align-items:center;text-align:center;transform:translate(var(--nav-logo-overlap-x,0px), var(--nav-logo-overlap-y,0px)); }
   /* Wordmark / tagline tokens — declared on :root so the live-preview system's :root !important overrides win cleanly */
   :root {
     --nav-brand-size: <%= _navBrandSize %>rem;
@@ -84,11 +103,14 @@
     --nav-tagline-transform: <%= _navTaglineTransform %>;
     --nav-tagline-style: <%= _navTaglineStyle %>;
     --nav-tagline-color: <%= _navTaglineColor %>;
+    --nav-logo-size: <%= _navLogoSize %>px;
+    --nav-logo-overlap-x: <%= _navLogoOverlapX %>px;
+    --nav-logo-overlap-y: <%= _navLogoOverlapY %>px;
   }
   #main-nav .nav-wordmark-top { font-family:var(--font-heading);font-size:var(--nav-brand-size);font-weight:var(--nav-brand-weight);font-style:var(--nav-brand-style);color:var(--nav-brand-color);letter-spacing:var(--nav-brand-spacing);text-transform:var(--nav-brand-transform);display:block; }
   #main-nav .nav-wordmark-top .nav-wordmark-accent { font-weight:var(--nav-accent-weight);font-style:var(--nav-accent-style); }
   #main-nav .nav-wordmark-sub { font-size:var(--nav-tagline-size);font-weight:var(--nav-tagline-weight);font-style:var(--nav-tagline-style);letter-spacing:var(--nav-tagline-spacing);text-transform:var(--nav-tagline-transform);color:var(--nav-tagline-color);margin-top:2px;display:block; }
-  #main-nav .nav-logo { height:48px;width:auto;object-fit:contain; }
+  #main-nav .nav-logo { height:var(--nav-logo-size, 48px);width:auto;object-fit:contain;flex-shrink:0; }
   #main-nav .nav-links { display:flex;gap:2rem;list-style:none;align-items:center; }
   #main-nav .nav-links a { font-size:0.82rem;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:<%= _navLinkColor %>;text-decoration:none;transition:color 0.2s; }
   #main-nav .nav-links a:hover, #main-nav .nav-links a.active { color:<%= _navLinkHover %>; }
@@ -131,15 +153,17 @@
 <% if (!design.el_maintenance_banner || design.el_maintenance_banner !== 'false') { %><%- include('maintenance-banner') %><% } %>
 
 <nav id="main-nav">
-  <a href="/" class="nav-wordmark">
+  <a href="/" class="nav-wordmark <%= _navLogoLayoutClass %>">
     <% if (design.model_logo_enabled === 'true' && typeof brandModels !== 'undefined' && brandModels?.model_logo) { %>
-      <div class="gltf-viewer" data-model-url="<%= brandModels.model_logo %>" data-brand-name="<%= brand?.name || '' %>" data-mode="logo" data-bg-color="transparent" data-accent-color="<%= design.color_accent %>" data-primary-color="<%= design.color_primary %>" style="width:48px;height:48px;"></div>
+      <div class="gltf-viewer" data-model-url="<%= brandModels.model_logo %>" data-brand-name="<%= brand?.name || '' %>" data-mode="logo" data-bg-color="transparent" data-accent-color="<%= design.color_accent %>" data-primary-color="<%= design.color_primary %>" style="width:var(--nav-logo-size,48px);height:var(--nav-logo-size,48px);"></div>
     <% } else if (logos && logos.logo_primary && (design.nav_logo_display === 'image' || design.nav_logo_display === 'both')) { %>
       <img src="<%= logos.logo_primary %>" alt="<%= brand?.name || 'Home' %>" class="nav-logo">
     <% } %>
     <% if (design.nav_logo_display !== 'image' || !logos || !logos.logo_primary) { %>
-      <span class="nav-wordmark-top"><% if (_hdr_accent) { %><%- _hdr_before %><span class="nav-wordmark-accent" style="color:<%= _hdr_accentColor %>"><%= _hdr_accent %></span><%- _hdr_after %><% } else { %><%- _bname %><% } %></span>
-      <% if (_showTagline) { %><span class="nav-wordmark-sub"><%- brand?.tagline ? brand.tagline + ' &mdash; ' : '' %><%= brand?.location || '' %></span><% } %>
+      <span class="nav-wordmark-text">
+        <span class="nav-wordmark-top"><% if (_hdr_accent) { %><%- _hdr_before %><span class="nav-wordmark-accent" style="color:<%= _hdr_accentColor %>"><%= _hdr_accent %></span><%- _hdr_after %><% } else { %><%- _bname %><% } %></span>
+        <% if (_showTagline) { %><span class="nav-wordmark-sub"><%- brand?.tagline ? brand.tagline + ' &mdash; ' : '' %><%= brand?.location || '' %></span><% } %>
+      </span>
     <% } %>
   </a>
   <ul class="nav-links">

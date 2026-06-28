@@ -9,6 +9,7 @@
 const nodemailer = require('nodemailer');
 const { MongoClient } = require('mongodb');
 const path = require('path');
+const { logComms } = require('./comms-log.cjs');
 
 // Bootstrap DB_URL / ZOHO creds from slab .env if the calling app doesn't have them
 if (!process.env.DB_URL) {
@@ -70,7 +71,7 @@ function getTransporter() {
  * @param {object} [opts.data]
  * @param {string} [opts.ip]
  */
-async function notifyAdmin({ type = 'signup', app = 'platform', email = '', name = '', data = {}, ip = '' }) {
+async function notifyAdmin({ type = 'signup', app = 'platform', email = '', name = '', data = {}, ip = '', userId = null }) {
   const meta = TYPE_META[type] || TYPE_META.signup;
   const ts   = new Date();
 
@@ -93,7 +94,13 @@ async function notifyAdmin({ type = 'signup', app = 'platform', email = '', name
 
   // 2. Email scott@madladslab.com
   const t = getTransporter();
-  if (!t) return; // Zoho not configured — skip silently
+  if (!t) {
+    // No transport configured in THIS process — record it instead of vanishing.
+    logComms({ app, type: 'signup_alert', channel: 'email', to: ADMIN_EMAIL, userId,
+      name: name || email, subject: meta.label, status: 'skipped', stage: 'signed_up',
+      error: 'ZOHO_USER/ZOHO_PASS not in process env', meta: { for: email, eventType: type } }).catch(() => {});
+    return;
+  }
 
   const dataRows = Object.entries(data || {})
     .filter(([, v]) => v != null && v !== '')
@@ -139,8 +146,14 @@ async function notifyAdmin({ type = 'signup', app = 'platform', email = '', name
       subject,
       html,
     });
+    logComms({ app, type: 'signup_alert', channel: 'email', to: ADMIN_EMAIL, userId,
+      name: name || email, subject, status: 'sent', stage: 'signed_up',
+      meta: { for: email, eventType: type } }).catch(() => {});
   } catch (e) {
     console.error('[notify] Email send failed:', e.message);
+    logComms({ app, type: 'signup_alert', channel: 'email', to: ADMIN_EMAIL, userId,
+      name: name || email, subject, status: 'failed', stage: 'signed_up',
+      error: e.message, meta: { for: email, eventType: type } }).catch(() => {});
     _transporter = null; // reset so next call retries
   }
 }

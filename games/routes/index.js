@@ -197,7 +197,8 @@ router.get('/auth/sso', async (req, res) => {
       });
       user = await db.collection('users').findOne({ _id: result.insertedId });
       notifyAdmin({ type: 'games', app: 'games', email: payload.email, name: payload.displayName || '', ip: req.ip,
-        data: { 'Method': 'Google SSO', 'Display Name': payload.displayName || '' } }).catch(() => {});
+        userId: user._id, data: { 'Method': 'Google SSO', 'Display Name': payload.displayName || '' } }).catch(() => {});
+      require('../lib/onboarding').onUserCreated(db, user, { method: 'Google SSO', ip: req.ip });
     }
     // Link googleId if missing
     if (user && payload.googleId && !user.googleId) {

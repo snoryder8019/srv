@@ -361,7 +361,7 @@ router.post('/forms/agent', async (req, res) => {
   try {
     const db = req.db;
     const design = await db.collection('design').findOne({});
-    const agentName = design?.agent_name || 'the brand';
+    const agentName = design?.agent_name || req.tenant?.brand?.name || 'this business';
     const brandCtx = await loadBrandContext(req.tenant, req.db);
 
     const systemPrompt = `You write high-converting email signup form copy for ${agentName}.
@@ -422,6 +422,37 @@ router.post('/campaigns', async (req, res) => {
   } catch (err) {
     console.error('Create campaign error:', err);
     res.redirect('/admin/email-marketing?tab=campaigns&error=Failed+to+create+campaign');
+  }
+});
+
+// ── Update campaign draft (edit copy before sending) ──
+router.post('/campaigns/:id/update', async (req, res) => {
+  try {
+    const db = req.db;
+    const campaign = await db.collection('campaigns').findOne({ _id: new ObjectId(req.params.id) });
+    if (!campaign) return res.redirect('/admin/email-marketing?tab=campaigns&error=Campaign+not+found');
+    if (campaign.status === 'sent') return res.redirect('/admin/email-marketing?tab=campaigns&error=Sent+campaigns+cannot+be+edited');
+
+    const { subject, preheader, body, targetFunnel, targetTags } = req.body;
+    if (!subject || !body) return res.redirect('/admin/email-marketing?tab=campaigns&error=Subject+and+body+required');
+
+    const set = {
+      subject,
+      preheader: preheader || '',
+      body,
+      updatedAt: new Date(),
+    };
+    // Follow-up campaigns target explicit contact IDs — don't clobber their segment targeting.
+    if (!campaign.targetContactIds?.length) {
+      set.targetFunnel = targetFunnel || 'all';
+      set.targetTags = targetTags ? targetTags.split(',').map(t => t.trim()).filter(Boolean) : [];
+    }
+
+    await db.collection('campaigns').updateOne({ _id: campaign._id }, { $set: set });
+    res.redirect('/admin/email-marketing?tab=campaigns&success=Campaign+updated');
+  } catch (err) {
+    console.error('Update campaign error:', err);
+    res.redirect('/admin/email-marketing?tab=campaigns&error=Failed+to+update+campaign');
   }
 });
 
@@ -592,6 +623,31 @@ router.post('/campaigns/:id/send', async (req, res) => {
   } catch (err) {
     console.error('Send campaign error:', err);
     res.redirect(`/admin/email-marketing?tab=campaigns&error=${encodeURIComponent(err.message || 'Send failed')}`);
+  }
+});
+
+// ── Send a test copy of a campaign to a single address ──
+// No tracking, no status change, no counts — just renders & delivers one email
+// so the admin can proof it. Defaults to the logged-in admin's own inbox.
+router.post('/campaigns/:id/test', async (req, res) => {
+  try {
+    const db = req.db;
+    const campaign = await db.collection('campaigns').findOne({ _id: new ObjectId(req.params.id) });
+    if (!campaign) return res.redirect('/admin/email-marketing?tab=campaigns&error=Campaign+not+found');
+
+    const testEmail = (req.body.testEmail || req.adminUser?.email || '').toLowerCase().trim();
+    if (!testEmail || !testEmail.includes('@')) {
+      return res.redirect('/admin/email-marketing?tab=campaigns&error=Valid+test+email+required');
+    }
+
+    // Omit campaignId/contactId so no tracking pixel/link rewrite and no events logged.
+    await sendCampaignEmail(testEmail, req.adminUser?.name || 'there', campaign.subject, campaign.preheader, campaign.body, null, null, req.tenant);
+
+    console.log(`[Email Marketing] TEST of "${campaign.subject}" sent to ${testEmail}`);
+    res.redirect(`/admin/email-marketing?tab=campaigns&success=${encodeURIComponent('Test sent to ' + testEmail)}`);
+  } catch (err) {
+    console.error('Test send error:', err);
+    res.redirect(`/admin/email-marketing?tab=campaigns&error=${encodeURIComponent(err.message || 'Test send failed')}`);
   }
 });
 

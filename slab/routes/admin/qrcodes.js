@@ -1,6 +1,8 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import QRCode from 'qrcode';
+import { CARD_TEMPLATES, CARD_SCHEMES, DEFAULT_CARD_TEMPLATE, DEFAULT_CARD_SCHEME, normalizeCard } from '../../plugins/cardConfig.js';
+import { renderStyledQR, normalizeQRStyle, QR_MODULES } from '../../plugins/qrStyle.js';
 
 const router = express.Router();
 
@@ -48,9 +50,14 @@ router.get('/', async (req, res) => {
     ]);
     const brand = req.tenant?.brand || {};
 
-    // Load logo for card preview
-    const logoRow = await db.collection('brand_images').findOne({ slot: 'logo_primary' });
+    // Load logo for card preview + brand images (phantom backgrounds) + colors
+    const [logoRow, brandImages, designRows] = await Promise.all([
+      db.collection('brand_images').findOne({ slot: 'logo_primary' }),
+      db.collection('brand_images').find({ slot: { $in: ['logo_primary', 'logo_icon', 'hero_bg', 'support'] } }).toArray(),
+      db.collection('design').find({ key: { $in: ['color_primary', 'color_accent', 'color_white'] } }).toArray(),
+    ]);
     const logo = logoRow?.url || '';
+    const designColors = {}; for (const r of designRows) designColors[r.key] = r.value;
 
     res.render('admin/qrcodes', {
       user: req.adminUser,
@@ -61,6 +68,13 @@ router.get('/', async (req, res) => {
       brand,
       domain,
       logo,
+      brandImages,
+      designColors,
+      qrModules: QR_MODULES,
+      cardTemplates: CARD_TEMPLATES,
+      cardSchemes: CARD_SCHEMES,
+      defaultCardTemplate: DEFAULT_CARD_TEMPLATE,
+      defaultCardScheme: DEFAULT_CARD_SCHEME,
       saved: req.query.saved === '1',
       error: req.query.error || null,
     });
@@ -163,6 +177,21 @@ router.post('/:id/update', async (req, res) => {
   }
 });
 
+// ── Save business-card design (template + color scheme) ──
+router.post('/:id/card', async (req, res) => {
+  try {
+    const card = normalizeCard({ template: req.body.template, scheme: req.body.scheme });
+    await req.db.collection('qr_links').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { card, updatedAt: new Date() } },
+    );
+    res.redirect('/admin/qr-codes?saved=1');
+  } catch (err) {
+    console.error('[QR] card design error:', err);
+    res.redirect('/admin/qr-codes?error=1');
+  }
+});
+
 // ── Delete QR link ──
 router.post('/:id/delete', async (req, res) => {
   try {
@@ -175,7 +204,23 @@ router.post('/:id/delete', async (req, res) => {
   }
 });
 
-// ── API: generate QR code as data URL (for admin preview + download) ──
+// ── Save a QR link's visual style ──
+router.post('/:id/style', async (req, res) => {
+  try {
+    const style = normalizeQRStyle(req.body);
+    await req.db.collection('qr_links').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { style, updatedAt: new Date() } },
+    );
+    res.redirect('/admin/qr-codes?saved=1');
+  } catch (err) {
+    console.error('[QR] style save error:', err);
+    res.redirect('/admin/qr-codes?error=1');
+  }
+});
+
+// ── Styled QR PNG (download + admin/live preview). Query params override the
+// saved style so the editor can preview before saving. ──
 router.get('/:id/qr.png', async (req, res) => {
   try {
     const db = req.db;
@@ -183,19 +228,20 @@ router.get('/:id/qr.png', async (req, res) => {
     if (!link) return res.status(404).json({ error: 'Not found' });
 
     const design = {};
-    const rows = await db.collection('design').find({ key: { $in: ['color_primary', 'color_white'] } }).toArray();
+    const rows = await db.collection('design').find({ key: { $in: ['color_primary', 'color_accent', 'color_white'] } }).toArray();
     for (const r of rows) design[r.key] = r.value;
 
-    const png = await QRCode.toBuffer(link.url, {
-      width: 512,
-      margin: 2,
-      color: {
-        dark: design.color_primary || '#1C2B4A',
-        light: design.color_white || '#FFFFFF',
-      },
-    });
+    const hasOverride = Object.keys(req.query).length > 0;
+    const style = normalizeQRStyle({ ...(link.style || {}), ...req.query });
+    if (!style.color1) style.color1 = design.color_primary || '#1C2B4A';
+    if (style.fill === 'gradient' && !style.color2) style.color2 = design.color_accent || '#C9A848';
 
+    let logoUrl;
+    if (style.logo) { const lr = await db.collection('brand_images').findOne({ slot: 'logo_primary' }); logoUrl = lr?.url; }
+
+    const png = await renderStyledQR(link.url, style, { size: 600, logoUrl });
     res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', hasOverride ? 'no-store' : 'no-cache');
     res.set('Content-Disposition', `inline; filename="${link.slug}-qr.png"`);
     res.send(png);
   } catch (err) {

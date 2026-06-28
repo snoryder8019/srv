@@ -145,7 +145,7 @@ never blocks gameplay.
 
 ## Amendments (2026-05-30) — live state, end-game, and adding hearts
 
-See `/srv/ARCHITECTURE.md` for cross-cutting protocols (bridge, ticket, stats, presence).
+See `/srv/games/ARCHITECTURE.md` for cross-cutting protocols (bridge, ticket, stats, presence).
 
 ### Live components
 - `engine/` — `@mll/cards-engine` (ESM): cards/deck/rng/trick/table primitives.

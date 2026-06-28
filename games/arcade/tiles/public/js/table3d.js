@@ -16,7 +16,7 @@
  * keeps camera + physics improvements in a single file that every game inherits.
  *
  * Usage (per game):
- *   import { createTable3D } from './table3d.js?v=1780411800000';
+ *   import { createTable3D } from './table3d.js?v=1781441125092';
  *   const T = createTable3D({ tableRadius: 34 });
  *   T.scene.add(myStuff);
  *   T.onFrame((now, dt) => { ... });          // per-frame game animation
@@ -30,7 +30,10 @@
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { buildAvatar } from './avatar3d.js?v=1780348653535';
+import { buildAvatar } from './avatar3d.js?v=1781441125092';
+import { mountCamDebug } from './camDebug.js?v=1781441125092';
+import { createEnvironment } from './environment3d.js?v=1781441125092';
+import { mountRoomShell } from './roomShell.js?v=1781441125092';
 
 export function createTable3D(opts = {}) {
   const TABLE_R = opts.tableRadius || 34;
@@ -51,32 +54,20 @@ export function createTable3D(opts = {}) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(opts.bg ?? 0x0a1a12);
-  scene.fog = new THREE.Fog(opts.bg ?? 0x0a1a12, 170, 320); // far so zoom-out never fogs the table
+  // Fog starts BEYOND the furthest camera zoom-out (maxDistance ≤ 320 across
+  // games) so zooming out never fades the table or satellites — especially on
+  // mobile pinch-zoom, where the old 170 near-plane fogged the felt right out.
+  scene.fog = new THREE.Fog(opts.bg ?? 0x0a1a12, 600, 1400);
 
-  // ---- optional SD scene background (mll GPU tunnel) ----
-  // Default is the flat color above. Pass opts.bgImage (a URL) or opts.bgScene (a
-  // slug resolved server-side via /scene/url/:slug) to draw a generated backdrop.
-  // Failure is silent — the flat-color background already rendered.
-  let _bgTex = null;
-  function fitBackground() {
-    if (!_bgTex || !_bgTex.image) return;
-    const canvasAspect = window.innerWidth / window.innerHeight;
-    const imageAspect = _bgTex.image.width / _bgTex.image.height;
-    const a = imageAspect / canvasAspect;
-    _bgTex.wrapS = _bgTex.wrapT = THREE.ClampToEdgeWrapping;
-    if (a > 1) { _bgTex.repeat.set(1 / a, 1); _bgTex.offset.set((1 - 1 / a) / 2, 0); }
-    else { _bgTex.repeat.set(1, a); _bgTex.offset.set(0, (1 - a) / 2); }
-    _bgTex.needsUpdate = true;
-  }
-  function applyBackgroundImage(url) {
-    if (!url) return;
-    new THREE.TextureLoader().load(
-      url,
-      (tex) => { tex.colorSpace = THREE.SRGBColorSpace; _bgTex = tex; scene.background = tex; fitBackground(); },
-      undefined,
-      () => { /* keep flat-color fallback */ }
-    );
-  }
+  // ---- world-anchored ROOM (dome + satellites) — see environment3d.js ----
+  // The background is NO LONGER screen-pinned. The scene image is mapped onto a
+  // dome in world space, so orbiting/zooming the table moves the room WITH it
+  // (parallax). `applyBackgroundImage` keeps its name (the camDebug scene picker
+  // calls it) but now swaps the DOME texture. The env is built below once camera +
+  // controls exist; any backdrop requested before then is queued in _pendingDome.
+  let _env = null, _pendingDome = null;
+  function fitBackground() { /* dome uses UV mapping — nothing to aspect-fit */ }
+  function applyBackgroundImage(url) { if (!url) return; if (_env) _env.setDome(url); else _pendingDome = url; }
   if (opts.bgImage) {
     applyBackgroundImage(opts.bgImage);
   } else if (opts.bgScene) {
@@ -93,11 +84,16 @@ export function createTable3D(opts = {}) {
     fov: 46,
     start: opts.cameraStart || { x: 0, y: 58, z: 96 }, // outside the table frame, elevated
     target: opts.cameraTarget || { x: 0, y: 1.0, z: 0 },
-    minDistance: 22, maxDistance: 200,
-    minPolar: 0.12, maxPolar: Math.PI * 0.49,          // never under the table
+    minDistance: 14, maxDistance: 420,   // expanded: closer macro + much wider room pull-back
+    // clamp vertical tilt: never near-overhead (scene flips/upends) and never past
+    // horizontal (camera would dip below the floor and see outside the room).
+    minPolar: Math.PI * 0.17, maxPolar: Math.PI * 0.46,
     damping: 0.09, panSpeed: 1.1, zoomSpeed: 1.15, rotateSpeed: 0.9,
   };
-  const camera = new THREE.PerspectiveCamera(CAMERA.fov, window.innerWidth / window.innerHeight, 0.1, 500);
+  // near=1 (not 0.1): with far at 2200 a 0.1 near gives a 22000:1 ratio that wrecks
+  // depth precision, so the felt (y≈0) and the parlor floor (y≈-0.2) z-fight into a
+  // blue/brown speckle. minDistance is 14, so a 1-unit near never clips anything.
+  const camera = new THREE.PerspectiveCamera(CAMERA.fov, window.innerWidth / window.innerHeight, 1, 2200);
   camera.position.set(CAMERA.start.x, CAMERA.start.y, CAMERA.start.z);
 
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -129,6 +125,17 @@ export function createTable3D(opts = {}) {
   }
   // ======================================================================
 
+  // ---- build the world-anchored room now that camera + controls exist ----
+  // Dome parallax + a satellite ring of other live tables (tap one to go play it).
+  // Pass opts.environment:false to opt a game out; opts.tableId excludes your own
+  // table from the ring. Any backdrop requested earlier (queued) applies now.
+  _env = createEnvironment({ scene, THREE, camera, renderer, tableRadius: TABLE_R });
+  if (_env && _pendingDome) { _env.setDome(_pendingDome); _pendingDome = null; }
+  if (_env && opts.environment !== false) _env.loadSatellites({ game: GAME, tableId: opts.tableId });
+
+  // ---- persistent "My Tables" room shell (up to 3 games + turn badges) ----
+  if (opts.roomShell !== false) { try { mountRoomShell({}); if (_env) _env.refresh(); } catch (e) { /* non-fatal */ } }
+
   // ---- load this game's persisted opening framing (admin-saved via the cog) ----
   // Snap to the saved start/target on entry so every player opens on the locked-in
   // angle. Updates HOME too, so the reset-camera button returns here. Silent
@@ -140,6 +147,7 @@ export function createTable3D(opts = {}) {
       if (!c || !c.start || !c.target) return;
       camera.position.set(c.start.x, c.start.y, c.start.z);
       controls.target.set(c.target.x, c.target.y, c.target.z);
+      if (c.fov) { camera.fov = c.fov; camera.updateProjectionMatrix(); }
       controls.update();
       HOME.pos.copy(camera.position);
       HOME.target.copy(controls.target);
@@ -164,16 +172,31 @@ export function createTable3D(opts = {}) {
   scene.add(rim);
 
   // ---- felt + rail + vignette ----
+  // The felt sits nearly coplanar with the parlor floor (environment3d, y≈-0.2);
+  // with the far plane pushed out to 2200 the depth buffer can't separate them and
+  // they z-fight (felt blue ⇄ floor brown speckle). polygonOffset pulls the felt
+  // fragments forward in depth so it ALWAYS wins over the floor, and a small lift
+  // adds physical clearance. (Stays under the zones at y≈0.04 and cards at y≈0.18.)
   const feltColor = opts.feltColor ?? 0x176b46;
   const felt = new THREE.Mesh(new THREE.CircleGeometry(TABLE_R, 64),
     new THREE.MeshStandardMaterial({ color: feltColor, roughness: 0.92 }));
-  felt.rotation.x = -Math.PI / 2; felt.receiveShadow = true; scene.add(felt);
+  felt.rotation.x = -Math.PI / 2; felt.position.y = 0.02; felt.receiveShadow = true; scene.add(felt);
   const ring = new THREE.Mesh(new THREE.RingGeometry(TABLE_R * 0.62, TABLE_R, 64),
-    new THREE.MeshBasicMaterial({ color: 0x0c3a26, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
-  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; scene.add(ring);
+    new THREE.MeshBasicMaterial({ color: 0x0c3a26, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; scene.add(ring);
   const rail = new THREE.Mesh(new THREE.TorusGeometry(TABLE_R + 0.6, 1.1, 16, 80),
     new THREE.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 0.6, metalness: 0.1 }));
   rail.rotation.x = -Math.PI / 2; rail.position.y = 0.2; rail.castShadow = true; rail.receiveShadow = true; scene.add(rail);
+  // ---- table body to the parlor floor (uses the shared parlor's FLOOR_Y) ----
+  // WIDE, SHORT body so it reads as a real table standing on the floor — not a
+  // tall narrow podium.
+  const FLOOR_Y = (_env && _env.FLOOR_Y != null) ? _env.FLOOR_Y : -8;
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(TABLE_R * 0.94, TABLE_R * 0.82, -FLOOR_Y, 48),
+    new THREE.MeshStandardMaterial({ color: 0x3a1c0e, roughness: 0.72, metalness: 0.08 }));
+  drum.position.y = FLOOR_Y / 2; drum.castShadow = true; scene.add(drum);
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(TABLE_R * 0.8, TABLE_R * 0.88, 1.2, 48),
+    new THREE.MeshStandardMaterial({ color: 0x2a1408, roughness: 0.85 }));
+  ped.position.y = FLOOR_Y + 0.6; ped.receiveShadow = true; scene.add(ped);
 
   // ---- seats ("checked-in" plates around the table) ----
   const SEAT_GROUP = new THREE.Group(); scene.add(SEAT_GROUP);
@@ -600,6 +623,10 @@ export function createTable3D(opts = {}) {
       lose: () => { tone(360, { dur: 0.3, gain: 0.05, glide: 300 }); tone(285, { t0: 0.14, dur: 0.34, gain: 0.05, glide: 240 }); },
       resume: () => { try { ac().resume(); } catch (e) {} },
       isMuted: () => muted, setMuted: (m) => { muted = m; },
+      // let the shared mixer's Effects/Master sliders attenuate the table SFX so
+      // they're not stuck at full volume (only mute used to be honoured).
+      setVolume: (v) => { try { ac(); if (master) master.gain.value = Math.max(0, Math.min(1, v)); } catch (e) {} },
+      getVolume: () => (master ? master.gain.value : 0.9),
     };
   })();
 
@@ -650,81 +677,21 @@ export function createTable3D(opts = {}) {
   }
   if (new URLSearchParams(location.search).get('cam') === '1') buildCompass();
 
-  // ---- dev camera readout + SAVE button (?cam=1) ----
-  // Phone-friendly: position the camera by hand, read the big numbers, then tap
-  // SAVE ANGLE to POST pos/target/azimuth to the server (camlog.txt) so the values
-  // can be baked into cameraStart/cameraTarget. No dev tools needed.
-  let _camHud = null;
-  function buildCamHud() {
-    if (_camHud) { _camHud.style.display = 'block'; return; }
-    _camHud = document.createElement('div');
-    _camHud.id = 'camhud';
-    _camHud.style.cssText = 'position:fixed;left:10px;top:110px;z-index:40;background:rgba(8,18,13,.9);' +
-      'color:#bfe0cd;font:13px ui-monospace,monospace;padding:10px 12px;border-radius:10px;' +
-      'border:1px solid rgba(255,255,255,.18);white-space:pre;line-height:1.6;pointer-events:auto;' +
-      'box-shadow:0 6px 20px rgba(0,0,0,.5)';
-    const readout = document.createElement('div'); readout.id = 'camReadout';
-    const btn = document.createElement('button');
-    btn.textContent = '📍 SAVE ANGLE';
-    btn.style.cssText = 'margin-top:8px;width:100%;background:#2fbf71;color:#05230f;border:none;' +
-      'border-radius:8px;padding:11px;font:800 14px system-ui;cursor:pointer';
-    btn.addEventListener('click', () => {
-      const p = camera.position, t = controls.target;
-      const r = (n) => Math.round(n * 10) / 10;
-      const payload = {
-        game: GAME,
-        start: { x: r(p.x), y: r(p.y), z: r(p.z) },
-        target: { x: r(t.x), y: r(t.y), z: r(t.z) },
-        dist: Math.round(p.distanceTo(t)),
-        az: Math.round(Math.atan2(p.x - t.x, p.z - t.z) * 180 / Math.PI),
-      };
-      fetch('/dev/camera/' + encodeURIComponent(GAME), { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-        .then(() => { btn.textContent = '✓ SAVED'; btn.style.background = '#e3c567'; setTimeout(() => { btn.textContent = '📍 SAVE ANGLE'; btn.style.background = '#2fbf71'; }, 1200); })
-        .catch(() => { btn.textContent = '✗ failed'; setTimeout(() => { btn.textContent = '📍 SAVE ANGLE'; }, 1200); });
-    });
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕ hide';
-    closeBtn.style.cssText = 'margin-top:6px;width:100%;background:#3a1d1d;color:#f0c9c9;border:none;' +
-      'border-radius:8px;padding:8px;font:700 12px system-ui;cursor:pointer';
-    closeBtn.addEventListener('click', () => { if (_camHud) _camHud.style.display = 'none'; });
-    _camHud.appendChild(readout); _camHud.appendChild(btn); _camHud.appendChild(closeBtn);
-    document.body.appendChild(_camHud);
-    _camHud._readout = readout;
+  // ---- camera debugger / opening-view tool (shared module) ----
+  // The full tool — live readout, touch nudge pad, FOV slider, scene picker, and
+  // SAVE OPENING VIEW (per game) — now lives in camDebug.js so every game (and the
+  // bespoke dominoes scene) share ONE implementation. Gated to ?cam=1 OR admin.
+  function mountDebugger() {
+    mountCamDebug(
+      { camera, controls, THREE, setBackgroundImage: applyBackgroundImage, resetCamera },
+      { game: GAME });
   }
-  function toggleCamHud() {
-    if (_camHud && _camHud.style.display !== 'none') _camHud.style.display = 'none';
-    else buildCamHud();
-  }
-  // Global admin debug icon (also shown for ?cam=1). Toggles the camera readout +
-  // SAVE ANGLE on EVERY game; SAVE posts per-game to /dev/cam so you can capture
-  // intro-camera positions per table. Future debug tools hang off this panel.
-  function addDebugIcon() {
-    if (document.getElementById('dbgBtn')) return;
-    const b = document.createElement('button');
-    b.id = 'dbgBtn'; b.textContent = '\u{1F6E0}'; b.title = 'Debug tools';
-    b.style.cssText = 'position:fixed;left:10px;bottom:60px;z-index:140;width:38px;height:38px;' +
-      'border-radius:10px;background:rgba(17,35,26,.85);color:#cfe7d8;border:1px solid rgba(255,255,255,.18);' +
-      'font-size:16px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4)';
-    b.onclick = toggleCamHud;
-    document.body.appendChild(b);
-  }
-  if (new URLSearchParams(location.search).get('cam') === '1') { addDebugIcon(); buildCamHud(); }
+  if (new URLSearchParams(location.search).get('cam') === '1') { mountDebugger(); }
   else {
     fetch('/auth/me', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d && d.user && d.user.isAdmin === true) addDebugIcon(); })
+      .then((d) => { if (d && d.user && d.user.isAdmin === true) mountDebugger(); })
       .catch(() => {});
-  }
-  function updateCamHud() {
-    if (!_camHud) return;
-    const ro = _camHud._readout; if (!ro) return;
-
-    if (!_camHud) return;
-    const p = camera.position, t = controls.target;
-    const r = (n) => Math.round(n * 10) / 10;
-    const dist = Math.round(p.distanceTo(t));
-    const az = Math.round(Math.atan2(p.x - t.x, p.z - t.z) * 180 / Math.PI);
-    ro.textContent = `📷 dist ${dist}  az ${az}°\nstart  ${r(p.x)}, ${r(p.y)}, ${r(p.z)}\ntarget ${r(t.x)}, ${r(t.y)}, ${r(t.z)}`;
   }
 
 
@@ -749,7 +716,7 @@ export function createTable3D(opts = {}) {
     requestAnimationFrame(tick);
     controls.update();
     updateCompass();
-    updateCamHud();
+    if (_env) _env.update();
     stepSettles(dt);
     stepFlights(dt);
     stepSeatPulses(now);
@@ -768,6 +735,8 @@ export function createTable3D(opts = {}) {
     THREE, scene, camera, controls, renderer, TABLE_R,
     resetCamera, setCamera,
     setBackgroundImage: applyBackgroundImage,
+    environment: () => _env,
+    reloadRoom: () => { if (_env) _env.loadSatellites({ game: GAME, tableId: opts.tableId }); },
     buildSeats, updateSeat, seatPosition, seatAngleOf, seatNodes, setSeatAvatar, seatAvatar,
     settle, flyTo, dealAnimation, isDealing: () => _dealing, onFrame, raycast, Sound,
     highlightTrickWinner,

@@ -54,6 +54,9 @@
 .tile .thumb iframe { border: 0; pointer-events: none; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.14); }
 .tile .tl { font-size: 0.7rem; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; justify-content: space-between; gap: 6px; }
 .tile .tl .cust { color: var(--accent); font-weight: 700; }
+.size-frame { background: #fff; border: 1px solid var(--border); border-radius: 3px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: center; }
+.tile.active .size-frame { border-color: var(--accent); }
+.sf-dim { font-size: 0.6rem; color: #8a93a0; letter-spacing: 0.03em; font-weight: 600; }
 
 .agent-box { background: rgba(201,168,72,0.06); border: 1px solid rgba(201,168,72,0.3); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
 .agent-row { display: flex; gap: 8px; } .agent-row input { flex: 1; }
@@ -243,7 +246,7 @@ const MATERIALS = <%- JSON.stringify(Object.fromEntries(materials.map(m=>[String
 
 const PS = {
   id:null, activeFormat:null, enabled:{}, layouts:{}, _t:null, _bt:null, _at:null,
-  _q:[], _qBusy:false,
+  _q:[], _qBusy:false, _cooling:false,
   el(id){ return document.getElementById(id); },
 
   // ── Image assets placed as draggable objects ──
@@ -271,12 +274,33 @@ const PS = {
   },
 
   // Throttled iframe loader — staggers preview requests so the board never
-  // bursts past Apache mod_evasive's per-URL flood threshold (25 / 2s).
-  enqueue(fn, kind, priority){ const it={fn,kind}; priority?this._q.unshift(it):this._q.push(it); this.drain(); },
+  // bursts past Apache mod_evasive's per-URL flood threshold. Spacing is wide
+  // (280ms ≈ 7 req/2s) to leave big headroom under DOSPageCount.
+  enqueue(fn, kind, priority){ if(this._cooling) return; const it={fn,kind}; priority?this._q.unshift(it):this._q.push(it); this.drain(); },
   dropKind(kind){ this._q=this._q.filter(i=>i.kind!==kind); },
-  drain(){ if(this._qBusy)return; this._qBusy=true; const step=()=>{ const it=this._q.shift(); if(!it){this._qBusy=false;return;} try{it.fn();}catch(e){} setTimeout(step,170); }; step(); },
+  drain(){ if(this._qBusy||this._cooling)return; this._qBusy=true; const step=()=>{ if(this._cooling){this._qBusy=false;return;} const it=this._q.shift(); if(!it){this._qBusy=false;return;} try{it.fn();}catch(e){} setTimeout(step,280); }; step(); },
   loadFrame(frame,inner,fmt,query,maxW,maxH,kind,priority){
-    this.enqueue(()=>{ frame.src='/admin/print-studio/preview?'+query; this.scaleFrame(frame,inner,fmt,maxW,maxH); }, kind, priority);
+    this.enqueue(()=>{ frame.onload=()=>this._checkBlocked(frame); frame.src='/admin/print-studio/preview?'+query; this.scaleFrame(frame,inner,fmt,maxW,maxH); }, kind, priority);
+  },
+  // Circuit breaker: if a preview comes back as an Apache/mod_evasive 403 page,
+  // STOP firing previews for a cooldown longer than DOSBlockingPeriod (30s).
+  // Every request sent while blocked RE-ARMS the ban, so backing off is the only
+  // way to let it expire instead of self-sustaining.
+  _checkBlocked(frame){
+    try{ const doc=frame.contentDocument; if(!doc) return;
+      const t=(doc.title||'')+' '+((doc.body&&doc.body.innerText)||'').slice(0,240);
+      if(/403\s*forbidden|don.?t have permission|client denied/i.test(t)) this.cooldown();
+    }catch(e){ /* same-origin expected; ignore */ }
+  },
+  cooldown(){
+    if(this._cooling) return; this._cooling=true; this._q=[];
+    let n=document.getElementById('psBlockNote');
+    if(!n){ n=document.createElement('div'); n.id='psBlockNote';
+      n.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;background:#1C2B4A;color:#fff;padding:11px 18px;border-radius:6px;font-size:0.8rem;box-shadow:0 6px 24px rgba(0,0,0,0.35);max-width:92vw;text-align:center;line-height:1.4;';
+      document.body.appendChild(n); }
+    n.textContent='⏸ Preview paused ~35s — rapid previews tripped the server flood guard. It resumes automatically; no need to refresh.';
+    n.style.display='block';
+    setTimeout(()=>{ this._cooling=false; n.style.display='none'; this.refreshStage(); }, 35000);
   },
 
   content(){
@@ -331,20 +355,30 @@ const PS = {
       const tile=document.createElement('div'); tile.className='tile'+(fmt===this.activeFormat?' active':''); tile.dataset.fmt=fmt;
       tile.onclick=()=>this.setActive(fmt);
       const thumb=document.createElement('div'); thumb.className='thumb';
-      const inner=document.createElement('div'); inner.style.position='relative';
-      const fr=document.createElement('iframe'); fr.scrolling='no';
-      inner.appendChild(fr); thumb.appendChild(inner);
+      thumb.appendChild(this._sizeFrame(fmt));
       const tl=document.createElement('div'); tl.className='tl';
       tl.innerHTML='<span>'+f.label+'</span>'+(this.layouts[fmt]?'<span class="cust">●</span>':'');
       tile.appendChild(thumb); tile.appendChild(tl); board.appendChild(tile);
-      this.loadFrame(fr, inner, fmt, this.query(fmt,false), 150, 150, 'tile', false);
     });
   },
 
+  // Static proportioned "sizing frame" for a board tile — shows the format's
+  // true aspect ratio + dimensions as a lightweight example. Deliberately NO
+  // live preview iframe: one /preview load per tile is what tripped the server
+  // flood guard. The single big Stage above stays live for editing.
+  _sizeFrame(fmt){
+    const f=FORMATS[fmt];
+    const maxW=120, maxH=84, ar=(f.wIn||1)/(f.hIn||1);
+    let w=maxW, h=w/ar; if(h>maxH){ h=maxH; w=h*ar; }
+    const box=document.createElement('div'); box.className='size-frame';
+    box.style.width=Math.round(w)+'px'; box.style.height=Math.round(h)+'px';
+    box.innerHTML='<span class="sf-dim">'+f.wIn+'×'+f.hIn+'″</span>';
+    return box;
+  },
+
+  // Tiles are static now — the only per-edit change is the custom-layout dot.
   refreshOneTile(fmt){
     const tile=document.querySelector('.tile[data-fmt="'+fmt+'"]'); if(!tile) return;
-    const fr=tile.querySelector('iframe'), inner=fr.parentElement;
-    this.loadFrame(fr, inner, fmt, this.query(fmt,false), 150, 150, 'tile', false);
     const cust=tile.querySelector('.tl .cust');
     if(this.layouts[fmt] && !cust){ tile.querySelector('.tl').insertAdjacentHTML('beforeend','<span class="cust">●</span>'); }
     if(!this.layouts[fmt] && cust){ cust.remove(); }
@@ -356,8 +390,12 @@ const PS = {
     this.refreshStage();
   },
 
+  // Per-edit debounce: refresh the big stage preview + ONLY the active tile.
+  // The full board (one preview request per enabled format) is reserved for
+  // toggle/load/resize events — re-rendering every tile on each keystroke was
+  // what bursted past the flood guard.
   queue(){ clearTimeout(this._t); this._t=setTimeout(()=>this.refreshStage(),350);
-           clearTimeout(this._bt); this._bt=setTimeout(()=>this.refreshBoard(),900); },
+           clearTimeout(this._bt); this._bt=setTimeout(()=>{ if(this.activeFormat) this.refreshOneTile(this.activeFormat); },900); },
 
   setTheme(k){ this.el('f_theme').value=k; document.querySelectorAll('.theme-opt').forEach(o=>o.classList.toggle('active',o.dataset.theme===k)); this.queue(); },
   onLogoToggle(){ this.el('f_showLogo').value=this.el('f_showLogoChk').checked?'1':'0'; this.queue(); },
@@ -443,7 +481,7 @@ const PS = {
 };
 
 window.addEventListener('message', e=>PS.onMessage(e));
-window.addEventListener('resize', ()=>{ PS.refreshStage(); PS.refreshBoard(); });
+let _psRz; window.addEventListener('resize', ()=>{ clearTimeout(_psRz); _psRz=setTimeout(()=>{ PS.refreshStage(); PS.refreshBoard(); }, 250); });
 PS.el('psForm').addEventListener('submit', ()=>PS.sync());
 PS.buildToggles(); PS.onBgType();
 (function(){

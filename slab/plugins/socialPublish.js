@@ -13,11 +13,36 @@ import { encrypt, decrypt } from './crypto.js';
 
 // Fetch a remote media file into a Buffer (used by adapters that upload bytes).
 async function fetchMedia(url) {
-  const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  const r = await fetch(url, { signal: AbortSignal.timeout(60000) });
   if (!r.ok) throw new Error(`media fetch ${r.status}`);
   const contentType = r.headers.get('content-type') || 'application/octet-stream';
   const buffer = Buffer.from(await r.arrayBuffer());
   return { buffer, contentType };
+}
+
+// Is this media URL a video? Used to route each adapter to its video flow
+// (photo and video endpoints differ on every platform).
+const VIDEO_EXT_RE = /\.(mp4|mov|m4v|webm|avi|mkv|m3u8)(\?|#|$)/i;
+function isVideoUrl(u) { return VIDEO_EXT_RE.test(String(u || '')); }
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Meta (Instagram / Threads) video containers are processed ASYNCHRONOUSLY —
+// you must poll the container until it reports FINISHED before publishing, or
+// the publish call fails ("media not finished processing"). `field` differs:
+// Instagram exposes `status_code`, Threads exposes `status`.
+async function pollMetaContainer(statusUrl, field, { timeoutMs = 150000, intervalMs = 5000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let last = '';
+  while (Date.now() < deadline) {
+    await sleep(intervalMs);
+    const r = await fetch(statusUrl, { signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({}));
+    last = j[field] || last;
+    if (last === 'FINISHED') return;
+    if (last === 'ERROR' || last === 'EXPIRED') throw new Error(`video processing ${last}${j.error_message ? ': ' + j.error_message : ''}`);
+  }
+  throw new Error(`video still processing after ${Math.round(timeoutMs / 1000)}s — try again shortly`);
 }
 
 // Build a rich, human-readable error from a Meta Graph API response. Meta packs
@@ -76,6 +101,38 @@ async function googleAccessToken(creds) {
 }
 export { googleAccessToken };
 
+// Google's generic error message ("Request contains an invalid argument.")
+// never names the bad field — the specifics live in error.details[].fieldViolations.
+// Pull them out so callers/admins see WHICH argument Google rejected.
+function googleApiError(j, httpStatus, label) {
+  const e = j && j.error;
+  if (!e) return `${label} (${httpStatus})`;
+  const parts = [];
+  for (const d of (e.details || [])) {
+    for (const fv of (d.fieldViolations || [])) parts.push(`${fv.field || 'field'} — ${fv.description || 'invalid'}`);
+    if (d.reason && !d.fieldViolations) parts.push(d.reason);
+  }
+  let msg = e.message || `${label} (${httpStatus})`;
+  if (e.status && !msg.includes(e.status)) msg += ` [${e.status}]`;
+  if (parts.length) msg += ': ' + parts.join('; ');
+  return msg;
+}
+
+// A Maps Place ID ("ChIJ…"/"GhIJ…") is NOT a Business Profile Location ID. The
+// v4 localPosts path wants the numeric location id from accounts/*/locations;
+// pasting the Place ID makes every post fail with INVALID_ARGUMENT.
+function looksLikePlaceId(id) { return /^(ChIJ|GhIJ)/.test(String(id || '')); }
+
+// Normalize a user-supplied link to an absolute http(s) URL (Google rejects a
+// callToAction whose url has no scheme). Returns null if it can't be made valid.
+function normalizeHttpUrl(u) {
+  u = String(u || '').trim();
+  if (!u) return null;
+  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  try { const x = new URL(u); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : null; }
+  catch { return null; }
+}
+
 export const PLATFORMS = {
   // ── Mastodon — simplest: instance URL + an access token from the app you create
   mastodon: {
@@ -104,15 +161,28 @@ export const PLATFORMS = {
       if (!base || !creds.accessToken) throw new Error('Missing instance URL or access token');
       const headers = { Authorization: `Bearer ${creds.accessToken}` };
 
-      // Upload media first (if any) to get attachment ids
+      // Upload media first (if any) to get attachment ids. Video uploads return
+      // 202 (still processing) — Mastodon rejects the status until the media is
+      // ready, so poll GET /api/v1/media/:id (200 = processed) before posting.
       const mediaIds = [];
       for (const url of (post.mediaUrls || []).slice(0, 4)) {
         try {
           const { buffer, contentType } = await fetchMedia(url);
           const fd = new FormData();
-          fd.append('file', new Blob([buffer], { type: contentType }), 'media');
-          const mr = await fetch(`${base}/api/v2/media`, { method: 'POST', headers, body: fd, signal: AbortSignal.timeout(30000) });
-          if (mr.ok) { const mj = await mr.json(); if (mj.id) mediaIds.push(mj.id); }
+          fd.append('file', new Blob([buffer], { type: contentType }), isVideoUrl(url) ? 'video' : 'media');
+          const mr = await fetch(`${base}/api/v2/media`, { method: 'POST', headers, body: fd, signal: AbortSignal.timeout(120000) });
+          const mj = await mr.json().catch(() => ({}));
+          if (!mj.id) continue;
+          if (mr.status === 202) {
+            // Processing — poll until the instance reports it ready (200).
+            const deadline = Date.now() + 120000;
+            while (Date.now() < deadline) {
+              await sleep(4000);
+              const pr = await fetch(`${base}/api/v1/media/${mj.id}`, { headers, signal: AbortSignal.timeout(15000) });
+              if (pr.status === 200) break;
+            }
+          }
+          if (mr.ok || mr.status === 202) mediaIds.push(mj.id);
         } catch { /* skip bad media, still post text */ }
       }
 
@@ -135,7 +205,7 @@ export const PLATFORMS = {
     name: 'Bluesky',
     icon: '🦋',
     color: '#0085FF',
-    caps: { text: true, link: true, media: false },
+    caps: { text: true, link: true, media: true },
     fields: [
       { key: 'identifier', label: 'Handle', secret: false, placeholder: 'you.bsky.social' },
       { key: 'appPassword', label: 'App Password', secret: true, placeholder: 'xxxx-xxxx-xxxx-xxxx' },
@@ -166,13 +236,57 @@ export const PLATFORMS = {
       if (!sess.ok) throw new Error(sj.message || `auth HTTP ${sess.status}`);
 
       const text = [post.body, post.link].filter(Boolean).join('\n\n').slice(0, 300);
+
+      // Upload a blob to the PDS and return its ref (or null on failure).
+      const uploadBlob = async (buffer, contentType, timeoutMs) => {
+        const ur = await fetch(`${svc}/xrpc/com.atproto.repo.uploadBlob`, {
+          method: 'POST',
+          headers: { 'Content-Type': contentType || 'application/octet-stream', Authorization: `Bearer ${sj.accessJwt}` },
+          body: buffer,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        const uj = await ur.json().catch(() => ({}));
+        return ur.ok && uj.blob ? uj.blob : null;
+      };
+
+      // A video takes priority over images (Bluesky embeds one OR the other).
+      const videoUrl = (post.mediaUrls || []).find(isVideoUrl);
+      let embed = null;
+      if (videoUrl) {
+        try {
+          const { buffer, contentType } = await fetchMedia(videoUrl);
+          // Bluesky video service caps at ~50MB / ~3min; skip oversized.
+          if (buffer.length <= 50 * 1024 * 1024) {
+            const blob = await uploadBlob(buffer, contentType || 'video/mp4', 180000);
+            if (blob) embed = { $type: 'app.bsky.embed.video', video: blob, alt: post.alt || '' };
+          }
+        } catch { /* fall through to images / text */ }
+      }
+      if (!embed) {
+        // Upload any images as blobs (Bluesky allows up to 4) and build an embed.
+        const images = [];
+        for (const url of (post.mediaUrls || []).filter(u => !isVideoUrl(u)).slice(0, 4)) {
+          try {
+            const { buffer, contentType } = await fetchMedia(url);
+            // Bluesky caps image blobs at ~1MB; skip oversized rather than fail the whole post.
+            if (buffer.length > 1000000) continue;
+            const blob = await uploadBlob(buffer, contentType, 30000);
+            if (blob) images.push({ alt: post.alt || '', image: blob });
+          } catch { /* skip bad media, still post text */ }
+        }
+        if (images.length) embed = { $type: 'app.bsky.embed.images', images };
+      }
+
+      const record = { $type: 'app.bsky.feed.post', text, createdAt: new Date().toISOString() };
+      if (embed) record.embed = embed;
+
       const r = await fetch(`${svc}/xrpc/com.atproto.repo.createRecord`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sj.accessJwt}` },
         body: JSON.stringify({
           repo: sj.did,
           collection: 'app.bsky.feed.post',
-          record: { $type: 'app.bsky.feed.post', text, createdAt: new Date().toISOString() },
+          record,
         }),
         signal: AbortSignal.timeout(20000),
       });
@@ -204,9 +318,17 @@ export const PLATFORMS = {
     async publish({ post, creds }) {
       if (!creds.webhookUrl) throw new Error('Missing webhook URL');
       const content = [post.body, post.link].filter(Boolean).join('\n');
-      const payload = { content: content.slice(0, 2000) };
+      let text = content;
       const img = (post.mediaUrls || [])[0];
-      if (img) payload.embeds = [{ image: { url: img } }];
+      const payload = {};
+      if (img && isVideoUrl(img)) {
+        // Discord webhook embeds can't host arbitrary video — drop the URL into
+        // the message so it unfurls into an inline player.
+        text = [content, img].filter(Boolean).join('\n');
+      } else if (img) {
+        payload.embeds = [{ image: { url: img } }];
+      }
+      payload.content = text.slice(0, 2000);
       const r = await fetch(creds.webhookUrl + '?wait=true', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload), signal: AbortSignal.timeout(20000),
@@ -246,7 +368,13 @@ export const PLATFORMS = {
       const img = (post.mediaUrls || [])[0];
       const api = `https://api.telegram.org/bot${creds.botToken}`;
       let r, j;
-      if (img) {
+      if (img && isVideoUrl(img)) {
+        r = await fetch(`${api}/sendVideo`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: creds.chatId, video: img, caption: text.slice(0, 1024), supports_streaming: true }),
+          signal: AbortSignal.timeout(60000),
+        });
+      } else if (img) {
         r = await fetch(`${api}/sendPhoto`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chat_id: creds.chatId, photo: img, caption: text.slice(0, 1024) }),
@@ -291,14 +419,25 @@ export const PLATFORMS = {
       const G = 'https://graph.facebook.com/v21.0';
       const msg = [post.body, post.link].filter(Boolean).join('\n\n');
       const img = (post.mediaUrls || [])[0];
-      let r, j;
-      if (img) {
+      const isVid = isVideoUrl(img);
+      let r, j, stage;
+      if (img && isVid) {
+        // Page video → /videos with a public file_url (Meta pulls it server-side).
+        stage = 'video';
+        r = await fetch(`${G}/${creds.pageId}/videos`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_url: img, description: msg, access_token: creds.pageAccessToken }),
+          signal: AbortSignal.timeout(120000),
+        });
+      } else if (img) {
+        stage = 'photo';
         r = await fetch(`${G}/${creds.pageId}/photos`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: img, caption: msg, access_token: creds.pageAccessToken }),
           signal: AbortSignal.timeout(25000),
         });
       } else {
+        stage = 'feed';
         r = await fetch(`${G}/${creds.pageId}/feed`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: msg, ...(post.link ? { link: post.link } : {}), access_token: creds.pageAccessToken }),
@@ -306,7 +445,7 @@ export const PLATFORMS = {
         });
       }
       j = await r.json().catch(() => ({}));
-      if (!r.ok) throw metaError(j, r.status, img ? 'photo' : 'feed');
+      if (!r.ok) throw metaError(j, r.status, stage);
       const id = j.post_id || j.id;
       return { id, url: id ? `https://facebook.com/${id}` : undefined };
     },
@@ -335,17 +474,23 @@ export const PLATFORMS = {
     async publish({ post, creds }) {
       if (!creds.igUserId || !creds.accessToken) throw new Error('Missing IG user id or token');
       const img = (post.mediaUrls || [])[0];
-      if (!img) throw new Error('Instagram requires an image — attach a public image URL');
+      if (!img) throw new Error('Instagram requires an image or video — attach a public media URL');
+      const isVid = isVideoUrl(img);
       const G = 'https://graph.facebook.com/v21.0';
       const caption = [post.body, post.link].filter(Boolean).join('\n\n');
-      // 1. create container
+      // 1. create container — video posts go up as REELS with a video_url.
+      const containerBody = isVid
+        ? { media_type: 'REELS', video_url: img, caption, access_token: creds.accessToken }
+        : { image_url: img, caption, access_token: creds.accessToken };
       const cr = await fetch(`${G}/${creds.igUserId}/media`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_url: img, caption, access_token: creds.accessToken }),
+        body: JSON.stringify(containerBody),
         signal: AbortSignal.timeout(25000),
       });
       const cj = await cr.json().catch(() => ({}));
       if (!cr.ok || !cj.id) throw metaError(cj, cr.status, 'container');
+      // 1b. video containers process asynchronously — wait for FINISHED.
+      if (isVid) await pollMetaContainer(`${G}/${cj.id}?fields=status_code&access_token=${encodeURIComponent(creds.accessToken)}`, 'status_code');
       // 2. publish container
       const pr = await fetch(`${G}/${creds.igUserId}/media_publish`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -511,9 +656,11 @@ export const PLATFORMS = {
       const T = 'https://graph.threads.net/v1.0';
       const text = [post.body, post.link].filter(Boolean).join('\n\n');
       const img = (post.mediaUrls || [])[0];
+      const isVid = isVideoUrl(img);
       // 1. create media container
       const params = new URLSearchParams({ access_token: creds.accessToken });
-      if (img) { params.set('media_type', 'IMAGE'); params.set('image_url', img); if (text) params.set('text', text); }
+      if (img && isVid) { params.set('media_type', 'VIDEO'); params.set('video_url', img); if (text) params.set('text', text); }
+      else if (img) { params.set('media_type', 'IMAGE'); params.set('image_url', img); if (text) params.set('text', text); }
       else { params.set('media_type', 'TEXT'); params.set('text', text); }
       const cr = await fetch(`${T}/${creds.userId}/threads`, {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -521,6 +668,8 @@ export const PLATFORMS = {
       });
       const cj = await cr.json().catch(() => ({}));
       if (!cr.ok || !cj.id) throw metaError(cj, cr.status, 'container');
+      // 1b. video containers process asynchronously — wait until FINISHED.
+      if (isVid) await pollMetaContainer(`${T}/${cj.id}?fields=status&access_token=${encodeURIComponent(creds.accessToken)}`, 'status');
       // 2. publish container
       const pr = await fetch(`${T}/${creds.userId}/threads_publish`, {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -549,29 +698,37 @@ export const PLATFORMS = {
     setup: 'Create a Google Cloud project, enable the Business Profile APIs, and REQUEST API access (Google gates it — new projects get 403 until approved). Create an OAuth client and run consent with scope https://www.googleapis.com/auth/business.manage to obtain a refresh token. Get the Account + Location IDs from the accounts.locations list (use only the numeric id parts).',
     portal: 'https://developers.google.com/my-business',
     async verify({ creds }) {
+      if (looksLikePlaceId(creds.locationId)) throw new Error(`Location ID "${creds.locationId}" is a Google Maps Place ID, not a Business Profile Location ID. Set it to the numeric location id from your Business Profile (accounts/<id>/locations/<this>).`);
       const token = await googleAccessToken(creds);
       const r = await fetch(`https://mybusiness.googleapis.com/v4/accounts/${creds.accountId}/locations/${creds.locationId}/localPosts?pageSize=1`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error?.message || `Google verify failed (${r.status})`);
+      if (!r.ok) throw new Error(googleApiError(j, r.status, 'Google verify failed'));
       return { ok: true, profile: { name: `Location ${creds.locationId}` } };
     },
     async publish({ post, creds }) {
       if (!creds.accountId || !creds.locationId || !creds.refreshToken) throw new Error('Missing Google Business account/location/refresh token');
+      if (looksLikePlaceId(creds.locationId)) throw new Error(`Location ID "${creds.locationId}" is a Google Maps Place ID, not a Business Profile Location ID. In Connections → Google Business, set Location ID to the numeric id from your Business Profile (accounts/<id>/locations/<this>), then retry.`);
+      const summary = (post.body || '').trim().slice(0, 1500);
+      if (!summary) throw new Error('Google Business posts require caption text — add a summary/body before posting.');
       const token = await googleAccessToken(creds);
       const img = (post.mediaUrls || [])[0];
+      // Google Business local posts only accept PHOTO media — a video sourceUrl
+      // gets rejected with INVALID_ARGUMENT, so omit it and post text + CTA.
+      const photo = img && !isVideoUrl(img) ? img : null;
+      const ctaUrl = normalizeHttpUrl(post.link);
       const body = {
         languageCode: 'en-US',
-        summary: (post.body || '').slice(0, 1500),
+        summary,
         topicType: 'STANDARD',
-        ...(img ? { media: [{ mediaFormat: 'PHOTO', sourceUrl: img }] } : {}),
-        ...(post.link ? { callToAction: { actionType: 'LEARN_MORE', url: post.link } } : {}),
+        ...(photo ? { media: [{ mediaFormat: 'PHOTO', sourceUrl: photo }] } : {}),
+        ...(ctaUrl ? { callToAction: { actionType: 'LEARN_MORE', url: ctaUrl } } : {}),
       };
       const r = await fetch(`https://mybusiness.googleapis.com/v4/accounts/${creds.accountId}/locations/${creds.locationId}/localPosts`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body), signal: AbortSignal.timeout(25000),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error?.message || `Google post failed (${r.status})`);
+      if (!r.ok) throw new Error(googleApiError(j, r.status, 'Google post failed'));
       return { id: j.name, url: j.searchUrl };
     },
   },

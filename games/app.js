@@ -146,6 +146,14 @@ passport.use(new GoogleStrategy(
         // ever fall back to displayName/email for a user without one.
         await username.backfillAll(db).catch(() => {});
         user = await users.findOne({ _id: result.insertedId });
+        // Notify admin + onboard (welcome email, funnel tracking). This direct
+        // Google OAuth path previously did neither.
+        try {
+          const { notifyAdmin } = require('/srv/slab/plugins/notify.cjs');
+          notifyAdmin({ type: 'games', app: 'games', email, name: user.displayName || '',
+            userId: user._id, data: { 'Method': 'Google OAuth', 'Display Name': user.displayName || '' } }).catch(() => {});
+        } catch (e) { console.error('[auth] notifyAdmin failed:', e.message); }
+        require('./lib/onboarding').onUserCreated(db, user, { method: 'Google OAuth' });
       }
       const denied = _accessDenialReason(user);
       if (denied) return done(null, false, { message: denied });

@@ -154,6 +154,13 @@ async function _syncAfterEvents(table, events) {
     const meta = { tableId: table.tableId, delta: ops.delta, wager: totalWager };
 
     if (ops.kind === 'win') {
+      // Parlor signal: record + queue notable wins so the 3D room can pop a
+      // "BIG WIN" animation on that table from afar (privacy-safe: screen name only).
+      if (ops.payout >= BIG_WIN) {
+        const win = { tableId: table.tableId, game: table.variant.id, name: seatObj.displayName || 'Player', amount: ops.payout, ts: Date.now() };
+        recentWins.set(table.tableId, win);
+        pendingWins.push(win);
+      }
       await settleChips(seatObj.platformId, {
         wager: mainWager, payout: ops.payout, game: table.variant.id, meta, displayName: seatObj.displayName,
       });
@@ -173,3 +180,13 @@ async function _syncAfterEvents(table, events) {
 export async function syncAfterEvents(table, events) { return serialize(table.tableId, () => _syncAfterEvents(table, events)); }
 
 export function clear(table) { if (table) { if (table._walletSync) table._walletSync = null; chains.delete(table.tableId); } }
+
+// --- parlor big-win feed (for the 3D room's from-afar win animations) ---
+const BIG_WIN = 150;                  // chips; below this it's not "notable"
+const recentWins = new Map();         // tableId -> { tableId, game, name, amount, ts } (latest notable)
+const pendingWins = [];               // FIFO of new wins the socket layer hasn't emitted yet
+export function drainPendingWins() { const out = pendingWins.splice(0, pendingWins.length); return out; }
+export function getRecentWin(tableId, maxAgeMs = 30000) {
+  const w = recentWins.get(tableId);
+  return (w && Date.now() - w.ts <= maxAgeMs) ? w : null;
+}

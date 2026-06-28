@@ -47,7 +47,7 @@
       element: '.topbar-actions',
       popover: {
         title: 'Creative Tools',
-        description: 'Access the Social Media Generator to create branded graphics, or the Video Trimmer to clip and export video files — all built into your asset library.',
+        description: 'Access the Social Media Generator to create branded graphics — built right into your asset library.',
         side: 'bottom',
         align: 'end'
       }
